@@ -10,9 +10,10 @@ import (
 
 // filler is a pane that fills its whole rectangle with one harmless character,
 // so the only structure left in a frame is the structure the SHELL drew. The
-// skeleton's placeholders draw boxes out of the same box-drawing family the
-// hairline belongs to, and a test that could not tell a placeholder's border
-// from a dialog's rule would pass for the wrong reason.
+// skeleton's placeholders no longer draw anything a rule could be confused with
+// (§16 BORDERS; see placeholder.go), but the panes are filled anyway: a test
+// that measured the shell's own hairline through whatever a placeholder happened
+// to be drawing that wave would pass, or fail, for the wrong reason.
 type filler struct{}
 
 func (filler) Render(w, h int) string {

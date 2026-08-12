@@ -14,7 +14,7 @@ import (
 
 func TestBoolRowTogglesOnSpaceAndShowsItAtOnce(t *testing.T) {
 	s := newSheet(t)
-	r := s.gotoRow(t, config.KeyProposeSkills)
+	r := s.gotoRow(t, config.KeyAttribution)
 	if got := s.value(r); got != "on" {
 		t.Fatalf("propose new skills starts %q, want on", got)
 	}
@@ -28,7 +28,7 @@ func TestBoolRowTogglesOnSpaceAndShowsItAtOnce(t *testing.T) {
 		t.Fatalf("pending = %+v, want the raw value the registry parses", pending)
 	}
 	s.Flush()
-	if config.ProposeSkillsAt(s.dir) {
+	if config.AttributionAt(s.dir) {
 		t.Fatal("the store still reads on after the flush")
 	}
 }
@@ -210,7 +210,6 @@ func TestARefusedValueShowsTheRegistrysOwnWords(t *testing.T) {
 // Arrow navigation only: letters search, so j and k cannot be movement here.
 func TestArrowsNavigateAndLettersDoNot(t *testing.T) {
 	s := newSheet(t)
-	s.tab = 1
 	s.reselectFresh()
 
 	s.press(namedKey(tea.KeyDown))
@@ -228,16 +227,16 @@ func TestArrowsNavigateAndLettersDoNot(t *testing.T) {
 	}
 }
 
-func TestTabsMoveWithLeftAndRight(t *testing.T) {
+func TestGroupsMoveWithLeftAndRight(t *testing.T) {
 	s := newSheet(t)
-	first := s.Tab()
+	first := s.Group()
 	s.press(namedKey(tea.KeyRight))
-	if s.Tab() == first {
+	if s.Group() == first {
 		t.Fatal("right must move to the next group")
 	}
 	s.press(namedKey(tea.KeyLeft))
-	if s.Tab() != first {
-		t.Fatalf("left returned to %q, want %q", s.Tab(), first)
+	if s.Group() != first {
+		t.Fatalf("left returned to %q, want %q", s.Group(), first)
 	}
 }
 
@@ -245,7 +244,7 @@ func TestTabsMoveWithLeftAndRight(t *testing.T) {
 // and a click on the row already selected activates it.
 func TestClickSelectsThenActivates(t *testing.T) {
 	s := newSheet(t)
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 	s.Render(80, 20)
 
 	line := -1

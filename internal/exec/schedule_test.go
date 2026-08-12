@@ -360,43 +360,37 @@ func (c *countingExecutor) Run(ctx context.Context, task Task) (*Outcome, error)
 	return &Outcome{Text: "done", Turns: 1, Stop: StopDone, Usage: Usage{Calls: 1}}, nil
 }
 
-// TestSchedulerAsksTheHostBeforeLaunching is the headless half of the admission
-// doctrine. The governor's comment claims it covers "chat's runner, a headless
-// runner, and anything else claiming leaves in this process", but the scheduler
-// gated only on its own concurrency number and the dollar rail — so `aforge run
-// --concurrency 8` launched eight leaves onto a machine already at ten times
-// its cores, and the gate the resident honours was invisible here.
-func TestSchedulerAsksTheHostBeforeLaunching(t *testing.T) {
-	leaves := GovernorMinInFlight + 1
-	build := func() (*plan.Graph, *countingExecutor) {
-		graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
-		for index := range leaves {
-			graph.Add(plan.Node{Stage: 1, Title: fmt.Sprintf("leaf-%d", index)})
-		}
-		return graph, &countingExecutor{}
+// TestSchedulerLaunchesEveryReadyAPIBoundLeafOnASaturatedHost is the headless
+// half of the admission doctrine. The gate used to be the host's load average
+// for every leaf, and a leaf here is a goroutine parked on a socket waiting for
+// a model — so `aforge run --concurrency 8` on a machine somebody else was
+// compiling on launched three leaves and then waited, forever, for a reading
+// that its own idle sockets could never bring down. Concurrency belongs to the
+// graph: a node runs when the nodes it needs have landed. What the panel asked
+// for is the bound; the host is not consulted about this class at all.
+func TestSchedulerLaunchesEveryReadyAPIBoundLeafOnASaturatedHost(t *testing.T) {
+	leaves := GovernorLocalFloor + 3
+	graph := &plan.Graph{Goal: "g", Stages: []plan.Stage{{Title: "One"}}, NextID: 1}
+	for index := range leaves {
+		graph.Add(plan.Node{Stage: 1, Title: fmt.Sprintf("leaf-%d", index)})
+	}
+	fake := &countingExecutor{
+		arrived: make(chan struct{}, leaves),
+		release: make(chan struct{}),
 	}
 
-	// A saturated machine: the guaranteed floor always gets through — someone
-	// else's load must never leave aforge running nothing, and must never turn
-	// independent work into a queue — and the leaf above the floor does not,
-	// however much concurrency the panel was given.
-	graph, fake := build()
-	fake.arrived = make(chan struct{}, leaves)
-	fake.release = make(chan struct{})
+	// Ten times over the load ceiling, and irrelevant: nothing these leaves do
+	// touches a core.
 	scheduler := NewScheduler(NewRegistry(fake), workspace(t), leaves+4).WithGovernor(saturatedGovernor())
 	stopped := make(chan error, 1)
 	go func() { stopped <- scheduler.Run(context.Background(), graph) }()
-	for admitted := range GovernorMinInFlight {
+	for launched := range leaves {
 		select {
 		case <-fake.arrived:
 		case <-time.After(10 * time.Second):
-			t.Fatalf("the starvation guard failed: only %d leaves launched", admitted)
+			t.Fatalf("only %d of %d independent leaves launched: host load throttled work that costs the host nothing",
+				launched, leaves)
 		}
-	}
-	select {
-	case <-fake.arrived:
-		t.Fatal("a leaf above the floor launched onto a machine ten times over its ceiling")
-	case <-time.After(250 * time.Millisecond):
 	}
 	close(fake.release)
 	if err := <-stopped; err != nil {
@@ -404,35 +398,13 @@ func TestSchedulerAsksTheHostBeforeLaunching(t *testing.T) {
 	}
 	for _, node := range graph.Nodes {
 		if node.State != plan.StateDone {
-			t.Fatalf("node %d = %s, want done — back-pressure must delay work, not drop it", node.ID, node.State)
+			t.Fatalf("node %d = %s, want done", node.ID, node.State)
 		}
 	}
 	fake.mutex.Lock()
 	peak := fake.peak
 	fake.mutex.Unlock()
-	if peak != GovernorMinInFlight {
-		t.Fatalf("peak concurrency under saturation = %d, want the guaranteed floor %d",
-			peak, GovernorMinInFlight)
-	}
-
-	// The same graph on a calm machine launches every leaf together. A gate that
-	// refused here would be a hold, and a hold is exactly what the governor is
-	// designed never to be.
-	calm, barrier := build()
-	barrier.arrived = make(chan struct{}, leaves)
-	barrier.release = make(chan struct{})
-	calmScheduler := NewScheduler(NewRegistry(barrier), workspace(t), leaves+4).WithGovernor(calmGovernor())
-	finished := make(chan error, 1)
-	go func() { finished <- calmScheduler.Run(context.Background(), calm) }()
-	for launched := range leaves {
-		select {
-		case <-barrier.arrived:
-		case <-time.After(10 * time.Second):
-			t.Fatalf("only %d of %d leaves launched on a calm machine", launched, leaves)
-		}
-	}
-	close(barrier.release)
-	if err := <-finished; err != nil {
-		t.Fatalf("Run: %v", err)
+	if peak != leaves {
+		t.Fatalf("peak concurrency = %d, want all %d independent leaves at once", peak, leaves)
 	}
 }

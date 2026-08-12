@@ -33,25 +33,71 @@
 //
 // Both are one decision: the ring is [tokens.Sheet], the rule is
 // [tokens.TextTertiary], and the ladder ground → sheet → band does the rest.
+//
+// The third thing this package owns is DISMISSAL, and it is here for the same
+// reason the paint is: the ring is the only part of the surface that knows what
+// "outside the panel" means. Design law §16 OVERLAY DISMISSAL says every overlay
+// closes three ways — its `close esc` chip, the esc key, and a click anywhere
+// outside the panel — and names this package as the owner of the third. See
+// [Pane.Mouse].
+//
+// REQUESTED SEAM — how far "outside" currently reaches. The ring is a slot with
+// a rectangle, and the shell routes a click to the layer whose rectangle holds
+// it. So what arrives here today is every click on the one-cell margin, which
+// is genuinely outside the panel and is dismissed. A click further out — on the
+// transcript, on the rail — still lands on the pane it is over, because a
+// floating dialog is modal by z order and not by area.
+//
+// Closing that gap is three lines in [tui2.Shell.mouse] and none of them belong
+// in this package: while the overlay plane is up, a click that hits neither
+// [tui2.LayerOverlay] nor [tui2.LayerDialogChrome] is forwarded HERE instead of
+// to the pane underneath. [Pane.Mouse] is written to be that pane's answer
+// already — it tests the geometry rather than the route, so a forwarded point
+// from anywhere on the frame is outside the panel and dismisses, and nothing
+// beneath the dialog ever sees the click.
 package dialogchrome
 
 import (
+	"image"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
+// ring is how many cells of margin the chrome holds on every side, and it is
+// the pane's OWN geometry rather than a copy of the shell's: [Pane.Render]
+// rules row 0 and row h-1 and grounds one column at each end, so what is left
+// inside is exactly the panel the overlay plane draws on top. Reading the
+// number off the drawing rather than off [tui2] is what keeps the hit test and
+// the paint from being two truths that can drift.
+const ring = 1
+
 // Pane is the boundary, as a [tui2.Pane]. It holds no state a reader can move:
-// it never takes focus, it answers no key, and it absorbs the clicks that land
-// on it only because the shell gives a bound layer that property for free.
+// it never takes focus and it answers no key.
 //
-// It does not implement PaneMouse on purpose. A click on the margin must do
-// NOTHING rather than something arbitrary, and a layer with no mouse handler is
-// exactly that — the modal discipline covers the ring without the ring having
-// an opinion about pointers.
+// It DOES answer the pointer, and that is the one thing 12.11 left it unable to
+// do. A layer with no mouse handler absorbs its clicks and does nothing with
+// them, which was the right posture while the ring was only a margin; §16 makes
+// the ring a verb — the click that lands beside a dialog is a reader saying
+// "not this", and every other surface in the product answers that. See
+// [Pane.Mouse] and [Pane.SetDismiss].
 type Pane struct {
 	styler *tokens.Styler
 	buf    strings.Builder
+
+	// dismiss is the close a click outside the panel performs. It is the
+	// overlay's OWN close and never a second one — see [Pane.SetDismiss].
+	dismiss func() tea.Cmd
+
+	// w and h are the rectangle the ring was last drawn at, kept so a pointer
+	// can be resolved against the boundary that is actually on screen. It is
+	// the one number a pane may keep, because it IS the rectangle the pane was
+	// told about and nothing else can know it (the same field, for the same
+	// reason, that the footer's row keeps).
+	w, h int
 }
 
 // New builds the chrome for a terminal profile. A nil Styler renders plain
@@ -61,6 +107,21 @@ func New(s *tokens.Styler) *Pane { return &Pane{styler: s} }
 
 // SetStyler rebinds the painter when the profile changes.
 func (p *Pane) SetStyler(s *tokens.Styler) { p.styler = s }
+
+// SetDismiss binds the close a click outside the panel performs.
+//
+// It must be the SAME function the esc path calls — the overlay's own close —
+// and not a second way of shutting a dialog. That is not a style note: closing
+// the settings sheet flushes a debounced write, closing the palette restores
+// the keyboard the door took, and a dismissal that skipped either would lose a
+// change the reader had already made. Passing the one close makes esc parity a
+// property of identity rather than something two paths have to keep agreeing
+// about.
+//
+// A chrome with no dismiss bound still absorbs its clicks and does nothing with
+// them, which is exactly the behaviour this package shipped with — so a lane
+// that binds the ring and forgets this is no worse off than before.
+func (p *Pane) SetDismiss(close func() tea.Cmd) { p.dismiss = close }
 
 // Render implements [tui2.Pane]: a hairline along the top row, a hairline along
 // the bottom row, and the dialog's own ground between them.
@@ -75,10 +136,14 @@ func (p *Pane) SetStyler(s *tokens.Styler) { p.styler = s }
 // hairlines at a room boundary; add the two verticals and it is the frame
 // 5.21's anti-catalog refuses.
 func (p *Pane) Render(w, h int) string {
+	p.w, p.h = w, h
 	if w <= 0 || h <= 0 {
 		return ""
 	}
-	rule := p.paint(strings.Repeat(tokens.GlyphTreeDash, w), tokens.TextTertiary)
+	// The stroke comes from the one renderer that owns §16's ruled lines, so a
+	// dialog's boundary and a record's seam are the same mark at the same tier
+	// by construction rather than by two files agreeing.
+	rule := p.paint(strings.Repeat(blocks.RuleMark, w), tokens.TextTertiary)
 	if h == 1 {
 		return rule
 	}
@@ -94,6 +159,58 @@ func (p *Pane) Render(w, h int) string {
 	p.buf.WriteByte('\n')
 	p.buf.WriteString(rule)
 	return p.buf.String()
+}
+
+// -- dismissal (§16 OVERLAY DISMISSAL) ---------------------------------------
+
+// Mouse implements [tui2.PaneMouse]: a click OUTSIDE the panel closes the
+// dialog, and every event that reaches this pane is swallowed.
+//
+// WHY THE RING OWNS THIS. §16 gives dismissal three doors — the `close esc`
+// chip, the esc key, and "a click anywhere outside the panel (dialogchrome owns
+// 'outside')" — and the third one has to be answered by something that knows
+// where the panel ENDS. The panel itself does not: it is handed a rectangle and
+// told to fill it, and every coordinate it ever sees is inside its own body.
+// The ring is the first cell that is not the dialog, so it is the only pane on
+// the surface that can tell the two apart.
+//
+// WHAT SWALLOWING MEANS HERE. Nothing has to be suppressed: the shell routes a
+// click to exactly one layer, the compositor scans from the top of the z order
+// down, and this layer sits above the base plane. So a click that reaches here
+// has already been taken from the transcript and the rail — returning nothing
+// is the swallow. That is the property §16 is really asking for, and it is the
+// half a dialog gets wrong most often: a dismissing click that ALSO opened the
+// rail row underneath would make "not this" mean "not this, and that instead".
+//
+// The inside test looks redundant today and is not. It is what makes the pane's
+// answer depend on the GEOMETRY rather than on which layer the shell happened
+// to route from — so a caller that forwards an outside click from anywhere on
+// the frame (see the wiring note in the package doc) gets the same answer, and
+// a point that lands where the panel is gets nothing whatever route it came by.
+//
+// Only the left button dismisses. A wheel notch over the ring is a reader
+// scrolling something they cannot see and is dropped; a right click is not a
+// verb this surface has.
+func (p *Pane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
+	click, isClick := msg.(tea.MouseClickMsg)
+	if !isClick || click.Button != tea.MouseLeft {
+		return nil
+	}
+	if p.dismiss == nil || local.In(p.panel()) {
+		return nil
+	}
+	return p.dismiss()
+}
+
+// panel is the dialog's own body, in this pane's coordinates: the rectangle the
+// ring encloses and the overlay plane draws on. An unrendered ring encloses
+// nothing, so every point is outside one — which is the right answer for a
+// boundary that is not on screen.
+func (p *Pane) panel() image.Rectangle {
+	if p.w <= 0 || p.h <= 0 {
+		return image.Rectangle{}
+	}
+	return image.Rect(0, 0, p.w, p.h).Inset(ring)
 }
 
 // paint puts one run on the sheet's ground, or leaves it bare where the profile

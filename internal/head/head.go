@@ -120,11 +120,44 @@ type Head struct {
 	// working directory, which is what a person typing into a terminal means by
 	// "put it on disk"; write.go argues the default and the override.
 	workspace string
+	// actWindow overrides how long one act may take. Zero means actWindow, which
+	// is what the running product uses; act.go argues the ceiling and why the
+	// override exists at all.
+	actWindow time.Duration
 	// wrote is every artifact this head has written, so it can open one again to
 	// repair it. It shares turnMu because it is small, rarely touched, and the
 	// alternative is a second lock guarding one map. write.go records the
 	// shortfall: the durable form is a message part, which is Wave 2's.
 	wrote map[string]bool
+	// namesRooms is the room-naming clerk, off unless a window asks for it. See
+	// WithRoomNaming.
+	namesRooms bool
+	// scribing is the rooms whose naming pass is in flight, and scribeMu guards
+	// it. It has a lock of its own rather than sharing turnMu because it is held
+	// across a provider call that runs AFTER a turn — the one piece of the
+	// head's state that is deliberately not the turn's (scribe.go).
+	scribeMu sync.Mutex
+	scribing map[string]bool
+	// absorbed is the jobs already spoken back to the person, and absorbMu
+	// guards it. It is its own lock for the scribe's reason — the claim is taken
+	// before a provider call and held across it — and it is keyed by job rather
+	// than by row because a settled job can put several rows of its own into a
+	// room and every one of them reads as a delivery (absorb.go).
+	absorbedMu sync.Mutex
+	absorbed   map[string]bool
+}
+
+// WithRoomNaming turns on the post-turn clerk that names rooms (scribe.go).
+//
+// It is a switch rather than always-on because it costs a provider call the
+// TURN did not ask for, and only one kind of window is buying anything with it:
+// one that draws a list of rooms. A headless errand has no rail, one room, and
+// nobody to read a name — so the default is off and the chat window says so out
+// loud, which also keeps every measurement of a turn's cost a measurement of
+// the turn.
+func (h *Head) WithRoomNaming(enabled bool) *Head {
+	h.namesRooms = enabled
+	return h
 }
 
 // WithImageInput lets the routing head receive durable chat attachments as
@@ -273,6 +306,15 @@ func (h *Head) poll(ctx context.Context, cursors *sessionCursors) error {
 			if cursors.handled(message) {
 				continue
 			}
+			// Work the person asked for has landed. One short turn says what it
+			// means for what they asked, in the head's own voice, beside the
+			// card the delivery already drew (absorb.go). It runs inline rather
+			// than beside the poll on purpose: this sentence answers the row
+			// above it, and a turn racing the person's next message could land
+			// under their reply to it.
+			if deliveredRow(message) {
+				h.absorbDeliveryBounded(ctx, message)
+			}
 			if answerable(message) {
 				answered, err := h.answerTurn(ctx, foldAhead(messages[index:]))
 				if err != nil {
@@ -282,6 +324,11 @@ func (h *Head) poll(ctx context.Context, cursors *sessionCursors) error {
 				// row from anywhere else, so every row this answer covers was
 				// typed here.
 				cursors.mark(message.SessionID, answered)
+				// The turn has settled, so the room may now be nameable. This is
+				// the post-turn lane and it is behind the reply on purpose: the
+				// scribe's call is the head's own business, and nothing the
+				// person is waiting for may wait on it (scribe.go).
+				h.nameRoomLater(ctx, message.SessionID)
 			}
 			cursors.mark(message.SessionID, message.Seq)
 		}
@@ -885,18 +932,13 @@ func (h *Head) postAgent(sessionID, body string, commandSeq int64) error {
 	return h.postAgentModel(sessionID, body, commandSeq, "", nil)
 }
 
-func (h *Head) postSystem(sessionID, body string) error {
-	_, err := thread.Post(h.store, store.Message{
-		SessionID: sessionID,
-		Role:      store.RoleSystem,
-		Body:      body,
-		Answers:   h.answering(),
-	})
-	if err != nil {
-		return fmt.Errorf("serve head: post system line: %w", err)
-	}
-	return nil
-}
+// There is no postSystem, and its absence is 13.18 written in the type system.
+// The head has exactly three things it may put in a thread — a COMMITMENT, a
+// DELIVERY, a QUESTION — and every one of them is somebody speaking: postAgent
+// and postAgentModel for the first two, postQuestion and the ask gates for the
+// third. A system-voice helper is a door onto the fourth class the law says
+// does not exist, and the last caller of the one that used to live here went
+// away long before the law was written down.
 
 func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model string, parts []store.MessagePart) error {
 	_, err := thread.Post(h.store, store.Message{

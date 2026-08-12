@@ -1010,6 +1010,91 @@ func otherRoomsSpokeSince(query rowQuerier, sessionID string, sinceSeq int64) (b
 	return spoke != 0, nil
 }
 
+// ErrandSpend is one errand's whole bill, read off the journal rather than
+// counted in a process.
+//
+// It exists because the figure a one-shot run printed was a subtraction —
+// today's spend after minus today's spend before — and that arithmetic is wrong
+// in three separate ways at once. It is read while the run is still landing, so
+// a leaf that journals its row a second later is money the receipt never saw
+// (P1 of the perf wave reported $0.5255 against a table that summed to $0.8221:
+// the difference was one specialist leaf, exactly). It is scoped to a day, so a run
+// that crosses local midnight subtracts the wrong baseline. And it is scoped to
+// the whole store, so a durable journal another session is also billing hands
+// this run somebody else's money.
+//
+// The two slices are kept apart because they are known differently well, in the
+// same way RoomSpend keeps them apart. Work is exact: every node this errand
+// owns carries its session on its provenance, and the leaf rows and the
+// per-node structuring rows both land there. Spine is the root-billed half —
+// planning passes and head structuring bill RootID, which belongs to no session
+// — and inside a store only this errand is using it is exactly this errand's
+// overhead. Shared says another session billed its own nodes inside the same
+// window, which makes Spine a ceiling rather than a bill.
+type ErrandSpend struct {
+	Work   SpendSlice
+	Spine  SpendSlice
+	Shared bool
+}
+
+// Cost is the whole bill: what this errand's nodes cost plus what it cost to
+// decide what they should be. It is the number a receipt prints, and on a
+// private store it is the sum of the usage table.
+func (spend ErrandSpend) Cost() float64 { return spend.Work.Cost + spend.Spine.Cost }
+
+// Runs is every usage row the bill counted.
+func (spend ErrandSpend) Runs() int { return spend.Work.Runs + spend.Spine.Runs }
+
+// SpendSinceSeq is the errand read: what session sessionID has cost since the
+// journal stood at sinceSeq.
+//
+// The window is a primary-key range over usage (seq IS the rowid), so this is
+// the tail of the journal from where the errand opened and never the whole
+// table, and nodes is entered by primary key through the LEFT JOIN once per row
+// in that tail. Pass the watermark taken before the command was requested; a
+// zero sinceSeq reads the journal from the beginning, which is what a caller
+// that owns the whole store means.
+func (s *Store) SpendSinceSeq(sessionID string, sinceSeq int64) (ErrandSpend, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	spend := ErrandSpend{}
+	var elsewhere int
+	if err := s.db.QueryRow(errandSpendQuery,
+		sessionID, sessionID, sessionID, sessionID, sessionID,
+		RootID, RootID, RootID, RootID, RootID,
+		sessionID, sinceSeq,
+	).Scan(
+		&spend.Work.Runs, &spend.Work.Cost, &spend.Work.PromptTokens,
+		&spend.Work.CompletionTokens, &spend.Work.CachedTokens,
+		&spend.Spine.Runs, &spend.Spine.Cost, &spend.Spine.PromptTokens,
+		&spend.Spine.CompletionTokens, &spend.Spine.CachedTokens,
+		&elsewhere,
+	); err != nil {
+		return ErrandSpend{}, fmt.Errorf("spend since %d: %w", sinceSeq, err)
+	}
+	spend.Shared = elsewhere != 0
+	return spend, nil
+}
+
+// errandSpendQuery splits one tail of the usage table into the errand's own
+// nodes and the root-billed spine in a single pass. A row is counted at most
+// once: the root node carries no session id, so the two CASE arms are disjoint
+// for every session name that is not empty.
+const errandSpendQuery = `
+		SELECT
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN 1 ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN usage.cost ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN usage.prompt_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN usage.completion_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN nodes.session_id = ? THEN usage.cached_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN usage.node_id = ? THEN 1 ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN usage.node_id = ? THEN usage.cost ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN usage.node_id = ? THEN usage.prompt_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN usage.node_id = ? THEN usage.completion_tokens ELSE 0 END), 0),
+		    COALESCE(SUM(CASE WHEN usage.node_id = ? THEN usage.cached_tokens ELSE 0 END), 0),
+		    COALESCE(MAX(CASE WHEN COALESCE(nodes.session_id, '') NOT IN ('', ?) THEN 1 ELSE 0 END), 0)
+		FROM usage LEFT JOIN nodes ON nodes.id = usage.node_id
+		WHERE usage.seq > ?`
+
 // NodeModels names every model that served one node's subtree, most expensive
 // first. This is the read behind "which model produced this?" — a question that
 // had no answer on any surface until the usage row started carrying the name.

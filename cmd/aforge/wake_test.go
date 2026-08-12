@@ -135,7 +135,7 @@ func TestWakeFastExitsWhenResidentLeaseHeld(t *testing.T) {
 	if err := graph.Close(); err != nil {
 		t.Fatal(err)
 	}
-	release, heldBy, err := lease.AcquireResident(dir, "chat")
+	release, heldBy, err := lease.AcquireResident(path, "chat")
 	if err != nil || release == nil || heldBy != nil {
 		t.Fatalf("hold resident lease = release %v, held %+v, err %v", release != nil, heldBy, err)
 	}
@@ -263,12 +263,12 @@ func TestWakeRunsAnywayWhenTheHolderStoppedTicking(t *testing.T) {
 	if err := graph.Close(); err != nil {
 		t.Fatal(err)
 	}
-	release, heldBy, err := lease.AcquireResident(dir, "chat")
+	release, heldBy, err := lease.AcquireResident(path, "chat")
 	if err != nil || release == nil || heldBy != nil {
 		t.Fatalf("hold resident lease = release %v, held %+v, err %v", release != nil, heldBy, err)
 	}
 	defer release()
-	if err := lease.NoteResidentTick(dir, time.Now().Add(-2*lease.StuckAfter)); err != nil {
+	if err := lease.NoteResidentTick(path, time.Now().Add(-2*lease.StuckAfter)); err != nil {
 		t.Fatal(err)
 	}
 

@@ -69,7 +69,7 @@
 // word + title with the typed characters lit (filter.go, hint.go). Enter or tab
 // completes the mention into the draft as a hue-marked token; esc closes the
 // filter and touches nothing. Once a token exists, the dispatch chip appears
-// under the draft — `↵ stay · ⌃↵ follow` — because 5.22 does not allow the
+// above the draft — `↵ stay · ⌃↵ follow` — because 5.22 does not allow the
 // power chord to be invisible while it is relevant.
 //
 // A completed mention is one object: backspace at its edge removes the whole
@@ -122,18 +122,46 @@
 //
 // # Rendering
 //
-// Render draws the [tokens.GlyphPromptChat] "›" prompt, the draft (hard
-// wrapped to the given width, one style per row, tail-anchored so the
-// caret's row is always the last one on screen when the draft outgrows the
-// rect), a placeholder when the draft is empty, and an inverted single-cell
-// caret when focused. Every row is passed through ansi.Truncate as a last
-// step regardless of how it was assembled, so a pathological width (down to
-// w=1) or a wide grapheme in a narrow column degrades by clipping rather
-// than by exceeding the rectangle the compositor gave it (tui2/pane.go's
-// contract) or panicking. Nothing here reads the wall clock or holds a
-// blinking-cursor timer: the caret is always drawn when focused, which is
-// simpler than a blink loop and correct for the "cursor visible" requirement
-// without a timer command to leak.
+// Render draws the prompt — [tokens.GPromptChat] or [tokens.GPromptSteer]
+// resolved through the glyph tier, accented while this pane holds the keyboard
+// — the draft (hard wrapped to the given width, one style per row,
+// tail-anchored so the caret's row is always the LAST one on screen when the
+// draft outgrows the rect), and the caret as an accent block. Every row is
+// passed through ansi.Truncate as a last step regardless of how it was
+// assembled, so a pathological width (down to w=1) or a wide grapheme in a
+// narrow column degrades by clipping rather than by exceeding the rectangle the
+// compositor gave it (tui2/pane.go's contract) or panicking.
+//
+// Four things are worth stating because they are decisions rather than
+// mechanics:
+//
+//   - EVERYTHING GROWS UPWARD (8). The draft's extra rows and every popup this
+//     package owns are drawn above the prompt's anchor row, which is the only
+//     direction with room in it — this region is welded to the bottom of the
+//     frame. The region is what grows, by asking the shell for the rows
+//     [Model.GrowRows] reports; the prompt itself does not move while you type.
+//     Inside the block above the draft, relevance runs downward: the best
+//     candidate is the row the prompt is directly under, so the eye travels the
+//     least distance to the thing it is about to choose.
+//   - THE CARET IS OURS, WITH ONE UPGRADE. The painted accent block is the
+//     floor: over an empty cell it is [caretBlock] in the accent, over a letter
+//     it is that letter in the accent on the selection band (a block is a
+//     character, and a character cannot be laid over a letter without eating
+//     it). Nothing here reads a clock or holds a blink timer. Above that floor,
+//     a shell may place the terminal's REAL cursor on [Model.CaretAt] and say
+//     so with [Model.HostCursor], which buys the blinking block DECSCUSR gives
+//     and costs the painted one — see [CursorSequence] for the bytes and the
+//     package's report for why Bubble Tea's own View.Cursor is the right door.
+//   - THE EMPTY LINE IS STATE, NOT A LABEL (8 as amended, 15). It says where
+//     the reader is and what to do next — see [Hint] for the five rooms it can
+//     be in — rather than naming the text field it sits in. The host sets the
+//     state; this package asserts [HintWorking] for itself while a reply is
+//     arriving, because the spinner is one cell away and the two may not
+//     disagree. It vanishes on the first keystroke and stays gone until the
+//     draft does. An UNFOCUSED empty composer says nothing at all.
+//   - ONE MOTION (11). While [Model.Streaming] is on, the prompt's own cell
+//     carries the braille spinner, on the frame the shell latched. Nothing here
+//     reads the wall clock, and nothing else in this package animates.
 //
 // # Provenance
 //

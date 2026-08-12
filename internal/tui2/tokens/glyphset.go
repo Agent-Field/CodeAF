@@ -96,9 +96,14 @@ const (
 	GExpanded
 	GScopeUp
 	GTruncated
+	GEllipsis
 	GCut
 	GPromptChat
 	GPromptSteer
+	GThought
+	GShell
+	GSearch
+	GWrite
 	GBoosted
 	GSeparator
 	GMissing
@@ -121,6 +126,9 @@ const (
 	GGitBranch
 	GModel
 	GSpend
+	GProseBullet
+	GProseQuote
+	GCodeGutter
 	glyphIDCount
 )
 
@@ -311,7 +319,7 @@ func (g GlyphSet) Upgrade(cell string) string {
 }
 
 // UpgradeChrome is the EXPLICIT door for a chrome string that leads with a
-// glyph and then says something — blocks.ExpandHint's "▸ 12 lines" is the
+// glyph and then says something — blocks.Disclose's "▸ 12 lines" is the
 // case it exists for. It upgrades a whole cell exactly as [GlyphSet.Upgrade]
 // does, and additionally rewrites a leading glyph that is followed by a space.
 //

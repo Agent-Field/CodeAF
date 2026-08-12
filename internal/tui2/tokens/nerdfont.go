@@ -12,6 +12,14 @@ package tokens
 // (nf-fa-cube U+F1B2 for the model mark, nf-fa-sign_in U+F090 for the steer
 // prompt, nf-oct-git_branch U+F418 for the branch) was needed.
 //
+// THREE SLOTS WERE REPICKED after B.1 shipped, by the glyph audit, and each
+// carries its argument at its own binding rather than here: NeedsHuman
+// (nf-fa-question_circle -> nf-fa-question_circle_o), Folder (nf-fa-folder ->
+// nf-fa-folder_o) and Cut (nf-fa-scissors -> no icon at all). The first two are
+// one rule applied twice — an icon inherits the INK WEIGHT of the plain glyph
+// it stands in for, not only its meaning, its tint and its cell — and the third
+// is the geometry rule catching a slot B.1 filed on the wrong side of it.
+//
 // MEASUREMENT. Every glyph on both sides measures one cell under both shipping
 // rulers (ansi.StringWidth, grapheme; ansi.StringWidthWc, wcwidth), and every
 // NF codepoint is BMP private use and therefore East_Asian_Width=Ambiguous —
@@ -67,7 +75,18 @@ var vocabulary = []GlyphBinding{
 		ID: GNeedsHuman, Name: "NeedsHuman", Meaning: "waiting on a human (always amber)",
 		// ASCII plain side, and the sharpest case for the carve-out: 5.20 rule
 		// 3 makes "?" a thing a user types.
-		Plain: GlyphNeedsHuman, NerdFont: "\uF059", NFName: "nf-fa-question_circle",
+		//
+		// REPICK against 12.7 B.1, which named nf-fa-question_circle U+F059: that
+		// is a SOLID disc with the mark knocked out of it, and it is the loudest
+		// shape in the whole table. The register 12 states is calm and geometric,
+		// and it refuses a filled icon wherever an outline one exists. One does:
+		// nf-fa-question_circle_o is the same glyph drawn as a ring, it is the
+		// same FA4.7 era as nf-fa-microchip which this table already ships, and
+		// it puts the attention mark in the same outline-circle family as
+		// nf-fa-circle_o, which is the shape sitting beside it on a rail card.
+		// The plain side is a bare "?", a stroke and not a blob, so the ring is
+		// also the side that inherits its ink weight.
+		Plain: GlyphNeedsHuman, NerdFont: "\uF29C", NFName: "nf-fa-question_circle_o",
 		UsualTint: Amber, NFAmbiguous: true,
 	},
 	{
@@ -77,22 +96,28 @@ var vocabulary = []GlyphBinding{
 	},
 
 	// -- disclosure and navigation -------------------------------------------
+	//
+	// NOT UPGRADED, any of them, and this is a REPICK against the tier's first
+	// draft (user-reported, 2026-08-11: "these big >"). The rule, which GCut's
+	// register note already implied: NF may upgrade PICTOGRAPHIC slots - tool
+	// marks, state icons - never punctuation-shaped navigation marks. The
+	// plain chevron and triangle marks are typographic characters the font renders at
+	// text size and weight; the FA chevrons are private-use ICONS that most
+	// patched fonts draw a size up and a weight heavier, so every prompt,
+	// fold mark and scope header shouted. Both tiers now share the byte.
 	{
 		ID: GCollapsed, Name: "Collapsed", Meaning: "collapsed",
-		Plain: GlyphCollapsed, NerdFont: "\uF054", NFName: "nf-fa-chevron_right",
-		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+		Plain: GlyphCollapsed, UsualTint: TextTertiary, Geometry: true,
 	},
 	{
 		ID: GExpanded, Name: "Expanded", Meaning: "expanded",
-		Plain: GlyphExpanded, NerdFont: "\uF078", NFName: "nf-fa-chevron_down",
-		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+		Plain: GlyphExpanded, UsualTint: TextTertiary, Geometry: true,
 	},
 	{
 		ID: GScopeUp, Name: "ScopeUp", Meaning: "scope header / go up",
 		// Tinted with the scope's identity where there is one, tertiary where
-		// there is not; a thin chevron matches the guillemet it replaces.
-		Plain: GlyphScopeUp, NerdFont: "\uF104", NFName: "nf-fa-angle_left",
-		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+		// there is not.
+		Plain: GlyphScopeUp, UsualTint: TextTertiary, Geometry: true,
 	},
 	{
 		ID: GTruncated, Name: "Truncated", Meaning: "clickable overflow — there is more, ask for it",
@@ -100,26 +125,85 @@ var vocabulary = []GlyphBinding{
 		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
 	},
 	{
+		ID: GEllipsis, Name: "Ellipsis", Meaning: "static overflow — the rest is off the edge (16.2)",
+		// Deliberately not upgraded, for two reasons that each suffice on their
+		// own. First, the tier's ellipsis icon is already spent on GTruncated,
+		// and two slots upgrading to one icon would erase the distinction the
+		// plain tier draws. Second, this mark lands INSIDE prose — it is what
+		// blocks.Truncate leaves at the end of a sentence somebody wrote — so a
+		// repertoire swap here would read as an edit, which is the same finding
+		// that dropped 12.7 D.2's rule (b).
+		Plain: GlyphEllipsis, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
 		ID: GCut, Name: "Cut", Meaning: "the truncation law's mark — this stopped and should not have (12.5.2)",
-		// The cut mark stays DISTINCT from the overflow mark in both tiers:
-		// scissors against an ellipsis, exactly as ╌ stands against ⋯.
-		Plain: GlyphCut, NerdFont: "\uF0C4", NFName: "nf-fa-scissors",
-		UsualTint: Coral, NFAmbiguous: true, AutoUpgrade: true,
+		// NOT UPGRADED, and this is a REPICK against 12.7 B.1, which named
+		// nf-fa-scissors U+F0C4 for this slot. Three reasons, in the order the
+		// glyph audit found them:
+		//
+		//  1. Nothing could draw it. The only renderer of the cut is
+		//     blocks.CutRule, which spells blocks.CutMark — a raw byte in a leaf
+		//     package that cannot import this one and never consults the tier —
+		//     and the rail spells the tier-blind [GlyphCut] constant. The parity
+		//     golden records the consequence in plain sight: the cut row is
+		//     byte-identical in both tiers. An icon nothing draws is a lie in
+		//     the table and a row in the width gate that gates nothing.
+		//  2. The mark is line geometry, which is B.2's own rule. `╌` is a
+		//     dashed rule FRAGMENT that tiles with the `─` run it leads
+		//     ("╌ cut off — output cap ──────"); a pictograph in that cell
+		//     breaks the rule the row is built out of.
+		//  3. A pair of scissors is the one emoji-adjacent shape in the set — ✂
+		//     by another name — in a register that is otherwise geometric shapes
+		//     for state, tool marks for kind and chevrons for navigation.
+		//
+		// What 12.5.2 asks for survives in full: a cut is `╌` and an overflow is
+		// `⋯`, in BOTH tiers, and glyph_test.go still pins them apart. If a
+		// caller ever wants a tiered cut mark the decision reopens — with a
+		// shape that is a rule, not a tool.
+		Plain:     GlyphCut,
+		UsualTint: Coral, Geometry: true,
 	},
 
 	// -- composer ------------------------------------------------------------
+	//
+	// Prompt marks are punctuation, not pictographs \u2014 the navigation rule
+	// above applies, so neither tier swaps the byte.
 	{
 		ID: GPromptChat, Name: "PromptChat", Meaning: "composer prompt (chat)",
-		Plain: GlyphPromptChat, NerdFont: "\uF105", NFName: "nf-fa-angle_right",
-		UsualTint: TextSecondary, NFAmbiguous: true, AutoUpgrade: true,
+		Plain: GlyphPromptChat, UsualTint: TextSecondary, Geometry: true,
 	},
 	{
 		ID: GPromptSteer, Name: "PromptSteer", Meaning: "composer prompt (steer line): words that became work",
 		// "Maps into", which is what the steer line does. Tinted with the
 		// identity of the room the draft lands in, cyan at the commissioning
 		// moment itself.
-		Plain: GlyphPromptSteer, NerdFont: "\uF178", NFName: "nf-fa-long_arrow_right",
-		UsualTint: Identity0, NFAmbiguous: true, AutoUpgrade: true,
+		Plain: GlyphPromptSteer, UsualTint: Identity0, Geometry: true,
+	},
+
+	// -- the execution voices (5.5) ------------------------------------------
+	{
+		ID: GThought, Name: "Thought", Meaning: "the model's own words between calls",
+		Plain: GlyphThought, NerdFont: "\uF069", NFName: "nf-fa-asterisk",
+		UsualTint: TextTertiary, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GShell, Name: "Shell", Meaning: "a shell call",
+		// ASCII plain side, and the carve-out earns its keep here: a painted
+		// cell that is exactly "$" is money on every other row of the surface
+		// (GSpend), so this slot is adopted explicitly by the one renderer
+		// that owns it and is never rewritten out from under a line.
+		Plain: GlyphShell, NerdFont: "\uF120", NFName: "nf-fa-terminal",
+		UsualTint: Cyan, NFAmbiguous: true,
+	},
+	{
+		ID: GSearch, Name: "Search", Meaning: "a call that went out to the world",
+		Plain: GlyphSearch, NerdFont: "\uF002", NFName: "nf-fa-search",
+		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
+	},
+	{
+		ID: GWrite, Name: "Write", Meaning: "a call that wrote something down",
+		Plain: GlyphWrite, NerdFont: "\uF040", NFName: "nf-fa-pencil",
+		UsualTint: Cyan, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
 	// -- meta ----------------------------------------------------------------
@@ -226,7 +310,16 @@ var vocabulary = []GlyphBinding{
 		ID: GFolder, Name: "Folder", Meaning: "a folder or region of the tree",
 		// ASCII plain side: the slash already means "directory" everywhere, and
 		// a painted cell that is exactly "/" is plainly content.
-		Plain: GlyphFolder, NerdFont: "\uF07B", NFName: "nf-fa-folder",
+		//
+		// REPICK against 12.7 B.1, which named nf-fa-folder U+F07B. A solid
+		// folder is a filled trapezoid — the single heaviest blot of ink in the
+		// table — and it lands on the place line, which is TextTertiary chrome
+		// under 5.19 and is meant to sit under the eye rather than in it. The
+		// plain side it inherits from is a bare "/". nf-fa-folder_o is the same
+		// shape as an outline, is FA4.0-era and therefore exactly as well
+		// covered as the solid one (no coverage is traded for the weight), and
+		// it matches nf-fa-home's line weight two segments to its left.
+		Plain: GlyphFolder, NerdFont: "\uF114", NFName: "nf-fa-folder_o",
 		UsualTint: TextTertiary, NFAmbiguous: true,
 	},
 	{
@@ -253,5 +346,25 @@ var vocabulary = []GlyphBinding{
 		// swaps for one cell inside a run that already reads "$8.65".
 		Plain: GlyphSpend, NerdFont: "\uF155", NFName: "nf-fa-dollar",
 		UsualTint: Green, NFAmbiguous: true,
+	},
+
+	// -- the prose slots (code.go) -------------------------------------------
+	//
+	// Named in code.go because a slot is a MEANING and not a byte; bound HERE
+	// because the vocabulary is one table or it is not a vocabulary. All three
+	// are geometry: a list mark, a quote gutter and a code hairline are line
+	// structure, and 5.13 asks structure to be the quietest thing on the row —
+	// an icon in any of the three would be the loudest.
+	{
+		ID: GProseBullet, Name: "ProseBullet", Meaning: "an unordered list item",
+		Plain: GlyphProseBullet, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GProseQuote, Name: "ProseQuote", Meaning: "the gutter bar down a blockquote",
+		Plain: GlyphProseQuote, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
+	},
+	{
+		ID: GCodeGutter, Name: "CodeGutter", Meaning: "the hairline down a fenced code block",
+		Plain: GlyphCodeGutter, UsualTint: TextTertiary, PlainAmbiguous: true, Geometry: true,
 	},
 }

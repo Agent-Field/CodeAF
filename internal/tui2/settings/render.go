@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/registry"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -20,19 +21,29 @@ import (
 // the user, and greys everywhere else. There is no theme picker on this sheet
 // and there will not be one (10.6).
 //
-// The shape, top to bottom:
+// The shape, top to bottom (15: structure is never labeled — the groups are
+// four faint lowercase words and the blank lines between them, never a tab bar
+// that hid four fifths of the sheet behind a keystroke nobody found):
 //
-//	‹ settings                                        22 rows · 7 groups
-//	models  money & limits  rhythm  learning  documents & vision  …
+//	‹ settings
 //
-//	  daily budget          $25                                    saved
-//	▎ ask before spending   $3                                   default
+//	  models
+//	  conversation          deepseek-v4-flash          $0.4/M out  default
+//	▎ execution             deepseek-v4-flash          $0.4/M out  default
+//
+//	  spending
+//	  daily budget          $25                         $3.12 today  saved
+//	  ask before spending   $3                                     default
 //	    when a planned job is estimated to cost more than this, aforge
 //	    quotes the step count and the price and waits for your go-ahead.
-//	    built-in default · enter edit
-//	  practice budget       $0.50                  AFORGE_PRACTICE_BUDGET
+//	    built-in default · edit enter
 //
-//	type to search · ↑↓ move · ←→ tabs · enter edit · esc close
+//	type to search · move ↑↓ · groups ←→ · edit enter · close esc
+//
+// The action words are verb·key chips ([registry.Chip]): the VERB first, at the
+// brighter of the two dim tiers, and the key after it one tier down. This line
+// used to read `esc close` — two greys, two words, and nothing in the row
+// saying which one names the act and which one is the thing to press.
 //
 // The selected row carries the accent rail glyph AS WELL AS the band, because
 // under a NoColor profile the band is not drawn at all and a selection nobody
@@ -59,9 +70,6 @@ func (m *Model) Render(width, height int) string {
 	}
 
 	push(m.header(width), -1)
-	if height >= 3 {
-		push(m.tabBar(width), -1)
-	}
 	if height >= 8 {
 		push(blank(m.styler, width, m.ground()), -1)
 	}
@@ -111,111 +119,41 @@ func (m *Model) ground() tokens.Token {
 	return tokens.Sheet
 }
 
-// header is the scope line: where you are, and how much is here.
+// header is the scope line: where you are, and — only while a search is
+// running — how much of the sheet answered.
+//
+// Browsing carries no count. 15 forbids counting things whose multiplicity is
+// already visible, and "22 rows · 7 groups" was exactly that: the rows are on
+// the screen and the groups are their own words. A search is the one case where
+// the number is a fact the reader cannot see, because what it counts is what
+// the query took away.
 func (m *Model) header(width int) string {
 	line := newLine(width)
-	line.add(tokens.GlyphScopeUp+" ", tokens.TextTertiary)
-	line.add("settings", tokens.TextPrimary)
-	if m.query != "" {
-		line.add(" "+tokens.GlyphSeparator+" ", tokens.TextTertiary)
-		line.add(m.query, tokens.TextPrimary)
-	}
-
-	right := strconv.Itoa(len(m.rows)) + " rows " + tokens.GlyphSeparator + " " +
-		strconv.Itoa(len(m.tabs)) + " groups"
-	if m.query != "" {
-		right = strconv.Itoa(len(m.visible)) + " of " + strconv.Itoa(len(m.rows))
-	}
-	line.right(right, tokens.TextTertiary)
-	return line.render(m.styler, false, m.ground())
-}
-
-// tabBar is the groups — or, while a search is running, the filter breadcrumb
-// naming which groups the results came from (8.2.19).
-func (m *Model) tabBar(width int) string {
-	line := newLine(width)
-	if m.query != "" {
-		crumbs := m.filterBreadcrumb()
-		if len(crumbs) == 0 {
-			line.add("no group matches", tokens.TextTertiary)
-			return line.render(m.styler, false, m.ground())
-		}
-		const lead = "across "
-		line.add(lead, tokens.TextTertiary)
-		text := strings.Join(crumbs, " "+tokens.GlyphSeparator+" ")
-		line.add(ansi.Truncate(text, max(1, width-len(lead)), tokens.GlyphTruncated), tokens.TextSecondary)
+	// Where you are, and — when something drilled into this sheet — the way
+	// back out of it, on the line that already names the surface (trail.go).
+	m.addTrail(line)
+	if m.query == "" {
 		return line.render(m.styler, false, m.ground())
 	}
-
-	first, last := m.tabWindow(width)
-	if first > 0 {
-		line.add(tokens.GlyphTruncated+" ", tokens.TextTertiary)
-	}
-	for index := first; index <= last && index < len(m.tabs); index++ {
-		if index > first {
-			line.add("  ", tokens.TextTertiary)
-		}
-		if index == m.tab {
-			if m.linear {
-				line.add(tokens.GlyphAccentRail+m.tabs[index], tokens.TextPrimary)
-				continue
-			}
-			line.addOn(m.tabs[index], tokens.TextPrimary, tokens.Band)
-			continue
-		}
-		line.add(m.tabs[index], tokens.TextTertiary)
-	}
-	if last < len(m.tabs)-1 {
-		line.right(tokens.GlyphTruncated, tokens.TextTertiary)
-	}
+	line.add(" "+tokens.GlyphSeparator+" ", tokens.TextTertiary)
+	line.add(m.query, tokens.TextPrimary)
+	line.right(strconv.Itoa(len(m.visible))+" of "+strconv.Itoa(len(m.rows)), tokens.TextTertiary)
 	return line.render(m.styler, false, m.ground())
 }
 
-// tabWindow picks the run of tabs to show. A tab bar too wide for the frame
-// scrolls around the selected group rather than clipping mid-word, because a
-// tab you cannot read is a tab you cannot navigate to — and the ⋯ at either
-// end is 5.17's clickable-overflow mark saying there is more that way.
-func (m *Model) tabWindow(width int) (int, int) {
-	if len(m.tabs) == 0 {
-		return 0, -1
-	}
-	const gap = 2
-	budget := width
-	total := 0
-	for index, title := range m.tabs {
-		if index > 0 {
-			total += gap
-		}
-		total += ansi.StringWidth(title)
-	}
-	if total <= budget {
-		return 0, len(m.tabs) - 1
-	}
-	// Room for the two overflow marks, which are what says the bar scrolls.
-	budget = max(1, budget-4)
-
-	first, last := m.tab, m.tab
-	used := ansi.StringWidth(m.tabs[m.tab])
-	for {
-		grew := false
-		if last+1 < len(m.tabs) {
-			if cost := gap + ansi.StringWidth(m.tabs[last+1]); used+cost <= budget {
-				used += cost
-				last++
-				grew = true
-			}
-		}
-		if first > 0 {
-			if cost := gap + ansi.StringWidth(m.tabs[first-1]); used+cost <= budget {
-				used += cost
-				first--
-				grew = true
-			}
-		}
-		if !grew {
-			return first, last
-		}
-	}
+// groupLine is 15's one allowance: a single faint lowercase word announcing a
+// section, and only because a sheet with four unrelated runs of rows is exactly
+// where position alone is genuinely ambiguous. It is never selectable and never
+// wears the accent — nothing inert does (12).
+func (m *Model) groupLine(title string, width int) string {
+	line := newLine(width)
+	line.add("  ", tokens.TextTertiary)
+	// A group word cut short is a static tail cut, not an overflow anyone can
+	// click — ⋯ means "there is more that way" everywhere else on this surface,
+	// and a heading has no that-way. [tokens.GlyphEllipsis] is the mark for
+	// text that simply ran out of frame.
+	line.add(ansi.Truncate(title, max(1, width-2), tokens.GlyphEllipsis), tokens.TextTertiary)
+	return line.render(m.styler, false, m.ground())
 }
 
 // bodyLines lays the rows out and windows them onto the selection, so the band
@@ -244,8 +182,19 @@ func (m *Model) bodyLines(width, height int, rows *[]int) []string {
 	selectStart, selectEnd := 0, 0
 
 	labels := m.labelWidth(width)
+	group := ""
 	for position, index := range m.visible {
 		r := m.rows[index]
+		// Group words only when the page is the page. A search result already
+		// carries its group on the right of its own line, and a heading over a
+		// run of one would be the label doing structure's job again.
+		if m.query == "" && r.group != group {
+			group = r.group
+			if len(lines) > 0 {
+				lines = append(lines, vline{blank(m.styler, width, m.ground()), -1})
+			}
+			lines = append(lines, vline{m.groupLine(group, width), -1})
+		}
 		selected := position == m.selected
 		if selected {
 			selectStart = len(lines)
@@ -307,9 +256,27 @@ func (m *Model) rowLine(r row, position int, selected bool, labels, width int) s
 		// is a value only a human at a shell prompt can move.
 		valueToken = tokens.Amber
 	}
+	if values := m.valueWidth(width); values > 0 {
+		value = pad(value, values)
+	}
 	line.add(value, valueToken)
 
 	chip, token := m.chip(r)
+	// The receipt is dim and it yields first. It is the third thing on the line
+	// and the least of them — the value is the state, the chip is where the
+	// value came from, and the receipt is a fact standing beside both — so a
+	// frame with room for two of the three drops this one rather than crushing
+	// the column that says whether a value is even yours to change.
+	if receipt := m.receipt(r); receipt != "" {
+		want := ansi.StringWidth(receipt) + 2
+		if chip != "" {
+			want += ansi.StringWidth(chip) + 2
+		}
+		if line.max-line.used >= want {
+			line.add("  ", tokens.TextTertiary)
+			line.add(receipt, tokens.TextTertiary)
+		}
+	}
 	if chip != "" {
 		line.right(chip, token)
 	}
@@ -320,6 +287,22 @@ func (m *Model) rowLine(r row, position int, selected bool, labels, width int) s
 	// linear mode keeps the marker and drops the fill rather than replacing
 	// one with the other.
 	return line.render(m.styler, selected && !m.linear, m.ground())
+}
+
+// receipt is the dim fact that stands beside a row's value: today's spend
+// beside the day's ceiling, a price beside a model. It comes from the registry
+// (config.Setting.Receipt) and never from a read this package makes — a pane's
+// Render is a pure function of its state, and a receipt this file computed
+// would be a second reader of the same fact.
+//
+// A row being edited shows none: the value on screen is not yet the value the
+// receipt is about, and a receipt that describes the previous number while the
+// user types the next one is worse than no receipt.
+func (m *Model) receipt(r row) string {
+	if _, pending := m.pending[r.setting.Key]; pending {
+		return ""
+	}
+	return r.setting.Receipt()
 }
 
 // chip is the right-hand column of a row line.
@@ -398,36 +381,68 @@ func (m *Model) detailLines(r row, width int) []string {
 
 	line := newLine(width)
 	line.add(indent, tokens.TextTertiary)
-	line.add(m.metaLine(r), tokens.TextTertiary)
+	lead, chips := m.metaParts(r)
+	line.add(lead, tokens.TextTertiary)
+	for _, chip := range chips {
+		line.add(" "+tokens.GlyphSeparator+" ", tokens.TextTertiary)
+		addChip(line, chip)
+	}
 	out = append(out, line.render(m.styler, false, m.ground()))
 	return out
 }
 
-// metaLine says where the value came from and what the keyboard can do to it.
-func (m *Model) metaLine(r row) string {
+// metaParts says where the value came from, and what the keyboard can do to it.
+//
+// The provenance half is a sentence and the action half is verb·key chips
+// (registry.Chip): the verb first at the brighter tier, the key after it one
+// tier down. They are returned apart because they are painted apart — a
+// sentence is all one tier and a chip is two, and joining them into one string
+// is what made `esc save` read as two interchangeable grey words.
+func (m *Model) metaParts(r row) (string, []registry.Chip) {
 	kind, text := m.provenance(r)
-	var parts []string
+	lead := "built-in default"
 	switch kind {
 	case sourcePinned:
-		parts = append(parts, "pinned by "+text+" · read-only here")
+		lead = "pinned by " + text + " " + tokens.GlyphSeparator + " read-only here"
 	case sourceSaved:
-		parts = append(parts, "saved in this profile")
+		lead = "saved in this profile"
 	case sourceUnknown:
-		parts = append(parts, "kept beside the graph "+tokens.GlyphSeparator+" origin "+tokens.GlyphMissing)
-	default:
-		parts = append(parts, "built-in default")
+		lead = "kept beside the graph " + tokens.GlyphSeparator + " origin " + tokens.GlyphMissing
 	}
-	if m.editable(r) {
-		switch {
-		case m.editing:
-			parts = append(parts, "enter save", "esc cancel")
-		case m.picking:
-			parts = append(parts, "←→ choose", "enter save", "esc cancel")
-		default:
-			parts = append(parts, kindVerb(r.setting))
+	if !m.editable(r) {
+		return lead, nil
+	}
+	switch {
+	case m.editing:
+		return lead, []registry.Chip{
+			registry.ChipFor("save", "enter"),
+			registry.ChipFor("cancel", "esc"),
+		}
+	case m.picking:
+		return lead, []registry.Chip{
+			registry.ChipFor("choose", "←→"),
+			registry.ChipFor("save", "enter"),
+			registry.ChipFor("cancel", "esc"),
 		}
 	}
-	return strings.Join(parts, " "+tokens.GlyphSeparator+" ")
+	return lead, kindChips(r.setting)
+}
+
+// addChip paints one chip in the two tiers the grammar asks for. It is
+// internal/tui2/palette's addChip, spent on this surface's own line buffer —
+// the order and the fallback ladder live in internal/registry, the paint lives
+// wherever the pixels do.
+func addChip(line *lineBuf, chip registry.Chip) {
+	if chip.Empty() {
+		line.add(chip.Key, tokens.TextTertiary)
+		return
+	}
+	// Never the dimmest tier for the verb: 5.22's checklist says an interactive
+	// chip may not live there. The key may — it is annotation, not the control.
+	line.add(chip.Verb, tokens.TextSecondary)
+	if chip.Key != "" {
+		line.add(registry.ChipGap+chip.Key, tokens.TextTertiary)
+	}
 }
 
 // hintLine is the contextual footer of 5.22 rule 4, scoped to this surface,
@@ -435,29 +450,57 @@ func (m *Model) metaLine(r row) string {
 // uses — the priority-drop mechanic lives in tokens and is not restated here.
 func (m *Model) hintLine(width int) string {
 	type part struct {
-		text     string
+		chip     registry.Chip
 		priority int
 	}
+	// Verb first, key after (registry.Chip). This line is where the rule was
+	// found: it used to read `esc close`, two greys and two words with nothing
+	// saying which one is the label and which one is the thing to press.
 	var parts []part
 	switch {
 	case m.editing:
-		parts = []part{{"enter save", 100}, {"esc cancel", 95}, {"ctrl+u clear", 40}}
+		parts = []part{
+			{registry.ChipFor("save", "enter"), 100},
+			{registry.ChipFor("cancel", "esc"), 95},
+			{registry.ChipFor("clear", "ctrl+u"), 40},
+		}
 	case m.picking:
-		parts = []part{{"←→ choose", 100}, {"enter save", 95}, {"esc cancel", 90}}
+		parts = []part{
+			{registry.ChipFor("choose", "←→"), 100},
+			{registry.ChipFor("save", "enter"), 95},
+			{registry.ChipFor("cancel", "esc"), 90},
+		}
 	case m.query != "":
-		parts = []part{{"esc clears", 100}, {"↑↓ move", 90}, {"enter edit", 80}, {"backspace", 30}}
+		parts = []part{
+			{registry.ChipFor("clear", "esc"), 100},
+			{registry.ChipFor("move", "↑↓"), 90},
+			{registry.ChipFor("edit", "enter"), 80},
+			{registry.ChipFor("erase", "backspace"), 30},
+		}
 	default:
-		parts = []part{{"type to search", 100}, {"↑↓ move", 90}, {"←→ tabs", 80},
-			{"enter edit", 70}, {"esc close", 60}}
+		// "type to search" keeps its sentence rather than becoming a chip: it
+		// is not a verb·key pair but the one thing this surface has to teach —
+		// that letters do not navigate here — and a chip reading `search type`
+		// would spend the grammar on a word that is not a key.
+		parts = []part{
+			{registry.Chip{Key: "type to search"}, 100},
+			{registry.ChipFor("move", "↑↓"), 90},
+			{registry.ChipFor("groups", "←→"), 80},
+			{registry.ChipFor("edit", "enter"), 70},
+			{registry.ChipFor("close", "esc"), 60},
+		}
 	}
 
+	byID := make(map[string]registry.Chip, len(parts))
 	columns := make([]tokens.FooterColumn, 0, len(parts))
 	for index, p := range parts {
-		minWidth := ansi.StringWidth(p.text)
+		id := p.chip.String()
+		byID[id] = p.chip
+		minWidth := ansi.StringWidth(id)
 		if index > 0 {
 			minWidth += 3
 		}
-		columns = append(columns, tokens.FooterColumn{ID: p.text, MinWidth: minWidth, Priority: p.priority})
+		columns = append(columns, tokens.FooterColumn{ID: id, MinWidth: minWidth, Priority: p.priority})
 	}
 
 	line := newLine(width)
@@ -466,7 +509,7 @@ func (m *Model) hintLine(width int) string {
 		if index > 0 {
 			line.add(" "+tokens.GlyphSeparator+" ", tokens.TextTertiary)
 		}
-		line.add(column.ID, tokens.TextTertiary)
+		addChip(line, byID[column.ID])
 	}
 	return line.render(m.styler, false, m.ground())
 }
@@ -487,6 +530,29 @@ func (m *Model) labelWidth(width int) int {
 		widest = max(widest, ansi.StringWidth(m.rows[index].setting.Label))
 	}
 	return max(6, min(widest, max(6, width/3)))
+}
+
+// valueWidth is the value column, and it is zero unless something on screen
+// carries a receipt. A column exists to line receipts up with each other; with
+// nothing to line up it is padding that buys nothing and costs the right-hand
+// chip its room on a narrow frame.
+func (m *Model) valueWidth(width int) int {
+	widest, receipts := 0, false
+	for _, index := range m.visible {
+		r := m.rows[index]
+		if m.receipt(r) != "" {
+			receipts = true
+		}
+		value := m.value(r)
+		if value == "" {
+			value = tokens.GlyphMissing
+		}
+		widest = max(widest, ansi.StringWidth(value))
+	}
+	if !receipts {
+		return 0
+	}
+	return min(widest, max(6, width/3))
 }
 
 // hitsFor returns the label highlight offsets for one visible position, from

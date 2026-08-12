@@ -84,7 +84,7 @@ type backgroundJob struct {
 // the map after reaping so the model can query their final state and unread log.
 type jobRegistry struct {
 	workspace *Workspace
-	nodeID    int
+	leaf      string
 
 	mutex       sync.Mutex
 	jobs        map[int]*backgroundJob
@@ -93,10 +93,10 @@ type jobRegistry struct {
 	closedCount int
 }
 
-func newJobRegistry(workspace *Workspace, nodeID int) *jobRegistry {
+func newJobRegistry(workspace *Workspace, leaf string) *jobRegistry {
 	return &jobRegistry{
 		workspace: workspace,
-		nodeID:    nodeID,
+		leaf:      leaf,
 		jobs:      make(map[int]*backgroundJob),
 		closeDone: make(chan struct{}),
 	}
@@ -181,7 +181,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 			job.cancel()
 		}
 	})
-	r.workspace.RecordInternal(r.nodeID, full)
+	r.workspace.RecordInternal(r.leaf, full)
 	go r.wait(job)
 	return Result{Content: fmt.Sprintf("job %d started · log %s", id, filepath.ToSlash(relative))}
 }

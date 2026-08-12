@@ -9,9 +9,25 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 )
 
+// notASettingsRow is the explicit, reasoned exemption list for the gate below.
+// It is a map to a sentence rather than a set of names because an exemption
+// with no reason is how a phantom row gets one.
+var notASettingsRow = map[string]string{
+	// boost_model is a transient escalation of the WORK binding and not a
+	// concept of its own (8.2.16), which internal/tui2/modelui and
+	// internal/tui2/chat both state in as many words. It had a row, and the row
+	// was worse than no row: enter on it opened the models door for the slot,
+	// the door resolved boost onto RoleWork, and picking a model there rebound
+	// the work model while the reader believed they were setting boost. The
+	// door that does set it is the models palette, where boost is a rider on
+	// the work chip.
+	"boost_model": "boost rides the work binding; the sheet must not offer a second door onto it",
+}
+
 // The other half of the completeness gate: a preference that persists beside
-// the graph has to be reachable from the settings sheet. Adding a field to
-// chatPrefs without registering the row that fronts it fails here.
+// the graph has to be reachable from the settings sheet, or be exempted here in
+// writing. Adding a field to chatPrefs without registering the row that fronts
+// it fails here.
 func TestEveryChatPreferenceIsFrontedByASettingsRow(t *testing.T) {
 	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
 	fronted := make(map[string]string)
@@ -21,18 +37,27 @@ func TestEveryChatPreferenceIsFrontedByASettingsRow(t *testing.T) {
 		}
 	}
 	prefs := reflect.TypeOf(chatPrefs{})
+	exempt := 0
 	for index := 0; index < prefs.NumField(); index++ {
 		field := prefs.Field(index)
 		name := strings.Split(field.Tag.Get("json"), ",")[0]
 		if name == "" {
 			t.Fatalf("chatPrefs.%s has no json name to register against", field.Name)
 		}
+		if reason := notASettingsRow[name]; reason != "" {
+			if _, fronted := fronted[name]; fronted {
+				t.Fatalf("chatPrefs.%s is both exempted (%s) and fronted by a row", field.Name, reason)
+			}
+			exempt++
+			continue
+		}
 		if _, ok := fronted[name]; !ok {
 			t.Fatalf("chatPrefs.%s (%q) is not fronted by any settings row", field.Name, name)
 		}
 	}
-	if len(fronted) != prefs.NumField() {
-		t.Fatalf("settings front %d prefs fields, chatPrefs has %d", len(fronted), prefs.NumField())
+	if len(fronted)+exempt != prefs.NumField() {
+		t.Fatalf("settings front %d prefs fields and %d are exempt, chatPrefs has %d",
+			len(fronted), exempt, prefs.NumField())
 	}
 }
 

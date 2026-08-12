@@ -141,8 +141,13 @@ func TestDecisiveMatchCompilesTheCraftInsteadOfPlanning(t *testing.T) {
 	}
 
 	receipt := commandReceipt(t, graph, "craft-session", seq)
-	if !strings.Contains(receipt.Body, "using your presentation way of doing this (v abc1234) — 4 steps, ~$1.50 cap") {
+	if !strings.Contains(receipt.Body, "using your presentation way of doing this — 4 steps, ~$1.50 cap") {
 		t.Fatalf("receipt = %q", receipt.Body)
+	}
+	// The version identity that used to ride this line is machine identity and
+	// is kept where machine identity lives.
+	if strings.Contains(receipt.Body, "abc1234") {
+		t.Fatalf("a commit hash reached the commissioned line: %q", receipt.Body)
 	}
 }
 
@@ -402,8 +407,13 @@ func TestCraftSurvivalRecordsForAndAgainstOnSettle(t *testing.T) {
 }
 
 // The arrival brief is where know-how forged in the user's absence is
-// mentioned — once, in the same row a learned skill rides, and as a promise
-// about next time rather than a report about this one.
+// mentioned — once, on a row of its OWN kind, and as a promise about next time
+// rather than a report about this one.
+//
+// The kind is the half of this that was wrong for a wave: a way of working rode
+// as store.BriefSkill, so the brief said the same word about a four-step
+// workflow and a twenty-line script, and no lens reading the fold could tell
+// them apart or send a reader to the right page for either.
 func TestBriefCarriesTheForgedCraftLine(t *testing.T) {
 	graph := openStore(t)
 	if _, err := graph.TouchSeen("tui", "old", store.SeenDetached); err != nil {
@@ -439,6 +449,9 @@ func TestBriefCarriesTheForgedCraftLine(t *testing.T) {
 	forged := ""
 	for _, event := range received.Events {
 		if event.Kind == store.BriefSkill {
+			t.Fatalf("a way of working is riding as a skill again: %q", event.Text)
+		}
+		if event.Kind == store.BriefCraft {
 			forged = event.Text
 		}
 	}

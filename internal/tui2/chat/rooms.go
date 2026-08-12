@@ -30,18 +30,34 @@ import (
 // them rather than explained line by line:
 //
 //   - ONE CURSOR. There is no highlighted-versus-open state. What the cursor
-//     rests on is what the main pane shows and what the composer binds.
+//     rests on is what the main pane shows.
 //   - SELECTION PREVIEWS, ENTER COMMITS (5.15's refinement, for cost). Moving
 //     the cursor costs a card — one block, built from the row already in hand,
 //     with no store read at all. Enter is what pays for a room: the node trail
 //     is read then, once, and polled from then on.
+//   - CLICKS GO WHERE THEY POINT (13.18). Select-then-enter is the KEYBOARD's
+//     law, and it earns its second key: an arrow is how a keyboard looks around,
+//     so the look has to be cheap and the commitment separate. A hand that put
+//     the pointer on a card and pressed has already looked, and asking it to
+//     press again is asking it to say the same thing twice. So one click on a
+//     row opens it. The two rows that PERFORM rather than navigate — the
+//     `+ new room` door and 5.24's group lid — keep the two-step, because a
+//     stray click may not mint a room.
+//   - THE COMPOSER BINDS WHAT WAS ENTERED (13.18), never what the cursor is
+//     resting on. A preview draws a card, and a card is not a surface — it is a
+//     LOOK at one. Rebinding on a look is what left a disabled composer under a
+//     reader who had merely walked past settled work, after which the composer
+//     refused their click and the map ate the sentence they typed. What a
+//     preview owes the reader is the affordance in WORDS, and the card carries
+//     it.
 //   - ESC POPS SCOPE, never just selection. At home it hands the key back to
 //     8.2.21's ladder, which is the app's existing esc chain.
-//   - THE AFFORDANCE NEVER LIES (5.20, 5.15's one rule). A row whose surface
-//     this window is not showing does not get a live composer; it gets a
-//     disabled one that says which key opens it. A settled row says it is
-//     settled. The prompt glyph previews the composer the row bound, and the
-//     card's mark previewed the same glyph, so the two cannot disagree.
+//   - THE AFFORDANCE NEVER LIES (5.20, 5.15's one rule). A surface that takes no
+//     draft says so: an entered room over settled work gets a disabled composer
+//     that says why, never a live one that swallows a sentence. The prompt glyph
+//     previews the composer the ENTERED surface bound, and a row's mark previews
+//     the one entering that row would bind, so neither can promise a draft that
+//     will not be taken.
 
 // viewKind is what the main pane is currently a lens onto.
 type viewKind uint8
@@ -100,6 +116,21 @@ type mainView struct {
 	// stamp is what the transcript was last built from (recordStamp). A journal
 	// move that did not touch this task costs one string comparison.
 	stamp string
+
+	// The nested-record fields (recordpage.go). A record page can be entered
+	// FROM another record page — clicking an atomic leaf in a job's tree opens
+	// that worker's own page — and esc walks back one level at a time.
+	//
+	// parent is the page this one was drilled into from, kept whole rather than
+	// rebuilt, so walking back costs no read. offset is the scroll position that
+	// page was at when it was left, so the reader lands exactly where they were
+	// reading (8.1.6). anchored says this page has already been positioned once
+	// on entry — settled pages open on their result card, running ones at the
+	// live tail — and it is what keeps that from ever happening twice, because
+	// manual scrolling is never fought.
+	parent   *mainView
+	offset   int
+	anchored bool
 }
 
 // composerBind is what the composer is talking to right now (5.15: "you talk to
@@ -320,9 +351,12 @@ func (a *App) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if event.Empty() {
 			// Nothing to pop: the map is at home, so the key belongs to the
 			// app's own ladder (8.2.21) and the map hands the keyboard back to
-			// the conversation.
-			a.focusScope(false)
-			return nil, true
+			// the conversation — and, now that §6 makes the rail a drawer, shuts
+			// it on the way. Esc is "put this away" everywhere else in the
+			// product (an overlay, a scope, a turn); a rail that stayed standing
+			// after esc had emptied it would be the one surface where the key
+			// meant "look elsewhere" instead.
+			return a.setRailShown(false), true
 		}
 		return a.applyScope(event), true
 	}
@@ -335,14 +369,22 @@ func (a *App) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // scopePoint is the map's pointer, and it is the keyboard's grammar reached by
 // a different hand. Every branch below ends in a call scopeKey also makes.
 //
-// The one decision this function makes on its own is what a SECOND click means,
-// and it is taken from the enter law rather than invented: 5.15 splits select
-// from open — "selection previews; enter opens" — so a click on a row the
-// cursor is not on previews it, and a click on the row the cursor is already on
-// is the enter. That reads as a double-click to a hand and as the documented
-// law to a reader, which is the good case of a convention agreeing with a rule.
-// It also means a pointer can never commit to a room the reader has not first
-// seen the preview of — one click, one preview, one more click, one room.
+// The one decision this function makes on its own is what ONE CLICK means, and
+// 13.18 settles it against the way it used to read. It used to take 5.15's
+// select/open split literally — first click previews, second click enters — on
+// the argument that a pointer should not be able to commit to a room the reader
+// had not seen a preview of. Measured against a hand, that argument is upside
+// down: a preview is what the KEYBOARD needs, because an arrow is how a keyboard
+// looks around and the look must not cost a room. A pointer does its looking
+// with the eye, on the card that is already drawn beside the row; by the time it
+// presses, the reader has decided. The old law answered that decision with three
+// cells of card and a composer bound to something they had not asked for, and
+// the reader's report was the plainest kind: clicking a task did nothing.
+//
+// So a click is an ENTER, on the same call enter makes. The exceptions are the
+// two rows that PERFORM rather than navigate — `+ new room` mints a room and the
+// group lid opens and shuts — where the second click is not ceremony but the
+// difference between pointing at something and doing it.
 func (a *App) scopePoint(pt railPoint) tea.Cmd {
 	if a.railModel == nil {
 		return nil
@@ -367,18 +409,36 @@ func (a *App) scopePoint(pt railPoint) tea.Cmd {
 		return nil
 	}
 
+	rows := a.railModel.Rows()
+	if pt.row >= len(rows) {
+		// The map moved under the click — a poll landed between the paint the
+		// hand aimed at and the press. Answering with a navigation would be the
+		// surface acting on a row that is no longer there.
+		return nil
+	}
 	// Pointing at the map is talking to the map: the keyboard comes with the
 	// pointer, so the next j or enter lands where the eye already is. This is
 	// the shell's focus rule (a click focuses what it hit) stated in the app's
 	// own terms, because the rail's focus is the app's flag and not the shell's.
+	// It is read BEFORE the focus moves, or every first click would look like a
+	// second one to the two rows below that still care.
 	second := a.railFocus && a.railModel.Cursor() == pt.row
 	a.focusScope(true)
-	if !second {
-		return a.applyScope(a.railModel.Select(pt.row))
+
+	if id := rows[pt.row].ID; id == rowNewRoomID || id == homes.GroupRowID {
+		if !second {
+			return a.applyScope(a.railModel.Select(pt.row))
+		}
+		if id == homes.GroupRowID {
+			return a.toggleHomes()
+		}
+		return a.applyScope(a.railModel.Enter())
 	}
-	if a.railModel.Selected().ID == homes.GroupRowID {
-		return a.toggleHomes()
-	}
+
+	// One click, one room. The select is made and NOT applied: it moves the
+	// cursor the enter is about to read, and the card it would have drawn is a
+	// frame nobody asked to see — the room replaces it in the same keystroke.
+	a.railModel.Select(pt.row)
 	return a.applyScope(a.railModel.Enter())
 }
 
@@ -441,8 +501,21 @@ func (a *App) applyScope(event rail.Event) tea.Cmd {
 
 // bind is the one place a rail event becomes surface state.
 //
-// commit separates the two halves of 5.15's select/open split: a preview binds
-// the composer and draws a card, and only a commitment pays for a room.
+// commit separates the two halves of 5.15's select/open split: a preview draws a
+// card, and only a commitment pays for a room.
+//
+// THE COMPOSER FOLLOWS THE SURFACE, NOT THE CURSOR (13.18). Every branch that
+// leaves the main pane on a CARD leaves [App.composerBind] exactly where it was,
+// and it is the only rule in this function that has to be read across branches
+// rather than inside one — so it is stated here: a card is a look at a surface
+// and not a surface, and a look may not rebind the mouth. The branches that do
+// rebind are the ones that put a real surface in the main pane — the room's own
+// thread, a home, an entered task room — because there the composer and what is
+// on screen are the same object. The bug this closes was reported as "clicking a
+// task does nothing": a preview of settled work bound a DISABLED composer, and
+// from that moment [App.focusConversation] refused the reader's clicks and the
+// map ate the letters they typed. The words the preview owed them ride on the
+// card instead, where they name the key rather than take the keyboard.
 func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 	row := a.railModel.Selected()
 	id := event.RowID
@@ -457,14 +530,15 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 		if commit {
 			cmd = a.openRoomCmd()
 		}
+		// The card says which key mints the room; the composer says nothing,
+		// because the reader is still standing in the room they were in and it
+		// still takes their draft. Disabling it here used to survive the mint —
+		// nothing on the way through applyRoomOpened bound it back — so a fresh
+		// room opened with a mouth that refused to take a word.
 		a.showCard(row, "enter opens a fresh room")
-		a.composerBind = composerBind{mode: rail.ComposerDisabled,
-			note: "press enter to start a new room"}
 
 	case id == homes.GroupRowID:
 		a.showCard(row, "enter opens the rest of aforge")
-		a.composerBind = composerBind{mode: rail.ComposerDisabled,
-			note: "press enter to open these rooms"}
 
 	case homes.Owns(id):
 		home, _ := homes.ParseScopeID(id)
@@ -511,21 +585,18 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 			break
 		}
 		a.showCard(row, "enter opens this room")
-		a.composerBind = composerBind{mode: rail.ComposerDisabled,
-			note: "press enter to open this room"}
 
 	case strings.HasPrefix(id, rowTaskPrefix):
 		node := strings.TrimPrefix(id, rowTaskPrefix)
-		if commit {
-			cmd = a.openTaskRoom(row, node)
-		} else {
+		if !commit {
 			a.showCard(row, "")
+			break
 		}
+		cmd = a.openTaskRoom(row, node)
 		a.composerBind = bindWork(row, node)
 
 	default:
 		a.showCard(row, "")
-		a.composerBind = composerBind{mode: rail.ComposerDisabled, note: "nothing to say here"}
 	}
 
 	a.status.breadcrumb = a.breadcrumb()
@@ -555,8 +626,8 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 //     walking, or the map would be usable for exactly one row.
 //   - A POP keeps the keyboard on the map, because applyScope does not count a
 //     pop as a commit: the reader who pressed esc is navigating, not arriving.
-//   - A DISABLED composer keeps the keyboard on the map. `+ new room`, the 5.24
-//     group lid and a settled service take no draft, so handing them the
+//   - A DISABLED composer keeps the keyboard on the map. An entered room over
+//     settled work and a service's home take no draft, so handing them the
 //     keyboard would move it to a pane that refuses every key — the same
 //     invisible dead end in the other direction.
 func (a *App) handOverTheKeyboard(commit bool) {
@@ -588,9 +659,23 @@ func (a *App) handOverTheKeyboard(commit bool) {
 // It refuses in exactly one case, and it is [handOverTheKeyboard]'s own: a
 // DISABLED composer takes no draft, so handing it the keyboard would move the
 // cursor to a pane that refuses every key and leave j/k walking nothing. A
-// reader previewing `+ new room` who clicks the card beside it keeps the map,
-// which is the state the card itself is describing.
+// reader standing in a room over settled work keeps the map when they click the
+// transcript, which is the state that room's own composer is describing.
+//
+// 13.18 narrowed how often that refusal fires, and the narrowing IS the fix a
+// reader asked for. It used to fire on a PREVIEW: resting the cursor on settled
+// work disabled the composer, and from then on the surface refused every click
+// on the conversation side until the reader guessed at ctrl+o. Now only an
+// entered surface can disable the mouth, so the refusal happens where a reader
+// can see the reason for it.
 func (a *App) focusConversation() bool {
+	// A page holds the keyboard the way the map does (app.go's setPageFocus), so
+	// a click on the conversation side takes it back from a page too — the same
+	// one-way door this function exists to close, one lens over.
+	if a.pageFocus {
+		a.setPageFocus(false)
+		a.shell.Invalidate()
+	}
 	if !a.railFocus {
 		return true
 	}
@@ -732,14 +817,43 @@ func (a *App) paintRoom() {
 	if view == nil || view.kind != viewNode || view.transcript == nil {
 		return
 	}
-	record := a.source.workRecord(view.node)
-	stamp := recordStamp(record, view.messages)
+	record := a.source.workRecordAt(view.node)
+	// The ledger is taken BEFORE the stamp and handed to the build below, so the
+	// fingerprint and the frame are one read: a receipt that landed between them
+	// would repaint on a figure the page did not draw, and the next poll would
+	// find the stamp already agreeing and never draw it (record.go's
+	// [recordStamp], and 12.14's one-snapshot rule).
+	money := a.source.roomSpend(view.node)
+	stamp := recordStamp(record, view.messages, money)
 	if view.stamp == stamp && view.transcript.Len() > 0 {
 		return
 	}
 	view.stamp = stamp
 
-	rows := roomBlocks(record, view.messages, a.style, a.source, a.traces)
+	// The reader's own fold answers go IN to the build, because in the
+	// execution rows they decide which blocks EXIST: an opened batch lays out
+	// the calls it collapsed, and an opened result grows the continuation that
+	// holds the rest of it (trace.go). Every other block reads them on the way
+	// out, through applyFold below, exactly as before.
+	rows := roomBlocks(recordInputs{
+		record:   record,
+		messages: view.messages,
+		style:    a.style,
+		board:    a.source,
+		traces:   a.source.traceFor(view.node, a.traces),
+		open:     a.foldOpen,
+		treeOpen: a.foldOpenDefault,
+		// The page's OWN ledger and not the rail's: a room can be standing over
+		// a node the board never read receipts for — a drilled-into part, or a
+		// job the home rail's bounded top-up has not reached — and it is the one
+		// read that puts money on this page's header and on every row of its
+		// tree ([scopeSource.roomSpend]).
+		money:      money,
+		models:     a.source.jobModels(view.node),
+		nodeModels: a.source.jobModels,
+		now:        a.now(),
+		clock:      view.transcript.Clock(),
+	})
 	// AN EMPTY ROOM MUST SAY IT IS EMPTY (12.14 finding 4), and it must say so
 	// only while it is TRUE. The teaching line used to appear whenever the
 	// message trail was empty, which for a resident-run task is nearly always —
@@ -750,7 +864,8 @@ func (a *App) paintRoom() {
 	if len(rows) == 0 {
 		view.teaching = true
 		view.transcript.Truncate(0)
-		view.transcript.Append(cardBlock(view.card, emptyRoomNote, a.style))
+		view.transcript.Append(cardBlock(view.card, "", a.style))
+		view.transcript.Append(&noteBlock{id: "empty-room", text: emptyRoomNote, style: a.style})
 		a.shell.Invalidate()
 		return
 	}
@@ -786,6 +901,11 @@ func (a *App) paintRoom() {
 	if following {
 		view.transcript.GotoBottom()
 	}
+	// WHERE THE PAGE OPENS is decided once, on its first paint, and never again
+	// (recordpage.go): a settled record opens on its result card, a running one
+	// at its live tail, and every repaint after that leaves the reader exactly
+	// where they are.
+	a.anchorRecord(view)
 	a.shell.Invalidate()
 }
 
@@ -793,6 +913,69 @@ func (a *App) paintRoom() {
 // anything. It states the two facts a reader needs and invents no third: that
 // nothing is here YET, and what will be here when it is.
 const emptyRoomNote = "nothing journaled here yet — this room fills with what this task and its parts say, as they say it"
+
+// noteBlock is chrome about an absence.
+//
+// The note used to ride inside the card's body, which drew it at the card's own
+// tier and ran it the whole width of the lens. Both are wrong for what it is.
+// 5.13 gives the primary tier to SPEECH and the dimmest to chrome, and nobody
+// said this — it is the surface admitting it has nothing to show yet, which is
+// the same kind of thing as a fold hint. And a line of prose that runs a
+// 200-column terminal end to end is a line the eye loses its place returning
+// to, which is what a measure is for ([tokens.ProseMeasure]).
+//
+// It is its own block rather than a second tier inside the card because a
+// [blocks.TextBlock] paints its body at one state by design; a block that could
+// tier its own lines would be the transcript growing a second markdown
+// renderer. One small block is cheaper than that, and it clears with the card
+// the moment the room's first real row lands.
+type noteBlock struct {
+	id    string
+	text  string
+	style *tokens.Styler
+
+	width    int
+	measured bool
+	rows     []string
+}
+
+var _ blocks.Block = (*noteBlock)(nil)
+
+// ID is the anchor and cache key.
+func (b *noteBlock) ID() string { return b.id }
+
+// IsFinalized is always true: a note about an absence has nothing left to do.
+func (b *noteBlock) IsFinalized() bool { return true }
+
+// SettledRows is every row.
+func (b *noteBlock) SettledRows(width int) int { return len(b.Rows(width)) }
+
+// Version never moves. The note is replaced, never edited: the room either has
+// nothing in it or it does not.
+func (b *noteBlock) Version() uint64 { return 0 }
+
+// End is completed — the block is not a turn that could have been cut.
+func (b *noteBlock) End() blocks.EndState { return blocks.EndCompleted }
+
+// Rows wraps the note at the readable measure, indented to the lens's left edge
+// like every other body in the room, and opens with the blank row that separates
+// it from the card above (5.13: cards separated by whitespace, not boxes).
+func (b *noteBlock) Rows(width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	if b.measured && b.width == width {
+		return b.rows
+	}
+	measure := width
+	if measure > tokens.ProseMeasure {
+		measure = tokens.ProseMeasure
+	}
+	rows := append(b.rows[:0], "")
+	rows = prose{style: b.style, base: tokens.TextTertiary}.rows(rows, b.text, measure, bodyIndent)
+	b.rows, b.width, b.measured = rows, width, true
+	return b.rows
+}
 
 // switchRoom is the thread switcher (12.1.3, 5.24's visible door).
 //
@@ -819,13 +1002,20 @@ func (a *App) switchRoom(session string) {
 	a.showThread()
 }
 
-// openRoomCmd mints an empty room and switches to it.
+// openRoomCmd opens an empty room and switches to it.
 //
 // It goes through store.OpenSession because that is the ONE door that makes a
 // room exist before anything has been said in it (12.1.3 item 3). A switcher
 // that "created" a room by pointing the window at a fresh id would be showing an
 // empty transcript for a room the store has never heard of, and the room would
 // vanish the moment the window closed.
+//
+// A backend that can tell an empty room from a conversation ([RoomReuser]) is
+// asked first, and hands back the empty unnamed room already standing rather
+// than minting a second one beside it. That is not a weaker "new": an empty room
+// has nothing in it to be older than a fresh one, and two of them are the same
+// row printed twice — which is the whole of how five "untitled room" rows came
+// to exist (rail-rooms grooming A2).
 func (a *App) openRoomCmd() tea.Cmd {
 	if a.source == nil || a.source.rooms == nil {
 		a.status.err = "this window cannot open rooms"
@@ -834,6 +1024,10 @@ func (a *App) openRoomCmd() tea.Cmd {
 	rooms := a.source.rooms
 	id := newRoomID(a.now())
 	return func() tea.Msg {
+		if reuser, ok := rooms.(RoomReuser); ok {
+			opened, _, err := reuser.OpenOrReuseSession(id, "tui")
+			return roomOpenedMsg{session: opened, err: err}
+		}
 		opened, err := rooms.OpenSession(id, "", "tui")
 		return roomOpenedMsg{session: opened, err: err}
 	}
@@ -1026,13 +1220,19 @@ func cardBlock(row rail.Row, note string, style *tokens.Styler) blocks.Block {
 	block := blocks.NewText("scope-card", head)
 	block.Styler = style
 	block.BodyState = blocks.StateSettled
+	// The card's words start where every other body in the room starts: column
+	// 0 is the gutter the glyph hangs in, and 5.13's two cells are where speech
+	// begins. Without this the card was the one block whose body ran flush to
+	// the left edge, so a preview and the room it previews disagreed about
+	// their own left margin.
+	block.BodyIndent = blocks.BodyIndent
 
 	lines := make([]string, 0, 4)
 	if status := strings.TrimSpace(row.Status); status != "" {
 		lines = append(lines, status)
 	}
 	if len(row.WaitsOn) > 0 {
-		lines = append(lines, "waits on "+strings.Join(row.WaitsOn, ", "))
+		lines = append(lines, waitsWord+strings.Join(row.WaitsOn, ", "))
 	}
 	if cells := cardTelemetry(row); cells != "" {
 		lines = append(lines, cells)
@@ -1068,12 +1268,11 @@ func cardTelemetry(row rail.Row) string {
 	if row.Meta.HasElapsed {
 		cells = append(cells, tokens.Elapsed(row.Meta.Elapsed))
 	}
-	switch {
-	case row.Meta.Atomic:
-		cells = append(cells, "atomic")
-	case row.Meta.HasWorkers:
-		cells = append(cells, plural(row.Meta.Workers, "part", "parts"))
-	}
+	// NO SHAPE CELL. It used to end `· atomic` or `· 3 parts`, off Telemetry
+	// fields the rail retired — so the read was dead as well as wrong. Both
+	// words are §14's banned worker-count phrasing ("a single-part job says
+	// nothing about its shape"), and the census the card already carries says
+	// the multiplicity that is worth saying (§15: never count what is visible).
 	return strings.Join(cells, " "+tokens.GlyphSeparator+" ")
 }
 
@@ -1087,6 +1286,10 @@ func cardTelemetry(row rail.Row) string {
 // turn in the room. A disabled composer never gets here — it does not take the
 // keyboard, so it has no draft to submit.
 func (a *App) submit(text string) tea.Cmd {
+	// A new attempt ends the last one's failure, whatever becomes of this one.
+	// The state is about the most recent send and nothing else, so it is cleared
+	// where the next send begins rather than on a timer somebody has to tune.
+	a.clearSendFailure()
 	if a.composerBind.mode == rail.ComposerSteer && a.composerBind.node != "" {
 		return a.steerCmd(text)
 	}
@@ -1134,6 +1337,11 @@ func (a *App) steerNode(node, text string, attachments ...composer.Attachment) t
 	return func() tea.Msg {
 		message.Attachments = keepAttachments(keeper, files)
 		posted, err := thread.Post(backend, message)
+		if err != nil {
+			// The outgoing row, for the reason postCmd states: a refused write
+			// answers with nothing, and the words are what the reader needs back.
+			return steerResultMsg{message: message, err: err}
+		}
 		return steerResultMsg{message: posted, err: err}
 	}
 }
@@ -1150,8 +1358,12 @@ type steerResultMsg struct {
 // reply that is not coming.
 func (a *App) applySteer(result steerResultMsg) {
 	if result.err != nil {
-		a.status.err = result.err.Error()
-		a.shell.Invalidate()
+		// A steer that did not land is a failed SEND, not a dead store: the
+		// journal is fine, this one write was refused. It says so where the
+		// reader is looking — the prompt and the middle zone — and gives the
+		// words back (§7).
+		a.failSend(result.message.Body, result.err)
+		a.refresh()
 		return
 	}
 	a.status.err = ""
@@ -1236,13 +1448,13 @@ func (a *App) renderHomes(width, height int) []string {
 
 // refreshHomes keeps the homes' facts current on the cycles the journal moved.
 //
-// Two of 5.24's fields are wired and the rest are the reads named in
-// internal/tui2/homes' state.go, which this surface does not yet make: the
-// notebook, the competence map, the charters and the service table each need a
-// store read this Backend does not declare. They are left EMPTY rather than
-// faked, and the package renders an empty room as its own teaching line — so an
-// unwired room and a genuinely empty one show the same true thing, which is the
-// property that lets this land in halves.
+// The NOTEBOOK's three sections are read here through [App.fillNotebook], which
+// is where the whole of that decision lives: what it reads, how often, and why a
+// lens nobody is looking at does not pay for it. The charters and the service
+// table are still empty and still deliberately so — they belong to the WORK page
+// after this wave's split (notebook-split.md §1), and the room that draws them
+// renders an empty list as its own teaching line, so an unwired room and a
+// genuinely empty one show the same true thing.
 //
 // Visitor is wired because it is 5.24's multi-window rule and it disables every
 // verb at once: a window that cannot act must not offer to.
@@ -1256,4 +1468,5 @@ func (a *App) refreshHomes() {
 		a.source.homes.Visitor = "visitor window — only the resident may act"
 	}
 	a.source.homeSource.SetState(a.source.homes)
+	a.fillNotebook(false)
 }

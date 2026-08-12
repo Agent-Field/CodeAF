@@ -14,6 +14,40 @@ import (
 // is going to fill them — so booting the v2 shell at a strange width is a
 // diagnostic rather than a guess, and so a golden frame taken this wave still
 // means something when the panes underneath it are real.
+//
+// They say it on bare ground. This file used to draw a titled box-drawing
+// rectangle around every region, which §16 BORDERS bans outright: the delivery
+// card's ground plus its `▎` edge is the only "border" in the product, dialogs
+// get the chrome ring (dialog.go), and everything else separates by whitespace
+// and faint words. A skeleton is not exempt — a placeholder is the first thing
+// anyone sees of a surface, and a frame drawn in the anti-catalog's own
+// characters teaches the wrong grammar to every pane that lands after it. So
+// the region's sentence floats in the middle of the space it was given and
+// nothing is drawn around it: the whitespace IS the boundary, which is the
+// same claim the real panes will make.
+//
+// SEAM — internal/tui2/tokens: the two vocabulary marks below are restated as
+// literals rather than read off tokens, for the reason dialog.go's own SEAM
+// note gives at length — this root package cannot import the tokens sibling
+// without inverting the tokens → tui2 dependency. placeholder_tokens_test.go
+// pins each restatement to its constant from outside the package, so a drift
+// fails a test rather than shipping two marks for one meaning.
+const (
+	// separatorMark is tokens.GlyphSeparator: the one telemetry separator, so
+	// the skeleton's status line is punctuated the way every real surface is.
+	separatorMark = "·"
+	// statusSep is the separator with its air, which is how it is always drawn.
+	statusSep = " " + separatorMark + " "
+	// missingMark is tokens.GlyphMissing: absent data renders as absence and
+	// never as an invented default (§16 EMPTINESS, 10.2.8).
+	missingMark = "—"
+	// sizeJoin writes a rectangle as "120x30". It is ASCII on purpose: the
+	// obvious `×` (U+00D7) is East_Asian_Width=Ambiguous, so a diagnostic about
+	// how many cells a region has would itself measure two cells wider under a
+	// CJK locale, and the vocabulary's only near-twin is tokens.GlyphFailed
+	// (`✕`, U+2715), which means a broken row and nothing else.
+	sizeJoin = "x"
+)
 
 // placeholderNote names the sibling that will own each region.
 var placeholderNote = [numLayers]string{
@@ -30,7 +64,7 @@ func (s *Shell) placeholder(id LayerID, w, h int) string {
 		return s.statusLine(w)
 	}
 	body := []string{
-		strconv.Itoa(w) + "×" + strconv.Itoa(h) + " cells",
+		strconv.Itoa(w) + sizeJoin + strconv.Itoa(h) + " cells",
 		placeholderNote[id],
 	}
 	if id == s.focus {
@@ -45,14 +79,15 @@ func (s *Shell) placeholder(id LayerID, w, h int) string {
 	if s.linear {
 		return plain(id.String(), body, w, h)
 	}
-	return box(id.String(), body, w, h)
+	return centred(id.String(), body, w, h)
 }
 
-// plain is the linear rendering of a region (10.1.5): a heading and its lines,
-// with no drawn frame at all. A box is a picture of a boundary, and a screen
-// reader reads it as a hundred and forty punctuation marks before the first
-// word — so the accessible mode does not draw one. Same content, same order,
-// same width discipline; less to listen to.
+// plain is the linear rendering of a region (10.1.5): a heading and its lines
+// at the left edge, with no padding around them at all. Neither mode draws a
+// frame any more — [centred] floats the same words on bare ground — so what
+// this mode still drops is the CENTRING: leading spaces are a picture of a
+// position, and a screen reader reads them as nothing useful before the first
+// word. Same content, same order, same width discipline; less to listen to.
 func plain(title string, body []string, w, h int) string {
 	if w <= 0 || h <= 0 {
 		return ""
@@ -69,55 +104,51 @@ func plain(title string, body []string, w, h int) string {
 	return strings.Join(lines, "\n")
 }
 
-// box draws a titled frame filled to exactly w×h cells. Below the size a frame
-// needs it degrades to bare clipped text rather than drawing a corner with
-// nothing inside it — at one column by one row the honest picture is a single
-// character, and the surface still has to come up.
-func box(title string, body []string, w, h int) string {
+// centred is the ordinary rendering of an empty region: the region's own word
+// and the lines under it, floated in the middle of the rectangle on nothing but
+// ground. It fills the whole w×h allotment with spaces, because a pane owns the
+// rectangle it was given and a sparse one would let the layer underneath show
+// through its gaps — but every one of those cells is blank. Whitespace is the
+// boundary (§16 BORDERS), and the empty-state idiom the real panes use is the
+// same one: a quiet sentence in the middle of a room with nothing in it.
+//
+// The word comes first and it is lowercase, which is the single faint word §15
+// allows a section when position alone is ambiguous — and a region that has not
+// been built yet is exactly that case. Everything else is the diagnostic.
+//
+// A rectangle too short for the whole block keeps the top of it, so the word
+// survives to the last row: at one column by one row the honest picture is a
+// single character, and the surface still has to come up.
+func centred(title string, body []string, w, h int) string {
 	if w <= 0 || h <= 0 {
 		return ""
 	}
-	if w < 4 || h < 3 {
-		lines := make([]string, 0, h)
-		lines = append(lines, title)
-		lines = append(lines, body...)
-		for i := range lines {
-			lines[i] = ansi.Truncate(lines[i], w, "")
-		}
-		if len(lines) > h {
-			lines = lines[:h]
-		}
-		return strings.Join(lines, "\n")
+	lines := make([]string, 0, len(body)+1)
+	lines = append(lines, title)
+	lines = append(lines, body...)
+	if len(lines) > h {
+		lines = lines[:h]
 	}
 
-	inner := w - 2
+	top := (h - len(lines)) / 2
 	var out strings.Builder
-	out.Grow(w * h)
-
-	head := "─ " + title + " "
-	if ansi.StringWidth(head) > inner {
-		head = ansi.Truncate(head, inner, "")
-	}
-	out.WriteString("┌")
-	out.WriteString(head)
-	out.WriteString(strings.Repeat("─", inner-ansi.StringWidth(head)))
-	out.WriteString("┐")
-
-	for row := 0; row < h-2; row++ {
-		out.WriteString("\n│")
-		line := ""
-		if row < len(body) {
-			line = " " + body[row]
+	out.Grow((w + 1) * h)
+	blank := strings.Repeat(" ", w)
+	for row := 0; row < h; row++ {
+		if row > 0 {
+			out.WriteByte('\n')
 		}
-		line = ansi.Truncate(line, inner, "")
+		i := row - top
+		if i < 0 || i >= len(lines) {
+			out.WriteString(blank)
+			continue
+		}
+		line := ansi.Truncate(lines[i], w, "")
+		lead := (w - ansi.StringWidth(line)) / 2
+		out.WriteString(blank[:lead])
 		out.WriteString(line)
-		out.WriteString(strings.Repeat(" ", inner-ansi.StringWidth(line)))
-		out.WriteString("│")
+		out.WriteString(blank[:w-lead-ansi.StringWidth(line)])
 	}
-
-	out.WriteString("\n└")
-	out.WriteString(strings.Repeat("─", inner))
-	out.WriteString("┘")
 	return out.String()
 }
 
@@ -166,7 +197,7 @@ func joinColumns(cols []column, shown []bool) string {
 			continue
 		}
 		if out.Len() > 0 {
-			out.WriteString(" · ")
+			out.WriteString(statusSep)
 		}
 		out.WriteString(cols[i].text)
 	}
@@ -185,14 +216,14 @@ func (s *Shell) statusLine(w int) string {
 		shape = "narrow"
 	}
 
-	hit := "hit —"
+	hit := "hit " + missingMark
 	if s.hitOK {
 		hit = "hit " + s.hitID.String() + " " + strconv.Itoa(s.hitAt.X) + "," + strconv.Itoa(s.hitAt.Y)
 	}
 
 	caps := "kbd " + boolWord(s.caps.Disambiguation) +
-		" · sync " + s.caps.SyncOutput.String() +
-		" · color " + s.caps.Color.String()
+		statusSep + "sync " + s.caps.SyncOutput.String() +
+		statusSep + "color " + s.caps.Color.String()
 	if s.caps.Verified {
 		caps += "!"
 	}
@@ -200,7 +231,7 @@ func (s *Shell) statusLine(w int) string {
 	cols := []column{
 		{text: "aforge v2", rank: 0},
 		{text: shape, rank: 1},
-		{text: strconv.Itoa(s.width) + "×" + strconv.Itoa(s.height), rank: 2},
+		{text: strconv.Itoa(s.width) + sizeJoin + strconv.Itoa(s.height), rank: 2},
 		{text: "focus " + s.focus.String(), rank: 3},
 		{text: "newline " + s.caps.NewlineKey(), rank: 5},
 		{text: caps, rank: 4},
@@ -216,11 +247,11 @@ func boolWord(v bool) string {
 	return "?"
 }
 
-// dash renders missing data as an em dash rather than as an empty space or an
-// invented default (10.2, honesty marks).
+// dash renders missing data as [missingMark] rather than as an empty space or
+// an invented default (10.2, honesty marks).
 func dash(s string) string {
 	if strings.TrimSpace(s) == "" {
-		return "—"
+		return missingMark
 	}
 	return s
 }

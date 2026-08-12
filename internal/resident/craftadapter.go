@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/craft"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -68,6 +69,30 @@ func CraftRef(workflow *craft.Workflow) string {
 		return name
 	}
 	return name + "@" + commit
+}
+
+// TitleCraftRootFromRequest names a craft run from the words that asked for it,
+// for the seams that have no compiler to name it better. It is a no-op when the
+// root already carries a name, so the compiled reading of the ask — which is a
+// person's own words too, read back short — always wins where one exists.
+//
+// The one thing it will never do is fall back to the workflow's name. A job
+// wearing the name of the machine that ran it is the defect this exists to
+// close; a job with no name at all still shows its brief, which is about the
+// work, and that is the honest degradation.
+func TitleCraftRootFromRequest(subtree *store.Subtree, request string) {
+	request = strings.TrimSpace(request)
+	if subtree == nil || request == "" {
+		return
+	}
+	for index := range subtree.Nodes {
+		node := &subtree.Nodes[index]
+		if node.Parent != "" || strings.TrimSpace(node.Title) != "" {
+			continue
+		}
+		node.Title = clipLabel(firstLine(request), 48)
+		return
+	}
 }
 
 // CraftCommit returns the commit half of a craft reference.
@@ -160,10 +185,19 @@ func CompileCraftAs(prefix, dir string, workflow *craft.Workflow, params map[str
 	// synthesis node is — and, load-bearing here, it is the one node that stays
 	// open for the whole run, which is what gives every runtime splice a legal
 	// parent to attach to.
+	// The root carries NO title, and its emptiness is the fix for a defect the
+	// user reported in their own words — "what are you doing with spacex?" — on
+	// a job that was an AI-events report run through a workflow distilled from
+	// spacex research. A job is named for what was ASKED, never for the machine
+	// that carried it: the craft's identity belongs to Provenance.Craft, which
+	// every receipt, page and survival record already reads it from, and to the
+	// one line that says how this is being done. The caller names the job from
+	// the request — titleSubtree on the splice and firing paths, the intent's
+	// own words on the named-run path — and a caller that names nothing leaves
+	// an empty title, which every rail already reads as "show the brief".
 	root := store.NodeSpec{
 		ID:    prefix,
 		Brief: craftRootBrief(workflow, filled),
-		Title: strings.TrimSpace(workflow.Name),
 		Group: strings.TrimSpace(workflow.Name),
 		Stage: maxStage + 1,
 	}
@@ -396,13 +430,18 @@ func craftRoundBrief(brief, feedback string, round, maxRounds int) string {
 		strings.TrimSpace(brief), round, maxRounds, strings.TrimSpace(feedback))
 }
 
+// craftRootBrief is the craft's deliverable owner, and until this line it was
+// the only one in the product with no acceptance criteria: a craft compiles
+// straight into store nodes and never passes through plan.Contracts, so nothing
+// upstream of it ever states where the finished thing has to appear. The law is
+// quoted rather than restated — a second wording is a second law, and it drifts.
 func craftRootBrief(workflow *craft.Workflow, params map[string]string) string {
 	description, err := substituteCraft(strings.TrimSpace(workflow.Description), params, nil)
 	if err != nil || strings.TrimSpace(description) == "" {
 		description = "the " + strings.TrimSpace(workflow.Name) + " craft"
 	}
-	return fmt.Sprintf("Deliver the result of %s.\n\nEvery step of the craft arrives as one of your inputs, including any that were fanned out or repaired. Assemble them into the one answer the person who asked is waiting for, name the files it left behind, and say plainly anything the craft could not finish.",
-		description)
+	return fmt.Sprintf("Deliver the result of %s.\n\nEvery step of the craft arrives as one of your inputs, including any that were fanned out or repaired. Assemble them into the one answer the person who asked is waiting for, name the files it left behind, and say plainly anything the craft could not finish.\n\n%s",
+		description, plan.DeliverInMessage)
 }
 
 // craftSkillSentence is the anchoring idiom attached documents and quality

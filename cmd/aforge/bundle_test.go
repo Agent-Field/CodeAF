@@ -24,7 +24,7 @@ func TestADeclaredBundleNeverMeetsThePlanner(t *testing.T) {
 	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
 		Goal:  "Deliver three independent results.",
 		Scale: head.ScaleProject,
 		Parts: []string{

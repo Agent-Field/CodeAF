@@ -97,11 +97,17 @@ func (l *lineBuf) padTo(target int) {
 func (v *View) emit(width int, banded bool, band tokens.Token) string {
 	l := &v.line
 	colored := v.profile != tokens.NoColor
+	// A REVERSED band paints no foregrounds (12.11.2, closed in palette and
+	// left standing here): SGR 7 swaps the two colours in use, so a tier
+	// colour written inside it lands on the row's BACKGROUND — one inverted
+	// block per span, striped by the uncoloured padding runs between them.
+	// Reverse video is one run in the terminal's own two colours.
+	reversed := colored && banded && v.profile.SelectionStyle() == tokens.SelectionReverse
 	v.buf.Reset()
 	v.buf.Grow(width * 2)
 	wrote := false
 	if colored && banded {
-		if v.profile.SelectionStyle() == tokens.SelectionReverse {
+		if reversed {
 			v.buf.WriteString(tokens.Reverse(v.profile))
 		} else {
 			v.buf.WriteString(band.Bg(v.profile, v.focus))
@@ -109,7 +115,7 @@ func (v *View) emit(width int, banded bool, band tokens.Token) string {
 		wrote = true
 	}
 	for i := range l.spans {
-		if colored {
+		if colored && !reversed {
 			tok := l.spans[i].tok
 			focus := v.focus
 			if v.hovered {

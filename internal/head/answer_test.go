@@ -254,7 +254,7 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 	for _, name := range []string{
 		beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
 		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory, beltToolSearch,
-		beltToolSpawn, beltToolControl, beltToolSteer, beltToolRevise, beltToolExpedite,
+		beltToolSpawn, beltToolAct, beltToolControl, beltToolSteer, beltToolRevise, beltToolExpedite,
 		beltToolCorrect, beltToolRule, beltToolService, beltToolNote, beltToolWrite,
 		beltToolAnswerQuestion, beltToolAwait, beltToolAsk, beltToolInterrupt,
 	} {

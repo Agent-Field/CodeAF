@@ -26,7 +26,7 @@ func TestTaskScaleLeafCarriesAWorkingMethod(t *testing.T) {
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	const goal = "write the note that announces the change"
-	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
 		Goal: goal, Scale: head.ScaleTask,
 	})
 	if err != nil {
@@ -53,15 +53,19 @@ func TestTaskScaleLeafCarriesAWorkingMethod(t *testing.T) {
 		}
 	}
 
-	// The leaf that runs is the one the method was written for, and it is
-	// handed over exactly once.
-	leaf := store.Node{ID: subtree.Nodes[0].ID}
+	// The leaf that runs is the one the method was written for, and it reads
+	// the same method every time it is asked. It used to be handed over exactly
+	// once, out of a map a restart emptied — so a process that died between the
+	// splice and the leaf ran the generic loop with no method at all. The method
+	// now rides the leaf's own spec, which is durable, and reading it twice is
+	// the proof rather than the defect.
+	leaf := store.Node{ID: subtree.Nodes[0].ID, Spec: subtree.Nodes[0].Spec}
 	contract := leafContract(plans, nil, leaf)
 	if !strings.Contains(contract, "Read the diff") {
 		t.Fatalf("the task-scale leaf carries no working method: %q", contract)
 	}
-	if again := leafContract(plans, nil, leaf); again != "" {
-		t.Errorf("the method was handed out twice: %q", again)
+	if again := leafContract(plans, nil, leaf); again != contract {
+		t.Errorf("the method did not survive a second read: %q, want %q", again, contract)
 	}
 }
 
@@ -75,7 +79,7 @@ func TestLookupScaleBuysNoWorkingMethod(t *testing.T) {
 	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
 		Goal: "say what the current total is", Scale: head.ScaleLookup,
 	})
 	if err != nil {
@@ -108,7 +112,7 @@ func TestThePlannedDeliverableOwnerCarriesTheMethodTheGateReads(t *testing.T) {
 	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
 		Goal:  "review the pull request and deliver REVIEW.md",
 		Scale: head.ScaleProject,
 	})

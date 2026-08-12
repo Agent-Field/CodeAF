@@ -8,12 +8,53 @@ import (
 // DefaultInterval is one animation step. Everything that moves moves on this
 // grid, so a room with five running rows animates as one organism rather than
 // five independent twitches (8.1.3).
+//
+// Twin of tokens.MotionInterval, which carries the argument for the number
+// (120ms, inside a 100..150ms band with a measured reason at each end) and is
+// the vocabulary's authority for it. The edge runs tokens → blocks, so the
+// value is spelled twice and tokens/motion_test.go pins the two equal.
 const DefaultInterval = 120 * time.Millisecond
 
-// Spinner is the transient-tool-row glyph cycle (5.21). It is for rows that
-// live for seconds. Rail cards and agent rows never spin — a dancing glyph on a
-// durable object is a lie about liveness (8.1.6).
-var Spinner = [...]string{"◐", "◓", "◑", "◒"}
+// SpinnerPeriod is one full rotation of [Spinner] at the house cadence: ten
+// braille frames × 120ms = 1.2s. Derived, never authored — adding a frame moves
+// the period rather than quietly redefining "one rotation".
+const SpinnerPeriod = time.Duration(len(Spinner)) * DefaultInterval
+
+// The breathe's keyframe constants (11's second motion). Twins of
+// tokens.PulseSteps / tokens.PulsePeriod / tokens.PulseEase, which carry the
+// argument; the pins live in tokens/motion_test.go.
+const (
+	// PulseSteps is the breathe's period in house steps.
+	PulseSteps = 12
+	// DefaultPulsePeriod is one full breath: 12 × 120ms = 1.44s. It was 8
+	// steps (960ms) and was slowed because a just-under-a-second cycle reads
+	// as a resting pulse rather than a breath, and beat against the spinner's
+	// 1.2s rotation on any screen showing both.
+	DefaultPulsePeriod = PulseSteps * DefaultInterval
+	// DefaultPulseEase is the dwell bend: ~2.5× longer mid-cycle than at the
+	// edges, which is what makes the dot breathe instead of count.
+	DefaultPulseEase = 0.6
+)
+
+// Spinner is the transient-tool-row glyph cycle (§11's one moving glyph). It is
+// for rows that live for seconds. Rail cards and agent rows never spin — a
+// dancing glyph on a durable object is a lie about liveness (8.1.6).
+//
+// It is braille, and the reason is measured rather than argued. 5.21 proposes
+// ◐◓◑◒, and those four disagree about East-Asian width: ◐ and ◑ are Ambiguous —
+// two cells under a CJK-locale terminal — while ◓ and ◒ are Neutral. A spinning
+// row drawn from that set CHANGES WIDTH mid-spin, which is the width
+// instability 5.17 bans outright, and everything to its right dances with it.
+// ◐ is also already spent: it is the working STATE (tokens.GlyphWorking), and a
+// glyph means exactly one thing product-wide. Braille is width-homogeneous
+// under every mode and is the house spinner everywhere else.
+//
+// Twin of tokens.SpinnerFrames — same arrangement as [CutMark]: blocks cannot
+// import tokens because the edge runs tokens → blocks, so the frames live here
+// as well as there and a pin fails when they part. The frame COUNT is part of
+// what is pinned, so nothing may assume four: every derivation goes through
+// len(Spinner).
+var Spinner = [...]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Clock is the ONE animation clock. Every live glyph in a frame derives its
 // frame index from the same latched instant, so parallel rows are phase-locked;
@@ -127,26 +168,30 @@ func (c *Clock) Elapsed() time.Duration {
 type Pulse struct {
 	// Frames is the glyph cycle, in order.
 	Frames []string
-	// Period is one full cycle. Zero means eight [DefaultInterval] steps.
+	// Period is one full cycle. Zero means [DefaultPulsePeriod].
 	Period time.Duration
 	// Ease is how strongly the dwell bends, in [0,1). 0 is a flat tick; the
-	// default 0.6 dwells roughly 2.5x longer mid-cycle than at the edges.
+	// default [DefaultPulseEase] dwells roughly 2.5x longer mid-cycle than at
+	// the edges.
 	Ease float64
 }
 
-// DefaultPulse is the thinking pulse: a three-tier dot that breathes.
-var DefaultPulse = Pulse{Frames: []string{"·", "•", "●", "•"}}
+// DefaultPulse is the thinking pulse: a three-tier dot that breathes, at the
+// house period. Twin of tokens.PulseFrames — the size ramp `· • ● •`, one shape
+// growing and shrinking, deliberately not four distinct marks (that would be a
+// second spinner, and 11 permits one).
+var DefaultPulse = Pulse{Frames: []string{"·", "•", "●", "•"}, Period: DefaultPulsePeriod}
 
 func (p Pulse) period() time.Duration {
 	if p.Period <= 0 {
-		return 8 * DefaultInterval
+		return DefaultPulsePeriod
 	}
 	return p.Period
 }
 
 func (p Pulse) ease() float64 {
 	if p.Ease <= 0 {
-		return 0.6
+		return DefaultPulseEase
 	}
 	if p.Ease >= 1 {
 		return 0.95
@@ -189,23 +234,41 @@ func (p Pulse) Glyph(c *Clock) string {
 // row and a short row shimmer at the same visible speed and smoothness does not
 // depend on length (8.1.4). It is a highlight range, not a glyph substitution:
 // nothing reflows.
+//
+// IT IS NOT ONE OF 11's THREE MOTIONS, and it currently has no caller on any
+// v2 surface. It stays because it is the corrected form of a defect the legacy
+// TUI still ships (internal/tui/shimmer.go steps the sweep by
+// max(1, period/12) per tick, so a wide row sweeps faster than a narrow one —
+// exactly what fixed velocity fixes), and the day that surface is rebuilt this
+// is what it is rebuilt onto. Until 11 is amended to admit a fourth motion,
+// wiring this to a v2 surface is a law change, not a wiring change.
 type Shimmer struct {
-	// Velocity is the band's speed in cells per second. Zero means 24.
+	// Velocity is the band's speed in cells per second. Zero means
+	// [DefaultShimmerVelocity].
 	Velocity float64
-	// Band is the band's width in cells. Zero means 8.
+	// Band is the band's width in cells. Zero means [DefaultShimmerBand].
 	Band int
 }
 
+// The shimmer's keyframe constants. 24 cells/sec crosses an 80-column row in
+// about 3.3s — a sweep the eye follows rather than one it catches — and an
+// 8-cell band is wide enough to read as a gradient of light and narrow enough
+// that a short row is never lit end to end at once.
+const (
+	DefaultShimmerVelocity = 24.0
+	DefaultShimmerBand     = 8
+)
+
 func (s Shimmer) velocity() float64 {
 	if s.Velocity <= 0 {
-		return 24
+		return DefaultShimmerVelocity
 	}
 	return s.Velocity
 }
 
 func (s Shimmer) band() int {
 	if s.Band <= 0 {
-		return 8
+		return DefaultShimmerBand
 	}
 	return s.Band
 }

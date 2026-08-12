@@ -506,11 +506,20 @@ func TestTheBriefNamesEachInputAndRoutesToItsFiles(t *testing.T) {
 			t.Fatalf("brief is missing %q:\n%s", want, user)
 		}
 	}
-	// The working method belongs beside the harness's own invariants, in the
-	// frozen prefix every turn is billed against — not in the user message
-	// below everything that changes between leaves.
-	if !strings.Contains(system, "read every result in full before writing") {
-		t.Fatalf("the working method never reached the system message:\n%s", system)
+	// The working method leads the brief, and is nowhere in the system message.
+	//
+	// It used to be appended to the system message, on the theory that it
+	// belonged beside the harness's invariants in the frozen prefix. That got
+	// the economics backwards: a contract written for THIS node made the system
+	// message per-node, so four leaves of one job — launched at once, same
+	// model, same invariants — agreed on nothing and each wrote the shared
+	// prefix cold. The prefix is worth more than the placement, and the head of
+	// the brief still reaches the model ahead of the assignment.
+	if strings.Contains(system, "read every result in full before writing") {
+		t.Fatalf("a per-node working method is back in the shared system message:\n%s", system)
+	}
+	if !strings.HasPrefix(user, "How this particular kind of job is done well:\nread every result in full before writing") {
+		t.Fatalf("the brief does not lead with the working method:\n%s", user)
 	}
 }
 

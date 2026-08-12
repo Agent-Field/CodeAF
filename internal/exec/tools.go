@@ -91,11 +91,15 @@ func errorf(format string, args ...any) Result {
 // Toolbox executes tool calls against one workspace on behalf of one node.
 type Toolbox struct {
 	workspace *Workspace
-	nodeID    int
-	web       *Web
-	history   *store.Store
-	media     *MediaTools
-	jobs      *jobRegistry
+	// leaf is who this toolbox works for, and it names every file the leaf's
+	// machinery writes: the artifact bucket, the spilled observations, the
+	// background job logs. It is a string because the identity a caller holds is
+	// not always a number — see Task.NodeKey.
+	leaf    string
+	web     *Web
+	history *store.Store
+	media   *MediaTools
+	jobs    *jobRegistry
 	// spills is atomic because a turn's tool calls execute concurrently, and
 	// two large results spilling at once must not race the counter into the
 	// same file name.
@@ -106,6 +110,13 @@ type Toolbox struct {
 	// concurrently and Definitions is read between turns.
 	armedMu sync.Mutex
 	armed   map[string]bool
+	// armedOrder is the same set in the order it was armed, and it exists for
+	// the prompt cache rather than for bookkeeping. Emitting the armed schemas
+	// in a fixed order would insert a newly armed family in FRONT of one already
+	// in hand — a rewrite of the middle of the tool block, which re-bills every
+	// byte behind it — where emitting them in arrival order can only ever append
+	// at the tail. See Definitions.
+	armedOrder []string
 
 	// share is the worker's one-line channel to the rest of its job. Nil for a
 	// job with no siblings — the schema is only carried where somebody is
@@ -161,12 +172,22 @@ func (t *Toolbox) Arm(names ...string) {
 	for _, name := range names {
 		if tools, ok := familyTools[name]; ok {
 			for _, tool := range tools {
-				t.armed[tool] = true
+				t.armOne(tool)
 			}
 			continue
 		}
-		t.armed[name] = true
+		t.armOne(name)
 	}
+}
+
+// armOne records one newly armed tool once, keeping the arrival order the tool
+// block is emitted in. Called with armedMu held.
+func (t *Toolbox) armOne(name string) {
+	if t.armed[name] {
+		return
+	}
+	t.armed[name] = true
+	t.armedOrder = append(t.armedOrder, name)
 }
 
 func (t *Toolbox) isArmed(name string) bool {
@@ -175,9 +196,20 @@ func (t *Toolbox) isArmed(name string) bool {
 	return t.armed[name]
 }
 
-// offered names the families this leaf could arm — configured on the brain,
-// and not already fully in hand. An empty answer is what retires the
-// discovery tool from the prompt.
+// armedInOrder is a snapshot of what this leaf holds, oldest first.
+func (t *Toolbox) armedInOrder() []string {
+	t.armedMu.Lock()
+	defer t.armedMu.Unlock()
+	order := make([]string, len(t.armedOrder))
+	copy(order, t.armedOrder)
+	return order
+}
+
+// offered names the families this leaf could still arm — configured on the
+// brain, and not already in hand. It is prose only: it phrases the error a
+// worker reads when it calls a tool it has not got. It decides nothing about
+// the tool list, because a tool list that moves when a family is armed is the
+// defect this file spent a whole commit removing.
 func (t *Toolbox) offered() []string {
 	var families []string
 	if t.media != nil && t.media.Provider != nil && !t.isArmed("generate_image") {
@@ -187,6 +219,14 @@ func (t *Toolbox) offered() []string {
 		families = append(families, FamilyDocument)
 	}
 	return families
+}
+
+// configuredFamilies says whether this machine has anything to arm at all. It
+// reads the brain's wiring and never the armed set, which is exactly what makes
+// it constant for the whole life of a leaf — and identical across every leaf of
+// a run, since they all share one brain.
+func (t *Toolbox) configuredFamilies() bool {
+	return t.media != nil && (t.media.Provider != nil || t.media.DocumentClient != nil)
 }
 
 // capabilitiesDefinition is the whole discovery surface: one tool, one
@@ -209,9 +249,16 @@ func (t *Toolbox) offered() []string {
 // have configured. Asking for one that is missing is answered by capabilities
 // itself, in a sentence that tells the worker to do the job without it and say
 // so — one wasted call in the rare case, against a definition block that never
-// moves for any leaf on any turn. Whether the tool is offered at all is still a
-// live question, and still the only moving part: Definitions retires it once
-// there is nothing left to arm.
+// moves for any leaf on any turn.
+//
+// It no longer retires, either, and that was the last moving part. Retiring it
+// once everything on offer was armed removed a definition from the MIDDLE of
+// the tool list — every schema behind it shifted, so the turn that finished
+// arming paid a second full-prompt invalidation on top of the one arming
+// already costs. The tool is ~90 tokens; the block it was displacing is the
+// whole prompt. So it stays for the life of any leaf whose machine has a family
+// configured, and a worker that asks for something it already holds is answered
+// in one cheap line — see capabilities.
 func capabilitiesDefinition() ai.ToolDefinition {
 	return define("capabilities",
 		"Load tools you do not have yet; they arrive on your next turn. Ask once, only if the work needs one. "+
@@ -244,9 +291,29 @@ func (t *Toolbox) capabilities(args map[string]any) Result {
 			return errorf("document parsing is not configured on this machine — do what the assignment needs without it and say plainly in your answer that it could not be done")
 		}
 	}
+	// Already in hand: the cheap no-op that lets the definition stay in the
+	// prompt forever. A worker that asks twice costs one short tool result at
+	// the end of the transcript, which is appended and therefore free of any
+	// prefix invalidation; retiring the tool to prevent the second ask would
+	// rewrite the tool block instead, and that is paid for by every remaining
+	// turn of the leaf.
+	if t.holdsAll(tools) {
+		return Result{Content: "Already loaded — " + strings.Join(tools, ", ") +
+			" are in your tool list now. Use them; do not ask again."}
+	}
 	t.Arm(need)
 	return Result{Content: "Loaded for your next turn and every turn after: " + strings.Join(tools, ", ") +
 		". Their full descriptions are in your tool list from here on."}
+}
+
+// holdsAll reports that every named tool is already armed.
+func (t *Toolbox) holdsAll(tools []string) bool {
+	for _, tool := range tools {
+		if !t.isArmed(tool) {
+			return false
+		}
+	}
+	return len(tools) > 0
 }
 
 // shareLine hands one line to the rest of the job. The write itself is the
@@ -280,19 +347,19 @@ func (t *Toolbox) shareLine(args map[string]any) Result {
 // turn, so a note pays rent everywhere at once.
 const shareLineBytes = 300
 
-func NewToolbox(workspace *Workspace, nodeID int, web *Web) *Toolbox {
-	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, jobs: newJobRegistry(workspace, nodeID)}
+func NewToolbox(workspace *Workspace, leaf string, web *Web) *Toolbox {
+	return &Toolbox{workspace: workspace, leaf: leaf, web: web, jobs: newJobRegistry(workspace, leaf)}
 }
 
 // NewToolboxWithStore adds persistent recall to the generic toolbox. A nil
 // store deliberately collapses to NewToolbox so one-shot leaves retain the
 // base-definition prompt.
-func NewToolboxWithStore(workspace *Workspace, nodeID int, web *Web, history *store.Store) *Toolbox {
-	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history, jobs: newJobRegistry(workspace, nodeID)}
+func NewToolboxWithStore(workspace *Workspace, leaf string, web *Web, history *store.Store) *Toolbox {
+	return &Toolbox{workspace: workspace, leaf: leaf, web: web, history: history, jobs: newJobRegistry(workspace, leaf)}
 }
 
-func newToolboxWithMedia(workspace *Workspace, nodeID int, web *Web, history *store.Store, media *MediaTools) *Toolbox {
-	return &Toolbox{workspace: workspace, nodeID: nodeID, web: web, history: history, media: media, jobs: newJobRegistry(workspace, nodeID)}
+func newToolboxWithMedia(workspace *Workspace, leaf string, web *Web, history *store.Store, media *MediaTools) *Toolbox {
+	return &Toolbox{workspace: workspace, leaf: leaf, web: web, history: history, media: media, jobs: newJobRegistry(workspace, leaf)}
 }
 
 // mediaModelArgDescription teaches the model argument in one breath: the slot
@@ -303,6 +370,22 @@ const mediaModelArgDescription = `optional model: omit for the default, "best" w
 // Definitions are what the model sees. Descriptions are terse because they are
 // resent every turn, but each one states the thing an agent gets wrong without
 // being told.
+//
+// The ORDER is load-bearing and is the second half of the cache-shape fix. Tool
+// definitions ride at the very front of every request, ahead of the whole
+// transcript, so the first byte of this block that differs between two calls
+// re-bills everything behind it at full price. The list is therefore built in
+// three strata, widest agreement first:
+//
+//  1. the five tools every leaf on every machine always has, in a fixed order;
+//  2. the discovery tool, present for the life of any leaf whose machine has an
+//     optional family configured — a property of the brain, never of what this
+//     leaf has armed, so it never appears or vanishes mid-run;
+//  3. per-leaf conditionals (recall, share) and then the armed schemas.
+//
+// Only stratum 3 can move, and it can only ever grow at the tail: arming a
+// family appends, so the invalidation is bounded by the schemas actually added
+// rather than by everything that used to sit behind the thing that moved.
 func (t *Toolbox) Definitions() []ai.ToolDefinition {
 	definitions := []ai.ToolDefinition{
 		define("sh", "Run a shell command in the workspace. Use it to read, list, search, and inspect. cmd is one command string (chain with && and pipes), or an array of commands run in order, stopping at the first failure. For INDEPENDENT commands, prefer separate sh calls in the same turn — they run at the same time. For servers, builds over a minute, or watch loops, set bg:true and use the job tool — do not block on them.", map[string]any{
@@ -334,6 +417,14 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"n":    prop("integer", "max search results, default 6"),
 		}),
 	}
+	// Stratum 2: the door to the optional families. Its presence follows the
+	// machine's wiring and nothing else, so it is in the same slot on every turn
+	// of every leaf of a run, or on none of them.
+	if t.configuredFamilies() {
+		definitions = append(definitions, capabilitiesDefinition())
+	}
+	// Stratum 3 begins here: everything below is per-leaf or per-arming, and is
+	// only ever appended.
 	if t.history != nil {
 		definitions = append(definitions, define("recall", "Search folded work and the notebook. Recall gives the map, not the territory: use the returned digest to choose what matters, then read the returned pointer paths with sh for the verbatim details. terms are free text; scope_cues are optional workspace or file paths.", map[string]any{
 			"terms":      prop("string", "words describing the prior work or lesson"),
@@ -346,17 +437,41 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"line": prop("string", "one sentence the rest of the job needs"),
 		}, "line"))
 	}
-	// The optional families ride the prompt only once this leaf has a reason
-	// to carry them: a structural one it was armed with before turn 1, or the
+	// The optional schemas ride the prompt only once this leaf has a reason to
+	// carry them: a structural one it was armed with before turn 1, or the
 	// worker's own request through the discovery tool.
-	if families := t.offered(); len(families) > 0 {
-		definitions = append(definitions, capabilitiesDefinition())
-	}
+	//
+	// They are emitted in ARMING order, and that is the whole of what makes
+	// arming an append. A fixed order looks tidier and is wrong: with the media
+	// schemas written above read_document, a leaf that armed documents first and
+	// media second would have five definitions inserted IN FRONT of the schema
+	// it was already carrying, which is a rewrite of the middle of the block and
+	// costs the entire transcript behind it. Emitting in the order they arrived
+	// means the newest schema is always last, whatever the route in.
+	//
 	// Each optional schema is admitted on its own name, not on its family's,
 	// so an attached screenshot buys view_image without also buying a video
 	// generator it has no use for.
-	if t.media != nil && t.media.Provider != nil {
-		optional := []ai.ToolDefinition{
+	catalog := t.optionalDefinitions()
+	for _, name := range t.armedInOrder() {
+		if definition, available := catalog[name]; available {
+			definitions = append(definitions, definition)
+		}
+	}
+	return definitions
+}
+
+// optionalDefinitions is every schema this machine could arm, keyed by name.
+// A family the brain has not wired produces no entries, so a leaf that armed a
+// tool the machine cannot serve carries no schema for it — and is answered in
+// prose by capabilities instead.
+func (t *Toolbox) optionalDefinitions() map[string]ai.ToolDefinition {
+	catalog := map[string]ai.ToolDefinition{}
+	if t.media == nil {
+		return catalog
+	}
+	if t.media.Provider != nil {
+		for _, definition := range []ai.ToolDefinition{
 			define("generate_image", "Generate one or more images into the workspace media directory. reference_paths may name existing workspace images for image-to-image work.", map[string]any{
 				"prompt":          prop("string", "what to generate"),
 				"n":               prop("integer", "number of images, default 1, maximum 10"),
@@ -386,23 +501,18 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 				"path":     prop("string", "workspace-relative image path"),
 				"question": prop("string", "optional targeted question about the image"),
 			}, "path"),
-		}
-		for _, definition := range optional {
-			if t.isArmed(definition.Function.Name) {
-				definitions = append(definitions, definition)
-			}
+		} {
+			catalog[definition.Function.Name] = definition
 		}
 	}
-	if t.media != nil && t.media.DocumentClient != nil && t.isArmed("read_document") {
-		definitions = append(definitions,
-			define("read_document", "Read a PDF into text. Free and local when possible; scanned documents escalate to OCR through the rail. Repeat reads are cached.", map[string]any{
-				"path":     prop("string", "workspace-relative PDF, DOCX, or PPTX path"),
-				"pages":    prop("string", "optional PDF page range such as 1-5"),
-				"question": prop("string", "optional question the worker will answer from the extracted text"),
-			}, "path"),
-		)
+	if t.media.DocumentClient != nil {
+		catalog["read_document"] = define("read_document", "Read a PDF into text. Free and local when possible; scanned documents escalate to OCR through the rail. Repeat reads are cached.", map[string]any{
+			"path":     prop("string", "workspace-relative PDF, DOCX, or PPTX path"),
+			"pages":    prop("string", "optional PDF page range such as 1-5"),
+			"question": prop("string", "optional question the worker will answer from the extracted text"),
+		}, "path")
 	}
-	return definitions
+	return catalog
 }
 
 func reflexPromotionDefinition() ai.ToolDefinition {
@@ -684,7 +794,7 @@ func (t *Toolbox) spill(result Result) Result {
 	if result.IsError || len(result.Content) <= spillBytes {
 		return result
 	}
-	relative, ok := t.writeObs(fmt.Sprintf("%d-%d.txt", t.nodeID, t.spills.Add(1)), result.Content)
+	relative, ok := t.writeObs(fmt.Sprintf("%s-%d.txt", pathSlug(t.leaf), t.spills.Add(1)), result.Content)
 	if !ok {
 		return result
 	}
@@ -698,7 +808,7 @@ func (t *Toolbox) spill(result Result) Result {
 // writing is naturally idempotent — the decayer additionally guarantees it is
 // invoked at most once per id.
 func (t *Toolbox) decaySpill(toolCallID, body string) (string, bool) {
-	return t.writeObs(fmt.Sprintf("%d-decay-%s.txt", t.nodeID, safeName(toolCallID)), body)
+	return t.writeObs(fmt.Sprintf("%s-decay-%s.txt", pathSlug(t.leaf), safeName(toolCallID)), body)
 }
 
 // writeObs writes one observation file and returns the path to name it by. It
@@ -764,6 +874,14 @@ func (t *Toolbox) sh(ctx context.Context, args map[string]any) Result {
 	if seconds <= 0 || seconds > maxCommandSeconds {
 		seconds = maxCommandSeconds
 	}
+	// A command writes files, and until this line nothing in the product knew
+	// it. The registry behind Outcome.Artifacts was populated by write and edit
+	// alone, so a chart rendered by a script under this tool was invisible to
+	// the files footer, to the delivery gate and to every later node. The mark
+	// is taken here, before anything runs, and read back once the command is
+	// done — see produced.go for why one sweep afterwards rather than two.
+	mark := producedMark(time.Now())
+	defer t.recordProduced(mark)
 	// rtk compresses what the command said before the model has to pay for it,
 	// on every later turn as well as this one. It only ever stands in for the
 	// plain command when it can be trusted to have said the same thing: see
@@ -925,7 +1043,7 @@ func (t *Toolbox) write(args map[string]any) Result {
 	if err := os.WriteFile(full, []byte(text), 0o644); err != nil {
 		return errorf("could not write %s: %v", path, err)
 	}
-	t.workspace.Record(t.nodeID, full)
+	t.workspace.Record(t.leaf, full)
 	return Result{Content: fmt.Sprintf("wrote %s (%d bytes)", path, len(text))}
 }
 
@@ -956,7 +1074,7 @@ func (t *Toolbox) edit(args map[string]any) Result {
 	if err := os.WriteFile(full, []byte(updated), 0o644); err != nil {
 		return errorf("could not write %s: %v", path, err)
 	}
-	t.workspace.Record(t.nodeID, full)
+	t.workspace.Record(t.leaf, full)
 	return Result{Content: fmt.Sprintf("edited %s (%d bytes)", path, len(updated))}
 }
 

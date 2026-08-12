@@ -199,6 +199,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	modelCatalog := catalog.LoadLazy(context.Background(), catalog.Options{
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
+	// Every client built below shapes its requests against these rows: which
+	// knobs a model accepts is the catalog's answer, not a guess.
+	settings.Models = modelCatalog
 	mediaClient, err := settings.MediaClient()
 	if err != nil {
 		return nil, err
@@ -291,6 +294,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	taskClient.WithUsageJournal(journalSpend)
 	planClient.WithUsageJournal(journalSpend)
 	boostClients.WithUsageJournal(journalSpend)
+	// The positive stopping condition, installed once for every path that can
+	// grow a running job. It is asked last, after rounds, nodes and the daily
+	// rail have all passed, so on the common path it is never asked at all; the
+	// paths that ask it reach it through a package seam because they are
+	// reached through signatures that carry a plan function and a budget and
+	// have no client to give it. AFORGE_GROWTH_GATE=0 turns it off.
+	resident.SetGrowthSatisfier(resident.SatisfierFor(planClient))
 	// The standing watch is a host timer: installing it shells out to launchctl
 	// or systemctl and leaves something behind that outlives the process. A
 	// one-shot command may not do that to a machine, so headless never builds
@@ -317,6 +327,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	scratchRoot := ""
 	if opts.sharedWorkspace {
 		scratchRoot = filepath.Join(filepath.Dir(path), "scratch")
+	}
+	// What the planner is allowed to see of the world before it plans. Only a
+	// shared workspace holds the person's own material; in the per-job layout the
+	// directory a job will work in does not exist yet, and the root above it holds
+	// nothing but the other jobs' folders — which says nothing about this goal and
+	// would spend prompt budget saying it. Empty renders nothing, so every
+	// planning prompt in an ordinary chat session stays byte for byte what it is.
+	terrainRoot := ""
+	if opts.sharedWorkspace {
+		terrainRoot = workspaceRoot
 	}
 	// Where this surface's jobs work, so a leaf promised a worker this build does
 	// not have can say so once in its own flight recorder rather than degrading
@@ -375,7 +395,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// the resolver reads it through this handle so a later /model change is
 	// what the next job's model words resolve against.
 	var commander *chatCommander
-	reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans,
+	reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, terrainRoot,
 		func(words head.ModelWords) head.WorkModelChoice {
 			return resolveWorkModelWords(words, modelCatalog, func() string {
 				if commander != nil {
@@ -430,7 +450,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// doing the work. Without this stamp a wedged TUI holds the resident role
 	// while every wake pass defers to it, and the standing watches go blind.
 	reconciler = reconciler.WithHeartbeat(func(at time.Time) {
-		_ = lease.NoteResidentTick(filepath.Dir(path), at)
+		_ = lease.NoteResidentTick(path, at)
 	})
 	// The handover seam, and the moment it is measured against. A request
 	// journaled before this process took the role belongs to whoever was
@@ -671,11 +691,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		var share func(string) error
 		if node.Parent != store.RootID {
 			share = func(line string) error {
-				_, postErr := thread.Post(graph, store.Message{
-					SessionID: node.Provenance.SessionID,
-					Role:      store.RoleAgent,
-					NodeID:    jobRoot,
-					Body:      jobNoteBody(leafTitle, line),
+				// The board is workers talking to workers. It is read off the job
+				// root by node, never by session, so it belongs to the record and
+				// nothing is lost by keeping the conversation out of it — a person
+				// watching a job saw one ⚑ line per note per leaf, which is the
+				// machinery's internal correspondence delivered to their inbox.
+				_, postErr := thread.Record(graph, store.Message{
+					Role:   store.RoleAgent,
+					NodeID: jobRoot,
+					Body:   jobNoteBody(leafTitle, line),
 				})
 				return postErr
 			}
@@ -701,14 +725,28 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			return lines
 		}
 		task := exec.Task{
-			Reflex:       isReflex,
-			Subharness:   subharness,
-			NodeID:       int(node.CreatedSeq),
-			StoreNodeID:  node.ID,
-			Title:        firstLine(node.Brief),
-			Goal:         node.Provenance.Intent,
-			Brief:        withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
-			Contract:     leafContract(plans, planNode, node),
+			Reflex:     isReflex,
+			Subharness: subharness,
+			NodeID:     int(node.CreatedSeq),
+			// The identity everything this leaf writes is filed under, and it is
+			// the node's own id for the same reason its output path is (see
+			// leafOutputHint): the creation sequence belongs to the whole splice.
+			// Under it, four siblings of one job shared one artifact bucket, one
+			// flight recorder and one set of .obs spill names — so each was told
+			// the others' files were its own, their recorders interleaved into a
+			// single document, and a spilled observation was overwritten by a
+			// sibling's while the stub in its context still pointed at the file.
+			NodeKey:     node.ID,
+			StoreNodeID: node.ID,
+			Title:       firstLine(node.Brief),
+			Goal:        node.Provenance.Intent,
+			Brief:       withDocumentAttachmentBrief(residentDeliveryBrief(graph, node), documentPaths),
+			Contract:    leafContract(plans, planNode, node),
+			// The whole object, beside the two halves of it the executor
+			// already reads. Nothing in the generic loop renders it today; it
+			// is here so a worker that speaks a spec is handed one rather than
+			// having it reassembled from prose at the boundary (W3).
+			Spec:         leafSpec(plans, planNode, node),
 			OutputHint:   outputHint,
 			Intermediate: intermediate,
 			Inputs:       inputs,
@@ -849,6 +887,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			if outcome != nil {
 				spent.PromptTokens += outcome.Usage.PromptTokens
 				spent.CompletionTokens += outcome.Usage.CompletionTokens
+				// The share of those prompt tokens the provider billed at the
+				// cached rate. It rides with them or the journal reads every
+				// leaf as a cold run: the executor counts it correctly and the
+				// runner writes it, and for as long as this line was missing
+				// the only rows carrying a cache count were the small
+				// structuring calls — so the table anybody audits said 91%
+				// cache hits were 0%.
+				spent.CachedTokens += outcome.Usage.CachedTokens
 				spent.Cost += outcome.Usage.Cost
 				spentTurns += outcome.Turns
 			}
@@ -871,11 +917,10 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				plans.reviseAfterCancel(ctx, settings, planClient, graph, node, planPrefix, planGraph,
 					outcome.Text, store.UserCancelReason, workerModel)
 			}
-			return resident.ExecResult{
-				Summary: outcome.Text, PromptTokens: spent.PromptTokens,
-				CompletionTokens: spent.CompletionTokens, Cost: spent.Cost,
-				ServiceRequests: outcome.ServiceRequests, Model: workerModel,
-			}, nil
+			result := leafSpend(spent, workerModel)
+			result.Summary = outcome.Text
+			result.ServiceRequests = outcome.ServiceRequests
+			return result, nil
 		}
 		// The workspace-relative paths become absolute once, here, because three
 		// readers need the same list: the summary the user opens files from, the
@@ -943,25 +988,20 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				_ = share("did not finish — " + firstLine(err.Error()))
 			}
 			if len(absolute) > 0 {
-				_, _ = thread.Post(graph, store.Message{
-					SessionID: node.Provenance.SessionID,
-					Role:      store.RoleSystem,
-					NodeID:    node.ID,
-					Body: "it stopped before finishing, but it had already written these — they are yours to keep or hand to a retry:\n" +
-						strings.Join(absolute, "\n"),
-				})
+				// One part of a job stopping is not the job's failure, and the
+				// files it left are the record's business: the whole-task failure
+				// names what died (failedPartsNote), and whoever wants the
+				// half-written files opens the part that wrote them.
+				recordOnNode(graph, node.ID,
+					"it stopped before finishing, but it had already written these — they are yours to keep or hand to a retry:\n"+
+						strings.Join(absolute, "\n"), store.RoleSystem)
 			}
 			// The error says the leaf produced nothing; it says nothing about
 			// what producing nothing cost. Escalation has usually run the whole
 			// task twice by the time we arrive here, so this is the most
 			// expensive kind of result there is — and returning a bare zero
 			// value is what made real spend journal as $0.00 on the daily rail.
-			return resident.ExecResult{
-				PromptTokens:     spent.PromptTokens,
-				CompletionTokens: spent.CompletionTokens,
-				Cost:             spent.Cost,
-				Model:            workerModel,
-			}, failure
+			return leafSpend(spent, workerModel), failure
 		}
 		// The user's next act is opening the file, so the summary carries where
 		// it actually lives; the absolute paths were resolved above.
@@ -995,16 +1035,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			} else {
 				spliced, _, replanErr := resident.ReplanOverrunOn(ctx, graph, node, outcome.Text, remainder.Remaining, absolute,
 					settings.DailyBudgetUSD, remainder.Worker,
-					replanRemainder(settings, planClient, taskClient, plans, graph))
+					replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
 				if replanErr == nil && spliced > 0 {
 					continuing = true
 					notes = append(notes, "["+continuationMessage(spliced)+"]")
-					_, _ = thread.Post(graph, store.Message{
-						SessionID: node.Provenance.SessionID,
-						Role:      store.RoleSystem,
-						NodeID:    node.ID,
-						Body:      continuationMessage(spliced),
-					})
+					// How work was divided is the machinery's own arithmetic. The
+					// person asked for a result, not for a count of pieces, and the
+					// receipt on the summary above already tells every reader
+					// downstream that this node's last word is not its last word.
+					recordOnNode(graph, node.ID, continuationMessage(spliced), store.RoleSystem)
 				} else if replanErr == nil {
 					// A zero splice at the rail is a pause, not a final partial. The
 					// question and deferred remainder are journaled; the reconciler
@@ -1052,8 +1091,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// A mechanical join was never a watched worker run: its parts were
 			// the watched runs, so the gate reads the joined text on its own
 			// merits rather than convicting an assembly for calling no tools.
+			records := gateEvidence(node, task.Spec, outcome, absolute, !mechanical)
 			gate := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-				revision.Evidence{Artifacts: absolute, Ran: outcome.Ran, Observed: !mechanical}, workerModel)
+				records, workerModel)
 			if gate.Checked {
 				evidence := store.DeliveryGate{Pass: gate.Pass, Gap: gate.Gaps, Quote: gate.Quote}
 				if gate.Pass {
@@ -1067,11 +1107,31 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// produced the one measured round that made a deliverable worse.
 				// So it downgrades to a note: journaled, said, carried on the
 				// delivery, and free.
-				ungrounded := ""
+				ungrounded, closed := "", ""
 				if !gate.Pass {
 					ungrounded = revision.AdmitGapRevision(node.Provenance.Intent, task.Contract, gate.Quote)
+					// The same refusal, for the gap the record has already
+					// closed rather than the one the request never set. A span
+					// of the ask naming a file the run produced is not a thing
+					// the person asked for and did not get, and the round it
+					// used to buy was spent retyping a correct file into a
+					// message while the file itself sat in the workspace.
+					if ungrounded == "" {
+						closed = revision.AdmitGapArtifact(gate.Quote, records)
+					}
+					// And the same refusal for the gap the deliverable itself
+					// has already closed. The artifact half asks the disk; this
+					// half asks the text the person is about to read, which is
+					// the half that was missing when a gate looked at twelve
+					// verbatim profiles and reported that the twelve were not
+					// there. A repair round bought on that verdict replaced a
+					// correct answer with a broken one.
+					if ungrounded == "" && closed == "" {
+						closed = revision.AdmitGapPresent(gate.Quote, text)
+					}
 				}
-				if ungrounded != "" {
+				switch {
+				case ungrounded != "":
 					evidence.Refused = ungrounded
 					// It rides the delivery as its own short note after the work
 					// and is not also posted on its own. Posted separately it
@@ -1083,8 +1143,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// Nothing about the work was shown to be wrong here; a judge
 					// invented a requirement, and charging the model's rating for
 					// that would teach the profile the reviewer's mistake.
+				case closed != "":
+					evidence.Refused = closed
+					notes = append(notes, revision.GapClosedNote(gate.Gaps, closed))
+					// Same reasoning, one step stronger: the work produced what
+					// the gap says is missing, so the worker's own verdict is
+					// the accurate one and the review's is not.
 				}
-				if !gate.Pass && ungrounded == "" {
+				if !gate.Pass && ungrounded == "" && closed == "" {
 					// unmet is the judgement that still stands against whatever is
 					// about to be delivered: the second gate's when a revision ran
 					// and was re-judged, the first gate's when nothing came back to
@@ -1111,6 +1177,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
 						spent.PromptTokens += polished.Usage.PromptTokens
 						spent.CompletionTokens += polished.Usage.CompletionTokens
+						spent.CachedTokens += polished.Usage.CachedTokens
 						spent.Cost += polished.Usage.Cost
 						spentTurns += polished.Turns
 						outcome = polished
@@ -1124,7 +1191,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 							text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
 						}
 						closed := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
-							revision.Evidence{Artifacts: absolute, Ran: outcome.Ran, Observed: true}, polishModel)
+							gateEvidence(node, task.Spec, outcome, absolute, true), polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
 						outcome.Verdict = provider.VerdictSemanticFailure
 						revised = true
@@ -1158,22 +1225,18 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// it — once per span of the ask, inside the same round caps,
 						// rails and consent an exhausted leaf lives under.
 						extension := revision.ExtendForGap(ctx, graph, node, outcome.Text, unmet, absolute,
-							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph))
+							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
 						if extension.Spliced > 0 {
 							extended = true
 							// The receipt on the summary is what tells every reader
 							// downstream that this node's last word is not its last
-							// word; the sentence in the thread is what tells the
-							// person, and it says why rather than only what.
+							// word; the line on the record says why rather than only
+							// what, for whoever opens the part it happened in.
 							notes = append(notes, "["+continuationMessage(extension.Spliced)+"]")
-							_, _ = thread.Post(graph, store.Message{
-								SessionID: node.Provenance.SessionID,
-								Role:      store.RoleSystem,
-								NodeID:    node.ID,
-								Body:      revision.GapContinuationNotice(unmet.Gaps),
-							})
+							recordOnNode(graph, node.ID,
+								revision.GapContinuationNotice(unmet.Gaps), store.RoleSystem)
 							break
 						}
 						// Nothing more will run, and the rejected draft ships anyway
@@ -1219,25 +1282,23 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			plans.recordOutcome(planGraph, planNode, outcome, nil, escalatedFrom)
 		}
 		if landed, prefix := plans.takeIfRoot(node.ID); landed != nil {
-			// The recalibration report reaches the thread, not a stdout the TUI
-			// owns; detached, because the ruler is telemetry and the user's
-			// result must not wait on it. The namespace comes from the registry
-			// rather than from slicing the id: this root's own id IS the prefix,
-			// so the old "-n" search never matched and recalibration for a
-			// planned chat job simply never ran.
-			sessionID := node.Provenance.SessionID
+			// The recalibration report reaches the job's RECORD, not a stdout the
+			// TUI owns and not the conversation; detached, because the ruler is
+			// telemetry and the user's result must not wait on it. The namespace
+			// comes from the registry rather than from slicing the id: this
+			// root's own id IS the prefix, so the old "-n" search never matched
+			// and recalibration for a planned chat job simply never ran.
+			//
+			// "ruler: median 19 turns, 4 of 18 overran — the ruler holds" is the
+			// sentence this writes, and it was going into the conversation. It is
+			// a measurement the system takes of itself, in the system's own
+			// vocabulary, about work the person has already been handed — the
+			// clearest possible case of the record's business.
+			nodeID := node.ID
 			guard.Go("chat/recalibrate", func() {
 				report, records := recordAndCalibrateDetailed(settings.Context(context.Background(), landed.Goal), planClient, settings, workingModel, landed)
 				recordPlanSurprises(graph, prefix, records)
-				if strings.TrimSpace(report) == "" {
-					return
-				}
-				_, _ = thread.Post(graph, store.Message{
-					SessionID: sessionID,
-					Role:      store.RoleSystem,
-					NodeID:    node.ID,
-					Body:      report,
-				})
+				recordOnNode(graph, nodeID, strings.TrimSpace(report), store.RoleSystem)
 			})
 		} else if node.Parent == store.RootID && isSingleLeafJob(graph, node) {
 			if isReflex {
@@ -1256,16 +1317,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 			}
 		}
-		return resident.ExecResult{
-			Summary:          text,
-			PromptTokens:     spent.PromptTokens,
-			CompletionTokens: spent.CompletionTokens,
-			Cost:             spent.Cost,
-			Promote:          promoted,
-			ServiceRequests:  outcome.ServiceRequests,
-			Model:            workerModel,
-		}, nil
-	}, "chat-runner", chatWorkerCeiling).WithDailyBudgetUSD(settings.DailyBudgetUSD)
+		result := leafSpend(spent, workerModel)
+		result.Summary = text
+		result.Promote = promoted
+		result.ServiceRequests = outcome.ServiceRequests
+		return result, nil
+	}, "chat-runner", chatWorkerCeiling).
+		WithDailyBudgetUSD(settings.DailyBudgetUSD).
+		// The depth loop, asked at the claim instead of at the build. See
+		// cmd/aforge/jit.go; a nil hook here is the whole rollback.
+		WithExpand(jitExpander(graph, plans, settings, planClient).Expand)
 	if craftRunner != nil {
 		runner = runner.WithCraftRunner(craftRunner)
 	}
@@ -1284,6 +1345,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	if opts.headless {
 		return brain, nil
 	}
+	// A window's shutdown is somebody closing a terminal, which says nothing at
+	// all about whether the work should stop. A one-shot's is the wall it was
+	// given, which says exactly that — so the grace belongs to this side of the
+	// line and `aforge do` keeps cancelling on the instant.
+	brain.leafGrace = windowLeafGrace
 
 	streamEvents := make(chan tui.StreamEvent, 256)
 	transcriber, err := voice.NewClient(voice.ClientConfig{
@@ -1349,6 +1415,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		WithStandingWatch(func() string {
 			return watchGrounding(path, graph, standingWatch, settings.DailyBudgetUSD)
 		}).
+		// This window draws a list of rooms, so its rooms get names: after the
+		// first exchange in a room, the head's clerk titles it on the scribe rung
+		// of the ladder. Everything past this line is the conversation, and a
+		// headless brain never reaches it — which is exactly the window that has
+		// no rail to name anything for.
+		WithRoomNaming(true).
 		WithDailyBudgetUSD(settings.DailyBudgetUSD)
 	commander.SetHead(conversationalHead)
 
@@ -1379,6 +1451,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			case <-ctx.Done():
 			}
 		})
+		// The rooms that existed before the naming clerk did get their one chance
+		// here, off this goroutine and bounded — see head.BackfillRoomNames. It
+		// belongs beside the room grooming that already runs at launch
+		// (groomChatRooms, store.ReapEmptySessions) and not inside it, because
+		// grooming is a query against the journal and this one spends a model
+		// call: it needs the head, and the head only exists once the brain does.
+		conversationalHead.BackfillRoomNames(headContext)
 		_ = conversationalHead.Serve(headContext)
 	}
 	return brain, nil
@@ -1412,6 +1491,11 @@ type chatBrain struct {
 	// workspaceRoot is where this brain's jobs work, so a caller that gave one
 	// can find what was written without guessing at the id law.
 	workspaceRoot string
+	// leafGrace is how long an ordinary shutdown lets the leaves already
+	// running finish before it takes their context away. Zero — every headless
+	// caller, and every test that does not ask otherwise — cancels at once,
+	// which is what a one-shot's wall means.
+	leafGrace time.Duration
 
 	closers    []func()
 	background sync.WaitGroup
@@ -1529,20 +1613,67 @@ func (b *chatBrain) standDown() {
 	})
 }
 
-// stop is the ordinary shutdown: the terminal is going away, so everything
-// goes with it, bounded by the same grace the surface has always allowed.
+// stop is the ordinary shutdown: the terminal is going away, so the half of
+// this brain that was talking to it goes with it.
+//
+// The work does not, and that asymmetry is the whole point. This used to cancel
+// both contexts on the same line, which meant closing a chat window killed
+// every leaf mid-POST: three nodes of one job died on the millisecond the
+// surface detached, five milliseconds after the seen edge was journaled, and
+// the resident then read `context canceled` as a flaky provider and learned to
+// add retries. A product whose premise is background work may not make the
+// person's terminal the lifetime of the work.
+//
+// So it takes the two steps standDown has always taken — end the conversation,
+// drain the dispatcher, let the running leaves land on the context they started
+// with — and only then takes that context away. The wait is bounded, because a
+// window being closed must eventually close; what makes the bound safe rather
+// than merely polite is that a leaf whose context ends this way is now released
+// back to pending instead of failed (see the runner's landing path), so
+// whatever the grace does not cover is picked up next time rather than lost.
 func (b *chatBrain) stop() {
 	b.stopOnce.Do(func() {
 		if b.cancel != nil {
 			b.cancel()
 		}
+		b.runner.Drain()
+		b.awaitLanding()
 		if b.runCancel != nil {
 			b.runCancel()
 		}
-		b.runner.Drain()
 		waitWithGrace(&b.background, 5*time.Second)
 		b.closeAll()
 	})
+}
+
+// leafSettleNotice is how long a shutdown waits in silence before it admits it
+// is waiting. Below this, the leaves land in the time it takes the terminal to
+// repaint and saying anything would be noise.
+const leafSettleNotice = 250 * time.Millisecond
+
+// awaitLanding gives the leaves already in flight their bounded chance to
+// finish. It says so on the way past, because a terminal that does not come
+// back for a minute with nothing on it is indistinguishable from a hang — and
+// the sentence has to name the way out, since the way out is safe.
+func (b *chatBrain) awaitLanding() {
+	if b.runDone == nil || b.leafGrace <= 0 {
+		return
+	}
+	select {
+	case <-b.runDone:
+		return
+	case <-time.After(leafSettleNotice):
+	}
+	fmt.Fprintf(os.Stderr,
+		"finishing the work already running before closing (up to %s) — ctrl+C leaves it to be picked up next time\n",
+		b.leafGrace)
+	timer := time.NewTimer(b.leafGrace)
+	defer timer.Stop()
+	select {
+	case <-b.runDone:
+	case <-timer.C:
+		fmt.Fprintln(os.Stderr, "still running when the grace ran out — it goes back on the queue and resumes next time")
+	}
 }
 
 // residentDeliveryBrief gives only the top-level deliverable owner the voice
@@ -1592,6 +1723,13 @@ func planNodeContract(node *plan.Node) string {
 func leafContract(plans *jobPlans, planNode *plan.Node, node store.Node) string {
 	if contract := planNodeContract(planNode); contract != "" {
 		return contract
+	}
+	// The task object, which is where the method lives once a job has one. It
+	// is read before the registry because it is durable and the registry is
+	// not: a restart between the splice and the leaf used to lose the method
+	// outright, and a leaf whose spec survived the restart no longer notices.
+	if method := strings.TrimSpace(leafSpec(plans, planNode, node).Method); method != "" {
+		return method
 	}
 	if plans == nil {
 		return ""
@@ -1650,9 +1788,82 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 // offered to the root alone. An intermediate leaf is pointed at the run's own
 // scratch instead, which for an errand working in someone's project is not
 // their directory at all.
+//
+// The address is keyed on the node's own id, which is the only identity here
+// that is unique per node. It used to be keyed on the creation sequence and the
+// title, and neither is: one splice stamps its whole subtree with one sequence
+// (the siblings are told apart by CreatedOrder, not by it), and titles are
+// clipped to 48 characters for display, so five parts of one ask that open with
+// the same words arrive as one identical string. A live run fanned five briefs
+// on five topics onto a single filename and four of them were overwritten by
+// the last writer, with nothing but the run's own reflection noticing.
+// leafSpend is what one leaf's run cost, in the shape the runner journals.
+//
+// It is a function rather than three literals for the reason the drop it fixes
+// was invisible for so long: the three endings of a leaf — settled, refused,
+// failed — differ in what they say about the work and not at all in what it
+// cost, and every field a literal forgets is a column of the usage table that
+// silently reads zero. Cached tokens were the forgotten one: counted by the
+// executor, written by the runner, and never once carried across this seam, so
+// the leaf rows — the ones holding almost all the tokens — journalled a warm
+// prefix as a cold run. Anything added to the ledger belongs here, once.
+func leafSpend(spent exec.Usage, model string) resident.ExecResult {
+	return resident.ExecResult{
+		PromptTokens:     spent.PromptTokens,
+		CompletionTokens: spent.CompletionTokens,
+		CachedTokens:     spent.CachedTokens,
+		Cost:             spent.Cost,
+		Model:            model,
+	}
+}
+
+// gateEvidence is the record the delivery gate is held to, assembled from the
+// three things the caller holds and the judge cannot see: what the run left
+// behind, what it ran, and what the person actually asked for.
+//
+// The two additions past the files and the run tail are what made the gate stop
+// judging prose. The request's own named files, settled against the artifact
+// registry — which is complete now that subprocess-produced files are recorded —
+// answer both halves of the same question: a file the ask named and the run
+// produced closes a gap about producing it, and a file the ask named and nothing
+// produced convicts a claim that it was written. The done-criterion is the
+// standard the plan set before the work started; it travels verbatim through
+// retries, so it is the only standard here the run itself cannot have moved.
+func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifacts []string, observed bool) revision.Evidence {
+	evidence := revision.Evidence{
+		Artifacts: artifacts,
+		Named:     revision.NamedFiles(node.Provenance.Intent),
+		Done:      spec.Done,
+		Observed:  observed,
+	}
+	if outcome != nil {
+		evidence.Ran = outcome.Ran
+		// The baseline delta rides with the rest. A coding leaf that found the
+		// repository already red says so here, in the worker's own words, so
+		// the gate reads "pre-existing failure, unrelated" instead of inferring
+		// "`make all` exited 2, therefore this change is broken" from a run tail
+		// it cannot rerun.
+		evidence.Baseline = outcome.Baseline
+	}
+	return evidence
+}
+
+// A hint is an invitation to write a file at a name, so a directory already
+// standing at that name makes it unfulfillable and it is withdrawn rather than
+// quietly re-aimed. A leaf handed such a hint has one move left — write inside
+// the directory — and the run that did it reported "the file is written and
+// verified", settled done, and left the asked-for file nowhere on disk. No
+// second address is offered in its place: a redirect the worker was never told
+// about is the same silence one layer along, and a leaf with no hint writes
+// where the ask told it to, which is the address that was actually wanted.
+// Nothing here creates the path either; the invitation must not be the thing
+// that occupies it.
 func leafOutputHint(node store.Node, title string, space *exec.Workspace) (hint string, intermediate bool) {
-	suggested := exec.SuggestPath(int(node.CreatedSeq), title)
+	suggested := exec.SuggestPathFor(node.ID, title)
 	if node.Parent == store.RootID {
+		if space != nil && space.DirectoryAt(suggested) {
+			return "", false
+		}
 		return suggested, false
 	}
 	// The shown spelling, not the one on disk: it is absolute exactly when
@@ -1660,6 +1871,9 @@ func leafOutputHint(node store.Node, title string, space *exec.Workspace) (hint 
 	// a relative path would name nothing the worker could open.
 	_, shown, err := space.ScratchPath(suggested)
 	if err != nil {
+		return "", true
+	}
+	if space.DirectoryAt(shown) {
 		return "", true
 	}
 	return shown, true
@@ -1869,20 +2083,35 @@ const sessionNewWord = "new"
 // Starting over is still available and is now the explicit act it always
 // should have been — `--session new`, or `/new` once the surface is up.
 //
-// The journal is the only honest source for "the last one": the seen edge is
-// written on every attach and detach of every lens, so its newest row names the
-// session a human was most recently present in, whether they left it by
-// quitting or by closing the lid.
+// The journal is the only honest source for "the last one", and it holds two
+// answers that agree except in the case rooms created. The seen edge is written
+// on every attach and detach of every lens, so it names the room this window
+// OPENED — but a reader who switched rooms and spent the evening in another one
+// never journaled a second attach, and the room they were actually in is the
+// one they last spoke in. store.LatestSession answers that; the seen edge stays
+// underneath it for a journal with rooms and no words in any of them.
+//
+// `--session new` reuses an empty unnamed room when one is standing, because an
+// empty room is exactly as new as a minted one and two of them are
+// indistinguishable to a reader — the accumulation A2 filed is nothing but this
+// question asked and answered wrongly, five times.
 func resolveChatSession(graph *store.Store, requested string) (string, error) {
 	requested = strings.TrimSpace(requested)
 	if strings.EqualFold(requested, sessionNewWord) {
-		return newSessionID(), nil
+		return freshChatSession(graph), nil
 	}
 	if requested != "" {
 		return requested, nil
 	}
 	if graph == nil {
 		return newSessionID(), nil
+	}
+	latest, found, err := graph.LatestSession()
+	if err != nil {
+		return "", fmt.Errorf("resolve chat session: %w", err)
+	}
+	if found && strings.TrimSpace(latest.ID) != "" {
+		return latest.ID, nil
 	}
 	seen, found, err := graph.LastSeen()
 	if err != nil {
@@ -1892,6 +2121,37 @@ func resolveChatSession(graph *store.Store, requested string) (string, error) {
 		return seen.SessionID, nil
 	}
 	return newSessionID(), nil
+}
+
+// freshChatSession is what "start over" resolves to: the empty unnamed room
+// already standing, or a new id when there is none. A read that fails is not a
+// reason to refuse the launch — the fresh id is always a correct answer, only a
+// less tidy one.
+func freshChatSession(graph *store.Store) string {
+	if graph == nil {
+		return newSessionID()
+	}
+	empty, err := graph.EmptySessions()
+	if err == nil && len(empty) > 0 {
+		return empty[0].ID
+	}
+	return newSessionID()
+}
+
+// groomChatRooms takes back the empty unnamed rooms that piled up before rooms
+// were reused rather than minted. It runs at launch, once, and never touches the
+// room this window just resolved or the newest empty one — see
+// store.ReapEmptySessions. A failure is a note in the log and nothing more: a
+// window may not fail to open because the tidying did.
+func groomChatRooms(graph *store.Store, keep string) {
+	if graph == nil {
+		return
+	}
+	if discarded, err := graph.ReapEmptySessions(keep); err != nil {
+		log.Printf("note: could not reap the empty rooms: %v", err)
+	} else if len(discarded) > 0 {
+		log.Printf("note: reaped %d empty unnamed room(s)", len(discarded))
+	}
 }
 
 // planSubtree decides how much structure a compiled request deserves. A
@@ -1912,6 +2172,19 @@ const (
 	reflexTurns    = 4
 	reflexTokens   = chatLeafTokens / 8
 	reflexDeadline = 90 * time.Second
+
+	// windowLeafGrace is how long closing a chat window waits for the leaves it
+	// was already running to land.
+	//
+	// It is a wait rather than a kill because the leaf is a paid-for turn
+	// against a provider that is answering: the receipts for the incident this
+	// exists for show ~995k prompt tokens bought and thrown away on the
+	// millisecond a terminal closed. It is two minutes rather than unbounded
+	// because a window being closed must eventually close, and it is safe to be
+	// short because the runner now releases a leaf its context outlived instead
+	// of failing it — the remainder resumes on the next window rather than
+	// becoming a fault the machine has to explain to itself.
+	windowLeafGrace = 2 * time.Minute
 )
 
 func continuationMessage(pieces int) string {
@@ -2122,6 +2395,9 @@ type jobPlans struct {
 	// itself because that is what they actually guard — a rehydrated job gets a
 	// new document and a new pair with it, so the pairing can never drift.
 	locks map[*plan.Graph]*planLocks
+	// owed is the planner's parked bills — spend for jobs whose splice has not
+	// landed in the statement yet (journalPlanSpend/settleOwedPlanSpend).
+	owed map[string]*owedPlanSpend
 	// contracts holds the working method for the jobs that never earn a graph.
 	// A task-scale ask is spliced as one leaf, so there is no plan node to hang
 	// the method on and no plan to journal; the registry carries it from the
@@ -2129,6 +2405,20 @@ type jobPlans struct {
 	// restart in between loses it and that leaf runs the generic loop — the
 	// same degradation a failed contract call has always had.
 	contracts map[string]string
+	// readings carries the compiler's structural reading of an ask from the
+	// compile call to the scale gate, keyed by the goal the two share.
+	//
+	// It is a memo rather than a field on resident.Compiled because the reading
+	// is not the reconciler's business: nothing between here and the gate reads
+	// it, decides on it, or would behave differently for it. What it is for is
+	// the journal — "this job became one leaf because the ask was read as a
+	// single act" is a sentence nobody could write afterwards, because the
+	// reading is a model's and does not repeat on a rerun.
+	//
+	// Bounded and lossy on purpose. A goal that was never gated leaves its entry
+	// behind, so the map is cleared wholesale once it grows past a session's
+	// worth of them; losing a reading costs one journal field and never the job.
+	readings map[string]string
 	// journal persists a job's structure, and hydrate reads it back. Both are
 	// nil on surfaces with no store to write to — `aforge wake` builds a
 	// registry for one bounded pass and never outlives it — and a nil pair
@@ -2350,6 +2640,41 @@ func (j *jobPlans) takeContract(nodeID string) string {
 	return contract
 }
 
+// maxRememberedReadings bounds the compile-to-gate memo. A session that asked a
+// hundred questions has a hundred goals, most of them long since gated, and the
+// map is dropped wholesale rather than aged: the only cost of forgetting is one
+// field on one journal record.
+const maxRememberedReadings = 64
+
+// noteReading remembers how the compiler read one ask's structure.
+func (j *jobPlans) noteReading(goal, structure string) {
+	goal, structure = strings.TrimSpace(goal), strings.TrimSpace(structure)
+	if goal == "" || structure == "" {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.readings == nil || len(j.readings) >= maxRememberedReadings {
+		j.readings = map[string]string{}
+	}
+	j.readings[goal] = structure
+}
+
+// takeReading hands the reading to the gate and forgets it, for the same reason
+// takeContract does: the gate runs once per compiled ask, and a second reader
+// would only be a leak.
+func (j *jobPlans) takeReading(goal string) string {
+	goal = strings.TrimSpace(goal)
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	structure, ok := j.readings[goal]
+	if !ok {
+		return ""
+	}
+	delete(j.readings, goal)
+	return structure
+}
+
 // get reads one retained job without holding the registry across whatever the
 // caller decides to do with it.
 func (j *jobPlans) get(prefix string) (plannedJob, bool) {
@@ -2508,6 +2833,9 @@ func (j *jobPlans) markRunning(graph *plan.Graph, node *plan.Node) {
 // Both refusals were already the everyday case, because the store has always
 // been free to claim a node while this pass was running.
 func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, prefix string, planGraph *plan.Graph, summary string, artifacts []string, failure string, workerModel string) {
+	// Every landing is the heartbeat a parked planning bill waits for: by the
+	// time a leaf has landed, the splice that owed the money has long happened.
+	j.settleOwedPlanSpend(graph)
 	j.reviseOn(ctx, settings, client, graph, node, prefix, planGraph,
 		resident.RevisionEvent(node, summary, artifacts, failure), workerModel)
 }
@@ -2863,11 +3191,15 @@ func recordProfileSurprise(graph *store.Store, nodeID string, record profile.Rec
 // The spine rather than the job is deliberate and is the honest half of a
 // compromise: the nodes this plan describes do not exist yet — the reconciler
 // splices them in the statement after this one — so there is nothing to charge
-// yet. What matters most is that the money is on the day's rail at all, which
-// is the number the user is actually shown and the number that decides whether
-// the next leaf may start. Attributing a plan to the job it produced is the
-// remaining half and needs the splice to have happened first.
-func journalPlanSpend(history *store.Store, client *liveClient, passes ...plan.Usage) {
+// yet. THE PLAN'S BILL BELONGS TO THE JOB IT BUILT, and it cannot be written
+// when it is spent: the reconciler splices the task into the statement after
+// the planner returns, and store.RecordUsage refuses a node that is not there
+// yet. So the bill is offered against the job, parked when the job has not
+// landed, and re-offered on the heartbeat until it lands — or until patience
+// runs out and the spine takes it, which is where spend with no errand has
+// always gone. A call with no job name (or no registry to park on) goes to the
+// spine directly, the behaviour every caller had before jobs owned their plans.
+func journalPlanSpend(history *store.Store, plans *jobPlans, client *liveClient, job string, passes ...plan.Usage) {
 	if history == nil {
 		return
 	}
@@ -2885,15 +3217,119 @@ func journalPlanSpend(history *store.Store, client *liveClient, passes ...plan.U
 	if client != nil {
 		model = client.Model()
 	}
-	if err := history.RecordUsage(store.NodeUsage{
-		NodeID: store.RootID, PromptTokens: total.PromptTokens,
+	bill := store.NodeUsage{
+		NodeID: job, PromptTokens: total.PromptTokens,
 		CompletionTokens: total.CompletionTokens, Cost: total.Cost, Model: model,
-	}); err != nil {
+	}
+	if job != "" {
+		if err := history.RecordUsage(bill); err == nil {
+			return
+		}
+		if plans != nil {
+			plans.parkPlanSpend(job, bill)
+			return
+		}
+	}
+	bill.NodeID = store.RootID
+	if err := history.RecordUsage(bill); err != nil {
 		log.Printf("note: could not journal planning spend: %v", err)
 	}
 }
 
-func planSubtree(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store) resident.PlanFunc {
+// planSpendPatience is how many heartbeats a parked bill waits for its job to
+// land before the spine takes it. Small on purpose: a splice that has not
+// happened four landings later is not late, it is not coming.
+const planSpendPatience = 4
+
+// parkPlanSpend holds a bill whose job is not in the statement yet. Bills for
+// one job merge, because the figure the cards read is the job's total, not a
+// ledger of passes.
+func (j *jobPlans) parkPlanSpend(job string, bill store.NodeUsage) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.owed == nil {
+		j.owed = map[string]*owedPlanSpend{}
+	}
+	if held, ok := j.owed[job]; ok {
+		held.bill.PromptTokens += bill.PromptTokens
+		held.bill.CompletionTokens += bill.CompletionTokens
+		held.bill.Cost += bill.Cost
+		if held.bill.Model == "" {
+			held.bill.Model = bill.Model
+		}
+		return
+	}
+	j.owed[job] = &owedPlanSpend{bill: bill}
+}
+
+// settleOwedPlanSpend re-offers every parked bill. A job that landed takes its
+// money; one that keeps not landing is billed to the spine after
+// planSpendPatience beats, so the day's rail is never short whatever the shape
+// of the failure. Settled once and not twice: a settled bill leaves the map.
+func (j *jobPlans) settleOwedPlanSpend(graph *store.Store) {
+	if j == nil || graph == nil {
+		return
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	for job, held := range j.owed {
+		if err := graph.RecordUsage(held.bill); err == nil {
+			delete(j.owed, job)
+			continue
+		}
+		held.beats++
+		if held.beats < planSpendPatience {
+			continue
+		}
+		held.bill.NodeID = store.RootID
+		if err := graph.RecordUsage(held.bill); err != nil {
+			log.Printf("note: could not journal abandoned planning spend: %v", err)
+		}
+		delete(j.owed, job)
+	}
+}
+
+// owedPlanSpend is one job's parked planning bill and how long it has waited.
+type owedPlanSpend struct {
+	bill  store.NodeUsage
+	beats int
+}
+
+// namedFileInAsk matches a token that reads as a filename: a stem, a dot, and a
+// two-to-eight character alphanumeric extension opening with a letter. The
+// extension's shape is what keeps prose out — "e.g.", "i.e.", "vs.", "1.5x" and
+// version numbers all fail it — and the stem's character class is what lets a
+// path through, because "docs/JOURNEY.md" names a file exactly as "report.md"
+// does.
+var namedFileInAsk = regexp.MustCompile(`[\w.\-/]*\w\.[A-Za-z][A-Za-z0-9]{1,7}\b`)
+
+// fileShapedAsk answers the delivery law's one question — is the finished thing
+// a file, or is it the message? — from the two facts this surface actually
+// holds, and refuses to guess past them.
+//
+// The first is whether the person handed the run their own directory: without
+// one there is nowhere a file could be the deliverable, because the workspace is
+// a per-job folder that evaporates from the reader's point of view. That is the
+// same bit terrainRoot carries, which is why it is the parameter rather than a
+// second one saying the same thing.
+//
+// The second is whether the ask names a file. Deliberately deterministic: this
+// decides which half of plan.DeliveryLaw every brief and every contract in the
+// job is written against, and a judgement that costs a call would be bought
+// once per plan and once per replan for a bit that a regexp settles. False
+// stays false — DeliverInMessage — which is exactly today's behaviour, so the
+// only asks this moves are the ones that said a filename out loud.
+func fileShapedAsk(terrainRoot, goal string) bool {
+	if strings.TrimSpace(terrainRoot) == "" {
+		return false
+	}
+	return namedFileInAsk.MatchString(goal)
+}
+
+// terrainRoot is the directory the planner is allowed to look at before it
+// plans, and it is empty for every surface but a shared workspace. See
+// buildBrain, where the judgement is made once.
+func planSubtree(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store, terrainRoot string) resident.PlanFunc {
 	return func(ctx context.Context, compiled resident.Compiled) (store.Subtree, error) {
 		anchor, anchored := resident.PlanAnchorFromContext(ctx)
 		prefix := anchor.NodeID
@@ -2904,6 +3340,11 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 				return store.Subtree{}, err
 			}
 		}
+		// The reading behind whatever this gate is about to decide, taken once
+		// and handed to whichever exit is used. Reading it here rather than in
+		// each branch is what makes it impossible for one exit to journal a
+		// shape and leave the reason behind.
+		structure := plans.takeReading(compiled.Goal)
 		if compiled.Scale != head.ScaleProject {
 			// One leaf is the whole plan, and it still deserves a working
 			// method. A lookup does not: it is a question with an answer, the
@@ -2913,17 +3354,28 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			// The compile call that read the whole ask writes the method in the
 			// same breath now; the separate structuring round-trip is the
 			// fallback for a compiler that left it empty, not the path.
+			var leaf plan.Spec
 			if compiled.Scale == head.ScaleTask {
 				method := strings.TrimSpace(compiled.Contract)
 				if method == "" {
 					method = taskContract(ctx, settings, planClient, history, compiled.Goal)
 				}
-				plans.putContract(prefix, method)
+				// One node is a plan. It used to be the one shape of job with
+				// no plan document at all, so its method lived in a memory map
+				// a restart emptied and its spec lived nowhere — which is why
+				// the durable answer to "what was this job asked for" existed
+				// for a decomposed job and not for the commonest job there is.
+				// Journaling the one node costs one event and closes that gap.
+				document := taskSpecGraph(compiled.Goal, method)
+				leaf = document.Nodes[0].Spec
+				plans.put(prefix, document, prefix, "", nil)
 			}
+			journalScaleGate(history, prefix, compiled, structure, store.ScaleRouteSingleLeaf, 1)
 			return store.Subtree{Nodes: []store.NodeSpec{{
 				ID:    prefix,
 				Brief: compiled.Goal,
 				Stage: 1,
+				Spec:  resident.EncodeSpec(leaf),
 			}}}, nil
 		}
 		// Structuring runs on the plan slot; the retained snapshot is the work
@@ -2944,22 +3396,45 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			if contractErr != nil {
 				log.Printf("note: could not write contracts: %v", contractErr)
 			}
-			journalPlanSpend(history, planClient, contractUsage)
+			journalPlanSpend(history, plans, planClient, prefix, contractUsage)
 			subtree, subtreeErr := resident.SubtreeFromPlan(graph, prefix)
 			if subtreeErr != nil {
 				return store.Subtree{}, subtreeErr
 			}
 			plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
+			journalScaleGate(history, prefix, compiled, structure, store.ScaleRouteBundle, len(subtree.Nodes))
 			return subtree, nil
 		}
-		// terrain wiring lands here (world-grounded-planning handoff)
 		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), structuring, compiled.Goal, plan.Options{
-			Recall:       recallHits(history, compiled.Goal, groundRecallLimit),
+			Recall: recallHits(history, compiled.Goal, groundRecallLimit),
+			// Rendered once, here, and frozen for the build: this block joins the
+			// shared prefix every pass reads, and a workspace re-read mid-build —
+			// with workers already writing into it — would move the prefix under
+			// passes still in flight.
+			Terrain: plan.RenderTerrain(terrainRoot, compiled.Goal),
+			// Where the finished thing has to appear. The two facts this surface
+			// actually holds are whether the person gave the run their own
+			// directory and whether the ask names a file in it; together they are
+			// the delivery gate's own question, asked before the work rather than
+			// after it.
+			FileShaped:   fileShapedAsk(terrainRoot, compiled.Goal),
 			SpineSamples: settings.SpineSamples,
 			// One level deeper than the one-shot default: chat projects are
 			// where visible fan-out is the product, and the compiler now
 			// names the parts for the planner to expand.
-			MaxDepth:   settings.MaxDepth + 1,
+			MaxDepth: settings.MaxDepth + 1,
+			// One level of it is decided here, and the rest at the claim.
+			//
+			// The build has the least information it will ever have — nothing
+			// has run, so every division past the first is decided against the
+			// titles of work that does not exist yet — and it spends four
+			// serial call-rounds per level while the person waits for the first
+			// leaf to start. One level is what a graph needs to be wide enough
+			// to dispatch; every level after it is worth more later, asked of
+			// one claimed node against dependencies that have actually landed.
+			// The ceiling above is unchanged: this is the same depth, decided
+			// by whoever knows most at the time.
+			BuildDepth: 1,
 			NodeBudget: settings.NodeBudget,
 			Briefs:     true,
 			Progress:   progress,
@@ -2982,13 +3457,44 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// bind, size, audit, expansion, briefs, contracts — are journaled here
 		// by hand. It is the largest single structuring cost in the system and
 		// it was the one the rail never saw.
-		journalPlanSpend(history, planClient, graph.Usage, contractUsage)
+		journalPlanSpend(history, plans, planClient, prefix, graph.Usage, contractUsage)
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
 			return store.Subtree{}, err
 		}
 		plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
+		journalScaleGate(history, prefix, compiled, structure, store.ScaleRoutePlanned, len(subtree.Nodes))
 		return subtree, nil
+	}
+}
+
+// journalScaleGate records how a job got its shape, in the same breath as the
+// splice that gave it one.
+//
+// The gate above is the single biggest determinant of whether a run has any
+// parallelism — everything the compiler did not read as project scale becomes
+// exactly one leaf, with no planner and no fan-out — and until this existed it
+// left nothing behind. A run that came out serial and a run that came out wide
+// were distinguishable afterwards only by their nodes, so "why did this have no
+// parallelism?" could be answered only by running it again, which does not
+// answer it: the reading that decided it is a model's and does not repeat.
+//
+// It changes nothing. No caller reads it back, no branch turns on it, and a
+// write that fails is a note in the log — the diagnosis is worth a row and never
+// worth a job.
+func journalScaleGate(history *store.Store, prefix string, compiled resident.Compiled, structure, route string, leaves int) {
+	if history == nil {
+		return
+	}
+	if err := history.RecordScaleGate(prefix, store.ScaleGate{
+		Goal:      firstLine(compiled.Goal),
+		Structure: structure,
+		Scale:     compiled.Scale,
+		Route:     route,
+		Leaves:    leaves,
+		Parts:     len(trimmedParts(compiled.Parts)),
+	}); err != nil {
+		log.Printf("note: could not journal the shape of %s: %v", prefix, err)
 	}
 }
 
@@ -3019,8 +3525,30 @@ func taskContract(ctx context.Context, settings config.Config, planClient *liveC
 	if err != nil {
 		log.Printf("note: could not write the working method: %v", err)
 	}
-	journalPlanSpend(history, planClient, usage)
+	journalPlanSpend(history, nil, planClient, "", usage)
 	return strings.TrimSpace(graph.Nodes[0].Contract)
+}
+
+// recordOnNode writes one line to a piece of work's own record and never to the
+// conversation (13.18's three-class law, and the noise this surface was caught
+// posting on 2026-08-11).
+//
+// Everything this surface has to say while a job runs is the SAME class of
+// thing: a ruler verdict, a split that queued more pieces, a note one worker
+// left for its siblings, the files a failed leaf managed to write. None of them
+// is a commitment, a delivery or a question — they are the machinery narrating
+// itself, and a reader who wants them opens the room. They were all reaching the
+// thread for one reason: the message carried a session id beside its node, and
+// every conversation read takes the whole session.
+//
+// It is one function rather than five call sites so the law is impossible to
+// forget at the next one: writing to a node's record is a different call from
+// speaking, and the compiler is where that distinction should live.
+func recordOnNode(graph *store.Store, nodeID, body string, role store.Role) {
+	if graph == nil || strings.TrimSpace(nodeID) == "" || strings.TrimSpace(body) == "" {
+		return
+	}
+	_, _ = thread.Record(graph, store.Message{Role: role, NodeID: nodeID, Body: body})
 }
 
 // jobNoteMark is the structural marker for a job-board note: written by code,
@@ -3133,15 +3661,19 @@ const replanNodeBudget = 12
 // whose misses are worth buying recall against — and a "verify"-flavoured
 // remainder goal reads exactly like panel work to the judge), and adds at
 // most replanNodeBudget nodes.
-func replanRemainder(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store) resident.OverrunPlanFunc {
+func replanRemainder(settings config.Config, planClient, workClient *liveClient, plans *jobPlans, history *store.Store, terrainRoot string) resident.OverrunPlanFunc {
 	return func(ctx context.Context, goal, prefix string) (store.Subtree, error) {
 		workingModel, workingClient := workClient.Snapshot()
 		_, structuring := planClient.Snapshot()
 		anchor, _ := resident.PlanAnchorFromContext(ctx)
 		progress := chatPlanProgress(history, anchor)
-		// terrain wiring lands here (world-grounded-planning handoff)
 		graph, err := plan.Build(settings.Context(ctx, goal), structuring, goal, plan.Options{
-			Recall:       recallHits(history, goal, groundRecallLimit),
+			Recall: recallHits(history, goal, groundRecallLimit),
+			// A remainder is planned against a workspace a worker has already been
+			// writing in, which is the case where this is worth the most: the
+			// replan can see what the exhausted leaf actually left behind.
+			Terrain:      plan.RenderTerrain(terrainRoot, goal),
+			FileShaped:   fileShapedAsk(terrainRoot, goal),
 			SpineSamples: settings.SpineSamples,
 			MaxDepth:     0,
 			NodeBudget:   min(settings.NodeBudget, replanNodeBudget),
@@ -3168,7 +3700,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 		if err != nil {
 			log.Printf("note: could not write repair contracts: %v", err)
 		}
-		journalPlanSpend(history, planClient, graph.Usage, contractUsage)
+		journalPlanSpend(history, plans, planClient, prefix, graph.Usage, contractUsage)
 		subtree, err := resident.SubtreeFromPlan(graph, prefix)
 		if err != nil {
 			return store.Subtree{}, err
@@ -3250,6 +3782,24 @@ func jobIDOf(graph *store.Store, node store.Node) string {
 			return node.ID
 		}
 		current = parent
+	}
+	// A repair is the same shape one layer in. A gate that rejects a delivery,
+	// or a leaf that runs out of budget, grows the job a round — and a round of
+	// a top-level job is minted as a top-level node, because the delivery law
+	// says only a root's completion is announced. So the repair stands BESIDE
+	// the job it continues, exactly as a correction does, and would otherwise
+	// open a brand-new empty directory: measured, one repair of a twelve-part
+	// job reported "the workspace is empty ... the trace log holds no profile
+	// content" while all twelve profiles sat in the job's own folder next door.
+	//
+	// The lineage is read off the id rather than the graph for the reason
+	// OverrunLineage exists: the "-x" arithmetic is the id law and has exactly
+	// one owner. Two identities, two readers, one answer.
+	if base, round := resident.OverrunLineage(current.ID); round > 0 && base != current.ID {
+		if origin, ok, err := graph.Node(base); err == nil && ok {
+			return jobIDOf(graph, origin)
+		}
+		return base
 	}
 	// A correction revises a delivered thing, and the files it must see live
 	// in the predecessor's workspace. The store's splice rail refuses a closed

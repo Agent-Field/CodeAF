@@ -253,7 +253,7 @@ func draftTokens(value []rune) []draftToken {
 
 // -- chips ---------------------------------------------------------------------
 
-// attachRows draws the held attachments as chips under the draft (5.11's
+// attachRows draws the held attachments as chips above the draft (5.11's
 // grammar, in the shape hint.go already uses for the dispatch chip).
 //
 // A composer with no [Options.Attach] can hold nothing and draws nothing, which

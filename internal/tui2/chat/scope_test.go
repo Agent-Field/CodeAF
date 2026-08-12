@@ -45,7 +45,7 @@ func planBoard() *boardBackend {
 				CreatedSeq: 14},
 		},
 		edges: []store.Edge{{From: "job-1/h2", To: "job-1/keycutter", Kind: store.Blocks}},
-		usage: map[string]store.JobUsage{"job-1": {Cost: 8.65}},
+		usage: map[string]store.JobUsage{"job-1": {Runs: 1, Cost: 8.65}},
 		sessions: []store.Session{
 			{ID: testSession, Title: "the wisp parity push"},
 		},
@@ -173,7 +173,8 @@ func TestATreeRowCarriesItsClockAndNeverAnInventedNumber(t *testing.T) {
 }
 
 // The waits-on structure is what the task scope exists to make visible (5.15),
-// and the room says it in words: `⚑ KeyCutter` / `waits on H2`.
+// and the tree says it in words: `⚑ KeyCutter` / `waits: H2` (§3's spelling,
+// and v1's).
 func TestTheEnteredRoomDrawsTheWaitsOnEdgeInWords(t *testing.T) {
 	app := planApp(t)
 	enterTask(t, app)
@@ -183,15 +184,43 @@ func TestTheEnteredRoomDrawsTheWaitsOnEdgeInWords(t *testing.T) {
 		t.Fatalf("the blocked row does not name what it waits on: %+v", blocked.WaitsOn)
 	}
 	frame := ansi.Strip(app.Frame(120, 30))
-	if !strings.Contains(frame, "waits on H2") {
+	if !strings.Contains(frame, "waits: H2") {
 		t.Fatalf("the room drew no waits-on line:\n%s", frame)
 	}
 }
 
-// 5.9's progressive disclosure, on the HOME card: collapsed is three lines, and
-// the FOCUSED card expands IN PLACE into plan progress and per-worker rows.
-// Full depth is still one room away — the card never becomes the room.
-func TestAFocusedCardExpandsInPlaceAndCollapsesWhenTheCursorLeaves(t *testing.T) {
+// §3: inside a job the sidebar is a PLAN, drawn as a connector tree. The indent
+// is the branch — `├─` while a level still has rows below it, `╰─`/`└─` on the
+// last of them, `│` running down beside a branch that is not finished — so
+// H2Probe reads as H2's worker rather than as a row that happens to sit two
+// columns further right.
+func TestTheSidebarDrawsTheJobAsAConnectorTree(t *testing.T) {
+	app := planApp(t)
+	enterTask(t, app)
+
+	frame := ansi.Strip(app.Frame(120, 30))
+	for _, want := range []string{
+		tokens.GlyphTreeBranch + tokens.GlyphTreeDash + " ",
+		tokens.GlyphTreeLast + tokens.GlyphTreeDash + " ",
+		tokens.GlyphTreeVert,
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("the tree drew no %q:\n%s", want, frame)
+		}
+	}
+	// The worker hangs off its step, which is what the guide column says.
+	if !strings.Contains(frame, tokens.GlyphTreeVert+"  "+
+		tokens.GlyphTreeLast+tokens.GlyphTreeDash+" ") {
+		t.Fatalf("the nested worker is not drawn under its step:\n%s", frame)
+	}
+}
+
+// §14 on the HOME card: what a job says about its own shape is a CENSUS of its
+// parts, on line 3, whether the cursor is on it or not — and never a fraction,
+// a headcount, or the word `atomic`. The per-worker rows are full depth and stay
+// one room away, because a preview that grew by a row per worker would push the
+// cards around it into the fold (rail's detail reserve).
+func TestACardSaysItsShapeAsACensusAndNeverAsAFraction(t *testing.T) {
 	app := planApp(t)
 	press(app, "ctrl+o")
 	press(app, "4")
@@ -200,32 +229,143 @@ func TestAFocusedCardExpandsInPlaceAndCollapsesWhenTheCursorLeaves(t *testing.T)
 	}
 
 	card := app.railModel.Selected()
-	if done, total := rail.StepProgress(card.Steps); done != 1 || total != 3 {
-		t.Fatalf("the card's plan progress is %d/%d, want 1/3", done, total)
+	// Four parts, counted by their own statuses: XhrSyn done, H2 and KeyCutter
+	// queued, H2Probe running. The lit reading H2's ROW draws (idea 15) does not
+	// move the census — a pending step with a running worker under it is one
+	// queued part and one running part, which is two facts.
+	want := rail.StateCounts{Queued: 2, Running: 1, Done: 1}
+	if card.Meta.Counts != want {
+		t.Fatalf("the card's census is %+v, want %+v", card.Meta.Counts, want)
 	}
-	// The leaves, live work first: the two that are still moving, then history.
+	// The leaves the source still gathers, live work first: the two that are
+	// still moving, then history. They are the room's tree, not the card's.
 	if got := rowNamesOf(card.Workers); len(got) != 3 ||
 		got[0] != "H2Probe" || got[1] != "KeyCutter" || got[2] != "XhrSyn" {
 		t.Fatalf("the card expands into %q", got)
 	}
 
 	focused := ansi.Strip(app.Frame(120, 30))
-	if !strings.Contains(focused, "1/3") {
-		t.Fatalf("the focused card drew no plan progress:\n%s", focused)
+	census := "1" + tokens.GlyphWorking + " 2" + tokens.GlyphQueued + " 1" + tokens.GlyphSettled
+	if !strings.Contains(focused, census) {
+		t.Fatalf("the card drew no census (%q):\n%s", census, focused)
 	}
-	if !strings.Contains(focused, "H2Probe") {
-		t.Fatalf("the focused card drew no worker rows:\n%s", focused)
+	if strings.Contains(focused, "H2Probe") {
+		t.Fatalf("the preview drew a worker row; that is the room's job:\n%s", focused)
 	}
 
-	// Move off it: the card goes back to being three lines.
+	// Move off it: the census is a fact about the job and not about the cursor,
+	// so it stays. What must never appear either way is the machinery talking.
 	press(app, "up")
 	collapsed := ansi.Strip(app.Frame(120, 30))
-	if strings.Contains(collapsed, "H2Probe") {
-		t.Fatalf("an unfocused card kept its worker rows:\n%s", collapsed)
+	if !strings.Contains(collapsed, census) {
+		t.Fatalf("an unfocused card dropped its census:\n%s", collapsed)
 	}
-	if !strings.Contains(collapsed, "wisp-parity") {
-		t.Fatalf("the card itself went missing:\n%s", collapsed)
+	for _, banned := range []string{"1/3", "1/4", "atomic", "workers", "4 parts"} {
+		if strings.Contains(collapsed, banned) {
+			t.Fatalf("the rail said %q:\n%s", banned, collapsed)
+		}
 	}
+
+	// And the depth the preview refused is one keystroke away: the room draws
+	// the workers as its tree.
+	press(app, "down")
+	press(app, "enter")
+	room := ansi.Strip(app.Frame(120, 30))
+	if !strings.Contains(room, "H2Probe") {
+		t.Fatalf("the room the card opens drew no worker rows:\n%s", room)
+	}
+}
+
+// §13 at the seam: every tree row carries its own money and its own clock, and
+// a row that stands for a subtree carries the ROLLUP.
+//
+// The store is the real one, because the ledger's index is the store's own and a
+// fake cannot build one — which is the right constraint here anyway: what this
+// test is evidence about is the read reaching the row, not a shape this file
+// made up. The job is spliced with two parts, one of them billed twice and the
+// other not billed at all, so all three answers are on screen at once:
+//
+//	measured leaf     → its own dollars
+//	unmeasured leaf   → NOTHING, not $0.00 and not a dash
+//	the job's surface → the sum under it, which is neither part's figure
+func TestEveryPartOfAnEnteredJobCarriesItsOwnReceipt(t *testing.T) {
+	graph := openJournal(t)
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "wisp-parity", Stage: 2},
+		{ID: "job/h2", Parent: "job", Brief: "H2", Stage: 1},
+		{ID: "job/keycutter", Parent: "job", Brief: "KeyCutter", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: testSession,
+		Intent: "wisp-parity"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, cost := range []float64{0.25, 0.12} {
+		if err := graph.RecordUsage(store.NodeUsage{NodeID: "job/h2", Cost: cost}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	source := newScopeSource(graph, testSession, fixedNow)
+	if source.receipts == nil {
+		t.Fatal("the store did not present itself as a Receipts backend")
+	}
+	// A job nobody has entered draws its parts with no money on them: the ledger
+	// is one read per ROOM ENTERED, not one per job on the board.
+	source.refresh(1, true)
+	if row := scopeRow(t, source, "job", "H2"); row.Meta.HasCost {
+		t.Fatalf("an un-entered job paid for a per-part read: %+v", row.Meta)
+	}
+
+	// Entering it is what buys the ledger, through the same door the subtree
+	// read already came in by.
+	nodes, err := graph.SubtreeNodes("job")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.rememberSubtree("job", nodes)
+	source.refresh(2, true)
+
+	billed := scopeRow(t, source, "job", "H2")
+	if !billed.Meta.HasCost || billed.Meta.Cost != 0.37 {
+		t.Fatalf("the billed part's money is %v (has=%v), want $0.37",
+			billed.Meta.Cost, billed.Meta.HasCost)
+	}
+	// ABSENT IS NOT ZERO (8.2.20). A part the journal has never billed carries
+	// no money cell at all — a rail with no room to explain itself draws nothing
+	// rather than a figure that reads as free.
+	if quiet := scopeRow(t, source, "job", "KeyCutter"); quiet.Meta.HasCost {
+		t.Fatalf("an unbilled part claimed to have cost $%v", quiet.Meta.Cost)
+	}
+	// And the surface row — the job collapsed into one line — carries the sum of
+	// its branch, which is what a collapsed parent is for.
+	surface := scopeRow(t, source, "job", "wisp-parity")
+	if !surface.Meta.HasCost || surface.Meta.Cost != 0.37 {
+		t.Fatalf("the job's own line is %v (has=%v), want the $0.37 under it",
+			surface.Meta.Cost, surface.Meta.HasCost)
+	}
+	if !strings.Contains(tokens.Money(billed.Meta.Cost), "$0.37") {
+		t.Fatalf("the money rung rendered %q", tokens.Money(billed.Meta.Cost))
+	}
+}
+
+// scopeRow is one named row of a job's scope, read through the same door the
+// rail reads it through.
+func scopeRow(t *testing.T, source *scopeSource, root, name string) rail.Row {
+	t.Helper()
+	scope, ok := source.Scope(rowTaskPrefix + root)
+	if !ok {
+		t.Fatalf("no scope for %q", root)
+	}
+	for _, row := range scope.Rows {
+		if row.Name == name {
+			return row
+		}
+	}
+	names := make([]string, 0, len(scope.Rows))
+	for _, row := range scope.Rows {
+		names = append(names, row.Name)
+	}
+	t.Fatalf("no row named %q in %q", name, names)
+	return rail.Row{}
 }
 
 // 13.8 finding 4: the rail and the head disagreed about what is running on one

@@ -262,6 +262,9 @@ func (p prose) tableLine(dst []string, row [][]fragment, widths []int, pad strin
 
 // tableRule is the hairline under the header, drawn per column so the seam
 // shows where the columns are without a frame around them.
+//
+// DELIBERATELY NOT [blocks.Ruled]: this is not one rule with a word in it, it is
+// one rule PER COLUMN with gaps between them, and the gaps are the information.
 func tableRule(widths []int) string {
 	var out strings.Builder
 	for c, w := range widths {

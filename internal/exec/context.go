@@ -17,8 +17,28 @@ const (
 	// window: when a model's context really is small, the honest answer is a
 	// small window, and clamping it upwards would size a prompt past what the
 	// model accepts in order to look generous.
-	observationBudget    = 24 << 10
-	maxObservationBudget = 256 << 10
+	observationBudget = 24 << 10
+
+	// maxObservationBudget caps the window every long-context model would
+	// otherwise be handed in full, and the cap is a cost decision rather than a
+	// memory one.
+	//
+	// It was 256KB, which is what the formula returns for any model with more
+	// than about 600k tokens of context — i.e. for every model the product
+	// actually runs on. The window is re-sent on every turn and every one of
+	// those tokens is billed against the leaf's spend ceiling, which did not
+	// move when the window did: measured on one task, a leaf's first call came
+	// back at 152k prompt tokens against a 150k ceiling, so it crossed its
+	// wrap-up threshold before doing any work and had to be extended three
+	// times to finish. Four turns of memory is not memory.
+	//
+	// 64KB is a quarter of the per-turn cost and keeps the whole of what the
+	// larger window was for: the 26KB subject that motivated the change fits
+	// two and a half times over, and everything past the window is spilled to
+	// the workspace and re-readable rather than lost. What it removes is the
+	// case nobody asked for — a quarter of a megabyte of stale tool output
+	// riding every turn of a leaf that read one file.
+	maxObservationBudget = 64 << 10
 
 	// minObservationBudget is arithmetic protection rather than policy. Below
 	// it the fixed floor and the completion reserve have already eaten the

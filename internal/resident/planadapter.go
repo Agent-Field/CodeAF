@@ -5,6 +5,7 @@
 package resident
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -143,6 +144,12 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 			// the eight the baseline ruler would have cut it into, and the name
 			// of who it is for has to arrive with it or the cut was for nothing.
 			Subharness: strings.TrimSpace(node.Subharness),
+			// The task object travels with the node it was authored for. Brief
+			// above is still the instruction a person would recognise and still
+			// what the executor reads; this is the same work stated once as an
+			// object, so the criterion survives everything that happens to the
+			// node afterwards — including being re-aimed at a different worker.
+			Spec: EncodeSpec(node.Spec),
 		}
 		if node.ID != rootID {
 			spec.Parent = id(rootID)
@@ -160,6 +167,39 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 		specs = append(specs, spec)
 	}
 	return store.Subtree{Nodes: specs}, nil
+}
+
+// EncodeSpec renders a task object for the store, which holds it as opaque
+// bytes. An empty spec encodes to nothing at all rather than to "{}": a node
+// with no spec must be indistinguishable from a node admitted before specs
+// existed, or the fallback path is not byte-identical and the rollback is not a
+// rollback.
+func EncodeSpec(spec plan.Spec) json.RawMessage {
+	if spec.Empty() {
+		return nil
+	}
+	encoded, err := json.Marshal(spec)
+	if err != nil {
+		// A spec is an edge, not a load-bearing wall: losing it costs the
+		// criterion and the retry inheritance, and costs the node nothing else,
+		// because Brief is still what it runs on.
+		return nil
+	}
+	return encoded
+}
+
+// DecodeSpec reads a task object back off a node. Anything unreadable is the
+// same answer as anything absent — the empty spec — which every reader handles
+// because an absent spec is what the whole system had until this wave.
+func DecodeSpec(raw json.RawMessage) plan.Spec {
+	if len(raw) == 0 {
+		return plan.Spec{}
+	}
+	var spec plan.Spec
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		return plan.Spec{}
+	}
+	return spec
 }
 
 // nodeBrief is what the job is, and only that. The working method used to be

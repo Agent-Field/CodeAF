@@ -67,9 +67,9 @@ func paritySurfaces(s *Styler) []struct{ name, line string } {
 			" what changed in navigate.rs"},
 		{"composer prompt (steer)", s.PaintGlyph(GPromptSteer, blocks.StateLive, blocks.HueAlive) +
 			" keep the branch"},
-		{"fold hint", s.Paint(s.GlyphSet().UpgradeChrome(blocks.ExpandHint(false, 12)),
+		{"fold hint", s.Paint(s.GlyphSet().UpgradeChrome(blocks.Disclose(false, 12, "line", "lines")),
 			blocks.StateChrome, blocks.HueNone)},
-		{"fold hint (expanded)", s.Paint(blocks.ExpandHint(true, 0), blocks.StateChrome, blocks.HueNone)},
+		{"fold hint (expanded)", s.Paint(blocks.Disclose(true, 0, "line", "lines"), blocks.StateChrome, blocks.HueNone)},
 		{"cut row", blocks.CutRule(blocks.EndTruncatedByCap, 44, s)},
 		{"step dots", s.Paint(strings.Join([]string{
 			s.Glyph(GStepDone), s.Glyph(GStepDone), s.Glyph(GStepRunning),
@@ -79,6 +79,13 @@ func paritySurfaces(s *Styler) []struct{ name, line string } {
 			s.Glyph(GBoosted)+" boosted"+sep+s.Glyph(GMissing), blocks.StateChrome, blocks.HueNone)},
 		{"scope breadcrumb", s.Paint(s.Glyph(GScopeUp)+" tasks"+sep+s.Glyph(GTruncated),
 			blocks.StateChrome, blocks.HueNone)},
+		// The geometry slots that a reader most often expects to have changed:
+		// the prose marks and the static overflow ellipsis. This row exists to
+		// record a NON-change — both tiers must be byte-identical here — which
+		// is the half of the tier's contract the other rows cannot show.
+		{"prose and static overflow", s.Paint(s.Glyph(GProseQuote)+" "+s.Glyph(GProseBullet)+
+			" a list item that ran out of column"+s.Glyph(GEllipsis)+"  "+
+			s.Glyph(GCodeGutter)+" fmt.Println", blocks.StateChrome, blocks.HueNone)},
 		{"settle row", s.Paint(s.Glyph(GSettled)+" done"+sep+s.Glyph(GDiffAdd)+"42"+
 			sep+s.Glyph(GDiffDel)+"7"+sep+s.Glyph(GFailed)+" one check", blocks.StateSettled, blocks.HueNone)},
 	}

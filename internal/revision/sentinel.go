@@ -41,7 +41,23 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 	if err != nil || len(operations) == 0 {
 		return 0
 	}
-	applied, notes := resident.ApplyRevision(graph, planGraph, prefix, root, operations)
+	// A node the sentinel adds after a failure is a replacement, and a
+	// replacement inherits rather than re-authors. This is the one place that
+	// distinction can be drawn — the failed node and the additions made in its
+	// name are both in hand here, and one step later the additions are store
+	// nodes with nothing to inherit from.
+	if node.Status == store.Failed {
+		if failedNode := PlanNodeFor(planGraph, prefix, node.ID); failedNode != nil {
+			RetargetAdds(planGraph, failedNode, operations)
+		}
+	}
+	// The sentinel's own client answers the growth gate's question, on the
+	// job's spend node like every other second thought this job has about
+	// itself. It is asked only after the free caps pass, and only when the job
+	// carries a criterion to be judged against.
+	applied, notes := resident.ApplyRevisionGoverned(judgeCtx,
+		resident.Growth{Reason: resident.GrowRevision, Ask: resident.SatisfierFor(client)},
+		graph, planGraph, prefix, root, operations)
 	if applied > 0 && journal != nil {
 		// The journaled structure is now behind the graph in memory. Re-writing
 		// it here rather than on every landing is the whole economy of the
@@ -50,11 +66,13 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 		journal()
 	}
 	if len(notes) > 0 {
-		_, _ = thread.Post(graph, store.Message{
-			SessionID: node.Provenance.SessionID,
-			Role:      store.RoleSystem,
-			NodeID:    node.ID,
-			Body:      "revision sentinel refusals after " + fmt.Sprintf("%q", firstLine(nodeDisplay(node))) + ":\n" + strings.Join(notes, "\n"),
+		// The record, never the conversation (13.18): a refused revision
+		// operation is the sentinel arguing with itself in the sentinel's own
+		// vocabulary, and the plan the person cares about did not move.
+		_, _ = thread.Record(graph, store.Message{
+			Role:   store.RoleSystem,
+			NodeID: node.ID,
+			Body:   "revision sentinel refusals after " + fmt.Sprintf("%q", firstLine(nodeDisplay(node))) + ":\n" + strings.Join(notes, "\n"),
 		})
 	}
 	if applied == 0 {
@@ -70,11 +88,13 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 	if len(reasons) > 0 {
 		body += "\n" + strings.Join(reasons, "\n")
 	}
-	_, _ = thread.Post(graph, store.Message{
-		SessionID: node.Provenance.SessionID,
-		Role:      store.RoleSystem,
-		NodeID:    node.ID,
-		Body:      body,
+	// How the remaining plan changed is progress, and progress lives on the
+	// job's own record where the plan it describes is drawn. The person hears
+	// about the plan when it delivers, or when they ask.
+	_, _ = thread.Record(graph, store.Message{
+		Role:   store.RoleSystem,
+		NodeID: node.ID,
+		Body:   body,
 	})
 	return applied
 }
@@ -110,7 +130,13 @@ func ForUser(ctx context.Context, settings config.Config, client plan.Completer,
 		}
 		editable = append(editable, operation)
 	}
-	applied, notes := resident.ApplyRevision(graph, planGraph, job.ID, root, editable)
+	// Ungated, and only here: the person has just said what they want, so the
+	// question "is the goal already covered" is answered by them and not by a
+	// reader of the plan. The caps and the journal still hold — a redirect can
+	// sprawl a job exactly as anything else can.
+	applied, notes := resident.ApplyRevisionGoverned(ctx,
+		resident.Growth{Reason: resident.GrowRedirect, Ungated: true},
+		graph, planGraph, job.ID, root, editable)
 	redirection.Notes = notes
 	for _, operation := range editable {
 		if !operation.Applied {

@@ -123,7 +123,14 @@ func (l *Client) recordStructuringSpend(ctx context.Context, model string, respo
 		NodeID:           SpendNode(ctx),
 		PromptTokens:     response.Usage.PromptTokens,
 		CompletionTokens: response.Usage.CompletionTokens,
-		Model:            model,
+		// The cached share was measured by the provider, carried on the
+		// response, and dropped on the floor here — so every structuring row in
+		// the journal read cached_tokens=0 whatever the prefix cache did, and
+		// the cheapest lever on a long run's bill was invisible from the one
+		// table anybody audits. The column has always existed; this is what
+		// fills it.
+		CachedTokens: response.Usage.CacheReadTokens(),
+		Model:        model,
 	}
 	if response.Usage.Cost != nil {
 		usage.Cost = *response.Usage.Cost

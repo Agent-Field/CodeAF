@@ -407,6 +407,26 @@ func (r *Reconciler) chosenSubharness(compiled Compiled) string {
 	return strings.TrimSpace(compiled.Subharness)
 }
 
+// forceWorkerOnSubtree writes the forced worker onto every node as well as onto
+// the splice, and it exists because provenance alone is not forcing.
+//
+// A node inherits the splice's worker only when it named none of its own, so a
+// provenance-only force was a force over exactly the nodes nobody had an
+// opinion about. That was invisible while the only thing anyone forced was a
+// specialist — the sizing pass's own specialist verdicts named the same worker
+// — and it is the whole story for the arm that forces the generalist: those
+// nodes name a worker, the flag did not reach them, and the run measured the
+// specialist it was told not to use.
+func (r *Reconciler) forceWorkerOnSubtree(subtree store.Subtree) store.Subtree {
+	if r == nil || r.forcedSubharness == "" {
+		return subtree
+	}
+	for index := range subtree.Nodes {
+		subtree.Nodes[index].Subharness = r.forcedSubharness
+	}
+	return subtree
+}
+
 // WithStandingWatch enables the one-time unattended-presence offer after the
 // first charter ratification. Nil preserves embedding paths with no host timer.
 func (r *Reconciler) WithStandingWatch(standing StandingWatch) *Reconciler {
@@ -971,14 +991,30 @@ func (r *Reconciler) settleCommand(command store.Command, outcome commandOutcome
 		// and validation source.
 		body = store.QuestionMessageBody(outcome.receipt, outcome.options)
 	}
-	_, err = thread.Post(r.store, store.Message{
+	message := store.Message{
 		SessionID:  command.SessionID,
 		Role:       role,
 		Body:       boundMessage(body),
 		NodeID:     receiptAnchor(command, outcome.status),
 		CommandSeq: command.Seq,
 		Options:    outcome.options,
-	})
+	}
+	// An anchored receipt goes to the record, and 13.18 is only receiptAnchor's
+	// own sentence finally being true. "Applied surgery is progress and belongs
+	// on the job's own card" was written believing a node-anchored row lived on
+	// that card; it lived on the card AND in the conversation, because every
+	// thread read takes the whole session and a node under a row does not
+	// remove it. So the anchored half now carries no session: the head said the
+	// one thread sentence this command gets, in its own voice, before the
+	// command was even journaled (headSpeaksFor), and the job's record keeps
+	// the receipt for whoever opens the room. A refusal is unanchored by
+	// receiptAnchor and still speaks — it is the one case where the head having
+	// spoken first is the wrong answer, not a duplicate one.
+	if message.NodeID != "" {
+		_, err = thread.Record(r.store, message)
+		return err
+	}
+	_, err = thread.Post(r.store, message)
 	return err
 }
 
@@ -1041,7 +1077,15 @@ func headSpeaksFor(kind store.CommandKind) bool {
 		store.CommandCharterCadence, store.CommandCharterWording, store.CommandCharterOnce,
 		store.CommandCharterFire,
 		store.CommandCharterDecline, store.CommandCharterAlways, store.CommandCharterNever,
-		store.CommandCharterProbation:
+		store.CommandCharterProbation,
+		// The verbs aimed at what has been learned join for the same reason the
+		// charter and service verbs did: the head's own craft tool answers in the
+		// same breath that it journals one, so a spoken receipt beside it would
+		// say the same thing twice. Fired from a page instead, the page is where
+		// the person is looking and the filed receipt is the record of it — and a
+		// refusal still speaks, whoever else spoke first.
+		store.CommandCraftRun, store.CommandCraftRevert, store.CommandCraftRetire,
+		store.CommandSkillRetire:
 		return true
 	default:
 		return false
@@ -1073,6 +1117,10 @@ func (r *Reconciler) applyCommand(ctx context.Context, command store.Command) (c
 		return r.setModel(command)
 	case store.CommandServiceStop, store.CommandServiceRestart, store.CommandServiceAutoRestart:
 		return r.applyServiceCommand(command)
+	case store.CommandCraftRun, store.CommandCraftRevert, store.CommandCraftRetire:
+		return r.applyCraftCommand(ctx, command)
+	case store.CommandSkillRetire:
+		return r.applySkillRetire(command)
 	case store.CommandCharterRatify, store.CommandCharterPause, store.CommandCharterRetire,
 		store.CommandCharterCadence, store.CommandCharterWording, store.CommandCharterOnce,
 		store.CommandCharterFire,
@@ -1258,6 +1306,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	}
 	subtree = anchorSubtreeWorkingDecisions(subtree, compiled.Assumptions)
 	subtree = r.wireContinuity(subtree, compiled.BuildsOn)
+	subtree = r.forceWorkerOnSubtree(subtree)
 	r.titleSubtree(ctx, &subtree, compiled)
 
 	planModel, runModel := r.splitModelSlots(compiled.WorkModel)
@@ -2083,6 +2132,13 @@ func (r *Reconciler) announceNode(event store.Event) error {
 		return nil
 	}
 
+	// The asymmetry between the two arms is deliberate and it is not the noise
+	// law slipping: an intermediate COMPLETION is progress and returns above
+	// without saying anything, while an intermediate FAILURE speaks. A leg of
+	// somebody's task dying is that task's news whether or not the leg was the
+	// task — nothing else in the product says it in time, and the room it is
+	// spoken into is the one that owns the work rather than whichever room is
+	// open (see the rooms tests either side of this).
 	_, err = thread.Post(r.store, store.Message{
 		SessionID: sessionID,
 		Role:      store.RoleSystem,
@@ -2472,6 +2528,50 @@ const (
 	redirectDistillScan = 8
 )
 
+// gateVerdictSurvived is the distiller being told that a failing gate verdict
+// has to be right before the notebook learns from it.
+//
+// A gap the gate names is a claim about the delivery, not a fact about it, and
+// the claim is sometimes simply wrong. Measured on the validation battery: one
+// job delivered twelve complete profiles in one message and the gate failed it
+// for "a series of separate messages… pointing to individual profiles written
+// to files" — not one clause of which described the text it was judging. That
+// verdict was distilled into a standing lesson within the minute and injected
+// into every leaf of the next, unrelated job. A judge that is wrong once writes
+// the notebook every later run reads, which is how one bad reading becomes a
+// permanent instruction.
+//
+// So the verdict has to be borne out by something other than itself before it
+// is allowed to teach. There are exactly two things that bear it out, and both
+// are repairs that were actually accepted:
+//
+//  1. the one polish pass closed the named gap — the gap was real enough that
+//     fixing it changed the verdict;
+//  2. a later round in the same lineage passed — the repair the gap bought was
+//     itself accepted.
+//
+// A verdict with neither is a verdict whose job nonetheless delivered and whose
+// repair, if one ran at all, was refused in turn. The deliverable stands, the
+// gap is unproven, and the distiller is shown the outcome without it. Nothing
+// is lost: if the gap is real it will fail a gate again, and the round that
+// closes it is the round that gets to say what it taught.
+func (r *Reconciler) gateVerdictSurvived(node store.Node, gate store.DeliveryGate) bool {
+	if gate.PolishClosed {
+		return true
+	}
+	if r.store == nil {
+		return false
+	}
+	// The lineage is the id namespace, so the base is asked for rather than
+	// parsed here — the "-x" law has one owner.
+	base, _ := OverrunLineage(node.ID)
+	lineage, err := r.store.DeliveryGateLineage(base)
+	if err != nil || len(lineage) < 2 {
+		return false
+	}
+	return lineage[len(lineage)-1].Pass
+}
+
 func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed bool) {
 	if r.distill == nil {
 		return
@@ -2498,7 +2598,7 @@ func (r *Reconciler) distillJob(ctx context.Context, node store.Node, failed boo
 		revealedGap = true
 		outcome += "\n\n" + redirect
 	}
-	if gate, ok, err := r.store.DeliveryGateFor(node.ID); err == nil && ok && !gate.Pass {
+	if gate, ok, err := r.store.DeliveryGateFor(node.ID); err == nil && ok && !gate.Pass && r.gateVerdictSurvived(node, gate) {
 		revealedGap = true
 		ending := "The one polish pass did not close it."
 		if gate.PolishClosed {

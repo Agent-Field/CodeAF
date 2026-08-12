@@ -1,7 +1,9 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -110,6 +112,144 @@ func TestChatSessionStartsFreshOnlyWhenAsked(t *testing.T) {
 	}
 }
 
+// The launch that made five untitled rooms. Two windows opened in a row, with
+// nothing but the journal between them, must be ONE conversation — JOURNEY's
+// law, "session resumes by default; /new starts fresh" (rail-rooms grooming
+// A2). The two launches here are two openChatWindow calls over one file, which
+// is what a relaunch is.
+func TestTwoLaunchesInARowAreOneRoom(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	first, err := openChatWindow(path, path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.graph.PostMessage(store.Message{
+		SessionID: first.session, Role: store.RoleUser, Body: "audit the billing code",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first.close()
+
+	second, err := openChatWindow(path, path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.close()
+	if second.session != first.session {
+		t.Fatalf("the second launch minted %q instead of resuming %q", second.session, first.session)
+	}
+	sessions, err := second.graph.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("two launches left %d rooms in the rail, want one", len(sessions))
+	}
+}
+
+// The room somebody switched INTO is the room they were in, and switching does
+// not journal an attach edge — only speaking does. So the resume read follows
+// the person's own words rather than the window's opening address.
+func TestALaunchResumesTheRoomTheReaderSwitchedInto(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.TouchSeen("tui", "opened-here", store.SeenAttached); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "opened-here", Role: store.RoleUser, Body: "morning",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The switch: a room opened from the rail, spoken in, and never announced
+	// with an attach edge of its own.
+	if _, err := graph.OpenSession("switched-into", "", "tui"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "switched-into", Role: store.RoleUser, Body: "and the evening's work",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	graph = reopen(t, graph, path)
+
+	resumed, err := resolveChatSession(graph, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed != "switched-into" {
+		t.Fatalf("the launch came back to %q, want the room the reader was actually in", resumed)
+	}
+}
+
+// Starting over reuses the empty room already standing. Two of them are the
+// same row printed twice, and printing it five times is the bug A2 filed.
+func TestStartingOverWalksIntoTheEmptyRoomAlreadyStanding(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = graph.Close() })
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "yesterday", Role: store.RoleUser, Body: "the billing audit",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.OpenSession("empty-room", "", "tui"); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := resolveChatSession(graph, "new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh != "empty-room" {
+		t.Fatalf("--session new resolved to %q, want the empty room already standing", fresh)
+	}
+}
+
+// The rooms that piled up before any of this existed are taken back at the next
+// launch — all but the newest empty one and the room the launch just resolved.
+func TestALaunchReapsTheRoomsThatPiledUp(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: "the-conversation", Role: store.RoleUser, Body: "audit the billing code",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"untitled-1", "untitled-2", "untitled-3", "untitled-4", "untitled-5"} {
+		if _, err := graph.OpenSession(id, "", "tui"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	window, err := openChatWindow(path, path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer window.close()
+	if window.session != "the-conversation" {
+		t.Fatalf("the launch resumed %q, want the conversation", window.session)
+	}
+	sessions, err := window.graph.Sessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("the rail still has %d rooms, want the conversation and one empty room", len(sessions))
+	}
+}
+
 // A graph nobody has ever attached to has no conversation to return to, and
 // the first launch must still get a session rather than an empty string.
 func TestChatSessionMintsOnAFreshGraph(t *testing.T) {
@@ -125,5 +265,20 @@ func TestChatSessionMintsOnAFreshGraph(t *testing.T) {
 	}
 	if first == "" {
 		t.Fatal("a fresh graph produced an empty session id")
+	}
+}
+
+// The scribe is a capability the head is HANDED, so the one place it can be
+// lost is this construction site — and losing it is invisible: every room goes
+// on working and every room goes on being called "untitled room", which is the
+// P0 this wave closed. The wiring is read here for the same reason the executor
+// lanes read theirs.
+func TestTheChatBrainHandsTheHeadTheNamingClerk(t *testing.T) {
+	raw, err := os.ReadFile("chat.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "WithRoomNaming(true)") {
+		t.Fatal("chat.go builds a head that will never name a room")
 	}
 }

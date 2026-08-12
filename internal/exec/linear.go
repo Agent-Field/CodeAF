@@ -40,6 +40,18 @@ import (
 // where the message contract already lives, as a property of the message rather
 // than a list of openings to avoid.
 //
+// The checking paragraph is the same lesson arriving from the other side. The
+// prompt asks, in three separate places, for the work to be checked — a rule
+// re-read, a suite run, a "verified" that costs evidence — and never once said
+// where the checking goes. A validation battery read the answer: leaves opened
+// on "487 words — within reasonable tolerance of 500", on "Files n3, n7, n8 are
+// empty", on "I now have comprehensive information. Let me compile the
+// deliverable". Every one of those is a leaf doing exactly what it was told and
+// then handing over the wrong half of it. So the working is given a destination
+// — the record, which already exists — and the three things that legitimately
+// cross from the checking into the delivery are named, so the paragraph reads
+// as a routing rule rather than as one more thing not to do.
+//
 // Two things it says in its own words on purpose. The opening states the worker
 // premise in the second person, to the worker — plan.workerPremise is the shared
 // fact, stated in the third person for the prompts that write *about* this
@@ -54,6 +66,18 @@ import (
 // law — plan.DeliverToNamedFile, for an ask that named its own file — is
 // rendered by outputClause, which is the one place here that knows the shape of
 // the ask.
+//
+// The produced-thing paragraph is the third clause the two documents share, and
+// it is here because without it the budget and the law were flatly
+// irreconcilable on a real run: the law demanded the whole finished thing in the
+// final message, this prompt capped that message at about three hundred words,
+// and a worker holding a 288-line script it had built and run stalled three
+// times attempting both, then transcribed the script and never mentioned the
+// output it had rendered. What was missing from both texts was that an answer is
+// not always made of sentences. It is stated unconditionally, as something the
+// worker judges about its own result, rather than switched on when a run has
+// artifacts — the system message is the shared warm prefix, and a per-run fact
+// in it is a per-run prefix. See plan.DeliverInMessage.
 const systemPrompt = `You complete one piece of work, alone, using tools.
 
 You cannot ask anyone anything and nobody will follow up with you. What you are
@@ -150,12 +174,33 @@ and a plan is what you were supposed to carry out, not what you were supposed to
 hand back. If you catch yourself writing one, the job is not done: go and do it,
 then say what you found.
 
+Your own checking is working, and working is for the record rather than for the
+delivery. The count you measured against a target, the rule you went back and
+re-read, the input that came back empty, the tolerance you decided was close
+enough — that is how the answer was reached, and it is already kept in the trace
+of what you did. Three things survive into the message and nothing else does:
+where a check changed the answer, the changed answer is what you hand over;
+where it left a real gap, one sentence names the gap; where it is the evidence
+for a claim you are making, it goes beside that claim. A verification narrated
+before the deliverable is not proof that the deliverable is good — it is the
+deliverable arriving second.
+
 If you wrote files, say which and what is in them. Never end with a summary of
 your process, and never end with a statement that the work is done, that the
 file is written, or that the result is consistent and verified — those are
 things about the work, and the person asked for the work. If they asked a
 question, the answer is in this message; if they asked for a judgement, the
 verdict is in this message, in so many words.
+
+Some answers are not made of sentences. Where you produced a thing whose form is
+a file — something that had to be built, rendered, compiled or run to exist, and
+which a message could only transcribe rather than contain — that produced thing
+is the answer. Deliver it by naming it, saying what it is and what it does, and
+giving its substance: what you ran it against, what came back, what it shows,
+and what the person should conclude. Do not retype it into the message; that is
+not delivery either, and you are never asked to choose between finishing the
+work and transcribing it. Naming a file is a pointer only when the answer was
+words and you filed them instead of saying them.
 
 Keep that final message under about 300 words. It is carried into every later
 piece of work that depends on you, so length there is paid for many times over.
@@ -305,17 +350,60 @@ type Completer interface {
 // spend all of it.
 const defaultLeafTokens = 150_000
 
-// NewLinear builds the loop. maxTurns is a runaway backstop set far above real
-// work; maxTokens is the limit that actually binds.
+// rawTokenCeilingMultiple is the leaf's second bound, written as a multiple of
+// the first. Cost bounds spend; raw bounds convergence.
+//
+// spent() weights cache reads at cachedTokenWeightPercent, and that is the
+// honest measure of what a leaf COSTS. It is not a measure of how far a leaf has
+// got. The two came apart the moment the discount landed: at the 92-98% hit
+// rates a warm run actually sees, a 150k discounted ceiling buys roughly a
+// million raw prompt tokens, about eight times the allowance the number was
+// calibrated for. The audited runs show exactly what a loop does with that —
+// single nodes at 1.4M and 1.6M prompt tokens with no per-turn prompt above
+// ~17k, i.e. nodes that melted by running very many cheap turns rather than by
+// carrying a large context. The discount was right and the number beside it
+// quietly stopped meaning anything, which is the failure defaultLeafTokens'
+// own comment predicts: set it loosely and the model will spend all of it.
+//
+// So the raw count comes back as a bound of its own, at three times the grant.
+// That still hands a genuinely cache-friendly leaf the extra room the discount
+// was meant to buy it, and it lands a 98%-cached runaway at ~450k raw tokens
+// instead of ~1.2M. It is a multiple rather than an absolute because the grant
+// is per-task, and because recalibrating defaultLeafTokens downward instead
+// would have to be redone per endpoint — the effective multiplier is the
+// provider's hit rate, which is not ours to set.
+const rawTokenCeilingMultiple = 3
+
+// maxTurnBackstop is the ceiling on iterations. It is a ceiling rather than a
+// default: whatever a caller asks for, this loop will not run more than this.
+//
+// It stood at 200, chosen when turns were understood to be the wrong meter and
+// the token ceiling was believed to be the thing that bound. That reasoning held
+// only while the token ceiling counted raw tokens; once cache reads were
+// discounted, a warm runaway could afford far more turns than any real leaf
+// needs, and 200 was the only thing left in its path — far too high to be in
+// anyone's path. The measured distribution is the calibration: a well-sized leaf
+// finishes in 8 to 16 turns (see defaultLeafTokens), the profile's own spread
+// reports identical briefs landing at 9, 16 and 25, and the longest honest leaf
+// in the audit traces ran 25. Forty sits clear of every one of those.
+//
+// It stays a backstop. On a cache-discounted runaway the raw bound above is what
+// fires first, and it fires into a landing rather than into a stop.
+const maxTurnBackstop = 40
+
+// NewLinear builds the loop. maxTokens is the limit that actually binds; maxTurns
+// is the runaway backstop, clamped to maxTurnBackstop however high a caller asks.
 //
 // Counting turns was the wrong meter. Turns are not what a loop spends — one
 // 25-turn leaf cost more than the other nine nodes of a run put together,
 // because cost tracks accumulated context rather than iteration count. Bounding
 // tokens lets a task take all the small steps it needs while still stopping one
-// that is genuinely expensive.
+// that is genuinely expensive. What the turn cap is for is the case tokens
+// cannot see: a loop whose turns have become cheap enough that no token bound
+// arrives in useful time.
 func NewLinear(client Completer, workspace *Workspace, web *Web, maxTurns, maxTokens int, deadline time.Duration) *Linear {
-	if maxTurns <= 0 {
-		maxTurns = 200
+	if maxTurns <= 0 || maxTurns > maxTurnBackstop {
+		maxTurns = maxTurnBackstop
 	}
 	if maxTokens <= 0 {
 		maxTokens = defaultLeafTokens
@@ -330,10 +418,23 @@ func NewLinear(client Completer, workspace *Workspace, web *Web, maxTurns, maxTo
 func (l *Linear) Subharness() string { return LinearSubharness }
 
 // system is the leaf's standing contract: the harness's invariants, then the
-// laws the user has switched on, then the narrowing for this assignment, then
-// the contract the planner wrote for this particular kind of job. Together they
-// are what a specialised harness would have hand-written for this domain —
+// laws the user has switched on, then the narrowing for this assignment. It is
+// what a specialised harness would have hand-written for this domain —
 // generated instead, which is what keeps the loop generic.
+//
+// What it deliberately no longer carries is the planner's per-node contract.
+//
+// The system message is the first thing in every request, ahead of the tool
+// block and the entire transcript, so it is the prefix every other leaf's
+// prefix has to agree with to be served warm. Appending a contract written for
+// one node made it the one part of the standing text that differed per node:
+// four leaves of the same job, launched at once against the same model, shared
+// nothing at all — each wrote the whole shared prefix cold and paid full price
+// for the invariants all four of them were reading verbatim. The contract moved
+// to the head of the brief, which is the first place two leaves were always
+// going to diverge anyway, and the three inputs left here are the model, the
+// operator's attribution setting and whether this is a reflex — a handful of
+// shapes across a whole run instead of one per node.
 func (l *Linear) system(task Task) string {
 	system := systemPrompt
 	if l.attribution {
@@ -341,9 +442,6 @@ func (l *Linear) system(task Task) string {
 	}
 	if task.Reflex {
 		system += reflexSystemPrompt
-	}
-	if contract := strings.TrimSpace(task.Contract); contract != "" {
-		system += "\n\nHow this particular kind of job is done well:\n" + contract
 	}
 	return system
 }
@@ -356,7 +454,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	deadline, _ := ctx.Deadline()
 	landingReserve := deadlineLandingReserve(time.Until(deadline))
 
-	tools := newToolboxWithMedia(l.workspace, task.NodeID, l.web, l.history, l.media)
+	tools := newToolboxWithMedia(l.workspace, task.leafKey(), l.web, l.history, l.media)
 	tools.share = task.Share
 	task.control.attach(tools)
 	defer func() {
@@ -383,7 +481,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			} else {
 				returned.Text = strings.TrimSpace(returned.Text) + "\n\n" + note
 			}
-			returned.Artifacts = l.workspace.Artifacts(task.NodeID)
+			returned.Artifacts = l.workspace.Artifacts(task.leafKey())
 		}
 		task.control.detach(tools, terminated)
 	}()
@@ -408,7 +506,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		}
 		return current
 	}
-	trace := newTracer(l.workspace, task.NodeID)
+	trace := newTracer(l.workspace, task.leafKey())
 	defer trace.close()
 	system := l.system(task)
 	if contract := strings.TrimSpace(task.Contract); contract != "" {
@@ -514,7 +612,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			if ctx.Err() != nil {
 				outcome.Stop = StopDeadline
 			}
-			return l.land(ctx, task, outcome, started), fmt.Errorf("node %d: %w", task.NodeID, err)
+			return l.land(ctx, task, outcome, started), fmt.Errorf("node %s: %w", task.leafKey(), err)
 		}
 		outcome.Turns++
 		addUsage(&outcome.Usage, response)
@@ -695,13 +793,26 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// every turn always execute (they are paid for), and exhaustion buys a
 		// short landing instead of a guillotine: a few reserved turns whose only
 		// job is to leave the workspace consistent, checked, and answered.
-		if spent(outcome) >= l.maxTokens && landing == 0 {
+		//
+		// Either bound ends work the same way. The cost ceiling says the leaf
+		// has spent its money; the raw ceiling says it has stopped converging on
+		// a warm prefix, which the cost ceiling cannot see. Both buy the same
+		// landing, and both record the same StopBudget, because from the leaf's
+		// side and from the reconciler's they are one fact: this node was still
+		// working when its allowance ran out.
+		if exhausted(outcome, l.maxTokens) && landing == 0 {
 			landing = landingTurns
 			landingStop = StopBudget
 			// Same reason as the deadline reserve above: the budget is spent
 			// here, whether or not the landing later has to be cut short.
 			outcome.Exhausted = StopBudget
-			trace.note("budget exhausted — landing reserve granted")
+			reached := "budget exhausted — landing reserve granted"
+			if spent(outcome) < l.maxTokens {
+				reached = fmt.Sprintf(
+					"raw token bound reached (%d of %d, cost only %d of %d) — landing reserve granted",
+					rawSpent(outcome), rawCeiling(l.maxTokens), spent(outcome), l.maxTokens)
+			}
+			trace.note(reached)
 			messages = append(messages, ai.Message{Role: "user", Content: text(
 				"The budget for this task is spent. You have a few final tool calls to land the " +
 					"work safely, and nothing more. In order: make whatever you were changing " +
@@ -731,7 +842,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// deadline the model can actually work towards. It is announced a single
 		// time rather than every turn: repeating it would cost tokens on exactly
 		// the turns that have none to spare.
-		if !warned && float64(spent(outcome))/float64(l.maxTokens) > wrapUpAt {
+		if !warned && budgetUsed(outcome, l.maxTokens) > wrapUpAt {
 			warned = true
 			messages = append(messages, ai.Message{Role: "user", Content: text(
 				"You have used most of the budget for this task. If the deliverable is not yet " +
@@ -790,7 +901,7 @@ func readSteering(task Task, messages *[]ai.Message, trace *tracer) int {
 // because there are five ways out of the loop above and a verdict that is set on
 // four of them is worse than none at all.
 func (l *Linear) land(ctx context.Context, task Task, outcome *Outcome, started time.Time) *Outcome {
-	outcome.Artifacts = l.workspace.Artifacts(task.NodeID)
+	outcome.Artifacts = l.workspace.Artifacts(task.leafKey())
 	outcome.Elapsed = time.Since(started)
 	outcome.Verdict = verdictFor(outcome)
 	provider.Report(ctx, outcome.Verdict)
@@ -886,11 +997,22 @@ func backoffWait(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-// brief assembles what the agent sees. The order matters: the goal orients it,
-// the inputs are the only upstream work it is allowed to know about, and its own
-// instruction comes last so it is the freshest thing in the prompt.
+// brief assembles what the agent sees. The order matters: the working method
+// leads because it is the standing law for this kind of job and everything
+// below is read through it, the goal orients, the inputs are the only upstream
+// work it is allowed to know about, and its own instruction comes last so it is
+// the freshest thing in the prompt.
+//
+// The method used to be appended to the system message, where it broke the one
+// property that message is worth having: being the same bytes for every leaf in
+// a run. Here it costs nothing — the brief is per-node by definition, so the
+// prefix was already going to end at the top of this message — and the law
+// still reaches the model ahead of the assignment it governs. See system.
 func (l *Linear) brief(task Task) string {
 	var block strings.Builder
+	if contract := strings.TrimSpace(task.Contract); contract != "" {
+		fmt.Fprintf(&block, "How this particular kind of job is done well:\n%s\n\n", contract)
+	}
 	if task.Goal != "" {
 		fmt.Fprintf(&block, "This work is part of a larger goal:\n%s\n\n", task.Goal)
 	}
@@ -973,8 +1095,11 @@ func outputClause(task Task) string {
 		"and the substance belongs in it. Write a separate document as well only when they asked for a "+
 		"file or when what you produced cannot be read as a message; it goes to %s, named in your final "+
 		"message beside the substance and never in place of it. A message that says where the answer "+
-		"lives instead of carrying it has delivered nothing. Work that belongs inside existing material "+
-		"goes there — never into a separate file.", task.OutputHint)
+		"lives instead of carrying it has delivered nothing. Whether or not you write that file, the "+
+		"message carries the whole answer on its own: a file is a second copy for whoever wants the "+
+		"detail, and nobody reading after you can be required to open one. If you do write it, it is "+
+		"that one address and no other — a name you invented is a file nobody will look for. Work that "+
+		"belongs inside existing material goes there — never into a separate file.", task.OutputHint)
 }
 
 // wrapUpAt is how much of the budget may be spent before the model is told to
@@ -997,8 +1122,78 @@ func deadlineLandingReserve(deadline time.Duration) time.Duration {
 	return reserve
 }
 
+// cachedTokenWeightPercent is what one re-sent cached prompt token costs
+// against the leaf's ceiling, as a percentage of a fresh one.
+//
+// The ceiling exists to bound spend. It was counting raw tokens, which is a
+// different quantity the moment a prefix cache is in play: a provider bills the
+// cached rate for the longest prefix that is byte-identical to the previous
+// call, and everything this loop does to keep that prefix stable — the frozen
+// tool block, the batched decay, the run-wide affinity key — is work done to
+// make most of every turn's prompt cheap. Charging those tokens at full weight
+// makes the ceiling bind on the transcript's SIZE rather than on its COST, so a
+// leaf whose memory grew ten-fold could no longer finish inside one budget even
+// though the money it spent barely moved.
+//
+// Ten percent is deliberately conservative against the market. Cache reads are
+// billed at 10% of the input rate by the Anthropic-family endpoints and at
+// roughly 10-25% elsewhere, so this never flatters a run: a token discounted
+// here is a token that really was cheaper, and by at least this much. It is
+// applied only to what the provider itself reported as a cache read — see
+// addUsage — so a provider that reports nothing is billed exactly as before and
+// the ceiling degrades to the raw count it always was.
+const cachedTokenWeightPercent = 10
+
+// spent is what this leaf has cost so far, in the units the ceiling is written
+// in: fresh prompt tokens at full weight, cache reads at a fraction, completion
+// tokens at full weight because nothing about them is ever cached.
 func spent(outcome *Outcome) int {
+	usage := outcome.Usage
+	cached := usage.CachedTokens
+	// A provider that reports more cache reads than prompt tokens is reporting
+	// something this arithmetic cannot use; clamping keeps the discount a
+	// discount rather than a credit.
+	if cached > usage.PromptTokens {
+		cached = usage.PromptTokens
+	}
+	if cached < 0 {
+		cached = 0
+	}
+	fresh := usage.PromptTokens - cached
+	return fresh + cached*cachedTokenWeightPercent/100 + usage.CompletionTokens
+}
+
+// rawSpent is the same leaf with no discount at all: every token the provider
+// was sent and every token it sent back, warm or cold. It is the quantity the
+// convergence bound is written in, because it is the one that tracks how much
+// work has gone past rather than how much of it was billed.
+func rawSpent(outcome *Outcome) int {
 	return outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
+}
+
+// exhausted reports whether the leaf has reached either of its bounds — the
+// cost ceiling it was granted, or the raw ceiling that is a multiple of it.
+// Both endings are the same ending: the landing reserve, not a stop.
+func exhausted(outcome *Outcome, maxTokens int) bool {
+	return spent(outcome) >= maxTokens || rawSpent(outcome) >= rawCeiling(maxTokens)
+}
+
+// rawCeiling is the grant expressed in undiscounted tokens.
+func rawCeiling(maxTokens int) int { return maxTokens * rawTokenCeilingMultiple }
+
+// budgetUsed is how far into its allowance the leaf is, read on whichever of
+// the two bounds it is closer to. The wrap-up warning is measured against this
+// rather than against cost alone, so a heavily cached leaf hears that it should
+// be landing while it still has the turns to land in.
+func budgetUsed(outcome *Outcome, maxTokens int) float64 {
+	if maxTokens <= 0 {
+		return 0
+	}
+	used := float64(spent(outcome)) / float64(maxTokens)
+	if raw := float64(rawSpent(outcome)) / float64(rawCeiling(maxTokens)); raw > used {
+		used = raw
+	}
+	return used
 }
 
 func completionOf(response *ai.Response) int {
@@ -1043,9 +1238,14 @@ func addUsage(usage *Usage, response *ai.Response) {
 	}
 	usage.PromptTokens += response.Usage.PromptTokens
 	usage.CompletionTokens += response.Usage.CompletionTokens
-	if details := response.Usage.PromptTokensDetails; details != nil {
-		usage.CachedTokens += details.CachedTokens
-	}
+	// Cache reads arrive under two different names. OpenAI-shaped endpoints nest
+	// them in prompt_tokens_details.cached_tokens; Anthropic-family endpoints —
+	// including OpenRouter when it passes the upstream body through rather than
+	// normalising it — spell them cache_read_input_tokens at the top level. This
+	// read used to see only the first, so on the second shape every leaf recorded
+	// zero cache reads however warm the prefix actually was, and the ceiling
+	// discount above would never have engaged. The SDK's accessor knows both.
+	usage.CachedTokens += response.Usage.CacheReadTokens()
 	if response.Usage.Cost != nil {
 		usage.Cost += *response.Usage.Cost
 	}

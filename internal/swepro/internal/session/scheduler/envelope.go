@@ -34,11 +34,21 @@ func gatherEnvelopeReadings(path string, reader diskEnvelopeReader) (readings []
 	if err != nil {
 		return []isolation.EnvelopeReading{}
 	}
+	free, floor, ok := float64(disk.FreeGB), float64(disk.FloorGB), disk.OK
+	// aforge-embed: D6. A healthy reading pays nothing — only a reading that is
+	// about to degrade dispatch is worth measuring the volume for, and only that
+	// reading can be wrong in the way the cap exists to fix.
+	if !ok {
+		if capped := capDiskFloorGB(path, floor); capped < floor {
+			floor = capped
+			ok = floor == 0 || free < 0 || free > floor
+		}
+	}
 	return []isolation.EnvelopeReading{{
 		Resource:   "disk",
-		OK:         disk.OK,
-		HeadroomGB: jscompat.JSNumber(disk.FreeGB),
-		FloorGB:    jscompat.JSNumber(disk.FloorGB),
+		OK:         ok,
+		HeadroomGB: jscompat.JSNumber(free),
+		FloorGB:    jscompat.JSNumber(floor),
 	}}
 }
 

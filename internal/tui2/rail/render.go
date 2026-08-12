@@ -3,6 +3,7 @@ package rail
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -87,9 +88,14 @@ const (
 	// sep is the telemetry separator (5.17) and its display width.
 	sep      = " " + tokens.GlyphSeparator + " "
 	sepWidth = 3
-	// maxCardWorkers bounds how far a focused card expands in place. A card
-	// that expands to forty rows has stopped being a card.
-	maxCardWorkers = 6
+	// previewLines bounds how far SELECTING a row expands it in place, and the
+	// rail reserves that many lines whichever row the cursor is on (see the
+	// detail reserve in [View.renderMap]). Two, because two is what a preview
+	// has to say that the collapsed row does not: a tree row's own words and
+	// the artifact it produced. A card that expands to forty rows has stopped
+	// being a card, and a card that expands at all at its neighbours' expense
+	// has stopped being a map (7.2).
+	previewLines = 2
 	// minNameWidth is the narrowest a name may be squeezed to before the cells
 	// competing with it start dropping instead.
 	minNameWidth = 6
@@ -104,14 +110,14 @@ const (
 // Elapsed outranks the model word because "how long has this been going" is a
 // question that gets asked of a rail every few seconds and "which model" is one
 // that gets asked once a session — and 5.15's own wireframe spends a narrow
-// worker row on the clock. Context outranks the worker count because it is a
-// health signal (5.9) and a count is trivia.
+// worker row on the clock. Context outranks the census because it is a health
+// signal (5.9) and a census is a shape the branches already draw (§3).
 const (
 	prioMoney   = 100
 	prioElapsed = 80
 	prioModel   = 70
 	prioContext = 60
-	prioWorkers = 50
+	prioCounts  = 50
 )
 
 // View renders a [Model]. It owns the buffers a repaint needs, so a rail that
@@ -130,7 +136,7 @@ type View struct {
 
 	fold    folder
 	heights []int
-	shape   []rowShape
+	guides  []treeGuide
 
 	hudRows   []int
 	hudStates []blocks.ItemState
@@ -139,6 +145,10 @@ type View struct {
 	meta  [5]metaCell
 	rule  string
 	ruleW int
+
+	// drift is how far the model's rows have aged since they were measured,
+	// latched once per render. See [View.telemetry].
+	drift time.Duration
 
 	// lead is the glyph the surface row carries when it has absorbed the scope
 	// header (see renderMap). It is render-scoped state, set immediately before
@@ -207,6 +217,10 @@ func (v *View) Render(m *Model, mode Mode, width, height int) []string {
 	if m == nil || width <= 0 || height <= 0 {
 		return v.lines
 	}
+	// The drift is latched ONCE per render, so every row in a frame ages by the
+	// same amount and two cards that started together stay together (8.1.3's
+	// phase lock, said for a number instead of a glyph).
+	v.drift = m.Drift()
 	if mode == ModeAuto {
 		mode = ModeFor(width)
 	}
@@ -299,6 +313,76 @@ func (v *View) renderMap(m *Model, width, height int) {
 		}
 	}
 
+	// THE DETAIL RESERVE (7.2, and the half of 8.1.7 the fold cannot state).
+	//
+	// A selected card expands in place (5.9), and for as long as the fold
+	// measured it AT that expanded height, the cursor decided how many other
+	// rows fit: resting the pointer on a card pushed its neighbours — the very
+	// cards the reader was reaching for — down into `… 7 more`. 7.2's "cards
+	// never re-sort themselves while visible" was kept to the letter (nothing
+	// re-sorted) and broken in spirit, because a row that MOVES OR VANISHES
+	// because the cursor paused above it is the same betrayal as a row that
+	// re-sorts, and it is worse under a pointer: the target moves out from under
+	// the click that was aimed at it.
+	//
+	// So the fold budgets every row at its COLLAPSED height, and the expansion
+	// is paid out of a reserve that is the same size wherever the cursor is:
+	// [previewLines] at most, and no more than the deepest preview this scope
+	// actually has, so a scope with nothing to preview pays nothing. What the
+	// reserve buys is exactly the invariant: which rows are on screen, in what
+	// order, at what height, does not depend on the selection — only the
+	// previewed card's own lines appear, directly beneath it.
+	members := rows[1:]
+	// THE PLAN IS A TREE, AND ONLY INSIDE A JOB (§3). A scope the reader has
+	// descended into is a plan, and its members are drawn with v1's connector
+	// grammar; the home rail is a list of jobs, rooms and doors that have no
+	// parentage to draw. The guides are measured over EVERY member, not over the
+	// ones that survive the fold, so a last child that folded away cannot turn
+	// its sibling's ├ into a ╰ and redraw a branch that is still there.
+	v.sizeGuides(members, m.Depth() > 0)
+	head := len(v.lines) + v.shapeOf(rows[0], false, 0).height()
+	detail, budget, hair := previewLines, 0, false
+	if len(members) > 0 {
+		total, deepest := v.sizeMembers(members)
+		if p := v.previewOf(rows[0]); p > deepest {
+			// Row 0 expands too, and its lines land ABOVE the members — so the
+			// reserve has to cover the surface or a selected row 0 would push
+			// the whole list down into the same fold.
+			deepest = p
+		}
+		// The hairline is the room boundary (5.13), and it is worth a row only
+		// when there are at least two left for the members it separates — one
+		// for a row and one for the fold line that accounts for the rest. It is
+		// decided from the collapsed head for the same reason as everything
+		// else here: a rule that appeared and disappeared with the cursor would
+		// move every member row by one.
+		if head+2 < height {
+			hair, head = true, head+1
+		}
+		budget = height - head
+		detail = deepest
+		switch {
+		case total <= budget:
+			// Slack. The preview spends lines no row wanted, costs nothing, and
+			// nothing folds that was not folding already.
+			if slack := budget - total; detail > slack {
+				detail = slack
+			}
+		default:
+			// The list is folding anyway, so the reserve is paid in rows. It may
+			// never take the last row or the fold line that accounts for the
+			// rest — at that size the map's job is to say where the cursor is
+			// and how much is off screen, and a preview outranks neither.
+			if room := budget - 2; detail > room {
+				detail = room
+			}
+		}
+		if detail < 0 {
+			detail = 0
+		}
+		budget -= detail
+	}
+
 	// Row 0 is the conversational surface and is never folded away: a scope you
 	// cannot speak into is not a scope (5.15).
 	if merged {
@@ -306,28 +390,21 @@ func (v *View) renderMap(m *Model, width, height int) {
 	}
 	v.mark = 0
 	v.hovered = v.hover == 0 && sel != 0
-	v.appendRow(rows[0], sel == 0, width, height, band, banded, ident)
+	v.appendRow(rows[0], sel == 0, width, height, detail, band, banded, ident, treeGuide{})
 	v.hovered = false
 	v.lead = ""
 	v.mark = markChrome
 
-	members := rows[1:]
 	if len(members) == 0 {
 		return
 	}
-	// The hairline is the room boundary (5.13), and it is worth a row only
-	// when there are at least two left for the members it separates — one for
-	// a row and one for the fold line that accounts for the rest.
-	if len(v.lines)+2 < height {
+	if hair {
 		v.push(v.hairline(width), height)
 	}
-
-	budget := height - len(v.lines)
 	if budget <= 0 {
 		return
 	}
 
-	v.sizeMembers(members, sel-1)
 	p := v.fold.fit(members, v.heights, budget, sel-1, scope.Live())
 	if p.atTop && p.fold != "" {
 		v.push(v.foldLine(p.fold, width), height)
@@ -349,7 +426,7 @@ func (v *View) renderMap(m *Model, width, height int) {
 		// The band already says which row the cursor is on, so a selected row
 		// is never also drawn as hovered: one target, one statement.
 		v.hovered = v.hover == v.mark && sel != i+1
-		v.appendRow(r, sel == i+1, width, height, band, banded, rowIdent)
+		v.appendRow(r, sel == i+1, width, height, detail, band, banded, rowIdent, v.guides[i])
 		v.hovered = false
 		v.mark = markChrome
 	}
@@ -371,18 +448,77 @@ func surfaceRepeatsScope(s Scope) bool {
 	return title != "" && title == strings.TrimSpace(s.Rows[0].Name)
 }
 
-// sizeMembers measures every member so the fold can budget in lines.
-func (v *View) sizeMembers(members []Row, sel int) {
+// sizeMembers measures every member so the fold can budget in lines, and
+// reports the total and the deepest preview any one of them would open.
+//
+// The heights are COLLAPSED heights — the height every row has when nobody is
+// looking at it — and that is the whole of the fix the detail reserve is the
+// other half of: a fold fed the selected row's expanded height is a fold the
+// cursor is steering.
+func (v *View) sizeMembers(members []Row) (total, preview int) {
 	if cap(v.heights) < len(members) {
 		v.heights = make([]int, len(members))
-		v.shape = make([]rowShape, len(members))
 	}
 	v.heights = v.heights[:len(members)]
-	v.shape = v.shape[:len(members)]
 	for i := range members {
-		v.shape[i] = v.shapeOf(members[i], i == sel)
-		v.heights[i] = v.shape[i].height()
+		collapsed := v.shapeOf(members[i], false, 0).height()
+		v.heights[i] = collapsed
+		total += collapsed
+		if p := v.shapeOf(members[i], true, previewLines).height() - collapsed; p > preview {
+			preview = p
+		}
 	}
+	return total, preview
+}
+
+// sizeGuides works out every member's connector from the DEPTHS ALONE, in one
+// backwards pass, and it is the whole of what the rail needs to know about the
+// plan's shape.
+//
+// The reading is the one a tree drawn in display order allows: a row is the last
+// child at its depth when no row of that same depth follows it before something
+// shallower does, and an ancestor's guide continues past a row exactly when that
+// ancestor has a later sibling. Walking backwards answers both at once — the
+// state carried is "have I seen a row at this depth yet", and a row at depth d
+// cuts off everything deeper, because those rows were its own children.
+//
+// It never asks the source. The alternative — a Row field saying "I am the last
+// one" — would be a fact about a row's NEIGHBOURS stored on the row, and a
+// refresh that dropped a sibling would leave a ╰ above three more branches.
+func (v *View) sizeGuides(members []Row, tree bool) {
+	if cap(v.guides) < len(members) {
+		v.guides = make([]treeGuide, len(members))
+	}
+	v.guides = v.guides[:len(members)]
+	var seen [maxIndentDepth + 1]bool
+	for i := len(members) - 1; i >= 0; i-- {
+		depth := clamp(members[i].Depth, 0, maxIndentDepth)
+		g := treeGuide{last: !seen[depth]}
+		// A tree row is what wears a connector. A card that found its way into
+		// a job scope keeps a card's plain indent rather than claiming a place
+		// in a plan it is not part of.
+		switch members[i].Kind {
+		case RowStep, RowWorker:
+			g.on = tree
+		}
+		for k := 0; k < depth; k++ {
+			if seen[k] {
+				g.open |= 1 << uint(k)
+			}
+		}
+		v.guides[i] = g
+		seen[depth] = true
+		for k := depth + 1; k <= maxIndentDepth; k++ {
+			seen[k] = false
+		}
+	}
+}
+
+// previewOf is how many lines SELECTING a row would add to it: the difference
+// between its two shapes, which is the only definition of "the preview" that
+// cannot drift from what [View.appendRow] actually draws.
+func (v *View) previewOf(r Row) int {
+	return v.shapeOf(r, true, previewLines).height() - v.shapeOf(r, false, 0).height()
 }
 
 // renderHUD draws the bounded sticky summary (8.2.8). It is a different object
@@ -468,7 +604,7 @@ func (v *View) hudLine(r Row, width int, ident tokens.Token) string {
 	l.add(att.Glyph(), v.glyphToken(r, ident))
 	l.add(" ", tokens.TextTertiary)
 
-	right := v.rightCell(r.Meta)
+	right := v.rightCell(v.telemetry(r))
 	rightW := blocks.Width(right)
 	nameRoom := l.max - l.w - rightW
 	if rightW > 0 {
@@ -491,6 +627,23 @@ func (v *View) hudLine(r Row, width int, ident tokens.Token) string {
 		l.add(right, tokens.TextTertiary)
 	}
 	return v.emit(width, false, tokens.Ground)
+}
+
+// telemetry is one row's numbers AT THIS FRAME: what the snapshot measured,
+// with a live row's clock aged forward to now.
+//
+// ONLY A LIVE ROW AGES. A settled card's elapsed is a finished measurement and
+// adding to it would invent time nobody spent (8.2.20); a queued row has not
+// started, and [Attention.Live] already refuses to call it live for exactly
+// that reason. So the one cell that moves on this surface is the one cell that
+// is genuinely still running.
+func (v *View) telemetry(r Row) Telemetry {
+	t := r.Meta
+	if v.drift <= 0 || !t.HasElapsed || !r.Attention().Live() {
+		return t
+	}
+	t.Elapsed += v.drift
+	return t
 }
 
 // rightCell is the HUD's flush-right pair: money then elapsed, both width
@@ -650,8 +803,18 @@ func (v *View) glyphToken(r Row, ident tokens.Token) tokens.Token {
 // identityOr is the identity token when there is one and a fallback when the
 // row has no seed — a scope with no identity (home) paints no pastel rather
 // than borrowing wheel entry zero.
+//
+// The PROFILE can withhold it too, and that is the second gate: below 256
+// colours the eight pastels collapse onto six chromatic slots, so
+// [tokens.Profile.IdentityDistinct] is false and the 5.16 promise — no two
+// adjacent cards share a hue — cannot be kept. A lying identity is worse than
+// none (5.20): two different rooms painted the same colour is the affordance
+// lying in the one cell built to answer "which room am I in". The fallback is
+// what the row would have worn had it never had an identity, which is the
+// honest thing to say when the terminal cannot carry one. It is the same call
+// [palette.list.markerToken] makes for the same cell.
 func (v *View) identityOr(ident, fallback tokens.Token) tokens.Token {
-	if ident < tokens.Identity0 || ident > tokens.Identity7 {
+	if ident < tokens.Identity0 || ident > tokens.Identity7 || !v.profile.IdentityDistinct() {
 		return fallback
 	}
 	return ident

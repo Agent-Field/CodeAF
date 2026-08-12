@@ -25,8 +25,10 @@ func typeText(p *Picker, s string) {
 	}
 }
 
-func clickAt(y int) (tea.MouseMsg, image.Point) {
-	return tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: y}, image.Pt(0, y)
+func clickAt(y int) (tea.MouseMsg, image.Point) { return clickAtXY(0, y) }
+
+func clickAtXY(x, y int) (tea.MouseMsg, image.Point) {
+	return tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y}, image.Pt(x, y)
 }
 
 func wheelAt(button tea.MouseButton) (tea.MouseMsg, image.Point) {

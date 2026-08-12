@@ -46,7 +46,7 @@ type planProgressPoster struct {
 	timers  map[string]*time.Timer
 	// posted remembers the last line each phase produced: a planning pass that
 	// re-announces the same state (retries, re-polls) must not repeat itself
-	// into the thread.
+	// into the record.
 	posted map[string]string
 }
 
@@ -66,7 +66,7 @@ func chatPlanProgress(history *store.Store, anchor resident.PlanAnchor) plan.Pro
 //
 // A compile's phases and a leaf's stages are the same kind of fact — where a
 // long thing has got to — and they have the same right answer: one replaceable
-// row per phase, throttled, anchored to the job rather than posted into the
+// row per phase, throttled, written to the job's record rather than said in the
 // conversation. Reusing the poster rather than writing a second one is what
 // keeps them looking the same on the surface, which is the whole of "one
 // mouth". It answers nil when there is nothing to post to, and Task.Progress is
@@ -164,6 +164,17 @@ func (p *planProgressPoster) stopTimer(stage string) {
 	}
 }
 
+// post writes one phase line to the job's record.
+//
+// This is 13.18's loudest producer, measured: thirty of the forty-three
+// messages under the reporter's largest job were `setting working standards ·
+// N of 4`, and five consecutive copies were the first screen of a fresh task
+// room. None of them is a commitment, a delivery or a question — a compile
+// phase is where a long thing has got to, which is the RECORD's sentence, and
+// the head has already said the one thread sentence this work gets ("on it —
+// splitting this four ways"). So it goes through thread.Record: the room still
+// draws every phase in order, the conversation and the head's own prompt window
+// never see one again.
 func (p *planProgressPoster) post(update plan.ProgressUpdate) {
 	line := planProgressLine(update)
 	p.ensureMaps()
@@ -171,10 +182,9 @@ func (p *planProgressPoster) post(update plan.ProgressUpdate) {
 		return
 	}
 	p.posted[update.Phase] = line
-	_, _ = thread.Post(p.history, store.Message{
-		SessionID:  p.anchor.SessionID,
+	_, _ = thread.Record(p.history, store.Message{
 		Role:       store.RoleSystem,
-		Body:       planProgressLine(update),
+		Body:       line,
 		NodeID:     p.anchor.NodeID,
 		CommandSeq: p.anchor.CommandSeq,
 		Progress: &store.MessageProgress{

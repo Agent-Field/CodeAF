@@ -92,6 +92,9 @@ type Shell struct {
 
 	scopeOpen   bool
 	overlayOpen bool
+	// railHidden is §6's `sidebar: hidden`, asked for by the surface rather than
+	// by the width. See [mode.RailHidden] and [Shell.SetRailHidden].
+	railHidden bool
 	// composerGrow is the extra rows the composer region has asked for, so its
 	// inline completions have somewhere to be (GrowComposer).
 	composerGrow int
@@ -194,6 +197,28 @@ func (s *Shell) SetOverlay(open bool) {
 
 // OverlayOpen reports whether the overlay plane is raised.
 func (s *Shell) OverlayOpen() bool { return s.overlayOpen }
+
+// SetRailHidden takes the rail off the frame, or puts it back.
+//
+// It is §6's `sidebar: hidden` as a door rather than as a setting, because the
+// surface above has one state where the sidebar is not a choice: a lens already
+// showing the same list of jobs at page altitude. The columns go back to the
+// lens rather than to a blank margin — hiding a pane and leaving its rectangle
+// reserved would be the surface paying for a sidebar it decided not to draw.
+//
+// It is deliberately NOT SetPane(LayerRail, nil): a nil pane keeps its slot and
+// draws the skeleton's placeholder in it, which is a rail-shaped hole rather
+// than a full-width page.
+func (s *Shell) SetRailHidden(hidden bool) {
+	if s.railHidden == hidden {
+		return
+	}
+	s.railHidden = hidden
+	s.relayout()
+}
+
+// RailHidden reports whether the rail has been taken off the frame.
+func (s *Shell) RailHidden() bool { return s.railHidden }
 
 // GrowComposer asks the composer region for extra rows, on top of the metric
 // table's own, and reports nothing — the frame simply gets taller there and
@@ -487,6 +512,31 @@ func (s *Shell) View() tea.View {
 	// The cursor belongs to the composer, and there is no composer yet. Nil is
 	// a hidden cursor, which is also what linear mode wants (10.1.5).
 	v.Cursor = nil
+	if !s.linear {
+		for _, sl := range s.layout.Slots {
+			if sl.ID != LayerComposer {
+				continue
+			}
+			p, ok := s.panes[LayerComposer].(interface {
+				CaretAt(width, height int) (int, int, bool)
+			})
+			if !ok {
+				break
+			}
+			if x, y, on := p.CaretAt(sl.Rect.Dx(), sl.Rect.Dy()); on {
+				// §8/§11's third motion: a blinking block on the caret. Bubble
+				// Tea writes the DECSCUSR and restores the terminal's default
+				// on quit, suspend and its panic teardown — which raw bytes
+				// could not promise.
+				v.Cursor = &tea.Cursor{
+					Position: tea.Position{X: sl.Rect.Min.X + x, Y: sl.Rect.Min.Y + y},
+					Shape:    tea.CursorBlock,
+					Blink:    true,
+				}
+			}
+			break
+		}
+	}
 
 	// The title carries the attention count and nothing else (7.2). It is
 	// declared rather than written: Bubble Tea's renderer compares it with the
@@ -557,6 +607,7 @@ func (s *Shell) relayout() {
 	s.layout = solveInto(s.layout.Slots, s.width, s.height, metrics, mode{
 		Linear:      s.linear,
 		ScopeOpen:   s.scopeOpen,
+		RailHidden:  s.railHidden,
 		OverlayOpen: s.overlayOpen,
 	})
 	s.comp.setLayout(s.layout)
@@ -623,6 +674,18 @@ func (s *Shell) mouse(msg tea.MouseMsg) tea.Cmd {
 		// one cursor, and the pointer resting somewhere is not it.
 		s.hover(id, local, ok)
 		return nil
+	}
+	// A floating dialog is modal by Z ORDER, which covers the cells it draws
+	// and nothing else. §16's OVERLAY DISMISSAL wants the rest of the frame
+	// too: a click outside the panel closes the overlay and must not also do
+	// whatever it landed on. The boundary is what knows where "outside" begins
+	// (internal/tui2/dialogchrome), so the click is handed THERE rather than
+	// answered here — the shell routes, the ring decides.
+	if _, isClick := msg.(tea.MouseClickMsg); isClick && s.overlayOpen &&
+		id != LayerOverlay && id != LayerDialogChrome {
+		if rect, sited := s.comp.rect(LayerDialogChrome); sited {
+			id, local, ok = LayerDialogChrome, image.Pt(pos.X, pos.Y).Sub(rect.Min), true
+		}
 	}
 	if !ok {
 		return nil

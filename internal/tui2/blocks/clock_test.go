@@ -88,7 +88,7 @@ func TestCalmFreezesEverything(t *testing.T) {
 	c := NewClock(0)
 	c.Latch(base)
 	c.Calm = true
-	if c.Frame(4) != 0 || c.Glyph() != Spinner[0] {
+	if c.Frame(len(Spinner)) != 0 || c.Glyph() != Spinner[0] {
 		t.Fatal("calm did not freeze the spinner")
 	}
 	if !c.NextTick().IsZero() {
@@ -175,6 +175,42 @@ func TestPulseDwellIsEased(t *testing.T) {
 	}
 	if float64(middle) < 1.5*float64(edge) {
 		t.Fatalf("dwell barely eased: edge %d ms, middle %d ms", edge, middle)
+	}
+}
+
+// TestTheCadenceConstantsAreTheDefaults pins the zero-value fallbacks to the
+// named keyframe constants. A zero Pulse and a zero Shimmer are what a caller
+// gets when it declares one without arguing about numbers, so the defaults ARE
+// the house values or the names mean nothing.
+func TestTheCadenceConstantsAreTheDefaults(t *testing.T) {
+	if got := (Pulse{}).period(); got != DefaultPulsePeriod {
+		t.Errorf("a zero Pulse breathes in %v, want the house period %v", got, DefaultPulsePeriod)
+	}
+	if got := (Pulse{}).ease(); got != DefaultPulseEase {
+		t.Errorf("a zero Pulse eases by %v, want %v", got, DefaultPulseEase)
+	}
+	if got := (Shimmer{}).velocity(); got != DefaultShimmerVelocity {
+		t.Errorf("a zero Shimmer sweeps at %v cells/sec, want %v", got, DefaultShimmerVelocity)
+	}
+	if got := (Shimmer{}).band(); got != DefaultShimmerBand {
+		t.Errorf("a zero Shimmer's band is %d cells, want %d", got, DefaultShimmerBand)
+	}
+	if got := (&Clock{}).interval(); got != DefaultInterval {
+		t.Errorf("a zero Clock steps every %v, want the house step %v", got, DefaultInterval)
+	}
+	// The two periods this package drives must be whole numbers of steps, or a
+	// motion cannot be phase-locked to the shared clock.
+	for name, period := range map[string]time.Duration{
+		"the spinner's rotation": SpinnerPeriod,
+		"the breathe":            DefaultPulsePeriod,
+	} {
+		if period%DefaultInterval != 0 {
+			t.Errorf("%s (%v) is not a whole number of %v steps", name, period, DefaultInterval)
+		}
+	}
+	if want := time.Duration(len(Spinner)) * DefaultInterval; SpinnerPeriod != want {
+		t.Errorf("SpinnerPeriod = %v, but %d frames at %v is %v",
+			SpinnerPeriod, len(Spinner), DefaultInterval, want)
 	}
 }
 

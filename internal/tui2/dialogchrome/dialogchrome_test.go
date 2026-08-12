@@ -1,9 +1,11 @@
 package dialogchrome
 
 import (
+	"image"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
@@ -117,6 +119,154 @@ func TestNilStylerRendersPlain(t *testing.T) {
 	}
 	if got := len(rows(out)); got != 3 {
 		t.Errorf("nil styler rendered %d rows, want 3", got)
+	}
+}
+
+// -- dismissal (§16 OVERLAY DISMISSAL) ---------------------------------------
+
+// dismissable builds a rendered ring and the counter its close increments, so a
+// test asserts what the reader would see happen rather than which method ran.
+func dismissable(t *testing.T, w, h int) (*Pane, *int) {
+	t.Helper()
+	closed := 0
+	p := New(tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal))
+	p.SetDismiss(func() tea.Cmd { closed++; return nil })
+	p.Render(w, h)
+	return p, &closed
+}
+
+func leftClick(x, y int) tea.MouseClickMsg {
+	return tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y}
+}
+
+// TestAClickOutsideThePanelCloses is §16's third door: an overlay closes on a
+// click anywhere outside the panel, and the ring is what knows where outside
+// begins. Every cell of the one-cell margin is outside — the corners included,
+// which is where a reader's aim actually lands when they mean "not this".
+func TestAClickOutsideThePanelCloses(t *testing.T) {
+	const w, h = 20, 8
+	outside := []image.Point{
+		{X: 0, Y: 0}, {X: w - 1, Y: 0}, {X: 0, Y: h - 1}, {X: w - 1, Y: h - 1},
+		{X: 9, Y: 0}, {X: 9, Y: h - 1}, {X: 0, Y: 4}, {X: w - 1, Y: 4},
+	}
+	for _, at := range outside {
+		p, closed := dismissable(t, w, h)
+		p.Mouse(leftClick(at.X, at.Y), at)
+		if *closed != 1 {
+			t.Errorf("click at %v closed %d times, want 1", at, *closed)
+		}
+	}
+}
+
+// TestAClickInsideThePanelDoesNothing: the panel is the dialog, and a click on
+// the dialog belongs to the dialog. The overlay plane takes those before this
+// pane can see them, and the answer must not depend on that — a boundary that
+// dismissed on any click it was handed would close the sheet the moment the
+// shell forwarded one point too many.
+func TestAClickInsideThePanelDoesNothing(t *testing.T) {
+	const w, h = 20, 8
+	for _, at := range []image.Point{{X: 1, Y: 1}, {X: 10, Y: 4}, {X: w - 2, Y: h - 2}} {
+		p, closed := dismissable(t, w, h)
+		p.Mouse(leftClick(at.X, at.Y), at)
+		if *closed != 0 {
+			t.Errorf("click at %v inside the panel closed the dialog", at)
+		}
+	}
+}
+
+// TestTheDismissingClickIsSwallowed: nothing reaches the surface below. The
+// shell routes one click to one layer, so what this asserts is that the ring
+// hands nothing onwards that could reopen the question — a dismissal that also
+// opened a rail row would make "not this" mean "not this, and that instead".
+func TestTheDismissingClickIsSwallowed(t *testing.T) {
+	p, closed := dismissable(t, 20, 8)
+	if cmd := p.Mouse(leftClick(0, 0), image.Pt(0, 0)); cmd != nil {
+		t.Errorf("the ring returned a command of its own: %v", cmd)
+	}
+	if *closed != 1 {
+		t.Errorf("the click did not close the dialog")
+	}
+	// A wheel notch over the ring is a reader scrolling something they cannot
+	// see. It neither closes nor falls through.
+	if cmd := p.Mouse(tea.MouseWheelMsg{Button: tea.MouseWheelDown}, image.Pt(0, 0)); cmd != nil {
+		t.Errorf("a wheel notch on the ring produced %v", cmd)
+	}
+	if *closed != 1 {
+		t.Errorf("a wheel notch closed the dialog")
+	}
+}
+
+// TestOnlyTheLeftButtonDismisses: right and middle are not verbs this surface
+// has, and a dialog that vanished on a stray middle-click would be the ring
+// inventing an action nobody asked for.
+func TestOnlyTheLeftButtonDismisses(t *testing.T) {
+	for _, button := range []tea.MouseButton{tea.MouseRight, tea.MouseMiddle} {
+		p, closed := dismissable(t, 20, 8)
+		p.Mouse(tea.MouseClickMsg{Button: button}, image.Pt(0, 0))
+		if *closed != 0 {
+			t.Errorf("%v closed the dialog", button)
+		}
+	}
+}
+
+// TestTheCloseIsTheOneTheEscPathTakes is esc parity, asserted by identity
+// rather than by comparing two behaviours: the ring performs exactly the
+// function it was handed and composes nothing around it, so whatever the
+// overlay's own close does — flushing a debounced settings write, putting the
+// keyboard back — happens the same way through both doors.
+func TestTheCloseIsTheOneTheEscPathTakes(t *testing.T) {
+	type escMsg struct{ n int }
+	want := tea.Cmd(func() tea.Msg { return escMsg{n: 7} })
+	p := New(nil)
+	p.SetDismiss(func() tea.Cmd { return want })
+	p.Render(20, 8)
+	got := p.Mouse(leftClick(0, 0), image.Pt(0, 0))
+	if got == nil {
+		t.Fatal("the ring dropped the overlay's close")
+	}
+	// Comparing funcs is not allowed; comparing what they answer is.
+	if got() != (tea.Msg(escMsg{n: 7})) {
+		t.Errorf("the ring returned a command the overlay did not give it: %v", got())
+	}
+}
+
+// TestAnUnboundRingIsInert is the posture this package shipped with: a chrome
+// nobody wired absorbs its clicks and does nothing, so a lane that binds the
+// ring and forgets [Pane.SetDismiss] is no worse off than before.
+func TestAnUnboundRingIsInert(t *testing.T) {
+	p := New(nil)
+	p.Render(20, 8)
+	if cmd := p.Mouse(leftClick(0, 0), image.Pt(0, 0)); cmd != nil {
+		t.Errorf("an unbound ring answered a click with %v", cmd)
+	}
+}
+
+// TestAnUnrenderedRingHasNoPanelToProtect: a click that arrives before the
+// first frame — or after the layout dropped the slot — has no panel to be
+// inside of, and the honest answer to "not this" is still to close.
+func TestAnUnrenderedRingHasNoPanelToProtect(t *testing.T) {
+	closed := 0
+	p := New(nil)
+	p.SetDismiss(func() tea.Cmd { closed++; return nil })
+	p.Mouse(leftClick(4, 4), image.Pt(4, 4))
+	if closed != 1 {
+		t.Errorf("an unrendered ring closed %d times, want 1", closed)
+	}
+}
+
+// TestForwardedPointsFromOffTheRingAreOutside: [Pane.Mouse] answers about
+// GEOMETRY and not about which layer routed the event, which is what lets the
+// shell close the REQUESTED SEAM in the package doc by forwarding a click from
+// anywhere on the frame. A point above or left of the ring is negative in
+// pane-local coordinates and is still, plainly, not the panel.
+func TestForwardedPointsFromOffTheRingAreOutside(t *testing.T) {
+	const w, h = 20, 8
+	for _, at := range []image.Point{{X: -6, Y: -3}, {X: -1, Y: 4}, {X: w + 9, Y: h + 2}} {
+		p, closed := dismissable(t, w, h)
+		p.Mouse(leftClick(at.X, at.Y), at)
+		if *closed != 1 {
+			t.Errorf("forwarded point %v closed %d times, want 1", at, *closed)
+		}
 	}
 }
 

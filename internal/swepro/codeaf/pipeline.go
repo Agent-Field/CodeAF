@@ -106,6 +106,13 @@ type pipeline struct {
 	// an identical command against an unchanged tree.
 	verificationTimeouts map[string]timedOutEntrypoint
 
+	// baseline is the pre-run photograph of the repository's own checks: which
+	// entrypoints were already red, and which tests they already named. Every
+	// later verdict about the suite is read as a delta against it — see
+	// baseline.go. Nil means no photograph, and no photograph means the old
+	// absolute-state judgement, unchanged.
+	baseline *baselineRecord
+
 	entryAgent           string
 	rootCutLeaf          bool
 	rootCutBand          string
@@ -352,6 +359,11 @@ func (runner *pipeline) run(
 			return result, nil
 		}
 	}
+	// The last moment the workspace is still the repository as it arrived. The
+	// validity gate has already refused the goals worth refusing, so nothing
+	// pays for the photograph that was never going to run; nothing has been
+	// written yet, so the photograph is of the repository and not of the work.
+	runner.establishBaseline(ctx, options.Resume)
 	if !options.Resume {
 		runner.runConventionScout(ctx, goal)
 		runner.initialPlanBlock = runner.runPlanArbitration(ctx, goal)

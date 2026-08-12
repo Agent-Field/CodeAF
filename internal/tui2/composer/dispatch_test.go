@@ -183,7 +183,9 @@ func TestChip_ShedsTheDestinationBeforeTheChords(t *testing.T) {
 	}{
 		{60, true, true, true},
 		{26, true, true, false},
-		{10, true, false, false},
+		// 11 rather than 10: §19 spends one cell of the row on each side as the
+		// field's inner padding, so every chrome row has two fewer to shed into.
+		{11, true, false, false},
 		{4, false, false, false},
 	}
 	for _, c := range widths {

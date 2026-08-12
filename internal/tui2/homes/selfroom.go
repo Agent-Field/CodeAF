@@ -31,7 +31,7 @@ func (v *View) self(state State, rowID string, width, height int) {
 // with their counts, so the room answers "what is in here" without being
 // walked.
 func (v *View) selfBrief(state State, width, height int) {
-	if !v.heading(v.glyph(tokens.GQueued), tokens.TextTertiary, "self", width, height) {
+	if !v.sectionWord("self", width, height) {
 		return
 	}
 	if !v.prose(HomeSelf.Blurb(), tokens.TextTertiary, width, height) {
@@ -129,7 +129,7 @@ func (v *View) item(it Item, width, height int) bool {
 	}
 	l := &v.line
 	l.reset(width)
-	l.padTo(indentStep)
+	l.padTo(childEdge)
 	l.addPath(v.clean(it.Path), tokens.TextTertiary)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), height)
 }

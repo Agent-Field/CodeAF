@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -208,5 +209,95 @@ func TestEveryLeafBriefCarriesSettledTaste(t *testing.T) {
 		if !strings.Contains(brief, node.Brief) {
 			t.Fatalf("%s lost its own brief: %q", id, brief)
 		}
+	}
+}
+
+// THE PLAN'S BILL BELONGS TO THE JOB IT BUILT, and it cannot be written when it
+// is spent: the reconciler splices the task in the statement after the planner
+// returns, and store.RecordUsage refuses a node that is not there yet. So the
+// bill is offered, parked, and re-offered on the heartbeat — and what this pins
+// is that the money reaches the JOB's own figure (the number every card reads
+// through store.TopLevelJobUsage) and not the spine, where it used to land and
+// where no card can see it.
+func TestPlanSpendLandsOnTheJobItBuilt(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "planspend.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	plans := newJobPlans(graph)
+	client := adoptLiveClient(config.Config{}, "plan/slot", &billedClient{model: "plan/slot"})
+
+	// Planning happens first. The task does not exist yet.
+	journalPlanSpend(graph, plans, client, "task-7",
+		plan.Usage{Calls: 6, PromptTokens: 4000, CompletionTokens: 900, Cost: 0.40},
+		plan.Usage{Calls: 3, PromptTokens: 1000, CompletionTokens: 100, Cost: 0.10})
+	if spend, err := graph.SpendToday(); err != nil || spend != 0 {
+		t.Fatalf("an unspliced job was billed early: %v %v", spend, err)
+	}
+
+	// The splice lands, and the next heartbeat settles what was owed.
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-7", Brief: "write the report", Stage: 1},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "write the report"}); err != nil {
+		t.Fatal(err)
+	}
+	plans.settleOwedPlanSpend(graph)
+
+	jobs, err := graph.TopLevelJobUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := jobs["task-7"]
+	if job.Runs != 1 || job.Cost < 0.49 || job.Cost > 0.51 || job.PromptTokens != 5000 {
+		t.Fatalf("the job's own figure = %+v, want every planning pass on the task that bought it", job)
+	}
+	if models, err := graph.NodeModels("task-7"); err != nil || len(models) != 1 || models[0] != "plan/slot" {
+		t.Fatalf("the plan's model did not reach the job: %v %v", models, err)
+	}
+	// Settled once and not twice: a heartbeat that beats again finds nothing.
+	plans.settleOwedPlanSpend(graph)
+	if jobs, err = graph.TopLevelJobUsage(); err != nil {
+		t.Fatal(err)
+	} else if jobs["task-7"].Runs != 1 {
+		t.Fatalf("a second heartbeat billed the job again: %+v", jobs["task-7"])
+	}
+}
+
+// A PLAN THAT NEVER BECAME A JOB STILL COST MONEY. Patience runs out and the
+// spine takes it, which is where spend with no errand has always gone — the
+// day's rail is never short, whatever the shape of the failure.
+func TestPlanSpendFallsBackToTheSpineWhenTheJobNeverLands(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "orphan.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	plans := newJobPlans(graph)
+	client := adoptLiveClient(config.Config{}, "plan/slot", &billedClient{model: "plan/slot"})
+
+	journalPlanSpend(graph, plans, client, "task-9",
+		plan.Usage{Calls: 2, PromptTokens: 700, Cost: 0.25})
+	for range planSpendPatience {
+		plans.settleOwedPlanSpend(graph)
+	}
+	spend, err := graph.SpendToday()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spend < 0.24 || spend > 0.26 {
+		t.Fatalf("today's spend = %v, want the abandoned plan still on the rail", spend)
+	}
+	jobs, err := graph.TopLevelJobUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("a job that never existed acquired a bill: %+v", jobs)
+	}
+	// And it is gone: nothing is billed twice on the next beat.
+	plans.settleOwedPlanSpend(graph)
+	if spend, err := graph.SpendToday(); err != nil || spend > 0.26 {
+		t.Fatalf("the abandoned bill was paid twice: %v %v", spend, err)
 	}
 }

@@ -19,6 +19,21 @@ package plan
 // of the ask rather than of whichever prompt happens to be speaking. The two
 // constants are the law; DeliveryLaw picks between them; and the sites that
 // commission a deliverable render the one the ask calls for.
+//
+// The default shape then had to learn a second thing, from a run that did the
+// work and was failed for it. The ask named no file, so this half applied, and
+// the leaf genuinely built and ran the thing and left it in the workspace — and
+// the law as written demanded it be written out in full in a message the same
+// worker was told to keep short. It stalled three times trying to obey both,
+// shipped a transcription instead of the result, and never mentioned the
+// rendered output the person had actually asked to see. The missing fact was
+// that an answer is not always made of sentences: where the work produced the
+// thing, the produced thing is the answer and naming it is not a pointer. That
+// fact is stated inside the constant rather than switched on from outside,
+// because whether a run produced something is known only at the end of it,
+// while this text is part of a standing prompt whose bytes must not vary from
+// leaf to leaf — a per-run condition here would cost every leaf its warm prefix
+// to say something the worker can perfectly well judge for itself.
 
 // DeliverInMessage is the default shape, and it is the one that holds unless the
 // ask itself is file-shaped.
@@ -32,7 +47,17 @@ named. A message that says where the answer lives instead of carrying it has
 delivered nothing. Where there is more than the answer — the evidence, the
 detail, the reasoning behind it — that working may live in a file: the split is
 between the answer and its working, never between the answer and a pointer to
-the answer.`
+the answer.
+
+Some answers are not made of sentences. Where the work produced a thing whose
+form is a file — something that had to be built, rendered, compiled or run to
+exist, and which a message could only transcribe rather than contain — that
+produced thing is the answer, and the message delivers it by naming it, saying
+what it is and what it does, and giving its substance: what it was run against,
+what came back, what it shows, and what a reader should conclude. Retyping it
+into the message is not delivery either, and no run has to choose between
+finishing and transcribing. The demand for full text stands only where nothing
+was produced that carries the answer.`
 
 // DeliverToNamedFile is the carve-out, and it is the half nothing but the gate
 // used to know.

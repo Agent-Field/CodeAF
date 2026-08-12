@@ -94,14 +94,24 @@ func craftNodeIDs(t *testing.T, graph *store.Store, prefix string) []string {
 	return ids
 }
 
+// craftMessages is the run's RECORD, not the room's conversation.
+//
+// A stage advance — "one more round (2 of 3)", "splits into 4 parts", "taking
+// it no further" — is a workflow narrating its own machinery, which 13.18 files
+// on the record side. So the read is the whole journal, and the law is asserted
+// on the way past: nothing the craft runner writes may carry a session, because
+// a session is what makes a row conversation.
 func craftMessages(t *testing.T, graph *store.Store) string {
 	t.Helper()
-	messages, err := graph.Messages("craft", 0, 0)
+	messages, err := graph.Messages("", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var bodies []string
 	for _, message := range messages {
+		if message.Role == store.RoleSystem && message.NodeID != "" && message.SessionID != "" {
+			t.Fatalf("a craft stage advance reached the thread: %+v", message)
+		}
 		bodies = append(bodies, message.Body)
 	}
 	return strings.Join(bodies, "\n---\n")
@@ -116,7 +126,7 @@ func TestCraftFanOutUnrollsIntoRealSiblings(t *testing.T) {
 	graph := openStore(t)
 	workflow := presentationCraft()
 	runner, run := startCraftRun(t, graph, workflow)
-	if !strings.Contains(run.Receipt, "using your presentation way of doing this (v abc1234) — 4 steps") {
+	if !strings.Contains(run.Receipt, "using your presentation way of doing this — 4 steps") {
 		t.Fatalf("compile receipt = %q", run.Receipt)
 	}
 
@@ -813,15 +823,28 @@ func TestARoundNeverPromisesARepairItCannotPlant(t *testing.T) {
 	}
 }
 
-// The receipt names the version a run is actually on. A file nobody saved is
-// its own version, and saying so is the same honesty the mid-run guard is.
+// The receipt says when a run is on a file nobody saved, because that is the one
+// thing about a version a person can act on — and it says it in words. The
+// version itself is machine identity and stays off the line entirely: a commit
+// hash is unreadable, unactionable, and banned on every surface.
 func TestTheReceiptSaysWhenARunIsOnAnUnsavedFile(t *testing.T) {
 	graph := openStore(t)
 	workflow := presentationCraft()
 	workflow.Commit = "abc1234def5678+dirty-1a2b3c4d"
 	_, run := startCraftRun(t, graph, workflow)
-	if !strings.Contains(run.Receipt, "v abc1234+dirty") {
+	if !strings.Contains(run.Receipt, "an edit you haven't saved") {
 		t.Fatalf("compile receipt = %q", run.Receipt)
+	}
+	for _, hash := range []string{"abc1234", "def5678", "1a2b3c4d"} {
+		if strings.Contains(run.Receipt, hash) {
+			t.Fatalf("the receipt leaked %q: %q", hash, run.Receipt)
+		}
+	}
+	// A saved file says nothing about versions at all.
+	saved := presentationCraft()
+	_, clean := startCraftRun(t, graph, saved)
+	if strings.Contains(clean.Receipt, "edit") || strings.Contains(clean.Receipt, "abc1234") {
+		t.Fatalf("a saved run talked about its version: %q", clean.Receipt)
 	}
 }
 

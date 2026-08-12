@@ -218,14 +218,24 @@ func TestRefreshKeepsTheOrderOnScreen(t *testing.T) {
 	}
 }
 
-func TestRefreshAppendsNewRowsAtTheEndAndDropsGoneOnes(t *testing.T) {
+// TestRefreshSplicesNewRowsWhereTheSourcePutThemAndDropsGoneOnes is the
+// corrected form of a test that used to be named "AppendsNewRowsAtTheEnd".
+//
+// The name WAS the defect: appending is what put a job commissioned ten seconds
+// ago under every older job and under the collapsed homes group, and a reader
+// found it — "rail seems to be adding tasks to bottom instead of top down".
+// A row nobody has seen cannot lose its place, so the source decides where it
+// goes; §6's stability law binds only the rows already on screen, and the two
+// assertions below are exactly those two halves.
+func TestRefreshSplicesNewRowsWhereTheSourcePutThemAndDropsGoneOnes(t *testing.T) {
 	src := scene()
 	m := New(src)
 	home := src.scopes[HomeScopeID]
-	home.Rows = []Row{home.Rows[0], home.Rows[2], {ID: "new", Kind: RowTask, Name: "fresh"}, home.Rows[1]}
+	// wisp-parity retires this refresh; `fresh` arrives above data-clean.
+	home.Rows = []Row{home.Rows[0], {ID: "new", Kind: RowTask, Name: "fresh"}, home.Rows[2]}
 	src.set(home)
 	m.Refresh()
-	want := []string{"aforge", "wisp-parity", "data-clean", "fresh"}
+	want := []string{"aforge", "fresh", "data-clean"}
 	if got := names(m.Rows()); !equal(got, want) {
 		t.Fatalf("rows = %v, want %v", got, want)
 	}
@@ -312,14 +322,25 @@ func TestAttentionPrecedence(t *testing.T) {
 	}
 }
 
-func TestStepProgress(t *testing.T) {
-	steps := []Step{{Life: LifeSettled}, {Life: LifeWorking}, {Life: LifeSettled}, {Life: LifeQueued}}
-	done, total := StepProgress(steps)
-	if done != 2 || total != 4 {
-		t.Fatalf("progress = %d/%d, want 2/4", done, total)
+// The census replaces the fraction (§14), and this is the arithmetic it has to
+// get right: a total that covers every bucket, an emptiness that is the answer
+// for a job with no parts, and an Add that folds one subtree into another
+// without losing a state.
+func TestTheCensusCountsEveryStateAndIsEmptyWhenThereAreNoParts(t *testing.T) {
+	if !(StateCounts{}).Empty() {
+		t.Fatal("a job with no parts is not silent about its shape")
 	}
-	if done, total := StepProgress(nil); done != 0 || total != 0 {
-		t.Fatalf("empty progress = %d/%d", done, total)
+	counts := StateCounts{Queued: 2, Running: 1, Done: 3}
+	if counts.Total() != 6 || counts.Empty() {
+		t.Fatalf("census total = %d, empty = %v", counts.Total(), counts.Empty())
+	}
+	counts.Add(StateCounts{Running: 1, Failed: 1, Cancelled: 2})
+	want := StateCounts{Queued: 2, Running: 2, Done: 3, Failed: 1, Cancelled: 2}
+	if counts != want {
+		t.Fatalf("census = %+v, want %+v", counts, want)
+	}
+	if counts.Total() != 10 {
+		t.Fatalf("census total = %d, want 10", counts.Total())
 	}
 }
 

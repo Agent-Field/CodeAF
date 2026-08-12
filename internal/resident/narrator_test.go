@@ -82,9 +82,17 @@ func TestNarratorSpeaksBatchedProgressCasually(t *testing.T) {
 		t.Fatalf("narration context wrong: %+v", seen[0])
 	}
 
-	messages, err := s.Messages("s1", 0, 0)
-	if err != nil {
+	// The line lands on the job's record and nowhere else (13.18). Progress is
+	// the one thing the three-class law keeps out of a conversation, so the
+	// room read finds it and the session read must not.
+	if spoken, err := s.Messages("s1", 0, 0); err != nil {
 		t.Fatalf("messages: %v", err)
+	} else if len(spoken) != 0 {
+		t.Fatalf("narration reached the thread: %+v", spoken)
+	}
+	messages, err := s.NodeMessages("goal", 0, 0)
+	if err != nil {
+		t.Fatalf("node messages: %v", err)
 	}
 	var narrated *store.Message
 	for i := range messages {
@@ -93,8 +101,8 @@ func TestNarratorSpeaksBatchedProgressCasually(t *testing.T) {
 		}
 	}
 	if narrated == nil || narrated.Body != "City A is in — city B is close behind." ||
-		narrated.NodeID != "goal" {
-		t.Fatalf("narration not posted as the agent voice: %+v", messages)
+		narrated.SessionID != "" {
+		t.Fatalf("narration not filed as the agent voice on the record: %+v", messages)
 	}
 }
 
@@ -303,9 +311,9 @@ func TestNarratorKeepsMilestonesThroughAFailedPost(t *testing.T) {
 		t.Fatalf("the retry lost the milestone the failed call was carrying: %+v", seen[1])
 	}
 
-	messages, err := s.Messages("s1", 0, 0)
+	messages, err := s.NodeMessages("goal", 0, 0)
 	if err != nil {
-		t.Fatalf("messages: %v", err)
+		t.Fatalf("node messages: %v", err)
 	}
 	var posted int
 	for _, message := range messages {

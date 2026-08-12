@@ -7,10 +7,21 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// glyphWorkspace marks a [SegmentWorkspace] leg (5.19's `⌂`). See doc.go's
-// "A glyph tokens does not carry yet" for why this is a local constant
-// instead of a tokens.Glyph*.
-const glyphWorkspace = "⌂"
+// glyphWorkspace marks a [SegmentWorkspace] leg under the styler's repertoire
+// tier (12.7): [tokens.GlyphHome] plain, nf-fa-home under a patched font. Both
+// sides are one cell, so [fit]'s arithmetic is the same either way.
+//
+// doc.go used to say tokens did not carry this glyph and that the local
+// constant was the honest way to draw it. Tokens carries it now, as the GHome
+// SLOT, and a slot is the thing worth reaching for: the local constant could
+// only ever draw the floor, so the place line was the one surface that stayed
+// plain when a user turned the tier on.
+func (m *Model) glyphWorkspace() string {
+	if m.styler == nil {
+		return tokens.Plain.Glyph(tokens.GHome)
+	}
+	return m.styler.Glyph(tokens.GHome)
+}
 
 // SegmentKind says what kind of leg a [Segment] is, which decides both its
 // glyph and whether it is fish-abbreviated. See doc.go.
@@ -112,11 +123,53 @@ func (m *Model) CopyText() string {
 // Render draws the line at width cells. It is a pure function of the ground
 // and the focus state: never more than one row, never wider than width, and
 // never a panic — down to width=1 and an empty ground alike.
+//
+// It opens at the lens's left edge ([tokens.LensIndent]) rather than at column
+// 0: the ground is one of the room's surfaces, and a room has one left edge
+// (5.13's spacing rhythm). The indent comes out of the fitting width, never out
+// of the terminal's — an indent added without paying for it is an overflow one
+// breakpoint later.
 func (m *Model) Render(width int) string {
 	if width <= 0 || len(m.segments) == 0 {
 		return ""
 	}
-	return m.paint(fit(m.labels(), width))
+	pad, inner := indentAt(width)
+	return pad + m.paint(fit(m.labels(), inner))
+}
+
+// Text is the ground as PLAIN words, fitted to width, with no left edge and no
+// paint on it: the abbreviated form this component has always drawn, handed to
+// a surface that wants to place it somewhere else and ink it itself.
+//
+// It exists because the chat hug stopped stacking the place line as a row of
+// its own (§7 folds the directory into the bottom bar's right zone, beside the
+// model word and the day's spend), and a footer cell cannot be built out of
+// [Model.Render]: that method pads to the lens edge and paints, and a caller
+// measuring a painted string is measuring its escape sequences. The FITTING is
+// the part worth sharing — fish abbreviation, tilde folding, legs dropped from
+// the left under the overflow mark — because that is the grammar 5.19 spent and
+// a second spelling of it in the footer would be the same rule drifting apart.
+//
+// An empty ground returns "", which is §16's EMPTINESS: a surface with nothing
+// to say about where it stands says nothing, rather than saying so at length.
+func (m *Model) Text(width int) string {
+	if width <= 0 || len(m.segments) == 0 {
+		return ""
+	}
+	return fit(m.labels(), width)
+}
+
+// lensPad is the left edge written as cells.
+var lensPad = strings.Repeat(" ", tokens.LensIndent)
+
+// indentAt is the edge this row can afford and the width left over for the
+// path. A terminal too narrow to hold the gutter AND a leg gives the gutter up:
+// two cells of rhythm are not worth the last two cells of a ground.
+func indentAt(width int) (pad string, inner int) {
+	if width <= tokens.LensIndent {
+		return "", width
+	}
+	return lensPad, width - tokens.LensIndent
 }
 
 // labels renders each segment's own display text — root fish-abbreviated
@@ -134,7 +187,7 @@ func (m *Model) labels() []string {
 			}
 			out[i] = text
 		case SegmentWorkspace:
-			out[i] = glyphWorkspace + " " + seg.Path
+			out[i] = m.glyphWorkspace() + " " + seg.Path
 		default: // SegmentRegion
 			out[i] = seg.Path
 		}
@@ -153,10 +206,11 @@ const (
 	// lineSep joins legs. Cell width 3: space, the telemetry separator, space.
 	lineSep = " " + tokens.GlyphSeparator + " "
 	// overflowMark stands in for legs dropped off the left under width
-	// pressure. Plain "…", never [tokens.GlyphTruncated]: nothing here is
-	// clickable, and that glyph means "click for more" everywhere else it
-	// appears.
-	overflowMark = "…"
+	// pressure. It is [tokens.GlyphEllipsis] and never [tokens.GlyphTruncated]:
+	// nothing here is clickable, and that glyph means "click for more"
+	// everywhere else it appears. Both marks are slots in one table now, so the
+	// distinction is the vocabulary's to keep rather than this file's.
+	overflowMark = tokens.GlyphEllipsis
 )
 
 // fit finds the widest suffix of labels (dropping legs from the LEFT — the

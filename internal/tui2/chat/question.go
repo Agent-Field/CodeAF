@@ -184,9 +184,15 @@ func (b *messageBlock) optionRow(number int, key, label string) segment {
 		hue: blocks.HueAttention, state: blocks.StateSettled,
 		indent: bodyIndent + optionIndent,
 	}
-	if b.chosen == number {
-		row.text = tokens.GlyphAccentRail + " " + label
-	}
+	// THE MARK GOES IN THE GUTTER AND THE WORDS DO NOT MOVE (§20).
+	//
+	// It used to be prepended to the row's TEXT, which pushed the selected
+	// option's label from column 6 to column 8 — so walking the cursor down a
+	// list made every label it touched jump two cells sideways, and the one row
+	// a reader was looking at was the one row out of the grid. §20 puts a
+	// selection rail in cols 0–1 with the rest of the chrome, which is where the
+	// board has always drawn the same mark for the same reason.
+	row.rail = b.chosen == number
 	return row
 }
 
@@ -217,6 +223,11 @@ func (b *messageBlock) optionAtLine(line, width int) (int, bool) {
 	if blocks.CutRule(b.end, width, b.styler()) != "" {
 		trailing++
 	}
+	// A card's dress closes with one grounded blank INSIDE its plane (§16's
+	// padding rhythm), which is one more row between the last option and the end
+	// of the block. The count is arithmetic on the block's own shape, so it has
+	// to know the shape it is on.
+	trailing += b.cardPad()
 	last := rows - trailing
 	first := last - drawn
 	if line < first || line >= last {
@@ -266,7 +277,11 @@ func (b *messageBlock) SetChosen(number int) bool {
 // optionIndent sets the options one step under the marker row that introduced
 // them (5.13's two-space rhythm), so a question with options reads as one group
 // rather than as four unrelated reference rows.
-const optionIndent = 2
+//
+// The number is §20's own step ([blocks.IndentStep]) rather than a `2` this file
+// chose, for the reason the law was written: four surfaces had each picked their
+// own, and a question's options are a level of descent like any other.
+const optionIndent = blocks.IndentStep
 
 // optionLabel is what one option row says: the label, and its hint behind the
 // telemetry separator when the producer wrote one. The Value is machine-facing
@@ -350,12 +365,19 @@ func leadsWith(option store.QuestionOption, words ...string) bool {
 	return false
 }
 
+// emDash is the dash a sentence hangs off, taken from the vocabulary rather
+// than spelled here: tokens.GlyphMissing is the same rune, and one spelling per
+// rune is the whole of §16's glyph discipline even where the rune is being READ
+// rather than drawn.
+var emDash = []rune(tokens.GlyphMissing)[0]
+
 // leadWord is the first word of a field, lowercased and stripped of the
 // punctuation a sentence hangs off it.
 func leadWord(field string) string {
 	field = strings.ToLower(strings.TrimSpace(field))
 	for i, r := range field {
-		if r == ' ' || r == ',' || r == ';' || r == ':' || r == '.' || r == '!' || r == '—' || r == '-' {
+		if r == ' ' || r == ',' || r == ';' || r == ':' || r == '.' || r == '!' ||
+			r == emDash || r == '-' {
 			return field[:i]
 		}
 	}

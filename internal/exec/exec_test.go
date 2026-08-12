@@ -26,7 +26,7 @@ func workspace(t *testing.T) *Workspace {
 }
 
 func TestRecallToolIsStoreGatedAndBounded(t *testing.T) {
-	plain := NewToolbox(workspace(t), 1, nil)
+	plain := NewToolbox(workspace(t), "1", nil)
 	if definitions := plain.Definitions(); len(definitions) != 5 || definitions[1].Function.Name != "job" {
 		t.Fatalf("plain toolbox definitions = %+v, want five universal tools including job", definitions)
 	}
@@ -64,7 +64,7 @@ func TestRecallToolIsStoreGatedAndBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tools := NewToolboxWithStore(workspace(t), 2, nil, history)
+	tools := NewToolboxWithStore(workspace(t), "2", nil, history)
 	definitions := tools.Definitions()
 	if len(definitions) != 6 || definitions[5].Function.Name != "recall" ||
 		!strings.Contains(definitions[5].Function.Description, "map") ||
@@ -102,7 +102,7 @@ func TestShPrependsSkillPathOnlyWithStore(t *testing.T) {
 	}
 	command := `{"cmd":"printf '%s' \"$PATH\""}`
 
-	plain := NewToolbox(workspace(t), 1, nil)
+	plain := NewToolbox(workspace(t), "1", nil)
 	plainResult := plain.Execute(context.Background(), "sh", command)
 	if plainResult.IsError {
 		t.Fatalf("plain sh: %s", plainResult.Content)
@@ -116,7 +116,7 @@ func TestShPrependsSkillPathOnlyWithStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = history.Close() })
-	attached := NewToolboxWithStore(workspace(t), 2, nil, history)
+	attached := NewToolboxWithStore(workspace(t), "2", nil, history)
 	attachedResult := attached.Execute(context.Background(), "sh", command)
 	if attachedResult.IsError {
 		t.Fatalf("store-attached sh: %s", attachedResult.Content)
@@ -141,7 +141,7 @@ func TestRecallSurfacesActiveSkillKind(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tools := NewToolboxWithStore(workspace(t), 2, nil, history)
+	tools := NewToolboxWithStore(workspace(t), "2", nil, history)
 	result := tools.Execute(context.Background(), "recall", `{"terms":"repo audit invariants"}`)
 	if result.IsError {
 		t.Fatalf("recall failed: %s", result.Content)
@@ -185,7 +185,7 @@ func TestClampKeepsBothEnds(t *testing.T) {
 // path or a failing command has to come back as something the model can read
 // and correct; returning a Go error instead throws away every turn before it.
 func TestToolFailuresAreResults(t *testing.T) {
-	tools := NewToolbox(workspace(t), 1, nil)
+	tools := NewToolbox(workspace(t), "1", nil)
 	ctx := context.Background()
 
 	cases := []struct{ name, tool, args, want string }{
@@ -213,7 +213,7 @@ func TestToolFailuresAreResults(t *testing.T) {
 // exits, and CombinedOutput blocks until the child does — past every deadline,
 // silently. The tool must return shortly after the command itself finishes.
 func TestShDoesNotHangOnBackgroundChildren(t *testing.T) {
-	tools := NewToolbox(workspace(t), 1, nil)
+	tools := NewToolbox(workspace(t), "1", nil)
 	started := time.Now()
 	// The child outlives the ceiling by a wide margin on any host: returning
 	// inside the bound can only mean sh did not wait for it. The gap is what
@@ -239,7 +239,7 @@ func TestEditRefusesAmbiguousMatch(t *testing.T) {
 	if err := os.WriteFile(path, []byte("alpha\nalpha\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tools := NewToolbox(space, 1, nil)
+	tools := NewToolbox(space, "1", nil)
 
 	result := tools.Execute(context.Background(), "edit", `{"path":"doc.md","old":"alpha","new":"beta"}`)
 	if !result.IsError || !strings.Contains(result.Content, "appears 2 times") {
@@ -256,16 +256,16 @@ func TestEditRefusesAmbiguousMatch(t *testing.T) {
 // whole text.
 func TestWriteRecordsArtifact(t *testing.T) {
 	space := workspace(t)
-	tools := NewToolbox(space, 7, nil)
+	tools := NewToolbox(space, "7", nil)
 
 	result := tools.Execute(context.Background(), "write", `{"path":"report.md","text":"body"}`)
 	if result.IsError {
 		t.Fatalf("write failed: %s", result.Content)
 	}
-	if got := space.Artifacts(7); len(got) != 1 || got[0] != "report.md" {
+	if got := space.Artifacts("7"); len(got) != 1 || got[0] != "report.md" {
 		t.Errorf("artifacts = %v, want [report.md]", got)
 	}
-	if got := space.Artifacts(8); len(got) != 0 {
+	if got := space.Artifacts("8"); len(got) != 0 {
 		t.Errorf("artifact leaked to another node: %v", got)
 	}
 }
@@ -290,12 +290,12 @@ func TestSizeResolvesThroughSymlinkedRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWorkspace: %v", err)
 	}
-	tools := NewToolbox(space, 3, nil)
+	tools := NewToolbox(space, "3", nil)
 	if result := tools.Execute(context.Background(), "write", `{"path":"report.md","text":"body"}`); result.IsError {
 		t.Fatalf("write failed: %s", result.Content)
 	}
 
-	recorded := space.Artifacts(3)
+	recorded := space.Artifacts("3")
 	if len(recorded) != 1 {
 		t.Fatalf("artifacts = %v, want one entry", recorded)
 	}

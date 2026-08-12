@@ -31,7 +31,7 @@ func runExecute(args []string) error {
 	workspace := flags.String("w", "", "workspace directory (default ./aforge-run-<goal hash>)")
 	output := flags.String("o", "", "write the completed graph as JSON to this file")
 	concurrency := flags.Int("j", 32, "how many leaves may run at once")
-	maxTurns := flags.Int("turns", 200, "runaway backstop on iterations per leaf")
+	maxTurns := flags.Int("turns", 40, "runaway backstop on iterations per leaf (clamped to the executor's own backstop)")
 	maxTokens := flags.Int("budget", 150000, "token budget per leaf — the limit that actually binds")
 	runBudget := flags.Int("run-budget", 0, "global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)")
 	contracts := flags.Bool("contracts", true, "write a per-leaf working method before executing")
@@ -75,6 +75,16 @@ func runExecute(args []string) error {
 	// The ruler stays keyed to the work model even when a different model
 	// plans: the anchors measure the executor.
 	installMeasuredRulers(settings.ProfileDir, settings.Model)
+	ctx := settings.Context(context.Background(), graph.Goal)
+	// Discovery starts before the clients are built, because an adapter reads
+	// the catalog to decide which knobs a model will accept. It is started, not
+	// waited for: every question it answers here is asked later than the first
+	// frame of work, and the adapter treats a catalog that has not landed as one
+	// more way of not knowing.
+	modelCatalog := catalog.LoadLazy(ctx, catalog.Options{
+		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+	})
+	settings.Models = modelCatalog
 	client, err := settings.Client()
 	if err != nil {
 		return err
@@ -87,10 +97,6 @@ func runExecute(args []string) error {
 		return err
 	}
 	defer closePlanner()
-	ctx := settings.Context(context.Background(), graph.Goal)
-	modelCatalog := catalog.Load(ctx, catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
-	})
 	mediaClient, err := settings.MediaClient()
 	if err != nil {
 		return err

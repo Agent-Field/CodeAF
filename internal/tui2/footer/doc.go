@@ -1,74 +1,86 @@
-// Package footer is the contextual footer of chat-rebuild 5.22 rule 4: one
-// dim line under the composer showing the 2-3 most relevant verbs for the
-// current focus, rendered FROM [registry] entries — never a hand-rolled verb
-// list — plus the small set of other things 10.5.22-10.5.26 and 5.20 rule 6
-// put on the same row.
+// Package footer is the contextual line: the ONE row under the composer, in
+// the three zones design-law-v2 §7 gives it.
 //
-// # What lives here versus what does not
+//	▐ chat ▌  work  notebook   interrupt esc · 12s · $0.03   ~/a/v2 · ▂ 3% of 262K · $0.31 today
+//	▐ chat ▌  work  notebook   ‹ … ‹ Higher-order… · answer 1—3          ~/a/v2 · $0.31 today
 //
-// 10.5.23 (health vs cost split) draws a hard line this package holds to:
-// system health and pending questions live here; this-turn cost and context
-// live on the composer's own meta strip. Nothing here duplicates that data.
+// # The three zones
 //
-// # The columns
+//	LEFT   PLACES — `chat  work  notebook` as clickable words, the one you are
+//	       in wearing a filled pill (`▐ chat ▌`: a raised chip ground with
+//	       half-block caps, so the ends read as rounded without a border being
+//	       drawn) and the rest bare and dim. This is the homes door, moved off
+//	       the sidebar and into the hug. It renders from [FocusContext.Places],
+//	       which the host supplies, so nothing about what a place contains is
+//	       known here. THE TABS ARE PERMANENT: they do not yield to the trail,
+//	       and see [FocusContext.ScopeTail] for the reader-reported reason.
+//	       Profiles with no trustworthy raised ground draw no pill and mark the
+//	       current word by tier alone.
 //
-// This package's fitting pass runs on [tokens.FitFooter] and [tokens.FooterColumn]
-// directly — the priority-drop mechanic 10.5.22 asks for ("a registry of
-// columns that drop lowest-priority-first... it shortens, never wraps")
-// already lives in tokens, seeded from the exact same law, and
-// re-implementing it here would be two copies of one rule drifting apart.
-// What this package adds is the CONTENT: up to eight candidate columns, each
-// present only when it has something to say, with real content-measured
-// widths handed to [tokens.FitFooter] fresh every frame (unlike
-// [tokens.FooterColumnOrder]'s static table, a column's width here is
-// whatever its actual text costs, not an authored estimate) —
+//	MIDDLE ONLY WHAT IS TRUE RIGHT NOW: the breadcrumb when the reader is
+//	       inside something (`‹ … ‹ Higher-order…`, eliding ancestors first —
+//	       scope.go), `interrupt esc` while a turn is streaming with that
+//	       turn's own elapsed and cost beside it, `answer 1—3` while a question
+//	       is open, a coral sentence when the last send failed, and whatever
+//	       live verbs the host hands in. Chips come through
+//	       [registry.ChipOn]/[registry.ChipFor]. OTHERWISE EMPTY. The silence is
+//	       the design: every standing legend this row used to carry (`ctrl+c
+//	       stop or quit`, `alt+enter insert newline`, `ctrl+r toggle receipts`,
+//	       `? help`) belongs to the `?` sheet, which is the surface built to
+//	       teach doors.
 //
-//	attention  100  an open question, amber, never dropped before anything
-//	           except nothing — a blocked human outranks the row's own space
-//	help        90  the permanent "? help" door (5.22 checklist's last item:
-//	           "a capability-honesty surface cannot itself be a memory test")
-//	hint        85  esc-interrupt (5.20 rule 6) when it is live, else the
-//	           input-state hint (10.5.26/8.2.19's Warp pattern) when the
-//	           wiring has one; see [FocusContext.EscInterrupts]/[FocusContext.Hint]
-//	keymode     80  the digit-precedence indicator (5.22 checklist: "1-3
-//	           answer" vs "1-9 rooms" — "the ambiguity is resolved on
-//	           screen, never in the user's head")
-//	verbs       70  up to three [registry.Entry] rows for the current focus
-//	health      60  pending-only system states (10.5.23)
-//	toast       50  a transient receipt from another room (5.21)
-//	scope       40  the breadcrumb tail — "the first thing that can go"
+//	RIGHT  STANDING FACTS, dim, right-aligned to the edge (§16: the right edge
+//	       is a column): the pending system state, where the work lands on disk
+//	       in placeline's abbreviated form, the context gauge (one filling cell,
+//	       its percentage, and the window it is a percentage OF — amber past the
+//	       warn point, absent entirely when the window is unknown), and `$X.XX
+//	       today` — §13 puts the day total in the bottom bar and nowhere else.
+//	       Absent spend renders as absence, never `$0.00`. THERE IS NO MODEL
+//	       WORD; see [FocusContext] for why an identifier may not be printed
+//	       here.
 //
-// The five priorities shared with [tokens.FooterColumnOrder] (attention,
-// help, keymode, verbs, scope — toast and health too) are the SAME numbers,
-// on purpose: that table is the canonical priority ledger for this exact
-// row, and a renderer that reordered them locally would make the shared
-// table a fiction. "hint" has no entry there yet — 5.20 rule 6's
-// esc-interrupt slot and 10.5.26's input-state hint are both landing in this
-// wave, after that table was seeded — and it sits just under "help" for the
-// reason stated at [priorityOf]: safety-relevant, but the permanent door
-// still wins the last column standing.
+// # Degradation
 //
-// # FocusContext: the wiring's contract
+// One row, ever, and the ladder is a sentence read straight down: the MIDDLE
+// empties first (it is silent most of the time anyway, so losing it costs the
+// reader nothing they did not have a moment ago), then the health notice, then
+// the gauge's window word, then the directory, then the PLACES collapse to the
+// current word alone, then the gauge, then the day's money. The last thing
+// standing is where you are.
 //
-// [FocusContext] is a plain, comparable-by-eye struct the wiring fills once
-// per frame from whatever pane holds focus. It is deliberately NOT a
-// stateful thing this package remembers between renders — unlike a place
-// line's ground, which changes on navigation, focus context changes on
-// nearly every keystroke and every stream tick, so a render-time parameter
-// is the honest shape, not a Set call the caller would have to remember to
-// keep in sync.
+// The right zone is fitted as SEPARATE COLUMNS rather than as a block, which is
+// what lets `of 262K` leave while `▂ 3%` stays; the left zone is measured at its
+// floor and grows back into whatever the other zones did not need, and the
+// trail is measured the same way, so it elides its ancestors before it gives up
+// its own name. The drop pass itself is [tokens.FitFooter]: the mechanic lives
+// in tokens and is not restated here.
 //
-// Every field that produces a visible hint is honest by construction: a
-// field left at its zero value (Attention 0, Hint "", EscInterrupts false,
-// Health nil, Toast "", ScopeTail "") omits its column outright rather than
-// rendering an empty or misleading cell — the affordance never lies (5.20),
-// and that includes lying by presence when there is nothing to say.
+// # FocusContext: the host's contract
+//
+// [FocusContext] is a plain struct the host fills once per frame from whatever
+// pane holds focus. It is deliberately NOT state this package remembers between
+// renders: focus context changes on nearly every keystroke and every stream
+// tick, so a render-time parameter is the honest shape, not a Set call the
+// caller would have to keep in sync.
+//
+// Every field is honest by construction: a field left at its zero value draws
+// nothing rather than drawing an empty cell — the affordance never lies, and
+// that includes lying by presence. Two fields carry a narrower meaning than
+// their names once did, and both are documented where they are declared:
+// [FocusContext.Input] reaches this row only as [InputFailed] (§8 gives every
+// other input state to the composer's own ghost text), and
+// [FocusContext.Attention] no longer draws a badge — it TINTS the answer chip
+// amber, because that chip is already the statement that a human is needed.
 //
 // # Contract with the shell
 //
 // [Model] is built with [New]; [Model.Render] is a pure function of a
 // [FocusContext] and a width, returning at most one row, never panicking and
-// never exceeding the width it was given, down to w=1.
+// never exceeding the width it was given, down to w=1. It paints CONTENT only —
+// the ground under this row is the seam's, and the seam belongs to the lane that
+// owns the strip.
 //
-// Section numbers in comments refer to audit-notes/chat-rebuild.md.
+// [Model.Targets] and [Model.TargetAt] answer the pointer from the same layout
+// the paint uses (hit.go), so a click can never land on a word the paint had
+// dropped or moved.
 package footer

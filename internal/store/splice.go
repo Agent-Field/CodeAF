@@ -333,6 +333,15 @@ func applySpliceView(tx *sql.Tx, payload splicedPayload, seq int64) error {
 		// The node's own choice where the plan made one, the splice's otherwise.
 		// Resolving it here is what makes inheritance a fact in the row rather
 		// than a rule every reader has to remember.
+		//
+		// "Made one" means made any choice, not made an interesting one. A node
+		// the sizing pass judged and sent to the generalist arrives here saying
+		// "linear", and that is a choice — it must not be overwritten by the
+		// worker the job as a whole was spliced for. Only the empty string is
+		// silence, and only silence inherits. This distinction is the whole
+		// reason the generalist has a name: while it was spelled as the empty
+		// string, every node a coding job's planner deliberately left to the
+		// generalist was admitted as a coding-pipeline node instead.
 		subharness := strings.TrimSpace(node.Subharness)
 		if subharness == "" {
 			subharness = strings.TrimSpace(payload.Provenance.Subharness)
@@ -340,13 +349,13 @@ func applySpliceView(tx *sql.Tx, payload splicedPayload, seq int64) error {
 		if _, err := tx.Exec(`
 			INSERT INTO nodes (
 			    id, parent_id, brief, title, grp, stage, status, origin, session_id,
-			    intent, charter_id, trial_of, retry_of, service_intent, work_model, plan_model, run_model, craft, subharness, splice_subharness, attachments, created_seq, created_order, updated_seq
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			    intent, charter_id, trial_of, retry_of, service_intent, work_model, plan_model, run_model, craft, subharness, splice_subharness, spec, attachments, created_seq, created_order, updated_seq
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			node.ID, parent, node.Brief, node.Title, node.Group, node.Stage, Pending,
 			payload.Provenance.Origin, nullIfEmpty(payload.Provenance.SessionID),
 			payload.Provenance.Intent, payload.Provenance.CharterID, payload.Provenance.TrialOf, payload.Provenance.RetryOf, payload.Provenance.ServiceIntent,
 			payload.Provenance.WorkModel, payload.Provenance.PlanModel, payload.Provenance.RunModel, payload.Provenance.Craft, subharness, payload.Provenance.Subharness,
-			string(attachments), seq, orderByID[node.ID], seq); err != nil {
+			string(node.Spec), string(attachments), seq, orderByID[node.ID], seq); err != nil {
 			return fmt.Errorf("insert node %q: %w", node.ID, err)
 		}
 		if err := refreshGraphFTS(tx, node.ID); err != nil {

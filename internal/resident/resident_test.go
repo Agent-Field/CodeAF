@@ -367,9 +367,21 @@ func commandBySeq(t *testing.T, graph *store.Store, seq int64) store.Command {
 	return command
 }
 
+// commandReceipt finds the one filed line a command produced, and enforces
+// 13.18's boundary on the way past.
+//
+// An ANCHORED receipt — applied surgery, an amendment that landed — is the work
+// record's sentence: receiptAnchor has always said it "belongs on the job's own
+// card", and the head said the thread's one sentence for it in its own voice
+// before the command was even journaled. It carries a node and no session, and
+// the room reads it by node. An UNANCHORED receipt has no card to live on, so
+// the thread is the only place it can be read and it keeps its session.
+//
+// The read is therefore journal-wide, and sessionID is what the anchored half
+// must NOT have.
 func commandReceipt(t *testing.T, graph *store.Store, sessionID string, commandSeq int64) store.Message {
 	t.Helper()
-	messages, err := graph.Messages(sessionID, 0, 0)
+	messages, err := graph.Messages("", 0, 0)
 	if err != nil {
 		t.Fatalf("messages: %v", err)
 	}
@@ -377,6 +389,12 @@ func commandReceipt(t *testing.T, graph *store.Store, sessionID string, commandS
 		if message.CommandSeq == commandSeq {
 			if message.Role != store.RoleSystem {
 				t.Fatalf("command receipt role = %s", message.Role)
+			}
+			if message.NodeID != "" && message.SessionID != "" {
+				t.Fatalf("an anchored receipt reached the thread: %+v", message)
+			}
+			if message.NodeID == "" && message.SessionID != sessionID {
+				t.Fatalf("an unanchored receipt lost its room: %+v", message)
 			}
 			return message
 		}

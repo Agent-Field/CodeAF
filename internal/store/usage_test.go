@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -68,6 +69,69 @@ func TestTopLevelJobUsageMeansDefinedLeafSurprises(t *testing.T) {
 	}
 	if jobs["cold-job"].Surprise != nil {
 		t.Fatalf("all-absent job surprise = %v, want absent", *jobs["cold-job"].Surprise)
+	}
+}
+
+// THE SPINE IS NOT A JOB, and every card that shows a job's money is built on
+// that fact. TopLevelJobUsage rolls usage up from the job roots — the spine's
+// own children — downward, so a row written against RootID is on the day's rail
+// and on nobody's card. That was the whole of the planning-spend defect
+// (cmd/aforge's journalPlanSpend): the largest structuring cost in the system
+// was billed to the spine, and the task that bought it read `$—`.
+//
+// It also pins the shape of the fix. A plan's bill cannot be written early —
+// RecordUsage requires the node — so it is written the moment the node lands,
+// and this is what "lands" then means for the card.
+func TestJobUsageRollsUpFromJobRootsAndNeverFromTheSpine(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "planspend.db"))
+
+	// The plan's bill, offered before the splice: refused, and refused with the
+	// one error a caller can tell apart from a sick journal.
+	err := graph.RecordUsage(NodeUsage{NodeID: "task-7", PromptTokens: 900, Cost: 0.40})
+	if err == nil {
+		t.Fatal("a usage row landed on a node that does not exist")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("an early bill failed as %v, want ErrNotFound so a caller can park it", err)
+	}
+
+	// The spine takes it instead, which is what the old code did outright.
+	if err := graph.RecordUsage(NodeUsage{NodeID: RootID, PromptTokens: 900, Cost: 0.40}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "task-7", Brief: "write the report", Stage: 1},
+	}}, Provenance{Origin: OriginUser, Intent: "write the report"}); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := graph.TopLevelJobUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job := jobs["task-7"]; job.Runs != 0 || job.Cost != 0 {
+		t.Fatalf("spine spend reached the job's card as %+v", job)
+	}
+
+	// Re-offered once the node exists, it is the job's — immediately, with no
+	// rebuild and no second splice.
+	if err := graph.RecordUsage(NodeUsage{NodeID: "task-7", PromptTokens: 900, Cost: 0.40}); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err = graph.TopLevelJobUsage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	job := jobs["task-7"]
+	if job.Runs != 1 || job.Cost < 0.39 || job.Cost > 0.41 || job.PromptTokens != 900 {
+		t.Fatalf("job usage = %+v, want the plan's one run on the job it built", job)
+	}
+	// And the day's rail carries both, because both were spent.
+	spend, err := graph.SpendToday()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spend < 0.79 || spend > 0.81 {
+		t.Fatalf("today's spend = %v, want every structuring call on the rail", spend)
 	}
 }
 

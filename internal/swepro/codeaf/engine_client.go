@@ -169,28 +169,51 @@ func (models codeafModels) projection(
 	return projection, metadata, nil
 }
 
+// unpricedModel is what a model the cost table has never heard of is worth to
+// the engine: no price, no declared limits, and the ordinary tool-calling
+// assumption. It is what provider.ts already hands a config-defined model.
+func unpricedModel() calc.Model {
+	return calc.Model{
+		Cost:         &calc.ModelCost{Cache: &calc.CacheCost{}},
+		Capabilities: calc.ModelCapabilities{ToolCall: true},
+	}
+}
+
+// catalogModel prices one model, and is allowed to fail at pricing without
+// destroying the run.
+//
+// models.dev is a cost table, not a registry of what exists. OpenRouter serves
+// models it has no row for — floating aliases, fresh releases, anything
+// published between two refreshes of the table — and this lookup used to make
+// a missing row a hard error. Measured: `models.dev: model
+// "deepseek/deepseek-v4-flash-latest" not found for provider "openrouter"`
+// killed a coding leaf one second after it started, on the default model of the
+// install, against a slug that had just executed twelve leaves successfully
+// through the very same provider. The engine never made a call; it refused to
+// begin because it could not name a price.
+//
+// aforge asks the resolver on its own side of the process boundary before it
+// hands a name over (catalog.Concrete, verify-before-substitute), so a spelling
+// this table does carry is preferred wherever one exists. This is the other
+// half: when no spelling resolves, the id the operator actually chose is
+// forwarded and the run proceeds unpriced rather than not at all. The engine's
+// own accounting reports zero for such a model, which means its cost ceiling
+// cannot bind — an honest degradation, and a far smaller loss than the work.
+//
+// A model that genuinely does not exist still fails, at the provider, with the
+// provider's own answer about the id it was given. That is the authority on
+// existence; this table never was.
 func (models codeafModels) catalogModel(providerID, modelID string) (calc.Model, error) {
 	if models.backend.catalog != nil {
 		metadata, err := models.backend.catalog.Resolve(providerID, modelID)
 		if err == nil {
 			return metadata, nil
 		}
-		if len(models.backend.config.model(providerID, modelID)) == 0 {
-			return calc.Model{}, err
-		}
-		// provider.ts gives config-defined models absent from models.dev zero
-		// cost and zero context/output defaults.
-		return calc.Model{
-			Cost:         &calc.ModelCost{Cache: &calc.CacheCost{}},
-			Capabilities: calc.ModelCapabilities{ToolCall: true},
-		}, nil
+		return unpricedModel(), nil
 	}
 	// A nil catalog is an explicit seam for injected engine tests. Every
 	// shipped CLI backend receives a loaded (possibly disabled/empty) catalog.
-	return calc.Model{
-		Cost:         &calc.ModelCost{Cache: &calc.CacheCost{}},
-		Capabilities: calc.ModelCapabilities{ToolCall: true},
-	}, nil
+	return unpricedModel(), nil
 }
 
 func normalizeModelRef(providerID, modelID string) (string, string) {

@@ -43,6 +43,45 @@ import "time"
 //	               [Notebook.AtCeiling] so the count renders as `500+` rather
 //	               than as a number that is quietly wrong.
 //
+//	Belief.Class   the row's own read: kind `playbook` is a playbook, kind
+//	               `trait` is a trait (store.TraitMeasurement decoded for
+//	               [Belief.Samples]), a preference under store.TasteScopePrefix
+//	               is a taste rule ((*store.Store).TasteRules, facts.go:990),
+//	               everything else is plain.
+//	Belief.Channel store.Fact.Channel, mapped one for one.
+//
+//	── Know-how ──────────────────────────────────────────────────────────────
+//	Crafts         (*command.Commander).Crafts() for the list and CraftDetail
+//	               (name) for the drill (internal/command/craft.go:53,79).
+//	Craft.Proved   the SURVIVAL RECORD, which is a trait rather than a table:
+//	               (*store.Store).Trait(resident.CraftSurvivalKey(name)) decodes
+//	               a resident.CraftSurvival{For,Against,LastCost}
+//	               (internal/resident/craftmind.go:314). HasRecord false is what
+//	               "draft, never run" is drawn from — a workflow with no trait
+//	               has not run, which is not the same fact as having lost.
+//	Craft.Version  len(CraftDetail.History): the commits behind the file.
+//	Skills         (*store.Store).SkillFacts("", limit) — store.Fact.Artifact is
+//	               the installed path, .Uses the reach count, .Status/.StatusNote
+//	               the retirement.
+//
+//	── Practice ──────────────────────────────────────────────────────────────
+//	Questions      (*store.Store).Questions("", limit) (internal/store/practice
+//	               .go:141); the lifecycle is store.Fact.Status.
+//	Question.Runs  (*store.Store).QuestionPractices(seq) (practice.go:312).
+//	Question.Cost  the self receipts a practice round wrote: a round carries
+//	               TargetKind "fact" and TargetID the question's seq
+//	               (self_receipt.go:243), so the money and the surprise delta
+//	               are read from SelfReceipts without a new join.
+//	Competence     (*store.Store).CompetenceMap(store.CompetenceOptions{Now:…})
+//	               (competence.go:151): strongest is the best-measured
+//	               CompetenceStrong scope, frontier the CompetenceFrontier one.
+//	Today.SpendUSD (*store.Store).SelfSpendToday() (self_receipt.go:116).
+//	Today.Practiced
+//	               the practice roots' wall clock. There is no read for it —
+//	               the old page scanned a whole Snapshot — so this wave adds one
+//	               narrow query, (*store.Store).PracticedToday(now), in a new
+//	               store file rather than making a surface walk the graph.
+//
 //	── Self ──────────────────────────────────────────────────────────────────
 //	RouteCrafts       (*command.Commander).Crafts() → []tui.CraftSummary, and
 //	                  CraftDetail(name) for the drill. NOTE: those types live in
@@ -63,10 +102,12 @@ import "time"
 //	                  page scanned Snapshot()/ActiveSnapshot() for nodes whose
 //	                  Parent is store.RootID and Group is store.PracticeGroup.
 //	RouteDials        (*config.Settings).Groups() filtered to
-//	                  config.CategoryLearning — the two rows being
-//	                  config.KeyDemandShare and config.KeyProposeSkills. It is a
-//	                  settings projection and not a store read at all, which is
-//	                  why Dials carries no count.
+//	                  config.CategoryPractice — whatever rows that group holds,
+//	                  never a list named here. It is a settings projection and
+//	                  not a store read at all, which is why Dials carries no
+//	                  count. (The two rows this used to name, practice_demand_pct
+//	                  and propose_new_skills, were deleted with the loops that
+//	                  never read them.)
 //	Today.SpendUSD    (*store.Store).SelfSpendToday().
 //	Today.Learned     derived: the distinct union of SelfReceipt.FactIDs and
 //	                  SkillIDs over today's receipts. A receipt may name a fact
@@ -181,6 +222,15 @@ type State struct {
 	Visitor string
 
 	Notebook Notebook
+	Knowhow  Knowhow
+	Practice Practice
+
+	// Self, Standing and Services are the RAIL's rooms and no longer bands on
+	// the notebook page. The split is the wave's own decision (notebook-split.md
+	// §1: doing versus knowing) — a standing promise and a live process are
+	// things the resident is DOING, and they moved to the work page. The state
+	// stays here because the four rooms of 5.24 are still rail scopes and
+	// [View] still draws them; what left is the page's claim on them.
 	Self     Self
 	Standing Standing
 	Services Services
@@ -221,6 +271,24 @@ type Belief struct {
 	Scope string
 	// Kind is the fact kind's word (`preference`, `lesson`, `skill`).
 	Kind string
+	// Class is which KIND OF ROW this is, as the reader meets it: a plain
+	// belief, a taste rule, a measured trait, a playbook. It is a small enum
+	// rather than a second string because the page words each class itself —
+	// "you keep correcting: …" is the product's sentence, not the store's — and
+	// because a trait is read-only (notebook-split.md §3) and read-only is a
+	// decision this package must be able to make without parsing prose.
+	Class BeliefClass
+	// Channel is how the belief entered the notebook, for the detail page's one
+	// honest sentence about provenance.
+	Channel BeliefChannel
+	// Status is the row's own lifecycle word where its class has one — a taste
+	// rule is `forming` while it is still a candidate and `kept` once it stands.
+	// Empty for every class that has no lifecycle, which is most of them.
+	Status string
+	// Samples is how many measurements are behind a trait. HasSamples separates
+	// "measured zero times", which cannot happen, from "not counted".
+	Samples    int
+	HasSamples bool
 	// Trust is store.CredibilityWord's reading — "strong", "steady",
 	// "tentative". Empty when the belief has no channel and therefore no
 	// credibility to report, which is a different fact from low confidence.
@@ -239,8 +307,346 @@ type Belief struct {
 	// "not counted".
 	Uses    int
 	HasUses bool
-	// Evidence names the work that taught it, already resolved by the wiring.
-	Evidence []string
+	// LastUsed is when it was last recalled into a model's context. Zero drops
+	// the cell, the way every other missing instant does.
+	LastUsed time.Time
+	// Evidence names the work that taught it, already resolved by the wiring
+	// into something a person can read and a host can open.
+	Evidence []Evidence
+	// Verbs are the belief's affordances, from the command registry (5.22),
+	// resolved by the wiring exactly as a charter's and a service's are. The
+	// canonical ids are [BeliefVerbs].
+	//
+	// It is the one field the full page added, and it is a seam rather than a
+	// read: the notebook always had a `retract` door (the old overlay's
+	// confirmation) and an `edit` one (the head's own correction path), and
+	// neither had a registry entry a surface could draw. Empty is honest — see
+	// [BeliefVerbs] for what the page draws when the registry has not caught up.
+	Verbs []Verb
+}
+
+// Evidence is one piece of work that taught a belief.
+//
+// It is a NAME and a handle rather than the handle alone, which is the whole
+// point of the type: the first live build drew `taught by  task-5381` and a raw
+// id is banned on every surface (5.14, §19). The wiring resolves the work's own
+// title; the page draws the title and keeps the handle behind it as a door, so
+// the reference stays reachable instead of merely being spelled politely.
+type Evidence struct {
+	// Name is the work's title, in its own words. Empty is honest — the wiring
+	// could not resolve one — and the page says "a past task" with its age
+	// rather than falling back to the handle.
+	Name string
+	// Room is what a host opens to show the work. Never rendered (5.14). Empty
+	// means the reference is not a room at all: an earlier note in the notebook
+	// rather than a task that ran.
+	Room string
+	// When the work happened. Zero drops the age cell, like every other missing
+	// instant here.
+	When time.Time
+}
+
+// BeliefClass is which kind of row a belief is, as the reader meets it on the
+// page. It is not the store's fact kind — [Belief.Kind] carries that — because
+// two of these classes are lifecycles laid over ORDINARY preference and trait
+// facts (store's own words for taste and traits), and the reader meets them as
+// different kinds of sentence.
+type BeliefClass uint8
+
+const (
+	// BeliefPlain is a belief in aforge's own words, about a scope. Its receipt
+	// leads with that scope, because "what is this about" is the only thing a
+	// plain belief needs said for it.
+	BeliefPlain BeliefClass = iota
+	// BeliefTaste is a rule the user keeps correcting toward.
+	BeliefTaste
+	// BeliefTrait is a MEASUREMENT about the user. Read-only, always: disputing
+	// a measurement is a conversation, not a form (notebook-split.md §3).
+	BeliefTrait
+	// BeliefPlaybook is a scoped strategy earned from earlier work.
+	BeliefPlaybook
+)
+
+// Word is the class's honest word in a receipt, or "" for a plain belief, whose
+// receipt leads with its scope instead.
+func (c BeliefClass) Word() string {
+	switch c {
+	case BeliefTaste:
+		return "taste"
+	case BeliefTrait:
+		return "trait"
+	case BeliefPlaybook:
+		return "playbook"
+	}
+	return ""
+}
+
+// Lead is the sentence the page puts in FRONT of the body for a class whose
+// body is not a statement on its own. A taste rule's body is the correction
+// ("shorter commit lines") and a trait's is the measurement ("you usually
+// accept first drafts"); neither reads as a belief without the words that say
+// what kind of observation it is.
+//
+// It lives here rather than at the render site for the reason [Home.Blurb] and
+// [RouteID.Explain] do: a sentence that lives at a render site is a sentence
+// that gets two spellings.
+func (c BeliefClass) Lead() string {
+	switch c {
+	case BeliefTaste:
+		return "you keep correcting: "
+	case BeliefTrait:
+		return "measured: "
+	}
+	return ""
+}
+
+// ReadOnly reports a class no verb may act on. A trait is measured, not held.
+func (c BeliefClass) ReadOnly() bool { return c == BeliefTrait }
+
+// BeliefChannel is how a belief entered the notebook, in the four ways the
+// store records (store.FactChannel). The page spends it as ONE sentence on the
+// detail page and never as a chip on a row: how a thing was learned is
+// provenance a reader asks for, not something they scan a list by.
+type BeliefChannel uint8
+
+const (
+	// ChannelUnknown is a belief with no channel recorded, and it says nothing
+	// rather than guessing.
+	ChannelUnknown BeliefChannel = iota
+	// ChannelStated is the user's own words.
+	ChannelStated
+	// ChannelInferred is aforge's reading of what it saw.
+	ChannelInferred
+	// ChannelDistilled is consolidation's: several observations become one line.
+	ChannelDistilled
+	// ChannelTrial is a question that ran until the evidence settled it.
+	ChannelTrial
+)
+
+// Word is the channel as a sentence a person reads.
+func (c BeliefChannel) Word() string {
+	switch c {
+	case ChannelStated:
+		return "you said it"
+	case ChannelInferred:
+		return "inferred from your work"
+	case ChannelDistilled:
+		return "distilled from several observations"
+	case ChannelTrial:
+		return "settled by trials"
+	}
+	return ""
+}
+
+// Knowhow is the know-how section: the shapes aforge learned to repeat
+// (crafts, chip-tagged `workflow`) and the tools it forged (skills, `tool`).
+//
+// They are ONE section and two lists rather than two sections, because the
+// question a reader brings to this band is "what can you already do", and the
+// difference between a workflow and an executable is an implementation detail
+// the chip word carries in full.
+type Knowhow struct {
+	Crafts []Craft
+	Skills []Skill
+}
+
+// Craft is one learned workflow — YAML in a git repository beside the brain,
+// compiled into a graph subtree when it runs.
+type Craft struct {
+	// ID is the durable handle a verb carries. Never rendered (5.14).
+	ID string
+	// Name is the workflow's own name, off disk.
+	Name string
+	// Description is the one line the file carries about itself.
+	Description string
+	// Proved and Against are the survival record: runs that settled, runs that
+	// failed or were cancelled. HasRecord false means it has NEVER RUN, which
+	// is a different fact from having run and lost — a draft is not a failure,
+	// and the row says "draft, never run" rather than "proved 0".
+	Proved    int
+	Against   int
+	HasRecord bool
+	// CostPerRun is what the last clean run actually spent. HasCost false says
+	// unmeasured, and §16's MONEY rule is why it is a flag rather than a zero.
+	CostPerRun float64
+	HasCost    bool
+	// Version is how many commits this workflow has, which is what `vN` counts.
+	// Zero drops the cell rather than claiming a v0.
+	Version int
+	// Updated is when the newest commit landed.
+	Updated time.Time
+	// Dir is the craft repository on disk (12.5.1: the artifact is real and the
+	// page points at it).
+	Dir string
+	// Ceilings are the bounds a run will actually obey.
+	Ceilings CraftCeilings
+	// Steps are the workflow's leaves in FILE ORDER, which is the order the
+	// author wrote and the only order that reads as a procedure.
+	Steps []CraftStep
+	// History is the version list, NEWEST FIRST (git log's own order).
+	History []CraftVersion
+	// Verbs are the affordances from the registry. Canonical ids are
+	// [CraftVerbs]; empty is honest — see that variable for what is drawn.
+	Verbs []Verb
+}
+
+// CraftCeilings are one workflow's bounds. HasCost distinguishes an unbounded
+// workflow from a free one.
+type CraftCeilings struct {
+	CostUSD   float64
+	HasCost   bool
+	WallClock time.Duration
+}
+
+// CraftStep is one leaf of a workflow as the detail page reads it.
+type CraftStep struct {
+	// Brief is what the step does, in the author's words.
+	Brief string
+	// Needs names the steps that must land first, by their BRIEFS rather than
+	// their ids — the wiring resolves them, because a step id is an id (5.14).
+	Needs []string
+	// Model is the humane model word where the step pins one; Skill is the tool
+	// it reaches for; Verify says the step checks its own work.
+	Model  string
+	Skill  string
+	Verify bool
+}
+
+// CraftVersion is one commit in a workflow's history.
+type CraftVersion struct {
+	// Version is the `vN` this commit is. It is counted from the FIRST commit,
+	// so v1 is where the workflow was forged and vN is what runs today.
+	Version int
+	// Subject is the commit's own sentence.
+	Subject string
+	When    time.Time
+}
+
+// Skill is one forged executable: a procedure that ran, passed, and was kept.
+type Skill struct {
+	// ID is the durable handle. Never rendered.
+	ID string
+	// Name is the tool's word.
+	Name string
+	// Body is what it does, in aforge's words.
+	Body string
+	// Path is where it is installed (12.5.1).
+	Path string
+	// Uses is how often work has reached for it. HasUses separates "never used"
+	// from "not counted".
+	Uses    int
+	HasUses bool
+	// Learned is when it was kept. Zero drops the age cell.
+	Learned time.Time
+	// Retired says it is no longer offered to work; Note is why, in the store's
+	// own words. A retired skill is drawn dim and struck, exactly as a let-go
+	// belief is, because a tool that vanished is a tool nobody can tell you
+	// stopped using.
+	Retired bool
+	Note    string
+	// Verbs are the affordances. Canonical ids are [SkillVerbs].
+	Verbs []Verb
+}
+
+// Practice is what aforge did with idle time: the questions it is drilling, how
+// competent it has measured itself to be, and what the day cost.
+type Practice struct {
+	Questions  []Question
+	Competence Competence
+	// Today is the day receipt — spend, time practiced, things learned. It is
+	// the same [Today] the self room draws and it lives here because the
+	// practice band is where the design puts it (notebook-split.md §2).
+	Today Today
+}
+
+// QuestionLife is a knowledge gap's lifecycle, mirroring the store's four
+// question statuses one for one so the wiring is a switch and not a judgement.
+type QuestionLife uint8
+
+const (
+	// QuestionAsked is open and not yet drilled.
+	QuestionAsked QuestionLife = iota
+	// QuestionPracticing is being drilled right now.
+	QuestionPracticing
+	// QuestionResolved is answered.
+	QuestionResolved
+	// QuestionRetired is one aforge stopped asking.
+	QuestionRetired
+)
+
+// Word is the lifecycle in the product's language.
+func (q QuestionLife) Word() string {
+	switch q {
+	case QuestionAsked:
+		return "open"
+	case QuestionPracticing:
+		return "practicing"
+	case QuestionResolved:
+		return "resolved"
+	case QuestionRetired:
+		return "retired"
+	}
+	return ""
+}
+
+// life maps a question's lifecycle onto the rail's state vocabulary, so a
+// question means the same thing in the glyph column as everything else does.
+//
+// Retired is [LifeCancelled] and not [LifeSettled] for the reason a retired
+// charter is: it did not succeed, it stopped.
+func (q QuestionLife) life() Lifecycle {
+	switch q {
+	case QuestionPracticing:
+		return LifeWorking
+	case QuestionResolved:
+		return LifeSettled
+	case QuestionRetired:
+		return LifeCancelled
+	}
+	return LifeQueued
+}
+
+// Question is one durable knowledge gap and what drilling it has cost.
+type Question struct {
+	// ID is the durable handle. Never rendered.
+	ID string
+	// Body is the gap, in one line, as it was written.
+	Body string
+	// Scope is what it is about, rendered verbatim like a belief's.
+	Scope string
+	Life  QuestionLife
+	// Runs is how many practice rounds it has had; Cost is what they came to.
+	// HasCost false leaves the money off entirely (§16's MONEY rule).
+	Runs    int
+	CostUSD float64
+	HasCost bool
+	// Asked is when the gap was written down. Zero drops the age.
+	Asked time.Time
+	// Note is the store's own sentence about how it ended, where there is one.
+	Note string
+	// Attempts are the practice rounds, OLDEST FIRST, for the detail page.
+	Attempts []Attempt
+}
+
+// Attempt is one practice round: what it cost, and how much less surprising the
+// world became after it.
+type Attempt struct {
+	CostUSD float64
+	HasCost bool
+	// Delta is the surprise the round removed. HasDelta false means the round
+	// has not landed an outcome yet, which is a different fact from a round
+	// that taught nothing.
+	Delta    float64
+	HasDelta bool
+	When     time.Time
+}
+
+// Competence is the one line aforge is allowed to say about how good it is: the
+// scope it is strongest in and the one at its frontier. Both are measured
+// (store.CompetenceMap) and either may be absent, which renders as absence.
+type Competence struct {
+	Strongest string
+	Frontier  string
 }
 
 // Self is the self room: the eight routes as rail rows, plus the one line that
@@ -465,3 +871,48 @@ var CharterVerbs = []string{"pause", "probation", "cadence", "retire"}
 
 // ServiceVerbs are the three 5.24 names for a service room, in draw order.
 var ServiceVerbs = []string{"stop", "restart", "auto-restart"}
+
+// CraftVerbs and SkillVerbs are the notebook's other two affordance sets, in
+// draw order, spelled with the registry ids notebook-split.md §4 fixes across
+// all three lanes of this wave. Like every other list here they are IDS TO
+// RESOLVE: the wiring looks each one up and fills [Craft.Verbs] / [Skill.Verbs],
+// and where it has not caught up the page draws the word with the id behind it
+// and no key (see [BeliefVerbs] for why a word without a key is honest and an
+// invented key is not).
+var (
+	CraftVerbs = []string{"craft.run", "craft.revert", "craft.retire"}
+	SkillVerbs = []string{"skill.retire"}
+)
+
+// VerbWord is the word a registry id is drawn as: the last dotted segment,
+// which is the verb the id was named for. `craft.revert` draws "revert".
+//
+// It exists because 5.14 forbids rendering an id and §4 fixes the ids — so a
+// fallback strip that has no registry entry to read a label from still has to
+// put a WORD on the screen, and the only word it is entitled to is the one the
+// id already spells. It is not a translation table and must never grow into
+// one: a verb whose word differs from its id's tail has a registry entry, and
+// the entry's own label wins.
+func VerbWord(id string) string {
+	for i := len(id) - 1; i >= 0; i-- {
+		if id[i] == '.' {
+			return id[i+1:]
+		}
+	}
+	return id
+}
+
+// fallbackVerbs turns a list of registry ids into a drawable strip for a row
+// the wiring has not filled. Every verb carries the reason it cannot be used
+// where there is one, so a visitor window disables the notebook the same way it
+// disables everything else.
+func fallbackVerbs(ids []string, filled []Verb, visitor string) []Verb {
+	if len(filled) > 0 {
+		return filled
+	}
+	out := make([]Verb, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, Verb{ID: id, Label: VerbWord(id), Disabled: visitor})
+	}
+	return out
+}

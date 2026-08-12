@@ -143,9 +143,10 @@ type hit struct {
 //
 // An empty query matches everything at score 0, which — with a stable sort —
 // means the unfiltered list is exactly the wiring's own order. That is the
-// palette's convention and it matters: opening ctrl+k and pressing enter
-// immediately must land on the first room the rail would have shown, not on
-// whatever an arbitrary tiebreak preferred.
+// palette's convention and it matters: the row under the cursor when the door
+// opens must be a row someone decided on — the first action of the leading
+// section, in the order the registry seeded it — and never whatever an
+// arbitrary tiebreak preferred.
 func filter(dst []hit, rows []row, needle string) []hit {
 	dst = dst[:0]
 	for i := range rows {

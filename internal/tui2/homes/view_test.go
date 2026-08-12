@@ -72,6 +72,51 @@ func TestEveryStylerPaintsWithinTheFrame(t *testing.T) {
 	}
 }
 
+// A ROOM'S OWN NAME IS A FAINT WORD AT THE CONTENT EDGE, and nothing else.
+//
+// It wore [tokens.GQueued] until this wave — the QUEUED state mark, in the
+// gutter of a page that has no lifecycle to be queued in. §15's delete test
+// settles it in one move: take the `○` away and nothing is lost, because it was
+// never saying anything about anything. What it WAS doing was spending §20's
+// gutter, which is reserved for markers that mean something, and lending a page
+// title the shape of a work row.
+//
+// The word is dim (blocks' first section answer: a band inside one page gets a
+// faint lowercase word) and it hangs at [contentEdge], where every other title
+// and sentence in the product hangs.
+func TestARoomsHeadingIsAFaintWordAndNotAStateGlyph(t *testing.T) {
+	v := NewView(nil)
+	state := rich()
+	for _, want := range []struct {
+		home Home
+		word string
+	}{
+		{HomeNotebook, "notebook"},
+		{HomeStanding, "standing"},
+		{HomeServices, "services"},
+		{HomeSelf, "self"},
+	} {
+		lines := v.Render(state, Selection{Home: want.home}, 80, 40)
+		if len(lines) == 0 {
+			t.Fatalf("%s rendered nothing", want.word)
+		}
+		if got := lines[0]; got != strings.Repeat(" ", contentEdge)+want.word {
+			t.Errorf("%s opens on %q, want the bare word at column %d",
+				want.word, got, contentEdge)
+		}
+		// And no state glyph anywhere on that row.
+		for _, glyph := range []string{
+			tokens.GlyphQueued, tokens.GlyphWorking, tokens.GlyphSettled,
+			tokens.GlyphFailed, tokens.GlyphNeedsHuman,
+		} {
+			if strings.Contains(lines[0], glyph) {
+				t.Errorf("%s's heading wears the state glyph %q: %q",
+					want.word, glyph, lines[0])
+			}
+		}
+	}
+}
+
 // A View with no Styler paints no escape at all. This is the property the nil
 // case exists for: not "does not crash" but "produces bytes a dumb pipe can
 // carry".
@@ -130,6 +175,42 @@ func TestTheStrikeCostsNoCells(t *testing.T) {
 	l.addStruck(plain, tokens.TextPrimary, false)
 	if out := l.emit(&buf, tokens.NoColor, tokens.FocusNormal, 40, false, tokens.Ground); strings.ContainsRune(out, strikeOverlay) {
 		t.Fatalf("uncoloured profile got a strike: %q", out)
+	}
+}
+
+// THE DEFECT (12.11.2, found in a screenshot and closed first in
+// internal/tui2/palette): at 16 colours the band falls back to SGR 7, which
+// swaps the two colours the terminal is currently using — so every tier colour
+// written INSIDE the band landed on the row's background and the selected row
+// came out striped: one inverted block per span, the uncoloured padding runs
+// between them left plain. Reverse video is defined against the terminal's own
+// two colours, so the only honest reading is ONE reversed run.
+//
+// It is asserted at [lineBuf.emit] rather than through [View.Render], and that
+// is a finding rather than a shortcut: this package renders the DETAIL pane for
+// a cursor the rail owns (see [Selection]), so not one call site passes
+// banded — every emit in the package hands it false. The band parameter is
+// carried for symmetry with the three siblings this painter is a copy of, and
+// the rule has to hold the day somebody starts using it. Going through Render
+// would assert nothing at all.
+func TestAReversedBandIsOneRun(t *testing.T) {
+	if tokens.ANSI16.SelectionStyle() != tokens.SelectionReverse {
+		t.Skip("16 colours no longer reverses; this test guards that path")
+	}
+	var l lineBuf
+	var buf strings.Builder
+	l.reset(40)
+	l.add("a belief", tokens.TextPrimary)
+	l.add(" · ", tokens.TextTertiary)
+	l.add("learned yesterday", tokens.TextSecondary)
+	line := l.emit(&buf, tokens.ANSI16, tokens.FocusNormal, 40, true, tokens.Band)
+	if !strings.Contains(line, tokens.Reverse(tokens.ANSI16)) {
+		t.Fatalf("the banded row carries no reversed run: %q", line)
+	}
+	for _, tok := range []tokens.Token{tokens.TextPrimary, tokens.TextSecondary, tokens.TextTertiary} {
+		if strings.Contains(line, tok.Fg(tokens.ANSI16, tokens.FocusNormal)) {
+			t.Errorf("a %s foreground is written inside the reversed band: %q", tok, line)
+		}
 	}
 }
 
@@ -243,5 +324,37 @@ func TestAMissingClockDropsAgesRatherThanInventingThem(t *testing.T) {
 	out := strings.Join(v.Render(state, Selection{Home: HomeNotebook, Row: BeliefRowPrefix + "41"}, 80, 30), "\n")
 	if strings.Contains(out, "learned") {
 		t.Fatalf("an age was rendered with no clock:\n%s", out)
+	}
+}
+
+// §20's grid, over the rail's own pane: a marker in the gutter, every line of
+// content at the content edge, every continuation one step further, and nothing
+// anywhere else. It is asserted on the UNSTYLED render for the reason
+// [TestNoStylerPaintsNoEscapes] exists — a column is a fact about bytes, and
+// escapes in front of a line would make every measurement a lie.
+func TestTheRoomsSitOnTheGrid(t *testing.T) {
+	v := NewView(nil)
+	for name, state := range map[string]State{"rich": rich(), "empty": {}, "wide": wide(12)} {
+		for _, sel := range selections(state) {
+			for _, width := range []int{40, 60, 80, 120} {
+				for i, line := range v.Render(state, sel, width, 60) {
+					col := contentColumn(line)
+					switch col {
+					case -1, contentEdge, childEdge:
+						continue
+					case 0:
+						runes := []rune(line)
+						if len(runes) > contentEdge && runes[1] == ' ' && runes[contentEdge] != ' ' {
+							continue
+						}
+						t.Fatalf("%s %v w=%d: line %d has a marker but no content edge: %q",
+							name, sel, width, i, line)
+					default:
+						t.Fatalf("%s %v w=%d: line %d starts at column %d: %q",
+							name, sel, width, i, col, line)
+					}
+				}
+			}
+		}
 	}
 }

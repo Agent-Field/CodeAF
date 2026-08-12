@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 )
 
 // The two feeds, and the one transcript they agree on.
@@ -58,6 +59,20 @@ type pollResultMsg struct {
 	haveRoom    bool
 	haveTurn    bool
 	spendFailed bool
+
+	// day is the whole machine's spend today, for the footer's right zone
+	// (§13: "Day total lives in the bottom bar"). Absent renders nothing.
+	day     float64
+	haveDay bool
+
+	// commands is this session's commissioned-but-not-yet-consumed work, read
+	// on the same trip as the messages. It is what the pre-card skeleton is
+	// drawn from: a splice sits pending for as long as compile and plan take,
+	// and that whole interval used to render as silence. haveCommands is
+	// PRESENCE: a backend that cannot answer makes no claim, and a skeleton
+	// may only be buried on a claim.
+	commands     []store.Command
+	haveCommands bool
 }
 
 type postResultMsg struct {
@@ -105,9 +120,32 @@ func (a *App) pollCmd() tea.Cmd {
 		result := pollResultMsg{journal: seq, messages: messages,
 			more: len(messages) >= messagePage}
 		result.readSpend(backend, session)
+		if reader, ok := backend.(commandReader); ok {
+			if pending, err := reader.PendingCommands(pendingCommandRead); err == nil {
+				result.haveCommands = true
+				for _, command := range pending {
+					if command.Kind == store.CommandSplice && command.SessionID == session {
+						result.commands = append(result.commands, command)
+					}
+				}
+			}
+		}
 		return result
 	}
 }
+
+// commandReader is the optional read behind the pre-card skeleton. It is an
+// optional interface on the backend rather than a method on [Backend] for the
+// reason the notebook's is: *store.Store answers today, and a host that cannot
+// simply has no skeletons — the card still arrives with the receipt.
+type commandReader interface {
+	PendingCommands(limit int) ([]store.Command, error)
+}
+
+// pendingCommandRead bounds the pending read, the same figure the head's own
+// twin guard uses. A session with more splices in flight than this has a
+// problem no skeleton can narrate.
+const pendingCommandRead = 32
 
 // readSpend asks the two money windows on the same trip as the messages.
 //
@@ -128,6 +166,13 @@ func (r *pollResultMsg) readSpend(backend Backend, session string) {
 		r.spendFailed = true
 	} else if ok {
 		r.turn, r.haveTurn = turn, true
+	}
+	// The day total is an optional read for the same reason the two windows
+	// are cheap ones: it rides the trip the messages already paid for.
+	if today, ok := backend.(interface{ SpendToday() (float64, error) }); ok {
+		if v, err := today.SpendToday(); err == nil {
+			r.day, r.haveDay = v, true
+		}
 	}
 }
 
@@ -169,18 +214,26 @@ func (a *App) applySpend(result pollResultMsg) {
 		a.source.SetRoomSpend(a.session, result.room.Cost(),
 			result.haveRoom && result.room.Recorded())
 	}
+	if result.haveDay {
+		a.status.spend, a.status.haveSpend = result.day, true
+	}
+	// THIS TURN's cost and the context gauge used to land on the composer's
+	// meta strip, one row up. §7 dissolved that strip into the bar row: the cost
+	// is a middle-zone chip that exists only while the turn does, the gauge is a
+	// standing fact on the right. The READ is unchanged — the same journal, the
+	// same watermark — only the address it is written to.
 	if !result.haveTurn || !result.turn.Recorded() {
-		a.meta.haveCost, a.meta.haveUsage = false, false
+		a.status.haveCost, a.status.haveUsage = false, false
 		return
 	}
-	a.meta.cost, a.meta.haveCost = result.turn.Cost(), true
+	a.status.cost, a.status.haveCost = result.turn.Cost(), true
 
 	// The gauge needs both halves and takes neither on faith. The numerator is
 	// zero when the window was SHARED — half a context is not a context, and the
 	// journal says so rather than guessing — and it is an upper bound when a
 	// summed spine row landed inside the window, which is the safe direction for
 	// a health signal: a gauge that errs toward amber sends a person to look.
-	a.meta.haveUsage = false
+	a.status.haveUsage = false
 	if a.commander == nil || result.turn.SpinePromptHighWater <= 0 {
 		return
 	}
@@ -188,9 +241,9 @@ func (a *App) applySpend(result pollResultMsg) {
 	if !known || window <= 0 {
 		return
 	}
-	a.meta.used = int64(result.turn.SpinePromptHighWater)
-	a.meta.window = int64(window)
-	a.meta.haveUsage = true
+	a.status.used = int64(result.turn.SpinePromptHighWater)
+	a.status.window = int64(window)
+	a.status.haveUsage = true
 }
 
 // followNode keeps an open task room current.
@@ -216,14 +269,37 @@ func (a *App) followNode(result pollResultMsg) tea.Cmd {
 	if result.err != nil {
 		return nil
 	}
+	// THE POLL IS WHERE WORK BECOMES LIVE, so the poll is where the animation
+	// clock has to be armed.
+	//
+	// THIS WAS THE DEFECT, and the reader described its signature exactly:
+	// "animation seems to happen only when I hover on something". A tick chain
+	// sustains itself once it has started (app.go's animTickMsg handler re-arms
+	// on every tick), and it was STARTED from three places — the window opening,
+	// a post landing, a stream batch arriving — every one of which is an INPUT.
+	// A job card becomes live on none of them: the reader sends a message (at
+	// which instant nothing is live yet and [App.startTick] correctly declines),
+	// the head commissions the work, and the card arrives on a POLL — a path
+	// that armed nothing at all. From then on the only frames were the ones some
+	// other event happened to repaint, which is a pointer moving.
+	//
+	// It is idempotent and costs nothing when nothing is live: [App.startTick]
+	// returns nil unless something is actually moving, and refuses outright
+	// while a chain is already armed.
+	tick := a.startTick()
 	if a.view == nil || a.view.kind != viewNode {
-		return nil
+		// THE CONVERSATION'S OWN CARDS make the same exception the room's trace
+		// does, for the same reason: a running part's one-line preview comes off
+		// a recorder that journals nothing when it grows (trace.go's
+		// readCardTracesCmd), so a quiet cycle is no proof that the work has not
+		// moved. It costs nothing while no card is live.
+		return tea.Batch(tick, a.readCardTracesCmd())
 	}
 	trace := a.readTraceCmd(a.view.node)
 	if result.quiet {
-		return trace
+		return tea.Batch(tick, trace)
 	}
-	return tea.Batch(a.readNodeCmd(a.view.node, a.view.watermark), trace)
+	return tea.Batch(tick, a.readNodeCmd(a.view.node, a.view.watermark), trace)
 }
 
 // behind reports that this window has read messages the journal numbered below
@@ -260,13 +336,119 @@ func (a *App) applyPoll(result pollResultMsg) {
 	}
 	a.applySpend(result)
 	a.refreshScope(result.journal)
-	if result.quiet || len(result.messages) == 0 {
+	if result.quiet {
 		traceJournal(a, result, 0)
 		return
 	}
-	appended := a.absorb(result.messages)
+	appended := 0
+	if len(result.messages) > 0 {
+		appended = a.absorb(result.messages)
+	}
+	// After the messages, so a receipt in this same batch has already claimed
+	// its job and no skeleton is minted under it. A journal move with no
+	// session message at all is exactly the moment a commission lands — the
+	// command row is the only artifact the store has yet.
+	skeletons := a.reconcilePending(result.commands, result.haveCommands)
+	if appended == 0 && !skeletons {
+		traceJournal(a, result, 0)
+		return
+	}
 	traceJournal(a, result, appended)
 	a.refresh()
+}
+
+// reconcilePending keeps the conversation honest about work the head has
+// handed over that the graph has not caught up with. Each pending splice of
+// this session gets the commitment card's SKELETON ([messageBlock.dressCommitting],
+// "creating task…", breathing) the moment its command row exists — which is
+// seconds to minutes before compile and plan finish and the receipt arrives.
+// The skeleton then leaves by one of its two honest doors: the receipt
+// coalesces into it in place ([App.coalesceJob]), or the board names its task
+// and [messageBlock.refreshCard] promotes it — and a command that settled
+// without ever minting a task re-dresses as its own ending rather than
+// breathing forever over work that will not come.
+func (a *App) reconcilePending(pending []store.Command, havePending bool) bool {
+	if a.transcript == nil {
+		return false
+	}
+	live := make(map[int64]bool, len(pending))
+	for _, command := range pending {
+		live[command.Seq] = true
+	}
+	changed := false
+	for i := 0; havePending && i < a.transcript.Len(); i++ {
+		block, ok := a.transcript.Block(i).(*messageBlock)
+		if !ok || !block.provisional || block.job == "" || block.source == nil {
+			continue
+		}
+		seq := block.source.CommandSeq
+		if seq == 0 || live[seq] {
+			continue
+		}
+		// The command settled. A splice can have minted EITHER spelling —
+		// task-<seq> or craft-<seq> — and the skeleton was born guessing the
+		// first, so the settled command's real job is looked for under both
+		// before anything is declared dead. A skeleton buried over a live
+		// craft job said "didn't start" while the work ran (user-reported,
+		// 2026-08-11).
+		named := ""
+		if a.source != nil {
+			for _, candidate := range commandJobIDs(seq) {
+				if _, known := a.source.jobFacts(candidate); known {
+					named = candidate
+					break
+				}
+			}
+		}
+		if named != "" {
+			if block.job != named {
+				// Applied under the other spelling: adopt it, so refreshCard
+				// names this block and the receipt coalesces into it instead
+				// of standing beside it.
+				block.job = named
+				a.transcript.Replace(i, block)
+				changed = true
+			}
+			continue
+		}
+		block.dressUnstarted()
+		a.transcript.Replace(i, block)
+		changed = true
+	}
+	appended := false
+	for _, command := range pending {
+		exists := false
+		for _, candidate := range commandJobIDs(command.Seq) {
+			if _, _, held := a.jobCard(candidate); held {
+				exists = true
+				break
+			}
+		}
+		if exists {
+			continue
+		}
+		if !appended {
+			a.detachLive()
+			appended = true
+		}
+		message := store.Message{
+			Seq:        command.Seq,
+			SessionID:  command.SessionID,
+			Role:       store.RoleSystem,
+			CommandSeq: command.Seq,
+			Body:       command.Instruction,
+		}
+		block := newMessageBlock(message, a.style, a.source)
+		a.applyFold(block)
+		a.foldable = a.foldable || block.collapsible
+		block.animate(a.transcript.Clock(), a.now())
+		a.transcript.Append(block)
+		changed = true
+	}
+	if appended {
+		a.attachLive()
+	}
+	return changed
 }
 
 // refreshScope rebuilds the scope map when the journal moved, and then lets the
@@ -281,11 +463,22 @@ func (a *App) refreshScope(journal int64) {
 	if a.source == nil || a.railModel == nil {
 		return
 	}
+	// The rail ages its live rows' clocks between snapshots, and this is where
+	// it is told which clock and from when: a snapshot is about to be loaded,
+	// so the drift restarts here (rail.Model.SetClock / Refresh). It is
+	// idempotent and costs a pointer write on the cycles the journal moved.
+	if a.railModel != nil {
+		a.railModel.SetClock(a.transcript.Clock())
+	}
+	if a.hudModel != nil {
+		a.hudModel.SetClock(a.transcript.Clock())
+	}
 	if !a.source.refresh(journal, false) {
 		return
 	}
 	// Delivery and failure are read off the rebuilt board, here, because this is
 	// the one moment the lifecycles moved.
+	a.settleJobBlocks()
 	a.noticeWork()
 	a.refreshHomes()
 	// An open task room is a lens on the board, and the board is what just
@@ -331,6 +524,13 @@ func (a *App) absorb(messages []store.Message) int {
 		// reader who had pressed ctrl+r watched every new turn arrive shut.
 		a.applyFold(block)
 		a.foldable = a.foldable || block.collapsible
+		block.animate(a.transcript.Clock(), a.now())
+		if a.coalesceJob(block) {
+			// The job's own block evolved in place; nothing was appended, and
+			// nothing that follows in this loop cares — a status line is not a
+			// turn, does not end one, and never carries a question.
+			continue
+		}
 		a.transcript.Append(block)
 		appended++
 		if message.Role == store.RoleUser {
@@ -353,6 +553,112 @@ func (a *App) absorb(messages []store.Message) int {
 	}
 	a.attachLive()
 	return appended
+}
+
+// coalesceJob folds one machinery row into the job block already standing for
+// that job, and reports that it did.
+//
+// §3 IS ONE BLOCK PER JOB, EVOLVING IN PLACE — "the commitment block updates in
+// place (title · receipt · current status line), it does not append a sibling
+// per status change" — and without this it appended a sibling per status
+// change. Measured on the reporter's own journal: `task-9196` posted fifteen
+// node-anchored status rows ("preparing the repository", "reading the issue",
+// "running the repository's own checks", …), and the thread drew fifteen
+// blocks, each re-stating the job's name and receipt above one line of status.
+// The screenshot that reported this shows two of them stacked; the room had
+// thirteen more.
+//
+// THE RULE IS ADJACENCY AND NOT IDENTITY, which is §15's own grammar read back:
+// a job block belongs where the conversation was when it started, so a row that
+// arrives after the reader has said something else opens a NEW block at the new
+// position rather than reaching back up the transcript. Consecutive is
+// therefore exactly the right test, and it is also the cheap one — the last
+// block, and nothing else, is ever examined.
+//
+// THE SUPERSEDED STATUS IS DROPPED FROM THE LIVE VIEW AND NOT FROM THE RECORD.
+// The journal keeps every row it ever kept; the task room renders all of them
+// in order (record.go's roomBlocks, deliberately untouched). What collapses is
+// the CONVERSATION's rendering of them, which is §1's line about progress
+// narration being the work record's business and never a chat message.
+//
+// A DELIVERY TAKES THE BLOCK'S PLACE RATHER THAN SITTING UNDER IT. §3's last
+// clause is "delivered: the block becomes the delivery card in place", so the
+// card replaces the machinery it is the ending of, at the same index, wearing
+// its own identity.
+func (a *App) coalesceJob(block *messageBlock) bool {
+	if block == nil || block.job == "" || block.user || block.source == nil {
+		return false
+	}
+	last, index, ok := a.jobCard(block.job)
+	if !ok {
+		return false
+	}
+	// A QUESTION IS NEVER SUPERSEDED AND NEVER SUPERSEDES. Amber means a human
+	// is actually needed (§18.3), so an ask that scrolled past behind a status
+	// line would be the one row this collapse is not allowed to lose — and an
+	// ask arriving over a status line is a new thing to answer, not the same
+	// thing said again.
+	if block.questions > 0 || last.questions > 0 {
+		return false
+	}
+	if block.machinery {
+		// The same block, one status later: it keeps its identity so the
+		// reader's fold, the copy chip's hover and the transcript's own anchor
+		// all survive a status change (13.16's fold law — an id that moved
+		// would throw the reader's answer away several times a minute).
+		block.id, block.version = last.id, last.version+1
+		// THE READING SURVIVES EVERY STATUS. A status message does not carry the
+		// head's reading — only the commissioning does — so a card that took its
+		// segments from the new row alone would show the prompt once and never
+		// again, which is the reader's "a card saying the task name and the
+		// actual prompt it is using" losing half of itself on the first update.
+		block.adoptPrompt(last.prompt)
+		a.transcript.Replace(index, block)
+		return true
+	}
+	// ONLY THE TASK'S OWN ENDING TAKES THE CARD'S PLACE. A learning moment is
+	// delivery-SHAPED by columns — a system row, anchored to a node, belonging
+	// to no command — and it is not an ending: it is the machine saying what it
+	// will do differently next time ([speaks]). Letting it replace the card
+	// would delete the result the reader came back for.
+	if !isDelivery(*block.source) || speaks(block.source.Body) {
+		return false
+	}
+	// The delivery card is the same card, finished: it keeps the reading the
+	// commitment was carrying, so the finished row still says what was asked as
+	// well as what came back (§4's anatomy, and the reader's own list).
+	block.adoptPrompt(last.prompt)
+	a.transcript.Replace(index, block)
+	return true
+}
+
+// jobCard finds the block already standing for one task, anywhere in the
+// conversation.
+//
+// IT IS A LOOKUP BY TASK AND NOT BY ADJACENCY, and that is the whole difference
+// between "the last two rows happened to be the same job" and §3's "ONE block
+// per job, at the position of the ask, evolving IN PLACE". Two tasks running at
+// once interleave their progress — the reporter's own journal alternates
+// `task-9400` and `task-9380` rows for pages — so an adjacency rule would mint a
+// fresh block every time the other task said something, which is the defect
+// wearing a different hat.
+//
+// It walks BACKWARDS and stops at the first match, so the ordinary case (the
+// task that just spoke is the task that spoke last) costs one comparison. The
+// live region is detached while [App.absorb] runs, so every block it sees is a
+// journaled one and never a preview.
+func (a *App) jobCard(job string) (*messageBlock, int, bool) {
+	if job == "" || a.transcript == nil {
+		return nil, 0, false
+	}
+	for i := a.transcript.Len() - 1; i >= 0; i-- {
+		block, ok := a.transcript.Block(i).(*messageBlock)
+		if !ok || block.job != job || !block.machinery {
+			continue
+		}
+		return block, i, true
+	}
+	return nil, 0, false
 }
 
 // endsTurn reports that this journaled message is the reply the live turn was
@@ -403,6 +709,13 @@ func (a *App) postCmd(text string, attachments ...composer.Attachment) tea.Cmd {
 	return func() tea.Msg {
 		message.Attachments = keepAttachments(keeper, files)
 		posted, err := thread.Post(backend, message)
+		if err != nil {
+			// The OUTGOING message rides back on the failure, because the
+			// store's answer to a refused write is a zero row and the one thing
+			// the surface needs from a failed send is the words it was carrying
+			// ([App.failSend] puts them back in the draft).
+			return postResultMsg{message: message, err: err}
+		}
 		return postResultMsg{message: posted, err: err}
 	}
 }
@@ -414,8 +727,13 @@ func (a *App) postCmd(text string, attachments ...composer.Attachment) tea.Cmd {
 // arrived between the last read and this post is not skipped.
 func (a *App) applyPost(result postResultMsg) {
 	if result.err != nil {
-		a.status.err = result.err.Error()
-		a.shell.Invalidate()
+		// The store is not dead — one write was refused — so this is the
+		// composer's failed state and not the footer's whole coloured sentence
+		// about an unreachable journal. The words go back into the draft on the
+		// same call, because a failure that destroyed the sentence would be
+		// worse than one that said nothing (§7, [App.failSend]).
+		a.failSend(result.message.Body, result.err)
+		a.refresh()
 		return
 	}
 	a.status.err = ""
@@ -463,7 +781,11 @@ func (a *App) beginTurn(since int64) {
 			style:         a.style,
 			phase:         "thinking",
 			interruptible: a.commander != nil,
-			motion:        !a.linear,
+			// The breathe, unless the window is linear — where nothing moves and
+			// the line says the same thing standing still (10.1.5). The ONE
+			// SPINNER is still the composer's prompt (§8); this is §11's second
+			// motion, which is a different mark saying a different thing.
+			motion: !a.linear,
 		},
 	}
 	a.attachLive()
@@ -496,9 +818,6 @@ func (a *App) attachLive() {
 		return
 	}
 	if a.turn.reply != nil {
-		if a.turn.label != nil {
-			a.transcript.Append(a.turn.label)
-		}
 		a.transcript.Append(a.turn.reply)
 	}
 	a.transcript.Append(a.turn.await)
@@ -597,7 +916,6 @@ func (a *App) writeReply(text string) {
 	}
 	if a.turn.reply == nil {
 		a.detachLive()
-		a.turn.label = a.newReplyLabel()
 		a.turn.reply = a.newReplyBlock()
 		a.attachLive()
 	}
@@ -618,41 +936,23 @@ func (a *App) writeReply(text string) {
 	a.turn.shown = text
 }
 
-// newReplyBlock is the streamed reply's block: one header naming who is
-// speaking, and a body that grows. Its header is static on purpose — the moving
-// glyph belongs to the awaiting line below it, so the reply's first row is
-// byte-stable and everything above the tail stays out of the rebuild.
+// newReplyBlock is the streamed reply: a headerless body that grows, at exactly
+// the depth its journaled twin will have.
 //
-// The live preview is TWO blocks, and that is the seam this wave closes.
-//
-// A journaled reply draws its header flush left and its prose one depth under
-// it (message.go's dressSpeech, at [bodyIndent]). The streamed preview used to
-// be a single block with both at column zero, so at the instant a turn settled
-// every line the reader had just watched arrive slid two columns sideways —
-// nothing had changed but which renderer owned the words, which is exactly the
-// motion 8.1.6 forbids on the row a reader is watching most closely.
-//
-// [blocks.TextBlock.Indent] moves a whole block, header included, so one block
-// cannot hold both depths. Two can: a header-only block flush left, and a
-// headerless body block indented to match its journaled twin. They are appended
-// and dropped together and are never separately addressable, so the live region
-// is still one thing to every caller outside this pair.
+// IT IS ONE BLOCK AGAIN, because the answer is the unmarked voice (§3b). The
+// preview used to be two — a header-only block saying "aforge" flush left, and
+// the prose indented under it — so that the live rows and the journaled rows
+// would line up at the moment a turn settled. Now that neither party of the
+// conversation is named, there is nothing to line up but the words, and the
+// pair collapses back into the single block it wanted to be: same id, same
+// indent, and the same promise that the instant the preview becomes a journaled
+// reply nothing on screen moves sideways (8.1.6, on the row a reader is watching
+// most closely).
 func (a *App) newReplyBlock() *blocks.TextBlock {
 	block := blocks.NewText("live-reply", blocks.Header{})
 	block.Styler = a.style
 	block.BodyState = blocks.StateSettled
 	block.Indent = bodyIndent
-	return block
-}
-
-// newReplyLabel is the preview's header row: who is speaking, flush left, at
-// exactly the depth the journaled reply's header will occupy.
-func (a *App) newReplyLabel() *blocks.TextBlock {
-	block := blocks.NewText("live-reply-label", blocks.Header{
-		Title: "aforge",
-		State: blocks.StateChrome,
-	})
-	block.Styler = a.style
 	return block
 }
 
@@ -696,12 +996,316 @@ func (a *App) waitStream() tea.Cmd {
 
 // -- the animation clock -----------------------------------------------------
 
-// startTick arms the shared animation clock, and only while a turn is live. A
-// settled window ticks for nothing, which is what lets it cost nothing.
+// startTick arms the shared animation clock, and only while something is
+// actually moving. A settled window ticks for nothing, which is what lets it
+// cost nothing.
+//
+// TWO THINGS MOVE. A live turn in this thread is the first and always was. The
+// second is an OPEN TASK ROOM WATCHING WORK HAPPEN: a worker's recorder ends on
+// a call whose result has not come back, so the record draws a running row
+// (trace.go's [runningBlock]) and that row is the live region of its own
+// transcript. Without this clause the spinner would advance only when the poll
+// happened to find the journal moved — which for a worker mid-tool-call is
+// exactly never, since a recorder append journals nothing at all. The room
+// would freeze on one braille frame and read as a window that had stopped,
+// which is the precise failure the running row exists to fix.
+//
+// CALM STOPS THE GLYPHS AND NOT THE CLOCK. The linear profile used to return
+// here, which stopped the WAKE-UPS — so every elapsed cell in the window froze
+// too, and a job that had been running for four minutes said `12s` for the rest
+// of its life. §18's rule is the other one: the glyph freezes on its first
+// frame ([blocks.Clock.Calm], which every driven motion in this tree already
+// honours) and the number keeps counting, because a still glyph beside a moving
+// number is still a row visibly alive. A calm window therefore wakes on the
+// SECOND rather than on the animation step — that is the only cadence anything
+// left moving needs, and it is a tenth of the wake-ups.
 func (a *App) startTick() tea.Cmd {
-	if a.ticking || !a.turn.active || a.linear {
+	if a.ticking || !(a.turn.active || a.roomIsLive()) {
 		return nil
 	}
 	a.ticking = true
+	// The profile is pushed to the clock here rather than at construction
+	// because this is the one function both halves of the chain go through, and
+	// a clock whose calmness disagreed with the ticks driving it would draw a
+	// frozen glyph on a window that was still paying to wake up.
+	//
+	// It only ever turns calmness ON. A window in the linear profile is calm by
+	// definition; a window that is not says nothing either way, because the
+	// clock's own Calm is also how a host, a test or a future reduced-motion
+	// setting asks for the same thing, and a profile check that wrote `false`
+	// would be this seam quietly overruling all three.
+	if a.linear {
+		a.transcript.Clock().Calm = true
+		return tea.Tick(calmInterval, func(time.Time) tea.Msg { return animTickMsg{} })
+	}
+	// THE WAKE-UP IS ASKED OF THE CLOCK, not measured from now.
+	//
+	// A fixed `Tick(DefaultInterval)` sleeps one interval from whenever this
+	// call happened to run, which is a phase the poll, a keystroke and a delta
+	// all shift independently. The frame then lands mid-step: the glyph index is
+	// the same one the last frame drew, every row is byte-identical, and the
+	// repaint produces zero dirty rows — the exact wasted paint 8.1.3's
+	// floor(now/interval) design exists to make impossible. Worse, the drift
+	// accumulates, so the visible cadence of the breathe wanders while the
+	// underlying clock does not.
+	//
+	// [blocks.Clock.NextTick] answers the only question worth asking — when does
+	// the next glyph actually change — off the same latched instant every live
+	// glyph in the frame derives from. Waking there means every repaint has
+	// something to repaint. A clock that has never been latched, or a calm one,
+	// answers the zero time; a live turn on an unlatched clock still has to wake
+	// up, so that case falls back to one interval.
+	next := a.transcript.Clock().NextTick()
+	if next.IsZero() {
+		return tea.Tick(blocks.DefaultInterval, func(time.Time) tea.Msg { return animTickMsg{} })
+	}
+	if wait := next.Sub(a.now()); wait > 0 {
+		return tea.Tick(wait, func(time.Time) tea.Msg { return animTickMsg{} })
+	}
 	return tea.Tick(blocks.DefaultInterval, func(time.Time) tea.Msg { return animTickMsg{} })
+}
+
+// roomIsLive says the LENS ON SCREEN holds something that is still moving.
+//
+// It is the one question both halves of the animation chain ask — [startTick]
+// asks it to decide whether to arm, and the tick's own handler asks it to decide
+// whether a repaint has anything to repaint — so the two cannot disagree about
+// what "live" means, which is why the second lens was added here rather than
+// beside each of them.
+//
+// AN OPEN TASK ROOM is the first answer and the original one: it asks the
+// TRANSCRIPT rather than the record, because "is anything live" is already the
+// transcript's own question ([blocks.Transcript.LiveSeam]) and a second answer
+// derived from the traces would be a second opinion that could disagree with the
+// one deciding which blocks get rebuilt.
+//
+// THE WORK PAGE is the second. A board with a job in `working` draws a spinner
+// and an ageing clock, and neither advances on a journal move — a worker inside
+// a tool call journals nothing at all — so without this clause the page freezes
+// on one frame and reads as a window that has stopped. That was the reported
+// defect ("no animation of running etc."), and it is the same defect the room
+// clause fixed one lens over.
+//
+// THE CONVERSATION ITSELF is the third, and it is the one the reader meets
+// first. A job block in the thread carries a clock while its job runs (§3's
+// receipt), and a clock nobody wakes for is a number that stops — which is what
+// the reporter saw: a job block stating an elapsed measured whenever the
+// journal last happened to move.
+func (a *App) roomIsLive() bool {
+	if a.boardIsLive() || a.threadIsLive() || a.railIsLive() {
+		return true
+	}
+	if a.view == nil || a.view.kind != viewNode || a.view.transcript == nil {
+		return false
+	}
+	return a.view.transcript.LiveSeam() < a.view.transcript.Len()
+}
+
+// threadIsLive says the conversation holds a job block whose clock is running.
+//
+// It walks the TAIL and not the whole transcript, because a job block evolves
+// in place at the position of its ask and a thread with a thousand settled rows
+// must not pay for them on every frame. The window is generous enough to hold
+// every job a reader could have commissioned without speaking in between, and
+// the answer is only ever used to decide whether to wake up.
+func (a *App) threadIsLive() bool {
+	if a.transcript == nil {
+		return false
+	}
+	lo := a.transcript.Len() - liveTailWindow
+	if lo < 0 {
+		lo = 0
+	}
+	for i := a.transcript.Len() - 1; i >= lo; i-- {
+		block, ok := a.transcript.Block(i).(*messageBlock)
+		if !ok || !block.working {
+			continue
+		}
+		// THREE THINGS ON A CARD MOVE, and asking only about the clock missed
+		// two of them — which is half of why the window animated only when
+		// something else happened to repaint it.
+		//
+		//   - the ELAPSED cell, whenever the board has measured one;
+		//   - the BREATHE on the phase line, which is the whole of what a card
+		//     shows while it is being created or planned and has no measured
+		//     clock at all ([creatingWord], [planningWord], [settingUp]);
+		//   - the SPINNER on a running part's own row (§18.2's live subtree
+		//     twigs), which a card can carry before it has been billed a second.
+		//
+		// A skeleton card is the case that proves it: it is drawn the frame its
+		// commissioning row is read, it has no lifecycle, no receipt and no
+		// parts, and the one thing on it is a breathing dot. A liveness question
+		// that asked for a measured clock answered "nothing is moving" over a
+		// card whose only content was a motion.
+		if block.hasElapsed || block.breathing || block.partsAlive() {
+			return true
+		}
+	}
+	return false
+}
+
+// settleJobBlocks stops the clock on job blocks whose jobs have finished.
+//
+// A block is dressed once, from the board as it stood when the row arrived, so
+// a job that finishes WITHOUT posting a last word — a sub-job, a cancel, a
+// failure the reconciler settled quietly — would leave its block counting
+// forever. That is the battery law's own failure case ("no animation may run
+// when nothing is live") and it is also a lie on screen: a stopped job with a
+// number still climbing.
+//
+// The ordinary ending needs none of this: a delivery replaces the block outright
+// (coalesceJob). This is the door for every ending that is not announced, and it
+// runs on the one cycle where a lifecycle can have moved at all.
+func (a *App) settleJobBlocks() {
+	if a.transcript == nil || a.source == nil {
+		return
+	}
+	lo := a.transcript.Len() - liveTailWindow
+	if lo < 0 {
+		lo = 0
+	}
+	for i := lo; i < a.transcript.Len(); i++ {
+		block, ok := a.transcript.Block(i).(*messageBlock)
+		// A settled card is walked too, and that is not a contradiction of this
+		// function's name: its money and its burn are still arriving. A job's
+		// last run is billed after the row that announced it, so a delivery card
+		// that stopped reading at the moment it was dressed shows the bill it
+		// had rather than the bill it has.
+		if !ok || (!block.working && block.card == dressNone) {
+			continue
+		}
+		facts, known := a.source.jobFacts(block.job)
+		if !known {
+			continue
+		}
+		switch facts.Life {
+		case rail.LifeWorking, rail.LifeQueued:
+			// Still going, and its own figure is worth taking: a job whose
+			// elapsed the board has re-measured re-latches here, so the row
+			// never drifts away from the card beside it (12.14).
+			//
+			// THE RE-LATCH IS MONOTONE, and that is what makes the card's clock
+			// SMOOTH (user review, 2026-08-11: "the animations inside card seems
+			// to be not smooth or weird"). The board measures an elapsed at the
+			// instant its SNAPSHOT was taken; this runs at the instant the poll
+			// folded that snapshot in, which is strictly later. Re-latching
+			// unconditionally therefore restarted the count from a figure
+			// measured in the past — so every poll the number jumped BACKWARDS
+			// by the read's own latency and then climbed again, four times a
+			// second, which is exactly the jitter the reader saw. A measurement
+			// that is behind what the frame is already showing is a stale
+			// measurement, not a correction; it is dropped, and the clock beside
+			// it keeps counting from the last reading that was ahead.
+			shown, showing := block.liveElapsed()
+			if !showing || block.at.IsZero() || facts.Elapsed >= shown {
+				block.elapsed, block.hasElapsed = facts.Elapsed, facts.HasElapsed
+				block.at = a.now()
+			}
+		default:
+			block.working = false
+			// The last reading it will ever show is the board's own final one,
+			// not whatever the clock happened to have counted to.
+			block.elapsed, block.hasElapsed = facts.Elapsed, facts.HasElapsed
+			block.version++
+			block.measured = false
+		}
+		// THE MONEY AND THE SHAPE MOVE WITH THE SNAPSHOT, NOT WITH THE MESSAGE.
+		// A card is dressed once, from a journal row, and everything on it that
+		// is a fact about the GRAPH — what the job has spent, how much of the
+		// window it has burned, how many parts exist, whether any of them has
+		// started — changes with no row being written at all. The reader put it
+		// plainly: "the cost updates and runtime etc. should be running and
+		// realtime in the main chat". The elapsed already ticked because the
+		// clock ages it; the rest sat frozen at whatever it was when the last
+		// status happened to land.
+		block.refreshCard(facts, a.source)
+		a.transcript.Invalidate(block.ID())
+	}
+}
+
+// railIsLive says the sidebar is showing work that is still running.
+//
+// A rail card's clock is the one thing on that surface that moves (§18.2 bans
+// the spinner from a durable card outright, and a rail card is the example the
+// law names), and a clock nobody wakes for is a clock that stopped. The
+// question is asked of the same rows the rail draws, through the same
+// [rail.Attention.Live] the renderer uses to decide whether to age them, so the
+// wake-up and the motion can never disagree about which rows are moving.
+func (a *App) railIsLive() bool {
+	if a.railModel == nil {
+		return false
+	}
+	for _, row := range a.railModel.Rows() {
+		if row.Attention().Live() && row.Meta.HasElapsed {
+			return true
+		}
+	}
+	return false
+}
+
+const (
+	// liveTailWindow is how far back a frame looks for something still moving.
+	liveTailWindow = 32
+	// calmInterval is the wake-up cadence of a window whose motion is frozen:
+	// one second, which is the resolution of the only cell still changing.
+	calmInterval = time.Second
+)
+
+// refreshCardPreviews tells every live job card in the conversation what its
+// running parts' recorders last said.
+//
+// It is the card half of the same read the record page uses (trace.go's
+// [App.readCardTracesCmd] and recordtree.go's [recordPreview]); the LOOKUP is
+// shared outright, because a recorder is named by the SPLICE and not by the node
+// — a planner splices every part of a job in one transaction, so every part
+// shares one created sequence and therefore one file — and a card that asked for
+// its own part's id would come back empty for every part but one.
+//
+// Only a card whose preview actually MOVED is invalidated, so a recorder that
+// grew somewhere else costs one string comparison and no repaint.
+func (a *App) refreshCardPreviews() {
+	if a.transcript == nil || a.source == nil || len(a.traces) == 0 {
+		return
+	}
+	lo := a.transcript.Len() - liveTailWindow
+	if lo < 0 {
+		lo = 0
+	}
+	moved := false
+	for i := lo; i < a.transcript.Len(); i++ {
+		block, ok := a.transcript.Block(i).(*messageBlock)
+		if !ok || block.card == dressNone || block.job == "" || len(block.parts) == 0 {
+			continue
+		}
+		preview := recordPreview(a.source.workRecord(block.job), a.traces)
+		if preview == nil {
+			continue
+		}
+		changed := false
+		for j := range block.parts {
+			if block.parts[j].Life != rail.LifeWorking {
+				continue
+			}
+			node, known := a.source.nodes[block.parts[j].Node]
+			if !known {
+				continue
+			}
+			line := preview(workRow{node: node})
+			if line == block.parts[j].Preview {
+				continue
+			}
+			block.parts[j].Preview = line
+			changed = true
+		}
+		if !changed {
+			continue
+		}
+		block.version++
+		block.measured = false
+		a.transcript.Invalidate(block.ID())
+		moved = true
+	}
+	if moved {
+		a.shell.Invalidate()
+	}
 }

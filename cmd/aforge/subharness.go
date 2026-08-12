@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/codeaf"
 )
 
 // This is the surface's half of the subharness contract: which workers this
@@ -111,12 +113,44 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 // must never enter the pools, so the failure mode is the engine's own error
 // message about the id it was actually given — not a quiet substitution of some
 // near neighbour that happens to be in a catalog.
+//
+// The engine's catalog is asked, one id at a time, which spelling it actually
+// has (sweModelResolver). Translating blind is how this broke a second time:
+// the dated canonical slug OpenRouter publishes for a model is, for models.dev,
+// a name nobody has ever heard of, so the translation that was supposed to
+// rescue the alias killed the plain id instead. A substitution now has to be
+// confirmed by the catalog it is being made for.
 func engineModelID(models *catalog.Catalog, model string) string {
 	model = strings.TrimSpace(model)
 	if models == nil || model == "" {
 		return model
 	}
-	return models.Concrete(model)
+	resolver, _ := sweModelResolver()
+	return models.Concrete(model, resolver)
+}
+
+// sweModelProbeTimeout bounds the one catalog read a translation may cost. At
+// steady state models.dev is a file the engine already refreshed and this is
+// microseconds; on a cold install it is a fetch, and a leaf must not wait on a
+// diagnostic longer than it would wait to be told the model is fine.
+const sweModelProbeTimeout = 5 * time.Second
+
+// sweModelResolver is the engine's own catalog, asked from this side of the
+// process boundary. It returns nil and an error when the catalog cannot be
+// reached at all, which Concrete reads as "nobody can say" rather than "the
+// model is missing" — the difference between forwarding what a person chose and
+// substituting a spelling nothing has confirmed.
+//
+// It is a variable for the same reason loadChatPrefs is: a test has to be able
+// to answer for the engine without the engine, and without the network.
+var sweModelResolver = func() (catalog.Resolves, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), sweModelProbeTimeout)
+	defer cancel()
+	resolver, err := codeaf.ModelResolver(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return catalog.Resolves(resolver), nil
 }
 
 // executorFor builds the worker one leaf was promised, degrading to the
@@ -287,7 +321,7 @@ func noteDegradedLeafWorker(node store.Node, worker string) {
 	if home == "" {
 		home = filepath.Join(leafWorkerNotes.workspace, jobIDOf(leafWorkerNotes.graph, node))
 	}
-	path := exec.TraceFile(home, node.CreatedSeq)
+	path := exec.TraceFile(home, node.ID)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
@@ -326,10 +360,21 @@ func noteUnavailableWorker(stderr io.Writer, worker string) {
 // flag exists for measurement runs, and a benchmark that dies at argument
 // parsing because a build shipped without one worker has wasted more than the
 // measurement was worth.
+//
+// An empty flag is the only "nothing was forced". `--subharness linear` is a
+// forcing like any other, and it returns the generalist's name rather than
+// nothing at all — the arm of a benchmark that measures the default worker is
+// the arm that has to be able to insist on it. While the two were both the
+// empty string, that arm did not exist: the compiler read a coding-shaped ask,
+// chose the coding pipeline, and the flag that was supposed to hold the worker
+// fixed was the one variable it could not hold.
 func resolveSubharnessFlag(name string, stderr io.Writer) string {
 	name = strings.TrimSpace(name)
-	if name == "" || name == exec.LinearSubharness {
+	if name == "" {
 		return ""
+	}
+	if exec.GeneralistSubharness(name) {
+		return exec.LinearSubharness
 	}
 	if exec.KnownSubharness(name) {
 		return name

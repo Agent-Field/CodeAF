@@ -166,7 +166,7 @@ func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result
 		if err := os.WriteFile(full, data, 0o644); err != nil {
 			return errorf("could not save the generated image")
 		}
-		t.workspace.Record(t.nodeID, full)
+		t.workspace.Record(t.leaf, full)
 		paths = append(paths, relative)
 	}
 	lines := make([]string, 0, len(paths)+1)
@@ -211,7 +211,7 @@ func (t *Toolbox) speak(ctx context.Context, args map[string]any) Result {
 	if pathErr != nil || os.WriteFile(full, response.Audio, 0o644) != nil {
 		return errorf("could not save synthesized speech")
 	}
-	t.workspace.Record(t.nodeID, full)
+	t.workspace.Record(t.leaf, full)
 	return Result{
 		Content: "♪ " + filepath.ToSlash(relative) + "\nSynthesized speech for " + oneLine(body, 100) + " on " + model + ".",
 		Usage:   mediaUsage(response.Usage),
@@ -255,7 +255,7 @@ func (t *Toolbox) generateMusic(ctx context.Context, args map[string]any) Result
 	if pathErr != nil || os.WriteFile(full, response.Audio, 0o644) != nil {
 		return errorf("could not save the generated music")
 	}
-	t.workspace.Record(t.nodeID, full)
+	t.workspace.Record(t.leaf, full)
 	return Result{
 		Content: "♪ " + filepath.ToSlash(relative) + "\nGenerated music for " + oneLine(prompt, 100) + " on " + model + ".",
 		Usage:   mediaUsage(response.Usage),
@@ -328,7 +328,7 @@ func (t *Toolbox) generateVideo(ctx context.Context, args map[string]any) Result
 	if pathErr != nil || os.WriteFile(full, response.Video, 0o644) != nil {
 		return errorf("could not save the generated video")
 	}
-	t.workspace.Record(t.nodeID, full)
+	t.workspace.Record(t.leaf, full)
 	return Result{
 		Content: "▶ " + filepath.ToSlash(relative) + "\nGenerated video for " + oneLine(prompt, 100) + " on " + model + ".",
 		Usage:   mediaUsage(response.Usage),

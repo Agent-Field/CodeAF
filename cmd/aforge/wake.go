@@ -55,7 +55,10 @@ func runWake(args []string) error {
 		// jobs born here run on the configured work model.
 		// A wake pass is the standing half of the product doing its job, not a
 		// one-shot errand: charters are exactly what it exists to serve.
-		reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, nil, false)
+		// A wake pass has no shared workspace to show the planner: the jobs it
+		// admits work in per-job directories that do not exist yet, so terrain
+		// renders nothing and every prompt it sends is the prompt it always sent.
+		reconciler := newResidentReconciler(settings, graph, chatClient, taskClient, planClient, plans, "", nil, false)
 		// Craft is not a chat ornament. Without it an overnight charter plans
 		// from scratch a job that has a proven learned workflow, and any craft
 		// that overnight job would have taught is discarded before it can even
@@ -92,8 +95,7 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	if err != nil {
 		return err
 	}
-	dir := filepath.Dir(path)
-	holder, err := lease.ProbeResident(dir)
+	holder, err := lease.ProbeResident(path)
 	if err != nil {
 		return err
 	}
@@ -112,7 +114,7 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("open wake store: %s is not a regular database file", path)
 	}
-	releaseResident, heldBy, err := lease.AcquireResident(dir, "wake")
+	releaseResident, heldBy, err := lease.AcquireResident(path, "wake")
 	if err != nil {
 		return err
 	}
@@ -160,7 +162,7 @@ func runWakeWith(args []string, output io.Writer, build wakeBuilder) error {
 			// Stamping liveness is what makes the role reclaimable: a pass that
 			// completes says so on the lease, and a holder that stops saying it
 			// stops being deferred to.
-			_ = lease.NoteResidentTick(dir, time.Now())
+			_ = lease.NoteResidentTick(path, time.Now())
 		}
 		if tickErr != nil {
 			if errors.Is(tickErr, context.DeadlineExceeded) || errors.Is(tickErr, context.Canceled) {

@@ -128,6 +128,64 @@ func knobsFrom(ctx context.Context) callKnobs {
 	return callKnobs{cacheKey: CacheKeyFrom(ctx), effort: effortFrom(ctx)}
 }
 
+// modelFor names the model a request will actually run against: the one the
+// router pinned, or the adapter's own default when nothing pinned one.
+func (c *Client) modelFor(request *ai.Request) string {
+	if model := strings.TrimSpace(request.Model); model != "" {
+		return model
+	}
+	return c.config.Model
+}
+
+// sendShaped encodes the request and sends it, recovering once from the single
+// 400 this adapter can answer by itself: an endpoint that reasons
+// unconditionally refusing the disable the harness sends as a planning economy.
+//
+// The knob is a request-shape decision made here, so its rejection is repaired
+// here. Anywhere else it is a failed node the operator has to reconfigure
+// around — which is what MiniMax M2.7 produced: every planning call 400ing on a
+// default the model was never able to honour. The retry costs nothing: a 400
+// generated no tokens, and the answer is remembered so only the first call on a
+// model pays for the discovery.
+func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	body, err := c.encodeRequest(request, knobs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+	response, err := c.send(ctx, request, body, stream)
+	if err != nil || response.StatusCode != http.StatusBadRequest {
+		return response, err
+	}
+	model := c.modelFor(request)
+	if c.resolveEffort(model, knobs.effort) != EffortOff {
+		return response, nil
+	}
+	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+	if readErr != nil || !refusesDisabledReasoning(peek) {
+		// Not ours to fix. The body is handed back whole — the caller still has
+		// to read the provider's own words to build the error it reports.
+		response.Body = rewound(peek, response.Body)
+		return response, nil
+	}
+	response.Body.Close()
+	noteReasoningMandatory(model)
+	body, err = c.encodeRequest(request, knobs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+	return c.send(ctx, request, body, stream)
+}
+
+// rewound puts an already-read prefix back in front of a body, so peeking at a
+// response cannot shorten what the caller goes on to read. Close still closes
+// the underlying body, which is the half that owns a connection.
+func rewound(peek []byte, rest io.ReadCloser) io.ReadCloser {
+	return struct {
+		io.Reader
+		io.Closer
+	}{Reader: io.MultiReader(bytes.NewReader(peek), rest), Closer: rest}
+}
+
 func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Request, error) {
 	request := &ai.Request{
 		Messages: messages,
@@ -159,11 +217,7 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	if err != nil {
 		return nil, err
 	}
-	body, err := c.encodeRequest(request, knobsFrom(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-	httpResponse, err := c.send(ctx, request, body, false)
+	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), false)
 	if err != nil {
 		return nil, err
 	}
@@ -197,11 +251,7 @@ func (c *Client) completeWithMessagesStreaming(
 		return nil, err
 	}
 	request.Stream = true
-	body, err := c.encodeRequest(request, knobsFrom(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-	httpResponse, err := c.send(ctx, request, body, true)
+	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), true)
 	if err != nil {
 		return nil, err
 	}
@@ -323,14 +373,9 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 			return
 		}
 		request.Stream = true
-		body, err := c.encodeRequest(request, knobsFrom(ctx))
-		if err != nil {
-			errs <- fmt.Errorf("marshal request: %w", err)
-			return
-		}
 		// Retrying happens entirely before the first byte of the stream is
 		// handed over, so a reconnect can never duplicate delivered chunks.
-		httpResponse, err := c.send(ctx, request, body, true)
+		httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), true)
 		if err != nil {
 			errs <- err
 			return

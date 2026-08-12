@@ -950,26 +950,99 @@ func TestRootSchedulerUsesLiveDispatchTruthAndBoundsContinuations(t *testing.T) 
 	}
 }
 
+// pausedClock advances only when something sleeps, so a wall-bounded pause
+// runs at test speed and the number of *paid* turns it costs is observable.
+type pausedClock struct {
+	now    time.Time
+	sleeps int
+}
+
+func (clock *pausedClock) Now() time.Time { return clock.now }
+
+func (clock *pausedClock) Sleep(_ context.Context, duration time.Duration) error {
+	clock.sleeps++
+	clock.now = clock.now.Add(duration)
+	return nil
+}
+
 func TestRootSchedulerBoundsResourcePauseSeparately(t *testing.T) {
 	// F2.1/F2.2: pause cycles do not increment the three-cycle deadlock counter,
 	// but a permanent pause terminates at its larger pause-specific bound.
+	//
+	// The pause is waited out inside a single orchestrator turn: a paused cycle
+	// dispatches nothing, so handing its continuation back to the step loop
+	// would spend a paid model turn per re-check (12 of them, 723s, in the field)
+	// to learn only that the volume is still full.
 	plandb.ResetPlanDBForTesting()
 	t.Cleanup(plandb.ResetPlanDBForTesting)
 	db := plandb.GetPlanDB()
 	projectRow := db.Init("paused")
 	root, _ := db.AddTask(plandb.AddTaskInput{Title: "root", Project: projectRow.ID, CustomID: "pause-root"})
 	_, _ = db.AddTask(plandb.AddTaskInput{Title: "child", Project: projectRow.ID, Parent: root.ID, CustomID: "pause-child"})
-	runner := newPipeline(cliArgs{}, t.TempDir(), pipelineDeps{Events: newEventWriter(io.Discard), Notes: io.Discard})
+	clock := &pausedClock{now: time.Now()}
+	runner := newPipeline(cliArgs{}, t.TempDir(), pipelineDeps{
+		Events: newEventWriter(io.Discard), Notes: io.Discard,
+		Now: clock.Now, Sleep: clock.Sleep,
+	})
 	t.Cleanup(runner.runtime.Close)
 	plan := steploop.PlanDBInfo{ProjectID: projectRow.ID, RootTaskID: root.ID}
-	pump := runner.rootScheduler(&rootSchedulerScript{t: t, wantPlan: plan, quietReason: scheduler.CycleQuietPaused})
-	for cycle := 1; cycle < pauseCycleThreshold; cycle++ {
-		if _, pumpErr := pump.Pump(context.Background(), steploop.SchedulerInput{Plan: plan}); pumpErr != nil {
-			t.Fatalf("pause cycle %d stalled early: %v", cycle, pumpErr)
-		}
-	}
+	script := &rootSchedulerScript{t: t, wantPlan: plan, quietReason: scheduler.CycleQuietPaused}
+	pump := runner.rootScheduler(script).(*pipelineRootScheduler)
+
+	start := clock.now
 	_, err := pump.Pump(context.Background(), steploop.SchedulerInput{Plan: plan})
 	if !errors.Is(err, errRootDrainStalled) || !strings.Contains(err.Error(), "resource pause persisted") {
 		t.Fatalf("permanent pause result = %v", err)
+	}
+	if pump.cycle != 1 {
+		t.Fatalf("a permanent pause cost %d paid orchestrator turns, want 1", pump.cycle)
+	}
+	if clock.sleeps < 2 || script.calls != clock.sleeps+1 {
+		t.Fatalf("pause re-checks = %d for %d sleeps, want one free delegate pump per wait", script.calls, clock.sleeps)
+	}
+	if waited := clock.now.Sub(start); waited != pauseWallTimeout {
+		t.Fatalf("pause waited %s, want the full %s budget", waited, pauseWallTimeout)
+	}
+}
+
+// A pause that clears costs nothing at all: the turn that hit it waits, sees
+// the volume recover, and returns the dispatch its re-check found.
+func TestRootSchedulerPauseThatClearsCostsNoExtraTurn(t *testing.T) {
+	plandb.ResetPlanDBForTesting()
+	t.Cleanup(plandb.ResetPlanDBForTesting)
+	db := plandb.GetPlanDB()
+	projectRow := db.Init("pause-clears")
+	root, _ := db.AddTask(plandb.AddTaskInput{Title: "root", Project: projectRow.ID, CustomID: "clear-root"})
+	_, _ = db.AddTask(plandb.AddTaskInput{Title: "child", Project: projectRow.ID, Parent: root.ID, CustomID: "clear-child"})
+	clock := &pausedClock{now: time.Now()}
+	runner := newPipeline(cliArgs{}, t.TempDir(), pipelineDeps{
+		Events: newEventWriter(io.Discard), Notes: io.Discard,
+		Now: clock.Now, Sleep: clock.Sleep,
+	})
+	t.Cleanup(runner.runtime.Close)
+	plan := steploop.PlanDBInfo{ProjectID: projectRow.ID, RootTaskID: root.ID}
+	script := &rootSchedulerScript{
+		t: t, wantPlan: plan, summary: "dispatched", quietReason: scheduler.CycleQuietPaused,
+	}
+	script.onPump = func(call int) error {
+		if call >= 3 {
+			// The volume recovered while the turn waited; the script's first-call
+			// summary shape stands in for the dispatch that re-check found.
+			script.quietReason = scheduler.CycleQuietNone
+			script.calls = 1
+		}
+		return nil
+	}
+	pump := runner.rootScheduler(script).(*pipelineRootScheduler)
+
+	summary, err := pump.Pump(context.Background(), steploop.SchedulerInput{Plan: plan})
+	if err != nil || summary != "dispatched" {
+		t.Fatalf("cleared pause summary=%q err=%v", summary, err)
+	}
+	if pump.cycle != 1 || clock.sleeps != 2 {
+		t.Fatalf("cleared pause cost %d turns and %d waits, want 1 turn", pump.cycle, clock.sleeps)
+	}
+	if pump.pauseCycles != 0 || !pump.pauseSince.IsZero() {
+		t.Fatalf("a cleared pause left its counters armed: cycles=%d since=%v", pump.pauseCycles, pump.pauseSince)
 	}
 }

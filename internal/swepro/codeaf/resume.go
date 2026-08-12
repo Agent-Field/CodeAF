@@ -2,6 +2,9 @@
 package codeaf
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -17,6 +20,33 @@ import (
 )
 
 const resumeCheckpointRelative = ".codeaf/resume-checkpoint.json"
+
+// resumeTreeFingerprint is what the auto-resume supervisor compares across one
+// resume attempt: the commit the tree sits on, the porcelain status, and the
+// bytes of every tracked modification. It answers one question — did that whole
+// re-execution of the pipeline change the deliverable at all?
+//
+// It is deliberately the cheap fingerprint (three git plumbing calls, no file
+// walk) rather than pipeline.worktreeFingerprint: the supervisor runs it twice
+// per attempt against a tree the child process has already closed, and a false
+// "changed" only costs the attempt that the old policy would have taken anyway.
+// The known blind spot is a rewrite of an already-untracked file, whose name
+// alone reaches porcelain; that reads as unchanged, which is the same reading
+// the ratchet metric gives it.
+//
+// The empty string with false means git could not be asked, and the supervisor
+// then keeps its ported stall-count policy exactly.
+func resumeTreeFingerprint(ctx context.Context, workspace string) (string, bool) {
+	head := gitOutput(ctx, workspace, "rev-parse", "HEAD")
+	if head == "" {
+		return "", false
+	}
+	digest := sha256.New()
+	_, _ = digest.Write([]byte(gitOutput(ctx, workspace, "status", "--porcelain")))
+	_, _ = digest.Write([]byte{0})
+	_, _ = digest.Write([]byte(gitOutput(ctx, workspace, "diff", "HEAD")))
+	return head + "|" + hex.EncodeToString(digest.Sum(nil)), true
+}
 
 var resumableTerminalStatuses = map[string]bool{
 	"fail": true, "crashed": true, "escalated": true,

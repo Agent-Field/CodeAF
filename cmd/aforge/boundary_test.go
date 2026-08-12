@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -178,14 +179,20 @@ func TestAJudgementGetsAMenuOnlyWhenThereIsOne(t *testing.T) {
 // catalog a separate engine prices its calls from. Resolving it here is what
 // kept a live run from dying at startup with $0 spent; passing an unknown id
 // through untouched is what keeps a model nobody chose out of the pools.
+//
+// The second half of the story is the dated spelling. A canonical slug is a real
+// id in some foreign catalogs and a name nobody has ever published in others, so
+// it is only ever handed over when the engine's own catalog says it has it —
+// which is what the stub resolver here is: models.dev, answering.
 func TestTheEngineIsHandedAConcreteModelId(t *testing.T) {
 	client := &http.Client{Transport: voiceRoundTripFunc(func(*http.Request) (*http.Response, error) {
 		payload := `{"data":[
-			{"id":"~vendor/model-latest","canonical_slug":"vendor/model-2026-08-01",
+			{"id":"~vendor/model-latest","canonical_slug":"~vendor/model-latest",
+			 "alias_target":{"slug":"vendor/model-2026-08-01"},
 			 "architecture":{"input_modalities":["text"],"output_modalities":["text"]}},
 			{"id":"vendor/model-2026-08-01",
 			 "architecture":{"input_modalities":["text"],"output_modalities":["text"]}},
-			{"id":"vendor/plain",
+			{"id":"vendor/plain","canonical_slug":"vendor/plain-2026-08-01",
 			 "architecture":{"input_modalities":["text"],"output_modalities":["text"]}}
 		]}`
 		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header),
@@ -194,15 +201,41 @@ func TestTheEngineIsHandedAConcreteModelId(t *testing.T) {
 	models := catalog.Load(context.Background(), catalog.Options{
 		BaseURL: "https://example.invalid/api/v1", Dir: t.TempDir(), HTTPClient: client,
 	})
+	// The engine's catalog, stubbed: it carries the concrete model and the plain
+	// undated name, and — like models.dev on the day this was written — has never
+	// heard of the dated spelling of the plain one.
+	engine := map[string]bool{"vendor/model-2026-08-01": true, "vendor/plain": true}
+	restore := sweModelResolver
+	sweModelResolver = func() (catalog.Resolves, error) {
+		return func(id string) bool { return engine[id] }, nil
+	}
+	defer func() { sweModelResolver = restore }()
+
 	for _, testCase := range []struct{ asked, want string }{
 		{"~vendor/model-latest", "vendor/model-2026-08-01"},
 		{"vendor/model-latest", "vendor/model-2026-08-01"},
+		// The engine has vendor/plain and not vendor/plain-2026-08-01, so the id
+		// as written is what crosses the boundary. Substituting the dated slug
+		// unasked is the failure this arm exists to keep out.
 		{"vendor/plain", "vendor/plain"},
 		{"vendor/nobody-has-heard-of-this", "vendor/nobody-has-heard-of-this"},
 		{"", ""},
 	} {
 		if got := engineModelID(models, testCase.asked); got != testCase.want {
 			t.Fatalf("engineModelID(%q) = %q, want %q", testCase.asked, got, testCase.want)
+		}
+	}
+	// An engine catalog nobody can read resolves nothing: the alias still lands
+	// on the model behind it, because that is a fact about OUR catalog, and
+	// everything else crosses as written.
+	sweModelResolver = func() (catalog.Resolves, error) { return nil, errors.New("no catalog") }
+	for _, testCase := range []struct{ asked, want string }{
+		{"~vendor/model-latest", "vendor/model-2026-08-01"},
+		{"vendor/plain", "vendor/plain"},
+	} {
+		if got := engineModelID(models, testCase.asked); got != testCase.want {
+			t.Fatalf("with no engine catalog engineModelID(%q) = %q, want %q",
+				testCase.asked, got, testCase.want)
 		}
 	}
 	// No catalog is no resolution, never a refusal and never a substitution.

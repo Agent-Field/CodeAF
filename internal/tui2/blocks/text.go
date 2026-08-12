@@ -6,6 +6,40 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// The marks this package draws that are not its own invention. The vocabulary
+// authority for every glyph in this tree is internal/tui2/tokens; blocks cannot
+// import it — the edge runs tokens → blocks so blocks stays a leaf — so each
+// byte lives here twice, exactly as [CutMark] and [AccentEdge] already do, and
+// a twin test pins the two spellings equal. A drift fails a test rather than
+// shipping two marks for one meaning.
+const (
+	// OverflowMark is §16's ONE ELLIPSIS GRAMMAR: the mark text leaves behind
+	// when it was too long for its column. Twin of tokens.GlyphEllipsis.
+	//
+	// It is deliberately NOT [CutMark] and not the clickable ⋯: an ellipsis
+	// says "the rest is off the edge", a cut says "this stopped and should not
+	// have". Before this constant the byte was spelled five times in this
+	// package alone — in the two truncators, the path cut and the fold line —
+	// which is four chances to disagree with the rest of the product.
+	//
+	// U+2026 is Ambiguous width and one cell under both shipping rulers.
+	OverflowMark = "…"
+
+	// The rule stroke is a twin too, and it is named in rule.go as [RuleMark] —
+	// beside the renderer that draws it, so a surface reaching for a dash meets
+	// the grammar in the same breath rather than a bare byte.
+
+	// SeparatorMark is the telemetry separator: the dot between meta cells and
+	// between a fold line's counts. Twin of tokens.GlyphSeparator. U+00B7 is
+	// Ambiguous width and one cell under both shipping rulers.
+	SeparatorMark = "·"
+
+	// spaceMark is the third run [repeat] pools. It is not a vocabulary glyph
+	// and needs no twin; it is named only so the switch below reads as three
+	// marks rather than two marks and a literal.
+	spaceMark = " "
+)
+
 // Width is the printable width of s, counting escape sequences as zero and
 // wide runes as two. Every layout decision in this package goes through it.
 func Width(s string) int { return stringWidth(s) }
@@ -41,9 +75,9 @@ func truncate(s string, width int) string {
 		return s
 	}
 	if width == 1 {
-		return "…"
+		return OverflowMark
 	}
-	return ansi.Truncate(s, width, "…")
+	return ansi.Truncate(s, width, OverflowMark)
 }
 
 // TruncatePath cuts a path in the middle, because the filename is the
@@ -70,7 +104,7 @@ func TruncatePath(path string, width int) string {
 	var b builder
 	b.grow(len(path) + 8)
 	b.WriteString(ansi.Truncate(path[:slash], head, ""))
-	b.WriteString("…/")
+	b.WriteString(OverflowMark + "/")
 	b.WriteString(base)
 	return b.String()
 }
@@ -111,32 +145,53 @@ func cut(s string, left, right int) string {
 }
 
 var (
-	dashRun  = strings.Repeat("─", 256)
-	spaceRun = strings.Repeat(" ", 256)
-	dotRun   = strings.Repeat("·", 256)
+	dashRun  = strings.Repeat(RuleMark, 256)
+	spaceRun = strings.Repeat(spaceMark, 256)
+	dotRun   = strings.Repeat(SeparatorMark, 256)
 )
 
-// repeat returns n copies of r, slicing a preallocated run for the runes
-// chrome actually repeats so a rule costs no allocation.
-func repeat(r rune, n int) string {
+// repeat returns n copies of mark, slicing a preallocated run for the three
+// marks chrome actually repeats so a rule costs no allocation. It takes a
+// string rather than a rune so the pooled marks ARE the named constants —
+// a rune switch would need a second spelling of each byte, which is the exact
+// drift the twins exist to prevent.
+//
+// The three pooled marks have three different byte lengths, so the switch is a
+// length test before it is a comparison.
+func repeat(mark string, n int) string {
 	if n <= 0 {
 		return ""
 	}
-	switch r {
-	case '─':
-		if n*3 <= len(dashRun) {
-			return dashRun[:n*3]
+	switch mark {
+	case RuleMark:
+		if end := n * len(RuleMark); end <= len(dashRun) {
+			return dashRun[:end]
 		}
-	case ' ':
+	case spaceMark:
 		if n <= len(spaceRun) {
 			return spaceRun[:n]
 		}
-	case '·':
-		if n*2 <= len(dotRun) {
-			return dotRun[:n*2]
+	case SeparatorMark:
+		if end := n * len(SeparatorMark); end <= len(dotRun) {
+			return dotRun[:end]
 		}
 	}
-	return strings.Repeat(string(r), n)
+	return strings.Repeat(mark, n)
+}
+
+// shrink takes an indent's cells out of a width, never leaving less than one
+// cell of content. It is the one place this package clamps an indent, so a
+// block's depth, its body's depth and a card's edge all give way at the same
+// point: an indent with no room left renders something honest at one cell
+// rather than refusing to render at all.
+func shrink(width, indent int) int {
+	if indent <= 0 {
+		return width
+	}
+	if inner := width - indent; inner >= 1 {
+		return inner
+	}
+	return 1
 }
 
 // shift moves a finished row right by a prebuilt pad. The empty-pad case is a
@@ -164,7 +219,7 @@ func Pad(s string, width int) string {
 	case w > width:
 		return truncate(s, width)
 	default:
-		return s + repeat(' ', width-w)
+		return s + repeat(spaceMark, width-w)
 	}
 }
 
@@ -180,7 +235,7 @@ func PadLeft(s string, width int) string {
 	case w > width:
 		return truncate(s, width)
 	default:
-		return repeat(' ', width-w) + s
+		return repeat(spaceMark, width-w) + s
 	}
 }
 

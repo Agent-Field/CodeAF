@@ -642,7 +642,11 @@ func TestTheLoopSpendsAtMostItsToolCallCap(t *testing.T) {
 
 // And the cap is a tool result rather than a hard stop, so a model that will not
 // stop calling tools still ends the turn in words rather than in silence.
-func TestPastTheCapTheBeltIsSpentAndTheTurnStillSpeaks(t *testing.T) {
+//
+// Looking runs out first, and says so in its own words: the calls that are left
+// are for acting. That division is what stops a turn arriving at the answer with
+// no hands — the failure that had the head announce a repair it never started.
+func TestPastTheReadingCapTheBeltKeepsItsHandsForActing(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	turns := make([]beltTurn, 0, orchestratorToolCallCap+2)
@@ -655,6 +659,37 @@ func TestPastTheCapTheBeltIsSpentAndTheTurnStillSpeaks(t *testing.T) {
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
+	told := false
+	for _, message := range client.seen {
+		for _, part := range message.Content {
+			told = told || strings.Contains(part.Text, orchestratorSpentReads)
+		}
+	}
+	if !told {
+		t.Fatal("a read past the reading cap was never told to spend what is left on acting")
+	}
+	reply := waitForAgentReply(t, graph, "spent", user.Seq)
+	if reply.Body != "Three jobs are waiting to start." {
+		t.Fatalf("capped loop reply = %q", reply.Body)
+	}
+}
+
+// The whole belt still ends, and a turn that spends every call ACTING is told so
+// — the read cap holds hands back, it does not hand out an unbounded number.
+func TestPastTheWholeCapTheBeltIsSpentAndTheTurnStillSpeaks(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExceptBoard(t, graph)
+	turns := make([]beltTurn, 0, orchestratorToolCallCap+2)
+	for index := 0; index <= orchestratorToolCallCap; index++ {
+		turns = append(turns, beltTurn{calls: []ai.ToolCall{
+			beltCall(fmt.Sprintf("n%d", index), beltToolNote, map[string]any{
+				"body": fmt.Sprintf("they prefer the %dth thing", index), "scope": "user"})}})
+	}
+	client := &beltClient{turns: append(turns, beltTurn{text: "Noted."})}
+	user := postUser(t, graph, "acts", "remember all of that")
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
 	spent := false
 	for _, message := range client.seen {
 		for _, part := range message.Content {
@@ -662,7 +697,7 @@ func TestPastTheCapTheBeltIsSpentAndTheTurnStillSpeaks(t *testing.T) {
 		}
 	}
 	if !spent {
-		t.Fatal("a call past the cap was never told the belt was spent")
+		t.Fatal("a call past the whole cap was never told the belt was spent")
 	}
 }
 

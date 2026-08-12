@@ -101,9 +101,23 @@ func (r *Reconciler) forgeCraft(ctx context.Context, node store.Node, candidate 
 		message = fmt.Sprintf("refined after %s\n\nfrom job %s: %s",
 			r.craftRefinementReason(node), node.ID, craftEvidenceLine(node))
 	}
-	if _, err := r.craftMind.shelf.Save(workflow, message); err != nil {
+	commit, err := r.craftMind.shelf.Save(workflow, message)
+	if err != nil {
 		r.recordCraftLesson(node, workflow.Name, firstLine(err.Error()))
 		return
+	}
+	// The version lives in git; the MOMENT lives in the journal. Every other
+	// thing this resident learns has a sequence number — a belief, a tool, a
+	// topic merged — and the retrospective digest is written from exactly that
+	// interval, so a way of working that left no event was the one kind of
+	// learning the digest structurally could not mention. Nothing here
+	// duplicates the repository: a name, whether it was new or better, and the
+	// commit to line it up against.
+	if _, err := r.store.RecordCraftForged(store.CraftForged{
+		Name: workflow.Name, Commit: commit, Refined: refined,
+		Because: craftEvidenceLine(node),
+	}); err != nil {
+		log.Printf("craft forged event %s: %v", workflow.Name, err)
 	}
 	r.queueLearningMoment(node.ID, forgedCraftMoment(workflow.Name, refined))
 }
@@ -220,7 +234,11 @@ func (r *Reconciler) craftForgedSince(since time.Time) []BriefEvent {
 			continue
 		}
 		events = append(events, BriefEvent{
-			Time: summary.When, Kind: store.BriefSkill,
+			// A way of working is not a tool, and until this kind existed the brief
+			// could not say which it had learned: both rode as BriefSkill, so a
+			// four-step workflow and a twenty-line script wore the same glyph and
+			// sent a reader to the wrong page.
+			Time: summary.When, Kind: store.BriefCraft,
 			Text: r.craftForgedLine(summary),
 		})
 	}

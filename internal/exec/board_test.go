@@ -12,7 +12,7 @@ import (
 // do: a single-worker errand never pays the schema, and a worker holding the
 // tool pays one line's rent, bounded, however much it wanted to say.
 func TestShareExistsOnlyWhereSomebodyIsListening(t *testing.T) {
-	alone := NewToolbox(workspace(t), 1, nil)
+	alone := NewToolbox(workspace(t), "1", nil)
 	for _, definition := range alone.Definitions() {
 		if definition.Function.Name == "share" {
 			t.Fatal("a worker with no siblings is carrying the share schema")
@@ -23,7 +23,7 @@ func TestShareExistsOnlyWhereSomebodyIsListening(t *testing.T) {
 	}
 
 	var heard string
-	together := NewToolbox(workspace(t), 1, nil)
+	together := NewToolbox(workspace(t), "1", nil)
 	together.share = func(line string) error { heard = line; return nil }
 	found := false
 	for _, definition := range together.Definitions() {

@@ -1,6 +1,9 @@
 package settings
 
-import "github.com/Agent-Field/aforge-v2/internal/config"
+import (
+	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/registry"
+)
 
 // The row list the sheet is actually showing, and the three questions asked of
 // every row it shows: what does it read, where did that reading come from, and
@@ -41,8 +44,11 @@ func (m *Model) rebuild() {
 		}
 		return
 	}
+	// One page, not seven tabs. The groups are shown by position and by one
+	// faint lowercase word each (15) — a tab bar is a header naming structure,
+	// and it hid four fifths of the sheet behind a keystroke nobody knew about.
 	for index, r := range m.rows {
-		if r.tab != m.tab || !m.shown(r) {
+		if !m.shown(r) {
 			continue
 		}
 		m.visible = append(m.visible, index)
@@ -171,17 +177,21 @@ func (m *Model) provenance(r row) (source, string) {
 	return sourceDefault, "default"
 }
 
-// kindVerb is the action strip's word for what enter does here (5.22 rule 1:
-// the affordance appears at the point of attention).
-func kindVerb(setting config.Setting) string {
+// kindChips is the action strip for one row: what the keyboard does here, as
+// verb·key chips (5.22 rule 1 — the affordance appears at the point of
+// attention; registry.Chip — the verb comes first and the key annotates it).
+func kindChips(setting config.Setting) []registry.Chip {
 	switch setting.Kind {
 	case config.SettingBool:
-		return "space toggle"
+		return []registry.Chip{registry.ChipFor("toggle", "space")}
 	case config.SettingChoice:
-		return "space cycle · enter pick"
+		return []registry.Chip{
+			registry.ChipFor("cycle", "space"),
+			registry.ChipFor("pick", "enter"),
+		}
 	case config.SettingModel:
-		return "enter models"
+		return []registry.Chip{registry.ChipFor("choose model", "enter")}
 	default:
-		return "enter edit"
+		return []registry.Chip{registry.ChipFor("edit", "enter")}
 	}
 }

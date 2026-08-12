@@ -59,7 +59,7 @@ func TestScoreAgreesWithRegistry(t *testing.T) {
 		want := registry.FuzzyMatch(registry.ScopeAny, query)
 		needle := lower(query)
 		got := make([]registry.Match, 0, len(want))
-		for _, e := range registry.All() {
+		for _, e := range registry.ForScope(registry.ScopeAny) {
 			verbScore, verbOK := score(lower(e.Verb), needle)
 			descScore, descOK := score(lower(e.Description), needle)
 			switch {

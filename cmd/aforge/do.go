@@ -52,6 +52,13 @@ const (
 	quietBeat = 30 * time.Second
 	// headlessSurface names this lens wherever a surface is recorded.
 	headlessSurface = "do"
+	// defaultResidentWait bounds the one case where an errand is not the brain:
+	// another process already holds the resident lock for this store. A resident
+	// that is serving it picks the command up on its next pass, which is
+	// seconds; anything past this is a resident that is never going to, and the
+	// run says which process it was waiting for and stops. It exists because the
+	// silent version of this wait spent 25-40 minutes at nodes:0 and $0.00.
+	defaultResidentWait = 60 * time.Second
 )
 
 // exitStatus ends the process with a particular code and nothing more said. The
@@ -79,10 +86,27 @@ const (
 type headlessOutcome struct {
 	Deliverable string   `json:"deliverable"`
 	Artifacts   []string `json:"artifacts"`
-	Spend       float64  `json:"spend"`
-	Nodes       int      `json:"nodes"`
-	Seconds     float64  `json:"seconds"`
-	Settled     bool     `json:"settled"`
+	// Spend is the whole bill and nothing less: every usage row this errand
+	// caused, summed out of the journal after the work has stopped moving. It
+	// is the number the usage table sums to on a private store, and it is that
+	// deliberately — a receipt 36 % under its own ledger is worse than no
+	// receipt, which is what the day-delta subtraction it replaced produced
+	// whenever a leaf journaled its row on the way down from the wall.
+	//
+	// SpendWork and SpendOverhead are the two halves, named because they are
+	// genuinely different questions. Work is what this errand's own nodes cost:
+	// leaf executions and the structuring pass beside each one. Overhead is
+	// what it cost to decide what those nodes should be — planning passes and
+	// head structuring, which bill the root and belong to no node. A caller
+	// comparing workers on a corpus wants Work; a caller paying the bill wants
+	// Spend. The two always add up to it.
+	Spend         float64 `json:"spend"`
+	SpendWork     float64 `json:"spend_work"`
+	SpendOverhead float64 `json:"spend_overhead"`
+
+	Nodes   int     `json:"nodes"`
+	Seconds float64 `json:"seconds"`
+	Settled bool    `json:"settled"`
 	// BlockedOn is the question this run could not answer, verbatim. It is
 	// empty on every run that was not stopped by one, and non-empty only
 	// alongside a non-zero exit code and an empty deliverable.
@@ -158,8 +182,19 @@ type doRequest struct {
 	subharness string
 	stdout     io.Writer
 	stderr     io.Writer
+	// residentWait bounds how long this run defers to a resident that already
+	// holds the lock for its store. Zero is defaultResidentWait; a test names a
+	// shorter one rather than sitting through it.
+	residentWait time.Duration
 	// newClient scripts the provider. Nil is the real one.
 	newClient func(config.Config, string) (*liveClient, error)
+}
+
+func (r doRequest) residentWaitOrDefault() time.Duration {
+	if r.residentWait > 0 {
+		return r.residentWait
+	}
+	return defaultResidentWait
 }
 
 func doErrand(request doRequest) error {
@@ -186,7 +221,11 @@ func doErrand(request doRequest) error {
 	defer window.close()
 	graph := window.graph
 
-	spentBefore, _ := graph.SpendToday()
+	// Where the journal stood before this errand wrote a word. Every usage row
+	// after it is this run's, and reading the bill off that window is what
+	// replaced a subtraction of today's spend that was wrong three ways over
+	// (see store.ErrandSpend).
+	openedAt, _ := graph.LatestEventSeq()
 
 	// The command is the whole interface. A verbatim ask is referentially
 	// closed by definition — there is no conversation for it to point back
@@ -217,16 +256,27 @@ func doErrand(request doRequest) error {
 		return false
 	}
 
-	brain, release, err := headlessBrain(window, session, request, consent, ephemeral)
+	brain, release, deferredTo, err := headlessBrain(window, session, request, consent, ephemeral)
 	if err != nil {
 		return err
+	}
+	if deferredTo != nil {
+		if err := awaitResidentPickup(graph, command.Seq, deferredTo, path,
+			request.residentWaitOrDefault(), request.stderr); err != nil {
+			return err
+		}
 	}
 	if release != nil {
 		defer release()
 	}
+	settle := func() {}
 	if brain != nil {
 		brain.start()
+		// stop is idempotent, so this is both the ordinary unwind and the
+		// deliberate one below: the receipt is read after the workers have
+		// stopped, never beside them.
 		defer brain.stop()
+		settle = brain.stop
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), request.timeout)
@@ -240,10 +290,31 @@ func doErrand(request doRequest) error {
 		return err
 	}
 	outcome.Seconds = time.Since(started).Seconds()
-	if spentNow, spendErr := graph.SpendToday(); spendErr == nil {
-		outcome.Spend = spentNow - spentBefore
-	}
+	// The wall is the case that made this necessary. A leaf cancelled by the
+	// timeout journals its usage row on the way down, which is after the
+	// watcher has returned and — until this line moved the shutdown ahead of
+	// the read — after the receipt had already been printed without it. One swe
+	// leaf landing that late is the whole of the 36 % under-report.
+	settle()
+	priceErrand(graph, session, openedAt, &outcome)
 	return reportErrand(request, outcome)
+}
+
+// priceErrand puts the journal's own answer on the outcome.
+//
+// It is a query and not a counter on purpose. The bill is whatever the usage
+// table holds for this errand at settle time — every row, whatever wrote it and
+// however late — because the one thing a receipt may never do is disagree with
+// the ledger it is a receipt for. A read that fails leaves the figures at zero
+// rather than at a guess.
+func priceErrand(graph *store.Store, session string, openedAt int64, outcome *headlessOutcome) {
+	spend, err := graph.SpendSinceSeq(session, openedAt)
+	if err != nil {
+		return
+	}
+	outcome.Spend = spend.Cost()
+	outcome.SpendWork = spend.Work.Cost
+	outcome.SpendOverhead = spend.Spine.Cost
 }
 
 // headlessBrain builds and returns the brain this process will run, or nothing
@@ -252,17 +323,24 @@ func doErrand(request doRequest) error {
 // The second case is not a failure and not a fight. The command is already in
 // the journal; a live resident applies it on its next pass and does the work
 // with its own head attached, and this process becomes exactly what a second
-// chat window is — something watching the same journal for the answer.
+// chat window is — something watching the same journal for the answer. It is
+// only ever allowed to be that on the strength of a resident that is actually
+// serving this store: heldBy is handed back so the caller can hold the wait to
+// a short bound and say who it is waiting for.
 func headlessBrain(window *chatWindow, session string, request doRequest,
-	consent func(store.Node, planEstimate) bool, ephemeral bool) (*chatBrain, func(), error) {
-	releaseLease, heldBy, err := lease.AcquireResident(window.dir, headlessSurface)
+	consent func(store.Node, planEstimate) bool, ephemeral bool) (*chatBrain, func(), *lease.Resident, error) {
+	releaseLease, heldBy, err := lease.AcquireResident(window.path, headlessSurface)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if releaseLease == nil && heldBy != nil && !heldBy.Stuck {
+		if err := residentServesThisStore(heldBy, window.path); err != nil {
+			return nil, nil, nil, err
+		}
 		fmt.Fprintf(request.stderr,
-			"another aforge is resident (pid %d) — it will run this task; watching for the result\n", heldBy.PID)
-		return nil, nil, nil
+			"waiting for the resident (pid %d on %s) to take this task — store %s\n",
+			heldBy.PID, residentHost(heldBy), window.path)
+		return nil, nil, heldBy, nil
 	}
 	release := func() {}
 	if releaseLease != nil {
@@ -271,7 +349,7 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 	workspaceRoot, err := errandWorkspace(request.workspace)
 	if err != nil {
 		release()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	brain, err := buildBrain(window, session, brainOptions{
 		headless: true, ephemeral: ephemeral, workspaceRoot: workspaceRoot,
@@ -282,9 +360,85 @@ func headlessBrain(window *chatWindow, session string, request doRequest,
 	})
 	if err != nil {
 		release()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return brain, release, nil
+	return brain, release, nil, nil
+}
+
+// residentServesThisStore refuses the wait that has no end.
+//
+// A holder that names a different database is not going to do this errand: it
+// is a brain over another journal, it will never read this command, and every
+// second spent watching for an answer is wall burned at nodes:0 and $0.00. That
+// is precisely what a directory-wide lock used to produce, in 25-40 minute
+// silences, so the shape of the failure is spelled out here rather than left
+// for someone to find twice with a benchmark grid.
+func residentServesThisStore(holder *lease.Resident, path string) error {
+	served := strings.TrimSpace(holder.Store)
+	if served == "" {
+		// An older binary wrote no store into the lock. It may well be serving
+		// this one, so the bounded wait below is what decides.
+		return nil
+	}
+	mine, err := filepath.Abs(path)
+	if err != nil {
+		mine = path
+	}
+	if sameStore(served, mine) {
+		return nil
+	}
+	return fmt.Errorf("the resident lock for %s is held by pid %d on %s, which is serving %s — "+
+		"that process will never see this task; give this errand its own store with --db in a separate directory, "+
+		"or stop that process",
+		mine, holder.PID, residentHost(holder), served)
+}
+
+// sameStore compares two store paths as plainly as a diagnostic needs to. It is
+// deliberately not a stat of both: the answer is used to decide what to print
+// and whether to wait, and a path that cannot be resolved must not turn into a
+// crash on the way to a message.
+func sameStore(left, right string) bool {
+	if filepath.Clean(left) == filepath.Clean(right) {
+		return true
+	}
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
+}
+
+func residentHost(holder *lease.Resident) string {
+	if host := strings.TrimSpace(holder.Host); host != "" {
+		return host
+	}
+	return "unknown host"
+}
+
+// awaitResidentPickup bounds the deference. A resident that is serving this
+// store applies the command on its very next pass, so a command still pending
+// after this bound means nobody is coming — an older build that does not know
+// the verb, a wedged loop, a process that took the lock and died mid-pass — and
+// the only useful thing this run can do is say so and stop, instead of holding
+// the terminal for the whole wall with one repeated progress line.
+func awaitResidentPickup(graph *store.Store, seq int64, holder *lease.Resident,
+	path string, bound time.Duration, stderr io.Writer) error {
+	deadline := time.Now().Add(bound)
+	for {
+		command, ok, err := graph.CommandBySeq(seq)
+		if err != nil {
+			return err
+		}
+		if ok && command.Status != store.CommandPending {
+			fmt.Fprintf(stderr, "the resident (pid %d) took this task\n", holder.PID)
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("the resident (pid %d on %s) holding the lock for %s has not taken this task in %s — "+
+				"it is not serving this errand; give this run its own store with --db in a separate directory, "+
+				"or stop that process",
+				holder.PID, residentHost(holder), path, bound.Round(time.Second))
+		}
+		time.Sleep(settlementBeat)
+	}
 }
 
 // errandWorkspace resolves the directory this errand works in.
@@ -420,7 +574,7 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			}
 			outcome.BlockedOn = asked
 			if strings.TrimSpace(outcome.Deliverable) == "" && asked == "" {
-				outcome.Deliverable = "The time limit was reached before anything finished."
+				outcome.Deliverable = wallWords(outcome.Artifacts)
 			}
 			return outcome, nil
 		case <-ticker.C:
@@ -497,7 +651,10 @@ func (w *settlementWatch) check() (headlessOutcome, bool, error) {
 		if asked != "" || rejectedForAnAnswer(command) {
 			outcome.BlockedOn, outcome.Deliverable = words, ""
 		} else {
-			outcome.Deliverable = words
+			// A refusal usually means nothing ran, and then this changes
+			// nothing. When something did run before the refusal, the files it
+			// left are part of the honest answer.
+			outcome.Deliverable = groundedInArtifacts(words, outcome.Artifacts)
 		}
 		return outcome, true, nil
 	}
@@ -789,6 +946,9 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 	if final == nil && len(roots) > 0 {
 		final = &roots[len(roots)-1]
 	}
+	// The artifact record is read before a word of narration is written, because
+	// narration that has not seen it is free to contradict it — and did.
+	outcome.Artifacts = errandArtifacts(nodes)
 	if final != nil {
 		// What ran the deliverable, as the store settled it. A machine caller
 		// asking "which worker took this issue" was reading the answer out of a
@@ -809,12 +969,12 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			// not an answer — two GAIA questions delivered "[splitting the
 			// remaining work — 6 pieces queued]" as their FINAL ANSWER before
 			// this case existed. Say what actually happened instead.
-			outcome.Deliverable = "The work was still mid-flight when time ran out: it had split into further pieces that never finished. Nothing here is the answer."
+			outcome.Deliverable = midFlightWords(outcome.Artifacts)
 		default:
 			outcome.Deliverable = strings.TrimSpace(final.Summary)
 		}
+		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
 	}
-	outcome.Artifacts = errandArtifacts(nodes)
 	// The board survives as the outcome's learned lines: what one worker told
 	// the others is exactly what the caller would want to know about the
 	// material, and in an ephemeral run this is its only way out.
@@ -830,6 +990,80 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		}
 	}
 	return outcome
+}
+
+// artifactsNamed bounds how many paths a grounded closing line spells out. The
+// rest are counted, because a person reads the first few and the footer under
+// the deliverable already lists every one of them.
+const artifactsNamed = 5
+
+// groundedInArtifacts holds one closing line answerable to the artifact record.
+//
+// The rule this enforces, from the audit: a run's own summary is not admissible
+// evidence about what the run produced. A judge that concluded failure, a
+// template that fired on a wall, a worker's last half-sentence — any of them may
+// say nothing came of this while five files sit on disk, and a reader (or a
+// downstream judge consuming this text) has no way to know it is false. So when
+// the record shows deliverables the narration never names, the record is
+// appended to the narration rather than allowed to be contradicted by it. A
+// deliverable that already names its files is left exactly as written.
+func groundedInArtifacts(deliverable string, artifacts []string) string {
+	if len(artifacts) == 0 || namesAnyArtifact(deliverable, artifacts) {
+		return deliverable
+	}
+	body := strings.TrimSpace(deliverable)
+	if body == "" {
+		return producedWords(artifacts)
+	}
+	return body + "\n\n" + producedWords(artifacts)
+}
+
+// namesAnyArtifact reports that the narration already points at the record. One
+// named path is enough: a summary that lists what it wrote is grounded, and
+// restating the list under it is noise the footer already carries.
+func namesAnyArtifact(deliverable string, artifacts []string) bool {
+	for _, path := range artifacts {
+		if path != "" && strings.Contains(deliverable, path) {
+			return true
+		}
+	}
+	return false
+}
+
+// producedWords is the record, in a sentence. It never judges the work — it
+// says what exists and where, and tells the reader that this line is not the
+// evidence, the files are.
+func producedWords(artifacts []string) string {
+	named := artifacts
+	rest := ""
+	if len(named) > artifactsNamed {
+		rest = fmt.Sprintf(" (and %d more)", len(named)-artifactsNamed)
+		named = named[:artifactsNamed]
+	}
+	return fmt.Sprintf("Whatever the account above says, %s reached disk and can be opened: %s%s. Read them rather than this summary — the files are the record.",
+		plural(len(artifacts), "file"), strings.Join(named, ", "), rest)
+}
+
+// midFlightWords is what a run that ended inside a split has to say. It used to
+// end "Nothing here is the answer" unconditionally, which is how a run that
+// returned rc=0 and five correct files told its caller it had produced nothing.
+// The blanket denial is only honest when the record is empty.
+func midFlightWords(artifacts []string) string {
+	const opening = "The work was still mid-flight when time ran out: it had split into further pieces that never finished."
+	if len(artifacts) == 0 {
+		return opening + " Nothing here is the answer."
+	}
+	return opening + " No closing summary was written, so this line is not the answer — but the run was not empty-handed. " +
+		producedWords(artifacts)
+}
+
+// wallWords is the same honesty at the wall: "before anything finished" is a
+// claim about the record, and it may only be made when the record agrees.
+func wallWords(artifacts []string) string {
+	if len(artifacts) == 0 {
+		return "The time limit was reached before anything finished."
+	}
+	return "The time limit was reached before the work was summarised. " + producedWords(artifacts)
 }
 
 // errandArtifacts recovers the files this errand wrote from the only durable

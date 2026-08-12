@@ -117,6 +117,18 @@ const (
 	// and then unrecoverable because the only copy was the truncated one. A
 	// document, a diagram, code or data is born on disk and referenced by path.
 	beltToolWrite = "write"
+	// beltToolAct is the head's own hands, and the only thing on this belt that
+	// touches the world without going through the graph.
+	//
+	// Everything durable flows through spawn, which is right for work and was,
+	// until this tool, the only route ANYTHING had. So a request measured in
+	// seconds — open this file, list that directory, show me the top of that log
+	// — either bought a whole job (compile, plan, workspace, three model calls,
+	// the wrong directory) or came back as a refusal the voice law forbids and
+	// that was said out loud anyway, because it was true. act.go holds the
+	// boundary, which is time and consequence and never topic, and the floor
+	// underneath it.
+	beltToolAct = "act"
 	// beltToolCorrect is the settled-work half of revision. revise edits the
 	// remaining plan of a job still in flight; this hands a job that already
 	// DELIVERED its own previous attempt plus what the user says is wrong with
@@ -131,6 +143,18 @@ const (
 	// are their own effects rather than graph work, which is why stopping them
 	// is unconditional and why stopping EVERYTHING asks once about the jobs.
 	beltToolService = "service"
+	// beltToolCraft acts on a LEARNED WAY OF WORKING — a workflow the resident
+	// distilled from jobs it has done and can run again. It is the rule tool's
+	// shape for the other half of what the resident carries: rules are what it
+	// watches for, crafts are how it does things.
+	//
+	// It exists because the three verbs a person has for one of these are all
+	// sentences they say rather than pages they visit — "run the release notes
+	// one", "that last version was worse, put it back", "stop doing it that way"
+	// — and until it did, the only door was a page in a window, which made the
+	// notebook's own verbs unreachable from the conversation that is supposed to
+	// be the one mouth.
+	beltToolCraft = "craft"
 	// beltToolAnswerQuestion settles a worker's open question. Part 6 decision 1
 	// is still open and this tool does not settle it: 12.1.4 found that every
 	// existing AskQuestion producer is consent-bearing and none is labeled
@@ -258,6 +282,25 @@ func beltProp(kind, description string) map[string]any {
 // are resent every turn, but each one states the thing that goes wrong without
 // being said: reads are free, ids are never invented, and the two revision
 // verbs differ in whether the plan changes or only the people working it.
+// beltReadOnly separates looking from acting, which is the split the belt
+// budget is divided along (see orchestratorReadCap).
+//
+// The reads are named rather than the acts, and deliberately: the set of tools
+// that change nothing is closed and every one of them is described as "always
+// safe" in its own definition, while acts are added whenever the head grows a
+// new hand. A tool nobody classified is therefore treated as an act, which is
+// the harmless direction — an act miscounted as an act still runs; a read
+// miscounted as an act only means the turn keeps one more call for looking.
+func beltReadOnly(name string) bool {
+	switch strings.TrimSpace(name) {
+	case beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
+		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory,
+		beltToolSearch, beltToolThread:
+		return true
+	}
+	return false
+}
+
 func beltDefinitions() []ai.ToolDefinition {
 	return []ai.ToolDefinition{
 		beltTool(beltToolBoard, "Read the work. Always safe, always allowed, and the only place ids come from. Call it with no arguments for everything live; narrow with status, or with q when the user named the work in their own words — a read aimed with q or id also reaches jobs that have already finished, which is where findings live.", map[string]any{
@@ -269,9 +312,10 @@ func beltDefinitions() []ai.ToolDefinition {
 			"instruction": beltProp("string", "the user's words for the work, verbatim"),
 			"orders": map[string]any{"type": "array", "description": "several independent pieces of work, each with that piece's own verbatim words",
 				"items": map[string]any{"type": "string"}},
-			"reflex": beltProp("boolean", "one obvious reversible action; skips compilation and planning"),
-			"after":  beltProp("string", "id of work this continues, from a board read"),
-			"fresh":  beltProp("boolean", `true only when they ask for THIS piece of work to be figured out from first principles rather than done the way it has been done before — "don't use the template this time", "plan this one properly", "start over on this". It is about method, never content: a fresh draft, fresh data or a fresh look at a file is not it. Almost every message leaves it false`),
+			"reflex":   beltProp("boolean", "one obvious reversible action; skips compilation and planning"),
+			"after":    beltProp("string", "id of work this continues, from a board read"),
+			"separate": beltProp("boolean", `true ONLY when the person has said in so many words that this is a job BESIDE work already running — "as well as", "a separate one", "keep that going and also". A sentence that corrects or adds to work in flight is a change to it and is journaled as one however this is set; do not reach for this to get around that`),
+			"fresh":    beltProp("boolean", `true only when they ask for THIS piece of work to be figured out from first principles rather than done the way it has been done before — "don't use the template this time", "plan this one properly", "start over on this". It is about method, never content: a fresh draft, fresh data or a fresh look at a file is not it. Almost every message leaves it false`),
 		}),
 		beltTool(beltToolControl, "Cancel, pause, resume, restart, or reprioritize the ids you name. Ids come from a board read, never from memory. A set large or expensive enough to need consent comes back as needs_confirmation and nothing changes until the user answers. When the user described the work instead of naming it and you cannot tell which row they mean, pass describes instead of ids and this hands back the candidates — jobs and standing rules alike — for you to name or to ask about.", map[string]any{
 			"verb":      beltProp("string", "cancel, pause, resume, restart, or reprioritize"),
@@ -335,6 +379,9 @@ func beltDefinitions() []ai.ToolDefinition {
 			"body": beltProp("string", "the whole document, exactly as it should be on disk"),
 			"what": beltProp("string", "one short line saying what it is, for the receipt"),
 		}),
+		beltTool(beltToolAct, "Run one instant shell command in the workspace and read what actually happened. The boundary is time and consequence, never subject: one instant, reversible command a person at the keyboard would run in two seconds without thinking — open a file or a URL, list a directory, read a small file. If it needs planning, more than one command, produces a deliverable, touches anything you cannot undo, or should leave a record for later, it is work: use spawn. When unsure, spawn. What comes back — the exit status and everything it printed — is the only thing you may say happened; never describe an outcome this result does not show you.", map[string]any{
+			"command": beltProp("string", "the one command, exactly as it would be typed at a shell"),
+		}, "command"),
 		beltTool(beltToolCorrect, "Redo a deliverable that was wrong. The job goes again with its previous version and the user's criticism in hand, and whatever they did not object to is kept. Use it whenever they reject, dispute or ask you to change something already delivered — including politely: \"make it warmer\", \"shorter please\", \"soften the second paragraph\" are all this, not new work. Pass their words verbatim. A job with nothing delivered cannot be corrected; commission new work instead.", map[string]any{
 			"job":   beltProp("string", "id of the finished job whose deliverable was wrong, from a board or search read"),
 			"words": beltProp("string", "what the user said is wrong with it, verbatim"),
@@ -349,6 +396,11 @@ func beltDefinitions() []ai.ToolDefinition {
 			"verb":      beltProp("string", "stop, restart, auto_restart_on, auto_restart_off, or stop_everything"),
 			"describes": beltProp("string", "the user's own words for the service; omit for stop_everything"),
 		}, "verb"),
+		beltTool(beltToolCraft, "Act on a learned way of working — a whole workflow the resident worked out from jobs it has already done. run does it that way again; revert puts it back to the version before the current one, and needs a few words saying what the newer one got wrong; retire stops it being reached for at all, keeping the file and its history. Name it the way the user did; nothing is deleted by any of these.", map[string]any{
+			"verb":  beltProp("string", "run, revert, or retire"),
+			"name":  beltProp("string", "the workflow's own name, as the user named it"),
+			"words": beltProp("string", "for run, what it should work on, in the user's terms; for revert, what the newer version got wrong; for retire, why"),
+		}, "verb", "name"),
 		beltTool(beltToolAnswerQuestion, "Settle a worker's open question. Read what is open first by calling it with no arguments. A question that is not explicitly marked informational is a CONSENT question — it is the user's to answer, never yours — and this refuses it and tells you so; put it to them in your own words and leave it open. This is the one tool whose refusal is the correct outcome most of the time.", map[string]any{
 			"question": beltProp("integer", "the question's number, from this tool's own list"),
 			"answer":   beltProp("string", "the answer, in the words the worker asked for"),
@@ -388,6 +440,31 @@ type beltRun struct {
 	// argument means the last of them, which is what "did that land?" means when
 	// a turn issued exactly one thing.
 	issued []int64
+	// commissioned is the words this turn has already turned into work. spawn
+	// dedupes the orders inside ONE call; nothing stopped a loop from calling it
+	// twice with the same sentence, and the second call was a second job — a
+	// second compile, a second plan, a second "Here's my reading" under the
+	// first, and two workforces doing the same thing to the same files. One ask
+	// is one job however many times the loop asks for it in one breath.
+	commissioned map[string]bool
+}
+
+// alreadyCommissioned reports that these exact words have already become work
+// in this turn, and records them when they have not. Comparison is on the
+// trimmed sentence, which is what spawn journals and what the person said.
+func (run *beltRun) alreadyCommissioned(instruction string) bool {
+	instruction = strings.TrimSpace(instruction)
+	if instruction == "" {
+		return false
+	}
+	if run.commissioned[instruction] {
+		return true
+	}
+	if run.commissioned == nil {
+		run.commissioned = make(map[string]bool, 2)
+	}
+	run.commissioned[instruction] = true
+	return false
 }
 
 // beltConfirm is a change the gates stopped. Nothing has been journalled; the
@@ -452,12 +529,16 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.fork(args)
 	case beltToolWrite:
 		return run.write(args)
+	case beltToolAct:
+		return run.act(args)
 	case beltToolCorrect:
 		return run.correct(args)
 	case beltToolRule:
 		return run.rule(args)
 	case beltToolService:
 		return run.service(args)
+	case beltToolCraft:
+		return run.craft(args)
 	case beltToolAnswerQuestion:
 		return run.answerQuestion(args)
 	case beltToolAwait:

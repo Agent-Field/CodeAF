@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/registry"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // collect flattens whatever a command produced, expanding a batch, so a test
@@ -75,12 +76,14 @@ func TestEnterYieldsTheSelectedResultThenCloses(t *testing.T) {
 	p := New(rec.options())
 	p.SetCatalog(demoCatalog())
 
-	// Row 0 is home.
+	// Row 0 is the first action of the leading section, in the order the
+	// registry seeded it — a decided row, not an arbitrary one (see [filter]).
+	first := registry.ForScope(registry.ScopeThread)[0]
 	p.Key(namedKey(tea.KeyEnter))
 	if len(rec.chosen) != 1 {
 		t.Fatalf("enter chose %d results, want 1", len(rec.chosen))
 	}
-	if got, want := rec.chosen[0], (JumpToRoom{ID: rail.HomeScopeID}); got != Result(want) {
+	if got, want := rec.chosen[0], (RunEntry{ID: first.ID}); got != Result(want) {
 		t.Errorf("enter yielded %v, want %v", got, want)
 	}
 	if rec.closes != 1 {
@@ -196,7 +199,8 @@ func TestNavigationClampsAtBothEnds(t *testing.T) {
 	if !ok {
 		t.Fatal("nothing selected at the top")
 	}
-	if got, want := first, Result(JumpToRoom{ID: rail.HomeScopeID}); got != want {
+	top := registry.ForScope(registry.ScopeThread)[0]
+	if got, want := first, Result(RunEntry{ID: top.ID}); got != want {
 		t.Errorf("the top of the list is %v, want %v", got, want)
 	}
 	for i := 0; i < p.Total()+10; i++ {
@@ -228,7 +232,11 @@ func TestPageKeysUseTheRenderedHeight(t *testing.T) {
 func TestClickRunsTheRowUnderThePointer(t *testing.T) {
 	rec := &recorder{}
 	p := New(rec.options())
-	p.SetCatalog(demoCatalog())
+	// Rooms only, so the line arithmetic below is about the pointer and not
+	// about how many verbs the registry happens to seed today.
+	c := demoCatalog()
+	c.Actions, c.Settings = []Action{}, nil
+	p.SetCatalog(c)
 	p.Render(90, 30)
 
 	// bodyTop + 0 is the `rooms` header, + 1 is home, + 2 is wisp-parity.
@@ -359,4 +367,344 @@ func mustEntry(t *testing.T, id string) registry.Entry {
 		t.Fatalf("registry entry %q does not exist", id)
 	}
 	return e
+}
+
+// TestTheExitChipIsVerbFirstAndTwoTiers is design-law §16 on the surface that
+// carried the reported bug's shape: `esc close` was two words in one grey, and
+// a reader could only tell which was the label by already knowing.
+func TestTheExitChipIsVerbFirstAndTwoTiers(t *testing.T) {
+	styler := tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal)
+	for _, name := range []string{"palette", "capability"} {
+		var header string
+		switch name {
+		case "palette":
+			p := New(Options{Styler: styler})
+			p.SetCatalog(demoCatalog())
+			header = strings.Split(p.Render(100, 20), "\n")[0]
+		default:
+			c := NewCapability(Options{Styler: styler})
+			c.SetCatalog(demoCatalog())
+			header = strings.Split(c.Render(100, 20), "\n")[0]
+		}
+		plain := ansi.Strip(header)
+		if !strings.Contains(plain, "close esc") {
+			t.Errorf("%s draws the exit as %q, want verb first", name, plain)
+		}
+		if strings.Contains(plain, "esc close") {
+			t.Errorf("%s still draws the key before its verb: %q", name, plain)
+		}
+		// Two tiers, not one: the verb is the control and may never live
+		// permanently in the dimmest tier (5.22's checklist).
+		verbAt := strings.Index(header, closeChip.Verb)
+		if verbAt < 0 {
+			t.Fatalf("%s lost the verb entirely: %q", name, header)
+		}
+		if !strings.Contains(header[:verbAt], tokens.TextSecondary.Fg(tokens.TrueColor, tokens.FocusNormal)) {
+			t.Errorf("%s paints the exit verb below the secondary tier: %q", name, header)
+		}
+	}
+}
+
+// The key column is the chip's key half, and the ladder that fills it is the
+// registry's — one ladder, not a copy per surface.
+func TestTheAcceleratorColumnIsTheChipsKeyHalf(t *testing.T) {
+	for _, e := range registry.All() {
+		want := registry.ChipOn(e, registry.SurfaceDefault).Key
+		if want == "" {
+			want = registry.AskKey
+		}
+		if got := accelOf(e); got != want {
+			t.Errorf("entry %s teaches %q, the chip says %q", e.ID, got, want)
+		}
+	}
+}
+
+// -- the back grammar (trail.go) ---------------------------------------------
+
+// choicesCatalog is a sub-list: an option's choices, which is the shape the
+// reported trap was found in. It carries no actions, because a drilled level is
+// showing one thing's choices and not the whole product's verbs.
+func choicesCatalog() Catalog {
+	return Catalog{
+		Actions: []Action{},
+		Settings: []SettingRow{
+			{Key: "model.work.k3", Label: "claude-k3", Hint: "the fast one"},
+			{Key: "model.work.opus", Label: "claude-opus", Hint: "the deep one"},
+		},
+	}
+}
+
+// drilled is a palette standing one level down, having drilled from the root
+// through the row named by word.
+func drilled(t *testing.T, word string) (*Palette, *recorder) {
+	t.Helper()
+	rec := &recorder{}
+	p := New(rec.options())
+	c := demoCatalog()
+	c.Drill = func(res Result) bool { _, ok := res.(OpenSetting); return ok }
+	p.SetCatalog(c)
+	p.Push(word, choicesCatalog())
+	if p.Depth() != 1 {
+		t.Fatalf("push left the palette at depth %d", p.Depth())
+	}
+	return p, rec
+}
+
+// TestChoosingADrillRowOpensTheSubListInstead: the row that drills does not
+// finish the surface, so the wiring gets its result while the palette is still
+// up and still has the level it came from.
+func TestChoosingADrillRowOpensTheSubListInstead(t *testing.T) {
+	rec := &recorder{}
+	p := New(rec.options())
+	c := demoCatalog()
+	c.Drill = func(res Result) bool { _, ok := res.(OpenSetting); return ok }
+	// The wiring's real answer: push a level rather than let the surface close.
+	rec2 := rec
+	p.opts.OnChoose = func(res Result) tea.Cmd {
+		rec2.chosen = append(rec2.chosen, res)
+		p.Push("model", choicesCatalog())
+		return nil
+	}
+	p.SetCatalog(c)
+	typeText(p, "work model")
+	p.Key(namedKey(tea.KeyEnter))
+
+	if len(rec.chosen) != 1 {
+		t.Fatalf("enter yielded %d results", len(rec.chosen))
+	}
+	if rec.closes != 0 {
+		t.Errorf("a row that opens a sub-list closed the palette %d times", rec.closes)
+	}
+	if p.Depth() != 1 {
+		t.Errorf("the palette is at depth %d, want 1", p.Depth())
+	}
+	// And an ordinary row still finishes.
+	rec.chosen, rec.closes = nil, 0
+	p.opts.OnChoose = rec.options().OnChoose
+	p.Pop()
+	// Popping restores the query the drill was launched from, so the field is
+	// cleared before the next search rather than typed onto.
+	p.Key(tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	typeText(p, "open settings")
+	p.Key(namedKey(tea.KeyEnter))
+	if rec.closes != 1 {
+		t.Errorf("an ordinary row closed %d times, want 1", rec.closes)
+	}
+}
+
+// TestBackspaceOnAnEmptyFilterPopsOneLevel is the keyboard's way out.
+func TestBackspaceOnAnEmptyFilterPopsOneLevel(t *testing.T) {
+	p, rec := drilled(t, "model")
+	p.Key(namedKey(tea.KeyBackspace))
+	if p.Depth() != 0 {
+		t.Fatalf("backspace on an empty filter left the palette at depth %d", p.Depth())
+	}
+	if rec.closes != 0 {
+		t.Errorf("going back closed the surface %d times", rec.closes)
+	}
+	// At the root it is inert rather than destructive: there is nothing below
+	// the bottom rung, and a key that closed the palette there would make
+	// "delete one letter too many" mean "throw the surface away".
+	p.Key(namedKey(tea.KeyBackspace))
+	if rec.closes != 0 {
+		t.Errorf("backspace at the root closed the surface %d times", rec.closes)
+	}
+	// And the level really is the root's again.
+	if body := strings.Join(rowsOf(p, 100, 200), "\n"); !strings.Contains(body, "rooms") {
+		t.Errorf("the root's own groups did not come back:\n%s", body)
+	}
+}
+
+// TestBackspaceWithTextInTheFilterEditsTheText: the filter is what the reader
+// is watching while they type, and a key that sometimes threw the list away
+// would make typing feel dangerous.
+func TestBackspaceWithTextInTheFilterEditsTheText(t *testing.T) {
+	p, _ := drilled(t, "model")
+	typeText(p, "opus")
+	p.Key(namedKey(tea.KeyBackspace))
+	if got := p.Query(); got != "opu" {
+		t.Errorf("backspace typed %q, want %q", got, "opu")
+	}
+	if p.Depth() != 1 {
+		t.Fatalf("backspace with text in the filter popped to depth %d", p.Depth())
+	}
+	// Only once the field is empty does the next press go back.
+	for p.Query() != "" {
+		p.Key(namedKey(tea.KeyBackspace))
+	}
+	if p.Depth() != 1 {
+		t.Fatalf("emptying the filter popped a level on its own")
+	}
+	p.Key(namedKey(tea.KeyBackspace))
+	if p.Depth() != 0 {
+		t.Errorf("the press after the field emptied did not go back")
+	}
+}
+
+// TestEscClosesFromAnyDepth is 8.2.21 read for depth: esc acts on what you are
+// watching, and what a reader watching a drilled palette wants gone is the
+// palette — not one rung of it. Two keys with one meaning between them is how
+// "press esc until something happens" gets learned.
+func TestEscClosesFromAnyDepth(t *testing.T) {
+	p, rec := drilled(t, "model")
+	p.Push("effort", choicesCatalog())
+	if p.Depth() != 2 {
+		t.Fatalf("depth is %d, want 2", p.Depth())
+	}
+	p.Key(namedKey(tea.KeyEscape))
+	if rec.closes != 1 {
+		t.Fatalf("esc at depth 2 closed %d times, want 1", rec.closes)
+	}
+	if len(rec.chosen) != 0 {
+		t.Errorf("esc chose something: %v", rec.chosen)
+	}
+}
+
+// TestTheTrailNamesEveryLevelAndOnlyAncestorsAreTargets is the pointer's door,
+// and the tier split 5.22's checklist forces on it.
+func TestTheTrailNamesEveryLevelAndOnlyAncestorsAreTargets(t *testing.T) {
+	p, _ := drilled(t, "model")
+	p.Push("effort", choicesCatalog())
+
+	styler := tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal)
+	p.SetStyler(styler)
+	header := strings.Split(p.Render(100, 20), "\n")[headerLine]
+	plain := ansi.Strip(header)
+	want := trailLead + rootSegment + " " + trailLead + "model " + trailLead + "effort"
+	if !strings.Contains(plain, want) {
+		t.Fatalf("the trail reads %q, want it to contain %q", plain, want)
+	}
+	if got, want := p.Trail(), []string{"model", "effort"}; len(got) != len(want) ||
+		got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("Trail() = %v, want %v", got, want)
+	}
+	// Two ancestors, two targets — the current level is a label, not a door.
+	if len(p.segs) != 2 {
+		t.Fatalf("the trail recorded %d click targets, want 2", len(p.segs))
+	}
+	for _, s := range p.segs {
+		if s.depth == p.Depth() {
+			t.Errorf("the current level is a click target at depth %d", s.depth)
+		}
+	}
+	// The current segment is the dimmest tier; an ancestor never is.
+	at := strings.Index(header, "effort")
+	if at < 0 {
+		t.Fatal("the current level is not on the line")
+	}
+	if !strings.Contains(header[:at], tokens.TextTertiary.Fg(tokens.TrueColor, tokens.FocusNormal)) {
+		t.Errorf("the current segment is not drawn at the dimmest tier: %q", header)
+	}
+	root := strings.Index(header, rootSegment)
+	if !strings.Contains(header[:root], tokens.TextSecondary.Fg(tokens.TrueColor, tokens.FocusNormal)) {
+		t.Errorf("an interactive segment lives in the dimmest tier: %q", header)
+	}
+}
+
+// TestClickingATrailSegmentJumpsBackToThatLevel: the pointer's whole way out of
+// a drilled list.
+func TestClickingATrailSegmentJumpsBackToThatLevel(t *testing.T) {
+	p, rec := drilled(t, "model")
+	p.Push("effort", choicesCatalog())
+	p.Render(100, 20)
+
+	// Segment 1 is `model`, the level between the root and where we are.
+	seg := p.segs[1]
+	if seg.depth != 1 {
+		t.Fatalf("segment 1 returns to depth %d", seg.depth)
+	}
+	p.Mouse(clickAtXY(seg.at, headerLine))
+	if p.Depth() != 1 {
+		t.Fatalf("clicking `model` left the palette at depth %d", p.Depth())
+	}
+
+	// And segment 0 goes all the way home, in one click rather than N.
+	p.Render(100, 20)
+	p.Mouse(clickAtXY(p.segs[0].at, headerLine))
+	if p.Depth() != 0 {
+		t.Fatalf("clicking the root left the palette at depth %d", p.Depth())
+	}
+	if rec.closes != 0 {
+		t.Errorf("a trail click closed the surface %d times", rec.closes)
+	}
+	if len(rec.chosen) != 0 {
+		t.Errorf("a trail click chose something: %v", rec.chosen)
+	}
+
+	// A click on the header that is not on a segment is chrome and does nothing.
+	p.Push("model", choicesCatalog())
+	p.Render(100, 20)
+	p.Mouse(clickAtXY(99, headerLine))
+	if p.Depth() != 1 {
+		t.Errorf("a click on header chrome changed the depth to %d", p.Depth())
+	}
+}
+
+// TestPoppingReturnsTheReaderWhereTheyWereStanding is 7.2 applied to a level: a
+// reader who drilled from the middle of a list and came back to the top would
+// have been moved by the surface rather than by themselves.
+func TestPoppingReturnsTheReaderWhereTheyWereStanding(t *testing.T) {
+	rec := &recorder{}
+	p := New(rec.options())
+	c := demoCatalog()
+	c.Drill = func(Result) bool { return false }
+	p.SetCatalog(c)
+	typeText(p, "wisp")
+	p.Key(namedKey(tea.KeyDown))
+	before, ok := p.Selected()
+	if !ok {
+		t.Fatal("nothing selected before the drill")
+	}
+	query := p.Query()
+
+	p.Push("model", choicesCatalog())
+	if p.Query() != "" {
+		t.Errorf("the sub-list opened holding the parent's query %q", p.Query())
+	}
+	p.Pop()
+
+	if p.Query() != query {
+		t.Errorf("coming back, the filter reads %q, want %q", p.Query(), query)
+	}
+	after, ok := p.Selected()
+	if !ok {
+		t.Fatal("nothing selected after coming back")
+	}
+	if after != before {
+		t.Errorf("coming back moved the selection from %v to %v", before, after)
+	}
+}
+
+// TestACatalogRefreshDoesNotThrowTheReaderOutOfALevel: a task settling
+// elsewhere is not a reason to close the list somebody is standing in (7.2).
+func TestACatalogRefreshDoesNotThrowTheReaderOutOfALevel(t *testing.T) {
+	p, _ := drilled(t, "model")
+	fresh := demoCatalog()
+	fresh.Rooms = append(fresh.Rooms, Room{ID: "t-new", Title: "brand-new", Seed: "t-new"})
+	p.SetCatalog(fresh)
+
+	if p.Depth() != 1 {
+		t.Fatalf("a catalog refresh moved the reader to depth %d", p.Depth())
+	}
+	if body := strings.Join(rowsOf(p, 100, 60), "\n"); !strings.Contains(body, "claude-k3") {
+		t.Errorf("the refresh replaced the level the reader was on:\n%s", body)
+	}
+	// And the new facts are there when they come back.
+	p.Pop()
+	if body := strings.Join(rowsOf(p, 100, 200), "\n"); !strings.Contains(body, "brand-new") {
+		t.Errorf("the root came back stale:\n%s", body)
+	}
+}
+
+// TestResetClearsTheDrillStack: a palette that reopened three levels down is
+// the reopened-holding-a-query surprise with the list changed as well.
+func TestResetClearsTheDrillStack(t *testing.T) {
+	p, _ := drilled(t, "model")
+	p.Reset()
+	if p.Depth() != 0 {
+		t.Errorf("reset left the palette at depth %d", p.Depth())
+	}
+	if len(p.Trail()) != 0 {
+		t.Errorf("reset left a trail: %v", p.Trail())
+	}
 }

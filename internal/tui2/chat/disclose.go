@@ -62,7 +62,19 @@ func (a *App) applyFold(block *messageBlock) {
 // screen — nothing is read, posted, answered or spent — so it is finished the
 // moment the bytes are re-rendered, and the invalidate is the whole of it.
 func (a *App) toggleFold(block *messageBlock) tea.Cmd {
-	if block == nil || !block.collapsible {
+	if block == nil {
+		return nil
+	}
+	// THE CARD IS A DOOR TO ITS TASK, and it is the same seam because it is the
+	// same gesture: the pane resolved a cell to a block, the block recorded
+	// which of its doors that cell was on ([messageBlock.doorAt]), and the ACT
+	// belongs here. §3's law is that "the whole block is a click target to the
+	// record, from the moment it appears"; the reader filed its absence — "the
+	// card has no click to go to task at all".
+	if block.door == doorRoom {
+		return a.openCardRoom(block)
+	}
+	if !block.collapsible {
 		return nil
 	}
 	open := !block.Expanded()
@@ -70,7 +82,20 @@ func (a *App) toggleFold(block *messageBlock) tea.Cmd {
 		a.folds = make(map[string]bool, 4)
 	}
 	a.folds[block.ID()] = open
-	if block.SetExpanded(open) {
+	moved := block.SetExpanded(open)
+	// AN EXECUTION ROW'S FOLD CHANGES WHICH ROWS EXIST, so it is a rebuild and
+	// not a re-render. A batched run of nine searches lays out its nine calls
+	// when it opens, and a long result grows the continuation that holds the
+	// rest of itself — neither is a segment inside the row that was clicked, so
+	// re-rendering that row alone would open a door onto nothing. The stamp is
+	// cleared because it fingerprints the JOURNAL, and nothing in the journal
+	// moved: the reader did.
+	if isTraceBlockID(block.ID()) && a.view != nil && a.view.kind == viewNode {
+		a.view.stamp = ""
+		a.paintRoom()
+		moved = true
+	}
+	if moved {
 		a.shell.Invalidate()
 	}
 	return nil
@@ -82,4 +107,22 @@ func (a *App) clearFolds() {
 	for id := range a.folds {
 		delete(a.folds, id)
 	}
+}
+
+// openCardRoom walks into the task a card is about.
+//
+// It goes through [App.jumpTo] — the same door the palette, the board and an
+// `@job` mention already open — rather than calling openTaskRoom directly, so
+// the rail's cursor lands on the row the reader entered and esc walks back out
+// the way it always did. One door, a fifth hand on it.
+//
+// The id is the RAIL's, not the graph's: a task row is `task:<node>` in every
+// scope the map builds (scope.go), and jumpTo is a lookup against those rows.
+// A card whose job the map has never heard of opens nothing rather than
+// guessing, which is 5.20 rule 1 — a surface may not name a door onto nowhere.
+func (a *App) openCardRoom(block *messageBlock) tea.Cmd {
+	if block == nil || block.job == "" {
+		return nil
+	}
+	return a.jumpTo(rowTaskPrefix + block.job)
 }

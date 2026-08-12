@@ -56,3 +56,84 @@ func TestABundleSharesOneStageAndNothingChains(t *testing.T) {
 		t.Fatal("the bundle has no deliverable owner for the contract and gate to hold")
 	}
 }
+
+// The rail row this defect was reported from: twelve leaves of one enumerated
+// bundle, every part opening on the same fifty-character instruction, the only
+// word that told them apart sitting past the cut. Twelve identical rows.
+//
+// The property is not "the names are short" — the old code satisfied that and
+// was useless. It is that a name still picks its part out from the ones beside
+// it, which is what a rail is for.
+func TestTwelveSiblingsSharingAStemGetTwelveDistinctNames(t *testing.T) {
+	const stem = "Write a one-paragraph technical profile of the vector database "
+	if len(stem) < 50 {
+		t.Fatalf("the shared stem is %d characters; this test is not exercising the collision", len(stem))
+	}
+	databases := []string{
+		"Milvus", "Weaviate", "Qdrant", "Pinecone", "Chroma", "pgvector",
+		"Vespa", "Elasticsearch", "Redis", "LanceDB", "Marqo", "FAISS",
+	}
+	parts := make([]string, 0, len(databases))
+	for _, database := range databases {
+		parts = append(parts, stem+database+", covering its storage engine, its index types and what it is best at.")
+	}
+
+	graph := Bundle("Profile twelve vector databases.", parts)
+	seen := make(map[string]string, len(databases))
+	var workers int
+	for _, node := range graph.Nodes {
+		if node.Kind != KindWork {
+			continue
+		}
+		workers++
+		if first, clash := seen[node.Title]; clash {
+			t.Fatalf("two rail rows read the same: %q\n  first:  %s\n  second: %s", node.Title, first, node.Summary)
+		}
+		seen[node.Title] = node.Summary
+		if width := len([]rune(node.Title)); width > railWidth {
+			t.Errorf("the rail row %q is %d characters wide, over the %d it has", node.Title, width, railWidth)
+		}
+	}
+	if workers != len(databases) {
+		t.Fatalf("the bundle laid %d parts, want %d", workers, len(databases))
+	}
+	// And the discriminating word is what survived — the name is worth nothing
+	// otherwise, however distinct it is.
+	for _, database := range databases {
+		var found bool
+		for title := range seen {
+			if strings.Contains(title, database) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("no rail row names %s; the clip kept the stem and dropped the difference", database)
+		}
+	}
+}
+
+// A part that stands alone keeps its own opening words. The sibling-aware clip
+// is a repair for a collision, not a new house style, so nothing changes for
+// the ordinary bundle of unrelated asks.
+func TestPartsThatDoNotCollideAreStillNamedByTheirOpeningWords(t *testing.T) {
+	parts := []string{
+		"Compute March revenue from orders.csv and name the top product by margin, then say why.",
+		"Draft the sponsorship decline email per the brief, warm but final.",
+	}
+	names := clipTitles(parts)
+	for index, name := range names {
+		if !strings.HasPrefix(parts[index], name) {
+			t.Errorf("part %d was renamed to %q rather than clipped from %q", index, name, parts[index])
+		}
+	}
+}
+
+// Two parts that really are the same words cannot be told apart by any clip, and
+// the rail still may not show one row twice.
+func TestIdenticalPartsStillGetOneRowEach(t *testing.T) {
+	names := clipTitles([]string{"Summarise the report.", "Summarise the report."})
+	if names[0] == names[1] {
+		t.Fatalf("identical parts collapsed to one rail row: %q", names[0])
+	}
+}

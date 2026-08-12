@@ -205,9 +205,27 @@ func shellScratchPIDAlive(pid int) bool {
 	return err == nil || err == syscall.EPERM
 }
 
+// shellEnvironment is the environment one shell tool call runs in.
+//
+// SHARING IS THE DEFAULT AND PRIVACY IS THE OPT-OUT, which is the reverse of
+// how this started. Toolchain caches are content-addressed: the same module at
+// the same version is the same bytes for every session, so a private copy per
+// session buys no isolation at all and costs a full re-download each time. The
+// measured price of the old default (audit-notes/headless-regression-audit.md
+// §10) was 329MB of one dependency pulled per session, concurrent sessions each
+// pulling it again, and a 5GB root filesystem at 100% mid-run — which the
+// scheduler's own disk guard then read as a resource pause it could never
+// leave. CODEAF_SHARED_BUILD_CACHE=0 restores per-session caches for the case
+// that genuinely needs them.
+//
+// This reading deliberately diverges from internal/config/env.go's boolModes
+// entry for the same name, which is a frozen parity port of the upstream
+// TypeScript closure and is pinned by fixtures. Nothing on this path consults
+// that table — the scratch layer reads the variable itself — and the parity
+// artifact is left exactly as imported.
 func shellEnvironment(sessionID string) []string {
 	environment := append([]string(nil), os.Environ()...)
-	if os.Getenv("CODEAF_SHARED_BUILD_CACHE") == "1" || sessionID == "" {
+	if os.Getenv("CODEAF_SHARED_BUILD_CACHE") != "0" || sessionID == "" {
 		return environment
 	}
 	ensureShellScratch(sessionID)

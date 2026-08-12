@@ -308,9 +308,16 @@ func TestObservationWindowIsSizedFromContextNotSpend(t *testing.T) {
 
 	// A real context is where the room actually comes from, and a large one is
 	// held at the ceiling rather than allowed to eat the whole prompt.
+	//
+	// Two subjects, not three. The ceiling came down from 256KB to 64KB once it
+	// was measured what the window costs rather than what it holds: the window
+	// is re-sent every turn and billed against the leaf's spend ceiling, so a
+	// quarter-megabyte of memory bought two affordable turns. Fitting the
+	// re-read subject twice over is what the change was for and is what is
+	// pinned here; room for a third copy of it was never the point.
 	roomy := observationWindow(200_000)
-	if roomy < 3*reReadSubject {
-		t.Errorf("a 200k-token model got %d bytes, not even three of the %d-byte subjects it re-reads",
+	if roomy < 2*reReadSubject {
+		t.Errorf("a 200k-token model got %d bytes, not even two of the %d-byte subjects it re-reads",
 			roomy, reReadSubject)
 	}
 	if huge := observationWindow(2_000_000); huge != maxObservationBudget {
@@ -342,7 +349,7 @@ func TestObservationWindowIsSizedFromContextNotSpend(t *testing.T) {
 // model that needs the detail can still reach it.
 func TestRepeatedBytesBecomeAPointerToTheFirstCopy(t *testing.T) {
 	space := workspace(t)
-	tools := NewToolbox(space, 2, nil)
+	tools := NewToolbox(space, "2", nil)
 	fade := newDecayer(map[string]string{}, tools.decaySpill)
 	carried := newObservations(fade)
 	body := strings.Repeat("the same output\n", 200)
@@ -391,7 +398,7 @@ func TestRepeatedBytesBecomeAPointerToTheFirstCopy(t *testing.T) {
 // existed.
 func TestAPointerNamesTheSpillFileOnceTheOriginalHasDecayed(t *testing.T) {
 	space := workspace(t)
-	tools := NewToolbox(space, 2, nil)
+	tools := NewToolbox(space, "2", nil)
 	fade := newDecayer(map[string]string{}, tools.decaySpill)
 	carried := newObservations(fade)
 	body := strings.Repeat("A", 20<<10)
@@ -461,7 +468,7 @@ func (s *countingSpill) fn(key, body string) (string, bool) {
 // present-tense check could not survive.
 func TestADecayTimeWriteFailureCannotStrandAPointer(t *testing.T) {
 	space := workspace(t)
-	tools := NewToolbox(space, 2, nil)
+	tools := NewToolbox(space, "2", nil)
 	spill := &countingSpill{inner: tools.decaySpill}
 	fade := newDecayer(map[string]string{}, spill.fn)
 	carried := newObservations(fade)
@@ -512,7 +519,7 @@ func TestADecayTimeWriteFailureCannotStrandAPointer(t *testing.T) {
 // something that was never written.
 func TestBytesWithNoDurableAddressAreNeverPointedAt(t *testing.T) {
 	space := workspace(t)
-	tools := NewToolbox(space, 4, nil)
+	tools := NewToolbox(space, "4", nil)
 	spill := &countingSpill{inner: tools.decaySpill, broken: true}
 	carried := newObservations(newDecayer(map[string]string{}, spill.fn))
 	body := strings.Repeat("C", 20<<10)
@@ -544,7 +551,7 @@ func TestBytesWithNoDurableAddressAreNeverPointedAt(t *testing.T) {
 // job report describes state that was true when it was written; and a result
 // carrying multimodal follow-up content is not its text at all.
 func TestErrorsJobReportsAndMultimodalResultsAreNeverPointedAt(t *testing.T) {
-	tools := NewToolbox(workspace(t), 3, nil)
+	tools := NewToolbox(workspace(t), "3", nil)
 	carried := newObservations(newDecayer(map[string]string{}, tools.decaySpill))
 	body := strings.Repeat("no such file or directory\n", 100)
 
@@ -705,7 +712,7 @@ func TestDecayLeavesSmallResultsAlone(t *testing.T) {
 // bytes exactly — decay defers detail, it never destroys it.
 func TestDecaySpillsLosslessly(t *testing.T) {
 	space := workspace(t)
-	tools := NewToolbox(space, 2, nil)
+	tools := NewToolbox(space, "2", nil)
 	old := strings.Repeat("A", 20<<10)
 	fresh := strings.Repeat("B", 20<<10)
 	messages := []ai.Message{
@@ -744,7 +751,7 @@ func TestDecaySpillsLosslessly(t *testing.T) {
 // the file again, grow the stub, or stub the stub.
 func TestDecayIsIdempotentAcrossTurns(t *testing.T) {
 	space := workspace(t)
-	tools := NewToolbox(space, 4, nil)
+	tools := NewToolbox(space, "4", nil)
 	big := strings.Repeat("z", 20<<10)
 	messages := []ai.Message{
 		{Role: "tool", ToolCallID: "a1", Content: text(big)},
@@ -795,7 +802,7 @@ func TestDecayIsIdempotentAcrossTurns(t *testing.T) {
 // deferral.
 func TestSpillLeavesReadableFile(t *testing.T) {
 	space := workspace(t)
-	tools := NewToolbox(space, 3, nil)
+	tools := NewToolbox(space, "3", nil)
 
 	result := tools.Execute(t.Context(), "sh", `{"cmd":"printf 'LINE%s\\n' 1 2 3 4 5 6 7 8 9 10 | awk '{for(i=0;i<200;i++) print}'"}`)
 	if result.IsError {

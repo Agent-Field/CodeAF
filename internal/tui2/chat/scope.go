@@ -47,22 +47,21 @@ import (
 //
 // *store.Store satisfies it, structurally, with no adapter at the entry point.
 //
-// TWO READS 5.9 ASKS FOR AND THIS SEAM CANNOT MAKE. They are named here rather
+// ONE READ 5.9 ASKS FOR AND THIS SEAM STILL CANNOT MAKE. It is named here rather
 // than faked on a row, because 8.2.20's missing glyph is an honest answer and an
 // invented number is not:
 //
-//   - PER-WORKER MONEY. 5.9's focused card draws `NavCtx2 · K3 · $0.37 · 4.2%
-//     ctx · 5m`. TopLevelJobUsage answers per JOB ROOT — the store has no
-//     per-node cost rollup a rail can ask for in one query — so a worker row
-//     carries its clock and no dollars. What is needed is one read shaped like
-//     TopLevelJobUsage keyed by node, for one subtree.
 //   - PER-SURFACE CONTEXT. The card's ctx% is the orchestrator's window and each
 //     worker row shows its own; 5.9 already records that executors must journal
 //     window-size high-water marks, and until they do there is nothing to read.
 //     No gauge is drawn anywhere on this rail for that reason.
 //
-// Both are absent cells, never wrong ones. The model word is the same story one
+// It is an absent cell, never a wrong one. The model word is the same story one
 // step further out: it belongs to the role binding, not to the snapshot.
+//
+// PER-PART MONEY used to be the second name on this list — "TopLevelJobUsage
+// answers per JOB ROOT, so a worker row carries its clock and no dollars". The
+// read landed (store.SubtreeReceipts) and [Receipts] is where it enters.
 type Graph interface {
 	// ActiveSnapshot is the board: the live nodes and the edges between them.
 	ActiveSnapshot() (store.Snapshot, error)
@@ -89,7 +88,8 @@ type Graph interface {
 // four jobs. It is wrong for the job itself, because folding is what happens to
 // every job shortly after it settles, and from that moment the snapshot says the
 // job has no children at all. Their `task-1961` is a real four-part job with
-// `folded = 1` on all five rows: the card says `atomic`, the scope has one row,
+// `folded = 1` on all five rows: the card said the job had no parts, the scope
+// has one row,
 // the room draws no part and no per-part result. Their `craft-2088`, the same
 // shape but not yet folded, draws all four. **The tree does not break when a job
 // is complicated; it breaks when a job gets old.**
@@ -110,6 +110,32 @@ type Subtrees interface {
 	SubtreeNodes(root string) ([]store.Node, error)
 }
 
+// Receipts is the optional read that puts MONEY AND A CLOCK ON EVERY PART.
+//
+// It is [Subtrees]' twin and it is asked in the same breath, because the two
+// answer the same question about the same rows: SubtreeNodes says what the parts
+// ARE and SubtreeReceipts says what each of them cost and how long it has been
+// at it, in the same recursion, in the same order, equally indifferent to
+// folding. §13 is what wants it — "every tree row carries its own `$ · elapsed`;
+// collapsed parents carry the rollup" — and until it existed a worker row could
+// only ever carry a clock, because TopLevelJobUsage answers per job root.
+//
+// THE ONE READ IS PER ROOM ENTERED, and it rides [scopeSource.opened] for
+// exactly that reason: a home rail is a list of jobs whose money the board
+// already answers in one query, and paying for a per-node ledger of every job on
+// the board to fill the one room a reader is standing in is the trade 257800f
+// refused. Entering a job costs one more query than it did; from then on the
+// ledger is re-read with the journal, because money moves with the journal.
+//
+// ABSENT IS NOT ZERO, all the way down. A ledger with no receipt for a node, or
+// a receipt the journal has never billed, leaves the money cell OFF the row —
+// not `$0.00`, which is a measurement, and not `—`, which would spend a column
+// on the fact that a column is empty. *store.Store satisfies this with no
+// adapter, and so does command.Commander.
+type Receipts interface {
+	SubtreeReceipts(root string) (store.SubtreeLedger, error)
+}
+
 // Rooms is the optional thread-switcher slice (12.1.3 item 3, 5.24).
 //
 // OpenSession is what makes an EMPTY room possible: until that event existed a
@@ -121,6 +147,25 @@ type Rooms interface {
 	Sessions() ([]store.Session, error)
 	OpenSession(id, title, surface string) (store.Session, error)
 	RenameSession(id, title string) (store.Session, error)
+}
+
+// RoomReuser is the `+ new room` door for a backend that can tell an empty room
+// from a conversation — *store.Store, and nothing a window has to be built with.
+//
+// It is asked for by type assertion rather than added to [Rooms] for the reason
+// the model palette's control is (chatv2.go's ModelControl note): a window whose
+// backend cannot answer is a window that mints, which is exactly what it did
+// before, and a visitor over a slice of rows should not have to grow a door it
+// has no store to answer with.
+//
+// The capability is one question — is there already an empty unnamed room to
+// walk into? — and the reason it belongs to the store rather than to this
+// package is that this package cannot see the messages that would prove a room
+// empty. The boolean says the room came back rather than being born, so a
+// caller may word it; nothing words it today, because a reader who asked for a
+// new room and got an empty one got what they asked for.
+type RoomReuser interface {
+	OpenOrReuseSession(id, surface string) (store.Session, bool, error)
 }
 
 // Row id prefixes. They are the vocabulary the shell's navigation switches on,
@@ -159,6 +204,8 @@ const (
 type scopeSource struct {
 	graph    Graph
 	subtrees Subtrees
+	receipts Receipts
+	models   Models
 	rooms    Rooms
 	now      func() time.Time
 	session  string
@@ -169,6 +216,12 @@ type scopeSource struct {
 	// (readGraph), so the card and the tree agree about how many parts a job has
 	// rather than one of them learning it and the other not (12.14 finding 1).
 	opened map[string][]store.Node
+
+	// ledgers is one [store.SubtreeLedger] per entered job, keyed by the same
+	// root `opened` is keyed by — what each of that job's parts cost and how
+	// long it has been at it (§13). It is rebuilt with the rest of the cache, so
+	// a row's money ages with the journal and never with the frame.
+	ledgers map[string]store.SubtreeLedger
 
 	// built scopes, keyed by scope id. home is held apart because it is the one
 	// scope that always exists, even when nothing else does.
@@ -228,6 +281,16 @@ func newScopeSource(backend Backend, session string, now func() time.Time) *scop
 	}
 	if subtrees, ok := backend.(Subtrees); ok {
 		source.subtrees = subtrees
+	}
+	if receipts, ok := backend.(Receipts); ok {
+		source.receipts = receipts
+	}
+	// [Models] is asked separately from [Receipts] even though one object
+	// answers both in production, for the reason every assertion in this
+	// function is separate: a host that has half of a capability keeps the half
+	// it has (record.go).
+	if models, ok := backend.(Models); ok {
+		source.models = models
 	}
 	if rooms, ok := backend.(Rooms); ok {
 		source.rooms = rooms
@@ -352,11 +415,20 @@ func (s *scopeSource) refresh(journal int64, force bool) bool {
 
 	sessions := s.readSessions()
 	snapshot, usage, questions := s.readGraph()
+	// Before buildHome, deliberately: buildHome consumes the ledgers, so an
+	// entered job's rows carry this frame's money. The row-0 roots this pass
+	// walks come from LAST frame's home — the one-poll lag the top-up below
+	// exists to close.
+	s.readReceipts()
 
 	s.homes.Now = s.now()
 	s.homeSource.SetState(s.homes)
 	s.tasks = make(map[string]rail.Scope, len(s.tasks))
 	s.home = s.buildHome(sessions, snapshot, usage, questions)
+	// The top-up: a task that JOINED the home this frame (or the first frame,
+	// when there was no last home at all) gets its ledger now, so a delivery
+	// card's tokens never wait a poll. Bounded by the same card-root cap.
+	s.topUpCardReceipts()
 	return true
 }
 
@@ -398,6 +470,119 @@ func (s *scopeSource) readGraph() (store.Snapshot, map[string]store.JobUsage, []
 		questions = nil
 	}
 	return s.withOpenedSubtrees(snapshot), usage, questions
+}
+
+// readReceipts reads what every part of an ENTERED job cost, one query per room
+// the reader has opened (§13, and see [Receipts] for why the set is bounded that
+// way rather than by the board).
+//
+// Each ledger degrades on its own: a job whose receipts will not read loses its
+// money cells and keeps its rows, because a tree with no dollars on it is a
+// smaller loss than no tree.
+func (s *scopeSource) readReceipts() {
+	if s.receipts == nil {
+		s.ledgers = nil
+		return
+	}
+	roots := make(map[string]struct{}, len(s.opened)+receiptCardRoots)
+	for root := range s.opened {
+		roots[root] = struct{}{}
+	}
+	// The first few row-0 tasks on the home rail too: the thread's delivery
+	// card spells a task's ~tokens (jobcard.go) whether or not anyone ever
+	// entered its room. Display order is working-then-recent, so the bound
+	// lands on exactly the tasks whose cards are still on screen.
+	added := 0
+	for _, row := range s.home.Rows {
+		if row.Kind != rail.RowTask || row.ID == "" {
+			continue
+		}
+		// The rail's id is prefixed ("task:job-1"); the ledger is keyed by the
+		// NODE, which is what every consumer looks up with. Querying by the
+		// prefixed spelling returned an empty ledger under a key nobody reads.
+		root := strings.TrimPrefix(row.ID, rowTaskPrefix)
+		if _, held := roots[root]; held {
+			continue
+		}
+		roots[root] = struct{}{}
+		if added++; added >= receiptCardRoots {
+			break
+		}
+	}
+	if len(roots) == 0 {
+		s.ledgers = nil
+		return
+	}
+	ledgers := make(map[string]store.SubtreeLedger, len(roots))
+	for root := range roots {
+		ledger, err := s.receipts.SubtreeReceipts(root)
+		if err != nil {
+			continue
+		}
+		ledgers[root] = ledger
+	}
+	s.ledgers = ledgers
+}
+
+// receiptCardRoots bounds how many un-entered tasks get a receipts read per
+// poll, so the board's history can grow without the poll growing with it.
+const receiptCardRoots = 12
+
+// topUpCardReceipts reads the ledger for any card-bearing row-0 task the main
+// pass has not covered — a task new to the home this frame, or every task on
+// the very first frame. It never re-reads a root the ledgers already hold.
+func (s *scopeSource) topUpCardReceipts() {
+	if s.receipts == nil {
+		return
+	}
+	added := 0
+	for _, row := range s.home.Rows {
+		if row.Kind != rail.RowTask || row.ID == "" {
+			continue
+		}
+		// Same trim as readReceipts: the ledger's keys are node ids, never the
+		// rail's prefixed spelling of them.
+		root := strings.TrimPrefix(row.ID, rowTaskPrefix)
+		if _, held := s.ledgers[root]; held {
+			continue
+		}
+		ledger, err := s.receipts.SubtreeReceipts(root)
+		if err != nil {
+			continue
+		}
+		if s.ledgers == nil {
+			s.ledgers = make(map[string]store.SubtreeLedger, receiptCardRoots)
+		}
+		s.ledgers[root] = ledger
+		if added++; added >= receiptCardRoots {
+			return
+		}
+	}
+}
+
+// spend is one job's ledger and whether there is one, passed DOWN the build
+// rather than looked up per row — so a card and every row of the tree under it
+// are spelling out one read taken at one moment, which is the property this
+// whole file exists to keep.
+type spend struct {
+	ledger store.SubtreeLedger
+	have   bool
+}
+
+// rollup is what a node and everything under it cost and how long the work has
+// occupied the wall. The second return is presence: a node the ledger has never
+// heard of has no figures here, which a caller must draw as nothing rather than
+// as a job that was free.
+//
+// Every row asks for its ROLLUP and not for its own receipt, deliberately. The
+// store is explicit that a leaf's rollup is its own receipt — so one call covers
+// both — and it is the only way a collapsed parent and the rows it expands into
+// can be made to agree.
+func (m spend) rollup(id string) (store.SubtreeRollup, bool) {
+	if !m.have {
+		return store.SubtreeRollup{}, false
+	}
+	return m.ledger.Rollup(id)
 }
 
 // withOpenedSubtrees puts the parts of an entered job back on the board.
@@ -663,9 +848,14 @@ func (s *scopeSource) taskRows(snapshot store.Snapshot, usage map[string]store.J
 		if len(rows) >= maxTaskRows {
 			break
 		}
-		card := s.taskCard(root, byID, children, usage, waits, asks, rolls, now)
+		money := spend{}
+		if ledger, ok := s.ledgers[root.ID]; ok {
+			money = spend{ledger: ledger, have: true}
+		}
+		card := s.taskCard(root, byID, children, usage, waits, asks, rolls, money, now)
 		rows = append(rows, card)
-		s.tasks[rowTaskPrefix+root.ID] = s.taskScope(card, root, byID, children, waits, asks, rolls, now)
+		s.tasks[rowTaskPrefix+root.ID] =
+			s.taskScope(card, root, byID, children, waits, asks, rolls, money, now)
 	}
 	return rows
 }
@@ -674,16 +864,21 @@ func (s *scopeSource) taskRows(snapshot store.Snapshot, usage map[string]store.J
 // expands into when the cursor rests on it.
 //
 // PROGRESSIVE DISCLOSURE IS DATA, NOT A MODE (5.9: "collapsed = 3 lines;
-// focused/entered expands to plan progress and per-worker rows"). The rail
-// decides how many of these lines to draw from whether the row is selected
-// (rail's shapeOf); this builder always carries the plan dots and the worker
-// rows, because a card that only learned its own plan once the cursor arrived
-// would be a store read behind a keystroke — the one thing this file exists to
-// prevent.
+// focused/entered expands"). The rail decides how many of these lines to draw
+// from whether the row is selected (rail's shapeOf); this builder always carries
+// the census and the worker rows, because a card that only learned its own plan
+// once the cursor arrived would be a store read behind a keystroke — the one
+// thing this file exists to prevent.
+//
+// LINE 3 SAYS NOTHING ABOUT THE JOB'S SHAPE (§14). It used to end `4 workers`,
+// or `atomic` when the job had no plan, and both were banned by the same
+// sentence: a single-part job says nothing about its shape. What line 3 carries
+// now is the CENSUS of the parts — `2◐ 2✓` — which is empty for a one-part job
+// and therefore silent, with no special case anywhere for the silence.
 func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 	children map[string][]string, usage map[string]store.JobUsage,
 	waits map[string][]string, asks map[string]int, rolls map[string]roll,
-	now time.Time) rail.Row {
+	money spend, now time.Time) rail.Row {
 
 	row := rail.Row{
 		ID:        rowTaskPrefix + root.ID,
@@ -695,21 +890,26 @@ func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 		Seed:      root.ID,
 		WaitsOn:   waits[root.ID],
 		Questions: asks[root.ID],
-		Steps:     s.planSteps(root, byID, children, waits, rolls),
-		Workers:   s.workerRows(root, byID, children, waits, asks, rolls, now),
+		Workers:   s.workerRows(root, byID, children, waits, asks, rolls, money, now),
 	}
 	sum := rolls[root.ID]
-	workers, running, longest := sum.parts, sum.active, sum.longest
-	if job, ok := usage[root.ID]; ok {
+	parts, running := sum.parts, sum.active
+	row.Meta.Counts = sum.states
+	// The ledger wins when the reader has entered this job, because then the
+	// card and every row of the tree are quoting one read: a card whose total
+	// came from one query and whose parts came from another would be the two
+	// disagreeing about the same money in adjacent columns. The board's own
+	// per-job figure answers for every job nobody has opened.
+	if roll, ok := money.rollup(root.ID); ok && roll.Billed() {
+		row.Meta.Cost, row.Meta.HasCost = roll.Cost, true
+	} else if job, ok := usage[root.ID]; ok && job.Runs > 0 {
+		// Runs guards the same doctrine Billed() does above: the usage query
+		// COALESCEs every job to $0 from its first frame, and an unbilled part
+		// has no cost at all — not $0.00, which reads as a settled figure.
 		row.Meta.Cost, row.Meta.HasCost = job.Cost, true
 	}
-	if workers == 0 {
-		row.Meta.Atomic = true
-	} else {
-		row.Meta.Workers, row.Meta.HasWorkers = workers, true
-	}
-	if longest > 0 {
-		row.Meta.Elapsed, row.Meta.HasElapsed = longest, true
+	if elapsed, ok := jobWall(root, sum, money, now); ok {
+		row.Meta.Elapsed, row.Meta.HasElapsed = elapsed, true
 	}
 	// A job root usually carries no status of its own worth showing — its parts
 	// do the work — so the subtree answers "what is happening" when the node
@@ -717,11 +917,11 @@ func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 	if row.Status == "" && running > 0 {
 		row.Status = plural(running, "part running", "parts running")
 	}
-	// A planned job has a chat because it has a plan to redirect; an atomic one
-	// is a hand and takes steering mail only (5.11). The mark on the card is a
+	// A planned job has a chat because it has a plan to redirect; a job that is
+	// one hand takes steering mail only (5.11). The mark on the card is a
 	// preview of the composer the row will bind, so this is the same decision
 	// twice and never two decisions.
-	if workers > 0 {
+	if parts > 0 {
 		row.Composer = rail.ComposerChat
 	}
 	return row
@@ -734,12 +934,12 @@ func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 // ROW 0 IS THE CARD, RE-KINDED. It was built here from the node a second time,
 // and the two builders did not know the same things: the card falls back to
 // "1 part running" when the root itself says nothing (13.3.3) and carries the
-// cost, the elapsed and the atomic mark, and this one carried
-// nodeStatusLine(root) and no telemetry at all. On a job root — which "usually
-// carries no status of its own worth showing", as taskCard says in its own
-// comment — that difference is the whole row: a screenshot of an entered atomic
-// task showed a room whose surface row was a bare name, under a card that had
-// just said "1 part running · 1s · atomic" one keystroke earlier.
+// cost, the clock and the census, and this one carried nodeStatusLine(root) and
+// no telemetry at all. On a job root — which "usually carries no status of its
+// own worth showing", as taskCard says in its own comment — that difference is
+// the whole row: a screenshot of an entered one-part job showed a room whose
+// surface row was a bare name, under a card that had said "1 part running · 1s"
+// one keystroke earlier.
 //
 // Entering a task must never know LESS about it than the card you entered from.
 // 5.15 makes the card a PREVIEW of the room ("selecting a task card shows a
@@ -748,15 +948,15 @@ func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 // row, and the only thing that changes is what it IS here: a scope's
 // conversational surface rather than a member of the scope above.
 // THE MEMBERS ARE THE WIREFRAME'S TREE. A plan step or a worker is one line
-// with its clock flush right (`◐ H2      28m`) and a `waits on H2` line under it
-// when it is sitting behind a sibling — rail's own tree-row anatomy — and the
-// indent is what says which worker belongs to which step. The root's own parts
-// therefore sit at depth 0, flush under the surface row exactly as 5.15 draws
-// them: an indent that everything shares says nothing, and it costs two of the
-// twenty-eight columns the clock needs.
+// with its receipt flush right (`◐ H2   $0.37 · 28m`) and a `waits: H2` line
+// under it when it is sitting behind a sibling — rail's own tree-row anatomy —
+// and the DEPTH is what says which worker belongs to which step: the rail draws
+// it as v1's connector grammar, ├─ and ╰─ with │ guides, working the branches
+// out from the depths alone. The root's own parts therefore sit at depth 0,
+// flush under the surface row exactly as 5.15 draws them.
 func (s *scopeSource) taskScope(card rail.Row, root store.Node, byID map[string]store.Node,
 	children map[string][]string, waits map[string][]string,
-	asks map[string]int, rolls map[string]roll, now time.Time) rail.Scope {
+	asks map[string]int, rolls map[string]roll, money spend, now time.Time) rail.Scope {
 
 	surface := card
 	surface.Kind = rail.RowSurface
@@ -765,7 +965,7 @@ func (s *scopeSource) taskScope(card rail.Row, root store.Node, byID map[string]
 	// The card's per-worker expansion is what the HOME rail shows instead of the
 	// tree. In here the tree IS on screen, and a surface row that expanded into
 	// the same workers a hairline below it would draw every part twice — 12.13's
-	// tripled name in the other axis. The plan dots stay: `3/7` is a summary of
+	// tripled name in the other axis. The census stays: `2◐ 2✓` is a summary of
 	// the tree, not a copy of it, and it survives the fold that hides rows.
 	surface.Workers = nil
 
@@ -782,7 +982,7 @@ func (s *scopeSource) taskScope(card rail.Row, root store.Node, byID map[string]
 			if len(children[kid]) > 0 {
 				kind = rail.RowStep
 			}
-			row := s.treeRow(node, kind, waits, asks, rolls, now)
+			row := s.treeRow(node, kind, waits, asks, rolls, money, now)
 			row.Depth = depth
 			row.Seed = root.ID
 			rows = append(rows, row)
@@ -804,7 +1004,7 @@ func (s *scopeSource) taskScope(card rail.Row, root store.Node, byID map[string]
 // as it does inside the room, which is 12.14's law ("a preview that outranks the
 // thing it previews is the affordance lying") pointed the other way.
 func (s *scopeSource) treeRow(node store.Node, kind rail.RowKind, waits map[string][]string,
-	asks map[string]int, rolls map[string]roll, now time.Time) rail.Row {
+	asks map[string]int, rolls map[string]roll, money spend, now time.Time) rail.Row {
 
 	return rail.Row{
 		ID:        rowTaskPrefix + node.ID,
@@ -815,66 +1015,76 @@ func (s *scopeSource) treeRow(node store.Node, kind rail.RowKind, waits map[stri
 		Composer:  rail.ComposerSteer,
 		WaitsOn:   waits[node.ID],
 		Questions: asks[node.ID],
-		Meta:      treeMeta(node, rolls[node.ID], now),
+		Meta:      treeMeta(node, rolls[node.ID], money, now),
 	}
 }
 
-// treeMeta is what a tree row can afford to say about itself on its own line.
+// treeMeta is a tree row's receipt: what this part cost and how long it has been
+// at it (§13), plus the census of anything under it.
 //
-// ELAPSED IS FOR WORK THAT IS STILL HAPPENING. 5.15's wireframe spends the right
-// column on `◐ H2 28m` and leaves `✓ XhrSyn` bare, and it is right to: a number
-// beside a settled row reads as a clock still running. A step with no clock of
-// its own borrows the longest one underneath it, because "this branch has been
-// at it for 28m" is the same fact the reader was asking for.
+// THE LEDGER IS ASKED FOR THE ROLLUP, NOT THE RECEIPT, so a step and the workers
+// it expands into cannot disagree — a collapsed parent carries the money under
+// it and the WALL it occupied, which is earliest start to latest settle and
+// never a sum: four workers that each took ten minutes side by side took ten
+// minutes, not forty.
 //
-// There is no money cell and no context gauge here, and that is a READ GAP
-// rather than a decision — see the note on [Graph]. Per-node cost would need a
-// per-node usage rollup the store does not expose (TopLevelJobUsage answers per
-// JOB), and inventing `$—` on every worker row would spend the column on a
-// glyph that says nothing.
-func treeMeta(node store.Node, r roll, now time.Time) rail.Telemetry {
+// WITHOUT A LEDGER THERE IS A CLOCK AND NO MONEY, which is what every row of an
+// un-entered job has and what every row had before store.SubtreeReceipts landed.
+// The clock is then the node's own wall — asked of [store.NodeReceipt] rather
+// than recomputed here, so a row drawn from the snapshot and the same row drawn
+// from the ledger cannot come to different conclusions about a missing stamp —
+// and a step with no stamps of its own borrows the longest clock underneath it,
+// because "this branch has been at it for 28m" is the fact the reader wanted.
+//
+// There is no context gauge on either path, and that is a READ GAP rather than a
+// decision — see the note on [Graph].
+func treeMeta(node store.Node, r roll, money spend, now time.Time) rail.Telemetry {
 	var meta rail.Telemetry
-	if !settled(node.Status) {
-		switch {
-		case !node.StartedAt.IsZero():
-			if elapsed := now.Sub(node.StartedAt); elapsed > 0 {
-				meta.Elapsed, meta.HasElapsed = elapsed, true
-			}
-		case r.longest > 0:
-			meta.Elapsed, meta.HasElapsed = r.longest, true
+	meta.Counts = r.states
+	if roll, ok := money.rollup(node.ID); ok {
+		if roll.Billed() {
+			meta.Cost, meta.HasCost = roll.Cost, true
 		}
+		if elapsed, ok := roll.Elapsed(now); ok && elapsed > 0 {
+			meta.Elapsed, meta.HasElapsed = elapsed, true
+		}
+		return meta
 	}
-	if r.parts > 0 {
-		meta.Workers, meta.HasWorkers = r.parts, true
+	if elapsed, ok := nodeWall(node, now); ok && elapsed > 0 {
+		meta.Elapsed, meta.HasElapsed = elapsed, true
+	} else if !settled(node.Status) && r.longest > 0 {
+		meta.Elapsed, meta.HasElapsed = r.longest, true
 	}
 	return meta
 }
 
-// planSteps is the plan behind a card's `3/7` (5.9, 5.21): one dot per step, in
-// the order the plan was spliced.
-//
-// A JOB'S PLAN IS ITS ROOT'S OWN CHILDREN. That is the join, and it is exact —
-// the steps are the nodes the planner spliced under this job, not a guess made
-// from names. A step blocked behind a sibling takes the amber ⚑ dot, which is
-// the same waits-on edge the room draws in words.
-func (s *scopeSource) planSteps(root store.Node, byID map[string]store.Node,
-	children map[string][]string, waits map[string][]string, rolls map[string]roll) []rail.Step {
+// nodeWall is how long one node has been at it, borrowed from
+// [store.NodeReceipt] so the snapshot path and the ledger path keep ONE clock
+// rule between them: work that never started has no clock, work still running is
+// measured against now, and work that ended without a finish stamp is absent
+// rather than a number that would run forever.
+func nodeWall(node store.Node, now time.Time) (time.Duration, bool) {
+	return store.NodeReceipt{
+		Status:     node.Status,
+		StartedAt:  node.StartedAt,
+		FinishedAt: node.FinishedAt,
+	}.Elapsed(now)
+}
 
-	kids := childrenInOrder(children[root.ID], byID)
-	if len(kids) == 0 {
-		return nil
+// jobWall is the clock a job's card carries: the rollup's wall when the reader
+// has entered the job, and otherwise the longest thing running anywhere inside
+// it — which is the only reading the board's snapshot supports, and the one the
+// card carried before receipts existed.
+func jobWall(root store.Node, sum roll, money spend, now time.Time) (time.Duration, bool) {
+	if roll, ok := money.rollup(root.ID); ok {
+		if elapsed, ok := roll.Elapsed(now); ok && elapsed > 0 {
+			return elapsed, true
+		}
 	}
-	steps := make([]rail.Step, 0, len(kids))
-	for _, kid := range kids {
-		node := byID[kid]
-		life := litLife(node, rolls)
-		steps = append(steps, rail.Step{
-			Name:    s.label[kid],
-			Life:    life,
-			Blocked: life == rail.LifeQueued && len(waits[kid]) > 0,
-		})
+	if sum.longest > 0 {
+		return sum.longest, true
 	}
-	return steps
+	return 0, false
 }
 
 // workerRows are the per-worker rows a FOCUSED card expands into (5.9). They are
@@ -886,7 +1096,7 @@ func (s *scopeSource) planSteps(root store.Node, byID map[string]store.Node,
 // only ever drop what has stopped moving.
 func (s *scopeSource) workerRows(root store.Node, byID map[string]store.Node,
 	children map[string][]string, waits map[string][]string, asks map[string]int,
-	rolls map[string]roll, now time.Time) []rail.Row {
+	rolls map[string]roll, money spend, now time.Time) []rail.Row {
 
 	if len(children[root.ID]) == 0 {
 		return nil
@@ -904,7 +1114,7 @@ func (s *scopeSource) workerRows(root store.Node, byID map[string]store.Node,
 				continue
 			}
 			node := byID[kid]
-			row := s.treeRow(node, rail.RowWorker, waits, asks, rolls, now)
+			row := s.treeRow(node, rail.RowWorker, waits, asks, rolls, money, now)
 			if settled(node.Status) {
 				done = append(done, row)
 				continue
@@ -946,8 +1156,8 @@ func litLife(node store.Node, rolls map[string]roll) rail.Lifecycle {
 	return life
 }
 
-// composerFor is 5.11's fork: a job with a plan has a chat, an atomic one has a
-// steer line. It is asked of the graph rather than stored on the row so the two
+// composerFor is 5.11's fork: a job with a plan has a chat, and a job that is
+// one hand has a steer line. It is asked of the graph rather than stored on the row so the two
 // can never disagree.
 func composerFor(root store.Node, children map[string][]string) rail.ComposerMode {
 	if len(children[root.ID]) > 0 {
@@ -985,6 +1195,16 @@ type roll struct {
 	longest time.Duration
 	// lit says a node UNDERNEATH this one is running now (idea 15's join).
 	lit bool
+	// states is the census the row draws instead of a fraction (§14): how many
+	// of the PARTS are queued, running, done and broken.
+	//
+	// It counts the parts and never the node itself, and that is what makes a
+	// one-part job silent about its own shape rather than announcing `1◐` about
+	// a job with nothing in it. Each part is counted by its OWN status, not by
+	// the lit reading its row draws (litLife): a pending step with a running
+	// worker under it is one queued part and one running part, which is two
+	// facts and the honest pair.
+	states rail.StateCounts
 }
 
 // rollups computes a roll for every node in one post-order pass.
@@ -1050,6 +1270,8 @@ func rollOf(node store.Node, kids []string, byID map[string]store.Node,
 		part := done[kid]
 		r.parts += 1 + part.parts
 		r.active += part.active
+		countState(&r.states, byID[kid].Status)
+		r.states.Add(part.states)
 		if part.longest > r.longest {
 			r.longest = part.longest
 		}
@@ -1061,6 +1283,25 @@ func rollOf(node store.Node, kids []string, byID map[string]store.Node,
 		}
 	}
 	return r
+}
+
+// countState folds one part's status into a census, in the five buckets
+// [store.StateCounts] keeps and with its rule for the fifth: a CLAIM folds in
+// with pending, because a claim is a worker picking the work up and not the work
+// moving, and a reader counting what is running must not be told it has.
+func countState(counts *rail.StateCounts, status store.Status) {
+	switch status {
+	case store.Running:
+		counts.Running++
+	case store.Done:
+		counts.Done++
+	case store.Failed:
+		counts.Failed++
+	case store.Cancelled:
+		counts.Cancelled++
+	default:
+		counts.Queued++
+	}
 }
 
 // waitsOn derives "what is this row sitting behind" from the edges the snapshot
@@ -1143,6 +1384,15 @@ func settled(status store.Status) bool {
 	return status == store.Done || status == store.Failed || status == store.Cancelled
 }
 
+// started says a node's own row has begun — it is running now, or it ran and
+// stopped. It is the column the scheduler stamps when it claims the node
+// (store.Node.StartedAt) plus the states that can only be reached through it,
+// never a lifecycle read back: [litLife] lights a QUEUED parent whose child is
+// working, which is exactly the case this must answer "no" to.
+func started(node store.Node) bool {
+	return !node.StartedAt.IsZero() || node.Status == store.Running || settled(node.Status)
+}
+
 // nodeStatusLine is line 2 of a card: the orchestrator's own words where it
 // wrote them, and nothing where it did not. 5.9 calls the status line a duty,
 // and the answer to a duty nobody performed is a missing line — never an
@@ -1210,8 +1460,8 @@ func itoa(n int) string {
 // It reads the scope this source built rather than walking the graph again, for
 // the reason the whole file exists: the walk happened once, at the last journal
 // move, and a second one here would be a second opinion about the same subtree
-// read at a different time. A root with no scope — a leaf worker, an atomic job
-// — answers with itself, which is exactly its own trail.
+// read at a different time. A root with no scope — a leaf worker, a job with no
+// plan — answers with itself, which is exactly its own trail.
 func (s *scopeSource) subtreeNodes(root string) []string {
 	root = strings.TrimSpace(root)
 	if root == "" {

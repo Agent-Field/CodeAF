@@ -1,21 +1,33 @@
 // Package settings is the full-screen settings surface of chat-rebuild
 // 8.2.19 — its grammar, our skin (7.1).
 //
-// The grammar, restated as the six things this package actually does:
+// The grammar, restated as the things this package actually does:
 //
-//	tabs → groups        the tab bar is [config.SettingCategories], in the
-//	                     registry's own order; no group is invented here and
-//	                     none is hidden
+//	one page, four words the sheet is one scrolling list. Each group of rows is
+//	                     announced by one faint lowercase word — 15's single
+//	                     allowance — and separated by a blank line; the words are
+//	                     [config.SettingCategories] and nothing is invented here
+//	                     or hidden here. There is no tab bar: it was a header
+//	                     naming structure, and it kept four fifths of the sheet
+//	                     behind a keystroke most readers never found
 //	type to search       ANY printable character starts a global fuzzy search
-//	                     across ALL tabs. Results are navigation: the row list
-//	                     becomes the matches, and the tab bar becomes a filter
-//	                     breadcrumb naming which groups they came from
-//	arrows navigate      ↑↓ move the band, ←→ change tabs. Letters cannot
-//	                     navigate, because letters search — that is the price
-//	                     of type-to-search and it is stated on the hint line
+//	                     across the whole sheet. Results are navigation: the row
+//	                     list becomes the matches, each carrying its own group
+//	                     word, and the group headings stand down
+//	arrows navigate      ↑↓ move the band, ←→ jump between group heads. Letters
+//	                     cannot navigate, because letters search — that is the
+//	                     price of type-to-search and it is on the hint line
 //	enter edits          per row kind: a bool toggles, a choice cycles or
 //	                     opens an inline picker, a number and a string open an
 //	                     inline editor, a model row opens the models door
+//	verb·key chips       every action word this surface draws is a
+//	                     [registry.Chip]: the VERB first at the brighter of the
+//	                     two dim tiers, the key after it one tier down —
+//	                     `close esc`, never `esc close`. The hint line at the
+//	                     foot and the action strip under the band are the two
+//	                     places it lands, and the rule was found here: `esc
+//	                     close` is two greys with nothing saying which word is
+//	                     the label and which is the key
 //	live apply           the value on screen changes at the keystroke; the
 //	                     WRITE is debounced and lands through [config.Setting.Apply]
 //	                     — the registry's own atomic write path, never a second
@@ -24,6 +36,20 @@
 //	                     default, something saved in this profile, or an
 //	                     environment pin — which also renders the row read-only
 //	                     with the variable named (5.20)
+//	receipts             a row may carry one dim fact beside its value —
+//	                     today's spend beside the day's ceiling, a price tier
+//	                     beside a model (13). It comes from the registry
+//	                     ([config.Setting.Receipt]) and never from a read this
+//	                     package makes, and it is the first thing dropped on a
+//	                     frame too narrow for all three columns
+//
+//	derivation           NOTHING here is a list. The rows are the registry's,
+//	                     the groups are the registry's categories, and the
+//	                     models group is one row per role [store.ModelRoles]
+//	                     actually has. derivation_test.go fails the build if a
+//	                     drawn row has no registry behind it, and internal/
+//	                     config's fails if a registry row has no reader behind
+//	                     it — a row cannot exist without both ends
 //
 // # The skin (5.16, 5.13, 5.17, 10.6)
 //

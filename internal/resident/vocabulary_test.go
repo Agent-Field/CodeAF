@@ -1,6 +1,7 @@
 package resident
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -58,6 +59,18 @@ func TestEveryComposedReceiptSpeaksPlainly(t *testing.T) {
 		reconciler.craftUseReceipt(plainWorkflow(), true, 0),
 		craftSetAsideLine(),
 		craftIntent(plainWorkflow(), map[string]string{"topic": "Q3"}))
+
+	// The verbs a person aims at what has been learned: every sentence they get
+	// back — the refusals included — is composed in this package and goes into
+	// the thread verbatim, so the filter covers them too.
+	assertPlain(t, "the verb receipts",
+		craftRefusal("nothing in this window keeps the ways I have learned to work, so there is nothing to run").receipt,
+		craftParamQuestion(plainWorkflow(), "investor-update",
+			errors.New("craft investor-update: missing required params: topic, tone")),
+		craftNamedIntent(plainWorkflow(), ""),
+		skillRetiredLine(store.Fact{Artifact: "/home/skills/imgshrink"}),
+		"⚒ release-notes"+craftDigestBecause(store.CraftForged{Because: "write the 0.4 notes"}),
+		"⚒ release-notes"+craftDigestBecause(store.CraftForged{Refined: true}))
 }
 
 func plainWorkflow() *craft.Workflow {

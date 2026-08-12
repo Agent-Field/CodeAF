@@ -7,7 +7,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/registry"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/keychip"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -281,12 +283,21 @@ func TestStreamedReplyGrowsByItsTail(t *testing.T) {
 	}
 }
 
+// escHint is what the awaiting line writes when esc would in fact interrupt.
+//
+// It is named here because the words on the BAR row are a verb·key chip that
+// reads `interrupt esc` (§16's grammar, verb first), and a frame-wide substring
+// search for the two words in either order would find that chip and pass on a
+// frame where the awaiting line said nothing at all. The awaiting line's own
+// wording is the one under test.
+var escHint = tokens.GlyphSeparator + " " + keychip.Text(registry.ChipFor("interrupt", "esc"))
+
 // 5.20 rule 6 and 8.2.21: the hint appears only when esc would in fact
 // interrupt, and whatever the awaiting line says is what esc will do.
 func TestAwaitingLineAdvertisesInterruptOnlyWhenEscWouldInterrupt(t *testing.T) {
 	withHead := newTestApp(&fakeBackend{}, &fakeCommander{}, nil)
 	stream(withHead, StreamEvent{Kind: StreamStarted, Session: testSession})
-	if out := frame(withHead); !strings.Contains(out, "esc interrupt") {
+	if out := frame(withHead); !strings.Contains(out, escHint) {
 		t.Fatalf("a live turn does not advertise the interrupt:\n%s", out)
 	}
 
@@ -294,13 +305,13 @@ func TestAwaitingLineAdvertisesInterruptOnlyWhenEscWouldInterrupt(t *testing.T) 
 	// it can.
 	headless := newTestApp(&fakeBackend{}, nil, nil)
 	stream(headless, StreamEvent{Kind: StreamStarted, Session: testSession})
-	if out := frame(headless); strings.Contains(out, "esc interrupt") {
+	if out := frame(headless); strings.Contains(out, escHint) {
 		t.Fatalf("a window with no commander advertised an interrupt it cannot perform:\n%s", out)
 	}
 
 	// Once the provider is done there is nothing left to interrupt either.
 	stream(withHead, StreamEvent{Kind: StreamFinished, Session: testSession})
-	if out := frame(withHead); strings.Contains(out, "esc interrupt") {
+	if out := frame(withHead); strings.Contains(out, escHint) {
 		t.Fatalf("a settled turn still advertised an interrupt:\n%s", out)
 	}
 }
@@ -327,7 +338,7 @@ func TestEscInterruptsTheTurnYouAreWatching(t *testing.T) {
 	if got := commander.interrupted[0]; got != "as far as I got" {
 		t.Fatalf("interrupt carried %q, want the words already on screen", got)
 	}
-	if out := frame(app); strings.Contains(out, "esc interrupt") {
+	if out := frame(app); strings.Contains(out, escHint) {
 		t.Fatalf("the hint survived the interrupt it advertised:\n%s", out)
 	}
 }

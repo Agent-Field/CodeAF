@@ -65,15 +65,9 @@ func scene() *fakeSource {
 					ContextWindow: 1_000_000,
 					Elapsed:       41 * time.Minute,
 					HasElapsed:    true,
-					Workers:       4,
-					HasWorkers:    true,
-				},
-				Steps: []Step{
-					{Name: "XhrSyn", Life: LifeSettled},
-					{Name: "H2", Life: LifeWorking},
-					{Name: "T3Infra", Life: LifeWorking},
-					{Name: "KeyCutter", Life: LifeQueued, Blocked: true},
-					{Name: "NavCtx2", Life: LifeQueued},
+					// The census of the five parts below, and the only thing
+					// line 3 says about the job's shape (§14).
+					Counts: StateCounts{Running: 2, Queued: 2, Done: 1},
 				},
 				Workers: []Row{
 					{ID: idH2, Name: "H2", Life: LifeWorking, Meta: Telemetry{

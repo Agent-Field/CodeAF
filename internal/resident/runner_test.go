@@ -500,11 +500,20 @@ func TestFailedReflexStillDistills(t *testing.T) {
 // them ready at once.
 func spliceIndependentLeaves(t *testing.T, s *store.Store, count int) {
 	t.Helper()
+	spliceLeavesByWorker(t, s, count, func(int) string { return "" })
+}
+
+// spliceLeavesByWorker is the same fan-out with a worker named per leaf, which
+// is the only thing admission now distinguishes: a swe leaf spawns compilers on
+// this machine, everything else parks on a socket.
+func spliceLeavesByWorker(t *testing.T, s *store.Store, count int, worker func(index int) string) {
+	t.Helper()
 	nodes := []store.NodeSpec{{ID: "goal", Brief: "the deliverable", Stage: 0}}
 	for index := range count {
 		nodes = append(nodes, store.NodeSpec{
 			ID: fmt.Sprintf("leaf-%d", index), Parent: "goal",
 			Brief: fmt.Sprintf("leaf %d", index), Stage: 1,
+			Subharness: worker(index),
 		})
 	}
 	if err := s.Splice(store.RootID, store.Subtree{Nodes: nodes},
@@ -513,39 +522,117 @@ func spliceIndependentLeaves(t *testing.T, s *store.Store, count int) {
 	}
 }
 
-func governedRunner(t *testing.T, s *store.Store, load float64, release <-chan struct{}) *Runner {
+func governedRunner(t *testing.T, s *store.Store, governor *executor.Governor,
+	workers int, release <-chan struct{}) *Runner {
 	t.Helper()
 	return NewRunner(s, func(ctx context.Context, node store.Node) (ExecResult, error) {
 		<-release
 		return ExecResult{Summary: "did " + node.Brief}, nil
-	}, "governed", 2*executor.GovernorMinInFlight).WithGovernor(executor.NewGovernorFrom(func() (float64, bool) {
-		return load, true
-	}))
+	}, "governed", workers).WithGovernor(governor)
 }
 
-func TestSaturatedHostDelaysClaimsAboveTheFloorButNeverBelowIt(t *testing.T) {
-	s := openRunnerStore(t)
-	spliceIndependentLeaves(t, s, executor.GovernorMinInFlight+2)
-	release := make(chan struct{})
-	runner := governedRunner(t, s, executor.GovernorLoadCeiling+1, release)
+func saturatedGovernor(localCap int) *executor.Governor {
+	return executor.NewGovernorFrom(func() (float64, bool) {
+		return executor.GovernorLoadCeiling * 10, true
+	}).WithLocalCap(localCap)
+}
 
-	// The starvation guard always lets the floor through: the user asked for
-	// work, someone else's load must not leave aforge running nothing, and it
-	// must not turn independent jobs into a queue either.
+func calmGovernor(localCap int) *executor.Governor {
+	return executor.NewGovernorFrom(func() (float64, bool) {
+		return governorCalmLoad, true
+	}).WithLocalCap(localCap)
+}
+
+// The measurement this fix came from: peak concurrency of three leaves in seven
+// of eight live runs, and one job holding thirteen ready leaves behind three
+// running ones for twenty minutes on a sixteen-core machine that was idle. The
+// leaves were parked on sockets waiting for a model; the load they were gated on
+// was somebody else's, and nothing they did could ever bring it down. A leaf of
+// this class is admitted because its dependencies landed, and for no other
+// reason.
+func TestASaturatedHostDoesNotThrottleLeavesParkedOnSockets(t *testing.T) {
+	s := openRunnerStore(t)
+	const leaves = 4 * executor.GovernorLocalFloor
+	spliceIndependentLeaves(t, s, leaves)
+	release := make(chan struct{})
+	runner := governedRunner(t, s, saturatedGovernor(1), leaves, release)
+
 	dispatched, err := runner.Tick(context.Background())
 	if err != nil {
-		t.Fatalf("first tick: %v", err)
+		t.Fatalf("tick: %v", err)
 	}
-	if dispatched != executor.GovernorMinInFlight {
-		t.Fatalf("saturated host dispatched %d leaves, want the guaranteed %d",
-			dispatched, executor.GovernorMinInFlight)
+	if dispatched != leaves {
+		t.Fatalf("a machine ten times over its load ceiling dispatched %d of %d API-bound leaves",
+			dispatched, leaves)
 	}
-	// With that one in flight the gate holds, and holds on every later tick —
-	// it delays the claim, it never cancels or fails anything.
-	for range 3 {
-		if dispatched, err := runner.Tick(context.Background()); err != nil || dispatched != 0 {
-			t.Fatalf("saturated tick dispatched %d (err %v), want 0", dispatched, err)
+	close(release)
+	runner.Wait()
+}
+
+// The amplifier, which was worth more than the ceiling itself: a single refusal
+// used to return out of dispatchOne, which ended the whole claim pass. So one
+// busy compile stopped every briefing behind it, and the pass that would have
+// found them did not run again until the next tick. A refusal is a decision
+// about one leaf.
+//
+// The fan alternates swe and generalist deliberately, so the leaf that is
+// refused sits in the middle of the pass rather than at its end.
+func TestOneRefusalSkipsItsLeafAndNotTheRestOfThePass(t *testing.T) {
+	s := openRunnerStore(t)
+	const leaves = 8
+	local := func(index int) bool { return index%2 == 0 }
+	spliceLeavesByWorker(t, s, leaves, func(index int) string {
+		if local(index) {
+			return "swe"
 		}
+		return ""
+	})
+	release := make(chan struct{})
+	// Saturated, so local work is admitted up to its floor and refused above
+	// it: four swe leaves are ready and only three may run.
+	runner := governedRunner(t, s, saturatedGovernor(executor.GovernorLocalFloor), leaves, release)
+
+	dispatched, err := runner.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	const want = leaves/2 + executor.GovernorLocalFloor // every generalist, plus the floor
+	if dispatched != want {
+		t.Fatalf("dispatched %d leaves, want %d — a refused compile ended the pass for the leaves behind it",
+			dispatched, want)
+	}
+	close(release)
+	runner.Wait()
+
+	// And the one that was refused is pending, not failed: back-pressure
+	// delays a claim, it never drops work.
+	node, found, err := s.Node("leaf-6")
+	if err != nil || !found {
+		t.Fatalf("leaf-6: found=%t err=%v", found, err)
+	}
+	if node.Status != store.Pending {
+		t.Fatalf("the refused leaf is %s, want pending", node.Status)
+	}
+}
+
+// The fan incident is still real, and it was always local processes: a swe leaf
+// runs compilers and test binaries on this machine. That class keeps its
+// CPU-derived cap, calm reading or not — a load average is a minute old, and
+// sixteen compiles started in one pass are sixteen compiles before it moves.
+func TestLocalWorkStillClampsAtItsCPUDerivedCap(t *testing.T) {
+	s := openRunnerStore(t)
+	const cores = executor.GovernorLocalFloor + 1
+	const leaves = 3 * cores
+	spliceLeavesByWorker(t, s, leaves, func(int) string { return "swe" })
+	release := make(chan struct{})
+	runner := governedRunner(t, s, calmGovernor(cores), leaves, release)
+
+	dispatched, err := runner.Tick(context.Background())
+	if err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if dispatched != cores {
+		t.Fatalf("dispatched %d compiles at once, want the CPU-derived cap %d", dispatched, cores)
 	}
 	close(release)
 	runner.Wait()
@@ -553,10 +640,10 @@ func TestSaturatedHostDelaysClaimsAboveTheFloorButNeverBelowIt(t *testing.T) {
 
 func TestCalmHostClaimsUpToTheWorkerSlots(t *testing.T) {
 	s := openRunnerStore(t)
-	leaves := 2 * executor.GovernorMinInFlight
+	const leaves = 2 * executor.GovernorLocalFloor
 	spliceIndependentLeaves(t, s, leaves)
 	release := make(chan struct{})
-	runner := governedRunner(t, s, governorCalmLoad, release)
+	runner := governedRunner(t, s, calmGovernor(leaves), leaves, release)
 
 	dispatched, err := runner.Tick(context.Background())
 	if err != nil {

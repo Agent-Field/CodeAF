@@ -364,6 +364,79 @@ func TestDialogAtTheTwoReportedSizes(t *testing.T) {
 	}
 }
 
+// And the same two frames, as numbers rather than as invariants.
+//
+// THE DEFECT the numbers replace: two thirds on both axes gave 120×32 a 58×16
+// panel — a width that truncated twelve of the palette's thirty catalog
+// descriptions — and gave 80×24 ten content rows for a fifty-six row catalog.
+// A list surface wants about three quarters of the width and more of the
+// height, and the two axes need not share a fraction (dialogWidthPercent,
+// dialogHeightPercent).
+//
+// Pinned as literal rectangles because a fraction is easy to change by accident
+// and hard to notice: this test is what makes the next change to the shape a
+// decision. Every number below is dialogWidthPercent/dialogHeightPercent of the
+// lens, centred in it, with the panel inset by dialogMargin.
+func TestDialogRectanglesAtTheTwoReportedSizes(t *testing.T) {
+	cases := []struct {
+		w, h          int
+		lens          image.Rectangle
+		chrome, panel image.Rectangle
+	}{
+		// 120×32: 27 body rows beside a 28-column rail, so the lens is 91×27.
+		// 75% of 91 is 68 columns, 80% of 27 is 21 rows, centred at (11,3) —
+		// a 66×19 panel where the old fraction gave 58×16.
+		{120, 32,
+			image.Rect(0, 0, 91, 27),
+			image.Rect(11, 3, 79, 24),
+			image.Rect(12, 4, 78, 23)},
+		// 80×24: under the rail breakpoint, so the lens is the full 80×19.
+		// 75% is 60 columns, 80% is 15 rows, centred at (10,2) — a 58×13 panel
+		// where the old fraction gave 51×10.
+		{80, 24,
+			image.Rect(0, 0, 80, 19),
+			image.Rect(10, 2, 70, 17),
+			image.Rect(11, 3, 69, 16)},
+	}
+	for _, c := range cases {
+		l := solve(c.w, c.h, chatShapedMetrics(), mode{OverlayOpen: true})
+		chrome, floating := find(l, LayerDialogChrome)
+		if !floating {
+			t.Fatalf("%dx%d should float", c.w, c.h)
+		}
+		panel, ok := find(l, LayerOverlay)
+		if !ok {
+			t.Fatalf("%dx%d lost the panel", c.w, c.h)
+		}
+		if chrome != c.chrome {
+			t.Errorf("%dx%d: chrome = %v (%dx%d), want %v (%dx%d)",
+				c.w, c.h, chrome, chrome.Dx(), chrome.Dy(), c.chrome, c.chrome.Dx(), c.chrome.Dy())
+		}
+		if panel != c.panel {
+			t.Errorf("%dx%d: panel = %v (%dx%d), want %v (%dx%d)",
+				c.w, c.h, panel, panel.Dx(), panel.Dy(), c.panel, c.panel.Dx(), c.panel.Dy())
+		}
+		// The fractions are fractions OF THE LENS, and the panel is centred in
+		// it: the margin left over is what keeps a dialog a dialog.
+		if !chrome.In(c.lens) {
+			t.Errorf("%dx%d: chrome %v escapes the lens %v", c.w, c.h, chrome, c.lens)
+		}
+		// Centred to within the odd column an integer halving cannot split,
+		// which lands on the right the way every other rounding here does.
+		if slop := (c.lens.Max.X - chrome.Max.X) - (chrome.Min.X - c.lens.Min.X); slop < 0 || slop > 1 {
+			t.Errorf("%dx%d: chrome %v is not centred in the lens %v", c.w, c.h, chrome, c.lens)
+		}
+		if chrome.Dx() != c.lens.Dx()*dialogWidthPercent/100 {
+			t.Errorf("%dx%d: chrome is %d of %d columns, want %d%%",
+				c.w, c.h, chrome.Dx(), c.lens.Dx(), dialogWidthPercent)
+		}
+		if chrome.Dy() != c.lens.Dy()*dialogHeightPercent/100 {
+			t.Errorf("%dx%d: chrome is %d of %d rows, want %d%%",
+				c.w, c.h, chrome.Dy(), c.lens.Dy(), dialogHeightPercent)
+		}
+	}
+}
+
 // The margin is a real slot, not a reservation inside the panel: a pane is given
 // its whole rectangle and the shell reserves nothing inside it (pane.go).
 func TestDialogChromeIsAMarginAroundThePanel(t *testing.T) {
@@ -491,5 +564,53 @@ func TestTheSeamBelongsToNobody(t *testing.T) {
 		if sl.Rect.Overlaps(seam) {
 			t.Fatalf("%v claimed the seam %v with %v", sl.ID, seam, sl.Rect)
 		}
+	}
+}
+
+// §6's `sidebar: hidden`, asked for by the surface rather than by the width: the
+// rail leaves the frame and the columns go back to the LENS.
+//
+// A hidden rail that kept its rectangle would be the surface paying for a
+// sidebar it decided not to draw, and the work page — which hides the rail
+// precisely because it is already showing that list, fuller — would have gained
+// nothing by hiding it.
+func TestAHiddenRailGivesItsColumnsBackToTheLens(t *testing.T) {
+	metrics := chatShapedMetrics()
+	shown := solve(120, 32, metrics, mode{ScopeOpen: true})
+	lens, ok := find(shown, LayerTranscript)
+	if !ok {
+		t.Fatal("120x32 lost the transcript")
+	}
+
+	hidden := solve(120, 32, metrics, mode{ScopeOpen: true, RailHidden: true})
+	if _, still := find(hidden, LayerRail); still {
+		t.Fatal("the rail kept its slot while hidden")
+	}
+	wide, ok := find(hidden, LayerTranscript)
+	if !ok {
+		t.Fatal("hiding the rail took the transcript with it")
+	}
+	if wide.Dx() != 120 {
+		t.Fatalf("the lens is %d columns wide, want the whole frame (120)", wide.Dx())
+	}
+	if wide.Dx() <= lens.Dx() {
+		t.Fatalf("hiding the rail did not widen the lens (%d, was %d)", wide.Dx(), lens.Dx())
+	}
+}
+
+// A hidden rail never becomes the main pane. Narrow says the rail did not FIT,
+// which is why scope is then reachable as a full pane; hidden says the surface
+// asked for it not to be there, and falling back would draw the very duplicate
+// the hiding prevented.
+func TestAHiddenRailIsNeverTheNarrowFallback(t *testing.T) {
+	l := solve(60, 24, chatShapedMetrics(), mode{ScopeOpen: true, RailHidden: true})
+	if !l.Narrow {
+		t.Fatal("a 60-column frame is not narrow")
+	}
+	if _, found := find(l, LayerRail); found {
+		t.Fatal("a hidden rail took the main pane on a narrow frame")
+	}
+	if _, found := find(l, LayerTranscript); !found {
+		t.Fatal("the narrow frame drew no lens at all")
 	}
 }

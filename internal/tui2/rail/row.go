@@ -191,8 +191,9 @@ const (
 	ComposerNone ComposerMode = iota
 	// ComposerChat is a room with a chat: › .
 	ComposerChat
-	// ComposerSteer is a steer-only room (5.11, atomic tasks): ↦ . Steering
-	// mail is absorbed between turns, not conversed with.
+	// ComposerSteer is a steer-only room (5.11, a job that is one hand rather
+	// than a plan): ↦ . Steering mail is absorbed between turns, not conversed
+	// with.
 	ComposerSteer
 	// ComposerDisabled is a settled row: "this work is settled — ask aforge
 	// about it". It draws NO mark, because a mark promising a composer that
@@ -226,10 +227,10 @@ func (c ComposerMode) String() string {
 	return "invalid"
 }
 
-// Telemetry is line 3 of a card (5.9): model word, cost, context, elapsed,
-// worker count — the dimmest tier, tabular. Money is always visible; everything
-// else may be dropped on a narrow rail, lowest priority first (the discipline of
-// 10.5.22, applied to a card).
+// Telemetry is line 3 of a card (5.9): model word, cost, context, elapsed and
+// the census of the parts — the dimmest tier, tabular. Money is always visible;
+// everything else may be dropped on a narrow rail, lowest priority first (the
+// discipline of 10.5.22, applied to a card).
 //
 // Every optional number carries its own presence flag rather than leaning on a
 // zero value, because 10.2.8 is explicit that a number which has not arrived and
@@ -268,9 +269,19 @@ type Telemetry struct {
 	Estimate   time.Duration
 	HasElapsed bool
 
-	// Workers is the count under this row. Atomic marks a task that owns no
-	// plan (5.11) — its count reads `atomic`, which is the honest answer rather
-	// than "1".
+	// Counts is the census of the parts under this row (§14's replacement for
+	// the plan fraction and the worker count both). An empty census draws
+	// nothing, which is the whole of what a single-part job has to say about
+	// its shape.
+	Counts StateCounts
+
+	// Workers, HasWorkers and Atomic are RETIRED and no cell reads them. §14
+	// bans worker-count phrasing and the word `atomic` from every surface — a
+	// job with one part is a job, and "1 worker" and "atomic" are both the
+	// machinery describing itself. The fields stay because they are the
+	// source-facing shape and two chat surfaces still read them; nothing here
+	// spends a column on either, and [Telemetry.Empty] no longer counts them,
+	// so a source that fills them cannot conjure a blank line 3.
 	Workers    int
 	HasWorkers bool
 	Atomic     bool
@@ -279,65 +290,54 @@ type Telemetry struct {
 // Empty reports whether there is nothing at all to draw on line 3.
 func (t Telemetry) Empty() bool {
 	return t.Model == "" && !t.HasCost && t.ContextWindow <= 0 && !t.HasElapsed &&
-		!t.HasWorkers && !t.Atomic
+		t.Counts.Empty()
 }
 
-// Step is one plan step as a progress dot (5.21). The dots map 1:1 to steps —
-// discrete and honest, which a continuous bar is not — and the numbers beside
-// them stay the primary encoding (5.13).
-type Step struct {
-	// Name is carried for a tooltip or an action strip; the dot row never
-	// prints it.
-	Name string
-	// Life is the step's state.
-	Life Lifecycle
-	// Blocked marks a step waiting on a sibling: the amber ⚑ dot.
-	Blocked bool
+// StateCounts is the census of the parts under a row: how many are queued,
+// running, done, failed and cancelled. It mirrors store.StateCounts field for
+// field so the integration lane is a copy and not a judgement, and — like that
+// type — it folds a claim in with pending, because a claim is a worker picking
+// the work up and not the work moving.
+//
+// IT IS A COUNT AND NEVER A FRACTION (§14, §3). `4/7` promises a denominator,
+// and a plan that can be replanned mid-flight cannot keep that promise: the
+// seven becomes nine and the reader's progress walks backwards. A count of what
+// is in each state answers the same question, survives a replan, and — when
+// there is nothing under the row at all — says nothing, which is the honest
+// thing for a job whose shape is not news.
+type StateCounts struct {
+	Queued    int
+	Running   int
+	Done      int
+	Failed    int
+	Cancelled int
 }
 
-// Dot is the step's cell in `●●●◐○⚑○`.
-func (s Step) Dot() string {
-	if s.Blocked {
-		return tokens.GlyphStepBlocked
-	}
-	switch s.Life {
-	case LifeWorking:
-		return tokens.GlyphStepRunning
-	case LifeSettled:
-		return tokens.GlyphStepDone
-	case LifeFailed, LifeCancelled:
-		return tokens.GlyphFailed
-	}
-	return tokens.GlyphStepPending
+// Total is every part the census covers.
+func (c StateCounts) Total() int {
+	return c.Queued + c.Running + c.Done + c.Failed + c.Cancelled
 }
 
-// token is the dot's colour. A done step is plain rather than green: a row of
-// eight green dots would spend the money hue on structure, and 5.16 gives green
-// exactly two jobs.
-func (s Step) token() tokens.Token {
-	if s.Blocked {
-		return tokens.Amber
-	}
-	switch s.Life {
-	case LifeWorking:
-		return tokens.Cyan
-	case LifeSettled:
-		return tokens.TextSecondary
-	case LifeFailed, LifeCancelled:
-		return tokens.Coral
-	}
-	return tokens.TextTertiary
-}
+// Empty reports whether there is nothing to count.
+func (c StateCounts) Empty() bool { return c.Total() == 0 }
 
-// StepProgress counts settled steps out of the total, for the `3/7` beside the
-// dots.
-func StepProgress(steps []Step) (done, total int) {
-	for i := range steps {
-		if steps[i].Life == LifeSettled {
-			done++
-		}
-	}
-	return done, len(steps)
+// Cell is the census in the words a rail row draws it in: glyph-and-count
+// pairs, `2◐ 1✓`, running first and an empty census saying nothing at all.
+//
+// It is exported because the census is a VOCABULARY and not a rail feature.
+// §6's board is the same list of jobs read at page altitude, and a page that
+// spelled the same fact its own way — `2 running, 1 done`, or a fraction — would
+// be the product with two censuses, which is the failure internal/tui2/reltime
+// exists to prevent for time. One reading, two surfaces.
+func (c StateCounts) Cell() string { return countsCell(c) }
+
+// Add folds another census into this one.
+func (c *StateCounts) Add(o StateCounts) {
+	c.Queued += o.Queued
+	c.Running += o.Running
+	c.Done += o.Done
+	c.Failed += o.Failed
+	c.Cancelled += o.Cancelled
 }
 
 // Ref is the artifact law made a field (12.5.1): anything the user will USE
@@ -397,13 +397,21 @@ type Row struct {
 
 	// Composer is the composer this row binds when selected (5.15).
 	Composer ComposerMode
-	// Meta is line 3.
+	// Meta is line 3, the census of this row's parts included.
 	Meta Telemetry
-	// Steps are the plan step dots shown when the card is focused (5.21).
-	Steps []Step
-	// Workers are the per-worker rows a focused card expands into (5.9). They
-	// are Rows so that a worker is one shape everywhere; only Name, Status,
-	// Life and Meta are read here.
+	// Workers are 5.9's per-worker rows. THE PREVIEW NO LONGER DRAWS THEM and
+	// nothing else in this package reads them: a preview is capped at
+	// [previewLines] and spends that budget on the summaries (the artifact, and
+	// on a tree row its own words), because a list has no bounded form and 7.2
+	// does not let a preview push a reader's next card into the fold (see
+	// card.go). The census survives on line 3 as [Telemetry.Counts], and the
+	// rows themselves are the
+	// TREE inside the task's own scope — which is where 5.9 puts full depth, and
+	// where the source already draws them.
+	//
+	// The field stays because it is the source-facing shape and a source that
+	// fills it is not wrong; it is simply no longer read, and a source is free
+	// to stop paying for it.
 	Workers []Row
 	// Artifact is the deliverable this row produced (12.5.1).
 	Artifact Ref

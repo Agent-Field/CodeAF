@@ -33,7 +33,10 @@ import "github.com/Agent-Field/aforge-v2/internal/store"
 //     journaled commands" seeding rule. They will want a Journal shape of
 //     their own in a later wave rather than a misleading empty one now.
 func seedRows() []Entry {
-	return append(slashRows(), append(nodeKeyRows(), append(threadKeyRows(), beltRows()...)...)...)
+	return append(slashRows(),
+		append(nodeKeyRows(),
+			append(threadKeyRows(),
+				append(beltRows(), itemRows()...)...)...)...)
 }
 
 // slashRows is the 17-command slash table, one row each, in the same order
@@ -136,7 +139,7 @@ func threadKeyRows() []Entry {
 		// every other row here — internal/tui2/composer's Model.KillToStart,
 		// bound to ctrl+u — and it is in the catalog rather than left as a
 		// muscle-memory chord because 5.22's law admits no typed-only action:
-		// the key is the accelerator, and the `?` sheet and the ctrl+k palette
+		// the key is the accelerator, and the `?` sheet and the summon palette
 		// are the visible doors. Its Key is already a chord, so it needs no
 		// ChordKey to survive a composer-first surface (see [Entry.KeyOn]) —
 		// which is the whole reason ctrl+u is bindable in a room where "v" and
@@ -151,6 +154,16 @@ func threadKeyRows() []Entry {
 			Scope: ScopeThread, Key: "tab"},
 		{ID: "key.thread.newline", Verb: "insert newline", Description: "insert a newline in the draft without sending",
 			Scope: ScopeThread, Key: "ctrl+j"},
+		// The summon key. ctrl+space is the chord because a terminal never
+		// delivers a cmd- chord and almost nothing squats on this one — it is
+		// the NUL byte, which every decoder in the stack already names
+		// "ctrl+space" — so it is bindable in a composer-first room without
+		// taking a letter away from the draft. ctrl+k goes on working and is
+		// NOT a second row: the rule this file already keeps is that where a
+		// surface accepts two spellings of one chord, Key names the one the
+		// help screen leads with and the synonym is not a second registration.
+		{ID: "key.palette", Verb: "find anything", Description: "search every job, room, action and setting in one list",
+			Scope: everywhere, Key: "ctrl+space"},
 		{ID: "key.quit", Verb: "stop or quit", Description: "stop a reply on its way; press again within seconds to quit, or quit at once when idle",
 			Scope: everywhere, Key: "ctrl+c"},
 		{ID: "key.place-thread", Verb: "go to thread", Description: "open the home thread",
@@ -187,5 +200,70 @@ func beltRows() []Entry {
 			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandRedirect, Tool: "revise"}},
 		{ID: "belt.expedite", Verb: "expedite", Description: "push a job to the front of the queue and trim its unstarted tail",
 			Scope: ScopeTalk, Journal: Journal{Kind: store.CommandExpedite, Tool: "expedite"}},
+	}
+}
+
+// itemRows are the verbs that act on ONE thing the resident knows or is doing,
+// drawn on that thing's own page: a standing rule, a service, a belief, a way
+// of working, a forged tool. They are [ScopeItem] — see that scope for why they
+// stay out of the unscoped palette — and they have no key and no slash alias by
+// construction: the accelerator for "retire this" is having the thing open, and
+// a letter that meant retire from anywhere would be a letter that eventually
+// retires the wrong thing.
+//
+// Two shapes, and which one a row is is data rather than a rule a surface has
+// to remember. A PURE command (pause, stop, forget, run) fires on the spot,
+// with a [Entry.Confirm] on the ones that cannot be undone by doing the
+// opposite. A verb that carries an argument the resident must interpret — a new
+// cadence, a corrected belief, the reason a version goes back — carries a
+// [Entry.Steer] instead and seeds the composer, because the one mouth is the
+// conversation and a form field is not it.
+//
+// Every Kind here is a real store command kind and every one of them has an
+// executor: charter and service kinds are the ones internal/head's rule and
+// service tools already journal, and the craft and skill kinds are applied in
+// internal/resident beside them. The two belief rows journal no command kind at
+// all — a belief is not graph work — so they name the belt tool that carries
+// them, which is the same honesty rule the belt rows above keep.
+func itemRows() []Entry {
+	return []Entry{
+		{ID: "charter.pause", Verb: "pause", Description: "stop this rule running until you start it again",
+			Scope: ScopeItem, Journal: Journal{Kind: store.CommandCharterPause}},
+		{ID: "charter.cadence", Verb: "change when", Description: "say when this should run instead",
+			Scope: ScopeItem, Steer: "change %s to run ",
+			Journal: Journal{Kind: store.CommandCharterCadence}},
+		{ID: "charter.probation", Verb: "ask first", Description: "have it ask you before it runs again",
+			Scope: ScopeItem, Journal: Journal{Kind: store.CommandCharterProbation}},
+		{ID: "charter.retire", Verb: "retire", Description: "stop watching for this for good",
+			Scope: ScopeItem, Confirm: "Retire this rule? It stops watching for good.",
+			Journal: Journal{Kind: store.CommandCharterRetire}},
+
+		{ID: "service.stop", Verb: "stop", Description: "stop this running for now",
+			Scope: ScopeItem, Confirm: "Stop this? Whatever it was serving goes down with it.",
+			Journal: Journal{Kind: store.CommandServiceStop}},
+		{ID: "service.restart", Verb: "restart", Description: "stop it and start it again",
+			Scope: ScopeItem, Journal: Journal{Kind: store.CommandServiceRestart}},
+		{ID: "service.autorestart", Verb: "auto-restart", Description: "bring it back on its own when it stops answering",
+			Scope: ScopeItem, Journal: Journal{Kind: store.CommandServiceAutoRestart}},
+
+		{ID: "belief.forget", Verb: "forget", Description: "stop remembering this",
+			Scope: ScopeItem, Confirm: "Forget this? I stop working from it.",
+			Journal: Journal{Tool: "forget"}},
+		{ID: "belief.edit", Verb: "edit", Description: "say what I should remember instead",
+			Scope: ScopeItem, Steer: "what I should remember instead of %s is ",
+			Journal: Journal{Tool: "note"}},
+
+		{ID: "craft.run", Verb: "run", Description: "do this the way you have before",
+			Scope: ScopeItem, Journal: Journal{Kind: store.CommandCraftRun}},
+		{ID: "craft.revert", Verb: "revert", Description: "go back to the version before this one",
+			Scope: ScopeItem, Steer: "put %s back to the previous version because ",
+			Journal: Journal{Kind: store.CommandCraftRevert}},
+		{ID: "craft.retire", Verb: "retire", Description: "stop working this way",
+			Scope: ScopeItem, Confirm: "Retire this way of working? I stop reaching for it.",
+			Journal: Journal{Kind: store.CommandCraftRetire}},
+
+		{ID: "skill.retire", Verb: "retire", Description: "take this tool off the shelf",
+			Scope: ScopeItem, Confirm: "Retire this tool? It comes off the shelf and stops being used.",
+			Journal: Journal{Kind: store.CommandSkillRetire}},
 	}
 }

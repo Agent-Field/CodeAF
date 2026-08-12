@@ -111,7 +111,7 @@ func TestAPlainTaskCarriesNoSchemaItCannotUse(t *testing.T) {
 
 	// What turn 1 used to cost unconditionally, measured through the same
 	// toolbox with every family in hand.
-	full := newToolboxWithMedia(workspace(t), 1, nil, nil, offersEverything(t))
+	full := newToolboxWithMedia(workspace(t), "1", nil, nil, offersEverything(t))
 	full.Arm(FamilyMedia, FamilyDocument)
 	before, after := schemaBytes(t, full.Definitions()), schemaBytes(t, client.tools[0])
 	saved := before - after
@@ -152,10 +152,36 @@ func TestAskingForACapabilityArmsItForTheNextTurn(t *testing.T) {
 			t.Fatalf("turn 2 did not carry %s after the worker asked: %v", want, client.names(1))
 		}
 	}
-	// Once everything on offer is in hand the door retires itself rather than
-	// sitting in the prompt advertising nothing.
-	if carries(client.names(1), "capabilities") {
-		t.Fatalf("the discovery tool outstayed its offer: %v", client.names(1))
+	// And the door stays where it was. Retiring it once everything on offer was
+	// armed pulled a definition out of the MIDDLE of the tool list, so every
+	// schema behind it shifted and the arming turn paid a second full-prompt
+	// invalidation on top of the one arming already costs — a ~90-token tool
+	// bought at the price of the whole transcript. It stays; asking twice is
+	// answered in one cheap line instead.
+	if !carries(client.names(1), "capabilities") {
+		t.Fatalf("the discovery tool was pulled out of the middle of the tool list: %v", client.names(1))
+	}
+	if names := client.names(1); names[5] != "capabilities" {
+		t.Fatalf("the discovery tool moved out of its fixed slot: %v", names)
+	}
+}
+
+// Arming everything does not silence the door, and a worker that asks again is
+// not left thinking its request failed.
+func TestAskingForACapabilityAlreadyHeldIsACheapNoOp(t *testing.T) {
+	toolbox := newToolboxWithMedia(workspace(t), "1", nil, nil, offersEverything(t))
+	toolbox.Arm(FamilyMedia)
+	result := toolbox.capabilities(map[string]any{"need": FamilyMedia})
+	if result.IsError {
+		t.Fatalf("a second ask was answered as a failure: %+v", result)
+	}
+	if !strings.Contains(result.Content, "Already loaded") || len(result.Content) > 200 {
+		t.Fatalf("the repeat answer is not the cheap line: %q", result.Content)
+	}
+	// The other family is untouched by the no-op, so a real second ask still works.
+	if armed := toolbox.capabilities(map[string]any{"need": FamilyDocument}); armed.IsError ||
+		!strings.Contains(armed.Content, "Loaded for your next turn") {
+		t.Fatalf("the unarmed family was refused: %+v", armed)
 	}
 }
 
@@ -175,8 +201,13 @@ func TestAnAttachedDocumentArmsItsReaderBeforeTurnOne(t *testing.T) {
 	if !carries(client.names(0), "read_document") {
 		t.Fatalf("an attached document did not arm its reader: %v", client.names(0))
 	}
-	if carries(client.names(0), "capabilities") {
-		t.Fatalf("the only family on offer was already in hand: %v", client.names(0))
+	// The door is still in the prompt, in its fixed slot, and the armed schema
+	// sits behind it. Presence follows the machine's wiring, never this leaf's
+	// arm state — that is what keeps the block identical across every leaf of a
+	// run and identical across every turn of this one.
+	names := client.names(0)
+	if len(names) != 7 || names[5] != "capabilities" || names[6] != "read_document" {
+		t.Fatalf("the tool block is not fixed-head-then-armed-tail: %v", names)
 	}
 }
 
@@ -193,8 +224,8 @@ func TestAnAttachedDocumentArmsItsReaderBeforeTurnOne(t *testing.T) {
 // it offers are the same bytes on every turn of every leaf.
 func TestTheCapabilitiesDefinitionDoesNotMoveWhenAFamilyIsArmed(t *testing.T) {
 	space := workspace(t)
-	unarmed := newToolboxWithMedia(space, 1, nil, nil, offersEverything(t))
-	armed := newToolboxWithMedia(space, 1, nil, nil, offersEverything(t))
+	unarmed := newToolboxWithMedia(space, "1", nil, nil, offersEverything(t))
+	armed := newToolboxWithMedia(space, "1", nil, nil, offersEverything(t))
 	armed.Arm(FamilyMedia)
 
 	find := func(toolbox *Toolbox) (ai.ToolDefinition, bool) {
@@ -232,7 +263,7 @@ func TestTheCapabilitiesDefinitionDoesNotMoveWhenAFamilyIsArmed(t *testing.T) {
 			t.Errorf("the frozen description does not name %s: %q", family, before.Function.Description)
 		}
 	}
-	bare := newToolboxWithMedia(space, 1, nil, nil,
+	bare := newToolboxWithMedia(space, "1", nil, nil,
 		&MediaTools{Provider: &fakeMediaProvider{}, Catalog: fakeModalities{}, WorkingModel: "work/model"})
 	unconfigured := bare.capabilities(map[string]any{"need": FamilyDocument})
 	if !unconfigured.IsError || !strings.Contains(unconfigured.Content, "not configured") {

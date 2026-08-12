@@ -133,7 +133,12 @@ const (
 	// born again, and folding the two into one mint-or-rename event would let a
 	// rename raise last_active — a retitle is not activity, and the projection
 	// write below is what keeps that true.
-	EventSessionRenamed        EventKind = "session_renamed"
+	EventSessionRenamed EventKind = "session_renamed"
+	// EventSessionDiscarded is a room being taken back: opened, never spoken in,
+	// never named. It is journaled rather than deleted quietly because the
+	// sessions table is a projection — a bare DELETE would be undone by the next
+	// rebuild, and the empty rooms it removes would all come back.
+	EventSessionDiscarded      EventKind = "session_discarded"
 	EventSeenTouched           EventKind = "seen_touched"
 	EventAgentQuestionQueued   EventKind = "agent_question_queued"
 	EventAgentQuestionSurfaced EventKind = "agent_question_surfaced"
@@ -349,12 +354,28 @@ type NodeSpec struct {
 	// provenance for display — execution reads only Parent and Needs.
 	Group string `json:"group,omitempty"`
 
-	// Subharness names the worker this one node was sized for, when the sizing
-	// pass judged it atomic for a specialist rather than for the generalist.
-	// Empty inherits the splice's own choice, which is empty for nearly every
-	// job — one node of a subtree may be a coding job while its siblings are
-	// not, and the graph is where that difference lives.
+	// Subharness names the worker this one node was sized for: a specialist
+	// when the sizing pass judged it atomic for one, "linear" when that pass
+	// judged it and answered the generalist. Only an empty name — the pass
+	// never ran, or never reached this node — inherits the splice's own choice.
+	// One node of a subtree may be a coding job while its siblings are not, and
+	// one node of a coding job may be the only part of it that is not; the
+	// graph is where both differences live, and neither is expressible if the
+	// generalist has no name.
 	Subharness string `json:"subharness,omitempty"`
+
+	// Spec is the planner's task object for this node, carried as opaque bytes.
+	//
+	// The store learns nothing about what a spec is, for the same reason it
+	// learns nothing about what a plan is: the planner is a consumer of the
+	// store, and decoding its object here would make the plan package a
+	// dependency of the journal. What the store guarantees is that the bytes
+	// arrive, land on the node, and come back out unchanged — which is all a
+	// retry needs to inherit a criterion instead of inventing one.
+	//
+	// Empty is legal and is what every node admitted before this field existed
+	// carries. Brief remains the read; this is the object beside it.
+	Spec json.RawMessage `json:"spec,omitempty"`
 }
 
 // Subtree is the atomic unit of admission.
@@ -374,6 +395,10 @@ type Node struct {
 	// admission, so every dispatch path reads one field and cannot disagree
 	// with another about which worker a node was promised.
 	Subharness string
+	// Spec is the planner's task object as it was admitted, journal-derived
+	// like every other field on this view. Readers that do not know what a spec
+	// is pass it along; the one that does decodes it.
+	Spec       json.RawMessage
 	Stage      int
 	Status     Status
 	Owner      string
@@ -479,6 +504,7 @@ CREATE TABLE IF NOT EXISTS nodes (
 	craft          TEXT NOT NULL DEFAULT '',
 	subharness     TEXT NOT NULL DEFAULT '',
 	splice_subharness TEXT NOT NULL DEFAULT '',
+	spec           TEXT NOT NULL DEFAULT '',
     attachments    JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     created_seq    INTEGER NOT NULL REFERENCES events(seq),
     created_order  INTEGER NOT NULL CHECK (created_order >= 0),

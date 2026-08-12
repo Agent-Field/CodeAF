@@ -178,26 +178,21 @@ func TestSettingsNavigatesAndEditsEveryKindAndPersists(t *testing.T) {
 	}
 
 	// A bool row toggles on enter and reads back after a reopen.
-	model.settingsIndex = settingsRowIndex(t, model, config.KeyProposeSkills)
+	model.settingsIndex = settingsRowIndex(t, model, config.KeyAttribution)
 	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if config.ProposeSkillsAt(dir) {
+	if config.AttributionAt(dir) {
 		t.Fatal("enter did not toggle the bool row off")
 	}
 	model.closeSettings()
 	_ = model.openSettings()
-	row, _ := model.settingsRegistry.Row(config.KeyProposeSkills)
+	row, _ := model.settingsRegistry.Row(config.KeyAttribution)
 	if row.Value() != "off" {
 		t.Fatalf("the toggle did not survive a reopen: %q", row.Value())
 	}
 
-	// A percent row: the learning dial persists what was typed.
-	model.settingsIndex = settingsRowIndex(t, model, config.KeyDemandShare)
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model.settingsEditor.SetValue("35")
-	_, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if got := config.PracticeDemandPctAt(dir); got != 35 {
-		t.Fatalf("the learning dial persisted %d%%", got)
-	}
+	// The percent row this used to reach for — the learning dial — is gone with
+	// the loop that never read it. The divider below is the percent row that is
+	// left, and it is exercised there.
 
 	// A choice row cycles through its rungs.
 	model.settingsIndex = settingsRowIndex(t, model, config.KeyDocumentEngine)

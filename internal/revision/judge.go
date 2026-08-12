@@ -25,11 +25,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
@@ -62,6 +66,19 @@ import (
 // one, and a gate told otherwise would start failing honest work for the sin of
 // having run somewhere it cannot see.
 //
+// The artifact paragraph is the same idea carried to the other side of the
+// ledger, and it was written after the gate cost a run four minutes and a whole
+// continuation node. The leaf built the thing, ran it, and left it in the
+// workspace; the gate read the message alone, failed the delivery for not
+// containing the file's text, and bought work that retyped a correct file. The
+// delivery law had already been taught that a produced thing IS the answer
+// (plan.DeliverInMessage), and the judge was the last reader that had not. So
+// the record is read first where there is one: what the run produced closes a
+// gap about producing it, and — read the other way, from the same lines — a file
+// the request named and nothing produced is a gap no sentence can talk its way
+// out of. Neither direction is a new rubric; both are the existing "unsupported
+// by evidence" clause applied to evidence the gate now actually has.
+//
 // The working-method paragraph closes the hole that made all of this weaker
 // than it reads on a planned job. The gate's "compiled goal" for such a job was
 // the harness's own two-line stub — "Synthesis / Assemble the finished answer" —
@@ -81,6 +98,30 @@ import (
 // because the next way to describe work instead of doing it is always a phrasing
 // nobody wrote down: the question is whether the substance is present, not
 // whether some sentence pattern is.
+// The fence around the deliverable, and the only reason it exists.
+//
+// The gate's prompt is not a short one, and the deliverable used to arrive in
+// it as one more paragraph under one more heading, between a block of distilled
+// lessons and a block of run records. Measured, that is not enough separation.
+// A judge handed twelve verbatim profiles under a notebook line that said "do
+// not write individual items to separate files and report progress" returned
+// "the deliverable does not contain the 12 profiles ... it contains a series of
+// separate messages, each describing or pointing to individual profiles written
+// to files" — a verdict which is a paraphrase of the lesson above the material
+// and describes no clause of the material itself. The lessons are distilled from
+// earlier gate verdicts, so a judge that reads them as the deliverable writes
+// the next lesson from its own mistake, and the mistake compounds through the
+// notebook into every later run.
+//
+// A fence is the cheapest fix that is also the right one: it costs two lines,
+// it needs no call, and it makes "what am I judging" answerable by position
+// rather than by inference. The markers are deliberately ugly and deliberately
+// not English — nothing a worker would write lands on them by accident.
+const (
+	deliverableOpen  = "<<<<<<< BEGIN DELIVERABLE"
+	deliverableClose = ">>>>>>> END DELIVERABLE"
+)
+
 const DeliverablePrompt = `You are the final gate before a finished piece of work is handed to the person who asked for it. You receive their verbatim request, the compiled goal, and the deliverable as produced.
 
 Judge exactly one question: would the person who asked accept this as done? Default to PASS. The gate exists for real gaps, not polish — wording, style, and things they never asked for are not gaps.
@@ -93,6 +134,10 @@ One absence counts exactly like every other and is the one most easily waved thr
 
 Below the deliverable, whenever there is anything to show, you are given two records of the run itself: what it left behind, and the tail of what it actually ran. Read the deliverable's claims against them, the way the person would. Something named as produced that nothing produced, or a check the work says it made when nothing of that kind appears in what it ran, is an element unsupported by evidence and is a gap of exactly the kind above — name it in those words. Both records are partial by construction: the tail is the end of a longer run, and what was left behind is one place among many. So they can convict a claim and never acquit one — silence in them is evidence, never proof, and where the deliverable's own account is consistent with what is there, or where these records could never have held the thing in question, pass. One shape in these records is read against the substance rule above: the run wrote a file and the deliverable's own text is thin beside it. Where the request never named a file or document, the substance has been filed where nobody asked and the message points at it — the missing element is that content itself, in the message, and you name it as the gap. Where the request did ask for the file — named it, or asked for work whose product plainly lives in files, like a change to existing material — that split is the CORRECT shape, not a gap: the message carries what was done and the evidence it holds (the answer, the verdict, the numbers, what was run and what came back), never the file's whole contents, and a short message beside an asked-for file convicts nothing by its length.
 
+Where the run produced something, read what it left behind before you weigh the message's completeness. A thing the request asked to be produced is present when the record shows it on disk, whatever length the message came out at, and a gap a reader would close by opening a file the run left behind is closed already: it is not a gap, and it must not be named as one. The record answers the opposite claim with the same authority. Where the request named a file and the record says nothing of that name is among what was left behind, that absence IS the gap — name the file — and the deliverable's word that it was written, saved or verified is an element unsupported by evidence however plainly it is put; a file recorded as a directory rather than a file was not written either. Where a criterion is shown — what this work was to produce, and the checks that settle it, stated before anything ran — it is a standard of the same kind as the working method: hold the record against it, and where it asks for nothing, nothing is missing.
+
+One more record may be given: what was already failing in this repository before the work began, measured against it before anything was touched. It is the only account of the difference between a check this work broke and a check that was broken when the work arrived, and nothing else you are given can tell them apart — a run tail showing a red suite looks identical either way. A failure named there is a fact about the repository and not a gap: do not fail the work for it, do not ask it to be fixed unless the request asked for that, and do not treat a red check the work truthfully reports as pre-existing as an unsupported claim. Everything the block does not name is judged exactly as it would be without it, and a check the work turned red is still a gap.
+
 There is one record that is not partial, and it says so of itself: that the run called no tools and left nothing behind — the whole of it, not a tail. Nothing was looked up, read, computed or checked, so anything the request needed the work to go and find is not in the deliverable and cannot be. Hold the request against that. Where it asked for something only work could produce — figures, sources, the state of something out in the world, a thing built or changed — the gap is that content itself: name what was to be found and never was, in those words, and never as a remark about effort or process. Where the request was answerable from what the worker was already given, an unexercised run is no gap at all and the ordinary reading above decides it.
 
 Where a working method is given, it is the standard this kind of work set for itself before anything was produced, and it is the only standard beside the request itself that you hold the deliverable to. Where it asks for nothing, nothing is missing: a method that names no verification makes an unverified result complete, and a method that names one makes its absence a gap.
@@ -100,6 +145,8 @@ Where a working method is given, it is the standard this kind of work set for it
 A confirmation is the fact of what came back, in the deliverable's own words: what was run, how many passed, what failed, how it ended. When the request asked for a thing to be run and confirmed, that reading satisfies it, and the verbatim transcript of the command is never the gap — demanding the raw output, the exact formatting, or the full terminal text of a check the deliverable already states the result of is a preference of yours, and the honest answer for a preference is pass. Only a request that asked for the output itself — the log, the listing, the exact text — is failed by its absence.
 
 When you name a gap, quote the words of the request it is a failure of — a span of the person's own text, copied exactly as they wrote it, long enough to be unmistakably theirs. Quote the part of what they asked for that is not there. A gap you cannot quote from their request is a preference of yours rather than something they asked for and did not get, and the honest answer for it is pass.
+
+The deliverable is fenced. Everything between the line ` + deliverableOpen + ` and the line ` + deliverableClose + ` is the deliverable, the whole of it, and nothing outside those two lines is any part of it. What sits above the fence — settled taste, lessons from earlier work, the request, the goal, the working method — is how to judge, never what is judged, and what sits below it is the record of the run. A lesson from earlier work describes a job that is not this one: it may tell you what to look for and it can never tell you what is there. Read the fenced text itself before you say anything about it, and describe only what is in it. If you are about to say the deliverable is a progress report, a series of messages, or a set of pointers to files, that sentence must be true of the fenced text in front of you — check it there first, because that is a description earlier work has been given and it is the easiest one to repeat about work it does not fit.
 
 Return exactly one JSON object, nothing else: {"pass": true, "exercised": true or false} or {"pass": false, "gaps": "<the named gaps>", "quote": "<the words of the request this gap fails, copied exactly>"}. "exercised" is a statement about evidence and never about quality: true only when the finished thing was run the way it will actually be used and held — visible in what was run, or reported in the deliverable as what was run and what came back. Everything else is false, including an honest "not verified here" and work that nothing available could have exercised. Both of those still pass; they are simply not evidenced.`
 
@@ -114,6 +161,23 @@ var deliverableSchema = json.RawMessage(`{
   "required": ["pass"],
   "additionalProperties": false
 }`)
+
+// FenceDeliverable puts the material the gate judges between its two markers.
+//
+// It is exported because the fence is a fact about the prompt that its tests
+// and its callers both have to be able to name, and because a second spelling
+// of a delimiter is a delimiter that eventually stops matching. A deliverable
+// that itself contains a fence line has it neutralised rather than the fence
+// being renamed: the marker keeps one meaning everywhere.
+func FenceDeliverable(deliverable string) string {
+	deliverable = strings.TrimSpace(deliverable)
+	for _, marker := range []string{deliverableOpen, deliverableClose} {
+		if strings.Contains(deliverable, marker) {
+			deliverable = strings.ReplaceAll(deliverable, marker, strings.Repeat("-", len(marker)))
+		}
+	}
+	return deliverableOpen + "\n" + deliverable + "\n" + deliverableClose
+}
 
 // GateRevisionContract closes every revision, not only the ones whose named gap
 // was a missing answer. The revision's own final message replaces the first
@@ -153,6 +217,24 @@ type Judgment struct {
 
 const GateNotebookBytes = 1 << 10
 
+// GateLessonsHeading labels the notebook block for what it is: an account of
+// OTHER work. The fence below it bounds where the deliverable IS; this bounds
+// what these lines may be used for.
+//
+// They were distilled from earlier jobs, and several of them from earlier
+// verdicts of this same gate — which is how one false negative became a lesson
+// ("do not write individual items to separate files and report progress … the
+// gate requires one contiguous output") that was then injected above the next
+// job's deliverable and read back out as that job's gap. A judge that reads a
+// lesson as a description of the material in front of it is reading a previous
+// mistake as present evidence, and about to write the next one.
+//
+// It is exported because it is the seam's own name and the prompt-shape tests
+// hold the gate to a reading order; two spellings of one heading is a heading
+// that eventually stops matching.
+const GateLessonsHeading = "Lessons from EARLIER, UNRELATED work — " +
+	"what to look for, never a description of the deliverable below:\n"
+
 // GateVerdict is what a passing gate is entitled to record.
 //
 // The leaf itself never claims a verified success — the general loop has no
@@ -183,6 +265,21 @@ func GateVerdict(judgment Judgment) provider.Verdict {
 type Evidence struct {
 	Artifacts []string
 	Ran       []string
+	// Named is what the request itself named as a file, in the person's own
+	// spelling. It is the half of the record the gate could never check: a
+	// judge holding only prose was asked whether the finished thing exists,
+	// could see no further than the sentence claiming it does, and answered
+	// from the sentence — in both directions. It failed a delivery for not
+	// retyping a file that was on disk, and it passed one that claimed a file
+	// was "written and verified" when nothing of that name had been written at
+	// all. Rendered against Artifacts, each name settles itself.
+	Named []string
+	// Done is the criterion the plan stated before the work started: what this
+	// leaf was to produce and the checks that settle it. It travels verbatim
+	// through retries by construction (plan.Spec), so it is the one standard
+	// here that the run cannot have moved, and it belongs beside the record it
+	// is settled against rather than in the prose above it.
+	Done plan.Done
 	// Observed says the run was watched from beginning to end, which is the
 	// only thing that turns two empty slices into a fact. Without it the gate
 	// could not tell "this leaf did nothing" from "nobody was recording", and
@@ -193,6 +290,19 @@ type Evidence struct {
 	// knows which of the two it has; every real delivery sets it, and the unit
 	// tests that construct a bare Evidence deliberately do not.
 	Observed bool
+	// Baseline is what was already broken before this work began, in the words
+	// of the only thing that measured it. A coding worker photographs the
+	// repository's own checks before it starts, so when a check comes back red
+	// it can say whether the change caused it; nothing else in the tree can,
+	// and the judge least of all — it holds prose and a file list, and cannot
+	// run anything.
+	//
+	// Without it the gate read a suite's absolute state as a verdict on the
+	// change: a repository carrying one pre-existing red test failed every
+	// correct patch that passed through it, four times out of four on the
+	// measured battery (audit-notes §14.4.1). It is stated as fact rather than
+	// as an excuse, and it acquits only what it names.
+	Baseline []string
 }
 
 // gateEvidenceRan bounds what travels. The executor already keeps a short tail;
@@ -217,7 +327,8 @@ const UnexercisedRecord = "Nothing. The work called no tools and left nothing be
 // words; an unobserved one still renders empty, so a caller with no outcome in
 // hand cannot manufacture the strongest record in the block by omission.
 func (e Evidence) block() string {
-	if len(e.Artifacts) == 0 && len(e.Ran) == 0 {
+	if len(e.Artifacts) == 0 && len(e.Ran) == 0 && len(e.Named) == 0 &&
+		len(e.Baseline) == 0 && e.Done.Empty() {
 		if !e.Observed {
 			return ""
 		}
@@ -226,15 +337,46 @@ func (e Evidence) block() string {
 	var body strings.Builder
 	if len(e.Artifacts) > 0 {
 		body.WriteString("What the work left behind:\n")
-		for _, path := range e.Artifacts {
-			if info, err := os.Stat(path); err == nil {
-				fmt.Fprintf(&body, "%s (%d bytes)\n", path, info.Size())
+		for _, artifact := range e.Artifacts {
+			if info, err := os.Stat(artifact); err == nil {
+				if info.IsDir() {
+					// A directory where a file was expected is the shape that
+					// made a leaf claim a written file that was never written:
+					// reported as a size it reads as the deliverable.
+					fmt.Fprintf(&body, "%s (a directory, not a file)\n", artifact)
+					continue
+				}
+				fmt.Fprintf(&body, "%s (%d bytes)\n", artifact, info.Size())
 				continue
 			}
 			// A path the deliverable names and the filesystem does not have is
 			// the loudest thing in this block, so it is stated rather than
 			// dropped for being unreadable.
-			fmt.Fprintf(&body, "%s (not on disk)\n", path)
+			fmt.Fprintf(&body, "%s (not on disk)\n", artifact)
+		}
+	}
+	if named := e.namedBlock(); named != "" {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString(named)
+	}
+	if criterion := doneBlock(e.Done); criterion != "" {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString("What this work was to produce, stated before it ran:\n")
+		body.WriteString(criterion + "\n")
+	}
+	if len(e.Baseline) > 0 {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString("What was ALREADY failing in this repository before the work began, " +
+			"measured against it before anything was touched. These are not this work's " +
+			"doing and are not gaps:\n")
+		for _, note := range e.Baseline {
+			body.WriteString(note + "\n")
 		}
 	}
 	ran := e.Ran
@@ -251,6 +393,204 @@ func (e Evidence) block() string {
 		}
 	}
 	return strings.TrimRight(body.String(), "\n")
+}
+
+// namedBlock settles every file the request named against the files the run
+// actually left behind. Each line is a fact rather than a judgement — the gate
+// still decides what a missing file means for this ask — and the two directions
+// are stated in the same words so neither can be read as the louder one.
+func (e Evidence) namedBlock() string {
+	if len(e.Named) == 0 {
+		return ""
+	}
+	var body strings.Builder
+	body.WriteString("What the request named by name, and whether the run produced it:\n")
+	for _, name := range e.Named {
+		if produced, ok := ProducedFile(name, e.Artifacts); ok {
+			fmt.Fprintf(&body, "%s — produced, at %s\n", name, produced)
+			continue
+		}
+		fmt.Fprintf(&body, "%s — nothing of that name is among what was left behind\n", name)
+	}
+	return body.String()
+}
+
+// doneBlock renders the criterion the way the plan stated it. It is deliberately
+// the same shape the worker was handed (plan.Spec.Render) rather than a second
+// wording of it: a standard restated is a standard that drifts.
+func doneBlock(done plan.Done) string {
+	if done.Empty() {
+		return ""
+	}
+	var body strings.Builder
+	if len(done.Produces) > 0 {
+		body.WriteString("It produces: " + strings.Join(done.Produces, "; "))
+	}
+	for _, condition := range done.Conditions {
+		check := strings.TrimSpace(condition.Check)
+		if check == "" {
+			continue
+		}
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		kind := strings.TrimSpace(condition.Kind)
+		if kind != plan.CheckRun && kind != plan.CheckRead {
+			kind = plan.CheckRead
+		}
+		body.WriteString("- (" + kind + ") " + check)
+		if expect := strings.TrimSpace(condition.Expect); expect != "" {
+			body.WriteString(" — " + expect)
+		}
+	}
+	return strings.TrimRight(body.String(), "\n")
+}
+
+// namedFile matches a token that reads as a filename: a stem, a dot, and a
+// two-to-eight character alphanumeric extension opening with a letter. The
+// extension's shape is what keeps prose out — "e.g.", "i.e.", "vs." and version
+// numbers all fail it — and the stem's character class is what lets a path
+// through, because "docs/JOURNEY.md" names a file exactly as "report.md" does.
+// It is the same shape the delivery law's file-shaped bit is decided on, for the
+// same reason: the two questions are one question asked at either end.
+var namedFile = regexp.MustCompile(`[\w.\-/]*\w\.[A-Za-z][A-Za-z0-9]{1,7}\b`)
+
+// NamedFiles lists, in order and without repeats, the files a piece of text
+// names. It is exported because the gate's caller holds the request and the
+// gate holds the record, and the answer they need is the same list.
+func NamedFiles(text string) []string {
+	var names []string
+	seen := map[string]bool{}
+	for _, match := range namedFile.FindAllString(text, -1) {
+		clean := strings.Trim(strings.TrimSpace(match), "/")
+		clean = strings.TrimPrefix(clean, "./")
+		if clean == "" || seen[strings.ToLower(clean)] {
+			continue
+		}
+		seen[strings.ToLower(clean)] = true
+		names = append(names, clean)
+	}
+	return names
+}
+
+// ProducedFile answers whether one named file is among the files a run left
+// behind, and returns the path it landed at.
+//
+// A name carrying a directory names that place: "docs/memo.md" is satisfied by
+// a path ending in docs/memo.md and by nothing else, which is exactly the case
+// a leaf lost when it wrote the right content at the wrong address. A bare name
+// names the file wherever it landed, because the person who wrote "report.md"
+// said nothing about which directory.
+//
+// The file must be on disk and must be a file: a recorded path with nothing at
+// it, or a directory wearing the name, is not a produced deliverable.
+func ProducedFile(named string, artifacts []string) (string, bool) {
+	want := strings.ToLower(strings.TrimPrefix(strings.Trim(strings.TrimSpace(named), "/"), "./"))
+	if want == "" {
+		return "", false
+	}
+	bare := !strings.Contains(want, "/")
+	for _, artifact := range artifacts {
+		have := strings.ToLower(filepath.ToSlash(strings.TrimSpace(artifact)))
+		if have == "" {
+			continue
+		}
+		matched := have == want || strings.HasSuffix(have, "/"+want)
+		if bare && !matched {
+			matched = path.Base(have) == want
+		}
+		if !matched {
+			continue
+		}
+		if info, err := os.Stat(artifact); err != nil || info.IsDir() {
+			continue
+		}
+		return artifact, true
+	}
+	return "", false
+}
+
+// AdmitGapArtifact refuses the one gap the record has already closed: the review
+// quoted a span of the request that names a file, and the run produced every
+// file that span names.
+//
+// It is the artifact half of the same invariant AdmitGapRevision applies to
+// prose. A gap is what the person asked for and did not get; a file they asked
+// for by name, sitting on disk at the name they used, is something they got. The
+// measured cost of not having this was a delivery failed for "not containing the
+// script text" while the script sat in the workspace, a repair round, and a
+// whole continuation node spent retyping a correct file into a message.
+//
+// It refuses nothing else. A gap about what is INSIDE a produced file quotes the
+// substance rather than the filename, and the substance is not a name this can
+// match — so the ordinary path judges it, as it should.
+func AdmitGapArtifact(quote string, evidence Evidence) string {
+	names := NamedFiles(quote)
+	if len(names) == 0 {
+		return ""
+	}
+	for _, name := range names {
+		if _, ok := ProducedFile(name, evidence.Artifacts); !ok {
+			return ""
+		}
+	}
+	return "what it asked for is already on disk under the name the request used"
+}
+
+// enumerationItem matches one item of a list the person spelled out: a quoted
+// phrase, or a run of words that begins with a capital or a digit. It is the
+// shape of an enumeration and nothing looser — a lowercase clause is prose, and
+// prose is what the ordinary path judges.
+var enumerationItem = regexp.MustCompile(`"[^"]{2,60}"|'[^']{2,60}'|\p{Lu}[\p{L}\p{N}]*(?:[ \-][\p{Lu}\p{N}][\p{L}\p{N}]*)*|\p{N}[\p{L}\p{N}]*`)
+
+// enumerationFloor is how many named items make a span an enumeration. Two is
+// not a list — "Go CLI", "New York" — and a rule that fired on two would refuse
+// gaps about ordinary prose that happens to name a product. Three is the
+// smallest span a person writes as a list.
+const enumerationFloor = 3
+
+// AdmitGapPresent refuses the gap the deliverable has already closed in words,
+// as AdmitGapArtifact refuses the one it closed on disk. The two are one
+// invariant asked at either end of the same ledger: a gap is what the person
+// asked for and did not get, and a thing they asked for by name that is sitting
+// in the text they are about to read is something they got.
+//
+// It is narrow on purpose and it refuses nothing else. The only span it can
+// settle is an ENUMERATION — three or more items the person named themselves,
+// inside the words the review quoted — and it settles it only when every one of
+// them appears in the deliverable. That is the case the gate demonstrably gets
+// wrong: twelve databases named in the ask, twelve profiles in the message,
+// and a verdict saying the twelve are not there. A gap about prose names no
+// enumeration and reaches the ordinary path; a gap about what is INSIDE one of
+// the items names the substance rather than the item, and reaches it too; a
+// deliverable missing even one of the named items is judged as it always was.
+//
+// Presence is checked case-insensitively and nowhere else is anything relaxed:
+// this is a containment test, so it can close a gap and can never open one.
+func AdmitGapPresent(quote, deliverable string) string {
+	quote, deliverable = strings.TrimSpace(quote), strings.ToLower(deliverable)
+	if quote == "" || deliverable == "" {
+		return ""
+	}
+	seen := map[string]bool{}
+	items := make([]string, 0, 8)
+	for _, match := range enumerationItem.FindAllString(quote, -1) {
+		item := strings.ToLower(strings.Trim(strings.TrimSpace(match), `"'`))
+		if len(item) < 2 || seen[item] {
+			continue
+		}
+		seen[item] = true
+		items = append(items, item)
+	}
+	if len(items) < enumerationFloor {
+		return ""
+	}
+	for _, item := range items {
+		if !strings.Contains(deliverable, item) {
+			return ""
+		}
+	}
+	return "everything it names is already in the delivered text, in the words the request used"
 }
 
 // judgeDeliverable returns a checked pass or named gap. Every failure of the
@@ -274,8 +614,14 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	if taste := resident.TasteBlock(graph); taste != "" {
 		body += "Settled taste — hold to these:\n" + taste + "\n\n"
 	}
+	// The lessons are labelled for what they are — an account of OTHER work —
+	// because the fence alone bounds where the deliverable is and this bounds
+	// what these lines may be used for. They were distilled from earlier jobs,
+	// several of them from earlier verdicts of this same gate, so a judge that
+	// reads one as a description of the material in front of it is reading a
+	// previous mistake as present evidence and about to write the next one.
 	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, ask, 8); digest != "" {
-		body += "Standing preferences and relevant lessons:\n" + clipUTF8Bytes(digest, GateNotebookBytes) + "\n\n"
+		body += GateLessonsHeading + clipUTF8Bytes(digest, GateNotebookBytes) + "\n\n"
 	}
 	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief
 	// The working method the worker was actually held to, which is where this
@@ -286,7 +632,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	if method = strings.TrimSpace(method); method != "" {
 		body += "\n\nThe working method this deliverable was held to:\n" + method
 	}
-	body += "\n\nDeliverable as produced:\n" + deliverable
+	body += "\n\nDeliverable as produced:\n" + FenceDeliverable(deliverable)
 	// The records come last, under the deliverable they are used to check: they
 	// are the most volatile block in the prompt — a revision rewrites the text
 	// and re-runs the work — and the cache pays for volatility by position.
@@ -444,6 +790,16 @@ func GapNote(gaps, refusal string) string {
 		", and I don't redo work over a standard the request never set. Say the word and I will."
 }
 
+// GapClosedNote is what a gap the run has already closed on disk gets instead of
+// a round. It is GapNote's sibling and stops one sentence earlier on purpose:
+// the standard was the person's own and it was met, so there is nothing to offer
+// to redo — the file is there, and the honest thing is to say why the review's
+// words are being delivered under rather than acted on.
+func GapClosedNote(gaps, closed string) string {
+	return "a review raised this: " + firstLine(gaps) +
+		" — I've delivered as it stands, because " + closed + "."
+}
+
 func citationKey(text string) string { return strings.Join(strings.Fields(text), " ") }
 
 // Extension is what a gate's judgement was allowed to do about a gap that
@@ -514,7 +870,11 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 		extension.Refused = refusal
 		return extension
 	}
-	spliced, _, err := resident.ReplanOverrun(ctx, graph, node, partial, unmet.Gaps, artifacts, dailyBudgetUSD, planRemainder)
+	// The reason travels rather than being inherited: this is quality failure
+	// growing a job, not resource failure, and the journal that bounds growth
+	// could not tell the two apart while one borrowed the other's whole path.
+	spliced, _, err := resident.ReplanOverrunAs(ctx, graph, node, partial, unmet.Gaps, artifacts,
+		dailyBudgetUSD, "", resident.Growth{Reason: resident.GrowGap}, planRemainder)
 	if err != nil {
 		log.Printf("note: could not plan the rest of %s: %v", node.ID, err)
 		extension.Refused = "the work that would close it could not be planned"
@@ -840,4 +1200,107 @@ func clipUTF8Bytes(value string, limit int) string {
 		cut--
 	}
 	return strings.TrimSpace(value[:cut]) + "..."
+}
+
+// RetargetSpec carries a failed node's spec onto the node that stands in for it.
+//
+// This is the §6 defect closed structurally. The retry path used to author a
+// brand-new node out of failure context — the sentinel names a title and a
+// summary, and the store's brief falls back to those two lines — so the module
+// name, the filename, the type names and the acceptance check the original spec
+// carried were all simply gone by the second attempt. Nothing was truncating
+// them: nothing was carrying them.
+//
+// The rule the object makes enforceable is that a re-target may re-aim and may
+// not re-author. Done and Sources travel verbatim, because they are what the
+// work is judged against and what it must touch, and neither changed when the
+// attempt failed. Method travels too, unless the replacement brought its own.
+// Only Instruction is written to, and only by addition: the original words,
+// then what happened, then what is now being asked for on top of them.
+func RetargetSpec(original plan.Spec, aim, failure string) plan.Spec {
+	if original.Empty() {
+		// Nothing to carry. The caller falls back to whatever it did before
+		// specs existed, which is the byte-identical path.
+		return plan.Spec{}
+	}
+	retargeted := original
+	var instruction strings.Builder
+	instruction.WriteString(strings.TrimSpace(original.Instruction))
+	instruction.WriteString("\n\nA previous agent was given exactly this work and did not finish it.")
+	if failure = strings.TrimSpace(failure); failure != "" {
+		instruction.WriteString(" It stopped like this: ")
+		instruction.WriteString(firstLine(failure))
+	}
+	if aim = strings.TrimSpace(aim); aim != "" {
+		instruction.WriteString("\n\nWhat this attempt is being asked to do differently: ")
+		instruction.WriteString(aim)
+	}
+	instruction.WriteString("\n\n")
+	instruction.WriteString(resident.SpecUnchangedNotice)
+	retargeted.Instruction = strings.TrimSpace(instruction.String())
+	return retargeted
+}
+
+// RetargetAdds re-aims a failed node's spec onto every node the sentinel added
+// after it failed, before those nodes are mirrored into the store.
+//
+// It runs on the plan document, which is where a node's spec lives and where
+// the sentinel has just written its additions, and it writes three fields on
+// each: the spec itself, the brief that is still the executor's read, and the
+// working method, which a replacement inherits for the same reason it inherits
+// the criterion — how this kind of work is done well is a fact about the work,
+// not about the attempt.
+//
+// It is deliberately narrow. Only a node the sentinel added while reacting to a
+// FAILED node is a replacement; a node added because a landed result taught the
+// job something new is new work, and giving it someone else's criterion would
+// be inventing a requirement rather than preserving one.
+func RetargetAdds(planGraph *plan.Graph, failed *plan.Node, operations []plan.Operation) int {
+	if planGraph == nil || failed == nil || failed.Spec.Empty() {
+		return 0
+	}
+	carried := 0
+	for _, operation := range operations {
+		if operation.Op != "add" || !operation.Applied {
+			continue
+		}
+		node := planGraph.Node(operation.Node)
+		if node == nil || node.ID == failed.ID {
+			continue
+		}
+		aim := strings.TrimSpace(node.Summary)
+		if aim == "" {
+			aim = strings.TrimSpace(operation.Reason)
+		}
+		node.Spec = RetargetSpec(failed.Spec, aim, failed.Failure)
+		// Brief is still the read this release, so the carried instruction has
+		// to land there too or the object would be durable and unread — the
+		// replacement would go on running from the sentinel's two lines.
+		node.Brief = node.Spec.Instruction
+		if strings.TrimSpace(node.Contract) == "" {
+			node.Contract = node.Spec.Method
+		}
+		carried++
+	}
+	return carried
+}
+
+// PlanNodeFor finds the plan node one store node was minted from.
+//
+// The mapping is the id scheme and nothing else: a job's nodes are minted as
+// "<prefix>-n<planID>", except the sink, which takes the bare prefix. A sink
+// cannot be resolved back this way — the bare prefix names no plan id — so it
+// returns nothing rather than guessing, and a caller that finds nothing does
+// what it did before specs existed.
+func PlanNodeFor(planGraph *plan.Graph, prefix, nodeID string) *plan.Node {
+	if planGraph == nil {
+		return nil
+	}
+	for index := range planGraph.Nodes {
+		candidate := &planGraph.Nodes[index]
+		if fmt.Sprintf("%s-n%d", prefix, candidate.ID) == nodeID {
+			return candidate
+		}
+	}
+	return nil
 }

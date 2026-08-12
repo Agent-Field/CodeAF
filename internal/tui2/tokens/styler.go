@@ -231,6 +231,47 @@ func (s *Styler) PaintOn(text string, fg, bg Token) string {
 	return b.String()
 }
 
+// PaintRowOn lays an ALREADY-PAINTED row onto a raised ground.
+//
+// It is the door a card needs and [Styler.PaintOn] cannot be: PaintOn takes one
+// span, and a card's row is a dozen spans a dozen renderers painted — a header
+// grammar, a markdown pass, a fold hint — none of which knows it is standing on
+// a plane. Asking each of them to thread a ground through would be threading a
+// background into every renderer in the tree so that one block kind could have
+// a floor.
+//
+// IT WORKS BECAUSE THE PACKAGE'S OWN RESET IS FOREGROUND-ONLY. [Styler.paint]
+// closes a span with SGR 39, which clears the colour it set and nothing else, so
+// a background armed before the row survives every span inside it. There is
+// exactly one sequence in this package that does clear a background — the
+// [sgrResetAll] PaintOn writes — and it is re-armed here rather than left to
+// punch a hole in the plane: a code span inside a card's body is a real case,
+// and a card whose ground stopped halfway along a row would be a rendering bug
+// nobody could see the cause of. One known sequence, one repair, both stated.
+//
+// Printable width is untouched, which is the blocks contract this obeys like
+// every other painter here. An empty row is returned as it came: a background
+// around nothing is bytes for no reason, and a zero-width painted string makes
+// every "is this row blank" check downstream answer wrong.
+func (s *Styler) PaintRowOn(row string, ground Token) string {
+	if !s.enabled || row == "" || ground >= tokenCount || !ground.IsSurface() {
+		return row
+	}
+	bg := ground.Bg(s.profile, s.focus)
+	if bg == "" {
+		return row
+	}
+	if strings.Contains(row, sgrResetAll) {
+		row = strings.ReplaceAll(row, sgrResetAll, sgrResetFg+bg)
+	}
+	var b strings.Builder
+	b.Grow(len(bg) + len(row) + len(sgrResetBg))
+	b.WriteString(bg)
+	b.WriteString(row)
+	b.WriteString(sgrResetBg)
+	return b.String()
+}
+
 // Token resolves the hue and state axes to a token without painting, for a
 // caller that wants the colour value itself (a lipgloss style, a swatch).
 func (s *Styler) Token(state blocks.State, hue blocks.Hue) Token {
@@ -241,6 +282,13 @@ func (s *Styler) Token(state blocks.State, hue blocks.Hue) Token {
 // background are cleared separately rather than with SGR 0, so painting a cell
 // never silently clears a caller's bold or underline on the same row.
 const sgrResetAll = "\x1b[39;49m"
+
+// sgrResetFg and sgrResetBg are the two halves of [sgrResetAll], named because
+// [Styler.PaintRowOn] needs to spend them separately.
+const (
+	sgrResetFg = "\x1b[39m"
+	sgrResetBg = "\x1b[49m"
+)
 
 // upgrade is the glyph tier's whole automatic path (12.7 D.2, rule (a)): a
 // painted cell that is exactly one rune, and is an auto-upgradable slot's plain

@@ -33,7 +33,7 @@ func (v *View) standing(state State, rowID string, width, height int) {
 // standingBrief lists the charters with the one thing that decides whether a
 // person needs to act: whether it is standing, or waiting to be stood up.
 func (v *View) standingBrief(state State, width, height int) {
-	if !v.heading(v.glyph(tokens.GQueued), tokens.TextTertiary, "standing", width, height) {
+	if !v.sectionWord("standing", width, height) {
 		return
 	}
 	if !v.prose(HomeStanding.Blurb(), tokens.TextTertiary, width, height) {

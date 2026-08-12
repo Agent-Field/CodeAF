@@ -82,6 +82,29 @@ type SupervisorDeps struct {
 	Snapshot        func() (RatchetSnapshot, error)
 	BudgetExhausted func() BudgetExhaustion
 	Log             func(message string)
+
+	// Fingerprint identifies the state a resume attempt was supposed to move.
+	// It is optional: nil keeps the ported TS policy byte-for-byte, which is
+	// what the golden fixtures replay.
+	//
+	// A RESUME THAT CHANGES NOTHING CANNOT BE WORTH REPEATING. Each resume
+	// re-execs the whole pipeline: a fresh root-orchestrator session, a fresh
+	// auditor session, a fresh cold prompt cache for both, and another full
+	// project verification. Measured on the fresh-issue battery
+	// (audit-notes/headless-regression-audit.md §14, cobra#2257): the first
+	// entry produced the correct patch in one 39-call coder session, and two
+	// further entries then spent 81 more model calls and 63% of the run's
+	// 3.26M-token context volume re-deriving the same verdict against a
+	// byte-identical tree — because the only red was a test that had been
+	// failing before the harness arrived.
+	//
+	// The stall counter alone cannot see this: "no objective progress" and
+	// "nothing happened at all" score the same on the ratchet metric, so the
+	// second reading buys another attempt at the price of the first. The
+	// fingerprint separates them. Unchanged fingerprint AND unimproved metric
+	// is a fixed point, and the next attempt starts from exactly the inputs
+	// that just produced this one.
+	Fingerprint func() (string, bool)
 }
 
 // BudgetExhaustion is the subset of runbudget.BudgetExhaustion used here.
@@ -169,6 +192,10 @@ func RunSupervisor(deps SupervisorDeps, opts *SupervisorOptions) (SupervisorResu
 		log("[supervisor] ratchet: resume attempt " + format(float64(attempts+1)) +
 			" (distance-from-done=" + format(RatchetMetric(prev)) +
 			", stalls=" + format(float64(stalls)) + "/" + format(maxStalls) + ")\n")
+		beforePrint, havePrint := "", false
+		if deps.Fingerprint != nil {
+			beforePrint, havePrint = deps.Fingerprint()
+		}
 		if err := deps.ResumeOnce(attempts + 1); err != nil {
 			return SupervisorResult{}, err
 		}
@@ -197,6 +224,19 @@ func RunSupervisor(deps SupervisorDeps, opts *SupervisorOptions) (SupervisorResu
 			log("[supervisor] ratchet: no objective progress (" + format(prevMetric) +
 				" → " + format(curMetric) + "); stall " + format(float64(stalls)) +
 				"/" + format(maxStalls) + "\n")
+			if havePrint {
+				if afterPrint, ok := deps.Fingerprint(); ok && afterPrint == beforePrint {
+					log("[supervisor] ratchet: the resume left the tree byte-identical " +
+						"and the distance-from-done unmoved — a further attempt would " +
+						"start from these same inputs; stopping instead of paying for " +
+						"it\n")
+					return SupervisorResult{
+						Outcome: OutcomeNoProgress, Attempts: attempts,
+						Reason: "resume " + format(float64(attempts)) +
+							" changed nothing: identical worktree and no objective progress",
+					}, nil
+				}
+			}
 			if float64(stalls) >= maxStalls {
 				return SupervisorResult{
 					Outcome: OutcomeNoProgress, Attempts: attempts,

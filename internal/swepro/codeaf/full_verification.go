@@ -29,6 +29,13 @@ type projectVerificationResult struct {
 	// fullVerificationTimeoutMS ceiling without ever producing an exit status.
 	// A hung suite is an INCOMPLETE observation, not a red one.
 	TimedOut bool
+	// PreExisting is every entrypoint that came back red and was acquitted
+	// against the pre-run baseline: one sentence each, in the words the auditor
+	// and the delivery gate both read. It is a fact about the repository rather
+	// than about the change, and it is carried rather than dropped because the
+	// two readers downstream would otherwise see a green verdict over a suite
+	// they can watch failing with their own commands.
+	PreExisting []string
 }
 
 // timedOutEntrypoint records an entrypoint that exhausted the harness ceiling,
@@ -43,11 +50,63 @@ func verificationMemoKey(entrypoint fullverification.Entrypoint) string {
 	return entrypoint.Workdir + "\x00" + entrypoint.Command
 }
 
+// executeEntrypoint runs one discovered entrypoint in a fresh Bash subprocess
+// and returns what the process itself said: its exit status, whether it was
+// killed at the ceiling instead of exiting, and its whole output.
+//
+// The whole output, not the tail: the tail is what a prompt can hold, and the
+// baseline comparison needs the failure list, which for a suite with a dozen
+// reds is further up than 600 characters reach.
+func (runner *pipeline) executeEntrypoint(
+	ctx context.Context, entrypoint fullverification.Entrypoint,
+) (exitCode int, timedOut bool, output string) {
+	exitCode = -1
+	bashInput := map[string]any{
+		"command":    strictVerificationPreamble + entrypoint.Command,
+		"timeout_ms": fullVerificationTimeoutMS,
+	}
+	if entrypoint.Workdir != "" {
+		bashInput["workdir"] = entrypoint.Workdir
+	}
+	input, _ := json.Marshal(bashInput)
+	toolResult, err := runner.runtime.registry.Execute(tool.WithTestMemoDisabled(ctx), steploop.ToolCall{
+		ID: runner.runtime.nextID("verification"), Name: "bash", Input: input,
+		SessionID: runner.sessionID, Agent: "auditor",
+	})
+	if err == nil {
+		var metadata struct {
+			ExitCode *int `json:"exitCode"`
+		}
+		if json.Unmarshal(toolResult.Metadata.Raw(), &metadata) == nil && metadata.ExitCode != nil {
+			exitCode = *metadata.ExitCode
+		} else {
+			// bash.go omits exitCode on exactly one path: the timeout branch,
+			// where it kills the process group after the ceiling. Every other
+			// non-exit path returns an error.
+			timedOut = true
+		}
+	}
+	output = toolResult.Output
+	if err != nil {
+		output = err.Error()
+	}
+	return exitCode, timedOut, output
+}
+
 func projectVerificationPassVerdict(
 	result projectVerificationResult,
 ) auditorgate.AuditorVerdict {
 	reproduced := true
 	notes := "Harness-discovered project build/test entrypoints exited 0."
+	if len(result.PreExisting) > 0 {
+		// The auditor runs its own commands and will see the same reds. Told
+		// nothing, it reads a pass over a failing suite as the harness lying to
+		// it and blocks the change back — which is the same discarded-correct-
+		// work failure one layer up.
+		notes = "Harness-discovered project build/test entrypoints are green except for " +
+			"failures that were ALREADY present before this run began, which were subtracted: " +
+			strings.Join(result.PreExisting, " ")
+	}
 	return auditorgate.AuditorVerdict{
 		Verdict: auditorgate.VerdictPass,
 		Step2Signal: &auditorgate.Step2Signal{
@@ -94,7 +153,7 @@ func (runner *pipeline) runProjectVerification(
 		memoKey := verificationMemoKey(entrypoint)
 		exitCode := -1
 		timedOut := false
-		var tail string
+		var tail, fullOutput string
 		prior, hasPrior := runner.verificationTimeouts[memoKey]
 		priorStillApplies := false
 		if hasPrior && prior.HaveFinger {
@@ -111,35 +170,9 @@ func (runner *pipeline) runProjectVerification(
 				entrypoint.Kind, entrypoint.Command, fullVerificationTimeoutMS/1000,
 			))
 		} else {
-			bashInput := map[string]any{
-				"command":    strictVerificationPreamble + entrypoint.Command,
-				"timeout_ms": fullVerificationTimeoutMS,
-			}
-			if entrypoint.Workdir != "" {
-				bashInput["workdir"] = entrypoint.Workdir
-			}
-			input, _ := json.Marshal(bashInput)
-			toolResult, err := runner.runtime.registry.Execute(tool.WithTestMemoDisabled(ctx), steploop.ToolCall{
-				ID: runner.runtime.nextID("verification"), Name: "bash", Input: input,
-				SessionID: runner.sessionID, Agent: "auditor",
-			})
-			if err == nil {
-				var metadata struct {
-					ExitCode *int `json:"exitCode"`
-				}
-				if json.Unmarshal(toolResult.Metadata.Raw(), &metadata) == nil && metadata.ExitCode != nil {
-					exitCode = *metadata.ExitCode
-				} else {
-					// bash.go omits exitCode on exactly one path: the timeout
-					// branch, where it kills the process group after the
-					// ceiling. Every other non-exit path returns an error.
-					timedOut = true
-				}
-			}
-			output := toolResult.Output
-			if err != nil {
-				output = err.Error()
-			}
+			var output string
+			exitCode, timedOut, output = runner.executeEntrypoint(ctx, entrypoint)
+			fullOutput = output
 			tail = verificationOutputTail(output, 600)
 			if timedOut {
 				if runner.verificationTimeouts == nil {
@@ -184,6 +217,28 @@ func (runner *pipeline) runProjectVerification(
 			entrypoint.Kind, entrypoint.Command, exitCode, entrypoint.Source,
 		))
 		if exitCode != 0 {
+			// The delta, before the verdict. An entrypoint that was already red
+			// at the pre-run baseline, and is red in exactly the same places
+			// now, has not been broken by this change and must not convict it —
+			// see baseline.go. A single test the change turned red skips this
+			// branch entirely and fails as it always did.
+			regression := ""
+			if !timedOut {
+				delta := runner.baseline.judge(entrypoint, exitCode, fullOutput)
+				if delta.PreExisting {
+					commandEvidence["preExisting"] = true
+					commandEvidence["preExistingTests"] = delta.Known
+					result.PreExisting = append(result.PreExisting, delta.Note)
+					lines = append(lines, "  PRE-EXISTING: "+delta.Note)
+					runner.note("[codeaf] full verification " + string(entrypoint.Kind) +
+						": pre-existing failure, not this change's — " + delta.Note + "\n")
+					continue
+				} else if len(delta.New) > 0 {
+					commandEvidence["newlyFailing"] = delta.New
+					regression = delta.Note
+					lines = append(lines, "  REGRESSION: "+delta.Note)
+				}
+			}
 			if result.Failed == nil {
 				failed := entrypoint
 				result.Failed = &failed
@@ -200,6 +255,9 @@ func (runner *pipeline) runProjectVerification(
 						"hung, it did not report failures",
 					entrypoint.Kind, entrypoint.Command, fullVerificationTimeoutMS/1000,
 				)
+			}
+			if regression != "" {
+				issue += " — " + regression
 			}
 			if tail != "" {
 				issue += ": " + tail
@@ -261,6 +319,13 @@ func (runner *pipeline) runProjectVerification(
 	eventData := map[string]any{"commands": result.Commands}
 	if vacuous {
 		eventData["vacuous"] = true
+	}
+	if len(result.PreExisting) > 0 {
+		// This is the sentence the delivery gate two processes away is held to.
+		// internal/exec/swe.go reads it off the stage event and carries it into
+		// the leaf's evidence, so the judge sees "pre-existing failure,
+		// unrelated" rather than "make all exited 2".
+		eventData["pre_existing"] = result.PreExisting
 	}
 	if result.Failed != nil {
 		eventStatus = "fail"

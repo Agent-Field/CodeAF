@@ -191,14 +191,14 @@ func TestHeaderAtWidthOne(t *testing.T) {
 	}
 }
 
-func TestExpandHintAndCountBadge(t *testing.T) {
-	if got := ExpandHint(false, 12); got != "▸ 12 lines" {
+func TestDiscloseAndCountBadge(t *testing.T) {
+	if got := Disclose(false, 12, "line", "lines"); got != "▸ 12 lines" {
 		t.Fatalf("collapsed hint %q", got)
 	}
-	if got := ExpandHint(false, 1); got != "▸ 1 line" {
+	if got := Disclose(false, 1, "line", "lines"); got != "▸ 1 line" {
 		t.Fatalf("singular hint %q", got)
 	}
-	if got := ExpandHint(true, 12); got != "▾" {
+	if got := Disclose(true, 12, "line", "lines"); got != "▾" {
 		t.Fatalf("expanded hint %q", got)
 	}
 	if got := CountBadge("?", 2, HueAttention); got.Text != "?2" || got.Hue != HueAttention {
@@ -206,6 +206,72 @@ func TestExpandHintAndCountBadge(t *testing.T) {
 	}
 	if got := CountBadge("?", 0, HueAttention); got.Text != "" {
 		t.Fatal("a zero count produced a badge")
+	}
+}
+
+// THE UNIT IS THE CALLER'S, because the unit is a fact about what is folded and
+// not about folding: a transcript hides LINES, a subtree hides PARTS, a batch
+// hides CALLS, and §14's vocabulary is a product law rather than this package's
+// guess. Both spellings are taken so a singular is never assembled by trimming
+// an `s` off a word that might not have one.
+func TestDiscloseSpellsTheCallersOwnUnit(t *testing.T) {
+	for _, want := range []struct {
+		n           int
+		unit, units string
+		shut        string
+	}{
+		{3, "part", "parts", "▸ 3 parts"},
+		{1, "part", "parts", "▸ 1 part"},
+		{2, "call", "calls", "▸ 2 calls"},
+		{1, "call", "calls", "▸ 1 call"},
+	} {
+		if got := Disclose(false, want.n, want.unit, want.units); got != want.shut {
+			t.Errorf("Disclose(false, %d, %q, %q) = %q, want %q",
+				want.n, want.unit, want.units, got, want.shut)
+		}
+	}
+	// NO VERB, EVER — §15's delete test applied to a door. `more`, `expand` and
+	// `view` are all things the chevron already says.
+	for _, n := range []int{0, 1, 12} {
+		for _, open := range []bool{false, true} {
+			door := Disclose(open, n, "line", "lines")
+			for _, verb := range []string{"view", "more", "expand", "show", "open", "⏎"} {
+				if strings.Contains(door, verb) {
+					t.Errorf("the door %q carries the verb %q", door, verb)
+				}
+			}
+		}
+	}
+	// An OPEN door counts nothing: the rows are on screen, and a count beside
+	// them would be the surface narrating what the reader is looking at.
+	if got := Disclose(true, 99, "part", "parts"); got != ExpandedMark {
+		t.Errorf("an open door says %q, want the bare witness %q", got, ExpandedMark)
+	}
+	// A shut door with nothing behind it is the bare mark too — never `▸ 0
+	// lines`, which is an affordance onto an empty room (5.20 rule 3).
+	if got := Disclose(false, 0, "line", "lines"); got != CollapsedMark {
+		t.Errorf("an empty door says %q, want %q", got, CollapsedMark)
+	}
+}
+
+// A SECTION'S DOOR KEEPS ITS COUNT WHEN IT OPENS, and that is the one way it
+// differs from [Disclose]. A tail's count is a fact about the fold — how much is
+// hidden — so it goes when the fold does. A section's count is a fact about the
+// BAND: `history (18)` is as true with the rows showing as without them.
+func TestDiscloseSectionNamesTheBandAndCountsIt(t *testing.T) {
+	if got := DiscloseSection(false, "history", 18); got != "▸ history (18)" {
+		t.Errorf("a shut section reads %q", got)
+	}
+	if got := DiscloseSection(true, "history", 18); got != "▾ history (18)" {
+		t.Errorf("an open section reads %q", got)
+	}
+	// A band nobody counted is a band with a name and no parenthetical, never
+	// `history (0)`.
+	if got := DiscloseSection(false, "history", 0); got != "▸ history" {
+		t.Errorf("an uncounted section reads %q", got)
+	}
+	if got := DiscloseSection(true, "", 4); got != ExpandedMark {
+		t.Errorf("a nameless section reads %q, want the bare witness", got)
 	}
 }
 
@@ -278,6 +344,213 @@ func TestPadIsWidthStable(t *testing.T) {
 		}
 		if got := Width(PadLeft(s, 6)); got != 6 {
 			t.Fatalf("PadLeft(%q) is %d cells", s, got)
+		}
+	}
+}
+
+// -- the receipt column --------------------------------------------------------
+
+// §16's FIRST rule: "the right edge is a column". Two rows with the same
+// receipt put it at the same x whatever their titles do, and a title long
+// enough to reach the edge is CUT rather than allowed to push the receipt off —
+// which is the inversion the field exists for, since every other cell on this
+// row sheds from the right.
+//
+// The measured failure: at 88 columns a batch row whose named inputs ran to the
+// edge lost its size entirely while the shorter row under it kept one, so a
+// reader scanning the column read a ragged list and could not tell an absent
+// size from a dropped one.
+// The width is one where BOTH rows' receipts are still close to their subjects
+// (§20's condition on the right column, pinned by
+// [TestAFarReceiptComesHomeToItsSubject]). At 88 the short row's column would be
+// fifty-odd cells adrift, which is the gulf §20 forbids and not the column this
+// test is about.
+func TestHeaderReceiptHoldsTheRightEdgeAcrossRows(t *testing.T) {
+	const (
+		width  = 44
+		column = "1KB"
+	)
+	rows := []Header{
+		{Glyph: "$", Title: "ls -la clips/", Receipt: "1KB", Hint: Disclose(false, 3, "line", "lines")},
+		{Glyph: "⌕", Title: "searched 9 · rust async trait · tokio spawn cost · " +
+			"pin project macro +6 · async drop rfc · one more query still",
+			Receipt: "1KB", Hint: Disclose(false, 3, "line", "lines")},
+	}
+	for i, h := range rows {
+		got := h.Render(width, Plain)
+		if w := stringWidth(got); w > width {
+			t.Fatalf("row %d is %d cells at width %d: %q", i, w, width, got)
+		}
+		if !strings.HasSuffix(got, column) {
+			t.Fatalf("row %d did not end on the receipt column: %q", i, got)
+		}
+		if w := stringWidth(got); w != width {
+			t.Fatalf("row %d does not reach the right edge: %d of %d cells: %q",
+				i, w, width, got)
+		}
+	}
+	// The long title is the one that pays. It is cut; the column is not.
+	if long := rows[1].Render(width, Plain); !strings.Contains(long, OverflowMark) {
+		t.Fatalf("the long title kept its whole self beside the receipt: %q", long)
+	}
+	// THE DOOR IS NOT IN THE COLUMN. It sits inline, right after the words it
+	// opens, because a receipt is a figure a reader SCANS and a door is
+	// something they AIM AT.
+	short := rows[0].Render(width, Plain)
+	if !strings.Contains(short, "ls -la clips/"+hintLead+CollapsedMark+" 3 lines") {
+		t.Fatalf("the fold hint left the flow: %q", short)
+	}
+}
+
+// A RECEIPT IS DROPPED WHOLE, never cut — [CardBlock.titleLine]'s rule, in the
+// grammar this time. "$0.1" is not a smaller truth than "$0.14"; it is a
+// different and false one. When the column goes, the fold hint comes back into
+// the flow, so the door outlives the telemetry.
+func TestHeaderDropsATightReceiptWholeAndKeepsTheDoor(t *testing.T) {
+	h := Header{Glyph: "$", Title: "ls -la clips/", Receipt: "1.6KB", Hint: Disclose(false, 3, "line", "lines")}
+	for _, width := range []int{1, 6, 12, minHeadRoom + stringWidth("1.6KB") + receiptGap - 1} {
+		got := h.Render(width, Plain)
+		if stringWidth(got) > width {
+			t.Fatalf("width %d drew %d cells: %q", width, stringWidth(got), got)
+		}
+		for _, fragment := range []string{"1.6KB", "1.6K", "1.6", "1."} {
+			if strings.Contains(got, fragment) {
+				t.Fatalf("width %d drew a piece of the receipt (%q): %q", width, fragment, got)
+			}
+		}
+	}
+	// One cell over the floor it arrives whole, and never half.
+	wide := minHeadRoom + stringWidth("1.6KB") + receiptGap
+	if got := h.Render(wide, Plain); !strings.HasSuffix(got, "1.6KB") {
+		t.Fatalf("the receipt did not arrive whole at its floor width: %q", got)
+	}
+}
+
+// The zero value changes NOTHING. A header with no receipt takes the path it
+// took before the field existed — same degrade order, same hint in the same
+// place in the flow, same bytes — which is what keeps every other consumer's
+// goldens still.
+func TestHeaderWithoutAReceiptIsUnchanged(t *testing.T) {
+	h := Header{
+		Glyph: "◐", Title: "swe", Desc: "rewriting the executor harness",
+		Badges: []Badge{{Text: "?2", Hue: HueAttention}},
+		Meta:   []string{"K3 ▄ $8.65", "4m"},
+		Hint:   Disclose(false, 12, "line", "lines"),
+	}
+	want := "◐ swe: rewriting the executor harness [?2] · K3 ▄ $8.65 · 4m  ▸ 12 lines"
+	if got := h.Render(80, Plain); got != want {
+		t.Fatalf("the flow moved without a receipt:\n got %q\nwant %q", got, want)
+	}
+	// And the empty string is the same as the field not being written at all,
+	// at every width the row can be read at.
+	blank := h
+	blank.Receipt = ""
+	for width := 1; width <= 100; width++ {
+		if got, same := h.Render(width, Plain), blank.Render(width, Plain); got != same {
+			t.Fatalf("width %d: %q vs %q", width, got, same)
+		}
+	}
+}
+
+// The receipt is CHROME and the hint rides with it: one dim span at the right
+// edge, never a cell that outranks the title beside it (§16's dim ramp).
+func TestHeaderReceiptIsPaintedAsChrome(t *testing.T) {
+	sty := &seedStyler{}
+	Header{Glyph: "$", Title: "ls", Receipt: "1KB", Hint: Disclose(false, 3, "line", "lines")}.Render(40, sty)
+	for i, state := range sty.states {
+		if state == StateLive {
+			t.Fatalf("cell %d of a settled row was painted live", i)
+		}
+	}
+	if len(sty.states) == 0 {
+		t.Fatal("the row painted nothing")
+	}
+	if last := sty.states[len(sty.states)-1]; last != StateChrome {
+		t.Fatalf("the receipt column was painted %v, want chrome", last)
+	}
+}
+
+// The receipt is reserved FIRST and everything else narrows into what is left,
+// which is the opposite of the header's own meta-first order and deliberately
+// so: a column that moves is not a column. What pays is the flow — meta, then
+// the door, then the title's own length — and the estimate stays put until it
+// cannot fit at all, and then it goes whole.
+func TestTheReceiptOutlastsTheFlowAndThenGoesWhole(t *testing.T) {
+	h := Header{
+		Glyph: "$", Title: "ls -la clips/", Receipt: "1.6KB",
+		Meta: []string{"one"}, Hint: Disclose(false, 3, "line", "lines"),
+	}
+	kept, dropped := 0, 0
+	for width := 1; width <= 90; width++ {
+		got := h.Render(width, Plain)
+		if stringWidth(got) > width {
+			t.Fatalf("width %d drew %d cells: %q", width, stringWidth(got), got)
+		}
+		switch {
+		// The inline form §20 falls back to once the column is too far to be a
+		// column. It is the whole figure, attached to its subject.
+		case strings.HasSuffix(got, receiptOpen+"1.6KB"+receiptClose):
+			kept++
+		case strings.HasSuffix(got, "1.6KB"):
+			kept++
+		case strings.Contains(got, "1.6K") || strings.Contains(got, "6KB"):
+			t.Fatalf("width %d drew half a receipt: %q", width, got)
+		default:
+			dropped++
+		}
+	}
+	if kept == 0 || dropped == 0 {
+		t.Fatalf("the column never passed through both states: kept=%d dropped=%d", kept, dropped)
+	}
+	// And the meta cell goes before the receipt does, which is the inversion
+	// stated: at the width where meta no longer fits, the estimate is still on
+	// the edge.
+	tight := minHeadRoom + stringWidth("1.6KB") + receiptGap
+	if got := h.Render(tight, Plain); !strings.HasSuffix(got, "1.6KB") || strings.Contains(got, "one") {
+		t.Fatalf("the meta cell outlasted the receipt column: %q", got)
+	}
+}
+
+// §20's condition on the right column, which is the whole reason
+// [receiptGulfMax] exists: "a shared right column — ONLY inside dense
+// same-shaped lists in a narrow pane (rail, palette), where every row has one
+// and THE COLUMN IS CLOSE. A receipt separated from its subject by a gulf of
+// empty cells is the defect the user has now flagged twice."
+//
+// So the same header, at a width where the column would be far, brings the
+// figure home in parentheses instead — placement 1 of the three §20 allows,
+// never a fourth, and never a dropped number.
+func TestAFarReceiptComesHomeToItsSubject(t *testing.T) {
+	h := Header{Glyph: "$", Title: "ls", Receipt: "~1.5k tok"}
+
+	// Narrow: the edge is a few cells past the words, so it is still a column.
+	near := h.Render(30, Plain)
+	if !strings.HasSuffix(near, "~1.5k tok") || strings.Contains(near, receiptOpen) {
+		t.Fatalf("a close column stopped being one: %q", near)
+	}
+	if w := stringWidth(near); w != 30 {
+		t.Fatalf("the close form does not reach the right edge: %d of 30: %q", w, near)
+	}
+
+	// Wide: the same row would fling the figure a hundred cells from the four
+	// bytes it describes. It rides with them instead.
+	far := h.Render(140, Plain)
+	if !strings.HasSuffix(far, receiptOpen+"~1.5k tok"+receiptClose) {
+		t.Fatalf("a far receipt kept its gulf: %q", far)
+	}
+	if gulf := stringWidth(far) - stringWidth("$ ls"); gulf > receiptGulfMax+receiptInlineCost {
+		t.Fatalf("the inline receipt is still %d cells from its subject: %q", gulf, far)
+	}
+
+	// The crossing is monotone and the figure is never lost or halved on the
+	// way: every width from useless to generous draws the whole receipt or none.
+	for width := 1; width <= 200; width++ {
+		got := h.Render(width, Plain)
+		if stringWidth(got) > width {
+			t.Fatalf("width %d drew %d cells: %q", width, stringWidth(got), got)
+		}
+		if strings.Contains(got, "tok") && !strings.Contains(got, "~1.5k tok") {
+			t.Fatalf("width %d drew part of a receipt: %q", width, got)
 		}
 	}
 }

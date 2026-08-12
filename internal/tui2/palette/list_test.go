@@ -56,10 +56,12 @@ func rowsOf(p *Palette, width, height int) []string {
 }
 
 func TestSectionsRenderInDocumentedOrder(t *testing.T) {
-	p := newTestPalette(t, demoCatalog())
-	lines := rowsOf(p, 100, 60)
+	c := demoCatalog()
+	c.Jobs = demoJobs()
+	p := newTestPalette(t, c)
+	lines := rowsOf(p, 100, 200)
 
-	want := []string{"rooms", "actions", "history", "settings"}
+	want := []string{"actions", "work", "rooms", "history", "settings"}
 	var seen []string
 	for _, line := range lines {
 		for _, w := range want {
@@ -134,8 +136,8 @@ func TestZeroScopeShowsEverything(t *testing.T) {
 			n++
 		}
 	}
-	if n != registry.Len() {
-		t.Errorf("zero scope rendered %d actions, catalog has %d", n, registry.Len())
+	if want := len(registry.ForScope(registry.ScopeAny)); n != want {
+		t.Errorf("zero scope rendered %d actions, catalog has %d", n, want)
 	}
 }
 
@@ -232,6 +234,13 @@ func TestWidthSweep(t *testing.T) {
 		Summary: "日本語 mixed with a very long summary line that keeps going well past any sane column budget",
 	})
 	c.Settings = append(c.Settings, SettingRow{Key: "x", Label: "café résumé", Hint: "accented", Value: "—"})
+	// The store's side of the sweep, including the two cells a job has and a
+	// room does not and a receipt long enough to want the whole line.
+	c.Jobs = append(demoJobs(), Job{
+		ID: "task:j-wide", Title: "日本語 の仕事", Seed: "j-wide", Attention: rail.AttnWaitsOn,
+		Summary: "a summary that keeps going well past any column budget this sheet has",
+		Receipt: "wrote a path/that/is/quite/long/indeed/output.md", Age: "99d23", Cost: "$1234.56",
+	})
 
 	styler := tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal)
 	for _, query := range []string{"", "a", "can", "café", "日本", "zzzz"} {
@@ -421,16 +430,22 @@ func TestSelectionIsAnIdentityTintedBand(t *testing.T) {
 
 	p := New(Options{Styler: tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal)})
 	p.SetCatalog(c)
-	body := rowsOf(p, 80, 30)
+	// The row is SELECTED rather than assumed to be first. `aforge` is also a
+	// word inside the quit verb's own description, and the actions lead the
+	// list, so hunting for the name would find a line that is not the room.
+	p.list.selectResult(JumpToRoom{ID: rail.HomeScopeID})
 	var selected string
-	for _, line := range body {
-		if strings.Contains(line, "aforge") {
+	for _, line := range rowsOf(p, 80, 200) {
+		if strings.Contains(line, tokens.GlyphAccentRail) {
 			selected = line
 			break
 		}
 	}
 	if selected == "" {
-		t.Fatal("the first room never rendered")
+		t.Fatal("no row carried the selection marker")
+	}
+	if !strings.Contains(selected, "aforge") {
+		t.Fatalf("the marker is not on the home room: %q", selected)
 	}
 	if !strings.Contains(selected, tokens.Band.Bg(tokens.TrueColor, tokens.FocusNormal)) {
 		t.Errorf("the selected row carries no band background: %q", selected)
@@ -478,7 +493,7 @@ func TestRoomGlyphCarriesItsMeaning(t *testing.T) {
 		{Room{ID: "", Attention: rail.AttnQueued}, tokens.TextPrimary},
 	}
 	for _, c := range cases {
-		if got := roomGlyphToken(&c.room); got != c.want {
+		if got := glyphToken(c.room.Attention, c.room.Seed); got != c.want {
 			t.Errorf("room %+v glyph token = %v, want %v", c.room, got, c.want)
 		}
 	}
@@ -488,7 +503,7 @@ func TestRoomGlyphCarriesItsMeaning(t *testing.T) {
 // human is actually needed.
 func TestQuestionChipIsAmberAndOnlyWhenNeeded(t *testing.T) {
 	p := newTestPalette(t, demoCatalog())
-	body := strings.Join(rowsOf(p, 90, 30), "\n")
+	body := strings.Join(rowsOf(p, 90, 200), "\n")
 	if !strings.Contains(body, chipText(2)) {
 		t.Errorf("the room with two open questions has no count chip:\n%s", body)
 	}
@@ -588,6 +603,60 @@ func TestSelectionIsMarkedAtEveryProfile(t *testing.T) {
 		if marked != 1 {
 			t.Errorf("%v: %d rows carry the selection marker, want exactly 1", profile, marked)
 		}
+	}
+}
+
+// TestLinearPaintsNoGroundAndNoBand is 10.1.5, and it is the same bargain
+// internal/tui2/settings and internal/tui2/consentui already strike: the ground
+// and the band are both background fills, a fill is what a screen reader cannot
+// see and what a high-contrast terminal may render as a solid block, and neither
+// of them carries a fact — so both go, and the ▎ that was already in [markerCol]
+// carries the selection alone.
+//
+// Both surfaces are checked, because they are two doors onto one list and a fix
+// wired into one constructor is a fix half the users of `?` never get.
+func TestLinearPaintsNoGroundAndNoBand(t *testing.T) {
+	styler := tokens.NewStyler(tokens.TrueColor, tokens.FocusNormal)
+	ground := tokens.Sheet.Bg(tokens.TrueColor, tokens.FocusNormal)
+	band := tokens.Band.Bg(tokens.TrueColor, tokens.FocusNormal)
+
+	type surface interface {
+		Render(width, height int) string
+	}
+	for _, c := range []struct {
+		name string
+		open func(linear bool) surface
+	}{
+		{"palette", func(linear bool) surface {
+			p := New(Options{Styler: styler, Linear: linear})
+			p.SetCatalog(demoCatalog())
+			return p
+		}},
+		{"capability", func(linear bool) surface {
+			s := NewCapability(Options{Styler: styler, Linear: linear})
+			s.SetCatalog(demoCatalog())
+			return s
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			// The control: without it a surface that stopped rendering would pass
+			// every assertion below.
+			ordinary := c.open(false).Render(70, 20)
+			if !strings.Contains(ordinary, ground) || !strings.Contains(ordinary, band) {
+				t.Fatalf("the ordinary sheet draws no ground or no band, so this test measures nothing:\n%q", ordinary)
+			}
+
+			frame := c.open(true).Render(70, 20)
+			if strings.Contains(frame, ground) {
+				t.Errorf("linear mode still paints the sheet's ground:\n%q", frame)
+			}
+			if strings.Contains(frame, band) {
+				t.Errorf("linear mode still paints the selection band:\n%q", frame)
+			}
+			if !strings.Contains(frame, tokens.GlyphAccentRail) {
+				t.Errorf("linear mode dropped the fills without keeping the marker:\n%q", frame)
+			}
+		})
 	}
 }
 
@@ -718,5 +787,215 @@ func TestAReversedBandIsOneRun(t *testing.T) {
 		if strings.Contains(selected, tok.Fg(tokens.ANSI16, tokens.FocusNormal)) {
 			t.Errorf("a %s foreground is written inside the reversed band: %q", tok, selected)
 		}
+	}
+}
+
+// demoJobs is the store's side of the fixture: one job that is running, one
+// blocked on a human, and one that finished — enough that `work` and `history`
+// both have a row and the two are told apart by attention alone.
+func demoJobs() []Job {
+	return []Job{
+		{ID: "task:j-index", Title: "index the corpus", Seed: "j-index", Attention: rail.AttnWorking,
+			Summary: "walking 40k files", Receipt: "wrote index.json", Age: "14m", Cost: "$1.24"},
+		{ID: "task:j-ask", Title: "migrate the schema", Seed: "j-ask", Attention: rail.AttnQuestion,
+			Questions: 1, Summary: "needs a column name", Age: "3m", Cost: "$0.08"},
+		{ID: "task:j-done", Title: "spell-check the docs", Seed: "j-done", Attention: rail.AttnSettled,
+			Summary: "nothing to fix", Receipt: "read 212 files", Age: "2h", Cost: "$0.31"},
+	}
+}
+
+// bigCatalog is a store with n jobs in it, alternating live and finished, which
+// is what the palette is for once a machine has been running for a month.
+func bigCatalog(n int) Catalog {
+	c := demoCatalog()
+	c.Jobs = make([]Job, 0, n)
+	for i := 0; i < n; i++ {
+		attention := rail.AttnWorking
+		if i%2 == 1 {
+			attention = rail.AttnSettled
+		}
+		id := strconv.Itoa(i)
+		c.Jobs = append(c.Jobs, Job{
+			ID: "task:j-" + id, Title: "job " + id, Seed: "j-" + id, Attention: attention,
+			Summary: "a job about thing " + id, Receipt: "wrote out-" + id + ".md",
+			Age: "1m", Cost: "$0.10",
+		})
+	}
+	return c
+}
+
+// TestJobsSplitLiveFromFinished is 5.18's split applied to the store rather
+// than to the rail: a job still going is a place to go, a job that has stopped
+// is reference, and the palette must never make the reader tell them apart by
+// reading a summary.
+func TestJobsSplitLiveFromFinished(t *testing.T) {
+	c := demoCatalog()
+	c.Jobs = demoJobs()
+	want := map[string]section{
+		"index the corpus":     sectionWork,
+		"migrate the schema":   sectionWork,
+		"spell-check the docs": sectionHistory,
+	}
+	seen := 0
+	for _, r := range buildRows(nil, c) {
+		if got, ok := want[r.verb]; ok {
+			seen++
+			if r.sec != got {
+				t.Errorf("%q landed in section %d, want %d", r.verb, r.sec, got)
+			}
+		}
+	}
+	if seen != len(want) {
+		t.Fatalf("saw %d of the %d job rows", seen, len(want))
+	}
+}
+
+// TestJobRowsCarryTheirColumns: a job's row is title, state glyph, and the two
+// telemetry cells that decide which of forty jobs the reader meant — with the
+// summary and the receipt together as the preview behind them.
+func TestJobRowsCarryTheirColumns(t *testing.T) {
+	c := Catalog{Jobs: demoJobs()[:1], Actions: []Action{}}
+	rows := buildRows(nil, c)
+	if len(rows) != 1 {
+		t.Fatalf("the job built %d rows, want 1", len(rows))
+	}
+	r := rows[0]
+	if r.verb != "index the corpus" {
+		t.Errorf("verb = %q", r.verb)
+	}
+	if r.glyph != rail.AttnWorking.Glyph() {
+		t.Errorf("glyph = %q, want the working glyph", r.glyph)
+	}
+	if !strings.Contains(r.desc, "walking 40k files") || !strings.Contains(r.desc, "wrote index.json") {
+		t.Errorf("the preview lost the summary or the receipt: %q", r.desc)
+	}
+	if !strings.Contains(r.accel, "14m") || !strings.Contains(r.accel, "$1.24") {
+		t.Errorf("the telemetry cell is %q, want the age and the cost", r.accel)
+	}
+	// And both halves of the preview are searchable, which is what makes a
+	// query for a written file find the job that wrote it.
+	if _, ok := score(r.lowerDesc, "index.json"); !ok {
+		t.Error("the receipt is drawn but not fuzzy-matched")
+	}
+}
+
+// TestAJobIsNeverListedTwice: the rail's rows ARE jobs, and one piece of work
+// under both `rooms` and `work` would make one enter key look like two doors.
+func TestAJobIsNeverListedTwice(t *testing.T) {
+	c := demoCatalog()
+	c.Jobs = append(demoJobs(), Job{
+		ID: "t-wisp", Title: "wisp-parity", Seed: "t-wisp", Attention: rail.AttnQuestion,
+	})
+	n := 0
+	for _, r := range buildRows(nil, c) {
+		if r.result == Result(JumpToRoom{ID: "t-wisp"}) {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("the room the rail already offers rendered %d times", n)
+	}
+}
+
+// TestEnterOnAJobOpensItsRoom: choosing a job is choosing its room, through the
+// same result a room row yields, because the palette must not grow a second
+// door onto a place the rail already reaches.
+func TestEnterOnAJobOpensItsRoom(t *testing.T) {
+	c := demoCatalog()
+	c.Jobs = demoJobs()
+	rec := &recorder{}
+	p := New(rec.options())
+	p.SetCatalog(c)
+	typeText(p, "migrate the schema")
+	p.Key(namedKey(tea.KeyEnter))
+	if len(rec.chosen) != 1 {
+		t.Fatalf("enter chose %d results, want 1", len(rec.chosen))
+	}
+	if got, want := rec.chosen[0], (JumpToRoom{ID: "task:j-ask"}); got != Result(want) {
+		t.Errorf("enter on a job yielded %v, want %v", got, want)
+	}
+	if rec.closes != 1 {
+		t.Errorf("the palette closed %d times", rec.closes)
+	}
+}
+
+// TestAStoreWithFortyJobsStaysHonestAndBounded is the scale bar, and it asks
+// the three things that break first when a catalog stops being a dozen rows:
+// live work is above history, the window renders only what fits, and the
+// clipped list ends with the count of what is hidden (5.20).
+func TestAStoreWithFortyJobsStaysHonestAndBounded(t *testing.T) {
+	const jobs, height = 40, 20
+	p := newTestPalette(t, bigCatalog(jobs))
+
+	lines := rowsOf(p, 100, height)
+	if len(lines) > height {
+		t.Fatalf("the body drew %d lines into %d", len(lines), height)
+	}
+	last := lines[len(lines)-1]
+	if !strings.Contains(last, "more") {
+		t.Fatalf("a clipped list did not say how much is hidden: %q", last)
+	}
+	// Exactly how many, not merely "some": lineOf marks chrome with -1, so the
+	// rows actually drawn are countable and the claim can be checked rather
+	// than eyeballed.
+	shown := 0
+	for _, of := range p.list.lineOf {
+		if of >= 0 {
+			shown++
+		}
+	}
+	hidden := p.Count() - shown
+	if !strings.Contains(last, strconv.Itoa(hidden)+" more") {
+		t.Errorf("the hidden count is %q, want %d rows unshown", last, hidden)
+	}
+
+	// Live before finished, in the rows the window actually drew.
+	full := rowsOf(p, 100, 400)
+	work, history := -1, -1
+	for i, line := range full {
+		switch {
+		case strings.HasPrefix(line, "work") && work < 0:
+			work = i
+		case strings.HasPrefix(line, "history") && history < 0:
+			history = i
+		}
+	}
+	if work < 0 || history < 0 {
+		t.Fatalf("a store with %d jobs drew no work/history split:\n%s", jobs, strings.Join(full, "\n"))
+	}
+	if work > history {
+		t.Errorf("history (%d) came before work (%d)", history, work)
+	}
+
+	// Every live job is under `work` and every finished one under `history`.
+	live, settled := 0, 0
+	for _, r := range buildRows(nil, bigCatalog(jobs)) {
+		switch r.sec {
+		case sectionWork:
+			live++
+		case sectionHistory:
+			if strings.HasPrefix(r.verb, "job ") {
+				settled++
+			}
+		}
+	}
+	if live != jobs/2 || settled != jobs/2 {
+		t.Errorf("split %d live / %d finished, want %d each", live, settled, jobs/2)
+	}
+}
+
+// TestFilteringHundredsOfRowsStaysAllocationLean: the catalog is now as big as
+// the store, and the filter runs over every row of it on every keystroke. It
+// may not touch the heap while doing so — the buffers are built once, at
+// SetCatalog, and reused (see [filter]).
+func TestFilteringHundredsOfRowsStaysAllocationLean(t *testing.T) {
+	rows := buildRows(nil, bigCatalog(200))
+	hits := filter(nil, rows, "job")
+	got := testing.AllocsPerRun(50, func() {
+		hits = filter(hits, rows, "job 1")
+		hits = filter(hits, rows, "job")
+	})
+	if got != 0 {
+		t.Errorf("filtering %d rows allocated %v times per run", len(rows), got)
 	}
 }

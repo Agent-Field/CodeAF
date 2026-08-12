@@ -418,15 +418,33 @@ func TestTheRoundCapStillBoundsEvenACitedLineage(t *testing.T) {
 	if planner.calls != resident.MaxOverrunRounds {
 		t.Fatalf("planner calls = %d, want %d", planner.calls, resident.MaxOverrunRounds)
 	}
-	messages, err := graph.Messages("s1", 0, 100)
+	// The governor leaves its receipt on the work's own record rather than in
+	// the conversation (13.18): how many times a job was allowed to divide is
+	// the machinery's arithmetic, and the delivery that follows is what the
+	// person is owed. Quietly stopping is still the failure being guarded
+	// against — the line has to exist, and it has to be findable where the work
+	// is.
+	recorded, err := graph.NodeMessages(from, 0, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	said := ""
-	for _, message := range messages {
+	for _, message := range recorded {
+		if message.SessionID != "" {
+			t.Fatalf("a governor receipt carries a room: %+v", message)
+		}
 		said += message.Body + "\n"
 	}
 	if !strings.Contains(said, "split as many times as splitting helps") {
 		t.Fatalf("a governor stopped the work quietly:\n%s", said)
+	}
+	spoken, err := graph.Messages("s1", 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range spoken {
+		if strings.Contains(message.Body, "split as many times") {
+			t.Fatalf("the governor receipt reached the conversation: %q", message.Body)
+		}
 	}
 }

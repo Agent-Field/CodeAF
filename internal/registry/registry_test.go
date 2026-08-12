@@ -88,6 +88,8 @@ var validStoreCommandKinds = map[store.CommandKind]bool{
 	store.CommandCharterOnce: true, store.CommandCharterFire: true, store.CommandCharterDecline: true,
 	store.CommandCharterAlways: true, store.CommandCharterNever: true, store.CommandCharterProbation: true,
 	store.CommandServiceStop: true, store.CommandServiceRestart: true, store.CommandServiceAutoRestart: true,
+	store.CommandCraftRun: true, store.CommandCraftRevert: true, store.CommandCraftRetire: true,
+	store.CommandSkillRetire:         true,
 	store.CommandStandingWatchEnable: true, store.CommandStandingWatchDecline: true, store.CommandHandover: true,
 }
 
@@ -377,5 +379,107 @@ func repositoryRoot(t *testing.T) string {
 			t.Fatal("no go.mod above the registry package")
 		}
 		dir = parent
+	}
+}
+
+// TestSummonKeyIsAChordEveryRoomCanBind is the palette's own door, checked at
+// the source every surface reads it from.
+//
+// The chord matters more than most: it is the summon key for the one
+// find-everything surface, so it has to survive a composer-first room — where a
+// bare letter is draft text — from the room and from a task alike. ctrl+space is
+// the NUL byte, which is why nothing squats on it and why no terminal has to be
+// asked to deliver a modifier it cannot spell.
+func TestSummonKeyIsAChordEveryRoomCanBind(t *testing.T) {
+	entry, ok := ByID("key.palette")
+	if !ok {
+		t.Fatal("the palette has no registry row, so no surface can teach its key")
+	}
+	if entry.Key != "ctrl+space" {
+		t.Fatalf("the summon key is %q, want ctrl+space", entry.Key)
+	}
+	for _, surface := range []Surface{SurfaceDefault, SurfaceComposerFirst} {
+		if got := entry.KeyOn(surface); got != "ctrl+space" {
+			t.Errorf("on %s the summon key resolves to %q", surface, got)
+		}
+	}
+	for _, scope := range []Scope{ScopeThread, ScopeNode} {
+		found, ok := ByKeyOn(scope, SurfaceComposerFirst, "ctrl+space")
+		if !ok || found.ID != entry.ID {
+			t.Errorf("scope %d cannot route the summon key: %+v, %v", scope, found, ok)
+		}
+	}
+	// ctrl+k is the synonym the surface still binds and this catalog
+	// deliberately does not register — one action, one row (see [Surface]).
+	if found, ok := ByKey(ScopeThread, "ctrl+k"); ok {
+		t.Errorf("the legacy spelling grew a row of its own: %q", found.ID)
+	}
+}
+
+// TestChipPutsTheVerbFirstAndTheKeyBehindIt is design-law §16 at its source.
+// A key drawn before its verb, both in one tier, is two words a reader can only
+// parse by already knowing which is which.
+func TestChipPutsTheVerbFirstAndTheKeyBehindIt(t *testing.T) {
+	if got := ChipFor("close", "esc").String(); got != "close esc" {
+		t.Errorf("chip reads %q, want \"close esc\"", got)
+	}
+	if got := ChipFor("open", "⏎").String(); got != "open ⏎" {
+		t.Errorf("chip reads %q, want \"open ⏎\"", got)
+	}
+	// A verb with no key is a verb, and a chip with no verb is nothing.
+	if got := ChipFor("cancel", "").String(); got != "cancel" {
+		t.Errorf("a keyless chip reads %q", got)
+	}
+	if !ChipFor("", "esc").Empty() {
+		t.Error("a chip with no verb claims to be drawable")
+	}
+	if ChipFor("cancel", "").Empty() {
+		t.Error("a keyless chip claims to be empty")
+	}
+}
+
+// The ladder every surface was keeping its own copy of: the key this surface
+// can really bind, else the slash alias, else nothing.
+func TestChipOnFollowsOneFallbackLadder(t *testing.T) {
+	cases := []struct {
+		id      string
+		surface Surface
+		want    Chip
+	}{
+		{"key.palette", SurfaceComposerFirst, Chip{Verb: "find anything", Key: "ctrl+space"}},
+		{"key.thread.receipts", SurfaceDefault, Chip{Verb: "toggle receipts", Key: "v"}},
+		{"key.thread.receipts", SurfaceComposerFirst, Chip{Verb: "toggle receipts", Key: "ctrl+r"}},
+		// A bare letter is draft text where the composer holds the keyboard, so
+		// the alias is what the reader can really type.
+		{"slash.help", SurfaceComposerFirst, Chip{Verb: "open help", Key: "/help"}},
+		{"slash.help", SurfaceDefault, Chip{Verb: "open help", Key: "?"}},
+		// A belt-only verb has no door but prose, and says so by carrying no
+		// key rather than by borrowing one.
+		{"belt.revise", SurfaceDefault, Chip{Verb: "revise", Key: ""}},
+	}
+	for _, tc := range cases {
+		entry, ok := ByID(tc.id)
+		if !ok {
+			t.Fatalf("entry %q is gone", tc.id)
+		}
+		if got := ChipOn(entry, tc.surface); got != tc.want {
+			t.Errorf("%s on %s = %+v, want %+v", tc.id, tc.surface, got, tc.want)
+		}
+	}
+}
+
+// No chip may name a key its surface cannot bind. That is the same law
+// TestBareLettersDoNotBindOnAComposerFirstSurface keeps for Entry, asked of the
+// thing the surfaces actually draw.
+func TestNoChipTeachesAKeyItsSurfaceCannotBind(t *testing.T) {
+	for _, entry := range entries {
+		chip := ChipOn(entry, SurfaceComposerFirst)
+		if chip.Verb == "" {
+			t.Errorf("entry %q makes a chip with no verb", entry.ID)
+		}
+		if barePrintable(chip.Key) {
+			t.Errorf("entry %q offers bare %q to a surface whose composer would eat it",
+				entry.ID, chip.Key)
+		}
 	}
 }

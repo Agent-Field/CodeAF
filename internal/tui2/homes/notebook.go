@@ -34,7 +34,7 @@ func (v *View) notebook(state State, rowID string, width, height int) {
 // and — when there is none — the sentence that says what would put something
 // here (5.22 rule 6).
 func (v *View) notebookBrief(state State, width, height int) {
-	if !v.heading(v.glyph(tokens.GQueued), tokens.TextTertiary, "notebook", width, height) {
+	if !v.sectionWord("notebook", width, height) {
 		return
 	}
 	if !v.prose(HomeNotebook.Blurb(), tokens.TextTertiary, width, height) {
@@ -121,7 +121,17 @@ func (v *View) belief(b Belief, state State, width, height int) {
 		return
 	}
 	for _, ref := range b.Evidence {
-		if !v.indented(ref, width, height) {
+		// BY NAME, never by handle (5.14): the rail room draws the same
+		// resolved reference the page's detail does, and a reference the wiring
+		// could not name says so in words rather than falling back to an id.
+		name := firstLine(ref.Name)
+		if name == "" {
+			name = "a past task"
+			if ref.Room == "" {
+				name = "a past note"
+			}
+		}
+		if !v.indented(name, width, height) {
 			return
 		}
 	}

@@ -107,10 +107,13 @@ func (v *View) push(line string, limit int) bool {
 	return len(v.lines) < limit
 }
 
-// text lays one plain line at a token tier.
+// text lays one plain line at the content edge (§20). Nothing in this pane
+// starts in column 0: the two cells in front of the edge are the gutter, and a
+// line with no marker leaves them empty rather than claiming them.
 func (v *View) text(s string, tok tokens.Token, width, limit int) bool {
 	l := &v.line
 	l.reset(width)
+	l.padTo(contentEdge)
 	l.add(v.clean(s), tok)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
@@ -132,9 +135,44 @@ func (v *View) heading(glyph string, tok tokens.Token, title string, width, limi
 	l.reset(width)
 	if glyph != "" {
 		l.add(glyph, tok)
+	}
+	if l.w >= contentEdge {
 		l.add(" ", tokens.TextTertiary)
+	} else {
+		l.padTo(contentEdge)
 	}
 	l.add(v.clean(title), tokens.TextPrimary)
+	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
+}
+
+// sectionWord is a room's own name: one faint lowercase word at [contentEdge],
+// with [blocks.SectionAbove] blank above it and none below.
+//
+// IT USED TO WEAR A GLYPH, and the glyph was [tokens.GQueued] — the QUEUED state
+// mark, on a room. §15's delete test settles it in one move: take the `○` away
+// and nothing is lost, because a notebook has no lifecycle to be queued in and
+// the mark was never saying anything about one. What it was doing was spending
+// the gutter, which §20 reserves for markers that mean something, and lending a
+// page title the shape of a work row.
+//
+// THE WORD IS FAINT, which is the first of [blocks]' three section answers: a
+// band inside one page gets a dim lowercase word, a band the reader can OPEN
+// gets that word promoted to a door, and a boundary between two KINDS of thing
+// gets a rule. This is the first case — the page under it is the subject, and a
+// heading that outshone it would be chrome outranking content (5.13).
+//
+// The air is ABOVE and never below, because a section word belongs to what
+// follows it and padding is how a row says which side it is on.
+func (v *View) sectionWord(word string, width, limit int) bool {
+	for i := 0; i < blocks.SectionAbove; i++ {
+		if !v.blank(limit) {
+			return false
+		}
+	}
+	l := &v.line
+	l.reset(width)
+	l.padTo(contentEdge)
+	l.add(v.clean(word), tokens.TextTertiary)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
 
@@ -146,7 +184,11 @@ func (v *View) prose(body string, tok tokens.Token, width, limit int) bool {
 	if body == "" {
 		return len(v.lines) < limit
 	}
-	v.wrap, _ = blocks.Wrap(v.wrap[:0], body, width)
+	measure := width - contentEdge
+	if measure < 1 {
+		measure = width
+	}
+	v.wrap, _ = blocks.Wrap(v.wrap[:0], body, measure)
 	for _, row := range v.wrap {
 		if !v.text(row, tok, width, limit) {
 			return false
@@ -163,6 +205,7 @@ func (v *View) pair(label, value string, width, limit int) bool {
 	l := &v.line
 	l.reset(width)
 	col := labelColumn(width)
+	l.padTo(contentEdge)
 	l.add(v.clean(label), tokens.TextTertiary)
 	l.padTo(col)
 	l.add(v.clean(value), tokens.TextSecondary)
@@ -174,17 +217,19 @@ func (v *View) pair(label, value string, width, limit int) bool {
 func (v *View) pairPath(label, path string, width, limit int) bool {
 	l := &v.line
 	l.reset(width)
+	l.padTo(contentEdge)
 	l.add(v.clean(label), tokens.TextTertiary)
 	l.padTo(labelColumn(width))
 	l.addPath(v.clean(path), tokens.TextSecondary)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
 
-// labelColumn is where the value column starts. Twelve cells is the widest
-// label this package writes ("auto-restart"), plus one for the gap; under a
-// narrow pane it gives way rather than eating the value.
+// labelColumn is where the value column starts, measured from the pane's own
+// left edge: the content edge plus the widest label this package writes
+// ("auto-restart", twelve cells) plus one for the gap. Under a narrow pane it
+// gives way rather than eating the value.
 func labelColumn(width int) int {
-	const want = 13
+	const want = contentEdge + 13
 	if width < want*2 {
 		if half := width / 2; half > 0 {
 			return half
@@ -202,7 +247,11 @@ func (v *View) row(glyph string, gtok tokens.Token, name, note string, tok token
 	l.reset(width)
 	if glyph != "" {
 		l.add(glyph, gtok)
+	}
+	if l.w >= contentEdge {
 		l.add(" ", tokens.TextTertiary)
+	} else {
+		l.padTo(contentEdge)
 	}
 	note = v.clean(note)
 	noteW := blocks.Width(note)
@@ -229,7 +278,8 @@ func (v *View) row(glyph string, gtok tokens.Token, name, note string, tok token
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
 
-// indented lays a dim continuation line under a list row.
+// indented lays a dim continuation line under a list row, at the child edge E1
+// (§20): one indent step past the content edge its parent hangs from.
 func (v *View) indented(s string, width, limit int) bool {
 	s = v.clean(s)
 	if s == "" {
@@ -237,13 +287,17 @@ func (v *View) indented(s string, width, limit int) bool {
 	}
 	l := &v.line
 	l.reset(width)
-	l.padTo(indentStep)
+	l.padTo(childEdge)
 	l.add(s, tokens.TextTertiary)
 	return v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit)
 }
 
-// indentStep is 5.13's spacing rhythm: two spaces per level.
-const indentStep = 2
+// indentStep is §20's step S: two cells per level of depth, never one and never
+// three. [contentEdge] (page.go) is E0 and [childEdge] is E1.
+//
+// It is [blocks.IndentStep] — the one place the step is a number — so this page
+// and the transcript beside it descend at the same rhythm by construction.
+const indentStep = blocks.IndentStep
 
 // verbs draws the affordance strip of 5.22 rule 1: the verbs of the focused
 // object, dim, each preceded by its accelerator, on one line — `p pause · b
@@ -261,12 +315,13 @@ func (v *View) verbs(list []Verb, width, limit int) bool {
 	}
 	l := &v.line
 	l.reset(width)
+	l.padTo(contentEdge)
 	reason := ""
 	for i := range list {
 		if list[i].Label == "" {
 			continue
 		}
-		if l.w > 0 {
+		if l.w > contentEdge {
 			l.add(sepRun, tokens.TextTertiary)
 		}
 		tok := tokens.TextSecondary
@@ -282,7 +337,7 @@ func (v *View) verbs(list []Verb, width, limit int) bool {
 		}
 		l.add(v.clean(list[i].Label), tok)
 	}
-	if l.w == 0 {
+	if l.w <= contentEdge {
 		return len(v.lines) < limit
 	}
 	if !v.push(l.emit(&v.buf, v.profile, v.focus, width, false, tokens.Ground), limit) {
@@ -296,19 +351,8 @@ func (v *View) verbs(list []Verb, width, limit int) bool {
 
 // stateGlyph resolves a lifecycle to its glyph and colour through the same two
 // axes the rail uses, so a row means the same thing in both places.
+// It is [lifeGlyph], which the full page draws with too — one mapping, so a row
+// cannot mean one thing in the detail pane and another on the page.
 func (v *View) stateGlyph(life Lifecycle, needs bool) (string, tokens.Token) {
-	if needs {
-		return v.glyph(tokens.GNeedsHuman), tokens.Amber
-	}
-	switch life {
-	case LifeWorking:
-		return v.glyph(tokens.GWorking), tokens.ResolveToken(tokens.HueAlive, tokens.StateLive)
-	case LifeSettled:
-		return v.glyph(tokens.GSettled), tokens.ResolveToken(tokens.HueMoney, tokens.StateSettled)
-	case LifeFailed, LifeCancelled:
-		return v.glyph(tokens.GFailed), tokens.ResolveToken(tokens.HueBroken, tokens.StateSettled)
-	case LifePaused:
-		return v.glyph(tokens.GPaused), tokens.TextTertiary
-	}
-	return v.glyph(tokens.GQueued), tokens.TextTertiary
+	return lifeGlyph(v.glyphs, life, needs)
 }

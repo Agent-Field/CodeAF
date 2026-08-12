@@ -30,7 +30,7 @@ func (v *View) services(state State, rowID string, width, height int) {
 }
 
 func (v *View) servicesBrief(state State, width, height int) {
-	if !v.heading(v.glyph(tokens.GQueued), tokens.TextTertiary, "services", width, height) {
+	if !v.sectionWord("services", width, height) {
 		return
 	}
 	if !v.prose(HomeServices.Blurb(), tokens.TextTertiary, width, height) {

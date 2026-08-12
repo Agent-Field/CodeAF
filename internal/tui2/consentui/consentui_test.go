@@ -369,10 +369,10 @@ func TestFullscreenIsForcedBelowTheStatedThreshold(t *testing.T) {
 func TestBelowTheThresholdTheFullscreenKeyIsNotAdvertised(t *testing.T) {
 	h := newHarness(t)
 	h.model.Push(consentQuestion())
-	if !strings.Contains(h.model.Render(100, 30), "f full") {
+	if !strings.Contains(h.model.Render(100, 30), "full f") {
 		t.Fatalf("a roomy frame did not offer the fullscreen key")
 	}
-	if strings.Contains(h.model.Render(60, 30), "f full") {
+	if strings.Contains(h.model.Render(60, 30), "full f") {
 		t.Fatalf("a forced-fullscreen frame advertised a key that cannot do anything")
 	}
 }
@@ -550,7 +550,7 @@ func TestTTogglesTheDetailViewAndIsInertWithoutOne(t *testing.T) {
 	if h2.model.detail {
 		t.Fatalf("t opened a detail view on a question that has none")
 	}
-	if strings.Contains(h2.model.Render(100, 30), "t detail") {
+	if strings.Contains(h2.model.Render(100, 30), "detail t") {
 		t.Fatalf("the strip offered a detail key on a question with no detail")
 	}
 }
@@ -566,7 +566,7 @@ func TestTheFrameNamesTheBlastRadiusAndTheAnswers(t *testing.T) {
 		"cancel 4 running workers, ~$2.10 in flight",
 		consent.Approve,
 		consent.Hold,
-		"esc later",
+		"later esc",
 	} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("frame is missing %q:\n%s", want, frame)

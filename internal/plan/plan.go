@@ -47,10 +47,29 @@ import (
 // rests on: the executors are agents, so none of the human-shaped structure a
 // model reaches for by default — owners, phases, effort, sign-off — describes
 // anything real here.
-const agentPremise = `The work is done by AI agents. They are instant, free, and unlimited in number.
-They start together, never talk to each other, and never see each other's work.
-So there are no owners, roles, hand-offs, schedules, or budgets, and no
-coordination, review, or status work. That is human overhead, not structure.`
+//
+// Its second paragraph is the correction W6 was written for. The premise used
+// to say the workers were "instant, free, and unlimited in number", which is
+// true of exactly one of the three axes and false on the other two: an agent is
+// not instant, and it is certainly not free, because every branch re-pays
+// whatever context it must be given before it can start. A planner told the
+// workers are free has no reason to prefer any plan over a larger one, and the
+// measured bills say the prompt side is where the money goes. So the denial is
+// replaced by the honest trade — width is bought with context and paid back in
+// waiting — and it is stated here, once, because every pass that can add work
+// reads this paragraph.
+const agentPremise = `The work is done by AI agents. They can be started in any number and they start
+together; they never talk to each other and never see each other's work. So
+there are no owners, roles, hand-offs, schedules, or budgets, and no
+coordination, review, or status work. That is human overhead, not structure.
+
+What they cost is not time. It is the context each one must be given, and a
+piece of work split in two costs whatever the second piece must be told that the
+first was already told. A split that shares almost everything is nearly free; a
+split that has to re-explain the whole subject twice is not. What the person
+waits for is the longest chain, never the total — so width is worth buying, and
+worth buying only where the pieces genuinely do not need the same thing said
+twice.`
 
 // workerPremise is what the thing on the other side of a prompt actually is.
 //
@@ -161,9 +180,11 @@ func (u *Usage) Add(usage *ai.Usage) {
 	}
 	u.PromptTokens += usage.PromptTokens
 	u.CompletionTokens += usage.CompletionTokens
-	if details := usage.PromptTokensDetails; details != nil {
-		u.CachedTokens += details.CachedTokens
-	}
+	// Through the accessor rather than the nesting: cache reads come back as
+	// prompt_tokens_details.cached_tokens from OpenAI-shaped endpoints and as
+	// cache_read_input_tokens from Anthropic-family ones, and reading only the
+	// first recorded a flat zero for every plan call made against the second.
+	u.CachedTokens += usage.CacheReadTokens()
 	if usage.Cost != nil {
 		u.Cost += *usage.Cost
 	}
@@ -212,6 +233,20 @@ type Options struct {
 	// depth is the only cost of decomposition that is genuinely serial — a
 	// level costs four call-rounds however many nodes expand within it.
 	MaxDepth int
+
+	// BuildDepth is how many of those levels the *build* runs for itself, for
+	// a caller that intends to carry the rest later.
+	//
+	// Zero means MaxDepth, which is every caller that has ever existed and is
+	// the whole of the rollback: a build asked nothing new answers exactly as
+	// it did. A scheduler that expands at claim time sets it low and keeps
+	// MaxDepth where it was — the difference between the two is not a smaller
+	// graph, it is the same depth decided later, against dependencies that have
+	// landed instead of against their titles. Every level the build skips is
+	// one it would have decided at t=0 with the least information it will ever
+	// have, and one whose four serial call-rounds it would have made the person
+	// wait through before the first leaf started.
+	BuildDepth int
 
 	// NodeBudget is the hard ceiling the model cannot argue with. Every other
 	// stop condition is pressure applied through a prompt; this one is
@@ -268,6 +303,16 @@ type Options struct {
 	// we know is the moment worth telling someone. The node is passed by value:
 	// the graph is still being appended to, and a pointer into it can go stale.
 	OnReady func(node Node, elapsed time.Duration)
+}
+
+// buildLevels is how many expansion levels this build runs. It never exceeds
+// MaxDepth, because MaxDepth is the ceiling on the shape and BuildDepth is only
+// a statement about who decides it and when.
+func (o Options) buildLevels() int {
+	if o.BuildDepth > 0 && o.BuildDepth < o.MaxDepth {
+		return o.BuildDepth
+	}
+	return o.MaxDepth
 }
 
 // Build produces the graph. Four call-rounds, whatever the size of the result.
@@ -481,7 +526,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// Recursion runs level by level. Each level decomposes everything worth
 	// decomposing at once, so the loop turns as many times as the graph is
 	// deep, not as many times as it is wide.
-	for level := 0; level < options.MaxDepth; level++ {
+	for level := 0; level < options.buildLevels(); level++ {
 		spliced, expandUsage, expandErr := ExpandLevel(ctx, client, graph, options)
 		graph.Usage.merge(expandUsage)
 		if expandErr != nil {

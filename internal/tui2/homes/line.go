@@ -32,6 +32,12 @@ import (
 type span struct {
 	text string
 	tok  tokens.Token
+	// ruled marks a span that wears an underline, and rule is the underline's
+	// OWN colour (SGR 58). Two fields rather than one sentinel token because the
+	// zero value of a span has to be an unmarked one: every other line in this
+	// package builds spans with a composite literal that names neither.
+	ruled bool
+	rule  tokens.Token
 }
 
 type lineBuf struct {
@@ -76,6 +82,22 @@ func (l *lineBuf) add(text string, tok tokens.Token) {
 	}
 	l.spans = append(l.spans, span{text: text, tok: tok})
 	l.w += w
+}
+
+// addRuled appends text wearing an underline in its own colour — §12's quietest
+// "this one, of several" mark: a rule UNDER the word rather than a ground behind
+// it, so the word keeps its tier and the page keeps its three.
+//
+// The rule degrades in one step and never in two: a profile with no [SGR 58]
+// form draws a plain underline in the text's colour, and [tokens.NoColor] draws
+// no attribute at all, because that profile's promise is no escapes.
+func (l *lineBuf) addRuled(text string, tok, rule tokens.Token) {
+	before := len(l.spans)
+	l.add(text, tok)
+	for i := before; i < len(l.spans); i++ {
+		l.spans[i].ruled = true
+		l.spans[i].rule = rule
+	}
 }
 
 // addPath appends a path with the MIDDLE ellipsis a path deserves (5.21):
@@ -164,11 +186,17 @@ func (l *lineBuf) padTo(target int) {
 func (l *lineBuf) emit(buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width int, banded bool, band tokens.Token) string {
 	colored := profile != tokens.NoColor
 	banded = banded && colored && focus == tokens.FocusNormal
+	// A REVERSED band paints no foregrounds (12.11.2, closed in palette and
+	// left standing here): SGR 7 swaps the two colours in use, so a tier
+	// colour written inside it lands on the row's BACKGROUND — one inverted
+	// block per span, striped by the uncoloured padding runs between them.
+	// Reverse video is one run in the terminal's own two colours.
+	reversed := banded && profile.SelectionStyle() == tokens.SelectionReverse
 	buf.Reset()
 	buf.Grow(width * 2)
 	wrote := false
 	if banded {
-		if profile.SelectionStyle() == tokens.SelectionReverse {
+		if reversed {
 			buf.WriteString(tokens.Reverse(profile))
 		} else {
 			buf.WriteString(band.Bg(profile, focus))
@@ -176,13 +204,27 @@ func (l *lineBuf) emit(buf *strings.Builder, profile tokens.Profile, focus token
 		wrote = true
 	}
 	for i := range l.spans {
-		if colored {
-			if seq := l.spans[i].tok.Fg(profile, focus); seq != "" {
+		sp := &l.spans[i]
+		ruled := colored && !reversed && sp.ruled
+		if colored && !reversed {
+			if seq := sp.tok.Fg(profile, focus); seq != "" {
 				buf.WriteString(seq)
 				wrote = true
 			}
 		}
-		buf.WriteString(l.spans[i].text)
+		if ruled {
+			buf.WriteString(tokens.Underline(profile))
+			buf.WriteString(sp.rule.UnderlineColor(profile, focus))
+			wrote = true
+		}
+		buf.WriteString(sp.text)
+		if ruled {
+			// Closed on the span rather than at the end of the line: a rule that
+			// leaked would underline the separator after it, and the reader would
+			// read the separator as part of the word.
+			buf.WriteString(tokens.UnderlineColorOff(profile))
+			buf.WriteString(tokens.UnderlineOff(profile))
+		}
 	}
 	if banded && l.w < width {
 		buf.WriteString(spaces(width - l.w))

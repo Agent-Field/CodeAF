@@ -17,6 +17,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -848,6 +849,9 @@ type scriptedBrain struct {
 	compileDraftsCharter bool
 	// compilerAsks makes the compiler stop on a question instead of compiling.
 	compilerAsks string
+	// compileSubharness makes the compiler read the ask as one specialist's
+	// kind of job, which is what a coding-shaped ask gets from the real one.
+	compileSubharness string
 	// gatePasses lets a deliverable through on the first look, for the runs
 	// whose subject is not the gate.
 	gatePasses bool
@@ -965,7 +969,8 @@ func (s *scriptedBrain) reply(body string) string {
 		// earns a written working method and still faces the gate.
 		return s.say(`{"goal":"Write the release note for the parser work, including the migration steps.",` +
 			`"title":"Release note and migration",` +
-			`"scale":"task","builds_on":[],"assumptions":[],"question":"","trial_of":0}`)
+			`"scale":"task","builds_on":[],"assumptions":[],"question":"","trial_of":0,` +
+			`"subharness":` + jsonString(s.compileSubharness) + `}`)
 
 	case strings.Contains(body, "You write the working method for one agent"):
 		s.tally("contract")
@@ -1060,6 +1065,12 @@ func (s *scriptedBrain) leaf(body string) string {
 	}
 }
 
+// jsonString quotes one value for a hand-written body above.
+func jsonString(value string) string {
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
+}
+
 func (s *scriptedBrain) say(content string) string {
 	encoded, _ := json.Marshal(content)
 	return fmt.Sprintf(`{"model":"scripted","choices":[{"index":0,"finish_reason":"stop",`+
@@ -1093,4 +1104,150 @@ func keptHome(stderr string) string {
 		}
 	}
 	return ""
+}
+
+// The narration may not contradict the artifacts.
+//
+// Measured: a run returned rc=0 with five correct deliverable files on disk and
+// the closing text "The work was still mid-flight when time ran out … Nothing
+// here is the answer." Two more shapes did the same thing — a wall and a
+// reviewer's verdict — because every one of those sentences was a template
+// written without ever reading the record it was describing. A caller believed
+// it; worse, a downstream judge reading the outcome text would learn the run
+// produced nothing.
+//
+// The rule the fix stands on: a run's own account of itself is not evidence
+// about what it produced. Where the record and the account disagree, both are
+// said, and the record is named — never a blanket nothing-here over files that
+// exist. The last case is the guard against over-correcting: when nothing
+// really was produced, the blunt sentence is the honest one.
+func TestTheClosingNarrationCannotContradictTheArtifacts(t *testing.T) {
+	root := t.TempDir()
+	graph, err := store.Open(filepath.Join(root, "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	delivered := make([]string, 0, 2)
+	for _, name := range []string{"brief-one.md", "brief-two.md"} {
+		path := filepath.Join(root, name)
+		if err := os.WriteFile(path, []byte("the delivered brief\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		delivered = append(delivered, path)
+	}
+	files := "\n\nFiles:\n" + strings.Join(delivered, "\n")
+	receipt := "\n\n[" + resident.OverrunContinuationMessage(2) + "]"
+
+	for _, shape := range []struct {
+		name string
+		// leaf is what the work said as it landed — the only durable record of
+		// what reached disk. failure, when set, is the verdict written over it
+		// on the node the caller reads.
+		leaf    string
+		summary string
+		failure string
+		// wrote says the files exist on disk for this shape. The last shape
+		// runs the same path with an empty record.
+		wrote bool
+	}{
+		{name: "ended inside a split", summary: "wrote what it had" + files + receipt, wrote: true},
+		{name: "the reviewer called it a failure",
+			leaf:    "wrote what it had" + files,
+			failure: "the review found nothing usable here; none of this is the answer.", wrote: true},
+		{name: "nothing was produced", summary: "it never got started" + receipt},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			session := "grounded-" + strings.ReplaceAll(shape.name, " ", "-")
+			command, err := graph.RequestCommand(store.Command{
+				SessionID: session, Kind: store.CommandSplice, Instruction: "write the briefs",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := graph.ResolveCommand(command.Seq, store.CommandApplied, "spliced 1 node"); err != nil {
+				t.Fatal(err)
+			}
+			node := "task-" + session
+			if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+				{ID: node, Brief: "write the briefs", Stage: 0},
+			}}, store.Provenance{Origin: store.OriginUser, SessionID: session,
+				Intent: "write the briefs"}); err != nil {
+				t.Fatal(err)
+			}
+			if shape.leaf != "" {
+				// The work that actually wrote the files, landed under the node
+				// the caller reads. This is the shape the defect had: the record
+				// is one hop away from the account of it.
+				leafID := node + "-1"
+				if err := graph.Splice(node, store.Subtree{Nodes: []store.NodeSpec{
+					{ID: leafID, Brief: "write the briefs", Stage: 0},
+				}}, store.Provenance{Origin: store.OriginUser, SessionID: session,
+					Intent: "write the briefs"}); err != nil {
+					t.Fatal(err)
+				}
+				leafClaim, claimed, err := graph.Claim(leafID, "test")
+				if err != nil || !claimed {
+					t.Fatalf("claim leaf: %v (claimed=%v)", err, claimed)
+				}
+				if err := graph.Start(leafClaim); err != nil {
+					t.Fatal(err)
+				}
+				if err := graph.Complete(leafClaim, shape.leaf); err != nil {
+					t.Fatal(err)
+				}
+			}
+			claim, claimed, err := graph.Claim(node, "test")
+			if err != nil || !claimed {
+				t.Fatalf("claim: %v (claimed=%v)", err, claimed)
+			}
+			if err := graph.Start(claim); err != nil {
+				t.Fatal(err)
+			}
+			if shape.failure != "" {
+				// The reviewer's verdict, recorded the way a judged failure is:
+				// the account the caller reads says nothing survived, while the
+				// leaf under it says what it wrote and the files are there.
+				if err := graph.Fail(claim, shape.failure); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := graph.Complete(claim, shape.summary); err != nil {
+				t.Fatal(err)
+			}
+
+			watcher := &settlementWatch{
+				graph: graph, session: session, commandSeq: command.Seq,
+				refused: make(chan planEstimate, 1), started: time.Now(),
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			outcome, err := watcher.wait(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertErrandIsHonest(t, outcome, errandStatus(outcome))
+
+			if !shape.wrote {
+				if len(outcome.Artifacts) != 0 {
+					t.Fatalf("a run that wrote nothing reported files: %+v", outcome)
+				}
+				if !strings.Contains(outcome.Deliverable, "Nothing here is the answer") {
+					t.Fatalf("an empty run lost its plain sentence: %q", outcome.Deliverable)
+				}
+				return
+			}
+			if len(outcome.Artifacts) != len(delivered) {
+				t.Fatalf("the record lost files: %+v", outcome.Artifacts)
+			}
+			for _, path := range delivered {
+				if !strings.Contains(outcome.Deliverable, path) {
+					t.Fatalf("the closing line never named %s:\n%s", path, outcome.Deliverable)
+				}
+			}
+			if strings.Contains(outcome.Deliverable, "Nothing here is the answer") {
+				t.Fatalf("the closing line denied files that exist:\n%s", outcome.Deliverable)
+			}
+		})
+	}
 }

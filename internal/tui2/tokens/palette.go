@@ -37,6 +37,63 @@ const (
 	// is 1.09 over the ground and the band is 1.14 over the sheet, and the
 	// three rungs land on three different 256 entries in the right order.
 	SheetTowardBand = 0.45
+
+	// HugBarTowardBand and HugInputTowardBand are the composer hug's two
+	// grounds, on the same ground→band axis the [Sheet] is derived along and
+	// deliberately BELOW it.
+	//
+	// The hug is the two permanent rows at the bottom of a room — the input row
+	// and the bar row under it — and it is not a dialog. A dialog is a thing
+	// that arrived and will leave, so it may announce itself; the hug has been
+	// there since the window opened and will be there when it closes, and a
+	// permanent plane painted at the dialog's rung reads as a slab welded across
+	// the bottom of the screen. Two rungs under the sheet is what "the floor
+	// changes here" looks like when the change is allowed to be quiet.
+	//
+	// WHY TWO AND WHY THESE TWO. The input row sits one shade LIGHTER than the
+	// bar row, which is the whole depth cue: the row you type into is nearer,
+	// the row that names where you are is further back, and neither needs a
+	// hairline to say so (16's SURFACE SEAMS ARE GROUNDS, and its ban on a third
+	// ruled line). The numbers are bounded on three sides at once — the pair has
+	// to stay under the sheet (0.45), has to clear [HugSeparationMin] from each
+	// other, and has to survive the xterm greyscale ramp, which holds exactly one
+	// step between the ground's entry (233) and the band's (235). 0.10 resolves
+	// to 233 and 0.40 to 234, so the two-tone is real at 256 colours as well as
+	// at truecolor; a bar rung above ~0.12 collapses onto the input rung's entry
+	// and the depth disappears on the majority profile.
+	HugBarTowardBand   = 0.10
+	HugInputTowardBand = 0.40
+
+	// CardWorkingTowardBand and CardDeliveredTowardBand are the two card
+	// grounds, on the same ground→band axis every other rung is derived along.
+	//
+	// §4 gives the delivery card "a distinct ground + `▎` accent left edge" and
+	// says nothing else may wear that treatment. Until now the ground half of it
+	// did not exist: [blocks.CardBlock] asks for it through an optional
+	// interface, nothing implemented the interface, and the card was carried by
+	// its edge alone. These are the plane it stands on.
+	//
+	// WHY TWO. A task in the conversation has two states a reader must tell
+	// apart at a glance — the one just made, and the one that came back — and
+	// §16 says the way to separate them is a ground shift rather than a rule.
+	// So the commitment card gets its own quieter rung and the delivery card
+	// gets the louder one, and the STEP between them is what says "this
+	// finished". The treatment stays unique because only the delivery wears the
+	// edge as well: at NoColor, where neither ground is drawn at all, the `▎` is
+	// still the only thing on screen that says "a finished answer".
+	//
+	// The numbers are bounded on three sides, exactly as the hug's are. The
+	// delivered rung stays UNDER [BandSeparationMin] (1.1424 against a 1.15
+	// floor), because a card raised as far as a selection is the slab §16
+	// refuses and there would be nowhere left for a band drawn on top of it. The
+	// pair clears [SheetSeparationMin] from each other (1.0914), so the step is
+	// a step and not a rounding. And the two land on different xterm greyscale
+	// entries, which is the tight one: the ramp holds a single step between the
+	// ground's entry (233) and the band's (235), so a working rung authored much
+	// higher collapses onto the delivered rung's entry and the difference exists
+	// only on the profile nobody screenshots.
+	CardWorkingTowardBand   = 0.25
+	CardDeliveredTowardBand = 0.65
 )
 
 // Base values. These are the only hand-authored colors in the package.
@@ -47,6 +104,14 @@ var (
 	// here beside its neighbours so the whole ladder can be read at once, and
 	// palette_test.go re-derives it, so the literal and the law cannot drift.
 	sheetBase = Mix(groundBase, bandBase, SheetTowardBand) // #1B1B25
+	// The hug's two rungs, DERIVED on the same axis and re-derived by
+	// palette_test.go for the same reason: see [HugBarTowardBand].
+	hugBarBase   = Mix(groundBase, bandBase, HugBarTowardBand)   // #14141D
+	hugInputBase = Mix(groundBase, bandBase, HugInputTowardBand) // #1A1A24
+	// The card rungs are derived the same way and pinned by the same test: see
+	// [CardWorkingTowardBand].
+	cardWorkingBase   = Mix(groundBase, bandBase, CardWorkingTowardBand)   // #171720
+	cardDeliveredBase = Mix(groundBase, bandBase, CardDeliveredTowardBand) // #1F1F2A
 
 	// Three-tier grey ramp (5.13): primary speech and titles, secondary status
 	// lines and receipts, tertiary telemetry.
@@ -141,6 +206,37 @@ const (
 	BandIdentity6
 	BandIdentity7
 
+	// HugGroundBar and HugGroundInput are the composer hug's two grounds: the
+	// row that names where you are, and the row you type into, one shade
+	// lighter (see [HugBarTowardBand]).
+	//
+	// They are two tokens rather than one because the hug's depth IS the step
+	// between them — a single ground would be the slab this pair replaced. They
+	// are below the [Sheet] rather than at it because permanent chrome may not
+	// announce itself as loudly as a dialog that came and will go, and above the
+	// [Ground] because a plane the transcript slides under has to be a different
+	// plane at all. [Profile.SheetGround] gates them exactly as it gates the
+	// sheet: at 16 colours and none, the hug paints no ground and the blank row
+	// the region already leaves is the whole seam.
+	HugGroundBar
+	HugGroundInput
+
+	// CardGroundWorking and CardGroundDelivered are the two grounds a task's
+	// card in the conversation stands on: the commitment while the work runs,
+	// and the delivery once it has come back (§4, §18.5).
+	//
+	// They are two tokens for the reason the hug's are: the STEP between them is
+	// the information. A single card ground would say "this is a card" and leave
+	// "is it finished" to a word. See [CardWorkingTowardBand] for the numbers and
+	// for why the delivered rung stops short of the band's floor.
+	//
+	// [Profile.SheetGround] gates both exactly as it gates the sheet and the hug:
+	// at 16 colours and none there is no honest raised background, so a card
+	// paints no ground and is carried by its edge, its glyph and its spacing —
+	// which is the half of the treatment §4 actually specifies.
+	CardGroundWorking
+	CardGroundDelivered
+
 	tokenCount
 )
 
@@ -215,6 +311,26 @@ const (
 // 12.11.2's ruling that a state colour carries applied one plane up.
 const SheetSeparationMin = 1.08
 
+// HugSeparationMin is the floor the composer hug's two rungs sign, and it is
+// lower than [SheetSeparationMin] for a reason about EDGES rather than about
+// standards being relaxed.
+//
+// A sheet is judged across a gap: it floats over a scrolling backdrop, the eye
+// compares two fields that are nowhere adjacent, and small differences lose to
+// the memory of the colour that was there a moment ago. The hug's two rungs
+// share a horizontal edge that runs the full width of the window and never
+// moves. Two large fields meeting along a straight line is the single easiest
+// luminance comparison the visual system makes — the edge itself does the work
+// — so the step that reads there is smaller than the step a floating plane
+// needs. Setting the pair at the sheet's floor would have forced at least one
+// rung ABOVE the sheet, which is the slab this whole treatment replaced.
+//
+// The rungs keep a second carrier regardless, exactly as the band on a sheet
+// does: the input row wears the state-coloured edge glyph at column 0, so a
+// reader on a profile that paints no ground at all still knows which row is the
+// one they type into.
+const HugSeparationMin = 1.05
+
 // Focus is whether the pane owning a row currently has the user's attention.
 // Dimming is a property of the pane (8.3: "dim/tint global chrome while scoped
 // so you always know which room you're in"), never of the datum.
@@ -241,6 +357,9 @@ type entry struct {
 	idx256 [focusCount]uint8
 	sgrFg  [profileCount][focusCount]string
 	sgrBg  [profileCount][focusCount]string
+	// sgrUl is the underline colour (SGR 58). It is empty at the two profiles
+	// with no honest form for it — see [Token.UnderlineColor].
+	sgrUl [profileCount][focusCount]string
 }
 
 // table is built exactly once, by one function, from the literals above. No
@@ -303,6 +422,17 @@ func buildTable() [tokenCount]entry {
 	// [Profile.SheetGround] refuses the profile before a renderer can ask for
 	// it, for the reason [Profile.SelectionStyle] refuses the band there.
 	set(Sheet, "sheet", ClassSurface, sheetBase, dimmed(sheetBase), 0, 0)
+	// The hug's rungs take the sheet's 16-colour posture for the sheet's own
+	// reason: [Profile.SheetGround] refuses the profile before a renderer can
+	// ask, so the value below is never drawn.
+	set(HugGroundBar, "hug.bar", ClassSurface, hugBarBase, dimmed(hugBarBase), 0, 0)
+	set(HugGroundInput, "hug.input", ClassSurface, hugInputBase, dimmed(hugInputBase), 0, 0)
+	// The card rungs take the same 16-colour posture and for the same reason:
+	// [Profile.SheetGround] refuses the profile before a card can ask.
+	set(CardGroundWorking, "card.working", ClassSurface,
+		cardWorkingBase, dimmed(cardWorkingBase), 0, 0)
+	set(CardGroundDelivered, "card.delivered", ClassSurface,
+		cardDeliveredBase, dimmed(cardDeliveredBase), 0, 0)
 	for i := range IdentityCount {
 		tint := Mix(bandBase, identityBase[i], BandIdentityTint)
 		set(BandIdentity0+Token(i), "band.identity."+string(rune('0'+i)), ClassSurface,
@@ -352,6 +482,7 @@ func buildTable() [tokenCount]entry {
 			for p := Profile(0); p < profileCount; p++ {
 				e.sgrFg[p][f] = sgrString(p, e, f, layerFg)
 				e.sgrBg[p][f] = sgrString(p, e, f, layerBg)
+				e.sgrUl[p][f] = sgrString(p, e, f, layerUl)
 			}
 		}
 	}

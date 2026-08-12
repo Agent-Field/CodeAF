@@ -110,13 +110,21 @@ func TestRegistryGroupsEveryCategoryAndEveryModelSlot(t *testing.T) {
 			t.Fatalf("category %q is empty", group.Title)
 		}
 	}
-	for _, slot := range ModelSettingSlots {
-		row, ok := rows.Row(ModelSettingKey(slot))
-		if !ok || row.Kind != SettingModel || row.Slot != slot {
-			t.Fatalf("model slot %q is missing from the registry", slot)
+	for _, slot := range ModelSlots() {
+		row, ok := rows.Row(ModelSettingKey(slot.Slot))
+		if !ok || row.Kind != SettingModel || row.Slot != slot.Slot {
+			t.Fatalf("model slot %q is missing from the registry", slot.Slot)
 		}
-		if row.Value() != slot+"/model" {
-			t.Fatalf("model row %q reads %q", slot, row.Value())
+		if !slot.Held {
+			// A role nothing holds a client for reads as what it follows —
+			// never as the engine's answer for a word it does not know.
+			if row.Value() != "follows "+slot.Follows {
+				t.Fatalf("unheld role %q reads %q", slot.Slot, row.Value())
+			}
+			continue
+		}
+		if row.Value() != slot.Slot+"/model" {
+			t.Fatalf("model row %q reads %q", slot.Slot, row.Value())
 		}
 	}
 	seen := map[string]bool{}
@@ -147,8 +155,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 		KeyPracticeIdle:   "20m",
 		KeyBriefAfter:     "4h",
 		KeyTenureAfter:    "3",
-		KeyDemandShare:    "70%",
-		KeyProposeSkills:  "on",
 		KeyDocumentEngine: "auto",
 		KeyVisionModel:    "automatic",
 	}
@@ -168,8 +174,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 		KeyPracticeIdle:   "45m",
 		KeyBriefAfter:     "90m",
 		KeyTenureAfter:    "5",
-		KeyDemandShare:    "40%",
-		KeyProposeSkills:  "off",
 		KeyDocumentEngine: "local",
 		KeyVisionModel:    "seer/vision",
 	}
@@ -186,8 +190,6 @@ func TestSettingsResolveEnvironmentThenFileThenDefault(t *testing.T) {
 		KeyPracticeIdle:   "45m",
 		KeyBriefAfter:     "1h30m",
 		KeyTenureAfter:    "5",
-		KeyDemandShare:    "40%",
-		KeyProposeSkills:  "off",
 		KeyDocumentEngine: "local",
 		KeyVisionModel:    "seer/vision",
 	}
@@ -238,8 +240,8 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 	rows := registry(t, dir)
 	for key, raw := range map[string]string{
 		KeyPracticeBudget: "6", KeyPracticeIdle: "5m", KeyBriefAfter: "30m",
-		KeyDemandShare: "25", KeyProposeSkills: "off", KeyDocumentEngine: "free",
-		KeyVisionModel: "seer/vision", KeyAttribution: "off",
+		KeyDocumentEngine: "free",
+		KeyVisionModel:    "seer/vision", KeyAttribution: "off",
 	} {
 		row, _ := rows.Row(key)
 		if err := row.Apply(raw); err != nil {
@@ -264,9 +266,6 @@ func TestLoadReadsPersistedSettings(t *testing.T) {
 		loaded.VisionModel != "seer/vision" {
 		t.Fatalf("persisted settings did not reach Load: %+v", loaded)
 	}
-	if loaded.PracticeDemandPct != 25 || loaded.ProposeSkills {
-		t.Fatalf("learning dial = %d%% propose=%v", loaded.PracticeDemandPct, loaded.ProposeSkills)
-	}
 	if loaded.Attribution {
 		t.Fatal("attribution switched off in the sheet did not reach Load")
 	}
@@ -288,10 +287,8 @@ func TestSettingEditorsRefuseNonsenseInPlainLanguage(t *testing.T) {
 	for key, raw := range map[string]string{
 		KeyDailyBudget:    "twenty dollars",
 		KeyBriefAfter:     "soonish",
-		KeyDemandShare:    "140",
 		KeyTenureAfter:    "many",
 		KeyDocumentEngine: "tesseract",
-		KeyProposeSkills:  "maybe",
 	} {
 		row, ok := rows.Row(key)
 		if !ok {
@@ -343,7 +340,7 @@ func TestAttributionDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	if !ok {
 		t.Fatal("attribution is not registered")
 	}
-	if row.Category != CategorySharing || row.Kind != SettingBool || row.Label != "attribution" {
+	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "attribution" {
 		t.Fatalf("attribution row = %+v", row)
 	}
 	if row.Value() != "on" || !AttributionAt(dir) {
@@ -392,7 +389,7 @@ func TestLinearModeDefaultsOffPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	if !ok {
 		t.Fatal("linear mode is not registered")
 	}
-	if row.Category != CategoryAppearance || row.Kind != SettingBool || row.Label != "linear mode" {
+	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "linear mode" {
 		t.Fatalf("linear mode row = %+v", row)
 	}
 	if row.Value() != "off" || LinearModeAt(dir) {
@@ -464,7 +461,7 @@ func TestNerdFontDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 	if !ok {
 		t.Fatal("the nerd font row is not registered")
 	}
-	if row.Category != CategoryAppearance || row.Kind != SettingBool || row.Label != "nerd font" {
+	if row.Category != CategoryInterface || row.Kind != SettingBool || row.Label != "nerd font" {
 		t.Fatalf("nerd font row = %+v", row)
 	}
 	if row.Value() != "on" || !NerdFontAt(dir) {

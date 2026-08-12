@@ -353,9 +353,17 @@ func TestQuitClearsTheTaskbar(t *testing.T) {
 	}
 }
 
-// The prompt mark: one per committed user message, no state, no pairing.
+// The prompt mark: one per committed user message, no state, no pairing — and
+// only when a surface asks for it, which the default alt-screen shell does not
+// (DefaultTerminalOptions, and the blue gutter triangles iTerm2 drew for marks
+// anchored to arbitrary alt-screen rows).
 func TestPromptMarksAreOnePerCommit(t *testing.T) {
-	s := termShell(t, DefaultTerminalOptions(), MuxNone, supportYes)
+	if DefaultTerminalOptions().PromptMarks {
+		t.Fatal("prompt marks are on by default; an alt screen has no row to anchor one to")
+	}
+	opts := DefaultTerminalOptions()
+	opts.PromptMarks = true
+	s := termShell(t, opts, MuxNone, supportYes)
 	for i := range 3 {
 		got := raw(t, s.MarkPrompt())
 		if got != "\x1b]133;A\x07" {

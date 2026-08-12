@@ -41,6 +41,33 @@ type TextBlock struct {
 	// clamped rather than refused — a block on a 4-column terminal renders
 	// something honest instead of nothing.
 	Indent int
+	// BodyIndent inches the BODY right by that many cells and leaves the
+	// header where it is, so the header's glyph keeps hanging in the gutter
+	// while the words under it line up with the words beside the glyph.
+	//
+	// It is the other half of [TextBlock.Indent], and the two are different
+	// questions. Indent is the block's DEPTH — everything moves, and a preview
+	// and its journaled twin share columns. BodyIndent is the block's internal
+	// GRAMMAR: 5.13's two-space rhythm says a room's words begin at
+	// [BodyIndent] cells and column 0 is the gutter the markers hang in, which
+	// is the shape every message body in the transcript already has.
+	//
+	// A block that lacked it had one lever for two jobs, and a surface that
+	// wanted its body moved reached for Indent and moved the glyph with it:
+	// either a card whose body sat flush at column 0 beside message bodies at
+	// 2, or a glyph shoved out of the gutter that stopped reading as a marker.
+	// Either way the room claimed two left edges, which is the habit 5.13 was
+	// written against.
+	//
+	// It comes out of the BODY's wrap width only, so the header still has the
+	// whole block to degrade into and an indented body wraps in the room it has
+	// left. It composes with Indent — a block at depth 2 with a body indent of
+	// 2 hangs its glyph at column 2 and starts its words at column 4 — and it
+	// clamps the same way, to one content cell rather than to none.
+	//
+	// Zero is the old behaviour byte for byte: no pad is measured, built or
+	// concatenated, and every row is the exact string the builder made.
+	BodyIndent int
 
 	id      string
 	body    string
@@ -136,7 +163,7 @@ func (b *TextBlock) SettledRows(width int) int {
 	if b.HeaderLive {
 		return 0
 	}
-	b.reflow(b.inner(width))
+	b.reflow(b.bodyInner(width))
 	return b.headRows() + len(b.stable)
 }
 
@@ -153,9 +180,13 @@ func (b *TextBlock) AppendRowsFrom(dst []string, width, start int) []string {
 		width = 1
 	}
 	inner := b.inner(width)
+	body := b.bodyInner(width)
 	// repeat slices a preallocated run, so the indent itself never allocates.
-	pad := repeat(' ', width-inner)
-	b.reflow(inner)
+	// bodyPad carries both indents; at zero it is the same empty string pad is,
+	// and shift hands the row straight back.
+	pad := repeat(spaceMark, width-inner)
+	bodyPad := repeat(spaceMark, width-body)
+	b.reflow(body)
 	st := styler(b.Styler)
 	// No closure: a captured dst would escape to the heap and cost an
 	// allocation on every streaming frame.
@@ -168,13 +199,13 @@ func (b *TextBlock) AppendRowsFrom(dst []string, width, start int) []string {
 	}
 	for _, line := range b.stable {
 		if row >= start {
-			dst = append(dst, shift(pad, st.Paint(truncate(line, inner), b.BodyState, HueNone)))
+			dst = append(dst, shift(bodyPad, st.Paint(truncate(line, body), b.BodyState, HueNone)))
 		}
 		row++
 	}
 	for _, line := range b.tail {
 		if row >= start {
-			dst = append(dst, shift(pad, st.Paint(truncate(line, inner), b.BodyState, HueNone)))
+			dst = append(dst, shift(bodyPad, st.Paint(truncate(line, body), b.BodyState, HueNone)))
 		}
 		row++
 	}
@@ -185,17 +216,19 @@ func (b *TextBlock) AppendRowsFrom(dst []string, width, start int) []string {
 }
 
 // inner is the width the block's own content is laid out in: the terminal's
-// width less the indent, and never less than one cell. Every measurement in
-// this type goes through it, so the wrap state, the settled-head count and the
-// rendered rows can never disagree about how wide the block is.
+// width less the indent, and never less than one cell. The header and the cut
+// rule are measured in it, so a deep block still degrades its header into the
+// whole room it occupies.
 func (b *TextBlock) inner(width int) int {
-	if b.Indent <= 0 {
-		return width
-	}
-	if inner := width - b.Indent; inner >= 1 {
-		return inner
-	}
-	return 1
+	return shrink(width, b.Indent)
+}
+
+// bodyInner is [TextBlock.inner] less the body's own indent: the width the
+// WORDS are wrapped in. Every measurement of the body goes through it — the
+// reflow, the settled-head count and the rendered rows — so those three can
+// never disagree about how wide the body is.
+func (b *TextBlock) bodyInner(width int) int {
+	return shrink(b.inner(width), b.BodyIndent)
 }
 
 func (b *TextBlock) hasHead() bool {
@@ -211,7 +244,7 @@ func (b *TextBlock) headRows() int {
 }
 
 func (b *TextBlock) rowCount(width int) int {
-	b.reflow(b.inner(width))
+	b.reflow(b.bodyInner(width))
 	n := b.headRows() + len(b.stable) + len(b.tail)
 	if b.end.Mark() != "" {
 		n++

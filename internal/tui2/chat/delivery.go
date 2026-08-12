@@ -2,6 +2,7 @@ package chat
 
 import (
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
@@ -67,6 +68,31 @@ type jobFacts struct {
 	// (8.2.20).
 	Cost    float64
 	HasCost bool
+	// Elapsed is how long the job has been at it, as the board measured it, and
+	// HasElapsed says whether it could be measured at all. It is the same
+	// reading the rail's card draws, taken from the same row, so the job block
+	// in the thread and the card in the sidebar can never disagree about one
+	// job's clock (12.14) — and it is what the thread's job block ages forward
+	// on the animation clock while the work runs (§11: numbers tick).
+	Elapsed    time.Duration
+	HasElapsed bool
+	// Harness is the worker this job was handed to, in the ONE word the receipt
+	// has always used for it — `swe` for the coding harness, and whatever else
+	// the store settled, VERBATIM. It is [settledWorker] read across from
+	// record.go, which reads it across from internal/tui/cards.go, because
+	// "which harness ran this" has one answer and three surfaces asking would
+	// be three answers waiting to disagree. A default job leaves it empty and
+	// therefore says nothing, which is the whole reason it means something on
+	// the job that has one (§16).
+	Harness string
+	// Started says the job's OWN node has been claimed and is at work.
+	//
+	// It is the fact that separates a task still waiting for its plan from an
+	// ATOM — a job that is one leaf, whose root IS its own single hand. Both
+	// have no parts, so parts alone cannot tell them apart, and a card that
+	// read only the parts said `planning…` for the whole life of every atomic
+	// task ([phaseOf], and the reader who watched one breathe it to the end).
+	Started bool
 }
 
 // jobFacts implements [jobSource] over the board the rail already built.
@@ -83,11 +109,20 @@ func (s *scopeSource) jobFacts(nodeID string) (jobFacts, bool) {
 	}
 	if scope, ok := s.tasks[rowTaskPrefix+nodeID]; ok && len(scope.Rows) > 0 {
 		card := scope.Rows[0]
+		// The two facts the RAIL row does not carry come off the same walk's
+		// node map (scopeSource.nodes), not off a second query: who this job
+		// was handed to, and whether its own row has begun. Both are columns
+		// (13.3.1) and neither is derived from anything the row already says.
+		root := s.nodes[nodeID]
 		return jobFacts{
-			Name:    card.Name,
-			Life:    card.Life,
-			Cost:    card.Meta.Cost,
-			HasCost: card.Meta.HasCost,
+			Name:       card.Name,
+			Life:       card.Life,
+			Cost:       card.Meta.Cost,
+			HasCost:    card.Meta.HasCost,
+			Elapsed:    card.Meta.Elapsed,
+			HasElapsed: card.Meta.HasElapsed,
+			Harness:    settledWorker(root),
+			Started:    started(root),
 		}, card.Name != ""
 	}
 	name := strings.TrimSpace(s.label[nodeID])

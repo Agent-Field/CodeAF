@@ -1,6 +1,7 @@
 package rail
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -144,9 +145,6 @@ func TestCardAnatomy(t *testing.T) {
 		"▎◐ wisp-parity            ›",
 		"   reworking NavCtx after t…",
 		"   K3 · ▁ · $8.65 · 41m",
-		"   ●◐◐⚑○  1/5",
-		"   ◐ H2          $0.37 · 28m",
-		"   ◐ NavCtx2      $0.12 · 5m",
 		" ? data-clean             ›",
 		"   needs a key for the vend…",
 		"   Q3 · $0.44 · 6m",
@@ -157,8 +155,11 @@ func TestCardAnatomy(t *testing.T) {
 	assertLines(t, got, want)
 }
 
-// The task scope of 5.15's second wireframe: scope header, orchestrator, the
-// hairline at the room boundary, then the DAG with its waits-on structure.
+// The task scope of 5.15's second wireframe, in §3's connector grammar: scope
+// header, orchestrator, the hairline at the room boundary, then the PLAN as a
+// tree — ├─ while there are siblings below, ╰─ on the last of them, and the │
+// guide running down beside a branch that is not finished, which is what puts
+// NavCtx2 under KeyCutter rather than merely two spaces to the right of it.
 func TestTaskScopeAnatomy(t *testing.T) {
 	m := entered(t)
 	m.Select(4) // KeyCutter, blocked behind H2
@@ -169,12 +170,71 @@ func TestTaskScopeAnatomy(t *testing.T) {
 		"   dropping H2 — 3 steps re…",
 		"   K3 · 17%/1M · $8.65",
 		"────────────────────────────",
-		" ✓ XhrSyn                12m",
-		" ◐ H2                    28m",
-		" ◐ T3Infra               21m",
-		"▎⚑ KeyCutter",
-		"   waits on H2",
-		"   ◐ NavCtx2      $0.37 · 5m",
+		" ├─ ✓ XhrSyn             12m",
+		" ├─ ◐ H2                 28m",
+		" ├─ ◐ T3Infra            21m",
+		"▎└─ ⚑ KeyCutter",
+		"      waits: H2",
+		// The tree spends three cells a level, so a depth-1 row in 28 columns
+		// pays for its place in the plan with the cell the ladder ranks lowest.
+		// Money is what is left, which is 5.9's promise kept under pressure.
+		"    └─ ◐ NavCtx2       $0.37",
+	}
+	assertLines(t, got, want)
+}
+
+// §3's connector grammar on a shape with real depth, and the two things it has
+// to get right: a branch that still has siblings below it keeps its │ running
+// down past its own children, and the last child AT EVERY LEVEL draws the
+// corner. Both are facts about a row's neighbours, worked out from the depths
+// alone (sizeGuides) — no source states them, so no source can state them
+// wrongly.
+//
+// And it is a JOB's grammar only. The home rail is a list of jobs, rooms and
+// doors that are siblings of nothing; a tree drawn over it would claim a
+// parentage those rows do not have.
+func TestThePlanIsDrawnAsAConnectorTreeAndOnlyInsideAJob(t *testing.T) {
+	deep := []Row{
+		{ID: "task", Kind: RowSurface, Name: "orchestrator", Composer: ComposerChat},
+		{ID: "a", Kind: RowStep, Name: "Alpha", Life: LifeWorking},
+		{ID: "a1", Kind: RowWorker, Depth: 1, Name: "AlphaOne", Life: LifeSettled},
+		{ID: "a2", Kind: RowStep, Depth: 1, Name: "AlphaTwo", Life: LifeWorking},
+		{ID: "a2x", Kind: RowWorker, Depth: 2, Name: "AlphaTwoDeep", Life: LifeQueued},
+		{ID: "b", Kind: RowStep, Name: "Beta", Life: LifeQueued},
+	}
+	src := &fakeSource{scopes: map[string]Scope{
+		HomeScopeID: {ID: HomeScopeID, Title: "aforge", Rows: []Row{
+			{ID: "home", Kind: RowSurface, Name: "aforge", Composer: ComposerChat},
+			{ID: "task", Kind: RowTask, Name: "wisp-parity", Life: LifeWorking},
+		}},
+		"task": {ID: "task", Title: "wisp-parity", Rows: deep},
+	}}
+
+	m := New(src)
+	home := copyOf(plainView().Render(m, ModeList, 60, 20))
+	for _, glyph := range []string{tokens.GlyphTreeBranch, tokens.GlyphTreeLast} {
+		if countLinesContaining(home, glyph) > 0 {
+			t.Fatalf("the home rail drew a tree:\n%s", strings.Join(home, "\n"))
+		}
+	}
+
+	if _, ok := m.SelectID("task"); !ok {
+		t.Fatal("the task is missing")
+	}
+	if ev := m.Enter(); ev.Kind != EventScopeEntered {
+		t.Fatalf("enter = %+v", ev)
+	}
+	m.Select(0)
+	got := plainView().Render(m, ModeList, 60, 20)
+	want := []string{
+		"‹ wisp-parity",
+		"▎● orchestrator                                           ›",
+		"────────────────────────────────────────────────────────────",
+		" ├─ ◐ Alpha",
+		" │  ├─ ✓ AlphaOne",
+		" │  └─ ◐ AlphaTwo",
+		" │     └─ ○ AlphaTwoDeep",
+		" └─ ○ Beta",
 	}
 	assertLines(t, got, want)
 }
@@ -280,6 +340,42 @@ func TestSelectionIsVisibleAtEveryProfile(t *testing.T) {
 	}
 }
 
+// THE DEFECT (12.11.2, found in a screenshot and closed first in
+// internal/tui2/palette): at 16 colours the band falls back to SGR 7, which
+// swaps the two colours the terminal is currently using — so every tier colour
+// the row wrote INSIDE the band landed on its background, and the selected row
+// came out striped: one inverted block per span, with the uncoloured padding
+// runs between them left plain. Reverse video is defined against the terminal's
+// own two colours, so the only honest reading is ONE reversed run.
+//
+// The assertion is the shape rather than the bytes: whatever spans the row is
+// built from, no tier foreground may appear inside a reversed band.
+func TestAReversedBandIsOneRun(t *testing.T) {
+	if tokens.ANSI16.SelectionStyle() != tokens.SelectionReverse {
+		t.Skip("16 colours no longer reverses; this test guards that path")
+	}
+	v := NewView(tokens.NewStyler(tokens.ANSI16, tokens.FocusNormal))
+	m := New(scene())
+	m.Select(1)
+	for _, mode := range []Mode{ModeRail, ModeList} {
+		var selected string
+		for _, line := range copyOf(v.Render(m, mode, 40, 24)) {
+			if strings.Contains(line, tokens.Reverse(tokens.ANSI16)) {
+				selected = line
+				break
+			}
+		}
+		if selected == "" {
+			t.Fatalf("%s: no row carries the reversed band", mode)
+		}
+		for _, tok := range []tokens.Token{tokens.TextPrimary, tokens.TextSecondary, tokens.TextTertiary} {
+			if strings.Contains(selected, tok.Fg(tokens.ANSI16, tokens.FocusNormal)) {
+				t.Errorf("%s: a %s foreground is written inside the reversed band: %q", mode, tok, selected)
+			}
+		}
+	}
+}
+
 // 5.16: the identity pastel appears in the glyph and in the selection band
 // tint, and nowhere else — an accent hue never colourises text, and the band is
 // the scope's ("which room am I in"), not the row's.
@@ -303,6 +399,41 @@ func TestIdentityLivesOnlyInTheGlyphAndTheBand(t *testing.T) {
 	tint := tokens.BandFor(tokens.IdentityFor(idWisp)).Bg(tokens.TrueColor, tokens.FocusNormal)
 	if !strings.Contains(inside, tint) {
 		t.Fatalf("a task scope's band is not tinted with its identity: %q", inside)
+	}
+}
+
+// THE DEFECT: [View.identityOr] painted the pastel at every profile, but
+// [tokens.Profile.IdentityDistinct] is false below 256 colours — the eight
+// pastels collapse onto six chromatic slots there, so two rooms could be handed
+// the same hue by a cell whose whole job is to tell them apart. 5.20's rule is
+// that a lying identity is worse than none, so 16 colours gets the fallback the
+// row would have worn with no identity at all.
+//
+// The glyph is read through the SGR immediately before it, so the assertion is
+// about the cell that carries the identity and not about the row: at 16 colours
+// the name beside it happens to resolve to the same bright cyan, which is
+// exactly the collapse this test exists to keep off the glyph.
+func TestIdentityIsWithheldBelow256Colours(t *testing.T) {
+	for _, profile := range []tokens.Profile{tokens.ANSI16, tokens.ANSI256, tokens.TrueColor} {
+		v := NewView(tokens.NewStyler(profile, tokens.FocusNormal))
+		m := New(scene())
+		// The surface row holds the cursor, so wisp-parity's glyph is painted
+		// with its own foreground rather than swallowed by a selection band.
+		m.Select(0)
+		line := copyOf(v.Render(m, ModeRail, 40, 24))[2]
+		got := sgrBefore(line, tokens.GlyphWorking)
+		ident := tokens.IdentityFor(idWisp).Fg(profile, tokens.FocusNormal)
+		want := ident
+		if !profile.IdentityDistinct() {
+			want = tokens.TextPrimary.Fg(profile, tokens.FocusNormal)
+			if want == ident {
+				t.Fatalf("%s: the fallback and the pastel are the same bytes; this test proves nothing", profile)
+			}
+		}
+		if got != want {
+			t.Errorf("%s: the glyph is painted %q, want %q (IdentityDistinct=%v): %q",
+				profile, got, want, profile.IdentityDistinct(), line)
+		}
 	}
 }
 
@@ -512,29 +643,45 @@ func TestArtifactRowsReferenceTheirPath(t *testing.T) {
 	}
 }
 
-// 5.21: step dots map 1:1 to steps, and fall back to the gauge form rather than
-// lying about how many steps there are.
-func TestStepDotsFallBackToTheGaugeWhenTheyDoNotFit(t *testing.T) {
-	steps := make([]Step, 30)
-	for i := range steps {
-		if i < 9 {
-			steps[i].Life = LifeSettled
-		}
-	}
-	row := Row{Kind: RowTask, Name: "big", Life: LifeWorking, Steps: steps}
+// §14: the shape of a job is a CENSUS and never a fraction. `9/30` promises a
+// denominator a replan can invalidate; `9✓ 21○` cannot go stale, costs the same
+// cells whatever the plan's size, and drops off a narrow rail before the money
+// does. And a job with no parts says nothing at all rather than "1" or
+// "atomic" — every one of its counts is the whole of it.
+func TestAJobsShapeIsACensusAndNeverAFraction(t *testing.T) {
+	row := Row{Kind: RowTask, Name: "big", Life: LifeWorking,
+		Meta: Telemetry{Cost: 8.65, HasCost: true,
+			Counts: StateCounts{Done: 9, Queued: 21}}}
 	m := New(oneRow(row))
 	m.Select(1)
 	v := plainView()
-	narrow := strings.Join(v.Render(m, ModeRail, 28, 12), "\n")
-	if strings.Count(narrow, tokens.GlyphStepDone) > 1 {
-		t.Fatalf("thirty dots were drawn in 28 columns:\n%s", narrow)
+
+	wide := strings.Join(copyOf(v.Render(m, ModeList, 90, 12)), "\n")
+	if !strings.Contains(wide, "21"+tokens.GlyphQueued+" 9"+tokens.GlyphSettled) {
+		t.Fatalf("the census is missing:\n%s", wide)
 	}
-	if !strings.Contains(narrow, "9/30") {
-		t.Fatalf("the progress numbers are missing:\n%s", narrow)
+	for _, banned := range []string{"9/30", "/30", "30 workers", "atomic"} {
+		if strings.Contains(wide, banned) {
+			t.Fatalf("the card said %q:\n%s", banned, wide)
+		}
 	}
-	wide := dotsRow(v.Render(m, ModeList, 90, 12))
-	if strings.Count(wide, tokens.GlyphStepDone) != 9 {
-		t.Fatalf("wide dots = %d, want 9: %q", strings.Count(wide, tokens.GlyphStepDone), wide)
+	// The census is the first cell a squeezed row gives up (prioCounts), and the
+	// money is the last thing standing (5.9).
+	narrow := strings.Join(copyOf(v.Render(m, ModeList, 16, 12)), "\n")
+	if strings.Contains(narrow, tokens.GlyphQueued) {
+		t.Fatalf("the census outlived the column it was borrowing:\n%s", narrow)
+	}
+	if !strings.Contains(narrow, "$8.65") {
+		t.Fatalf("the money was dropped before the census:\n%s", narrow)
+	}
+
+	silent := New(oneRow(Row{Kind: RowTask, Name: "one hand", Life: LifeWorking}))
+	silent.Select(1)
+	frame := strings.Join(copyOf(v.Render(silent, ModeList, 90, 12)), "\n")
+	for _, banned := range []string{"atomic", "1 worker", "0/1", "1/1"} {
+		if strings.Contains(frame, banned) {
+			t.Fatalf("a one-part job described its own shape as %q:\n%s", banned, frame)
+		}
 	}
 }
 
@@ -724,33 +871,22 @@ func stress() *fakeSource {
 			Composer: ComposerSteer, Cut: tokens.CutStreamDrop,
 			Artifact: Ref{Path: strings.Repeat("nested/", 12) + "file.svg"},
 			WaitsOn:  []string{"one", "two", "three", "four"},
-			Steps:    make([]Step, 40),
 			Workers:  make([]Row, 20),
 			Meta: Telemetry{
 				Model: strings.Repeat("model", 6), Effort: "high", Boosted: true,
 				Cost: 12345.678, HasCost: true,
 				ContextUsed: 1 << 40, ContextWindow: 1,
 				Elapsed: 400 * 24 * time.Hour, Estimate: time.Second, HasElapsed: true,
-				Workers: 1 << 30, HasWorkers: true,
+				Counts: StateCounts{Queued: 1 << 30, Running: 1 << 30, Done: 1 << 30,
+					Failed: 1 << 30, Cancelled: 1 << 30},
 			}},
 		{ID: "2", Kind: RowWorker, Depth: 4, Name: "deep", Life: LifeCancelled},
-		{ID: "3", Kind: RowStep, Name: "atomic", Life: LifePaused,
-			Meta: Telemetry{Atomic: true, Cost: -1, HasCost: true}},
+		{ID: "3", Kind: RowStep, Name: "one hand", Life: LifePaused,
+			Meta: Telemetry{Cost: -1, HasCost: true}},
 	}
 	return &fakeSource{scopes: map[string]Scope{
 		HomeScopeID: {ID: HomeScopeID, Title: "", Rows: rows},
 	}}
-}
-
-// dotsRow finds the step-dot line, which is the only row carrying a progress
-// fraction.
-func dotsRow(lines []string) string {
-	for _, l := range lines {
-		if strings.Contains(l, "/") {
-			return l
-		}
-	}
-	return ""
 }
 
 // withoutGutter drops the leading gutter cell and any trailing pad, leaving the
@@ -783,13 +919,13 @@ func assertLines(t *testing.T, got, want []string) {
 	}
 }
 
-// atomicRoom is the shape a pty screenshot caught: an entered room whose source
+// mergedRoom is the shape a pty screenshot caught: an entered room whose source
 // has ONE word for the scope and for its surface row. chat's taskScope names row
 // 0 after the task, the homes package names row 0 after the home, and
 // Scope.normalize fills the name in from the title when a source leaves it
 // empty — so this is not one source's habit, it is the shape the rail has to
 // render well.
-func atomicRoom() *fakeSource {
+func mergedRoom() *fakeSource {
 	const room = "Permanent Aforge spine"
 	f := &fakeSource{scopes: map[string]Scope{
 		HomeScopeID: {ID: HomeScopeID, Title: "aforge", Rows: []Row{
@@ -807,9 +943,9 @@ func atomicRoom() *fakeSource {
 	return f
 }
 
-func enteredAtomic(t *testing.T) *Model {
+func enteredMerged(t *testing.T) *Model {
 	t.Helper()
-	m := New(atomicRoom())
+	m := New(mergedRoom())
 	if _, ok := m.SelectID("task"); !ok {
 		t.Fatal("the task is missing from the scene")
 	}
@@ -827,7 +963,7 @@ func enteredAtomic(t *testing.T) *Model {
 func TestAnEnteredRoomSaysItsNameOnce(t *testing.T) {
 	const room = "Permanent Aforge spine"
 	for _, mode := range []Mode{ModeRail, ModeList} {
-		lines := copyOf(plainView().Render(enteredAtomic(t), mode, 40, 20))
+		lines := copyOf(plainView().Render(enteredMerged(t), mode, 40, 20))
 		if n := countLinesContaining(lines, room); n != 1 {
 			t.Fatalf("%s: the room named itself %d times, want once:\n%s",
 				mode, n, strings.Join(lines, "\n"))
@@ -876,7 +1012,7 @@ func TestAScopeWithItsOwnSurfaceWordKeepsBothLines(t *testing.T) {
 // Home has no header to merge, so nothing changes there: row 0 is the only
 // place the word `aforge` can live and it keeps it.
 func TestHomeIsUntouchedByTheMerge(t *testing.T) {
-	lines := copyOf(plainView().Render(New(atomicRoom()), ModeRail, 40, 20))
+	lines := copyOf(plainView().Render(New(mergedRoom()), ModeRail, 40, 20))
 	if strings.Contains(strings.Join(lines, "\n"), tokens.GlyphScopeUp) {
 		t.Fatalf("home drew a scope-up glyph:\n%s", strings.Join(lines, "\n"))
 	}
@@ -953,7 +1089,7 @@ func TestTheMergeCostsTheHeaderLineAndNothingElse(t *testing.T) {
 	}
 	// Every row the scope carries still has its line, and so does the surface's
 	// own status. Only the header's separate line is gone.
-	for _, want := range []string{"1 part running", "XhrSyn", "H2", "KeyCutter", "waits on"} {
+	for _, want := range []string{"1 part running", "XhrSyn", "H2", "KeyCutter", "waits:"} {
 		if countLinesContaining(mergedLines, want) == 0 {
 			t.Fatalf("the merge ate %q:\n%s", want, strings.Join(mergedLines, "\n"))
 		}
@@ -962,5 +1098,300 @@ func TestTheMergeCostsTheHeaderLineAndNothingElse(t *testing.T) {
 	// to separate from the surface.
 	if countLinesContaining(mergedLines, tokens.GlyphTreeDash) == 0 {
 		t.Fatalf("the merge ate the room boundary:\n%s", strings.Join(mergedLines, "\n"))
+	}
+}
+
+// THE DEFECT (7.2, caught in a pty investigation): selecting a card expanded it
+// from three rows to about ten — summary, progress, per-worker rows, the lot —
+// and the fold, which budgets in LINES, paid for those rows out of the cards
+// around it. The neighbours slid into `… 7 more`, so the card a reader was
+// about to click moved out from under the pointer. 7.2's stable-order law was
+// kept to the letter (nothing re-sorted) and broken where it is felt: a row that
+// MOVES because the cursor rested one row above it is the same betrayal.
+//
+// The invariant, stated so that neither half of the fix can be dropped: at any
+// size, in either map rendering, previewing a row that was already on screen
+// leaves every OTHER line of the frame exactly as it was — same rows, same
+// order, same bytes, same chrome. Only the previewed card's own lines appear,
+// directly beneath it.
+//
+// The one line deliberately excluded is the scope header's `(2 of 5)` counter,
+// which IS the cursor's own readout and is supposed to move with it.
+func TestPreviewingACardNeverMovesTheOtherRows(t *testing.T) {
+	scenes := map[string]*Model{
+		"home":     New(scene()),
+		"task":     entered(t),
+		"crowd":    New(crowd(12, LifeQueued, LifeWorking, LifeFailed, LifeSettled)),
+		"settled":  New(crowd(12, LifeSettled, LifeFailed)),
+		"stressed": New(stress()),
+	}
+	for name, m := range scenes {
+		for _, mode := range []Mode{ModeRail, ModeList} {
+			for _, width := range []int{28, tokens.RailWidth, 60, 110} {
+				// Every height from "two lines and a prayer" up past the tallest
+				// scene here: the reserve has to hold at each of them, which is
+				// what stops a cap from being an invariant only on big screens.
+				for height := 2; height <= 26; height++ {
+					v := plainView()
+					m.Select(0)
+					base := frameOf(v, v.Render(m, mode, width, height))
+					for _, row := range rowsShown(base) {
+						m.Select(row)
+						got := frameOf(v, v.Render(m, mode, width, height))
+						assertSameRows(t, others(got, row), others(base, row),
+							"%s/%v w=%d h=%d row=%d", name, mode, width, height, row)
+					}
+					m.Select(0)
+				}
+			}
+		}
+	}
+}
+
+// railLine is one frame line with the row it was drawn for, read back through
+// the shipped hit-test table so the assertion is about the map the pointer
+// lands on and not about a second description of it.
+type railLine struct {
+	row  int
+	text string
+}
+
+// frameOf reads the last frame back as its lines tagged with the row each was
+// drawn for: the model row where there is one, [markScopeUp] for the scope
+// header, [markChrome] for the hairline and the fold line.
+func frameOf(v *View, lines []string) []railLine {
+	out := make([]railLine, 0, len(lines))
+	for y, line := range lines {
+		key := int(markChrome)
+		if y == v.upLine {
+			key = int(markScopeUp)
+		} else if row, ok := v.RowAt(y); ok {
+			key = row
+		}
+		out = append(out, railLine{row: key, text: line})
+	}
+	return out
+}
+
+// rowsShown is which model rows a frame drew, surface excluded. It is the set
+// the invariant above quantifies over: a row the fold had already hidden is a
+// different question, because the cursor must never fold away (fold.go) and so
+// selecting a hidden row necessarily reveals it.
+func rowsShown(frame []railLine) []int {
+	var out []int
+	for _, l := range frame {
+		if l.row <= 0 {
+			continue
+		}
+		if n := len(out); n > 0 && out[n-1] == l.row {
+			continue
+		}
+		out = append(out, l.row)
+	}
+	return out
+}
+
+// others is the frame without the two rows whose own selection state differs
+// between the two renders — the row under test and the surface — and without
+// the scope header, which carries the `(2 of 5)` counter.
+func others(frame []railLine, sel int) []railLine {
+	out := make([]railLine, 0, len(frame))
+	for _, l := range frame {
+		if l.row == int(markScopeUp) || l.row == 0 || l.row == sel {
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+func assertSameRows(t *testing.T, got, want []railLine, format string, args ...any) {
+	t.Helper()
+	where := fmt.Sprintf(format, args...)
+	if len(got) != len(want) {
+		t.Fatalf("%s: the preview left %d other lines, want %d:\n got:\n%s\nwant:\n%s",
+			where, len(got), len(want), showRows(got), showRows(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("%s: line %d moved:\n got %d %q\nwant %d %q",
+				where, i, got[i].row, got[i].text, want[i].row, want[i].text)
+		}
+	}
+}
+
+func showRows(lines []railLine) string {
+	var b strings.Builder
+	for _, l := range lines {
+		fmt.Fprintf(&b, "%3d %q\n", l.row, l.text)
+	}
+	return b.String()
+}
+
+// The cap itself, which is what makes the reserve affordable: no row anywhere
+// grows by more than [previewLines] when the cursor arrives, so the rail spends
+// at most two lines of its budget keeping the picture still.
+func TestAPreviewNeverGrowsARowByMoreThanTwoLines(t *testing.T) {
+	v := plainView()
+	for name, m := range map[string]*Model{
+		"home": New(scene()), "task": entered(t), "stressed": New(stress()),
+	} {
+		for i, r := range m.Rows() {
+			if got := v.previewOf(r); got < 0 || got > previewLines {
+				t.Fatalf("%s row %d (%q) previews %d lines, want 0..%d",
+					name, i, r.Name, got, previewLines)
+			}
+		}
+	}
+}
+
+// What the preview's lines are spent on, and what they are not. The summaries a
+// card has to offer — the census of its parts and its money — are CELLS on the
+// collapsed card's own line 3, so a reader gets them without pausing; the one
+// thing selection buys is the deliverable, which needs a path and therefore a
+// line. The per-worker rows are a LIST: they have no bounded form, so 5.9's full
+// depth keeps them one room away.
+func TestThePreviewCarriesTheSummariesAndNotTheTree(t *testing.T) {
+	card := Row{
+		ID: "big", Kind: RowTask, Name: "wisp-parity", Life: LifeWorking,
+		Status:   "reworking NavCtx",
+		Artifact: Ref{Path: "docs/perf/report.md"},
+		Workers: []Row{
+			{ID: "w1", Name: "H2Probe", Life: LifeWorking},
+			{ID: "w2", Name: "KeyCutter", Life: LifeQueued},
+			{ID: "w3", Name: "XhrSyn", Life: LifeSettled},
+		},
+		Meta: Telemetry{Cost: 8.65, HasCost: true,
+			Counts: StateCounts{Running: 1, Queued: 1, Done: 1}},
+	}
+	m := New(oneRow(card))
+	v := plainView()
+
+	m.Select(0)
+	collapsed := copyOf(v.Render(m, ModeList, 90, 24))
+	m.Select(1)
+	focused := copyOf(v.Render(m, ModeList, 90, 24))
+	if grew := len(focused) - len(collapsed); grew != 1 {
+		t.Fatalf("the preview grew the frame by %d lines, want 1:\n%s",
+			grew, strings.Join(focused, "\n"))
+	}
+
+	// The census and the money are on the card whether it is looked at or not.
+	census := "1" + tokens.GlyphWorking + " 1" + tokens.GlyphQueued + " 1" + tokens.GlyphSettled
+	for _, want := range []string{census, "$8.65"} {
+		if !strings.Contains(strings.Join(collapsed, "\n"), want) {
+			t.Fatalf("the COLLAPSED card dropped %q:\n%s", want, strings.Join(collapsed, "\n"))
+		}
+	}
+	frame := strings.Join(focused, "\n")
+	if !strings.Contains(frame, "report.md") {
+		t.Fatalf("the preview dropped the deliverable:\n%s", frame)
+	}
+	for _, gone := range []string{"H2Probe", "KeyCutter", "XhrSyn"} {
+		if strings.Contains(frame, gone) {
+			t.Fatalf("the preview drew the worker row %q; that is the room's job:\n%s", gone, frame)
+		}
+	}
+}
+
+// -- the rail's one motion: the clock (§11 "numbers tick") --------------------
+
+// A RUNNING CARD'S CLOCK COUNTS BETWEEN SNAPSHOTS, AND A SETTLED ONE DOES NOT.
+//
+// The reported defect was "nothing moves while work runs". The rail's honest
+// answer is NOT a spinner — §18.2 names a rail card as the example of where a
+// moving glyph is forbidden, "a lie about liveness" on a durable object — it is
+// the elapsed cell, which used to be measured inside the snapshot and therefore
+// froze between journal moves. A worker inside a tool call journals nothing at
+// all, so "between journal moves" was minutes.
+func TestARunningCardsClockCountsBetweenSnapshots(t *testing.T) {
+	model := New(scene())
+	clock := blocks.NewClock(0)
+	base := time.Unix(1700000000, 0)
+	clock.Latch(base)
+	model.SetClock(clock)
+
+	view := NewView(nil)
+	draw := func(at time.Time) string {
+		clock.Latch(at)
+		return strings.Join(view.Render(model, ModeRail, 40, 24), "\n")
+	}
+	first := draw(base)
+	later := draw(base.Add(90 * time.Second))
+	if first == later {
+		t.Fatalf("ninety seconds passed and the rail drew the same bytes:\n%s", first)
+	}
+	// The fixture's running card is at 41m; a minute and a half on says so.
+	if !strings.Contains(first, "41m") {
+		t.Fatalf("the snapshot's own figure is not on the card:\n%s", first)
+	}
+	if !strings.Contains(later, "42m") {
+		t.Fatalf("the running card's clock did not count on:\n%s", later)
+	}
+	// A repaint at the same instant is byte-identical: the rail costs nothing
+	// between the seconds it has something to say (8.1.3).
+	if again := draw(base.Add(90 * time.Second)); again != later {
+		t.Fatalf("two renders of one instant disagree:\n%s\n%s", later, again)
+	}
+}
+
+// A SETTLED ROW'S CLOCK IS A FINISHED MEASUREMENT. Ageing it would be the
+// surface inventing time nobody spent (8.2.20).
+func TestASettledCardsClockStandsStill(t *testing.T) {
+	settled := &fakeSource{scopes: map[string]Scope{
+		HomeScopeID: {ID: HomeScopeID, Title: "aforge", Rows: []Row{
+			{ID: "home", Kind: RowSurface, Name: "aforge", Life: LifeSettled},
+			{ID: "job-done", Kind: RowTask, Name: "perf-audit", Life: LifeSettled,
+				Meta: Telemetry{Elapsed: 3 * time.Minute, HasElapsed: true}},
+		}},
+	}}
+	model := New(settled)
+	clock := blocks.NewClock(0)
+	base := time.Unix(1700000000, 0)
+	clock.Latch(base)
+	model.SetClock(clock)
+
+	view := NewView(nil)
+	draw := func(at time.Time) string {
+		clock.Latch(at)
+		return strings.Join(view.Render(model, ModeRail, 40, 24), "\n")
+	}
+	first := draw(base)
+	if later := draw(base.Add(time.Hour)); later != first {
+		t.Fatalf("a settled card's clock ran for an hour it did not spend:\n%s\n%s", first, later)
+	}
+}
+
+// NO CLOCK, NO DRIFT. A headless render — a golden, a test, a host that never
+// handed a clock over — draws exactly what it always drew.
+func TestARailWithNoClockDrawsWhatTheSnapshotSaid(t *testing.T) {
+	model := New(scene())
+	view := NewView(nil)
+	first := strings.Join(view.Render(model, ModeRail, 40, 24), "\n")
+	if !strings.Contains(first, "41m") {
+		t.Fatalf("a clockless rail changed the snapshot's figure:\n%s", first)
+	}
+	if model.Drift() != 0 {
+		t.Fatalf("a clockless model drifted by %v", model.Drift())
+	}
+}
+
+// A REFRESH RESTARTS THE DRIFT. The rows it loads were measured in the snapshot
+// it just read, so ageing them by the time since the PREVIOUS snapshot would
+// double-count every interval.
+func TestARefreshRestartsTheDrift(t *testing.T) {
+	model := New(scene())
+	clock := blocks.NewClock(0)
+	base := time.Unix(1700000000, 0)
+	clock.Latch(base)
+	model.SetClock(clock)
+
+	clock.Latch(base.Add(90 * time.Second))
+	if model.Drift() != 90*time.Second {
+		t.Fatalf("drift is %v, want 90s", model.Drift())
+	}
+	model.Refresh()
+	if model.Drift() != 0 {
+		t.Fatalf("a fresh snapshot is already %v old", model.Drift())
 	}
 }

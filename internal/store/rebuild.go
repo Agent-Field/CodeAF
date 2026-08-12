@@ -376,6 +376,16 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applySessionRenamed(tx, payload)
 
+	case EventSessionDiscarded:
+		// A room taken back replays as taken back. Without this arm a rebuild
+		// would resurrect every empty room the reap has ever removed, which is
+		// the whole reason the reap journals instead of deleting quietly.
+		var payload sessionDiscardedPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applySessionDiscarded(tx, payload)
+
 	case EventCommandRequested:
 		var payload commandPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
@@ -498,6 +508,14 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		// Gate evidence is journal-native and has no materialized view. Decode it
 		// during reconstruction so a corrupt payload still fails loudly.
 		var payload DeliveryGate
+		return json.Unmarshal(event.Payload, &payload)
+
+	case EventCraftForged:
+		// A forged way of working lives in the craft repository, so there is
+		// nothing here to rebuild — but the announcement is read off this
+		// interval, and a payload that no longer decodes should fail here rather
+		// than go quiet in a digest.
+		var payload CraftForged
 		return json.Unmarshal(event.Payload, &payload)
 
 	case EventFactLearned:

@@ -123,8 +123,10 @@ func (l *lineBuf) addMatched(text string, base tokens.Token, at, n, cells int) {
 	l.add(tail, base)
 }
 
-// ellipsis is the mark [blocks.Truncate] leaves. It is matched, not assumed.
-const ellipsis = "…"
+// ellipsis is the mark [blocks.Truncate] leaves. It is matched, not assumed —
+// and it is read off [tokens.GlyphEllipsis] rather than spelled here, so the
+// match is against the vocabulary's own byte instead of against a copy of it.
+const ellipsis = tokens.GlyphEllipsis
 
 // padTo advances to a column with spaces.
 func (l *lineBuf) padTo(target int) {
@@ -203,14 +205,14 @@ func (l *lineBuf) emit(buf *strings.Builder, profile tokens.Profile, focus token
 // (12.11), and [tokens.Sheet] is the ground the boundary was drawn around. The
 // chip is NOT — it lives in the meta strip on the base plane, where the floor is
 // the terminal's and no component owns it — so it emits [tokens.Ground] and
-// paints none.
+// paints none. [Picker.ground] is the mode that gives this one up.
 const sheetGround = tokens.Sheet
 
 // blankLine is one empty row of the sheet's own ground. A blank line inside a
 // painted plane that emitted no cells is a hole in that plane.
-func blankLine(l *lineBuf, buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width int) string {
+func blankLine(l *lineBuf, buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width int, ground tokens.Token) string {
 	l.reset(width)
-	return l.emit(buf, profile, focus, width, false, tokens.Band, sheetGround)
+	return l.emit(buf, profile, focus, width, false, tokens.Band, ground)
 }
 
 const spaceRun = "                                                                                                                                "

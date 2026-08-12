@@ -4,8 +4,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/registry"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/keychip"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -382,45 +384,76 @@ func (m *Model) steerSections(width int) []section {
 // stripRow is the contextual key line. It advertises exactly what the current
 // mode does, esc included — 5.20 rule 6: an escape that is not advertised does
 // not exist, and 5.22: no action of this dialog is typed-only.
+// EVERY CELL IS A VERB·KEY CHIP (§16, [keychip]), and until this wave the whole
+// strip was seven hand-spelled literals in the shape the law was written
+// AGAINST: `enter allow`, `e edit`, `esc back` — key first, both halves at one
+// grey, so the row read as fourteen unmarked words and a reader parsed it by
+// already knowing which of each pair was the key. Verb-first with the key one
+// tier down says the same seven things and says which is which.
 func (m *Model) stripRow(q Question, width int, full, forced bool) string {
-	var cells []string
+	var chips []registry.Chip
 	switch m.mode {
 	case modeScope:
-		cells = []string{"enter allow", "e edit", "esc back"}
+		chips = []registry.Chip{
+			registry.ChipFor("allow", "enter"),
+			registry.ChipFor("edit", "e"),
+			registry.ChipFor("back", "esc"),
+		}
 	case modeScopeEdit:
-		cells = []string{"enter keep", "esc discard"}
+		chips = []registry.Chip{
+			registry.ChipFor("keep", "enter"),
+			registry.ChipFor("discard", "esc"),
+		}
 	case modeSteer:
-		cells = []string{"enter send", "esc back"}
+		chips = []registry.Chip{
+			registry.ChipFor("send", "enter"),
+			registry.ChipFor("back", "esc"),
+		}
 	default:
-		// "tab move" rather than an arrow pair: 5.17 bans width-unstable chrome
+		// `move tab` rather than an arrow pair: 5.17 bans width-unstable chrome
 		// and ↑↓ are East-Asian-Ambiguous, so they are exactly the ghosting the
 		// glyph table exists to avoid. The arrow keys are bound all the same.
-		cells = []string{"enter answer", "tab move"}
+		chips = []registry.Chip{
+			registry.ChipFor("answer", "enter"),
+			registry.ChipFor("move", "tab"),
+		}
 		if q.HasDetail() {
-			word := "t detail"
+			verb := "detail"
 			if m.detail {
-				word = "t hide"
+				verb = "hide"
 			}
-			cells = append(cells, word)
+			chips = append(chips, registry.ChipFor(verb, "t"))
 		}
 		// `f` is offered only where it is a real choice. Below the threshold the
 		// frame is already the dialog, and advertising a key that cannot change
 		// anything is the capability dishonesty of 5.20 rule 3.
 		if !forced {
-			word := "f full"
+			verb := "full"
 			if full {
-				word = "f panel"
+				verb = "panel"
 			}
-			cells = append(cells, word)
+			chips = append(chips, registry.ChipFor(verb, "f"))
 		}
-		cells = append(cells, "esc later")
+		chips = append(chips, registry.ChipFor("later", "esc"))
 	}
-	line := strings.Join(cells, " "+tokens.GlyphSeparator+" ")
-	for len(cells) > 1 && blocks.Width(line) > width {
-		cells = cells[:len(cells)-1]
-		line = strings.Join(cells, " "+tokens.GlyphSeparator+" ")
+	// The strip sheds WHOLE chips from the right, exactly as it always did: half
+	// a chip names a key with no verb on it, or a verb with no way to reach it.
+	for len(chips) > 1 && keychip.Width(chips) > width {
+		chips = chips[:len(chips)-1]
 	}
-	return m.tint(blocks.Truncate(line, width), tokens.TextTertiary)
+	var b strings.Builder
+	room := width
+	for _, span := range keychip.Line(chips, tokens.TextSecondary) {
+		text := blocks.Truncate(span.Text, room)
+		if text == "" {
+			break
+		}
+		b.WriteString(m.tint(text, span.Tok))
+		if room -= blocks.Width(text); room < 1 {
+			break
+		}
+	}
+	return b.String()
 }
 
 // -- fitting ------------------------------------------------------------------

@@ -24,6 +24,9 @@
 //     bytes never drift.
 //   - [Header] — the one header grammar (8.1.5). Ad-hoc headers are a review
 //     reject.
+//   - [CardBlock] — the one delivery template (4.3), and the only element that
+//     wears a ground and the [AccentEdge]. A second kind of row drawn like one
+//     is a review reject for the same reason an ad-hoc header is.
 //   - [Folder] — collapse policies that protect the live edge and the failures
 //     (8.1.7).
 //   - [Styler] — the minimal seam to the token layer. blocks never imports

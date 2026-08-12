@@ -1,3 +1,5 @@
+    reworking NavCtx after the worker died
+
   Here is the plan:
 
   • read navctx.rs end to end
@@ -10,11 +12,9 @@
   │ and a note about the plan
   ▸ workspace/wisp/plan.md  1.6KB
 
-aforge
   Reading navctx.rs now
-◑ replying · esc interrupt
-~/aforge-v2
-›  Type a message
+● replying · interrupt esc
+▍ ⠋  keep typing — messages queue
 
-  voice claude-k3 · 0s · $— · — ctx
-esc interrupt · ctrl+c stop or quit · alt+enter insert newline · ? help
+
+  chat  work  notebook  interrupt esc                                ~/aforge-v2

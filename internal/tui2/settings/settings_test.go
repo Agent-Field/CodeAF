@@ -48,18 +48,16 @@ func newSheet(t *testing.T, adjust ...func(*Options)) *sheet {
 	return s
 }
 
-// gotoRow puts the band on one registry key, switching tabs to find it.
+// gotoRow puts the band on one registry key. Every row is on the one page now,
+// so finding one is a walk down the list rather than a tour of the tabs.
 func (s *sheet) gotoRow(t *testing.T, key string) row {
 	t.Helper()
 	s.setQuery("")
-	for tab := range s.tabs {
-		s.tab = tab
-		s.reselectFresh()
-		for position, index := range s.visible {
-			if s.rows[index].setting.Key == key {
-				s.selected = position
-				return s.rows[index]
-			}
+	s.reselectFresh()
+	for position, index := range s.visible {
+		if s.rows[index].setting.Key == key {
+			s.selected = position
+			return s.rows[index]
 		}
 	}
 	t.Fatalf("no row %q in the sheet", key)
@@ -70,18 +68,10 @@ func (s *sheet) gotoRow(t *testing.T, key string) row {
 // the question a gate answers.
 func (s *sheet) listed(key string) bool {
 	s.setQuery("")
-	tab := s.tab
-	defer func() {
-		s.tab = tab
-		s.reselectFresh()
-	}()
-	for candidate := range s.tabs {
-		s.tab = candidate
-		s.reselectFresh()
-		for _, index := range s.visible {
-			if s.rows[index].setting.Key == key {
-				return true
-			}
+	s.reselectFresh()
+	for _, index := range s.visible {
+		if s.rows[index].setting.Key == key {
+			return true
 		}
 	}
 	return false
@@ -177,20 +167,67 @@ func TestWidthSweepDrawsLessAndNeverPanics(t *testing.T) {
 	}
 }
 
-// The tab bar is navigation. A bar too wide for the frame scrolls around the
-// selected group and marks the overflow; it never simply loses the group the
-// user is standing in.
-func TestNarrowTabBarKeepsTheSelectedGroupVisible(t *testing.T) {
+// Every group announces itself with its own faint word, above its own rows, on
+// the one page (15). The band standing anywhere in a group must be able to see
+// that word — which is the whole reason the word is allowed to exist.
+func TestEachGroupIsAnnouncedAboveItsOwnRows(t *testing.T) {
 	s := newSheet(t)
-	for tab := range s.tabs {
-		s.tab = tab
-		s.reselectFresh()
-		frame := strings.Split(s.Render(30, 12), "\n")
-		if len(frame) < 2 {
-			t.Fatalf("no tab bar at tab %d", tab)
+	for _, head := range s.groupHeads() {
+		s.selected = head
+		frame := s.Render(72, 40)
+		want := s.rows[s.visible[head]].group
+		if !strings.Contains(frame, want) {
+			t.Fatalf("group %q never announced itself:\n%s", want, frame)
 		}
-		if !strings.Contains(frame[1], s.tabs[tab]) {
-			t.Fatalf("tab bar %q lost the selected group %q", frame[1], s.tabs[tab])
+		lines := strings.Split(frame, "\n")
+		headingAt, rowAt := -1, -1
+		for index, line := range lines {
+			if headingAt < 0 && strings.TrimSpace(line) == want {
+				headingAt = index
+				continue
+			}
+			if headingAt >= 0 && strings.Contains(line, s.rows[s.visible[head]].setting.Label) {
+				rowAt = index
+				break
+			}
 		}
+		if headingAt < 0 || rowAt < 0 || rowAt <= headingAt {
+			t.Fatalf("group %q: heading at %d, its first row at %d\n%s", want, headingAt, rowAt, frame)
+		}
+	}
+}
+
+// ←→ used to change tabs. With one page it walks the group heads, and it walks
+// them in both directions without ever landing between two of them.
+func TestLeftRightWalksTheGroupHeads(t *testing.T) {
+	s := newSheet(t)
+	heads := s.groupHeads()
+	if len(heads) < 2 {
+		t.Fatalf("a sheet with %d groups cannot exercise the walk", len(heads))
+	}
+	head := func() int { return s.selected }
+
+	s.selected = heads[0]
+	for step := 1; step < len(heads); step++ {
+		s.press(namedKey(tea.KeyRight))
+		if head() != heads[step] {
+			t.Fatalf("right %d landed at %d, want the head at %d", step, head(), heads[step])
+		}
+	}
+	s.press(namedKey(tea.KeyRight))
+	if head() != heads[0] {
+		t.Fatalf("right past the last group landed at %d, want %d", head(), heads[0])
+	}
+
+	// Inside a group, back is the top of that group; at the top, back is the
+	// group before.
+	s.selected = heads[1] + 1
+	s.press(namedKey(tea.KeyLeft))
+	if head() != heads[1] {
+		t.Fatalf("left from inside a group landed at %d, want its head %d", head(), heads[1])
+	}
+	s.press(namedKey(tea.KeyLeft))
+	if head() != heads[0] {
+		t.Fatalf("left from a group head landed at %d, want the group before at %d", head(), heads[0])
 	}
 }

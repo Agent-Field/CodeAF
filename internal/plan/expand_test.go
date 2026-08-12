@@ -17,10 +17,12 @@ func TestPhaseShapedSplitIsAbsorbed(t *testing.T) {
 		name     string
 		children []Node
 		keep     bool
+		reason   string
 	}{
 		{
 			name:     "procedure returned whole",
 			children: []Node{{Title: "Review", Size: SizeBorderline}},
+			reason:   RefusalOnePiece,
 		},
 		{
 			name: "phases that each restate the parent",
@@ -29,6 +31,7 @@ func TestPhaseShapedSplitIsAbsorbed(t *testing.T) {
 				{Title: "Test", Size: SizeOversized},
 				{Title: "Write", Size: SizeOversized},
 			},
+			reason: RefusalNoSmaller,
 		},
 		{
 			name: "majority still oversized",
@@ -39,6 +42,7 @@ func TestPhaseShapedSplitIsAbsorbed(t *testing.T) {
 				{Title: "Diff", Size: SizeAtomic},
 				{Title: "Notes", Size: SizeAtomic},
 			},
+			reason: RefusalNoSmaller,
 		},
 		{
 			name: "subjects that shrank",
@@ -49,14 +53,60 @@ func TestPhaseShapedSplitIsAbsorbed(t *testing.T) {
 			},
 			keep: true,
 		},
+		// The information-gain rule, structurally. Each of these splits shrank
+		// and each would have passed before: what they cannot show is that any
+		// child returns something the others do not.
+		{
+			name: "children whose subjects differ only in wording",
+			children: []Node{
+				{Title: "Parser", Summary: "Handle it", Size: SizeAtomic},
+				{Title: "parser  ", Summary: "handle IT", Size: SizeAtomic},
+				{Title: "Loader", Summary: "Load it", Size: SizeAtomic},
+			},
+			reason: RefusalSameAnswer,
+		},
+		{
+			name: "children naming the same deliverable",
+			children: []Node{
+				{Title: "First half", Size: SizeAtomic,
+					Spec: Spec{Done: Done{Produces: []string{"the write-up", "the table"}}}},
+				{Title: "Second half", Size: SizeAtomic,
+					Spec: Spec{Done: Done{Produces: []string{"the table", "the write-up"}}}},
+				{Title: "Third", Size: SizeAtomic,
+					Spec: Spec{Done: Done{Produces: []string{"the appendix"}}}},
+			},
+			reason: RefusalSameAnswer,
+		},
+		{
+			name: "children whose instructions are one instruction",
+			children: []Node{
+				{Title: "One", Size: SizeAtomic, Spec: Spec{Instruction: "Cover the whole set."}},
+				{Title: "Two", Size: SizeAtomic, Spec: Spec{Instruction: "cover the whole set."}},
+			},
+			reason: RefusalSameAnswer,
+		},
+		{
+			name: "distinct deliverables are kept",
+			children: []Node{
+				{Title: "One", Size: SizeAtomic,
+					Spec: Spec{Done: Done{Produces: []string{"the first section"}}}},
+				{Title: "Two", Size: SizeAtomic,
+					Spec: Spec{Done: Done{Produces: []string{"the second section"}}}},
+			},
+			keep: true,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			sub := &Graph{Goal: "parent", NextID: 1}
 			for _, child := range test.children {
 				sub.Add(child)
 			}
-			if got := worthKeeping(nil, expansion{nodeID: 1, sub: sub}); got != test.keep {
-				t.Errorf("worthKeeping = %v, want %v", got, test.keep)
+			got, reason := worthKeeping(expansion{nodeID: 1, sub: sub})
+			if got != test.keep {
+				t.Errorf("worthKeeping = %v, want %v (reason %q)", got, test.keep, reason)
+			}
+			if reason != test.reason {
+				t.Errorf("reason = %q, want %q", reason, test.reason)
 			}
 		})
 	}
@@ -98,5 +148,9 @@ func TestPhaseSplitLeavesTheNodeWhole(t *testing.T) {
 	}
 	if len(graph.Nodes) != 1 {
 		t.Errorf("graph grew to %d nodes on a refused expansion", len(graph.Nodes))
+	}
+	// A refusal that leaves no trace is a leaf nobody can explain afterwards.
+	if node.Undivided != RefusalNoSmaller {
+		t.Errorf("undivided = %q, want %q", node.Undivided, RefusalNoSmaller)
 	}
 }

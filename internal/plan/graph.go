@@ -86,6 +86,20 @@ type Node struct {
 	// — a split nobody can describe concretely is a split that does not exist.
 	Parts []string `json:"parts,omitempty"`
 
+	// Undivided is why this node was left whole, written at the moment the
+	// refusal was made rather than inferred afterwards from the shape that
+	// resulted — the shape is the thing being explained. It follows the pattern
+	// the scale gate already set for the job-level reading (see
+	// store.RecordScaleGate): diagnosis, not control. Nothing reads it back to
+	// decide anything, and losing it costs an explanation and nothing else.
+	//
+	// It answers the question a finished graph otherwise cannot: a node that
+	// stayed a leaf because nobody could name two pieces and a node that stayed
+	// a leaf because the pieces would have run one after another look identical
+	// once the run is over, and the reading that separated them is a model's and
+	// does not repeat. Empty means no split was ever considered for this node.
+	Undivided string `json:"undivided,omitempty"`
+
 	// Bundle marks the synthesis of declared-independent requests. Its merge
 	// is assembly unless something mid-flight said otherwise, and the executor
 	// reads this to skip the model when there is nothing to reconcile —
@@ -99,12 +113,15 @@ type Node struct {
 	Kind  Kind   `json:"kind"`
 	Brief string `json:"brief,omitempty"`
 
-	// Subharness names the worker that takes this node whole. Empty is the
-	// baseline generalist and is what nearly every node carries. It is decided
+	// Subharness names the worker that takes this node whole. It is decided
 	// where size is decided — a node oversized for one agent working alone can
 	// be one job for a specialist — and it travels with the node from that
 	// judgment to the executor that runs it, through the file the graph is
 	// persisted to and through the splice that admits it to the store.
+	//
+	// "linear" is the generalist, chosen, and is what nearly every judged node
+	// carries. Empty is the different fact that nobody judged this node at all,
+	// and only that fact lets a reader downstream supply an answer of its own.
 	Subharness string `json:"subharness,omitempty"`
 
 	// Contract is the working method for this leaf: how an agent should work
@@ -113,6 +130,18 @@ type Node struct {
 	// executor match a specialised harness on any given leaf without the
 	// harness itself changing.
 	Contract string `json:"contract,omitempty"`
+
+	// Spec is the same two facts as an object, plus the one nothing carried
+	// before: the criterion this node's work is judged finished against.
+	//
+	// Brief and Contract stay the source of truth for one release and Spec is
+	// written beside them — dual-write, single read — so rolling the wave back
+	// is a one-line swap at each reader rather than a migration. What the
+	// object buys is the retry path: a replacement node inherits Done verbatim
+	// instead of re-authoring a spec from failure context, which is how the
+	// module name, the filename and the acceptance check used to disappear the
+	// moment a leaf was re-aimed at a different worker.
+	Spec Spec `json:"spec,omitzero"`
 
 	// Result is what this node produced and is what its dependents receive. It
 	// is the deliverable itself rather than a report about it, so that routing

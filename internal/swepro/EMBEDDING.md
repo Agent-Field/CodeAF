@@ -131,6 +131,37 @@ in `EVENTS-CONTRACT.md` still holds for every consumer that does not read them;
 *Cherry-pick note:* upstream passes `nil` and `{"cycle": cycle}`. A harvest
 touching those three lines must re-apply the maps.
 
+### D6 — the disk floor is capped to the volume, and a pause waits instead of paying
+
+*Wave 5, the headless-regression wave.* One policy number and one loop shape
+between them cost a measured run twelve orchestrator turns and 723 seconds of
+wall time, all of it spent learning nothing.
+
+`resourceguard.DefaultDiskFloorGB` is a flat `5`, and
+`isolation.ReadingToStatus` pauses dispatch below `floor/2`. On a 5GB volume
+that pause arms at 2.5GB free and **can never clear** — the volume cannot hold
+enough free space to satisfy a floor of its own size. `resourceguard` is a
+line-for-line port with fixture tests pinned to upstream's `Number()`
+semantics, so the correction is made at the aforge seam that consumes it:
+`scheduler/gatherEnvelopeReadings` now caps the floor at a tenth of the
+measured volume (`scheduler/diskfloor.go`, `scheduler/volume_statfs.go`) and
+recomputes the reading's `ok` against the capped floor. A large volume keeps
+the ported 5GB exactly; an unmeasurable volume keeps it too; and a healthy
+reading never measures at all, so the common path pays nothing.
+
+`codeaf/root_orchestrator.go` then stops paying for the pause it does hit. A
+paused cycle dispatches nothing, so returning its synthetic continuation to the
+step loop spends a **paid model turn** to be told what the next cycle already
+knows. `absorbResourcePause` waits out the pause inside the cycle that hit it,
+re-pumping the delegate (free) every `pauseRecheckInterval` until the volume
+recovers or the existing `pauseCycles`/`pauseWallTimeout` bounds expire — the
+bounds are unchanged, the stall the caller declares is unchanged, and the whole
+episode now costs one turn instead of twelve.
+
+*Cherry-pick note:* upstream's `gatherDispatchEnvelope` passes the guard's
+reading through verbatim and its root orchestrator has no pause wait. A harvest
+touching either must re-apply this.
+
 **`codeaf/serve.go` was NOT dropped.** swe-pro-go pinned
 `agentfield/sdk/go` at `v0.0.0-20260724201800-7ee31640a2f4` and aforge at
 `v0.0.0-20260801225427-e6587ade0886`; MVS picks aforge's. serve.go — the only

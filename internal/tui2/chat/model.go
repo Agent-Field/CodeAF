@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
@@ -138,6 +140,10 @@ func roleForSlot(slot string) (store.ModelRole, bool) {
 		return store.RolePlan, true
 	case "work", "boost":
 		return store.RoleWork, true
+	case "verify":
+		return store.RoleVerify, true
+	case "scribe":
+		return store.RoleScribe, true
 	}
 	return "", false
 }
@@ -207,13 +213,13 @@ func (a *App) modelRoleRow(bindings RoleBindings, role store.ModelRole,
 			row.Window = int64(window)
 		}
 		// The numerator is the room's journaled prompt high-water, which the
-		// poll already read for the meta strip — and it is the voice's number,
+		// poll already read for the bar's gauge — and it is the voice's number,
 		// because the voice is the role that spends this room's window. The
 		// other four run somewhere the room's gauge does not measure, so they
 		// carry a denominator and no numerator, and the chip draws the honest
 		// half-known gauge rather than a fraction of the wrong thing.
-		if role == store.RoleOrchestrate && a.meta != nil && a.meta.haveUsage {
-			row.Used = a.meta.used
+		if role == store.RoleOrchestrate && a.status != nil && a.status.haveUsage {
+			row.Used = a.status.used
 		}
 	}
 	row.Disabled = a.roleDisabled(role, row)
@@ -262,6 +268,32 @@ func (a *App) roleDisabled(role store.ModelRole, row modelui.RoleRow) string {
 // types, and modelui renders a zero window as the missing mark rather than as
 // "0" — which is the whole of 8.2.20 applied to a number nobody here knows.
 func (a *App) modelOptions() []modelui.ModelOption {
+	// The rich read first: a commander that can hand catalog rows gives the
+	// picker its price, window and published score (the OpenRouter catalog,
+	// ~500 rows). Prices arrive per token and the picker speaks per million.
+	if rich, ok := a.commander.(interface{ CatalogModels() []catalog.Model }); ok {
+		if models := rich.CatalogModels(); len(models) > 0 {
+			out := make([]modelui.ModelOption, 0, len(models))
+			for _, m := range models {
+				out = append(out, modelui.ModelOption{
+					Slug:   m.ID,
+					Name:   m.Name,
+					Window: int64(m.ContextLength),
+					Price: modelui.Price{
+						In:    m.PromptPrice * 1e6,
+						Out:   m.CompletionPrice * 1e6,
+						Known: !m.PriceUnknown,
+					},
+					Intelligence: m.IntelligenceIndex,
+					// What the model does with reasoning, in the catalog's own
+					// phrase: the one capability a reader is choosing between
+					// here that price and window cannot show them.
+					Note: catalog.ReasoningWord(m, provider.ReasoningMandatory(m.ID)),
+				})
+			}
+			return out
+		}
+	}
 	control, ok := a.commander.(ModelControl)
 	if !ok {
 		return nil
@@ -280,17 +312,28 @@ func (a *App) modelOptions() []modelui.ModelOption {
 // -- the door ------------------------------------------------------------------
 
 // openModelPicker raises the palette (5.10: "the model chip … is interactive →
-// model palette").
+// model palette") at the role level and with no path behind it — `/model` typed
+// at the composer, the `?` sheet's own row.
+func (a *App) openModelPicker() tea.Cmd { return a.raiseModels(nil, "") }
+
+// raiseModels raises the picker, reached through the given path, showing one
+// role's catalog straight away when the caller named a role.
 //
-// It always opens at the role level, which is where [modelui.Picker.Reset]
-// puts it. REQUESTED SEAM: the picker has no door to open AT one role, so a
-// settings model row — which knows exactly which slot the reader pressed enter
-// on — lands them one keystroke above it. Nothing lies; the reader is one enter
-// away and the five rows name themselves.
-func (a *App) openModelPicker() tea.Cmd {
+// The role is what closes the seam this door used to carry: "the picker has no
+// door to open AT one role, so a settings model row — which knows exactly which
+// slot the reader pressed enter on — lands them one keystroke above it." What
+// the reader actually saw when they clicked a model row was the five slot words,
+// which is the defect they reported as getting "some weird lists" instead of an
+// OpenRouter list. It is one click and one list now.
+//
+// The order is fixed and each step needs the one before it: the catalog first,
+// because descending selects the bound row out of it; the path second; the role
+// last, because [modelui.Picker.Reset] is what put the surface back at the top.
+func (a *App) raiseModels(trail []string, role store.ModelRole) tea.Cmd {
 	if a.models == nil {
 		a.models = modelui.New(modelui.Options{
 			Styler:     a.style,
+			Linear:     a.linear,
 			Invalidate: a.shell.Invalidate,
 			OnChoose:   a.chooseModel,
 			OnClose:    a.closeOverlay,
@@ -298,6 +341,8 @@ func (a *App) openModelPicker() tea.Cmd {
 	}
 	a.models.Reset()
 	a.models.SetCatalog(a.modelCatalog())
+	a.models.SetBack(trail, a.backFromModels)
+	a.models.Open(role)
 	return a.raise(overlayModel, a.models)
 }
 
@@ -306,12 +351,22 @@ func (a *App) openModelPicker() tea.Cmd {
 //
 // The sheet is closed first rather than stacked under, because the plane holds
 // exactly one overlay and because closing is what flushes a debounced write the
-// reader has already made. A slot outside the five roles opens the same palette
-// with its whole surface disabled and the reason on every row (see roleForSlot).
+// reader has already made. It is still the rung ABOVE, though — closed is not
+// gone — so it goes on the path, under whatever path the sheet itself was
+// reached through, and backspace from the role list walks back onto it.
+//
+// A slot outside the five roles opens the same palette with its whole surface
+// disabled and the reason on every row (see roleForSlot). It opens at the role
+// level, because there is no role whose catalog could honestly be shown.
 func (a *App) openModelSlot(msg settings.ModelMsg) tea.Cmd {
+	role, mapped := roleForSlot(msg.Slot)
+	trail := []string{settings.TrailWord}
+	if a.settings != nil {
+		trail = append(append([]string{}, a.settings.Trail()...), settings.TrailWord)
+	}
 	closed := a.closeOverlay()
-	open := a.openModelPicker()
-	if _, ok := roleForSlot(msg.Slot); !ok && a.models != nil {
+	open := a.raiseModels(trail, role)
+	if !mapped && a.models != nil {
 		catalog := a.modelCatalog()
 		if catalog.Disabled == "" {
 			catalog.Disabled = "the palette binds the five roles — " +
@@ -449,14 +504,17 @@ func (a *App) applyModelResult(msg modelResultMsg) tea.Cmd {
 // read at the next provider call has moved nothing yet, and saying "switching
 // remaining work" about it would be describing a mutation that has not happened.
 func (a *App) modelReceipt(msg modelResultMsg) string {
+	// The role's word is the product's ([modelui.RoleWord]), never the roles
+	// table's own name for the slot: a receipt is read by a person, and §14 is
+	// user-facing words on every surface.
 	word := modelui.ModelWord(msg.slug)
 	switch {
 	case msg.cleared:
-		return msg.role.Word() + " unbound here — the wider scope answers again"
+		return modelui.RoleWord(msg.role) + " unbound here — the wider scope answers again"
 	case msg.moved:
 		return "switching remaining work to " + word
 	default:
-		return msg.role.Word() + " switches to " + word + " at the next call"
+		return modelui.RoleWord(msg.role) + " switches to " + word + " at the next call"
 	}
 }
 
