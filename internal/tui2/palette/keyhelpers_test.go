@@ -33,6 +33,11 @@ func clickAt(y int) (tea.MouseMsg, image.Point) {
 	return tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: y}, image.Pt(0, y)
 }
 
+// clickAtXY is clickAt with a column, for the trail segments on the header row.
+func clickAtXY(x, y int) (tea.MouseMsg, image.Point) {
+	return tea.MouseClickMsg{Button: tea.MouseLeft, X: x, Y: y}, image.Pt(x, y)
+}
+
 func wheelAt(button tea.MouseButton) (tea.MouseMsg, image.Point) {
 	return tea.MouseWheelMsg{Button: button}, image.Pt(0, 0)
 }

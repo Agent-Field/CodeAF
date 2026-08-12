@@ -29,10 +29,29 @@ import (
 // current batch and nothing before it. The mutex is not new caution: the child's
 // stdout and its stderr are traced from two goroutines at once, and a shared
 // buffer is not a file handle.
+// THE RECORDER IS PROSE AND THE STREAM IS NOT. A subharness drives a child that
+// speaks NDJSON, and for as long as those lines were `note`d the recorder was
+// two documents in one file: a few dozen sentences a person reads, buried under
+// thousands of `{"id":"evt_…","type":"message.part.delta",…}`. The room that
+// draws this file draws one row per line it cannot parse, so a 2MB stream became
+// screens of raw JSON presented as content (internal/tui2/chat/trace.go's
+// parseTrace, default branch). The stream is not deleted — it is the flight
+// recorder's most valuable half — it is moved one file sideways, to
+// `<node>.stream.ndjson`, and the recorder keeps a single pointer note to it.
+// What a person reads and what a debugger greps are two documents, and they get
+// two files.
 type tracer struct {
 	mutex  sync.Mutex
 	file   *os.File
 	writer *bufio.Writer
+
+	// The machine stream's sidecar, opened on the first line that needs it: a
+	// node whose worker never speaks NDJSON leaves no empty file behind.
+	streamPath   string
+	streamFile   *os.File
+	streamWriter *bufio.Writer
+	streamOpened bool
+	streamNoted  bool
 }
 
 // traceBuffer is a batch of lines rather than a page. Small enough that a run
@@ -51,20 +70,40 @@ const traceBuffer = 32 << 10
 // fail: it opens nothing, renders empty, and looks exactly like a worker that
 // is thinking rather than writing. A writer left behind is worse, appending a
 // sentence nobody will ever open.
-func traceName(nodeID int64) string {
-	return filepath.Join(traceDir, fmt.Sprintf("%d.trace.log", nodeID))
+// leaf is the recorder's identity, and it is a string because a store node's
+// creation sequence — which is what the resident surface had to offer — belongs
+// to the whole splice. Every sibling of a four-part job opened the same recorder
+// and appended into it, so a reader asking what one worker did was handed four
+// workers' turns interleaved. Whoever names a recorder must name one worker.
+func traceName(leaf string) string {
+	return filepath.Join(traceDir, fmt.Sprintf("%s.trace.log", pathSlug(leaf)))
+}
+
+// streamName is the sidecar the raw machine stream is spilled to, beside the
+// recorder it was cut out of. One spelling, exactly as [traceName] is one
+// spelling, and for the same reason: a reader that built the path by hand would
+// silently open nothing.
+func streamName(leaf string) string {
+	return filepath.Join(traceDir, fmt.Sprintf("%s.stream.ndjson", pathSlug(leaf)))
+}
+
+// StreamFile is where a node's raw subharness event stream is written. It is
+// referenced by the recorder and read by whoever is debugging a run; no surface
+// renders it, which is the whole point of it being a separate file.
+func StreamFile(home, leaf string) string {
+	return filepath.Join(home, streamName(leaf))
 }
 
 // legacyTraceName is where recorders written before the move still are. It is
 // read from and never written to.
-func legacyTraceName(nodeID int64) string {
-	return filepath.Join(obsDir, fmt.Sprintf("%d.trace.log", nodeID))
+func legacyTraceName(leaf string) string {
+	return filepath.Join(obsDir, fmt.Sprintf("%s.trace.log", pathSlug(leaf)))
 }
 
 // TraceFile is where a node's recorder is written, under the directory the
 // harness keeps its own files in for that job. Writers use this and only this.
-func TraceFile(home string, nodeID int64) string {
-	return filepath.Join(home, traceName(nodeID))
+func TraceFile(home, leaf string) string {
+	return filepath.Join(home, traceName(leaf))
 }
 
 // TracePath is where a node's recorder can be read from: the current location,
@@ -76,20 +115,20 @@ func TraceFile(home string, nodeID int64) string {
 // worse defect than the contamination it was fixing. When neither file exists
 // the current path is returned, so an error names where the recorder should
 // have been rather than where it used to be.
-func TracePath(home string, nodeID int64) string {
-	current := TraceFile(home, nodeID)
+func TracePath(home, leaf string) string {
+	current := TraceFile(home, leaf)
 	if _, err := os.Stat(current); err == nil {
 		return current
 	}
-	legacy := filepath.Join(home, legacyTraceName(nodeID))
+	legacy := filepath.Join(home, legacyTraceName(leaf))
 	if _, err := os.Stat(legacy); err == nil {
 		return legacy
 	}
 	return current
 }
 
-func newTracer(workspace *Workspace, nodeID int) *tracer {
-	full, _, err := workspace.ScratchPath(traceName(int64(nodeID)))
+func newTracer(workspace *Workspace, leaf string) *tracer {
+	full, _, err := workspace.ScratchPath(traceName(leaf))
 	if err != nil {
 		return &tracer{}
 	}
@@ -100,12 +139,23 @@ func newTracer(workspace *Workspace, nodeID int) *tracer {
 	if err != nil {
 		return &tracer{}
 	}
-	return &tracer{file: file, writer: bufio.NewWriterSize(file, traceBuffer)}
+	stream, _, err := workspace.ScratchPath(streamName(leaf))
+	if err != nil {
+		stream = ""
+	}
+	return &tracer{
+		file: file, writer: bufio.NewWriterSize(file, traceBuffer), streamPath: stream,
+	}
 }
 
 func (t *tracer) close() {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
+	if t.streamWriter != nil {
+		t.streamWriter.Flush()
+		t.streamFile.Close()
+		t.streamFile, t.streamWriter = nil, nil
+	}
 	if t.file == nil {
 		return
 	}
@@ -124,7 +174,60 @@ func (t *tracer) flush() {
 	if t.writer != nil {
 		t.writer.Flush()
 	}
+	if t.streamWriter != nil {
+		t.streamWriter.Flush()
+	}
 }
+
+// stream spills one raw machine line to the sidecar.
+//
+// It writes the recorder ONE line about the sidecar, the first time it is
+// needed, and never another: a pointer is a fact, and a fact repeated per event
+// is the noise this whole seam exists to remove. Everything after that goes to
+// the sidecar alone, so the recorder's line count stays a count of things a
+// person would read.
+//
+// A sidecar that cannot be opened is not an error worth ending a run over — the
+// raw feed is a debugging convenience and the summary above it is what the
+// record draws — so the failure is recorded once, in the recorder, and the run
+// carries on.
+func (t *tracer) stream(line string) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	if t.writer == nil || t.streamPath == "" {
+		return
+	}
+	if !t.streamOpened {
+		t.streamOpened = true
+		if err := os.MkdirAll(filepath.Dir(t.streamPath), 0o755); err == nil {
+			file, err := os.OpenFile(t.streamPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+			if err == nil {
+				t.streamFile = file
+				t.streamWriter = bufio.NewWriterSize(file, traceBuffer)
+			}
+		}
+	}
+	if !t.streamNoted {
+		t.streamNoted = true
+		where := filepath.Base(t.streamPath)
+		if t.streamWriter == nil {
+			t.writer.WriteString(streamNote + "could not be opened — " + where + "\n")
+		} else {
+			t.writer.WriteString(streamNote + where + "\n")
+		}
+	}
+	if t.streamWriter == nil {
+		return
+	}
+	t.streamWriter.WriteString(line)
+	t.streamWriter.WriteByte('\n')
+}
+
+// streamNote is the one sentence the recorder spends on the sidecar. It reads as
+// the plain fact it is, and it is a prefix rather than a shape so the recorder
+// stays line-based (parseTrace draws anything it does not recognise as the dim
+// note it is).
+const streamNote = "stream: the engine's own event feed is in "
 
 // note records a free-form line, for run-level facts that belong in the
 // recorder but are not a turn — the contract in force, a nudge, a stop.
@@ -156,9 +259,11 @@ func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, resu
 	in, out, cached := 0, 0, 0
 	if response != nil && response.Usage != nil {
 		in, out = response.Usage.PromptTokens, response.Usage.CompletionTokens
-		if details := response.Usage.PromptTokensDetails; details != nil {
-			cached = details.CachedTokens
-		}
+		// Both spellings, through the accessor that knows both: reading only the
+		// OpenAI-shaped nesting made the trace print cached=0 for every turn of
+		// every run against an endpoint that reports the Anthropic-native field,
+		// which is exactly the blindness this number exists to remove.
+		cached = response.Usage.CacheReadTokens()
 	}
 	fmt.Fprintf(&block, "── turn %d  finish=%s  in=%d out=%d cached=%d", turn, finish, in, out, cached)
 	if note != "" {

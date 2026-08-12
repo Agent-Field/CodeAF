@@ -199,7 +199,12 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 			continue
 		}
 		if node := graph.Node(item.id); node != nil {
+			// Dual-write, as with the brief: Contract stays the read, and the
+			// spec's Method is the same string in the object that survives
+			// re-targeting. The prompt above is unchanged — the method is not a
+			// new thing, it is the same thing with somewhere durable to live.
 			node.Contract = item.contract
+			node.Spec.Method = item.contract
 		}
 	}
 	return usage, joinErrors(failures)

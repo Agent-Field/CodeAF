@@ -154,12 +154,6 @@ type Config struct {
 	PracticeIdle   time.Duration
 	BriefAfter     time.Duration
 
-	// PracticeDemandPct and ProposeSkills are the learning dial. They are
-	// persisted settings with no environment pin: the surface writes them now
-	// so the preference already exists for the practice loops that read it.
-	PracticeDemandPct int
-	ProposeSkills     bool
-
 	// Attribution admits the standing attribution law into a worker's contract:
 	// the trailer on commits it authors, the footer on pull requests and issues
 	// it opens. Off is the law's absence, not an instruction to hide.
@@ -173,6 +167,17 @@ type Config struct {
 
 	// ProfileDir holds measured executor behaviour. Empty means ~/.aforge.
 	ProfileDir string
+
+	// Models is the model catalog every adapter built from this config consults
+	// before it shapes a request — today, to decide whether a reasoning knob may
+	// travel at all. Nil is honest and safe: the adapter then knows nothing
+	// about any model and sends only what the operator asked for explicitly,
+	// which is what every caller did before the catalog was wired in.
+	//
+	// It is set by the surfaces that load a catalog anyway (chat, run, doctor)
+	// rather than loaded here, because a config that fetched would make building
+	// a client a network operation.
+	Models *catalog.Catalog
 }
 
 // Load resolves configuration from the environment, falling back to the
@@ -217,9 +222,12 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	config.DocumentEngine = engine
+	// What earlier runs learned about how models answer, back into the adapter
+	// before it shapes its first request. Nothing here fails: a profile with no
+	// memo costs one rejected call per quirk, which is how the memo was written
+	// in the first place.
+	provider.LoadQuirks(config.ProfileDir)
 	config.VisionModel = VisionModelAt(config.ProfileDir)
-	config.PracticeDemandPct = PracticeDemandPctAt(config.ProfileDir)
-	config.ProposeSkills = ProposeSkillsAt(config.ProfileDir)
 	config.Attribution = AttributionAt(config.ProfileDir)
 	if config.PracticeIdle, err = PracticeIdleAt(config.ProfileDir); err != nil {
 		return Config{}, err
@@ -522,6 +530,11 @@ func (c Config) providerConfig(model string) provider.Config {
 		Timeout:     c.Timeout,
 		SiteURL:     c.SiteURL,
 		SiteName:    c.SiteName,
+		// The published answer to "does this model take this field", from rows
+		// already in memory. A nil catalog and a catalog still warming both say
+		// "unknown", which the adapter treats as "send nothing on your own
+		// initiative" — never as permission.
+		SupportsParameter: c.Models.SupportsParameter,
 	}
 }
 

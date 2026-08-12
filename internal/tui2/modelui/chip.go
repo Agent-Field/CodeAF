@@ -18,8 +18,8 @@ import (
 //
 // Full form, widest first:
 //
-//	hands claude-sonnet-4 ⇡ · high ▄
-//	voice gpt-oss-120b ▄
+//	execution claude-sonnet-4 ⇡ · high ▄
+//	conversation gpt-oss-120b ▄
 //	claude-sonnet-4 ▄            (Role empty: the row already said which)
 //
 // THE DROP LADDER. A chip is embedded in the tightest lines the product has —
@@ -236,7 +236,15 @@ func partsWidth(parts ...string) int {
 	return total
 }
 
-func (c Chip) roleWord() string { return c.Role.Word() }
+// roleWord is the chip's role cell, in the product's language and never the
+// roles table's own name for the slot (see [RoleWord]). An unknown role has no
+// word and draws nothing.
+func (c Chip) roleWord() string {
+	if !c.Role.Valid() {
+		return ""
+	}
+	return RoleWord(c.Role)
+}
 
 // modelWord is the chip's model cell. An empty slug draws [tokens.GlyphMissing]
 // ONLY when the chip is otherwise about something — a role, a boost, a context

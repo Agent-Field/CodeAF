@@ -115,3 +115,70 @@ func TestStaleCacheWinsOverOfflineAndEmptyUsesDefaults(t *testing.T) {
 		t.Fatal("hardcoded offline defaults were not available")
 	}
 }
+
+// reasoningPayload is three rows of the live listing's shape, reduced to the
+// distinction that matters: what each model says it will accept.
+const reasoningPayload = `{"data":[
+  {"id":"dial/model","name":"Dial","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["max_tokens","reasoning","include_reasoning","reasoning_effort"]},
+  {"id":"thinks/model","name":"Thinks","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["max_tokens","reasoning","include_reasoning"]},
+  {"id":"plain/model","name":"Plain","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["max_tokens","temperature"]}
+]}`
+
+func TestCatalogCarriesWhichKnobsAModelAccepts(t *testing.T) {
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(),
+		HTTPClient: catalogClient(t, http.StatusOK, reasoningPayload, nil),
+	})
+	// The adapter's question, and the one that decides whether a knob travels.
+	if supported, known := c.SupportsParameter("thinks/model", "reasoning"); !supported || !known {
+		t.Fatalf("thinks/model reasoning = %t known %t, want both", supported, known)
+	}
+	if supported, known := c.SupportsParameter("plain/model", "reasoning"); supported || !known {
+		t.Fatalf("plain/model reasoning = %t known %t, want a known no", supported, known)
+	}
+	// Unknown is its own answer and must never read as a no: a model nobody has
+	// heard of is where an operator's explicit setting still gets through.
+	if _, known := c.SupportsParameter("absent/model", "reasoning"); known {
+		t.Fatal("a model the catalog never saw must answer unknown")
+	}
+
+	// The surfaces' question, in the words all three of them show.
+	dial, _ := c.Model("dial/model")
+	thinks, _ := c.Model("thinks/model")
+	plain, _ := c.Model("plain/model")
+	if word := ReasoningWord(dial, false); word != "reasoning · effort" {
+		t.Fatalf("dial word = %q", word)
+	}
+	if word := ReasoningWord(thinks, false); word != "reasoning" {
+		t.Fatalf("thinks word = %q", word)
+	}
+	if word := ReasoningWord(plain, false); word != "" {
+		t.Fatalf("plain word = %q, want silence", word)
+	}
+	// The state nobody publishes: learned from a refusal, passed in by the
+	// caller, and it outranks the published level — a model that will not stop
+	// thinking is not a model whose thinking can be dialled down.
+	if word := ReasoningWord(dial, true); word != "reasoning · always on" {
+		t.Fatalf("learned word = %q", word)
+	}
+}
+
+func TestParametersSurviveTheCache(t *testing.T) {
+	dir := t.TempDir()
+	first := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusOK, reasoningPayload, nil),
+	})
+	if _, known := first.SupportsParameter("dial/model", "reasoning_effort"); !known {
+		t.Fatal("the fetch did not keep the parameter list")
+	}
+	// A second process reads the file the first one wrote and must know the
+	// same things; a cache that dropped them would send the knob blind again.
+	second := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusInternalServerError, "", nil),
+	})
+	if supported, known := second.SupportsParameter("dial/model", "reasoning_effort"); !supported || !known {
+		t.Fatalf("cached row = %t known %t, want the fetched answer", supported, known)
+	}
+}

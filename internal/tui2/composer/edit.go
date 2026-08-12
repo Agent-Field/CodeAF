@@ -21,6 +21,10 @@ func (m *Model) insert(s string) {
 	m.value = next
 	m.cursor += len(runes)
 	m.historyStep = 0
+	// The ghost hints go here and stay gone until this draft does (composer.go).
+	// It is set on the INSERT rather than on the keystroke so a paste silences
+	// them too: they teach how to start, and something has started.
+	m.typed = true
 	m.afterEdit()
 }
 
@@ -94,6 +98,10 @@ func (m *Model) KillToStart() {
 	m.value = append(m.value[:0], m.value[m.cursor:]...)
 	m.cursor = 0
 	m.historyStep = 0
+	// A kill that emptied the buffer is a draft that is over, so the ghost hints
+	// are owed again — the same rule [Model.reset] states for a send and an esc.
+	// A kill that left words behind is an edit, and an edit is mid-draft.
+	m.typed = len(m.value) > 0
 	m.stash(killed)
 	m.afterEdit()
 }
@@ -198,6 +206,9 @@ func (m *Model) reset() {
 	m.value = m.value[:0]
 	m.cursor = 0
 	m.historyStep = 0
+	// The draft is over, so the composer is at an opening again and the ghost
+	// hints come back with it (composer.go's typed).
+	m.typed = false
 	m.mentions = m.mentions[:0]
 	m.attachments = m.attachments[:0]
 	m.closeMentionFilter()
@@ -217,4 +228,33 @@ func (m *Model) setValue(s string) {
 	m.value = []rune(s)
 	m.cursor = len(m.value)
 	m.afterEdit()
+}
+
+// Restore puts a sent draft BACK, cursor at the end, because the send did not
+// land (§7's failed state: `✕` coral at the prompt, "with the failed line kept
+// in the draft to retry").
+//
+// It is the one door through which the host may write the buffer, and it exists
+// for one situation that no other mechanism covers. The composer clears itself
+// the instant OnSubmit is called — correctly, because at that moment the words
+// have left — and if the post then fails there is no copy of the sentence
+// anywhere a person can reach: the ring holds drafts that were STASHED, not
+// drafts that were sent, and asking someone to press up-arrow to find out
+// whether their message survived is asking them to do the surface's job.
+//
+// It refuses an empty string and refuses to overwrite a draft that has words in
+// it. Both refusals protect the same thing: the reader may well have started
+// typing the next sentence in the half-second the post was in flight, and a
+// failure arriving late must never take those words away. When it refuses, the
+// coral prompt and the failed sentence on the bar still say what happened —
+// the state is not lost, only the buffer is left alone.
+func (m *Model) Restore(text string) bool {
+	if text == "" || len(m.value) > 0 {
+		return false
+	}
+	m.setValue(text)
+	// The draft has been written in, so the ghost hints stay gone: this is not
+	// an opening, it is a sentence waiting for a second attempt.
+	m.typed = true
+	return true
 }

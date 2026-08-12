@@ -9,20 +9,27 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// The composer's own chrome under the draft: the open `@` filter's candidate
-// list, or — once a mention token exists — the dispatch chip.
+// The composer's own chrome ABOVE the draft: the open `@` filter's candidate
+// list, the attachment chips, and — once a mention token exists — the dispatch
+// chip.
 //
-// Both live BELOW the draft rows and above whatever the wiring welds to the
-// region's bottom edge (internal/tui2/chat draws a place line above and a meta
-// strip below; it hands this package the rows in between). Below rather than
-// above is deliberate: a list that opened above the draft would push the line
-// the user is typing down the screen on every '@', and a composer whose prompt
-// moves while you type is the kind of dancing 5.21's width-stability rule bans
-// in the small.
+// All of it lives above the draft rows and below whatever the wiring welds to
+// the region's top edge (internal/tui2/chat draws a bounded HUD above and keeps
+// a blank padding row below; it hands this package the rows in between). Above
+// rather than below is 8's law and plain geometry: this region is welded to the bottom of
+// the frame, so downward is the status line and there is nothing to open into.
+// The prompt does not move when a list opens — the REGION grows upward instead
+// (see [Model.GrowRows]), which is what keeps 5.21's width-stability promise in
+// the small: the row you are typing on stays exactly where it was.
 //
-// Neither ever takes the draft's last row. A composer that hid what you were
+// Order inside the block is relevance, nearest the draft first. The list is
+// furthest up, the chips sit against the prompt, and the highlighted candidate
+// is one row above the words it will complete — the shortest trip the eye can
+// make to the thing it is about to choose.
+//
+// None of it ever takes the draft's own rows. A composer that hid what you were
 // writing to show you what you could address would have the priority exactly
-// backwards.
+// backwards — see [Model.plan], where the draft is served first.
 
 const (
 	// historyGroup is the dim group heading settled targets sort under (5.18).
@@ -38,11 +45,45 @@ const (
 	// would read as a rendering bug; a sentence reads as an answer.
 	noMatch = "no task by that name"
 
+	// glyphEnter is THE enter keycap, decided here and spelled nowhere else in
+	// this package. Two characters were in play across the tree — `↵` (U+21B5)
+	// and `⏎` (U+23CE) — and they are one meaning wearing two shapes, which 5.17
+	// does not allow. `↵` wins: it is what every keycap on this surface already
+	// wore (the footer's accelerator words, this chip), and both measure one cell
+	// under both rulers so the choice is about vocabulary rather than metrics.
+	//
+	// `⏎` is NOT the loser of that contest, because in the one other place it
+	// appears it is not a keycap at all: internal/tui2/chat's trace reader
+	// substitutes it for a newline so one journal record stays one line. That is
+	// a transport marker for a character, not the name of a key, and giving it
+	// this constant's meaning would be the conflation rather than the fix.
+	//
+	// REQUESTED SLOT — internal/tui2/tokens: this wants to be a vocabulary slot
+	// (`GEnter`, plain `↵`, nf-md/nf-fa keyboard-return on the NF side) so the
+	// glyph tier can draw it and the parity golden can measure it. It is a
+	// constant here because this lane does not own that package; the day the slot
+	// lands, this line becomes a [tokens.Styler.Glyph] call and nothing else in
+	// the file moves.
+	glyphEnter = "↵"
+	// glyphCtrl is the control modifier's cap, on the same rule and with the same
+	// request attached.
+	glyphCtrl = "⌃"
+
 	// The dispatch chip (5.22's registry-fix checklist). The chords are named
 	// exactly as the checklist writes them, because the chip's whole job is to
 	// teach the accelerator that 5.18 otherwise leaves invisible.
-	chipStay   = "↵ stay"
-	chipFollow = "⌃↵ follow"
+	// VERB FIRST, KEY AFTER (§16's verb·key chip, internal/tui2/keychip). These
+	// two read `↵ stay` and `⌃↵ follow` until this wave, which is key-first —
+	// the `esc close` shape the law was written against, with a keycap standing
+	// in for the word `esc`. The words are the same words; the eye now lands on
+	// the one that names the act.
+	//
+	// They are STRINGS rather than [keychip.Line] spans because this row paints
+	// each chip as one run at one tier: a dispatch chip is a single affordance
+	// the composer either offers or does not, and splitting it across two tiers
+	// mid-row would make the key look like a separate cell of the hint line.
+	chipStay   = "stay " + glyphEnter
+	chipFollow = "follow " + glyphCtrl + glyphEnter
 	// chipTo and chipAbout are the two things a dispatch can be. The words are
 	// the difference between speaking INTO a thread and speaking ABOUT one, and
 	// they are never interchangeable (5.18).
@@ -51,50 +92,78 @@ const (
 
 	// hintSep is the telemetry separator (5.17).
 	hintSep = " " + tokens.GlyphSeparator + " "
-	// hintIndent aligns chrome under the draft's TEXT rather than under its
-	// prompt glyph — the same two cells the meta strip indents by.
-	hintIndent = "  "
 )
 
-// hintRows returns the rows drawn under the draft, at most budget of them.
+// hintIndent aligns chrome with the draft's TEXT rather than with its gutter.
+// It is [promptGutter] and not a number this file gets to pick: a candidate the
+// reader is about to insert has to stand in the column the words it joins stand
+// in, and the two cells to the left of that column — the hug's state edge and
+// the prompt — are markers hanging outside the text, exactly as the delivery
+// card's rail hangs outside its title.
 //
-// It returns nil — and, before that, does not so much as look at the draft —
-// for a composer built without [Options.Targets]. That is the byte-identity
-// guarantee: no targets, no extra rows, no arithmetic done differently, so
-// Render's output is what it was before this file existed.
-func (m *Model) hintRows(sty *tokens.Styler, width, budget int) []string {
+// It used to be [tokens.LensIndent], the room's one left edge, and it stopped
+// being that when the edge cell was added: the room's edge is where the BAR row
+// under the composer still opens, one row down and one plane back, and the two
+// were only ever the same number by coincidence.
+var hintIndent = strings.Repeat(" ", promptGutter)
+
+// chrome is the block drawn above the draft: its rows top to bottom, and how
+// many of the leading ones belong to an open completion list.
+//
+// The count is carried rather than re-derived because the pointer needs it: a
+// click on a candidate has to know which rows are candidates, and asking the
+// list a second time how tall it would have been is the second spelling of one
+// number that Part 2's anti-pattern 14 is about.
+type chrome struct {
+	rows []string
+	// list is how many of rows, from the top, are the open completion's.
+	list int
+}
+
+// chromeRows returns the rows drawn above the draft, at most budget of them.
+//
+// It returns the zero chrome — and, before that, does not so much as look at
+// the draft — for a composer built without [Options.Targets], [Options.Attach]
+// and [Options.Commands]. That is the byte-identity guarantee: no wiring, no
+// extra rows, no arithmetic done differently, so Render's output is what it was
+// before any of this existed.
+func (m *Model) chromeRows(sty *tokens.Styler, width, budget int) chrome {
 	if budget <= 0 || width <= 0 {
-		return nil
+		return chrome{}
 	}
 	// Attachment chips sit closest to the draft and stay there. They are the
 	// only chrome here that describes what the SEND will carry rather than what
 	// the cursor is doing, so they are the one row that must not move when a
-	// filter opens under them — a chip that jumped a row every time an '@' was
+	// filter opens above them — a chip that jumped a row every time an '@' was
 	// typed would be 5.21's dancing, in the small.
-	rows := m.attachRows(sty, width, budget)
-	budget -= len(rows)
-	if budget <= 0 {
-		return rows
-	}
+	chips := m.attachRows(sty, width, budget)
+	budget -= len(chips)
+
+	var list []string
+	switch {
+	case budget <= 0:
 	// The slash line, checked before the `@` opt-out because the two grammars
 	// are independent: a wiring may supply commands and no mention targets, and
 	// a composer with neither renders exactly the bytes it rendered before
 	// either existed.
-	if m.slash.open {
-		return append(rows, m.slashRows(sty, width, budget)...)
-	}
-	if m.targets == nil {
-		return rows
-	}
-	if m.filter.open {
-		return append(rows, m.filterRows(sty, width, budget)...)
-	}
-	if mn, ok := m.firstMention(); ok {
-		if row := m.chipRow(sty, mn.target, width); row != "" {
-			rows = append(rows, row)
+	case m.slash.open:
+		list = m.slashRows(sty, width, budget)
+	case m.targets == nil:
+	case m.filter.open:
+		list = m.filterRows(sty, width, budget)
+	default:
+		if mn, ok := m.firstMention(); ok {
+			// The dispatch chip is the LAST chip: it teaches the chord that sends
+			// this very draft, so it is the row the prompt is directly under.
+			if row := m.chipRow(sty, mn.target, width); row != "" {
+				chips = append(chips, row)
+			}
 		}
 	}
-	return rows
+	if len(list) == 0 {
+		return chrome{rows: chips}
+	}
+	return chrome{rows: append(list, chips...), list: len(list)}
 }
 
 // -- the candidate list -------------------------------------------------------
@@ -109,47 +178,77 @@ type hintItem struct {
 	header bool
 }
 
+// upwardWindow is which slice of a list drawn UPWARD is on screen: the window
+// sits as close to the draft as it can — the END of the list, where the best
+// matches are — and climbs only far enough to keep the selection visible.
+//
+// It is the mirror image of the draft's own tail anchoring, and for the same
+// reason: the row that matters is the one nearest the prompt, so that is the
+// row that never scrolls away.
+func upwardWindow(total, sel, budget int) (start, end int) {
+	if total <= 0 || budget <= 0 {
+		return 0, 0
+	}
+	if budget > total {
+		budget = total
+	}
+	start = total - budget
+	if sel >= 0 && sel < start {
+		start = sel
+	}
+	return start, start + budget
+}
+
+// filterItems is the candidate list in display order — least relevant at the
+// top, the best match LAST, one row above the draft — and where the highlighted
+// row sits in it.
+//
+// The `history` heading lands at the very top, because settled targets rank
+// after live ones and the reversal therefore puts the whole settled group above
+// the whole live group. The heading still names the rows under it (5.15's "one
+// faint lowercase word may announce a section"), and it is an item rather than a
+// draw-time special case so the scroll window can count it — a heading that
+// scrolled away would leave settled rows looking like live ones, which is the
+// one confusion this list may not create.
+func (m *Model) filterItems() ([]hintItem, int) {
+	f := &m.filter
+	items := make([]hintItem, 0, len(f.hits)+1)
+	selAt := 0
+	for i := len(f.hits) - 1; i >= 0; i-- {
+		if len(items) == 0 && int(f.hits[i].idx) >= f.live {
+			items = append(items, hintItem{header: true})
+		}
+		if i == f.sel {
+			selAt = len(items)
+		}
+		items = append(items, hintItem{hit: i})
+	}
+	return items, selAt
+}
+
 func (m *Model) filterRows(sty *tokens.Styler, width, budget int) []string {
 	f := &m.filter
 	if budget > maxFilterRows {
 		budget = maxFilterRows
 	}
+	if budget <= 0 {
+		return nil
+	}
 	if len(f.hits) == 0 {
 		return []string{plainRow(sty, noMatch, width)}
 	}
 
-	items := make([]hintItem, 0, len(f.hits)+1)
-	headed := false
-	for i, h := range f.hits {
-		if !headed && int(h.idx) >= f.live {
-			items = append(items, hintItem{header: true})
-			headed = true
-		}
-		items = append(items, hintItem{hit: i})
-	}
-
-	// Scroll so the highlighted row is always on screen, tail-anchored the way
-	// the draft itself is.
-	selAt := 0
-	for i, it := range items {
-		if !it.header && it.hit == f.sel {
-			selAt = i
-			break
-		}
-	}
-	start := 0
-	if selAt >= budget {
-		start = selAt - budget + 1
-	}
-	end := start + budget
-	if end > len(items) {
-		end = len(items)
-	}
+	items, selAt := m.filterItems()
+	start, end := upwardWindow(len(items), selAt, budget)
 
 	pos := make([]int32, 0, 16)
 	rows := make([]string, 0, end-start)
-	for _, it := range items[start:end] {
-		if it.header {
+	for i, it := range items[start:end] {
+		// The heading is PINNED to the top of the window. It lives at the head of
+		// the list, so a window that climbed past it would leave settled rows
+		// looking like live ones — the one confusion this list may not create —
+		// and a heading nobody can see is a heading that is not doing its job.
+		if it.header || (i == 0 && m.settledItem(it)) {
 			rows = append(rows, groupRow(sty, width))
 			continue
 		}
@@ -158,6 +257,12 @@ func (m *Model) filterRows(sty *tokens.Styler, width, budget int) []string {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// settledItem reports that an item draws a target from the `history` group.
+func (m *Model) settledItem(it hintItem) bool {
+	f := &m.filter
+	return !it.header && it.hit >= 0 && it.hit < len(f.hits) && int(f.hits[it.hit].idx) >= f.live
 }
 
 // candidateRow draws one target: a selection accent in its identity hue, its
@@ -228,7 +333,21 @@ func plainRow(sty *tokens.Styler, text string, width int) string {
 // chord, then — on a terminal too narrow for four words — nothing at all,
 // because a chip cut mid-chord would teach a keystroke that does not exist.
 func (m *Model) chipRow(sty *tokens.Styler, t Target, width int) string {
-	lead, leadTok := chipTo+t.Word, t.hue()
+	// The destination is written in the target's own TIER, never in its identity
+	// pastel. §18.3 states the rule the whole palette rests on — identity never
+	// colours running text; it rides a glyph, a rail or a ground — and this row
+	// was breaking it in the one place that made the breach look deliberate: a
+	// word coloured lime next to two chords coloured chrome reads as a semantic
+	// distinction, and the reader spends a moment deciding what lime means before
+	// discovering it means nothing but "this task, not that one". The GLYPH on
+	// the candidate rows above already carries that hue, in the one column where
+	// a hue is allowed to be an identity rather than a state.
+	//
+	// [Target.wordToken] is the package's own answer to "what tier is this
+	// target's word", and it is the answer the candidate list has always used —
+	// so the chip and the row above it now agree by construction rather than by
+	// coincidence.
+	lead, leadTok := chipTo+t.Word, t.wordToken()
 	if t.Settled {
 		lead, leadTok = chipAbout+t.Word, tokens.TextTertiary
 	}
@@ -305,7 +424,7 @@ func (l *hintLine) addClipped(text string, tok tokens.Token) {
 		return
 	}
 	if ansi.StringWidth(text) > room {
-		text = ansi.Truncate(text, room, "…")
+		text = ansi.Truncate(text, room, tokens.GlyphEllipsis)
 		if text == "" {
 			return
 		}
@@ -339,7 +458,7 @@ func (l *hintLine) addClippedWithin(text string, tok tokens.Token, budget int) {
 		budget = l.room()
 	}
 	if ansi.StringWidth(text) > budget {
-		text = ansi.Truncate(text, budget, "…")
+		text = ansi.Truncate(text, budget, tokens.GlyphEllipsis)
 		if text == "" {
 			return
 		}

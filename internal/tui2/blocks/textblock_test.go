@@ -266,6 +266,121 @@ func TestIndentedAppendRowsFromMatchesRows(t *testing.T) {
 	}
 }
 
+// The defect the field was added for: a body that wanted to sit at the room's
+// left edge could only get there by moving the whole block, which took the
+// header's glyph out of the gutter with it. BodyIndent moves one and not the
+// other.
+func TestBodyIndentMovesTheBodyAndNotTheGlyph(t *testing.T) {
+	const width = 40
+	flush := NewText("flush", Header{Glyph: "✓", Title: "landed"})
+	flush.Write("the body of a settled card")
+
+	indented := NewText("indented", Header{Glyph: "✓", Title: "landed"})
+	indented.BodyIndent = BodyIndent
+	indented.Write("the body of a settled card")
+
+	a, b := flush.Rows(width), indented.Rows(width)
+	if len(a) != len(b) {
+		t.Fatalf("the body indent changed the row count: %d vs %d", len(a), len(b))
+	}
+	if a[0] != b[0] {
+		t.Fatalf("the header moved:\n %q\n %q", a[0], b[0])
+	}
+	if want := strings.Repeat(" ", BodyIndent) + a[1]; b[1] != want {
+		t.Fatalf("the body sits at the wrong column:\n got %q\nwant %q", b[1], want)
+	}
+	// And it lands under the title's words rather than under the glyph.
+	if Width(b[0][:strings.Index(b[0], "landed")]) != BodyIndent {
+		t.Fatalf("the title does not start at the body's column: %q", b[0])
+	}
+}
+
+// The body's indent comes out of the BODY's wrap width, so an indented body
+// wraps in the room it has left and no row overflows.
+func TestBodyIndentNarrowsTheWrapNotJustTheRow(t *testing.T) {
+	const body = "a body long enough that it has to wrap more than once at this width"
+	for width := 1; width <= 60; width++ {
+		b := NewText("t", Header{Glyph: "◐", Title: "aforge"})
+		b.BodyIndent = 3
+		b.Indent = 2
+		b.Write(body)
+		rows := b.Rows(width)
+		for i, row := range rows {
+			if w := Width(row); w > width {
+				t.Fatalf("width %d: row %d is %d cells: %q", width, i, w, row)
+			}
+		}
+		if n := b.SettledRows(width); n > len(rows) {
+			t.Fatalf("width %d: settled %d of %d rows", width, n, len(rows))
+		}
+	}
+}
+
+// Zero is the old behaviour byte for byte, and a negative value is zero.
+func TestZeroBodyIndentIsTheOldBehaviour(t *testing.T) {
+	build := func(indent int) []string {
+		b := NewText("t", Header{Glyph: "◐", Title: "aforge", Desc: "x"})
+		b.BodyIndent = indent
+		b.Write("the quick brown fox jumps over the lazy dog")
+		b.Finalize(EndInterrupted)
+		return append([]string(nil), b.Rows(36)...)
+	}
+	flush, negative := build(0), build(-4)
+	for i := range flush {
+		if flush[i] != negative[i] {
+			t.Fatalf("a negative body indent moved row %d:\n %q\n %q", i, flush[i], negative[i])
+		}
+		if strings.HasPrefix(flush[i], " ") {
+			t.Fatalf("a zero body indent padded row %d: %q", i, flush[i])
+		}
+	}
+}
+
+// The incremental door has to agree with the whole-block door at body depth
+// too, or a streaming frame paints a different indent than a rebuild does.
+func TestBodyIndentedAppendRowsFromMatchesRows(t *testing.T) {
+	b := NewText("t", Header{Glyph: "◐", Title: "aforge"})
+	b.Indent, b.BodyIndent = 2, 2
+	b.Write("a body long enough to wrap several times at this width, several times over")
+	const width = 30
+	rows := b.Rows(width)
+	for start := 0; start <= len(rows); start++ {
+		got := b.AppendRowsFrom(nil, width, start)
+		if len(got) != len(rows)-start {
+			t.Fatalf("start %d: %d rows, want %d", start, len(got), len(rows)-start)
+		}
+		for i := range got {
+			if got[i] != rows[start+i] {
+				t.Fatalf("start %d row %d:\n got %q\nwant %q", start, i, got[i], rows[start+i])
+			}
+		}
+	}
+}
+
+// The settled head is still a promise when the body is indented: the columns a
+// row committed to cannot move under a reader.
+func TestBodyIndentedSettledHeadIsByteStable(t *testing.T) {
+	b := NewText("turn", Header{Glyph: "◐", Title: "aforge"})
+	b.BodyIndent = BodyIndent
+	const width = 32
+	var head []string
+	for i := 0; i < 40; i++ {
+		b.Write("word" + strconv.Itoa(i) + " ")
+		rows := b.Rows(width)
+		settled := b.SettledRows(width)
+		for r := 0; r < len(head) && r < settled; r++ {
+			if rows[r] != head[r] {
+				t.Fatalf("chunk %d: settled row %d changed:\n was %q\n now %q",
+					i, r, head[r], rows[r])
+			}
+		}
+		head = append(head[:0], rows[:settled]...)
+	}
+	if len(head) < 3 {
+		t.Fatalf("40 words at width %d settled only %d rows", width, len(head))
+	}
+}
+
 func TestEmptyTextBlockHasNoPhantomRow(t *testing.T) {
 	b := NewText("t", Header{Glyph: "◐", Title: "aforge"})
 	if got := len(b.Rows(40)); got != 1 {

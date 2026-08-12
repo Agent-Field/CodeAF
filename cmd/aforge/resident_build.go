@@ -25,7 +25,7 @@ import (
 // would otherwise have to guess it — the compiler's temporal classification and
 // the reconciler's charter draft.
 func newResidentReconciler(settings config.Config, graph *store.Store,
-	chatClient, taskClient, planClient *liveClient, plans *jobPlans,
+	chatClient, taskClient, planClient *liveClient, plans *jobPlans, terrainRoot string,
 	resolveModel func(head.ModelWords) head.WorkModelChoice, oneShotErrand bool) *resident.Reconciler {
 	compiler := head.NewCompiler(chatClient).
 		// The menu, and the check on what comes back from it. Both answer from
@@ -39,8 +39,8 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		compiler = compiler.WithOneShotErrands()
 	}
 	reconciler := resident.New(graph,
-		compileIntent(settings, compiler, taskClient),
-		planSubtree(settings, planClient, taskClient, plans, graph),
+		compileIntent(settings, compiler, taskClient, plans),
+		planSubtree(settings, planClient, taskClient, plans, graph, terrainRoot),
 	)
 	if oneShotErrand {
 		reconciler = reconciler.WithOneShotErrands()
@@ -67,7 +67,7 @@ func newResidentReconciler(settings config.Config, graph *store.Store,
 		WithCharterProposals().
 		WithTerritoryDigester(digestTerritory(settings, chatClient)).
 		WithWatchEngine(settings.DailyBudgetUSD, checkSentinel(settings, chatClient)).
-		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph)).
+		WithOverrunPlanner(settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot)).
 		WithCancelRethink(rethinkAfterCancel(settings, planClient, plans, graph)).
 		WithPracticeLoop(settings.PracticeBudgetUSD, settings.PracticeIdle)
 }
@@ -102,7 +102,13 @@ func rethinkAfterCancel(settings config.Config, planClient *liveClient,
 // written cold every single time. One constant key keeps it warm from compile
 // to compile, exactly as "distill", "gate", "narrate" and the rest already do.
 // The standing-charter compiler runs on this same context and inherits it.
-func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *liveClient) resident.CompileFunc {
+//
+// plans is here for one reason and it is not planning: the compiler's structural
+// reading of the ask — the thing scale is reconciled from — has no seat on
+// resident.Compiled, because nothing between the compile and the splice acts on
+// it. The journal wants it anyway, so it is left as a memo keyed on the goal
+// both halves share. A nil registry simply drops it.
+func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *liveClient, plans *jobPlans) resident.CompileFunc {
 	return func(ctx context.Context, instruction, graphContext string) (resident.Compiled, error) {
 		augmented := graphContext
 		if sk := selfKnowledge(settings, taskClient.Model()); sk != "" {
@@ -111,6 +117,9 @@ func compileIntent(settings config.Config, compiler *head.Compiler, taskClient *
 		brief, err := compiler.Compile(settings.Context(ctx, "compile"), instruction, augmented)
 		if err != nil {
 			return resident.Compiled{}, err
+		}
+		if plans != nil {
+			plans.noteReading(brief.Goal, brief.Structure)
 		}
 		return resident.Compiled{
 			Goal:            brief.Goal,

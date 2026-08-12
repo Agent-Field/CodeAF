@@ -34,7 +34,7 @@ type Workspace struct {
 	scratch string
 
 	mutex     sync.Mutex
-	artifacts map[int]map[string]bool
+	artifacts map[string]map[string]bool
 	jobID     int
 }
 
@@ -53,7 +53,7 @@ func NewWorkspace(root string) (*Workspace, error) {
 	if err != nil {
 		real = absolute
 	}
-	return &Workspace{root: absolute, real: real, scratch: absolute, artifacts: map[int]map[string]bool{}}, nil
+	return &Workspace{root: absolute, real: real, scratch: absolute, artifacts: map[string]map[string]bool{}}, nil
 }
 
 // WithScratch sends the harness's own files somewhere other than the workspace.
@@ -163,6 +163,24 @@ func (w *Workspace) Locate(path string) (string, bool) {
 	return "", false
 }
 
+// DirectoryAt reports whether a directory already occupies a path.
+//
+// It exists for the one caller that offers a path rather than reading one: an
+// output hint is an invitation to write a FILE at a name, and a directory
+// already sitting at that name makes the invitation unfulfillable. A leaf handed
+// it anyway did the only thing left — wrote its deliverable inside — reported
+// the file as written, and settled done with the asked-for file absent from the
+// workspace. Nothing here creates the path: an offered address that the offer
+// itself brings into existence is a directory the next leaf must write around.
+func (w *Workspace) DirectoryAt(path string) bool {
+	located, ok := w.Locate(path)
+	if !ok {
+		return false
+	}
+	info, err := os.Stat(located)
+	return err == nil && info.IsDir()
+}
+
 // Size reports an artifact's size on disk. The second result separates a file
 // that is empty from one that is not there — a summary listing every artifact
 // as 0 bytes looks like a run that produced nothing.
@@ -180,7 +198,14 @@ func (w *Workspace) Size(path string) (int64, bool) {
 
 // Record notes that a node produced a file the person who asked for the work
 // would call a deliverable.
-func (w *Workspace) Record(nodeID int, path string) { w.record(nodeID, path, true) }
+//
+// leaf is the identity everything one worker writes is filed under, and it is a
+// string rather than a number for the reason SuggestPathFor is: the identity a
+// caller has is not always a per-node integer. A store node's creation sequence
+// is its whole splice's, so five siblings recorded under it shared one bucket
+// and each of them was told the other four's files were its own. See Task.NodeKey
+// for who supplies what.
+func (w *Workspace) Record(leaf string, path string) { w.record(leaf, path, true) }
 
 // RecordInternal notes a file the harness wrote for its own purposes — a
 // background job's log, an extracted-document cache. They are real files in the
@@ -189,21 +214,21 @@ func (w *Workspace) Record(nodeID int, path string) { w.record(nodeID, path, tru
 // and a PDF text dump stand beside the actual report as if they were peers.
 // The .obs spill directory already solves this by never calling Record at all;
 // these two cases need the record and only want it out of the answer.
-func (w *Workspace) RecordInternal(nodeID int, path string) { w.record(nodeID, path, false) }
+func (w *Workspace) RecordInternal(leaf string, path string) { w.record(leaf, path, false) }
 
-func (w *Workspace) record(nodeID int, path string, deliverable bool) {
+func (w *Workspace) record(leaf string, path string, deliverable bool) {
 	relative, err := filepath.Rel(w.root, path)
 	if err != nil || strings.HasPrefix(relative, "..") {
 		return
 	}
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
-	if w.artifacts[nodeID] == nil {
-		w.artifacts[nodeID] = map[string]bool{}
+	if w.artifacts[leaf] == nil {
+		w.artifacts[leaf] = map[string]bool{}
 	}
 	// A path recorded both ways is a deliverable: the harness happening to
 	// touch a file the agent wrote does not demote it.
-	w.artifacts[nodeID][relative] = w.artifacts[nodeID][relative] || deliverable
+	w.artifacts[leaf][relative] = w.artifacts[leaf][relative] || deliverable
 }
 
 // nextJobID gives every background process in the shared workspace a distinct
@@ -220,11 +245,11 @@ func (w *Workspace) nextJobID() int {
 // The harness's own records are held back: they flow into Outcome.Artifacts,
 // from there into the head's files line and into every downstream leaf's
 // "(files: …)" pointer, and none of those is a place to name a log.
-func (w *Workspace) Artifacts(nodeID int) []string {
+func (w *Workspace) Artifacts(leaf string) []string {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
-	paths := make([]string, 0, len(w.artifacts[nodeID]))
-	for path, deliverable := range w.artifacts[nodeID] {
+	paths := make([]string, 0, len(w.artifacts[leaf]))
+	for path, deliverable := range w.artifacts[leaf] {
 		if deliverable {
 			paths = append(paths, path)
 		}
@@ -260,13 +285,38 @@ const traceDir = ".aforge/trace"
 
 var nonWord = regexp.MustCompile(`[^a-z0-9]+`)
 
-// SuggestPath derives a distinct output path for a node. Deriving it from the
-// id as well as the title means two nodes with similar titles — which the
-// planner does produce — cannot land on the same file.
+// SuggestPath derives a distinct output path for a node from a numeric id that
+// is unique within one graph — which is what a plan node's id is.
+//
+// It is not what every caller has. A store node's creation sequence is the
+// splice's, shared by every sibling it created, and passing that here is how
+// five parallel briefs on five different topics landed on one filename. Any
+// caller whose identity is not a per-node number wants SuggestPathFor.
 func SuggestPath(nodeID int, title string) string {
-	slug := strings.Trim(nonWord.ReplaceAllString(strings.ToLower(title), "-"), "-")
+	return SuggestPathFor(fmt.Sprintf("%02d", nodeID), title)
+}
+
+// SuggestPathFor derives a distinct output path from an identity that is unique
+// per node and a title that is only there to be read.
+//
+// Uniqueness has to come from the key alone. The title cannot carry it: titles
+// are clipped for display (a bundle's parts to 48 characters, a spliced job's
+// to the same), and five parts of one ask share their opening words, so five
+// distinct topics arrive here as one identical string. Siblings run
+// concurrently by construction, so a shared name is not a warning in a log —
+// it is four deliverables silently overwritten by the fifth.
+func SuggestPathFor(key, title string) string {
+	slug := pathSlug(title)
 	if slug == "" {
 		slug = "output"
 	}
-	return fmt.Sprintf("%02d-%s.md", nodeID, slug)
+	owner := pathSlug(key)
+	if owner == "" {
+		return slug + ".md"
+	}
+	return owner + "-" + slug + ".md"
+}
+
+func pathSlug(text string) string {
+	return strings.Trim(nonWord.ReplaceAllString(strings.ToLower(text), "-"), "-")
 }

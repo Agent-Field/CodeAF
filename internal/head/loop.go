@@ -41,6 +41,25 @@ const (
 	// failure archive and still bounds a model that will not stop calling tools:
 	// one sentence can never become an open tab.
 	orchestratorToolCallCap = 8
+	// orchestratorReadCap is how much of that belt LOOKING may take.
+	//
+	// It exists because of the shape a diagnosis has. Asked why a delivered PDF
+	// was wrong, the head read the board, the result, the plan and the file, then
+	// read the file again — eight calls of honest investigation — and reached the
+	// end of its belt holding the answer and no hands. What it then said was "I've
+	// commissioned a fix and the corrected PDF will land here", which was false:
+	// nothing had been commissioned, nothing was coming, and the person waited in
+	// front of a conversation that believed work was under way until they typed
+	// "start it" a message later.
+	//
+	// The belt cannot be widened past the point where one sentence becomes an open
+	// tab, so it is DIVIDED instead. Looking is capped two calls below the whole,
+	// which leaves a turn that spent everything investigating with hands to act:
+	// the commission, and the receipt-read after it. A turn that only ever reads
+	// loses those two reads, and that is the trade — the archive's read-only turns
+	// settle well inside six, and no amount of extra reading has ever been worth
+	// arriving at the answer unable to act on it.
+	orchestratorReadCap = 6
 	// orchestratorMaxTokens is the answer-turn cap, re-set deliberately.
 	//
 	// It was 600 (head.go:880, the router; control.go, the belt), and 600 is the
@@ -56,7 +75,19 @@ const (
 	orchestratorMaxTokens = 1200
 	// orchestratorSpentBelt is what a tool call past the cap is told. It is a
 	// tool result rather than a hard stop so the turn still ends in words.
-	orchestratorSpentBelt = "the tool belt is spent for this message — say what happened, in one or two sentences"
+	//
+	// It says what was NOT done as well as what to do next, because the turn that
+	// produced this text went on to describe work it had never commissioned. A
+	// model at the end of its belt is a model summarizing from memory, and the
+	// memory of intending to act reads exactly like the memory of acting.
+	orchestratorSpentBelt = "the tool belt is spent for this message — say what happened, in one or two sentences, " +
+		"and describe only what a tool of yours actually did: nothing was commissioned, changed or started this turn " +
+		"unless a tool result in front of you says so"
+	// orchestratorSpentReads is what a read past the reading cap is told. The
+	// turn is not over: the calls that are left are for acting, and this says so
+	// in the moment the model still has the choice.
+	orchestratorSpentReads = "the reading half of the belt is spent for this message — the calls left are for acting, not looking. " +
+		"If what you have found needs work doing, commission it now with what you know; otherwise say what you found"
 )
 
 // runTurn answers one folded turn with one agentic loop.
@@ -93,6 +124,7 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 	final := ""
 	servedModel := ""
 	spent := 0
+	reads := 0
 	// How the answering call ended. Nil is the ordinary case and posts nothing; a
 	// cap or a dropped stream lands on the reply as a store part. This is one of
 	// the two finish_reason seams (the other is pool.TurnEnd) and it exists
@@ -151,10 +183,23 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 			ToolCalls: calls,
 		})
 		for _, call := range calls {
-			body := orchestratorSpentBelt
-			if spent < orchestratorToolCallCap {
+			name := call.Function.Name
+			looking := beltReadOnly(name)
+			var body string
+			switch {
+			case spent >= orchestratorToolCallCap:
+				body = orchestratorSpentBelt
+			case looking && reads >= orchestratorReadCap:
+				// The slot is not spent: a read refused here leaves the belt
+				// exactly as wide as it was, so the acting call this turn needs
+				// is still there to be made.
+				body = orchestratorSpentReads
+			default:
 				spent++
-				result, failed := run.execute(call.Function.Name, call.Function.Arguments)
+				if looking {
+					reads++
+				}
+				result, failed := run.execute(name, call.Function.Arguments)
 				if failed {
 					result = "ERROR: " + result
 				}
@@ -199,6 +244,11 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 		// direction, which the truncation law has no more use for than the first.
 		ended = nil
 	}
+	// The last thing read before the words are the person's: a reply may not
+	// promise what this head has no way to do. What it MAY promise moved when
+	// the delivery wake landed — see promise.go for the line and why it is
+	// checked here rather than trusted to the prompt.
+	final = h.keepable(ctx, client, messages, final, run.commandSeq != 0, run.acted)
 	return h.postAgentFloor(user.SessionID, final, run.commandSeq,
 		replyModel(user, client, servedModel), endedParts(ended))
 }

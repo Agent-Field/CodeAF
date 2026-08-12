@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
@@ -54,6 +55,19 @@ type ExecResult struct {
 // lifecycle around it; the function owns nothing but the work.
 type ExecuteFunc func(ctx context.Context, node store.Node) (ExecResult, error)
 
+// ExpandFunc is asked, after a node has been claimed and before a worker is
+// given it, whether the node is really one worker's job.
+//
+// It is the one moment the question can be asked well: the claim proves every
+// piece feeding this node has landed, so the division can be decided against
+// what they produced rather than against what they were called. Answering "no"
+// means the hook has already put the parts in the graph and handed the claim
+// back, and the node must not be run — it is structure now, and its parts are
+// ready. Answering "yes" — which is the overwhelmingly common answer and the
+// null hypothesis — means nothing happened and the node runs exactly as it
+// always did.
+type ExpandFunc func(ctx context.Context, node store.Node) (spliced int, expanded bool)
+
 // Runner drains ready nodes from the durable graph and executes them. It is
 // the store-side counterpart of the one-shot scheduler: any process may run
 // one, claims make ownership a compare-and-swap, and a crashed runner leaves
@@ -69,9 +83,26 @@ type Runner struct {
 	activePractice      map[string]context.CancelFunc
 	serviceConsentGrace time.Duration
 	governor            *executor.Governor
-	craft               *CraftRunner
-	drain               chan struct{}
-	drainOnce           sync.Once
+	// localInFlight counts the running leaves that do real work on this
+	// machine — compilers, test binaries — as opposed to the ones parked on a
+	// socket waiting for a model. It is the only population the load governor
+	// is asked about, because it is the only one the host can feel.
+	localInFlight atomic.Int64
+	// passFaults counts panics recovered *inside a dispatch pass* — the ones
+	// that end the pass early without ending the loop. A leaf that faults in
+	// its own goroutine is not one of these: it lands failed through the
+	// ordinary path and journals its landing. Only these say the pass stopped
+	// looking before it was done, which is what the dispatch loop's quiet gate
+	// is not allowed to mistake for "nothing to do."
+	passFaults atomic.Int64
+	craft      *CraftRunner
+	// expand is the depth loop, moved out of the plan build and into the
+	// schedule. Nil is the whole rollback: with no hook, a claimed node goes
+	// straight to its worker exactly as it did before claim-time division
+	// existed.
+	expand    ExpandFunc
+	drain     chan struct{}
+	drainOnce sync.Once
 	// wake is the event edge under the poll. Claiming used to be purely timed,
 	// so every leaf that came free — a slot returned, a dependent unblocked by
 	// the landing that just happened — waited out the rest of the tick before
@@ -151,6 +182,13 @@ func (r *Runner) WithCraftRunner(craft *CraftRunner) *Runner {
 	return r
 }
 
+// WithExpand installs the claim-time division. Nil (the default) is today's
+// behaviour: every claimed node goes to a worker whole.
+func (r *Runner) WithExpand(expand ExpandFunc) *Runner {
+	r.expand = expand
+	return r
+}
+
 // WithDailyBudgetUSD installs the policy rail checked immediately before each
 // claim. Zero is unlimited and preserves the old scheduling path.
 func (r *Runner) WithDailyBudgetUSD(amount float64) *Runner {
@@ -217,6 +255,82 @@ func (gate *runnerQuietGate) settle(watermark int64, watermarkErr error, dispatc
 // this gate is holding cannot possibly account for.
 func (gate *runnerQuietGate) disarm() { gate.seq = -1 }
 
+// runnerFaultStep is the backoff a *repeated* fault earns, and runnerFaultCap
+// is where doubling stops. The first fault earns nothing at all.
+const (
+	runnerFaultStep = time.Second
+	runnerFaultCap  = runnerQuietCeiling
+)
+
+// runnerFaultBackoff is the anti-spin rail for a dispatch pass that panics.
+//
+// A recovered panic used to be indistinguishable from a pass that honestly
+// found nothing: tickGuarded returned (0, nil), so the quiet gate armed on the
+// watermark and the loop then slept a full ceiling — fifteen seconds of silence
+// bought by a fault, on a board that may have had ready work the whole time.
+// A fault is the opposite of proof that a timed pass would find nothing.
+//
+// So a fault never arms the quiet gate, and the first one costs no delay: the
+// next tick, 500ms later, reads the same durable graph and tries again. Only a
+// fault that repeats — the shape that could spin — is made to wait, and it
+// waits longer each time up to the same ceiling the quiet gate uses.
+type runnerFaultBackoff struct {
+	consecutive int
+	until       time.Time
+}
+
+func newRunnerFaultBackoff() runnerFaultBackoff { return runnerFaultBackoff{} }
+
+// hold reports that this tick is inside the backoff a repeated fault bought.
+func (backoff runnerFaultBackoff) hold(now time.Time) bool {
+	return backoff.consecutive > 1 && now.Before(backoff.until)
+}
+
+// wait is the delay the nth consecutive fault earns: none for the first, then
+// one second doubling per repeat, capped.
+func runnerFaultWait(consecutive int) time.Duration {
+	if consecutive < 2 {
+		return 0
+	}
+	wait := runnerFaultStep
+	for step := 2; step < consecutive && wait < runnerFaultCap; step++ {
+		wait *= 2
+	}
+	if wait > runnerFaultCap {
+		wait = runnerFaultCap
+	}
+	return wait
+}
+
+// fault records a panicking pass and returns how long the loop now waits.
+func (backoff *runnerFaultBackoff) fault(now time.Time) time.Duration {
+	backoff.consecutive++
+	wait := runnerFaultWait(backoff.consecutive)
+	backoff.until = now.Add(wait)
+	return wait
+}
+
+// clear is what any pass that did not fault does to the rail.
+func (backoff *runnerFaultBackoff) clear() {
+	backoff.consecutive, backoff.until = 0, time.Time{}
+}
+
+// settleTimedPass records one timed pass against both rails, and it is where
+// the difference between the two is kept: the quiet gate may only sleep on a
+// pass that finished and found nothing, and a fault is neither.
+func settleTimedPass(
+	gate *runnerQuietGate, backoff *runnerFaultBackoff,
+	watermark int64, watermarkErr error, dispatched int, faulted bool, now time.Time,
+) {
+	if faulted {
+		gate.disarm()
+		backoff.fault(now)
+		return
+	}
+	backoff.clear()
+	gate.settle(watermark, watermarkErr, dispatched, now)
+}
+
 // Serve polls for ready work until ctx ends, then waits for in-flight nodes
 // to land. Landing is bounded by each execution's own respect for ctx.
 //
@@ -233,35 +347,39 @@ func (r *Runner) Serve(ctx context.Context) error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	failures := 0
-	pass := func() (int, error) {
-		dispatched, err := r.tickGuarded(ctx)
+	pass := func() (int, bool, error) {
+		dispatched, faulted, err := r.tickGuarded(ctx)
 		if err != nil {
 			// Cancellation is the caller's decision, not a fault, and it is the
 			// one error that must end the loop on its first appearance.
 			if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return dispatched, err
+				return dispatched, faulted, err
 			}
 			failures++
 			_ = guard.Note("resident/runner tick", err)
 			if failures >= runnerTickFailures {
-				return dispatched, fmt.Errorf("runner serve: %d consecutive failed passes: %w", failures, err)
+				return dispatched, faulted, fmt.Errorf("runner serve: %d consecutive failed passes: %w", failures, err)
 			}
-			return dispatched, nil
+			return dispatched, faulted, nil
 		}
 		failures = 0
-		return dispatched, nil
+		return dispatched, faulted, nil
 	}
 	gate := newRunnerQuietGate()
+	faults := newRunnerFaultBackoff()
 	timed := func() error {
+		if faults.hold(time.Now()) {
+			return nil
+		}
 		watermark, watermarkErr := r.graph.LatestEventSeq()
 		if gate.skip(watermark, watermarkErr, time.Now()) {
 			return nil
 		}
-		dispatched, err := pass()
+		dispatched, faulted, err := pass()
 		if err != nil {
 			return err
 		}
-		gate.settle(watermark, watermarkErr, dispatched, time.Now())
+		settleTimedPass(&gate, &faults, watermark, watermarkErr, dispatched, faulted, time.Now())
 		return nil
 	}
 	for {
@@ -274,9 +392,18 @@ func (r *Runner) Serve(ctx context.Context) error {
 			return nil
 		case <-r.wake:
 			gate.disarm()
-			if _, err := pass(); err != nil {
+			// A nudge is news and runs even inside a fault backoff, but what it
+			// finds still counts: the rail exists to bound a repeating fault
+			// wherever the pass was entered from.
+			_, faulted, err := pass()
+			if err != nil {
 				r.wg.Wait()
 				return err
+			}
+			if faulted {
+				faults.fault(time.Now())
+			} else {
+				faults.clear()
 			}
 		case <-ticker.C:
 			if err := timed(); err != nil {
@@ -290,14 +417,23 @@ func (r *Runner) Serve(ctx context.Context) error {
 // tickGuarded keeps the drain loop alive across a panicking pass. A fault in
 // one tick is recorded and dropped; the next tick reads the same durable graph
 // and dispatches whatever is still ready.
-func (r *Runner) tickGuarded(ctx context.Context) (dispatched int, err error) {
+//
+// It reports the fault rather than swallowing it whole. "Dispatched nothing"
+// and "could not finish looking" are different facts, and the caller's quiet
+// gate is entitled to sleep only on the first. The report covers the faults
+// dispatchOne already recovers on its own as well as one that reaches here:
+// both end the pass with nothing dispatched and neither is evidence about the
+// ready set.
+func (r *Runner) tickGuarded(ctx context.Context) (dispatched int, faulted bool, err error) {
+	before := r.passFaults.Load()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			_ = guard.Note("resident/runner tick", recovered)
-			dispatched, err = 0, nil
+			dispatched, faulted, err = 0, true, nil
 		}
 	}()
-	return r.Tick(ctx)
+	dispatched, err = r.Tick(ctx)
+	return dispatched, r.passFaults.Load() != before, err
 }
 
 // Tick claims as many ready nodes as free slots allow and dispatches them.
@@ -354,14 +490,22 @@ func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawne
 				_ = r.graph.Release(claimed)
 			}
 			_ = guard.Note("resident/runner dispatch", recovered)
+			r.passFaults.Add(1)
 			spawned, err = false, nil
 		}
 	}()
 
-	// This is the one gate on new leaves — every claim in the process comes
-	// through here. A refusal delays nothing that is already running and
-	// touches no user-origin surgery or answer: those never claim. The next
-	// tick asks again, so a saturated machine simply admits more slowly.
+	// The backstop, and nothing else. How many leaves may exist at once is a
+	// resource question — handles, goroutines — not a scheduling one, because
+	// a leaf is a goroutine parked on a socket waiting for a model. Refusing
+	// here is therefore allowed to end the pass: at the backstop no leaf of
+	// any class could be admitted, so there is nothing to skip to.
+	//
+	// The gate that still reads host pressure lives inside claimNext, asked
+	// per node, and only of the leaves that spawn real local processes. That
+	// is where a refusal must skip one candidate rather than end the pass:
+	// this one used to do both jobs, and a single busy compile ended the pass
+	// for every briefing waiting behind it.
 	if !r.governor.Admit(len(r.slots) - 1) {
 		release()
 		return false, nil
@@ -376,6 +520,24 @@ func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawne
 		return false, nil
 	}
 	claimed = store.Claim{ID: node.ID, Owner: node.Owner, Token: node.ClaimToken}
+
+	// The last question asked of a node before it becomes work: is this really
+	// one worker's job? It is asked here and not at plan time because the claim
+	// is the proof that everything feeding this node has landed — the division,
+	// if there is one, is decided against results rather than against titles.
+	//
+	// A division ends the pass. Its parts are in the graph and ready, the node
+	// is structure and the claim is back, and the nudge below brings the next
+	// pass round immediately rather than at the tick — so what the person waits
+	// is a scheduling gap and not a poll interval.
+	if r.expand != nil {
+		if _, expanded := r.expand(ctx, node); expanded {
+			claimed = store.Claim{} // the division handed the claim back itself
+			release()
+			r.nudge()
+			return false, nil
+		}
+	}
 	runCtx := ctx
 	var cancel context.CancelFunc
 	if node.Group == store.PracticeGroup {
@@ -388,7 +550,15 @@ func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawne
 			r.activePractice[node.ID] = cancel
 		}()
 	}
+	// Counted before the worker exists, for the same reason the slot is taken
+	// before the worker exists: the next dispatch in this same pass has to see
+	// it. A count incremented inside the goroutine would still read zero while
+	// eight compiles were being handed out.
+	local := executor.LocalWorkSubharness(node.Subharness)
 	r.wg.Add(1)
+	if local {
+		r.localInFlight.Add(1)
+	}
 	held = false            // the worker's own defer returns the slot now
 	claimed = store.Claim{} // and the worker's own landing settles the claim
 	go func(node store.Node, runCtx context.Context, cancel context.CancelFunc) {
@@ -401,6 +571,12 @@ func (r *Runner) dispatchOne(ctx context.Context, open *map[string]bool) (spawne
 		// exactly as full as it was.
 		defer r.nudge()
 		defer func() { <-r.slots }()
+		// Registered after the slot's own defer so it runs before it: the pass
+		// woken by the returned slot must not read a local count that still
+		// includes the compile that just finished.
+		if local {
+			defer r.localInFlight.Add(-1)
+		}
 		if cancel != nil {
 			defer cancel()
 			defer func() {
@@ -465,6 +641,21 @@ func (r *Runner) claimNext(open *map[string]bool) (store.Node, bool, error) {
 		// while its subtree is still working, and the store would refuse its
 		// completion anyway. Skip it until the children are terminal.
 		if (*open)[node.ID] {
+			continue
+		}
+		// The last gate that still asks the machine anything, asked only of
+		// the leaves the machine can feel. Which worker those are is the
+		// executor's own answer, not a name this package knows: a worker that
+		// spawns compilers and test binaries loads this host, and the
+		// fan-pinning incident that protection was built for was exactly that.
+		// Everything else is a goroutine on a socket.
+		//
+		// A refusal skips this node and looks at the next one. That is the
+		// whole difference between a cap and a stall: the leaf behind a busy
+		// compile is usually a briefing that costs this host nothing, and it
+		// used to wait out the compile because one refusal ended the pass.
+		if executor.LocalWorkSubharness(node.Subharness) &&
+			!r.governor.AdmitLocal(len(r.slots)-1, int(r.localInFlight.Load())) {
 			continue
 		}
 		// Admission reserves the per-firing budget; nothing until now spent it.
@@ -611,7 +802,24 @@ func (r *Runner) runOne(ctx context.Context, node store.Node) {
 		// records before Complete: the spend is true whatever the store then
 		// decides about the node.
 		r.recordSpend(node, result)
-		if node.Group == store.PracticeGroup && errors.Is(ctx.Err(), context.Canceled) {
+		// The runner's own context ending is not this leaf's verdict on itself.
+		// It means the process that was carrying it is going away — a window
+		// closed, a role handed over, a one-shot's wall reached — and the leaf
+		// died mid-POST because of that and nothing else. Journaling it as a
+		// failure is a lie the rest of the machine then believes: the parent
+		// replans around a child that never actually failed, the receipt bills
+		// a fault nobody incurred, and the retrospect reads
+		// `Post ".../chat/completions": context canceled` as a flaky provider
+		// and files a lesson recommending retries — for a network that was
+		// answering perfectly.
+		//
+		// Release is the same settlement ReleaseOrphans gives a leaf that was
+		// still claimed when a process was killed outright: the row goes back
+		// to pending, the workspace it had written stays where it is, and the
+		// next resident picks it up. A leaf's OWN deadline runs on a context
+		// derived inside the executor, so a genuine timeout leaves ctx.Err()
+		// nil here and is still a failure, exactly as before.
+		if ctx.Err() != nil {
 			_ = r.graph.Release(claim)
 			return
 		}
@@ -749,6 +957,13 @@ func (r *Runner) recordSpend(node store.Node, result ExecResult) {
 // noteFault journals the one quiet line a fault earns in the thread. It is
 // best-effort: a fault is already being recorded to the log, and failing to
 // say so must not raise a second one.
+//
+// It stays a THREAD line and did not move to the record with the status
+// producers around it (13.18, the noise sweep of 2026-08-11). A fault is a
+// failure, and failure is one of the three classes: work the person is waiting
+// for has stopped, nothing else in the product is going to say so, and a
+// failure filed where only a reader who goes looking can find it is the silence
+// this whole law exists to distinguish itself from.
 func (r *Runner) noteFault(node store.Node) {
 	if r.graph == nil {
 		return

@@ -199,7 +199,7 @@ func TestUpgradeNeverRewritesContent(t *testing.T) {
 // as a door instead of as a rule.
 //
 // Rule (b) would have upgraded the leading glyph of any string painted at
-// blocks.StateChrome, and it existed for exactly one caller: blocks.ExpandHint
+// blocks.StateChrome, and it existed for exactly one caller: blocks.Disclose
 // returns "▸ 12 lines", which is not a single rune. Its warrant was blocks' own
 // definition of the state — "separators, meta, fold lines, hints" — and D.2
 // bound the rule to a test proving no CONTENT path paints StateChrome.
@@ -213,14 +213,14 @@ func TestUpgradeNeverRewritesContent(t *testing.T) {
 // it: the rule is dropped, and the callers that want the behaviour ask for it
 // by name, one token at the call site.
 func TestUpgradeChromeIsAnExplicitDoor(t *testing.T) {
-	hint := blocks.ExpandHint(false, 12)
+	hint := blocks.Disclose(false, 12, "line", "lines")
 	if got := NerdFont.UpgradeChrome(hint); got != NerdFont.Glyph(GCollapsed)+" 12 lines" {
 		t.Errorf("UpgradeChrome(%q) = %q", hint, got)
 	}
 	if got := NerdFont.Upgrade(hint); got != hint {
 		t.Errorf("the automatic path must NOT rewrite a lead glyph: got %q", got)
 	}
-	if got := NerdFont.UpgradeChrome(blocks.ExpandHint(true, 0)); got != NerdFont.Glyph(GExpanded) {
+	if got := NerdFont.UpgradeChrome(blocks.Disclose(true, 0, "line", "lines")); got != NerdFont.Glyph(GExpanded) {
 		t.Errorf("the expanded hint is a whole cell and upgrades: got %q", got)
 	}
 	// Even at the explicit door, an ASCII slot and a mid-line glyph are safe.

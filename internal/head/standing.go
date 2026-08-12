@@ -31,6 +31,19 @@ var (
 	standingStatePattern    = regexp.MustCompile(`(?i)\bmake\s+sure\b.+\b(?:stays?|remains?)\b`)
 	standingReminderPattern = regexp.MustCompile(`(?i)\b(?:remind|notify|alert)\s+me\s+(?:when|whenever|at|on|in|tomorrow|next)\b`)
 	standingWhenOncePattern = regexp.MustCompile(`(?i)\bwhen\s+i\s+say\b.*\bonce\b`)
+	// standingOnceClausePattern separates the two words spelled "once". One is
+	// a count — "run the benchmark once" — and it is the reason the exclusion
+	// below exists at all: an ask that happens a single time is not durable
+	// intent. The other is a temporal conjunction — "once the deploy is green",
+	// "once it lands" — which is the exact shape a sentinel is FOR, and the
+	// plain substring check was reading it as the first and killing it.
+	//
+	// The discriminator is grammatical rather than semantic: the conjunction is
+	// followed by a clause, the count is followed by nothing or by punctuation.
+	// So a subject pronoun or determiner after the word, or any word followed
+	// by a verb of completion, means the sentence is naming a condition and not
+	// a quantity.
+	standingOnceClausePattern = regexp.MustCompile(`(?i)\bonce\s+(?:it|its|it'?s|they|the|that|this|there|we|you|[a-z]+\s+(?:is|are|has|have|was|were|finish|finishes|lands|completes|passes))\b`)
 	// clockTail is the time-of-day a cadence phrase may carry with it: "at 9",
 	// "at 8pm", "at 6:30 pm", "in the morning". It is spelled once and appended
 	// to every pattern that can be qualified by one, because the clock is the
@@ -63,6 +76,14 @@ func RecognizesStandingIntent(instruction string) bool {
 	lower := strings.ToLower(trimmed)
 	if lower == "" || standingWhenOncePattern.MatchString(lower) {
 		return false
+	}
+	// "once the deploy is green" is a condition to be watched for, which is what
+	// a sentinel is; "run the benchmark once" is a count, which is not durable
+	// intent at all. The exclusion below used to read both as the count and so
+	// no temporal ask could ever become a sentinel — the whole class of "do this
+	// when that happens" fell through to an ordinary one-shot job that runs now.
+	if standingOnceClausePattern.MatchString(lower) {
+		return true
 	}
 	if strings.Contains(lower, " once") &&
 		!strings.Contains(lower, "whenever") && !strings.Contains(lower, "each time") &&

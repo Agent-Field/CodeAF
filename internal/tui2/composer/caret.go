@@ -15,12 +15,19 @@ package composer
 // would be a click that said "somewhere on this line" to a reader who pointed
 // at a word.
 
-// TextColumn is the screen column the draft's own text starts at inside a
-// rectangle of this width: the prompt glyph and the space after it. It is
+// TextColumn is §20's CONTENT EDGE for this surface: the screen column the
+// draft's own text starts at inside a rectangle of this width — the field's
+// edge, §19's inner pad, then the prompt glyph and the space after it. It is
 // exported because a caller resolving a pointer has to name the same column the
 // paint used, and two spellings of one number is how a click lands on the wrong
 // character.
-func TextColumn(width int) int { return width - usable(width) }
+//
+// It is NOT `width - usable(width)` any more, and the difference is the whole
+// right-hand half of the padding law: the draft is now measured short at BOTH
+// edges, so the cells missing from `usable` are no longer all in front of the
+// text. Deriving the caret's column by subtraction would have put the terminal's
+// real cursor one cell right of the painted one at every width.
+func TextColumn(width int) int { return padAt(width) + gutterAt(innerWidth(width)) }
 
 // ClickCaret puts the caret on the cell a click landed on, and reports whether
 // it moved. A click below the last drafted row, on the chrome, or outside the
@@ -30,36 +37,18 @@ func (m *Model) ClickCaret(width, height, x, y int) bool {
 	if width <= 0 || height <= 0 || y < 0 {
 		return false
 	}
-	sty := m.activeStyler()
-	// The `@`/`/` chrome borrows from the bottom of the rectangle; the draft's
-	// own rows are what is left. Render's arithmetic, run again.
-	hints := m.hintRows(sty, width, height-1)
-	drafted := height - len(hints)
-	if drafted <= 0 {
+	// The `@`/`/` chrome takes the TOP of the rectangle and the draft's own rows
+	// sit under it. Render's plan, read again.
+	p := m.plan(m.activeStyler(), width, height)
+	row := y - p.draftTop()
+	if row < 0 || row >= p.visible {
 		return false
 	}
-	text := usable(width)
-	rows := layoutRows(m.value, text)
-	total := len(rows)
-	visible := min(drafted, total)
-	if y >= visible {
+	index := p.first + row
+	if index < 0 || index >= len(p.rows) {
 		return false
 	}
-	scrollTop := 0
-	if total > drafted {
-		scrollTop = rowOf(rows, m.cursor) - (drafted - 1)
-		if scrollTop < 0 {
-			scrollTop = 0
-		}
-		if maxTop := total - drafted; scrollTop > maxTop {
-			scrollTop = maxTop
-		}
-	}
-	index := scrollTop + y
-	if index < 0 || index >= total {
-		return false
-	}
-	pos := m.caretInRow(rows[index], x-(width-text))
+	pos := m.caretInRow(p.rows[index], x-TextColumn(width))
 	if pos == m.cursor {
 		return false
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -160,19 +161,10 @@ func TestReplanOverrunSplicesRepairAndRewiresWaiters(t *testing.T) {
 	if plansBefore != 0 {
 		t.Fatalf("planner called %d times past the round cap", plansBefore)
 	}
-	messages, err := graph.Messages("s1", 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	noticed := false
-	for _, message := range messages {
-		if strings.Contains(message.Body, "split as many times") {
-			noticed = true
-		}
-	}
-	if !noticed {
-		t.Fatalf("round cap left no receipt in the thread")
-	}
+	// The receipt lands on the work's own record and never in the conversation
+	// (13.18): how many times a job was allowed to divide is the machinery's own
+	// arithmetic, and the delivery that follows says what the person got.
+	assertRecordOnly(t, graph, "s1", "job-a-x3-n5", "split as many times")
 }
 
 // The job-lifetime ceiling: many siblings can each split within the round
@@ -213,19 +205,7 @@ func TestReplanOverrunStopsAtJobCeiling(t *testing.T) {
 	if _, ok, err := graph.Node("big-job-n0-x1-n1"); err != nil || ok {
 		t.Fatalf("repair landed past the job ceiling: ok=%t err=%v", ok, err)
 	}
-	messages, err := graph.Messages("s9", 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	noticed := false
-	for _, message := range messages {
-		if strings.Contains(message.Body, "grown as large") {
-			noticed = true
-		}
-	}
-	if !noticed {
-		t.Fatalf("job ceiling left no receipt in the thread")
-	}
+	assertRecordOnly(t, graph, "s9", node.ID, "grown as large")
 }
 
 func TestReplanOverrunPausesBeforeSpliceAtDailyRail(t *testing.T) {
@@ -376,5 +356,61 @@ func TestSplitContinuationWalksTheNamespaceForward(t *testing.T) {
 	}
 	if _, continued := SplitContinuation(graph, completeNode("job-x2", "finished properly")); continued {
 		t.Fatal("an unstamped landing claimed a continuation")
+	}
+}
+
+// The §6 defect on the remainder path: a replan that re-derives its criterion
+// writes a new one, and a new one written from a partial result is aimed at the
+// work that happened rather than at the work that was asked for. The criterion
+// travels instead — verbatim, and saying so of itself.
+func TestOverrunGoalCarriesTheOriginalCriterion(t *testing.T) {
+	spec := plan.Spec{
+		Instruction: "write the module the request named",
+		Method:      "read what exists before writing anything",
+		Done: plan.Done{
+			Produces: []string{"the named module file"},
+			Conditions: []plan.Check{
+				{Kind: plan.CheckRun, Check: "the stated build command", Expect: "it completes with no error"},
+				{Kind: plan.CheckRead, Check: "the named constructor", Expect: "it is present and exported"},
+			},
+		},
+	}
+	node := store.Node{ID: "task-2", Brief: "write the module the request named", Spec: EncodeSpec(spec)}
+
+	goal := OverrunGoal(node, "half of it exists", nil, "")
+	for _, want := range []string{
+		SpecUnchangedNotice,
+		"the named module file",
+		"the stated build command",
+		"it completes with no error",
+		"the named constructor",
+	} {
+		if !strings.Contains(goal, want) {
+			t.Fatalf("the replan goal dropped %q:\n%s", want, goal)
+		}
+	}
+
+	// And a node with no criterion phrases the goal exactly as it always did.
+	bare := store.Node{ID: "task-2", Brief: "write the module the request named"}
+	if before, after := OverrunGoal(bare, "half of it exists", nil, ""), OverrunGoal(bare, "half of it exists", nil, ""); before != after {
+		t.Fatal("the goal is not deterministic")
+	}
+	if strings.Contains(OverrunGoal(bare, "half of it exists", nil, ""), SpecUnchangedNotice) {
+		t.Fatal("a criterion notice appeared for a node that has no criterion")
+	}
+}
+
+// The object has to make the round trip through the store's opaque bytes, or
+// the criterion is only ever as durable as the process that authored it.
+func TestSpecEncodesAndDecodesThroughTheStore(t *testing.T) {
+	spec := plan.Spec{Instruction: "do it", Done: plan.Done{Produces: []string{"a result"}}}
+	if restored := DecodeSpec(EncodeSpec(spec)); restored.Render(0) != spec.Render(0) {
+		t.Fatalf("round trip changed the spec:\n%s\n---\n%s", spec.Render(0), restored.Render(0))
+	}
+	if encoded := EncodeSpec(plan.Spec{}); encoded != nil {
+		t.Fatalf("an empty spec encoded to %q, want nothing at all", encoded)
+	}
+	if restored := DecodeSpec([]byte("not json")); !restored.Empty() {
+		t.Fatalf("unreadable bytes decoded to %+v, want the empty spec", restored)
 	}
 }

@@ -160,7 +160,10 @@ const (
 	pauseCycleThreshold        = 12
 	syntheticContinuationLimit = 256
 	pauseWallTimeout           = 5 * time.Minute
-	rootDrainSweepMinAge       = 30 * time.Second
+	// A paused cycle is re-checked in place on this interval instead of being
+	// handed back to the step loop. See absorbResourcePause.
+	pauseRecheckInterval = 30 * time.Second
+	rootDrainSweepMinAge = 30 * time.Second
 	// The last-resort sweep runs when a quiet stall is about to be declared, so
 	// its floor only has to outlast the tools' create-then-reserve window rather
 	// than the regular sweep's full race guard.
@@ -177,6 +180,7 @@ type pipelineRootScheduler struct {
 	pauseSince         time.Time
 	sweepMinAge        time.Duration
 	lastResortMinAge   time.Duration
+	pauseSleep         func(context.Context, time.Duration) error
 }
 
 type schedulerQuietReasonReporter interface {
@@ -451,6 +455,77 @@ func formatOpenDescendantCounts(counts map[plandb.TaskStatus]int) (int, string) 
 	return total, strings.Join(parts, ", ")
 }
 
+func (pump *pipelineRootScheduler) lastQuietReason() scheduler.CycleQuietReason {
+	if reporter, ok := pump.delegate.(schedulerQuietReasonReporter); ok {
+		return reporter.LastCycleQuietReason()
+	}
+	return scheduler.CycleQuietNone
+}
+
+// absorbResourcePause waits out a resource pause inside the cycle that hit it.
+//
+// A paused cycle dispatches nothing, so returning its synthetic continuation to
+// the step loop spends a paid orchestrator turn to be told what the next cycle
+// already knows: the volume is still full. A run measured in the field spent 12
+// such cycles and 723 seconds that way, and the model had nothing to decide in
+// any of them — the pause clears when space appears, from the delegate's own
+// stale-worktree GC or from something outside this process entirely, and
+// neither needs a model in the loop to notice.
+//
+// So the pause waits here instead. Re-pumping the delegate is free; only the
+// return to the step loop is paid. The bounds are unchanged and still hold —
+// pauseCycles counts every paused pump exactly as before, the wall timeout
+// still runs from pauseSince, and the loop leaves rather than crossing either
+// so the caller's own expiry logic declares the stall it always declared.
+func (pump *pipelineRootScheduler) absorbResourcePause(
+	ctx context.Context, input steploop.SchedulerInput,
+	summary string, err error, quietReason scheduler.CycleQuietReason,
+) (string, error, scheduler.CycleQuietReason) {
+	for err == nil && quietReason == scheduler.CycleQuietPaused {
+		counts := openDescendantStatusCounts(input.Plan.ProjectID, input.Plan.RootTaskID)
+		total, _ := formatOpenDescendantCounts(counts)
+		if total == 0 {
+			// Nothing is waiting on the volume, so nothing is gained by waiting
+			// for it. The caller treats this as an ordinary quiet cycle.
+			return summary, err, quietReason
+		}
+		if pump.pauseSince.IsZero() {
+			pump.pauseSince = pump.runner.now()
+		}
+		// The last wait is trimmed to whatever the wall budget has left, so the
+		// loop hands back a pause that has genuinely expired rather than one a
+		// fraction of an interval short of it — which would be handed straight
+		// back for another paid turn to finish.
+		wait := pauseRecheckInterval
+		elapsed := pump.runner.now().Sub(pump.pauseSince)
+		if remaining := pauseWallTimeout - elapsed; remaining < wait {
+			wait = remaining
+		}
+		if wait <= 0 || pump.pauseCycles+1 >= pauseCycleThreshold {
+			return summary, err, quietReason
+		}
+		if waitErr := pump.wait(ctx, wait); waitErr != nil {
+			return summary, err, quietReason
+		}
+		pump.pauseCycles++
+		pump.runner.events.stage("scheduler", "pause-wait", map[string]any{
+			"cycle": pump.cycle, "pause_cycles": pump.pauseCycles,
+			"waited_seconds":   pump.runner.now().Sub(pump.pauseSince).Round(time.Second).Seconds(),
+			"open_descendants": total,
+		})
+		summary, err = pump.delegate.Pump(ctx, input)
+		quietReason = pump.lastQuietReason()
+	}
+	return summary, err, quietReason
+}
+
+func (pump *pipelineRootScheduler) wait(ctx context.Context, duration time.Duration) error {
+	if pump.pauseSleep != nil {
+		return pump.pauseSleep(ctx, duration)
+	}
+	return pump.runner.sleep(ctx, duration)
+}
+
 func (pump *pipelineRootScheduler) Pump(
 	ctx context.Context, input steploop.SchedulerInput,
 ) (string, error) {
@@ -467,10 +542,8 @@ func (pump *pipelineRootScheduler) Pump(
 	pump.cycle++
 	pump.runner.events.stage("scheduler", "cycle", map[string]any{"cycle": pump.cycle})
 	summary, err := pump.delegate.Pump(ctx, input)
-	quietReason := scheduler.CycleQuietNone
-	if reporter, ok := pump.delegate.(schedulerQuietReasonReporter); ok {
-		quietReason = reporter.LastCycleQuietReason()
-	}
+	quietReason := pump.lastQuietReason()
+	summary, err, quietReason = pump.absorbResourcePause(ctx, input, summary, err, quietReason)
 	status := "cycle-complete"
 	data := map[string]any{"cycle": pump.cycle, "summary": summary != ""}
 	if err != nil {

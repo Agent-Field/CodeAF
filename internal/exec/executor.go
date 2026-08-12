@@ -14,9 +14,11 @@ package exec
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -45,6 +47,23 @@ type Input struct {
 // Task is one leaf, ready to run.
 type Task struct {
 	NodeID int
+	// NodeKey is the identity everything this leaf writes is filed under: its
+	// artifact bucket, its flight recorder, its spilled observations, its
+	// background job logs.
+	//
+	// It exists because NodeID is not always unique. A headless run's NodeID is
+	// its plan node's number, which is unique within the graph — that path sets
+	// nothing here and keeps the numeric spelling it has always written. The
+	// resident surface has no such number: it holds a store node, whose creation
+	// sequence belongs to the whole splice, so a four-part job handed four
+	// workers one bucket, one recorder and one set of spill names. Siblings run
+	// concurrently by construction, so that is not a naming inelegance — it is
+	// one worker's spilled observation overwritten by another's while a stub in
+	// its context still points at the file.
+	//
+	// Empty falls back to NodeID, which is what keeps every existing headless
+	// path byte-identical. See [Task.leafKey].
+	NodeKey string
 	// StoreNodeID is the durable provenance anchor used when a background job
 	// requests promotion. One-shot execution leaves it empty.
 	StoreNodeID string
@@ -52,7 +71,13 @@ type Task struct {
 	Goal        string // the whole plan's goal, for orientation
 	Brief       string // the self-contained instruction: what the job is
 	Contract    string // the working method: how this kind of job is done well
-	Inputs      []Input
+	// Spec is the same job as the object the planner authored, carried whole.
+	// Brief and Contract above are two of its fields and remain what this
+	// executor reads; the object is here for the worker that can be handed a
+	// spec directly instead of prose reassembled at the boundary. An empty
+	// Spec renders to the empty string and changes nothing.
+	Spec   plan.Spec
+	Inputs []Input
 	// OutputHint is where a file goes if this work needs one. It is an
 	// address, never an instruction: what a leaf owes is its final message,
 	// and a path offered as though a document were expected is how a job came
@@ -120,6 +145,15 @@ type Task struct {
 	// control is installed by the scheduler so its watchdog can tear down a
 	// Toolbox even when the executor goroutine itself is abandoned.
 	control *leafControl
+}
+
+// leafKey is the one place the answer to "who is this leaf, for naming
+// purposes?" is worked out, so no writer can pick a different one from a reader.
+func (t Task) leafKey() string {
+	if key := strings.TrimSpace(t.NodeKey); key != "" {
+		return key
+	}
+	return strconv.Itoa(t.NodeID)
 }
 
 // progress reports one step of within-node progress, and reports nothing at all
@@ -194,6 +228,20 @@ type Outcome struct {
 	// check. It is a tail and not a transcript: absence in it is evidence, not
 	// proof, and whatever reads it must say so.
 	Ran []string
+
+	// Baseline is what was already broken before this work began: the checks
+	// that came back red, and were red in exactly the same places before the
+	// leaf touched the workspace.
+	//
+	// It exists because the delivery gate was reading a suite's absolute state
+	// as a verdict on the change, and a repository with one pre-existing red
+	// test therefore convicted every correct patch that passed through it — a
+	// measured, repeated way of throwing finished work away (audit-notes
+	// §14.4.1). A worker that can tell the difference owes the judge the
+	// difference in words, because the judge cannot rerun anything. Only a
+	// worker that actually photographs the repository before it starts fills
+	// this in; every other leaf leaves it empty, which reads as "no claim".
+	Baseline []string
 
 	// Calibration is what the worker noticed about its own fit for this job:
 	// free-text sentences, in the worker's own voice, about whether the work sat

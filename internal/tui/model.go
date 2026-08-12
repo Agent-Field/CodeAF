@@ -76,6 +76,11 @@ type ModelChoice struct {
 	Slug  string `json:"slug"`
 	Name  string `json:"name,omitempty"`
 	Price string `json:"price,omitempty"`
+	// Note is one more fact about the model, in the wiring's words, shown after
+	// the price and dropped first under width pressure — today, what the model
+	// does with reasoning. Empty is ordinary: most rows have nothing extra to
+	// say, and a column of blanks would say it louder than the fact deserves.
+	Note string `json:"note,omitempty"`
 }
 
 // Backend is the durable store as the terminal lens reads and writes it.

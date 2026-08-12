@@ -555,8 +555,11 @@ func defaultBriefHeadline(activity BriefActivity) string {
 		parts = append(parts, fmt.Sprintf("%d learned", learned))
 	}
 	if activity.CraftsForged > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s forged", activity.CraftsForged,
-			plural(activity.CraftsForged, "craft", "crafts")))
+		// "3 crafts forged" was the implementation's own word in the one line a
+		// person reads before anything else. What they learned is that there are
+		// now three things this can do the way it has done them before.
+		parts = append(parts, fmt.Sprintf("%d new %s", activity.CraftsForged,
+			plural(activity.CraftsForged, "way of working", "ways of working")))
 	}
 	if activity.CharterFired > 0 {
 		parts = append(parts, fmt.Sprintf("%d %s fired", activity.CharterFired,

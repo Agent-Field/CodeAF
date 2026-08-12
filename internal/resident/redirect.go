@@ -326,15 +326,27 @@ func expediteReceipt(job store.Node, moved bool, revision Redirection, informed,
 // job as a node-anchored user message — the same move an amendment makes for
 // one node, made plural. The executor's steering mailbox delivers them before
 // the next turn, so a worker learns the goal moved without being restarted.
+//
+// sessionID is kept in the signature and deliberately not carried onto the
+// messages: callers name the room the steer came FROM, which is worth having at
+// the call site and is exactly what must not ride into the mailbox copies — see
+// the loop below.
 func BroadcastRedirection(graph *store.Store, jobRoot, sessionID, message string) (int, error) {
+	_ = sessionID
 	nodes, err := graph.Nodes()
 	if err != nil {
 		return 0, err
 	}
 	informed := 0
 	for _, id := range redirectAudience(nodes, jobRoot) {
-		if _, err := thread.Post(graph, store.Message{
-			SessionID: sessionID, Role: store.RoleUser, NodeID: id,
+		// A mailbox copy, not a second saying of it. The words are the person's
+		// own, they are already in the conversation where they typed them, and
+		// the mailbox is read off the NODE — so posting them with a session
+		// attached put one echo of their sentence into the thread for every
+		// running leaf it reached, under their own name, seconds after they said
+		// it. thread.Record is the door 13.18 names for exactly this.
+		if _, err := thread.Record(graph, store.Message{
+			Role: store.RoleUser, NodeID: id,
 			Body: redirectSteerPrefix + strings.TrimSpace(message),
 		}); err != nil {
 			return informed, err

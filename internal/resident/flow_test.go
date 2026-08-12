@@ -100,9 +100,10 @@ func TestIndependentJobsRunSideBySide(t *testing.T) {
 	}
 
 	runner, spans := recordingRunner(t, graph, hold, 8)
-	// The host is reported ten times over its ceiling on purpose. Back-pressure
-	// is a reason to stop growing a fan-out; it was silently a reason to abolish
-	// one, and that is the shape the field measurement had.
+	// The host is reported ten times over its ceiling on purpose, and it is
+	// now supposed to make no difference at all: these leaves are goroutines
+	// parked on sockets, and somebody else's compile is not a reason to make a
+	// person's three jobs take turns.
 	runner.WithGovernor(executor.NewGovernorFrom(func() (float64, bool) {
 		return executor.GovernorLoadCeiling * 10, true
 	}))
@@ -118,8 +119,8 @@ func TestIndependentJobsRunSideBySide(t *testing.T) {
 	if len(recorded) != jobs {
 		t.Fatalf("ran %d leaves, want %d", len(recorded), jobs)
 	}
-	if peak := peakConcurrency(recorded); peak < 2 {
-		t.Fatalf("peak concurrent leaves = %d, want at least 2 — the jobs ran as a queue", peak)
+	if peak := peakConcurrency(recorded); peak < jobs {
+		t.Fatalf("peak concurrent leaves = %d, want all %d — the jobs took turns", peak, jobs)
 	}
 	// And the wall clock agrees with the spans. Serial would be jobs*hold; the
 	// bar is deliberately loose enough to survive a slow machine and tight
@@ -192,15 +193,29 @@ func TestAJobsOwnDependenciesStillRunInOrder(t *testing.T) {
 // an empty started_at for fifteen minutes.
 func TestATransientClaimFailureDoesNotEndDispatchForever(t *testing.T) {
 	graph := openRunnerStore(t)
-	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
-		{ID: "survivor", Brief: "the work nobody claimed", Stage: 1},
-	}}, store.Provenance{Origin: store.OriginUser, SessionID: "flow", Intent: "the work nobody claimed"}); err != nil {
+	// swe leaves, one more than the starvation floor. The host reading is the
+	// fault this test injects, and the host is only ever asked on behalf of
+	// leaves that actually load it — and only once the floor is full, since
+	// below the floor no answer it could give would change the decision. So
+	// the fault lands mid-pass, on the claim of the last leaf, after the ones
+	// ahead of it have already been dispatched.
+	leaves := executor.GovernorLocalFloor + 1
+	nodes := []store.NodeSpec{{ID: "survivors", Brief: "the work nobody claimed", Stage: 0}}
+	for index := range leaves {
+		nodes = append(nodes, store.NodeSpec{
+			ID: fmt.Sprintf("survivor-%d", index), Parent: "survivors",
+			Brief: "the work nobody claimed", Stage: 1, Subharness: "swe",
+		})
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: nodes},
+		store.Provenance{Origin: store.OriginUser, SessionID: "flow", Intent: "the work nobody claimed"}); err != nil {
 		t.Fatal(err)
 	}
-	runner, spans := recordingRunner(t, graph, time.Millisecond, 2)
+	runner, spans := recordingRunner(t, graph, time.Millisecond, leaves+1)
 
-	// One pass faults before it can claim anything. tickGuarded records it and
-	// the loop must keep its nerve; the next pass reads the same durable graph.
+	// One pass faults where it decides whether to claim. tickGuarded records it
+	// and the loop must keep its nerve; the next pass reads the same durable
+	// graph and the leaf that fault stranded runs.
 	faulted := false
 	runner.WithGovernor(executor.NewGovernorFrom(func() (float64, bool) {
 		if !faulted {
@@ -217,13 +232,16 @@ func TestATransientClaimFailureDoesNotEndDispatchForever(t *testing.T) {
 
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(spans()) > 0 {
+		if len(spans()) >= leaves {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(spans()) == 0 {
-		t.Fatal("a single faulting pass ended claiming for good")
+	if got := len(spans()); got < leaves {
+		t.Fatalf("%d of %d leaves ran: a single faulting pass ended claiming for good", got, leaves)
+	}
+	if !faulted {
+		t.Fatal("the fault never fired — this test proved nothing")
 	}
 	cancel()
 	<-served

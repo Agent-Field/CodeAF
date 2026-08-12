@@ -10,7 +10,7 @@ import (
 
 const nodeColumns = `
 	id, parent_id, brief, title, grp, stage, status, owner, claim_token, attempt,
-	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, service_intent, work_model, plan_model, run_model, craft, subharness, splice_subharness, attachments, created_seq, created_order, updated_seq,
+	summary, error, held, cancel_requested, priority, origin, session_id, intent, charter_id, trial_of, retry_of, service_intent, work_model, plan_model, run_model, craft, subharness, splice_subharness, spec, attachments, created_seq, created_order, updated_seq,
     started_at, finished_at, folded, fold_root, fold_digest, fold_pointers`
 
 // migrateNodesSchema adds provenance and display columns introduced after the
@@ -65,8 +65,13 @@ func migrateNodesSchema(db *sql.DB) error {
 		// existed reads back exactly as it always did.
 		"subharness":        `TEXT NOT NULL DEFAULT ''`,
 		"splice_subharness": `TEXT NOT NULL DEFAULT ''`,
+		// spec holds the planner's task object as it was admitted. Empty is the
+		// default and is exactly what "this node was admitted before specs
+		// existed" means, so an old store reads back as it always did and every
+		// reader falls through to brief, which is still the read.
+		"spec": `TEXT NOT NULL DEFAULT ''`,
 	}
-	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority", "service_intent", "work_model", "plan_model", "run_model", "craft", "subharness", "splice_subharness"} {
+	for _, column := range []string{"title", "grp", "charter_id", "trial_of", "attachments", "retry_of", "held", "cancel_requested", "priority", "service_intent", "work_model", "plan_model", "run_model", "craft", "subharness", "splice_subharness", "spec"} {
 		if existing[column] {
 			continue
 		}
@@ -233,13 +238,13 @@ type rowScanner interface {
 func scanNode(scanner rowScanner) (Node, error) {
 	var node Node
 	var parent, session, started, finished sql.NullString
-	var pointers, attachments string
+	var pointers, attachments, spec string
 	if err := scanner.Scan(
 		&node.ID, &parent, &node.Brief, &node.Title, &node.Group, &node.Stage, &node.Status,
 		&node.Owner, &node.ClaimToken, &node.Attempt, &node.Summary, &node.Error,
 		&node.Held, &node.CancelRequested, &node.Priority,
 		&node.Provenance.Origin, &session, &node.Provenance.Intent, &node.Provenance.CharterID, &node.Provenance.TrialOf, &node.Provenance.RetryOf, &node.Provenance.ServiceIntent,
-		&node.Provenance.WorkModel, &node.Provenance.PlanModel, &node.Provenance.RunModel, &node.Provenance.Craft, &node.Subharness, &node.Provenance.Subharness, &attachments,
+		&node.Provenance.WorkModel, &node.Provenance.PlanModel, &node.Provenance.RunModel, &node.Provenance.Craft, &node.Subharness, &node.Provenance.Subharness, &spec, &attachments,
 		&node.CreatedSeq, &node.CreatedOrder, &node.UpdatedSeq, &started, &finished,
 		&node.Folded, &node.FoldRoot, &node.FoldDigest, &pointers,
 	); err != nil {
@@ -272,6 +277,12 @@ func scanNode(scanner rowScanner) (Node, error) {
 	}
 	if node.Provenance.Attachments, err = decodeStringArray(attachments); err != nil {
 		return Node{}, fmt.Errorf("decode node %q attachments: %w", node.ID, err)
+	}
+	// The spec goes back out as the bytes that came in. Nothing here knows what
+	// they mean, and a node with none — every node from before the column, and
+	// every node a splice admitted without one — reads back as nil.
+	if spec != "" {
+		node.Spec = json.RawMessage(spec)
 	}
 	return node, nil
 }

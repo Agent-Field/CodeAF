@@ -53,11 +53,14 @@ type Narration struct {
 // Returning an empty line skips the update without error.
 type NarrateFunc func(ctx context.Context, narration Narration) (string, error)
 
+// subtreeProgress is one job's unspoken milestones. It carries no session:
+// since 13.18 a narrator line is written to the job's record and the record is
+// keyed by node, so which conversation commissioned the work stopped being
+// anything the narrator has to know.
 type subtreeProgress struct {
-	sessionID string
-	finished  []string
-	previous  []string
-	lastPost  time.Time
+	finished []string
+	previous []string
+	lastPost time.Time
 }
 
 // WithNarrator installs progress narration and returns the reconciler for
@@ -96,9 +99,8 @@ func (r *Reconciler) ensureProgress(root store.Node) *subtreeProgress {
 	state, ok := r.progress[root.ID]
 	if !ok {
 		state = &subtreeProgress{
-			sessionID: root.Provenance.SessionID,
-			previous:  r.spokenLines(root.ID),
-			lastPost:  time.Now(),
+			previous: r.spokenLines(root.ID),
+			lastPost: time.Now(),
 		}
 		r.progress[root.ID] = state
 	}
@@ -109,8 +111,8 @@ func (r *Reconciler) ensureProgress(root store.Node) *subtreeProgress {
 // list used to live only in memory, so a restart during a long job made the
 // next progress line repeat an update the user had already read — the only
 // record that it had been said was in RAM. The lines were durable all along:
-// they were posted into the thread anchored to this job's root, so the thread
-// is the record, and no new store is needed to keep one.
+// they are written anchored to this job's root, so the job's own record is the
+// list, and no new store is needed to keep one.
 func (r *Reconciler) spokenLines(rootID string) []string {
 	if r.store == nil {
 		return nil
@@ -234,11 +236,16 @@ func (r *Reconciler) speakProgress(ctx context.Context, nodes []store.Node) erro
 			continue
 		}
 		line = strings.TrimSpace(line)
-		if _, err := thread.Post(r.store, store.Message{
-			SessionID: state.sessionID,
-			Role:      store.RoleAgent,
-			Body:      boundMessage(line),
-			NodeID:    rootID,
+		// Written to the job's record, never to the conversation (13.18). The
+		// narrator's whole subject is where a running job has got to — parts
+		// landed, parts in flight, "still going" — and that is a status, which
+		// is the one thing the three-class law does not let the thread carry.
+		// The room draws it exactly as before, in sequence beside the part rows
+		// it is narrating, which is the only place it was ever legible anyway.
+		if _, err := thread.Record(r.store, store.Message{
+			Role:   store.RoleAgent,
+			Body:   boundMessage(line),
+			NodeID: rootID,
 		}); err != nil {
 			return err
 		}

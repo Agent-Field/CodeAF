@@ -13,7 +13,13 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-func TestChatPlanProgressPostsAgainstProvisionalJobAnchor(t *testing.T) {
+// A compile phase is written to the job's record before the job exists, and it
+// is never written to the conversation (13.18). The provisional anchor is the
+// half that was always here: the command link proves the unknown node id is one
+// a pending splice will admit. What is new is the other half — the message
+// carries no session, so the room draws every phase in order and the thread,
+// the head's prompt window and the v1 lens never see one.
+func TestChatPlanProgressRecordsAgainstProvisionalJobAnchorAndNeverTheThread(t *testing.T) {
 	history, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -32,11 +38,17 @@ func TestChatPlanProgressPostsAgainstProvisionalJobAnchor(t *testing.T) {
 	})
 	progress(plan.ProgressUpdate{Phase: "reading the request"})
 
-	messages, err := history.Messages(command.SessionID, 0, 0)
+	if spoken, err := history.Messages(command.SessionID, 0, 0); err != nil {
+		t.Fatal(err)
+	} else if len(spoken) != 0 {
+		t.Fatalf("a compile phase reached the thread: %+v", spoken)
+	}
+	messages, err := history.Messages("", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(messages) != 1 || messages[0].Role != store.RoleSystem ||
+		messages[0].SessionID != "" ||
 		messages[0].NodeID != nodeID || messages[0].CommandSeq != command.Seq ||
 		messages[0].Body != "reading the request" || messages[0].Progress == nil ||
 		messages[0].Progress.Phase != "reading the request" {

@@ -122,7 +122,7 @@ func TestTheScopeHeaderIsTheWayOutAcrossItsWholeLine(t *testing.T) {
 // The rest of that line is the room's own name, and a click that left the room
 // from there would fire whenever the reader aimed at where they are.
 func TestTheMergedLeadPopsAndTheRestOfTheRowDoesNot(t *testing.T) {
-	m := enteredAtomic(t)
+	m := enteredMerged(t)
 	v := plainView()
 	lines := copyOf(v.Rail(m, 40, 24))
 	at, ok := columnOf(lines[0], tokens.GlyphScopeUp)
@@ -230,7 +230,7 @@ func TestTheSelectedRowIsNeverDrawnAsHovered(t *testing.T) {
 // HoverAt is the whole resolution rule in one call, and it must agree with the
 // two lookups it is built from.
 func TestHoverAtAgreesWithTheTable(t *testing.T) {
-	m := enteredAtomic(t)
+	m := enteredMerged(t)
 	v := plainView()
 	lines := copyOf(v.Rail(m, 40, 24))
 	at, _ := columnOf(lines[0], tokens.GlyphScopeUp)

@@ -21,7 +21,7 @@ func (c *progressPassClient) CompleteWithMessages(ctx context.Context, messages 
 	switch system {
 	case groundPrompt:
 		return textResponse("{\"settled\":[\"The three cities are Berlin, Lisbon, and Warsaw.\"],\"open\":[],\"evidence\":\"read and cite sources\"}"), nil
-	case briefPrompt:
+	case briefWithCriterion:
 		return textResponse("Do this part and return its concrete result."), nil
 	default:
 		return c.passClient.CompleteWithMessages(ctx, messages, options...)

@@ -58,3 +58,40 @@ func TestCompiledSubharnessRidesTheSpliceAndCanBeForced(t *testing.T) {
 		})
 	}
 }
+
+// Forcing a worker has to reach the nodes, not only the splice. A node the
+// planner sized for a specialist carries that name into admission, and the
+// node's own name outranks the job's — so a provenance-only force was a force
+// over exactly the nodes that had no opinion. The arm of a measurement that
+// forces the generalist is the arm that proves it, because that is the arm
+// whose nodes disagree with the flag.
+func TestForcedWorkerOutranksTheNodesOwnChoice(t *testing.T) {
+	graph := openStore(t)
+	if _, err := graph.RequestCommand(store.Command{
+		SessionID: "s", Kind: store.CommandSplice, Instruction: "fix the failing tests",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	compile := func(context.Context, string, string) (Compiled, error) {
+		return Compiled{Goal: "fix the failing tests", Scale: "task", Subharness: "swe"}, nil
+	}
+	plan := func(context.Context, Compiled) (store.Subtree, error) {
+		return store.Subtree{Nodes: []store.NodeSpec{
+			{ID: "root-leaf", Brief: "fix them", Stage: 1, Subharness: "swe"},
+			{ID: "child", Brief: "and write the note", Parent: "root-leaf", Stage: 2, Subharness: "linear"},
+		}}, nil
+	}
+	if err := New(graph, compile, plan).WithSubharness("linear").Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	for _, id := range []string{"root-leaf", "child"} {
+		node, ok, err := graph.Node(id)
+		if err != nil || !ok {
+			t.Fatalf("node %q: ok=%t err=%v", id, ok, err)
+		}
+		if node.Subharness != "linear" || node.Provenance.Subharness != "linear" {
+			t.Fatalf("node %q = %q (provenance %q), want the forced generalist",
+				id, node.Subharness, node.Provenance.Subharness)
+		}
+	}
+}

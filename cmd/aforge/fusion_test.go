@@ -25,7 +25,7 @@ func TestACompiledMethodCostsNoSecondCall(t *testing.T) {
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
 	const method = "Read the diff first. Done means the note names every migration step."
-	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
 		Goal: "write the note that announces the change", Scale: head.ScaleTask, Contract: method,
 	})
 	if err != nil {
@@ -37,7 +37,9 @@ func TestACompiledMethodCostsNoSecondCall(t *testing.T) {
 	if calls := capture.keysFor(provider.ClassPlanContract); len(calls) != 0 {
 		t.Fatalf("a compiled method still bought %d contract calls, want none", len(calls))
 	}
-	leaf := store.Node{ID: subtree.Nodes[0].ID}
+	// The node as the splice admits it: the spec rides the NodeSpec onto the
+	// store, and it is where the method now lives.
+	leaf := store.Node{ID: subtree.Nodes[0].ID, Spec: subtree.Nodes[0].Spec}
 	if got := leafContract(plans, nil, leaf); !strings.Contains(got, "every migration step") {
 		t.Fatalf("the leaf does not carry the compiled method: %q", got)
 	}

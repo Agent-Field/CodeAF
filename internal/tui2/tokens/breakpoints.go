@@ -40,6 +40,31 @@ const (
 	RailAtWidth = RailTranscriptFloor + RailGutter + RailWidth // 90
 )
 
+// The lens's left edge, and the measure chrome prose is wrapped to. Both are
+// 5.13's typographic law written as numbers rather than as a habit each surface
+// picks up on its own.
+//
+// LensIndent is where a room BEGINS. 5.13's spacing rhythm is "two-space indent
+// per depth", and a room's chrome sits one depth in from the frame: the meta
+// strip already indented by two, the composer's own hint rows by two, and every
+// block body by two (chat's bodyIndent). What column 0 holds is the GUTTER the
+// markers hang in — a block header's glyph, the composer's prompt — so a
+// surface that has no marker starts at LensIndent and a surface that has one
+// hangs it in the gutter and starts its words there too. The place line and the
+// footer used to start at 0 with nothing in the gutter, which is the same room
+// claiming two different left edges.
+//
+// ProseMeasure is how wide chrome prose may run before it stops being readable.
+// Typography puts the legible measure at 45-75 characters; this table already
+// names 60 as the narrowest column prose is legible in (RailTranscriptFloor's
+// own derivation), and 60 sits mid-range, so the two are the same number rather
+// than a second one. It is a CEILING, not a width: a lens narrower than the
+// measure wraps at the lens.
+const (
+	LensIndent   = 2
+	ProseMeasure = RailTranscriptFloor // 60
+)
+
 // SplitDiffAtWidth is the width at or above which a diff renders side by side
 // instead of unified.
 //

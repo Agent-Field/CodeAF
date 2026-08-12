@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/settings"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -116,20 +117,24 @@ func run(t *testing.T, cmd tea.Cmd) tea.Msg {
 // 5.10 and 5.23's chip grammar, on the one line that used to spell a model by
 // hand: role word, model word, and the effort that rides the slug. The vendor
 // prefix and the release stamp are provenance and must not reach a cell.
-func TestTheMetaStripSpeaksTheChipGrammar(t *testing.T) {
-	strip := &metaStrip{
+// THE BAR ROW NAMES NO MODEL AT ALL, and that is the point of this test.
+//
+// The word rode the right zone for one wave, and a reader met it as
+// `deepseek-v4-flash-latest`. A model name is a SLUG: the shortening that makes
+// one humane is a best effort against strings a vendor invents, and §14 puts
+// identifiers in the never-shown tier without an exception for "usually
+// readable". The bar row is the last surface in the product that can afford to
+// print an identifier and hope.
+func TestTheBarNamesNoModelSlug(t *testing.T) {
+	pane := &statusPane{
 		style: tokens.NewStyler(tokens.NoColor, tokens.FocusNormal),
-		model: "anthropic/claude-sonnet-4-20250514:high",
+		bar:   footer.New(footer.Options{Styler: tokens.NewStyler(tokens.NoColor, tokens.FocusNormal)}),
+		model: "deepseek/deepseek-v4-flash-latest",
 	}
-	row := ansi.Strip(strip.render(60))
-	for _, want := range []string{store.RoleOrchestrate.Word(), "claude-sonnet-4", "high"} {
-		if !strings.Contains(row, want) {
-			t.Fatalf("the meta strip's chip does not say %q: %q", want, row)
-		}
-	}
-	for _, refused := range []string{"anthropic/", "20250514"} {
+	row := ansi.Strip(pane.Render(120, 1))
+	for _, refused := range []string{"deepseek", "flash", "latest", "/"} {
 		if strings.Contains(row, refused) {
-			t.Fatalf("provenance reached the chip (%q): %q", refused, row)
+			t.Fatalf("a model slug reached the bar row (%q): %q", refused, row)
 		}
 	}
 }
@@ -142,9 +147,11 @@ func TestOneModelWordForTheChipAndTheHeader(t *testing.T) {
 	if got := modelWord(slug); got != "claude-sonnet-4" {
 		t.Fatalf("modelWord(%q) = %q", slug, got)
 	}
-	strip := &metaStrip{model: slug}
-	if got := strip.chip().Model; got != slug {
-		t.Fatalf("the chip was handed %q rather than the slug it must shorten itself", got)
+	// The chip's own shortening is still the product's one word — it is what a
+	// reply header and a model-switch receipt draw — it simply has no cell on
+	// the bar row to reach.
+	if got := modelui.ModelWord(slug); got != "claude-sonnet-4" {
+		t.Fatalf("the chip's shortening drifted: %q", got)
 	}
 }
 
@@ -223,7 +230,7 @@ func TestTheReceiptFollowsTheJournalAndNotTheKeystroke(t *testing.T) {
 	if strings.Contains(receipt.Body, "remaining work") {
 		t.Fatalf("the voice claimed it moved running work: %q", receipt.Body)
 	}
-	for _, want := range []string{store.RoleOrchestrate.Word(), "gpt-oss-120b", "next call"} {
+	for _, want := range []string{modelui.RoleWord(store.RoleOrchestrate), "gpt-oss-120b", "next call"} {
 		if !strings.Contains(receipt.Body, want) {
 			t.Fatalf("receipt %q does not say %q", receipt.Body, want)
 		}
@@ -291,7 +298,7 @@ func TestClearingSaysTheWiderScopeAnswersAgain(t *testing.T) {
 	}
 	run(t, app.applyModelResult(cleared))
 	body := backend.posted[len(backend.posted)-1].Body
-	if !strings.Contains(body, store.RolePlan.Word()) || !strings.Contains(body, "wider scope") {
+	if !strings.Contains(body, modelui.RoleWord(store.RolePlan)) || !strings.Contains(body, "wider scope") {
 		t.Fatalf("the clear receipt does not say what happened: %q", body)
 	}
 }
@@ -465,14 +472,16 @@ func TestASubCentTurnReachesTheStripAsAFigure(t *testing.T) {
 	backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent, Body: "done"})
 	app := newTestApp(backend, &fakeCommander{model: "claude-k3"}, nil)
 	poll(t, app)
-	if !app.meta.haveCost {
-		t.Fatal("a recorded turn spend never reached the meta strip")
+	if !app.status.haveCost {
+		t.Fatal("a recorded turn spend never reached the bar")
 	}
-	row := ansi.Strip(app.meta.render(60))
+	// The turn's cost is a LIVE fact, so it is on the row only while the turn is.
+	app.status.live = true
+	row := ansi.Strip(app.status.Render(120, 1))
 	if strings.Contains(row, "$0.00 ") || strings.HasSuffix(row, "$0.00") {
 		t.Fatalf("a billed turn reads as free: %q", row)
 	}
 	if !strings.Contains(row, "$0.0017") {
-		t.Fatalf("the strip does not carry the figure: %q", row)
+		t.Fatalf("the row does not carry the figure: %q", row)
 	}
 }

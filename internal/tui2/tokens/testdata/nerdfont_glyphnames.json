@@ -14,6 +14,9 @@
  "nf-fa-angle_right": {
   "code": "f105"
  },
+ "nf-fa-asterisk": {
+  "code": "f069"
+ },
  "nf-fa-bolt": {
   "code": "f0e7"
  },
@@ -53,6 +56,9 @@
  "nf-fa-folder": {
   "code": "f07b"
  },
+ "nf-fa-folder_o": {
+  "code": "f114"
+ },
  "nf-fa-home": {
   "code": "f015"
  },
@@ -65,14 +71,26 @@
  "nf-fa-pause": {
   "code": "f04c"
  },
+ "nf-fa-pencil": {
+  "code": "f040"
+ },
  "nf-fa-question_circle": {
   "code": "f059"
+ },
+ "nf-fa-question_circle_o": {
+  "code": "f29c"
  },
  "nf-fa-scissors": {
   "code": "f0c4"
  },
+ "nf-fa-search": {
+  "code": "f002"
+ },
  "nf-fa-sign_in": {
   "code": "f090"
+ },
+ "nf-fa-terminal": {
+  "code": "f120"
  },
  "nf-fa-times": {
   "code": "f00d"

@@ -3,9 +3,9 @@
 // on a visible object, and typing is an accelerator, never the only door. A
 // single catalog of entries — id, verb phrase, description, scope predicate,
 // key binding, slash alias, journal mapping — is the source every render
-// surface (action strips, ctrl+k palette, slash-filtered palette, contextual
-// footer, chips, empty states) reads from, so discoverability holds by
-// construction instead of by six surfaces staying in sync by hand.
+// surface (action strips, the summon palette, slash-filtered palette,
+// contextual footer, chips, empty states) reads from, so discoverability holds
+// by construction instead of by six surfaces staying in sync by hand.
 //
 // This package is pure data and query functions. It renders nothing and
 // knows nothing about Bubble Tea, lipgloss, or any TUI type — the dependency
@@ -20,6 +20,8 @@
 package registry
 
 import (
+	"fmt"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -49,12 +51,32 @@ const (
 	// what the orchestrator can do, and a verb the belt carries is exactly
 	// that, even with no accelerator of its own.
 	ScopeTalk
+	// ScopeItem is one thing the resident knows or is doing, open on its own
+	// page: a belief, a way of working, a forged tool, a standing rule, a
+	// service. The verbs here always act on THAT item — retire it, run it,
+	// stop it — so the item is half the verb and the verb means nothing
+	// without it.
+	//
+	// That is also why it is not in [ScopeAny]. Every other scope answers
+	// "what can be done here"; this one answers "what can be done to this",
+	// and an unscoped palette offering `retire` with nothing selected would be
+	// a door that cannot open — the exact dishonesty 5.22 exists to remove. A
+	// surface asks for ScopeItem when it has an item, and never otherwise.
+	ScopeItem
 )
 
-// ScopeAny matches every entry regardless of scope. It is the predicate a
-// surface with no current focus (an empty state, the unscoped ctrl+k
-// palette) queries with.
+// ScopeAny matches every entry a surface can offer with nothing in particular
+// selected. It is the predicate a surface with no current focus (an empty
+// state, the unscoped summon palette) queries with.
+//
+// It deliberately leaves [ScopeItem] out — see that scope's own doc. A caller
+// that genuinely wants the whole catalog, item verbs included (a completeness
+// test, a capability inventory), asks with [ScopeEvery].
 const ScopeAny = ScopeThread | ScopeNode | ScopeTalk
+
+// ScopeEvery is every scope this package defines. It is the honest spelling of
+// "the whole catalog" for the handful of callers that mean it.
+const ScopeEvery = ScopeAny | ScopeItem
 
 // Has reports whether scope and other share at least one bit — the one test
 // every query function in this package runs, so an entry scoped to more than
@@ -164,9 +186,56 @@ type Entry struct {
 	Slash string
 	// Journal is what the action journals, when it journals anything.
 	Journal Journal
+	// Confirm is the question a destructive verb asks before it fires, in the
+	// product's own voice and in one line. EMPTY IS THE COMMON CASE and means
+	// the verb fires at once: pausing a rule, restarting a service and running
+	// a way of working are all reversible by doing the opposite, and asking
+	// about them would be ceremony.
+	//
+	// It is a sentence rather than a boolean because the only useful part of a
+	// confirmation is what it says is about to be lost, and that is per-verb:
+	// "retire this rule?" and "stop this service?" are not the same warning
+	// with a different noun in it. A surface draws it however it draws
+	// questions; this package renders nothing.
+	//
+	// Confirm and [Entry.Steer] are never both set. A verb that needs the
+	// user's own words is answered by them typing, and a confirmation on top of
+	// that would be asking twice about one sentence.
+	Confirm string
+	// Steer is the composer seed for a verb that carries an argument the
+	// resident has to interpret — a new cadence, a corrected belief, the reason
+	// a version is going back. Per the one-mouth law those verbs do not fire on
+	// a click: they put the user's cursor in the composer with the sentence
+	// half written, and the head reads what they finish.
+	//
+	// It carries exactly one %s, which is the item's own name as the user knows
+	// it. Read it through [Entry.SteerFor] rather than formatting it by hand.
+	Steer string
 
 	lowerVerb, lowerDescription string
 }
+
+// SteerFor is this entry's composer seed for one named item, or "" when the
+// verb is not a steering verb at all. A surface tests the empty answer to
+// decide which of the two doors it is drawing — the seed, or the direct fire —
+// so it never has to keep its own list of which verbs carry an argument.
+func (e Entry) SteerFor(name string) string {
+	if e.Steer == "" {
+		return ""
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		// A seed with a hole in it is worse than no seed: the person would have
+		// to delete the sentence before writing their own.
+		return ""
+	}
+	return fmt.Sprintf(e.Steer, name)
+}
+
+// Destructive reports that this verb asks before it acts. It is the one-word
+// form of "does this row carry a [Entry.Confirm]", named so a caller reads the
+// question it is actually asking.
+func (e Entry) Destructive() bool { return e.Confirm != "" }
 
 // KeyOn is the accelerator this entry actually has on surface, which is the
 // only form of the question a render surface can honestly ask. It returns "" —

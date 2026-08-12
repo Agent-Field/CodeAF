@@ -50,6 +50,7 @@ var (
 func NewCapability(opts Options) *Capability {
 	c := &Capability{core: core{opts: opts}}
 	c.list.setStyle(opts.Styler)
+	c.list.linear = opts.Linear
 	c.list.emptyText = emptyBeltText
 	return c
 }
@@ -83,14 +84,14 @@ func (c *Capability) Render(width, height int) string {
 	c.out = c.out[:0]
 	c.out = append(c.out, c.header(width))
 	if height >= 3 {
-		c.out = append(c.out, blankLine(&c.line, &c.buf, c.list.profile, c.list.focus, width))
+		c.out = append(c.out, blankLine(&c.line, &c.buf, c.list.profile, c.list.focus, width, c.list.ground()))
 	}
 	c.bodyTop = len(c.out)
 	c.out = append(c.out, c.list.render(width, height-c.bodyTop)...)
 	if len(c.out) > height {
 		c.out = c.out[:height]
 	}
-	c.out = padSheet(c.out, &c.line, &c.buf, c.list.profile, c.list.focus, width, height)
+	c.out = padSheet(c.out, &c.line, &c.buf, c.list.profile, c.list.focus, width, height, c.list.ground())
 	return strings.Join(c.out, "\n")
 }
 
@@ -104,8 +105,8 @@ func (c *Capability) header(width int) string {
 	l.add("what ", tokens.TextTertiary)
 	l.add(name, tokens.TextPrimary)
 	l.add(" can do", tokens.TextTertiary)
-	addTail(l, width, escHint)
-	return l.emit(&c.buf, c.list.profile, c.list.focus, width, false, tokens.Band, sheetGround)
+	addChipTail(l, width, closeChip)
+	return l.emit(&c.buf, c.list.profile, c.list.focus, width, false, tokens.Band, c.list.ground())
 }
 
 // Key implements [tui2.PaneKeys].

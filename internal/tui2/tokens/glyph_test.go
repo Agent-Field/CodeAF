@@ -113,6 +113,10 @@ func TestAnimatedSetsAgreeOnWidth(t *testing.T) {
 		"spinner":   SpinnerFrames[:],
 		"gauge":     GaugeCells[:],
 		"sparkline": SparklineCells[:],
+		// The breathe (11's second motion). All three sizes are Ambiguous
+		// TOGETHER, which is the property that matters: `planning…` must not
+		// shift a cell to the right mid-breath under a CJK locale.
+		"pulse": PulseFrames[:],
 	} {
 		first := []rune(set[0])[0]
 		wantAmbiguous := isAmbiguous(first)
@@ -244,8 +248,10 @@ func TestGlyphInventoryIsComplete(t *testing.T) {
 		GlyphQueued, GlyphWorking, GlyphSettled, GlyphFailed, GlyphPaused,
 		GlyphNeedsHuman, GlyphWaitsOn, GlyphCollapsed, GlyphExpanded,
 		GlyphScopeUp, GlyphTruncated, GlyphCut, GlyphPromptChat, GlyphPromptSteer,
+		GlyphThought, GlyphShell, GlyphSearch, GlyphWrite,
 		GlyphBoosted, GlyphSeparator, GlyphMissing, GlyphEstimate,
-		GlyphAccentRail, GlyphDragHandle, GlyphStepDone, GlyphStepRunning,
+		GlyphAccentRail, GlyphHugEdge, GlyphChipCapLeft, GlyphChipCapRight,
+		GlyphDragHandle, GlyphStepDone, GlyphStepRunning,
 		GlyphStepPending, GlyphStepBlocked, GlyphQueuePill, GlyphDiffAdd,
 		GlyphDiffDel, GlyphTreeBranch, GlyphTreeLast, GlyphTreeVert, GlyphTreeDash,
 		GlyphHome, GlyphFolder, GlyphGitBranch, GlyphModel, GlyphSpend,
@@ -253,6 +259,7 @@ func TestGlyphInventoryIsComplete(t *testing.T) {
 	declared = append(declared, GaugeCells[:]...)
 	declared = append(declared, SpinnerFrames[:]...)
 	declared = append(declared, SparklineCells[:]...)
+	declared = append(declared, PulseFrames[:]...)
 
 	inTable := map[string]bool{}
 	names := map[string]bool{}

@@ -49,7 +49,9 @@ func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 	if err := graph.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "resident.lock"), []byte(`{"surface":"desktop","pid":4321}`), 0o600); err != nil {
+	// The lock is keyed to the store it guards, so the report reads the one this
+	// brain would actually be held by rather than a directory-wide file.
+	if err := os.WriteFile(residentLockFor(path), []byte(`{"surface":"desktop","pid":4321}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,7 +60,7 @@ func TestDoctorShowsSharedCalmStatusRows(t *testing.T) {
 		Installed: true, LastWake: now.Add(-2 * time.Minute), NextDue: now.Add(3 * time.Minute),
 	}}
 	var output bytes.Buffer
-	if err := runDoctorWith([]string{"--db", path}, &output, 20, watch); err != nil {
+	if err := runDoctorWith([]string{"--db", path}, &output, 20, watch, nil); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
@@ -91,7 +93,7 @@ func TestDoctorSaysWhenAnArrangedWatchStoppedWaking(t *testing.T) {
 	var output bytes.Buffer
 	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{status: watchdog.Status{
 		Installed: true, LastWake: now.Add(-4 * time.Hour), NextDue: now.Add(time.Minute),
-	}}); err != nil {
+	}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "checks look stalled") {
@@ -101,7 +103,7 @@ func TestDoctorSaysWhenAnArrangedWatchStoppedWaking(t *testing.T) {
 	output.Reset()
 	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{status: watchdog.Status{
 		Installed: true, LastWake: now.Add(-2 * time.Minute), NextDue: now.Add(3 * time.Minute),
-	}}); err != nil {
+	}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(output.String(), "look stalled") {
@@ -112,7 +114,7 @@ func TestDoctorSaysWhenAnArrangedWatchStoppedWaking(t *testing.T) {
 func TestDoctorDoesNotCreateMissingBrainAndDegradesResidentCalmly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing", "graph.db")
 	var output bytes.Buffer
-	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{}); err != nil {
+	if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -126,6 +128,66 @@ func TestDoctorDoesNotCreateMissingBrainAndDegradesResidentCalmly(t *testing.T) 
 		if !strings.Contains(text, want) {
 			t.Fatalf("doctor output missing %q:\n%s", want, text)
 		}
+	}
+}
+
+// The coding worker resolves its model in a second process against a second
+// catalog, and a model that catalog does not carry kills it at startup — the
+// one precondition of coding work nothing else in the product can see. doctor
+// says it in the words of the failure, and says nothing at all when nobody
+// asked.
+func TestDoctorSaysWhetherTheCodingWorkerCanResolveItsModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.db")
+	graph, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name   string
+		report sweModelReport
+		want   []string
+	}{
+		{
+			name:   "resolvable",
+			report: sweModelReport{Model: "deepseek/deepseek-v4-flash", Sent: "deepseek/deepseek-v4-flash", Resolves: true},
+			want:   []string{"coding model", "deepseek/deepseek-v4-flash", "can price it"},
+		},
+		{
+			name:   "missing",
+			report: sweModelReport{Model: "deepseek/deepseek-v4-flash", Sent: "deepseek/deepseek-v4-flash-20260423"},
+			want: []string{
+				"deepseek/deepseek-v4-flash → deepseek/deepseek-v4-flash-20260423",
+				"models.dev", "fail at startup",
+			},
+		},
+		{
+			name:   "unknown",
+			report: sweModelReport{Model: "vendor/model", Sent: "vendor/model", Unknown: true, Detail: "catalog is unavailable"},
+			want:   []string{"unchecked", "catalog is unavailable"},
+		},
+	} {
+		var output bytes.Buffer
+		if err := runDoctorWith([]string{"--db", path}, &output, 0, fakeDoctorWatch{},
+			func(string) sweModelReport { return tc.report }); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(output.String(), want) {
+				t.Fatalf("%s: doctor missing %q:\n%s", tc.name, want, output.String())
+			}
+		}
+	}
+	// No probe, no line: a row that only ever means "we did not look" is a row
+	// a person learns to read past.
+	var quiet bytes.Buffer
+	if err := runDoctorWith([]string{"--db", path}, &quiet, 0, fakeDoctorWatch{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(quiet.String(), "coding model") {
+		t.Fatalf("an unprobed doctor still printed a coding model row:\n%s", quiet.String())
 	}
 }
 
@@ -187,7 +249,7 @@ func TestWatchGroundingWithNoChartersIsUnchanged(t *testing.T) {
 	defer graph.Close()
 	watch := fakeDoctorWatch{status: watchdog.Status{Installed: true}}
 	grounding := watchGrounding(path, graph, watch, 20)
-	snapshot, err := collectDoctorSnapshot(path, graph, watch, 20, time.Now())
+	snapshot, err := collectDoctorSnapshot(path, graph, watch, 20, nil, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

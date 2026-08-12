@@ -24,8 +24,19 @@
 //	                                  home scope's rows below the task cards
 //	homes.Owns(id) / (*Source).Scope  the four home scopes, as a rail.ScopeSource
 //	(*View).Render(state, sel, w, h)   the main pane for the selected row
+//	(*Page).Render(state, sel, w, h)   the NOTEBOOK PAGE — see page.go
 //	(*Spend).Render / (*Spend).Key    the money segment and its inline editor
 //	Mic.Render                        the mic cell on a composer's place line
+//
+// # The page and the rooms are two surfaces over one State
+//
+// [Page] is the full-width notebook lens and it draws THREE bands — beliefs,
+// know-how, practice — which is this wave's split (audit-notes/notebook-split.md
+// §1: the work page holds what the resident is DOING, this page holds what it
+// has LEARNED). [View] still draws the four rail rooms above, standing and
+// services included, because the rail scopes did not move; what moved is which
+// of them the notebook page claims. One [State] feeds both, so the two can never
+// disagree about a belief.
 //
 // Facts arrive through [State], which the wiring fills whenever they move —
 // exactly the contract internal/tui2/modelui's Catalog documents, for the same

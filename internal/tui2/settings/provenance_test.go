@@ -204,7 +204,7 @@ func TestGatedRowAppearsTheMomentItsParentFlips(t *testing.T) {
 	t.Cleanup(func() { gates = restore })
 	gates = map[string]gate{
 		config.KeyTenureAfter: func(value func(string) (string, bool)) bool {
-			on, _ := value(config.KeyProposeSkills)
+			on, _ := value(config.KeyAttribution)
 			return on == "on"
 		},
 	}
@@ -214,7 +214,7 @@ func TestGatedRowAppearsTheMomentItsParentFlips(t *testing.T) {
 		t.Fatal("the parent is on by default, so the gated row should be listed")
 	}
 
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 	s.press(typeRune(' ')) // parent off
 	if s.listed(config.KeyTenureAfter) {
 		t.Fatal("the gated row is still listed after its parent went off")
@@ -223,7 +223,7 @@ func TestGatedRowAppearsTheMomentItsParentFlips(t *testing.T) {
 		t.Fatal("the gate must read the live value, not wait for the write")
 	}
 
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 	s.press(typeRune(' ')) // parent back on
 	if !s.listed(config.KeyTenureAfter) {
 		t.Fatal("the gated row did not come back when its parent flipped on")

@@ -4,7 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -325,8 +328,29 @@ func TestArrowsWalkTheOptionsAndEnterAnswers(t *testing.T) {
 	if block.chosen != 2 {
 		t.Fatalf("the cursor is on %d, want 2", block.chosen)
 	}
-	if !strings.Contains(whole(t, app, 80), tokens.GlyphAccentRail+" the JSON importer") {
-		t.Fatalf("the cursor is not visible:\n%s", whole(t, app, 80))
+	// THE MARK IS IN THE GUTTER AND THE WORDS DO NOT MOVE (§20). It used to be
+	// prepended to the label, so walking the cursor down the list shoved every
+	// row it touched two cells sideways.
+	frame := whole(t, app, 80)
+	chosen, other := "", ""
+	for _, row := range strings.Split(ansi.Strip(frame), "\n") {
+		switch {
+		case strings.Contains(row, "the JSON importer"):
+			chosen = row
+		case strings.Contains(row, "the CSV importer"):
+			other = row
+		}
+	}
+	if !strings.HasPrefix(chosen, tokens.GlyphAccentRail) {
+		t.Fatalf("the cursor is not visible in the gutter:\n%s", frame)
+	}
+	// Measured in CELLS: the rail is three bytes and one cell, so a byte offset
+	// would report a shift that is not on the screen.
+	col := func(row, word string) int {
+		return blocks.Width(row[:strings.Index(row, word)])
+	}
+	if a, b := col(chosen, "the JSON"), col(other, "the CSV"); a != b {
+		t.Fatalf("the selected label moved from column %d to %d:\n%s", b, a, frame)
 	}
 	if msg := press(app, "enter"); msg == nil {
 		t.Fatal("enter over a chosen option did nothing")

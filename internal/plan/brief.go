@@ -2,6 +2,7 @@ package plan
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -74,6 +75,121 @@ already have. Do not tell it to go and find them.
 No preamble, no headings, no meta-commentary, no mention of "the plan", "your
 task", or "this node". 90-160 words of plain instruction.`
 
+// criterionBlock is the second half of the same call.
+//
+// A stopping condition is the one fact nothing in the system carried. Rounds
+// were bounded by counting them, results were judged against prose that had to
+// be re-read to be understood, and a retry had nothing to inherit — so what a
+// re-aimed node was judged against was whatever its replacement's author
+// happened to write down. A criterion is the object that survives that.
+//
+// It rides this call rather than buying one. The instruction writer has already
+// read the goal, the node and its inputs; asking it for the criterion in the
+// same breath costs completion tokens and no prompt tokens at all, and asking
+// anything else would mean paying twice to read the same thing.
+//
+// The last paragraph is the one that earns its place. A model told to state a
+// criterion will state a generous one, and every condition it invents becomes a
+// requirement the person never made — the same failure the working method's
+// prompt already writes against, in the same words, because it is the same
+// failure.
+const criterionBlock = `
+Alongside the instruction, state the criterion by which this work will be judged
+finished. It is a positive statement of what must be true once the work has
+landed — not a list of steps, and not the instruction said again.
+
+Give it as a small set of independent conditions. Each one must be settleable by
+someone who has the result in front of them and did not do the work. A condition
+that can be settled by running something says the exact thing to run and what
+its outcome must be. A condition that can only be settled by reading says what
+must be present and what would make it absent.
+
+Name the things the result must produce, by the names they will carry, so that a
+reader holding only this criterion could tell whether they exist.
+
+Write no condition the request did not ask for. A criterion that demands more
+than the person asked is a criterion that cannot be met, and every condition you
+invent becomes a requirement nobody made.
+
+Answer with one bare JSON object and nothing else — no code fence around it and
+no sentence before or after it — carrying the instruction and the criterion:
+{"instruction": "<the instruction>", "done": {"produces": ["<name>"],
+"conditions": [{"kind": "run"|"read", "check": "<what to run or look for>",
+"expect": "<what its outcome must be>"}]}}`
+
+// briefWithCriterion is the prompt as sent when the criterion is on. The
+// instruction half is byte-identical to what it has always been, so the shared
+// prefix every brief call in a build hits is untouched and the criterion costs
+// nothing but its own completion.
+const briefWithCriterion = briefPrompt + "\n" + criterionBlock
+
+// briefSchema is closed on purpose. An open schema is what lets a criterion
+// grow fields nobody reads, and the condition list is capped again in code
+// (NormalizeDone) because a schema cannot say "few".
+var briefSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "instruction": { "type": "string" },
+    "done": {
+      "type": "object",
+      "properties": {
+        "produces": { "type": "array", "items": { "type": "string" } },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind":   { "type": "string", "enum": ["run", "read"] },
+              "check":  { "type": "string" },
+              "expect": { "type": "string" }
+            },
+            "required": ["kind", "check", "expect"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["produces", "conditions"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["instruction", "done"],
+  "additionalProperties": false
+}`)
+
+// briefReply is the decoded answer. done is optional in every direction that
+// matters: absent, empty, or malformed all yield today's brief unchanged.
+type briefReply struct {
+	Instruction string `json:"instruction"`
+	Done        Done   `json:"done"`
+}
+
+// decodeBrief reads what came back, and tolerates a model that ignored the
+// schema entirely.
+//
+// A router that falls back to a provider without structured output answers in
+// prose, and prose is a perfectly good instruction — it is exactly what this
+// call returned before the criterion existed. So a decode failure is not a
+// failure: it is the old answer, with no criterion, which is legal everywhere.
+func decodeBrief(text string) (string, Done) {
+	body := trim(text)
+	if body == "" {
+		return "", Done{}
+	}
+	var reply briefReply
+	if err := decodeJSON(body, &reply); err != nil {
+		return body, Done{}
+	}
+	instruction := trim(reply.Instruction)
+	if instruction == "" {
+		// Valid JSON with nothing in the field it required. The text itself is
+		// not an instruction either — handing a worker a JSON object as its
+		// brief is worse than handing it nothing — so this is the empty answer
+		// the caller already knows how to report.
+		return "", Done{}
+	}
+	return instruction, NormalizeDone(reply.Done)
+}
+
 // briefWriter writes leaf instructions in the background.
 //
 // Briefs used to run as a final pass over the finished graph, which put one
@@ -101,7 +217,7 @@ type briefWriter struct {
 
 	group     sync.WaitGroup
 	mutex     sync.Mutex
-	results   map[int]string
+	results   map[int]briefReply
 	usage     Usage
 	errs      []error
 	launched  int
@@ -116,7 +232,7 @@ type briefWriter struct {
 }
 
 func newBriefWriter(ctx context.Context, client Completer, enabled bool, progress Progress) *briefWriter {
-	return &briefWriter{ctx: ctx, client: client, enabled: enabled, progress: progress, results: map[int]string{}}
+	return &briefWriter{ctx: ctx, client: client, enabled: enabled, progress: progress, results: map[int]briefReply{}}
 }
 
 // launch starts one node's brief. Everything it needs is passed by value —
@@ -144,14 +260,14 @@ func (w *briefWriter) launch(shared string, node Node, inputs []string, delivera
 				w.completed++
 			}
 		}()
-		brief, usage, err := writeBrief(w.ctx, w.client, shared, node, inputs, deliverable)
+		brief, done, usage, err := writeBrief(w.ctx, w.client, shared, node, inputs, deliverable)
 		w.mutex.Lock()
 		defer w.mutex.Unlock()
 		w.usage.Add(usage)
 		if err != nil {
 			w.errs = append(w.errs, err)
 		} else {
-			w.results[node.ID] = brief
+			w.results[node.ID] = briefReply{Instruction: brief, Done: done}
 		}
 		w.completed++
 		if w.reporting && w.progress != nil {
@@ -191,9 +307,15 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 	w.group.Wait()
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
-	for id, brief := range w.results {
+	for id, written := range w.results {
 		if node := graph.Node(id); node != nil {
-			node.Brief = brief
+			// Dual-write. Brief is what every reader still reads; the spec is
+			// written beside it so the object exists to be carried forward, and
+			// so the swap that makes it the read is one line per reader.
+			node.Brief = written.Instruction
+			node.Spec.Instruction = written.Instruction
+			node.Spec.Done = written.Done
+			node.Spec.Sources = node.Sources
 		}
 	}
 	return w.usage, joinErrors(w.errs)
@@ -271,7 +393,7 @@ func deliverableLineFor(owner int, label string, nodeID int, fileShaped bool) st
 		"and hands it over.\n", label)
 }
 
-func writeBrief(ctx context.Context, client Completer, shared string, node Node, inputs []string, deliverable string) (string, *ai.Usage, error) {
+func writeBrief(ctx context.Context, client Completer, shared string, node Node, inputs []string, deliverable string) (string, Done, *ai.Usage, error) {
 	var target strings.Builder
 	fmt.Fprintf(&target, "Write the instruction for node %d, %q: %s\n", node.ID, node.Title, node.Summary)
 	if len(node.Sources) > 0 {
@@ -284,31 +406,40 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 		target.WriteString("It receives no input from other work — it starts from nothing but your instruction.\n")
 	}
 
+	system := briefPrompt
+	var options []ai.Option
+	if Criterion {
+		system = briefWithCriterion
+		options = append(options, ai.WithSchema(briefSchema))
+	}
 	messages := []ai.Message{
-		systemMessage(briefPrompt),
+		systemMessage(system),
 		userMessage(shared),
 		userMessage(target.String()),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanBrief)
-	response, err := client.CompleteWithMessages(ctx, messages)
+	response, err := client.CompleteWithMessages(ctx, messages, options...)
 	if err != nil {
 		provider.Report(ctx, provider.VerdictProviderFailure)
-		return "", nil, fmt.Errorf("brief %q: %w", node.Title, err)
+		return "", Done{}, nil, fmt.Errorf("brief %q: %w", node.Title, err)
 	}
-	brief := trim(response.Text())
+	brief, done := decodeBrief(response.Text())
+	if !Criterion {
+		brief, done = trim(response.Text()), Done{}
+	}
 	if brief == "" {
 		// Nothing at all came back. On a reasoning model the usual cause is the
 		// whole budget going to private deliberation, which is a different fact
 		// about the model than a badly written instruction and is worth naming.
 		provider.Report(ctx, provider.VerdictEmptyResponse)
-		return "", usageOf(response), annotate(fmt.Errorf("brief %q: empty response", node.Title), response)
+		return "", Done{}, usageOf(response), annotate(fmt.Errorf("brief %q: empty response", node.Title), response)
 	}
 	// A brief is prose. There is no schema to check it against and nothing cheap
 	// that can say whether it is a good instruction, so this is exactly the case
 	// the unverified verdict exists for: output that worked, evidence that does
 	// not move a rating.
 	provider.Report(ctx, provider.VerdictUnverifiedSuccess)
-	return brief, usageOf(response), nil
+	return brief, done, usageOf(response), nil
 }
 
 // briefCatalog lists every node by title only. Titles are enough to hold a

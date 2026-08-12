@@ -30,6 +30,12 @@ var goldenPalette = map[string][2]string{
 	"sheet":  {"#1B1B25", "#171720"},
 	"band":   {"#262633", "#1D1D28"},
 
+	"hug.bar":   {"#14141D", "#13131C"},
+	"hug.input": {"#1A1A24", "#16161F"},
+
+	"card.working":   {"#171720", "#15151D"},
+	"card.delivered": {"#1F1F2A", "#191923"},
+
 	"band.identity.0": {"#35353D", "#25252D"},
 	"band.identity.1": {"#32353D", "#24252D"},
 	"band.identity.2": {"#313541", "#23252F"},

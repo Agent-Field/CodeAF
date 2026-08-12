@@ -67,6 +67,13 @@ oversized.`
 // imported because the ruler is a fact about a subharness, and the package that
 // registers subharnesses is the one that already imports this one; a constant
 // repeated in two packages is cheaper than a cycle.
+//
+// It is a name, and that is load-bearing. The generalist used to be spelled as
+// the empty string, which made "this node was judged and the answer is the
+// generalist" indistinguishable from "nobody judged this node" — and every
+// reader that fills an unanswered question in from somewhere else, admission's
+// inheritance above all, read the first as the second. A verdict that was made
+// says so out loud; empty is reserved for the verdict nobody made.
 const LinearSubharness = "linear"
 
 // Subharness is one specialist offered to the sizing pass: a different way of
@@ -183,6 +190,19 @@ func KnownSubharness(name string) bool {
 	return ok
 }
 
+// GeneralistSubharness reports whether a name is the generalist, named. It is
+// deliberately not the negation of KnownSubharness: that question is "is this a
+// registered specialist", and it answers no for both of the two different facts
+// this one separates — the generalist chosen, and nothing chosen at all.
+func GeneralistSubharness(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), LinearSubharness)
+}
+
+// SubharnessChosen reports whether anyone answered the question at all, with a
+// specialist or with the generalist. Only the empty string means no verdict,
+// and only then may a reader fill the answer in from elsewhere.
+func SubharnessChosen(name string) bool { return strings.TrimSpace(name) != "" }
+
 // ForgetSubharnesses restores the registry to its linear-only state. Tests own
 // it: registration is process-global by design, and a test that adds a
 // specialist must be able to put the process back.
@@ -219,6 +239,18 @@ func sizePromptWith(anchors string) string {
 // context that fills as it goes are the terms every judgment below is made in;
 // a prompt that said only "works alone, in order, with tools" would be asking
 // for a size against nothing.
+//
+// The burden section is the other half of the grain section, and the two are
+// written to be read together. Grain says follow the seams the material really
+// has; burden says a seam nobody can name is not a reason to cut. Left alone,
+// each fails in the direction the other guards: a pass told only to follow the
+// grain will invent one, and a pass told only to distrust splitting will refuse
+// enumerations that were already there. So the burden is stated as a proof
+// obligation on the joint objective — the wait, the cost, and the answer,
+// together — with exactly two things that discharge it, concurrency or a node
+// that cannot converge in one worker's budget. Neither is a fallback for the
+// other, and neither is thoroughness, which is what a model reaches for when it
+// wants to divide and has no reason to.
 func sizePromptFor(anchors string, specialists []Subharness) string {
 	prompt := `You judge whether each node is the right size to hand to a single agent.
 
@@ -236,15 +268,51 @@ Judge each node against those anchors:
 - oversized   — clearly toward TOO BIG. Splitting it would let real work happen
                 simultaneously that is currently stuck behind other work.
 
-Weigh both costs honestly. Splitting a node costs a round of planning and an
-extra result to reassemble, and buys nothing if the parts would just run one
-after another anyway. Leaving a node too big costs an agent grinding serially
-through work that had no reason to be sequential.
+Weigh both costs honestly. Splitting a node costs a round of planning, an extra
+result to reassemble, and whatever context each new piece must be given before
+it can start — a split whose pieces must each be told the whole subject is paid
+for twice and buys nothing if the pieces would just run one after another
+anyway. Leaving a node too big costs an agent grinding serially through work
+that had no reason to be sequential, and the person waits for the longest chain,
+never the total, so a piece that carries only its own share is cheap in context
+and repaid in waiting.
 
 Judge the nodes relative to each other as well as to the anchors — you are
 seeing all of them, and the largest few are what matter.
 
 Most nodes in a well-built plan are atomic. Say so when they are.
+
+The node stands whole until a split proves what it buys. That is the starting
+position at every level and it is the answer whenever the case for dividing is
+not actually made — not a last resort for when nothing better comes to mind.
+Whatever is bought has to be bought on all three of the things being spent at
+once: the time the person waits, what the work costs to run, and how good the
+answer comes back. A division that improves none of the three is a division that
+was made for its own sake.
+
+Two things and only two things discharge that burden. Either the pieces would
+genuinely run at the same time — none of them waiting on another, so the wait
+becomes the longest piece instead of the sum of all of them — or the node cannot
+be brought to an end inside what one worker can hold, so it would be stopped and
+resumed however anyone decides. A sequence discharges neither: pieces that run
+one after another land no sooner than the undivided node, and they add a
+briefing for each piece and a reassembly at the end that the undivided node
+never paid for.
+
+Each piece must also be sayable more precisely than the node itself. A piece
+carries a deliverable of its own and its own condition for being finished, and
+both can be written down without reference to the other pieces. If the only
+difference between a piece and the node is narrower wording, it is not a piece,
+it is the node said again; and two pieces that would finish on the same
+condition are one piece, with the second being that answer bought twice.
+
+Say the price out loud before accepting it: every piece re-pays whatever it must
+be told before it can start, every piece is one more result to reassemble, and
+every piece is one more thing to schedule and wait on. What clears that price is
+width that can be named — the units that stand apart, and which piece owns which
+— or a named reason the node cannot converge as one job. Thoroughness never
+clears it. Dividing work does not make it better, and a split made for the look
+of the thing is paid for in full by the person waiting.
 
 Also return split_into for every node:
 
@@ -257,6 +325,17 @@ Also return split_into for every node:
   nothing about the others, producing a result of its own. If the inside of the
   node is a sequence, or if you would only be restating it in smaller words,
   there are no pieces.
+- Where the node's own words, or the things it says it must touch, already
+  enumerate units that stand apart, the pieces are that enumeration: one unit
+  each, or an even batch of them each when the units are many. Do not halve an
+  enumerated set into two coarse pieces, and never name two pieces that would
+  each cover the whole set — each would do all of it, and one answer would be
+  paid for twice. Where the material enumerates nothing, there is no split to
+  read off it.
+- Name a piece only when it could be written down with a deliverable of its own
+  and its own way of telling that it is finished, distinguishable from the
+  node's and from every other piece's. If you would be handing the same finish
+  line to two of them, there are no pieces.
 - If you cannot name at least two, return an empty list. That is the answer that
   says to leave the node whole, and it is a common and correct one.`
 	if len(specialists) == 0 {
@@ -358,10 +437,13 @@ type sizeVerdict struct {
 	Node  int      `json:"node"`
 	Size  string   `json:"size"`
 	Parts []string `json:"split_into"`
-	// Subharness is the specialist that can take this node whole. Empty is the
-	// baseline and the overwhelmingly common answer; a name that reaches no
-	// registered subharness is dropped, because a plan that asks for a worker
-	// we do not have should still get its work done by the generalist.
+	// Subharness is the specialist that can take this node whole. The model
+	// says the generalist by saying nothing, which is the overwhelmingly common
+	// answer; recordGeneralist gives that answer its name before it is applied,
+	// so the graph never carries an answered question as an empty one. A name
+	// that reaches no registered subharness becomes the generalist too, because
+	// a plan that asks for a worker we do not have should still get its work
+	// done.
 	Subharness string `json:"subharness,omitempty"`
 }
 
@@ -433,15 +515,23 @@ func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 				node.Size = Size(verdict.Size)
 			}
 			node.Parts = shortLabels(verdict.Parts)
+			switch {
 			// A named subharness is the other half of the verdict: this node is
 			// atomic for it, so the size judgment made against the baseline
 			// ruler no longer applies and there is nothing left to split. This
 			// is the inversion the whole section exists for — one specialist
 			// leaf instead of eight generalist ones.
-			if KnownSubharness(verdict.Subharness) {
+			case KnownSubharness(verdict.Subharness):
 				node.Subharness = strings.TrimSpace(verdict.Subharness)
 				node.Size = SizeAtomic
 				node.Parts = nil
+			// The generalist, chosen. It changes neither the size nor the
+			// parts — the node was judged against the baseline ruler and that
+			// judgment stands — but it is written down, because a node that was
+			// asked and answered "the generalist" must not later be handed a
+			// specialist by anyone filling in a blank.
+			case GeneralistSubharness(verdict.Subharness):
+				node.Subharness = LinearSubharness
 			}
 		}
 	}
@@ -455,6 +545,24 @@ func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 		}
 	}
 	return usage, joinErrors(failures)
+}
+
+// recordGeneralist writes the generalist's name onto every verdict that did not
+// reach a specialist. It is called only where the subharness question was
+// actually put to the model: a pass that never asked has no verdict to record,
+// and a graph judged by a process with no specialists in it keeps the empty
+// column it has always had.
+//
+// A name nobody registered lands here too. The plan asked for a worker this
+// process does not have, the generalist will do the work, and saying so is more
+// honest than leaving behind a blank that admission would fill with whatever
+// the job as a whole was spliced for.
+func recordGeneralist(verdicts []sizeVerdict) {
+	for index := range verdicts {
+		if !KnownSubharness(verdicts[index].Subharness) {
+			verdicts[index].Subharness = LinearSubharness
+		}
+	}
 }
 
 // shortLabels keeps only things that look like names. Asked for parts, a model
@@ -502,6 +610,13 @@ func sizeStage(ctx context.Context, client Completer, shared string, graph *Grap
 	response, err := structured(ctx, client, messages, sizeSchemaFor(specialists), &decoded)
 	if err != nil {
 		return nil, usageOf(response), fmt.Errorf("size stage %d: %w", stage, err)
+	}
+	// The question was asked, so every answer to it is a verdict — including
+	// the empty one, which is how the schema spells "the generalist". Naming it
+	// here, at the one place that knows the question was on the paper, is what
+	// keeps the rest of the system from mistaking an answer for a silence.
+	if len(specialists) > 0 {
+		recordGeneralist(decoded.Sizes)
 	}
 	// The pass was asked about a named set of nodes; an answer that judges none
 	// of them, or judges one that does not exist, did not do the job. Sizes

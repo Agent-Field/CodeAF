@@ -158,8 +158,9 @@ const ellipsis = "…"
 
 // sheetGround is the floor both surfaces stand on. They are floating dialogs
 // (12.11), so their ground is the dialog's own — see [tokens.Sheet] for why an
-// unpainted panel is a room with no floor, and [tokens.Profile.SheetGround] for
-// where it degrades to the hairline alone.
+// unpainted panel is a room with no floor, [tokens.Profile.SheetGround] for
+// where it degrades to the hairline alone, and [list.ground] for the mode that
+// gives it up.
 const sheetGround = tokens.Sheet
 
 // padSheet fills the rest of a pane's rectangle with the sheet's own ground.
@@ -171,9 +172,9 @@ const sheetGround = tokens.Sheet
 // up — there a frame that stopped early showed the last frame's cells, here a
 // panel that stops early shows the room behind it — and the answer is the same
 // one: state every cell you were given.
-func padSheet(out []string, l *lineBuf, buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width, height int) []string {
+func padSheet(out []string, l *lineBuf, buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width, height int, ground tokens.Token) []string {
 	for len(out) < height {
-		out = append(out, blankLine(l, buf, profile, focus, width))
+		out = append(out, blankLine(l, buf, profile, focus, width, ground))
 	}
 	return out
 }
@@ -182,9 +183,9 @@ func padSheet(out []string, l *lineBuf, buf *strings.Builder, profile tokens.Pro
 // string: a blank line inside a painted plane that emitted no cells is a hole
 // in that plane, and 5.13 spends this surface's structure budget on whitespace,
 // which only works when the whitespace is part of the room.
-func blankLine(l *lineBuf, buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width int) string {
+func blankLine(l *lineBuf, buf *strings.Builder, profile tokens.Profile, focus tokens.Focus, width int, ground tokens.Token) string {
 	l.reset(width)
-	return l.emit(buf, profile, focus, width, false, tokens.Band, sheetGround)
+	return l.emit(buf, profile, focus, width, false, tokens.Band, ground)
 }
 
 // padTo advances to a column with spaces. It is how a right-aligned cell finds

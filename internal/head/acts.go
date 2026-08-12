@@ -2,9 +2,11 @@ package head
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -157,6 +159,92 @@ func charterAcknowledgement(kind store.CommandKind) string {
 		return "Asking before firing again."
 	}
 	return "Updating that standing rule."
+}
+
+// craftVerbKind is the craft transition table, the same shape ruleVerbKind is:
+// the words a tool call carries, mapped onto the store's own kinds. "stop" and
+// "don't use" are what retiring sounds like when nobody says the word retire.
+func craftVerbKind(verb string) (store.CommandKind, bool) {
+	switch strings.ToLower(strings.TrimSpace(verb)) {
+	case "run", "use":
+		return store.CommandCraftRun, true
+	case "revert", "roll_back", "rollback", "undo":
+		return store.CommandCraftRevert, true
+	case "retire", "stop", "forget":
+		return store.CommandCraftRetire, true
+	}
+	return "", false
+}
+
+// craft is the conversational door onto a learned way of working. It journals
+// the same three commands the notebook's own verb strip journals and reaches
+// the same executor — one implementation, two doors, which is the whole reason
+// these are command kinds rather than methods.
+//
+// The name is passed through as the user said it rather than resolved here: the
+// craft repository is not in this process's store, so the honest place to find
+// out that no such workflow exists is where the repository is, and the refusal
+// comes back in words in the same breath.
+func (run *beltRun) craft(args map[string]any) (string, bool) {
+	kind, known := craftVerbKind(beltString(args, "verb"))
+	if !known {
+		return "verb must be one of run, revert, retire", true
+	}
+	name := strings.TrimSpace(beltString(args, "name"))
+	if name == "" {
+		return "name must be the workflow's own name, the way the user named it", true
+	}
+	words := strings.TrimSpace(beltString(args, "words"))
+	if words == "" {
+		// Their own sentence is the fallback for the two verbs that read prose:
+		// it is where a run's parameters live and it is usually the reason for a
+		// retirement in the first place.
+		words = strings.TrimSpace(run.user.Body)
+	}
+	switch kind {
+	case store.CommandCraftRevert:
+		// The repository refuses a version change that cannot say why, and it is
+		// worth saying so HERE rather than letting the refusal come back a tick
+		// later: the model still has the conversation in hand and can ask.
+		if len(strings.Fields(words)) < craft.MinReasonWords {
+			return "words must say what the newer version got wrong — a few words at least, or ask them", true
+		}
+	case store.CommandCraftRun:
+		if words == "" {
+			words = "run " + name
+		}
+	default:
+		if words == "" {
+			words = "you asked me to stop using this"
+		}
+	}
+	command, err := run.head.store.RequestCommand(store.Command{
+		SessionID: run.user.SessionID, Kind: kind, Target: name, Instruction: words,
+	})
+	if err != nil {
+		return "that could not be queued: " + err.Error(), true
+	}
+	run.record(command.Seq, craftAcknowledgement(kind, name))
+	return "queued: " + strings.ToLower(craftAcknowledgement(kind, name)), false
+}
+
+// retirementReason is why something was taken off the shelf: their own sentence
+// when there is one, and the plain fact of it when they clicked instead.
+func retirementReason(said string) string {
+	if said = strings.TrimSpace(said); said != "" {
+		return said
+	}
+	return "you asked me to stop using this"
+}
+
+func craftAcknowledgement(kind store.CommandKind, name string) string {
+	switch kind {
+	case store.CommandCraftRun:
+		return "Doing " + name + " the way you have before."
+	case store.CommandCraftRevert:
+		return "Putting " + name + " back to the version before this one."
+	}
+	return "Not working the " + name + " way any more."
 }
 
 func (run *beltRun) service(args map[string]any) (string, bool) {
@@ -508,6 +596,24 @@ func (run *beltRun) forget(args map[string]any) (string, bool) {
 	}
 	if !found || fact.Status != store.FactActive {
 		return fmt.Sprintf("there is no active notebook belief #%d — name a number you were actually shown", seq), true
+	}
+	// A forged tool is a belief with an executable hanging off it, so "forget
+	// that" aimed at one has to take the executable off the shelf too — a belief
+	// that went quiet while its command stayed on the person's PATH is exactly
+	// the half-done retirement this routes around. The command kind does both,
+	// in one place, and the notebook's own retire verb journals the same one.
+	if fact.Kind == store.FactSkill {
+		command, cmdErr := run.head.store.RequestCommand(store.Command{
+			SessionID: run.user.SessionID, Kind: store.CommandSkillRetire,
+			Target:      strconv.FormatInt(seq, 10),
+			Instruction: retirementReason(run.user.Body),
+		})
+		if cmdErr != nil {
+			return "that could not be let go: " + cmdErr.Error(), true
+		}
+		run.record(command.Seq, "Taking that off the shelf — "+firstLine(fact.Body))
+		return fmt.Sprintf("tool #%d is being retired: %q. It comes off the shelf and stops being offered",
+			seq, truncateBytes(firstLine(fact.Body), beltNoteBytes)), false
 	}
 	if err := run.head.store.QuarantineFact(seq, run.user.Seq, store.FactOriginUser); err != nil {
 		return "that belief could not be let go: " + err.Error(), true

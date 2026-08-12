@@ -1,57 +1,59 @@
 package footer
 
-import (
-	"github.com/Agent-Field/aforge-v2/internal/registry"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
-)
+import "github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 
-// The footer's words, as targets (5.22 rule 5: "chips are buttons").
+// The footer's words, as targets: chips are buttons, and so are places.
 //
-// The footer already draws the verbs this room can do, with their
-// accelerators, from the registry. 5.21 forbids adding an icon bar to make
-// them pressable and 5.22 says the affordance must be a thing already on
-// screen — so the words themselves are the buttons, and this file is the
-// arithmetic that says which word a column landed on.
+// Nothing on this row was added to make it clickable. The left zone already
+// draws the homes as words and the trail as the way out; the middle already
+// draws the live verbs with the keys that reach them. This file is the
+// arithmetic that says which word a pointer landed on.
 //
 // # Why this is a function and not a table written during Render
 //
-// Part 2's anti-pattern 14 is "render functions mutate the model (click-target
-// row maps written during View())", and it is on the list because it forces a
-// call order: the click map is only correct if the last Render used the same
-// context and the same width. Here the map is DERIVED, from the same
-// buildParts and the same tokens.FitFooter the paint runs, on demand. A click
-// re-solves a one-row layout — eight columns and a comparison — which is
-// nothing next to the repaint it is about to cause, and in exchange the
-// question "is the map stale?" cannot be asked.
+// A click-target map written during View() forces a call order: the map is only
+// correct if the last Render used the same context and the same width. Here the
+// map is DERIVED, from the same [Model.layout] the paint runs, on demand. A
+// click re-solves a one-row layout — three zones and a comparison — which is
+// nothing next to the repaint it is about to cause, and in exchange the question
+// "is the map stale?" cannot be asked.
 //
 // # What is a target and what is not
 //
-// A verb is: it names an action and the registry knows how to run it. The help
-// door is: it is a door. The scope tail is: 5.15 makes the breadcrumb the way
-// out and 5.22 rule 5 says breadcrumb segments are buttons.
+// A place word is: it is a door into a home. A trail is: it is the way out. A
+// live verb chip is: it names an act and the host knows how to run it, and the
+// WHOLE chip answers — a reader points at the words, not at the key.
 //
-// The attention badge, the key-mode note, the health cell and the toast are
-// NOT. They are statements about the room, not verbs on it, and a footer where
-// half the words did something on click and half did nothing would be worse
-// than one where none of them did — the reader would have to learn which.
+// The answer chip is NOT, and that is not an oversight: `answer 1—3` names three
+// acts, and a click cannot say which. The right zone is not either — a
+// directory, a gauge and a day's spend are statements about this window, and
+// there is nothing to open on a statement. A footer where half the words did
+// something on click and half did nothing would be worse than one where none of
+// them did: the reader would have to learn which.
 
-// The two target ids that are not registry entry ids. They are namespaced so
-// they can never collide with one.
+// The target ids that are not host-supplied ids. They are namespaced so they can
+// never collide with a registry entry id or a place id.
 const (
-	// HelpTarget is the `? help` door at the right end of the row (5.22's
-	// checklist: "the `?` surface gets a permanent visible door").
+	// HelpTarget named the `? help` door this row used to end with. The row does
+	// not draw it any more — the standing legends moved to the `?` sheet, and
+	// the middle zone's whole point is that it is silent when nothing is live —
+	// so nothing here ever answers with this id. It stays exported only so the
+	// shell's click switch keeps compiling until the assembly pass takes that
+	// case out with it.
 	HelpTarget = "footer:help"
-	// ScopeTarget is the breadcrumb tail. Clicking it is the same act as the
-	// rail's ‹ and as esc: one step out (5.15).
+	// ScopeTarget is the breadcrumb. Clicking anywhere on it is the same act as
+	// the rail's ‹ and as esc: one step out.
 	ScopeTarget = "footer:scope"
+	// InterruptTarget is the `interrupt esc` chip. Clicking it is the same act
+	// as pressing esc while a turn is streaming.
+	InterruptTarget = "footer:interrupt"
 )
 
 // Target is one clickable run of the footer, in pane-local columns.
 //
-// From is inclusive and To is exclusive, both measured in printable cells, so
-// a caller compares a pointer's x against them directly and never has to know
-// that the row it is looking at is full of escape sequences.
+// From is inclusive and To is exclusive, both measured in printable cells, so a
+// caller compares a pointer's x against them directly and never has to know that
+// the row it is looking at is full of escape sequences.
 type Target struct {
 	ID   string
 	From int
@@ -64,32 +66,24 @@ func (t Target) Contains(x int) bool { return x >= t.From && x < t.To }
 // Targets is every clickable run in the row the same ctx and width would draw,
 // left to right.
 //
-// It walks the survivors in display order, tracking the column each one starts
-// at, and splits the verb column — which is fitted as a UNIT, deliberately (see
-// the pane's offeredVerbs) — back into the entries it was joined from. The
-// split is done from the same verbLabel the paint uses, so a verb whose label
-// changes changes its own target with it.
+// Runs that share an id and touch are merged, which is what makes a chip one
+// target: the verb and the key are drawn in two tiers and pressed as one word.
 func (m *Model) Targets(ctx FocusContext, width int) []Target {
-	survivors, ok := m.fit(ctx, width)
+	runs, ok := m.layout(ctx, width)
 	if !ok {
 		return nil
 	}
-	out := make([]Target, 0, maxVerbs+2)
-	x := 0
-	for i, p := range survivors {
-		if i > 0 {
-			x += sepWidth
+	out := make([]Target, 0, maxVerbs+4)
+	for _, p := range runs {
+		if p.id == "" || p.text == "" {
+			continue
 		}
-		w := blocks.Width(p.text)
-		switch p.id {
-		case "verbs":
-			out = appendVerbTargets(out, ctx.Verbs, x)
-		case "help":
-			out = append(out, Target{ID: HelpTarget, From: x, To: x + w})
-		case "scope":
-			out = append(out, Target{ID: ScopeTarget, From: x, To: x + w})
+		to := p.from + blocks.Width(p.text)
+		if n := len(out); n > 0 && out[n-1].ID == p.id && out[n-1].To == p.from {
+			out[n-1].To = to
+			continue
 		}
-		x += w
+		out = append(out, Target{ID: p.id, From: p.from, To: to})
 	}
 	return out
 }
@@ -102,58 +96,4 @@ func (m *Model) TargetAt(ctx FocusContext, width, x int) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// appendVerbTargets splits the verb column at the separators it was joined at.
-func appendVerbTargets(dst []Target, entries []registry.Entry, from int) []Target {
-	n := len(entries)
-	if n > maxVerbs {
-		n = maxVerbs
-	}
-	x := from
-	for i, e := range entries[:n] {
-		if i > 0 {
-			x += sepWidth
-		}
-		w := blocks.Width(verbLabel(e))
-		dst = append(dst, Target{ID: e.ID, From: x, To: x + w})
-		x += w
-	}
-	return dst
-}
-
-// fit is the survivor computation Render performs, lifted out so the paint and
-// the hit test cannot disagree about which columns are on the row. Both call
-// it; neither reimplements it.
-func (m *Model) fit(ctx FocusContext, width int) ([]part, bool) {
-	if width <= 0 {
-		return nil, false
-	}
-	parts := buildParts(ctx)
-	if len(parts) == 0 {
-		return nil, false
-	}
-	cols := make([]tokens.FooterColumn, len(parts))
-	for i, p := range parts {
-		w := blocks.Width(p.text)
-		if i > 0 {
-			w += sepWidth
-		}
-		cols[i] = tokens.FooterColumn{ID: p.id, MinWidth: w, Priority: priorityOf(p.id)}
-	}
-	kept := tokens.FitFooter(cols, width)
-	if len(kept) == 0 {
-		return nil, false
-	}
-	keepAt := make(map[string]bool, len(kept))
-	for _, c := range kept {
-		keepAt[c.ID] = true
-	}
-	survivors := make([]part, 0, len(parts))
-	for _, p := range parts {
-		if keepAt[p.id] {
-			survivors = append(survivors, p)
-		}
-	}
-	return survivors, true
 }

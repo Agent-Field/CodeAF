@@ -240,7 +240,7 @@ func TestScoreAgreesWithRegistry(t *testing.T) {
 		needle := lower(query)
 		got := make(map[string]int, len(want))
 		matched := 0
-		for _, e := range registry.All() {
+		for _, e := range registry.ForScope(registry.ScopeAny) {
 			verbScore, verbOK := score(lower(e.Verb), needle)
 			descScore, descOK := score(lower(e.Description), needle)
 			switch {
@@ -309,10 +309,96 @@ func TestFilter_RenderShowsCandidatesAndTheHistoryGroup(t *testing.T) {
 	if !strings.Contains(out, "rust agent browser parity") {
 		t.Fatalf("render dropped the title column:\n%s", out)
 	}
-	// The draft keeps the first row; the list is under it, never over it.
+	// The draft keeps the LAST row; the list opens over it, never under it (8).
 	rows := strings.Split(out, "\n")
-	if !strings.Contains(rows[0], "@wi") {
-		t.Fatalf("first row = %q, want the draft", rows[0])
+	if !strings.Contains(rows[len(rows)-1], "@wi") {
+		t.Fatalf("last row = %q, want the draft", rows[len(rows)-1])
+	}
+}
+
+// TestFilter_OpensUpwardBestMatchNearestTheDraft is 8's flip, stated as
+// geometry: every candidate row sits ABOVE the draft's own row, and the row the
+// user is about to choose is the one their eye is already on.
+func TestFilter_OpensUpwardBestMatchNearestTheDraft(t *testing.T) {
+	m := withTargets(t, Options{Styler: tokens.NewStyler(tokens.NoColor, tokens.FocusNormal)})
+	m.Focus(true)
+	m.Key(charKey('@'))
+	typeString(m, "wi")
+	rows := strings.Split(ansi.Strip(m.Render(60, 1+m.HintRows())), "\n")
+	if len(rows) < 3 {
+		t.Fatalf("the list did not open:\n%s", strings.Join(rows, "\n"))
+	}
+	draft := rows[len(rows)-1]
+	if !strings.Contains(draft, "@wi") {
+		t.Fatalf("the draft is not the bottom row: %q", draft)
+	}
+	best := m.filter.rows[m.filter.hits[0].idx].target.Word
+	if nearest := rows[len(rows)-2]; !strings.Contains(nearest, best) {
+		t.Fatalf("the row nearest the draft is %q, want the best match %q", nearest, best)
+	}
+	// The `history` heading names the rows under it, and settled targets rank
+	// after live ones — so the heading is the TOP of the block.
+	if !strings.Contains(rows[0], historyGroup) {
+		t.Fatalf("first row = %q, want the history heading above its group", rows[0])
+	}
+}
+
+// TestFilter_TheHistoryHeadingIsAlwaysOverItsGroup: the heading is pinned to
+// the top of the window, so however far the list scrolls, a settled row is
+// never drawn without the word that says settled rows are addressed ABOUT.
+func TestFilter_TheHistoryHeadingIsAlwaysOverItsGroup(t *testing.T) {
+	targets := make([]Target, 0, 10)
+	for i := 0; i < 4; i++ {
+		targets = append(targets, Target{ID: "live" + string(rune('a'+i)), Word: "task-" + string(rune('a'+i))})
+	}
+	for i := 0; i < 6; i++ {
+		targets = append(targets, Target{ID: "old" + string(rune('a'+i)), Word: "done-" + string(rune('a'+i)), Settled: true})
+	}
+	m := withTargets(t, Options{Targets: func() []Target { return targets },
+		Styler: tokens.NewStyler(tokens.NoColor, tokens.FocusNormal)})
+	m.Focus(true)
+	m.Key(charKey('@'))
+	for step := 0; step < len(targets); step++ {
+		rows := strings.Split(ansi.Strip(m.Render(60, 1+m.HintRows())), "\n")
+		settled := false
+		for _, row := range rows {
+			if strings.Contains(row, "done-") {
+				settled = true
+			}
+		}
+		if settled && !strings.Contains(rows[0], historyGroup) {
+			t.Fatalf("step %d drew a settled row with no heading over it:\n%s", step, strings.Join(rows, "\n"))
+		}
+		m.Key(downKey())
+	}
+}
+
+// TestFilter_SelectionWalksUpTheScreen: ↓ walks toward the less relevant, which
+// on an upward list is toward the top of the screen — and the selection never
+// scrolls away.
+func TestFilter_SelectionWalksUpTheScreen(t *testing.T) {
+	m := withTargets(t, Options{Styler: tokens.NewStyler(tokens.NoColor, tokens.FocusNormal)})
+	m.Focus(true)
+	m.Key(charKey('@'))
+	height := 1 + m.HintRows()
+	first := strings.Split(ansi.Strip(m.Render(60, height)), "\n")
+	m.Key(downKey())
+	second := strings.Split(ansi.Strip(m.Render(60, height)), "\n")
+
+	sel := func(rows []string) int {
+		for i, row := range rows {
+			if strings.HasPrefix(row, padded(60, tokens.GlyphAccentRail)) {
+				return i
+			}
+		}
+		return -1
+	}
+	a, b := sel(first), sel(second)
+	if a < 0 || b < 0 {
+		t.Fatalf("no selected row drawn: %v / %v", first, second)
+	}
+	if b >= a {
+		t.Fatalf("the selection moved from row %d to row %d; ↓ must walk up an upward list", a, b)
 	}
 }
 

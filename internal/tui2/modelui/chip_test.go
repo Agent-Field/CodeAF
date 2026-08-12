@@ -18,7 +18,7 @@ func TestChipSpeaksTheGrammar(t *testing.T) {
 		Window: 200_000,
 	}
 	// ⟨role word⟩ ⟨model word⟩ ⟨ctx gauge⟩ — 5.23, in that order and no other.
-	if got, want := chip.Text(), "hands claude-sonnet-4 "+tokens.Gauge(0.25); got != want {
+	if got, want := chip.Text(), RoleWord(store.RoleWork)+" claude-sonnet-4 "+tokens.Gauge(0.25); got != want {
 		t.Fatalf("chip text = %q, want %q", got, want)
 	}
 }
@@ -48,7 +48,7 @@ func TestBoostIsAGlyphOnTheChipAndNotASecondConcept(t *testing.T) {
 		t.Fatalf("boosted chip = %q, want the boost glyph %q", got, tokens.GlyphBoosted)
 	}
 	// It rides the same chip: one role word, one model word, one mark (5.10).
-	if want := "hands gpt-oss-120b " + tokens.GlyphBoosted; got != want {
+	if want := RoleWord(store.RoleWork) + " gpt-oss-120b " + tokens.GlyphBoosted; got != want {
 		t.Fatalf("boosted chip = %q, want %q", got, want)
 	}
 	// And the mark is never emoji: 5.17's width law, which ⚡ fails.
@@ -60,7 +60,7 @@ func TestBoostIsAGlyphOnTheChipAndNotASecondConcept(t *testing.T) {
 func TestEffortRidesTheSlugAndShowsAsASuffix(t *testing.T) {
 	t.Parallel()
 	chip := Chip{Role: store.RolePlan, Model: "openai/gpt-oss-120b:high"}
-	if got, want := chip.Text(), "architect gpt-oss-120b "+tokens.GlyphSeparator+" high"; got != want {
+	if got, want := chip.Text(), RoleWord(store.RolePlan)+" gpt-oss-120b "+tokens.GlyphSeparator+" high"; got != want {
 		t.Fatalf("chip = %q, want %q", got, want)
 	}
 }
@@ -76,19 +76,19 @@ func TestAVariantThatIsNotAnEffortIsNotRenderedAsOne(t *testing.T) {
 func TestAnUnknownWindowIsMissingAndNeverAnEstimate(t *testing.T) {
 	t.Parallel()
 	chip := Chip{Role: store.RoleScribe, Model: "openai/gpt-oss-20b", Used: 1_000}
-	if got, want := chip.Text(), "clerk gpt-oss-20b "+tokens.GlyphMissing; got != want {
+	if got, want := chip.Text(), RoleWord(store.RoleScribe)+" gpt-oss-20b "+tokens.GlyphMissing; got != want {
 		t.Fatalf("chip = %q, want %q", got, want)
 	}
 	// Nothing known at all spends no column on saying so.
 	quiet := Chip{Role: store.RoleScribe, Model: "openai/gpt-oss-20b"}
-	if got, want := quiet.Text(), "clerk gpt-oss-20b"; got != want {
+	if got, want := quiet.Text(), RoleWord(store.RoleScribe)+" gpt-oss-20b"; got != want {
 		t.Fatalf("chip = %q, want %q", got, want)
 	}
 }
 
 func TestAnUnboundBindingRendersTheMissingMark(t *testing.T) {
 	t.Parallel()
-	if got, want := (Chip{Role: store.RoleVerify}).Text(), "skeptic "+tokens.GlyphMissing; got != want {
+	if got, want := (Chip{Role: store.RoleVerify}).Text(), RoleWord(store.RoleVerify)+" "+tokens.GlyphMissing; got != want {
 		t.Fatalf("unbound chip = %q, want %q", got, want)
 	}
 	// A row that already names the role still says "unbound" rather than
@@ -131,7 +131,7 @@ func TestChipDropLadder(t *testing.T) {
 		Window:  100,
 	}
 	full := chip.Text()
-	if want := "hands gpt-oss-120b " + tokens.GlyphBoosted + " " + tokens.GlyphSeparator + " high " + tokens.Gauge(0.1); full != want {
+	if want := RoleWord(store.RoleWork) + " gpt-oss-120b " + tokens.GlyphBoosted + " " + tokens.GlyphSeparator + " high " + tokens.Gauge(0.1); full != want {
 		t.Fatalf("full chip = %q, want %q", full, want)
 	}
 	steps := []struct {
@@ -139,7 +139,7 @@ func TestChipDropLadder(t *testing.T) {
 		want  string
 	}{
 		{blocks.Width(full), full},
-		{blocks.Width(full) - 1, "hands gpt-oss-120b " + tokens.GlyphBoosted + " " + tokens.Gauge(0.1)},
+		{blocks.Width(full) - 1, RoleWord(store.RoleWork) + " gpt-oss-120b " + tokens.GlyphBoosted + " " + tokens.Gauge(0.1)},
 		{21, "gpt-oss-120b " + tokens.GlyphBoosted + " " + tokens.Gauge(0.1)},
 		{15, "gpt-oss-120b " + tokens.GlyphBoosted},
 		{13, "gpt-oss-120b"},
@@ -186,7 +186,7 @@ func TestChipSpansCarryTheirTokens(t *testing.T) {
 		text string
 		tok  tokens.Token
 	}{
-		{"hands", tokens.TextTertiary},
+		{RoleWord(store.RoleWork), tokens.TextTertiary},
 		{" ", tokens.TextTertiary},
 		{"sonnet", tokens.TextSecondary},
 		{" ", tokens.TextTertiary},

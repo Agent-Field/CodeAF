@@ -1346,6 +1346,12 @@ func (m *Model) modelChoiceRow(choice ModelChoice, selected bool, width int) str
 		}
 		detail += choice.Price
 	}
+	if choice.Note != "" {
+		if detail != "" {
+			detail += " · "
+		}
+		detail += choice.Note
+	}
 
 	available := max(1, width-lipgloss.Width(marker))
 	slug := truncate(choice.Slug, available)

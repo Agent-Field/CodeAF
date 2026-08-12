@@ -5,6 +5,7 @@
 package resident
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -14,11 +15,31 @@ import (
 )
 
 // ApplyRevision mirrors the sentinel's applied plan-graph operations onto the
-// durable store: adds splice under the job's root, removals cancel pending
-// nodes, rewires replace dependency edges, retitles amend brief and title.
-// Refusals and store-side rejections are returned as notes rather than
-// failing the batch — a revision is advice, and the store is the law.
+// durable store, governed as an overrun replan is.
+//
+// It is the compatibility shape: every caller that has nothing to say about why
+// it is growing the job, and no reader to ask whether the job still needs
+// anything, gets the caps and the journal and no paid question.
 func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot string, operations []plan.Operation) (int, []string) {
+	return ApplyRevisionGoverned(context.Background(), Growth{Reason: GrowRevision},
+		graph, planGraph, prefix, jobRoot, operations)
+}
+
+// ApplyRevisionGoverned mirrors the sentinel's applied plan-graph operations
+// onto the durable store: adds splice under the job's root, removals cancel
+// pending nodes, rewires replace dependency edges, retitles amend brief and
+// title. Refusals and store-side rejections are returned as notes rather than
+// failing the batch — a revision is advice, and the store is the law.
+//
+// The adds now pass the growth governor first, which they never did. This path
+// spliced straight into the job root with no ceiling, no round counter and no
+// rail check, which was invisible while the sentinel was a rare second thought
+// and is the whole story once anything fires it often: a job could be grown
+// without limit by the one mechanism nobody was counting. A refused batch
+// becomes a note, exactly as a store rejection already does — the removals,
+// rewires and retitles in the same batch still apply, because none of them
+// grows anything.
+func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Store, planGraph *plan.Graph, prefix, jobRoot string, operations []plan.Operation) (int, []string) {
 	applied := 0
 	var notes []string
 	id := func(planID int) string { return fmt.Sprintf("%s-n%d", prefix, planID) }
@@ -26,6 +47,31 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 		_, ok, err := graph.Node(storeID)
 		return err == nil && ok
 	}
+
+	// One verdict for the batch, asked once with the whole count, because the
+	// batch is what the sentinel decided: adds admitted one at a time would let
+	// a batch of twenty walk through a ceiling that had room for one.
+	adds := 0
+	for _, operation := range operations {
+		if operation.Op == "add" && operation.Applied {
+			adds++
+		}
+	}
+	request := GrowRequest{JobRoot: jobRoot, Lineage: jobRoot, Reason: growth.reason(),
+		Adding: adds, Ungated: growth.Ungated}
+	if root, ok, err := graph.Node(jobRoot); err == nil && ok {
+		request.Node = root
+	}
+	verdict := GrowVerdict{Allow: true}
+	if adds > 0 {
+		decided, err := growJob(ctx, graph, growth.Ask, request)
+		if err != nil {
+			notes = append(notes, fmt.Sprintf("add: %v", err))
+		} else {
+			verdict = decided
+		}
+	}
+	spliced := 0
 
 	for _, operation := range operations {
 		if !operation.Applied {
@@ -36,6 +82,13 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 		}
 		switch operation.Op {
 		case "add":
+			if !verdict.Allow {
+				// The governor has already said this in the person's own words
+				// on the job's record; the note is the same refusal in the
+				// sentinel's vocabulary, for whoever is reading the batch.
+				notes = append(notes, fmt.Sprintf("add %s: %s", id(operation.Node), growthRefusalNote(verdict)))
+				continue
+			}
 			node := planGraph.Node(operation.Node)
 			if node == nil {
 				notes = append(notes, fmt.Sprintf("add %d: vanished from the plan", operation.Node))
@@ -46,6 +99,13 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 				Brief: nodeBrief(*node),
 				Title: strings.TrimSpace(node.Title),
 				Stage: node.Stage,
+				// A node the sentinel added is a spec like any other. It is
+				// usually empty — the sentinel authors a title and a summary and
+				// nothing else — and it is not empty in the one case that
+				// matters: a node standing in for work that failed, which
+				// inherits the failed node's criterion before it ever reaches
+				// here (revision.RetargetAdds).
+				Spec: EncodeSpec(node.Spec),
 			}
 			for _, need := range node.Needs {
 				if exists(id(need)) {
@@ -70,6 +130,7 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 				notes = append(notes, fmt.Sprintf("add %s: %v", spec.ID, err))
 				continue
 			}
+			spliced++
 			applied++
 
 		case "remove":
@@ -134,7 +195,21 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 			applied++
 		}
 	}
+	// The round is spent by what landed, not by what was proposed: a batch whose
+	// every add was rejected by the store grew nothing, and a round nobody spent
+	// is not one to charge.
+	admitGrowth(graph, request, verdict, spliced)
 	return applied, notes
+}
+
+// growthRefusalNote is the refusal in the batch's own vocabulary. A rail pause
+// carries no words of its own here — the durable question it raised is the
+// sentence, and this batch is simply not the place it is asked.
+func growthRefusalNote(verdict GrowVerdict) string {
+	if words := strings.TrimSpace(verdict.Refused); words != "" {
+		return words
+	}
+	return "the daily rail is reached; nothing new can be started until it is raised"
 }
 
 // RevisionEvent phrases what just happened for the sentinel: which node

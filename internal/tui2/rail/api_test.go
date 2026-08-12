@@ -148,11 +148,40 @@ func TestTelemetryEmptiness(t *testing.T) {
 		{HasCost: true},
 		{ContextWindow: 1},
 		{HasElapsed: true},
-		{HasWorkers: true},
-		{Atomic: true},
+		{Counts: StateCounts{Running: 1}},
 	} {
 		if tel.Empty() {
 			t.Fatalf("%+v reported empty", tel)
+		}
+	}
+	// The retired fields (§14) do not make a line 3. Nothing draws them, so a
+	// source that still fills them must not buy a blank row with them.
+	for _, tel := range []Telemetry{{HasWorkers: true, Workers: 4}, {Atomic: true}} {
+		if !tel.Empty() {
+			t.Fatalf("%+v bought a line 3 with a retired field", tel)
+		}
+	}
+}
+
+// The census has ONE spelling, and it is exported so a surface at page altitude
+// (§6's board) can say it in the same words a card does. Two spellings of one
+// fact is the failure internal/tui2/reltime exists to prevent for time.
+func TestTheCensusCellIsTheVocabularyAndNotARailFeature(t *testing.T) {
+	cases := []struct {
+		counts StateCounts
+		want   string
+	}{
+		{StateCounts{}, ""},
+		{StateCounts{Running: 2, Done: 2}, "2◐ 2✓"},
+		{StateCounts{Queued: 1}, "1○"},
+		{StateCounts{Failed: 1, Cancelled: 2}, "3✕"},
+	}
+	for _, c := range cases {
+		if got := c.counts.Cell(); got != c.want {
+			t.Fatalf("%+v spells %q, want %q", c.counts, got, c.want)
+		}
+		if got, inner := c.counts.Cell(), countsCell(c.counts); got != inner {
+			t.Fatalf("the exported census (%q) and the row's own (%q) disagree", got, inner)
 		}
 	}
 }

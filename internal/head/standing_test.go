@@ -153,6 +153,40 @@ func TestNonStandingPhrasingStaysOnTheOrdinaryPath(t *testing.T) {
 	}
 }
 
+// The word "once" is two words. As a count it ends an ask — the thing happens
+// a single time and there is nothing durable about it. As a temporal
+// conjunction it OPENS one: the ask does not run now, it runs when a condition
+// the system has to watch for becomes true, which is the definition of a
+// sentinel. The reading here used to be a substring check for " once" that
+// treated every occurrence as the count, so the entire "do this when that
+// happens" class could never reach ratification and was spent immediately as an
+// ordinary one-shot job instead.
+func TestOnceIsReadAsAConjunctionOnlyWhenAClauseFollowsIt(t *testing.T) {
+	for _, tc := range []struct {
+		said     string
+		standing bool
+	}{
+		// The conjunction: a condition follows, so there is something to watch.
+		{"remind me once the deploy is green", true},
+		{"once it lands, tell me", true},
+		{"once its build passes, ship the release notes", true},
+		{"once we have the numbers, write them up", true},
+		{"tell me once staging is stable", true},
+		// The count: nothing follows it but the end of the ask.
+		{"run the benchmark once", false},
+		{"just do it once", false},
+		// Still excluded by the trigger-definition rule, which reads first: the
+		// user is defining a phrase, not asking for anything durable.
+		{"when i say ship it i mean run the deploy script once", false},
+	} {
+		t.Run(tc.said, func(t *testing.T) {
+			if got := RecognizesStandingIntent(tc.said); got != tc.standing {
+				t.Fatalf("RecognizesStandingIntent(%q) = %v, want %v", tc.said, got, tc.standing)
+			}
+		})
+	}
+}
+
 // TestEverySundayCompilesToAWeeklyRuleThatOutlivesItsFirstFiring is the
 // everyday simulation's Monday 08:14, at the layer that read the sentence.
 // "remind me every sunday …" produced no cadence at all, so the head

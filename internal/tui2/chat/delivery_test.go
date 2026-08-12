@@ -76,9 +76,18 @@ func TestDeliveryLandsAsACollapsedCard(t *testing.T) {
 	if !strings.Contains(out, tokens.GlyphCollapsed+" /tmp/aforge/workspace/task-16/rivers.txt") {
 		t.Fatalf("the deliverable's path is not a reference row:\n%s", out)
 	}
-	// The raw result is what the fold is holding.
-	if strings.Contains(out, "Silver thread unwinds") {
-		t.Fatalf("the raw result was dumped into the conversation:\n%s", out)
+	// THE RESULT IS ORGANIZED, NOT TEASED. This assertion used to be "the fold
+	// holds everything below the first line", and the reader overruled it in
+	// their own words: a result card should show "the result organized — with
+	// expand/view-more on click and ellipsis". §4 asks the same of the card
+	// anatomy — "3-5 sentences the assistant absorbed, never 'see the file'" —
+	// so what stands is [cardBodyRows] source lines and what folds is the rest,
+	// whole ([splitCardBody]).
+	if !strings.Contains(out, "Silver thread unwinds") {
+		t.Fatalf("the card teases the result instead of organizing it:\n%s", out)
+	}
+	if strings.Contains(out, "Files:") {
+		t.Fatalf("the whole result was dumped into the conversation:\n%s", out)
 	}
 	if !strings.Contains(out, "lines") {
 		t.Fatalf("the fold does not say how much it is holding:\n%s", out)

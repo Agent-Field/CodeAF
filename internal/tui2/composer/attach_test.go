@@ -304,7 +304,7 @@ func TestAttach_AFileOnlySendLeavesTheRecallRingAlone(t *testing.T) {
 
 // -- chips --------------------------------------------------------------------
 
-func TestAttach_ChipShowsNameAndSizeUnderTheDraft(t *testing.T) {
+func TestAttach_ChipShowsNameAndSizeOverTheDraft(t *testing.T) {
 	m := withFiles(fileset{"/tmp/shots/dot.png": 68}, Options{})
 	typeString(m, "/tmp/shots/dot.png")
 
@@ -316,8 +316,11 @@ func TestAttach_ChipShowsNameAndSizeUnderTheDraft(t *testing.T) {
 		t.Fatalf("render = %q, want the chip to carry the size", rendered)
 	}
 	lines := strings.Split(rendered, "\n")
-	if strings.Contains(lines[0], "dot.png") {
-		t.Fatalf("first row = %q, want the chip BELOW the draft row", lines[0])
+	if strings.Contains(lines[len(lines)-1], "dot.png") {
+		t.Fatalf("last row = %q, want the chip ABOVE the draft row (8)", lines[len(lines)-1])
+	}
+	if !strings.Contains(lines[len(lines)-2], "dot.png") {
+		t.Fatalf("row above the draft = %q, want the chip welded to it", lines[len(lines)-2])
 	}
 }
 

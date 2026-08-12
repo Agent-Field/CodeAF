@@ -1,9 +1,11 @@
 package exec
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -81,10 +83,10 @@ func TestTheBaselineCommitCarriesNoFlightRecorder(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Exactly the order SWE.Run uses: recorder first, repository second.
-	trace := newTracer(space, 7)
+	trace := newTracer(space, "7")
 	trace.note("engine: started")
 	trace.flush()
-	if _, err := os.Stat(tracePath(t, space, 7)); err != nil {
+	if _, err := os.Stat(tracePath(t, space, "7")); err != nil {
 		t.Fatalf("the recorder was never opened, so this proves nothing: %v", err)
 	}
 
@@ -121,7 +123,7 @@ func TestTheBaselineCommitCarriesNoFlightRecorder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unguarded := newTracer(bare, 7)
+	unguarded := newTracer(bare, "7")
 	unguarded.note("engine: started")
 	unguarded.close()
 	if _, err := ensureGitRepository(t.Context(), bare.Root()); err != nil {
@@ -165,7 +167,7 @@ func TestTheExclusionLandsInAWorktreeToo(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(linked, traceDir), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(linked, traceName(3)), []byte("a trace\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(linked, traceName("3")), []byte("a trace\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, line := range gitLines(t.Context(), linked, "status", "--porcelain") {
@@ -184,5 +186,61 @@ func mustGit(t *testing.T, directory string, args ...string) {
 	t.Helper()
 	if err := gitQuiet(t.Context(), directory, args...); err != nil {
 		t.Fatalf("git %s in %s: %v", strings.Join(args, " "), directory, err)
+	}
+}
+
+// Siblings share one workspace, so they bootstrap it together.
+//
+// A job's leaves all run in the job's directory and the scheduler starts them
+// at once. Before this was serialised, four concurrent swe leaves raced on
+// git's own locks — `.git/index.lock: File exists` from `add -A` and from
+// `commit`, `templates/info/exclude: File exists` from a second `init` — and
+// git reports a lost race as exit 128. On the live run that found this, three
+// of the four leaves died at the starting line with "could not stage the
+// workspace" / "could not commit a baseline"; the fourth did the work.
+func TestSiblingLeavesBootstrapOneWorkspaceWithoutRacing(t *testing.T) {
+	directory := t.TempDir()
+	for i := range 200 {
+		name := filepath.Join(directory, fmt.Sprintf("file-%d.txt", i))
+		if err := os.WriteFile(name, []byte(strings.Repeat("x", 512)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	const leaves = 4
+	var wait sync.WaitGroup
+	errs := make([]error, leaves)
+	initialised := make([]bool, leaves)
+	for leaf := range leaves {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			initialised[leaf], errs[leaf] = ensureGitRepository(t.Context(), directory, obsDir+"/", traceDir+"/")
+		}()
+	}
+	wait.Wait()
+
+	made := 0
+	for leaf, err := range errs {
+		if err != nil {
+			t.Errorf("leaf %d: %v", leaf, err)
+		}
+		if initialised[leaf] {
+			made++
+		}
+	}
+	// Exactly one leaf makes the repository; the others find it made.
+	if made != 1 {
+		t.Errorf("%d leaves reported initialising the workspace, want 1", made)
+	}
+	if lines := gitLines(t.Context(), directory, "log", "--oneline"); len(lines) != 1 {
+		t.Errorf("the workspace carries %d baseline commits, want 1", len(lines))
+	}
+	raw, err := os.ReadFile(filepath.Join(directory, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(raw), obsDir+"/"); got != 1 {
+		t.Errorf("exclude carries the recorder pattern %d times, want 1:\n%s", got, raw)
 	}
 }

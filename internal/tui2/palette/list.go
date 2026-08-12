@@ -82,6 +82,9 @@ type item struct {
 type list struct {
 	profile tokens.Profile
 	focus   tokens.Focus
+	// linear is [Options.Linear], copied once at construction: it is a rendering
+	// mode the surface is built in, not a state that moves under it.
+	linear bool
 
 	rows   []row
 	hits   []hit
@@ -123,6 +126,21 @@ func (l *list) setStyle(s *tokens.Styler) {
 		return
 	}
 	l.profile, l.focus = s.Profile(), s.Focus()
+}
+
+// ground is the floor this surface paints under everything that is not banded.
+//
+// Linear mode (10.1.5) gets none, and for the same reason it gets no selection
+// band: a background fill is what a screen reader cannot see and what a
+// high-contrast terminal may render as a solid block. Nothing is lost — the
+// ground carries no information, only elevation — which is exactly why it is
+// the part that yields, and the ▎ of [markerCol] goes on saying which row the
+// cursor is on either way.
+func (l *list) ground() tokens.Token {
+	if l.linear {
+		return tokens.Ground
+	}
+	return sheetGround
 }
 
 // rebuild installs a freshly built catalog, reusing the row slice's capacity.
@@ -296,7 +314,7 @@ func (l *list) render(width, height int) []string {
 	if len(l.hits) == 0 {
 		l.line.reset(width)
 		l.line.add(blocks.Truncate(l.emptyText, width), tokens.TextTertiary)
-		l.out = append(l.out, l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, sheetGround))
+		l.out = append(l.out, l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, l.ground()))
 		l.lineOf = append(l.lineOf, -1)
 		return l.out
 	}
@@ -324,7 +342,7 @@ func (l *list) render(width, height int) []string {
 			if len(l.out) == 0 {
 				continue
 			}
-			l.out = append(l.out, blankLine(&l.line, &l.buf, l.profile, l.focus, width))
+			l.out = append(l.out, blankLine(&l.line, &l.buf, l.profile, l.focus, width, l.ground()))
 			l.lineOf = append(l.lineOf, -1)
 		case it.header:
 			l.out = append(l.out, l.renderHeader(it.sec, width))
@@ -356,7 +374,7 @@ func (l *list) renderMore(hidden, width int) string {
 	l.line.reset(width)
 	l.line.padTo(gutter)
 	l.line.add(strconv.Itoa(hidden)+" more", tokens.TextTertiary)
-	return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, sheetGround)
+	return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, l.ground())
 }
 
 // buildItems interleaves section headers into the surviving set. The hits are
@@ -495,7 +513,7 @@ func (l *list) renderHeader(sec section, width int) string {
 	count := strconv.Itoa(n)
 	right := width - blocks.Width(count)
 	if right <= l.line.w {
-		return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, sheetGround)
+		return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, l.ground())
 	}
 	// The rule fills what is left between the name and the count. Under two
 	// cells of gap there is no rule worth drawing and the gap stays whitespace,
@@ -506,7 +524,7 @@ func (l *list) renderHeader(sec section, width int) string {
 	}
 	l.line.padTo(right)
 	l.line.add(count, tokens.TextTertiary)
-	return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, sheetGround)
+	return l.line.emit(&l.buf, l.profile, l.focus, width, false, tokens.Band, l.ground())
 }
 
 // renderRow draws one row: marker, glyph, verb, description, right column.
@@ -557,7 +575,13 @@ func (l *list) renderRow(r *row, selected bool, lay layout, width int) string {
 	if lay.rightW > 0 {
 		l.renderRight(r, accelTok, width, lay.rightW)
 	}
-	return l.line.emit(&l.buf, l.profile, l.focus, width, selected, r.band, sheetGround)
+	// The band is a background fill, and linear mode (10.1.5) is exactly where a
+	// background fill is least trustworthy — a screen reader gets nothing from it
+	// and a high-contrast terminal may render it as a block. The ▎ of [markerCol]
+	// above already carries the same fact in a printable cell, so linear mode
+	// keeps the marker and drops the fill rather than replacing one with the
+	// other.
+	return l.line.emit(&l.buf, l.profile, l.focus, width, selected && !l.linear, r.band, l.ground())
 }
 
 // markerToken tints the selection marker. A room carries its task's identity

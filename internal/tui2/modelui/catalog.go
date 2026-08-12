@@ -57,8 +57,17 @@ type Catalog struct {
 	Roles []RoleRow
 
 	// Models is the catalog one level deeper — what a role can be bound to.
-	// The order is the wiring's and is preserved; an empty slice renders an
-	// empty-but-honest second level rather than a role that cannot be opened.
+	// An empty slice renders an empty-but-honest second level rather than a
+	// role that cannot be opened.
+	//
+	// The ORDER IS NOT THE WIRING'S any more, and that changed when this list
+	// stopped being the four slugs an engine happened to hold and became the
+	// four hundred a provider publishes. A list that long is not read, it is
+	// searched and scanned, and scanning wants families together and the cheap
+	// end first — so the picker sorts by family, then by price (see
+	// [sortModels]). A wiring that wants a particular row first should not
+	// reorder the list to get it; the bound row is marked and selected on the
+	// way in.
 	Models []ModelOption
 
 	// Disabled is the reason NOTHING here can take effect, in the wiring's own
@@ -110,17 +119,63 @@ type RoleRow struct {
 	Disabled string
 }
 
+// Price is what a million tokens costs, in and out.
+//
+// Known is what makes this type worth having. OpenRouter publishes "0" for the
+// models that really are free and "-1" for its own routers, whose price depends
+// on where they route — and a struct of two float64s cannot tell those apart,
+// so it renders the second as the first and tells the reader a router is free.
+// The zero value is UNKNOWN, which is what an unwired catalog and an unpriced
+// row both are, and it renders as absence (§16 EMPTINESS).
+//
+// The unit is dollars per MILLION tokens, converted by the wiring, because that
+// is the number a person compares. Providers publish per-token figures with
+// seven leading zeros; nobody has ever chosen a model by reading one.
+type Price struct {
+	In, Out float64
+	Known   bool
+}
+
+// free is a price that is known and zero on both sides.
+func (p Price) free() bool { return p.Known && p.In == 0 && p.Out == 0 }
+
 // ModelOption is one model the second level offers.
 type ModelOption struct {
 	// Slug is the provider id — what a chosen row carries back in
 	// [SetRole.ModelSlug]. It is never rendered raw: the row shows
 	// [ModelWord] of it.
+	//
+	// It IS searched, though. A reader who types "anthropic" is naming the one
+	// part of the slug the word drops, and a filter that could not find it
+	// would be hiding the id twice.
 	Slug string
+
+	// Name is the provider's own display name ("Claude Opus 5"), searched
+	// beside the slug and never drawn: the row's name column is [ModelWord] of
+	// the slug, which is the product's word for the same thing (5.10). Empty is
+	// ordinary and costs nothing.
+	Name string
 
 	// Window is the model's context length ((*catalog.Catalog).ContextLength).
 	// Zero renders [tokens.GlyphMissing] rather than "0": a window nobody knows
 	// is not a window of nothing.
 	Window int64
+
+	// Price is what this model costs per million tokens, in and out. The zero
+	// value is unknown and renders as absence — never "$0.00", which reads as
+	// free (§16 MONEY).
+	Price Price
+
+	// Intelligence is a PUBLISHED score, carried and never computed: OpenRouter
+	// republishes Artificial Analysis's intelligence index on about a third of
+	// its rows (catalog.Model.IntelligenceIndex). Zero means nobody published
+	// one and renders as absence, exactly like an absent price — it is never a
+	// model that scored zero.
+	//
+	// Nothing here ranks models by it, and nothing invents one. It is the third
+	// receipt on the row and the first to go under width pressure, because it
+	// is the one a reader can look up elsewhere.
+	Intelligence float64
 
 	// Note is the wiring's one line about this model — a tier word, a price, a
 	// capability. It is fuzzy-matched alongside the model word and is the first

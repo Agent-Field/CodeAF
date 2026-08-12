@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
@@ -138,16 +139,16 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	started := time.Now()
 	outcome := &Outcome{Stop: StopDone}
 	if s.workspace == nil {
-		return nil, fmt.Errorf("node %d: the swe worker was built without a workspace", task.NodeID)
+		return nil, fmt.Errorf("node %s: the swe worker was built without a workspace", task.leafKey())
 	}
 	if s.binary == "" {
-		return nil, fmt.Errorf("node %d: the swe worker cannot find its own executable to re-exec", task.NodeID)
+		return nil, fmt.Errorf("node %s: the swe worker cannot find its own executable to re-exec", task.leafKey())
 	}
 
 	runCtx, cancel := context.WithTimeout(ctx, s.deadline)
 	defer cancel()
 
-	trace := newTracer(s.workspace, task.NodeID)
+	trace := newTracer(s.workspace, task.leafKey())
 	defer trace.close()
 
 	directory := s.workspace.Root()
@@ -165,7 +166,7 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 		outcome.Stop = StopError
 		outcome.Text = err.Error()
 		trace.note("workspace: " + err.Error())
-		return s.land(ctx, task, outcome, started, repoState{}), fmt.Errorf("node %d: %w", task.NodeID, err)
+		return s.land(ctx, task, outcome, started, repoState{}), fmt.Errorf("node %s: %w", task.leafKey(), err)
 	}
 	if initialized {
 		trace.note("workspace: no committed git repository here — initialised one and committed a baseline")
@@ -195,11 +196,11 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	pipe, err := command.StdoutPipe()
 	if err != nil {
 		outcome.Stop = StopError
-		return s.land(ctx, task, outcome, started, before), fmt.Errorf("node %d: swe stdout: %w", task.NodeID, err)
+		return s.land(ctx, task, outcome, started, before), fmt.Errorf("node %s: swe stdout: %w", task.leafKey(), err)
 	}
 	if err := command.Start(); err != nil {
 		outcome.Stop = StopError
-		return s.land(ctx, task, outcome, started, before), fmt.Errorf("node %d: swe start: %w", task.NodeID, err)
+		return s.land(ctx, task, outcome, started, before), fmt.Errorf("node %s: swe start: %w", task.leafKey(), err)
 	}
 
 	lines := make(chan string, 256)
@@ -300,9 +301,33 @@ func (s *SWE) settle(
 	// A user's decision outranks whatever the engine managed to say on its way
 	// down: a killed run may still have flushed a terminal line, and reporting
 	// that as the leaf's ending would make a cancel look like a failure.
+	//
+	// The SPEND is not part of that outranking. A leaf killed at its deadline
+	// spent every dollar it spent, and the ending it was given says nothing
+	// about the bill; the stream's own per-message accounting is the only
+	// figure that survives here, and it is labelled as such.
 	switch stopped {
 	case StopCancelled, StopPaused, StopDeadline:
+		state.estimated = outcome.Usage.Cost > 0
 		outcome.Stop = stopped
+		if stopped == StopDeadline && s.deliveredAtTheBell(ctx, state, before) {
+			// The bell caught the wrap-up, not the work. Everything a finished
+			// run is judged on is already true — the repository's own checks
+			// passed against this tree, the engine's audit passed on top of
+			// them, and the change is on disk — so reporting "the time limit
+			// was reached before anything finished" would be a false statement
+			// about a workspace anyone can go and read.
+			outcome.Stop = StopDone
+			outcome.Verdict = provider.VerdictVerifiedSuccess
+			state.landing = "The coding run reached its wall clock during wrap-up, " +
+				"but the change was already written, the repository's own checks had " +
+				"passed against it and the engine's audit had passed on top of them — " +
+				"so it is delivered as it stands rather than discarded."
+			state.trace.note("deadline: the work was finished and verified before the clock ran out — " +
+				"delivering it rather than failing the leaf")
+			outcome.Text = state.text(StopDone, nil)
+			return s.land(ctx, task, outcome, started, before), nil
+		}
 		outcome.Text = state.text(stopped, nil)
 		return s.land(ctx, task, outcome, started, before), nil
 	}
@@ -318,13 +343,22 @@ func (s *SWE) settle(
 		if reason == "" {
 			reason = "it exited without saying how it went"
 		}
+		state.estimated = outcome.Usage.Cost > 0
 		outcome.Text = state.text(StopError, nil)
 		state.trace.note("engine: died with no terminal event — " + reason)
 		return s.land(ctx, task, outcome, started, before),
-			fmt.Errorf("node %d: the coding pipeline stopped without a verdict: %s", task.NodeID, reason)
+			fmt.Errorf("node %s: the coding pipeline stopped without a verdict: %s", task.leafKey(), reason)
 	}
 
-	outcome.Usage.Cost = terminal.cost()
+	// The engine's own terminal figure is authoritative when it has one. When it
+	// reports nothing — some endings carry no `cost_usd` at all — the streamed
+	// accounting stands in rather than zeroing a run that plainly cost money,
+	// and says so in the leaf's line.
+	if reported := terminal.cost(); reported > 0 {
+		outcome.Usage.Cost = reported
+	} else {
+		state.estimated = outcome.Usage.Cost > 0
+	}
 	reason := strings.TrimSpace(terminal.Message)
 	if reason == "" {
 		reason = "it gave no reason"
@@ -351,23 +385,66 @@ func (s *SWE) settle(
 		// checked" verdict.
 		outcome.Stop = StopError
 		outcome.Verdict = provider.VerdictUnverifiedSuccess
-		runErr = fmt.Errorf("node %d: the coding pipeline declined this goal: %s", task.NodeID, reason)
+		runErr = fmt.Errorf("node %s: the coding pipeline declined this goal: %s", task.leafKey(), reason)
 	case "escalated", "fail":
 		outcome.Stop = StopError
 		outcome.Verdict = provider.VerdictSemanticFailure
-		runErr = fmt.Errorf("node %d: the coding pipeline could not finish (%s): %s",
-			task.NodeID, terminal.Status, reason)
+		runErr = fmt.Errorf("node %s: the coding pipeline could not finish (%s): %s",
+			task.leafKey(), terminal.Status, reason)
 	default:
 		// "crashed", and anything a later engine adds. A crash is the harness
 		// falling over rather than the model failing, so it is weather.
 		outcome.Stop = StopError
 		outcome.Verdict = provider.VerdictProviderFailure
-		runErr = fmt.Errorf("node %d: the coding pipeline crashed: %s", task.NodeID, reason)
+		runErr = fmt.Errorf("node %s: the coding pipeline crashed: %s", task.leafKey(), reason)
 	}
 	outcome.Text = state.text(outcome.Stop, terminal)
 	s.calibrate(outcome, state.fit, terminal.Status, time.Since(started))
 	return s.land(ctx, task, outcome, started, before), runErr
 }
+
+// deliveredAtTheBell reports whether a run stopped by the wall clock had
+// already finished the work it was stopped in the middle of.
+//
+// Three things must all be true, and each rules out a different way of being
+// wrong. The engine's machine verification passed most recently — the
+// repository's own build and tests, run as processes, against this tree. Its
+// audit passed on top of that, which is the gate that reads the change against
+// the goal. And the workspace differs from where the leaf found it, because a
+// green suite over an unchanged repository is a green suite over nothing at
+// all: the loudest false positive available here, and the one a repository
+// whose tests already passed hands out for free.
+//
+// It reads the repository rather than the outcome's artifact list because the
+// list is assembled later, in land, and this decides what land is landing.
+func (s *SWE) deliveredAtTheBell(ctx context.Context, state *sweRun, before repoState) bool {
+	if !state.state.deliverable() {
+		return false
+	}
+	// The leaf's own context is gone by now — that is what a deadline is — so
+	// the read is made against the caller's, with a short ceiling of its own.
+	// A git call that cannot answer leaves the ending exactly as it was.
+	read, cancel := context.WithTimeout(ctx, sweBellRead)
+	defer cancel()
+	after := readRepoState(read, s.workspace.Root())
+	if after.top == "" {
+		return false
+	}
+	if before.head != "" && after.head != "" && before.head != after.head {
+		return true
+	}
+	for path := range after.dirty {
+		if !before.dirty[path] && !sweSidecar(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// sweBellRead bounds the one git read taken after the clock has already run
+// out. It is short on purpose: nothing downstream is waiting on a better
+// answer than "the tree changed" or "we could not tell".
+const sweBellRead = 10 * time.Second
 
 // calibrate is this worker saying, in its own words, how the job it just did sat
 // against what it is built for.
@@ -444,7 +521,7 @@ func (s *SWE) land(ctx context.Context, task Task, outcome *Outcome, started tim
 		outcome.Text = strings.TrimSpace(outcome.Text) +
 			fmt.Sprintf("\n\n(%d further changed files are named in the run's trace rather than here)", extra)
 	}
-	outcome.Artifacts = s.workspace.Artifacts(task.NodeID)
+	outcome.Artifacts = s.workspace.Artifacts(task.leafKey())
 	outcome.Elapsed = time.Since(started)
 	outcome.Verdict = verdictFor(outcome)
 	provider.Report(ctx, outcome.Verdict)
@@ -504,7 +581,7 @@ func (s *SWE) recordArtifacts(ctx context.Context, task Task, before repoState) 
 		paths = paths[:sweArtifactLimit]
 	}
 	for _, path := range paths {
-		s.workspace.Record(task.NodeID, filepath.Join(directory, path))
+		s.workspace.Record(task.leafKey(), filepath.Join(directory, path))
 	}
 	return overflow
 }
@@ -591,7 +668,7 @@ func (s *SWE) environ(directory string) []string {
 		pinned["CODEAF_AUDITOR"] = "0"
 	}
 	environ := os.Environ()
-	kept := make([]string, 0, len(environ)+len(pinned)+len(s.extraEnv))
+	kept := make([]string, 0, len(environ)+len(pinned)+len(sweBuildCacheDirs())+len(s.extraEnv))
 	venvBin := projectVenvBin(directory)
 	for _, entry := range environ {
 		name, _, _ := strings.Cut(entry, "=")
@@ -616,7 +693,74 @@ func (s *SWE) environ(directory string) []string {
 	for _, name := range names {
 		kept = append(kept, name+"="+pinned[name])
 	}
-	return append(kept, s.extraEnv...)
+	return append(append(kept, sweSharedCacheEnv()...), s.extraEnv...)
+}
+
+// sweCacheRoot is where every swe leaf's toolchain caches live: one directory
+// under aforge's own state root, shared by every session on the machine.
+//
+// It is deliberately NOT under the workspace and NOT per-session. A module
+// cache is content-addressed — the same module at the same version is the same
+// bytes for everybody — so a private copy per session buys no isolation and
+// costs a full re-download each time. Measured (audit-notes/
+// headless-regression-audit.md §10): one session pulled 329MB of
+// modernc.org/sqlite on its own, concurrent sessions each pulled it again, and
+// the pod's 5GB root filesystem hit 100% mid-battery. That full disk is also
+// what the engine's own resource guard reads, so the waste did not merely cost
+// bandwidth: it pinned the scheduler into a resource pause it could never
+// leave.
+//
+// What stays private is what carries a run's meaning — the workspace, the git
+// repository, the plandb, the checkpoint. None of those live here.
+func sweCacheRoot() string { return home.Join("cache", "toolchain") }
+
+// sweBuildCacheDirs is the toolchain-cache variable table: the environment
+// variable each ecosystem reads, and the leaf directory it gets under the
+// shared root. Names are the ones the engine's own shell tool would otherwise
+// point at a per-session scratch directory
+// (internal/swepro/internal/tool/shell_scratch.go).
+func sweBuildCacheDirs() map[string]string {
+	return map[string]string{
+		"GOMODCACHE":       "go-mod",
+		"GOCACHE":          "go-build",
+		"CARGO_TARGET_DIR": "cargo",
+		"npm_config_cache": "npm",
+		"PIP_CACHE_DIR":    "pip",
+	}
+}
+
+// sweSharedCacheEnv is the shared-cache half of the child's environment.
+//
+// An operator who has already said where a cache goes outranks this: a machine
+// with a warm GOMODCACHE, or a CI image that mounts one, has made the same
+// decision better, and setting these only when they are absent is what lets the
+// child inherit that instead of ignoring it. Absence is the case that filled
+// the disk — `go env GOMODCACHE` has a default, but the variable is unset, so
+// the engine read "nobody chose" as "give this session its own".
+func sweSharedCacheEnv() []string {
+	root := sweCacheRoot()
+	dirs := sweBuildCacheDirs()
+	names := make([]string, 0, len(dirs))
+	for name := range dirs {
+		if _, set := os.LookupEnv(name); set {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	shared := make([]string, 0, len(names))
+	for _, name := range names {
+		path := filepath.Join(root, dirs[name])
+		// A cache directory that cannot be made is not worth failing a leaf
+		// over: the tool creates its own, or falls back to its default, and
+		// either way the run proceeds. Silence here is the fail-open the whole
+		// cache layer is written as.
+		if os.MkdirAll(path, 0o755) != nil {
+			continue
+		}
+		shared = append(shared, name+"="+path)
+	}
+	return shared
 }
 
 // projectVenvBin is the workspace's own Python toolchain, if it carries one
@@ -687,7 +831,11 @@ func trimFloat(value float64) string {
 // to use a tool that does not exist is how a run spends a cycle looking for it.
 func sweGoal(task Task) string {
 	var block strings.Builder
-	if goal := strings.TrimSpace(task.Goal); goal != "" {
+	// A single-leaf splice sets Brief == Goal, and sending the same text twice
+	// is not context, it is size: the doubled prompt measured a band larger and
+	// made the engine refuse its own fast path (§14 DNF forensics). The goal
+	// preamble earns its place only when it says something the brief does not.
+	if goal := strings.TrimSpace(task.Goal); goal != "" && !strings.Contains(task.Brief, goal) {
 		fmt.Fprintf(&block, "This work is part of a larger goal:\n%s\n\n", goal)
 	}
 	if len(task.Inputs) > 0 {
@@ -813,6 +961,18 @@ func excludeFromGit(ctx context.Context, directory, pattern string) {
 // patterns go in between the repository existing and anything being staged,
 // which is the one window where they do what they are for.
 func ensureGitRepository(ctx context.Context, directory string, exclude ...string) (bool, error) {
+	// One workspace per job, and the scheduler starts a job's leaves together:
+	// four swe leaves reach this function on the same directory within
+	// milliseconds of each other. Git's own locking answers a losing racer with
+	// a fatal — `.git/index.lock: File exists` from `add`/`commit`, and
+	// `cannot copy .../templates/info/exclude: File exists` from a second
+	// `init` — which is exit 128, and is exactly how three of four leaves died
+	// on a live run. Nothing here is unsafe once it is one-at-a-time: the
+	// loser wakes, finds a HEAD, and truthfully reports an existing repository.
+	bootstrap := workspaceBootstrap(directory)
+	bootstrap.Lock()
+	defer bootstrap.Unlock()
+
 	committed := gitQuiet(ctx, directory, "rev-parse", "--verify", "HEAD") == nil
 	if !committed && gitQuiet(ctx, directory, "rev-parse", "--git-dir") != nil {
 		if err := gitQuiet(ctx, directory, "init"); err != nil {
@@ -843,6 +1003,21 @@ func ensureGitRepository(ctx context.Context, directory string, exclude ...strin
 		return false, fmt.Errorf("the swe worker could not commit a baseline: %w", err)
 	}
 	return true, nil
+}
+
+// workspaceBootstraps keys the lock above by workspace, so two jobs in flight
+// bootstrap their own directories in parallel and only siblings sharing one
+// wait on each other. Keyed by the cleaned absolute path — the same directory
+// reached by two spellings is still one repository and one .git to race on.
+var workspaceBootstraps sync.Map // string → *sync.Mutex
+
+func workspaceBootstrap(directory string) *sync.Mutex {
+	key := filepath.Clean(directory)
+	if absolute, err := filepath.Abs(directory); err == nil {
+		key = filepath.Clean(absolute)
+	}
+	lock, _ := workspaceBootstraps.LoadOrStore(key, &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }
 
 func gitQuiet(ctx context.Context, directory string, args ...string) error {
@@ -942,8 +1117,17 @@ type sweRun struct {
 	// time with the running totals, so summing every update would count the
 	// same tokens several times over.
 	tokens map[string]sweTokens
+	// estimated is true once [sweRun.usage] has had to price the run from the
+	// stream rather than read the engine's own terminal figure. It is carried
+	// into the leaf's measured line, because a number nobody labelled is a
+	// number the selection prompts will read as measured truth.
+	estimated bool
 	// steered is every line the user sent that this run could not act on.
 	steered []string
+	// spoken is which parts the recorder has already been told about, keyed by
+	// the part's own id and phase. The bus republishes a part on every update;
+	// this is what keeps one call one row (see [sweRun.narratePart]).
+	spoken map[string]bool
 	// polled throttles the between-lines poll: a stream can deliver a thousand
 	// deltas a second and a store query per delta is a store query too many.
 	polled time.Time
@@ -953,7 +1137,44 @@ type sweRun struct {
 	// end. None of it changes what runs — it is read once, in settle, and turned
 	// into prose for the ruler that decides what reaches this worker next time.
 	fit sweFit
+
+	// landing replaces the flat "it ended without saying how it went" on the
+	// one ending that has something better to say for itself.
+	landing string
+	// seenBaseline dedupes the baseline sentences: verification runs once per
+	// audit cycle and reports the same pre-existing reds every time.
+	seenBaseline map[string]bool
+	// state is what the engine's own gates last said, and it is the whole of
+	// what lets a run that hit the wall clock still be delivered. See
+	// [sweState].
+	state sweState
 }
+
+// sweState is the engine's last word from each of its two machine gates, kept
+// live as the stream goes past.
+//
+// It exists for one ending. A leaf that reaches its wall clock is stopped, and
+// everything the engine said on the way is discarded as "the time limit was
+// reached before anything finished" — which was measurably false: cli#2217
+// produced a patch within three lines of the upstream fix, passed the
+// repository's own suite, passed the audit, and was reported `settled:false`
+// because the clock expired during the wrap-up after the work was already
+// committed (audit-notes §14.4.1). The work product was in the workspace the
+// whole time.
+//
+// Both gates must be green and the workspace must actually have changed before
+// that ending is rewritten, because the failure mode on the other side —
+// shipping a half-finished tree because verification happened to pass six
+// cycles ago — is worse than a false negative. Both are reset by a later
+// failure, so "green" means green as of the last thing the engine said.
+type sweState struct {
+	verified bool
+	audited  bool
+}
+
+// deliverable reports whether the engine had already finished and checked its
+// work when the clock ran out.
+func (s sweState) deliverable() bool { return s.verified && s.audited }
 
 // sweFit is the engine's own sizing judgements, harvested from the stream.
 type sweFit struct {
@@ -971,28 +1192,73 @@ type sweFit struct {
 
 type sweTokens struct {
 	prompt, completion, cached int
+	cost                       float64
 }
 
+// usage is what this leaf spent, from the only accounting that survives every
+// ending.
+//
+// THE COST HALF IS NOT OPTIONAL AND IT IS NOT THE TERMINAL LINE'S ALONE. It
+// used to be: settle read `cost_usd` off the engine's terminal event and that
+// was the whole of it. Every ending that has no terminal event — a deadline, a
+// cancel, a pause, a child that died — therefore reported $0.0000 no matter how
+// long it had run. Measured (audit-notes/headless-regression-audit.md §10): a
+// leaf that worked for 893 seconds reported `swe: deadline after 0 cycles,
+// $0.0000` while a comparable run that reached its terminal line reported
+// $0.0874, a ~35× discrepancy in dollars-per-token between two runs of the same
+// worker on the same model. Those lines are the measured evidence the selection
+// prompts read (selfknow), so a silently-tiny number does not merely under-count
+// — it teaches the ruler that this worker is nearly free.
+//
+// The engine publishes each assistant message's own running `cost` on
+// `message.updated`, alongside the tokens this already kept. Summing the last
+// figure per message id is the same arithmetic the token half uses and is
+// correct for the same reason: a republished message carries running totals,
+// not deltas.
 func (r *sweRun) usage() Usage {
 	usage := Usage{Calls: r.turns}
 	for _, tokens := range r.tokens {
 		usage.PromptTokens += tokens.prompt
 		usage.CompletionTokens += tokens.completion
 		usage.CachedTokens += tokens.cached
+		usage.Cost += tokens.cost
 	}
 	return usage
 }
 
-// consume reads one NDJSON line. Every line reaches the trace — the trace is
-// the flight recorder and a filtered recorder answers the question it was
-// filtered for and no other — and only the few that mean something reach a
-// person.
+// consume reads one NDJSON line.
+//
+// EVERY LINE IS STILL KEPT AND NO LINE IS PROSE ANY MORE. It used to be one
+// `trace.note` per line, on the reasoning that the trace is a flight recorder
+// and a filtered recorder answers one question only. The recorder half of that
+// is right and the FILE was wrong: the recorder is also the document the task
+// room draws (internal/tui2/chat/trace.go), so a busy engine — a thousand
+// deltas a second — turned a room's record into screens of
+// `{"id":"evt_…","type":"message.part.delta",…}` rendered as content. Measured
+// on the reporter's own profile: `9200.trace.log` is 2.1MB and 5,928 lines, of
+// which about forty are sentences.
+//
+// So the stream forks here, once, at the only place it can fork honestly:
+//
+//   - the RAW line goes to the sidecar ([tracer.stream]), whole, in order, for
+//     whoever is debugging the engine;
+//   - what a PERSON would read is written into the recorder in the recorder's
+//     own grammar ([sweRun.narrate]) — a call, its result, the model's own
+//     sentences — so the record draws proper tool rows with bounded output
+//     boxes instead of a JSON dump it had no rule for.
+//
+// A line that is not one of the engine's records at all — a stray print, a
+// runtime's warning — is not machine-shaped and stays a note, because that is
+// exactly what it is.
 func (r *sweRun) consume(line string) {
-	r.trace.note(strings.TrimRight(line, "\n"))
+	line = strings.TrimRight(line, "\n")
 	var event sweEvent
 	if json.Unmarshal([]byte(line), &event) != nil {
+		r.trace.note(line)
 		return
 	}
+	r.trace.stream(line)
+	r.narrate(event)
 	switch event.Type {
 	case "terminal":
 		captured := event
@@ -1004,15 +1270,145 @@ func (r *sweRun) consume(line string) {
 	}
 }
 
+// swePart is one instance-bus message part, decoded only as far as the recorder
+// needs it. The engine's own model of these is `internal/swepro`'s and is not
+// reachable from here by design — the two halves talk over a documented line
+// format (internal/swepro/EVENTS-CONTRACT.md), not over a shared struct.
+type swePart struct {
+	ID    string `json:"id"`
+	Type  string `json:"type"`
+	Text  string `json:"text"`
+	Tool  string `json:"tool"`
+	State struct {
+		Status string          `json:"status"`
+		Input  json.RawMessage `json:"input"`
+		Output string          `json:"output"`
+		Error  string          `json:"error"`
+	} `json:"state"`
+	Time struct {
+		End float64 `json:"end"`
+	} `json:"time"`
+}
+
+// narrate writes the human half of one engine event into the recorder.
+//
+// It emits the SAME five shapes [tracer.turn] writes for a linear leaf, so one
+// reader parses both and a swe run's record reads like every other record in
+// the product rather than like a second format nobody wrote a lens for.
+//
+// EVERY PART IS SPOKEN ABOUT ONCE. The bus republishes a part on every update —
+// a tool part appears pending, then running, then completed; a text part appears
+// on every token — so the dedupe is not an optimisation but the difference
+// between forty rows and forty thousand. A tool is written when it is ISSUED
+// (which is when its input first exists) and again when it RETURNS; text and
+// reasoning are written when the part is finished, which is what `time.end`
+// says, and that is also why the enormous system prompt never lands here: a
+// prompt is a part with no ending of its own.
+func (r *sweRun) narrate(event sweEvent) {
+	// The compact control-plane shape. `supervisor` carries no stage of its own
+	// and [sweRun.stage] falls back to the type for exactly that case, so this
+	// reads it the same way rather than going quiet on the one record that says
+	// the engine re-exec'd itself.
+	if name := stageName(event); name != "" {
+		status := strings.TrimSpace(event.Status)
+		if status != "" {
+			status = " " + status
+		}
+		r.trace.note("stage: " + name + status)
+		return
+	}
+	if event.Type != "message.part.updated" || len(event.Properties) == 0 {
+		return
+	}
+	var payload struct {
+		Part swePart `json:"part"`
+	}
+	if json.Unmarshal(event.Properties, &payload) != nil {
+		return
+	}
+	r.narratePart(payload.Part)
+}
+
+// narratePart writes one part, at most twice, in the recorder's own grammar.
+func (r *sweRun) narratePart(part swePart) {
+	if part.ID == "" {
+		return
+	}
+	if r.spoken == nil {
+		r.spoken = make(map[string]bool, 64)
+	}
+	once := func(key string) bool {
+		if r.spoken[key] {
+			return false
+		}
+		r.spoken[key] = true
+		return true
+	}
+	switch part.Type {
+	case "text", "reasoning":
+		text := strings.TrimSpace(part.Text)
+		if text == "" || part.Time.End <= 0 || !once(part.ID) {
+			return
+		}
+		r.trace.note("text: " + snip(text, sweSaidCap))
+
+	case "tool":
+		tool := strings.TrimSpace(part.Tool)
+		if tool == "" {
+			tool = "tool"
+		}
+		switch part.State.Status {
+		case "running", "pending":
+			// The input is what the row is FOR, and it is empty while the call
+			// is still pending — so the row waits for the phase that has it, and
+			// a call that never gets one is announced with an empty object
+			// rather than not at all.
+			args := strings.TrimSpace(string(part.State.Input))
+			if args == "" || args == "{}" || args == "null" {
+				return
+			}
+			if !once(part.ID + "-call") {
+				return
+			}
+			r.trace.note("call " + tool + " " + snip(args, sweCallCap))
+		case "completed", "error":
+			if !once(part.ID + "-result") {
+				return
+			}
+			body, mark := part.State.Output, ""
+			if part.State.Status == "error" {
+				mark = " ERROR"
+				if strings.TrimSpace(body) == "" {
+					body = part.State.Error
+				}
+			}
+			r.trace.note(fmt.Sprintf("  → %dB%s: %s",
+				len(body), mark, snip(strings.TrimSpace(body), sweResultCap)))
+		}
+	}
+}
+
+const (
+	// sweSaidCap is how much of one thing the model said survives into the
+	// recorder. It matches [tracer.turn]'s own cap for a linear leaf, so the two
+	// paths produce rows of the same size.
+	sweSaidCap = 600
+	// sweCallCap is how much of a call's argument object is kept — the same 300
+	// the linear path keeps, which is the number the room's salient-input scan
+	// was written against (internal/tui2/chat/trace.go's salientArg).
+	sweCallCap = 300
+	// sweResultCap is how much of a result is kept: the record's bounded output
+	// box is twelve rows (traceBoxRows), and this is about what twelve rows
+	// hold. The whole result is in the sidecar for anyone who needs it.
+	sweResultCap = 600
+)
+
 // stage turns one engine stage into within-node visibility. Progress is
 // replaceable and may say anything; Share is a message to the rest of the job
 // and is spent only on milestones — docs/SUBHARNESSES.md's "one mouth" is the
 // whole reason this is two channels and not one.
 func (r *sweRun) stage(event sweEvent) {
-	name := event.Stage
-	if name == "" {
-		name = event.Type
-	}
+	name := stageName(event)
 	r.noteFit(event)
 	r.record(name + " " + event.Status)
 	done, latest := sweLatest(event)
@@ -1020,6 +1416,21 @@ func (r *sweRun) stage(event sweEvent) {
 	if milestone := sweMilestone(event); milestone != "" && r.task.Share != nil {
 		_ = r.task.Share(milestone)
 	}
+}
+
+// stageName is what one control-plane record calls itself: its stage, or its
+// type when it has no stage of its own (`supervisor`). It is one function
+// because the recorder and the progress channel must name a stage identically —
+// two spellings would put two different words on two surfaces for one event.
+func stageName(event sweEvent) string {
+	if name := strings.TrimSpace(event.Stage); name != "" {
+		return name
+	}
+	switch event.Type {
+	case "stage", "supervisor":
+		return strings.TrimSpace(event.Type)
+	}
+	return ""
 }
 
 // noteFit collects the engine's own judgements about the size of this job as
@@ -1047,6 +1458,50 @@ func (r *sweRun) noteFit(event sweEvent) {
 		if ceiling := event.count("max_cycles"); ceiling > 0 {
 			r.fit.auditMax = ceiling
 		}
+		switch event.Status {
+		case "pass":
+			r.state.audited = true
+		case "fail", "escalated":
+			r.state.audited = false
+		}
+	case "verification":
+		switch event.Status {
+		case "pass":
+			r.state.verified = true
+		case "fail":
+			r.state.verified = false
+		}
+		r.notePreExisting(event)
+	}
+}
+
+// notePreExisting carries the engine's baseline-delta sentences out of the
+// stream and into the leaf's outcome.
+//
+// The engine is the only thing in the system that photographed the repository
+// before the work started, and the delivery gate — two processes away, holding
+// prose and a file list — is the thing that most needs to know a red suite was
+// red on arrival. Between them there is one channel: this event. Nothing is
+// interpreted here; the sentences travel verbatim, because a gate rewording a
+// fact it cannot check is a gate inventing one.
+func (r *sweRun) notePreExisting(event sweEvent) {
+	raw, ok := event.Data["pre_existing"].([]any)
+	if !ok {
+		return
+	}
+	if r.seenBaseline == nil {
+		r.seenBaseline = map[string]bool{}
+	}
+	for _, item := range raw {
+		note, ok := item.(string)
+		if !ok {
+			continue
+		}
+		if note = strings.TrimSpace(note); note == "" || r.seenBaseline[note] {
+			continue
+		}
+		r.seenBaseline[note] = true
+		r.outcome.Baseline = append(r.outcome.Baseline, note)
 	}
 }
 
@@ -1068,8 +1523,9 @@ func (r *sweRun) countTokens(event sweEvent) {
 	}
 	var payload struct {
 		Info struct {
-			ID     string `json:"id"`
-			Role   string `json:"role"`
+			ID     string  `json:"id"`
+			Role   string  `json:"role"`
+			Cost   float64 `json:"cost"`
 			Tokens struct {
 				Input  float64 `json:"input"`
 				Output float64 `json:"output"`
@@ -1096,6 +1552,7 @@ func (r *sweRun) countTokens(event sweEvent) {
 		prompt:     int(info.Tokens.Input),
 		completion: int(info.Tokens.Output),
 		cached:     int(info.Tokens.Cache.Read),
+		cost:       info.Cost,
 	}
 }
 
@@ -1154,15 +1611,27 @@ func (r *sweRun) text(stop StopReason, terminal *sweEvent) string {
 		}
 	}
 	if block.Len() == 0 {
-		block.WriteString(sweEndingText(stop))
+		if r.landing != "" {
+			block.WriteString(r.landing)
+		} else {
+			block.WriteString(sweEndingText(stop))
+		}
 	}
 	status := string(stop)
-	cycles, cost := 0, 0.0
+	cycles := 0
 	if terminal != nil {
 		status = terminal.Status
-		cycles, cost = terminal.count("cycle"), terminal.cost()
+		cycles = terminal.count("cycle")
 	}
-	fmt.Fprintf(&block, "\n\nswe: %s after %d cycles, $%.4f", status, cycles, cost)
+	// The bill is read off the Outcome rather than off the terminal event,
+	// because settle has already decided which of the two accountings is the
+	// honest one and this line must not be able to disagree with the usage row
+	// beside it.
+	fmt.Fprintf(&block, "\n\nswe: %s after %d cycles, $%.4f", status, cycles, r.outcome.Usage.Cost)
+	if r.estimated {
+		block.WriteString(" (estimated from the engine's own message stream — " +
+			"this run ended without a reported total)")
+	}
 	if len(r.steered) > 0 {
 		block.WriteString("\n\nsteering received late: " + strings.Join(r.steered, " · ") +
 			" — this worker cannot take guidance mid-run, so none of it was applied.")

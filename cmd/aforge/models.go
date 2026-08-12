@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
 
+	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
 
@@ -26,9 +29,19 @@ func runModels(args []string) error {
 		return err
 	}
 	entries := ledger.Entries()
+	// The same daily-cached listing every other surface reads. This one is a
+	// report and may wait for it: a panel line without the model's own
+	// capabilities is the line this command exists to improve on.
+	models := catalog.Load(context.Background(), catalog.Options{
+		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+	})
 
 	if len(settings.Panel.Models) == 0 {
-		fmt.Println("panel:  none — AFORGE_MODELS is unset, so every call goes to " + settings.Model)
+		line := "panel:  none — AFORGE_MODELS is unset, so every call goes to " + settings.Model
+		if word := reasoningWord(models, settings.Model); word != "" {
+			line += "  " + word
+		}
+		fmt.Println(line)
 	} else {
 		fmt.Println("panel:")
 		for _, spec := range settings.Panel.Models {
@@ -38,6 +51,9 @@ func runModels(args []string) error {
 			}
 			if spec.Price > 0 {
 				line += fmt.Sprintf("  $%.3f/M out", spec.Price)
+			}
+			if word := reasoningWord(models, spec.Slug); word != "" {
+				line += "  " + word
 			}
 			fmt.Println(line)
 		}
@@ -82,6 +98,18 @@ func runModels(args []string) error {
 	fmt.Println("  p(pass) is that rating against an average call of the class.")
 	fmt.Println("  a class written class/shape is one sub-population of it, rated separately.")
 	return nil
+}
+
+// reasoningWord is the catalog's phrase for what a model does with reasoning,
+// for a slug this command holds rather than a row. A model the catalog has
+// never heard of says nothing, which is the same silence as a model that does
+// not reason — neither is a claim.
+func reasoningWord(models *catalog.Catalog, slug string) string {
+	model, known := models.Model(slug)
+	if !known {
+		return ""
+	}
+	return catalog.ReasoningWord(model, provider.ReasoningMandatory(slug))
 }
 
 func panelSlugs(panel router.Panel) []string {

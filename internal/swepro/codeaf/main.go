@@ -360,6 +360,7 @@ func runAutoResume(
 		return supervisor.ReadRatchetSnapshot(workspace, reader)
 	}
 	result, err := supervisor.RunSupervisor(supervisor.SupervisorDeps{
+		Fingerprint: func() (string, bool) { return resumeTreeFingerprint(ctx, workspace) },
 		ResumeOnce: func(_ int) error {
 			childArgs := []string{
 				"resume", "--dir", workspace, "--high", args.High,

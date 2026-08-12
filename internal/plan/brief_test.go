@@ -170,3 +170,127 @@ func (c *briefFanoutClient) targetFor(id int) string {
 	}
 	return ""
 }
+
+// The criterion rides the call that was already being paid for, so the same
+// answer now carries both halves and the graph has to end up holding both.
+func TestBriefCallReturnsTheCriterion(t *testing.T) {
+	graph := &Graph{Goal: "produce the thing", NextID: 1}
+	graph.Add(Node{Stage: 1, Title: "Only", Summary: "do it", Sources: []string{"the one place"}})
+
+	client := &briefJSONClient{body: `{"instruction": "Do the work and hand back the result.",
+	  "done": {"produces": ["the named result"],
+	  "conditions": [{"kind": "run", "check": "the stated command", "expect": "it reports success"},
+	                 {"kind": "read", "check": "the named result", "expect": "it is present"}]}}`}
+	if _, err := Briefs(context.Background(), client, graph); err != nil {
+		t.Fatal(err)
+	}
+	node := graph.Node(graph.Nodes[0].ID)
+	if node.Brief != "Do the work and hand back the result." {
+		t.Fatalf("brief = %q", node.Brief)
+	}
+	// Dual-write: the prose field and the object say the same thing.
+	if node.Spec.Instruction != node.Brief {
+		t.Fatalf("spec instruction %q != brief %q", node.Spec.Instruction, node.Brief)
+	}
+	if len(node.Spec.Done.Conditions) != 2 || node.Spec.Done.Conditions[0].Kind != CheckRun {
+		t.Fatalf("criterion did not land: %+v", node.Spec.Done)
+	}
+	if len(node.Spec.Sources) != 1 || node.Spec.Sources[0] != "the one place" {
+		t.Fatalf("spec sources = %#v", node.Spec.Sources)
+	}
+	// The words that make a criterion settleable by a third party are in the
+	// prompt, not in this test's expectations of the model.
+	if !strings.Contains(briefWithCriterion, "did not do the work") ||
+		!strings.Contains(briefWithCriterion, "Write no condition the request did not ask for") {
+		t.Fatal("the criterion block lost the clauses that bound it")
+	}
+	// And the instruction half is untouched, so the shared prefix is untouched.
+	if !strings.HasPrefix(briefWithCriterion, briefPrompt) {
+		t.Fatal("the criterion block was not appended to the instruction prompt")
+	}
+}
+
+// An answer with no criterion in it is today's answer, and today's answer is
+// legal everywhere. This is the compatibility half of the rollback proof.
+func TestBriefWithoutDoneIsTodaysBrief(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "json with no done key", body: `{"instruction": "Do this part and hand over its concrete result."}`},
+		{name: "prose, from a model that ignored the schema", body: "Do this part and hand over its concrete result."},
+		{name: "a fenced object, from a router that fell back", body: "```json\n{\"instruction\": \"Do this part and hand over its concrete result.\"}\n```"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			graph := &Graph{Goal: "produce the thing", NextID: 1}
+			graph.Add(Node{Stage: 1, Title: "Only", Summary: "do it"})
+			if _, err := Briefs(context.Background(), &briefJSONClient{body: test.body}, graph); err != nil {
+				t.Fatal(err)
+			}
+			node := graph.Node(graph.Nodes[0].ID)
+			if node.Brief != "Do this part and hand over its concrete result." {
+				t.Fatalf("brief = %q", node.Brief)
+			}
+			if !node.Spec.Done.Empty() {
+				t.Fatalf("a criterion was invented from nothing: %+v", node.Spec.Done)
+			}
+			// Empty criterion, and the spec still renders as the object it is —
+			// but the node reads exactly as it did before criteria existed.
+			if node.Spec.Instruction != node.Brief {
+				t.Fatalf("spec instruction %q != brief %q", node.Spec.Instruction, node.Brief)
+			}
+		})
+	}
+}
+
+// The rollback switch itself: off, no schema is sent and the answer is prose.
+func TestCriterionOffSendsTheOldPrompt(t *testing.T) {
+	Criterion = false
+	defer func() { Criterion = true }()
+
+	graph := &Graph{Goal: "produce the thing", NextID: 1}
+	graph.Add(Node{Stage: 1, Title: "Only", Summary: "do it"})
+	client := &briefJSONClient{body: "Do this part and hand over its concrete result."}
+	if _, err := Briefs(context.Background(), client, graph); err != nil {
+		t.Fatal(err)
+	}
+	if client.sawOptions() {
+		t.Fatal("a schema was still attached with the criterion off")
+	}
+	if system := client.system(); system != briefPrompt {
+		t.Fatalf("the system prompt was not the pre-criterion one:\n%s", system)
+	}
+	if node := graph.Node(graph.Nodes[0].ID); !node.Spec.Done.Empty() {
+		t.Fatalf("a criterion arrived with the switch off: %+v", node.Spec.Done)
+	}
+}
+
+type briefJSONClient struct {
+	body    string
+	mutex   sync.Mutex
+	systems []string
+	options int
+}
+
+func (c *briefJSONClient) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	c.mutex.Lock()
+	c.systems = append(c.systems, textOf(messages[0]))
+	c.options += len(options)
+	c.mutex.Unlock()
+	return response(c.body), nil
+}
+
+func (c *briefJSONClient) sawOptions() bool {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	return c.options > 0
+}
+
+func (c *briefJSONClient) system() string {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if len(c.systems) == 0 {
+		return ""
+	}
+	return c.systems[0]
+}

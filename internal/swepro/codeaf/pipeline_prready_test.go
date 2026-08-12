@@ -20,28 +20,32 @@ func TestPipelineReverifiesOnlyWhenPostAuditTreeChanges(t *testing.T) {
 		selfMutating      bool
 		wantStatus        string
 		wantReason        string
+		// wantVerifications counts every entrypoint invocation, and the first
+		// two of them are always the pre-run baseline photograph: the
+		// repository's own checks against the tree as it arrived, which is what
+		// every later verdict is a delta against (baseline.go).
 		wantVerifications int
 	}{
 		{
 			name: "unchanged tree avoids redundant verification", writeSummary: true,
-			wantStatus: "pass", wantVerifications: 2,
+			wantStatus: "pass", wantVerifications: 4,
 		},
 		{
 			name: "changed tree is reverified", formatterMutation: "formatted.txt",
-			writeSummary: true, wantStatus: "pass", wantVerifications: 4,
+			writeSummary: true, wantStatus: "pass", wantVerifications: 6,
 		},
 		{
 			name: "red final tree revokes pass", formatterMutation: "BROKEN",
-			writeSummary: true, wantStatus: "fail", wantVerifications: 4,
+			writeSummary: true, wantStatus: "fail", wantVerifications: 6,
 		},
 		{
 			name:       "reported formatter failure revokes pass",
-			wantStatus: "fail", wantVerifications: 2,
+			wantStatus: "fail", wantVerifications: 4,
 		},
 		{
 			name: "self-mutating verification is bounded", formatterMutation: "formatted.txt",
 			writeSummary: true, selfMutating: true, wantStatus: "fail",
-			wantReason: "self-mutating", wantVerifications: 6,
+			wantReason: "self-mutating", wantVerifications: 8,
 		},
 	}
 	for _, test := range tests {

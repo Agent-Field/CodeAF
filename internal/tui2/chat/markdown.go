@@ -77,7 +77,13 @@ const (
 
 // bodyIndent is 5.13's spacing rhythm: two spaces per depth. A message body
 // sits one depth under the header that names who is speaking.
-const bodyIndent = 2
+//
+// It is [blocks.ContentEdge] and not a `2` this file gets to pick: §20 is ONE
+// geometry for the whole product, and the law was written because four surfaces
+// had each spelled their own answer to the same question. The alias survives
+// because the WORD is what this file's rows read as — a body's indent — and the
+// number behind it is the grid's.
+const bodyIndent = blocks.ContentEdge
 
 // prose renders markdown at one tier, for one styler.
 //
@@ -197,7 +203,8 @@ func (p prose) rows(dst []string, text string, width, indent int) []string {
 
 		case strings.HasPrefix(trimmed, "> "), trimmed == ">":
 			body := strings.TrimPrefix(strings.TrimPrefix(trimmed, ">"), " ")
-			dst = p.wrap(dst, parseInline(nil, body, faceQuote), "│ ", "│ ", width, indent)
+			quote := tokens.GlyphProseQuote + " "
+			dst = p.wrap(dst, parseInline(nil, body, faceQuote), quote, quote, width, indent)
 
 		default:
 			if marker, rest, ok := listMarker(trimmed); ok {

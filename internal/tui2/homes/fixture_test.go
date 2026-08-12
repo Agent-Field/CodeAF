@@ -26,7 +26,10 @@ func rich() State {
 					ID: "41", Body: "santosh prefers replies in Simplified Technical English",
 					Scope: "user", Kind: "preference", Trust: "strong",
 					Learned: fixedNow.Add(-72 * time.Hour), Uses: 12, HasUses: true,
-					Evidence: []string{"job-3", "#1180"},
+					Evidence: []Evidence{
+						{Name: "ship the pricing page", Room: "node-3", When: fixedNow.Add(-73 * time.Hour)},
+						{When: fixedNow.Add(-80 * time.Hour)},
+					},
 				},
 				{
 					ID: "40", Body: "the CJK filename test on this box is a Linux path-length limit,\nnot a renderer bug",
@@ -42,6 +45,94 @@ func rich() State {
 					ID: "9", Body: "maybe the compositor owns the interruption budget",
 					Scope: "user", Kind: "fact", Provisional: true,
 				},
+				{
+					ID: "7", Body: "shorter commit lines", Kind: "preference",
+					Class: BeliefTaste, Status: "forming", Channel: ChannelInferred,
+					Learned: fixedNow.Add(-40 * time.Hour),
+				},
+				{
+					ID: "6", Body: "you usually accept first drafts", Kind: "trait",
+					Class: BeliefTrait, Samples: 14, HasSamples: true,
+					Learned: fixedNow.Add(-25 * time.Hour),
+				},
+				{
+					ID: "5", Body: "run the migration before the seed script", Kind: "playbook",
+					Class: BeliefPlaybook, Scope: "repo:/home/santosh/src/aforge-v2",
+					Trust: "steady", Channel: ChannelDistilled,
+					Learned: fixedNow.Add(-200 * time.Hour),
+				},
+			},
+		},
+		Knowhow: Knowhow{
+			Crafts: []Craft{
+				{
+					ID: "release-notes", Name: "release-notes",
+					Description: "collect merged PRs, draft the notes, verify links, deliver",
+					Proved:      4, Against: 1, HasRecord: true,
+					CostPerRun: 0.31, HasCost: true, Version: 3,
+					Updated: fixedNow.Add(-8 * 24 * time.Hour),
+					Dir:     "/home/santosh/.aforge/craft/workflows",
+					Ceilings: CraftCeilings{
+						CostUSD: 0.50, HasCost: true, WallClock: 10 * time.Minute,
+					},
+					Steps: []CraftStep{
+						{Brief: "gather merged PRs since last tag"},
+						{Brief: "draft the notes", Needs: []string{"1"}, Model: "sonnet"},
+						{Brief: "check every link resolves", Verify: true, Skill: "linkcheck"},
+						{Brief: "deliver", Needs: []string{"2", "3"}},
+					},
+					History: []CraftVersion{
+						{Version: 3, Subject: "tightened the link check", When: fixedNow.Add(-48 * time.Hour)},
+						{Version: 2, Subject: "added the verify step", When: fixedNow.Add(-144 * time.Hour)},
+						{Version: 1, Subject: "forged from \"ship 0.4\"", When: fixedNow.Add(-216 * time.Hour)},
+					},
+					Verbs: []Verb{
+						{ID: "craft.run", Label: "run", Key: "r"},
+						{ID: "craft.revert", Label: "revert", Key: "v"},
+						{ID: "craft.retire", Label: "retire", Key: "x"},
+					},
+				},
+				{
+					ID: "fetch-pr-context", Name: "fetch-pr-context",
+					Description: "pull the PR, its checks and its review threads",
+					Version:     1, Updated: fixedNow.Add(-26 * time.Hour),
+				},
+			},
+			Skills: []Skill{
+				{
+					ID: "sk1", Name: "imgshrink", Body: "shrink a PNG without touching its palette",
+					Path: "/home/santosh/.aforge/skills/imgshrink/run.sh",
+					Uses: 11, HasUses: true, Learned: fixedNow.Add(-21 * 24 * time.Hour),
+					Verbs: []Verb{{ID: "skill.retire", Label: "retire", Key: "x"}},
+				},
+				{
+					ID: "sk2", Name: "pdfsplit", Body: "split a PDF on its bookmarks",
+					Retired: true, Note: "superseded by the pdf tool the workspace ships",
+					Learned: fixedNow.Add(-90 * 24 * time.Hour),
+				},
+			},
+		},
+		Practice: Practice{
+			Today: Today{SpendUSD: 8.65, HasSpend: true, Learned: 3, Practiced: 42 * time.Minute},
+			Competence: Competence{
+				Strongest: "repo:aforge-v2", Frontier: "tool:docker",
+			},
+			Questions: []Question{
+				{
+					ID: "q1", Body: "how flaky is the e2e suite", Scope: "repo:/home/santosh/src/aforge-v2",
+					Life: QuestionPracticing, Runs: 2, CostUSD: 0.12, HasCost: true,
+					Asked: fixedNow.Add(-70 * time.Hour),
+					Attempts: []Attempt{
+						{CostUSD: 0.04, HasCost: true, Delta: -0.12, HasDelta: true, When: fixedNow.Add(-60 * time.Hour)},
+						{CostUSD: 0.08, HasCost: true, When: fixedNow.Add(-2 * time.Hour)},
+					},
+				},
+				{
+					ID: "q2", Body: "uv beats pip in this repo", Life: QuestionResolved,
+					Runs: 1, Asked: fixedNow.Add(-96 * time.Hour),
+					Note: "settled: uv, on this machine's python",
+				},
+				{ID: "q3", Body: "why does the CJK test flap", Life: QuestionAsked},
 			},
 		},
 		Self: Self{
@@ -134,8 +225,38 @@ func hostile() State {
 			Beliefs: []Belief{
 				{ID: "1", Body: "\x1b[2J\x1b[Hcleared your screen", Scope: "\x07bell", Trust: "\n"},
 				{ID: "2", Body: "   ", Kind: "\x1b]0;title\x07"},
-				{ID: "3", Body: "a\nb\nc", Retired: true, Provisional: true, Evidence: []string{"\x1b[1m"}},
+				{ID: "3", Body: "a\nb\nc", Retired: true, Provisional: true,
+					Evidence: []Evidence{{Name: "\x1b[1m", Room: "\x1b[2J"}, {}}},
+				{ID: "4", Body: "\x1b[?25l", Class: BeliefTaste, Status: "\x00", Channel: BeliefChannel(200)},
+				{ID: "5", Body: "\r\r\r", Class: BeliefTrait, Samples: -3, HasSamples: true},
+				{ID: "6", Body: "\x1b]8;;http://x\x07", Class: BeliefClass(200)},
 			},
+		},
+		Knowhow: Knowhow{
+			Crafts: []Craft{{
+				ID: "", Name: "\x1b[2J", Description: "a\nb", Proved: -2, Against: -1, HasRecord: true,
+				CostPerRun: -3, HasCost: true, Version: -9,
+				Dir:      "\x1b[H/tmp/x",
+				Ceilings: CraftCeilings{CostUSD: -1, HasCost: true, WallClock: -time.Hour},
+				Steps: []CraftStep{
+					{Brief: "\x00", Needs: []string{"\x1b[1m", ""}, Model: "\r", Skill: "\n", Verify: true},
+				},
+				History: []CraftVersion{{Version: -1, Subject: "\x07", When: time.Time{}}},
+				Verbs:   []Verb{{Label: "\x1b[0m", Key: "\x1b"}, {Label: ""}},
+			}},
+			Skills: []Skill{{
+				ID: "s", Name: "\x1b]0;title\x07", Body: "   ", Path: "\x00/x",
+				Uses: -4, HasUses: true, Retired: true, Note: "\n\n",
+			}},
+		},
+		Practice: Practice{
+			Today:      Today{SpendUSD: -1, HasSpend: true, Learned: -2, Practiced: -time.Hour},
+			Competence: Competence{Strongest: "\x1b[5m", Frontier: "\x00"},
+			Questions: []Question{{
+				ID: "q", Body: "a\nb\nc", Scope: "\x1b[2J", Life: QuestionLife(200),
+				Runs: -1, CostUSD: -2, HasCost: true, Note: "\x07",
+				Attempts: []Attempt{{CostUSD: -1, HasCost: true, Delta: -99999.5, HasDelta: true}},
+			}},
 		},
 		Self: Self{Routes: []Route{
 			{ID: RouteCrafts, Count: -4, HasCount: true, Items: []Item{
@@ -160,11 +281,55 @@ func wide(n int) State {
 	for i := 0; i < n; i++ {
 		id := strconv.Itoa(i)
 		s.Notebook.Beliefs = append(s.Notebook.Beliefs, Belief{ID: id, Body: "belief " + id, Scope: "user"})
+		s.Knowhow.Crafts = append(s.Knowhow.Crafts, Craft{ID: id, Name: "craft" + id, Version: i + 1})
+		s.Knowhow.Skills = append(s.Knowhow.Skills, Skill{ID: id, Name: "tool" + id})
+		s.Practice.Questions = append(s.Practice.Questions, Question{ID: id, Body: "gap " + id})
 		s.Standing.Charters = append(s.Standing.Charters, Charter{ID: id, Invariant: "charter " + id, State: CharterActive})
 		s.Services.Services = append(s.Services.Services, Service{ID: id, Name: "svc" + id, Life: LifeWorking})
 	}
 	s.Notebook.Total = n
 	return s
+}
+
+// pageRows is every row id the NOTEBOOK PAGE draws, in draw order. It is the
+// drill's own enumeration: the rail's [selections] walks the four rooms, and
+// after the split those are no longer the same set.
+func pageRows(s State) []string {
+	out := []string{}
+	for i := range s.Notebook.Beliefs {
+		out = append(out, BeliefRowPrefix+s.Notebook.Beliefs[i].ID)
+	}
+	for i := range s.Knowhow.Crafts {
+		out = append(out, CraftRowPrefix+s.Knowhow.Crafts[i].ID)
+	}
+	for i := range s.Knowhow.Skills {
+		out = append(out, SkillRowPrefix+s.Knowhow.Skills[i].ID)
+	}
+	for i := range s.Practice.Questions {
+		out = append(out, QuestionRowPrefix+s.Practice.Questions[i].ID)
+	}
+	return out
+}
+
+// drillSample is ONE row of each kind, which is what a width sweep needs from
+// the drill: the four bodies are four renderers, and the fortieth belief walks
+// exactly the same code as the first. The full set is walked where it is cheap
+// (the id sweep, at one width).
+func drillSample(s State) []string {
+	out := []string{""}
+	if len(s.Notebook.Beliefs) > 0 {
+		out = append(out, BeliefRowPrefix+s.Notebook.Beliefs[0].ID)
+	}
+	if len(s.Knowhow.Crafts) > 0 {
+		out = append(out, CraftRowPrefix+s.Knowhow.Crafts[0].ID)
+	}
+	if len(s.Knowhow.Skills) > 0 {
+		out = append(out, SkillRowPrefix+s.Knowhow.Skills[0].ID)
+	}
+	if len(s.Practice.Questions) > 0 {
+		out = append(out, QuestionRowPrefix+s.Practice.Questions[0].ID)
+	}
+	return out
 }
 
 // stylers are the painting configurations every sweep crosses: no styler at

@@ -165,18 +165,25 @@ func (m *Model) browsingKey(msg tea.KeyPressMsg, name string) tea.Cmd {
 		m.move(len(m.visible))
 		return nil
 	case "left", "shift+tab":
-		m.moveTab(-1)
+		m.moveGroup(-1)
 		return nil
 	case "right", "tab":
-		m.moveTab(1)
+		m.moveGroup(1)
 		return nil
 	case "enter":
 		return m.activate(false)
 	case "backspace":
 		if m.query != "" {
 			m.setQuery(trimLastRune(m.query))
+			return nil
 		}
-		return nil
+		// THE BACK KEY, and only on an empty query. Empty-then-back is the rule
+		// a shell path prompt and every file picker already teach, it costs no
+		// chord nobody knows, and it is the same key the palette and the model
+		// picker answer at their own depth zero (trail.go). With nothing above
+		// this sheet it returns no command and the key does nothing, exactly as
+		// it did before the trail existed.
+		return m.back()
 	case "ctrl+u":
 		m.setQuery("")
 		return nil
@@ -253,14 +260,50 @@ func (m *Model) move(delta int) {
 	m.cancel()
 }
 
-func (m *Model) moveTab(delta int) {
-	if len(m.tabs) == 0 || m.query != "" {
+// moveGroup jumps the band to the head of the next or previous group. It is
+// what ←→ used to do to tabs, made honest now that the groups are all on one
+// page: a page long enough to scroll still wants a way past a run of rows
+// nobody came here for, and the same two keys already meant "sideways".
+//
+// Backwards from the head of a group lands on the head of the one before, not
+// on the row above — the arrow that goes back to the top of THIS group when you
+// are already on it would be a key that sometimes does nothing.
+func (m *Model) moveGroup(delta int) {
+	if len(m.visible) == 0 || m.query != "" || delta == 0 {
 		return
 	}
-	m.tab = (m.tab + delta + len(m.tabs)) % len(m.tabs)
-	m.selected = 0
+	heads := m.groupHeads()
+	if len(heads) == 0 {
+		return
+	}
+	current := 0
+	for index, head := range heads {
+		if head <= m.selected {
+			current = index
+		}
+	}
+	if delta < 0 && heads[current] < m.selected {
+		// Standing inside a group, back means the top of this one.
+		m.selected = heads[current]
+		m.cancel()
+		return
+	}
+	m.selected = heads[(current+delta+len(heads))%len(heads)]
 	m.cancel()
-	m.reselectFresh()
+}
+
+// groupHeads is the position in [Model.visible] of the first row of each group.
+func (m *Model) groupHeads() []int {
+	heads := make([]int, 0, len(m.groups))
+	group := ""
+	for position, index := range m.visible {
+		if m.rows[index].group == group {
+			continue
+		}
+		group = m.rows[index].group
+		heads = append(heads, position)
+	}
+	return heads
 }
 
 // Mouse implements tui2.PaneMouse: chips are buttons (5.22 rule 5). A click
@@ -285,6 +328,18 @@ func (m *Model) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 			return nil
 		}
 		m.settle()
+		if local.Y == headerLine {
+			// The header is a target now, and only because the trail is on it: a
+			// click on an ancestor word leaves for that rung, which is the
+			// pointer's whole way out of a drilled sheet (5.22 rule 5 — the row
+			// IS the button, and a trail step is a row of the path). Every other
+			// cell of the header is still chrome and still does nothing, rather
+			// than something arbitrary.
+			if depth, hit := stepAt(m.steps, local.X); hit {
+				return m.backTo(depth)
+			}
+			return nil
+		}
 		if local.Y < 0 || local.Y >= len(m.rowAtLine) {
 			return nil
 		}

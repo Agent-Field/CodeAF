@@ -639,11 +639,14 @@ pane), applied recursively:
   the scope map. (`railAtWidth` is 100 today, so at 80 columns the narrow path is
   the *primary* experience, not a fallback — Part 9.)
 
-**You talk to what you're looking at.** The composer is bound to the selected
-row's surface: orchestrator row → chat composer; worker row → steer line
-(distinct glyph + placeholder, per 5.11); settled row → composer disabled with
-"this work is settled — ask aforge about it." One rule, no exceptions, and the
-affordance never lies.
+**You talk to what you're looking at.** (AMENDED by 13.18: bound to the
+ENTERED surface, not the selected row — a preview is a look, and a look may
+not rebind the mouth.) The composer is bound to the entered room's surface:
+orchestrator room → chat composer; worker room → steer line (distinct glyph +
+placeholder, per 5.11); settled room → composer disabled with "this work is
+settled — ask aforge about it." One rule, no exceptions, and the affordance
+never lies. Aiming a steer means entering the worker's room; 5.18's `@`
+grammar still addresses a task the composer is not bound to.
 
 Wireframes:
 
@@ -5099,9 +5102,11 @@ this surface deliberately lacks refuse in the words of the decision — `tab`
 because 5.15 killed the focus carousel, `ctrl+j` because alt+enter replaced it —
 rather than as "unavailable".
 
-**The click map as shipped.** Rail row → preview; the same row again → enter
-(5.15's select/open split reached by a second hand, which reads as a
-double-click and is the documented law). The `‹` pops: the whole header line
+**The click map as shipped.** (AMENDED by 13.18: one click ENTERS the room it
+points at — clicks go where they point. The select/open split is now the
+KEYBOARD's law alone: arrows preview, enter commits. The two rows that
+perform rather than navigate — `+ new room` and the homes lid — keep their
+two-step click.) The `‹` pops: the whole header line
 where the header has one, the glyph alone where 12.13.2 merged it into row 0,
 because the rest of that line is the room's own name. Wheel over the map walks
 the selection — the rail has no viewport, the fold accounts for what does not
@@ -5923,3 +5928,108 @@ found twice, independently, by a reader and by a worker.
 shared-recorder interleave above is a producer fact and is filed, not fixed. And
 7.2's click/keyboard parity stays half-open on the fold row exactly as 13.16
 left it — this lane added no chord and took none away.
+
+### 13.18 The three-class law: what a thread is FOR, answered at the producers
+
+13.17 item 2 filed a producer question and refused to answer it with a filter:
+*what is worth journaling as a message.* This is the answer, and it is a law
+rather than a heuristic, because the reason nothing had ever filtered the
+chatter is that nothing had ever said which sentences a conversation is for.
+
+**THE LAW. A thread message is a COMMITMENT, a DELIVERY, or a QUESTION.** A
+commitment is "on it — splitting this four ways", said once when prose becomes
+work. A delivery is the result. A question is an ask the person is meant to
+answer. There is no fourth class. Everything else a producer knows — a compile
+phase, a stage advance, a job's progress, the receipt for a change the head has
+already said out loud — is the WORK RECORD's, and the record is the room.
+
+**The mechanism was already in the schema and nobody had used it as one.** A
+room's transcript is `NodeMessages`, keyed by NODE and never by session. Every
+conversation read is keyed by SESSION — the chat's poll, the head's own thread
+window, the v1 lens. So a message with a node and no session is written once,
+kept forever, drawn in the room it belongs to, and heard nowhere. That is the
+whole of `thread.Record` (`internal/thread/thread.go`), the second half of the
+one door: same store, same validation, one field deliberately empty. Nothing is
+deleted and nothing is filtered; the thread simply stops carrying it.
+
+**The producers, and what each now does.**
+
+- **`cmd/aforge/progress.go:178` `planProgressPoster.post`** — the measured
+  offender. Thirty of forty-three messages under `task-234` were this one line;
+  five consecutive copies were the first screen of a fresh room. Every compile
+  phase and every leaf stage now goes to the record. The throttle, the
+  coalescing and the per-phase dedupe are untouched — what changed is who hears
+  them.
+- **`internal/resident/narrator.go:245`** — the narrator's whole subject is
+  where a running job has got to, which is the one thing the law keeps out of a
+  conversation. Filed on the job root, in sequence beside the part rows it is
+  narrating, which is the only place it was ever legible. `subtreeProgress`
+  dropped its `sessionID` field with it: which room commissioned the work
+  stopped being anything the narrator has to know.
+- **`internal/resident/resident.go:994` `settleCommand`** — an ANCHORED receipt
+  is now filed, and this is only `receiptAnchor`'s own sentence finally becoming
+  true. "Applied surgery is progress and belongs on the job's own card" was
+  written believing a node-anchored row lived on that card; it lived on the card
+  AND in the conversation, because a thread read takes the whole session and a
+  node under a row does not remove it. The head already said this command's one
+  thread sentence in its own voice before the command was journaled
+  (`headSpeaksFor`). An UNANCHORED receipt still speaks — a refusal is the case
+  where the head having spoken first is the wrong answer, not a duplicate one.
+- **`internal/resident/craftrun.go:951` `CraftRunner.post`** — "the %q step
+  splits into 4 parts", "check failed — one more round (2 of 3)", "taking it no
+  further": a workflow narrating its own machinery. Filed. The session is still
+  read, as the test for whether anyone commissioned the run at all, and then
+  deliberately not carried.
+- **`internal/head/head.go:888` `postSystem` — deleted.** It had no callers, and
+  its absence is the law in the type system: the head's only doors are
+  `postAgent`/`postAgentModel` (commitment, delivery) and `postQuestion` plus
+  the ask gates (question). A system-voice helper is a door onto the fourth
+  class.
+- **`internal/store/thread.go:534` `pendingMessageAnchor`** — one clause. A
+  compile phase is written before the splice admits the node it names, so the
+  provisional-anchor escape hatch had to accept a message with no session of its
+  own; it inherits the command's. The command link was always the proof, and the
+  session was only corroboration.
+
+**`internal/exec` journals nothing to a thread and never did** — checked, not
+assumed. Every sentence the audit attributed to "the planner/narrator" comes
+from `internal/plan`'s vocabulary boundary via `cmd/aforge`'s poster, or from
+the resident.
+
+**What still speaks, deliberately.** The head's commissioning reply, unchanged
+and not rebuilt: `beltRun.record` already accumulates into ONE reply per turn,
+so the commitment was already a single sentence. The compile receipt ("Here's my
+reading … Assumed: … Correct me anytime") stays in the thread beside it: it
+carries the reading and the assumptions the head's sentence cannot, and 5.20.1
+requires that a turn whose own words fail still says what it commissioned. **Two
+rows, one commitment, and neither is droppable** — that is the one place the law
+is satisfied by a pair rather than a row, and it is recorded here rather than
+resolved. Also still speaking: node failures and `faultNotice` (deliveries of
+bad news), the overrun continuation line (a commitment: "splitting the remaining
+work — N pieces queued"), governor refusals, service attention lines ("rested
+after 3 restarts — say 'restart it' when ready"), the arrival brief, learning
+moments, and `BroadcastRedirection`'s mailbox copies — the last because those
+are the PERSON's own words, and 13.8 finding 6 already ruled that a user's
+sentence is speech in every room it lands in. Changing that is a product
+decision, not a chatter fix.
+
+**Tests.** `internal/head/threeclass_test.go`'s
+`TestAWholeCycleSaysOnlyCommitmentDeliveryAndQuestion` drives commission →
+compile → five compile phases → a mid-flight amendment → a worker question → the
+delivery, and asserts the WHOLE thread row by row with the class each row
+belongs to named, then asserts every phase and the amendment receipt are on the
+record with no session. A producer that grows a fourth kind of sentence fails
+there with the sentence printed. Around it: `commandReceipt`
+(`internal/resident/resident_test.go`) became the law's enforcement point for
+the ten surgery and redirect tests that share it — anchored implies no session,
+unanchored implies the room; `craftMessages` asserts no stage advance reaches a
+thread; the two narrator tests read the record and assert the session read is
+empty; `cmd/aforge`'s
+`TestChatPlanProgressRecordsAgainstProvisionalJobAnchorAndNeverTheThread` pins
+the poster itself.
+
+**State.** `internal/head`, `internal/exec`, `internal/resident`,
+`internal/thread`, `internal/store`, `internal/plan`, `internal/tui`,
+`cmd/aforge` all green; `go vet` clean on the four packages this lane owns.
+Pre-existing and untouched: `internal/swepro`'s float-parity and `$HOME`-fixture
+failures.

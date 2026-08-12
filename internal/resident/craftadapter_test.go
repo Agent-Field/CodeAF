@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/craft"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -118,6 +119,45 @@ func TestCompileCraftProducesAnOrdinarySubtree(t *testing.T) {
 	}
 	if !strings.Contains(check, craftVerdictMarker+" "+craftVerdictPass) {
 		t.Fatalf("verify brief did not demand a verdict:\n%s", check)
+	}
+}
+
+// A craft never passes through plan.Contracts, so if its root brief does not
+// carry the delivery law then nothing in the whole craft path does and the one
+// node that hands the answer back is the only deliverable owner in the product
+// with no acceptance criteria. The law is pinned as the constant itself: a
+// paraphrase here would let the brief drift away from the sentence the gate
+// judges against, which is the failure the pin exists to catch.
+func TestCraftRootBriefCarriesTheDeliveryLaw(t *testing.T) {
+	for name, workflow := range map[string]*craft.Workflow{
+		"described": presentationCraft(),
+		"undescribed": {
+			Name:   "bare",
+			Commit: "abc1234def",
+			Steps:  []craft.Step{{ID: "one", Brief: "do the thing"}},
+		},
+	} {
+		subtree, err := CompileCraftAs("run-1", "/home/craft", workflow,
+			map[string]string{"topic": "quantum error correction"}, craftTestProvenance(workflow))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		var root store.NodeSpec
+		for _, node := range subtree.Nodes {
+			if node.ID == "run-1" {
+				root = node
+			}
+		}
+		if root.ID == "" {
+			t.Fatalf("%s: the subtree has no root", name)
+		}
+		if !strings.Contains(root.Brief, plan.DeliverInMessage) {
+			t.Fatalf("%s: the craft root brief does not carry plan.DeliverInMessage:\n%s", name, root.Brief)
+		}
+		// The law arrives beside the craft's own words, not instead of them.
+		if !strings.Contains(root.Brief, "Every step of the craft arrives as one of your inputs") {
+			t.Fatalf("%s: the delivery law displaced the assembly brief:\n%s", name, root.Brief)
+		}
 	}
 }
 

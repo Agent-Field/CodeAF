@@ -37,6 +37,52 @@ func TestTheLeafsDeliveryLinesStateTheSameLawAsThePlanners(t *testing.T) {
 	}
 }
 
+// The second thing the two documents have to agree on, and the one they used to
+// make impossible between them: the law demanded the whole finished thing
+// written out in the final message while the leaf's own budget capped that
+// message at about three hundred words. A worker that had built and run a
+// 288-line script could satisfy neither, stalled three times trying, and
+// delivered a transcription while the output it had rendered went unmentioned.
+//
+// So both texts now say that where the work produced the thing, the produced
+// thing is the answer — named, with its substance summarised — and that the
+// demand for full text is what applies when nothing was produced that carries
+// it. Whether a run produced anything is a fact about that run, so it is stated
+// as something the worker judges rather than switched on from outside: the leaf
+// system message is a shared prompt prefix and its bytes may not vary per run.
+func TestNeitherLawDemandsFullTextOfSomethingTheRunProduced(t *testing.T) {
+	flat := func(text string) string {
+		return strings.ToLower(strings.Join(strings.Fields(text), " "))
+	}
+	for name, clause := range map[string]string{
+		"a produced thing is itself the answer": "that produced thing is the answer",
+		"an answer need not be made of words":   "some answers are not made of sentences",
+	} {
+		if law := flat(plan.DeliverInMessage); !strings.Contains(law, flat(clause)) {
+			t.Errorf("the shared law no longer states that %s", name)
+		}
+		if leaf := flat(systemPrompt); !strings.Contains(leaf, flat(clause)) {
+			t.Errorf("the leaf's own prompt no longer states that %s", name)
+		}
+	}
+	if law := flat(plan.DeliverInMessage); !strings.Contains(law,
+		"the demand for full text stands only where nothing was produced that carries the answer") {
+		t.Error("the law no longer bounds its own full-text demand; it can contradict the leaf's message budget again")
+	}
+	if leaf := flat(systemPrompt); !strings.Contains(leaf, "do not retype it into the message") {
+		t.Error("the leaf prompt no longer forbids transcribing a produced file into the capped message")
+	}
+
+	// The prompt-cache half of the same fix. A per-run fact in the system
+	// message costs every leaf of a run its warm prefix, which is why the
+	// artifact clause is phrased for the worker to apply rather than compiled
+	// in by a caller that knows what the run produced.
+	first, second := (&Linear{}).system(Task{}), (&Linear{}).system(Task{})
+	if first != second {
+		t.Error("the leaf system message is no longer byte-identical across leaves of a run")
+	}
+}
+
 // The carve-out reaching the leaf. The offered address is the one place here
 // that knows the shape of the ask, so it is the one place that may say the file
 // is the deliverable — and it must never say what the law's other half forbids,

@@ -50,7 +50,7 @@ func TestToolExecuteStillAnswersOrdinaryCalls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workspace: %v", err)
 	}
-	tools := NewToolbox(workspace, 1, nil)
+	tools := NewToolbox(workspace, "1", nil)
 	result := tools.Execute(context.Background(), "sh", `{"cmd":"echo hello"}`)
 	if result.IsError || !strings.Contains(result.Content, "hello") {
 		t.Fatalf("ordinary call = %+v", result)

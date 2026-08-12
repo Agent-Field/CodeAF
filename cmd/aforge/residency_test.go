@@ -20,6 +20,14 @@ import (
 // start — not what a head would have said, which needs a key and a network and
 // says nothing about residency at all.
 type testBrains struct {
+	// exec is what a claimed leaf runs. Nil is the no-op every residency test
+	// wants; a test about what shutdown does TO the work supplies one that can
+	// be watched and held.
+	exec resident.ExecuteFunc
+	// grace is the window's leaf-landing patience. Zero is a test's patience —
+	// no wait at all — so only the test that is about the wait pays for it.
+	grace time.Duration
+
 	mu      sync.Mutex
 	started int
 }
@@ -31,12 +39,16 @@ func (b *testBrains) build(w *chatWindow, session string, hand resident.Handover
 	if err := reconciler.AttachSession(session); err != nil {
 		return nil, err
 	}
-	runner := resident.NewRunner(w.graph, func(context.Context, store.Node) (resident.ExecResult, error) {
-		return resident.ExecResult{}, nil
-	}, "test-runner", 1)
+	run := b.exec
+	if run == nil {
+		run = func(context.Context, store.Node) (resident.ExecResult, error) {
+			return resident.ExecResult{}, nil
+		}
+	}
+	runner := resident.NewRunner(w.graph, run, "test-runner", 1)
 	events := make(chan tui.StreamEvent, 1)
 	brain := &chatBrain{
-		window: w, session: session,
+		window: w, session: session, leafGrace: b.grace,
 		commander: command.New(command.Options{
 			Database: w.path, PrefsDir: w.dir, Store: w.graph,
 			SessionID: session, StreamEvents: events,
@@ -109,7 +121,7 @@ func until(t *testing.T, role *chatResidency, want func() bool) {
 func TestVisitorPromotesWhenTheResidentLetsGo(t *testing.T) {
 	root := t.TempDir()
 	window := testWindow(t, root)
-	holder, heldBy, err := lease.AcquireResident(window.dir, "chat")
+	holder, heldBy, err := lease.AcquireResident(window.path, "chat")
 	if err != nil || holder == nil {
 		t.Fatalf("could not stand in for the first window: %v %+v", err, heldBy)
 	}
@@ -148,7 +160,7 @@ func TestVisitorPromotesWhenTheResidentLetsGo(t *testing.T) {
 // re-points at the winner.
 func TestOnlyOneOfTwoVisitorsWinsTheRole(t *testing.T) {
 	root := t.TempDir()
-	holder, _, err := lease.AcquireResident(filepath.Join(root), "chat")
+	holder, _, err := lease.AcquireResident(filepath.Join(root, "graph.db"), "chat")
 	if err != nil || holder == nil {
 		t.Fatalf("could not stand in for the first window: %v", err)
 	}
@@ -204,12 +216,12 @@ func TestOnlyOneOfTwoVisitorsWinsTheRole(t *testing.T) {
 func TestVisitorPromotesBesideAWedgedResident(t *testing.T) {
 	root := t.TempDir()
 	window := testWindow(t, root)
-	holder, _, err := lease.AcquireResident(window.dir, "chat")
+	holder, _, err := lease.AcquireResident(window.path, "chat")
 	if err != nil || holder == nil {
 		t.Fatalf("could not stand in for the first window: %v", err)
 	}
 	defer holder()
-	if err := lease.NoteResidentTick(window.dir, time.Now().Add(-2*lease.StuckAfter)); err != nil {
+	if err := lease.NoteResidentTick(window.path, time.Now().Add(-2*lease.StuckAfter)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -277,7 +289,7 @@ func TestResidentStandsDownWhenAskedToHandOver(t *testing.T) {
 	}
 	// The lock is free the moment the role is given up, so the asking window
 	// can promote on its very next poll.
-	next, _, err := lease.AcquireResident(window.dir, "chat")
+	next, _, err := lease.AcquireResident(window.path, "chat")
 	if err != nil || next == nil {
 		t.Fatalf("the demoted window did not let go of the lease: %v", err)
 	}
@@ -418,7 +430,7 @@ func TestARefusedHandoverIsSaidOutLoudInTheHeader(t *testing.T) {
 	stubborn := resident.New(graph, nil, nil).
 		WithHandover(func(resident.Handover) (bool, string) { return false, "this window is staying" }).
 		WithResidentSince(time.Now().Add(-time.Minute))
-	holder, _, err := lease.AcquireResident(window.dir, "chat")
+	holder, _, err := lease.AcquireResident(window.path, "chat")
 	if err != nil || holder == nil {
 		t.Fatalf("could not stand in for the first window: %v", err)
 	}

@@ -27,7 +27,7 @@ import (
 // # It is the `@` filter's shape, on purpose
 //
 // Same lens-not-buffer discipline (the `/` and the needle are ordinary draft
-// text; the filter holds an index), same six-row budget below the draft, same
+// text; the filter holds an index), same six-row budget above the draft, same
 // tab/enter completion, same esc that forgets an index and leaves every
 // character where it was, same scoring constants. A reader who has used one
 // has used the other, and a maintainer reading one file has read both.
@@ -304,6 +304,9 @@ func (m *Model) completeSlash() tea.Cmd {
 	m.value = m.value[:0]
 	m.cursor = 0
 	m.historyStep = 0
+	// A performed command is a draft that is over, so the ghost hints are owed
+	// again — the same rule a send follows ([Model.reset]).
+	m.typed = false
 	m.closeSlashFilter()
 	m.afterEdit()
 	if m.onCommand == nil {
@@ -314,8 +317,13 @@ func (m *Model) completeSlash() tea.Cmd {
 
 // -- drawing -------------------------------------------------------------------
 
-// slashRows draws the candidate list under the draft: alias, description, and
+// slashRows draws the candidate list above the draft: alias, description, and
 // the accelerator or the reason at the right edge.
+//
+// The rows are in UPWARD display order — the best match last, one row above the
+// prompt (see hint.go) — so the index arithmetic runs backwards through the
+// hits. [slashDisplay] is the single conversion between the two, and the pointer
+// reads it too.
 //
 // The right-hand cell is the teaching half of 5.22 rule 2 — "every row = verb +
 // description + its key/slash equivalent right-aligned" — and it is where a
@@ -332,23 +340,23 @@ func (m *Model) slashRows(sty *tokens.Styler, width, budget int) []string {
 	if len(f.hits) == 0 {
 		return []string{plainRow(sty, noSlashMatch, width)}
 	}
-	start := 0
-	if f.sel >= budget {
-		start = f.sel - budget + 1
-	}
-	end := start + budget
-	if end > len(f.hits) {
-		end = len(f.hits)
-	}
+	start, end := upwardWindow(len(f.hits), slashDisplay(f, f.sel), budget)
 	pos := make([]int32, 0, 16)
 	rows := make([]string, 0, end-start)
 	for i := start; i < end; i++ {
+		hit := slashDisplay(f, i)
 		var row string
-		row, pos = m.slashCandidate(sty, f.rows[f.hits[i].idx], i == f.sel, width, pos)
+		row, pos = m.slashCandidate(sty, f.rows[f.hits[hit].idx], hit == f.sel, width, pos)
 		rows = append(rows, row)
 	}
 	return rows
 }
+
+// slashDisplay converts between a hit's rank and its display row, in either
+// direction — the mapping is its own inverse, which is what a reversal is. It
+// exists so the paint and the pointer cannot disagree about which row is which
+// candidate.
+func slashDisplay(f *slashFilter, i int) int { return len(f.hits) - 1 - i }
 
 // slashCandidate draws one row.
 func (m *Model) slashCandidate(sty *tokens.Styler, r slashRow, selected bool, width int, pos []int32) (string, []int32) {
@@ -414,13 +422,56 @@ func (m *Model) slashCandidate(sty *tokens.Styler, r slashRow, selected bool, wi
 // region that grew for them would move the transcript every time a path was
 // typed, which is 5.21's dancing.
 func (m *Model) HintRows() int {
+	// THE CHIPS COUNT NOW. They did not, and the comment on [Model.GrowRows]
+	// said why: they were "steady chrome the metric table already pays for",
+	// which was true while that table reserved four rows for this region. §7 cut
+	// the reservation to one — the place line and the meta strip are gone — so a
+	// chip nobody grew for is a chip drawn over the draft or not drawn at all,
+	// which is exactly what an attached file looked like on the first frame after
+	// the hug landed.
+	//
+	// It is still not 5.21's dancing: a chip appears when a path is captured or a
+	// mention is typed, which is a discrete act the reader performed, not a
+	// per-keystroke reflow. The region grows once, on that act, and gives the row
+	// back when the send takes the chip with it.
+	rows := m.chipRows()
 	switch {
 	case m.slash.open:
-		return capRows(max(len(m.slash.hits), 1))
+		return rows + capRows(max(len(m.slash.hits), 1))
 	case m.filter.open:
-		return capRows(max(len(m.filter.hits), 1))
+		list := max(len(m.filter.hits), 1)
+		// The `history` heading is a ROW, and a heading the region did not grow
+		// for is a heading that scrolls off the top — which would leave settled
+		// rows looking like live ones, the one confusion this list may not
+		// create (hint.go).
+		if n := len(m.filter.hits); n > 0 && int(m.filter.hits[n-1].idx) >= m.filter.live {
+			list++
+		}
+		return rows + capRows(list)
 	}
-	return 0
+	return rows
+}
+
+// chipRows is how many rows the steady chrome above the draft occupies: the
+// attachment chips (capped by [attachChipMax], with a fold row when there are
+// more), and the dispatch chip a mention token brings with it.
+//
+// It restates [Model.chromeRows]'s own reservations rather than calling it,
+// because that function needs a styler and a budget and this question is asked
+// before either exists — the region is asking how tall to BE. The two agree
+// because they count the same three things in the same order, and the width
+// sweep in render_test.go is what keeps them agreeing.
+func (m *Model) chipRows() int {
+	rows := 0
+	if m.attach != nil && len(m.attachments) > 0 {
+		rows = min(len(m.attachments), attachChipMax)
+	}
+	if m.targets != nil && !m.slash.open && !m.filter.open {
+		if _, ok := m.firstMention(); ok {
+			rows++
+		}
+	}
+	return rows
 }
 
 func capRows(n int) int {
@@ -432,57 +483,47 @@ func capRows(n int) int {
 
 // -- the pointer ---------------------------------------------------------------
 
-// ClickHint performs the candidate a click landed on, and reports whether the
-// click was on one at all.
+// candidateAt turns a pane-local row into the hit it draws, and reports whether
+// the row is a candidate at all.
 //
-// The geometry is DERIVED, from the same three calls Render makes at the same
-// size: how many rows the chrome wants, how many rows the draft wraps to, and
-// which of the chrome rows are this line's. Nothing is recorded during a paint
-// (Part 2's anti-pattern 14), and there is no arrangement of width, draft and
-// attachment chips under which the answer can disagree with the picture,
-// because it is the picture's own arithmetic run again.
+// The geometry is DERIVED, from the very plan Render paints at the same size
+// (render.go). Nothing is recorded during a paint (Part 2's anti-pattern 14),
+// and there is no arrangement of width, draft and attachment chips under which
+// the answer can disagree with the picture, because it IS the picture's
+// arithmetic. The list is the HEAD of the chrome, which is what makes the row
+// span a count rather than a search: rows [0, list) are candidates.
+func (m *Model) candidateAt(width, height, y int) (index int, onList, ok bool) {
+	if !m.slash.open || width <= 0 || height <= 0 || y < 0 {
+		return 0, false, false
+	}
+	p := m.plan(m.activeStyler(), width, height)
+	if y >= p.above.list {
+		return 0, false, false
+	}
+	if len(m.slash.hits) == 0 {
+		// The no-match sentence is a row of the list and not a candidate.
+		return 0, true, false
+	}
+	start, _ := upwardWindow(len(m.slash.hits), slashDisplay(&m.slash, m.slash.sel), p.above.list)
+	index = slashDisplay(&m.slash, start+y)
+	if index < 0 || index >= len(m.slash.hits) {
+		return 0, true, false
+	}
+	return index, true, true
+}
+
+// ClickHint performs the candidate a click landed on, and reports whether the
+// click was on the list at all — including the no-match sentence, which is a
+// row of this surface that chooses nothing. Consuming it is what keeps the
+// caret from jumping to wherever the pointer happened to be.
 //
 // The x is not consulted: a candidate is a whole row of a list, and asking the
 // reader to hit the word rather than the row would be a target narrower than
 // the thing it stands for.
 func (m *Model) ClickHint(width, height, y int) (tea.Cmd, bool) {
-	if !m.slash.open || width <= 0 || height <= 0 || y < 0 {
-		return nil, false
-	}
-	sty := m.activeStyler()
-	hints := m.hintRows(sty, width, height-1)
-	if len(hints) == 0 {
-		return nil, false
-	}
-	// The draft rows Render would draw above the chrome.
-	drafted := height - len(hints)
-	total := len(layoutRows(m.value, usable(width)))
-	visible := min(drafted, total)
-
-	// The slash list is the TAIL of the chrome — hintRows appends it after the
-	// attachment chips — so its first row is found by asking how many rows it
-	// wants rather than by assuming it starts at the top.
-	mine := len(m.slashRows(sty, width, height-1))
-	first := visible + len(hints) - mine
-	at := y - first
-	if at < 0 || at >= mine {
-		return nil, false
-	}
-
-	// A frame that shows the no-match sentence has one row and no candidate.
-	if len(m.slash.hits) == 0 {
-		return nil, true
-	}
-	// slashRows scrolls so the selection is visible; the same start is what
-	// turns a row on screen back into an index.
-	budget := min(mine, maxFilterRows)
-	start := 0
-	if m.slash.sel >= budget {
-		start = m.slash.sel - budget + 1
-	}
-	index := start + at
-	if index < 0 || index >= len(m.slash.hits) {
-		return nil, true
+	index, onList, ok := m.candidateAt(width, height, y)
+	if !ok {
+		return nil, onList
 	}
 	m.slash.sel = index
 	return m.completeSlash(), true
@@ -492,29 +533,8 @@ func (m *Model) ClickHint(width, height, y int) (tea.Cmd, bool) {
 // whether the frame moved. It selects and never completes: pointing at a row is
 // not choosing it (5.14).
 func (m *Model) HoverHint(width, height, y int) bool {
-	if !m.slash.open {
-		return false
-	}
-	before := m.slash.sel
-	sty := m.activeStyler()
-	hints := m.hintRows(sty, width, height-1)
-	mine := len(m.slashRows(sty, width, height-1))
-	if len(hints) == 0 || mine == 0 || len(m.slash.hits) == 0 {
-		return false
-	}
-	total := len(layoutRows(m.value, usable(width)))
-	visible := min(height-len(hints), total)
-	at := y - (visible + len(hints) - mine)
-	if at < 0 || at >= mine {
-		return false
-	}
-	budget := min(mine, maxFilterRows)
-	start := 0
-	if before >= budget {
-		start = before - budget + 1
-	}
-	index := start + at
-	if index < 0 || index >= len(m.slash.hits) || index == before {
+	index, _, ok := m.candidateAt(width, height, y)
+	if !ok || index == m.slash.sel {
 		return false
 	}
 	m.slash.sel = index

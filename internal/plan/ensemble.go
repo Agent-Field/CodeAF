@@ -491,7 +491,7 @@ func writePanelBriefs(ctx context.Context, client Completer, graph *Graph, panel
 				failures = append(failures, fault)
 			}
 		}()
-		brief, callUsage, err := writeBrief(ctx, client, shared, node, inputs, deliverable)
+		brief, _, callUsage, err := writeBrief(ctx, client, shared, node, inputs, deliverable)
 		mutex.Lock()
 		defer mutex.Unlock()
 		usage.Add(callUsage)

@@ -21,7 +21,10 @@ import (
 // rather than a convenience: MenuText returns nothing, the sizing prompt keeps
 // its pre-subharness bytes, and every lookup answers linear.
 
-// LinearSubharness is the baseline and the fallback. The empty string means it.
+// LinearSubharness is the baseline and the fallback. An empty name resolves to
+// it, but the two are not the same fact: empty is a question nobody answered,
+// and this name is the answer "the generalist" said out loud. GeneralistSubharness
+// is the predicate that keeps them apart.
 const LinearSubharness = plan.LinearSubharness
 
 // SubharnessInfo is one registration.
@@ -158,6 +161,20 @@ func KnownSubharness(name string) bool {
 	return ok
 }
 
+// GeneralistSubharness reports whether a name is the generalist, named. It is
+// the other half of KnownSubharness rather than its negation: KnownSubharness
+// answers "is this a registered specialist", and answers no to both the
+// generalist and to nothing at all, which are two different things to every
+// reader that would otherwise fill a blank in from somewhere else.
+//
+// It is the registry's answer for the same reason KnownSubharness is: a surface
+// that spelled the comparison itself would be one rename away from being wrong.
+func GeneralistSubharness(name string) bool { return plan.GeneralistSubharness(name) }
+
+// SubharnessChosen reports whether a worker was chosen at all — a specialist or
+// the generalist. Only the empty string is no choice.
+func SubharnessChosen(name string) bool { return plan.SubharnessChosen(name) }
+
 // UseSubharnessKnowledge installs the measured-history hook the menu renders
 // under each purpose. Nil, and a hook that returns nothing, leave the menu
 // exactly as the registrations wrote it — which is what every process has
@@ -217,6 +234,7 @@ func MenuTextExcept(exclude string) string {
 	menu.WriteString("Subharnesses. A job is normally taken by the default worker: one agent, " +
 		"alone and in order, with tools. These specialists sit beside it, each a whole " +
 		"different way of doing one job:\n")
+	measuredAny := false
 	for _, info := range specialists {
 		fmt.Fprintf(&menu, "\n- %s — %s\n", info.Name, strings.TrimSpace(info.Purpose))
 		if knowledge == nil {
@@ -224,7 +242,19 @@ func MenuTextExcept(exclude string) string {
 		}
 		if line := strings.TrimSpace(knowledge(info.Name)); line != "" {
 			fmt.Fprintf(&menu, "  measured here so far: %s\n", line)
+			measuredAny = true
 		}
+	}
+	// W6: the measured line was decoration nobody was told what to do with. The
+	// sentence below is the instruction for reading it, and it appears only when
+	// there is something to read — a rule about figures that were never printed
+	// is prompt the model pays for and cannot use, and its absence keeps the
+	// pre-evidence menu byte-identical to what it always was.
+	if measuredAny {
+		menu.WriteString("\nThe figures beside each worker are what work of this kind has really cost " +
+			"here. Read them as evidence about this machine, not as a target: prefer the " +
+			"worker whose purpose fits, and among workers that fit, prefer the one the " +
+			"evidence says finishes this kind of work.\n")
 	}
 	menu.WriteString("\nChoose a specialist subharness only when the job's essence matches its " +
 		"purpose. When in doubt, or for mixed or non-matching work, leave it unset " +

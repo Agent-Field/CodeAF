@@ -27,6 +27,16 @@ import (
 // "Find defects" as four dependency-free parts. Phases are not independent;
 // they are one node's internal shape, and the only correct answer for them is
 // to leave the procedure whole.
+//
+// The grain paragraph is the guard against the opposite failure, which is what
+// the width-2 incident was: a stage whose material already enumerated its units
+// was halved into two parts that were each handed the entire enumeration, so
+// both did the whole job, the person paid for it twice, and the wait was longer
+// than one agent's. Coarse halving is what a model reaches for when nothing
+// tells it where the seams are; the seams were already in the material. So the
+// rule is stated as a reading of the inputs rather than as a number — follow the
+// enumeration the material presents, and leave whole what it does not present
+// as standing apart.
 const fanoutPrompt = `You list the parts of one stage that all run at the same time.
 
 ` + agentPremise + `
@@ -63,6 +73,26 @@ where a shared orientation summary belongs — it reads the material once and
 writes down what the others would otherwise each have to rediscover, so five
 siblings do not each re-read the same material. Do not invent one where nothing
 shared is actually changed; most stages have no such part.
+
+Let the material set the width. Where the work to be done is already enumerated —
+the goal names the units, a finished dependency's result names them, the sources
+name them — that enumeration is the split, and the parts follow it: one unit
+each, or one batch of them each when the units outnumber the parts you are
+allowed below, batched evenly so no part carries the set. Do not replace an
+enumeration the material already made with a coarser
+one of your own, and never write two parts that would each cover the same set:
+both would do all of it, so the person pays for the whole job twice and waits
+longer than for one agent. Every part names the units it owns and no others,
+which is also what keeps its context small — each part is told about its own
+units and not the rest, so units taken many-wide cost close to what one agent's
+single pass over all of them would have cost, and the person waits for one
+unit's work instead of all of them in turn.
+
+The same reading is the counterweight, and it points the other way just as
+often: units the material does not present as standing apart are not made
+independent by being separated. Where finishing one piece needs what another
+piece would have found, or where the answer depends on holding the whole set
+together, the enumeration is not a split and the work stays whole.
 
 Default to fewer parts. Only split out a part when you can say what makes it
 doable by an agent that knows nothing about the others. Give 1 to 5 parts, and

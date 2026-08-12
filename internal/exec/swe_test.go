@@ -44,7 +44,9 @@ func fakeEngine(scenario string, argv []string) int {
 			directory = argv[index+1]
 		}
 	}
-	if directory != "" {
+	// "bell-untouched" is the one scenario about a workspace nothing wrote to,
+	// so it does not get to write the harness's own record into it either.
+	if directory != "" && scenario != "bell-untouched" {
 		environment := map[string]string{}
 		for _, name := range []string{
 			"AFORGE_SWEPRO", "CODEAF_CP_URL", "OPENROUTER_API_KEY",
@@ -79,6 +81,34 @@ func fakeEngine(scenario string, argv []string) int {
 			}
 		}
 		stage("bootstrap", "ready", nil)
+		// A hang that has already spent money. The engine publishes each
+		// assistant message's own running cost, and a run killed before it can
+		// write a terminal line has no other accounting at all.
+		_ = out.Encode(map[string]any{
+			"id": "evt_1", "type": "message.updated",
+			"properties": map[string]any{"info": map[string]any{
+				"id": "msg_1", "role": "assistant", "cost": 0.0731,
+				"tokens": map[string]any{"input": 90000, "output": 4000,
+					"cache": map[string]any{"read": 0}},
+			}},
+		})
+		time.Sleep(10 * time.Minute)
+		return 0
+	case "bell", "bell-unaudited", "bell-untouched":
+		// The cli#2217 shape: the work is written, committed, verified and
+		// audited, and then the wall clock arrives during the wrap-up. The
+		// engine never writes a terminal line, exactly as it never did.
+		stage("bootstrap", "ready", map[string]any{"workspace": directory})
+		stage("verification", "pass", map[string]any{"commands": "go test ./..."})
+		if scenario == "bell-unaudited" {
+			stage("audit", "fail", map[string]any{"cycle": 2})
+		} else {
+			stage("audit", "pass", map[string]any{"cycle": 2})
+		}
+		if directory != "" && scenario != "bell-untouched" {
+			_ = os.WriteFile(filepath.Join(directory, "fixed.txt"), []byte("the parser is fixed\n"), 0o644)
+			fakeCommit(directory)
+		}
 		time.Sleep(10 * time.Minute)
 		return 0
 	case "silent":
@@ -104,7 +134,7 @@ func fakeEngine(scenario string, argv []string) int {
 	_ = out.Encode(map[string]any{
 		"id": "evt_2", "type": "message.updated",
 		"properties": map[string]any{"info": map[string]any{
-			"id": "msg_1", "role": "assistant",
+			"id": "msg_1", "role": "assistant", "cost": 0.0031,
 			"tokens": map[string]any{"input": 1200, "output": 340,
 				"cache": map[string]any{"read": 800}},
 		}},
@@ -113,12 +143,26 @@ func fakeEngine(scenario string, argv []string) int {
 	_ = out.Encode(map[string]any{
 		"id": "evt_3", "type": "message.updated",
 		"properties": map[string]any{"info": map[string]any{
-			"id": "msg_1", "role": "assistant",
+			"id": "msg_1", "role": "assistant", "cost": 0.0031,
 			"tokens": map[string]any{"input": 1200, "output": 340,
 				"cache": map[string]any{"read": 800}},
 		}},
 	})
-	stage("verification", "pass", map[string]any{"commands": "go test ./..."})
+	verification := map[string]any{"commands": "go test ./..."}
+	if scenario == "baseline" {
+		// The engine's baseline delta, in the shape the contract carries it:
+		// a check that came back red and was already red before the run.
+		verification["pre_existing"] = []string{
+			"`make all` exited 2, and every failing test it reports " +
+				"(TestFailGenFishCompletionFile) was ALREADY failing at this commit " +
+				"before the run touched the workspace.",
+		}
+	}
+	stage("verification", "pass", verification)
+	if scenario == "baseline" {
+		// Verification runs once per audit cycle and repeats itself.
+		stage("verification", "pass", verification)
+	}
 	if scenario == "strained" {
 		stage("audit", "pass", map[string]any{"cycle": 5, "max_cycles": 5})
 	} else {
@@ -262,13 +306,28 @@ func (p *sweProbe) engineCall(t *testing.T) (argv []string, environment map[stri
 
 func (p *sweProbe) trace(t *testing.T) string {
 	t.Helper()
-	full, _, err := p.workspace.ScratchPath(traceName(7))
+	full, _, err := p.workspace.ScratchPath(traceName("7"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(full)
 	if err != nil {
 		t.Fatalf("no trace was written: %v", err)
+	}
+	return string(raw)
+}
+
+// stream is the raw machine feed's sidecar — everything the engine said, in
+// order, in the file no surface renders.
+func (p *sweProbe) stream(t *testing.T) string {
+	t.Helper()
+	full, _, err := p.workspace.ScratchPath(streamName("7"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(full)
+	if err != nil {
+		t.Fatalf("no stream sidecar was written: %v", err)
 	}
 	return string(raw)
 }
@@ -347,10 +406,26 @@ func TestSWERunPassesAndLandsAnOrdinaryOutcome(t *testing.T) {
 		t.Fatalf("the milestone channel is being used for chatter: %v", milestones)
 	}
 
+	// THE RECORDER IS PROSE AND THE SIDECAR IS THE STREAM. This assertion used
+	// to read the other way round — "the trace is not the full stream" — and
+	// that is the defect: the recorder is what the task room renders, so a raw
+	// NDJSON line in it is a screen of raw NDJSON on somebody's display. Both
+	// halves are still kept; they are kept in two files.
 	trace := probe.trace(t)
-	for _, want := range []string{`"type":"terminal"`, "message.part.delta", "workspace:"} {
+	for _, want := range []string{"workspace:", streamNote, "stage: plan-apply completed"} {
 		if !strings.Contains(trace, want) {
-			t.Fatalf("the trace is not the full stream — missing %q", want)
+			t.Fatalf("the recorder lost a sentence a person reads — missing %q", want)
+		}
+	}
+	for _, never := range []string{`{"id":"evt_`, "message.part.delta", `"properties"`} {
+		if strings.Contains(trace, never) {
+			t.Fatalf("a raw machine line is in the recorder as prose: %q", never)
+		}
+	}
+	stream := probe.stream(t)
+	for _, want := range []string{`"type":"terminal"`, "message.part.delta"} {
+		if !strings.Contains(stream, want) {
+			t.Fatalf("the sidecar is not the full stream — missing %q", want)
 		}
 	}
 }

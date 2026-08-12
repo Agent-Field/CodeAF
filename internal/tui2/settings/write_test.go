@@ -34,7 +34,7 @@ func newTimedSheet(t *testing.T, debounce time.Duration) (*sheet, *clock) {
 // while the window is open.
 func TestRapidEditsCoalesceIntoASingleWrite(t *testing.T) {
 	s, c := newTimedSheet(t, 300*time.Millisecond)
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 
 	for range 8 {
 		s.press(typeRune(' '))
@@ -54,7 +54,7 @@ func TestRapidEditsCoalesceIntoASingleWrite(t *testing.T) {
 	if len(s.applied) != 1 {
 		t.Fatalf("writes = %v, want exactly one", s.applied)
 	}
-	if s.applied[0] != config.KeyProposeSkills {
+	if s.applied[0] != config.KeyAttribution {
 		t.Fatalf("wrote %q", s.applied[0])
 	}
 }
@@ -63,7 +63,7 @@ func TestRapidEditsCoalesceIntoASingleWrite(t *testing.T) {
 // arriving keeps waiting rather than writing at a fixed rate.
 func TestEachEditMovesTheDeadline(t *testing.T) {
 	s, c := newTimedSheet(t, 300*time.Millisecond)
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 
 	s.press(typeRune(' '))
 	c.tick(250 * time.Millisecond)
@@ -90,7 +90,7 @@ func TestEachEditMovesTheDeadline(t *testing.T) {
 // typed is lost by closing the sheet — only delayed by staying in it.
 func TestClosingFlushesWhatIsStillPending(t *testing.T) {
 	s, _ := newTimedSheet(t, time.Hour)
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 	s.press(typeRune(' '))
 
 	if len(s.applied) != 0 {
@@ -101,7 +101,7 @@ func TestClosingFlushesWhatIsStillPending(t *testing.T) {
 	if len(s.applied) != 1 {
 		t.Fatalf("writes = %v, want the pending edit flushed on close", s.applied)
 	}
-	if config.ProposeSkillsAt(s.dir) {
+	if config.AttributionAt(s.dir) {
 		t.Fatal("the store did not take the flushed value")
 	}
 }
@@ -117,7 +117,7 @@ func TestOneFlushCarriesEveryPendingRowAndPreservesTheRest(t *testing.T) {
 	s.typeText("42")
 	s.press(namedKey(tea.KeyEnter))
 
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 	s.press(typeRune(' '))
 
 	c.tick(time.Second)
@@ -131,7 +131,7 @@ func TestOneFlushCarriesEveryPendingRowAndPreservesTheRest(t *testing.T) {
 	if err := json.Unmarshal(raw, &values); err != nil {
 		t.Fatalf("profile is not json: %v", err)
 	}
-	for _, key := range []string{config.KeyDailyBudget, config.KeyProposeSkills} {
+	for _, key := range []string{config.KeyDailyBudget, config.KeyAttribution} {
 		if _, ok := values[key]; !ok {
 			t.Fatalf("%s is missing from %s", key, string(raw))
 		}
@@ -150,7 +150,7 @@ func TestOneFlushCarriesEveryPendingRowAndPreservesTheRest(t *testing.T) {
 // from a deadline a later edit moved, writes nothing.
 func TestRoutedTickWritesAndAStaleOneIsIgnored(t *testing.T) {
 	s, c := newTimedSheet(t, 100*time.Millisecond)
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 
 	cmd := s.Key(typeRune(' '))
 	if cmd == nil {
@@ -179,7 +179,7 @@ func TestRoutedTickWritesAndAStaleOneIsIgnored(t *testing.T) {
 // wants no window at all.
 func TestNegativeDebounceWritesImmediately(t *testing.T) {
 	s := newSheet(t, func(o *Options) { o.Debounce = -1 })
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 	s.press(typeRune(' '))
 
 	if len(s.applied) != 1 {

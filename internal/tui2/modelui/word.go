@@ -1,6 +1,51 @@
 package modelui
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
+)
+
+// THE ROLE WORDS, and they are the settings page's own.
+//
+// The five slots used to reach this surface spelled the way the roles table
+// names them for itself — voice, architect, hands, skeptic, clerk — and a user
+// who clicked a model row was handed that list and reported it as "some weird
+// lists like voice, architect, skeptic". They were right, and §14 says why:
+// user-facing words only, and a metaphor nobody was taught is an invented
+// concept however evocative it reads. Nobody has an architect; they have
+// planning.
+//
+// The words below are NOT a third vocabulary either. They are exactly the
+// labels the settings page already shows on its landed role-model rows
+// (internal/config's roleWords), so one slot has one spelling on the sheet, in
+// this picker, and on the palette row that opens either. word_test.go walks
+// [store.ModelRoles] against the settings registry and fails the build if the
+// two ever disagree or if a sixth role arrives with no word here.
+//
+// [store.ModelRole.Word] keeps its own answer and keeps its own job: it is the
+// journal's name for a slot, at the store's altitude, and no v2 surface draws
+// it any more.
+var roleWords = map[store.ModelRole]string{
+	store.RoleOrchestrate: "conversation",
+	store.RolePlan:        "planning",
+	store.RoleWork:        "execution",
+	store.RoleVerify:      "verification",
+	store.RoleScribe:      "naming",
+}
+
+// RoleWord is the plain word for one of the five slots — what a row names
+// itself on every surface in this tree.
+//
+// A role with no word here degrades to the role's own spelling rather than to
+// nothing: a row with a blank name reads as a rendering fault, and the test
+// above is what makes the degradation unreachable rather than tolerated.
+func RoleWord(role store.ModelRole) string {
+	if word := roleWords[role]; word != "" {
+		return word
+	}
+	return string(role)
+}
 
 // Model words, never provider ids (5.10). "anthropic/claude-sonnet-4-20250514"
 // is provenance; "claude-sonnet-4" is what a person says out loud, and a chip
@@ -34,6 +79,10 @@ const variantSeparator = ':'
 //	the variant suffix  ":free", ":high" — including the effort words, which
 //	                    the chip renders separately (see [Effort])
 //	the date suffix     a trailing "-YYYY-MM-DD", which is a release stamp
+//	the alias suffix    a trailing "-latest", which is a POINTER at a release
+//	                    rather than the name of one — the same kind of fact as
+//	                    the date it stands in for, and the exact string a reader
+//	                    met on the live build as `deepseek-v4-flash-latest`
 //
 // An empty slug returns the empty string. The caller decides what a missing
 // model looks like; this function will not invent a placeholder, because a
@@ -51,7 +100,36 @@ func ModelWord(slug string) string {
 	if base, _, ok := strings.Cut(word, string(variantSeparator)); ok && base != "" {
 		word = base
 	}
-	return dropDateSuffix(word)
+	return dropAliasSuffix(dropDateSuffix(word))
+}
+
+// aliasSuffix is the moving pointer providers hang off a family name. It is
+// checked as a WHOLE trailing segment — "-latest" and not "latest" anywhere —
+// so a model genuinely called something-latest-something keeps its name, and a
+// slug that is nothing BUT the marker keeps it too rather than coming back
+// empty.
+const aliasSuffix = "-latest"
+
+func dropAliasSuffix(word string) string {
+	if base := strings.TrimSuffix(word, aliasSuffix); base != "" && base != word {
+		return base
+	}
+	return word
+}
+
+// variantWord is the variant a slug carries after [variantSeparator], lowered,
+// or the empty string for a plain slug. It is deliberately open where
+// [Effort]'s list is closed: Effort must not misread ":free" as a reasoning
+// effort, but a picker row must show WHATEVER the provider hung off the slug —
+// an unshown variant is how two rows wear the same word and only one of them
+// works.
+func variantWord(slug string) string {
+	word := strings.TrimSpace(slug)
+	index := strings.LastIndexByte(word, variantSeparator)
+	if index < 0 || index+1 >= len(word) {
+		return ""
+	}
+	return lower(word[index+1:])
 }
 
 // Effort is the reasoning effort a slug carries, or the empty string.

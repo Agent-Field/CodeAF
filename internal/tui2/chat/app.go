@@ -157,12 +157,10 @@ type liveTurn struct {
 	// what esc consults (8.2.21).
 	active bool
 	// reply is the streamed text, created on the first delta that decodes to
-	// something a reader can be shown. label is the header row above it: the
-	// two are one preview and are split only so the header can sit flush left
-	// while the prose sits at the depth its journaled twin will have. See
-	// newReplyBlock.
+	// something a reader can be shown. It is ONE block: the answer is the
+	// unmarked voice (§3b), so there is no header row above it to keep at a
+	// different depth. See newReplyBlock.
 	reply *blocks.TextBlock
-	label *blocks.TextBlock
 	// await is the awaiting line, present for as long as the turn is.
 	await *awaitingBlock
 	// raw is the provider's bytes as they arrive; shown is what has been drawn.
@@ -181,10 +179,6 @@ type liveTurn struct {
 	// elapsed cell. It is stamped by refresh rather than by the turn's opening
 	// so the one clock the app was given is the only clock it reads.
 	started time.Time
-	// voiced records that the streamed preview has been given the same header
-	// voice the durable reply will wear, so the label does not change tier
-	// under the reader at the moment the turn settles.
-	voiced bool
 }
 
 // App is the v2 chat: one Bubble Tea v2 program wrapping the shell.
@@ -207,10 +201,12 @@ type App struct {
 	transcript *blocks.Transcript
 	pane       *transcriptPane
 	status     *statusPane
-	place      *placeline.Model
-	meta       *metaStrip
-	composer   composerPane
-	verbs      []registry.Entry
+	// place is no longer a ROW of this surface — §7 folded the directory into
+	// the bar's right zone — but it is still the component that knows how to
+	// abbreviate a path, so the app keeps a model and asks it for words.
+	place    *placeline.Model
+	composer composerPane
+	verbs    []registry.Entry
 
 	// The scope map (5.15). source is the adapter onto the store, railModel is
 	// the one scope model, railView paints it, and scope is its place in the
@@ -228,13 +224,31 @@ type App struct {
 	hudModel *rail.Model
 	hudView  *rail.View
 
-	railFocus  bool
-	scopeOpen  bool
+	railFocus bool
+	scopeOpen bool
+	// railShown is §6's `sidebar: hidden`, remembered for this session.
+	//
+	// IT IS FALSE AT LAUNCH, on every page, and that is the wave's decision
+	// rather than a default nobody chose. A reader said it twice — "still in
+	// chat I see side rail" — and the reason it reads as clutter now is that
+	// everything the column was carrying got a better home in the meantime: work
+	// and notebook became full pages, the palette searches every room, and the
+	// hug's own tabs are the door to all three. What is left of an always-open
+	// sidebar is a second copy of a list one keystroke away, which is §15's
+	// same-fact-twice standing permanently in a quarter of the window.
+	//
+	// So the rail is a DRAWER: shut by default, compressed to the dock on the
+	// bar row (footer/dock.go), opened by the same chord that has always meant
+	// "let me talk to the map" and by a click on the dock itself. It is
+	// remembered for the session and not persisted — a preference file would
+	// make this a setting, and §6 already has one (`sidebar: right|left|hidden`)
+	// for the reader who wants to decide once.
+	railShown  bool
 	termWidth  int
 	termHeight int
 
 	// The overlay plane (5.22): one door at a time, each built on first use so
-	// a window that never presses ctrl+k never pays for a palette.
+	// a window that never summons the palette never pays for one.
 	// The four homes of 5.24, as rail scopes with one detail renderer. The lid's
 	// own state lives on the scope source beside the rows it decides.
 	homesView  *homes.View
@@ -249,6 +263,26 @@ type App struct {
 	// view is the main pane's current lens: nil is the room's own conversation,
 	// anything else is a task room or the card a cursor move previewed.
 	view *mainView
+
+	// The pages (§7: the places tabs swap the LENS, not a mode inside it). page
+	// is which one is on screen; the two beside it are the lenses that are not
+	// the thread. Both are built once, because a page a reader keeps coming back
+	// to must not forget where its cursor was.
+	page page
+	// verbArmed is a destructive item verb waiting for its second yes
+	// (itemverb.go). Nil is the ordinary state.
+	verbArmed *armedVerb
+
+	// pageFocus says the PAGE holds the keyboard rather than the composer. It
+	// is [App.railFocus] for a lens that has no rail beside it, and it is a
+	// second flag rather than a reuse because the two answer about different
+	// objects: the map can hold the keyboard on the thread page while the board
+	// does not exist, and the board can hold it while the map is off the frame.
+	pageFocus    bool
+	board        boardState
+	boardPane    *pagePane
+	notebook     notebookPage
+	notebookPane *pagePane
 	// composerBind is what the composer is talking to (5.15's one rule).
 	composerBind composerBind
 
@@ -312,6 +346,12 @@ type App struct {
 	dispatches []composer.Dispatch
 	sends      []composer.Send
 
+	// sendErr is why the LAST send did not land, or "" when the last one did.
+	// It is the composer's failed state (§7): a coral `✕` at the prompt and a
+	// coral sentence in the bar's middle zone, with the words themselves put
+	// back in the draft. See [App.failSend].
+	sendErr string
+
 	// hooks is the terminal-protocol queue (10.5.27, shell.go's contract). The
 	// shell's hooks return bytes as commands and nothing writes them but the
 	// runtime, so a hook raised inside the poll chain waits here until Update
@@ -338,11 +378,17 @@ func Metrics() tui2.Metrics {
 		RailBreakpoint: tokens.RailAtWidth,
 		RailWidth:      tokens.RailWidth,
 		MinMainWidth:   tokens.RailTranscriptFloor,
-		// Four rows: the place line on the top edge (5.19), two rows of draft,
-		// and the meta strip on the bottom (10.5.23). The draft gets two
-		// because one is a text field and two is a composer — a pasted command
-		// or a second sentence has somewhere to be without the region moving.
-		ComposerHeight:              4,
+		// THREE rows: two of writing area and one blank under them (§7's hug,
+		// as amended by a reader who found the one-row version cramped). The bar
+		// is not in this number — StatusHeight reserves it — and neither is the
+		// place line or the meta strip, which used to bring the total to four
+		// and are gone.
+		//
+		// The floor and the padding are the composer region's own
+		// ([draftFloor], [draftPad]); this table only has to reserve enough rows
+		// for them, and the region grows upward past it on demand
+		// ([composerPane.HintRows] into tui2.Shell.GrowComposer).
+		ComposerHeight:              draftFloor + draftPad,
 		StatusHeight:                1,
 		DialogFullscreenBelowWidth:  tokens.DialogFullscreenBelowWidth,
 		DialogFullscreenBelowHeight: tokens.DialogFullscreenBelowHeight,
@@ -392,7 +438,13 @@ func New(opts Options) *App {
 		invalidate: app.shell.Invalidate,
 		answer:     app.answerByPointer,
 		fold:       app.toggleFold,
+		record:     app.recordPointer,
+		copy:       app.copyMessage,
 		focus:      app.focusConversation,
+		// The taught empty state's rows (5.22 rule 6) run through the SAME
+		// executor the footer's words do — one door, a fifth hand on it.
+		run:   app.runFooterVerb,
+		style: app.style,
 	}
 	app.status = &statusPane{
 		style:   app.style,
@@ -404,6 +456,17 @@ func New(opts Options) *App {
 		// breadcrumb's way out, which is esc and the rail's ‹ said a third way.
 		run: app.runFooterVerb,
 		pop: app.popScope,
+		// interrupt is the `interrupt esc` chip's act — esc's own, reached by
+		// a pointer. The row offers it only while EscInterrupts says it works.
+		interrupt: app.interrupt,
+		// openRail is the dock's act: the shut drawer, clicked. It is the very
+		// function the rail chord runs (§6, [App.toggleRail]).
+		openRail: app.toggleRail,
+		// The places tabs (§7's left zone) are filled by refresh from the page
+		// enum — see [App.places]. They are deliberately NOT written out here as
+		// well: the words and which of them is bright are one fact, and a copy
+		// of them at construction would be a second answer to "where is the
+		// reader" that nothing keeps in step.
 	}
 
 	// The place line's ground. One room exists, so the ground is one leg: the
@@ -415,7 +478,6 @@ func New(opts Options) *App {
 	if root := rootDir(opts.Root); root != "" {
 		app.place.SetGround(placeline.Segment{Path: root, Kind: placeline.SegmentRoot})
 	}
-	app.meta = &metaStrip{style: app.style}
 	// The role is asked once here, before the first frame, rather than left to
 	// the first poll a third of a second later. A window that opened as a
 	// visitor would otherwise spend that third of a second drawn as the
@@ -429,7 +491,7 @@ func New(opts Options) *App {
 		}
 	}
 	if app.commander != nil {
-		app.meta.model = strings.TrimSpace(app.commander.CurrentModel("chat"))
+		app.status.model = strings.TrimSpace(app.commander.CurrentModel("chat"))
 	}
 
 	newline := app.shell.Capabilities().NewlineKeys()
@@ -457,20 +519,20 @@ func New(opts Options) *App {
 		Styler:      app.style,
 		SendKey:     tui2.SendKey,
 		NewlineKeys: newline,
-	}, app.place, app.meta)
+	}, !app.linear)
 	stack.mode = app.composerMode
 	stack.hud = app.hudRows
-	// The region's two chips (5.22 rule 5). Both are doors that already exist:
-	// the model palette the registry's own /model row opens, and the clipboard
-	// door JOURNEY 18 opened for `y`.
-	stack.openModels = app.openModelPicker
-	stack.copy = app.copyPath
-	// And the region's whole rectangle is a door onto the keyboard, which is the
+	// The region's whole rectangle is a door onto the keyboard, which is the
 	// half of 13.14's pointer law that only ran in one direction (rooms.go's
 	// focusConversation).
 	stack.focus = app.focusConversation
 	app.composer = stack
-	app.verbs = boundVerbs(app.shell.Capabilities().NewlineKey())
+	// §7: the middle zone holds only what is live RIGHT NOW. The standing
+	// legends boundVerbs used to project (quit, newline, receipts) belong to
+	// the ? sheet and the palette, which read the registry directly; Verbs is
+	// reserved for genuinely live verbs (a task pane's cancel/restart while it
+	// holds focus). boundVerbs stays for the ? sheet's key-correction path.
+	app.verbs = nil
 
 	// The scope map is built before the panes are bound, because binding the
 	// rail pane means handing the shell an object that already knows what it is
@@ -482,11 +544,36 @@ func New(opts Options) *App {
 	// copied out because it is valid only until the next Render.
 	app.homesView = homes.NewView(app.style)
 	app.homesPane = app.renderHomes
+	// The two lenses that are not the thread (§7). They are built here rather
+	// than on first use because a tab is a place and not a dialog: the reader
+	// expects the work they left on the board to be where they left it, and a
+	// page minted on arrival would have no cursor and no fold to come back to.
+	app.boardPane = &pagePane{
+		render: app.renderBoard,
+		point:  app.boardPoint,
+		hover:  app.boardHover,
+	}
+	// The notebook page's RENDERER belongs to internal/tui2/homes; this side
+	// wires it. See [notebookPage] for the contract and for what happens on a
+	// build where the page has not landed yet.
+	app.notebook = newNotebookPage(app.style)
+	app.notebookPane = &pagePane{
+		render: app.renderNotebook,
+		point:  app.notebookPoint,
+	}
 
 	app.shell.SetPane(tui2.LayerTranscript, app.pane)
 	app.shell.SetPane(tui2.LayerComposer, app.composer)
 	app.shell.SetPane(tui2.LayerStatus, app.status)
 	app.shell.SetPane(tui2.LayerRail, app.scope)
+	// §6's drawer, shut. The rail's PANE is bound either way — the shell is what
+	// decides whether the frame has a column for it ([App.applyRail]) — because a
+	// window that opened with the sidebar unbound would have to rebuild it the
+	// first time the chord was pressed, and a pane built on a keystroke draws
+	// nothing for one frame. This is asked here rather than left to the first
+	// page swap because the FIRST FRAME is the one a reader judges, and
+	// [App.setPage] is a no-op on the page the window already starts on.
+	app.applyRail()
 	app.composer.Focus(true)
 	app.refresh()
 	return app
@@ -751,8 +838,18 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// what turns the awaiting glyph, so it goes through refresh rather
 			// than straight to Invalidate: one clock, one place that reads it.
 			a.refresh()
+		} else if a.roomIsLive() {
+			// An open room watching a tool call run. Nothing is rebuilt here —
+			// the transcript re-renders its own live region on the frame, which
+			// is one row — so this is the invalidate and nothing more.
+			a.shell.Invalidate()
 		}
 		return a, a.startTick()
+
+	case copiedMsg:
+		// The copy chip's one frame of proof, expiring (copychip.go).
+		a.applyCopied(msg)
+		return a, nil
 
 	case settings.ModelMsg:
 		// The settings sheet asked for the models door. It is the one row kind
@@ -837,9 +934,10 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	switch key {
-	case "ctrl+k":
-		// The cross-scope jump (8.3: "ctrl+k covers cross-scope jumps", which is
-		// why this surface has no fullscreen roster).
+	case summonKey, summonKeyNUL, summonKeyLegacy:
+		// The summon key, and the cross-scope jump it grew out of (8.3: "ctrl+k
+		// covers cross-scope jumps", which is why this surface has no fullscreen
+		// roster). Three spellings, one door — see [summonKey].
 		return a.openPalette()
 
 	case "alt+,":
@@ -857,7 +955,20 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		// every state — "let me talk to the map" and, from the map, "let me
 		// talk to the room" — which is the round trip that makes the hand-off
 		// learnable rather than a rule to remember.
-		return a.setScope(!a.railFocus)
+		//
+		// ON A PAGE IT MEANS THE SAME SENTENCE ABOUT A DIFFERENT LIST. The map
+		// is not on screen there — the board IS the list, and the notebook is
+		// its own — so the chord toggles between the page and the mouth. One
+		// chord, one meaning, whichever lens is up.
+		//
+		// AND IT IS NOW ALSO THE DOOR, because §6's rail starts hidden: no new
+		// key was invented for the drawer, since a second chord for "the map"
+		// would be two answers to one question. See [App.toggleRail] for the
+		// three rungs and for why the middle one had to stay.
+		if a.page != pageThread {
+			return a.setPageFocus(!a.pageFocus)
+		}
+		return a.toggleRail()
 
 	case "esc":
 		// 8.2.21, the reconciling rule: esc acts on what you are watching. A
@@ -902,6 +1013,16 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	// keyboard — question.go's answerKey states each of those refusals — so the
 	// only keystrokes it takes are the ones the row on screen just named.
 	if cmd, claimed := a.answerKey(key); claimed {
+		a.shell.Invalidate()
+		return cmd
+	}
+
+	// The page's own keyboard, and only on a page that is not the thread. Like
+	// the answer digits above it, it claims a key only where that key cannot
+	// mean anything else — no overlay, the map not holding the keyboard, and an
+	// empty draft — because the mouth is global and a sentence in progress
+	// outranks every accelerator on the screen (§8: typing is the rest state).
+	if cmd, claimed := a.pageKey(msg); claimed {
 		a.shell.Invalidate()
 		return cmd
 	}
@@ -984,6 +1105,35 @@ func (a *App) runFooterVerb(id string) tea.Cmd {
 	return cmd
 }
 
+// dockCounts is §6's one-line dock: what the shut drawer has inside it.
+//
+// It draws only while the rail is actually off the frame, and it asks the SHELL
+// rather than [App.railShown] — the shell is the thing that solved the frame,
+// and on the work page the rail is off it for a reason this flag knows nothing
+// about. One question, asked of whatever answered it.
+//
+// The counts come from the same split the board page reads (board.go's
+// boardJobs), so the dock and the page it is a door to can never disagree about
+// what "working" means. Nothing is counted twice: a job holding a question is
+// working AND is a question, which is two facts about one row and exactly what
+// §6's dock line says.
+func (a *App) dockCounts() footer.Dock {
+	if a.shell == nil || !a.shell.RailHidden() {
+		return footer.Dock{}
+	}
+	if a.page == pageBoard {
+		// The dock says "there is a list you cannot see". On the work page the
+		// list is the whole lens, so a collapsed copy of it in the corner is
+		// §15's same-fact-twice again — the very thing hiding the rail here was
+		// for.
+		return footer.Dock{}
+	}
+	dock := footer.Dock{Shown: true, Questions: a.openQuestions()}
+	working, _ := a.boardJobs()
+	dock.Working = len(working)
+	return dock
+}
+
 // popScope is the breadcrumb's click: one step out, the same step esc takes
 // (App.navigate) and the same step the rail's ‹ takes (scopePoint). A
 // breadcrumb at home pops nothing and says nothing, because there is nowhere
@@ -1009,6 +1159,34 @@ func (a *App) sizeComposer() {
 // this surface existed. It is named once so the ladder that binds it and the
 // door that draws it cannot drift apart.
 const helpKey = "?"
+
+// The three spellings that summon the palette. One door, and the count is a
+// property of terminals rather than a decision this file made.
+//
+// summonKey is the one the registry records and every surface therefore teaches
+// (registry's key.palette row). It was chosen because a terminal NEVER delivers
+// a cmd- chord, and because ctrl+space is the one chord almost nothing squats
+// on: it is the NUL byte, which is also why it survives a composer-first room
+// where every printable key belongs to the draft.
+//
+// summonKeyNUL is the same byte under a different name. The decoder in this
+// stack resolves NUL to {Code: KeySpace, Mod: ModCtrl} and spells that
+// "ctrl+space", but a terminal speaking the kitty protocol can report the same
+// keystroke as ctrl+@ — the caret notation for the same control code — and a
+// door that opened under one spelling and not the other would be a door that
+// depends on the reader's terminal emulator. Binding what arrives is the whole
+// rule: this side does not get to say which name the wire uses.
+//
+// summonKeyLegacy is ctrl+k, which opened this palette before the summon key
+// existed. It stays bound and is deliberately NOT a second registry row — the
+// registry's own rule is that where a surface takes two spellings of one chord,
+// Key names the one the help screen leads with and the synonym is not a second
+// registration. Muscle memory is a real user of a keybinding.
+const (
+	summonKey       = "ctrl+space"
+	summonKeyNUL    = "ctrl+@"
+	summonKeyLegacy = "ctrl+k"
+)
 
 // helpKeyLive reports whether a bare `?` reaches the capability sheet right now.
 //
@@ -1130,7 +1308,7 @@ func (a *App) applyResidency(msg residencyMsg) {
 	if msg.adopt != nil {
 		a.commander = msg.adopt
 		if model := strings.TrimSpace(msg.adopt.CurrentModel("chat")); model != "" {
-			a.meta.model = model
+			a.status.model = model
 		}
 		moved = true
 	}
@@ -1165,6 +1343,18 @@ func (a *App) interrupt() tea.Cmd {
 // entered a task would have had no way out but a chord, and "esc pops scope"
 // would have quietly become "esc pops scope if you first press ctrl+o".
 func (a *App) navigate() tea.Cmd {
+	// A PAGE IS THE OUTERMOST THING ESC UNDOES. The hug persists on every page,
+	// so the reader who pressed esc on the board or the notebook has no scope to
+	// pop and no transcript to return to — what they are watching is a lens they
+	// swapped in, and esc puts it back (§7).
+	if a.page != pageThread {
+		return a.showPage(pageThread)
+	}
+	// A nested drill is the innermost thing on the thread page: esc walks back
+	// up one worker before anything else moves (recordpage.go).
+	if a.drillBack() {
+		return nil
+	}
 	if !a.transcript.AtBottom() {
 		a.transcript.GotoBottom()
 		a.shell.Invalidate()
@@ -1236,24 +1426,85 @@ func (a *App) refresh() {
 	a.status.live = a.turn.active
 	a.status.escInterrupts = a.canInterrupt()
 	a.status.verbs = a.verbs
+	// The model word rides the bar's right zone now, and it is the picker's
+	// door there (§7). It used to be kept OFF this row on the grounds that the
+	// composer's meta strip was the model's one home and two adjacent rows
+	// saying it would be §15's same-fact-twice — which was true, and was an
+	// argument for one row rather than for which one. The strip is gone; the
+	// word stayed.
+	//
+	// The ground goes with it, in placeline's own abbreviated form. It is asked
+	// at a fixed budget rather than at the terminal's width because the footer
+	// fits its own columns: what this side owes the row is the SHORTEST honest
+	// spelling of where the work lands, and the row decides whether it has the
+	// cells for it.
+	if a.place != nil {
+		a.status.dir = a.place.Text(dirBudget)
+	}
 	a.status.foldable = a.foldable
+	// §7's left zone. The tabs are drawn FROM the page enum rather than beside
+	// it, so the bright word and the lens on screen are one fact: a Current the
+	// swap forgot to move would be the footer naming a place the reader is not
+	// in, which is 5.20's affordance lying about where you are.
+	a.status.places = a.places()
+	// The work page's own wider read, at most once per journal move and only
+	// while that page is the lens (see [App.syncBoard]).
+	a.syncBoard()
 	a.status.input, a.status.hint = a.inputState()
 	a.status.attention = a.openQuestions()
+	a.status.dock = a.dockCounts()
 	// The terminal's title carries the same count the footer paints (10.5.27).
 	a.noticeAttention(a.status.attention)
 	a.status.keyMode, a.status.keyCount = a.keyMode()
 
-	a.meta.live = a.turn.active
+	if c, ok := a.composer.(interface {
+		Streaming(on bool, frame int)
+		SetHint(state composer.Hint, detail string)
+		SetState(state composer.State)
+	}); ok {
+		// §8: one live signal, at the prompt, on the same clock every other
+		// live glyph ticks with — and the empty line says what the room is
+		// doing. The working state is not chosen here: the composer asserts
+		// it off Streaming, so the words and the spinner cannot disagree.
+		c.Streaming(a.turn.active, a.transcript.Clock().Frame(len(tokens.SpinnerFrames)))
+		c.SetHint(a.composerHint())
+		c.SetState(a.composerState())
+	}
 	if a.turn.active {
 		if a.turn.started.IsZero() {
 			a.turn.started = a.now()
 		}
-		a.meta.elapsed = a.now().Sub(a.turn.started)
+		a.status.elapsed = a.now().Sub(a.turn.started)
 	} else {
-		a.meta.elapsed = 0
+		a.status.elapsed = 0
 	}
-	a.voiceLivePreview()
 	a.shell.Invalidate()
+}
+
+// dirBudget is the cells the place line is asked to fit its abbreviated ground
+// into before the bar row is even consulted. It is generous on purpose: the
+// abbreviation is already the short form (`~/a/aforge-v2`), and a budget tight
+// enough to make placeline drop legs would be this side second-guessing a fit
+// the footer is about to do properly.
+const dirBudget = 48
+
+// composerState is what the prompt cell and the edge beside it say about this
+// room right now (§7's state-reactive prompt). The ladder is the same one the
+// composer paints in, minus the streaming rung — [composer.Model.Streaming]
+// owns that one, because it also drives the spinner's frame and one fact with
+// two doors is one fact that can be told two different things.
+//
+// A FAILED SEND outranks an open question because it is the more recent event
+// and the one the reader's next keystroke is about: the words that did not go
+// are still in the draft, and enter sends them again.
+func (a *App) composerState() composer.State {
+	if a.sendErr != "" {
+		return composer.StateFailed
+	}
+	if a.openQuestions() > 0 {
+		return composer.StateQuestion
+	}
+	return composer.StateIdle
 }
 
 // inputState reads the composer's own state for the footer's hint column
@@ -1261,11 +1512,43 @@ func (a *App) refresh() {
 // side knows what this surface's accelerators actually are; the footer decides
 // where they go and what colour a failure is.
 func (a *App) inputState() (footer.InputState, string) {
+	// A SEND THAT DID NOT LAND outranks everything else this axis can say. It is
+	// the one input state §7 lets onto the bar row at all, as a coral sentence
+	// in the middle zone (§12 spends coral on broken), and it is paired with the
+	// coral `✕` at the prompt two cells away — one event, said once in each of
+	// the two places a person is looking when it happens.
+	if a.sendErr != "" {
+		return footer.InputFailed, a.sendErr
+	}
 	if a.composer == nil || strings.TrimSpace(a.composer.Draft()) == "" {
 		return footer.InputEmpty, ""
 	}
 	return footer.InputTyped, tui2.SendKey + " send"
 }
+
+// failSend records that a post did not land, and gives the words back.
+//
+// The two halves are one act. A failure the reader can SEE but whose sentence
+// has been destroyed is worse than no failure notice at all — it tells them
+// something went wrong and leaves them retyping it — so the message goes back
+// into the draft on the same call that lights the prompt coral. The composer
+// refuses the restore if the reader has already started typing something else
+// ([composer.Model.Restore]), and the notice stands either way.
+func (a *App) failSend(text string, err error) {
+	if err == nil {
+		return
+	}
+	a.sendErr = err.Error()
+	if r, ok := a.composer.(interface{ Restore(string) bool }); ok {
+		r.Restore(strings.TrimSpace(text))
+	}
+	a.shell.Invalidate()
+}
+
+// clearSendFailure ends the failed state, and is called at the head of every
+// new attempt rather than on a timer: the state is about the LAST send, so it
+// lasts exactly until there is another one.
+func (a *App) clearSendFailure() { a.sendErr = "" }
 
 // openQuestions counts the questions blocking on a human right now, which is
 // the one thing 5.16 lets the footer paint amber.
@@ -1275,6 +1558,18 @@ func (a *App) inputState() (footer.InputState, string) {
 // That is bounded work per frame — a handful of blocks — where counting the
 // whole thread would make every repaint proportional to the length of the
 // conversation, which is exactly what the block engine exists to avoid.
+// composerHint is §8's state for the empty line, in priority order. The
+// working state is NOT here: the composer asserts it off Streaming, so the
+// words and the spinner cannot disagree. The delivered state waits on the
+// job-block lane's transcript-tail read; until then a landed delivery is
+// announced by its card and the idle words stand.
+func (a *App) composerHint() (composer.Hint, string) {
+	if a.openQuestions() > 0 {
+		return composer.HintQuestion, ""
+	}
+	return composer.HintIdle, ""
+}
+
 func (a *App) openQuestions() int {
 	open := 0
 	for i := a.transcript.Len() - 1; i >= 0; i-- {
@@ -1290,22 +1585,289 @@ func (a *App) openQuestions() int {
 	return open
 }
 
-// voiceLivePreview gives the streamed reply the same header voice its durable
-// twin will wear.
+// The streamed preview used to need a pass of its own here — voiceLivePreview,
+// which re-tiered the `aforge` label so it would not brighten under the reader
+// at the instant the turn settled. §3b took the label out: the answer is the
+// unmarked voice, the preview and its journaled twin are both plain prose at the
+// shared left edge, and there is no longer anything about the live region that
+// changes when it becomes a record. The pass went with the row it was fixing.
+
+// -- the pages (§7: tabs are pages) ------------------------------------------
 //
-// The preview's block is built by the poll chain with a chrome-tier header; the
-// journaled reply that replaces it is drawn at full contrast (message.go's
-// dressSpeech). Left alone, the label would brighten under the reader at the
-// exact moment the turn settles — a change that means nothing, on the row a
-// reader is watching most closely. The mutation goes through TextBlock.Mutate
-// so the version bumps, which is the only coherent way to change bytes a cache
-// has already committed (8.1.1), and it happens once per turn.
-func (a *App) voiceLivePreview() {
-	if a.turn.voiced || a.turn.label == nil {
+// THE TABS SWAP THE LENS. `chat` is the thread — today's transcript, unchanged;
+// `work` is the board (board.go); `notebook` is the homes page. The HUG does not
+// move: the composer and the contextual line are the same two rows on every
+// page, because the mouth is global (§2's one mouth) and a page that took the
+// composer with it would be a second surface wearing the first one's chrome.
+//
+// Three properties hold the mechanism together, and they are the reason it is
+// one enum rather than a flag per lens:
+//
+//   - A PAGE IS A PLACE, NOT A MODE. Arriving at one leaves whatever room the
+//     reader had descended into, so the footer's trail and its tabs are never
+//     both true — §7 gives the left zone to one or the other, and the trail
+//     replaces the tabs while the reader is inside something.
+//   - ENTERING A JOB IS ALWAYS THE SAME DOOR. From the board, from the sidebar,
+//     from the palette: [App.jumpTo] on the row's own id, which lands the reader
+//     in the room on the CHAT page with the trail where the tabs were.
+//   - A PAGE HOLDS NO STATE THE STORE DOES NOT. What the board and the notebook
+//     keep is a cursor, a fold and a scroll — presentation, all of it, and all
+//     of it belonging to the surface a person is looking at rather than to the
+//     facts underneath.
+
+// page is which lens the places tabs have swapped in.
+type page uint8
+
+const (
+	// pageThread is the room's own conversation, and the zero value: a window
+	// that has never touched a tab is in the chat, which is where a chat surface
+	// starts.
+	pageThread page = iota
+	// pageBoard is the work board — §6's sidebar at page altitude (board.go).
+	pageBoard
+	// pageNotebook is the homes page, drawn by internal/tui2/homes.
+	pageNotebook
+)
+
+// String names the page for a test failure.
+func (p page) String() string {
+	switch p {
+	case pageThread:
+		return "chat"
+	case pageBoard:
+		return "work"
+	case pageNotebook:
+		return "notebook"
+	}
+	return "invalid"
+}
+
+// places is §7's left zone: the three tabs, with the current one read off the
+// page enum.
+//
+// The ids are the registry's own, so a click on a tab and the chord that reaches
+// the same place run the ONE executor ([App.runEntry]) — a fourth hand on one
+// door, never a fourth door.
+func (a *App) places() []footer.Place {
+	return []footer.Place{
+		{ID: placeThreadID, Word: "chat", Current: a.page == pageThread},
+		{ID: placeBoardID, Word: "work", Current: a.page == pageBoard},
+		{ID: placeNotebookID, Word: "notebook", Current: a.page == pageNotebook},
+	}
+}
+
+// The three registry rows the tabs are drawn from and routed by. They are named
+// once so the word on the strip, the row that performs it and the page it swaps
+// in cannot drift apart.
+const (
+	placeThreadID   = "key.place-thread"
+	placeBoardID    = "key.place-board"
+	placeNotebookID = "slash.notebook"
+)
+
+// showPage is the tab's act: swap the lens, and leave whatever room the reader
+// was in.
+//
+// The pop is the whole difference between a page and a preview. A reader who
+// asks for the board while standing inside a job would otherwise be looking at
+// the board under that job's breadcrumb — the trail saying they are inside
+// something the lens is not showing — which is the one thing §7's cohabitation
+// rule cannot survive.
+func (a *App) showPage(target page) tea.Cmd {
+	if a.railModel != nil {
+		a.railModel.Home()
+	}
+	a.showThread()
+	a.composerBind = composerBind{mode: rail.ComposerChat}
+	a.setPage(target)
+	// ARRIVING AT A PAGE HANDS IT THE KEYBOARD, and returning to the thread
+	// hands it back. It is [App.handOverTheKeyboard] read on a lens instead of
+	// on a room: you talk to what you are looking at, and what a reader is
+	// looking at on the board is a list they walk. The thread's lens is the one
+	// you talk INTO, so the mouth takes the keys back the moment it is up.
+	a.setPageFocus(target != pageThread)
+	a.status.breadcrumb = a.breadcrumb()
+	a.refresh()
+	return nil
+}
+
+// setPageFocus moves the keyboard between the page and the composer, and tells
+// the composer so it paints the state it is actually in.
+//
+// It is [App.focusScope] for a lens rather than for the map, and it keeps the
+// same promise: the composer drawn unfocused is the picture telling the truth
+// about where a keystroke will go.
+func (a *App) setPageFocus(on bool) tea.Cmd {
+	on = on && a.page != pageThread
+	if a.pageFocus == on {
+		return nil
+	}
+	a.pageFocus = on
+	if on {
+		// ONE CURSOR (5.14). The map and the page are two lists, and a window
+		// where both held the keyboard would be two cursors answering one j.
+		a.focusScope(false)
+	}
+	if a.composer != nil {
+		a.composer.Focus(!on && !a.railFocus)
+	}
+	a.refresh()
+	return nil
+}
+
+// setPage moves the lens without touching the rail or the room.
+//
+// It is the half [App.bind] calls: a rail gesture binds the thread's lens, and a
+// reader who walked into a room from the sidebar while standing on the board has
+// asked for the room, not for the board with a room's breadcrumb over it. It is
+// a no-op when the page has not moved, which is what lets bind call it on every
+// preview.
+func (a *App) setPage(target page) {
+	if a.page == target {
 		return
 	}
-	a.turn.voiced = true
-	a.turn.label.Mutate(func(block *blocks.TextBlock) {
-		block.Head.State = blocks.StateSettled
-	})
+	a.page = target
+	if target == pageThread {
+		a.setPageFocus(false)
+	}
+	a.applyLens()
+}
+
+// applyLens binds the pane the current page draws into, and settles the two
+// things a page swap decides besides: whether the sidebar is on the frame, and
+// where the keyboard is.
+//
+// THE SIDEBAR IS SHUT BY DEFAULT ON EVERY PAGE, and on the work page it cannot
+// be opened at all. The two halves are different rules with different reasons.
+// The general one is [App.railShown]: the column reads as clutter now that its
+// contents have better homes, so it is a drawer. The work page's is older and
+// harder — the board IS the sidebar's list, fuller, and two copies of one list
+// side by side is §15's same-fact-twice, so there is nothing there to open.
+func (a *App) applyLens() {
+	switch a.page {
+	case pageBoard:
+		// The wider read happens before the pane is bound, so the first frame of
+		// the page is the whole page — a board that drew its live rows and
+		// filled in its history one frame later would be the attach-time lie the
+		// residency probe exists to avoid, one surface over.
+		a.syncBoard()
+		a.shell.SetPane(tui2.LayerTranscript, a.boardPane)
+		// The map is not on screen, so it may not hold the keyboard: focusing
+		// something that is not drawn is a keystroke with no visible effect
+		// (5.20), and j and k belong to the board now.
+		a.focusScope(false)
+	case pageNotebook:
+		a.shell.SetPane(tui2.LayerTranscript, a.notebookPane)
+	default:
+		a.shell.SetPane(tui2.LayerTranscript, a.pane)
+	}
+	a.applyRail()
+	a.shell.Invalidate()
+}
+
+// applyRail is the ONE place the rail's presence on the frame is decided, so
+// the page swap, the chord and the dock's click cannot each hold a different
+// opinion about whether the column is there.
+//
+// It is stated as a question about the frame rather than as three assignments
+// because [tui2.Shell.SetRailHidden] is idempotent and the shell re-solves only
+// when the answer moved — so a caller may ask on every page swap and every
+// toggle without thinking about which of them changed what.
+func (a *App) applyRail() {
+	a.shell.SetRailHidden(a.page == pageBoard || !a.railShown)
+}
+
+// setRailShown opens or shuts the drawer and puts the keyboard where the answer
+// implies: on the map when it arrives, back on the mouth when it leaves.
+//
+// The two are one act rather than two calls a caller has to remember, because
+// every way this is reached wants both — a rail that opened without the
+// keyboard would be a column the reader then has to find a second chord for,
+// and a rail that closed while still holding it would leave j and k typing into
+// nothing (5.20: focusing what is not drawn is a keystroke with no effect).
+func (a *App) setRailShown(on bool) tea.Cmd {
+	if a.railShown != on {
+		a.railShown = on
+		a.applyRail()
+	}
+	return a.setScope(on)
+}
+
+// toggleRail is what the rail chord and the dock's click both perform: one
+// three-rung ladder, walked toward the map and then away from it.
+//
+// The rungs are in the order a reader's intent arrives in, and each is a thing
+// that is TRUE right now rather than a mode someone selected:
+//
+//  1. the drawer is shut — open it, and hand it the keyboard;
+//  2. it is open but the keyboard is elsewhere (entering a room hands the
+//     keyboard to that room's composer — rooms.go's handOverTheKeyboard) — this
+//     is the chord's oldest meaning, "let me talk to the map", and it survives
+//     the drawer intact;
+//  3. it is open and you are standing in it — put it away.
+//
+// Collapsing 2 into 3 was the tempting simplification and it is the wrong one:
+// it would answer "let me go back to the map" by closing the map, which is the
+// exact defect the ctrl+o comment in [App.key] already describes one wave back.
+func (a *App) toggleRail() tea.Cmd {
+	switch {
+	case a.page == pageBoard:
+		// There is no drawer on the work page: the board IS the list, so there
+		// is nothing to open and focusing a rail the frame has no column for
+		// would be a keystroke with no visible effect (5.20). The chord never
+		// arrives here — [App.key] gives it the page's own meaning — and the
+		// dock is not drawn here either ([App.dockCounts]); this rung exists so
+		// that neither of those two facts is the only thing holding the promise.
+		return nil
+	case !a.railShown:
+		return a.setRailShown(true)
+	case !a.railFocus:
+		return a.setScope(true)
+	default:
+		return a.setRailShown(false)
+	}
+}
+
+// pageKey offers a keystroke to the page on screen.
+//
+// THE PAGE KEEPS WHAT IT CLAIMS, and that is the half of this that is not
+// obvious. A key the page does not recognise is NOT a letter for the composer to
+// take: 13.8's first gap was the map claiming j, k, g and the digits while
+// everything else fell through to the draft, so a sentence typed at the map
+// arrived with its navigation keys missing — "jack knife kayak" as "ac nife
+// aya", a steer that silently said something other than what was typed. One
+// cursor means one keyboard. ctrl+o hands it back, and so does a click on the
+// composer.
+//
+// The two exceptions are the two keys that mean the same thing everywhere: esc
+// leaves the page (§7), and a draft that survived the swap keeps the keyboard so
+// the reader can finish the sentence they had already started.
+func (a *App) pageKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if a.page == pageThread || !a.pageFocus || a.overlay != overlayNone || a.drafting() {
+		return nil, false
+	}
+	// An armed destructive verb answers first: `y` is its second yes, esc
+	// stands it down, and any other key stands it down on the way to its
+	// ordinary meaning (itemverb.go).
+	if cmd, claimed := a.verbKey(msg); claimed {
+		return cmd, true
+	}
+	var claimed bool
+	var cmd tea.Cmd
+	switch a.page {
+	case pageBoard:
+		cmd, claimed = a.boardKey(msg)
+	case pageNotebook:
+		cmd, claimed = a.notebookKey(msg)
+	}
+	if claimed {
+		return cmd, true
+	}
+	// A page may hold a lens of its own — a detail page opened from a row — and
+	// esc closes the innermost thing first. Only an esc the page had nothing to
+	// do with leaves the page itself.
+	if msg.String() == "esc" {
+		return a.showPage(pageThread), true
+	}
+	return nil, true
 }

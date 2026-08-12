@@ -95,7 +95,7 @@ func board() *boardBackend {
 			{ID: "job-2", Title: "perf-audit", Status: store.Done, CreatedSeq: 5},
 		},
 		edges: []store.Edge{{From: "job-1/h2", To: "job-1/keycutter", Kind: store.Blocks}},
-		usage: map[string]store.JobUsage{"job-1": {Cost: 8.65}},
+		usage: map[string]store.JobUsage{"job-1": {Runs: 1, Cost: 8.65}},
 		sessions: []store.Session{
 			{ID: testSession, Title: "the wisp parity push"},
 			{ID: "session-two", Title: "importer rewrite"},
@@ -212,6 +212,9 @@ func TestNoSessionIdReachesTheScreen(t *testing.T) {
 	app.railModel.Refresh()
 	app.refresh()
 
+	// The drawer is shut by default now (§6), and this test is about what the
+	// RAIL is allowed to draw — so it opens it and reads the frame that has one.
+	press(app, "ctrl+o")
 	frame := ansi.Strip(app.Frame(120, 30))
 	for _, id := range []string{testSession, "session-two", "session-nameless", "job-1", "job-2"} {
 		if strings.Contains(frame, id) {
@@ -243,6 +246,7 @@ func TestQueuedWorkCountsAsWork(t *testing.T) {
 	if strings.Contains(status, "nothing running") {
 		t.Fatalf("the rail called a queued job nothing at all: %q", status)
 	}
+	press(app, "ctrl+o")
 	frame := ansi.Strip(app.Frame(120, 30))
 	if !strings.Contains(frame, "data-clean") {
 		t.Fatalf("the queued job has no card:\n%s", frame)
@@ -412,9 +416,11 @@ func TestATaskRoomShowsTheNodeTrail(t *testing.T) {
 
 // -- the composer binding ----------------------------------------------------
 
-// 5.15's one rule, all three cases: the head chats, a worker takes steering
-// mail, and settled work refuses the draft and says why.
-func TestTheComposerBindsWhatTheCursorRestsOn(t *testing.T) {
+// 5.15's one rule as 13.18 sharpens it, all three cases: the head chats, an
+// ENTERED worker takes steering mail, and settled work refuses the draft and
+// says why. The cursor RESTING on a row is not one of the cases — a card is a
+// look at a surface, and a look does not move the mouth.
+func TestTheComposerBindsTheRoomTheReaderEntered(t *testing.T) {
 	app, _ := boardApp(t)
 	if got := app.composerMode().mode; got != rail.ComposerChat {
 		t.Fatalf("home binds %v", got)
@@ -428,12 +434,18 @@ func TestTheComposerBindsWhatTheCursorRestsOn(t *testing.T) {
 	// is what makes the round trip learnable rather than a rule to remember.
 	press(app, "ctrl+o")
 	press(app, "j")
+	if bind := app.composerMode(); bind.mode != rail.ComposerSteer || bind.node != "job-1" {
+		t.Fatalf("looking at a worker row moved the mouth: %+v", bind)
+	}
+	press(app, "enter")
 	if bind := app.composerMode(); bind.mode != rail.ComposerSteer || bind.node != "job-1/h2" {
-		t.Fatalf("a worker row binds %+v", bind)
+		t.Fatalf("an entered worker row binds %+v", bind)
 	}
 
+	press(app, "ctrl+o")
 	press(app, "esc")
 	press(app, "6")
+	press(app, "enter")
 	if bind := app.composerMode(); bind.mode != rail.ComposerDisabled ||
 		!strings.Contains(bind.note, "settled") {
 		t.Fatalf("a settled task binds %+v", bind)
@@ -449,10 +461,16 @@ func TestTheSteerLineDrawsItsOwnPromptAndHint(t *testing.T) {
 	press(app, "enter")
 	press(app, "ctrl+o")
 	press(app, "j")
+	// The ghost line only speaks where the keyboard IS (§8, and the composer's
+	// own rule: an unfocused empty composer says nothing at all, because a
+	// surface talking to a reader who is looking somewhere else is chrome). So
+	// the keyboard comes back to the mouth before the words it teaches are
+	// asked for.
+	press(app, "ctrl+o")
 
 	frame := ansi.Strip(app.Frame(120, 30))
-	if !strings.Contains(frame, tokens.GlyphPromptSteer) {
-		t.Fatalf("the steer line has no steer prompt:\n%s", frame)
+	if !strings.Contains(frame, hugHead(tokens.GlyphPromptSteer)) {
+		t.Fatalf("the steer line has no steer prompt behind the hug's edge:\n%s", frame)
 	}
 	if !strings.Contains(frame, steerPlaceholder) {
 		t.Fatalf("the steer line kept the chat placeholder:\n%s", frame)
@@ -465,6 +483,10 @@ func TestADisabledComposerRefusesTheKeyboardAndSaysWhy(t *testing.T) {
 	app, _ := boardApp(t)
 	press(app, "ctrl+o")
 	press(app, "6")
+	// 13.18: it is ENTERING settled work that disables the composer, never
+	// looking at it from the map. A preview that could disable the mouth is the
+	// defect this wave closed.
+	press(app, "enter")
 	press(app, "esc")
 	press(app, "h")
 	press(app, "i")
@@ -553,10 +575,11 @@ func TestASteeredDraftIsJournaledAgainstItsNode(t *testing.T) {
 	// the cursor can walk to the worker the draft is aimed at.
 	press(app, "ctrl+o")
 	press(app, "j")
-	// ctrl+o and not esc: esc pops the SCOPE (5.15), which would take the
-	// cursor off the worker the draft is aimed at. Leaving the map is the other
-	// chord, and the binding survives it — that is the point.
-	press(app, "ctrl+o")
+	// enter and not ctrl+o: 13.18 binds the composer to the room the reader
+	// ENTERED, so aiming a steer at a worker is opening the worker's room —
+	// which hands the keyboard back on its own, with no chord to remember. esc
+	// would be wrong for its own older reason: it pops the SCOPE (5.15).
+	press(app, "enter")
 
 	for _, key := range strings.Split("skip", "") {
 		press(app, key)
@@ -681,18 +704,23 @@ func TestSwitchingRoomsResetsTheConversation(t *testing.T) {
 }
 
 // A room the cursor is only PREVIEWING is not the room the composer talks to.
-// 5.15's one rule has no exceptions, and this is the case it is easiest to get
-// wrong: the row looks like a chat and is not one yet.
+// 13.18 keeps that law and states it from the other side: the mouth stays on the
+// room the reader is actually IN, so looking at another one moves neither the
+// window nor the draft's destination. The words that say what enter would do
+// ride on the CARD, where they name a key instead of taking the keyboard.
 func TestPreviewingAnotherRoomDoesNotBindItsComposer(t *testing.T) {
 	app, _ := boardApp(t)
 	press(app, "ctrl+o")
 	press(app, "3")
-	if bind := app.composerMode(); bind.mode != rail.ComposerDisabled ||
-		!strings.Contains(bind.note, "enter") {
-		t.Fatalf("a previewed room binds %+v", bind)
+	if bind := app.composerMode(); bind.mode != rail.ComposerChat || bind.node != "" {
+		t.Fatalf("a previewed room bound %+v", bind)
 	}
 	if app.session != testSession {
 		t.Fatal("a preview moved the window into another room")
+	}
+	frame := ansi.Strip(app.Frame(120, 30))
+	if !strings.Contains(frame, "enter opens this room") {
+		t.Fatalf("the preview card does not name the key that opens it:\n%s", frame)
 	}
 }
 
@@ -706,6 +734,17 @@ func TestTheJumpPaletteOpensAndCloses(t *testing.T) {
 	}
 	if !app.shell.OverlayOpen() {
 		t.Fatal("the overlay plane is not raised")
+	}
+	// The needle is typed rather than the list being read whole: the catalog is
+	// thirty-one actions deep and the rooms group sits under it, so an unfiltered
+	// palette on a short terminal simply has not got to them yet.
+	//
+	// It USED to pass by accident, and the accident is worth naming: the rail
+	// drew `wisp-parity` in its own column beside the dialog, so an assertion
+	// about the palette was being answered by the sidebar. §6 shutting the
+	// drawer by default is what exposed it.
+	for _, key := range []string{"w", "i", "s", "p"} {
+		press(app, key)
 	}
 	frame := ansi.Strip(app.Frame(120, 30))
 	if !strings.Contains(frame, "wisp-parity") {
@@ -972,10 +1011,20 @@ func TestATaskRoomShowsTheWholeSubtreesTrail(t *testing.T) {
 	} else {
 		t.Fatal("the task room read did not answer with messages")
 	}
+	// ONE PROGRESS LINE, NEWEST WINS (user-amended 2026-08-11). The room used to
+	// stack every machinery row the subtree journaled as its own card — five
+	// identical titles and receipts over five status sentences — which is the
+	// defect recordpage.go's [recordStatusBlock] exists to kill. What the trail
+	// still has to prove is that it was READ WHOLE: the newest row in it is a
+	// row from a CHILD node, so a room that only read its root would show the
+	// root's older line instead.
 	out := shown(t, app, 80)
-	for _, want := range []string{"picked up NavCtx again", "H2 is green", "KeyCutter waiting on H2"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("the task room is missing %q:\n%s", want, out)
+	if !strings.Contains(out, "KeyCutter waiting on H2") {
+		t.Fatalf("the task room is missing the newest status:\n%s", out)
+	}
+	for _, gone := range []string{"picked up NavCtx again", "H2 is green"} {
+		if strings.Contains(out, gone) {
+			t.Fatalf("a superseded status row is still on the page (%q):\n%s", gone, out)
 		}
 	}
 }
@@ -1257,5 +1306,53 @@ func TestEscOutOfAHomeLeavesIt(t *testing.T) {
 	pressThrough(app, "esc")
 	if got := app.railModel.Depth(); got >= depth {
 		t.Fatalf("esc left the depth at %d, want less than %d — the pop re-entered", got, depth)
+	}
+}
+
+// -- what makes a room repaint ---------------------------------------------------
+
+// A ROOM REPAINTS WHEN ITS RECORD MOVED, and money is part of its record.
+//
+// [App.paintRoom] rebuilds only when [recordStamp] changes, which is what keeps
+// a busy journal from costing a rebuild per poll. The fingerprint used to be
+// nodes and messages alone — and a call settling writes neither: `RecordUsage`
+// appends a `usage_recorded` event and touches nothing on the node, because the
+// node did not change. So a room opened before its ledger existed kept the frame
+// it opened with for the life of the job, which is the reader's "· 4m · $—".
+//
+// Both halves are asserted here, because the fix is only right if it is narrow:
+// a receipt UNDER this task restamps it, and a journal move outside it still
+// costs one string comparison and no rebuild.
+func TestARoomRepaintsWhenAReceiptLandsUnderItAndNotOtherwise(t *testing.T) {
+	graph := roomJournal(t)
+	app := newJournalApp(t, graph, &fakeCommander{model: "z-ai/glm-5.2"}, nil)
+	poll(t, app)
+	enterNodeRoom(t, app, "craft")
+
+	stamp := app.view.stamp
+	if stamp == "" {
+		t.Fatal("the room recorded no stamp")
+	}
+	// Spend that belongs to no task on this board: the journal moves, this task
+	// did not.
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: store.RootID, Cost: 0.04}); err != nil {
+		t.Fatal(err)
+	}
+	poll(t, app)
+	if app.view.stamp != stamp {
+		t.Fatalf("a receipt outside this task rebuilt its room:\n%q\n%q", stamp, app.view.stamp)
+	}
+
+	// A call under one of its parts settles. No node moves; the room must.
+	if err := graph.RecordUsage(store.NodeUsage{NodeID: "craft/scaffold", Cost: 0.31,
+		PromptTokens: 12000, CompletionTokens: 900, Model: "deepseek/deepseek-v4-flash"}); err != nil {
+		t.Fatal(err)
+	}
+	poll(t, app)
+	if app.view.stamp == stamp {
+		t.Fatal("a receipt under this task left the room on the frame it opened with")
+	}
+	if !strings.Contains(ansi.Strip(app.Frame(140, 30)), "$0.31") {
+		t.Fatal("the room repainted without the money that made it repaint")
 	}
 }

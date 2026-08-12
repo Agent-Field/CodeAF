@@ -98,23 +98,40 @@ type TerminalOptions struct {
 
 	// PromptMarks emits OSC 133 prompt-zone marks on committed user messages,
 	// so the terminal's own "jump to previous prompt" walks the conversation.
+	//
+	// OFF BY DEFAULT, and the reason is the surface and not the mark: this
+	// shell is always the alt screen (Shell.View sets AltScreen), and a
+	// semantic zone in the alt screen has nothing durable to anchor to. The
+	// mark lands wherever the cursor happened to be for that frame, which
+	// [Shell.MarkPrompt] has always said out loud — and iTerm2 does not keep an
+	// invisible list, it DRAWS each mark as a blue triangle in the left gutter
+	// of that row. So the channel bought nothing (prompt-jump navigation cannot
+	// walk an alt screen's scrollback, because there is none) and cost a stray
+	// chevron that appeared to wander down the conversation.
+	//
+	// The machinery stays, and so does this switch: an inline mode — one that
+	// writes the conversation into the primary screen's scrollback — is exactly
+	// the surface the mark was designed for, and it will turn this back on.
 	PromptMarks bool
 
 	// Hyperlinks lets trusted chrome render OSC 8 links (5.21).
 	Hyperlinks bool
 }
 
-// DefaultTerminalOptions is every channel on. It is what a real terminal gets;
-// each channel still degrades on its own, so "on" never means "required".
+// DefaultTerminalOptions is every channel a full-screen surface can honestly
+// use. It is what a real terminal gets; each channel still degrades on its own,
+// so "on" never means "required".
+//
+// PromptMarks is the one channel that is off, and it is off for a reason about
+// THIS surface rather than about terminals — see the field's own comment.
 func DefaultTerminalOptions() TerminalOptions {
 	return TerminalOptions{
-		AppName:     defaultAppName,
-		Title:       true,
-		Progress:    true,
-		Notify:      true,
-		Bell:        true,
-		PromptMarks: true,
-		Hyperlinks:  true,
+		AppName:    defaultAppName,
+		Title:      true,
+		Progress:   true,
+		Notify:     true,
+		Bell:       true,
+		Hyperlinks: true,
 	}
 }
 

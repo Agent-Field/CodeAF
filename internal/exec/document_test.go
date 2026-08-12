@@ -167,7 +167,7 @@ func localRungRan(t *testing.T, log string) bool {
 func documentToolbox(t *testing.T, wire *documentWireCapture, modalities ModalityCatalog) (*Toolbox, *Workspace) {
 	t.Helper()
 	space := workspace(t)
-	tools := newToolboxWithMedia(space, 11, nil, nil, &MediaTools{
+	tools := newToolboxWithMedia(space, "11", nil, nil, &MediaTools{
 		Catalog: modalities, DocumentClient: wire.client(t), WorkingModel: "work/model",
 	})
 	return tools, space
@@ -198,8 +198,14 @@ func TestReadDocumentIsRegisteredOnlyWithADocumentClient(t *testing.T) {
 	}
 	tools.Arm(FamilyDocument)
 	definitions := tools.Definitions()
-	if len(definitions) != 6 {
-		t.Fatalf("definitions = %d, want five base plus read_document", len(definitions))
+	// Seven: the five base tools, the discovery tool that no longer retires
+	// itself out of the middle of the block, and the schema arming appended at
+	// the tail.
+	if len(definitions) != 7 {
+		t.Fatalf("definitions = %d, want five base plus the door plus read_document", len(definitions))
+	}
+	if definitions[6].Function.Name != "read_document" {
+		t.Fatalf("arming did not append at the tail: %+v", definitions)
 	}
 	found := false
 	for _, definition := range definitions {
@@ -258,7 +264,7 @@ func TestReadDocumentAutoStopsAtTheLocalTextLayer(t *testing.T) {
 	// The cache is a real file and the bookkeeping knows about it, but it is
 	// the harness's own text dump of the user's PDF — not something the job
 	// wrote, and not something to name back as one of its deliverables.
-	if artifacts := space.Artifacts(11); len(artifacts) != 0 {
+	if artifacts := space.Artifacts("11"); len(artifacts) != 0 {
 		t.Fatalf("artifacts = %v, want the extraction cache held out of the job's own output", artifacts)
 	}
 }

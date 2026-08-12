@@ -47,6 +47,26 @@ func WithStreamObserver(ctx context.Context, observer StreamObserver) context.Co
 	return context.WithValue(ctx, streamObserverContextKey{}, observer)
 }
 
+// WithoutStream takes the observer back off a context, for a call made inside a
+// surface's own context that is not the surface's conversation.
+//
+// The observer is installed once, on the process's serving context, so anything
+// that borrows that context to ask a model something inherits a live typewriter
+// pointed at the transcript — and a call whose answer is a LABEL rather than a
+// reply would type its label into the room as if somebody were saying it. The
+// head's room-naming clerk is the first such caller (head/scribe.go); a
+// background summarizer would be the second.
+//
+// A typed nil is stored rather than the key being removed, because a context
+// value cannot be unset — and the reader below already treats a nil observer as
+// "do not stream", which is exactly what this means.
+func WithoutStream(ctx context.Context) context.Context {
+	if streamObserverFrom(ctx) == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, streamObserverContextKey{}, StreamObserver(nil))
+}
+
 func streamObserverFrom(ctx context.Context) StreamObserver {
 	observer, _ := ctx.Value(streamObserverContextKey{}).(StreamObserver)
 	return observer

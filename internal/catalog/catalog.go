@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
@@ -39,7 +40,18 @@ type Model struct {
 	// the field that translates between them. Empty for the great majority of
 	// rows, and empty for every row in a cache written before it was read.
 	CanonicalSlug string `json:"canonical_slug,omitempty"`
-	Name          string `json:"name,omitempty"`
+	// AliasTarget is where a floating id actually points, and it is the field
+	// that makes [Catalog.Concrete] true.
+	//
+	// The comment above CanonicalSlug describes what that field was believed to
+	// do. The live catalog on 2026-08-11 disagrees: for the eleven alias rows
+	// it publishes, `canonical_slug` repeats the ALIAS ("~x-ai/grok-latest"),
+	// and the concrete model sits in `alias_target.slug` ("x-ai/grok-4.5").
+	// Resolving through canonical_slug alone therefore hands a floating id
+	// straight back, which is precisely the failure Concrete exists to prevent.
+	// Empty for every row that does not float.
+	AliasTarget string `json:"alias_target,omitempty"`
+	Name        string `json:"name,omitempty"`
 	// ContextLength is how many tokens the model will actually accept, and it
 	// was being thrown away by the row that already fetched it. Nothing priced
 	// it, so nothing kept it — and downstream the loop that has to decide how
@@ -48,12 +60,102 @@ type Model struct {
 	// 200k-token model. Zero means the provider did not say, or the row was
 	// cached before this field existed; every reader must have an answer for
 	// that case rather than treating zero as a tiny model.
-	ContextLength    int      `json:"context_length,omitempty"`
-	PromptPrice      float64  `json:"prompt_price,omitempty"`
-	CompletionPrice  float64  `json:"completion_price,omitempty"`
-	RequestPrice     float64  `json:"request_price,omitempty"`
-	InputModalities  []string `json:"input_modalities,omitempty"`
-	OutputModalities []string `json:"output_modalities,omitempty"`
+	ContextLength   int     `json:"context_length,omitempty"`
+	PromptPrice     float64 `json:"prompt_price,omitempty"`
+	CompletionPrice float64 `json:"completion_price,omitempty"`
+	RequestPrice    float64 `json:"request_price,omitempty"`
+	// PriceUnknown says the provider published no number, which is a different
+	// fact from a number that is zero and must not be shown as one.
+	//
+	// OpenRouter spells "it depends" as "-1": its own routers
+	// (openrouter/auto and friends) charge whatever the model they pick
+	// charges, and there were five such rows in the live catalog on
+	// 2026-08-11 beside eighteen genuinely free ones priced "0". Collapsing
+	// both to 0.0 — which is what this package did until this field existed —
+	// tells a reader that a router is free. It is not; nobody yet knows what
+	// it costs. A surface reads this before it reads the two prices, and
+	// renders absence rather than "$0.00" (design-law-v2 §16 EMPTINESS).
+	PriceUnknown bool `json:"price_unknown,omitempty"`
+	// IntelligenceIndex is the one published score in the catalog, carried
+	// verbatim and never computed here.
+	//
+	// OpenRouter's rows may carry a `benchmarks` block, and inside it an
+	// `artificial_analysis` object with `intelligence_index`, `coding_index`
+	// and `agentic_index` — Artificial Analysis's numbers, republished. 155 of
+	// 528 rows had one on 2026-08-11. Zero means NOBODY published a score, and
+	// never a model that scored zero: a surface showing this must render the
+	// zero as absence the way it renders an absent price.
+	//
+	// Only the intelligence index is kept. The other two are the same source
+	// saying the same thing at a different angle, and a catalog row is not the
+	// place to hold a benchmark suite.
+	IntelligenceIndex float64  `json:"intelligence_index,omitempty"`
+	InputModalities   []string `json:"input_modalities,omitempty"`
+	OutputModalities  []string `json:"output_modalities,omitempty"`
+	// Parameters is which request fields the provider says this model accepts —
+	// OpenRouter's `supported_parameters`, lowercased and deduped.
+	//
+	// It is the only published answer to "may this call carry a reasoning knob",
+	// and until it was kept, nothing could ask: the adapter's gate for that
+	// question was wired to nil in production, so a harness economy went to
+	// every model blind and 400ed the ones that do not take it. An empty list
+	// means the provider said nothing or the row predates this field, which is
+	// unknown rather than "supports nothing" — see [Catalog.SupportsParameter].
+	Parameters []string `json:"parameters,omitempty"`
+}
+
+// Reasons says the provider accepts a reasoning knob on this model — the
+// published fact, not an inference about how the model thinks. A row that
+// carries no parameter list answers false, which is the same answer it gives
+// for a model that genuinely takes no knob; a surface that needs to tell those
+// apart should ask [Catalog.SupportsParameter], which reports its confidence.
+func (m Model) Reasons() bool {
+	return m.accepts("reasoning") || m.accepts("include_reasoning")
+}
+
+// ReasoningLevels says the effort can be dialled — `reasoning_effort` — rather
+// than only switched on. It is the difference between a model whose thinking
+// this harness can economize and one whose thinking it can only accept: MiniMax
+// M2.7 takes `reasoning` and no level, and refuses to have it turned off at all.
+func (m Model) ReasoningLevels() bool { return m.accepts("reasoning_effort") }
+
+// ReasoningWord is the short phrase a surface shows beside a model for what it
+// does with reasoning, and the empty string when there is nothing to say.
+//
+// Three published states are worth telling apart while choosing a model. Most
+// of the catalog takes no reasoning knob at all and stays silent here. A model
+// that takes one but publishes no level can be asked to think, but not how
+// hard. A model that publishes `reasoning_effort` is the only kind whose
+// thinking this harness can dial, which is what the planning economy does.
+//
+// alwaysOn is the fourth state and the one nobody publishes: an endpoint that
+// has refused to have its reasoning turned off (provider.ReasoningMandatory).
+// It is passed in rather than looked up because it is learned from rejected
+// calls, and a published catalog is not where learned facts live.
+//
+// The phrase lives here, once, because three surfaces show it — the picker, the
+// v2 palette, and `aforge models` — and three spellings of one fact is how a
+// product ends up meaning three different things by the same word.
+func ReasoningWord(model Model, alwaysOn bool) string {
+	if !model.Reasons() {
+		return ""
+	}
+	if alwaysOn {
+		return "reasoning · always on"
+	}
+	if model.ReasoningLevels() {
+		return "reasoning · effort"
+	}
+	return "reasoning"
+}
+
+func (m Model) accepts(parameter string) bool {
+	for _, supported := range m.Parameters {
+		if supported == parameter {
+			return true
+		}
+	}
+	return false
 }
 
 type cache struct {
@@ -69,6 +171,16 @@ type Options struct {
 	Dir        string
 	HTTPClient *http.Client
 	Now        func() time.Time
+
+	// Refresh spends the network even when the cache is inside [TTL]. It is
+	// the ONLY way a fetch happens off the daily clock, and it exists so a
+	// person who just watched a provider ship a model can ask for it by hand
+	// rather than being told to wait a day or delete a file.
+	//
+	// A refresh that fails still degrades to the cache it was trying to
+	// replace: asking for fresher facts must never leave a surface with fewer
+	// facts than it had.
+	Refresh bool
 }
 
 // Catalog is immutable once resolved and therefore safe to share among the
@@ -78,6 +190,11 @@ type Options struct {
 type Catalog struct {
 	ready   *rows
 	resolve func() *rows
+	// warm is the resolved value published the instant resolution finishes, so
+	// a question that must not wait can still be answered once the answer
+	// exists. [Catalog.rows] blocks on the future; [Catalog.rowsNow] reads this
+	// and takes "not yet" for an answer.
+	warm atomic.Pointer[rows]
 }
 
 // rows is one resolved catalog: the cleaned model list every listing walks,
@@ -87,6 +204,13 @@ type Catalog struct {
 type rows struct {
 	models []Model
 	byID   map[string]Model
+	// fetchedAt is when these rows left OpenRouter, which is not when they were
+	// read: a catalog served from disk after a failed fetch is a day-old answer
+	// and a surface that showed it as today's would be dating someone else's
+	// facts with its own clock. Zero means these rows never came from the
+	// network at all — the built-in fallbacks — and a reader must say so rather
+	// than print the epoch.
+	fetchedAt time.Time
 }
 
 // Load fetches at most once. A fresh cache avoids I/O; a failed fetch degrades
@@ -117,9 +241,15 @@ func loadOrFallback(ctx context.Context, options Options) (resolved *rows) {
 // the surface is up, so the goroutine warms the value while the caller carries
 // on, and only a question that genuinely arrives first ever blocks.
 func LoadLazy(ctx context.Context, options Options) *Catalog {
-	resolve := sync.OnceValue(func() *rows { return loadOrFallback(ctx, options) })
+	resolved := &Catalog{}
+	resolve := sync.OnceValue(func() *rows {
+		loaded := loadOrFallback(ctx, options)
+		resolved.warm.Store(loaded)
+		return loaded
+	})
+	resolved.resolve = resolve
 	guard.Go("catalog/warm", func() { resolve() })
-	return &Catalog{resolve: resolve}
+	return resolved
 }
 
 func load(ctx context.Context, options Options) *rows {
@@ -129,21 +259,39 @@ func load(ctx context.Context, options Options) *rows {
 	}
 	path := cachePath(options.Dir)
 	cached, cachedOK := readCache(path)
-	if cachedOK && now().Before(cached.FetchedAt.Add(TTL)) {
-		return newRows(cached.Models)
+	if cachedOK && !options.Refresh && now().Before(cached.FetchedAt.Add(TTL)) {
+		return newRowsAt(cached.Models, cached.FetchedAt)
 	}
 
 	models, err := fetch(ctx, options)
 	if err == nil && len(models) > 0 {
+		fetchedAt := now().UTC()
 		if path != "" {
-			_ = writeCache(path, cache{FetchedAt: now().UTC(), Models: models})
+			_ = writeCache(path, cache{FetchedAt: fetchedAt, Models: models})
 		}
-		return newRows(models)
+		return newRowsAt(models, fetchedAt)
 	}
 	if cachedOK {
-		return newRows(cached.Models)
+		// The network is gone and the cache is old. It is still the truest
+		// answer anyone has, so it is served WITH ITS DATE rather than
+		// withheld: a stale catalog a surface can date is worth more than an
+		// empty one it cannot explain.
+		return newRowsAt(cached.Models, cached.FetchedAt)
 	}
 	return newRows(hardcodedFallbacks())
+}
+
+// FetchedAt is when this catalog's rows left the provider, or the zero time
+// when they never did — an unloaded catalog, or the built-in fallbacks. A
+// surface that shows a model list may date it from here; nothing inside this
+// package reads it, because a decision made on the age of a catalog would be a
+// second TTL living somewhere the first one cannot see.
+func (c *Catalog) FetchedAt() time.Time {
+	resolved := c.rows()
+	if resolved == nil {
+		return time.Time{}
+	}
+	return resolved.fetchedAt
 }
 
 // rows resolves the catalog, waiting on the future when Load was lazy.
@@ -158,6 +306,18 @@ func (c *Catalog) rows() *rows {
 		return c.resolve()
 	}
 	return nil
+}
+
+// rowsNow is [Catalog.rows] for a caller that must not wait: it answers nil
+// while a lazy catalog is still warming rather than blocking on the fetch.
+func (c *Catalog) rowsNow() *rows {
+	if c == nil {
+		return nil
+	}
+	if c.ready != nil {
+		return c.ready
+	}
+	return c.warm.Load()
 }
 
 // ModelsWithInput returns a stable copy of models advertising modality.
@@ -198,29 +358,71 @@ func (c *Catalog) ContextLength(modelID string) int {
 	return model.ContextLength
 }
 
-// Concrete resolves a floating alias to the model actually behind it, in the
-// spelling the rest of the world uses.
+// Resolves is the target catalog's own answer to "do you have this id?", asked
+// by [Catalog.Concrete] before it hands a subprocess a spelling other than the
+// one it was given. It is a function rather than an import because the only
+// catalog that matters here lives behind another package's internal/ wall, and
+// because the question — not the table — is what this package needs.
 //
-// Nothing inside aforge needs this: an alias is a model id OpenRouter accepts,
+// A nil Resolves means nobody can be asked, which is a different answer from
+// "no": see Concrete.
+type Resolves func(modelID string) bool
+
+// Concrete is the model id in the spelling a foreign catalog can actually find,
+// and it VERIFIES before it substitutes.
+//
+// Nothing inside aforge needs it: an alias is a model id OpenRouter accepts,
 // and every call aforge makes with one is answered. It matters at exactly one
 // boundary — a subprocess that looks a model up in a *different* catalog, one
-// keyed by concrete ids and with no idea what floats. Handed the alias, that
-// catalog says "not found" and the process dies before it has spent a cent.
+// keyed by that catalog's own spellings and with no idea what floats. Handed a
+// name that catalog does not carry, the process dies before it has spent a cent.
 //
-// Everything unknown passes through unchanged, and that is the point rather
-// than a shortcut. A model nobody chose must never enter another engine's
-// pools, so an id this catalog cannot vouch for is forwarded verbatim and the
-// far side's own error is allowed to be the thing the operator reads. The
-// leading "~" — OpenRouter's own alias marker, and part of no model's name —
-// is dropped either way, exactly as Model and Supports already drop it.
-func (c *Catalog) Concrete(modelID string) string {
+// The candidates are tried in the order that a wrong answer costs least:
+//
+//  1. the alias target, because a floating id resolves to nothing anywhere but
+//     here (see [Model.AliasTarget]);
+//  2. the id as written, because it is what the person and the panel actually
+//     chose, and foreign catalogs key on undated names far more often than the
+//     comment on CanonicalSlug assumed;
+//  3. the canonical slug, the dated spelling, which is a real id in some
+//     catalogs and in others is a name nobody has ever published.
+//
+// The third is why this takes a resolver at all. Substituting the canonical
+// slug unasked is what broke the swe leaf on the default model of every install:
+// models.dev carries deepseek/deepseek-v4-flash and deepseek/deepseek-v4-flash-0731
+// and has never heard of deepseek/deepseek-v4-flash-20260423, so a translation
+// meant to save the engine handed it a name that could not exist.
+//
+// When nothing resolves, the id as written is forwarded — never a substitution
+// the target catalog is KNOWN not to have — so the far side's own error names
+// the model the operator chose. When resolves is nil nothing can be asked, and
+// only the alias target is applied: it is a fact about this catalog rather than
+// a guess about another's spelling. The leading "~" — OpenRouter's own alias
+// marker, and part of no model's name — is dropped throughout, exactly as Model
+// and Supports already drop it.
+func (c *Catalog) Concrete(modelID string, resolves Resolves) string {
 	id := normalizeID(modelID)
 	model, ok := c.Model(id)
 	if !ok {
+		// A model nobody chose must never enter another engine's pools, so an
+		// id this catalog cannot vouch for is forwarded verbatim.
 		return id
 	}
-	if canonical := strings.TrimSpace(model.CanonicalSlug); canonical != "" {
-		return normalizeID(canonical)
+	candidates := make([]string, 0, 3)
+	if target := normalizeID(model.AliasTarget); target != "" && target != id {
+		candidates = append(candidates, target)
+	}
+	candidates = append(candidates, id)
+	if canonical := normalizeID(model.CanonicalSlug); canonical != "" && canonical != id {
+		candidates = append(candidates, canonical)
+	}
+	if resolves == nil {
+		return candidates[0]
+	}
+	for _, candidate := range candidates {
+		if resolves(candidate) {
+			return candidate
+		}
 	}
 	return id
 }
@@ -246,6 +448,43 @@ func (c *Catalog) Supports(modelID, direction, modality string) bool {
 		return false
 	}
 	return hasModality(values, modality)
+}
+
+// SupportsParameter answers whether modelID accepts a request field, and
+// whether anyone actually knows.
+//
+// The second bool is the whole point, and it is why this cannot be a plain
+// predicate. A model the catalog has never heard of, a catalog that never
+// loaded, and a row cached before parameters were kept all say "no idea" — and
+// a caller that read that as "does not support it" would silently drop a knob
+// the operator asked for, while one that read it as "supports it" would send a
+// field that 400s. Only the caller knows which way to fail, so the fact and its
+// confidence travel together.
+//
+// It never waits. This is the one catalog question asked on the request path,
+// where the caller is the model adapter shaping a body it is about to send, and
+// a still-warming catalog blocking there would put a fifteen-second fetch in
+// front of the first call of every run. A catalog that has not resolved yet is
+// simply one more way of not knowing.
+func (c *Catalog) SupportsParameter(modelID, parameter string) (bool, bool) {
+	resolved := c.rowsNow()
+	if resolved == nil {
+		return false, false
+	}
+	model, ok := resolved.byID[normalizeID(modelID)]
+	if !ok || len(model.Parameters) == 0 {
+		return false, false
+	}
+	parameter = strings.ToLower(strings.TrimSpace(parameter))
+	if parameter == "" {
+		return false, false
+	}
+	for _, supported := range model.Parameters {
+		if supported == parameter {
+			return true, true
+		}
+	}
+	return false, true
 }
 
 func (c *Catalog) modelsWith(direction, modality string) []Model {
@@ -312,36 +551,42 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
 		return nil, &statusError{status: response.Status}
 	}
+	// The rows are decoded ONE AT A TIME, out of a slice of raw messages,
+	// because this is a third party's schema and it drifts. Decoded whole, a
+	// single row that grew a field of a shape this struct does not expect —
+	// `benchmarks` was an object for some models and absent for others on the
+	// day this was written — fails the entire Decode, and the catalog degrades
+	// from four hundred models to the five hardcoded fallbacks. A row that
+	// cannot be read is skipped, and every row that can be read still arrives.
 	var payload struct {
-		Data []struct {
-			ID            string `json:"id"`
-			CanonicalSlug string `json:"canonical_slug"`
-			Name          string `json:"name"`
-			ContextLength int    `json:"context_length"`
-			Architecture  struct {
-				Input  []string `json:"input_modalities"`
-				Output []string `json:"output_modalities"`
-			} `json:"architecture"`
-			Pricing struct {
-				Prompt     string `json:"prompt"`
-				Completion string `json:"completion"`
-				Request    string `json:"request"`
-			} `json:"pricing"`
-		} `json:"data"`
+		Data []json.RawMessage `json:"data"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maxCatalogBytes))
 	if err := decoder.Decode(&payload); err != nil {
 		return nil, err
 	}
 	models := make([]Model, 0, len(payload.Data))
-	for _, item := range payload.Data {
+	for _, raw := range payload.Data {
+		var item modelWire
+		if json.Unmarshal(raw, &item) != nil {
+			continue
+		}
+		prompt, promptOK := parsePrice(item.Pricing.Prompt)
+		completion, completionOK := parsePrice(item.Pricing.Completion)
+		request, _ := parsePrice(item.Pricing.Request)
 		models = append(models, Model{
 			ID: strings.TrimSpace(item.ID), CanonicalSlug: strings.TrimSpace(item.CanonicalSlug),
-			Name:          strings.TrimSpace(item.Name),
-			ContextLength: item.ContextLength,
-			PromptPrice:   parsePrice(item.Pricing.Prompt), CompletionPrice: parsePrice(item.Pricing.Completion),
-			RequestPrice:    parsePrice(item.Pricing.Request),
-			InputModalities: cleanModalities(item.Architecture.Input), OutputModalities: cleanModalities(item.Architecture.Output),
+			AliasTarget:       strings.TrimSpace(item.AliasTarget.Slug),
+			Name:              strings.TrimSpace(item.Name),
+			ContextLength:     item.ContextLength,
+			PromptPrice:       prompt,
+			CompletionPrice:   completion,
+			RequestPrice:      request,
+			PriceUnknown:      !promptOK || !completionOK,
+			IntelligenceIndex: intelligenceIndex(item.Benchmarks),
+			InputModalities:   cleanLowerList(item.Architecture.Input),
+			OutputModalities:  cleanLowerList(item.Architecture.Output),
+			Parameters:        cleanLowerList(item.SupportedParameters),
 		})
 	}
 	// The one cleaning pass for the fetched path; what is cached and what is
@@ -351,6 +596,67 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 		return nil, &statusError{status: "empty catalog"}
 	}
 	return models, nil
+}
+
+// modelWire is one row of OpenRouter's /models listing, in the shape this
+// package reads it. Everything absent from it — description, created,
+// per_request_limits, top_provider, links — is either prose nobody renders or
+// provider bookkeeping, and a field added here is a field something on screen
+// has to be able to explain.
+//
+// supported_parameters was in that list until MiniMax M2.7 failed every
+// planning call on it. It is not bookkeeping: it is the provider's own answer
+// to which knobs a model accepts, the picker explains it in one word, and the
+// adapter needs it to decide whether a reasoning knob may travel at all.
+type modelWire struct {
+	ID            string `json:"id"`
+	CanonicalSlug string `json:"canonical_slug"`
+	AliasTarget   struct {
+		Slug string `json:"slug"`
+	} `json:"alias_target"`
+	Name          string `json:"name"`
+	ContextLength int    `json:"context_length"`
+	Architecture  struct {
+		// Modality is the coarse "text->text" string. It is read for nothing:
+		// input_modalities and output_modalities say the same thing as lists,
+		// and a list is what every question this package answers is asked in.
+		Input  []string `json:"input_modalities"`
+		Output []string `json:"output_modalities"`
+	} `json:"architecture"`
+	Pricing struct {
+		Prompt     string `json:"prompt"`
+		Completion string `json:"completion"`
+		Request    string `json:"request"`
+	} `json:"pricing"`
+	SupportedParameters []string `json:"supported_parameters"`
+	// Benchmarks stays raw so its shape cannot break the row around it. It
+	// carried an object beside a LIST on 2026-08-11 (`design_arena: []` next
+	// to `artificial_analysis: {…}`), which is exactly the kind of thing that
+	// becomes an object next quarter.
+	Benchmarks json.RawMessage `json:"benchmarks"`
+}
+
+// intelligenceIndex digs the one published score out of a raw benchmarks
+// block, and answers zero for every shape it does not recognize. Nothing here
+// is allowed to fail loudly: a score is a nicety on a row, and a catalog that
+// refused to load because a benchmark changed shape would have traded four
+// hundred models for one number.
+func intelligenceIndex(raw json.RawMessage) float64 {
+	if len(raw) == 0 {
+		return 0
+	}
+	var block struct {
+		ArtificialAnalysis struct {
+			IntelligenceIndex float64 `json:"intelligence_index"`
+		} `json:"artificial_analysis"`
+	}
+	if json.Unmarshal(raw, &block) != nil {
+		return 0
+	}
+	if score := block.ArtificialAnalysis.IntelligenceIndex; score > 0 {
+		return score
+	}
+	return 0
 }
 
 type statusError struct{ status string }
@@ -364,7 +670,11 @@ func (e *statusError) Error() string { return "model catalog: " + e.status }
 // The index keeps the first row for each normalized id, which is what a scan
 // from the top of the list would have found: cleaning dedupes on the literal
 // id, so a slug and its "~" variant can both survive it.
-func newRows(models []Model) *rows {
+func newRows(models []Model) *rows { return newRowsAt(models, time.Time{}) }
+
+// newRowsAt is [newRows] for rows that have a date — everything but the
+// built-in fallbacks, which came from nowhere and are dated nowhere.
+func newRowsAt(models []Model, fetchedAt time.Time) *rows {
 	byID := make(map[string]Model, len(models))
 	for _, model := range models {
 		id := normalizeID(model.ID)
@@ -372,7 +682,7 @@ func newRows(models []Model) *rows {
 			byID[id] = model
 		}
 	}
-	return &rows{models: models, byID: byID}
+	return &rows{models: models, byID: byID, fetchedAt: fetchedAt}
 }
 
 func cleanModels(models []Model) []Model {
@@ -383,15 +693,21 @@ func cleanModels(models []Model) []Model {
 		if model.ID == "" || seen[model.ID] {
 			continue
 		}
+		// ":batch" variants only answer on the async batch endpoint; every
+		// call this program makes is interactive, so offering one is offering
+		// a model that 404s on first use.
+		if strings.HasSuffix(model.ID, ":batch") {
+			continue
+		}
 		seen[model.ID] = true
-		model.InputModalities = cleanModalities(model.InputModalities)
-		model.OutputModalities = cleanModalities(model.OutputModalities)
+		model.InputModalities = cleanLowerList(model.InputModalities)
+		model.OutputModalities = cleanLowerList(model.OutputModalities)
 		cleaned = append(cleaned, model)
 	}
 	return cleaned
 }
 
-func cleanModalities(values []string) []string {
+func cleanLowerList(values []string) []string {
 	seen := make(map[string]bool, len(values))
 	cleaned := make([]string, 0, len(values))
 	for _, value := range values {
@@ -408,17 +724,28 @@ func cleanModalities(values []string) []string {
 func cloneModel(model Model) Model {
 	model.InputModalities = append([]string(nil), model.InputModalities...)
 	model.OutputModalities = append([]string(nil), model.OutputModalities...)
+	model.Parameters = append([]string(nil), model.Parameters...)
 	return model
 }
 
 func normalizeID(id string) string { return strings.TrimPrefix(strings.TrimSpace(id), "~") }
 
-func parsePrice(raw string) float64 {
-	price, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
-	if err != nil || price < 0 {
-		return 0
+// parsePrice reads one per-token price, and says whether the provider actually
+// published one. A blank, an unparseable string, or OpenRouter's "-1" — its
+// spelling of "this router charges whatever it routes to" — are all the same
+// answer: nobody said. Zero is a price and comes back known, because eighteen
+// models in the live catalog really are free and a surface must be able to tell
+// those apart from the routers.
+func parsePrice(raw string) (float64, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, false
 	}
-	return price
+	price, err := strconv.ParseFloat(trimmed, 64)
+	if err != nil || price < 0 {
+		return 0, false
+	}
+	return price, true
 }
 
 func cachePath(dir string) string {
@@ -476,12 +803,17 @@ func writeCache(path string, cached cache) error {
 
 // hardcodedFallbacks is written already cleaned — unique ids, lowercase
 // modalities — so it satisfies newRows without a cleaning pass of its own.
+//
+// Every row is PriceUnknown, and that is worth writing out rather than letting
+// the zero value speak: these five are names this build happens to remember,
+// not rows anybody fetched, and a fallback claiming a price of zero would be
+// this package inventing economics for a model it could not reach.
 func hardcodedFallbacks() []Model {
 	return []Model{
-		{ID: "krea/krea-2-medium-turbo", InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
-		{ID: "hexgrad/kokoro-82m", InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
-		{ID: "openai/gpt-4o-mini-tts", InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
-		{ID: "google/lyria-3-clip-preview", InputModalities: []string{"text"}, OutputModalities: []string{"music"}, RequestPrice: 0.04},
-		{ID: "bytedance/seedance-1-5-pro", InputModalities: []string{"text", "image"}, OutputModalities: []string{"video"}},
+		{ID: "krea/krea-2-medium-turbo", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"image"}},
+		{ID: "hexgrad/kokoro-82m", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
+		{ID: "openai/gpt-4o-mini-tts", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"speech"}},
+		{ID: "google/lyria-3-clip-preview", PriceUnknown: true, InputModalities: []string{"text"}, OutputModalities: []string{"music"}, RequestPrice: 0.04},
+		{ID: "bytedance/seedance-1-5-pro", PriceUnknown: true, InputModalities: []string{"text", "image"}, OutputModalities: []string{"video"}},
 	}
 }

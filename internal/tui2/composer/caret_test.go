@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The caret's geometry is Render's own arithmetic run again, so the test that
@@ -87,7 +89,7 @@ func TestClickingAWrappedRowLandsOnThatRowsCharacters(t *testing.T) {
 	// Whatever the wrap point is, the marker must sit exactly where the second
 	// row began — which is what re-rendering proves.
 	rows := strings.Split(ansi.Strip(m.Render(width, height)), "\n")
-	if !strings.HasPrefix(strings.TrimLeft(rows[1], " "), "|") {
+	if !strings.HasPrefix(strings.TrimLeft(strings.TrimPrefix(rows[1], tokens.GlyphHugEdge), " "), "|") {
 		t.Fatalf("the caret did not land at the start of the wrapped row: %q", rows[1])
 	}
 }

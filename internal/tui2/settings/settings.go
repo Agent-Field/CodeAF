@@ -99,18 +99,17 @@ type Model struct {
 	debounce time.Duration
 	now      func() time.Time
 
-	// The projected registry: every row once, in registry order, plus the tab
-	// list built from the categories that actually have rows.
-	rows []row
-	tabs []string
+	// The projected registry: every row once, in registry order, plus the group
+	// words built from the categories that actually have rows.
+	rows   []row
+	groups []string
 
-	tab      int
 	selected int
 	query    string
 
-	// visible is the row index list the current tab or query resolves to, and
+	// visible is the row index list the gates and the query resolve to, and
 	// hits is the parallel list of label highlight offsets. Both are
-	// recomputed whenever the query, the tab or a gated value moves, never
+	// recomputed whenever the query or a gated value moves, never
 	// inside Render.
 	visible []int
 	hits    [][]int
@@ -137,6 +136,14 @@ type Model struct {
 	// failed carries the plain-language refusal from the last write of a row.
 	failed map[string]string
 
+	// trail is the path this sheet was reached through — the palette row that
+	// opened it — root-most first, and empty for a sheet opened on its own.
+	// onBack leaves for one of those rungs, and steps is where the last render
+	// put each ancestor word so a click can be turned back into one. See
+	// trail.go.
+	trail   []string
+	onBack  func(depth int) tea.Cmd
+	steps   []trailStep
 	editing bool
 	picking bool
 	pick    int
@@ -193,21 +200,18 @@ func New(opts Options) *Model {
 // after its own write lands.
 func (m *Model) Refresh() {
 	m.rows = m.rows[:0]
-	m.tabs = m.tabs[:0]
+	m.groups = m.groups[:0]
 	if m.registry != nil {
 		for _, group := range m.registry.Groups() {
-			m.tabs = append(m.tabs, group.Title)
+			m.groups = append(m.groups, group.Title)
 			for _, setting := range group.Rows {
-				m.rows = append(m.rows, row{setting: setting, group: group.Title, tab: len(m.tabs) - 1})
+				m.rows = append(m.rows, row{setting: setting, group: group.Title})
 			}
 		}
 		clear(m.persisted)
 		for _, key := range m.registry.PersistedKeys() {
 			m.persisted[key] = true
 		}
-	}
-	if m.tab >= len(m.tabs) {
-		m.tab = 0
 	}
 	m.reselect()
 }
@@ -246,14 +250,16 @@ func (m *Model) Close() tea.Cmd {
 // is mounted as the main surface rather than as an overlay.
 func (m *Model) Query() string { return m.query }
 
-// Tab reports the selected group title, or the empty string while a search is
-// running — during a search the tab bar is a breadcrumb over all groups and no
-// single one is selected.
-func (m *Model) Tab() string {
-	if m.query != "" || m.tab >= len(m.tabs) {
+// Group reports the group word the band is standing in, or the empty string
+// when the sheet has no rows. It is exported for the wiring lane's breadcrumb;
+// there is no selected group any more, only a selected row, and the group is
+// the one that row belongs to.
+func (m *Model) Group() string {
+	r, ok := m.current()
+	if !ok {
 		return ""
 	}
-	return m.tabs[m.tab]
+	return r.group
 }
 
 // Selected reports the registry key under the band, or "" when the sheet is
@@ -273,10 +279,9 @@ func (m *Model) touch() {
 }
 
 // row is one registry row projected into the sheet: the setting itself plus
-// which tab it belongs to, so a search result can name its group without
-// walking the registry again.
+// the group word it sits under, so a search result can name its group and the
+// page can head each run of rows without walking the registry again.
 type row struct {
 	setting config.Setting
 	group   string
-	tab     int
 }

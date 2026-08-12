@@ -11,9 +11,9 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-func tracePath(t *testing.T, space *Workspace, nodeID int) string {
+func tracePath(t *testing.T, space *Workspace, leaf string) string {
 	t.Helper()
-	full, _, err := space.ScratchPath(traceName(int64(nodeID)))
+	full, _, err := space.ScratchPath(traceName(leaf))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,33 +31,33 @@ func TestTheRecorderIsWrittenAndReadThroughOneSpelling(t *testing.T) {
 	}
 	home := space.Root()
 
-	trace := newTracer(space, 12)
+	trace := newTracer(space, "12")
 	trace.note("engine: started")
 	trace.close()
 
-	written := tracePath(t, space, 12)
-	if got := TraceFile(home, 12); got != written {
+	written := tracePath(t, space, "12")
+	if got := TraceFile(home, "12"); got != written {
 		t.Fatalf("the writer opened %q and TraceFile names %q", written, got)
 	}
-	if got := TracePath(home, 12); got != written {
+	if got := TracePath(home, "12"); got != written {
 		t.Fatalf("the reader resolves to %q, not the file the writer opened %q", got, written)
 	}
 
 	// A run recorded before the move stays readable: the reader falls back to
 	// the old spelling, and only when nothing is at the current one.
-	legacy := filepath.Join(home, legacyTraceName(13))
+	legacy := filepath.Join(home, legacyTraceName("13"))
 	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(legacy, []byte("an older run\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := TracePath(home, 13); got != legacy {
+	if got := TracePath(home, "13"); got != legacy {
 		t.Fatalf("a pre-move recorder resolves to %q, want the legacy file %q", got, legacy)
 	}
 	// With nothing anywhere, the reader names where the recorder should be
 	// rather than where it used to be.
-	if got := TracePath(home, 99); got != TraceFile(home, 99) {
+	if got := TracePath(home, "99"); got != TraceFile(home, "99") {
 		t.Fatalf("a missing recorder resolved to %q", got)
 	}
 }
@@ -70,7 +70,7 @@ func TestTraceWritesEveryLineAndLosesNothingOnClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trace := newTracer(space, 7)
+	trace := newTracer(space, "7")
 
 	var want strings.Builder
 	for i := range 5000 {
@@ -80,7 +80,7 @@ func TestTraceWritesEveryLineAndLosesNothingOnClose(t *testing.T) {
 	}
 	trace.close()
 
-	data, err := os.ReadFile(tracePath(t, space, 7))
+	data, err := os.ReadFile(tracePath(t, space, "7"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,13 +96,13 @@ func TestTraceFlushLandsWhatWasWritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trace := newTracer(space, 3)
+	trace := newTracer(space, "3")
 	defer trace.close()
 
 	trace.note("engine: started")
 	trace.flush()
 
-	data, err := os.ReadFile(tracePath(t, space, 3))
+	data, err := os.ReadFile(tracePath(t, space, "3"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,13 +118,13 @@ func TestTraceLandsATurnWhenItIsWritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trace := newTracer(space, 4)
+	trace := newTracer(space, "4")
 	defer trace.close()
 
 	trace.note("contract: do the thing")
 	trace.turn(1, nil, nil, nil, "final")
 
-	data, err := os.ReadFile(tracePath(t, space, 4))
+	data, err := os.ReadFile(tracePath(t, space, "4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestTheTurnLineCarriesTheCachedShareAndSitsOutOfTheLeafsWay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trace := newTracer(space, 11)
+	trace := newTracer(space, "11")
 	trace.turn(3, &ai.Response{
 		Choices: []ai.Choice{{FinishReason: "tool_calls"}},
 		Usage: &ai.Usage{PromptTokens: 12_000, CompletionTokens: 300,
@@ -156,7 +156,7 @@ func TestTheTurnLineCarriesTheCachedShareAndSitsOutOfTheLeafsWay(t *testing.T) {
 	}, nil, nil, "")
 	trace.close()
 
-	data, err := os.ReadFile(tracePath(t, space, 11))
+	data, err := os.ReadFile(tracePath(t, space, "11"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestTraceTakesConcurrentWriters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trace := newTracer(space, 9)
+	trace := newTracer(space, "9")
 
 	var writers sync.WaitGroup
 	for writer := range 4 {
@@ -199,7 +199,7 @@ func TestTraceTakesConcurrentWriters(t *testing.T) {
 	writers.Wait()
 	trace.close()
 
-	data, err := os.ReadFile(tracePath(t, space, 9))
+	data, err := os.ReadFile(tracePath(t, space, "9"))
 	if err != nil {
 		t.Fatal(err)
 	}

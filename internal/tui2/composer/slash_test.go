@@ -315,6 +315,108 @@ func TestHintRowsMatchesTheListItAsksFor(t *testing.T) {
 	}
 }
 
+// -- geometry: the line opens UPWARD (8) --------------------------------------
+
+// TestSlashOpensUpwardWithTheSelectionAgainstTheDraft: every candidate sits
+// above the prompt, and the highlighted one is the row the prompt is under.
+func TestSlashOpensUpwardWithTheSelectionAgainstTheDraft(t *testing.T) {
+	var ran []string
+	m := slashModel(t, &ran)
+	m.Focus(true)
+	typeString(m, "/")
+	height := 1 + m.HintRows()
+	rows := strings.Split(ansi.Strip(m.Render(70, height)), "\n")
+	if len(rows) != height {
+		t.Fatalf("drew %d rows in a %d-row rectangle", len(rows), height)
+	}
+	if !strings.HasPrefix(rows[len(rows)-1], edged(70, tokens.GlyphPromptChat)) {
+		t.Fatalf("the draft is not the bottom row: %q", rows[len(rows)-1])
+	}
+	best, _ := m.slash.selected()
+	if nearest := rows[len(rows)-2]; !strings.Contains(nearest, best.Word) {
+		t.Fatalf("the row nearest the draft is %q, want the selection %q", nearest, best.Word)
+	}
+	if !strings.HasPrefix(rows[len(rows)-2], padded(70, tokens.GlyphAccentRail)) {
+		t.Fatalf("the row nearest the draft carries no selection rail: %q", rows[len(rows)-2])
+	}
+	// And the least relevant row is furthest from the eye.
+	worst := m.slash.rows[m.slash.hits[len(m.slash.hits)-1].idx].command
+	if !strings.Contains(rows[0], worst.Word) {
+		t.Fatalf("top row = %q, want the last-ranked row %q", rows[0], worst.Word)
+	}
+}
+
+// TestClickingARowRunsTheRowThatWasDrawnThere is the pointer's half of the flip:
+// the paint and the click read one plan, so a click lands on the command the
+// reader is looking at rather than on its mirror image.
+func TestClickingARowRunsTheRowThatWasDrawnThere(t *testing.T) {
+	var ran []string
+	m := slashModel(t, &ran)
+	m.Focus(true)
+	typeString(m, "/")
+	height := 1 + m.HintRows()
+	rows := strings.Split(ansi.Strip(m.Render(70, height)), "\n")
+
+	for y := 0; y < m.HintRows(); y++ {
+		var mine []string
+		probe := slashModel(t, &mine)
+		probe.Focus(true)
+		typeString(probe, "/")
+		cmd, taken := probe.ClickHint(70, height, y)
+		if !taken {
+			t.Fatalf("a click on row %d was not taken", y)
+		}
+		cmdMsg(cmd)
+		// A runnable row ran; a refused one stayed put with the click's row
+		// selected, which is the same answer asked a different way.
+		word := ""
+		if len(mine) == 1 {
+			for _, c := range slashCatalog() {
+				if c.ID == mine[0] {
+					word = c.Word
+				}
+			}
+		} else if command, ok := probe.slash.selected(); ok {
+			word = command.Word
+		}
+		if word == "" || !strings.Contains(rows[y], word) {
+			t.Fatalf("clicking row %d landed on %q, but that row reads %q", y, word, rows[y])
+		}
+	}
+	// A click on the draft's own row is not a click on the list.
+	if _, taken := m.ClickHint(70, height, height-1); taken {
+		t.Fatalf("a click on the draft row was taken by the list")
+	}
+}
+
+// TestHoveringARowSelectsIt: pointing is not choosing (5.14), and the row the
+// pointer rests on is the row the paint drew there.
+func TestHoveringARowSelectsIt(t *testing.T) {
+	var ran []string
+	m := slashModel(t, &ran)
+	m.Focus(true)
+	typeString(m, "/")
+	height := 1 + m.HintRows()
+	if !m.HoverHint(70, height, 0) {
+		t.Fatalf("hovering the top row moved nothing")
+	}
+	if m.slash.sel != len(m.slash.hits)-1 {
+		t.Fatalf("hovering the top row selected %d, want the last-ranked row", m.slash.sel)
+	}
+	if m.HoverHint(70, height, 0) {
+		t.Fatalf("hovering the same row twice reported a move")
+	}
+	if !m.HoverHint(70, height, height-2) {
+		t.Fatalf("hovering the row against the draft moved nothing")
+	}
+	if m.slash.sel != 0 {
+		t.Fatalf("hovering the row against the draft selected %d, want the best match", m.slash.sel)
+	}
+	if len(ran) != 0 {
+		t.Fatalf("hovering ran %v", ran)
+	}
+}
+
 // Every row fits, at every width, painted or not. The rail's own law, applied
 // to a list that lives inside somebody else's rectangle.
 func TestSlashRowsNeverOverflow(t *testing.T) {

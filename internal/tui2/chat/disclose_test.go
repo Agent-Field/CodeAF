@@ -55,12 +55,16 @@ const (
 // session's turns interleaved around it by sequence.
 func foldBoard() *boardBackend {
 	backend := board()
-	// A brief long enough that splitGist has something to fold, so the charge
-	// row is collapsible exactly as theirs was (1,601 characters on the wire).
+	// A brief long enough that the RECORD PAGE's own budget still has something
+	// to fold, so the charge row is collapsible exactly as theirs was. The
+	// budget is ~15 rows at the prose measure (record.go's recordPromptRows), so
+	// the reading has to run past a screenful's half — which a real task's ask
+	// routinely does, and which is why the reader asked for the larger budget in
+	// the first place.
 	brief := "Report the current state of the harbour tide: the live height, the " +
 		"movement over the last day and week, and the concrete drivers behind " +
 		"it — weather, moon phase, and anything else notable. " +
-		strings.Repeat("Give the full substantive answer inline. ", 12)
+		strings.Repeat("Give the full substantive answer inline. ", 40)
 	// The answer sits at the END of the summary, so a transcript following its
 	// tail shows it the moment the fold opens — the same motion the real one
 	// makes, rather than a scroll position a test would have to arrange.
@@ -71,7 +75,7 @@ func foldBoard() *boardBackend {
 	backend.nodes = append(backend.nodes,
 		store.Node{ID: "job-9", Title: "Harbour tide briefing", Status: store.Done,
 			CreatedSeq: 40, UpdatedSeq: 52, Brief: brief, Summary: summary})
-	backend.usage["job-9"] = store.JobUsage{Cost: 0.0029}
+	backend.usage["job-9"] = store.JobUsage{Runs: 1, Cost: 0.0029}
 	// ONE message, and it is the job's own ending: role system, node-anchored,
 	// no command sequence — which is what isDelivery reads, and what makes the
 	// room draw 13.10's card instead of a second work row.
@@ -114,10 +118,14 @@ func foldRowOf(t *testing.T, app *App, width, height int, id string) int {
 		if !ok || block.ID() != id {
 			continue
 		}
+		// §10's expand law makes the whole OPENED region a way back — "click on
+		// the line again, or anywhere inside the expanded region, closes" — so
+		// several rows of an open block answer a click and only one of them
+		// carries the witness. The witness is what this helper is looking for;
+		// the rows around it answering too is the law working.
 		if !strings.Contains(frame[y], tokens.GlyphCollapsed) &&
 			!strings.Contains(frame[y], tokens.GlyphExpanded) {
-			t.Fatalf("row %d resolves to %q but shows no fold affordance: %q",
-				y, id, frame[y])
+			continue
 		}
 		return y
 	}
@@ -304,9 +312,14 @@ func TestHoveringAFoldRowPromotesIt(t *testing.T) {
 		t.Fatalf("the hovered fold row paints identically to the row at rest:\n%q", rest)
 	}
 	// The PROMOTION is paint and only paint: the words are the same words.
-	if ansi.Strip(hovered) != ansi.Strip(rest) {
+	//
+	// The one thing hover DOES add to a message's first row is the copy chip
+	// (§3b, message.go's wearChip) — a layer over the row, not an edit of it —
+	// so it is taken off before the two are compared. Everything else about the
+	// row must be identical, which is what this assertion is for.
+	if got := withoutChip(ansi.Strip(hovered)); got != ansi.Strip(rest) {
 		t.Fatalf("hover changed the text of the row:\n rest: %q\nhover: %q",
-			ansi.Strip(rest), ansi.Strip(hovered))
+			ansi.Strip(rest), got)
 	}
 	// And leaving puts it back, so a pointer that has moved on leaves no mark.
 	if !app.pane.Hover(image.Point{}, false) {
@@ -345,6 +358,14 @@ func TestClickingAnythingButAFoldRowFoldsNothing(t *testing.T) {
 		if strings.Contains(line, tokens.GlyphCollapsed) {
 			continue
 		}
+		// A CARD'S BODY IS ITS OWN DOOR (user-amended 2026-08-11): §3 makes the
+		// whole block a click target to the record, so a click there is not a
+		// click on nothing and is asserted by its own test below. What this one
+		// is about is everything ELSE — prose, blanks, receipts — which must
+		// stay inert.
+		if block, _, _, ok := app.pane.messageAt(y); ok && block.card != dressNone {
+			continue
+		}
 		app.pane.Mouse(clickAt(4, y), image.Point{X: 4, Y: y})
 	}
 	if len(app.folds) != 0 {
@@ -352,6 +373,60 @@ func TestClickingAnythingButAFoldRowFoldsNothing(t *testing.T) {
 	}
 	if got := ansi.Strip(app.Frame(100, 30)); got != frame {
 		t.Fatalf("clicking the prose changed the transcript:\n%s", got)
+	}
+}
+
+// THE CARD IS A DOOR TO ITS TASK (§3: "the whole block is a click target to the
+// record, from the moment it appears"). The reader filed its absence in as many
+// words — "the card has no click to go to task at all" — and the two doors on a
+// card must not be one: a click on the body walks in, a click on the tail door
+// only folds.
+func TestClickingACardBodyOpensItsTask(t *testing.T) {
+	app := foldApp(t)
+	frame := strings.Split(ansi.Strip(app.Frame(100, 30)), "\n")
+
+	body, door := -1, -1
+	for y, line := range frame {
+		block, _, at, ok := app.pane.messageAt(y)
+		if !ok || block.card == dressNone {
+			continue
+		}
+		if strings.Contains(line, tokens.GlyphCollapsed) {
+			door = y
+			continue
+		}
+		if body < 0 && at > 0 && strings.TrimSpace(line) != "" {
+			body = y
+		}
+	}
+	if body < 0 || door < 0 {
+		t.Fatalf("the fixture has no card with both a body row and a fold row:\n%s",
+			strings.Join(frame, "\n"))
+	}
+
+	// THE FOLD ROW FOLDS AND DOES NOT NAVIGATE.
+	if cmd := app.pane.Mouse(clickAt(4, door), image.Point{X: 4, Y: door}); cmd != nil {
+		cmd()
+	}
+	if len(app.folds) != 1 {
+		t.Fatalf("the card's fold row did not fold: %+v", app.folds)
+	}
+	if app.view != nil {
+		t.Fatalf("folding a card walked into a room: %+v", app.view)
+	}
+
+	// THE BODY WALKS IN. A fresh window, because the fold above moved every row
+	// under it and a click aimed at a stale layout is a click at nothing.
+	app = foldApp(t)
+	app.Frame(100, 30)
+	if cmd := app.pane.Mouse(clickAt(4, body), image.Point{X: 4, Y: body}); cmd != nil {
+		cmd()
+	}
+	if app.view == nil || app.view.kind != viewNode {
+		t.Fatalf("clicking the card's body opened no room: %+v", app.view)
+	}
+	if len(app.folds) != 0 {
+		t.Fatalf("walking into the room folded something too: %+v", app.folds)
 	}
 }
 
@@ -366,16 +441,18 @@ func TestEachBlockHoldsItsOwnFoldState(t *testing.T) {
 	if got := app.view.transcript.Block(0).ID(); got != chargeBlockID {
 		t.Fatalf("the room does not open on the charge: first block is %q", got)
 	}
-	charge, _ := app.view.transcript.Block(0).(*messageBlock)
-	if charge == nil || !charge.collapsible {
-		t.Fatalf("the charge is not collapsible, so this test proves nothing")
+	// The page's top is a RULE (recordpage.go's chargeRule) and the ask stands
+	// under it, which is the block with a fold on it.
+	charge, _ := app.view.transcript.Block(1).(*messageBlock)
+	if charge == nil || charge.ID() != chargeAskID || !charge.collapsible {
+		t.Fatalf("the ask is not collapsible, so this test proves nothing")
 	}
 	app.toggleFold(charge)
 	if !charge.Expanded() {
 		t.Fatal("the charge did not open")
 	}
 	// The ending is the other block, and it must still be shut.
-	for i := 1; i < app.view.transcript.Len(); i++ {
+	for i := 2; i < app.view.transcript.Len(); i++ {
 		block, ok := app.view.transcript.Block(i).(*messageBlock)
 		if ok && block.collapsible && block.Expanded() {
 			t.Fatalf("opening the charge opened %q too", block.ID())
@@ -410,15 +487,15 @@ func TestANewTurnIsBornOnTheSideOfTheFoldTheRoomIsOn(t *testing.T) {
 // claim a row that has no door behind it (5.20 rule 3).
 func TestARowWithNothingFoldedIsNotAFoldRow(t *testing.T) {
 	block := &messageBlock{id: "msg-1"}
-	if block.isFoldRow(0) {
+	if block.isFoldRow(0, 80) {
 		t.Fatal("a block with no fold offered its header as a fold row")
 	}
 	block.collapsible, block.hidden = true, 3
 	block.head.Title = "something"
-	if !block.isFoldRow(0) {
+	if !block.isFoldRow(0, 80) {
 		t.Fatal("a collapsible block did not offer its header as a fold row")
 	}
-	if block.isFoldRow(1) {
+	if block.isFoldRow(1, 80) {
 		t.Fatal("a body row was offered as a fold row")
 	}
 }

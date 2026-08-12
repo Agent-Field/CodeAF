@@ -1,5 +1,5 @@
 // Package palette renders the two discoverability surfaces 5.22 names, as
-// panes the shell raises on its overlay plane: the ctrl+k command palette
+// panes the shell raises on its overlay plane: the ctrl+space command palette
 // (rule 2) and the `?` capability overlay (rule 4, which is also 5.20 rule 3's
 // capability-honesty surface).
 //

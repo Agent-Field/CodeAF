@@ -42,6 +42,21 @@ func (run *beltRun) spawn(args map[string]any) (string, bool) {
 		return "instruction must carry the user's own words for the work, verbatim", true
 	}
 
+	// The commission-or-amend door (amend.go). It runs before anything is
+	// journaled and before the fan-out arithmetic, because what it decides is
+	// whether there is a new job here at all — and it is asked of the PERSON'S
+	// words rather than of the model's paraphrase, since reference to work in
+	// flight is a property of what they said.
+	//
+	// separate is the person's own override and never the model's convenience:
+	// it may be set when they have said, in so many words, that this is a job
+	// beside the running one. The tool description says exactly that.
+	if !beltBool(args, "separate") {
+		if change, amending, err := run.head.amendmentFor(run.user); err == nil && amending {
+			return run.amendInstead(change)
+		}
+	}
+
 	reflex := beltBool(args, "reflex")
 	// The opt-out from learned know-how. It is a reading of what a sentence MEANT
 	// — "don't use the template this time", "plan this one properly", "start over
@@ -90,9 +105,31 @@ func (run *beltRun) spawn(args map[string]any) (string, bool) {
 		reflex, after = false, ""
 	}
 
+	// The turn guard only remembers ONE turn, and the workforce may take a
+	// while to reach a splice — so "get me a list of X" followed a minute later
+	// by "ok start it" journaled a second identical job while the first sat
+	// pending (user-reported, 2026-08-11: two "20 best stocks" runs, then a
+	// "queued" claim over an already-queued job). Pending splices for this
+	// session are read once here so the loop can be told the work already
+	// exists instead of minting a twin.
+	pending := run.pendingSplices()
 	journaled := make([]string, 0, len(orders))
+	repeated, waiting := 0, 0
 	var first int64
 	for _, instruction := range orders {
+		// The same sentence twice in one turn is one job. dedupeOrders catches it
+		// inside a single call; this catches the loop calling spawn again with
+		// words it has already commissioned, which is the only way one submission
+		// could ever have produced two identical jobs — two compiles, two plans,
+		// and the person reading the same reading of their request twice.
+		if run.alreadyCommissioned(instruction) {
+			repeated++
+			continue
+		}
+		if pendingTwin(instruction, pending) {
+			waiting++
+			continue
+		}
 		asReflex := reflex
 		if asReflex && (consequenceGated(instruction) || after != "") {
 			// A reflex is untargeted by definition and never consequential. The
@@ -117,6 +154,14 @@ func (run *beltRun) spawn(args map[string]any) (string, bool) {
 		journaled = append(journaled, instruction)
 	}
 	if len(journaled) == 0 {
+		if repeated > 0 {
+			// Not a failure and not silence: the work exists, this turn made it,
+			// and the loop needs to know it must not say it twice either.
+			return "that is already in hand from this turn — it was commissioned a moment ago and nothing more was queued; say what is happening, do not commission it again", false
+		}
+		if waiting > 0 {
+			return "that is already queued from an earlier ask and is still waiting for the workforce — nothing new was commissioned; say it is queued and will start, do not commission it again", false
+		}
 		return "none of that could be queued", true
 	}
 
@@ -145,6 +190,86 @@ func (run *beltRun) spawn(args map[string]any) (string, bool) {
 // spawnReceiptBytes keeps one order's words to a clause. The receipt names what
 // was commissioned; the work itself carries the whole sentence.
 const spawnReceiptBytes = 80
+
+// pendingSplices is this session's commissioned-but-not-yet-consumed work, read
+// once per spawn call. The window it guards is real: a splice sits pending for
+// as long as the workforce takes to reach it, and every turn inside that window
+// is a turn that could honestly believe the work does not exist yet.
+func (run *beltRun) pendingSplices() []store.Command {
+	all, err := run.head.store.PendingCommands(pendingSpliceRead)
+	if err != nil {
+		return nil
+	}
+	mine := all[:0]
+	for _, command := range all {
+		if command.Kind == store.CommandSplice && command.SessionID == run.user.SessionID {
+			mine = append(mine, command)
+		}
+	}
+	return mine
+}
+
+// pendingSpliceRead bounds the pending read. A session with more than this many
+// splices waiting has a stalled workforce, and the guard degrades to catching
+// the newest of them — which is the one a re-ask would twin.
+const pendingSpliceRead = 32
+
+// pendingTwin reports that an instruction is the same ask as a splice already
+// waiting. Exact words are too strict across turns — the loop re-reads the
+// request each time — so the test is shared content words: most of the shorter
+// sentence's meaningful words appearing in the other. The bar is deliberately
+// high (two thirds, and at least three shared words) because a false twin
+// silently swallows a genuinely new job, which is worse than the duplicate it
+// exists to prevent — a duplicate at least shows up on the board.
+func pendingTwin(instruction string, pending []store.Command) bool {
+	words := spawnContentWords(instruction)
+	if len(words) < 3 {
+		return false
+	}
+	for _, command := range pending {
+		theirs := spawnContentWords(command.Instruction)
+		if len(theirs) < 3 {
+			continue
+		}
+		shorter, longer := words, theirs
+		if len(theirs) < len(words) {
+			shorter, longer = theirs, words
+		}
+		shared := 0
+		for word := range shorter {
+			if longer[word] {
+				shared++
+			}
+		}
+		if shared >= 3 && shared*3 >= len(shorter)*2 {
+			return true
+		}
+	}
+	return false
+}
+
+// spawnContentWords is the sentence as a set of meaningful lowercased words —
+// what survives when the connective tissue is taken out.
+func spawnContentWords(sentence string) map[string]bool {
+	words := make(map[string]bool)
+	for _, word := range strings.FieldsFunc(strings.ToLower(sentence), func(r rune) bool {
+		return !('a' <= r && r <= 'z' || '0' <= r && r <= '9')
+	}) {
+		if len(word) < 3 || spawnStopWords[word] {
+			continue
+		}
+		words[word] = true
+	}
+	return words
+}
+
+var spawnStopWords = map[string]bool{
+	"the": true, "and": true, "for": true, "that": true, "this": true,
+	"with": true, "have": true, "from": true, "please": true, "you": true,
+	"can": true, "get": true, "our": true, "are": true, "was": true,
+	"will": true, "would": true, "should": true, "into": true, "out": true,
+	"all": true, "any": true, "its": true, "then": true, "them": true,
+}
 
 func spawnLabels(orders []string) []string {
 	labels := make([]string, 0, len(orders))

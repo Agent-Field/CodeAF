@@ -18,8 +18,12 @@ import (
 )
 
 const (
-	residentLockName = "resident.lock"
-	maxPayloadBytes  = 16 << 10
+	// legacyLockName is the directory-wide lock this package used before the
+	// role was keyed to the store it serves. It is only ever read now — see
+	// legacyHolder — and never taken.
+	legacyLockName  = "resident.lock"
+	lockSuffix      = ".resident.lock"
+	maxPayloadBytes = 16 << 10
 
 	// StuckAfter is how long a holder may go without stamping a completed pass
 	// before the role is considered abandoned. It is several resident poll
@@ -37,6 +41,12 @@ type Resident struct {
 	Host       string    `json:"host"`
 	Surface    string    `json:"surface"`
 	AcquiredAt time.Time `json:"acquired_at"`
+	// Store is the database this holder is the resident for. It is written so a
+	// process that finds the role taken can say which store it was taken for —
+	// a lock that names nothing is exactly what made a whole grid of headless
+	// runs sit at nodes:0 for their entire wall with no way to see why. An empty
+	// value means an older build wrote the payload.
+	Store string `json:"store,omitempty"`
 	// LastTick is when the holder last finished a resident pass. Zero means the
 	// holder never said — an flock proves a process is alive, never that it is
 	// still doing the work — and silence is deliberately read as unknown rather
@@ -127,18 +137,38 @@ func localRevision() string {
 	return ""
 }
 
-// AcquireResident attempts to become the resident for the store directory.
-// On success heldBy is nil and release relinquishes the role. If another live
-// process holds the lock, release is nil and heldBy describes that process.
-func AcquireResident(dir, surface string) (release func() error, heldBy *Resident, err error) {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return nil, nil, fmt.Errorf("acquire resident: empty store directory")
+// LockPath is where the lock for one store lives. It is keyed to the store
+// file, not to the directory holding it: two databases that happen to share a
+// directory are two stores, they need two residents, and a directory-wide lock
+// made the second one wait on a brain that was serving somebody else's journal.
+func LockPath(store string) (string, error) {
+	store = strings.TrimSpace(store)
+	if store == "" {
+		return "", fmt.Errorf("empty store path")
 	}
+	store = filepath.Clean(store)
+	return filepath.Join(filepath.Dir(store), filepath.Base(store)+lockSuffix), nil
+}
+
+// AcquireResident attempts to become the resident for one store. On success
+// heldBy is nil and release relinquishes the role. If another live process
+// holds the lock, release is nil and heldBy describes that process.
+func AcquireResident(store, surface string) (release func() error, heldBy *Resident, err error) {
+	path, err := LockPath(store)
+	if err != nil {
+		return nil, nil, fmt.Errorf("acquire resident: %w", err)
+	}
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, nil, fmt.Errorf("acquire resident: create store directory: %w", err)
 	}
-	path := filepath.Join(dir, residentLockName)
+	// A live holder of the old directory-wide lock is an older binary, and it
+	// may well be serving this very store. Taking the store-keyed lock beside it
+	// would put two brains on one journal, which is the one thing this lease
+	// exists to prevent, so the older process keeps the role until it exits.
+	if legacy := legacyHolder(dir); legacy != nil && !legacy.Stuck {
+		return nil, legacy, nil
+	}
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, nil, fmt.Errorf("acquire resident: open lock: %w", err)
@@ -163,6 +193,7 @@ func AcquireResident(dir, surface string) (release func() error, heldBy *Residen
 		Host:       strings.TrimSpace(host),
 		Surface:    strings.TrimSpace(surface),
 		AcquiredAt: time.Now().UTC(),
+		Store:      absoluteStore(store),
 		Build:      LocalBuild(),
 	}
 	if resident.Surface == "" {
@@ -190,12 +221,14 @@ func AcquireResident(dir, surface string) (release func() error, heldBy *Residen
 // ProbeResident reports the live holder of resident.lock. It never trusts the
 // JSON by itself: if a non-blocking flock succeeds, any payload is stale and
 // the resident role is free.
-func ProbeResident(dir string) (*Resident, error) {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return nil, fmt.Errorf("probe resident: empty store directory")
+func ProbeResident(store string) (*Resident, error) {
+	path, err := LockPath(store)
+	if err != nil {
+		return nil, fmt.Errorf("probe resident: %w", err)
 	}
-	path := filepath.Join(dir, residentLockName)
+	if legacy := legacyHolder(filepath.Dir(path)); legacy != nil && !legacy.Stuck {
+		return legacy, nil
+	}
 	file, err := os.OpenFile(path, os.O_RDWR, 0o600)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -225,12 +258,11 @@ func ProbeResident(dir string) (*Resident, error) {
 // process holds. It is deliberately stateless and deliberately fussy about who
 // may write: only the holder stamps its own liveness, so a second process
 // cannot make a wedged resident look alive.
-func NoteResidentTick(dir string, at time.Time) error {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
-		return fmt.Errorf("note resident tick: empty store directory")
+func NoteResidentTick(store string, at time.Time) error {
+	path, err := LockPath(store)
+	if err != nil {
+		return fmt.Errorf("note resident tick: %w", err)
 	}
-	path := filepath.Join(dir, residentLockName)
 	file, err := os.OpenFile(path, os.O_RDWR, 0o600)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -252,6 +284,43 @@ func NoteResidentTick(dir string, at time.Time) error {
 		return fmt.Errorf("note resident tick: write holder: %w", err)
 	}
 	return nil
+}
+
+// absoluteStore names the store a holder serves as plainly as it can. An
+// absolute path is what makes the diagnostic actionable — the reader is in some
+// other directory by definition — and a path that cannot be resolved is written
+// as it was given rather than dropped.
+func absoluteStore(store string) string {
+	store = strings.TrimSpace(store)
+	absolute, err := filepath.Abs(store)
+	if err != nil {
+		return filepath.Clean(store)
+	}
+	return absolute
+}
+
+// legacyHolder reports a live holder of the pre-store-keyed lock, or nil. It is
+// the whole of the compatibility story: nothing writes that lock any more, so a
+// process holding it is a binary from before the key changed, and the only
+// question worth asking about it is whether it is still alive.
+func legacyHolder(dir string) *Resident {
+	file, err := os.OpenFile(filepath.Join(dir, legacyLockName), os.O_RDWR, 0o600)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		return nil
+	} else if !lockBusy(err) {
+		return nil
+	}
+	holder, err := readSteadyResident(file)
+	if err != nil {
+		return nil
+	}
+	markStuck(holder, time.Now())
+	return holder
 }
 
 // markStuck decides whether a live holder has stopped serving. A holder that

@@ -180,6 +180,20 @@ func (r *Reconciler) flushLearningMoments() {
 	}
 }
 
+// craftDigestBecause is the short clause after a newly learned way of working:
+// whether it is new or better, said the way the rest of the digest says things.
+// The commit and the version are not in it — a digest line is what changed, and
+// which commit it landed as is a question for the page about it.
+func craftDigestBecause(forged store.CraftForged) string {
+	if forged.Refined {
+		return " · better than before"
+	}
+	if because := firstLine(forged.Because); because != "" {
+		return " · from " + clipLabel(because, 60)
+	}
+	return ""
+}
+
 func (r *Reconciler) latestEventSeq() int64 {
 	seq, err := r.store.LatestEventSeq()
 	if err != nil {
@@ -300,6 +314,20 @@ func (r *Reconciler) postRetrospectiveDigest(afterSeq int64) {
 					return fmt.Sprintf("%d %s made", count, plural(count, "proposal", "proposals"))
 				})
 				addDetail("~ " + firstLine(charter.Invariant))
+			}
+		case store.EventCraftForged:
+			// The digest had every other kind of learning in it and not this one,
+			// which is the largest of them: a whole way of working, worked out from
+			// jobs already done. It reads the journal like every branch here rather
+			// than the repository, because the digest's whole contract is "what
+			// changed between these two sequence numbers" and a repository cannot
+			// answer that.
+			var forged store.CraftForged
+			if json.Unmarshal(event.Payload, &forged) == nil && strings.TrimSpace(forged.Name) != "" {
+				addCategory("crafts", event.Seq, 1, func(count int) string {
+					return fmt.Sprintf("%d new %s", count, plural(count, "way of working", "ways of working"))
+				})
+				addDetail("⚒ " + firstLine(forged.Name) + craftDigestBecause(forged))
 			}
 		case store.EventFactActivated:
 			var payload struct {

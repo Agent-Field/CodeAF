@@ -28,7 +28,7 @@ func slack(limit time.Duration) time.Duration { return limit * loadSlack }
 func backgroundToolbox(t *testing.T) (*Toolbox, *Workspace) {
 	t.Helper()
 	space := workspace(t)
-	tools := NewToolbox(space, 1, nil)
+	tools := NewToolbox(space, "1", nil)
 	t.Cleanup(func() { tools.Close() })
 	return tools, space
 }
@@ -94,7 +94,7 @@ func TestBackgroundStartReturnsImmediatelyAndCreatesDurableLog(t *testing.T) {
 	if _, ok := space.Locate(".aforge/jobs/1.log"); !ok {
 		t.Fatal("the durable job log was not written")
 	}
-	if artifacts := space.Artifacts(1); len(artifacts) != 0 {
+	if artifacts := space.Artifacts("1"); len(artifacts) != 0 {
 		t.Fatalf("artifacts = %v, want the job log held out of the job's own output", artifacts)
 	}
 }
@@ -455,8 +455,8 @@ func TestSchedulerAbandonmentTearsDownLeafJobs(t *testing.T) {
 
 func TestBackgroundJobIDsAreUniqueAcrossLeafToolboxes(t *testing.T) {
 	space := workspace(t)
-	first := NewToolbox(space, 1, nil)
-	second := NewToolbox(space, 2, nil)
+	first := NewToolbox(space, "1", nil)
+	second := NewToolbox(space, "2", nil)
 	t.Cleanup(func() { first.Close(); second.Close() })
 	for index, tools := range []*Toolbox{first, second} {
 		result := tools.Execute(context.Background(), "sh", `{"cmd":"sleep 30","bg":true}`)

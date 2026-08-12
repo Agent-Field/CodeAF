@@ -112,8 +112,8 @@ func TestScratchIsWritableWhenItSitsOutsideTheWorkspace(t *testing.T) {
 
 	// It is a working file and not a product: nothing recorded there may reach
 	// the person as something the job made for them.
-	space.Record(1, resolved)
-	if got := space.Artifacts(1); len(got) != 0 {
+	space.Record("1", resolved)
+	if got := space.Artifacts("1"); len(got) != 0 {
 		t.Fatalf("a scratch file was announced as a deliverable: %v", got)
 	}
 	// And somewhere genuinely outside both roots is still refused.

@@ -3,16 +3,12 @@ package chat
 import (
 	"image"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/placeline"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -26,17 +22,23 @@ import (
 // not consume arrives here as [composer.EscMsg], and only this side knows
 // whether the room is streaming and therefore what that esc means (8.2.21).
 //
-// Above the draft sits internal/tui2/placeline (5.19): one dim row naming where
-// this work lands on disk — the question a breadcrumb never answers and the pwd
-// a terminal usually gives away for free. Below it sits the meta strip, which
-// is 10.5.23's other home: THIS TURN's cost and context, and nothing about
-// system health, which belongs to the footer under the region and never mixes.
+// THE REGION IS ONE ROW NOW. It used to be four: a place line welded to its top
+// edge, two rows of draft, and a meta strip of numbers welded to its bottom. §7
+// dissolved both strips into the bar row under this one — the directory into the
+// bar's right zone, the model word into the same zone as the picker's door, the
+// turn's cost and age into the middle zone where they exist only while the turn
+// does — and what is left here is the draft and whatever it grows for itself: the
+// bounded HUD, the `@` and `/` lists, the wrapped rows of a long message.
 //
-// The three are assembled here rather than by the shell because the shell gives
+// The reason is §15's, applied to two rows of permanent chrome: a window that
+// carried an elapsed cell and a `$—` on every frame of every minute nobody was
+// waiting for anything was spending two rows of a conversation on structure
+// announcing itself. Everything those rows said is still said; none of it is
+// said standing up.
+//
+// The region is assembled here rather than by the shell because the shell gives
 // a pane its whole rectangle and reserves nothing inside it (pane.go's
-// contract). A region that had to be told "you have three rows, one of them is
-// mine" would be the shell reaching into a pane, which is exactly the seam the
-// v2 layout was built to keep clean.
+// contract).
 
 // composerPane is what the app binds into the composer region.
 type composerPane interface {
@@ -63,9 +65,11 @@ type composerOptions = composer.Options
 
 // composerStack is the assembled region.
 type composerStack struct {
-	place *placeline.Model
 	draft *composer.Model
-	meta  *metaStrip
+	// style paints whatever this region draws itself — the disabled sentence,
+	// and the hug's own ground under the whole rectangle. The draft carries its
+	// own styler; this is the region's.
+	style *tokens.Styler
 
 	// mode reports what the composer is bound to right now (5.15). It is a
 	// function rather than a field because the binding is the app's state and
@@ -76,12 +80,6 @@ type composerStack struct {
 	// the rows it wants and never more than it is offered; nil means this frame
 	// has a rail and does not need one.
 	hud func(width, height int) []string
-	// openModels is 5.22 rule 5's "click model chip → model palette", and copy
-	// is 5.19's "click/`y` copies" on the place line. Both are functions for
-	// the reason every other pointer seam is: this stack resolves a cell to a
-	// chip, and the act belongs to the app.
-	openModels func() tea.Cmd
-	copy       func(text string) tea.Cmd
 	// focus is 5.14's "you talk to what you are looking at", read for a hand
 	// instead of an eye: POINTING IS LOOKING, so a click anywhere in this
 	// rectangle asks for the keyboard. It is a function for the same reason the
@@ -94,8 +92,6 @@ type composerStack struct {
 	// The rectangle this stack was last drawn at, so a pointer can be resolved
 	// against the row that is actually on screen.
 	lastWidth, lastHeight int
-	// hoverChip is which of the two chips the pointer is on: "" for neither.
-	hoverChip string
 }
 
 var (
@@ -104,13 +100,18 @@ var (
 	_ tui2.PaneFocus = (*composerStack)(nil)
 )
 
-// newComposer builds the region the app binds.
-func newComposer(opts composerOptions, place *placeline.Model, meta *metaStrip) *composerStack {
-	return &composerStack{place: place, draft: composer.New(opts), meta: meta}
+// newComposer builds the region the app binds. hostCursor says the shell will
+// place the terminal's own blinking cursor on the caret (§8/§11), so the
+// painted block yields to the real one; linear mode keeps the painted block,
+// because the shell's cursor stays nil there.
+func newComposer(opts composerOptions, hostCursor bool) *composerStack {
+	draft := composer.New(opts)
+	draft.HostCursor(hostCursor)
+	return &composerStack{draft: draft, style: opts.Styler}
 }
 
-// Key hands every keystroke to the draft. The place line and the meta strip are
-// read-only chrome; neither has an affordance that takes the keyboard.
+// Key hands every keystroke to the draft. Nothing else in this rectangle takes
+// the keyboard — the region is the draft and the chrome it opens for itself.
 //
 // A DISABLED composer takes nothing. 5.15's one rule is that a settled row's
 // composer is disabled, and a disabled composer that quietly accepted a draft
@@ -128,50 +129,37 @@ func (s *composerStack) Key(msg tea.KeyPressMsg) tea.Cmd {
 // it).
 func (s *composerStack) Paste(msg tea.PasteMsg) tea.Cmd { return s.draft.Paste(msg) }
 
-// Focus flows to both rows that render differently for it: the draft shows its
-// caret, and the place line reveals the root's full, unabbreviated path (5.19).
-func (s *composerStack) Focus(focused bool) {
-	s.draft.Focus(focused)
-	if s.place != nil {
-		s.place.Focus(focused)
-	}
-}
+// Focus flows to the draft, which is the one part of this region that renders
+// differently for it: the caret appears and the ghost line starts speaking.
+func (s *composerStack) Focus(focused bool) { s.draft.Focus(focused) }
 
 // Draft is the current buffer.
 func (s *composerStack) Draft() string { return s.draft.Value() }
 
-// -- the region's two chips (5.22 rule 5) ------------------------------------
-
-// chipAt resolves a pane-local cell to one of the region's two doors: the place
-// line on the top edge, and the model chip on the meta strip at the bottom.
+// draftPad is the blank row the region keeps between the words being typed and
+// the bar row under them.
 //
-// The rows between them are the draft and its completions, and they are
-// deliberately not doors — a click there is the reader putting the keyboard
-// back on the composer, which the shell has already done by the time this is
-// asked.
-func (s *composerStack) chipAt(local image.Point) string {
-	if s.lastHeight <= 0 {
-		return ""
-	}
-	switch {
-	case s.place != nil && s.lastHeight >= 3 && local.Y == 0:
-		if s.place.CopyText() == "" {
-			return ""
-		}
-		return placeChipID
-	case s.meta != nil && s.lastHeight >= 2 && local.Y == s.lastHeight-1:
-		from, to, ok := s.meta.chipSpan(s.lastWidth)
-		if !ok || local.X < from || local.X >= to {
-			return ""
-		}
-		return metaChipID
-	}
-	return ""
-}
+// It is a SPACE and not a mark, which is §16's whole answer to separation, and
+// it is here because a reader on the live build said the writing area "feels
+// cramped" — the draft sat one row above a row of telemetry with nothing
+// between them, so the sentence being composed read as another line of chrome.
+// One blank row is the cheapest thing that makes the composer a place rather
+// than a field, and it is the same padding rhythm a card gets inside its ground.
+const draftPad = 1
+
+// draftFloor is the least room the writing area gets even when it is empty.
+//
+// TWO ROWS, and the second one is deliberately blank most of the time. A
+// one-row composer is a text INPUT — it says "type a short thing here" — and
+// this surface's whole premise is that a person describes work in sentences. The
+// floor costs one row of transcript and buys the reader somewhere to look while
+// they think; past it the region grows upward as the draft wraps, exactly as
+// before ([composer.Model.GrowRows]).
+const draftFloor = 2
 
 // draftBand is where the composer's own rows sit inside this region and how
-// many of them there are: the place line takes the top edge, the meta strip the
-// bottom, and the bounded HUD borrows from the middle. It restates Render's own
+// many of them there are: the bounded HUD borrows from the top, the padding row
+// takes the bottom, and the draft takes the rest. It restates Render's own
 // reservations rather than recording them, so the pointer and the paint answer
 // the same question from the same numbers.
 func (s *composerStack) draftBand() (top, body int) {
@@ -180,12 +168,10 @@ func (s *composerStack) draftBand() (top, body int) {
 		return 0, 0
 	}
 	body = height
-	if height >= 3 && s.place != nil {
-		body--
-		top++
-	}
-	if height >= 2 && s.meta != nil {
-		body--
+	// The padding row is given up before the draft is: a region squeezed to two
+	// rows should spend both on words.
+	if body > draftFloor {
+		body -= draftPad
 	}
 	if s.hud != nil && body > 1 {
 		if rows := len(s.hud(s.lastWidth, body-1)); rows > 0 {
@@ -195,11 +181,6 @@ func (s *composerStack) draftBand() (top, body int) {
 	}
 	return top, body
 }
-
-// The two chip ids, as the pointer names them. metaChipID is the meta strip's
-// own; the place line's is declared here because the place line is a component
-// that does not know it is a door.
-const placeChipID = "place"
 
 // Mouse takes the keyboard, places the caret, and performs a chip.
 //
@@ -243,56 +224,54 @@ func (s *composerStack) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 			}
 		}
 	}
-	switch s.chipAt(local) {
-	case placeChipID:
-		// 5.19: the place line is the room's ground, and click or `y` copies
-		// it. The component already knows what the full, unabbreviated path is
-		// — the same text it reveals on focus — so nothing here re-derives it.
-		if s.copy != nil {
-			return s.copy(s.place.CopyText())
-		}
-	case metaChipID:
-		if s.openModels != nil {
-			return s.openModels()
-		}
-	}
 	return nil
 }
 
-// Hover lights whichever chip the pointer is on.
+// Hover lights the candidate row the pointer is on, and nothing else: the two
+// chips this region used to carry moved to the bar row with the strips they
+// stood on, and what is left in this rectangle is the draft and its own lists.
 func (s *composerStack) Hover(local image.Point, inside bool) bool {
-	moved := false
-	if inside && s.draft != nil {
-		top, body := s.draftBand()
-		if body > 0 && s.draft.HoverHint(s.lastWidth, body, local.Y-top) {
-			moved = true
-		}
+	if !inside || s.draft == nil {
+		return false
 	}
-	next := ""
-	if inside {
-		next = s.chipAt(local)
-	}
-	if s.hoverChip == next {
-		return moved
-	}
-	s.hoverChip = next
-	// The place line's own focus state IS the "show me the whole path" tier
-	// (5.19), so a pointer resting on it reveals exactly what focusing it
-	// reveals — one meaning, one rendering. The chip is left to the meta
-	// strip's own paint, which promotes it a tier.
-	if s.place != nil {
-		s.place.Focus(s.hoverChip == placeChipID || s.draft.Focused())
-	}
-	if s.meta != nil {
-		s.meta.hover = s.hoverChip == metaChipID
-	}
-	return true
+	top, body := s.draftBand()
+	return body > 0 && s.draft.HoverHint(s.lastWidth, body, local.Y-top)
 }
 
-// HintRows is how many rows the draft's open inline completion wants. The stack
-// adds nothing to the number: the place line and the meta strip are already in
-// the metric table, and what the region is short of is room for the LIST.
-func (s *composerStack) HintRows() int { return s.draft.HintRows() }
+// HintRows is every row the draft wants beyond its anchor row: its own wrapped
+// rows (capped) plus an open completion's. The stack adds nothing to the number
+// — it has nothing of its own left to add.
+func (s *composerStack) HintRows() int { return s.draft.GrowRows(s.lastWidth) }
+
+func (s *composerStack) Streaming(on bool, frame int) { s.draft.Streaming(on, frame) }
+
+func (s *composerStack) SetHint(state composer.Hint, detail string) { s.draft.SetHint(state, detail) }
+
+// SetState is §7's state channel: what the prompt cell and the edge beside it
+// say about this room right now.
+func (s *composerStack) SetState(state composer.State) { s.draft.SetState(state) }
+
+// Restore puts a sent draft back after the post failed. See
+// [composer.Model.Restore] for why the composer cannot do this for itself and
+// why it refuses when the reader has started typing again.
+func (s *composerStack) Restore(text string) bool { return s.draft.Restore(text) }
+
+// Seed drops a steering sentence into an empty draft — the finished form of a
+// chip that says what to say (itemverb.go). It shares [composer.Model.Restore]'s
+// refusal: words the person already typed are never overwritten.
+func (s *composerStack) Seed(text string) bool { return s.draft.Restore(text) }
+
+// CaretAt is the draft's caret moved down by the rows the HUD took, so the
+// shell can place the terminal's own cursor on it.
+func (s *composerStack) CaretAt(width, height int) (int, int, bool) {
+	s.lastWidth, s.lastHeight = width, height
+	top, body := s.draftBand()
+	if body <= 0 || s.disabled() {
+		return 0, 0, false
+	}
+	x, y, ok := s.draft.CaretAt(width, body)
+	return x, y + top, ok
+}
 
 // KillToStart is the clear-draft verb reached from the `?` sheet or the palette
 // rather than from ctrl+u. The chord itself never comes through here — it is an
@@ -308,10 +287,12 @@ func (s *composerStack) KillToStart() {
 	s.draft.KillToStart()
 }
 
-// Render lays the three parts out from the outside in: the place line takes the
-// top edge, the meta strip the bottom, and the draft absorbs whatever is left.
-// A region too short for all three loses them in that order — the draft is the
-// one part whose absence makes the surface unusable, so it is the last to go.
+// Render lays the region out from the bottom up: the draft owns the last rows
+// and the bounded HUD borrows whatever is above them.
+//
+// The two strips that used to be reserved here are gone (§7), and with them the
+// rule that the draft was "the last to go" — it is now the only thing that can
+// go, which makes the arithmetic honest rather than defensive.
 func (s *composerStack) Render(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
@@ -319,27 +300,19 @@ func (s *composerStack) Render(width, height int) string {
 	s.lastWidth, s.lastHeight = width, height
 	rows := make([]string, 0, height)
 	body := height
-	wantPlace := height >= 3 && s.place != nil
-	wantMeta := height >= 2 && s.meta != nil
-	if wantPlace {
-		body--
-	}
-	if wantMeta {
-		body--
+	pad := 0
+	if body > draftFloor {
+		body -= draftPad
+		pad = draftPad
 	}
 	// The bounded HUD (8.2.8) borrows from the DRAFT and from nothing else, and
-	// never takes its last row. The place line names the ground and the meta
-	// strip carries the money; a summary that displaced either would have spent
-	// a permanent row on a transient fact. What it cannot fit, its fold line
-	// accounts for — that is what "bounded" means here.
+	// never takes its last row. What it cannot fit, its fold line accounts for —
+	// that is what "bounded" means here.
 	var summary []string
 	if s.hud != nil && body > 1 {
 		if summary = s.hud(width, body-1); len(summary) > 0 {
 			body -= len(summary)
 		}
-	}
-	if wantPlace {
-		rows = append(rows, s.place.Render(width))
 	}
 	rows = append(rows, summary...)
 	drafted := strings.Split(s.renderDraft(width, body), "\n")
@@ -352,32 +325,23 @@ func (s *composerStack) Render(width, height int) string {
 			continue
 		}
 		// The draft is shorter than its room. The blank rows are emitted rather
-		// than skipped so the meta strip stays welded to the region's bottom
-		// edge, one row above the footer, instead of drifting up under a short
-		// draft and back down under a long one.
+		// than skipped so the region keeps its full rectangle and the ground
+		// under it stays a rectangle too.
 		rows = append(rows, "")
 	}
-	if wantMeta {
-		rows = append(rows, s.meta.render(width))
+	for range pad {
+		rows = append(rows, "")
 	}
-	return strings.Join(rows, "\n")
+	// The region stands on the LIGHTER of the hug's two rungs (§16 SURFACE SEAMS
+	// ARE GROUNDS): scrolling content stops visibly at the composer's top edge,
+	// and the row you type into is the nearer plane of the two.
+	return seamStrip(s.styler(), strings.Join(rows, "\n"), width, height, tokens.HugGroundInput)
 }
 
 // -- what the composer is bound to (5.15) ------------------------------------
 
 // steerPlaceholder is the steer line's idle hint (5.11: "steer — one-way").
 const steerPlaceholder = "steer — one-way"
-
-// chatPlaceholder mirrors internal/tui2/composer's own idle hint. It is
-// duplicated rather than imported because that package deliberately does not
-// make it configurable — see its comment — so this is the one string this file
-// has to know to be able to replace it.
-//
-// REQUESTED SEAM: composer.Options should carry Prompt and Placeholder. A room
-// whose composer means something different needs to SAY so, and the two glyphs
-// 5.11 spends on exactly that distinction currently have to be swapped from
-// outside.
-const chatPlaceholder = "Type a message"
 
 // bind reports what this region is bound to, defaulting to an ordinary chat so
 // a stack built without an app behind it is still a composer.
@@ -419,33 +383,19 @@ func (s *composerStack) renderDraft(width, body int) string {
 		rows[0] = line
 		return strings.Join(rows, "\n")
 	}
-	drawn := s.draft.Render(width, body)
-	if bind.mode != rail.ComposerSteer {
-		return drawn
+	// The prompt and the idle words are the composer's own now (Prompt enum +
+	// state-driven hints), so the steer dressing is a binding, not a rewrite.
+	if bind.mode == rail.ComposerSteer {
+		s.draft.Bind(composer.PromptSteer)
+		s.draft.SetHint(composer.HintSteer, "")
+	} else {
+		s.draft.Bind(composer.PromptChat)
 	}
-	head, rest, hasRest := strings.Cut(drawn, "\n")
-	head = strings.Replace(head, tokens.GlyphPromptChat, tokens.GlyphPromptSteer, 1)
-	if strings.TrimSpace(s.draft.Value()) == "" && strings.Contains(head, chatPlaceholder) {
-		// The hint only changes when the replacement still fits. A row that was
-		// already cut to width keeps the words it has rather than growing past
-		// the edge to say something friendlier.
-		if grown := strings.Replace(head, chatPlaceholder, steerPlaceholder, 1); blocks.Width(grown) <= width {
-			head = grown
-		}
-	}
-	if !hasRest {
-		return head
-	}
-	return head + "\n" + rest
+	return s.draft.Render(width, body)
 }
 
 // styler is the region's painter, at the focus the draft is drawn with.
-func (s *composerStack) styler() *tokens.Styler {
-	if s.meta == nil {
-		return nil
-	}
-	return s.meta.style
-}
+func (s *composerStack) styler() *tokens.Styler { return s.style }
 
 // paintDim draws chrome-tier text, or plain text when there is no profile.
 func paintDim(style *tokens.Styler, text string) string {
@@ -453,219 +403,4 @@ func paintDim(style *tokens.Styler, text string) string {
 		return text
 	}
 	return style.PaintToken(text, tokens.TextTertiary)
-}
-
-// -- the meta strip ----------------------------------------------------------
-
-// metaIndent aligns the strip with the draft's text rather than with its
-// prompt glyph, so the numbers sit under the words they are about.
-const metaIndent = "  "
-
-// metaStrip is the composer's own row of numbers: 10.5.23's cost-and-context
-// home, held apart from the footer's health-and-questions home so the two
-// never mix.
-//
-// It shortens rather than wraps, on the same mechanic the footer uses
-// ([tokens.FitFooter]) and with money holding the highest priority — 5.9 is
-// blunt about why: money "is the one number the user never forgives us for
-// hiding", so it is the last cell to leave a narrowing terminal.
-//
-// The v2 engine seam (engine.go's Commander) carries no per-turn cost and no
-// context window yet, so both cells render as the missing-data glyph. That is
-// 8.2.20's law applied literally — "missing data renders —, never an estimate" —
-// and it is the honest shape: a zero would be a claim that this turn was free.
-type metaStrip struct {
-	style *tokens.Styler
-
-	// model is the word the answering model goes by.
-	model string
-	// live says a turn is being answered right now, which is the only time an
-	// elapsed cell means anything.
-	live bool
-	// elapsed is how long the live turn has been running. It ages, which is
-	// allowed here and nowhere in the committed transcript: 8.1.2's corollary
-	// puts an ageing cell in live regions only, and this strip is one.
-	elapsed time.Duration
-
-	// cost and context are the two cells this seam cannot fill yet. The fields
-	// exist so the day the engine journals them is a wiring change and not a
-	// layout change.
-	cost      float64
-	haveCost  bool
-	used      int64
-	window    int64
-	haveUsage bool
-
-	// hover says the pointer is resting on the model chip, which brightens it
-	// one tier and changes nothing else (5.22: a control that is also telemetry
-	// is dim at rest and secondary on focus).
-	hover bool
-}
-
-// chip is the strip's model cell (5.10, 5.23): the one surface model economics
-// is said on, rendered by the component that owns its grammar.
-//
-// It carries the role word because this cell has no column beside it naming
-// one — the chip IS the sentence "the voice runs on this" — and it carries no
-// gauge because the strip's own ctx cell is 10.5.23's context home and a second
-// gauge two cells away would be the same fact drawn twice. What the chip adds
-// over the hand-rolled word this replaced is the effort suffix, which 5.10 says
-// rides the chip and which the bare word had nowhere to put.
-//
-// Boosted stays false: the escalation is real (8.2.16) but the engine seam this
-// surface holds has no way to ask whether it is on, and a chip that guessed
-// would be claiming a binding that is not there.
-func (m *metaStrip) chip() modelui.Chip {
-	return modelui.Chip{
-		Role:   store.RoleOrchestrate,
-		Model:  strings.TrimSpace(m.model),
-		Styler: m.style,
-	}
-}
-
-// metaCell is one column of the strip.
-type metaCell struct {
-	id    string
-	text  string
-	token tokens.Token
-	// paint replaces the token when a cell owns its own colours. The chip is
-	// the only one: it is a run of differently-tiered spans (the model word
-	// one tier above the effort suffix beside it), and flattening it to a
-	// single token here would be this strip re-deciding what a chip looks
-	// like — the one thing modelui's doc says a consumer may not do.
-	paint    func(width int) string
-	priority int
-}
-
-// metaChipID names the model cell, which is the one cell on this strip that is
-// also a door (5.22 rule 5: "click model chip → model palette").
-const metaChipID = "model"
-
-// cells is what the strip would draw, before fitting. It is shared by the paint
-// and by the pointer for the same reason the footer's fit is: two computations
-// of one row is a click landing on a cell the paint dropped.
-func (m *metaStrip) cells() []metaCell {
-	cells := make([]metaCell, 0, 4)
-	if chip := m.chip(); chip.Width() > 0 {
-		cells = append(cells, metaCell{id: metaChipID, text: chip.Text(),
-			paint: chip.Render, priority: 60})
-	}
-	if m.live {
-		cells = append(cells, metaCell{id: "elapsed", text: tokens.Elapsed(m.elapsed),
-			token: tokens.TextTertiary, priority: 70})
-	}
-	if m.haveCost {
-		cells = append(cells, metaCell{id: "cost", text: tokens.Money(m.cost),
-			token: tokens.Green, priority: 100})
-	} else {
-		cells = append(cells, metaCell{id: "cost", text: "$" + tokens.GlyphMissing,
-			token: tokens.TextTertiary, priority: 100})
-	}
-	if m.haveUsage {
-		cells = append(cells, metaCell{id: "ctx", text: tokens.Gauge(fraction(m.used, m.window)) + " " +
-			tokens.Context(m.used, m.window), token: tokens.ContextToken(m.used, m.window),
-			priority: 80})
-	} else {
-		cells = append(cells, metaCell{id: "ctx", text: tokens.GlyphMissing + " ctx",
-			token: tokens.TextTertiary, priority: 80})
-	}
-	return cells
-}
-
-// metaSep is the strip's separator and its width, named once so the paint and
-// the pointer step by the same amount.
-const metaSep = " " + tokens.GlyphSeparator + " "
-
-// fit is which cells survive at width, in display order.
-func (m *metaStrip) fit(width int) []metaCell {
-	cells := m.cells()
-	sepWidth := blocks.Width(metaSep)
-	columns := make([]tokens.FooterColumn, len(cells))
-	for i, c := range cells {
-		w := blocks.Width(c.text)
-		if i > 0 {
-			w += sepWidth
-		}
-		columns[i] = tokens.FooterColumn{ID: c.id, MinWidth: w, Priority: c.priority}
-	}
-	kept := tokens.FitFooter(columns, width-len(metaIndent))
-	keep := make(map[string]bool, len(kept))
-	for _, c := range kept {
-		keep[c.ID] = true
-	}
-	out := make([]metaCell, 0, len(cells))
-	for _, c := range cells {
-		if keep[c.id] {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-// chipSpan is the model chip's column range on the strip, or ok=false when the
-// fit dropped it. The indent is included, so the answer is in the same
-// coordinates a pane-local pointer arrives in.
-func (m *metaStrip) chipSpan(width int) (from, to int, ok bool) {
-	if m == nil || width <= 0 {
-		return 0, 0, false
-	}
-	x := blocks.Width(metaIndent)
-	for i, c := range m.fit(width) {
-		if i > 0 {
-			x += blocks.Width(metaSep)
-		}
-		w := blocks.Width(c.text)
-		if c.id == metaChipID {
-			return x, x + w, true
-		}
-		x += w
-	}
-	return 0, 0, false
-}
-
-// render draws the strip at width.
-func (m *metaStrip) render(width int) string {
-	if m == nil || width <= 0 {
-		return ""
-	}
-	var out strings.Builder
-	out.WriteString(metaIndent)
-	written := 0
-	for _, c := range m.fit(width) {
-		if written > 0 {
-			out.WriteString(m.paint(metaSep, tokens.TextTertiary))
-		}
-		if c.paint != nil {
-			if c.id == metaChipID && m.hover {
-				// The chip brightens whole rather than span by span: it is one
-				// control, and lighting half of it would say the model word and
-				// the effort suffix are two different targets.
-				out.WriteString(m.paint(c.text, tokens.TextPrimary))
-			} else {
-				out.WriteString(c.paint(blocks.Width(c.text)))
-			}
-		} else {
-			out.WriteString(m.paint(c.text, c.token))
-		}
-		written++
-	}
-	if written == 0 {
-		return ""
-	}
-	return out.String()
-}
-
-func (m *metaStrip) paint(text string, token tokens.Token) string {
-	if m.style == nil || text == "" {
-		return text
-	}
-	return m.style.PaintToken(text, token)
-}
-
-// fraction is used/window, clamped, for the one-cell gauge.
-func fraction(used, window int64) float64 {
-	if window <= 0 || used <= 0 {
-		return 0
-	}
-	return float64(used) / float64(window)
 }

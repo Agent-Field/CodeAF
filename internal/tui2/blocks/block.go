@@ -122,9 +122,9 @@ func (e EndState) String() string {
 }
 
 // CutMark is the truncation law's mark (12.5.2), and there is exactly one of
-// it. The severed double-dash is deliberately NOT the overflow ellipsis: an
-// ellipsis says "there is more, ask for it", a cut says "this stopped and
-// should not have", and conflating the two is the lie of omission 12.5 found.
+// it. The severed double-dash is deliberately NOT [OverflowMark]: an ellipsis
+// says "there is more, ask for it", a cut says "this stopped and should not
+// have", and conflating the two is the lie of omission 12.5 found.
 //
 // The vocabulary authority for every glyph in this tree is
 // internal/tui2/tokens (tokens.GlyphCut). blocks cannot import it — the edge
@@ -164,7 +164,7 @@ func CutRule(end EndState, width int, s Styler) string {
 	rest := width - 2 - markWidth - 1
 	if rest > 0 {
 		b.WriteByte(' ')
-		b.styled(st, repeat('─', rest), StateChrome, HueNone)
+		b.styled(st, repeat(RuleMark, rest), StateChrome, HueNone)
 	}
 	return b.String()
 }

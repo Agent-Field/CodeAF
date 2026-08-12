@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -52,7 +53,14 @@ const (
 	BriefCharter   BriefItemKind = "charter"
 	BriefFact      BriefItemKind = "fact"
 	BriefSkill     BriefItemKind = "skill"
-	BriefSpend     BriefItemKind = "spend"
+	// BriefCraft is a learned way of working — a whole workflow the resident
+	// distilled and can run again — as against BriefSkill, which is one small
+	// executable it forged. Crafts rode as skills until this kind existed, which
+	// made the arrival brief say "learned a tool" about a four-step workflow and
+	// left every lens unable to tell the two apart or send a reader to the right
+	// page for either.
+	BriefCraft BriefItemKind = "craft"
+	BriefSpend BriefItemKind = "spend"
 	// BriefWaiting is the only kind that is not an event in the window. Every
 	// other row answers "what happened while you were away"; this one answers
 	// "what is still true now" — work stopped on an unanswered question, work
@@ -167,6 +175,34 @@ const (
 	CommandServiceStop        CommandKind = "service_stop"
 	CommandServiceRestart     CommandKind = "service_restart"
 	CommandServiceAutoRestart CommandKind = "service_auto_restart"
+
+	// Craft commands act on a learned way of working. Their target is the
+	// workflow's NAME rather than a row in this database, because a craft is a
+	// file in a git repository and that repository — not the store — is the
+	// authority on which names exist. The store therefore checks only that a
+	// name was given; a name nobody has forged is refused in words by whoever
+	// applies the command, which is the same shape a missing service gets.
+	//
+	// CommandCraftRun asks for the named workflow to be compiled and run.
+	// Instruction carries the user's own words, because that is where the
+	// workflow's parameters are read from — the same seam recognition already
+	// fills them through.
+	CommandCraftRun CommandKind = "craft_run"
+	// CommandCraftRevert puts a workflow back to its previous version.
+	// Instruction is the reason, in the user's own words, and the repository
+	// refuses a revert that does not carry one: a version that failed is
+	// evidence, and history that cannot say why it moved cannot be read.
+	CommandCraftRevert CommandKind = "craft_revert"
+	// CommandCraftRetire stops a workflow being reached for. Nothing is
+	// deleted: the file and its history stay exactly where they are, and the
+	// recognizer simply stops offering it. Instruction is why.
+	CommandCraftRetire CommandKind = "craft_retire"
+
+	// CommandSkillRetire takes one forged tool off the shelf. Target is the
+	// skill belief's own number — the number the notebook shows beside it —
+	// because a skill IS a belief with an artifact hanging off it, and that
+	// number is the one handle every surface already has for it.
+	CommandSkillRetire CommandKind = "skill_retire"
 
 	// Standing-watch commands carry the one global unattended-presence
 	// decision. They deliberately have no graph-node or charter target.
@@ -524,6 +560,13 @@ func (s *Store) TouchSeen(surface, sessionID string, state SeenState) (Seen, err
 // pendingMessageAnchor permits planning narration to name the root that a
 // pending splice will admit. The command link is the proof that the unknown ID
 // is provisional rather than a dangling message.
+//
+// A message with no session of its own inherits the command's. That is the
+// record-only write (thread.Record): planning narration is the record's
+// business, not the conversation's, and it says so by carrying no session — so
+// requiring the sessions to MATCH would have refused exactly the writes that
+// had most correctly stepped out of the thread. The command link is still the
+// whole proof; the session was only ever corroboration.
 func pendingMessageAnchor(tx *sql.Tx, message Message) bool {
 	if message.CommandSeq == 0 {
 		return false
@@ -535,7 +578,7 @@ func pendingMessageAnchor(tx *sql.Tx, message Message) bool {
 		SELECT session_id, kind, status FROM commands WHERE seq = ?`,
 		message.CommandSeq).Scan(&sessionID, &kind, &status)
 	return err == nil && kind == CommandSplice && status == CommandPending &&
-		sessionID == message.SessionID
+		(message.SessionID == "" || sessionID == message.SessionID)
 }
 
 // Messages returns thread messages after a journal sequence, oldest first.
@@ -737,6 +780,14 @@ func requestCommandTx(tx *sql.Tx, command Command) (Command, error) {
 			}
 			if status == ServiceStopped && command.Kind != CommandServiceRestart {
 				return Command{}, fmt.Errorf("request command: %w: service %q is stopped", ErrInvalid, command.Target)
+			}
+		} else if isCraftCommand(command.Kind) {
+			// Nothing to check: the craft repository owns which names exist, and a
+			// name it does not know is refused in words where the command is
+			// applied rather than guessed at here.
+		} else if command.Kind == CommandSkillRetire {
+			if err := requireSkillFact(tx, command.Target); err != nil {
+				return Command{}, fmt.Errorf("request command: %w", err)
 			}
 		} else {
 			if err := requireNode(tx, command.Target); err != nil {
@@ -1031,7 +1082,7 @@ func decodeBrief(raw string, target **Brief) error {
 func validBriefItemKind(kind BriefItemKind) bool {
 	switch kind {
 	case BriefDone, BriefFailure, BriefCancelled, BriefQuestion, BriefCharter,
-		BriefFact, BriefSkill, BriefSpend, BriefWaiting:
+		BriefFact, BriefSkill, BriefCraft, BriefSpend, BriefWaiting:
 		return true
 	default:
 		return false
@@ -1092,6 +1143,7 @@ func validCommandKind(kind CommandKind) bool {
 		CommandCharterOnce,
 		CommandCharterFire, CommandCharterDecline, CommandCharterAlways, CommandCharterNever, CommandCharterProbation,
 		CommandServiceStop, CommandServiceRestart, CommandServiceAutoRestart,
+		CommandCraftRun, CommandCraftRevert, CommandCraftRetire, CommandSkillRetire,
 		CommandStandingWatchEnable, CommandStandingWatchDecline, CommandHandover,
 		CommandHeadInterrupt:
 		return true
@@ -1107,6 +1159,44 @@ func isServiceCommand(kind CommandKind) bool {
 	default:
 		return false
 	}
+}
+
+// isCraftCommand names the kinds whose target is a workflow name rather than
+// anything this database holds. See the kinds' own comment for why the store
+// cannot check the name and does not pretend to.
+func isCraftCommand(kind CommandKind) bool {
+	switch kind {
+	case CommandCraftRun, CommandCraftRevert, CommandCraftRetire:
+		return true
+	default:
+		return false
+	}
+}
+
+// requireSkillFact checks that a skill retirement names a skill that is
+// actually on the shelf. It is checked here, at the funnel, for the reason
+// every other target check is: a command that can never apply should be refused
+// where the person asked for it, not two ticks later in a receipt.
+func requireSkillFact(tx *sql.Tx, target string) error {
+	seq, err := strconv.ParseInt(strings.TrimSpace(target), 10, 64)
+	if err != nil || seq <= 0 {
+		return fmt.Errorf("%w: skill_retire target %q is not a belief number", ErrInvalid, target)
+	}
+	var kind, status string
+	err = tx.QueryRow(`SELECT kind, status FROM facts WHERE seq = ?`, seq).Scan(&kind, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: no belief #%d", ErrNotFound, seq)
+	}
+	if err != nil {
+		return err
+	}
+	if FactKind(kind) != FactSkill {
+		return fmt.Errorf("%w: belief #%d is not a skill", ErrInvalid, seq)
+	}
+	if status != FactActive && status != FactCandidate {
+		return fmt.Errorf("%w: skill #%d is already %s", ErrInvalid, seq, status)
+	}
+	return nil
 }
 
 func validateNodeCommand(tx *sql.Tx, kind CommandKind, target string) error {

@@ -211,7 +211,7 @@ func foldLine(hidden int, counts [itemStates]int) string {
 		return ""
 	}
 	var buf [96]byte
-	out := append(buf[:0], "… "...)
+	out := append(buf[:0], OverflowMark+" "...)
 	out = strconv.AppendInt(out, int64(hidden), 10)
 	out = append(out, " more"...)
 	first := true
@@ -224,7 +224,7 @@ func foldLine(hidden int, counts [itemStates]int) string {
 			out = append(out, " ("...)
 			first = false
 		} else {
-			out = append(out, " · "...)
+			out = append(out, sepDot...)
 		}
 		out = strconv.AppendInt(out, int64(n), 10)
 		out = append(out, ' ')

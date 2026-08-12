@@ -31,6 +31,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
@@ -379,6 +380,7 @@ func (c *Commander) Catalog() []tui.ModelChoice {
 				c.catalogChoices = append(c.catalogChoices, tui.ModelChoice{
 					Slug: model.ID, Name: model.Name,
 					Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
+					Note:  catalog.ReasoningWord(model, provider.ReasoningMandatory(model.ID)),
 				})
 			}
 		}
@@ -399,6 +401,19 @@ func (c *Commander) Catalog() []tui.ModelChoice {
 	return append([]tui.ModelChoice(nil), c.catalogChoices...)
 }
 
+// CatalogModels is the v2 window's read of the same catalog Catalog serves:
+// the full capability-filtered rows for the talk-shaped slots, as catalog
+// rows rather than tui.ModelChoice — the v1 window is the surface being
+// replaced, and its choice type drops the window, the price figures and the
+// published score that the v2 picker draws. A commander with no catalog
+// answers nil, and the caller keeps whatever narrower read it has.
+func (c *Commander) CatalogModels() []catalog.Model {
+	if c.models == nil {
+		return nil
+	}
+	return config.ModelCandidates(c.models, "talk")
+}
+
 // CatalogFor keys the shared searchable picker by palette slot. Capability
 // filtering lives in config.ModelCandidates so music discovery uses the exact
 // same recognizable-TTS exclusion as runtime resolution.
@@ -415,6 +430,7 @@ func (c *Commander) CatalogFor(role string) []tui.ModelChoice {
 		choices = append(choices, tui.ModelChoice{
 			Slug: model.ID, Name: model.Name,
 			Price: formatModelPrice(model.PromptPrice, model.CompletionPrice),
+			Note:  catalog.ReasoningWord(model, provider.ReasoningMandatory(model.ID)),
 		})
 	}
 	if len(choices) == 0 {
@@ -794,6 +810,65 @@ func (c *Commander) ConfirmSurgery(kind store.CommandKind, nodeID string) (bool,
 	return c.head.ConfirmSurgery(c.session(), kind, nodeID)
 }
 
+// SubtreeReceipts is the window's door onto what each level of a tree cost.
+//
+// It is the read 13.11 filed as missing — "TopLevelJobUsage answers per JOB
+// ROOT; what is needed is one read of the same shape keyed by node, for one
+// subtree" — and it is exposed here for the same reason NodeTraceTail is: a
+// surface must be able to draw a receipt beside a row without importing the
+// store's internals or learning what a usage row is.
+//
+// ONE READ PER ROOM ENTERED, not one per row and not one per poll. The ledger
+// it returns answers every level inside the subtree from what is already in
+// hand — [store.SubtreeLedger.Rollup] takes any member — so expanding and
+// collapsing a parent costs nothing. That is the same bargain [Subtrees] struck
+// in 257800f, and for the same reason: paying for every subtree on the board to
+// fill the one room a reader is standing in is the wrong trade.
+//
+// A window with no store answers with the empty ledger and no error. That is
+// not a failure and not a zero: an empty ledger holds no receipts, every lookup
+// in it reports absent, and absent renders as — (8.2.20). A window that cannot
+// see the journal must say it does not know, never that the work was free.
+func (c *Commander) SubtreeReceipts(root string) (store.SubtreeLedger, error) {
+	if c == nil || c.store == nil || strings.TrimSpace(root) == "" {
+		return store.SubtreeLedger{}, nil
+	}
+	return c.store.SubtreeReceipts(root)
+}
+
+// NodeModels is the window's door onto WHO DID THE WORK: every model that
+// billed a run anywhere in root's subtree, deduped, most expensive first.
+//
+// It sits beside [Commander.SubtreeReceipts] because it is the same read one
+// column over — that ledger says what a subtree cost and this says what spent
+// it — and design law §5 asks a record header for both: "elapsed · $cost · Nk
+// tok plus the models that did the work (deduped, dim)". Until this passed
+// through, the only model word any surface could reach was the one the rail
+// resolved for the job's own row, which on an escalating job names the rung the
+// work STARTED on and not the one that finished it.
+//
+// A window with no store answers with no models and no error, which renders as
+// absence. That is honest: a surface that cannot see the journal does not know
+// what ran, and §16's emptiness rule says an unknown value is drawn as nothing
+// rather than guessed.
+func (c *Commander) NodeModels(nodeID string) ([]string, error) {
+	if c == nil || c.store == nil || strings.TrimSpace(nodeID) == "" {
+		return nil, nil
+	}
+	return c.store.NodeModels(nodeID)
+}
+
+// SubtreeRollup is the one-figure form of the same read, for a card that draws
+// a whole job and never expands it. The middle return is presence: a root this
+// window has never heard of has no rollup, which must not be drawn as a job
+// that did nothing.
+func (c *Commander) SubtreeRollup(root string) (store.SubtreeRollup, bool, error) {
+	if c == nil || c.store == nil || strings.TrimSpace(root) == "" {
+		return store.SubtreeRollup{}, false, nil
+	}
+	return c.store.SubtreeRollup(root)
+}
+
 func (c *Commander) NodeTrace(nodeID string, maxBytes int) string {
 	text, _, _ := c.NodeTraceSince(nodeID, maxBytes, tui.NodeTraceStamp{})
 	return text
@@ -849,7 +924,16 @@ func (c *Commander) NodeTraceTail(
 		return "", 0, noTime, true
 	}
 	jobDir := filepath.Join(c.workspaceRoot, c.jobDir(node))
-	file, err := os.Open(exec.TracePath(jobDir, int64(node.CreatedSeq)))
+	// The node's own id, which is what the worker filed its recorder under. The
+	// creation sequence is the fallback and nothing more: it belongs to the whole
+	// splice, so before the recorders were named per node one file held every
+	// sibling's turns — and every run written that way is still on disk and still
+	// worth reading.
+	path := exec.TracePath(jobDir, node.ID)
+	if _, statErr := os.Stat(path); statErr != nil {
+		path = exec.TracePath(jobDir, strconv.FormatInt(node.CreatedSeq, 10))
+	}
+	file, err := os.Open(path)
 	if err != nil {
 		return "", 0, noTime, true
 	}
@@ -1078,6 +1162,13 @@ func LoadPrefs(dir string) Prefs {
 		return prefs
 	}
 	_ = json.Unmarshal(raw, &prefs)
+	// A ":batch" pick can linger in a settings file written before the
+	// catalog stopped offering batch-only endpoints; the base slug is the
+	// same model on the interactive endpoint.
+	for _, slot := range []*string{&prefs.ChatModel, &prefs.TaskModel,
+		&prefs.PlanModel, &prefs.BoostModel} {
+		*slot = strings.TrimSuffix(*slot, ":batch")
+	}
 	return prefs
 }
 

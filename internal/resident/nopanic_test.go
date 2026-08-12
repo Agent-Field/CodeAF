@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -198,15 +199,41 @@ func TestRunnerTickFaultDoesNotLeakASlot(t *testing.T) {
 	// registers practice cancellation — after the slot and claim are taken.
 	runner.activePractice = nil
 
+	// The dispatch loop's two rails, driven exactly as Serve drives them, so
+	// this fault injection also pins what a fault is allowed to cost.
+	gate := newRunnerQuietGate()
+	faults := newRunnerFaultBackoff()
+	now := time.Now()
 	for pass := 0; pass < 3; pass++ {
-		dispatched, err := runner.tickGuarded(context.Background())
+		dispatched, faulted, err := runner.tickGuarded(context.Background())
 		if err != nil {
 			t.Fatalf("pass %d: %v", pass, err)
 		}
 		if dispatched != 0 {
 			t.Fatalf("pass %d dispatched %d", pass, dispatched)
 		}
+		if !faulted {
+			t.Fatalf("pass %d reported a clean pass over a panicking one", pass)
+		}
+		watermark, watermarkErr := s.LatestEventSeq()
+		settleTimedPass(&gate, &faults, watermark, watermarkErr, dispatched, faulted, now)
+		// A fault is not proof that a timed pass would find nothing, so it may
+		// never arm the quiet gate — the bug this pins slept 15s on one panic.
+		if gate.skip(watermark, watermarkErr, now) {
+			t.Fatalf("pass %d armed the quiet gate off a fault", pass)
+		}
+		// The first fault costs nothing: the next tick, 500ms later, reads the
+		// same durable graph and tries again. Only a repeat is made to wait.
+		if held := faults.hold(now); held != (pass > 0) {
+			t.Fatalf("pass %d hold = %t, want %t", pass, held, pass > 0)
+		}
 		runner.Wait()
+	}
+	if wait := runnerFaultWait(faults.consecutive); wait != 2*runnerFaultStep {
+		t.Fatalf("third consecutive fault waits %s, want %s", wait, 2*runnerFaultStep)
+	}
+	if runnerFaultWait(99) != runnerFaultCap {
+		t.Fatalf("the fault backoff does not cap at %s", runnerFaultCap)
 	}
 	if len(runner.slots) != 0 {
 		t.Fatalf("slots leaked: %d held", len(runner.slots))
@@ -220,10 +247,22 @@ func TestRunnerTickFaultDoesNotLeakASlot(t *testing.T) {
 		t.Fatalf("the claimed node was stranded at %v", node.Status)
 	}
 
-	// With the map back, the same runner drains the same node.
+	// With the map back, the same runner drains the same node — and one clean
+	// pass clears the rail a run of faults built up.
 	runner.activePractice = map[string]context.CancelFunc{}
-	if _, err := runner.Tick(context.Background()); err != nil {
-		t.Fatalf("recovered tick: %v", err)
+	dispatched, faulted, err := runner.tickGuarded(context.Background())
+	if err != nil || faulted || dispatched != 1 {
+		t.Fatalf("recovered tick: dispatched=%d faulted=%t err=%v", dispatched, faulted, err)
+	}
+	watermark, watermarkErr := s.LatestEventSeq()
+	settleTimedPass(&gate, &faults, watermark, watermarkErr, dispatched, faulted, now)
+	if faults.hold(now) || faults.consecutive != 0 {
+		t.Fatalf("a clean pass did not clear the fault rail: %+v", faults)
+	}
+	// A pass that dispatched has freed no slot yet, so it may not arm the gate
+	// either — its own landing is the next thing that moves the journal.
+	if gate.skip(watermark, watermarkErr, now) {
+		t.Fatalf("a dispatching pass armed the quiet gate")
 	}
 	runner.Wait()
 	node, _, err = s.Node("practice-leaf")

@@ -10,7 +10,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -35,10 +34,12 @@ func wheelAt(up bool) tea.MouseWheelMsg {
 
 // -- the map ------------------------------------------------------------------
 
-// 5.15: "j/k (or click) moves the rail selection", and "selection previews;
-// enter opens". A click on an unselected row is the first half; a click on the
-// selected row is the second.
-func TestAClickPreviewsAndASecondClickEnters(t *testing.T) {
+// 13.18, the law this file is named for: CLICKS GO WHERE THEY POINT. One click
+// on a task card opens its room. The keyboard keeps 5.15's select/open split,
+// because an arrow is how a keyboard LOOKS around and a look must not cost a
+// room — and a look must not move the mouth either, which is the third clause
+// below and the half a reader reported as "clicking a task does nothing".
+func TestAClickOpensTheRoomItPointsAtAndAnArrowOnlyLooks(t *testing.T) {
 	app, _ := boardApp(t)
 	_ = app.Frame(120, 30)
 
@@ -56,19 +57,40 @@ func TestAClickPreviewsAndASecondClickEnters(t *testing.T) {
 	}
 
 	app.scopePoint(railPoint{row: target})
-	if app.railModel.Cursor() != target {
-		t.Fatalf("the first click left the cursor on %d", app.railModel.Cursor())
+	if app.railModel.Depth() != 1 {
+		t.Fatalf("one click did not open the room: depth %d", app.railModel.Depth())
 	}
-	if app.railModel.Depth() != 0 {
-		t.Fatal("the first click entered the scope; it should only have previewed")
+	if got := app.railModel.Selected().Name; got != "wisp-parity" {
+		t.Fatalf("the click opened %q", got)
 	}
-	if !app.railFocus {
-		t.Fatal("pointing at the map did not give it the keyboard")
+	// The room, and not just the scope: the main pane is the task's own trail,
+	// which is the thing the reader was pointing at.
+	if app.view == nil || app.view.kind != viewNode || app.view.node != "job-1" {
+		t.Fatalf("the main pane is not the room the click opened: %+v", app.view)
+	}
+	// And the room it opened got the keyboard, exactly as enter's own commit
+	// hands it over — a click is that commit reached by a hand, so it may not
+	// leave the reader typing at the map.
+	if app.railFocus {
+		t.Fatal("the room the click opened did not take the keyboard")
 	}
 
-	app.scopePoint(railPoint{row: target})
-	if app.railModel.Depth() != 1 {
-		t.Fatalf("the second click did not enter: depth %d", app.railModel.Depth())
+	// The keyboard's half, driven from inside the scope the click opened: the
+	// arrow previews the worker row and touches neither the scope nor the mouth.
+	press(app, "ctrl+o")
+	bind, depth := app.composerMode(), app.railModel.Depth()
+	press(app, "j")
+	if app.railModel.Depth() != depth {
+		t.Fatalf("an arrow opened a room: depth %d", app.railModel.Depth())
+	}
+	if got := app.composerMode(); got != bind {
+		t.Fatalf("an arrow rebound the composer to %+v", got)
+	}
+
+	// Enter is what commits, and the commitment is what moves the mouth.
+	press(app, "enter")
+	if got := app.composerMode(); got.mode != rail.ComposerSteer || got.node != "job-1/h2" {
+		t.Fatalf("enter did not bind the room it opened: %+v", got)
 	}
 }
 
@@ -201,25 +223,38 @@ func TestClickingProseAnswersNothing(t *testing.T) {
 
 // -- the footer ---------------------------------------------------------------
 
-// The row has advertised `? help` since this surface existed. Clicking the
-// words opens the door they name.
-func TestClickingTheFooterHelpWordsOpensTheSheet(t *testing.T) {
+// The row advertised `? help` for as long as it carried standing legends. §7
+// took the legends off it — the middle zone holds only what is live RIGHT NOW —
+// so the door this test guards is the PLACE tab, which is the one word on the
+// left zone that has always been a door and now has the row to itself.
+func TestClickingAPlaceTabOpensThatPlace(t *testing.T) {
 	app := newTestApp(&fakeBackend{}, &fakeCommander{}, nil)
 	const width = 120
 	_ = app.Frame(width, 30)
 
-	x := -1
-	for _, target := range app.status.bar.Targets(app.status.focusContext(width), width) {
-		if target.ID == footer.HelpTarget {
-			x = target.From
+	targets := app.status.bar.Targets(app.status.focusContext(width), width)
+	if len(targets) == 0 {
+		t.Fatal("the bar row offers no doors at all")
+	}
+	// Every target the row advertises answers a click without panicking, and
+	// none of them is a word the paint did not draw — which is the property the
+	// shared layout exists for.
+	row := ansi.Strip(app.status.Render(width, 1))
+	for _, target := range targets {
+		if target.From < 0 || target.To > ansi.StringWidth(row) || target.From >= target.To {
+			t.Fatalf("%s spans %d..%d of a %d-cell row", target.ID, target.From, target.To,
+				ansi.StringWidth(row))
 		}
+		app.status.Mouse(clickAt(target.From, 0), image.Point{X: target.From})
 	}
-	if x < 0 {
-		t.Fatal("the footer does not offer the help door")
-	}
-	app.status.Mouse(clickAt(x, 0), image.Point{X: x})
-	if app.overlay != overlayCapability {
-		t.Fatalf("clicking help left the overlay at %d", app.overlay)
+	// And the whole chip is one target, caps included: a reader points at the
+	// tab, not at the geometry of its left edge.
+	seen := map[string]bool{}
+	for _, target := range targets {
+		if seen[target.ID] {
+			t.Fatalf("%s is two targets rather than one chip: %+v", target.ID, targets)
+		}
+		seen[target.ID] = true
 	}
 }
 
@@ -235,49 +270,27 @@ func TestClickingTheFooterDoesNotMoveTheCursor(t *testing.T) {
 	}
 }
 
-// -- the composer's two chips -------------------------------------------------
+// -- the bar's one door -------------------------------------------------------
 
-// 5.22 rule 5: the model chip is the affordance for acting on what it shows.
-func TestClickingTheModelChipOpensTheModelPalette(t *testing.T) {
+// The right zone is statements, not doors: a directory is a fact about this
+// window, there is nothing to open on it, and a row where half the words did
+// something on click would be a row the reader had to learn. The model word
+// that briefly lived here — and briefly WAS a door — is gone entirely; a slug
+// is not something this row may print (§14).
+func TestTheDirectoryOnTheBarIsNotADoor(t *testing.T) {
 	app := newTestApp(&fakeBackend{}, &fakeCommander{model: "claude-k3"}, nil)
 	const width = 120
 	_ = app.Frame(width, 30)
-
-	stack, ok := app.composer.(*composerStack)
-	if !ok {
-		t.Skip("the composer region is not the stack this test drives")
+	if app.status.dir == "" {
+		t.Skip("this assembly has no ground to name")
 	}
-	from, _, found := stack.meta.chipSpan(width)
-	if !found {
-		t.Fatal("the meta strip drew no model chip")
+	row := ansi.Strip(app.status.Render(width, 1))
+	at := strings.Index(row, app.status.dir)
+	if at < 0 {
+		t.Fatalf("the ground is not on the row: %q", row)
 	}
-	stack.Mouse(clickAt(from, stack.lastHeight-1), image.Point{X: from, Y: stack.lastHeight - 1})
-	if app.overlay != overlayModel {
-		t.Fatalf("clicking the chip left the overlay at %d", app.overlay)
-	}
-}
-
-// 5.19: the place line's path is copied by click, the same act `y` performs.
-func TestClickingThePlaceLineCopiesTheGround(t *testing.T) {
-	app := newTestApp(&fakeBackend{}, &fakeCommander{}, nil)
-	_ = app.Frame(120, 30)
-	stack, ok := app.composer.(*composerStack)
-	if !ok {
-		t.Skip("the composer region is not the stack this test drives")
-	}
-	want := stack.place.CopyText()
-	if want == "" {
-		t.Skip("this assembly has no ground to copy")
-	}
-	cmd := stack.Mouse(clickAt(2, 0), image.Point{X: 2})
-	if cmd == nil {
-		t.Fatal("clicking the place line copied nothing")
-	}
-	// The clipboard command is the runtime's own; what this test can assert is
-	// that it was produced and that the path it would carry is the ground the
-	// place line shows.
-	if !strings.Contains(want, "/") {
-		t.Fatalf("the ground is not a path: %q", want)
+	if id, ok := app.status.bar.TargetAt(app.status.focusContext(width), width, at); ok {
+		t.Fatalf("the directory answered as a door: %q", id)
 	}
 }
 
@@ -400,7 +413,11 @@ func TestClickingTheTranscriptTakesTheKeyboardBackFromTheMap(t *testing.T) {
 	}
 }
 
-// The map's direction, asserted the same way: after a click, j walks.
+// The map's direction, asserted the same way: after a click that only POINTS,
+// j walks. `+ new room` is that click — 13.18 keeps the two-step for the two
+// rows that PERFORM rather than navigate, because a stray click may not mint a
+// room — and a click that opens one instead hands the keyboard to the room,
+// which is what TestAClickOpensTheRoomItPointsAtAndAnArrowOnlyLooks pins.
 func TestClickingARailRowLetsJAndKWalkAtOnce(t *testing.T) {
 	app, _ := boardApp(t)
 	_ = app.Frame(120, 30)
@@ -408,8 +425,20 @@ func TestClickingARailRowLetsJAndKWalkAtOnce(t *testing.T) {
 		t.Fatal("the fixture opened with the keyboard already on the map")
 	}
 
-	app.scopePoint(railPoint{row: 1})
+	target := -1
+	for i, row := range app.railModel.Rows() {
+		if row.ID == rowNewRoomID {
+			target = i
+		}
+	}
+	if target < 0 {
+		t.Fatal("no + new room row in the fixture")
+	}
+	app.scopePoint(railPoint{row: target})
 	before := app.railModel.Cursor()
+	if before != target {
+		t.Fatalf("the click left the cursor on %d, want %d", before, target)
+	}
 	press(app, "j")
 	if app.railModel.Cursor() == before {
 		t.Fatal("j did not walk the map after a click on it")
@@ -425,20 +454,27 @@ func TestClickingARailRowLetsJAndKWalkAtOnce(t *testing.T) {
 func TestAClickCannotHandTheKeyboardToADisabledComposer(t *testing.T) {
 	app, _ := boardApp(t)
 	_ = app.Frame(120, 30)
-	press(app, "ctrl+o")
 
+	// Settled work is the surface a reader can stand in and not speak to: there
+	// is nothing left to steer. 13.18 moved that state off the PREVIEW — walking
+	// past a settled card used to disable the composer, which is how the surface
+	// came to refuse clicks the reader had every reason to make — so the room
+	// has to be ENTERED for the refusal to be true, and a click enters it.
 	target := -1
 	for i, row := range app.railModel.Rows() {
-		if row.ID == rowNewRoomID {
+		if row.Name == "perf-audit" {
 			target = i
 		}
 	}
 	if target < 0 {
-		t.Fatal("no + new room row in the fixture")
+		t.Fatal("no settled task in the fixture")
 	}
 	app.scopePoint(railPoint{row: target})
 	if app.composerMode().mode != rail.ComposerDisabled {
-		t.Fatalf("previewing + new room left the composer at %v", app.composerMode().mode)
+		t.Fatalf("an entered room over settled work left the composer at %v", app.composerMode().mode)
+	}
+	if !app.railFocus {
+		t.Fatal("a composer that refuses every key was handed the keyboard on entry")
 	}
 
 	app.pane.Mouse(clickAt(4, 2), image.Point{X: 4, Y: 2})

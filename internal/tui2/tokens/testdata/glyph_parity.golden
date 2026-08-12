@@ -6,14 +6,14 @@
 --- card line 1 ---
 plain    "◐ navigate: read src/navigate.rs [?2] · 12s · $0.04"
          width 51/51  marks U+25D0 U+00B7 U+00B7
-nerdfont "\uf042 navigate: read src/navigate.rs [\uf0592] · 12s · $0.04"
-         width 51/51  marks U+F042 U+F059 U+00B7 U+00B7
+nerdfont "\uf042 navigate: read src/navigate.rs [\uf29c2] · 12s · $0.04"
+         width 51/51  marks U+F042 U+F29C U+00B7 U+00B7
 
 --- place line ---
 plain    "~/a/v2 · ⌂ /tmp/wisp-parity · ⋔ main · / src/navigate.rs"
          width 56/56  marks U+00B7 U+2302 U+00B7 U+22D4 U+00B7
-nerdfont "~/a/v2 · \uf015 /tmp/wisp-parity · \ue0a0 main · \uf07b src/navigate.rs"
-         width 56/56  marks U+00B7 U+F015 U+00B7 U+E0A0 U+00B7 U+F07B
+nerdfont "~/a/v2 · \uf015 /tmp/wisp-parity · \ue0a0 main · \uf114 src/navigate.rs"
+         width 56/56  marks U+00B7 U+F015 U+00B7 U+E0A0 U+00B7 U+F114
 
 --- status line ---
 plain    "◇ K3 ▄ $8.65"
@@ -24,26 +24,26 @@ nerdfont "\uf2db K3 ▄ \uf1558.65"
 --- composer prompt (chat) ---
 plain    "› what changed in navigate.rs"
          width 29/29  marks U+203A
-nerdfont "\uf105 what changed in navigate.rs"
-         width 29/29  marks U+F105
+nerdfont "› what changed in navigate.rs"
+         width 29/29  marks U+203A
 
 --- composer prompt (steer) ---
 plain    "↦ keep the branch"
          width 17/17  marks U+21A6
-nerdfont "\uf178 keep the branch"
-         width 17/17  marks U+F178
+nerdfont "↦ keep the branch"
+         width 17/17  marks U+21A6
 
 --- fold hint ---
 plain    "▸ 12 lines"
          width 10/10  marks U+25B8
-nerdfont "\uf054 12 lines"
-         width 10/10  marks U+F054
+nerdfont "▸ 12 lines"
+         width 10/10  marks U+25B8
 
 --- fold hint (expanded) ---
 plain    "▾"
          width 1/1  marks U+25BE
-nerdfont "\uf078"
-         width 1/1  marks U+F078
+nerdfont "▾"
+         width 1/1  marks U+25BE
 
 --- cut row ---
 plain    "╌ cut off — output cap ─────────────────────"
@@ -66,8 +66,14 @@ nerdfont "\uf0da\uf0da\uf0da \uf0e7 boosted · —"
 --- scope breadcrumb ---
 plain    "‹ tasks · ⋯"
          width 11/11  marks U+2039 U+00B7 U+22EF
-nerdfont "\uf104 tasks · \uf141"
-         width 11/11  marks U+F104 U+00B7 U+F141
+nerdfont "‹ tasks · \uf141"
+         width 11/11  marks U+2039 U+00B7 U+F141
+
+--- prose and static overflow ---
+plain    "│ · a list item that ran out of column…  ▏ fmt.Println"
+         width 54/54  marks U+2502 U+00B7 U+2026 U+258F
+nerdfont "│ · a list item that ran out of column…  ▏ fmt.Println"
+         width 54/54  marks U+2502 U+00B7 U+2026 U+258F
 
 --- settle row ---
 plain    "✓ done · +42 · −7 · ✕ one check"

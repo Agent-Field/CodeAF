@@ -242,6 +242,11 @@ func TestIntakeValidityUnparseableProceedsNormally(t *testing.T) {
 	}
 	want := "[codeaf] intake validity gate: dispatching validity-judge\n" +
 		"[codeaf] intake validity: no parseable verdict — proceeding normally\n" +
+		// The pre-run photograph is taken after the validity gate and before
+		// anything is written — see baseline.go. A green repository photographs
+		// green, and the verification below is judged as a delta against it.
+		"[codeaf] baseline build: make build — green\n" +
+		"[codeaf] baseline test: make test — green\n" +
 		"[codeaf] full verification build: make build (exit=0, source=Makefile#build)\n" +
 		"[codeaf] full verification test: make test (exit=0, source=Makefile#test)\n"
 	if notes.String() != want {

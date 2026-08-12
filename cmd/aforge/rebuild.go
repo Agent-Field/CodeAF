@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/lease"
@@ -54,7 +53,7 @@ func runRebuildWith(args []string, input io.Reader, output io.Writer) error {
 	// reconciler's in-memory carries would be reasoning about a graph that
 	// moved underneath them, so the honest answer is to ask the operator to
 	// close it first.
-	holder, err := lease.ProbeResident(filepath.Dir(path))
+	holder, err := lease.ProbeResident(path)
 	if err != nil {
 		return err
 	}

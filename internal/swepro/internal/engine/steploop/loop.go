@@ -51,7 +51,38 @@ loop:
 		msgs := msgmodel.FilterCompacted(newestFirst(chronological))
 		scan := BackScan(msgs)
 		if scan.LastUser == nil {
-			return msgmodel.Assistant{}, errors.New("No user message found in stream. This should never happen.")
+			// A MISSING ANCHOR IS NOT A REASON TO THROW AWAY A FINISHED RUN.
+			//
+			// This used to return `No user message found in stream. This should
+			// never happen.` unconditionally, and that error travels all the way
+			// out: the pipeline reports `crashed`, and aforge's swe executor
+			// turns `crashed` into a provider failure for the whole leaf. Measured
+			// (audit-notes/headless-regression-audit.md §10, defect 1) that killed
+			// a run whose deliverable built clean and passed tests in all six
+			// packages — a working result recorded as a failure, in the same
+			// measured lines that decide which worker gets the next coding job.
+			//
+			// The condition means "the view I am about to answer from has no
+			// question in it", and the view is a NARROWING of the stream:
+			// FilterCompacted drops everything before the last completed
+			// compaction and rotates the summary in front of the retained tail.
+			// So the first thing to do is widen back to the whole stream, which
+			// still holds the turn's own prompt.
+			if whole := chronologicalWithUser(chronological); whole != nil {
+				msgs = whole
+				scan = BackScan(msgs)
+			}
+		}
+		if scan.LastUser == nil {
+			if step == 0 {
+				// Nothing has run and there is no prompt anywhere in the session.
+				// That is the genuine version of this error and it stays fatal.
+				return msgmodel.Assistant{}, errors.New("No user message found in stream. This should never happen.")
+			}
+			// Work has already happened and there is nothing further to answer.
+			// That is the same ending ShouldExit produces, so it exits the same
+			// way and the run returns what it built.
+			break
 		}
 
 		if ShouldExit(scan.LastUser, scan.LastAssistant, msgs) {
@@ -219,6 +250,18 @@ loop:
 		}
 	}
 	return msgmodel.Assistant{}, errors.New("Impossible")
+}
+
+// chronologicalWithUser is the unnarrowed stream, returned only when it holds a
+// user message the filtered view had lost. Nil means widening would change
+// nothing, so the caller keeps the view it already has.
+func chronologicalWithUser(chronological []msgmodel.WithParts) []msgmodel.WithParts {
+	for _, msg := range chronological {
+		if _, ok := msg.Info.(msgmodel.User); ok {
+			return chronological
+		}
+	}
+	return nil
 }
 
 func assistantParts(

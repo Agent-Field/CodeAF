@@ -16,6 +16,16 @@ import (
 type core struct {
 	opts Options
 	list list
+
+	// showing is the catalog currently on screen — the root's, or a drilled
+	// level's. It is kept so a push can write down the way back (see
+	// [Palette.Push]) without the wiring having to hand the same catalog in
+	// twice.
+	showing Catalog
+	// drill is [Catalog.Drill] for the level on screen: does choosing this
+	// result open a sub-list rather than finish. Nil means nothing here drills,
+	// which is the `?` sheet's permanent state and the palette's usual one.
+	drill func(Result) bool
 }
 
 // SetStyler rebinds the painter, for a terminal profile or a pane focus
@@ -107,6 +117,16 @@ func (c *core) choose() tea.Cmd {
 	res, ok := c.Selected()
 	if !ok {
 		return nil
+	}
+	if c.drill != nil && c.drill(res) {
+		// A ROW THAT OPENS A SUB-LIST DOES NOT FINISH THE SURFACE. The wiring
+		// answers this result by calling [Palette.Push] — synchronously, from
+		// inside OnChoose, which is why it is a call and not a returned intent —
+		// and the palette stays up one level deeper. Closing here and reopening
+		// from the handler would work exactly as badly as it sounds: the reader
+		// would watch the overlay blink, and the level they came from would be
+		// gone from the stack that has to remember it.
+		return c.emit(res)
 	}
 	// CLOSE FIRST, and the order is the whole point.
 	//

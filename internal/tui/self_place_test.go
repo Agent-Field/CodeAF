@@ -92,7 +92,7 @@ func TestSelfRootListShowsCountsExplainersAndTheTodayLine(t *testing.T) {
 		"Watches (1)", "standing goals checking on their own schedule",
 		"Services (1)", "processes I keep alive for you",
 		"Practice", "what I did with idle time",
-		"Dials", "demand against curiosity",
+		"Dials", "govern what I do with my own time",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("Self root list is missing %q:\n%s", want, view)
@@ -318,9 +318,12 @@ func TestSelfDialsAreReadOnlyAndPointAtTheSheet(t *testing.T) {
 	model := openedSelf(t, now, commander)
 	model.openSelfRoute(selfRouteDials)
 	view := selfView(model)
+	// The two dials this used to name — demand vs curiosity, propose new
+	// skills — are gone with the loops that never read them. The dials page
+	// projects whatever the practice group holds, so it names those rows now
+	// and keeps naming whatever lands there next.
 	for _, want := range []string{
-		"demand vs curiosity", "follows measured demand",
-		"propose new skills", "change these in settings (⚙)",
+		"quiet before practice", "tenure after", "change these in settings (⚙)",
 	} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the dials view is missing %q:\n%s", want, view)

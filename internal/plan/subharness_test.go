@@ -94,6 +94,79 @@ func TestSizeApplyHonorsAndDegradesSubharnessVerdicts(t *testing.T) {
 	}
 }
 
+// The generalist is a verdict, not a silence. The model answers "no
+// specialist" by returning the empty string, and while that answer was stored
+// as the empty string the graph also uses for "nobody judged this node", every
+// downstream reader that fills a blank in — admission's inheritance above all —
+// read a deliberate generalist as an unanswered question. So the answer is
+// written down by name.
+func TestGeneralistVerdictIsRecordedByName(t *testing.T) {
+	defer ForgetSubharnesses()
+	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "ruler")
+
+	verdicts := []sizeVerdict{
+		{Node: 1, Size: "atomic"},
+		{Node: 2, Size: "atomic", Subharness: "swe"},
+		{Node: 3, Size: "borderline", Subharness: "reviewer"},
+	}
+	recordGeneralist(verdicts)
+	for _, want := range []struct {
+		index int
+		name  string
+	}{{0, LinearSubharness}, {1, "swe"}, {2, LinearSubharness}} {
+		if got := verdicts[want.index].Subharness; got != want.name {
+			t.Fatalf("verdict %d = %q, want %q", want.index+1, got, want.name)
+		}
+	}
+
+	graph := &Graph{Nodes: []Node{
+		{ID: 1, Kind: KindWork, Stage: 1},
+		{ID: 2, Kind: KindWork, Stage: 1},
+		{ID: 3, Kind: KindWork, Stage: 1},
+	}, NextID: 4}
+	if _, err := sizeApply(graph, []sizeResult{{verdicts: verdicts}}); err != nil {
+		t.Fatalf("sizeApply: %v", err)
+	}
+	// The generalist's name changes nothing else about the judgment: the size
+	// stands and so do the parts, because the node was judged against the
+	// baseline ruler and that is the ruler it was judged against.
+	if node := graph.Node(1); node.Subharness != LinearSubharness || node.Size != SizeAtomic {
+		t.Fatalf("node 1 = %+v, want the generalist named and atomic", *node)
+	}
+	if node := graph.Node(2); node.Subharness != "swe" || node.Size != SizeAtomic {
+		t.Fatalf("node 2 = %+v, want swe/atomic", *node)
+	}
+	if node := graph.Node(3); node.Subharness != LinearSubharness || node.Size != SizeBorderline {
+		t.Fatalf("node 3 = %+v, want the generalist named and borderline left alone", *node)
+	}
+
+	// The two predicates answer different questions, and the difference is the
+	// whole fix: KnownSubharness says "is this a registered specialist", and
+	// says no to both the generalist and to nothing at all.
+	for _, testCase := range []struct {
+		name        string
+		known       bool
+		generalist  bool
+		chosenByAny bool
+	}{
+		{name: "swe", known: true, chosenByAny: true},
+		{name: LinearSubharness, generalist: true, chosenByAny: true},
+		{name: " linear ", generalist: true, chosenByAny: true},
+		{name: "", chosenByAny: false},
+		{name: "reviewer", chosenByAny: true},
+	} {
+		if got := KnownSubharness(testCase.name); got != testCase.known {
+			t.Fatalf("KnownSubharness(%q) = %v", testCase.name, got)
+		}
+		if got := GeneralistSubharness(testCase.name); got != testCase.generalist {
+			t.Fatalf("GeneralistSubharness(%q) = %v", testCase.name, got)
+		}
+		if got := SubharnessChosen(testCase.name); got != testCase.chosenByAny {
+			t.Fatalf("SubharnessChosen(%q) = %v", testCase.name, got)
+		}
+	}
+}
+
 func TestAnchorsAreKeptPerSubharness(t *testing.T) {
 	defer ForgetSubharnesses()
 	defer UseAnchors("")

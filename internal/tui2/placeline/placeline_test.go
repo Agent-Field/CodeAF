@@ -149,6 +149,47 @@ func TestWorkspaceGlyph(t *testing.T) {
 	}
 }
 
+// TestWorkspaceGlyphFollowsTheTier is the regression the glyph audit left
+// behind. The workspace mark used to be a local constant, which meant the place
+// line was the one surface in the product that stayed PLAIN when a reader
+// turned nerd fonts on — every column around it swapped and this one did not.
+// It reads the GHome SLOT off the styler now, so the tier reaches it, and the
+// two sides are asserted to cost the same so the fit arithmetic cannot drift.
+func TestWorkspaceGlyphFollowsTheTier(t *testing.T) {
+	ground := []Segment{
+		{Path: "/home/santosh/aforge-v2", Kind: SegmentRoot},
+		{Path: "/tmp/wisp-parity", Kind: SegmentWorkspace},
+	}
+
+	nf := New(Options{Styler: tokens.NewStylerIn(tokens.NoColor, tokens.FocusNormal, tokens.NerdFont)})
+	nf.SetGround(ground...)
+	nfOut := nf.Render(200)
+	if want := tokens.NerdFont.Glyph(tokens.GHome); !strings.Contains(nfOut, want) {
+		t.Fatalf("the nerd-font tier did not reach the place line: %q does not carry %q", nfOut, want)
+	}
+	if strings.Contains(nfOut, tokens.GlyphHome) {
+		t.Fatalf("the nerd-font tier still drew the plain house: %q", nfOut)
+	}
+
+	plain := New(Options{Styler: tokens.NewStylerIn(tokens.NoColor, tokens.FocusNormal, tokens.Plain)})
+	plain.SetGround(ground...)
+	plainOut := plain.Render(200)
+	if !strings.Contains(plainOut, tokens.GlyphHome) {
+		t.Fatalf("the plain floor lost its house: %q", plainOut)
+	}
+	if a, b := ansi.StringWidth(plainOut), ansi.StringWidth(nfOut); a != b {
+		t.Errorf("the tier moved a column: %d cells plain, %d cells nerdfont", a, b)
+	}
+
+	// A nil Styler is a supported degradation everywhere else in this package,
+	// and it degrades to the designed floor rather than to nothing.
+	bare := New(Options{})
+	bare.SetGround(ground...)
+	if got := bare.Render(200); !strings.Contains(got, tokens.GlyphHome) {
+		t.Errorf("a nil styler drew %q, want the plain floor's house", got)
+	}
+}
+
 // TestMiddleEllipsisNeverTailTruncates: when the ground's only leg does not
 // fit, and there is enough width to show the ellipsis alongside the whole
 // filename, it gives way in the middle (the filename survives intact),
@@ -156,7 +197,9 @@ func TestWorkspaceGlyph(t *testing.T) {
 func TestMiddleEllipsisNeverTailTruncates(t *testing.T) {
 	m := New(Options{})
 	m.SetGround(Segment{Path: "/tmp/wisp-parity", Kind: SegmentWorkspace})
-	out := m.Render(15) // "⌂ /tmp/wisp-parity" is 19 cells; must shrink.
+	// "⌂ /tmp/wisp-parity" is 19 cells and the leg is laid out inside the
+	// lens's left edge, so 15 + LensIndent leaves it the same 15 to shrink into.
+	out := m.Render(15 + tokens.LensIndent)
 	if !strings.HasSuffix(out, "wisp-parity") {
 		t.Fatalf("filename did not survive width pressure: %q", out)
 	}
@@ -183,20 +226,22 @@ func TestDropsFromTheLeft(t *testing.T) {
 		t.Fatalf("full render missing root: %q", full)
 	}
 
-	// "⌂ /tmp/wisp-parity" is 19 cells; the root plus separator is 16 more.
-	withMarker := m.Render(23) // room for "… · " (4) + the workspace leg (19).
+	// "⌂ /tmp/wisp-parity" is 19 cells; the root plus separator is 16 more. Every
+	// width here is stated as content + the lens's left edge, because that edge
+	// is spent before a leg is fitted (5.13's rhythm; see Render).
+	withMarker := m.Render(23 + tokens.LensIndent) // "… · " (4) + the workspace leg (19).
 	if strings.Contains(withMarker, "aforge-v2") {
 		t.Fatalf("root should have dropped first: %q", withMarker)
 	}
 	if !strings.HasSuffix(withMarker, "wisp-parity") {
 		t.Fatalf("workspace leg should have survived: %q", withMarker)
 	}
-	if !strings.HasPrefix(withMarker, overflowMark) {
+	if !strings.HasPrefix(withMarker, lensPad+overflowMark) {
 		t.Fatalf("dropped leg with room to spare left no overflow mark: %q", withMarker)
 	}
 
-	bare := m.Render(19) // exactly the workspace leg, no room for the marker.
-	if bare != "⌂ /tmp/wisp-parity" {
+	bare := m.Render(19 + tokens.LensIndent) // exactly the leg, no room for the marker.
+	if bare != lensPad+"⌂ /tmp/wisp-parity" {
 		t.Fatalf("workspace leg at its exact width should render whole and bare: %q", bare)
 	}
 }
@@ -223,9 +268,9 @@ func TestSetGroundClears(t *testing.T) {
 // against the root when there is no workspace leg.
 func TestCopyText(t *testing.T) {
 	tests := []struct {
-		name    string
-		ground  []Segment
-		want    string
+		name   string
+		ground []Segment
+		want   string
 	}{
 		{"empty", nil, ""},
 		{"root only", []Segment{{Path: "/home/santosh/aforge-v2", Kind: SegmentRoot}}, "/home/santosh/aforge-v2"},
@@ -279,5 +324,33 @@ func TestRenderNeverPanicsWithNilStyler(t *testing.T) {
 	m.SetGround(Segment{Path: "/tmp/wisp-parity", Kind: SegmentWorkspace})
 	if out := m.Render(80); !strings.Contains(out, "wisp-parity") {
 		t.Fatalf("nil-styler render missing content: %q", out)
+	}
+}
+
+// TestTheLineOpensAtTheLensEdge: the ground is one of the room's surfaces and
+// begins where the room does (5.13's spacing rhythm, [tokens.LensIndent]), with
+// the indent taken out of the fitting width rather than added to it.
+func TestTheLineOpensAtTheLensEdge(t *testing.T) {
+	m := New(Options{Home: "/home/santosh"})
+	m.SetGround(
+		Segment{Path: "/home/santosh/src/aforge-v2", Kind: SegmentRoot},
+		Segment{Path: "/tmp/wisp-parity", Kind: SegmentWorkspace},
+	)
+	for width := tokens.LensIndent + 1; width <= 120; width++ {
+		row := m.Render(width)
+		if !strings.HasPrefix(row, lensPad) {
+			t.Fatalf("at width %d the ground began at column 0: %q", width, row)
+		}
+		if strings.HasPrefix(row[tokens.LensIndent:], " ") {
+			t.Fatalf("at width %d the ground began past the edge: %q", width, row)
+		}
+		if got := ansi.StringWidth(row); got > width {
+			t.Fatalf("at width %d the indented ground ran %d cells: %q", width, got, row)
+		}
+	}
+	// Below the gutter's own width the rhythm gives way to the path: two cells
+	// of air are not worth the last two cells of a ground.
+	if row := m.Render(tokens.LensIndent); strings.HasPrefix(row, " ") {
+		t.Fatalf("the gutter survived a %d-cell terminal: %q", tokens.LensIndent, row)
 	}
 }

@@ -2,7 +2,6 @@ package settings
 
 import (
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -138,22 +137,9 @@ func scoreSubsequence(haystack, needle string) (int, []int, bool) {
 	return score, hits, true
 }
 
-// filterBreadcrumb is what the tab bar becomes while a search is running
-// (8.2.19: "the tab bar becomes a filter breadcrumb"). It names the groups the
-// results came from, in registry order, with a count each — so the result list
-// still reads as navigation across the tabs rather than as a flat list that
-// lost its structure.
-func (m *Model) filterBreadcrumb() []string {
-	counts := make(map[string]int, len(m.tabs))
-	for _, index := range m.visible {
-		counts[m.rows[index].group]++
-	}
-	crumbs := make([]string, 0, len(m.tabs))
-	for _, title := range m.tabs {
-		if counts[title] == 0 {
-			continue
-		}
-		crumbs = append(crumbs, title+" "+strconv.Itoa(counts[title]))
-	}
-	return crumbs
-}
+// There used to be a filter breadcrumb here — "across models 2 · spending 1" —
+// standing in for the tab bar while a search ran. It is gone with the tab bar,
+// and for 15's reason rather than for tidiness: it counted per group what the
+// result list already showed per row, since every result carries its own group
+// on the right of its own line. The header keeps the one number a reader cannot
+// see, which is how much the query took away.

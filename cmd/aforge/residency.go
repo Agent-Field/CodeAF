@@ -43,6 +43,9 @@ func openChatWindow(path, database, requestedSession string) (*chatWindow, error
 		_ = graph.Close()
 		return nil, err
 	}
+	// One tidying pass per launch, after the room is chosen so the chosen room
+	// is never among the ones taken back.
+	groomChatRooms(graph, session)
 	return &chatWindow{
 		path: path, database: database, dir: filepath.Dir(path),
 		graph: graph, session: session,
@@ -121,7 +124,7 @@ func newChatResidency(window *chatWindow) *chatResidency {
 // the first aforge on a store runs the brain, and every later one attaches to
 // the journal as a surface and starts watching for the role to come free.
 func (r *chatResidency) claim() error {
-	release, heldBy, err := lease.AcquireResident(r.window.dir, "chat")
+	release, heldBy, err := lease.AcquireResident(r.window.path, "chat")
 	if err != nil {
 		return err
 	}
@@ -202,7 +205,7 @@ func (r *chatResidency) Poll() (tui.Residency, tui.Commander) {
 	if !due {
 		return state, handed
 	}
-	holder, err := lease.ProbeResident(r.window.dir)
+	holder, err := lease.ProbeResident(r.window.path)
 	if err != nil {
 		// A lock we cannot read is not a lock we may take. The window stays a
 		// visitor and says so with whatever it last knew.
@@ -311,7 +314,7 @@ func (r *chatResidency) stateLocked() tui.Residency {
 // still wedged — and it fails silently, because nothing about the window the
 // user is looking at changes either way.
 func (r *chatResidency) reclaimLease() {
-	release, _, err := lease.AcquireResident(r.window.dir, "chat")
+	release, _, err := lease.AcquireResident(r.window.path, "chat")
 	if err != nil || release == nil {
 		return
 	}
@@ -404,7 +407,7 @@ func (r *chatResidency) setNote(note string, about int) {
 // other is handed the winner's identity and stays a surface pointed at it.
 func (r *chatResidency) promote() {
 	defer r.donePromoting()
-	release, heldBy, err := lease.AcquireResident(r.window.dir, "chat")
+	release, heldBy, err := lease.AcquireResident(r.window.path, "chat")
 	if err != nil {
 		log.Printf("note: could not take the resident role: %v", err)
 		r.setNote("", 0)

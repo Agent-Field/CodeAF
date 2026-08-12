@@ -95,18 +95,26 @@ func whole(t *testing.T, app *App, width int) string {
 	return out.String()
 }
 
-// 5.13's voice hierarchy, and the one header grammar it is spoken through
-// (8.1.5): the reader's own turn wears the composer glyph they typed it at,
-// the answerer is named with the model that answered.
+// 5.13's voice hierarchy, after §3b took the speaker rows out: the two parties
+// of the conversation are told apart by tier and gutter rather than by name, and
+// the guest that is neither of them keeps its own. The three voices have their
+// own file (voices_test.go); what is checked here is that the words and the
+// provenance rules around them survived the re-dress.
 func TestRoleVoicesAreDistinctAndCalm(t *testing.T) {
 	app := dressedApp(t)
 	out := whole(t, app, 80)
 
-	if !strings.Contains(out, tokens.GlyphPromptChat+" you") {
+	if !strings.Contains(out, tokens.GlyphPromptChat+" what is the plan") {
 		t.Fatalf("the reader's own turn is not attributed:\n%s", out)
 	}
-	if !strings.Contains(out, "aforge "+tokens.GlyphSeparator+" claude-k3") {
-		t.Fatalf("the answerer is not named with the model that answered:\n%s", out)
+	if !strings.Contains(out, "Here is the plan:") {
+		t.Fatalf("the answer's own words are missing:\n%s", out)
+	}
+	// Nobody is named in a two-party conversation (§15).
+	for _, label := range []string{tokens.GlyphPromptChat + " you", "aforge"} {
+		if strings.Contains(out, label) {
+			t.Fatalf("the speaker row %q came back:\n%s", label, out)
+		}
 	}
 	// The vendor prefix is provenance, not identity, and never reaches a row.
 	if strings.Contains(out, "anthropic/claude-k3") {
@@ -125,7 +133,9 @@ func TestEveryTurnIsSeparatedByABlankRow(t *testing.T) {
 	}
 }
 
-// The body of a turn sits one depth under the header naming who is speaking.
+// Every voice's words start at the same left edge, whatever hangs in the gutter
+// in front of them (§16's PADDING RHYTHM, and §3b's "indented to the shared
+// edge").
 func TestSpeechBodiesSitAtADepth(t *testing.T) {
 	app := dressedApp(t)
 	out := whole(t, app, 80)
@@ -213,11 +223,27 @@ func TestAOneLineReceiptOffersNoFold(t *testing.T) {
 func TestCommissioningRowsAreDistinct(t *testing.T) {
 	app := dressedApp(t)
 	out := whole(t, app, 80)
-	if !strings.Contains(out, tokens.GlyphPromptSteer+" commissioned: rework NavCtx") {
-		t.Fatalf("the dispatch was not inked as a commissioning row:\n%s", out)
+	// A COMMISSIONING IS A CARD FROM THE MOMENT IT IS JOURNALED (user-amended
+	// 2026-08-11). It used to be a dim `↦ commissioned: …` row until the graph
+	// caught up, which left the thread showing nothing for the seconds a reader
+	// is watching hardest — "once it decides we are creating task … there is
+	// like a few seconds where nothing happens". The skeleton is the same block,
+	// the same id and the same dress the named card wears, so what changes when
+	// the board answers is the title and nothing else
+	// ([messageBlock.dressCommitting]).
+	if !strings.Contains(out, "rework NavCtx") {
+		t.Fatalf("the dispatch lost the head's own reading:\n%s", out)
 	}
-	if strings.Contains(out, tokens.GlyphCollapsed+" commissioned") {
-		t.Fatalf("a commissioning row is wearing the receipt's glyph:\n%s", out)
+	if !strings.Contains(out, creatingWord) {
+		t.Fatalf("the dispatch does not say what is happening to it:\n%s", out)
+	}
+	// It is not speech and not a receipt: §14 keeps machinery vocabulary off
+	// every surface, and the fork 5.20 rule 1 is about is inked by the card's
+	// own shape rather than by a word naming a mechanism.
+	for _, banned := range []string{"commissioned", tokens.GlyphCollapsed + " commissioned"} {
+		if strings.Contains(out, banned) {
+			t.Fatalf("machinery vocabulary reached the frame (%q):\n%s", banned, out)
+		}
 	}
 }
 
@@ -229,8 +255,14 @@ func TestWorkRowsBecomeCards(t *testing.T) {
 	if !strings.Contains(out, tokens.GlyphWorking+" wisp-parity") {
 		t.Fatalf("the node row did not become a card:\n%s", out)
 	}
-	if !strings.Contains(out, strings.Repeat(" ", bodyIndent)+"reworking NavCtx") {
-		t.Fatalf("the card has no status line:\n%s", out)
+	// §20: the name is the title ROW and the status is the line under it at the
+	// content edge — see TestAJobCardWearsItsNameAsATitleRow for why the chip
+	// form could not hold a card.
+	// The card stands inside its own gutter (§20 lets an accent edge live
+	// there), so its content edge is the room's shifted by [cardLane] — the same
+	// one depth in that blocks.CardBlock's own anatomy draws.
+	if !strings.Contains(out, "\n"+strings.Repeat(" ", blocks.ContentEdge+cardLane)+"reworking NavCtx") {
+		t.Fatalf("the card has no status line under its title:\n%s", out)
 	}
 	// 5.9: money is always visible, and 8.2.20: missing data renders —.
 	if !strings.Contains(out, "$"+tokens.GlyphMissing) {
@@ -253,8 +285,13 @@ func TestCardsWearTheirOwnIdentityAccent(t *testing.T) {
 	})
 	poll(t, app)
 
-	first := app.transcript.Block(0).Rows(60)[0]
-	second := app.transcript.Block(1).Rows(60)[0]
+	// The title row, not row zero: a card opens with one blank row of its own
+	// ground (§16's padding rhythm), and two cards' grounds are identical by
+	// design — it is the GLYPH that carries the identity.
+	alpha, _ := app.transcript.Block(0).(*messageBlock)
+	beta, _ := app.transcript.Block(1).(*messageBlock)
+	first := alpha.Rows(60)[alpha.cardPad()]
+	second := beta.Rows(60)[beta.cardPad()]
 	if first == second {
 		t.Fatalf("two tasks drew the same header: %q", first)
 	}
@@ -369,45 +406,67 @@ func TestStatusRowShortensAndNeverWraps(t *testing.T) {
 	if blocks.Width(narrow) >= blocks.Width(wide) {
 		t.Fatal("the status row did not shorten under width pressure")
 	}
-	// The permanent ? door outlives every column but the attention badge.
-	if !strings.Contains(ansi.Strip(narrow), "help") {
-		t.Fatalf("the capability door was dropped before everything else: %q", narrow)
+	// THE LAST THING STANDING IS WHERE YOU ARE (§7). The permanent `? help`
+	// door this used to assert is not on the row any more — standing legends
+	// moved to the `?` sheet — so what a narrowing terminal must never drop is
+	// the place word.
+	if !strings.Contains(ansi.Strip(narrow), "chat") {
+		t.Fatalf("where-you-are was dropped before everything else: %q", narrow)
 	}
 }
 
-// 10.5.23: two homes, never mixed. Money is the composer's, health is the
-// footer's, and neither borrows the other's row.
-func TestHealthAndCostKeepSeparateHomes(t *testing.T) {
+// §7 ENDED THE TWO HOMES. 10.5.23 kept this-turn money off the bar row and put
+// it on a strip of the composer's own; §7 dissolved that strip and the money
+// came here — into the MIDDLE zone, where it stands beside `interrupt esc` for
+// exactly as long as the turn does.
+//
+// The distinction the old split was protecting is still protected, and by a
+// stronger mechanism than two rows: the day's total is a standing fact on the
+// right and says the word `today`; the turn's cost is a live one in the middle
+// and says nothing, because it is gone the moment the turn is.
+func TestTurnMoneyIsLiveAndDayMoneyIsStanding(t *testing.T) {
 	app := dressedApp(t)
-	if row := ansi.Strip(app.status.Render(120, 1)); strings.Contains(row, "$") {
-		t.Fatalf("this-turn cost reached the footer: %q", row)
+	app.status.live = false
+	app.status.cost, app.status.haveCost = 0.03, true
+	app.status.spend, app.status.haveSpend = 1.42, true
+	settled := ansi.Strip(app.status.Render(120, 1))
+	if strings.Contains(settled, "$0.03") {
+		t.Fatalf("a settled room still shows the turn's cost: %q", settled)
 	}
-	strip := ansi.Strip(app.meta.render(60))
-	if !strings.Contains(strip, "$") {
-		t.Fatalf("the composer's meta strip has no money cell: %q", strip)
+	if !strings.Contains(settled, "$1.42 today") {
+		t.Fatalf("the day total is not a standing fact: %q", settled)
 	}
-	if strings.Contains(strip, "help") {
-		t.Fatalf("the footer's own columns reached the meta strip: %q", strip)
+
+	app.status.live = true
+	app.status.elapsed = 12 * time.Second
+	live := ansi.Strip(app.status.Render(120, 1))
+	if !strings.Contains(live, "$0.03") || !strings.Contains(live, "12s") {
+		t.Fatalf("a live turn does not carry its own receipts: %q", live)
+	}
+	// And the two figures are never confused for one another: the day's carries
+	// its word, the turn's does not.
+	if strings.Contains(live, "$0.03 today") {
+		t.Fatalf("the turn's cost is wearing the day's word: %q", live)
 	}
 }
 
-// 5.9: money is the one cell that never leaves. Everything else on the strip
-// can go before it does.
-func TestTheMoneyCellIsTheLastToLeaveTheMetaStrip(t *testing.T) {
-	strip := &metaStrip{style: tokens.NewStyler(tokens.NoColor, tokens.FocusNormal),
-		model: "anthropic/claude-k3", live: true}
+// 5.9: money is the one cell that never leaves. Everything else on the bar's
+// right zone goes before the day's total does.
+func TestTheDayTotalIsTheLastFactToLeaveTheBar(t *testing.T) {
+	app := dressedApp(t)
+	app.status.spend, app.status.haveSpend = 1.42, true
+	app.status.dir = "~/a/aforge-v2"
+	app.status.used, app.status.window, app.status.haveUsage = 8000, 262144, true
 	for width := 1; width <= 60; width++ {
-		row := ansi.Strip(strip.render(width))
+		row := ansi.Strip(app.status.Render(width, 1))
 		if blocks.Width(row) > width {
-			t.Fatalf("the meta strip overran width %d: %q", width, row)
+			t.Fatalf("the bar row overran width %d: %q", width, row)
 		}
-		// Below the floor the whole strip leaves rather than wrapping, which is
-		// the mechanic 10.5.22 asks for; above it, money is what remains.
-		if row != "" && !strings.Contains(row, "$") {
-			t.Fatalf("a surviving strip dropped the money cell at width %d: %q", width, row)
-		}
-		if width >= 16 && row == "" {
-			t.Fatalf("the strip vanished at a width it fits in: %d", width)
+		// Once anything at all from the right zone survives, money is in it.
+		for _, other := range []string{"aforge-v2", "of 262K", "%"} {
+			if strings.Contains(row, other) && !strings.Contains(row, "$") {
+				t.Fatalf("width %d kept %q and dropped the money: %q", width, other, row)
+			}
 		}
 	}
 }
@@ -416,39 +475,42 @@ func TestTheMoneyCellIsTheLastToLeaveTheMetaStrip(t *testing.T) {
 // hint appears only when esc would in fact interrupt.
 func TestFooterAdvertisesEscOnlyWhileItWouldInterrupt(t *testing.T) {
 	app := newTestApp(&fakeBackend{}, &fakeCommander{}, nil)
-	if row := ansi.Strip(app.status.Render(120, 1)); strings.Contains(row, "esc interrupt") {
+	// The chip is VERB FIRST, key after (§16's verb·key grammar), so the words
+	// on the row are `interrupt esc` and not the other way round.
+	const chip = "interrupt esc"
+	if row := ansi.Strip(app.status.Render(120, 1)); strings.Contains(row, chip) {
 		t.Fatalf("an idle footer advertised an interrupt: %q", row)
 	}
 	stream(app, StreamEvent{Kind: StreamStarted, Session: testSession})
-	if row := ansi.Strip(app.status.Render(120, 1)); !strings.Contains(row, "esc interrupt") {
+	if row := ansi.Strip(app.status.Render(120, 1)); !strings.Contains(row, chip) {
 		t.Fatalf("a live turn's footer does not advertise the interrupt: %q", row)
 	}
 	stream(app, StreamEvent{Kind: StreamFinished, Session: testSession})
-	if row := ansi.Strip(app.status.Render(120, 1)); strings.Contains(row, "esc interrupt") {
+	if row := ansi.Strip(app.status.Render(120, 1)); strings.Contains(row, chip) {
 		t.Fatalf("a settled turn's footer still advertised an interrupt: %q", row)
 	}
 }
 
-// The footer's verbs come from the command registry and are offered only when
-// this surface really binds the key the entry names (5.22 rule 4).
+// §7's middle zone holds only what is LIVE RIGHT NOW, so the standing bindings
+// this test used to demand are deliberately absent: quit, newline and the
+// receipts fold moved to the `?` sheet and the palette, which read the registry
+// directly. What survives here is the rule that made the old assertion worth
+// making — whatever the row DOES offer comes from the registry and is really
+// bound on this surface, so a chip can never teach a chord that does nothing.
 func TestFooterVerbsComeFromTheRegistryAndAreBound(t *testing.T) {
 	app := dressedApp(t)
-	if len(app.verbs) == 0 {
-		t.Fatal("the footer offers no verbs at all")
-	}
 	row := ansi.Strip(app.status.Render(160, 1))
 	for _, entry := range app.verbs {
 		if entry.Key == "" {
-			t.Fatalf("an unbound entry reached the strip: %+v", entry)
+			t.Fatalf("an unbound entry reached the row: %+v", entry)
 		}
-		if !strings.Contains(row, entry.Key+" "+entry.Verb) {
-			t.Fatalf("the registry row %q is not on the strip: %q", entry.ID, row)
+		if !strings.Contains(row, entry.Verb+" "+entry.Key) {
+			t.Fatalf("the registry row %q is not on the row: %q", entry.ID, row)
 		}
 	}
-	// v1's ctrl+j is not what this surface binds, so the row must carry the
-	// chord that actually inserts a newline here.
+	// v1's ctrl+j is not what this surface binds, so nothing may advertise it.
 	if strings.Contains(row, "ctrl+j") {
-		t.Fatalf("the footer advertised a chord this surface does not bind: %q", row)
+		t.Fatalf("the row advertised a chord this surface does not bind: %q", row)
 	}
 }
 
@@ -467,24 +529,36 @@ func TestAFailedReadTakesTheWholeStatusRow(t *testing.T) {
 }
 
 // 5.19: the composer's top edge names the ground this work lands on.
-func TestThePlaceLineNamesTheGround(t *testing.T) {
+// §7 dissolved the place line as a ROW of this surface: the ground it named now
+// rides the bar's right zone, in the same abbreviated form placeline renders,
+// beside the model word and the day's total. The question 5.19 asked — where
+// does this work land on disk — is still answered on screen; it is answered on
+// one row instead of two.
+func TestTheGroundIsNamedOnTheBarRow(t *testing.T) {
 	app := New(Options{
 		Backend: &fakeBackend{}, Session: testSession, Profile: tokens.NoColor,
 		Now: fixedNow, PollEvery: 1, Root: "/home/someone/aforge-v2", Home: "/home/someone",
 	})
-	region := app.composer.Render(60, 4)
-	rows := strings.Split(region, "\n")
-	if len(rows) != 4 {
-		t.Fatalf("the composer region drew %d rows, want 4: %q", len(rows), rows)
+	app.refresh()
+	row := ansi.Strip(app.status.Render(120, 1))
+	if !strings.Contains(row, "aforge-v2") {
+		t.Fatalf("the bar row does not name the ground: %q", row)
 	}
-	if !strings.Contains(rows[0], "aforge-v2") {
-		t.Fatalf("the place line does not name the ground: %q", rows[0])
+	// It is the ABBREVIATED form, tilde-folded — the place line's own grammar,
+	// asked of the place line rather than respelled here.
+	if !strings.Contains(row, "~/") {
+		t.Fatalf("the ground is not in its abbreviated form: %q", row)
 	}
-	if !strings.Contains(rows[1], tokens.GlyphPromptChat) {
-		t.Fatalf("the draft row lost its prompt: %q", rows[1])
+	// And the composer above it is the draft and nothing else.
+	region := strings.Split(app.composer.Render(60, 1), "\n")
+	if len(region) != 1 {
+		t.Fatalf("the composer region drew %d rows, want 1: %q", len(region), region)
 	}
-	if !strings.Contains(rows[3], "$") {
-		t.Fatalf("the meta strip is not welded to the region's bottom edge: %q", rows)
+	if strings.Contains(region[0], "aforge-v2") {
+		t.Fatalf("the place line is still a row of the composer: %q", region[0])
+	}
+	if !strings.Contains(region[0], tokens.GlyphPromptChat) {
+		t.Fatalf("the draft row lost its prompt: %q", region[0])
 	}
 }
 
@@ -524,8 +598,13 @@ func TestAttentionCountsOnlyOpenQuestions(t *testing.T) {
 	if got := app.openQuestions(); got != 1 {
 		t.Fatalf("an asked question is not counted as open: %d", got)
 	}
-	if row := ansi.Strip(app.status.Render(120, 1)); !strings.Contains(row, tokens.GlyphNeedsHuman+"1") {
-		t.Fatalf("the amber attention column is missing: %q", row)
+	// The amber BADGE is gone (§7): the answer chip IS the statement that a
+	// human is needed, and the attention count TINTS that chip rather than
+	// adding a second mark for one meaning. This fixture's question carries no
+	// numbered options, so there is no digit range to offer and the honest row
+	// is a silent one — what must never come back is the badge.
+	if row := ansi.Strip(app.status.Render(120, 1)); strings.Contains(row, tokens.GlyphNeedsHuman+"1") {
+		t.Fatalf("the old attention badge came back: %q", row)
 	}
 
 	backend.add(store.Message{SessionID: testSession, Role: store.RoleUser, Body: "that one"})
@@ -626,7 +705,7 @@ func TestAVisitorSaysSoAndThenGetsPromoted(t *testing.T) {
 	if app.commander != Commander(promoted) {
 		t.Fatal("the promoted window did not adopt the engine it was handed")
 	}
-	if got := app.meta.model; got != "anthropic/claude-k3" {
+	if got := app.status.model; got != "anthropic/claude-k3" {
 		t.Fatalf("the promoted window kept the old model word: %q", got)
 	}
 	// A resident is the ordinary case, and the ordinary case earns no ink.

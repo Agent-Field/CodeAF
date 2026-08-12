@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/keychip"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -53,6 +54,10 @@ type transcriptPane struct {
 	// belongs to the app, which is where the reader's per-row decision is
 	// remembered across the rebuilds that would otherwise lose it (disclose.go).
 	fold func(block *messageBlock) tea.Cmd
+	// record resolves a click inside an entered task's record — the tree's
+	// branch folds and leaf drills (recordtree.go). Same seam shape as fold:
+	// the pane hands over the cell, the act is the app's.
+	record func(y int) tea.Cmd
 	// focus asks for the keyboard, because pointing IS looking (5.14). The
 	// transcript's own keys are the scroll vocabulary, which the app's ladder
 	// routes here whatever holds custody; what a click on the conversation
@@ -60,6 +65,17 @@ type transcriptPane struct {
 	// letter and the next j is a j. Same seam as answer and fold: the pane knows
 	// it was pointed at, the app knows where the keyboard is.
 	focus func() bool
+	// run performs one of the empty state's example rows, and is the same
+	// [App.runFooterVerb] the footer's own words reach — a fourth hand on one
+	// executor, never a fourth door. Same seam as answer and fold.
+	run func(entryID string) tea.Cmd
+	// copy takes one message's words out to the clipboard. Same seam again: the
+	// pane resolves a cell to the chip on a row, and the ACT — the OSC 52 write
+	// and the frame of proof after it — belongs to the app (copychip.go).
+	copy func(block *messageBlock) tea.Cmd
+	// style paints the empty state. The transcript's blocks carry their own
+	// styler; this pane needs one only for the rows it draws itself.
+	style *tokens.Styler
 	// width is the rectangle the pane was last drawn at, kept because an option
 	// row's position depends on how tall its block rendered.
 	width int
@@ -73,6 +89,19 @@ type transcriptPane struct {
 	// answer cursor, a fold row only brightens. One field could not clear the
 	// right one when the pointer crossed from a card into the question under it.
 	hoverFold int
+	// hoverTeach is the empty state's example row the pointer rests on,
+	// one-based, or zero for none. A third field for a third kind of row, on the
+	// same reasoning as hoverFold: these rows exist only while the other two
+	// cannot, but one shared field would still be one field clearing the wrong
+	// mark the first time a lens went from empty to spoken-in.
+	hoverTeach int
+	// hoverCopy is the block the pointer rests ANYWHERE on, one-based, or zero
+	// for none — which is what surfaces that block's copy chip. It is a fourth
+	// field for the same reason the third exists: it marks a different thing on a
+	// different scale (a whole message, not one row), and a shared field would
+	// clear the wrong mark the first time a pointer crossed from a fold row into
+	// the prose under it.
+	hoverCopy int
 }
 
 var (
@@ -94,7 +123,226 @@ func (p *transcriptPane) Render(width, height int) string {
 	}
 	p.transcript.SetSize(width, height)
 	p.width = width
+	if p.transcript.Len() == 0 {
+		return p.renderTeaching(width, height)
+	}
 	return strings.Join(p.transcript.Frame(p.now()).Rows, "\n")
+}
+
+// -- the taught empty state (5.22 rule 6) ------------------------------------
+
+// A room nobody has spoken in yet is the one frame that has no content to fall
+// back on, and it used to be drawn as nothing at all: an entirely blank lens,
+// which teaches a first-time reader that the surface is broken or that they are
+// in the wrong place. 5.22 rule 6 is explicit — "a new home shows three
+// clickable example actions instead of a blank transcript" — and the entered
+// task room next door has said a sentence about its own emptiness since 12.14.
+//
+// The rows are the registry's, never this file's: the same ids the palette, the
+// `?` sheet and the `/` line draw, run through the same executor a click on a
+// footer verb reaches. So an accelerator taught here cannot drift from the one
+// that works, and a door that stops existing stops being taught on the same
+// commit.
+//
+// It is drawn by the PANE rather than appended to the transcript as a block,
+// which is what keeps it out of the record: an empty room has no turns, and a
+// teaching block in the block list would be a row the anchor, the fold state
+// and the copy verbs all had to learn to ignore. The moment a real block lands
+// the teaching is gone, with nothing to clear.
+
+// teachIDs are the three doors offered, in the order they are drawn: what this
+// room can do, where its work shows up, and who is doing it. All three are
+// unconditional in [App.runEntry] — a taught door that answered with a reason
+// (5.20 rule 3) would be teaching the reader a dead end on their first frame.
+var teachIDs = [...]string{helpEntryID, "slash.graph", "slash.self"}
+
+// teachLead is the sentence above the three rows. It names the composer first,
+// because typing a sentence is what this product is FOR and the examples are
+// the second thing to know, not the first.
+const teachLead = "nothing here yet — say what you want done, or start with one of these"
+
+// teachSpan is one painted run of an empty-state row: plain text and the tier
+// it is drawn at. The rows are assembled plain and painted afterwards, which is
+// the same ordering every fitted surface in this tree uses — measuring a
+// painted string is measuring its escape sequences.
+type teachSpan struct {
+	text string
+	tier tokens.Token
+}
+
+// teachRow is one drawn row: its spans, and the registry row it performs. An
+// empty id is prose, which performs nothing and is not a target — the lead
+// sentence is a statement about the room, not a verb on it (the same line
+// footer/hit.go draws between its own words).
+type teachRow struct {
+	id    string
+	spans []teachSpan
+}
+
+// teachRows is the empty state at this width, derived on demand and never
+// recorded during a render (Part 2's anti-pattern 14). The paint and the
+// pointer both call it, so a click cannot land on a word the paint dropped.
+func (p *transcriptPane) teachRows(width int) []teachRow {
+	if width <= tokens.LensIndent {
+		return nil
+	}
+	// The lead wraps at the readable measure rather than at the lens: chrome
+	// prose running the full width of a 200-column terminal is a line the eye
+	// loses its place in (tokens.ProseMeasure).
+	measure := width
+	if measure > tokens.ProseMeasure {
+		measure = tokens.ProseMeasure
+	}
+	pad := strings.Repeat(" ", tokens.LensIndent)
+	rows := make([]teachRow, 0, 6)
+	lines, _ := blocks.Wrap(nil, teachLead, measure-tokens.LensIndent)
+	for _, line := range lines {
+		rows = append(rows, teachRow{spans: []teachSpan{{pad + line, tokens.TextTertiary}}})
+	}
+	rows = append(rows, teachRow{})
+
+	entries := make([]registry.Entry, 0, len(teachIDs))
+	keys := make([]string, 0, len(teachIDs))
+	for _, id := range teachIDs {
+		entry, found := registry.ByID(id)
+		if !found {
+			continue
+		}
+		key := teachKey(entry)
+		if key == "" {
+			continue
+		}
+		entries = append(entries, entry)
+		keys = append(keys, key)
+	}
+	// The descriptions are one COLUMN and they leave as one, the way the
+	// footer's verbs are fitted as a unit: dropping only the rows whose sentence
+	// happened not to fit would teach three doors in two different formats and
+	// leave the reader deciding what the difference meant.
+	described := true
+	for i, entry := range entries {
+		if blocks.Width(pad)+keychip.Width([]registry.Chip{registry.ChipFor(entry.Verb, keys[i])})+
+			blocks.Width(teachNote(entry)) > width {
+			described = false
+			break
+		}
+	}
+	for i, entry := range entries {
+		rows = append(rows, teachExample(entry, keys[i], pad, width, described))
+	}
+	return rows
+}
+
+// teachKey is the accelerator this row is taught by, in the words that actually
+// work from here.
+//
+// A bare letter is not one of them: the composer holds every printable key on
+// this surface, so [registry.Entry.KeyOn] answers "" for `?` and the slash alias
+// is what the reader can really type. It is footer.verbLabel's own fallback
+// ladder, and the two agree because they are answering one question — what do I
+// tell the user to press — from one catalog.
+func teachKey(entry registry.Entry) string {
+	if key := entry.KeyOn(registry.SurfaceComposerFirst); key != "" {
+		return key
+	}
+	if entry.Slash != "" {
+		return "/" + entry.Slash
+	}
+	return ""
+}
+
+// The gap between the two halves of a chip is [registry.ChipGap] now, spelled
+// once beside the ORDER it separates rather than here — the aligned key column
+// this constant used to pad went with the key-first layout (see [teachExample]).
+
+// teachNote is the registry's own one-line description, behind the telemetry
+// separator (5.17).
+func teachNote(entry registry.Entry) string {
+	return " " + tokens.GlyphSeparator + " " + entry.Description
+}
+
+// teachExample lays one example row out: the verb·key chip, and — when the
+// whole column fits — the registry's own description behind it.
+//
+// IT USED TO LEAD WITH THE KEY, in an aligned column of its own, and that was
+// §16's `esc close` bug wearing a layout: the first word on every row was the
+// thing to press rather than the thing it does, so a reader parsed each row by
+// already knowing the answer. The chip is [keychip.Of] now — verb first at the
+// brighter tier, key after it one tier down — which is the same two-tier rule
+// the footer's verbs, the consent strip and the composer's chips wear.
+//
+// THE ALIGNED KEY COLUMN WENT WITH IT, and it is not missed: a column is worth
+// its cells when a reader SCANS down it (§20's receipt column), and nobody scans
+// three rows for a keystroke they are being taught. What the column actually did
+// was hold the verbs — the words the row is about — at a ragged left edge that
+// moved with the longest accelerator in the set.
+//
+// What does not fit leaves from the right, description first, and the verb is
+// only ever cut — a row that named no verb would name no door.
+func teachExample(entry registry.Entry, key string, pad string, width int, described bool) teachRow {
+	room := width - blocks.Width(pad)
+	spans := []teachSpan{{pad, tokens.TextTertiary}}
+	for _, span := range keychip.Of(registry.ChipFor(entry.Verb, key), tokens.TextSecondary) {
+		spans = append(spans, teachSpan{blocks.Truncate(span.Text, room), tokens.Token(span.Tok)})
+		room -= blocks.Width(span.Text)
+		if room < 1 {
+			break
+		}
+	}
+	if described {
+		spans = append(spans, teachSpan{teachNote(entry), tokens.TextTertiary})
+	}
+	return teachRow{id: entry.ID, spans: spans}
+}
+
+// renderTeaching paints the empty state into the rectangle, dropping rows off
+// the BOTTOM when the lens is too short — the lead sentence says what the room
+// is before the examples say what to do in it, so the examples are what a short
+// window can afford to lose.
+func (p *transcriptPane) renderTeaching(width, height int) string {
+	rows := p.teachRows(width)
+	if len(rows) > height {
+		rows = rows[:height]
+	}
+	lines := make([]string, 0, len(rows))
+	for i, row := range rows {
+		var line strings.Builder
+		for _, span := range row.spans {
+			tier := span.tier
+			// 13.14's hover law: one tier brighter under the pointer, never a
+			// band. The whole row rises together because the whole row is one
+			// target — lighting the verb alone would say the description was a
+			// different door.
+			if row.id != "" && p.hoverTeach == i+1 {
+				tier = tokens.Promote(tier)
+			}
+			line.WriteString(p.paint(span.text, tier))
+		}
+		lines = append(lines, line.String())
+	}
+	return strings.Join(lines, "\n")
+}
+
+// paint draws one span, or returns it unchanged for a pane built without a
+// profile (the golden harness and every headless test).
+func (p *transcriptPane) paint(text string, tier tokens.Token) string {
+	if p.style == nil || text == "" {
+		return text
+	}
+	return p.style.PaintToken(text, tier)
+}
+
+// teachAt resolves a pane-local row to the example on it, if it is one. It is
+// [optionAt] for the one lens that has no blocks to ask.
+func (p *transcriptPane) teachAt(y int) (string, bool) {
+	if p.homes != nil || p.transcript == nil || p.transcript.Len() != 0 {
+		return "", false
+	}
+	rows := p.teachRows(p.width)
+	if y < 0 || y >= len(rows) || rows[y].id == "" {
+		return "", false
+	}
+	return rows[y].id, true
 }
 
 // optionAt resolves a pane-local cell to an answerable option row: which block,
@@ -139,10 +387,42 @@ func (p *transcriptPane) foldAt(y int) (*messageBlock, int, bool) {
 		return nil, 0, false
 	}
 	block, ok := p.transcript.Block(index).(*messageBlock)
-	if !ok || !block.isFoldRow(line) {
+	if !ok || !block.isFoldRow(line, p.width) {
 		return nil, 0, false
 	}
 	return block, index, true
+}
+
+// messageAt resolves a pane-local row to the message block drawn on it, and to
+// which of that block's own lines it is.
+func (p *transcriptPane) messageAt(y int) (*messageBlock, int, int, bool) {
+	if p.transcript == nil || p.homes != nil {
+		return nil, 0, 0, false
+	}
+	index, line, ok := p.transcript.BlockAtScreenRow(y)
+	if !ok {
+		return nil, 0, 0, false
+	}
+	block, ok := p.transcript.Block(index).(*messageBlock)
+	if !ok {
+		return nil, 0, 0, false
+	}
+	return block, index, line, true
+}
+
+// copyAt resolves a pane-local cell to the copy chip it landed on.
+//
+// This is the one hit test in the transcript that consults x, and the reason is
+// the chip's own: an option row IS the choice and a fold row IS the disclosure,
+// so the whole row stands for the thing it does. The chip shares its row with
+// the first line of a message, and a click on those words is a click on the
+// conversation and must stay one.
+func (p *transcriptPane) copyAt(local image.Point) (*messageBlock, bool) {
+	block, _, line, ok := p.messageAt(local.Y)
+	if !ok || !block.chipAt(local.X, line, p.width) {
+		return nil, false
+	}
+	return block, true
 }
 
 // Key handles the scroll vocabulary. Everything else on the keyboard belongs to
@@ -193,6 +473,25 @@ func (p *transcriptPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 		if p.focus != nil {
 			p.focus()
 		}
+		// An example row on the taught empty state performs its registry row
+		// (5.22 rule 6's "clickable"). It is asked first only because it is the
+		// one target that exists when no block does — the three tests below are
+		// mutually exclusive by construction, not by order.
+		if p.run != nil {
+			if id, ok := p.teachAt(local.Y); ok {
+				return p.run(id)
+			}
+		}
+		// The copy chip is asked before the row-wide targets because it is the
+		// one target NARROWER than its row: it lives in the right edge of a line
+		// that is otherwise prose, or the header of a card, and the row-wide
+		// tests would swallow it. It exists only while the pointer is on this
+		// message, so there is nothing to swallow the rest of the time.
+		if p.copy != nil {
+			if block, ok := p.copyAt(local); ok {
+				return p.copy(block)
+			}
+		}
 		if p.answer != nil {
 			if block, _, number, ok := p.optionAt(local.Y); ok {
 				return p.answer(block, number)
@@ -207,6 +506,11 @@ func (p *transcriptPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 		if p.fold != nil {
 			if block, _, ok := p.foldAt(local.Y); ok {
 				return p.fold(block)
+			}
+		}
+		if p.record != nil {
+			if cmd := p.record(local.Y); cmd != nil {
+				return cmd
 			}
 		}
 		return nil
@@ -241,7 +545,11 @@ func (p *transcriptPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 // mark for one meaning. Enter still answers whatever the mark is on, so the
 // pointer and the keyboard agree about which choice is live.
 func (p *transcriptPane) Hover(local image.Point, inside bool) bool {
+	// Every door is asked, never short-circuited: they mark different rows and
+	// a skipped one is a mark left lit on a row the pointer has left.
 	moved := p.hoverFoldRow(local, inside)
+	moved = p.hoverTeachRow(local, inside) || moved
+	moved = p.hoverMessage(local, inside) || moved
 
 	block, index, number, ok := (*messageBlock)(nil), 0, 0, false
 	if inside {
@@ -302,6 +610,65 @@ func (p *transcriptPane) hoverFoldRow(local image.Point, inside bool) bool {
 	return true
 }
 
+// hoverMessage surfaces the copy chip on the message the pointer is resting on.
+//
+// THE TARGET IS THE WHOLE MESSAGE AND THE CHIP IS ON ITS FIRST ROW. Resting
+// anywhere in a reply — its tenth line, its artifact row — offers the door,
+// because what a reader wants to take out is the ANSWER and not the line their
+// mouse happened to stop on. Drawing it on the first row is what keeps it a
+// layer rather than a decoration: one chip per message, in one column, gone the
+// instant the pointer leaves.
+//
+// It touches paint and nothing else — one int here, one flag on the block — so
+// the hover door stays the side-effect-free door its type promises (13.14).
+func (p *transcriptPane) hoverMessage(local image.Point, inside bool) bool {
+	index := 0
+	if inside && p.copy != nil {
+		if _, at, _, ok := p.messageAt(local.Y); ok {
+			index = at + 1
+		}
+	}
+	if p.hoverCopy == index {
+		return false
+	}
+	if p.hoverCopy != 0 && p.transcript != nil && p.hoverCopy-1 < p.transcript.Len() {
+		if old, isMessage := p.transcript.Block(p.hoverCopy - 1).(*messageBlock); isMessage {
+			old.SetCopyHover(false)
+			// The proof goes with the chip it replaced. A `copied` left lit on a
+			// message the pointer has left would be feedback about a row nobody
+			// is looking at any more.
+			old.SetCopied(false)
+		}
+	}
+	p.hoverCopy = index
+	if index != 0 {
+		if block, isMessage := p.transcript.Block(index - 1).(*messageBlock); isMessage {
+			block.SetCopyHover(true)
+		}
+	}
+	return true
+}
+
+// hoverTeachRow lights the example row under the pointer.
+//
+// It is [hoverFoldRow] for the empty state, and it is even cheaper: the rows
+// are the pane's own paint rather than a block's, so the mark is one int here
+// and nothing is invalidated anywhere else. Nothing it touches is readable by a
+// keystroke, which is what keeps the hover door side-effect free.
+func (p *transcriptPane) hoverTeachRow(local image.Point, inside bool) bool {
+	row := 0
+	if inside {
+		if _, ok := p.teachAt(local.Y); ok {
+			row = local.Y + 1
+		}
+	}
+	if p.hoverTeach == row {
+		return false
+	}
+	p.hoverTeach = row
+	return true
+}
+
 // awaitingBlock is the awaiting line (5.20 rule 6, 8.2.21).
 //
 // It is a live block that sits at the tail of the transcript for exactly as
@@ -352,13 +719,35 @@ func (b *awaitingBlock) Rows(width int) []string {
 	if st == nil {
 		st = blocks.Plain
 	}
+	// THE BREATHE, and not the spinner. §18.2 sanctions exactly one moving
+	// glyph on this line and §7 moved the SPINNER to the composer's prompt, one
+	// row down: two braille wheels turning at once, three rows apart, is two
+	// answers to "is anything happening" and the reader has to decide whether
+	// they mean different things.
+	//
+	// So the thinking line takes §11's OTHER motion — the eased three-tier dot
+	// that grows and shrinks on a 1.44s breath ([blocks.DefaultPulse]) — which
+	// says the same thing in a different register: the prompt says a reply is
+	// being written, this says the room is thinking about it. The two are
+	// phase-independent by construction and cannot beat against each other,
+	// because the periods (1.2s and 1.44s) were chosen not to.
+	//
+	// It USED TO DRAW NOTHING AT ALL. Every construction site passed
+	// motion:false, so the line has shipped a static [tokens.GlyphWorking] since
+	// the spinner moved — §11's second motion existed in the token table, in the
+	// clock, and in no frame anybody ever saw.
 	glyph := tokens.GlyphWorking
 	if b.motion && b.clock != nil {
-		glyph = b.clock.Glyph()
+		glyph = blocks.DefaultPulse.Glyph(b.clock)
 	}
 	tail := " " + b.phase
 	if b.interruptible {
-		const hint = " " + tokens.GlyphSeparator + " esc interrupt"
+		// VERB FIRST (§16's verb·key chip, [keychip]). It read `esc interrupt`
+		// until this line, which is the bug the law was written about spelled out
+		// on the one row a reader looks at while they are deciding whether to
+		// stop the machine: two dim words, and nothing saying which is the label
+		// and which is the key.
+		hint := keychip.Sep + keychip.Text(registry.ChipFor("interrupt", "esc"))
 		if blocks.Width(glyph+tail+hint) <= width {
 			tail += hint
 		}
@@ -377,6 +766,137 @@ func (b *awaitingBlock) Rows(width int) []string {
 	return b.rows[:]
 }
 
+// -- the seam under the fixed strip (§16 SURFACE SEAMS ARE GROUNDS) ----------
+//
+// THE DEFECT. Reported in four words — "no border in chat when scrolling". The
+// transcript scrolls; the composer region and the contextual line do not; and
+// between the moving thing and the still thing there was nothing at all. A line
+// of a reply arriving at the bottom of the lens simply stopped existing one row
+// later, so the eye had no way to tell whether the surface ended there, whether
+// the text had been cut, or whether the two regions were one region behaving
+// strangely. It is 12.13's wall finding on the horizontal axis — there two panes
+// were flush and read as one room with a glitch; here two PLANES are.
+//
+// WHAT IT IS NOT. A hairline. §16's RULED LINES admits exactly two: the dialog
+// chrome ring (internal/tui2/dialogchrome) and the word-in-line seam, where the
+// label IS the rule. A third rule drawn across the bottom of the transcript is
+// the school-notebook smell the rule exists to name, and 5.13 already spent this
+// surface's structure budget on "whitespace not boxes". So the seam is a GROUND:
+// the fixed strip carries its own floor, and what scrolls visibly slides beneath
+// it. A plane needs no line to have an edge — the edge is where the floor
+// changes.
+//
+// WHICH RUNGS — AND THERE ARE TWO OF THEM NOW. §7's hug is not one strip, it is
+// two rows on a TWO-TONE ground: the row you type into stands one shade lighter
+// than the bar row that names where you are, and that step is the whole of the
+// depth cue. A single ground under both would be one slab two rows tall, which
+// is what this surface shipped before and what the reader called a black bar.
+//
+// The rungs are [tokens.HugGroundInput] and [tokens.HugGroundBar], derived on
+// the ground→band axis and both deliberately BELOW [tokens.Sheet]: a dialog
+// arrived and will leave, so it may announce itself; the hug has been on screen
+// since the window opened. See tokens/palette.go's [tokens.HugBarTowardBand] for
+// why the two numbers are the only pair that survives the xterm greyscale ramp,
+// and tokens' TestHugLadder for the measurements.
+//
+// HONEST DEGRADATION. Below [tokens.Profile.SheetGround] the strip draws
+// NOTHING. There is no fallback rule line, and refusing one is the point: a
+// hairline invented where the ground could not be painted would reintroduce
+// exactly the mark §16 forbids, on precisely the profiles least able to afford
+// an extra idiom. At 16 colours and at none the hug's edge glyph at column 0 is
+// the whole seam, which is the same answer [tokens.Profile.SelectionStyle] and
+// the dialog's own ring give: the ground is the enhancement, the shape is the
+// floor. At 256 colours the bar rung resolves to the ground's own greyscale
+// entry, so the two-tone reads as one raised INPUT row over an unpainted bar —
+// documented as intended rather than worked around, because the alternative is
+// a bar rung that collides with the input rung and no depth at all.
+
+// seamStrip paints one region of the fixed bottom strip onto the seam's ground.
+//
+// It takes a COMPOSED view rather than spans, and that is the one compromise in
+// here worth naming. [blocks.CardBlock]'s ground states the rule — "a background
+// wrapped around already-painted text is undone by the first inner reset the
+// painted spans carry, so the only form that survives is foreground and
+// background written together, span by span" — and it is right. But this strip
+// is composed by sibling packages (internal/tui2/composer and footer), each of
+// which paints its own spans through the token layer's ordinary doors, and
+// threading a ground through both would be two renderers rewritten to carry a
+// parameter that means nothing to either. So the ground is asserted at the head
+// of the row and RE-asserted after every reset that can clear it
+// ([tokens.GroundResets]) — the same guarantee, bought with a scan of a handful
+// of rows per frame instead of an API.
+//
+// The GROUND IS A PARAMETER because the hug is two-tone: the input row and the
+// bar row call this with different rungs, and a package-level constant would be
+// the two rows sharing one floor again (see the WHICH RUNGS note above).
+//
+// Every row is filled to the full width, because a plane that stops at the last
+// letter is a highlight, and the rectangle is filled to its full height, because
+// a strip that returned fewer rows than it was given would show the transcript
+// through the hole (12.13's ghost, one plane up — the same reasoning
+// palette.padSheet states for a floating panel).
+func seamStrip(style *tokens.Styler, view string, width, height int, rung tokens.Token) string {
+	if width <= 0 || height <= 0 || style == nil || !style.Profile().SheetGround() {
+		return view
+	}
+	profile, focus := style.Profile(), style.Focus()
+	ground := rung.Bg(profile, focus)
+	if ground == "" {
+		return view
+	}
+	var out strings.Builder
+	out.Grow(len(view) + height*(width+len(ground)+8))
+	drawn := 0
+	for row := range strings.SplitSeq(view, "\n") {
+		if drawn > 0 {
+			out.WriteByte('\n')
+		}
+		seamRow(&out, row, ground, profile, width)
+		drawn++
+	}
+	for ; drawn < height; drawn++ {
+		if drawn > 0 {
+			out.WriteByte('\n')
+		}
+		seamRow(&out, "", ground, profile, width)
+	}
+	return out.String()
+}
+
+// seamRow writes one row of the strip: the ground, the row with its floor kept
+// under it, the fill out to the edge, and the ground given back.
+//
+// It never truncates. The renderers above it fit their own rows to the width
+// they were given, and cutting a painted string here is how a row ends up
+// wearing half an escape sequence — the same rule the footer states for its own
+// error line.
+func seamRow(out *strings.Builder, row, ground string, profile tokens.Profile, width int) {
+	out.WriteString(ground)
+	out.WriteString(seamReground(row, ground, profile))
+	if pad := width - blocks.Width(row); pad > 0 {
+		out.WriteString(strings.Repeat(" ", pad))
+	}
+	out.WriteString(tokens.ResetBg(profile))
+}
+
+// seamReground puts the floor back after every span that took it away. The
+// containment check is what keeps the ordinary row free: nothing in the footer's
+// ordinary vocabulary resets a background, so the common case is two scans and
+// no allocation.
+//
+// The list of resets is [tokens.GroundResets] and is no longer restated here.
+// It was, with a test pinning the restatement against what a styler emits — and
+// a test that pins a copy is a copy with a guard on it, not one spelling. The
+// fact belongs to the package that writes the bytes.
+func seamReground(row, ground string, profile tokens.Profile) string {
+	for _, reset := range tokens.GroundResets(profile) {
+		if strings.Contains(row, reset) {
+			row = strings.ReplaceAll(row, reset, reset+ground)
+		}
+	}
+	return row
+}
+
 // statusPane is the contextual footer (10.5.22, 5.22 rule 4): a registry of
 // columns that drop lowest-priority-first rather than wrapping.
 //
@@ -388,21 +908,70 @@ func (b *awaitingBlock) Rows(width int) []string {
 // field it leaves at zero is a column that does not appear (the affordance
 // never lies, 5.20, and that includes lying by presence).
 //
-// 10.5.23's split is the hard line: system health and the open-question count
-// live here; this-turn cost and context live on the composer's meta strip and
-// are not duplicated. Nothing on this row mentions money.
+// 10.5.23's split — health here, cost and context on a strip of the composer's
+// own — IS OVER, and this type is where it ended. §7 dissolved the meta strip
+// into this row: the model word came here as the picker's door, the context
+// gauge came here as a standing fact, and the turn's own cost and elapsed came
+// here as middle-zone chips that exist only while the turn does. The reason is
+// the one §15 gives for everything else: two permanent rows of numbers under a
+// conversation is structure announcing itself, and the split was only ever
+// keeping two rows apart that should have been one.
 type statusPane struct {
 	style *tokens.Styler
 	bar   *footer.Model
 
-	// Filled once, at construction.
+	// Filled once, at construction and then by a model switch or a promotion.
 	session string
-	model   string
+	// model is the slug this window's voice is bound to. IT IS NEVER DRAWN —
+	// §14 puts identifiers in the never-shown tier, and a reader met this one on
+	// the live build as `deepseek-v4-flash-latest`. It is kept because the
+	// window has to KNOW which model answers (a promotion adopts an engine and
+	// this is where the adoption lands), and dropping the field would be losing
+	// the fact rather than declining to print it.
+	model string
 
 	// Filled by the poll and the composer's turn; poll.go writes turns and err.
 	turns int
 	live  bool
 	err   string
+
+	// The three zones' inputs (§7): places for the left, and the standing facts
+	// for the right — where the work lands, who is answering, how much of the
+	// window is gone, what the day has cost. Filled by refresh and the poll;
+	// every absent one renders as nothing at all (§16's EMPTINESS).
+	places    []footer.Place
+	spend     float64
+	haveSpend bool
+	// dir is the abbreviated ground, rendered by internal/tui2/placeline and
+	// handed over as words. The place line is no longer a ROW of this surface —
+	// §7 folded it into the bar's right zone — but it is still the component
+	// that knows how to shorten a path, so the app keeps a model and asks it.
+	dir string
+	// used, window and haveUsage are the context gauge's reading. They arrive
+	// from the same poll that used to write them onto the meta strip; what
+	// changed is where they land.
+	used      int64
+	window    int64
+	haveUsage bool
+	// cost and haveCost are THIS TURN's money, drawn in the middle zone beside
+	// the interrupt chip and only while a turn is live. elapsed is its age.
+	// None of the three is a standing fact, which is exactly why none of them
+	// is on the right.
+	cost     float64
+	haveCost bool
+	elapsed  time.Duration
+
+	// interrupt is the act the middle zone's `interrupt esc` chip performs —
+	// the same act esc takes on a live turn, reached by a pointer.
+	interrupt func() tea.Cmd
+
+	// dock is §6's hidden sidebar, collapsed onto this row (footer/dock.go). It
+	// is filled by refresh: whether the drawer is shut, and how much live work
+	// is inside it. openRail is the one act it performs, and it is the very act
+	// the rail chord performs — a click and a chord that opened the drawer by
+	// two different routes would be two drawers.
+	dock     footer.Dock
+	openRail func() tea.Cmd
 
 	// Filled every frame by the app's refresh, from the state that decides
 	// them. See App.refresh.
@@ -471,12 +1040,27 @@ var (
 	_ tui2.PaneHover = (*statusPane)(nil)
 )
 
-// Render composes the footer at width.
+// Render composes the bar row at width, on the DARKER of the hug's two rungs.
+//
+// The two rows of the hug are one surface and two planes: the transcript scrolls
+// past both and through neither, and the step between them says which one you
+// type into without a hairline being drawn to say it. This is the row that names
+// where you are, so it is the one further back. See the WHICH RUNGS note at
+// [seamStrip].
 func (p *statusPane) Render(width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
 	p.lastWidth = width
+	return seamStrip(p.style, p.row(width), width, height, tokens.HugGroundBar)
+}
+
+// row is what the contextual line says right now, unpainted by the seam. It is
+// split from Render so the ground is applied at exactly one place and neither
+// of the two rows the footer can be — the ordinary registry of columns, and the
+// whole coloured sentence a failed read replaces it with — can be given a floor
+// the other one lacks.
+func (p *statusPane) row(width int) string {
 	// A read that failed is the one state 5.16 hands a whole coloured sentence
 	// to: "a whole coloured sentence means something is wrong" is the doctrine,
 	// and a surface that cannot reach its own journal is exactly that. It
@@ -504,6 +1088,9 @@ func (p *statusPane) Render(width, height int) string {
 // lying by presence.
 func (p *statusPane) focusContext(width int) footer.FocusContext {
 	return footer.FocusContext{
+		Places:        p.places,
+		Spend:         p.spend,
+		HaveSpend:     p.haveSpend,
 		Verbs:         p.offeredVerbs(width),
 		Input:         p.input,
 		Hint:          p.hint,
@@ -512,8 +1099,21 @@ func (p *statusPane) focusContext(width int) footer.FocusContext {
 		KeyMode:       p.keyMode,
 		KeyModeCount:  p.keyCount,
 		Health:        p.health(),
+		Dock:          p.dock,
 		ScopeTail:     p.scopeTail(),
 		Hover:         p.hover,
+		// What the meta strip used to say, said here (§7). The model word is
+		// the picker's door; the gauge and the directory are standing facts;
+		// the turn's own money and age are live ones and are gated on Live so
+		// they leave with the turn rather than standing as a legend.
+		Dir:          p.dir,
+		CtxUsed:      p.used,
+		CtxWindow:    p.window,
+		HaveCtx:      p.haveUsage,
+		Live:         p.live,
+		Elapsed:      p.elapsed,
+		TurnCost:     p.cost,
+		HaveTurnCost: p.haveCost,
 	}
 }
 
@@ -541,8 +1141,22 @@ func (p *statusPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 			return p.pop()
 		}
 		return nil
-	case footer.HelpTarget:
-		id = helpEntryID
+	case footer.InterruptTarget:
+		// The chip performs what esc performs, and only while it is drawn —
+		// the row only offers it while EscInterrupts is true.
+		if p.interrupt != nil {
+			return p.interrupt()
+		}
+		return nil
+	case footer.DockTarget:
+		// The dock is the shut drawer, and clicking it opens the drawer. It
+		// goes through the app's own toggle rather than through a shell call of
+		// its own, so the pointer and the chord cannot leave the surface in two
+		// different states.
+		if p.openRail != nil {
+			return p.openRail()
+		}
+		return nil
 	}
 	if p.run == nil {
 		return nil
@@ -605,15 +1219,26 @@ func (p *statusPane) health() []string {
 // truncated uuid on the footer was the rule being broken in the one place a
 // reader looks when they are lost. A room nobody has named says so.
 func (p *statusPane) scopeTail() string {
-	room := strings.TrimSpace(p.room)
-	if room == "" && p.session != "" {
-		room = untitledRoom
-	}
-	if room == "" {
+	// Empty at home, on purpose: the trail REPLACES the places tabs while set
+	// (§7's cohabitation), so a standing `‹ room` here would hide the tabs
+	// forever. The trail begins only when the reader has descended.
+	crumbs := strings.TrimSpace(p.breadcrumb)
+	if crumbs == "" {
 		return ""
 	}
-	if crumbs := strings.TrimSpace(p.breadcrumb); crumbs != "" {
-		room += " " + tokens.GlyphScopeUp + " " + crumbs
+	room := strings.TrimSpace(p.room)
+	if room == "" {
+		// NEVER THE WORD "untitled". A room nobody has named yet is NEW, not
+		// defective, and `untitled room` on the one row a lost reader looks at
+		// reads as a filing error rather than as a room that has not had its
+		// first exchange yet. The naming scribe names a room from that exchange,
+		// so this is a transitional face and it should say what is transitional
+		// about it. Same reasoning 13.3.4 gives for never falling back to an id.
+		room = newRoomWord
 	}
-	return tokens.GlyphScopeUp + " " + room
+	return tokens.GlyphScopeUp + " " + room + " " + tokens.GlyphScopeUp + " " + crumbs
 }
+
+// newRoomWord is what an unnamed room is called on the bar row. See
+// [statusPane.scopeTail].
+const newRoomWord = "new room"

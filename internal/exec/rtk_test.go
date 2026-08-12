@@ -45,7 +45,7 @@ func compressorBench(t *testing.T) (*Toolbox, string, func() []string) {
 		}
 		return strings.Split(strings.TrimSpace(string(body)), "\n")
 	}
-	return NewToolbox(space, 1, nil), root, asked
+	return NewToolbox(space, "1", nil), root, asked
 }
 
 func shell(t *testing.T, box *Toolbox, command string) Result {

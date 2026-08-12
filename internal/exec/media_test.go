@@ -104,7 +104,7 @@ func (f fakeModalities) Supports(modelID, direction, modality string) bool {
 func mediaToolbox(t *testing.T, provider MediaProvider, modalities ModalityCatalog) (*Toolbox, *Workspace) {
 	t.Helper()
 	space := workspace(t)
-	tools := newToolboxWithMedia(space, 7, nil, nil, &MediaTools{
+	tools := newToolboxWithMedia(space, "7", nil, nil, &MediaTools{
 		Provider: provider, Catalog: modalities, ImageModel: "paint/model",
 		SpeechModel: "voice/model", MusicModel: "music/model", VideoModel: "motion/model",
 		VideoPrice: 0.5, WorkingModel: "vision/model",
@@ -138,7 +138,7 @@ func TestGenerateImageWritesReadableNamesReferencesAndUsage(t *testing.T) {
 		!strings.HasPrefix(fake.imageRequest.InputReferences[0], "data:image/png;base64,") {
 		t.Fatalf("image request = %+v", fake.imageRequest)
 	}
-	if got := space.Artifacts(7); len(got) != 1 || got[0] != want {
+	if got := space.Artifacts("7"); len(got) != 1 || got[0] != want {
 		t.Fatalf("artifacts = %v", got)
 	}
 }
@@ -156,8 +156,11 @@ func TestMediaToolsAreRegisteredAndHonorTheSpendGate(t *testing.T) {
 	}
 	tools.Arm(FamilyMedia)
 	definitions := tools.Definitions()
-	if len(definitions) != 10 {
-		t.Fatalf("definitions = %d, want five base + five media", len(definitions))
+	// Eleven: five base, the door — which stays put rather than being pulled
+	// out of the middle of the block and shifting everything behind it — and the
+	// five media schemas appended at the tail.
+	if len(definitions) != 11 {
+		t.Fatalf("definitions = %d, want five base + the door + five media", len(definitions))
 	}
 	want := map[string]bool{"generate_image": false, "generate_music": false, "generate_video": false, "speak": false, "view_image": false}
 	for _, definition := range definitions {

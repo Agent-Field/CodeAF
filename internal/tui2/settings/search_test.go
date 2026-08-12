@@ -10,10 +10,11 @@ import (
 )
 
 // 8.2.19's headline: ANY printable character starts a global fuzzy search
-// across ALL tabs. Not a slash, not ctrl+f, and not "search within this group".
-func TestPrintableCharacterSearchesEveryTab(t *testing.T) {
+// across the whole sheet. Not a slash, not ctrl+f, and not "search within this
+// group" — the band starting in the first group finds a row in the last.
+func TestPrintableCharacterSearchesEveryGroup(t *testing.T) {
 	s := newSheet(t)
-	s.tab = 0 // models
+	s.selected = 0 // the first row of the first group
 	s.reselectFresh()
 
 	s.typeText("attrib")
@@ -23,16 +24,14 @@ func TestPrintableCharacterSearchesEveryTab(t *testing.T) {
 	}
 	key, ok := s.Selected()
 	if !ok || key != config.KeyAttribution {
-		t.Fatalf("selected %q, want the sharing tab's %q found from the models tab", key, config.KeyAttribution)
-	}
-	if s.Tab() != "" {
-		t.Fatalf("a running search selects no single tab, got %q", s.Tab())
+		t.Fatalf("selected %q, want %q found from the top of the sheet", key, config.KeyAttribution)
 	}
 }
 
-// The results are navigation: the tab bar becomes a breadcrumb naming which
-// groups they came from, and every row still says which group it is in.
-func TestSearchTurnsTheTabBarIntoAFilterBreadcrumb(t *testing.T) {
+// The results are navigation: the header carries the query and how much it took
+// away, and every result still says which group it came from — on its own line,
+// where the group word is a fact about that row rather than a count of rows.
+func TestSearchResultsCarryTheirGroupAndTheHeaderCarriesTheCount(t *testing.T) {
 	s := newSheet(t)
 	s.typeText("budget")
 
@@ -40,15 +39,26 @@ func TestSearchTurnsTheTabBarIntoAFilterBreadcrumb(t *testing.T) {
 	if !strings.Contains(frame[0], "budget") {
 		t.Fatalf("header does not carry the query: %q", frame[0])
 	}
-	if !strings.Contains(frame[1], config.CategoryMoney) {
-		t.Fatalf("breadcrumb %q does not name the group the results came from", frame[1])
+	if !strings.Contains(frame[0], "of") {
+		t.Fatalf("header %q does not say how much the query took away", frame[0])
 	}
-	if strings.Contains(frame[1], config.CategoryModels+"  ") {
-		t.Fatalf("breadcrumb %q is still rendering the unfiltered tab bar", frame[1])
-	}
-	body := strings.Join(frame[2:], "\n")
-	if !strings.Contains(body, config.CategoryMoney) {
+	body := strings.Join(frame[1:], "\n")
+	if !strings.Contains(body, config.CategorySpending) {
 		t.Fatalf("a result must name its group so it reads as navigation:\n%s", body)
+	}
+}
+
+// The group words are headings on the page and chips on a result line — never
+// both at once. A search that also drew the headings would announce a group
+// above the one row of it the query left.
+func TestSearchDropsTheGroupHeadings(t *testing.T) {
+	s := newSheet(t)
+	s.typeText("daily")
+
+	for _, line := range strings.Split(s.Render(80, 20), "\n") {
+		if strings.TrimSpace(line) == config.CategorySpending {
+			t.Fatalf("a search still drew the group heading:\n%s", s.Render(80, 20))
+		}
 	}
 }
 
@@ -89,8 +99,8 @@ func TestHighlightOffsetsLandOnTheLabel(t *testing.T) {
 	}
 }
 
-// Rung two of the esc ladder (8.2.21): esc clears the search and the tabs come
-// back. It does not close the sheet while there is a filter to drop first.
+// Rung two of the esc ladder (8.2.21): esc clears the search and the whole page
+// comes back. It does not close the sheet while there is a filter to drop.
 func TestEscClearsTheSearchBeforeItClosesTheSheet(t *testing.T) {
 	closed := 0
 	s := newSheet(t, func(o *Options) {
@@ -105,8 +115,8 @@ func TestEscClearsTheSearchBeforeItClosesTheSheet(t *testing.T) {
 	if closed != 0 {
 		t.Fatal("first esc closed the sheet instead of clearing the search")
 	}
-	if s.Tab() == "" {
-		t.Fatal("clearing the search must bring the tabs back")
+	if s.Group() == "" {
+		t.Fatal("clearing the search must bring the whole page back")
 	}
 
 	s.press(namedKey(tea.KeyEscape))
@@ -143,7 +153,7 @@ func TestSearchHonoursGates(t *testing.T) {
 	t.Cleanup(func() { gates = restore })
 	gates = map[string]gate{
 		config.KeyAttribution: func(value func(string) (string, bool)) bool {
-			on, _ := value(config.KeyProposeSkills)
+			on, _ := value(config.KeyAttribution)
 			return on == "on"
 		},
 	}
@@ -154,7 +164,7 @@ func TestSearchHonoursGates(t *testing.T) {
 		t.Fatal("the parent is on by default, so the gated row should be here")
 	}
 
-	s.gotoRow(t, config.KeyProposeSkills)
+	s.gotoRow(t, config.KeyAttribution)
 	s.activate(true) // toggle the parent off
 	s.setQuery("attribution")
 	for _, index := range s.visible {

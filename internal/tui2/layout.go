@@ -86,6 +86,17 @@ type mode struct {
 	// drawn and this changes nothing (4.3: persistent, not toggle-hidden); in
 	// a narrow frame it is what swaps the main pane to the scope list.
 	ScopeOpen bool
+	// RailHidden takes the rail off this frame entirely — §6's `sidebar:
+	// hidden`, and what the work PAGE asks for while it is the lens.
+	//
+	// It is not the same fact as [layout.Narrow] and must not be confused with
+	// it. Narrow says the rail did not FIT, which is why scope then has to be
+	// reachable as a full pane; this says the surface has asked for the rail not
+	// to be there, because the lens is already showing the same list at page
+	// altitude and two copies of one list on one screen is §15's same-fact-twice.
+	// So a hidden rail never becomes the main pane: there is nothing to fall
+	// back to, and falling back would draw the duplicate the hiding prevented.
+	RailHidden bool
 	// OverlayOpen asks for the overlay plane. Wave 3 fills it.
 	OverlayOpen bool
 }
@@ -122,7 +133,7 @@ func solveInto(slots []slot, w, h int, m Metrics, md mode) layout {
 	// usable transcript; a rail that leaves forty columns of conversation has
 	// cost more than it showed.
 	railW := 0
-	if !md.Linear && w >= m.RailBreakpoint && m.RailWidth > 0 && bodyH+composerH > 0 {
+	if !md.RailHidden && !md.Linear && w >= m.RailBreakpoint && m.RailWidth > 0 && bodyH+composerH > 0 {
 		if w-m.RailWidth-railSeam >= m.MinMainWidth {
 			railW = m.RailWidth
 		}
@@ -142,7 +153,7 @@ func solveInto(slots []slot, w, h int, m Metrics, md mode) layout {
 	// was (5.15). The transcript yields rather than shrinking, because two
 	// half-panes in sixty columns is the shape the doc rejects.
 	mainID := LayerTranscript
-	if l.Narrow && md.ScopeOpen {
+	if l.Narrow && md.ScopeOpen && !md.RailHidden {
 		mainID = LayerRail
 	}
 
@@ -217,6 +228,38 @@ const (
 	// and a dialog with no room is a fullscreen dialog.
 	dialogMinWidth  = 40
 	dialogMinHeight = 8
+	// dialogWidthPercent and dialogHeightPercent are how much of the lens a
+	// floating panel takes on each axis.
+	//
+	// THE DEFECT: both axes took two thirds. At 120×32 that is a 60-column
+	// chrome around a 58-column panel, and twelve of the palette's thirty
+	// catalog descriptions ran out of room and truncated; at 80×24 it is ten
+	// content rows for a fifty-six row catalog. The linear frame shows the same
+	// catalog whole at 96 columns, which is the proof that the width was the
+	// miser rather than the content.
+	//
+	// So the two axes stop sharing a fraction, because the surfaces that float
+	// here are LISTS and a list is not square. Width is what one row needs, and
+	// it needs it once: three quarters of the lens is 68 columns at 120 and 60
+	// at 80, both of which carry a name, a gap and a description without an
+	// ellipsis. Height is what the list itself needs, and a list wants rows —
+	// four fifths, which is the most a panel can take and still be a panel.
+	//
+	// What is left over is the margin, and it stays honest at both reported
+	// sizes: the panel is centred, so the lens keeps three rows of transcript
+	// above and below it at 120×32 and two at 80×24, and the chrome's own ring
+	// (dialogMargin) adds one more before the panel's first line of text. That
+	// is the reading tokens.DialogFullscreenBelowHeight already states — a
+	// floating dialog needs transcript visible above it to be a dialog rather
+	// than a takeover — kept as a proportion instead of a threshold.
+	//
+	// They are constants rather than Metrics fields for railSeam's reason: the
+	// 10.5.24 table is for numbers that CHANGE with the terminal, and a fraction
+	// of the lens is the same fraction at every width. The clamps below and
+	// above them are not: a lens too small to spend a fraction on still gets
+	// dialogMinWidth/dialogMinHeight, and no panel ever exceeds its lens.
+	dialogWidthPercent  = 75
+	dialogHeightPercent = 80
 )
 
 // overlayRects sites one dialog. It returns the chrome rectangle (the panel plus
@@ -235,8 +278,8 @@ func overlayRects(w, h int, lens image.Rectangle, m Metrics) (chrome, panel imag
 	if lens.Dx() < dialogMinWidth || lens.Dy() < dialogMinHeight {
 		return full, full, false
 	}
-	cw := min(lens.Dx(), max(dialogMinWidth, lens.Dx()*2/3))
-	ch := min(lens.Dy(), max(dialogMinHeight, lens.Dy()*2/3))
+	cw := min(lens.Dx(), max(dialogMinWidth, lens.Dx()*dialogWidthPercent/100))
+	ch := min(lens.Dy(), max(dialogMinHeight, lens.Dy()*dialogHeightPercent/100))
 	x := lens.Min.X + (lens.Dx()-cw)/2
 	y := lens.Min.Y + (lens.Dy()-ch)/2
 	chrome = image.Rect(x, y, x+cw, y+ch)

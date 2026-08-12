@@ -93,7 +93,7 @@ func TestGatePromptKeepsChurnBelowTheSettledBlocks(t *testing.T) {
 	if taste := strings.Index(first, "Settled taste — hold to these:\n"); taste != 0 {
 		t.Fatalf("settled taste does not lead the gate prompt (index %d):\n%s", taste, first)
 	}
-	digest := strings.Index(first, "Standing preferences and relevant lessons:\n")
+	digest := strings.Index(first, revision.GateLessonsHeading)
 	request := strings.Index(first, "Verbatim request:\n")
 	if digest <= 0 || request <= digest || request >= marker {
 		t.Fatalf("the standing blocks do not lead the job: digest=%d request=%d deliverable=%d\n%s",
@@ -144,7 +144,7 @@ func TestCompileRidesOneConstantCacheKey(t *testing.T) {
 	settings := config.Config{Model: "talk/model"}
 	capture := &compileCaptureClient{model: "talk/model"}
 	client := adoptLiveClient(settings, capture.model, capture)
-	compile := compileIntent(settings, head.NewCompiler(client), client)
+	compile := compileIntent(settings, head.NewCompiler(client), client, nil)
 
 	for _, instruction := range []string{"summarise this file", "benchmark the parser"} {
 		if _, err := compile(context.Background(), instruction, "Live graph snapshot:\n(nothing)"); err != nil {
@@ -240,7 +240,7 @@ func TestPlanContractsRideTheRunCacheKey(t *testing.T) {
 	client := adoptLiveClient(settings, capture.model, capture)
 	plans := &jobPlans{graphs: map[string]plannedJob{}}
 
-	subtree, err := planSubtree(settings, client, client, plans, graph)(context.Background(), resident.Compiled{
+	subtree, err := planSubtree(settings, client, client, plans, graph, "")(context.Background(), resident.Compiled{
 		Goal:  "review the pull request and deliver REVIEW.md",
 		Scale: head.ScaleProject,
 	})

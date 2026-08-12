@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/craft"
@@ -151,6 +152,23 @@ func (r *Reconciler) craftFor(ctx context.Context, request string, fresh bool, r
 	if len(matches) == 0 || matches[0].Score < CraftDecisiveScore {
 		return craftUse{}, false
 	}
+	workflow, err := mind.shelf.Load(matches[0].Name)
+	if err != nil || workflow == nil {
+		return craftUse{}, false
+	}
+	// The score says the SHAPE fits. This says the subject does, and both have
+	// to agree before learned know-how is reached for unasked: a three-step
+	// deep-dive distilled from investment research on one company scores well
+	// against a request to deep-dive a city's AI events, and running it there
+	// produced a job about the wrong thing under a name the person did not
+	// recognise. See craft.Subject for the discriminator and why a miss is the
+	// cheaper error. Naming the workflow outright is the person overriding this
+	// the only way that is theirs to override — by saying which one they mean.
+	if !craft.OnSubject(workflow, instruction) && !craftNamedOutright(instruction, workflow.Name) {
+		// Silent, like every other miss. They never mentioned this workflow, so
+		// a line about not using it would be the machine talking about itself.
+		return craftUse{}, false
+	}
 	// The decline is read AFTER the match rather than before it, which costs
 	// one local BM25 read and buys the whole difference between being heard and
 	// being ignored: only here is it known that there WAS a learned way to do
@@ -159,10 +177,6 @@ func (r *Reconciler) craftFor(ctx context.Context, request string, fresh bool, r
 	// reads as the machine going ahead anyway.
 	if fresh || craftDeclined(instruction) {
 		return craftUse{receipt: craftSetAsideLine()}, false
-	}
-	workflow, err := mind.shelf.Load(matches[0].Name)
-	if err != nil || workflow == nil {
-		return craftUse{}, false
 	}
 	// What a draft has to clear is a question about evidence, and the evidence
 	// has three states rather than two. A workflow that has landed a job is
@@ -181,43 +195,65 @@ func (r *Reconciler) craftFor(ctx context.Context, request string, fresh bool, r
 	// and it goes behind the overwhelming bar, where it stays until the user
 	// asks for it by name.
 	survival := r.craftSurvival(workflow.Name)
+	// A retired way of working is not reached for, ever. The skip is here, after
+	// the match and the load, because that is where the workflow itself is in
+	// hand — and it is silent, like every other miss: the person retired this
+	// precisely so it would stop coming up, and a line saying "I would have used
+	// the thing you told me to stop using" is the opposite of being heard.
+	if strings.TrimSpace(survival.Retired) != "" {
+		return craftUse{}, false
+	}
 	firstRun := survival.For == 0
 	if firstRun && survival.Against > 0 &&
 		matches[0].Score < CraftOverwhelmingScore && !craftNamedOutright(instruction, workflow.Name) {
 		return craftUse{}, false
 	}
-	params, ok := r.craftParams(ctx, instruction, workflow)
-	if !ok {
-		return craftUse{}, false
-	}
-
-	provenance.Craft = CraftRef(workflow)
-	subtree, err := CompileCraftAs(rootID, mind.dir, workflow, params, provenance)
+	use, err := r.craftAdmit(ctx, workflow, instruction, rootID, provenance)
 	if err != nil {
 		return craftUse{}, false
 	}
-	return craftUse{
-		subtree: subtree, reference: provenance.Craft,
-		receipt: r.craftUseReceipt(workflow, firstRun, survival.LastCost),
-	}, true
+	use.receipt = r.craftUseReceipt(workflow, firstRun, survival.LastCost)
+	return use, true
 }
 
-// craftParams fills the workflow's holes from the request. A missing required
-// param is a miss, not a question: craft is an optimization, and stopping to
-// interrogate the user about a workflow they never mentioned would cost more
-// than the planning it saves.
-func (r *Reconciler) craftParams(ctx context.Context, instruction string, workflow *craft.Workflow) (map[string]string, bool) {
+// craftAdmit is the compile itself: fill the workflow's holes from the request,
+// then turn it into the admission shape the planner would otherwise have
+// produced. It is separated from recognition because running a craft the user
+// NAMED is the same compile with the matcher taken out — and a second compiler
+// beside this one would be two ways of building the same subtree, drifting
+// apart one fix at a time.
+//
+// The receipt is left to the caller: recognition says "using your X way of
+// doing this" because the resident chose it, and a named run says something
+// else, but neither difference is the compile's business.
+func (r *Reconciler) craftAdmit(ctx context.Context, workflow *craft.Workflow, instruction, rootID string,
+	provenance store.Provenance) (craftUse, error) {
+	params, err := r.craftParams(ctx, instruction, workflow)
+	if err != nil {
+		return craftUse{}, err
+	}
+	provenance.Craft = CraftRef(workflow)
+	subtree, err := CompileCraftAs(rootID, r.craftMind.dir, workflow, params, provenance)
+	if err != nil {
+		return craftUse{}, err
+	}
+	return craftUse{subtree: subtree, reference: provenance.Craft}, nil
+}
+
+// craftParams fills the workflow's holes from the request. On the recognition
+// path a missing required param is a miss, not a question: craft is an
+// optimization, and stopping to interrogate the user about a workflow they
+// never mentioned would cost more than the planning it saves. On the named path
+// it is the error the askback is written from, which is why the reason travels
+// back rather than a bare false.
+func (r *Reconciler) craftParams(ctx context.Context, instruction string, workflow *craft.Workflow) (map[string]string, error) {
 	extracted := map[string]string{}
 	if len(workflow.Params) > 0 && r.craftMind.fill != nil {
 		if values, err := r.craftMind.fill(ctx, instruction, workflow); err == nil {
 			extracted = values
 		}
 	}
-	filled, err := workflow.Fill(extracted)
-	if err != nil {
-		return nil, false
-	}
-	return filled, true
+	return workflow.Fill(extracted)
 }
 
 // craftUseReceipt names what is about to run, which version of it, what it may
@@ -322,6 +358,20 @@ type CraftSurvival struct {
 	// made. Absent on records written before this field existed, which reads as
 	// zero and simply leaves the clause off.
 	LastCost float64 `json:"last_cost,omitempty"`
+	// Retired is why the person stopped this way of working being reached for,
+	// in their own words, and its presence IS the retirement — the recognizer
+	// skips any craft whose record carries one.
+	//
+	// It lives in the survival record rather than in a marker of its own for the
+	// reason the record exists at all: this is the one thing the system already
+	// knows about a craft by name, it is already read on the recognition path
+	// before anything is compiled, and a second key would be a second thing to
+	// keep true. Nothing is deleted by a retirement — the workflow file, its
+	// versions and its evidence stay exactly where they are, which is what makes
+	// this reversible by hand and auditable at all.
+	Retired string `json:"retired,omitempty"`
+	// RetiredWhen is when that happened, so a page can say how long ago.
+	RetiredWhen time.Time `json:"retired_when,omitempty"`
 }
 
 // CraftSurvivalKey is the trait name one craft's record is kept under. Both a
@@ -404,4 +454,32 @@ func (r *Reconciler) craftSurvival(key string) CraftSurvival {
 // to a clean landing. Everything else is a draft.
 func (r *Reconciler) craftProven(name string) bool {
 	return r.craftSurvival(name).For > 0
+}
+
+// retireCraft writes the retirement into the craft's own record. It is a
+// read-modify-write of the same trait the survival counts live in, so a craft
+// that is retired keeps everything it proved — retiring is the resident being
+// told to stop offering something, not the evidence being thrown away.
+func (r *Reconciler) retireCraft(name, reason string) error {
+	name = strings.TrimSpace(name)
+	if r == nil || r.store == nil || name == "" {
+		return fmt.Errorf("retire craft: no craft named")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "you asked me to stop working this way"
+	}
+	record := r.craftSurvival(name)
+	record.Retired = clipLabel(firstLine(reason), 200)
+	record.RetiredWhen = r.now()
+	_, err := r.store.RecordTrait(CraftSurvivalKey(name), store.TraitMeasurement{
+		Value: record, N: record.For + record.Against, Updated: r.now(),
+	})
+	return err
+}
+
+// craftRetirement is why this way of working is not reached for, or "" when it
+// still is.
+func (r *Reconciler) craftRetirement(name string) string {
+	return strings.TrimSpace(r.craftSurvival(name).Retired)
 }

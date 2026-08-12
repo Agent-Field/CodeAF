@@ -1,6 +1,10 @@
 package tui2
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+)
 
 // The floating dialog's boundary, drawn.
 //
@@ -8,13 +12,16 @@ import "strings"
 // a border; this file is the one place that boundary becomes cells. Two
 // characters wide vocabulary: a space and a hairline.
 //
-// SEAM — internal/tui2/tokens: the hairline is restated here as a literal rather
-// than read off [tokens.GlyphTreeDash], for the same reason DefaultMetrics
-// restates the two fullscreen breakpoints (see the SEAM note in metrics.go) —
-// this root package cannot import the tokens sibling without inverting the
-// tokens → tui2 dependency. TestDialogChromeDrawsTheTokenHairline
-// (dialog_tokens_test.go) pins the restatement to the constant from outside the
-// package, so drift fails a test rather than shipping quietly.
+// THE STROKE IS NOT RESTATED HERE, and it used to be. This root package cannot
+// import the tokens sibling without inverting the tokens → tui2 dependency (see
+// the SEAM note in metrics.go), so the hairline shipped as a bare literal with a
+// test pinning it to [tokens.GlyphTreeDash] from outside. It no longer has to:
+// §16 admits exactly two ruled lines and internal/tui2/blocks owns the renderer
+// for both, blocks is a LEAF this package may import freely, and its
+// [blocks.RuleMark] is already twinned to the token vocabulary by a test of its
+// own. One mark, one owner, and one fewer restatement to keep honest.
+// TestDialogChromeDrawsTheTokenHairline (dialog_tokens_test.go) still drives the
+// real shell and still measures what a terminal receives.
 //
 // SEAM — the chrome is drawn UNPAINTED, at the structural tier only. Colour is
 // the token layer's to give, and a caller that wants it tinted binds its own
@@ -23,7 +30,6 @@ import "strings"
 // nobody has claimed. Unpainted is also the profile-independent answer: the
 // hairline is the boundary at `--color none` and at truecolor alike, which is
 // the degradation ladder 10.1.2 asks for rather than a fallback nobody tested.
-const dialogHairline = "─"
 
 // dialogChrome renders the margin ring at a size: a hairline rule along the top
 // and bottom edge (5.13's room boundary) and blank ground between them. The
@@ -38,7 +44,7 @@ func dialogChrome(w, h int) string {
 	if w <= 0 || h <= 0 {
 		return ""
 	}
-	rule := strings.Repeat(dialogHairline, w)
+	rule := blocks.Rule(w, nil)
 	if h == 1 {
 		return rule
 	}

@@ -143,7 +143,7 @@ func TestBriefFaultLandsAsAMissingBrief(t *testing.T) {
 	graph := &Graph{Goal: "write it up", NextID: 1}
 	graph.Add(Node{Stage: 1, Title: "Berlin", Summary: "the Berlin leg"})
 	graph.Add(Node{Stage: 1, Title: "Lisbon", Summary: "the Lisbon leg"})
-	client := &faultingClient{panicOn: "Lisbon", reply: `{"brief":"Do the work and leave the result behind."}`}
+	client := &faultingClient{panicOn: "Lisbon", reply: `{"instruction":"Do the work and leave the result behind."}`}
 
 	var usage Usage
 	var err error

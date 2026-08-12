@@ -191,7 +191,7 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	// The digest block runs from its heading to the request that follows it —
 	// it stopped being the tail of the prompt when the standing blocks moved
 	// ahead of the job, so its bound is measured against its own end.
-	const digestHeading = "Standing preferences and relevant lessons:\n"
+	digestHeading := revision.GateLessonsHeading
 	marker := strings.Index(body, digestHeading)
 	end := strings.Index(body, "Verbatim request:\n")
 	if marker < 0 || end <= marker || len(body[marker:end]) > revision.GateNotebookBytes+len(digestHeading)+len("\n\n") {
@@ -204,7 +204,7 @@ func TestDeliveryGateSeesNotebookPreferencesAndNoPanelStaysBare(t *testing.T) {
 	if taste < 0 || !strings.Contains(body[taste:], settledTaste) {
 		t.Fatalf("gate input omitted the settled taste rule: %q", body)
 	}
-	if notebook := strings.Index(body, "Standing preferences and relevant lessons:\n"); taste > notebook {
+	if notebook := strings.Index(body, revision.GateLessonsHeading); taste > notebook {
 		t.Fatalf("settled taste ranked after the notebook digest: taste=%d notebook=%d", taste, notebook)
 	}
 	if !strings.Contains(body, resident.WorkingDecisionsHeader) || !strings.Contains(body, securityDecision) {
@@ -610,7 +610,7 @@ func TestResidentUserFacingPromptsKeepEmptyNotebookBytes(t *testing.T) {
 	}
 	wantBody := "Verbatim request:\n" + node.Provenance.Intent +
 		"\n\nCompiled goal:\n" + node.Brief +
-		"\n\nDeliverable as produced:\n" + deliverable
+		"\n\nDeliverable as produced:\n" + revision.FenceDeliverable(deliverable)
 	if got := capture.messages[1].Content[0].Text; got != wantBody {
 		t.Fatalf("empty-notebook gate body changed:\n got %q\nwant %q", got, wantBody)
 	}
@@ -835,12 +835,17 @@ func TestReviseForUserWithoutARetainedPlanSaysSo(t *testing.T) {
 	if err := reconciler.Tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	messages, err := graph.Messages("s1", 0, 50)
+	// The receipt is filed on the job, not said again (13.18): the head speaks
+	// for a redirect in its own voice, so the applied line is the record's.
+	messages, err := graph.NodeMessages("task-1", 0, 50)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var receipts string
 	for _, message := range messages {
+		if message.SessionID != "" {
+			t.Fatalf("an applied redirect receipt reached the thread: %+v", message)
+		}
 		receipts += message.Body + "\n"
 	}
 	if strings.Contains(receipts, "nothing in the remaining plan needed to change") {

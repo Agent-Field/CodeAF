@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // The settings registry is the one place a user-tunable knob is written down.
@@ -35,25 +37,38 @@ const (
 	SettingText
 )
 
-// Category names are the calm, plain-language groups the surface renders in
-// this order.
+// Category names are the four faint lowercase words the sheet may announce a
+// section with (15). There were seven, and five of them were labels doing
+// structure's job: `rhythm`, `documents & vision` and `sharing` each announced
+// two rows or one, which is a header naming a mechanism rather than a section a
+// reader could otherwise not place. Deleting them is 15's own test — the rows
+// still read, because position and spacing already said what the word said.
 const (
-	CategoryModels    = "models"
-	CategoryMoney     = "money & limits"
-	CategoryRhythm    = "rhythm"
-	CategoryLearning  = "learning"
-	CategoryDocuments = "documents & vision"
-	// CategorySharing groups what aforge puts of itself into work that leaves
-	// the machine under the user's name. None of the other groups is about the
-	// outside world, so attribution gets its own rather than hiding in one.
-	CategorySharing    = "sharing"
-	CategoryAppearance = "appearance"
+	// CategoryModels is what runs the work: one row per role the router has,
+	// then the capability models beside them.
+	CategoryModels = "models"
+	// CategorySpending is every dollar the product will spend without asking.
+	CategorySpending = "spending"
+	// CategoryPractice is what aforge does with its own time, and what it
+	// remembers of yours.
+	CategoryPractice = "memory & practice"
+	// CategoryInterface is how the surface draws itself, and how it signs the
+	// work that leaves the machine.
+	CategoryInterface = "interface"
+)
+
+// The old spellings, kept as aliases so a surface that still names one keeps
+// compiling while it is being ported. They are the same four words; nothing
+// resolves to a group that no longer exists.
+const (
+	CategoryMoney      = CategorySpending
+	CategoryLearning   = CategoryPractice
+	CategoryAppearance = CategoryInterface
 )
 
 // SettingCategories is the render order of the sheet.
 var SettingCategories = []string{
-	CategoryModels, CategoryMoney, CategoryRhythm,
-	CategoryLearning, CategoryDocuments, CategorySharing, CategoryAppearance,
+	CategoryModels, CategorySpending, CategoryPractice, CategoryInterface,
 }
 
 // Persisted keys are also the json field names in the profile's config.json.
@@ -65,8 +80,6 @@ const (
 	KeyPracticeIdle   = "practice_idle"
 	KeyBriefAfter     = "brief_after"
 	KeyTenureAfter    = "tenure_after"
-	KeyDemandShare    = "practice_demand_pct"
-	KeyProposeSkills  = "propose_new_skills"
 	KeyDocumentEngine = "document_engine"
 	KeyVisionModel    = "vision_model"
 	KeyAttribution    = "attribution"
@@ -74,10 +87,6 @@ const (
 	KeyLinearMode     = "linear_mode"
 	KeyNerdFont       = "nerd_font"
 )
-
-// ModelSettingSlots is the palette's slot order, kept identical so the sheet
-// and the models door read the same list in the same sequence.
-var ModelSettingSlots = []string{"talk", "work", "plan", "voice", "image", "speech", "music", "video", "boost"}
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
 var DocumentEngines = []string{"auto", "local", "free", "ocr"}
@@ -136,6 +145,14 @@ var OperatorEnvPins = []string{
 	// behind it — that one is always on, because a condition that eats replies
 	// does not get to wait for an operator to opt in.
 	"AFORGE_CHAT_TRACE",
+	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
+	// (internal/resident/grow.go): set to 0 and the governor keeps its three
+	// free checks and never asks the paid satisfaction question. It is
+	// plumbing for the reason AFORGE_CHAT_V2 is — a wave's escape hatch, not a
+	// preference — and it has the same lifetime: it disappears once the gate
+	// has proven itself, which is exactly the lifetime a persisted setting
+	// must not have.
+	"AFORGE_GROWTH_GATE",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
@@ -150,16 +167,6 @@ const (
 	// DefaultTenureAfter is the clean-firing count a standing charter needs
 	// before it earns tenure.
 	DefaultTenureAfter = 3
-
-	// DefaultPracticeDemandPct splits self-directed practice between measured
-	// demand and open curiosity. The learning loops read it; the surface writes
-	// it now so the preference exists before the loop that honors it lands.
-	DefaultPracticeDemandPct = 70
-
-	// DefaultProposeSkills lets the resident offer new skills it believes it
-	// should learn. Same contract as the share above: persisted now, read by
-	// the loops that follow.
-	DefaultProposeSkills = true
 
 	// DefaultAttribution signs by default, because the signature is provenance:
 	// work the user did not type should be readable as such by whoever reads
@@ -217,8 +224,21 @@ type Setting struct {
 	// EmptyLabel reads for a text row whose value is unset.
 	EmptyLabel string
 
-	read  func() string
-	write func(string) error
+	read    func() string
+	write   func(string) error
+	receipt func() string
+}
+
+// Receipt is the dim fact that belongs beside this row's value — today's spend
+// beside the day's ceiling, the price tier beside a model. It is a receipt and
+// never a second value: it is derived from a live read, it is never editable,
+// and a row with nothing true to add returns the empty string rather than a
+// placeholder (13, and 10.2.8's rule against inventing a reading).
+func (s Setting) Receipt() string {
+	if s.receipt == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.receipt())
 }
 
 // Value is the row's current reading, already formatted for display.
@@ -275,6 +295,23 @@ type SettingsOptions struct {
 	// SplitPct and SaveSplitPct front the chat/task divider.
 	SplitPct     func() int
 	SaveSplitPct func(pct int)
+
+	// RoleModel answers what a router role is bound to right now, for the roles
+	// the engine holds no client for. Nil is the honest state of this build —
+	// nothing resolves verify or scribe yet — and those rows then read as the
+	// role they follow instead of as a guess.
+	RoleModel func(role string) (string, bool)
+
+	// SpentTodayUSD is the day's spend, for the receipt beside the day's
+	// ceiling. The bool separates "spent nothing" from "nobody counted"
+	// (10.2.8); nil leaves the receipt off rather than printing $0.00.
+	SpentTodayUSD func() (float64, bool)
+
+	// ModelCost is what the provider table knows about one model's price. It is
+	// a hint beside a model row and never a filter: an unpriced model is the
+	// offline case, not a bad model. [ModelCostHint] is the derivation the
+	// wiring lane hands in.
+	ModelCost func(slug string) string
 
 	// Applied fires after a row is successfully written, so a process holding
 	// its own copy of a value can honor the change without waiting for a
@@ -362,25 +399,54 @@ func (s *Settings) EnvironmentPins() []string {
 // ModelSettingKey is the registry key fronting one model slot.
 func ModelSettingKey(slot string) string { return "model." + slot }
 
+// build is the whole sheet, in the order it is read.
+//
+// Within a group the order is how often a person touches a row, not the order
+// the rows were written or the order they happen to persist in: the day's
+// ceiling before the ask-first threshold before the practice carve-out, the
+// conversation model before the two nobody has ever changed. Between groups the
+// order is [SettingCategories]. Nothing here announces either — 15 — the
+// sequence is the sequence.
 func (s *Settings) build() []Setting {
 	dir := s.options.ProfileDir
-	rows := make([]Setting, 0, len(ModelSettingSlots)+10)
+	slots := ModelSlots()
+	rows := make([]Setting, 0, len(slots)+10)
 
-	for _, slot := range ModelSettingSlots {
+	for _, slot := range slots {
 		rows = append(rows, s.modelRow(slot))
 	}
 
 	rows = append(rows,
+		// The two rows that pick what reads a thing rather than what runs it.
+		// They sit with the models because that is the question they answer.
 		Setting{
-			Key: KeyDailyBudget, Category: CategoryMoney, Kind: SettingDollars,
+			Key: KeyVisionModel, Category: CategoryModels, Kind: SettingText,
+			Label: "looking", Env: "AFORGE_VISION_MODEL", EmptyLabel: "automatic",
+			Hint: "the model that looks at images. Leave it blank and aforge picks one that can see. " +
+				"A change lands the next time aforge starts.",
+			read:  func() string { return VisionModelAt(dir) },
+			write: func(raw string) error { return writeText(dir, KeyVisionModel, raw) },
+		},
+		Setting{
+			Key: KeyDocumentEngine, Category: CategoryModels, Kind: SettingChoice,
+			Label: "reading", Env: "AFORGE_DOC_ENGINE", Choices: DocumentEngines,
+			Hint: "which rung reads your documents. auto walks local, then free, then paid OCR. " +
+				"A change lands the next time aforge starts.",
+			read:  func() string { return resolvedEngine(DocumentEngineAt(dir)) },
+			write: func(raw string) error { return writeChoice(dir, KeyDocumentEngine, raw, DocumentEngines) },
+		},
+
+		Setting{
+			Key: KeyDailyBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "daily budget", Env: "AFORGE_DAILY_BUDGET",
 			Hint: "what aforge may spend on your work in a day. 0 removes the rail. " +
 				"A change lands at the next rail check.",
-			read:  func() string { return formatDollars(resolvedDollars(DailyBudgetUSDAt(dir))) },
-			write: func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
+			read:    func() string { return formatDollars(resolvedDollars(DailyBudgetUSDAt(dir))) },
+			write:   func(raw string) error { return writeDollars(dir, KeyDailyBudget, raw) },
+			receipt: s.spentTodayReceipt,
 		},
 		Setting{
-			Key: KeyPlanConsent, Category: CategoryMoney, Kind: SettingDollars,
+			Key: KeyPlanConsent, Category: CategorySpending, Kind: SettingDollars,
 			Label: "ask before spending", Env: "AFORGE_PLAN_CONSENT",
 			Hint: "when a planned job is estimated to cost more than this, aforge quotes " +
 				"the step count and the price and waits for your go-ahead. 0 never asks.",
@@ -388,83 +454,39 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeDollars(dir, KeyPlanConsent, raw) },
 		},
 		Setting{
-			Key: KeyPracticeBudget, Category: CategoryMoney, Kind: SettingDollars,
+			Key: KeyPracticeBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "practice budget", Env: "AFORGE_PRACTICE_BUDGET",
 			Hint: "the slice of the day reserved for aforge practicing on itself. " +
 				"A change lands the next time aforge starts.",
 			read:  func() string { return formatDollars(resolvedDollars(PracticeBudgetUSDAt(dir))) },
 			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
 		},
+
 		Setting{
-			Key: KeyPracticeIdle, Category: CategoryMoney, Kind: SettingDuration,
+			Key: KeyPracticeIdle, Category: CategoryPractice, Kind: SettingDuration,
 			Label: "quiet before practice", Env: "AFORGE_PRACTICE_IDLE",
 			Hint:  "how long the room stays quiet before aforge starts practicing.",
 			read:  func() string { return formatDuration(resolvedDuration(PracticeIdleAt(dir))) },
 			write: func(raw string) error { return writeDuration(dir, KeyPracticeIdle, raw) },
 		},
 		Setting{
-			Key: KeyBriefAfter, Category: CategoryRhythm, Kind: SettingDuration,
+			Key: KeyBriefAfter, Category: CategoryPractice, Kind: SettingDuration,
 			Label: "arrival brief after", Env: "AFORGE_BRIEF_AFTER",
 			Hint:  "how long you have to be away before aforge greets you with a summary. 0 always briefs.",
 			read:  func() string { return formatDuration(resolvedDuration(BriefAfterAt(dir))) },
 			write: func(raw string) error { return writeDuration(dir, KeyBriefAfter, raw) },
 		},
 		Setting{
-			Key: KeyTenureAfter, Category: CategoryRhythm, Kind: SettingCount,
+			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
 			Label: "tenure after", Env: "AFORGE_TENURE_AFTER",
 			Hint:  "how many clean firings a standing charter needs before it earns tenure.",
 			read:  func() string { return strconv.Itoa(TenureAfterAt(dir)) },
 			write: func(raw string) error { return writeTenure(dir, raw) },
 		},
-		Setting{
-			Key: KeyDemandShare, Category: CategoryLearning, Kind: SettingPercent,
-			Label: "demand vs curiosity",
-			Hint:  "this much of practice follows measured demand; the rest follows open curiosity.",
-			read:  func() string { return formatPercent(PracticeDemandPctAt(dir)) },
-			write: func(raw string) error { return writePercent(dir, KeyDemandShare, raw, 0, 100) },
-		},
-		Setting{
-			Key: KeyProposeSkills, Category: CategoryLearning, Kind: SettingBool,
-			Label: "propose new skills",
-			Hint:  "let aforge offer skills it believes it should learn.",
-			read:  func() string { return formatBool(ProposeSkillsAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyProposeSkills, raw) },
-		},
-		Setting{
-			Key: KeyDocumentEngine, Category: CategoryDocuments, Kind: SettingChoice,
-			Label: "document engine", Env: "AFORGE_DOC_ENGINE", Choices: DocumentEngines,
-			Hint: "which rung reads your documents. auto walks local, then free, then paid OCR. " +
-				"A change lands the next time aforge starts.",
-			read:  func() string { return resolvedEngine(DocumentEngineAt(dir)) },
-			write: func(raw string) error { return writeChoice(dir, KeyDocumentEngine, raw, DocumentEngines) },
-		},
-		Setting{
-			Key: KeyVisionModel, Category: CategoryDocuments, Kind: SettingText,
-			Label: "vision model", Env: "AFORGE_VISION_MODEL", EmptyLabel: "automatic",
-			Hint: "the model that looks at images. Leave it blank and aforge picks one that can see. " +
-				"A change lands the next time aforge starts.",
-			read:  func() string { return VisionModelAt(dir) },
-			write: func(raw string) error { return writeText(dir, KeyVisionModel, raw) },
-		},
-		Setting{
-			Key: KeyAttribution, Category: CategorySharing, Kind: SettingBool,
-			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
-			Hint: "signs commits and PRs aforge writes for you — one trailer, one footer line. " +
-				"A change lands on the next job.",
-			read:  func() string { return formatBool(AttributionAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
-		},
+
 		s.splitRow(),
 		Setting{
-			Key: KeyLinearMode, Category: CategoryAppearance, Kind: SettingBool,
-			Label: "linear mode", Env: "AFORGE_CHAT_LINEAR",
-			Hint: "single column, no motion, no spinners — the accessible rendering (10.1.5) " +
-				"in the v2 chat surface. A change lands the next time aforge starts.",
-			read:  func() string { return formatBool(LinearModeAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyLinearMode, raw) },
-		},
-		Setting{
-			Key: KeyNerdFont, Category: CategoryAppearance, Kind: SettingBool,
+			Key: KeyNerdFont, Category: CategoryInterface, Kind: SettingBool,
 			Label: "nerd font", Env: "AFORGE_NERD_FONT",
 			Hint: "draw the v2 chrome with Nerd Font icons instead of the plain glyphs. " +
 				"Turn it off if icons show as boxes — nothing moves, the same marks are drawn " +
@@ -473,39 +495,103 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatBool(NerdFontAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyNerdFont, raw) },
 		},
+		Setting{
+			Key: KeyLinearMode, Category: CategoryInterface, Kind: SettingBool,
+			Label: "linear mode", Env: "AFORGE_CHAT_LINEAR",
+			Hint: "single column, no motion, no spinners — the accessible rendering (10.1.5) " +
+				"in the v2 chat surface. A change lands the next time aforge starts.",
+			read:  func() string { return formatBool(LinearModeAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyLinearMode, raw) },
+		},
+		Setting{
+			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
+			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
+			Hint: "signs commits and PRs aforge writes for you — one trailer, one footer line. " +
+				"A change lands on the next job.",
+			read:  func() string { return formatBool(AttributionAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyAttribution, raw) },
+		},
 	)
 	return rows
 }
 
-func (s *Settings) modelRow(slot string) Setting {
+// spentTodayReceipt is the day's spend beside the day's ceiling (13). Nil seam
+// or an uncounted day renders nothing at all rather than $0.00, which would be
+// a claim nobody made.
+func (s *Settings) spentTodayReceipt() string {
+	if s.options.SpentTodayUSD == nil {
+		return ""
+	}
+	spent, counted := s.options.SpentTodayUSD()
+	if !counted {
+		return ""
+	}
+	return formatDollars(spent) + " today"
+}
+
+func (s *Settings) modelRow(slot ModelSlot) Setting {
 	options := s.options
 	row := Setting{
-		Key: ModelSettingKey(slot), Category: CategoryModels, Kind: SettingModel,
-		Label: slot, Slot: slot, PrefsField: modelPrefsField(slot),
+		Key: ModelSettingKey(slot.Slot), Category: CategoryModels, Kind: SettingModel,
+		Label: slot.Label, Slot: slot.Slot,
 		Hint: modelSlotHint(slot),
 	}
-	if name, ok := modelSlotEnvDefault(slot); ok {
+	if slot.Held {
+		// Only a slot the engine holds lives in the chat prefs file. A role
+		// bound in the roles table and resolved nowhere has no prefs field to
+		// name, and claiming one would send the surface looking for provenance
+		// in a file that has never heard of it.
+		row.PrefsField = modelPrefsField(slot.Slot)
+	}
+	if slot.Follows != "" {
+		row.EmptyLabel = "follows " + slot.Follows
+	}
+	if name, ok := modelSlotEnvDefault(slot.Slot); ok {
 		row.EnvDefault = name
 	}
-	row.read = func() string {
-		if options.ModelValue == nil {
-			return ""
-		}
-		return strings.TrimSpace(options.ModelValue(slot))
-	}
+	row.read = func() string { return modelSlotReading(options, slot) }
 	row.write = func(slug string) error {
 		if options.SetModel == nil {
 			return fmt.Errorf("model switching is unavailable here")
 		}
-		return options.SetModel(slot, strings.TrimSpace(slug))
+		return options.SetModel(slot.Slot, strings.TrimSpace(slug))
+	}
+	row.receipt = func() string {
+		if options.ModelCost == nil {
+			return ""
+		}
+		return options.ModelCost(modelSlotReading(options, slot))
 	}
 	return row
+}
+
+// modelSlotReading asks the ONE source that can answer for this slot. A role
+// the engine holds no client for is asked of the roles table if the wiring lane
+// supplied one, and of nothing otherwise — never of the engine, whose slot
+// lookup would hand back the conversation model for a word it does not know
+// (internal/command's CurrentModel falls through), which is a wrong answer
+// wearing a confident face.
+func modelSlotReading(options SettingsOptions, slot ModelSlot) string {
+	if slot.Held {
+		if options.ModelValue == nil {
+			return ""
+		}
+		return strings.TrimSpace(options.ModelValue(slot.Slot))
+	}
+	if options.RoleModel == nil {
+		return ""
+	}
+	value, bound := options.RoleModel(string(slot.Role))
+	if !bound {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 func (s *Settings) splitRow() Setting {
 	options := s.options
 	row := Setting{
-		Key: KeySplitPct, Category: CategoryAppearance, Kind: SettingPercent,
+		Key: KeySplitPct, Category: CategoryInterface, Kind: SettingPercent,
 		Label: "chat width", PrefsField: KeySplitPct,
 		Hint: fmt.Sprintf("the chat pane's share of the frame while the task rail is open (%d–%d). "+
 			"[ and ] nudge it too.", MinSplitPct, MaxSplitPct),
@@ -578,16 +664,25 @@ func modelSlotEnvDefault(slot string) (string, bool) {
 	}
 }
 
-func modelSlotHint(slot string) string {
-	switch slot {
-	case "talk":
+// modelSlotHint is what the row says about itself, in the product's words. The
+// two roles nothing resolves yet say so — 5.20 rule 3: a row that cannot change
+// anything today must not read as though it can.
+func modelSlotHint(slot ModelSlot) string {
+	switch slot.Role {
+	case store.RoleOrchestrate:
 		return "the model that answers you here. It changes on your next message."
-	case "work":
+	case store.RoleWork:
 		return "the model that does the work. It changes on the next job."
-	case "plan":
+	case store.RolePlan:
 		return "the model that plans and reviews the work. Empty follows the work model."
-	case "boost":
-		return "the heavier model ctrl+b reaches for. Empty follows the work model."
+	case store.RoleVerify:
+		return "the model that checks the work — gates, judges, second opinions. " +
+			"Nothing reads this binding yet; it is written down and waiting."
+	case store.RoleScribe:
+		return "the model that writes the short things — titles, labels, summaries. " +
+			"Nothing reads this binding yet; it is written down and waiting."
+	}
+	switch slot.Slot {
 	case "voice":
 		return "the model that hears you when you speak."
 	case "image":
@@ -667,21 +762,14 @@ func TenureAfterAt(profileDir string) int {
 	return DefaultTenureAfter
 }
 
-// PracticeDemandPctAt resolves how much practice follows measured demand.
-func PracticeDemandPctAt(profileDir string) int {
-	if value, ok := persistedInt(profileDir, KeyDemandShare); ok && value >= 0 && value <= 100 {
-		return value
-	}
-	return DefaultPracticeDemandPct
-}
-
-// ProposeSkillsAt resolves whether the resident may offer new skills.
-func ProposeSkillsAt(profileDir string) bool {
-	if value, ok := persistedBool(profileDir, KeyProposeSkills); ok {
-		return value
-	}
-	return DefaultProposeSkills
-}
+// The two resolvers that used to sit here — practice_demand_pct and
+// propose_new_skills — are gone with their rows. Nothing in this build read
+// either one: the value was resolved, copied onto a Config field, and never
+// looked at again, so the sheet was offering a person a dial wired to nothing.
+// 5.20 is that an affordance which does nothing must not be offered as though
+// it does, and the fix for a knob with no reader is to delete the knob, not to
+// leave it turning. When the learning loop that wants them lands it brings its
+// own rows, and the completeness gate will make sure of it.
 
 // AttributionAt resolves whether aforge signs the git work it does for the
 // user. A malformed pin reads as the default rather than refusing a launch over

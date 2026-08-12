@@ -1,5 +1,11 @@
 package rail
 
+import (
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+)
+
 // The scope model (5.15): one scope on screen, one cursor over its rows, and
 // four gestures — move, enter, escape, refresh.
 //
@@ -93,6 +99,61 @@ type Model struct {
 	// order is scratch for the stable-order merge, kept on the model so a
 	// refresh on a timer does not allocate a map per tick.
 	order map[string]int
+	// clock is the window's shared animation clock, or nil in a headless
+	// render; at is the instant the rows on screen were measured at. See
+	// [Model.SetClock].
+	clock *Clock
+	at    time.Time
+}
+
+// Clock is the shared animation clock, named here so this package's callers do
+// not have to spell the blocks package to hand one over. It is an alias and not
+// a wrapper: there is exactly one clock in a window (8.1.3) and a second type
+// standing for it would be a second answer to "what time is this frame".
+type Clock = blocks.Clock
+
+// SetClock hands the rail the window's shared animation clock, and stamps the
+// instant the rows on screen were measured at.
+//
+// THIS IS THE RAIL'S ONE MOTION AND IT IS A NUMBER (§11 "numbers tick").
+// §18.2 is explicit that the spinner is for "transient tool rows only … never a
+// rail card, an agent row, or anything durable: a dancing glyph on a long-lived
+// object is a lie about liveness", which is why this package still contains no
+// spinner frame. What was genuinely broken is the other half: a card's elapsed
+// is measured inside the snapshot that produced the row, snapshots are rebuilt
+// only when the journal moves, and a worker inside a tool call journals nothing
+// at all — so a running card sat on one figure for minutes and read as a rail
+// that had stopped. The clock is what lets the cell keep counting between
+// snapshots, and it is the whole of the change.
+func (m *Model) SetClock(c *Clock) {
+	if m == nil {
+		return
+	}
+	m.clock = c
+	if c != nil && m.at.IsZero() {
+		m.at = c.Now()
+	}
+}
+
+// Drift is how long the rows on screen have been standing since they were
+// measured: the gap between the snapshot's instant and the clock's latched one.
+//
+// It is added ONLY to rows that are still moving ([View.telemetry]) — a settled
+// row's clock stopped when the work did, and ageing it would be the surface
+// inventing time that nobody spent (8.2.20). Without a clock, or before the
+// first latch, it is zero and the rail draws exactly what it always drew.
+func (m *Model) Drift() time.Duration {
+	if m == nil || m.clock == nil || m.at.IsZero() {
+		return 0
+	}
+	now := m.clock.Now()
+	if now.IsZero() {
+		return 0
+	}
+	if drift := now.Sub(m.at); drift > 0 {
+		return drift
+	}
+	return 0
 }
 
 // New builds a model over a source and loads the home scope. A source that
@@ -254,9 +315,10 @@ func (m *Model) Home() Event {
 //
 //  1. THE ORDER DOES NOT MOVE (7.2). Rows already on screen keep their relative
 //     order whatever order the source now returns them in; genuinely new rows
-//     land at the end. A card that re-sorts under the cursor makes the user
-//     lose their place, and the design's answer to "this one needs attention"
-//     is a badge, not a jump to the top.
+//     land where the SOURCE puts them, which for a newest-first list is above
+//     the rows they arrived after. A card that re-sorts under the cursor makes
+//     the user lose their place, and the design's answer to "this one needs
+//     attention" is a badge, not a jump to the top.
 //  2. THE CURSOR KEEPS ITS ROW, by ID rather than by index. If the row it was
 //     on is gone the cursor stays at the same index, clamped, which is what a
 //     list does when the thing under your finger is deleted.
@@ -264,6 +326,12 @@ func (m *Model) Home() Event {
 //     the stack unwinds to the deepest scope that does, rather than rendering a
 //     room that is not there.
 func (m *Model) Refresh() Event {
+	// The rows about to be loaded were measured in the snapshot this refresh is
+	// reading, so the drift restarts from here: ageing a fresh figure by the
+	// time since the LAST snapshot would double-count every interval.
+	if m.clock != nil {
+		m.at = m.clock.Now()
+	}
 	popped := false
 	for i := 0; i < len(m.stack); i++ {
 		scope, ok := scopeFrom(m.src, m.stack[i].scope.ID)
@@ -289,11 +357,35 @@ func (m *Model) Refresh() Event {
 }
 
 // stableOrder merges the incoming rows into the order already on screen: rows
-// the user can see keep their places, new rows append. The surface row is
+// the user can see keep their places, and a row the source has NEVER shown
+// before is spliced in ABOVE the first row it precedes. The surface row is
 // always index 0 on both sides, so it merges for free.
 //
-// One map, two passes, and the map doubles as the consumed set — a row is
-// emitted exactly once whether the source repeats a key or not.
+// THE DEFECT, reported in eight words: "rail seems to be adding tasks to bottom
+// instead of top down". The source has always handed this list newest-first
+// (chat/scope.go sorts the job roots on CreatedSeq, descending) and this
+// function appended every unseen row to the END of the whole scope — so a job
+// commissioned ten seconds ago appeared under every older job AND under the
+// collapsed homes group at the foot of the rail, which is the last place a
+// reader looks. §6 asks for the opposite and says why: "live floats, settled
+// sinks", with the stability law holding only for rows that are ALREADY VISIBLE.
+// A row nobody has seen yet cannot lose its place, because it does not have one.
+//
+// The merge is therefore an ANCHOR merge rather than an append. Walking the
+// source in its own order, every unseen row is parked against the next row that
+// IS on screen; then the old rows are emitted in their own order, each preceded
+// by whatever parked against it. What that buys, in one sentence per property:
+//
+//   - a new job lands directly above the newest job already drawn, which is the
+//     top of the task section rather than the bottom of the rail;
+//   - a visible row never moves relative to another visible row, because the old
+//     order is what drives the output loop;
+//   - the section a new row belongs to is decided by the SOURCE, which is the
+//     only thing that knows — this function never learns what a section is.
+//
+// A row whose anchor has itself vanished from the source still emits, at the
+// tail, because a job that arrived in the same refresh that retired the row
+// above it is still a job.
 func (m *Model) stableOrder(old, next []Row) []Row {
 	if len(old) == 0 || len(next) == 0 {
 		return next
@@ -311,31 +403,76 @@ func (m *Model) stableOrder(old, next []Row) []Row {
 			}
 		}
 	}
+	// where each visible row already sits, so an unseen row can be told from a
+	// moved one and an anchor can be compared against its rivals.
+	where := make(map[string]int, len(old))
+	for i := range old {
+		if k := old[i].key(); k != "" {
+			if _, dup := where[k]; !dup {
+				where[k] = i
+			}
+		}
+	}
+
+	// Pass one, walked BACKWARDS: each unseen row is parked against the visible
+	// row it will be drawn above.
+	//
+	// The anchor is not simply the next visible row in the source — it is the
+	// HIGHEST-STANDING of every visible row that follows it there. The source is
+	// free to re-sort the rows the reader can see, and that re-sort is ignored
+	// (property 2 above); if the anchor were the next source row, a re-sort
+	// happening in the same refresh as an arrival would decide where the arrival
+	// landed, and the reader would watch a new job appear in the middle of a
+	// list nothing else about the frame explains. Reading the source backwards
+	// is what makes "the highest of them" a running minimum instead of a scan,
+	// and it keeps two arrivals in the source's own order within one anchor.
+	arrivals := make(map[string][]Row, 4)
+	parked := make(map[string]bool, 4)
+	var tail []Row
+	anchor, anchorAt := "", len(old)
+	for j := len(next) - 1; j >= 0; j-- {
+		k := next[j].key()
+		if k != "" {
+			if at, visible := where[k]; visible {
+				if at < anchorAt {
+					anchor, anchorAt = k, at
+				}
+				continue
+			}
+			// A source that repeats a key still draws the row once.
+			if parked[k] {
+				continue
+			}
+			parked[k] = true
+		}
+		// A keyless row has no identity to remember, so it is new every refresh
+		// and belongs exactly where the source drew it.
+		if anchor == "" {
+			tail = append([]Row{next[j]}, tail...)
+			continue
+		}
+		arrivals[anchor] = append([]Row{next[j]}, arrivals[anchor]...)
+	}
+
 	out := make([]Row, 0, len(next))
-	// Known rows, in the order they were already drawn in.
 	for i := range old {
 		k := old[i].key()
 		if k == "" {
 			continue
 		}
+		// The arrivals flush even when their anchor has itself retired out of
+		// the source this refresh: a job that landed in the same read that
+		// settled the row above it is still a job.
+		out = append(out, arrivals[k]...)
+		delete(arrivals, k)
 		if j, ok := m.order[k]; ok {
 			out = append(out, next[j])
 			delete(m.order, k)
 		}
 	}
-	// Then whatever is genuinely new, in the source's order.
-	for j := range next {
-		k := next[j].key()
-		if k == "" {
-			out = append(out, next[j])
-			continue
-		}
-		if _, unclaimed := m.order[k]; unclaimed {
-			out = append(out, next[j])
-			delete(m.order, k)
-		}
-	}
-	return out
+	// Whatever followed the LAST visible row — the first job on an empty rail,
+	// or rows the source drew below everything already on screen.
+	return append(out, tail...)
 }
 
 func indexOfKey(rows []Row, key string, fallback int) int {

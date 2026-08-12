@@ -131,7 +131,7 @@ func TestShellDrawsEveryRegionItLaysOut(t *testing.T) {
 		"transcript", "rail", "composer",
 		"blocks: committed-prefix message parts",
 		"blocks: scope map",
-		"aforge v2", "wide", "120×30",
+		"aforge v2", "wide", "120x30",
 		"db /tmp/graph.db", "session new",
 	} {
 		if !strings.Contains(frame, want) {
@@ -283,7 +283,9 @@ func TestShellLinearModeIsSingleColumnAndStill(t *testing.T) {
 		t.Fatal("the status line does not say the surface is linear")
 	}
 	// No drawn frames: a box is a picture of a boundary and a hundred and forty
-	// punctuation marks to a screen reader. Same content, less to listen to.
+	// punctuation marks to a screen reader. §16 BORDERS has since banned the
+	// box from the ordinary rendering too — TestNoRegionDrawsABox holds both
+	// modes to it — so this is no longer what separates linear from wide.
 	for _, glyph := range []string{"┌", "┐", "└", "┘", "│", "─"} {
 		if strings.Contains(frame, glyph) {
 			t.Fatalf("linear mode drew box art (%q):\n%s", glyph, frame)
@@ -292,11 +294,18 @@ func TestShellLinearModeIsSingleColumnAndStill(t *testing.T) {
 	if !strings.Contains(frame, "transcript") {
 		t.Fatal("linear mode lost the region heading")
 	}
-	// And the ordinary rendering still draws them, so this is a mode rather
-	// than a deletion.
+	// What separates them now is the centring: the ordinary rendering floats a
+	// region's words in the middle of its rectangle, and the accessible mode
+	// keeps them at the left edge, where leading spaces are not read out as
+	// nothing. So this is still a mode rather than a deletion.
+	for _, row := range strings.Split(frame, "\n") {
+		if strings.HasPrefix(row, " ") && strings.TrimSpace(row) != "" {
+			t.Fatalf("linear mode indented a row:\n%q", row)
+		}
+	}
 	ordinary := sized(t, 160, 40, Options{}).Frame(160, 40)
-	if !strings.Contains(ordinary, "┌") {
-		t.Fatal("the ordinary rendering lost its frames")
+	if !strings.Contains(ordinary, "    transcript") {
+		t.Fatalf("the ordinary rendering stopped centring its regions:\n%s", ordinary)
 	}
 }
 

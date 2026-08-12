@@ -65,12 +65,18 @@ func TestEveryLeafVariantCarriesTheAnswerFirstLaw(t *testing.T) {
 			if !strings.Contains(system, law) {
 				t.Fatalf("the answer-first law is missing from %s", name)
 			}
-			// The generated method is appended after the harness's invariants, so
-			// it is the last thing read. The law must still be in front of it
-			// rather than behind whatever the planner wrote today.
+			// The generated method now rides the head of the brief rather than
+			// the tail of the system message, so the system message can be the
+			// same bytes for every leaf of a run and be served warm. The law is
+			// still read first — the system message is still the first message —
+			// and the method must not have been dropped on the way.
 			if contract := strings.TrimSpace(build.task.Contract); contract != "" {
-				if strings.Index(system, law) > strings.Index(system, contract) {
-					t.Fatalf("%s reads the working method before the law", name)
+				if strings.Contains(system, contract) {
+					t.Fatalf("%s put the per-node working method back in the shared system message", name)
+				}
+				brief := linear.brief(build.task)
+				if !strings.HasPrefix(brief, "How this particular kind of job is done well:\n"+contract) {
+					t.Fatalf("%s does not lead its brief with the working method:\n%s", name, brief)
 				}
 			}
 		})

@@ -30,7 +30,24 @@ const (
 	GlyphCollapsed = "▸"
 	GlyphExpanded  = "▾"
 	GlyphScopeUp   = "‹" // scope header / go up
-	GlyphTruncated = "⋯" // clickable overflow; plain "…" marks static overflow
+	GlyphTruncated = "⋯" // clickable overflow; [GlyphEllipsis] marks static overflow
+
+	// GlyphEllipsis is §16's ONE ELLIPSIS GRAMMAR as a slot: the mark text
+	// leaves behind when it was too long for its column. It is deliberately NOT
+	// [GlyphTruncated] — an ellipsis says "the rest is off the edge", a ⋯ says
+	// "there is more, click for it", and a cut ([GlyphCut]) says "this stopped
+	// and should not have". Three marks, three sentences.
+	//
+	// It was the most-drawn mark in the product with no name here: blocks,
+	// prose, placeline, modelui, palette, footer and composer each spelled the
+	// byte themselves, and three of them wrote a comment explaining which of
+	// the other two marks they did NOT mean. The slot ends the explaining.
+	//
+	// U+2026 is Ambiguous width and one cell under both shipping rulers. It has
+	// no nerd-font twin on purpose: the tier's ellipsis icon is already spent on
+	// [GlyphTruncated], and this mark lands inside sentences a user wrote, where
+	// a rewrite would be an edit rather than a repertoire swap (12.7 D.2).
+	GlyphEllipsis = "…"
 
 	// GlyphCut is the truncation law's visible mark (12.5.2): a turn ended by
 	// anything other than its own completion renders VISIBLY CUT. The severed
@@ -46,6 +63,21 @@ const (
 	GlyphPromptChat  = "›"
 	GlyphPromptSteer = "↦"
 
+	// The execution voices (5.5). A work record is four speakers and no
+	// labels: the model thinking, the tools it reached for, the reader
+	// steering, and what came back. The reader's voice is [GlyphPromptChat]
+	// — the same mark they typed at — and what came back wears the quote
+	// gutter, so the slots this adds are the three the vocabulary was short:
+	// the model's own thought and the two tool kinds that are not a shell.
+	//
+	// All three measure one cell under both shipping rulers and all three are
+	// East_Asian_Width=Neutral, so they are the rare glyphs that do not even
+	// cost a reserved column under a CJK locale.
+	GlyphThought = "✳" // the model's own words between calls
+	GlyphShell   = "$" // a shell call — the prompt a person types at
+	GlyphSearch  = "⌕" // a call that went out to the world
+	GlyphWrite   = "✎" // a call that wrote something down
+
 	// Meta.
 	GlyphBoosted   = "⇡" // transient escalation of the work-role binding (8.2.16)
 	GlyphSeparator = "·" // telemetry separator
@@ -56,6 +88,35 @@ const (
 	// hue; the drag handle marks a reorderable pending row (5.22).
 	GlyphAccentRail = "▎"
 	GlyphDragHandle = "⋮"
+
+	// GlyphHugEdge is the composer hug's left edge: the one cell at column 0 of
+	// the row you type into, carrying the composer's state colour.
+	//
+	// It is U+258D LEFT THREE EIGHTHS BLOCK and NOT [GlyphAccentRail], and the
+	// distinction is the vocabulary's whole point rather than a shade of taste.
+	// §4 spends `▎` on one meaning product-wide — "a finished answer" — and says
+	// nothing else may wear it. The hug's edge means something else entirely:
+	// "this is the live surface, and here is what it is doing right now". Two
+	// meanings may not share a mark, so the hug takes the next rung of the same
+	// eighth-block ladder the code gutter (`▏`) and the accent rail already
+	// stand on: same family, so the three read as one system, different width,
+	// so they are told apart at a glance and by the table.
+	GlyphHugEdge = "▍"
+
+	// GlyphChipCapLeft and GlyphChipCapRight are the two cells that soften a
+	// filled chip's ends: U+2590 RIGHT HALF BLOCK opens it and U+258C LEFT HALF
+	// BLOCK closes it, each painted with the CHIP's ground as its FOREGROUND
+	// over the surface's own ground. Half a cell of chip and half a cell of
+	// floor, which is as close to a rounded corner as a terminal gets.
+	//
+	// They are geometry rather than iconography — the shapes ARE the meaning,
+	// there is nothing for a patched font to improve, and both measure one cell
+	// under both shipping rulers like every other eighth/half block already in
+	// this table. They are named here rather than spelled inline for §16's flat
+	// reason: a mark drawn from a literal escapes the width gate, and the day a
+	// second surface wants a filled chip it must get the same two cells.
+	GlyphChipCapLeft  = "▐"
+	GlyphChipCapRight = "▌"
 
 	// Step dots: plan progress as one dot per step (5.21). Display only on
 	// narrow rails — too small to hit honestly (5.22).
@@ -100,6 +161,14 @@ const (
 	// beside it already is. The spend mark is the dollar the money cell was
 	// already carrying, named so the tier can swap it as a slot rather than as
 	// a substring.
+	//
+	// The `$` is spelled twice on purpose and it is the one collision in the
+	// vocabulary worth stating out loud: [GlyphShell] is the same byte saying a
+	// different thing (a shell call, 5.5). They are told apart by what follows —
+	// the spend mark is bound to a number and the shell mark is followed by a
+	// space — never by shape, and the nerd-font tier separates them outright
+	// (nf-fa-dollar against nf-fa-terminal). glyphvocab_test.go carries the pair
+	// in its named-exceptions table so a THIRD `$` slot has to be argued for.
 	GlyphModel = "◇"
 	GlyphSpend = "$"
 )
@@ -125,9 +194,16 @@ var SpinnerFrames = [10]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", 
 // token history (5.21) — six to eight cells, one row.
 var SparklineCells = [7]string{"⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣿"}
 
-// Gauge maps a fraction in [0,1] to one cell of [GaugeCells]. Out-of-range
-// values clamp: a gauge that ran past its window still reads full rather than
-// panicking a render.
+// Gauge maps a fraction in [0,1] to one cell of [GaugeCells] by walking
+// [GaugeThresholds] — the ladder is a table so it can be read and quoted, not
+// an arithmetic expression only the compiler sees. Out-of-range values clamp: a
+// gauge that ran past its window still reads full rather than panicking a
+// render, and a reading that does not exist (NaN) reads empty rather than
+// guessing (16's EMPTINESS).
+//
+// The cell says HOW FULL. It never says whether that is a problem — that
+// judgement is [ContextToken]'s, and it is amber-past-the-warn-point, dual
+// (percentage AND absolute tokens), and deliberately not a sixth cell.
 func Gauge(fraction float64) string {
 	switch {
 	case !(fraction > 0): // also catches NaN
@@ -135,11 +211,12 @@ func Gauge(fraction float64) string {
 	case fraction >= 1:
 		return GaugeCells[len(GaugeCells)-1]
 	}
-	i := int(fraction * float64(len(GaugeCells)))
-	if i >= len(GaugeCells) {
-		i = len(GaugeCells) - 1
+	for i := len(GaugeThresholds) - 1; i > 0; i-- {
+		if fraction >= GaugeThresholds[i] {
+			return GaugeCells[i]
+		}
 	}
-	return GaugeCells[i]
+	return GaugeCells[0]
 }
 
 // Sparkline maps a fraction in [0,1] to one cell of [SparklineCells].
@@ -201,14 +278,22 @@ func Glyphs() []GlyphInfo {
 		{"Expanded", GlyphExpanded, '▾', false},
 		{"ScopeUp", GlyphScopeUp, '‹', false},
 		{"Truncated", GlyphTruncated, '⋯', false},
+		{"Ellipsis", GlyphEllipsis, '…', true},
 		{"Cut", GlyphCut, '╌', false},
 		{"PromptChat", GlyphPromptChat, '›', false},
 		{"PromptSteer", GlyphPromptSteer, '↦', false},
+		{"Thought", GlyphThought, '✳', false},
+		{"Shell", GlyphShell, '$', false},
+		{"Search", GlyphSearch, '⌕', false},
+		{"Write", GlyphWrite, '✎', false},
 		{"Boosted", GlyphBoosted, '⇡', false},
 		{"Separator", GlyphSeparator, '·', true},
 		{"Missing", GlyphMissing, '—', true},
 		{"Estimate", GlyphEstimate, '~', false},
 		{"AccentRail", GlyphAccentRail, '▎', true},
+		{"HugEdge", GlyphHugEdge, '▍', true},
+		{"ChipCapLeft", GlyphChipCapLeft, '▐', false},
+		{"ChipCapRight", GlyphChipCapRight, '▌', true},
 		{"DragHandle", GlyphDragHandle, '⋮', false},
 		{"StepDone", GlyphStepDone, '●', true},
 		{"StepRunning", GlyphStepRunning, '◐', true},
@@ -226,6 +311,14 @@ func Glyphs() []GlyphInfo {
 		{"GitBranch", GlyphGitBranch, '⋔', false},
 		{"Model", GlyphModel, '◇', true},
 		{"Spend", GlyphSpend, '$', false},
+		// The prose slots (code.go). They are named there because a slot is a
+		// MEANING and not a byte, and they are walked HERE because the width
+		// gate is the one place a glyph may not hide: GlyphCodeGutter is the
+		// only mark in the product with no byte twin elsewhere in this list,
+		// and until it was added it escaped the sweep entirely.
+		{"ProseBullet", GlyphProseBullet, '·', true},
+		{"ProseQuote", GlyphProseQuote, '│', true},
+		{"CodeGutter", GlyphCodeGutter, '▏', true},
 		{"Gauge0", GaugeCells[0], '▁', true},
 		{"Gauge1", GaugeCells[1], '▂', true},
 		{"Gauge2", GaugeCells[2], '▄', true},
@@ -248,6 +341,16 @@ func Glyphs() []GlyphInfo {
 		{"Spark4", SparklineCells[4], '⣶', false},
 		{"Spark5", SparklineCells[5], '⣷', false},
 		{"Spark6", SparklineCells[6], '⣿', false},
+		// The breathe's three sizes (motion.go). Two of them are bytes this
+		// table already owns under other names — `·` is Separator and
+		// ProseBullet, `●` is StepDone — and they are named again here for the
+		// reason the prose slots are: a slot is a MEANING, and the width gate
+		// may not have a hole where an animated cell is. The frame list is
+		// [PulseFrames]; the fourth frame repeats Pulse1 on the way back down,
+		// so only the three distinct sizes are walked.
+		{"Pulse0", PulseFrames[0], '·', true},
+		{"Pulse1", PulseFrames[1], '•', true},
+		{"Pulse2", PulseFrames[2], '●', true},
 	}
 }
 

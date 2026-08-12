@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
@@ -85,11 +87,22 @@ func TestSubharnessFlagDegradesWithANote(t *testing.T) {
 	if stderr.Len() != 0 {
 		t.Fatalf("a good name still said something: %q", stderr.String())
 	}
-	// The baseline is never a "forced" choice: it is what happens anyway.
-	for _, baseline := range []string{"", "  ", "linear"} {
+	// Only an empty flag is "nobody forced anything". Naming the generalist is
+	// a forcing like any other and comes back as the generalist's own name —
+	// without that, the arm of a measurement that holds the default worker
+	// fixed cannot be expressed at all.
+	for _, baseline := range []string{"", "  "} {
 		if got := resolveSubharnessFlag(baseline, &stderr); got != "" {
-			t.Fatalf("resolveSubharnessFlag(%q) = %q", baseline, got)
+			t.Fatalf("resolveSubharnessFlag(%q) = %q, want no forcing", baseline, got)
 		}
+	}
+	for _, named := range []string{"linear", " linear "} {
+		if got := resolveSubharnessFlag(named, &stderr); got != exec.LinearSubharness {
+			t.Fatalf("resolveSubharnessFlag(%q) = %q, want the generalist forced", named, got)
+		}
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("naming the generalist said something: %q", stderr.String())
 	}
 	stderr.Reset()
 	if got := resolveSubharnessFlag("reviewer", &stderr); got != "" {
@@ -143,5 +156,55 @@ func TestSubharnessKnowledgeWaitsForItsEvidenceGate(t *testing.T) {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the measured line is missing %q: %q", want, line)
 		}
+	}
+}
+
+// The other arm of a worker measurement: `aforge do --subharness linear` on an
+// ask the compiler reads as coding must actually be measured on the generalist.
+//
+// It could not be, and the reason was one representation: the generalist and
+// "nobody said" were both the empty string, so the flag that named it was
+// indistinguishable from a flag nobody passed, and the run went to the
+// specialist the compiler had chosen — the exact variable the benchmark was
+// holding fixed. The name is the fix, and this is the assertion that the name
+// reaches all the way to what ran.
+func TestSubharnessFlagForcesTheGeneralistOnACodingAsk(t *testing.T) {
+	defer exec.ForgetSubharnesses()
+	exec.RegisterSubharness(sweInfo())
+
+	script := newScriptedBrain(t)
+	// The compiler reads this ask the way it reads any coding ask: one job for
+	// the coding pipeline. Nothing about the ask is in dispute; the flag is.
+	script.compileSubharness = exec.SWESubharness
+	script.gatePasses = true
+	defer script.close()
+
+	var stdout, stderr strings.Builder
+	if err := doErrand(doRequest{
+		task:       "fix the failing parser tests and add a regression test",
+		timeout:    60 * time.Second,
+		asJSON:     true,
+		subharness: "linear",
+		stdout:     &stdout, stderr: &stderr,
+		newClient: script.client,
+	}); err != nil {
+		t.Fatalf("the errand did not settle cleanly: %v\nstdout:\n%s\nstderr:\n%s",
+			err, stdout.String(), stderr.String())
+	}
+
+	var outcome struct {
+		Subharness string `json:"subharness"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &outcome); err != nil {
+		t.Fatalf("stdout is not the machine-readable outcome: %v\n%s", err, stdout.String())
+	}
+	if outcome.Subharness != exec.LinearSubharness {
+		t.Fatalf("the errand ran on %q despite --subharness linear", outcome.Subharness)
+	}
+	// The generalist did not merely get the credit: it did the work. The
+	// scripted worker only ever answers the generalist's leaf loop, so a draft
+	// is proof that no coding pipeline was constructed for this leaf.
+	if script.count("draft") == 0 {
+		t.Fatalf("no generalist leaf ever ran\nstderr:\n%s", stderr.String())
 	}
 }

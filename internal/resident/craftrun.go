@@ -159,6 +159,9 @@ func (c *CraftRunner) RunCraft(name string, params map[string]string, sessionID,
 	if err != nil {
 		return CraftRun{}, err
 	}
+	// This surface has no compiler to read the ask, so the ask names the job
+	// itself. The workflow's name is not a candidate: it rides in provenance.
+	TitleCraftRootFromRequest(&subtree, intent)
 	if err := c.graph.Splice(store.RootID, subtree, provenance); err != nil {
 		return CraftRun{}, fmt.Errorf("run craft %q: %w", name, err)
 	}
@@ -168,20 +171,41 @@ func (c *CraftRunner) RunCraft(name string, params map[string]string, sessionID,
 	}, nil
 }
 
-// craftCompileReceipt names what is about to run and which version of it.
+// craftCompileReceipt names what is about to run and how big it is, in words a
+// person can act on.
+//
+// It used to name the version too — "(v e65f642)" — and that clause is gone. A
+// git hash is machine identity: it is unreadable, it is unactionable, and it is
+// the one thing on that line the reader could do nothing with. Which version ran
+// is a real fact and it is kept where facts of that kind live: on the run's
+// provenance, in the survival record keyed by name@commit, and in the journal.
+// The line the person reads names the way of working, which is a name their own
+// work earned, and what it will cost them.
 func craftCompileReceipt(workflow *craft.Workflow) string {
 	steps := len(workflow.Steps)
 	receipt := fmt.Sprintf("using your %s way of doing this", strings.TrimSpace(workflow.Name))
-	if commit := strings.TrimSpace(workflow.Commit); commit != "" {
-		receipt += " (v " + craftShortCommit(commit) + ")"
+	// The one thing about a version that changes what the reader might DO: this
+	// run is on a file nobody saved, so what it does may not match what the shelf
+	// says it does. Which unsaved edit it is remains the journal's business.
+	if craftUnsaved(workflow.Commit) {
+		receipt += " (from an edit you haven't saved)"
 	}
 	return fmt.Sprintf("%s — %d %s", receipt, steps, plural(steps, "step", "steps"))
 }
 
-// craftShortCommit is a version as a person reads it. An uncommitted edit
-// carries its content hash so the guard can tell two edits apart; the receipt
-// keeps the word and drops the hash, because what the reader needs to know is
-// that this run is on a file nobody saved, not which unsaved file it is.
+// craftUnsaved reports whether a version reference names an uncommitted edit.
+// dirtyVersion writes those as "<commit>+dirty-<hash>", and the hash is exactly
+// what never reaches a sentence.
+func craftUnsaved(commit string) bool {
+	_, marked, dirty := strings.Cut(strings.TrimSpace(commit), "+")
+	return dirty && strings.TrimSpace(marked) != ""
+}
+
+// craftShortCommit is a version for a MACHINE reader — the distiller's note, and
+// nothing a person is shown. No sentence that reaches a surface may call this: a
+// hash is unreadable and unactionable, and the honesty law bans it everywhere a
+// person reads. An uncommitted edit keeps the word and drops its content hash
+// even here, because the word is the whole of what the reading needs.
 func craftShortCommit(commit string) string {
 	commit = strings.TrimSpace(commit)
 	short, marked, dirty := strings.Cut(commit, "+")
@@ -922,9 +946,18 @@ func (c *CraftRunner) exists(id string) (bool, error) {
 	return ok, err
 }
 
-// post says one thing once. The sweep re-derives a landed node's move on every
-// tick, and a bound that has been reached stays reached — without this the
-// honest single line would become a stutter in the thread.
+// post says one thing once, to the workflow run's own record.
+//
+// The sweep re-derives a landed node's move on every tick, and a bound that has
+// been reached stays reached — without the scan below the honest single line
+// would become a stutter.
+//
+// Every line this writes is a stage advance: "the %q step splits into 3 parts",
+// "check failed — one more round (2 of 3)", "taking it no further". That is a
+// workflow narrating its own machinery, which 13.18 puts squarely on the record
+// side — none of it is a commitment, a delivery or a question. The session is
+// still read, as the test for whether anyone commissioned this run at all, and
+// then deliberately not carried.
 func (c *CraftRunner) post(node store.Node, body string) {
 	body = boundMessage(body)
 	if body == "" || strings.TrimSpace(node.Provenance.SessionID) == "" {
@@ -939,11 +972,10 @@ func (c *CraftRunner) post(node store.Node, body string) {
 			return
 		}
 	}
-	_, _ = thread.Post(c.graph, store.Message{
-		SessionID: node.Provenance.SessionID,
-		Role:      store.RoleSystem,
-		NodeID:    node.ID,
-		Body:      body,
+	_, _ = thread.Record(c.graph, store.Message{
+		Role:   store.RoleSystem,
+		NodeID: node.ID,
+		Body:   body,
 	})
 }
 

@@ -27,13 +27,39 @@ func (c *Commander) Settings() *config.Settings {
 	config.InstallPersistedEnv(profileDir)
 
 	return config.NewSettings(config.SettingsOptions{
-		ProfileDir:   profileDir,
-		ModelValue:   c.CurrentModel,
-		SetModel:     c.SetModel,
-		SplitPct:     c.SplitPct,
-		SaveSplitPct: c.SaveSplitPct,
-		Applied:      c.settingApplied,
+		ProfileDir:    profileDir,
+		ModelValue:    c.CurrentModel,
+		SetModel:      c.SetModel,
+		SplitPct:      c.SplitPct,
+		SaveSplitPct:  c.SaveSplitPct,
+		Applied:       c.settingApplied,
+		SpentTodayUSD: c.spentTodayUSD,
+		ModelCost:     c.modelCostHint,
 	})
+}
+
+// spentTodayUSD is the receipt beside the day's ceiling. The bool is the whole
+// point of the seam: a window with no graph behind it has not counted zero, it
+// has not counted, and the row draws nothing rather than a $0.00 nobody earned.
+func (c *Commander) spentTodayUSD() (float64, bool) {
+	if c == nil || c.store == nil {
+		return 0, false
+	}
+	spent, err := c.store.SpendToday()
+	if err != nil {
+		return 0, false
+	}
+	return spent, true
+}
+
+// modelCostHint hands the registry the two price tables this process already
+// holds — the operator's panel and the model catalog — so a model row can carry
+// a tier word without internal/config reaching for either of them itself.
+func (c *Commander) modelCostHint(slug string) string {
+	if c == nil {
+		return ""
+	}
+	return config.ModelCostHint(c.settings.Panel, c.models, slug)
 }
 
 // settingApplied lands the changes this running process can honor at once.

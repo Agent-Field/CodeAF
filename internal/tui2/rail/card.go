@@ -13,16 +13,36 @@ import (
 //
 //	◐ wisp-parity                                ›   glyph + name + composer mark
 //	  reworking NavCtx after the worker died         first person, one line
-//	  K3 · ▄ · $8.65 · 41m · 4w                      dim, tabular, money always
+//	  K3 · ▄ · $8.65 · 41m · 2◐ 2✓                   dim, tabular, money always
 //
-// A focused card expands IN PLACE: step dots (5.21), per-worker rows, and the
-// artifact it produced (12.5.1). Full depth is still one room away — the card
-// never becomes the room.
+// A focused card expands IN PLACE by at most [previewLines]: the artifact it
+// produced (12.5.1), and on a tree row its own words. Full depth is still one
+// room away — the card never becomes the room.
+//
+// LINE 3 CARRIES A CENSUS, NEVER A FRACTION AND NEVER A HEADCOUNT (§14). It
+// used to end `4 workers` or `atomic`, and both were the machinery describing
+// itself: a reader does not act on how many hands a job has, and a job with one
+// part has nothing to say about its shape at all. What replaces them is
+// [Telemetry.Counts] — `2◐ 2✓`, glyph and count, dim — which answers the
+// question the headcount was standing in for and stays true across a replan
+// that a denominator could not survive.
+//
+// PER-WORKER ROWS ARE NOT IN THE PREVIEW, and the reason is 7.2 rather than
+// taste. A preview is a bounded thing: it is drawn because a cursor paused, and
+// whatever it costs is charged to the rows around it (see the detail reserve in
+// renderMap). The census and an artifact are SUMMARIES — one cell and one line,
+// whatever the plan's size. A worker list is not — it used to spend six rows on
+// one card — and every row it adds is a card the reader was about to click
+// sliding into the fold, out from under the pointer already aimed at it. The
+// workers themselves are the TREE one room down, which is where 5.9 puts full
+// depth — internal/tui2/chat already blanks the surface row's workers there so
+// the room never draws them twice.
 //
 // Plan steps and workers inside a task scope are not cards; they are tree rows,
-// one line each with the elapsed flush right, plus a waits-on line when they are
-// blocked behind a sibling. That is the shape 5.15's wireframe draws and it is
-// what makes the DAG legible in 28 columns.
+// one line each: a connector into the row, the state glyph, the name, and the
+// receipt flush right, plus a `waits: <deps>` line when they are blocked behind
+// a sibling. That is the shape 5.15's wireframe draws and it is what makes the
+// DAG legible in 28 columns.
 
 // rowShape is which lines a row draws. Height and rendering both read it, so
 // the two can never disagree about how tall a row is — a fold that budgets one
@@ -31,30 +51,132 @@ type rowShape struct {
 	status   bool
 	meta     bool
 	waits    bool
-	dots     bool
 	artifact bool
-	workers  int
-	more     int
 }
 
 func (s rowShape) height() int {
 	h := 1
-	for _, on := range [...]bool{s.status, s.meta, s.waits, s.dots, s.artifact} {
+	for _, on := range [...]bool{s.status, s.meta, s.waits, s.artifact} {
 		if on {
 			h++
 		}
 	}
-	h += s.workers
-	if s.more > 0 {
-		h++
-	}
 	return h
+}
+
+// treeGuide is a member row's place in the plan tree (§3): which ancestor
+// levels still have a branch running past it, and whether it is the last child
+// of its own parent.
+//
+// It is computed once per frame from the rows' depths (see [View.sizeGuides])
+// and never carried on a [Row], because it is a fact about a row's NEIGHBOURS.
+// A source asked to state it would be stating something it can get wrong, and a
+// tree drawn with a ├ where a ╰ belongs is a picture of a plan that does not
+// exist.
+type treeGuide struct {
+	// on is whether this row draws a connector at all. Only a JOB SCOPE's
+	// members do: the home rail is a list of jobs, rooms and doors, and a tree
+	// drawn over it would claim a structure those rows do not have.
+	on bool
+	// last says the row is the last child at its depth: its branch is the
+	// corner, and the guide under it is blank.
+	last bool
+	// open is the set of ancestor depths whose branch continues below this row,
+	// one bit per depth. A set bit draws the vertical guide in that column; a
+	// clear one draws the three spaces that say the ancestor is finished.
+	open uint8
+}
+
+// The connector grammar, in the tokens table's own geometry (5.17: box drawing
+// is structure, not iconography, so these are the slots the glyph tier leaves
+// alone and the ones an ASCII repertoire would rewrite in one place).
+const (
+	// treeStep is what one level of the tree costs. Three cells, because the
+	// branch IS the indent: `├─ ` says both "one deeper" and "there is more
+	// below" in the columns a plain indent would have spent saying neither.
+	treeStep   = 3
+	guideVert  = tokens.GlyphTreeVert + "  "
+	guideBlank = "   "
+	branchMid  = tokens.GlyphTreeBranch + tokens.GlyphTreeDash + " "
+	branchLast = tokens.GlyphTreeLast + tokens.GlyphTreeDash + " "
+)
+
+// rowIndent is where a row's cells begin: the chrome to its left, its depth,
+// and the connector that depth is drawn as. Height and every line builder read
+// the same value, so a row's first line and its detail lines cannot disagree
+// about which column the content starts in.
+type rowIndent struct {
+	// base is the gutter plus the merged scope header's lead — everything the
+	// row shares with every other row, whatever its depth.
+	base  int
+	depth int
+	guide treeGuide
+}
+
+// glyphCol is where the row's state glyph goes.
+func (a rowIndent) glyphCol() int {
+	if a.guide.on {
+		return a.base + (a.depth+1)*treeStep
+	}
+	return a.base + a.depth*indentStep
+}
+
+// textCol is where a detail line under the row goes: under the name, past the
+// glyph column the first line spent.
+func (a rowIndent) textCol() int { return a.glyphCol() + indentStep }
+
+// indentTo puts the line at a column, drawing the tree on the way when the row
+// has one. sub asks for the CONTINUATION rather than the branch — a detail line
+// under a row that has siblings below it keeps the vertical guide running past
+// it, and one under the last child draws blank, which is the same rule the row
+// above it obeyed.
+func (v *View) indentTo(l *lineBuf, at rowIndent, sub bool) {
+	l.padTo(at.base)
+	if at.guide.on {
+		for k := 0; k < at.depth; k++ {
+			if at.guide.open&(1<<uint(k)) != 0 {
+				l.add(guideVert, tokens.TextTertiary)
+			} else {
+				l.add(guideBlank, tokens.TextTertiary)
+			}
+		}
+		switch {
+		case sub && at.guide.last:
+			l.add(guideBlank, tokens.TextTertiary)
+		case sub:
+			l.add(guideVert, tokens.TextTertiary)
+		case at.guide.last:
+			l.add(branchLast, tokens.TextTertiary)
+		default:
+			l.add(branchMid, tokens.TextTertiary)
+		}
+	}
+	if sub {
+		l.padTo(at.textCol())
+		return
+	}
+	l.padTo(at.glyphCol())
 }
 
 // shapeOf decides a row's lines. The progressive-disclosure rule of 5.9 is the
 // whole of it: collapsed is the summary, focused expands in place.
-func (v *View) shapeOf(r Row, sel bool) rowShape {
+//
+// detail is the line budget the SELECTION may spend, and the preview rows claim
+// it in the order they are drawn in — so a reserve of one buys a tree row its
+// own words and a reserve of none leaves the row exactly as it was. It is passed in
+// rather than read from a constant here because it is the renderer, not the row,
+// that knows what a preview may cost the rows around it (renderMap).
+func (v *View) shapeOf(r Row, sel bool, detail int) rowShape {
 	var s rowShape
+	// spend claims one of the reserved lines for a preview row, and reports
+	// whether the row gets to exist at all.
+	spend := func(want bool) bool {
+		if !want || detail <= 0 {
+			return false
+		}
+		detail--
+		return true
+	}
 	switch r.Kind {
 	case RowStep, RowWorker:
 		// A tree row is one line, telemetry included: it carries its cells on
@@ -63,21 +185,15 @@ func (v *View) shapeOf(r Row, sel bool) rowShape {
 		// focus, where the reader has asked for it.
 		s.waits = len(r.WaitsOn) > 0
 		if sel {
-			s.status = v.clean(r.Status) != ""
-			s.artifact = !r.Artifact.Empty()
+			s.status = spend(v.clean(r.Status) != "")
+			s.artifact = spend(!r.Artifact.Empty())
 		}
 	default:
 		s.status = v.clean(r.Status) != ""
 		s.meta = !r.Meta.Empty()
 		s.waits = len(r.WaitsOn) > 0
 		if sel {
-			s.dots = len(r.Steps) > 0
-			s.artifact = !r.Artifact.Empty()
-			s.workers = len(r.Workers)
-			if s.workers > maxCardWorkers {
-				s.more = s.workers - maxCardWorkers
-				s.workers = maxCardWorkers
-			}
+			s.artifact = spend(!r.Artifact.Empty())
 		}
 	}
 	return s
@@ -85,48 +201,37 @@ func (v *View) shapeOf(r Row, sel bool) rowShape {
 
 // appendRow draws one row's lines into the View's buffer, stopping at the
 // height limit. Every line it produces is at most width printable cells.
-func (v *View) appendRow(r Row, sel bool, width, limit int, band tokens.Token, banded bool, ident tokens.Token) {
-	s := v.shapeOf(r, sel)
+func (v *View) appendRow(r Row, sel bool, width, limit, detail int,
+	band tokens.Token, banded bool, ident tokens.Token, guide treeGuide) {
+
+	s := v.shapeOf(r, sel, detail)
 	banded = banded && sel
-	indent := gutterFor(width) + v.leadWidth() + r.Depth*indentStep
-	sub := indent + indentStep
+	at := rowIndent{base: gutterFor(width) + v.leadWidth(), depth: r.Depth, guide: guide}
 
 	switch r.Kind {
 	case RowStep, RowWorker:
-		v.push(v.treeLine(r, width, indent, sel, banded, band, ident), limit)
+		v.push(v.treeLine(r, width, at, sel, banded, band, ident), limit)
 	default:
-		v.push(v.cardLine(r, width, indent, sel, banded, band, ident), limit)
+		v.push(v.cardLine(r, width, at, sel, banded, band, ident), limit)
 	}
 	if s.status {
-		v.push(v.statusLine(r, width, sub, banded, band), limit)
+		v.push(v.statusLine(r, width, at, banded, band), limit)
 	}
 	if s.meta {
-		v.push(v.metaLine(r.Meta, width, sub, banded, band), limit)
+		v.push(v.metaLine(v.telemetry(r), width, at, banded, band), limit)
 	}
 	if s.waits {
-		v.push(v.waitsLine(r, width, sub, banded, band), limit)
-	}
-	if s.dots {
-		v.push(v.dotsLine(r, width, sub, banded, band), limit)
-	}
-	for i := 0; i < s.workers; i++ {
-		w := r.Workers[i]
-		w.Kind = RowWorker
-		w.Depth = r.Depth + 1
-		v.push(v.treeLine(w, width, sub, false, banded, band, ident), limit)
-	}
-	if s.more > 0 {
-		v.push(v.moreLine(s.more, width, sub, banded, band), limit)
+		v.push(v.waitsLine(r, width, at, banded, band), limit)
 	}
 	if s.artifact {
-		v.push(v.artifactLine(r.Artifact, width, sub, banded, band), limit)
+		v.push(v.artifactLine(r.Artifact, width, at, banded, band), limit)
 	}
 }
 
 // cardLine is line 1 of a card: the attention glyph, the name, an optional
 // count chip, and the composer-mode mark at the right edge (5.11). It is the
 // only saturated colour on the card.
-func (v *View) cardLine(r Row, width, indent int, sel, banded bool, band, ident tokens.Token) string {
+func (v *View) cardLine(r Row, width int, at rowIndent, sel, banded bool, band, ident tokens.Token) string {
 	l := &v.line
 	l.reset(width)
 	v.gutter(l, sel, banded, ident)
@@ -151,7 +256,7 @@ func (v *View) cardLine(r Row, width, indent int, sel, banded bool, band, ident 
 			v.upLine, v.upFrom, v.upTo = len(v.lines), from, from+v.leadWidth()
 		}
 	}
-	l.padTo(indent)
+	l.padTo(at.glyphCol())
 	v.addGlyph(l, r, ident)
 
 	chip := ""
@@ -184,23 +289,30 @@ func (v *View) cardLine(r Row, width, indent int, sel, banded bool, band, ident 
 	return v.emit(width, banded, band)
 }
 
-// treeLine is a plan step or a worker inside a task scope: glyph, name, and as
-// much telemetry as the row can afford, flush right. The cells claim their room
-// BEFORE the name does, so a name growing by a character never pushes a number
-// off the row — the width-stability law of 5.21 applied to a whole line rather
-// than to one cell.
-func (v *View) treeLine(r Row, width, indent int, sel, banded bool, band, ident tokens.Token) string {
+// treeLine is a plan step or a worker inside a task scope: the connector into
+// the row, the state glyph, the name, and as much of the receipt as the row can
+// afford, flush right. The cells claim their room BEFORE the name does, so a
+// name growing by a character never pushes a number off the row — the
+// width-stability law of 5.21 applied to a whole line rather than to one cell.
+//
+// THE DEPTH IS THE CONNECTOR (§3). v1 drew the plan as `├─`/`╰─` with `│`
+// guides running down past the rows that still have siblings below them, and it
+// is the right grammar for the reason a plain indent is not: two spaces say a
+// row is deeper than the one above and nothing about WHOSE it is, so a reader
+// counting columns has to hold the whole subtree in their head to know where a
+// branch ended. The guides draw that fact instead.
+func (v *View) treeLine(r Row, width int, at rowIndent, sel, banded bool, band, ident tokens.Token) string {
 	l := &v.line
 	l.reset(width)
 	v.gutter(l, sel, banded, ident)
-	l.padTo(indent)
+	v.indentTo(l, at, false)
 	v.addGlyph(l, r, ident)
 
 	n := 0
 	rightW := 0
 	if !r.Meta.Empty() {
 		budget := l.room() - minNameWidth - 1
-		n = v.fitMetaInto(r.Meta, budget)
+		n = v.fitMetaInto(v.telemetry(r), budget)
 		if n > 0 {
 			rightW = metaWidth(v.meta[:n]) + 1
 		}
@@ -216,11 +328,11 @@ func (v *View) treeLine(r Row, width, indent int, sel, banded bool, band, ident 
 // statusLine is line 2: what the row is doing, in its own words. A cut turn
 // ends the line visibly cut (12.5.2) — the mark is sticky, so it survives on a
 // narrow rail after the words have gone.
-func (v *View) statusLine(r Row, width, indent int, banded bool, band tokens.Token) string {
+func (v *View) statusLine(r Row, width int, at rowIndent, banded bool, band tokens.Token) string {
 	l := &v.line
 	l.reset(width)
 	v.gutter(l, false, banded, tokens.Token(255))
-	l.padTo(indent)
+	v.indentTo(l, at, true)
 	cutW := 0
 	if r.Cut != tokens.CutNone {
 		cutW = 2 // a space and the mark
@@ -243,13 +355,15 @@ func (v *View) statusLine(r Row, width, indent int, banded bool, band tokens.Tok
 }
 
 // waitsLine names the siblings a row is blocked behind — the waits-on structure
-// 5.15 asks a task scope to make visible, in names rather than in edges.
-func (v *View) waitsLine(r Row, width, indent int, banded bool, band tokens.Token) string {
+// 5.15 asks a task scope to make visible, in names rather than in edges. `waits:`
+// rather than `waits on` is §3's own spelling, and it is v1's: two fewer cells
+// on the one line that is competing with a list of names for them.
+func (v *View) waitsLine(r Row, width int, at rowIndent, banded bool, band tokens.Token) string {
 	l := &v.line
 	l.reset(width)
 	v.gutter(l, false, banded, tokens.Token(255))
-	l.padTo(indent)
-	l.add("waits on ", tokens.TextTertiary)
+	v.indentTo(l, at, true)
+	l.add("waits: ", tokens.TextTertiary)
 	for i, name := range r.WaitsOn {
 		if l.room() <= 0 {
 			break
@@ -262,62 +376,14 @@ func (v *View) waitsLine(r Row, width, indent int, banded bool, band tokens.Toke
 	return v.emit(width, banded, band)
 }
 
-// dotsLine is plan progress (5.21): one dot per step, filled done, half
-// running, amber ⚑ blocked — discrete and honest, mapping 1:1 to steps. When
-// the dots will not fit, it falls back to 5.17's gauge form (`▆ 5/7`), because
-// a truncated dot row would lie about how many steps there are. The numbers
-// stay the primary encoding either way (5.13).
-func (v *View) dotsLine(r Row, width, indent int, banded bool, band tokens.Token) string {
-	l := &v.line
-	l.reset(width)
-	v.gutter(l, false, banded, tokens.Token(255))
-	l.padTo(indent)
-	done, total := StepProgress(r.Steps)
-	var buf [24]byte
-	out := strconv.AppendInt(buf[:0], int64(done), 10)
-	out = append(out, '/')
-	out = strconv.AppendInt(out, int64(total), 10)
-	progress := string(out)
-	room := l.room() - blocks.Width(progress) - 2
-	if total > 0 && room >= total {
-		for i := range r.Steps {
-			l.add(r.Steps[i].Dot(), r.Steps[i].token())
-		}
-	} else if total > 0 {
-		frac := 0.0
-		if total > 0 {
-			frac = float64(done) / float64(total)
-		}
-		l.add(tokens.Gauge(frac), tokens.TextSecondary)
-	}
-	l.add("  ", tokens.TextTertiary)
-	l.add(blocks.Truncate(progress, l.room()), tokens.TextTertiary)
-	return v.emit(width, banded, band)
-}
-
-// moreLine accounts for the workers a focused card did not expand into. It is
-// the fold-line grammar of 8.1.7 at card scale.
-func (v *View) moreLine(more, width, indent int, banded bool, band tokens.Token) string {
-	l := &v.line
-	l.reset(width)
-	v.gutter(l, false, banded, tokens.Token(255))
-	l.padTo(indent)
-	var buf [40]byte
-	out := append(buf[:0], "… "...)
-	out = strconv.AppendInt(out, int64(more), 10)
-	out = append(out, " more"...)
-	l.add(blocks.Truncate(string(out), l.room()), tokens.TextTertiary)
-	return v.emit(width, banded, band)
-}
-
 // artifactLine is the artifact law made visible (12.5.1): the deliverable is on
 // disk and the card points at it. The path is middle-ellipsised, because the
 // filename is the information (5.21).
-func (v *View) artifactLine(ref Ref, width, indent int, banded bool, band tokens.Token) string {
+func (v *View) artifactLine(ref Ref, width int, at rowIndent, banded bool, band tokens.Token) string {
 	l := &v.line
 	l.reset(width)
 	v.gutter(l, false, banded, tokens.Token(255))
-	l.padTo(indent)
+	v.indentTo(l, at, true)
 	l.add(tokens.GlyphTreeLast, tokens.TextTertiary)
 	l.add(" ", tokens.TextTertiary)
 	text := ref.Path
@@ -340,11 +406,11 @@ type metaCell struct {
 
 // metaLine is line 3: the dimmest tier, tabular, and money is never dropped
 // (5.9 — it is the one number the user never forgives us for hiding).
-func (v *View) metaLine(t Telemetry, width, indent int, banded bool, band tokens.Token) string {
+func (v *View) metaLine(t Telemetry, width int, at rowIndent, banded bool, band tokens.Token) string {
 	l := &v.line
 	l.reset(width)
 	v.gutter(l, false, banded, tokens.Token(255))
-	l.padTo(indent)
+	v.indentTo(l, at, true)
 	v.addMeta(l, v.fitMetaInto(t, l.room()))
 	return v.emit(width, banded, band)
 }
@@ -424,19 +490,46 @@ func (v *View) buildMeta(t Telemetry) int {
 	if t.HasElapsed {
 		add(tokens.ElapsedCell(t.Elapsed), "", tokens.ElapsedToken(t.Elapsed, t.Estimate), prioElapsed)
 	}
-	switch {
-	case t.Atomic:
-		add("atomic", "", tokens.TextTertiary, prioWorkers)
-	case t.HasWorkers:
-		var buf [32]byte
-		compact := append(strconv.AppendInt(buf[:0], int64(t.Workers), 10), 'w')
-		full := append(strconv.AppendInt(buf[16:16], int64(t.Workers), 10), " worker"...)
-		if t.Workers != 1 {
-			full = append(full, 's')
-		}
-		add(string(full), string(compact), tokens.TextTertiary, prioWorkers)
-	}
+	add(countsCell(t.Counts), "", tokens.TextTertiary, prioCounts)
 	return n
+}
+
+// countsCell is the census as glyph-and-count pairs: `2◐ 1✓`, in the state
+// vocabulary of 5.17 and the chrome tier of 5.16.
+//
+// A state nobody is in is not mentioned — a job with nothing broken says
+// nothing about breakage — and an empty census returns the empty string, which
+// [buildMeta]'s add drops. That is how a single-part job ends up saying nothing
+// at all about its shape (§14), without a special case for it anywhere.
+//
+// Failed and cancelled share the ✕ pair for the reason [AttnCancelled] gives:
+// to a reader scanning a rail they are one fact, which is that the work is not
+// going to happen.
+func countsCell(c StateCounts) string {
+	if c.Empty() {
+		return ""
+	}
+	var buf [48]byte
+	out := buf[:0]
+	for _, pair := range [...]struct {
+		n     int
+		glyph string
+	}{
+		{c.Running, tokens.GlyphWorking},
+		{c.Queued, tokens.GlyphQueued},
+		{c.Done, tokens.GlyphSettled},
+		{c.Failed + c.Cancelled, tokens.GlyphFailed},
+	} {
+		if pair.n <= 0 {
+			continue
+		}
+		if len(out) > 0 {
+			out = append(out, ' ')
+		}
+		out = strconv.AppendInt(out, int64(pair.n), 10)
+		out = append(out, pair.glyph...)
+	}
+	return string(out)
 }
 
 // metaWidth is what the cells cost, separators included.

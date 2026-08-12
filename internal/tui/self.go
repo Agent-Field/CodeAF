@@ -129,7 +129,7 @@ var selfSections = []selfSection{
 	},
 	{
 		route: selfRouteDials, title: "Dials",
-		explain: "how I balance demand against curiosity, and what I may propose",
+		explain: "the settings that govern what I do with my own time",
 		empty:   "",
 	},
 }
