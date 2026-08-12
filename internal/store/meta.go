@@ -312,7 +312,14 @@ const (
 	// question a delivery is allowed to carry. It is reversible and never holds
 	// anything up, so the meta loop is free to learn that this user simply keeps
 	// what they are given, and stop asking.
-	QuestionCategoryTaste   QuestionCategory = "taste"
+	QuestionCategoryTaste QuestionCategory = "taste"
+	// QuestionCategoryScope is "the quick look now, or the proper job?" — the one
+	// boundary the head genuinely cannot always read off the words. Nothing about
+	// it is consent-bearing: both answers are things the person asked for, and
+	// the wrong one costs a redo rather than a loss, so it is an ordinary
+	// VOI-gated ask. A person who always wants the proper job stops being asked
+	// for it, which is the whole point of asking in the first place.
+	QuestionCategoryScope   QuestionCategory = "scope"
 	QuestionCategoryGeneric QuestionCategory = "generic"
 )
 

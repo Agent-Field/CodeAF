@@ -58,6 +58,15 @@ func (h *Head) resolveAgentQuestion(ctx context.Context, user store.Message,
 	if question.Status == store.QuestionAnswered || question.Status == store.QuestionExpired {
 		return true, nil
 	}
+	if isAskQuestion(question.Options) {
+		// A categorized ask is a durable row so that the meta loop can count it,
+		// not so that the gates can apply it. This path applies answers — it would
+		// resolve the row, post "Got it", and end the turn, leaving the loop that
+		// asked the question never told what came back. So: settle the row for the
+		// measurement, then decline, and the reply travels on to the loop with the
+		// question beside it.
+		return false, h.settleLearnedAsk(question.Seq, question.Options, body, user.Seq)
+	}
 	answer := strings.TrimSpace(body)
 	if option, selected := selectQuestionOption(body, question.Options); selected {
 		answer = strings.TrimSpace(option.Label)
@@ -213,7 +222,13 @@ func (h *Head) answerPendingQuestion(ctx context.Context, user store.Message) (b
 		// the message on with both halves — the question and the choice — in the
 		// thread the loop is about to read, which is the only place the answer
 		// means anything.
-		return false, nil
+		//
+		// A categorized ask carries a durable row as well, and that row is the
+		// only thing the meta loop can count: an ask nobody settles teaches the
+		// gate nothing, so it would go on asking a question the person has now
+		// answered the same way a dozen times. Settle the row here and still hand
+		// the message on — recording the answer is a measurement, not a reply.
+		return false, h.settleLearnedAsk(question.QuestionSeq, question.Options, user.Body, user.Seq)
 	}
 	option, selected := selectQuestionOption(user.Body, question.Options)
 	if selected {
