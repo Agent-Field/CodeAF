@@ -25,15 +25,23 @@ import (
 // predicate would have done.
 //
 // So the voice may promise to come back with what work FINDS — that promise is
-// now backed. The promises it may not make are the ones nothing in the belt can
-// keep: opening a file, watching something, speaking on another channel. The
-// enforcement of that line is promise.go; this test pins the words and the
-// wiring together, so the voice and the machinery can never again disagree
-// about what the head is able to do.
+// now backed, and so is coming back with what the workforce makes of a CHANGE,
+// since the receipt wakes the head too (wake.go). The promises it may not make
+// are the ones nothing in the belt can keep: opening a file, watching something,
+// speaking on another channel.
+//
+// The lexical enforcement that used to stand behind this — promise.go, three cue
+// lists and a re-ask over every reply that tripped one — is gone. It was scanning
+// for a sentence the machinery had learned to keep, and the two wakes plus
+// run.summary() are what keep the honest half now: a receipt can only say what a
+// tool reported, and a promise to speak again is a promise something actually
+// executes. This test pins the words and the wiring together, so the voice and
+// the machinery can never again disagree about what the head is able to do.
 func TestTheHeadOnlyPromisesWhatTheWakeCanKeep(t *testing.T) {
 	for name, want := range map[string]string{
 		"the receipt survives":        "say what you have put in hand",
-		"the backed promise is named": "you may say you will come back with what it finds",
+		"the backed promise is named": "you may promise to come back with either",
+		"the change wake is named":    "what the workforce makes of a change you hand over",
 		"the wake is the reason":      "Finished work returns to this conversation by itself",
 		"the unbacked ones are not":   "never promise to open, preview, run or watch anything later",
 		"the channel is named once":   "no other channel to reach them on",
