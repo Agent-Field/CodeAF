@@ -255,10 +255,15 @@ const (
 )
 
 var (
-	ErrNotFound    = errors.New("node not found")
-	ErrClaimLost   = errors.New("claim is stale or no longer owned")
-	ErrNotReady    = errors.New("node is not ready")
-	ErrInvalid     = errors.New("invalid graph mutation")
+	ErrNotFound  = errors.New("node not found")
+	ErrClaimLost = errors.New("claim is stale or no longer owned")
+	ErrNotReady  = errors.New("node is not ready")
+	ErrInvalid   = errors.New("invalid graph mutation")
+	// ErrDuplicate is admission control refusing an ask that is already waiting
+	// in the funnel, unstarted (admission.go). It is not a failure: the work
+	// exists, and a caller that reads this should say so rather than say
+	// nothing happened.
+	ErrDuplicate   = errors.New("that ask is already queued and waiting")
 	ErrOpenChild   = errors.New("node has an open child")
 	ErrOpenSubtree = errors.New("subtree is not complete")
 	// ErrFactVetoed is the store refusing to re-derive a belief the user threw
