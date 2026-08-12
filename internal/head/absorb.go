@@ -30,26 +30,49 @@ import (
 // is the one thing only it has: the ask this answers, and what the result means
 // for it.
 //
-// Three bounds make it affordable and honest.
+// It was, for a while, a deliberately tiny turn: no tools, 600 tokens, a
+// four-kilobyte peek at the result, and a standing order not to restate anything
+// — because the whole result was pasted verbatim underneath whatever it wrote.
+// That shape answered the paraphrase incident (§13.4, two generated summaries
+// disagreeing with each other and with the verified text) by making generation
+// structurally impossible, and it bought that with the person's actual answer:
+// what they got was a machine's output with one polite line on top of it.
+//
+// The answer contract inverts it (chat-simplify §2.6). RAW IN — the turn now
+// reads the result whole, opens the file when that is where the substance lives,
+// and can read the plan or the board if the ask needs it. COMPOSED OUT — what it
+// writes is the answer to the question that started the work, sized to its
+// content, findings first and the path after. The verbatim result is still
+// journaled and still rendered as the job's own deliverable; it is the record,
+// not the message. And the defect the tiny turn was guarding against is
+// addressed at its actual cause: a model that has read the whole deliverable is
+// not the model that invented the other three quarters of it.
+//
+// Three bounds keep it affordable and honest.
 //   - It fires for work the PERSON asked for, in a room, and never for the
 //     resident's own practice, sentinels or standing furniture. Self-directed
 //     work has nobody waiting on an answer, and paying a turn to narrate it to
 //     an empty room is the exact cost this system is careful about.
 //   - It fires once, off the delivery row the resident already posts, and the
 //     poll's own cursor is what makes it once.
-//   - It has no tools. The work is finished; there is nothing left to do but
-//     say what it came to. The belt's definitions are the largest part of an
-//     ordinary turn's prompt and none of them can be reached from here.
+//   - Its hands are the READS and nothing else (beltReadOnly). The work is
+//     finished: there is everything to find out and nothing left to change, and
+//     a turn woken by an outcome must not be able to start anything.
 const (
-	// absorbMaxTokens bounds the absorption turn. It is the aside's cap for the
-	// same reason: this is one or two sentences over a result that is already on
-	// screen, and a budget big enough to re-paste the deliverable is a budget
-	// that invites re-pasting it.
-	absorbMaxTokens = 600
-	// absorbResultBytes bounds how much of the delivered result is read back to
-	// the head. Enough to absorb what it says; never so much that a long
-	// deliverable becomes the prompt.
-	absorbResultBytes = 4000
+	// absorbToolCallCap bounds the looking. The shape this turn has is open the
+	// result, open the file it points at, and answer — with room for a second
+	// file, a plan read, and one recovery after a tool error. Past that it is not
+	// composing an answer, it is browsing.
+	absorbToolCallCap = 6
+	// absorbSpentReads is what a read past the cap is told. It is a tool result
+	// rather than a hard stop so the turn still ends in an answer.
+	absorbSpentReads = "that is as much reading as this turn gets — answer their question now from what you have, " +
+		"and say plainly what you could not find out"
+	// absorbHandless is what a call to anything but a read is told. The
+	// definitions offered to this turn are the reads alone, so reaching for a
+	// hand is a model recalling a belt it was not given.
+	absorbHandless = "this turn has no hands — the work is finished and nothing here starts, changes or stops anything. " +
+		"Read what you need and answer them"
 	// absorbStreamSuffix keys the absorption turn's deltas apart from the room's
 	// own turn, exactly as an aside's are: the person may be typing while this
 	// runs, and their reply's stream must not have this one's words in it.
@@ -59,24 +82,26 @@ const (
 // AbsorbStreamSession is the stream key the absorption turn's deltas carry.
 func AbsorbStreamSession(sessionID string) string { return sessionID + absorbStreamSuffix }
 
-// absorbPrompt is the absorption turn's own system message.
+// absorbPrompt is the absorption turn's own system message: the answer contract,
+// stated to the one turn that exists to keep it.
 //
 // It is a separate prompt for the aside's cache reason — a prompt that shared
 // the orchestrator's prefix would compete with it for one cache entry — and
 // because it is a genuinely different job. The orchestrator's prompt is mostly
-// about what its hands are; this one has none, and its whole content is what to
-// say when the thing they asked for has landed.
-const absorbPrompt = `The work the person asked for has finished. The finished result will be handed to them WHOLE and word for word, directly underneath whatever you write, by the code that posts this message. You are not writing the answer; the answer exists, it was verified by the work, and it is going out intact.
+// about what its hands are; this one has reads and a question to answer.
+const absorbPrompt = `Work the person asked for has finished, and you are the one who talks to them. This turn is the ANSWER to the ask that started it — the last mile between work settling and a person knowing what came of it.
 
-You write the sentence in front of it. One sentence, occasionally two. Say what the result means for what they actually asked — the finding, the verdict, the bottom line, or simply that here is the thing they asked for and what shape it came out.
+Read before you write. The result is below in full. When its substance is in a file the work wrote, open that file and read it: a pointer is not an answer, and you have the reads to go and get it. Read the plan, another result or the board too if that is what answering honestly takes.
 
-Never restate, summarise, paraphrase, re-derive or continue the result. Anything you say about its substance that the result does not itself say is something you invented, and it will sit one line above the verified text contradicting it. If a fact is worth telling them, it is already below you. Where the result names files it wrote, you may say once where the material lives.
+Then answer THEIR question, in your own voice. The finding, the verdict, the numbers, the recommendation — first, in the opening sentence, before anything about the work itself. Size the answer to what there is to say: one line when one line is the whole truth of it, several paragraphs when the answer genuinely has parts. Where a document was produced, name its path AFTER the substance, never instead of it.
 
-If the result fell short of what they asked for, say that instead, in one sentence, plainly and without apology — what is missing is more useful to them than what is present.
+If the work fell short of what they asked, say that plainly and say what is missing. A shortfall named is worth more to them than a completion announced.
 
-If you have nothing worth adding, say nothing at all: an empty reply is correct here, and the result still reaches them.
+Never report completion. "It's done", "the task finished", "the report is ready above" are not answers — that the machinery finished is not news to somebody who asked a question. Neither is a wall of the work's own output with a sentence on top: that is the record, and it is already kept.
 
-Speak entirely in their terms. The machinery's names for itself — node, leaf, graph, splice, worker, craft, charter, board, task — belong to the machinery, never to this sentence.`
+Say only what you actually read this turn. Every number is quoted from something in front of you, never worked out, rounded or remembered. If the result and a file disagree, the file the work wrote is what happened.
+
+Speak entirely in their terms. The machinery's names for itself — node, leaf, graph, splice, subtree, worker, craft, charter, board, task — belong to the machinery, never to this answer.`
 
 // deliveredRow reports whether one journal row is a finished job speaking. It is
 // the same three-column reading every surface makes of a delivery: the resident
@@ -141,29 +166,72 @@ func (h *Head) absorbDelivery(ctx context.Context, message store.Message) {
 	if err != nil {
 		return
 	}
-	delivered := deliveredText(node, message)
-	framing := ""
-	response, err := client.CompleteWithMessages(
-		provider.WithStreamSession(ctx, AbsorbStreamSession(message.SessionID)),
-		[]ai.Message{textMessage("system", absorbPrompt), textMessage("user", prompt)},
-		ai.WithMaxTokens(absorbMaxTokens))
-	if err == nil && response != nil {
-		framing = strings.TrimSpace(response.Text())
-	}
-	// The frame is optional and the deliverable is not. A provider that refused,
-	// or a turn with nothing to add, costs the person a sentence of context and
-	// never the answer — which is the whole difference between relaying and
-	// re-authoring, stated at the one seam where the two could be confused.
-	body := RelayDelivery(framing, delivered)
-	if body == "" {
+	answer := h.deliveryAnswer(ctx, client, message, prompt)
+	// A provider that refused, or a turn with nothing to say, costs the person the
+	// spoken answer and never the work: the delivery row is journaled, the job's
+	// card draws it, and a read reaches it forever. Posting the raw result a
+	// second time in the head's own voice is what this contract stopped doing.
+	if answer == "" {
 		return
 	}
 	// Unannotated, like every other ordinary reply: attribution in the thread is
 	// reserved for a model the person asked for by name, and this turn is the
 	// head talking in its own voice on whatever the room already runs.
-	if err := h.postAgent(message.SessionID, body, 0); err != nil {
+	if err := h.postAgent(message.SessionID, answer, 0); err != nil {
 		log.Printf("head absorb %s: %v", node.ID, err)
 	}
+}
+
+// deliveryAnswer runs the bounded read-and-answer loop.
+//
+// It is the ordinary turn loop with its hands taken off: the same shape, the
+// same tool-result protocol, the same one-runaway-bound discipline — and a belt
+// that is the reads and nothing else, guarded twice. The definitions offered
+// carry only reads, and a call to anything else is refused in the loop rather
+// than dispatched, because a turn woken BY an outcome must not be able to start
+// another one.
+func (h *Head) deliveryAnswer(ctx context.Context, client Client, message store.Message, prompt string) string {
+	streamed := provider.WithStreamSession(ctx, AbsorbStreamSession(message.SessionID))
+	messages := []ai.Message{textMessage("system", absorbPrompt), textMessage("user", prompt)}
+	definitions := beltReadDefinitions()
+	run := &beltRun{head: h, user: message}
+	spent := 0
+	for turn := 0; turn < absorbToolCallCap+2; turn++ {
+		response, err := client.CompleteWithMessages(streamed, messages, ai.WithTools(definitions))
+		if err != nil || response == nil {
+			return ""
+		}
+		calls := response.ToolCalls()
+		if len(calls) == 0 {
+			return strings.TrimSpace(response.Text())
+		}
+		messages = append(messages, ai.Message{
+			Role: "assistant", Content: []ai.ContentPart{{Type: "text", Text: response.Text()}},
+			ToolCalls: calls,
+		})
+		for _, call := range calls {
+			name := call.Function.Name
+			var body string
+			switch {
+			case !beltReadOnly(name):
+				body = absorbHandless
+			case spent >= absorbToolCallCap:
+				body = absorbSpentReads
+			default:
+				spent++
+				result, failed := run.execute(name, call.Function.Arguments)
+				if failed {
+					result = "ERROR: " + result
+				}
+				body = result
+			}
+			messages = append(messages, ai.Message{
+				Role: "tool", ToolCallID: call.ID,
+				Content: []ai.ContentPart{{Type: "text", Text: body}},
+			})
+		}
+	}
+	return ""
 }
 
 // deliveredText is the finished work as the person is owed it: the job's own
@@ -175,43 +243,23 @@ func deliveredText(node store.Node, message store.Message) string {
 	return strings.TrimSpace(message.Body)
 }
 
-// RelayDelivery composes what the head says when a job lands: its own short
-// frame, and then the delivered work itself, verbatim.
+// The relay that used to stand here — the head's frame, then the whole delivered
+// text copied underneath it — is gone, and the incident it was written for is
+// worth keeping in view. A job spent twelve leaves verifying twelve technical
+// profiles against live documentation; the head then wrote two messages that
+// both opened "Here are the 12 technical profiles:", disagreed with each other
+// on plain fact, and matched the verified text on neither. Two generations
+// disagreeing is proof they were generated.
 //
-// This is the closure contract's delivery half made structural. The head owns
-// the discourse — one mouth — and for a while that was read as licence to
-// ANSWER the ask a second time out of its own knowledge, with the researched
-// result merely shown to it and then bounded to four kilobytes on the way in.
-// Measured, a job that spent twelve leaves verifying twelve profiles against
-// live documentation was followed by two head messages that both opened "Here
-// are the 12 technical profiles:", contradicted each other on plain fact —
-// Chroma stores Parquet files, Chroma stores SQLite metadata — and matched the
-// verified text on neither. Two generations disagreeing is proof they were
-// generated; nothing relayed can disagree with itself.
-//
-// So the substance travels and only the substance: the frame is the head's, the
-// body is the work's, and the body is copied rather than described. Where the
-// two together will not fit one message, the FRAME is what gives way, because a
-// missing sentence of context costs the person a courtesy and a missing
-// paragraph of the deliverable costs them the answer.
-func RelayDelivery(framing, delivered string) string {
-	framing, delivered = strings.TrimSpace(framing), strings.TrimSpace(delivered)
-	if delivered == "" {
-		return framing
-	}
-	if framing == "" || strings.Contains(delivered, framing) {
-		return truncateBytes(delivered, store.MaxMessageBytes)
-	}
-	if len(framing)+len(relayJoin)+len(delivered) > store.MaxMessageBytes {
-		return truncateBytes(delivered, store.MaxMessageBytes)
-	}
-	return framing + relayJoin + delivered
-}
-
-// relayJoin separates the head's sentence from the work's own words. A blank
-// line and nothing else: a heading here would be the head announcing the
-// deliverable rather than handing it over.
-const relayJoin = "\n\n"
+// The relay answered that by copying rather than describing. It also meant the
+// person's answer was the work's raw output, and the head's contribution one
+// line of ceremony above it. What answers the same incident now is the thing
+// that was actually missing: the turn reads the WHOLE deliverable, and the whole
+// file behind it, before it says anything. A summary written over four kilobytes
+// of a sixteen-kilobyte report was a paraphrase because three quarters of it had
+// to be invented; a summary written over all of it is a summary. The verbatim
+// text stays exactly where it always was — the delivery row, the job's card, any
+// read — and is never posted twice.
 
 // claimAbsorb takes the right to answer for one settled job, once.
 //
@@ -263,34 +311,27 @@ func (h *Head) absorbPromptFor(message store.Message, node store.Node) (string, 
 		body.WriteString("\n\nWhat they asked for, in their own words:\n" + ask)
 	}
 	if title := strings.TrimSpace(node.Title); title != "" {
-		body.WriteString("\n\nThe work that was done for it: " + title)
+		// The id travels with the title because the reads need one. It is for the
+		// tools and never for the sentence — a raw id said out loud is the
+		// machinery talking about itself, which the prompt above forbids.
+		body.WriteString("\n\nThe work that was done for it: " + title +
+			" (id " + node.ID + ", for your reads — never say an id to them)")
 	}
 	result := strings.TrimSpace(node.Summary)
 	if result == "" {
 		result = strings.TrimSpace(message.Body)
 	}
-	// Only the opening of the result travels into the prompt, and that is now
-	// honest rather than a compromise. The turn writes a frame, so it needs
-	// enough of the work to know what the work concluded; it does not need the
-	// work, because the work is what the code posts underneath it. For as long
-	// as this turn was expected to ANSWER, the same bound was a quiet
-	// mutilation — a sixteen-kilobyte deliverable arriving as its first quarter
-	// and a model told to produce the rest in its own words, which is exactly
-	// what it did.
-	body.WriteString("\n\nThe opening of what it delivered. The WHOLE of this text, " +
-		"not this excerpt, is posted verbatim directly below your sentence:\n" +
-		truncateBytes(result, absorbResultBytes))
-	// "Say what this means" alone produced turns that pointed at the card —
-	// "the full report is above" — which is a receptionist's answer, and the
-	// one thing this turn must never be (user-reported, 2026-08-11). Pointing
-	// is still wrong, and it is wrong for the opposite reason now: there is
-	// nowhere to point, because the thing itself is directly beneath the line
-	// being written.
-	body.WriteString("\n\nWrite only the sentence that goes in front of it — what this " +
-		"means for what they asked. Do not reproduce, summarise or continue the " +
-		"result; it follows your words in full. Never write \"the report is above\", " +
-		"\"see the file\" or \"the card has it\": there is nothing to point at, the " +
-		"work is right here.")
+	// The result travels WHOLE. The four-kilobyte clip that used to stand here was
+	// the single most expensive line in this file: a sixteen-kilobyte deliverable
+	// arrived as its first quarter, and a model asked to speak about it produced
+	// the other three quarters in its own words — which is exactly what a model
+	// does with a sentence that stops mid-argument. What the loop reads is raw;
+	// what it writes is composed; those are two different rules and only the
+	// second one is about brevity.
+	body.WriteString("\n\nWhat it delivered, in full:\n" + result)
+	body.WriteString("\n\nNow answer what they asked. Open any file this names before you write " +
+		"about what is in it — a result that says where the answer is has not given you the answer. " +
+		"Lead with the substance; the path comes after it, and never instead of it.")
 	return body.String(), nil
 }
 

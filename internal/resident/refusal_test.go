@@ -67,7 +67,7 @@ func TestEveryRejectionSpeaksAndAppliedReceiptsKeepTheirPlace(t *testing.T) {
 			t.Errorf("a rejected %s was anchored away from the thread", kind)
 		}
 		applied := receiptVoice(command, store.CommandApplied)
-		if headSpeaksFor(kind) && applied == store.RoleAgent {
+		if HeadSpeaksFor(kind) && applied == store.RoleAgent {
 			t.Errorf("an applied %s now doubles the head", kind)
 		}
 	}

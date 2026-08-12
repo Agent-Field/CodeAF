@@ -92,7 +92,7 @@ func TestEveryCommandKindHasSomebodyToAnswerForIt(t *testing.T) {
 	} {
 		command := store.Command{Kind: kind, Target: "job"}
 		voice := receiptVoice(command, store.CommandApplied)
-		spoken := headSpeaksFor(kind)
+		spoken := HeadSpeaksFor(kind)
 		if spoken && voice == store.RoleAgent {
 			t.Errorf("%s is answered by the head and by its receipt", kind)
 		}

@@ -609,11 +609,11 @@ func TestTheControlVocabularySurvivesAsAReadingRatherThanAsAGate(t *testing.T) {
 }
 
 // A model that keeps reading instead of finishing spends a bounded number of
-// tools and is then told to speak. The cap rose from four to eight when the loop
-// stopped only reading and steering and started commissioning, writing and
-// repairing — read, write, read back, say, with room for two corrections after a
-// tool error — and what it bounds is unchanged: one sentence can never become an
-// open tab.
+// tools and is then told to speak. The cap has been four, then eight-divided —
+// six for looking, two held back for acting — and is now sixteen and undivided,
+// because the two things the division was standing in for exist: the turn can
+// speak mid-flight, and a command it journals wakes it when the receipt lands.
+// What it bounds is unchanged: one sentence can never become an open tab.
 func TestTheLoopSpendsAtMostItsToolCallCap(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
@@ -640,37 +640,45 @@ func TestTheLoopSpendsAtMostItsToolCallCap(t *testing.T) {
 	}
 }
 
-// And the cap is a tool result rather than a hard stop, so a model that will not
-// stop calling tools still ends the turn in words rather than in silence.
+// And the belt is no longer divided into looking and acting.
 //
-// Looking runs out first, and says so in its own words: the calls that are left
-// are for acting. That division is what stops a turn arriving at the answer with
-// no hands — the failure that had the head announce a repair it never started.
-func TestPastTheReadingCapTheBeltKeepsItsHandsForActing(t *testing.T) {
+// The split existed because a turn had one chance to speak and could not observe
+// what it started: a diagnosis that spent every call reading arrived at the
+// answer with no hands, and said it had commissioned a fix it had not. Twelve
+// straight reads now leave the hands untouched — a turn may look as long as the
+// question needs and still act on what it found.
+func TestLookingNeverRunsOutBeforeTheBeltDoes(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	turns := make([]beltTurn, 0, orchestratorToolCallCap+2)
-	for index := 0; index <= orchestratorToolCallCap; index++ {
+	for index := 0; index < 12; index++ {
 		turns = append(turns, beltTurn{calls: []ai.ToolCall{
 			beltCall(fmt.Sprintf("c%d", index), beltToolBoard, map[string]any{})}})
 	}
-	client := &beltClient{turns: append(turns, beltTurn{text: "Three jobs are waiting to start."})}
+	// The thirteenth call is an ACT, after twelve reads. Under the old division
+	// the reads would have been refused from the seventh on.
+	turns = append(turns, beltTurn{calls: []ai.ToolCall{
+		beltCall("act", beltToolNote, map[string]any{
+			"body": "they want the queued scans dropped first", "scope": "user"})}})
+	client := &beltClient{turns: append(turns, beltTurn{text: "Noted, and the scans are the ones to drop."})}
 	user := postUser(t, graph, "spent", "which of these should i drop")
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
-	told := false
 	for _, message := range client.seen {
 		for _, part := range message.Content {
-			told = told || strings.Contains(part.Text, orchestratorSpentReads)
+			if strings.Contains(part.Text, orchestratorSpentBelt) {
+				t.Fatal("thirteen calls exhausted a sixteen-call belt")
+			}
 		}
 	}
-	if !told {
-		t.Fatal("a read past the reading cap was never told to spend what is left on acting")
+	facts, err := graph.RecentFacts(5)
+	if err != nil || len(facts) == 0 {
+		t.Fatalf("the act after twelve reads never landed: facts=%d err=%v", len(facts), err)
 	}
 	reply := waitForAgentReply(t, graph, "spent", user.Seq)
-	if reply.Body != "Three jobs are waiting to start." {
-		t.Fatalf("capped loop reply = %q", reply.Body)
+	if reply.Body != "Noted, and the scans are the ones to drop." {
+		t.Fatalf("loop reply = %q", reply.Body)
 	}
 }
 
