@@ -103,6 +103,27 @@ its plan, a file it wrote, the manual, what has been spent, what is on watch,
 what was finished in a window of time, and a search across everything
 remembered. Reads never queue anything.
 
+Three of those reads are total, and between them nothing the brain knows is out
+of reach from the conversation:
+
+- **recall** — one search over everything settled or said at once: what you
+  said, what you told it, what it did, the standing rules, the services. Each
+  hit comes back with real content and an id, and it can be narrowed to one
+  kind of thing, to a window of time, or to one of your chats.
+- **open** — one thing whole. Work still running opens as its plan with every
+  step's state, what its workers are saying right now, the files it has written
+  so far and what it has spent; work that finished opens as its whole result,
+  its files, its spend and how each part ended; a file opens as its actual
+  bytes; a standing rule, a service or a numbered notebook line opens as its
+  full record. Asked for it raw, it hands back the journal's own rows —
+  every event and every message attached to that job, unedited. Nothing here is
+  truncated: anything longer than a page is *paged*, and the reply says which
+  part of how many it is holding, so a fragment is never mistaken for the whole.
+- **status** — the whole system on one page: what is running, queued and
+  failed, what today has cost against your daily limit, what is on watch and
+  when each check is next, what is running as a service, and what has been
+  measured about how the work goes.
+
 One read is about conversations rather than about work: **thread** opens another
 of your chats and hands back the end of it. It is only ever read when the front
 desk needs it — nothing about another room is carried around in the background —
