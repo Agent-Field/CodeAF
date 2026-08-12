@@ -33,7 +33,7 @@ func TestAWholeCycleSaysOnlyCommitmentDeliveryAndQuestion(t *testing.T) {
 	// 1. The person asks, and the head commissions. Its reply is the COMMITMENT
 	//    — the one sentence a person hears when prose becomes work.
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolTask, map[string]any{
 			"instruction": "compare the three cities"})}},
 		{text: "On it — comparing the three cities now."},
 	}}

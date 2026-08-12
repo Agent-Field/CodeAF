@@ -30,7 +30,7 @@ func TestHeadRoutesImagePartAndPreservesAttachmentOnCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolTask, map[string]any{
 			"instruction": "inspect the diagram"})}},
 		{text: "I’ll inspect that."},
 	}}
@@ -230,7 +230,7 @@ func TestHeadRequestsSpliceAndLinksReply(t *testing.T) {
 	// terminal decision, and the receipt still has to be tied to the command the
 	// tool journaled — otherwise a reply claims work that has no row.
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{"instruction": "make me X"})}},
+		{calls: []ai.ToolCall{beltCall("s1", beltToolTask, map[string]any{"instruction": "make me X"})}},
 		{text: "Splicing that in — I'll report when it lands."},
 	}}
 	user, err := graphStore.PostMessage(store.Message{SessionID: "chat-2", Role: store.RoleUser, Body: "make me X"})
@@ -559,7 +559,7 @@ func TestHeadParsesReflexAndAnchorsVerbatimIntent(t *testing.T) {
 	graphStore := openHeadStore(t)
 	const ask = "Read VERSION and tell me the value."
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolTask, map[string]any{
 			"instruction": ask, "reflex": true})}},
 		{text: "Doing that now."},
 	}}
@@ -588,7 +588,7 @@ func TestHeadParsesReflexAndAnchorsVerbatimIntent(t *testing.T) {
 	// with no stated bound is a permission with no bound.
 	spawnDescription := ""
 	for _, definition := range beltDefinitions() {
-		if definition.Function.Name == beltToolSpawn {
+		if definition.Function.Name == beltToolTask {
 			spawnDescription = definition.Function.Description
 		}
 	}
@@ -618,7 +618,7 @@ func TestHeadPromotesConsequentialReflexBeforePersistence(t *testing.T) {
 			}
 			user := postUser(t, graphStore, "chat-consequence", ask)
 			run := &beltRun{head: New(nil, graphStore), user: user}
-			result, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+			result, failed := run.execute(beltToolTask, beltArguments(t, map[string]any{
 				"instruction": ask, "reflex": true}))
 			if failed {
 				t.Fatalf("spawn refused %q outright: %s", ask, result)
@@ -1162,38 +1162,37 @@ func TestGenericQuestionNumericSelectionContinuesCompile(t *testing.T) {
 }
 
 // Managing a standing rule was a prefix test that journaled and spoke without
-// anything with judgment seeing the sentence. It is the rule tool now: the same
-// transition table, the same store commands, the same one-line receipts — and
-// the vocabulary is read off a tool call's argument rather than off the words a
-// sentence happened to open with, which is the difference that shows on every
-// phrasing the prefix test was never going to cover.
+// anything with judgment seeing the sentence. It is the verb triad now: the
+// same transition table, the same store commands, the same one-line receipts —
+// and the transition is read off the person's own words against a rule id a
+// read handed over, rather than off the words a sentence happened to open with.
+// Withdrawal is stop's; every other edit is change's.
 func TestConversationalCharterManagement(t *testing.T) {
 	tests := []struct {
 		name        string
 		message     string
-		verb        string
-		words       string
+		tool        string
 		wantStatus  store.CharterStatus
 		wantCadence string
 	}{
-		{name: "pause", message: "pause the morning digest", verb: "pause",
+		{name: "pause", message: "pause the morning digest", tool: beltToolStop,
 			wantStatus: store.CharterPaused},
-		{name: "retire", message: "stop watching the morning digest", verb: "retire",
+		{name: "retire", message: "stop watching the morning digest", tool: beltToolStop,
 			wantStatus: store.CharterRetired},
-		{name: "edit cadence", message: "make the morning digest hourly", verb: "cadence",
-			words: "hourly", wantStatus: store.CharterActive, wantCadence: "hourly"},
+		{name: "edit cadence", message: "make the morning digest hourly", tool: beltToolChange,
+			wantStatus: store.CharterActive, wantCadence: "hourly"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			graph := openHeadStore(t)
 			charter := activateHeadCharter(t, graph, "digest",
 				"Every morning send the release digest.")
-			args := map[string]any{"verb": test.verb, "describes": "morning digest"}
-			if test.words != "" {
-				args["words"] = test.words
+			args := map[string]any{"target": charter.ID, "words": test.message}
+			if test.tool == beltToolStop {
+				args = map[string]any{"targets": []string{charter.ID}, "words": test.message}
 			}
 			client := &beltClient{turns: []beltTurn{
-				{calls: []ai.ToolCall{beltCall("r1", beltToolRule, args)}},
+				{calls: []ai.ToolCall{beltCall("r1", test.tool, args)}},
 				{text: "Done — that rule is updated."},
 			}}
 			user, err := graph.PostMessage(store.Message{
@@ -1241,8 +1240,8 @@ func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
 	activateHeadCharter(t, graph, "frontend-prs", "Whenever frontend PRs open, review them.")
 	activateHeadCharter(t, graph, "backend-prs", "Whenever backend PRs open, review them.")
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("r1", beltToolRule, map[string]any{
-			"verb": "retire", "describes": "PRs"})}},
+		{calls: []ai.ToolCall{beltCall("r1", beltToolStop, map[string]any{
+			"words": "stop watching PRs"})}},
 		{calls: []ai.ToolCall{beltCall("a1", beltToolAsk, map[string]any{
 			"question": "Which rule do you mean?",
 			"options":  []string{"the frontend PR reviews", "the backend PR reviews"}})}},
@@ -1268,8 +1267,8 @@ func TestAmbiguousCharterManagementProducesOptions(t *testing.T) {
 			candidates = message.Content[0].Text
 		}
 	}
-	if !strings.Contains(candidates, "more than one standing rule matches") {
-		t.Fatalf("the rule tool picked for the user instead of handing back candidates: %q", candidates)
+	if !strings.Contains(candidates, "more than one thing matches") {
+		t.Fatalf("the withdrawal picked for the user instead of handing back candidates: %q", candidates)
 	}
 
 	reply := waitForAgentReply(t, graph, "ambiguous-charter", user.Seq)
@@ -1325,7 +1324,7 @@ func TestHeadKeepsDocumentAttachmentOffTheModelAndOnTheCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolTask, map[string]any{
 			"instruction": "summarise the filing"})}},
 		{text: "I’ll read it."},
 	}}
@@ -1461,12 +1460,12 @@ func TestEveryReadingIsToldNotToRaceWorkAlreadyUnderway(t *testing.T) {
 	// moment it decides between "another job" and "a change to that one".
 	spawnDescription := ""
 	for _, definition := range beltDefinitions() {
-		if definition.Function.Name == beltToolSpawn {
+		if definition.Function.Name == beltToolTask {
 			spawnDescription = definition.Function.Description
 		}
 	}
 	if !strings.Contains(spawnDescription, "after names work this follows on from") {
-		t.Errorf("spawn no longer offers the follows-on edge at all: %q", spawnDescription)
+		t.Errorf("task no longer offers the follows-on edge at all: %q", spawnDescription)
 	}
 }
 

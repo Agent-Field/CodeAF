@@ -85,7 +85,7 @@ func TestImpatienceExpeditesTheLiveJobInsteadOfCompilingASecondOne(t *testing.T)
 		"research the finance question the user asked about")
 	const ask = "please complete the dinance research fast and give me result immediatly"
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolExpedite, map[string]any{"job": "finance"})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolChange, map[string]any{"target": "finance", "words": ask})}},
 		{text: ""},
 	}}
 	user := postUser(t, graph, "impatient", ask)
@@ -127,8 +127,8 @@ func TestNotJustXIWantYRedirectsTheLiveJob(t *testing.T) {
 		"research the finance question the user asked about")
 	const ask = "not jsut summary i want the answer to the problem we started"
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolRevise, map[string]any{
-			"job": "finance", "words": ask})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolChange, map[string]any{
+			"target": "finance", "words": ask})}},
 		{text: ""},
 	}}
 	user := postUser(t, graph, "corrected", ask)
@@ -154,7 +154,7 @@ func TestSpeedAsARequirementStillCompilesAsNewWork(t *testing.T) {
 	graph := openHeadStore(t)
 	const ask = "write a fast json parser"
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolSpawn, map[string]any{"instruction": ask})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolTask, map[string]any{"instruction": ask})}},
 		{text: ""},
 	}}
 	user := postUser(t, graph, "ordinary", ask)
@@ -202,18 +202,20 @@ func TestSpliceReceiptIsForbiddenFromPromisingAcceleration(t *testing.T) {
 	if strings.Contains(orchestratorPrompt, "no way to make existing work go faster") {
 		t.Error("the prompt denies a capability the belt exercises")
 	}
-	// The capability the denial used to contradict, stated once and stated
-	// exactly: sooner, trimmed, and never larger.
-	if !strings.Contains(orchestratorPrompt, "expedite (sooner, never different)") {
-		t.Error("the prompt no longer names the lane that does make work arrive sooner")
-	}
-	expedite := ""
+	// The capability the denial used to contradict has no lane of its own any
+	// more: impatience is a change like every other change, said in the person's
+	// own words, and what it comes to is decided by whoever holds the plan. What
+	// the prompt has to keep saying is that the head does not pick the verb.
+	change := ""
 	for _, definition := range beltDefinitions() {
-		if definition.Function.Name == beltToolExpedite {
-			expedite = definition.Function.Description
+		if definition.Function.Name == beltToolChange {
+			change = definition.Function.Description
 		}
 	}
-	if !strings.Contains(expedite, "It never adds work.") {
-		t.Errorf("the expedite tool no longer promises only what it does:\n%s", expedite)
+	if !strings.Contains(change, "never pick a verb") {
+		t.Errorf("the change tool no longer tells the model to leave the verb alone:\n%s", change)
+	}
+	if !strings.Contains(orchestratorPrompt, "you never pick a verb for them") {
+		t.Error("the prompt no longer says who decides what a change means")
 	}
 }

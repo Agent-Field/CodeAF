@@ -54,8 +54,12 @@ func (run *beltRun) change(args map[string]any) (string, bool) {
 		return run.changeRule(found.rule, words)
 	case targetService:
 		return run.changeService(found.service, words)
+	case targetCraft:
+		return run.changeCraft(found.craft, words)
+	case targetForeign:
+		return quoted(target) + " is not the user's work and is not yours to change", true
 	default:
-		return run.changeCraft(target, words)
+		return unknownTarget(target), true
 	}
 }
 
@@ -221,9 +225,8 @@ func (run *beltRun) changeService(service store.Service, words string) (string, 
 // version, and the repository refuses one that cannot say why.
 func (run *beltRun) changeCraft(name, words string) (string, bool) {
 	if len(strings.Fields(words)) < craft.MinReasonWords {
-		return "nothing on the board, no standing rule and no service is called " + quoted(name) + ". " +
-			"If that is a learned way of working, say what the newer version got wrong — a few words at least. " +
-			"Otherwise read again for the id", true
+		return "words must say what the newer version of " + name +
+			" got wrong — a few words at least, or ask them", true
 	}
 	command, err := run.head.store.RequestCommand(store.Command{
 		SessionID: run.user.SessionID, Kind: store.CommandCraftRevert,
@@ -242,10 +245,17 @@ func (run *beltRun) changeCraft(name, words string) (string, bool) {
 type targetKind int
 
 const (
-	targetCraft targetKind = iota
+	// targetNone is an id nothing answers to, and it is a REFUSAL rather than a
+	// fall-through. Making a craft the fall-through was the obvious shape and it
+	// was wrong: the craft repository is not this database, so an unmatched name
+	// would have gone off as a command against a workflow nobody has forged —
+	// which is what every mistyped job id would have become.
+	targetNone targetKind = iota
+	targetForeign
 	targetJob
 	targetRule
 	targetService
+	targetCraft
 )
 
 type resolvedTarget struct {
@@ -253,21 +263,28 @@ type resolvedTarget struct {
 	job     store.Node
 	rule    store.Charter
 	service store.Service
+	craft   string
 }
 
-// resolveTarget reads one id in the order the ids are trustworthy: a graph node
-// is exact, a charter id is exact, a service is exact by id or by name — and a
-// craft is a NAME the store has never seen, so it is what is left. A mistyped id
-// therefore lands as a craft and is refused in words by the repository, which is
-// the same shape a missing service has always had.
+// resolveTarget reads one id against everything the person owns. All four kinds
+// are confirmed before anything is journaled: a graph node, a charter, a service
+// by id or by name, and a way of working by the name the journal recorded when
+// it was forged.
 func (h *Head) resolveTarget(id string) resolvedTarget {
 	id = strings.TrimSpace(id)
 	if h == nil || h.store == nil || id == "" {
 		return resolvedTarget{}
 	}
-	if node, found, err := h.store.Node(id); err == nil && found &&
-		node.ID != store.RootID && beltAddressable(node) {
-		return resolvedTarget{kind: targetJob, job: node}
+	// The node read runs first and its NEGATIVE answer is held rather than
+	// returned: a standing rule has a node of its own in the graph, and that node
+	// is deliberately outside the membrane the board sits behind. Answering
+	// "not yours" there would have made every rule unreachable by its own id.
+	foreign := store.Node{}
+	if node, found, err := h.store.Node(id); err == nil && found && node.ID != store.RootID {
+		if beltAddressable(node) {
+			return resolvedTarget{kind: targetJob, job: node}
+		}
+		foreign = node
 	}
 	if rule, found, err := h.store.Charter(id); err == nil && found {
 		return resolvedTarget{kind: targetRule, rule: rule}
@@ -278,5 +295,25 @@ func (h *Head) resolveTarget(id string) resolvedTarget {
 	if service, found, err := h.store.ServiceByName(id); err == nil && found {
 		return resolvedTarget{kind: targetService, service: service}
 	}
-	return resolvedTarget{kind: targetCraft}
+	if names, err := h.store.ForgedCraftNames(); err == nil {
+		for _, name := range names {
+			if strings.EqualFold(name, id) {
+				return resolvedTarget{kind: targetCraft, craft: name}
+			}
+		}
+	}
+	if foreign.ID != "" {
+		// It exists and it is not theirs — the resident's own practice, or a
+		// territory. The membrane says so in words rather than in silence.
+		return resolvedTarget{kind: targetForeign, job: foreign}
+	}
+	return resolvedTarget{}
+}
+
+// unknownTarget is the one sentence every verb says about an id nothing answers
+// to. It names all four places that were looked in, so the loop can tell a
+// mistyped id from a thing that never existed.
+func unknownTarget(id string) string {
+	return "nothing on the board, no standing rule, no service and no learned way of working is called " +
+		quoted(id) + " — read again for the id"
 }

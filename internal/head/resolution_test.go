@@ -35,8 +35,8 @@ func TestDescribedWorkBeatsTheWorkThatSpokeLast(t *testing.T) {
 	}
 
 	head, _ := beltHead(graph, beltTurn{calls: []ai.ToolCall{
-		beltCall("c1", beltToolCorrect, map[string]any{
-			"job": "auth-fix", "words": user.Body})}}, beltTurn{})
+		beltCall("c1", beltToolTask, map[string]any{
+			"amends": "auth-fix", "instruction": user.Body})}}, beltTurn{})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
@@ -72,8 +72,8 @@ func TestContentlessFollowUpAnswersTheWorkThatSpokeLast(t *testing.T) {
 	}
 
 	head, _ := beltHead(graph, beltTurn{calls: []ai.ToolCall{
-		beltCall("c1", beltToolCorrect, map[string]any{
-			"job": "parser-fix", "words": user.Body})}}, beltTurn{})
+		beltCall("c1", beltToolTask, map[string]any{
+			"amends": "parser-fix", "instruction": user.Body})}}, beltTurn{})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +157,8 @@ func TestAnsweringTheAmbiguityQuestionJournalsTheCorrection(t *testing.T) {
 	}
 
 	client.turns = append(client.turns, beltTurn{calls: []ai.ToolCall{
-		beltCall("c2", beltToolCorrect, map[string]any{
-			"job": "auth-login", "words": critique})}}, beltTurn{})
+		beltCall("c2", beltToolTask, map[string]any{
+			"amends": "auth-login", "instruction": critique})}}, beltTurn{})
 	answer := postUser(t, graph, "settle", "2")
 	if err := head.answer(context.Background(), answer); err != nil {
 		t.Fatal(err)

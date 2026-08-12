@@ -95,7 +95,7 @@ func TestNothingAboveTheFloorIsEverSilentlySteered(t *testing.T) {
 	run := &beltRun{head: head, user: user}
 
 	// A revision with no id cannot be journaled at all.
-	message, failed := run.execute(beltToolRevise, beltArguments(t, map[string]any{"words": user.Body}))
+	message, failed := run.execute(beltToolChange, beltArguments(t, map[string]any{"words": user.Body}))
 	if !failed {
 		t.Fatalf("a revision with no target was accepted: %s", message)
 	}

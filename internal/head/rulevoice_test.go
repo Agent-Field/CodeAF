@@ -61,8 +61,8 @@ func TestChangeItToTuesdayReachesTheRule(t *testing.T) {
 	}
 
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
-			"verb": "cadence", "words": "tuesday"})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolChange, map[string]any{
+			"target": charter.ID, "words": user.Body})}},
 		beltTurn{text: "The plant reminder moves to Tuesdays."})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
@@ -110,8 +110,8 @@ func TestPushTheReminderToEightPmReachesTheRule(t *testing.T) {
 
 	user := postUser(t, graph, "rules", "push the reminder to 8pm")
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
-			"verb": "cadence", "describes": "the reminder", "words": "8pm"})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolChange, map[string]any{
+			"target": charter.ID, "words": user.Body})}},
 		beltTurn{text: "It moves to 8pm."})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
@@ -147,9 +147,8 @@ func TestRewordingARuleIsSayable(t *testing.T) {
 	}
 
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
-			"verb": "wording", "describes": "the plant reminder",
-			"words": "water the plants and take the bins out"})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolChange, map[string]any{
+			"target": charter.ID, "words": user.Body})}},
 		beltTurn{text: "It will say that from now on."})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
@@ -198,8 +197,7 @@ func TestAnUndescribedRuleReferenceAsksOnePlainQuestion(t *testing.T) {
 
 	user := postUser(t, graph, "rules", "change it to tuesday")
 	head, client := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
-			"verb": "cadence", "words": "tuesday"})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStanding, map[string]any{})}},
 		beltTurn{calls: []ai.ToolCall{beltCall("c2", beltToolAsk, map[string]any{
 			"question": "Which rule do you mean?",
 			"options": []string{"remind me every sunday to water the plants",
@@ -221,24 +219,27 @@ func TestAnUndescribedRuleReferenceAsksOnePlainQuestion(t *testing.T) {
 		t.Fatalf("an ambiguous reference changed something: %+v err=%v", commands, err)
 	}
 	// The words the model asked with are the rules' own, because that is what the
-	// tool handed it rather than a pair of ids.
-	offered := &beltRun{head: New(nil, graph), user: user}
-	candidates, failed := offered.execute(beltToolRule, beltArguments(t, map[string]any{
-		"verb": "cadence", "words": "tuesday"}))
-	if failed || !strings.Contains(candidates, "water the plants") ||
-		!strings.Contains(candidates, "put the bins out") {
-		t.Fatalf("the candidate list is not both rules by name:\n%s", candidates)
+	// read handed it rather than a pair of ids. Naming the candidates is a READ
+	// now — the verb tools take an id and never search for one — so the machinery
+	// under the question is the charter candidate reader itself.
+	rules, err := New(nil, graph).charterCandidates("")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if offered.acted {
-		t.Fatal("offering candidates journaled something")
+	named := ""
+	for _, rule := range rules {
+		named += rule.Invariant + "\n"
+	}
+	if !strings.Contains(named, "water the plants") || !strings.Contains(named, "put the bins out") {
+		t.Fatalf("the candidate list is not both rules by name:\n%s", named)
 	}
 
 	// Answering the question by number carries the day through to the rule: the
 	// choice is not applied by the question machinery, it comes back as an
 	// ordinary turn with both halves of the exchange in the prompt.
 	client.turns = append(client.turns, beltTurn{calls: []ai.ToolCall{
-		beltCall("c3", beltToolRule, map[string]any{
-			"verb": "cadence", "id": "plants", "words": "tuesday"})}},
+		beltCall("c3", beltToolChange, map[string]any{
+			"target": "plants", "words": "change it to tuesday"})}},
 		beltTurn{text: "Moved to Tuesdays."})
 	answer := postUser(t, graph, "rules", "1")
 	if err := head.answer(context.Background(), answer); err != nil {
@@ -258,14 +259,15 @@ func TestAnUndescribedRuleReferenceAsksOnePlainQuestion(t *testing.T) {
 
 // TestRuleVerbsStillFallThroughWhenNoRuleExists keeps the shared vocabulary
 // shared: with no standing rule to mean, "change it to tuesday" is about work,
-// and the tool says so rather than inventing a rule to edit.
+// and nothing invents a rule to edit. The reading may still say the sentence
+// looks like a rule edit — it is evidence, never an instruction — and with no
+// rule on the board the loop has no id to name and asks instead.
 func TestRuleVerbsStillFallThroughWhenNoRuleExists(t *testing.T) {
 	graph := openHeadStore(t)
 	spliceSurgeryJob(t, graph, "lisbon", "Lisbon trip research", "look into flights and hotels")
 	user := postUser(t, graph, "no-rules", "change it to tuesday")
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
-			"verb": "cadence", "words": "tuesday"})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStanding, map[string]any{})}},
 		beltTurn{text: "Which one do you mean?"})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)

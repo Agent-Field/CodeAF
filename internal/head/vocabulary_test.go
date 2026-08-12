@@ -115,7 +115,7 @@ func TestFreshRidesTheReadingOntoTheWorkOrder(t *testing.T) {
 				t.Fatal(err)
 			}
 			client := &beltClient{turns: []beltTurn{
-				{calls: []ai.ToolCall{beltCall("c1", beltToolSpawn, map[string]any{
+				{calls: []ai.ToolCall{beltCall("c1", beltToolTask, map[string]any{
 					"instruction": ask, "fresh": fresh})}},
 				{text: "On it."},
 			}}
@@ -139,7 +139,7 @@ func TestFreshRidesTheReadingOntoTheWorkOrder(t *testing.T) {
 	// actually use, so the escape hatch never again requires saying "craft".
 	spawn := ""
 	for _, definition := range beltDefinitions() {
-		if definition.Function.Name == beltToolSpawn {
+		if definition.Function.Name == beltToolTask {
 			spawn = definition.Function.Parameters["properties"].(map[string]any)["fresh"].(map[string]any)["description"].(string)
 		}
 	}

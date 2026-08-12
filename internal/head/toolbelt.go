@@ -310,7 +310,7 @@ func beltDefinitions() []ai.ToolDefinition {
 			"q":      beltProp("string", "free text naming the work, matched against titles and briefs"),
 			"id":     beltProp("string", "one id from an earlier board read"),
 		}),
-		beltTool(beltToolTask, "Commission one piece of work — the only way anything the workforce does gets started. Pass their own words verbatim; do not improve or summarize them. One ask is ONE task: the workforce decomposes it, and genuinely unrelated asks are separate calls.", map[string]any{
+		beltTool(beltToolTask, "Commission one piece of work — the only way anything the workforce does gets started. Pass their own words verbatim; do not improve or summarize them. One ask is ONE task: the workforce decomposes it, and genuinely unrelated asks are separate calls. after names work this follows on from; amends names finished work this redoes.", map[string]any{
 			"instruction": beltProp("string", "the user's words for the work, verbatim"),
 			"context":     beltProp("boolean", "true when the requirements are in what you just discussed rather than in one sentence; this conversation travels with the work as context"),
 			"amends":      beltProp("string", "id of FINISHED work this redoes — whenever they reject, dispute or want changed something already delivered; the previous version goes with it and instruction carries what is wrong, verbatim"),

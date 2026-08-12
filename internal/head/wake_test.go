@@ -15,7 +15,7 @@ func journaledCommand(t *testing.T, head *Head, graph *store.Store, session, ask
 	t.Helper()
 	user := postUser(t, graph, session, ask)
 	run := &beltRun{head: head, user: user}
-	if message, failed := run.execute(beltToolSpawn, beltArguments(t,
+	if message, failed := run.execute(beltToolTask, beltArguments(t,
 		map[string]any{"instruction": ask})); failed {
 		t.Fatalf("spawn refused: %s", message)
 	}
@@ -157,8 +157,8 @@ func TestATrivialReceiptBuysNoTurn(t *testing.T) {
 	spliceSurgeryJob(t, graph, "task-3", "Line scans", "run the line scans")
 	user := postUser(t, graph, "room", "hold the scans")
 	run := &beltRun{head: head, user: user}
-	if message, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-		"verb": "pause", "ids": []string{"task-3"}})); failed {
+	if message, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
+		"words": "pause it", "targets": []string{"task-3"}})); failed {
 		t.Fatalf("control refused: %s", message)
 	}
 	commands, err := graph.PendingCommands(10)

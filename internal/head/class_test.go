@@ -86,7 +86,7 @@ func TestLiveFailureMessagesResolveTheWholeQueuedSet(t *testing.T) {
 			}
 
 			head, client := beltHead(graph, beltTurn{calls: []ai.ToolCall{
-				beltCall("c1", beltToolControl, map[string]any{"verb": "cancel", "ids": ids})}})
+				beltCall("c1", beltToolStop, map[string]any{"targets": ids})}})
 			if err := head.answer(context.Background(), user); err != nil {
 				t.Fatal(err)
 			}
@@ -123,8 +123,8 @@ func TestOverGateClassSetAsksOnceAndKeepingCancelsNothing(t *testing.T) {
 	seedMixedBoard(t, graph)
 	user := postUser(t, graph, "keep", "cancel the queued ones")
 	head, _ := beltHead(graph, beltTurn{calls: []ai.ToolCall{
-		beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": queuedSetIDs(t, graph)})}})
+		beltCall("c1", beltToolStop, map[string]any{
+			"targets": queuedSetIDs(t, graph)})}})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
@@ -158,8 +158,8 @@ func TestUnderGateClassSetActsDirectlyWithCountingReceipt(t *testing.T) {
 	session := "small"
 	user := postUser(t, graph, session, "cancel the queued ones")
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": []string{"alpha", "beta"}})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"targets": []string{"alpha", "beta"}})}},
 		beltTurn{})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
@@ -203,8 +203,8 @@ func TestScopedClassSelectorTouchesOnlyThatJob(t *testing.T) {
 	}
 
 	run := &beltRun{head: New(nil, graph), user: user}
-	result, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-		"verb": "cancel", "ids": unitIDs(set)}))
+	result, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
+		"targets": unitIDs(set)}))
 	if failed {
 		t.Fatalf("scoped control refused: %s", result)
 	}
@@ -240,9 +240,11 @@ func TestRestartTheFailedOnesResolvesTheFailedSet(t *testing.T) {
 	}
 
 	run := &beltRun{head: New(nil, graph), user: user}
-	if result, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-		"verb": "restart", "ids": unitIDs(set)})); failed {
-		t.Fatalf("restarting the failed set refused: %s", result)
+	for _, id := range unitIDs(set) {
+		if result, failed := run.execute(beltToolChange, beltArguments(t, map[string]any{
+			"target": id, "words": "restart it"})); failed {
+			t.Fatalf("restarting %s refused: %s", id, result)
+		}
 	}
 	if !equalTargets(pendingTargets(t, graph, store.CommandRestart), []string{"alpha", "beta"}) {
 		t.Fatalf("restart targets = %v", pendingTargets(t, graph, store.CommandRestart))
@@ -315,14 +317,19 @@ func TestRestartRefusesAClassItCannotTouch(t *testing.T) {
 		t.Fatalf("restart claims it can touch queued work: %v", statuses)
 	}
 
+	// The restart verb is read only off work that has STOPPED. The same words
+	// aimed at something still queued mean "change how you are doing it", and
+	// they go to the judge as the person's own sentence rather than becoming a
+	// verb the store would refuse.
 	run := &beltRun{head: New(nil, graph), user: user}
-	result, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-		"verb": "restart", "ids": []string{"alpha"}}))
-	if !failed || !strings.Contains(result, "restart only applies to failed or cancelled work") {
-		t.Fatalf("restarting queued work was not refused: %q", result)
+	result, failed := run.execute(beltToolChange, beltArguments(t, map[string]any{
+		"target": "alpha", "words": "restart it"}))
+	if failed || !strings.Contains(result, "hear those words") {
+		t.Fatalf("queued work took the restart verb instead of the judge: %q (failed=%t)", result, failed)
 	}
-	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
-		t.Fatalf("impossible class still journaled commands: %+v", commands)
+	commands, _ := graph.PendingCommands(10)
+	if len(commands) != 1 || commands[0].Kind != store.CommandRedirect {
+		t.Fatalf("restarting queued work did not fall through to the judge: %+v", commands)
 	}
 }
 
@@ -351,8 +358,8 @@ func TestClassWordBesideContentAsksInsteadOfActing(t *testing.T) {
 	}
 
 	run := &beltRun{head: New(nil, graph), user: user}
-	result, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-		"verb": "cancel", "describes": user.Body}))
+	result, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
+		"words": user.Body}))
 	if failed && !strings.Contains(result, "matches") {
 		t.Fatalf("a described cancel failed for the wrong reason: %q", result)
 	}
@@ -382,8 +389,8 @@ func TestConfidentContentReferenceStillActsWithoutAsking(t *testing.T) {
 	}
 
 	run := &beltRun{head: New(nil, graph), user: user}
-	result, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-		"verb": "cancel", "ids": []string{"invoices"}}))
+	result, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
+		"targets": []string{"invoices"}}))
 	if failed {
 		t.Fatalf("an ordinary cancel refused: %s", result)
 	}
@@ -409,8 +416,8 @@ func TestClassSurgeryReplaysThroughRebuild(t *testing.T) {
 	session := "replay"
 	user := postUser(t, graph, session, "cancel the queued ones")
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": []string{"alpha", "beta"}})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"targets": []string{"alpha", "beta"}})}},
 		beltTurn{})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)

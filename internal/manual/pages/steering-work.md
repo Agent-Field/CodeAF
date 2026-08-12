@@ -131,21 +131,24 @@ and the chat you are in is already in front of it, so it never re-reads that one
 
 The rest change something and each one journals:
 
-- **spawn** — commission new work. This is how anything gets started, and it
-  carries your words verbatim. When one message names things that are genuinely
-  independent, it becomes one piece of work each.
-- **fork** — commission new work that inherits this conversation. Use it when
-  the requirements live in what you have been discussing rather than in one
-  sentence: you settle a shape together, you say go, and the work starts with
-  that conversation in hand instead of asking you all of it again. It is spawn
-  with the context attached, so every guard on spawn applies to it unchanged.
-- **cancel, pause, resume, restart, reprioritize** — the verbs above.
-- **steer** — tell the people already working something, right now, without
-  changing what the job is.
-- **revise** — change what a running job is FOR; its remaining plan is edited.
-- **expedite** — the same deliverable sooner. It never adds work.
-- **correct** — redo a deliverable that was wrong, with the previous version and
-  your criticism in hand.
+- **task** — commission one piece of work. This is how anything gets started,
+  and it carries your words verbatim. One ask is one task: the workforce breaks
+  it up, the conversation never does. It has four things that can travel beside
+  the ask — the conversation itself, when the requirements live in what you have
+  been discussing rather than in one sentence; the finished job it amends, when
+  you are rejecting something already delivered and want the previous version to
+  go back in with your criticism; the work it follows on from; and the model you
+  named for it.
+- **change** — hand your own words, verbatim, to something already under way or
+  already standing: a live job, a standing rule, a service, a way of working.
+  It carries no verb at all. What your words MEAN for the work — tell the people
+  already working, edit the remaining plan, both, or bring it forward — is
+  decided by the side that can see the plan, and what it came to is said back to
+  you when it lands.
+- **stop** — withdraw things: cancel live work, retire a standing rule or a way
+  of working, stop a service. Say pause or hold and the two kinds that can be
+  held are held instead of ended. "Everything" is the total one, and it asks
+  once about live work before touching it.
 - **write** — put a document on disk and hand you the path. Anything you will
   use outside the conversation — a diagram, a document, code, data — is born as
   a file rather than typed into a reply.
@@ -156,8 +159,6 @@ The rest change something and each one journals:
 - **answer_question** — settle a question a worker is blocked on. Aforge may
   only do this for questions explicitly marked informational; anything that
   needs your consent comes to you and stays open until you answer it.
-- **await** — wait, briefly, for the receipt of a change it just made, so it can
-  tell you whether it actually landed rather than assuming.
 - **interrupt** — stop the turn the front desk is in the middle of. That is
   different from cancelling work on the board, and it is deliberately not the
   same verb.
