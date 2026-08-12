@@ -94,7 +94,7 @@ func TestTheDeliveryTurnCarriesReadsAndNoHands(t *testing.T) {
 			t.Fatalf("the delivery turn cannot %s, so it cannot go and get what it is asked about", read)
 		}
 	}
-	if names[beltToolSpawn] || names[beltToolControl] || names[beltToolWrite] {
+	if names[beltToolTask] || names[beltToolChange] || names[beltToolStop] || names[beltToolWrite] {
 		t.Fatal("the delivery turn was handed a hand")
 	}
 }
@@ -117,7 +117,7 @@ func TestTheDeliveryTurnReadsTheFileTheResultOnlyPointsAt(t *testing.T) {
 		{calls: []ai.ToolCall{beltCall("r1", beltToolRead, map[string]any{
 			"job": "task-77", "file": "regions.md"})}},
 		// A hand, reached for out of habit. It must be refused rather than run.
-		{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
+		{calls: []ai.ToolCall{beltCall("s1", beltToolTask, map[string]any{
 			"instruction": "go and check the numbers again"})}},
 		{text: "North 14%, South 9%, East 3% — the full table is in regions.md."},
 	}}

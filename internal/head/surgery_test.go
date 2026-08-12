@@ -64,8 +64,8 @@ func TestSurgeryReferentResolutionUniqueAmbiguousAndNone(t *testing.T) {
 			t.Fatalf("the reading did not report the verb to the loop:\n%s", reading)
 		}
 		head, client := beltHead(graph, beltTurn{calls: []ai.ToolCall{
-			beltCall("c1", beltToolControl, map[string]any{
-				"verb": "pause", "ids": []string{"migration"}})}}, beltTurn{})
+			beltCall("c1", beltToolStop, map[string]any{
+				"words": "pause it", "targets": []string{"migration"}})}}, beltTurn{})
 		if err := head.answer(context.Background(), user); err != nil {
 			t.Fatal(err)
 		}
@@ -89,8 +89,8 @@ func TestSurgeryReferentResolutionUniqueAmbiguousAndNone(t *testing.T) {
 		user := postUser(t, graph, "ambiguous", "cancel the audio job")
 
 		run := &beltRun{head: New(nil, graph), user: user}
-		candidates, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-			"verb": "cancel", "describes": user.Body}))
+		candidates, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
+			"words": user.Body}))
 		if failed {
 			t.Fatalf("a described cancel refused: %s", candidates)
 		}
@@ -188,8 +188,8 @@ func TestOrdinaryPauseFallsThroughCharterManagementToSurgery(t *testing.T) {
 	}
 
 	head, _ := beltHead(graph, beltTurn{calls: []ai.ToolCall{
-		beltCall("c1", beltToolControl, map[string]any{
-			"verb": "pause", "ids": []string{"migration"}})}}, beltTurn{})
+		beltCall("c1", beltToolStop, map[string]any{
+			"words": "pause it", "targets": []string{"migration"}})}}, beltTurn{})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
@@ -236,8 +236,8 @@ func TestConsequentialCancelAsksOneStructuredConfirmBeforeCommand(t *testing.T) 
 	}
 	user := postUser(t, graph, "gate", "cancel the audio job")
 	head, client := beltHead(graph, beltTurn{
-		calls: []ai.ToolCall{beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": []string{"expensive"}})},
+		calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"targets": []string{"expensive"}})},
 		text: "Cancelled it."})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)

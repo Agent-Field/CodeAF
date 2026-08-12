@@ -126,7 +126,7 @@ func (h *Head) ApplyInterrupt(command store.Command) bool {
 }
 
 // interrupt is the belt tool. It is for the sentence that means "stop what you
-// are doing" rather than "cancel that job" — cancelling work is control, and
+// are doing" rather than "cancel that job" — cancelling work is stop, and
 // conflating the two would let an impatient sentence throw away a running
 // subtree. Whatever the turn had already said stays, marked where it stopped.
 func (run *beltRun) interrupt(args map[string]any) (string, bool) {
@@ -137,7 +137,7 @@ func (run *beltRun) interrupt(args map[string]any) (string, bool) {
 	}
 	switch route {
 	case InterruptNothingRunning:
-		return "there is no turn in flight to stop — if they meant work on the board, that is control", false
+		return "there is no turn in flight to stop — if they meant work on the board, that is the stop tool", false
 	case InterruptJournaled:
 		run.acted, run.spoke = true, true
 		return "the stop is journaled; the turn ends and its own line says where it stopped", false

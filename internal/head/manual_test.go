@@ -105,8 +105,8 @@ func TestWorkMessageWithLiveJobsStillGetsTheWorkBelt(t *testing.T) {
 	seedExceptBoard(t, graph)
 	client := &beltClient{turns: []beltTurn{
 		{calls: []ai.ToolCall{beltCall("c1", beltToolBoard, map[string]any{})}},
-		{calls: []ai.ToolCall{beltCall("c2", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": []string{"research"}})}},
+		{calls: []ai.ToolCall{beltCall("c2", beltToolStop, map[string]any{
+			"targets": []string{"research"}})}},
 		{text: "Stopped the market research and left the rest alone."},
 	}}
 	session := "still-work"

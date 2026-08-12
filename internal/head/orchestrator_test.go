@@ -152,8 +152,8 @@ func TestThePromptDescribesTheBeltItActuallyHas(t *testing.T) {
 		names[definition.Function.Name] = true
 	}
 	for _, named := range []string{
-		beltToolBoard, beltToolSpawn, beltToolAct, beltToolWrite,
-		beltToolNote, beltToolForget, beltToolAsk, beltToolExpedite,
+		beltToolBoard, beltToolTask, beltToolChange, beltToolStop, beltToolAct, beltToolWrite,
+		beltToolNote, beltToolForget, beltToolAsk,
 	} {
 		if !names[named] {
 			t.Fatalf("the prompt reasons about %q and the belt has no such tool", named)
@@ -165,8 +165,8 @@ func TestThePromptDescribesTheBeltItActuallyHas(t *testing.T) {
 	// And the groups the rest of the belt falls into are described, so nothing
 	// on it is a hand the model was never told it had.
 	for _, group := range []string{
-		"Reads are always safe", "The work verbs commission new work",
-		"change work already under way", "the manual",
+		"Reads are always safe", "task commissions one new piece of it",
+		"change hands their words", "stop withdraws things", "the manual",
 	} {
 		if !strings.Contains(orchestratorPrompt, group) {
 			t.Errorf("the prompt no longer describes the %q half of the belt", group)
@@ -265,43 +265,42 @@ func TestTheSystemPromptIsOneConstantAcrossEveryKindOfMessage(t *testing.T) {
 	}
 }
 
-// ── Spawn: the guards moved into the tool (Part 6 decision 2) ───────────────
+// ── task: the guards that stayed in the tool (Part 6 decision 2) ───────────
 
-// Past the cap the message is not a handful of asks, it is a list — and a list
-// is one job that enumerates. Nothing the person said is lost by collapsing it,
-// because the whole message travels.
-func TestSpawnCollapsesAFanOutPastItsCap(t *testing.T) {
+// A list is one job that enumerates, and the chat has no way to make it
+// anything else: one call carries one ask, so the whole message travels and
+// nothing the person said is lost.
+func TestTaskJournalsTheWholeEnumerationAsOneJob(t *testing.T) {
 	graph := openHeadStore(t)
 	const whole = "fix issues 12, 41, 77, 93, 104, 118 and 122"
 	user := postUser(t, graph, "fanout", whole)
 	run := &beltRun{head: New(nil, graph), user: user}
-	orders := make([]string, 0, fanOutLimit+1)
-	for index := 0; index <= fanOutLimit; index++ {
-		orders = append(orders, "fix issue "+string(rune('a'+index)))
-	}
-	if message, failed := run.execute(beltToolSpawn, beltArguments(t,
-		map[string]any{"orders": orders})); failed {
-		t.Fatalf("an over-long fan-out was refused outright: %s", message)
+	if message, failed := run.execute(beltToolTask, beltArguments(t,
+		map[string]any{"instruction": whole})); failed {
+		t.Fatalf("an enumeration was refused outright: %s", message)
 	}
 	commands, err := graph.PendingCommands(20)
 	if err != nil || len(commands) != 1 {
 		t.Fatalf("commands = %+v err=%v, want exactly one", commands, err)
 	}
 	if commands[0].Instruction != whole {
-		t.Fatalf("the collapsed order lost the person's own sentence: %q", commands[0].Instruction)
+		t.Fatalf("the job lost the person's own sentence: %q", commands[0].Instruction)
 	}
 }
 
-// Under the cap, independent work stays independent: its own goal, its own
-// plan, its own price, its own deliverable.
-func TestSpawnJournalsOneCommandPerIndependentPieceOfWork(t *testing.T) {
+// Genuinely independent work stays independent: its own goal, its own plan, its
+// own price, its own deliverable — reached now by separate calls in one turn
+// rather than by an array the chat filled in.
+func TestTaskJournalsOneCommandPerIndependentPieceOfWork(t *testing.T) {
 	graph := openHeadStore(t)
 	user := postUser(t, graph, "fanout", "fix issues 12, 41 and 77")
 	run := &beltRun{head: New(nil, graph), user: user}
 	orders := []string{"fix issue 12", "fix issue 41", "fix issue 77"}
-	if message, failed := run.execute(beltToolSpawn, beltArguments(t,
-		map[string]any{"orders": orders})); failed {
-		t.Fatalf("a fan-out was refused: %s", message)
+	for _, order := range orders {
+		if message, failed := run.execute(beltToolTask, beltArguments(t,
+			map[string]any{"instruction": order})); failed {
+			t.Fatalf("%q was refused: %s", order, message)
+		}
 	}
 	commands, err := graph.PendingCommands(20)
 	if err != nil || len(commands) != 3 {
@@ -315,8 +314,9 @@ func TestSpawnJournalsOneCommandPerIndependentPieceOfWork(t *testing.T) {
 			t.Fatalf("independent work inherited a claim about one ask: %+v", command)
 		}
 	}
-	if run.commandSeq != commands[0].Seq {
-		t.Fatalf("the reply ties to seq %d, want the first order's %d", run.commandSeq, commands[0].Seq)
+	if run.commandSeq != commands[len(commands)-1].Seq {
+		t.Fatalf("the reply ties to seq %d, want the last order's %d",
+			run.commandSeq, commands[len(commands)-1].Seq)
 	}
 }
 
@@ -332,7 +332,7 @@ func TestJournalingACommandLeavesTheHeadOwedItsReceipt(t *testing.T) {
 	head := New(nil, graph)
 	user := postUser(t, graph, "wake", "start the audit")
 	run := &beltRun{head: head, user: user}
-	if message, failed := run.execute(beltToolSpawn, beltArguments(t,
+	if message, failed := run.execute(beltToolTask, beltArguments(t,
 		map[string]any{"instruction": "start the audit"})); failed {
 		t.Fatalf("spawn refused: %s", message)
 	}
@@ -592,8 +592,8 @@ func TestTheConsentGateStillStopsASetTheLoopAskedFor(t *testing.T) {
 	session := "gate"
 	user := postUser(t, graph, session, "drop all of that")
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "ids": []string{"wide"}})}},
+		{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"targets": []string{"wide"}})}},
 		{text: "Cancelled the lot."},
 	}}
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
@@ -633,7 +633,7 @@ func TestWorkCommissionedInATurnAlwaysLeavesAReceipt(t *testing.T) {
 	session := "dispatch"
 	user := postUser(t, graph, session, "look into the pricing question")
 	client := &beltClient{turns: []beltTurn{
-		{calls: []ai.ToolCall{beltCall("c1", beltToolSpawn, map[string]any{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolTask, map[string]any{
 			"instruction": "look into the pricing question"})}},
 		{text: ""},
 	}}

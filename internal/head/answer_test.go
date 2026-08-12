@@ -145,7 +145,7 @@ func TestANoteBesideOtherWorkKeepsTheFactAndStillQueuesTheWork(t *testing.T) {
 	client := &beltClient{
 		turns: []beltTurn{
 			{calls: []ai.ToolCall{beltCall("c1", beltToolNote, map[string]any{"body": preference})}},
-			{calls: []ai.ToolCall{beltCall("c2", beltToolSpawn, map[string]any{
+			{calls: []ai.ToolCall{beltCall("c2", beltToolTask, map[string]any{
 				"instruction": "rerun the scans"})}},
 			{text: "Noted, and I'm rerunning the scans."},
 		},
@@ -255,8 +255,7 @@ func TestTheBeltAndTheRouterBothStateWhatTheyCanActuallyDo(t *testing.T) {
 	for _, name := range []string{
 		beltToolBoard, beltToolResult, beltToolPlan, beltToolRead, beltToolManual,
 		beltToolCompetence, beltToolStanding, beltToolSpending, beltToolHistory, beltToolSearch,
-		beltToolSpawn, beltToolAct, beltToolControl, beltToolSteer, beltToolRevise, beltToolExpedite,
-		beltToolCorrect, beltToolRule, beltToolService, beltToolNote, beltToolWrite,
+		beltToolTask, beltToolChange, beltToolStop, beltToolAct, beltToolNote, beltToolWrite,
 		beltToolAnswerQuestion, beltToolSay, beltToolAsk, beltToolInterrupt,
 	} {
 		if !names[name] {

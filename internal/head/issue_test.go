@@ -26,17 +26,17 @@ const theFalseClaim = "Done — it won't fire anymore."
 // the store can address it, and the honest outcome is the act: a command row
 // against that rule, a receipt tied to that row, and a status that has moved by
 // the time the reconciler has run. The verb no longer arrives as a router's
-// terminal decision — it is the rule tool, which resolves the description
-// against the standing rules themselves — and the sentence is allowed on screen
-// for exactly one reason: the row underneath it makes it true.
+// terminal decision — it is the stop tool, aimed at the rule id a read handed
+// over — and the sentence is allowed on screen for exactly one reason: the row
+// underneath it makes it true.
 func TestStandingDownARuleResolvesTheRuleTheThreadNamed(t *testing.T) {
 	graph := openHeadStore(t)
 	charter := activateHeadCharter(t, graph, "stretch",
 		"Every hour, the stretch reminder fires.")
 	user := postUser(t, graph, "j8", "stand down the stretch reminder")
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
-			"verb": "retire", "describes": user.Body})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"targets": []string{charter.ID}, "words": user.Body})}},
 		beltTurn{text: theFalseClaim})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
@@ -81,8 +81,8 @@ func TestStandingDownAnAmbiguousRuleAsksInsteadOfClaiming(t *testing.T) {
 	activateHeadCharter(t, graph, "water", "Every evening, the water reminder fires.")
 	user := postUser(t, graph, "j8-ambiguous", "stand down the reminder")
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolRule, map[string]any{
-			"verb": "retire", "describes": user.Body})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"words": user.Body})}},
 		beltTurn{calls: []ai.ToolCall{beltCall("c2", beltToolAsk, map[string]any{
 			"question": "Which rule do you mean?",
 			"options": []string{"Every hour, the stretch reminder fires.",
@@ -105,12 +105,12 @@ func TestStandingDownAnAmbiguousRuleAsksInsteadOfClaiming(t *testing.T) {
 	// they were ratified in — the model cannot ask well about rules it was never
 	// shown.
 	run := &beltRun{head: New(nil, graph), user: user}
-	candidates, failed := run.execute(beltToolRule, beltArguments(t, map[string]any{
-		"verb": "retire", "describes": user.Body}))
+	candidates, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
+		"words": user.Body}))
 	if failed {
-		t.Fatalf("an ambiguous rule edit errored instead of offering candidates: %s", candidates)
+		t.Fatalf("a targetless withdrawal errored instead of offering candidates: %s", candidates)
 	}
-	if !strings.Contains(candidates, "more than one standing rule matches") ||
+	if !strings.Contains(candidates, "more than one thing matches") ||
 		!strings.Contains(candidates, "stretch reminder") || !strings.Contains(candidates, "water reminder") {
 		t.Fatalf("the candidate list is not both rules by name:\n%s", candidates)
 	}
@@ -130,8 +130,8 @@ func TestATargetlessStopReachesJobsAndRulesAlike(t *testing.T) {
 	user := postUser(t, graph, "j8-mixed", "stand down the stretch one")
 
 	run := &beltRun{head: New(nil, graph), user: user}
-	candidates, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-		"verb": "cancel", "describes": user.Body}))
+	candidates, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
+		"words": user.Body}))
 	if failed {
 		t.Fatalf("a targetless stop errored instead of offering candidates: %s", candidates)
 	}
@@ -144,7 +144,7 @@ func TestATargetlessStopReachesJobsAndRulesAlike(t *testing.T) {
 	}
 	// A rule is not cancelled by the verb aimed at work, and the list says so
 	// rather than offering a candidate that would have to be refused.
-	if !strings.Contains(candidates, "use the rule tool, not control") {
+	if !strings.Contains(candidates, "a standing rule — stopping it retires it") {
 		t.Fatalf("the rule half does not say how it is acted on:\n%s", candidates)
 	}
 	if run.acted {
@@ -152,8 +152,8 @@ func TestATargetlessStopReachesJobsAndRulesAlike(t *testing.T) {
 	}
 
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "describes": user.Body})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"words": user.Body})}},
 		beltTurn{calls: []ai.ToolCall{beltCall("c2", beltToolAsk, map[string]any{
 			"question": "Which one do you mean?",
 			"options":  []string{"Stretch goals report", "the hourly stretch reminder"}})}})
@@ -179,8 +179,8 @@ func TestStandingDownSomethingThatIsNotRunningSaysSoPlainly(t *testing.T) {
 	user := postUser(t, graph, "j8-empty", "stand down the stretch reminder")
 
 	run := &beltRun{head: New(nil, graph), user: user}
-	missed, failed := run.execute(beltToolControl, beltArguments(t, map[string]any{
-		"verb": "cancel", "describes": user.Body}))
+	missed, failed := run.execute(beltToolStop, beltArguments(t, map[string]any{
+		"words": user.Body}))
 	if failed || !strings.Contains(missed, "nothing on the board and no standing rule matches those words") {
 		t.Fatalf("the miss was not reported plainly: %q", missed)
 	}
@@ -189,8 +189,8 @@ func TestStandingDownSomethingThatIsNotRunningSaysSoPlainly(t *testing.T) {
 	}
 
 	head, _ := beltHead(graph,
-		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolControl, map[string]any{
-			"verb": "cancel", "describes": user.Body})}},
+		beltTurn{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"words": user.Body})}},
 		beltTurn{text: noSuchTargetReply})
 	if err := head.answer(context.Background(), user); err != nil {
 		t.Fatal(err)
@@ -224,28 +224,29 @@ func TestARefusedCommandNeverShipsTheReplyThatAssumedItWorked(t *testing.T) {
 		want string
 	}{
 		{
-			// Rejected before the store: the belt does not have this verb, so
-			// there is nothing to journal and nothing to resolve.
-			name: "a verb the head does not have",
-			tool: beltToolControl,
-			args: map[string]any{"verb": "obliterate", "ids": []string{"anything"}},
-			want: "verb must be one of cancel, pause, resume, restart, reprioritize",
+			// Rejected before the store: a withdrawal with nothing to aim at and
+			// no words to look one up with. Nothing is journaled, nothing is
+			// resolved, and the loop has to speak to the refusal.
+			name: "a withdrawal with nothing to aim at",
+			tool: beltToolStop,
+			args: map[string]any{"targets": []string{}},
+			want: "targets must name at least one id from a read",
 		},
 		{
 			// Rejected by the store's own reality: well-formed, aimed at work that
 			// is not there. Ids come from reads, and one that came from anywhere
 			// else fails at the door rather than after the reply.
 			name: "work that is not there",
-			tool: beltToolControl,
-			args: map[string]any{"verb": "cancel", "ids": []string{"ghost-node"}},
-			want: `there is no live work with id "ghost-node"`,
+			tool: beltToolChange,
+			args: map[string]any{"target": "ghost-node", "words": "stop"},
+			want: `no learned way of working is called "ghost-node"`,
 		},
 		{
 			// The same door on the commissioning side: work that follows on from
 			// something that does not exist is not queued as work that follows on
 			// from nothing.
 			name: "continuing work that is not there",
-			tool: beltToolSpawn,
+			tool: beltToolTask,
 			args: map[string]any{"instruction": "carry on with that", "after": "ghost-node"},
 			want: `there is no work of the user's with id "ghost-node"`,
 		},
@@ -285,7 +286,7 @@ func TestATargetedReflexDropsTheFieldNotTheIntention(t *testing.T) {
 	spliceSurgeryJob(t, graph, "notes", "Yesterday's notes", "collect yesterday's notes")
 	user := postUser(t, graph, "gate", "tidy up the notes from yesterday")
 	run := &beltRun{head: New(nil, graph), user: user}
-	result, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
+	result, failed := run.execute(beltToolTask, beltArguments(t, map[string]any{
 		"instruction": "tidy the notes", "reflex": true, "after": "notes"}))
 	if failed {
 		t.Fatalf("a targeted reflex was refused outright: %s", result)
@@ -302,7 +303,7 @@ func TestATargetedReflexDropsTheFieldNotTheIntention(t *testing.T) {
 	// send or delete are never a reflex however the flag arrived.
 	spending := postUser(t, graph, "gate", "buy the tickets")
 	consequential := &beltRun{head: New(nil, graph), user: spending}
-	if result, failed := consequential.execute(beltToolSpawn, beltArguments(t, map[string]any{
+	if result, failed := consequential.execute(beltToolTask, beltArguments(t, map[string]any{
 		"instruction": "buy the tickets", "reflex": true})); failed {
 		t.Fatalf("consequential work was dropped instead of downgraded: %s", result)
 	}
@@ -326,8 +327,8 @@ func TestACommandWithNoWordsCarriesThePersonsOwn(t *testing.T) {
 	user := postUser(t, graph, "wordless", "make it cover the rollback too")
 
 	run := &beltRun{head: New(nil, graph), user: user}
-	if result, failed := run.execute(beltToolRevise, beltArguments(t, map[string]any{
-		"job": "migration"})); failed {
+	if result, failed := run.execute(beltToolChange, beltArguments(t, map[string]any{
+		"target": "migration"})); failed {
 		t.Fatalf("a wordless revision was refused: %s", result)
 	}
 	commands, err := graph.PendingCommands(0)
@@ -339,7 +340,7 @@ func TestACommandWithNoWordsCarriesThePersonsOwn(t *testing.T) {
 	}
 
 	empty := &beltRun{head: New(nil, graph), user: user}
-	result, failed := empty.execute(beltToolSpawn, beltArguments(t, map[string]any{}))
+	result, failed := empty.execute(beltToolTask, beltArguments(t, map[string]any{}))
 	if !failed || !strings.Contains(result, "instruction must carry the user's own words") {
 		t.Fatalf("wordless new work was invented rather than refused: %q", result)
 	}

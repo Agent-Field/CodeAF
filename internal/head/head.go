@@ -1038,12 +1038,6 @@ func renderNotebook(graphStore *store.Store, message, thread string) string {
 	return strings.Join(lines, "\n")
 }
 
-// fanOutLimit bounds one message's work orders. Past it the message is not a
-// handful of asks, it is a list — and a list is one job that enumerates, which
-// is what the compiler already does well. Falling back to a single order there
-// loses nothing: the user's own words, with every item in them, still travel.
-const fanOutLimit = 6
-
 // routeMemory is a durable fact the user just stated, captured into the
 // notebook at conversation speed rather than waiting for a job to distill it.
 type routeMemory struct {

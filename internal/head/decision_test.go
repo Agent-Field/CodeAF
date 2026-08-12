@@ -29,22 +29,26 @@ func beltToolTurn(id, name string, args map[string]any) beltTurn {
 }
 
 // Four faults read out in one breath are four jobs. The store still refuses a
-// multi-root subtree and nothing about that rule moved: the head journals one
-// splice per piece of work, so each compiles on its own and lands as its own
-// root, its own card and its own deliverable — which is the graph the person was
-// picturing when they typed the sentence.
+// multi-root subtree and nothing about that rule moved: one splice is one piece
+// of work, so each compiles on its own and lands as its own root, its own card
+// and its own deliverable — which is the graph the person was picturing when
+// they typed the sentence.
 //
-// What moved is where the judgment sits. It used to be a `commands` array on a
-// terminal router decision made before anything had been read; it is now the
-// spawn tool's `orders` argument, callable after a board read. The arithmetic
-// the terminal position guarded — one splice per order, verbatim words, no
-// target — is inside the tool and is what this pins.
+// What moved is HOW. It used to be a `commands` array on a terminal router
+// decision, then an `orders` argument on spawn — a way for the chat to split
+// work. Both are gone (chat-simplify §2.3): the chat never divides an ask, and
+// genuinely unrelated asks are separate task calls in the same turn. The
+// arithmetic the array guarded — one splice per piece, verbatim words, no
+// target — is what this still pins, arrived at from the other side.
 func TestOneMessageNamingIndependentWorkBecomesSeveralJobs(t *testing.T) {
 	graph := openHeadStore(t)
 	user, _ := runBelt(t, graph, "fan", "work issues 12, 41, 77 and 93 on my repo",
-		beltToolTurn("s1", beltToolSpawn, map[string]any{"orders": []string{
-			"work issue 12 on my repo", "work issue 41 on my repo",
-			"work issue 77 on my repo", "work issue 93 on my repo"}}),
+		beltTurn{calls: []ai.ToolCall{
+			beltCall("s1", beltToolTask, map[string]any{"instruction": "work issue 12 on my repo"}),
+			beltCall("s2", beltToolTask, map[string]any{"instruction": "work issue 41 on my repo"}),
+			beltCall("s3", beltToolTask, map[string]any{"instruction": "work issue 77 on my repo"}),
+			beltCall("s4", beltToolTask, map[string]any{"instruction": "work issue 93 on my repo"}),
+		}},
 		beltTurn{text: "On it — four of them, each landing here as it finishes."})
 
 	commands := pendingCommandsOf(t, graph)
@@ -60,7 +64,7 @@ func TestOneMessageNamingIndependentWorkBecomesSeveralJobs(t *testing.T) {
 		}
 	}
 
-	// And each order is one root when the reconciler applies it, because a splice
+	// And each one is one root when the reconciler applies it, because a splice
 	// is one subtree with one root and always has been.
 	for index, command := range commands {
 		spliceSurgeryJob(t, graph, fmt.Sprintf("issue-job-%d", index),
@@ -88,7 +92,7 @@ func TestOnePlanWithManyPartsStaysOneJob(t *testing.T) {
 	graph := openHeadStore(t)
 	const ask = "plan a trip to Lisbon in October — flights, a hotel, and somewhere to eat"
 	runBelt(t, graph, "trip", ask,
-		beltToolTurn("s1", beltToolSpawn, map[string]any{"instruction": ask}),
+		beltToolTurn("s1", beltToolTask, map[string]any{"instruction": ask}),
 		beltTurn{text: "On it — I'll come back with the whole plan."})
 
 	commands := pendingCommandsOf(t, graph)
@@ -99,54 +103,63 @@ func TestOnePlanWithManyPartsStaysOneJob(t *testing.T) {
 		t.Fatalf("the trip lost the user's own words: %q", commands[0].Instruction)
 	}
 
-	// A list of one is not a fan-out, it is a job.
-	graphTwo := openHeadStore(t)
-	runBelt(t, graphTwo, "trip", ask,
-		beltToolTurn("s1", beltToolSpawn, map[string]any{"orders": []string{ask}}),
-		beltTurn{text: "On it."})
-	if commands := pendingCommandsOf(t, graphTwo); len(commands) != 1 ||
-		commands[0].Instruction != ask {
-		t.Fatalf("a one-entry list did not collapse to one job: %+v", commands)
-	}
-
 	// And the law the model judges by is written down where the model reads it.
-	// That used to be the router's system prompt; the judgment is an argument to
-	// spawn now, so the test the model applies belongs in spawn's own
-	// description — the one string a tool-calling model is shown for it.
-	spawnDescription := ""
+	// That used to be the router's system prompt; the judgment is the task tool's
+	// now, so the test the model applies belongs in its own description — the one
+	// string a tool-calling model is shown for it.
+	description := ""
 	for _, definition := range beltDefinitions() {
-		if definition.Function.Name == beltToolSpawn {
-			spawnDescription = definition.Function.Description
+		if definition.Function.Name == beltToolTask {
+			description = definition.Function.Description
 		}
 	}
-	if !strings.Contains(spawnDescription, "genuinely independent") {
-		t.Errorf("the independence test is not stated to the model that applies it: %q", spawnDescription)
+	if !strings.Contains(description, "One ask is ONE task") {
+		t.Errorf("the one-ask-one-task law is not stated to the model that applies it: %q", description)
 	}
-	if !strings.Contains(spawnDescription, "When it could be read either way it is one") {
-		t.Error("the tie-break that keeps a trip one job is no longer stated")
+	if !strings.Contains(description, "the workforce decomposes it") {
+		t.Error("the reason the chat does not split work is no longer stated")
 	}
 }
 
-// A message that names more things than a person addresses in one breath is a
-// list, and a list is one job that enumerates — which is what the compiler
-// already does well. The fallback keeps the user's whole sentence.
-func TestTooManyOrdersFallBackToOneJobCarryingTheWholeAsk(t *testing.T) {
-	graph := openHeadStore(t)
-	orders := make([]string, 0, fanOutLimit+2)
-	for index := 0; index < fanOutLimit+2; index++ {
-		orders = append(orders, fmt.Sprintf("work item %d", index))
+// The chat cannot split work at all any more, and that is a property of the
+// SCHEMA rather than of any arithmetic: there is no argument on task that takes
+// more than one ask, so an over-long list cannot be journaled as one call's
+// worth of jobs. What replaced the fan-out cap is the plainer rule — the
+// workforce decomposes, and the whole sentence travels to it.
+func TestTaskCannotCarryMoreThanOneAsk(t *testing.T) {
+	properties := map[string]any{}
+	for _, definition := range beltDefinitions() {
+		if definition.Function.Name != beltToolTask {
+			continue
+		}
+		properties, _ = definition.Function.Parameters["properties"].(map[string]any)
 	}
-	const ask = "work every open item on the board"
-	runBelt(t, graph, "many", ask,
-		beltToolTurn("s1", beltToolSpawn, map[string]any{"orders": orders}),
-		beltTurn{text: "On it."})
+	if len(properties) == 0 {
+		t.Fatal("task has no arguments at all")
+	}
+	for name, property := range properties {
+		shape, _ := property.(map[string]any)
+		if shape["type"] == "array" {
+			t.Fatalf("task grew an array argument %q — the chat is splitting work again", name)
+		}
+	}
+	if _, present := properties["orders"]; present {
+		t.Fatal("the orders argument is back")
+	}
 
+	// And an over-long enumeration is journaled whole, as one job, because that
+	// is the only thing one call can do with it.
+	graph := openHeadStore(t)
+	const ask = "work every open item on the board: 12, 41, 77, 93, 104, 118, 122, 130"
+	runBelt(t, graph, "many", ask,
+		beltToolTurn("s1", beltToolTask, map[string]any{"instruction": ask}),
+		beltTurn{text: "On it."})
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 1 {
-		t.Fatalf("an over-long list journaled %d jobs, want one: %+v", len(commands), commands)
+		t.Fatalf("an enumeration journaled %d jobs, want one: %+v", len(commands), commands)
 	}
 	if commands[0].Instruction != ask {
-		t.Fatalf("the fallback dropped the user's words: %q", commands[0].Instruction)
+		t.Fatalf("the job dropped the user's words: %q", commands[0].Instruction)
 	}
 }
 
@@ -167,8 +180,8 @@ func TestPoliteAdjustmentLandsAsACorrectionOfTheDeliveredWork(t *testing.T) {
 
 	const ask = "make it warmer and less legal"
 	user, _ := runBelt(t, graph, "polite", ask,
-		beltToolTurn("c1", beltToolCorrect, map[string]any{
-			"job": "landlord-letter", "words": ask}),
+		beltToolTurn("c1", beltToolTask, map[string]any{
+			"amends": "landlord-letter", "instruction": ask}),
 		beltTurn{text: "Warming it up and taking the legal edge off."})
 
 	// The cue list is untouched: this sentence still matches nothing in it.
@@ -212,12 +225,12 @@ func TestAdjustmentWithNothingDeliveredFallsBackToOrdinaryWork(t *testing.T) {
 	user := postUser(t, graph, "nothing", "make it warmer")
 	run := &beltRun{head: New(nil, graph), user: user}
 
-	refusal, failed := run.execute(beltToolCorrect, beltArguments(t, map[string]any{
-		"job": "unstarted", "words": "make it warmer"}))
+	refusal, failed := run.execute(beltToolTask, beltArguments(t, map[string]any{
+		"amends": "unstarted", "instruction": "make it warmer"}))
 	if !failed {
 		t.Fatalf("correcting work that delivered nothing was accepted: %s", refusal)
 	}
-	if !strings.Contains(refusal, "correction is for work that already delivered") {
+	if !strings.Contains(refusal, "amends is for work that already delivered") {
 		t.Fatalf("the refusal does not say why: %q", refusal)
 	}
 	if run.acted || len(pendingCommandsOf(t, graph)) != 0 {
@@ -226,9 +239,9 @@ func TestAdjustmentWithNothingDeliveredFallsBackToOrdinaryWork(t *testing.T) {
 	}
 
 	// The honest route the refusal points at: ordinary, untargeted, uncorrected.
-	if _, failed := run.execute(beltToolSpawn, beltArguments(t, map[string]any{
-		"instruction": "make it warmer"})); failed {
-		t.Fatal("spawn refused the work the correction handed back")
+	if _, failed := run.execute(beltToolTask, beltArguments(t, map[string]any{
+		"instruction": "make it warmer instead"})); failed {
+		t.Fatal("task refused the work the refusal handed back")
 	}
 	commands := pendingCommandsOf(t, graph)
 	if len(commands) != 1 || commands[0].Target != "" || IsCorrection(commands[0].Instruction) {
@@ -264,7 +277,7 @@ func TestUrgencyIsReachedWithoutACuePhrase(t *testing.T) {
 
 	user, client := runBelt(t, graph, "urgent", ask,
 		beltToolTurn("b1", beltToolBoard, map[string]any{}),
-		beltToolTurn("e1", beltToolExpedite, map[string]any{"job": "old-job"}),
+		beltToolTurn("e1", beltToolChange, map[string]any{"target": "old-job", "words": "hurry up"}),
 		beltTurn{text: "Pushing the market research up the queue."})
 
 	// A message no phrase list covers still arrives with the board in hand, so

@@ -154,8 +154,10 @@ func TestAFoldedTurnStillFansOutIntoSeparateWork(t *testing.T) {
 	graphStore := openHeadStore(t)
 	client := &foldClient{
 		reply: "On both — each lands here as it finishes.",
-		turns: []beltTurn{{calls: []ai.ToolCall{beltCall("s1", beltToolSpawn, map[string]any{
-			"orders": []string{"book the flights", "find somewhere to eat"}})}}},
+		turns: []beltTurn{{calls: []ai.ToolCall{
+			beltCall("s1", beltToolTask, map[string]any{"instruction": "book the flights"}),
+			beltCall("s2", beltToolTask, map[string]any{"instruction": "find somewhere to eat"}),
+		}}},
 	}
 	first := postUserLine(t, graphStore, "fan-out", "book the flights")
 	last := postUserLine(t, graphStore, "fan-out", "and find somewhere to eat")

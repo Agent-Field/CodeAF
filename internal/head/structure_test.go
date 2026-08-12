@@ -55,7 +55,7 @@ func TestTheLabelFollowsTheReadingAndOnlyEverWidens(t *testing.T) {
 	for name, want := range map[string]string{
 		"the reading is asked for first": `"structure" is the FIRST field in the object`,
 		"and the label must follow it":   `"scale" must be the answer that reading forces`,
-		"the field opens the shape line":  `{"structure":"enumerates|stratifies|one_judgement|single_act"`,
+		"the field opens the shape line": `{"structure":"enumerates|stratifies|one_judgement|single_act"`,
 	} {
 		if !strings.Contains(compilerSystemPrompt, want) {
 			t.Errorf("the compiler prompt no longer states %s: %q missing", name, want)
