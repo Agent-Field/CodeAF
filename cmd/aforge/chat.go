@@ -900,23 +900,17 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				chose:    stragglerChoice.set,
 			})
 		}
-		// A bundle sink with nothing to reconcile is assembly, not judgment:
-		// the parts are self-contained deliveries and the board is silent, so
-		// joining them in the asked order is geometry — measured, a model sink
-		// re-typing a 1,863-word part spent 121 of a 212-second job saying
-		// what the parts had already said. When the board carries notes or a
-		// part came back dirty, the model sink runs exactly as before, and if
-		// the gate finds a contradiction in a mechanical join, its revision
-		// buys the model pass with the critique in hand — reconciliation on
-		// demand instead of re-emission by default.
-		mechanical := false
-		if node.Group == resident.BundleGroup {
-			if joined, ok := assembledBundle(graph, node); ok {
-				outcome = &exec.Outcome{Text: joined, Verdict: provider.VerdictUnverifiedSuccess}
-				mechanical = true
-			}
-		}
-		for attempt := 0; !mechanical && attempt < attempts; attempt++ {
+		// Every gathering node runs. There was once one that did not: the sink
+		// of a declared bundle, whose parts were the person's own requests
+		// verbatim and therefore self-contained deliveries, so joining them in
+		// the asked order was assembly rather than judgment and skipped a model
+		// pass worth 121 of a 212-second job. That shortcut was the bundle
+		// route's to give — it rested on the route's guarantee about what its
+		// leaves were — and it went out with the route. A planned subtree makes
+		// no such promise: its leaves are as often fragments of one deliverable
+		// as they are whole answers, and concatenating those would ship a seam
+		// where the delivery should be.
+		for attempt := 0; attempt < attempts; attempt++ {
 			// An escalation that repeats the task verbatim buys a stronger model
 			// and then pays it to rediscover everything the first attempt found —
 			// including files sitting in the shared workspace it is about to
@@ -1012,8 +1006,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				break
 			}
 		}
-		if planNode != nil && !mechanical {
-			// A join that cost nothing is not a measurement of any model.
+		if planNode != nil {
 			plans.recordOutcome(planGraph, planNode, outcome, err, escalatedFrom)
 		}
 		if err == nil && outcome != nil && (outcome.Stop == exec.StopPaused || outcome.Stop == exec.StopCancelled) {
@@ -1215,10 +1208,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// still true of a gate that loops on its own judgement, and this is not
 		// one: it loops on the user's words, which are finite and do not move.
 		if len(outcome.ServiceRequests) == 0 && shouldGate(node, outcome, continuing) {
-			// A mechanical join was never a watched worker run: its parts were
-			// the watched runs, so the gate reads the joined text on its own
-			// merits rather than convicting an assembly for calling no tools.
-			records := gateEvidence(node, task.Spec, outcome, absolute, !mechanical)
+			records := gateEvidence(node, task.Spec, outcome, absolute, true)
 			gate := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
 				records, workerModel)
 			if gate.Checked {
@@ -3750,45 +3740,35 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// profile key must name.
 		workingModel, workingClient := workClient.Snapshot()
 		_, structuring := planClient.Snapshot()
-		// A declared bundle never meets the planner. The compile call already
-		// judged the requests independent and wrote each as a standalone
-		// assignment; laying them side by side is geometry, and the spine was
-		// measured restating the independence rule and then chaining them
-		// anyway. This is also the cheaper path: no spine, no fan-out — the
-		// sequencing and contract passes below are the only structuring these
-		// jobs buy.
+		// One road. A project-scale job is planned, and that is the whole of the
+		// gate below this line.
 		//
-		// Sequencing is not a second opinion on whether to bundle; it is the one
-		// thing the flat layout cannot carry. A compile call that declared four
-		// independent parts where the fourth assembled the other three admitted
-		// four leaves with no edges between them, and the assembler was
-		// claimable from the first tick: it ran beside its own inputs, invented
-		// the section it was supposed to read, and its file went out with one of
-		// the three countries missing for good. The declaration is checked here
-		// because here is the last place an order can still be recorded — after
-		// the splice there is nothing left to infer it from.
-		if parts := trimmedParts(compiled.Parts); len(parts) >= 2 {
-			graph := plan.Bundle(compiled.Goal, parts)
-			sequenceUsage, sequenceErr := plan.Sequence(settings.Context(ctx, compiled.Goal), structuring, graph)
-			if sequenceErr != nil {
-				log.Printf("note: could not sequence bundle parts: %v", sequenceErr)
-			}
-			journalPlanSpend(history, plans, planClient, prefix, sequenceUsage)
-			contractUsage, contractErr := plan.Contracts(settings.Context(ctx, compiled.Goal), structuring, graph, resident.ContractPlaybook(history), progress)
-			if contractErr != nil {
-				log.Printf("note: could not write contracts: %v", contractErr)
-			}
-			journalPlanSpend(history, plans, planClient, prefix, contractUsage)
-			subtree, subtreeErr := resident.SubtreeFromPlan(graph, prefix)
-			if subtreeErr != nil {
-				return store.Subtree{}, subtreeErr
-			}
-			plans.put(prefix, graph, subtreeSink(subtree), workingModel, workingClient)
-			journalScaleGate(history, prefix, compiled, structure, store.ScaleRouteBundle, len(subtree.Nodes))
-			return subtree, nil
-		}
+		// There used to be a second: an ask the compiler read as several
+		// separate requests skipped the planner entirely and was laid out flat
+		// — every request a leaf, one node behind all of them titled with a
+		// phrase out of the machinery — on the argument that the layout was
+		// geometry once independence had been declared, and that skipping the
+		// planner was cheap. Both halves failed. The geometry could not express
+		// the one case that matters, a request written over what the others
+		// produce, so such a request was admitted claimable from the first tick,
+		// ran beside its own inputs and invented the material it existed to
+		// read; the repair for that was a call that asked what waits for what,
+		// which is a planner with one shape in it, so the route was no longer
+		// cheap either — it was a worse planner, at about the same price.
+		//
+		// What the reading was actually worth survives, as evidence rather than
+		// as a layout: the requests reach the build in the person's own words,
+		// where the passes whose job the shape already is can read them. For
+		// genuinely separable requests the plan they produce is the flat fan-out
+		// with a gathering node behind it — the same shape, chosen rather than
+		// assumed, and this time able to say that one of the parts waits.
 		graph, err := plan.Build(settings.Context(ctx, compiled.Goal), structuring, compiled.Goal, plan.Options{
 			Recall: recallHits(history, compiled.Goal, groundRecallLimit),
+			// The person's own division of their ask, handed on verbatim. It is
+			// not passed through any wording of ours on the way: a request
+			// restated here and restated again by whatever writes the leaf's
+			// brief would reach its worker two paraphrases from what was said.
+			Asked: trimmedParts(compiled.Parts),
 			// Rendered once, here, and frozen for the build: this block joins the
 			// shared prefix every pass reads, and a workspace re-read mid-build —
 			// with workers already writing into it — would move the prefix under
@@ -3979,52 +3959,9 @@ func jobNoteLine(message store.Message) (string, bool) {
 	return strings.TrimPrefix(message.Body, jobNoteMark), true
 }
 
-// assembledBundle joins a bundle's finished parts in the asked order, or says
-// the merge needs a model after all. Structure decides: a board note means a
-// worker learned something the parts may not all reflect, and a part that
-// failed or came back empty has nothing to join — both fall through to the
-// ordinary sink leaf. The gate still reads the joined delivery afterwards, so
-// a contradiction code cannot see buys the model pass through the ordinary
-// revision path, critique in hand.
-func assembledBundle(graph *store.Store, sink store.Node) (string, bool) {
-	messages, err := graph.NodeMessages(sink.ID, 0, 12)
-	if err != nil {
-		return "", false
-	}
-	for _, message := range messages {
-		if _, isNote := jobNoteLine(message); isNote {
-			return "", false
-		}
-	}
-	nodes, err := graph.SubtreeNodes(sink.ID)
-	if err != nil {
-		return "", false
-	}
-	parts := make([]store.Node, 0, len(nodes))
-	for _, candidate := range nodes {
-		if candidate.Parent == sink.ID {
-			parts = append(parts, candidate)
-		}
-	}
-	sort.SliceStable(parts, func(i, j int) bool { return parts[i].CreatedSeq < parts[j].CreatedSeq })
-	if len(parts) < 2 {
-		return "", false
-	}
-	var joined strings.Builder
-	for _, part := range parts {
-		if part.Status != store.Done || strings.TrimSpace(part.Summary) == "" {
-			return "", false
-		}
-		if joined.Len() > 0 {
-			joined.WriteString("\n\n")
-		}
-		joined.WriteString(strings.TrimSpace(part.Summary))
-	}
-	return joined.String(), true
-}
-
-// trimmedParts is the structural half of the bundle judgment: the model said
-// which requests stand alone; code only refuses blanks.
+// trimmedParts is the structural half of the reading the compiler made: the
+// model said which requests the ask contains; code only refuses blanks. What
+// is done with them is the planner's — see planSubtree.
 func trimmedParts(parts []string) []string {
 	kept := parts[:0:0]
 	for _, part := range parts {

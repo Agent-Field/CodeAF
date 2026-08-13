@@ -244,6 +244,18 @@ type Options struct {
 	// snapshot taken at build start and frozen for the build.
 	Terrain string
 
+	// Asked are the separable requests the caller's reading of the ask found in
+	// it, in the person's own words. Fewer than two is the ordinary ask and
+	// changes no prompt byte anywhere.
+	//
+	// It is handed to the build rather than acted on by the caller, and that is
+	// the whole of this field. A caller that acts on it is a second planner
+	// with one shape in it: it can lay the requests side by side, and it cannot
+	// answer the one question a flat layout destroys — whether one of them is
+	// written over what the others produce. Here the reading reaches the passes
+	// whose job that question already is. See Graph.Asked.
+	Asked []string
+
 	// SpineSamples is how many spines to draw before choosing one. The spine is
 	// the only call whose framing every later pass inherits, so it is the only
 	// one worth sampling; the samples run concurrently and cost no wall clock.
@@ -373,6 +385,10 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// everything that follows, which is the one thing the shared block exists to
 	// prevent.
 	graph := &Graph{Goal: goal, NextID: 1, Terrain: options.Terrain, FileShaped: options.FileShaped,
+		// The requests the ask was read as containing, cleaned once and frozen
+		// for the build like the terrain beside them, and for the same reason:
+		// they join the shared prefix every pass reads.
+		Asked: cleanStrings(options.Asked),
 		// The window rides onto the document at the same moment the terrain
 		// does, and for the same reason: every later pass over this graph has to
 		// size itself from the same fact the build was sized from.
@@ -397,6 +413,10 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// while the other goroutine was writing to it would be a data race for the
 	// sake of nothing.
 	terrain := options.Terrain
+	// The requests travel beside the terrain and are read off the options for
+	// the same reason: both openers run before there is a graph worth rendering
+	// a preamble from, and one of them is writing to that graph.
+	asked := graph.Asked
 	var choice *SpineChoice
 	var spineUsage, groundUsage Usage
 	var spineErr, groundErr error
@@ -413,7 +433,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				choice, spineErr = nil, guard.Note("plan/build spine", recovered)
 			}
 		}()
-		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, terrain, options.SpineSamples, progress)
+		choice, spineUsage, spineErr = spineWithProgress(ctx, client, goal, terrain, asked, options.SpineSamples, progress)
 	}()
 	go func() {
 		defer opening.Done()
@@ -422,7 +442,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 				groundErr = guard.Note("plan/build ground", recovered)
 			}
 		}()
-		grounding, usage, err := GroundWith(ctx, client, goal, terrain, options.Recall)
+		grounding, usage, err := GroundWith(ctx, client, goal, terrain, asked, options.Recall)
 		groundUsage.Add(usage)
 		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()

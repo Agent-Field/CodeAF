@@ -40,7 +40,7 @@ func TestGroundWithoutRecallKeepsPromptByteIdentical(t *testing.T) {
 	if _, _, err := Ground(t.Context(), legacy, "  inspect the parser  "); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := GroundWith(t.Context(), optional, "  inspect the parser  ", "", nil); err != nil {
+	if _, _, err := GroundWith(t.Context(), optional, "  inspect the parser  ", "", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(legacy.prompts, optional.prompts) {
@@ -59,7 +59,7 @@ func TestGroundWithRecallCarriesDigestAndPointers(t *testing.T) {
 		NodeID: "old", Intent: "repair the parser", Digest: "The sentinel must stay explicit",
 		Pointers: []string{"/workspace/parser/notes.md"}, Age: "2d ago", Score: 4,
 	}}
-	if _, _, err := GroundWith(t.Context(), client, "repair it again", "", recall); err != nil {
+	if _, _, err := GroundWith(t.Context(), client, "repair it again", "", nil, recall); err != nil {
 		t.Fatal(err)
 	}
 	prompt := client.prompts[0]

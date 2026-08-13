@@ -101,13 +101,6 @@ type Node struct {
 	// does not repeat. Empty means no split was ever considered for this node.
 	Undivided string `json:"undivided,omitempty"`
 
-	// Bundle marks the synthesis of declared-independent requests. Its merge
-	// is assembly unless something mid-flight said otherwise, and the executor
-	// reads this to skip the model when there is nothing to reconcile —
-	// measured: a sink re-typing a 1,863-word part spent 121 of a 212-second
-	// job saying what the parts had already said.
-	Bundle bool `json:"-"`
-
 	Needs []int  `json:"needs"`
 	Size  Size   `json:"size,omitempty"`
 	State State  `json:"state"`
@@ -210,6 +203,25 @@ const (
 // run and any later revision of it.
 type Graph struct {
 	Goal string `json:"goal"`
+
+	// Asked are the separable requests the person's own ask contained, in
+	// their own words, as the call that read the whole ask reported them.
+	//
+	// They are a reading of the ask and never a layout of the plan. There was
+	// once a second road out of that reading — two or more requests laid flat
+	// with an assembler behind them, no planner anywhere — and it was a worse
+	// planner with a hardcoded shape: the one judgment it could not make was
+	// whether one of the requests is written over what the others produce, and
+	// the layout it committed to had no way to say so. That is the question
+	// this package's passes exist to answer, so the reading is handed to them
+	// as evidence and the shape stays theirs.
+	//
+	// Fewer than two is the ordinary ask and renders nothing at all, which is
+	// the whole of the compatibility story: every prompt below sends the bytes
+	// it sent before this field existed. Persisted with the graph for the same
+	// reason the settled points are — a document revised later is revised
+	// against the premises it was built from.
+	Asked []string `json:"asked,omitempty"`
 
 	// Settled are the goal's free variables, bound once so that every parallel
 	// call works from the same premise. Open are the ones that cannot be bound

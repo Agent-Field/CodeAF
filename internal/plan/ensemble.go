@@ -223,9 +223,9 @@ func (p *Panel) normalize(goal string) {
 // It rides the tail of the same user message, behind the goal and the spine, for
 // the reason every invoice does: the system prompt above is a constant this
 // process never rewrites, and the prices move whenever a leaf lands.
-func DecidePanel(ctx context.Context, client Completer, goal, terrain string, stages []Stage, invoice string) (*Panel, *ai.Usage, error) {
+func DecidePanel(ctx context.Context, client Completer, goal, terrain string, asked []string, stages []Stage, invoice string) (*Panel, *ai.Usage, error) {
 	var evidence strings.Builder
-	evidence.WriteString(goalBlock(strings.TrimSpace(goal), terrain))
+	evidence.WriteString(goalBlock(strings.TrimSpace(goal), terrain, asked))
 	if len(stages) > 0 {
 		evidence.WriteString("\n\nThe stages the planner drew for it:\n")
 		evidence.WriteString(spineBlock(stages))
@@ -549,7 +549,7 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	emitProgress(progress, "ensemble", "deciding whether independent passes beat splitting the work", "")
 	forced := options.Ensemble >= 2
 
-	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Terrain, graph.Stages, graph.Invoice)
+	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Terrain, graph.Asked, graph.Stages, graph.Invoice)
 	graph.Usage.Add(usage)
 	switch {
 	case err != nil && !forced:
