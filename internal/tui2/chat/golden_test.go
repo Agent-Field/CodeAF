@@ -74,6 +74,79 @@ func liveView(profile tokens.Profile) golden.View {
 	}
 }
 
+// activityView renders a turn MID-TOOL-ROUND: two calls settled, one still
+// running, under the words the head has streamed so far and above the awaiting
+// line. It is the frame the whole activity wave exists to produce, so it is
+// pinned at every width the surface has to survive.
+func activityView(profile tokens.Profile) golden.View {
+	return func(width, height int, theme golden.Theme) []string {
+		backend := &fakeBackend{}
+		dressedThread(backend)
+		app := goldenApp(backend, profile, theme)
+		drivePoll(app)
+		app.Update(streamBatchMsg{events: []StreamEvent{
+			{Kind: StreamStarted, Session: testSession},
+			{Kind: StreamToolBegin, Session: testSession, Delta: "looking at the work"},
+			{Kind: StreamToolEnd, Session: testSession, Delta: "3 rows"},
+			{Kind: StreamToolBegin, Session: testSession, Delta: "searching for «navctx»"},
+			{Kind: StreamToolFailed, Session: testSession, Delta: "nothing matched"},
+			{Kind: StreamDelta, Session: testSession, Delta: `{"reply":"Reading navctx.rs now`},
+			{Kind: StreamToolBegin, Session: testSession, Delta: "reading «navctx.rs»"},
+		}})
+		return strings.Split(app.Frame(width, height), "\n")
+	}
+}
+
+// collapsedActivityView renders the same turn AFTER its reply landed: the rows
+// are one row, attached under the answer, behind the disclosure grammar.
+func collapsedActivityView(profile tokens.Profile, open bool) golden.View {
+	return func(width, height int, theme golden.Theme) []string {
+		backend := &fakeBackend{}
+		dressedThread(backend)
+		app := goldenApp(backend, profile, theme)
+		drivePoll(app)
+		app.Update(streamBatchMsg{events: []StreamEvent{
+			{Kind: StreamStarted, Session: testSession},
+			{Kind: StreamToolBegin, Session: testSession, Delta: "looking at the work"},
+			{Kind: StreamToolEnd, Session: testSession, Delta: "3 rows"},
+			{Kind: StreamToolBegin, Session: testSession, Delta: "searching for «navctx»"},
+			{Kind: StreamToolEnd, Session: testSession, Delta: "2 rows"},
+			{Kind: StreamToolBegin, Session: testSession, Delta: "reading the plan for «task-9»"},
+			{Kind: StreamToolEnd, Session: testSession, Delta: ""},
+		}})
+		backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent,
+			Body: "Three things are running; navctx is the one that failed."})
+		drivePoll(app)
+		if open {
+			// The reader's own door, opened. In linear mode there is none, and
+			// the row is already the whole summary.
+			if block, ok := app.transcript.Block(app.transcript.Len() - 1).(*messageBlock); ok {
+				app.toggleFold(block)
+			}
+		}
+		app.transcript.GotoBottom()
+		return strings.Split(app.Frame(width, height), "\n")
+	}
+}
+
+// stageView renders a pending commission mid-compile: the skeleton with the
+// planner's own phase under its title, instead of the bare pulse.
+func stageView(profile tokens.Profile) golden.View {
+	return func(width, height int, theme golden.Theme) []string {
+		backend := &stagedBackend{pendingBackend{boardBackend: boardBackend{}}}
+		backend.add(store.Message{SessionID: testSession, Role: store.RoleUser,
+			Body: "build me the panel site"})
+		app := goldenApp(backend, profile, theme)
+		drivePoll(app)
+		backend.pending = []store.Command{{Seq: 900, SessionID: testSession,
+			Kind: store.CommandSplice, Instruction: "Build the panel site from scratch"}}
+		backend.journal++
+		backend.stage(900, "setting working standards", 2, 3)
+		drivePoll(app)
+		return strings.Split(app.Frame(width, height), "\n")
+	}
+}
+
 // cutView renders the truncation law's two halves (12.5.2) — the sticky header
 // badge and the rule under the body — so a re-dress cannot quietly lose them at
 // a width nobody looked at.
@@ -135,6 +208,38 @@ func TestGoldenLiveTurn(t *testing.T) {
 	}
 }
 
+// The activity wave's three frames, at both ends of the contrast ladder and on
+// both sides of the calm axis — which is also the linear rendering, where the
+// collapse row is a plain summary with no door on it (10.1.5).
+func TestGoldenLiveActivity(t *testing.T) {
+	for _, tier := range contrastTiers() {
+		t.Run(tier.name, func(t *testing.T) {
+			golden.RunSizes(t, "chat-activity-"+tier.name, activityView(tier.profile),
+				goldenSizes, goldenThemes)
+		})
+	}
+}
+
+func TestGoldenCollapsedActivity(t *testing.T) {
+	for _, tier := range contrastTiers() {
+		t.Run(tier.name, func(t *testing.T) {
+			golden.RunSizes(t, "chat-activity-shut-"+tier.name,
+				collapsedActivityView(tier.profile, false), goldenSizes, goldenThemes)
+			golden.RunSizes(t, "chat-activity-open-"+tier.name,
+				collapsedActivityView(tier.profile, true), goldenSizes, goldenThemes)
+		})
+	}
+}
+
+func TestGoldenPendingStage(t *testing.T) {
+	for _, tier := range contrastTiers() {
+		t.Run(tier.name, func(t *testing.T) {
+			golden.RunSizes(t, "chat-stage-"+tier.name, stageView(tier.profile),
+				goldenSizes, goldenThemes)
+		})
+	}
+}
+
 func TestGoldenCutTurn(t *testing.T) {
 	for _, tier := range contrastTiers() {
 		t.Run(tier.name, func(t *testing.T) {
@@ -159,6 +264,25 @@ func TestGoldenSnapshots(t *testing.T) {
 		{"ordinary-plain", dressedView(tokens.NoColor), 80, 24, golden.Theme{Mode: golden.Dark}, "chat-plain"},
 		{"narrow-plain", dressedView(tokens.NoColor), 40, 16, golden.Theme{Mode: golden.Dark}, "chat-plain"},
 		{"live-plain", liveView(tokens.NoColor), 80, 20, golden.Theme{Mode: golden.Dark}, "chat-live-plain"},
+		// The activity wave's stored frames: the live rows mid-round, the one
+		// row they become, that row opened, and the narrating skeleton. Narrow
+		// as well as wide for the collapse row, because the summary is the one
+		// thing here that has to survive a measure it cannot fit in.
+		{"activity-plain", activityView(tokens.NoColor), 80, 20,
+			golden.Theme{Mode: golden.Dark}, "chat-activity-plain"},
+		{"activity-shut-plain", collapsedActivityView(tokens.NoColor, false), 80, 20,
+			golden.Theme{Mode: golden.Dark}, "chat-activity-shut-plain"},
+		{"activity-shut-narrow", collapsedActivityView(tokens.NoColor, false), 40, 16,
+			golden.Theme{Mode: golden.Dark}, "chat-activity-shut-plain"},
+		{"activity-shut-color", collapsedActivityView(tokens.TrueColor, false), 80, 20,
+			golden.Theme{Mode: golden.Dark}, "chat-activity-shut-truecolor"},
+		{"activity-open-plain", collapsedActivityView(tokens.NoColor, true), 80, 24,
+			golden.Theme{Mode: golden.Dark}, "chat-activity-open-plain"},
+		// The accessible rendering: a plain summary line and no door on it.
+		{"activity-linear", collapsedActivityView(tokens.NoColor, false), 80, 20,
+			golden.Theme{Mode: golden.Dark, Calm: true}, "chat-activity-linear"},
+		{"stage-plain", stageView(tokens.NoColor), 80, 20,
+			golden.Theme{Mode: golden.Dark}, "chat-stage-plain"},
 		{"cut-plain", cutView(tokens.NoColor), 80, 16, golden.Theme{Mode: golden.Dark}, "chat-cut-plain"},
 	}
 	for _, testCase := range cases {

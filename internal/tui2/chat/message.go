@@ -398,6 +398,13 @@ type messageBlock struct {
 	// to know whether the reader aimed at the fold or at the card.
 	door blockDoor
 
+	// activity is the turn's tool calls, folded under this row when the reply
+	// landed (activity.go). It is empty on every block that is not a head reply
+	// with work behind it, and the state lives HERE — rather than in a map on
+	// the app — so a row that scrolls off and back on comes back with the same
+	// summary and the same side of its fold.
+	activity []activityStep
+
 	version  uint64
 	width    int
 	measured bool
@@ -557,7 +564,10 @@ func (b *messageBlock) SetExpanded(open bool) bool {
 	// otherwise a turn that was BOTH long and cut short would advertise its fold
 	// twice, once beside the truncation badge and once under the words. A card's
 	// A card's tail door is the same arrangement for the same reason ([foldTail]).
-	if !b.foldsBody && !b.tailFold {
+	// An activity fold is the third arrangement of the same kind: it draws its
+	// own row ([messageBlock.activityRows]), so a reply that was ALSO cut short
+	// does not advertise one fold beside its truncation badge and again below.
+	if !b.foldsBody && !b.tailFold && !b.activityOwnsFold() {
 		b.head.Hint = blocks.Disclose(open, b.hidden, "line", "lines")
 	}
 	b.measured = false
@@ -648,6 +658,26 @@ func (b *messageBlock) doorAt(line, width int) blockDoor {
 func (b *messageBlock) foldRowAt(line, width int) bool {
 	if !b.collapsible {
 		return false
+	}
+	// A REPLY'S ACTIVITY ROW IS A DOOR (activity.go), and it is asked about
+	// FIRST because it is the only fold on the block that carries one: an answer
+	// never folds its own words (§5), so a row with activity on it has no other
+	// door to be confused with — including the header hint a CUT reply would
+	// otherwise have offered.
+	//
+	// Its expanded region hangs BELOW the door rather than above it, which is the
+	// one way it differs from the long-turn fold: the list is the disclosure, and
+	// §10's law that every row of an opened region closes it again is spelled out
+	// against the rows that are actually there.
+	if b.activityOwnsFold() {
+		b.Rows(width)
+		if b.foldLine < 0 {
+			return false
+		}
+		if b.expanded {
+			return line >= b.foldLine && line <= b.foldLine+len(b.activity)
+		}
+		return line == b.foldLine
 	}
 	if b.hasHead() && !b.tailFold {
 		return line == b.cardPad()
@@ -997,6 +1027,10 @@ func (b *messageBlock) Rows(width int) []string {
 	rows = b.hintRow(rows, inner)
 	rows = b.foldLongTurn(rows, body, inner, pad)
 	rows = b.foldTail(rows, inner, pad)
+	// HOW THE ANSWER WAS ARRIVED AT, under the answer (activity.go). It is last
+	// because it is about the turn rather than about the words, and it is empty
+	// on every row that is not a reply with tool calls behind it.
+	rows = b.activityRows(rows, inner, pad)
 	if rule := blocks.CutRule(b.end, inner, st); rule != "" {
 		rows = append(rows, rule)
 	}

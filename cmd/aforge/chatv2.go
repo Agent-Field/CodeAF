@@ -320,6 +320,15 @@ func streamKindV2(kind tui.StreamEventKind) chat.StreamKind {
 		return chat.StreamFinished
 	case tui.StreamFailed:
 		return chat.StreamFailed
+	// The tool-activity boundaries the head emits around every belt call
+	// (internal/head/activity.go). They cross here rather than on a channel of
+	// their own because they are the same turn as the tokens beside them.
+	case tui.StreamToolBegin:
+		return chat.StreamToolBegin
+	case tui.StreamToolEnd:
+		return chat.StreamToolEnd
+	case tui.StreamToolFailed:
+		return chat.StreamToolFailed
 	}
 	return chat.StreamFinished
 }

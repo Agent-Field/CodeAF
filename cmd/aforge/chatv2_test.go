@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/tui"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/chat"
 )
@@ -77,10 +78,74 @@ func TestStreamKindV2MapsEveryBoundary(t *testing.T) {
 		tui.StreamThinking: chat.StreamThinking,
 		tui.StreamFinished: chat.StreamFinished,
 		tui.StreamFailed:   chat.StreamFailed,
+		// The tool-activity boundaries (internal/head/activity.go). They ride
+		// the one channel with the tokens because they are the same turn, so
+		// this is where a vocabulary that grew on one side and not the other
+		// becomes visible.
+		tui.StreamToolBegin:  chat.StreamToolBegin,
+		tui.StreamToolEnd:    chat.StreamToolEnd,
+		tui.StreamToolFailed: chat.StreamToolFailed,
 	}
 	for from, want := range cases {
 		if got := streamKindV2(from); got != want {
 			t.Fatalf("streamKindV2(%v) = %v, want %v", from, got, want)
+		}
+	}
+}
+
+// The engine's own translation, one seam earlier: provider boundaries into the
+// window's vocabulary.
+//
+// THE FAILURE ARM IS THE POINT. tui.StreamStarted is ordinal zero and means
+// "wipe the live region", so the switch this replaced turned any boundary it had
+// not heard of into a wiped reply. What is pinned is that an unknown kind is
+// REPORTED as unknown rather than silently landing on the zero value.
+func TestHeadStreamKindMapsEveryBoundaryAndAdmitsTheRest(t *testing.T) {
+	cases := map[provider.StreamEventKind]tui.StreamEventKind{
+		provider.StreamStarted:    tui.StreamStarted,
+		provider.StreamDelta:      tui.StreamDelta,
+		provider.StreamThinking:   tui.StreamThinking,
+		provider.StreamFinished:   tui.StreamFinished,
+		provider.StreamFailed:     tui.StreamFailed,
+		provider.StreamToolBegin:  tui.StreamToolBegin,
+		provider.StreamToolEnd:    tui.StreamToolEnd,
+		provider.StreamToolFailed: tui.StreamToolFailed,
+	}
+	for from, want := range cases {
+		got, known := headStreamKind(from)
+		if !known || got != want {
+			t.Fatalf("headStreamKind(%v) = %v known=%v, want %v", from, got, known, want)
+		}
+	}
+	if _, known := headStreamKind(provider.StreamEventKind(99)); known {
+		t.Fatal("a boundary this build has never heard of was mapped anyway")
+	}
+}
+
+// AND THE ACTIVITY CROSSES THE BRIDGE WITH ITS WORDS INTACT. The gloss rides in
+// Delta, which is the field the surface draws — a bridge that dropped it would
+// leave the live region with a marker and nothing beside it.
+func TestBridgeCarriesToolActivityWordsAndRoom(t *testing.T) {
+	source := make(chan tui.StreamEvent, 4)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	out := make(chan chat.StreamEvent, 4)
+	bridgeStreamEventsInto(ctx, source, out)
+
+	source <- tui.StreamEvent{Kind: tui.StreamToolBegin,
+		Delta: "searching for «pricing»", Session: "room-7"}
+	source <- tui.StreamEvent{Kind: tui.StreamToolEnd, Delta: "3 rows", Session: "room-7"}
+	for _, want := range []chat.StreamEvent{
+		{Kind: chat.StreamToolBegin, Delta: "searching for «pricing»", Session: "room-7"},
+		{Kind: chat.StreamToolEnd, Delta: "3 rows", Session: "room-7"},
+	} {
+		select {
+		case got := <-out:
+			if got != want {
+				t.Fatalf("bridged %+v, want %+v", got, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("the bridge delivered nothing for %+v", want)
 		}
 	}
 }
