@@ -160,15 +160,6 @@ var OperatorEnvPins = []string{
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
 	"AFORGE_GROWTH_GATE",
-	// The two knobs on the context law (internal/ctxbudget): how much of a
-	// window an agent may fill before compaction, and how much room every call
-	// keeps for its answer and its reasoning. They are plumbing rather than
-	// preferences for the plainest of reasons — nobody chooses a fill
-	// percentage the way they choose a model, and the law's own defaults are
-	// what every surface should be running. They are here so an operator
-	// diagnosing a window can see what the process is actually using.
-	"AFORGE_CONTEXT_FILL_PCT",
-	"AFORGE_COMPLETION_RESERVE",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.
