@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/rtk"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -42,9 +43,28 @@ import (
 //	web    the only capability a shell genuinely lacks. urls is plural because
 //	       research is search-once-then-read-several, and batching that turns
 //	       five round-trips into one.
+const maxCommandSeconds = 120
+
+// The four bounds on what one tool result may cost, stated as the fractions of
+// the leaf's observation window they have always secretly been.
+//
+// Each number below was tuned against a 32KB window — the one an unrecognised
+// model still gets, defaultObservationBudget — and each was then written down as
+// an absolute, which is the mistake the fill law exists to undo: a model holding
+// a million tokens was handed the same twelve kilobytes as one holding thirty-two
+// thousand. So the literals stay exactly as they are and change job. They are the
+// numerator of a share of the window (see toolBudgetsFor), and they are the named
+// fallback for the case where the window is unknown, which is what keeps offline
+// behaviour byte-for-byte what it was.
+//
+// The ratios between them are the part that must not drift, and expressing all
+// four against one reference window is what holds them: preview stays below
+// spill, spill stays below the result cap, and recall stays the tightest of the
+// three that bound a whole result.
 const (
+	// maxToolResultBytes is the largest a single result may be before its middle
+	// is elided — see clamp, which keeps the head and the verdict at the end.
 	maxToolResultBytes = 12 << 10
-	maxCommandSeconds  = 120
 
 	// spillBytes is where a result stops being worth carrying. Anything larger
 	// is written to a file and represented in context by a preview and a path.
@@ -66,7 +86,42 @@ const (
 	// observations: recall is a map used to choose what to read, not a second
 	// copy of the territory.
 	maxRecallResultBytes = 8 << 10
+
+	// toolBudgetReference is the window the four numbers above were measured
+	// against, and therefore the denominator that turns each of them into a
+	// fraction. It is defaultObservationBudget itself rather than a copy of its
+	// value: the reference window and the unknown-model window are the same
+	// fact, and a second spelling of it would drift.
+	toolBudgetReference = defaultObservationBudget
 )
+
+// toolBudgets is one leaf's four result bounds in bytes, resolved once.
+//
+// Once is the whole point and it is a cache property rather than a performance
+// one. These numbers decide how long a result is, results are the bulk of the
+// transcript, and a bound that moved mid-run would rewrite messages the provider
+// is otherwise serving warm. They are settled when the toolbox is built, from a
+// window that cannot change for the life of the leaf, and read from there.
+type toolBudgets struct {
+	result  int // one whole result, before clamp elides its middle
+	spill   int // past this a result goes to a file instead
+	preview int // what stays in context when it does
+	recall  int // the recall map, which is bounded tighter than the territory
+}
+
+// toolBudgetsFor turns the leaf's context window into its four bounds. A window
+// nobody could name yields exactly the old literals — see ctxbudget: unknown is
+// never treated as small, it is treated as unmeasured, and every consumer names
+// what it used to do.
+func toolBudgetsFor(contextTokens int) toolBudgets {
+	budget := ctxbudget.For(contextTokens).WithFloor(observationFixedFloorTokens)
+	return toolBudgets{
+		result:  budget.Share(maxToolResultBytes, toolBudgetReference, maxToolResultBytes),
+		spill:   budget.Share(spillBytes, toolBudgetReference, spillBytes),
+		preview: budget.Share(previewBytes, toolBudgetReference, previewBytes),
+		recall:  budget.Share(maxRecallResultBytes, toolBudgetReference, maxRecallResultBytes),
+	}
+}
 
 // Result is one tool's answer. A failure is a Result, never a Go error: the
 // model has to see what went wrong to fix it, and aborting the loop over a
@@ -100,6 +155,9 @@ type Toolbox struct {
 	history *store.Store
 	media   *MediaTools
 	jobs    *jobRegistry
+	// budgets are what this leaf's model can afford to carry, fixed at
+	// construction and never recomputed. See toolBudgets.
+	budgets toolBudgets
 	// spills is atomic because a turn's tool calls execute concurrently, and
 	// two large results spilling at once must not race the counter into the
 	// same file name.
@@ -347,19 +405,30 @@ func (t *Toolbox) shareLine(args map[string]any) Result {
 // turn, so a note pays rent everywhere at once.
 const shareLineBytes = 300
 
+// NewToolbox builds a toolbox for a caller that cannot say what its model
+// holds. That is not a guess about a small model — it is the honest unknown, and
+// it resolves to the bounds this package has always used.
 func NewToolbox(workspace *Workspace, leaf string, web *Web) *Toolbox {
-	return &Toolbox{workspace: workspace, leaf: leaf, web: web, jobs: newJobRegistry(workspace, leaf)}
+	return newToolbox(workspace, leaf, web, nil, nil, 0)
 }
 
 // NewToolboxWithStore adds persistent recall to the generic toolbox. A nil
 // store deliberately collapses to NewToolbox so one-shot leaves retain the
 // base-definition prompt.
 func NewToolboxWithStore(workspace *Workspace, leaf string, web *Web, history *store.Store) *Toolbox {
-	return &Toolbox{workspace: workspace, leaf: leaf, web: web, history: history, jobs: newJobRegistry(workspace, leaf)}
+	return newToolbox(workspace, leaf, web, history, nil, 0)
 }
 
-func newToolboxWithMedia(workspace *Workspace, leaf string, web *Web, history *store.Store, media *MediaTools) *Toolbox {
-	return &Toolbox{workspace: workspace, leaf: leaf, web: web, history: history, media: media, jobs: newJobRegistry(workspace, leaf)}
+// newToolbox is the one constructor, and contextTokens is the fact every other
+// bound in this file is derived from. It is passed in rather than looked up for
+// the same reason Linear.WithContextLength exists: the surface owns the catalog
+// and hands facts down, and a leaf must never fail to run because a metadata
+// endpoint was dark.
+func newToolbox(workspace *Workspace, leaf string, web *Web, history *store.Store,
+	media *MediaTools, contextTokens int) *Toolbox {
+	budgets := toolBudgetsFor(contextTokens)
+	return &Toolbox{workspace: workspace, leaf: leaf, web: web, history: history, media: media,
+		budgets: budgets, jobs: newJobRegistry(workspace, leaf, budgets.result)}
 }
 
 // mediaModelArgDescription teaches the model argument in one breath: the slot
@@ -616,7 +685,7 @@ func (t *Toolbox) Execute(ctx context.Context, name string, arguments string) (o
 func (t *Toolbox) finishResult(result Result) Result {
 	result = t.spill(result)
 	if report := t.jobs.report(); report != "" {
-		result.Content = clamp(result.Content + "\n\n" + report)
+		result.Content = clamp(result.Content+"\n\n"+report, t.budgets.result)
 		result.reportedJobs = true
 	}
 	return result
@@ -673,7 +742,7 @@ func (t *Toolbox) recall(args map[string]any) Result {
 		}
 		candidate := response
 		candidate.Folds = append(append([]store.RecallHit(nil), response.Folds...), hit)
-		if recallJSONFits(candidate) {
+		if recallJSONFits(candidate, t.budgets.recall) {
 			response = candidate
 		}
 	}
@@ -684,7 +753,7 @@ func (t *Toolbox) recall(args map[string]any) Result {
 			Age: store.AgeLabel(fact.Time, now)}
 		candidate := response
 		candidate.Notebook = append(append([]recallToolFact(nil), response.Notebook...), item)
-		if recallJSONFits(candidate) {
+		if recallJSONFits(candidate, t.budgets.recall) {
 			response = candidate
 		}
 	}
@@ -742,9 +811,9 @@ func recallFactCues(cues []string) []string {
 	return result
 }
 
-func recallJSONFits(response recallToolResponse) bool {
+func recallJSONFits(response recallToolResponse, limit int) bool {
 	encoded, err := json.Marshal(response)
-	return err == nil && len(encoded) <= maxRecallResultBytes
+	return err == nil && len(encoded) <= limit
 }
 
 func recallClip(value string, limit int) string {
@@ -791,7 +860,7 @@ func wholeRunesTail(window string) string {
 // are never spilled: they are usually short, and the whole value of an error is
 // that the model reads it immediately rather than going to fetch it.
 func (t *Toolbox) spill(result Result) Result {
-	if result.IsError || len(result.Content) <= spillBytes {
+	if result.IsError || len(result.Content) <= t.budgets.spill {
 		return result
 	}
 	relative, ok := t.writeObs(fmt.Sprintf("%s-%d.txt", pathSlug(t.leaf), t.spills.Add(1)), result.Content)
@@ -800,7 +869,7 @@ func (t *Toolbox) spill(result Result) Result {
 	}
 	return Result{Content: fmt.Sprintf(
 		"%s\n\n... [%d of %d bytes shown. Full output saved to %s — read the part you need with sh, for example: sed -n '1,80p' %s]",
-		result.Content[:previewBytes], previewBytes, len(result.Content), relative, relative)}
+		result.Content[:t.budgets.preview], t.budgets.preview, len(result.Content), relative, relative)}
 }
 
 // decaySpill preserves a decaying observation's full body under the
@@ -1007,7 +1076,7 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 			return rtk.StripNudge(line) != line
 		}
 	}
-	collected := newCappedOutput(strip)
+	collected := newCappedOutput(strip, t.budgets.result)
 	cmd.Stdout, cmd.Stderr = collected, collected
 	err := cmd.Run()
 	run := shellRun{body: collected.String(), err: err, exitCode: exitCode(cmd, err)}
@@ -1098,22 +1167,24 @@ func (t *Toolbox) webCall(ctx context.Context, args map[string]any) Result {
 	if len(urls) > 0 {
 		sections = append(sections, t.web.Fetch(ctx, urls))
 	}
-	return Result{Content: clamp(strings.Join(sections, "\n\n"))}
+	return Result{Content: clamp(strings.Join(sections, "\n\n"), t.budgets.result)}
 }
 
-// clamp bounds a result at both ends.
+// clamp bounds a result at both ends, at whatever the consuming leaf can afford
+// — see toolBudgets, which is where the limit comes from and why it is passed
+// in rather than read from a constant.
 //
 // Keeping only the head is the obvious implementation and the wrong one: a
 // command's most valuable line is usually its last, because that is where the
 // error is. Cutting the middle keeps the shape of the output and the verdict at
 // the end, and says plainly how much went missing so the model can go looking
 // for it if it matters.
-func clamp(text string) string {
-	if len(text) <= maxToolResultBytes {
+func clamp(text string, limit int) string {
+	if len(text) <= limit {
 		return text
 	}
-	head := wholeRunesHead(text[:maxToolResultBytes*2/3])
-	tail := wholeRunesTail(text[len(text)-(maxToolResultBytes-maxToolResultBytes*2/3):])
+	head := wholeRunesHead(text[:limit*2/3])
+	tail := wholeRunesTail(text[len(text)-(limit-limit*2/3):])
 	return head +
 		fmt.Sprintf("\n\n... [%d bytes elided] ...\n\n", len(text)-len(head)-len(tail)) +
 		tail

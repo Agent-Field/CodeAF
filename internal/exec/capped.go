@@ -21,8 +21,15 @@ import (
 // would have rendered from the whole. Memory is bounded at the limit itself no
 // matter how much the command prints.
 type cappedOutput struct {
+	// limit and the two windows it splits into are this collector's own,
+	// because the limit is the consuming leaf's — a model with a larger window
+	// keeps proportionally more of what its commands printed. See toolBudgets.
+	limit    int
+	keepHead int
+	keepTail int
+
 	head  []byte
-	tail  []byte // a ring: the last cappedTailBytes bytes, oldest at next
+	tail  []byte // a ring: the last keepTail bytes, oldest at next
 	next  int
 	round bool
 	total int
@@ -46,25 +53,26 @@ const (
 	lineDropped
 )
 
-const (
-	// The two windows clamp keeps, named here because the writer has to keep
-	// exactly them for its output to be clamp's output.
-	cappedHeadBytes = maxToolResultBytes * 2 / 3
-	cappedTailBytes = maxToolResultBytes - cappedHeadBytes
+// cappedLineDecision is how much of a line is held while deciding whether to
+// keep it. The only decision made here is rtk's, and rtk's is a prefix test on
+// a short marker, so the beginning of a line settles it and a line of any
+// length is passed through without being held.
+const cappedLineDecision = 64
 
-	// cappedLineDecision is how much of a line is held while deciding whether
-	// to keep it. The only decision made here is rtk's, and rtk's is a prefix
-	// test on a short marker, so the beginning of a line settles it and a line
-	// of any length is passed through without being held.
-	cappedLineDecision = 64
-)
-
-// newCappedOutput returns a collector. drop may be nil, which keeps every line
-// — and keeping every line is byte-for-byte the same as not filtering at all,
-// because the filter reassembles the lines it kept with the separators that
-// were between them.
-func newCappedOutput(drop func([]byte) bool) *cappedOutput {
-	return &cappedOutput{head: make([]byte, 0, cappedHeadBytes), tail: make([]byte, cappedTailBytes), drop: drop}
+// newCappedOutput returns a collector bounded at limit, which must be the same
+// limit the result will later be clamped at — the writer keeps exactly the two
+// windows clamp keeps, and a mismatch would render something clamp would not
+// have rendered. drop may be nil, which keeps every line — and keeping every
+// line is byte-for-byte the same as not filtering at all, because the filter
+// reassembles the lines it kept with the separators that were between them.
+func newCappedOutput(drop func([]byte) bool, limit int) *cappedOutput {
+	if limit <= 0 {
+		limit = maxToolResultBytes
+	}
+	head := limit * 2 / 3
+	tail := limit - head
+	return &cappedOutput{limit: limit, keepHead: head, keepTail: tail,
+		head: make([]byte, 0, head), tail: make([]byte, tail), drop: drop}
 }
 
 // Write takes the child's output as it arrives. One collector is used for both
@@ -162,14 +170,14 @@ func (c *cappedOutput) finish() {
 // count of everything either way.
 func (c *cappedOutput) keep(b []byte) {
 	c.total += len(b)
-	if room := cappedHeadBytes - len(c.head); room > 0 {
+	if room := c.keepHead - len(c.head); room > 0 {
 		if room > len(b) {
 			room = len(b)
 		}
 		c.head = append(c.head, b[:room]...)
 	}
-	if len(b) >= cappedTailBytes {
-		copy(c.tail, b[len(b)-cappedTailBytes:])
+	if len(b) >= c.keepTail {
+		copy(c.tail, b[len(b)-c.keepTail:])
 		c.next, c.round = 0, true
 		return
 	}
@@ -179,7 +187,7 @@ func (c *cappedOutput) keep(b []byte) {
 		c.next, c.round = len(b)-n, true
 		return
 	}
-	if c.next += n; c.next == cappedTailBytes {
+	if c.next += n; c.next == c.keepTail {
 		c.next, c.round = 0, true
 	}
 }
@@ -188,7 +196,7 @@ func (c *cappedOutput) tailBytes() []byte {
 	if !c.round {
 		return c.tail[:c.next]
 	}
-	ordered := make([]byte, 0, cappedTailBytes)
+	ordered := make([]byte, 0, c.keepTail)
 	ordered = append(ordered, c.tail[c.next:]...)
 	return append(ordered, c.tail[:c.next]...)
 }
@@ -197,7 +205,7 @@ func (c *cappedOutput) tailBytes() []byte {
 func (c *cappedOutput) String() string {
 	c.finish()
 	tail := c.tailBytes()
-	if c.total <= maxToolResultBytes {
+	if c.total <= c.limit {
 		// Nothing was lost: the head and the ring overlap, and between them
 		// they hold every byte that was written.
 		return string(c.head) + string(tail[len(tail)-(c.total-len(c.head)):])

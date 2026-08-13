@@ -117,7 +117,7 @@ func (t *Toolbox) readDocument(ctx context.Context, args map[string]any) Result 
 	cachePath := extractedDocumentCachePath(full)
 	if cached, ok := readDocumentCache(cachePath, sourceHash, pages.raw); ok {
 		t.workspace.RecordInternal(t.leaf, cachePath)
-		return Result{Content: clamp(cached)}
+		return Result{Content: clamp(cached, t.budgets.result)}
 	}
 
 	engine := documentEngineAuto
@@ -317,7 +317,7 @@ func (t *Toolbox) cacheDocumentResult(cachePath, sourceHash, pages, parserHash, 
 		return errorf("could not cache extracted document text")
 	}
 	t.workspace.RecordInternal(t.leaf, cachePath)
-	return Result{Content: clamp(text), Usage: usage}
+	return Result{Content: clamp(text, t.budgets.result), Usage: usage}
 }
 
 func unsupportedOfficeDocument(path string) Result {

@@ -89,8 +89,8 @@ func toolBlock(t *testing.T, toolbox *Toolbox) string {
 func TestArmingAppendsToTheToolBlockAndNeverReshufflesIt(t *testing.T) {
 	space := workspace(t)
 	for _, family := range []string{FamilyMedia, FamilyDocument} {
-		before := newToolboxWithMedia(space, "1", nil, nil, offersEverything(t))
-		after := newToolboxWithMedia(space, "1", nil, nil, offersEverything(t))
+		before := newToolbox(space, "1", nil, nil, offersEverything(t), 0)
+		after := newToolbox(space, "1", nil, nil, offersEverything(t), 0)
 		after.Arm(family)
 
 		cold, warm := toolBlock(t, before), toolBlock(t, after)
@@ -105,7 +105,7 @@ func TestArmingAppendsToTheToolBlockAndNeverReshufflesIt(t *testing.T) {
 
 	// And arming both, in either order, still only ever appends.
 	space2 := workspace(t)
-	steps := newToolboxWithMedia(space2, "2", nil, nil, offersEverything(t))
+	steps := newToolbox(space2, "2", nil, nil, offersEverything(t), 0)
 	block := toolBlock(t, steps)
 	for _, family := range []string{FamilyDocument, FamilyMedia} {
 		steps.Arm(family)
@@ -127,9 +127,9 @@ func TestTheToolBlockLeadsWithTheSameFiveToolsEverywhere(t *testing.T) {
 	head := []string{"sh", "job", "write", "edit", "web"}
 	for name, toolbox := range map[string]*Toolbox{
 		"a bare machine":   NewToolbox(space, "1", nil),
-		"everything wired": newToolboxWithMedia(space, "2", nil, nil, offersEverything(t)),
+		"everything wired": newToolbox(space, "2", nil, nil, offersEverything(t), 0),
 		"everything wired and armed": func() *Toolbox {
-			full := newToolboxWithMedia(space, "3", nil, nil, offersEverything(t))
+			full := newToolbox(space, "3", nil, nil, offersEverything(t), 0)
 			full.Arm(FamilyMedia, FamilyDocument)
 			return full
 		}(),

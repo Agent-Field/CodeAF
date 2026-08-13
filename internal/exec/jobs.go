@@ -85,6 +85,10 @@ type backgroundJob struct {
 type jobRegistry struct {
 	workspace *Workspace
 	leaf      string
+	// results is the leaf's whole-result bound, handed down from the toolbox so
+	// a job report and an ordinary tool result are clamped at the same place.
+	// See toolBudgets.
+	results int
 
 	mutex       sync.Mutex
 	jobs        map[int]*backgroundJob
@@ -93,10 +97,14 @@ type jobRegistry struct {
 	closedCount int
 }
 
-func newJobRegistry(workspace *Workspace, leaf string) *jobRegistry {
+func newJobRegistry(workspace *Workspace, leaf string, results int) *jobRegistry {
+	if results <= 0 {
+		results = maxToolResultBytes
+	}
 	return &jobRegistry{
 		workspace: workspace,
 		leaf:      leaf,
+		results:   results,
 		jobs:      make(map[int]*backgroundJob),
 		closeDone: make(chan struct{}),
 	}
@@ -546,7 +554,7 @@ func (r *jobRegistry) read(id int) Result {
 	if job == nil {
 		return errorf("no background job %d", id)
 	}
-	output, err := readSince(job.fullPath, &job.readOffset)
+	output, err := readSince(job.fullPath, &job.readOffset, r.results)
 	header := fmt.Sprintf("job %d · %s · %s", job.id, job.status(), job.age(time.Now()))
 	if err != nil {
 		return errorf("%s\ncould not read log: %v", header, err)
@@ -554,10 +562,10 @@ func (r *jobRegistry) read(id int) Result {
 	if output == "" {
 		return Result{Content: header}
 	}
-	return Result{Content: clamp(header + "\n" + output)}
+	return Result{Content: clamp(header+"\n"+output, r.results)}
 }
 
-func readSince(path string, offset *int64) (string, error) {
+func readSince(path string, offset *int64, limit int) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -578,7 +586,7 @@ func readSince(path string, offset *int64) (string, error) {
 		return "", err
 	}
 	*offset = info.Size()
-	return clamp(string(data)), nil
+	return clamp(string(data), limit), nil
 }
 
 func (r *jobRegistry) list() string {
@@ -596,13 +604,13 @@ func (r *jobRegistry) list() string {
 	now := time.Now()
 	for _, id := range ids {
 		job := r.jobs[id]
-		last := lastLogLine(job.fullPath)
+		last := lastLogLine(job.fullPath, r.results)
 		if last == "" {
 			last = "(no output)"
 		}
 		lines = append(lines, fmt.Sprintf("job %d · %s · %s · last: %s", id, job.status(), job.age(now), last))
 	}
-	return clamp(strings.Join(lines, "\n"))
+	return clamp(strings.Join(lines, "\n"), r.results)
 }
 
 // report emits every running job and consumes each terminal transition once.
@@ -621,7 +629,7 @@ func (r *jobRegistry) report() string {
 	var lines []string
 	for _, id := range ids {
 		job := r.jobs[id]
-		last := lastLogLine(job.fullPath)
+		last := lastLogLine(job.fullPath, r.results)
 		if job.state == jobRunning {
 			line := fmt.Sprintf("[job %d · running %s", id, job.age(now))
 			if last != "" {
@@ -640,7 +648,7 @@ func (r *jobRegistry) report() string {
 		}
 		lines = append(lines, line+"]")
 	}
-	return clamp(strings.Join(lines, "\n"))
+	return clamp(strings.Join(lines, "\n"), r.results)
 }
 
 func (job *backgroundJob) status() string {
@@ -672,7 +680,7 @@ func (job *backgroundJob) age(now time.Time) string {
 
 var ansiEscape = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))`)
 
-func lastLogLine(path string) string {
+func lastLogLine(path string, limit int) string {
 	file, err := os.Open(path)
 	if err != nil {
 		return ""
@@ -682,7 +690,7 @@ func lastLogLine(path string) string {
 	if err != nil || info.Size() == 0 {
 		return ""
 	}
-	readBytes := int64(maxToolResultBytes)
+	readBytes := int64(limit)
 	if info.Size() < readBytes {
 		readBytes = info.Size()
 	}
@@ -694,7 +702,7 @@ func lastLogLine(path string) string {
 	for index := len(lines) - 1; index >= 0; index-- {
 		line := strings.TrimSpace(ansiEscape.ReplaceAllString(lines[index], ""))
 		if line != "" {
-			return compactJobLine(clamp(line))
+			return compactJobLine(clamp(line, limit))
 		}
 	}
 	return ""

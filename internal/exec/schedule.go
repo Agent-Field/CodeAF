@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -516,6 +517,9 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 	if strings.TrimSpace(task.Brief) == "" {
 		task.Brief = fallbackBrief(node)
 	}
+	// Sized for the worker that will read it, which is the executor this node
+	// was routed to and not the one that produced the material.
+	inputBudget := s.inputBudget(node.Subharness)
 	for _, need := range node.Needs {
 		source := graph.Node(need)
 		if source == nil {
@@ -523,7 +527,7 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 		}
 		task.Inputs = append(task.Inputs, Input{
 			Title:     source.Title,
-			Result:    boundInput(source.Result, source.Artifacts),
+			Result:    boundInput(source.Result, source.Artifacts, inputBudget),
 			Artifacts: source.Artifacts,
 		})
 	}
@@ -535,31 +539,63 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 		task.Inputs = append(task.Inputs, Input{
 			Title: "your own earlier attempt at this same task",
 			Result: "An earlier attempt on a weaker model ended as " + string(node.Verdict) +
-				". What it had when it stopped:\n" + boundInput(previous, node.Artifacts),
+				". What it had when it stopped:\n" + boundInput(previous, node.Artifacts, inputBudget),
 			Artifacts: node.Artifacts,
 		})
 	}
 	return task
 }
 
-// maxInputBytes bounds one upstream result as it is routed downstream.
+// maxInputBytes bounds one upstream result as it is routed downstream, on a
+// machine that cannot say what the consumer holds.
 //
 // This is the roll-up half of the context problem and it multiplies worse than
 // the loop's own: an input sits in the opening prompt, so it is resent on every
 // turn the consumer takes. A node with five long inputs pays for all five, every
 // turn, before it has done anything. The full text is never lost — it is in the
 // artifact the producer wrote, one `sh` call away.
+//
+// Six kilobytes is that reasoning applied to the 32KB window an unrecognised
+// model gets, so it stays as the named fallback and becomes the numerator of a
+// share everywhere the window is known. See toolBudgets, which does the same
+// thing to the four bounds inside the leaf.
 const maxInputBytes = 6 << 10
 
-func boundInput(result string, artifacts []string) string {
-	if len(result) <= maxInputBytes {
+// inputBudget is how much of one upstream result the consuming leaf may carry.
+//
+// It asks the executor rather than the plan, because the window belongs to the
+// model the worker will actually run on and the registry is where that worker
+// is known. An executor with nothing to say — the SWE subharness, a test double,
+// a scheduler built without a registry — leaves the window unknown, and unknown
+// is the fallback rather than a guess.
+func (s *Scheduler) inputBudget(subharness string) int {
+	tokens := 0
+	if s.registry != nil {
+		if sized, ok := s.registry.For(subharness).(contextSized); ok {
+			tokens = sized.ContextLength()
+		}
+	}
+	return ctxbudget.For(tokens).WithFloor(observationFixedFloorTokens).
+		Share(maxInputBytes, toolBudgetReference, maxInputBytes)
+}
+
+// contextSized is an executor that knows how much its model holds. It is an
+// optional interface rather than a method on Executor because the answer is a
+// fact about a model, and a specialised worker that shells out to somebody
+// else's agent genuinely does not have one.
+type contextSized interface {
+	ContextLength() int
+}
+
+func boundInput(result string, artifacts []string, limit int) string {
+	if len(result) <= limit {
 		return result
 	}
 	pointer := "the file it wrote"
 	if len(artifacts) > 0 {
 		pointer = strings.Join(artifacts, ", ")
 	}
-	kept := wholeRunesHead(result[:maxInputBytes])
+	kept := wholeRunesHead(result[:limit])
 	return kept + fmt.Sprintf(
 		"\n\n... [truncated at %d of %d bytes — the complete version is in %s]",
 		len(kept), len(result), pointer)

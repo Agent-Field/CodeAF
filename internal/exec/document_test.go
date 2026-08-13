@@ -167,9 +167,9 @@ func localRungRan(t *testing.T, log string) bool {
 func documentToolbox(t *testing.T, wire *documentWireCapture, modalities ModalityCatalog) (*Toolbox, *Workspace) {
 	t.Helper()
 	space := workspace(t)
-	tools := newToolboxWithMedia(space, "11", nil, nil, &MediaTools{
+	tools := newToolbox(space, "11", nil, nil, &MediaTools{
 		Catalog: modalities, DocumentClient: wire.client(t), WorkingModel: "work/model",
-	})
+	}, 0)
 	return tools, space
 }
 

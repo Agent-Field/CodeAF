@@ -82,7 +82,10 @@ func (w *Web) searchExa(ctx context.Context, query string, limit int) (string, e
 	defer response.Body.Close()
 	body, _ := io.ReadAll(response.Body)
 	if response.StatusCode >= 400 {
-		return "", fmt.Errorf("exa %d: %s", response.StatusCode, clamp(string(body)))
+		// The named fallback rather than a leaf's budget, and deliberately: a
+		// transport failure is one client's error string, with no worker's model
+		// behind it to size anything against. See toolBudgets.
+		return "", fmt.Errorf("exa %d: %s", response.StatusCode, clamp(string(body), maxToolResultBytes))
 	}
 	var decoded struct {
 		Results []struct {
