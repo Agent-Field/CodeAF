@@ -118,8 +118,15 @@ func TestAWheelOverTheMapWalksTheSelection(t *testing.T) {
 	before := app.railModel.Cursor()
 	app.scope.Mouse(wheelAt(false), image.Point{})
 	after := app.railModel.Cursor()
-	if after != before+1 {
+	// One PLACE down, which from row 0 is over the `threads` heading and onto
+	// the first conversation: a section word is chrome and never a stop
+	// ([rail.RowKind.Selectable]), so a notch that landed on one would be a
+	// gesture the reader has to repeat.
+	if after <= before || !app.railModel.Rows()[after].Kind.Selectable() {
 		t.Fatalf("a notch down moved the cursor %d → %d", before, after)
+	}
+	if app.railModel.Rows()[after-1].Kind.Selectable() {
+		t.Fatalf("a notch down skipped a row a cursor could rest on (%d → %d)", before, after)
 	}
 	app.scope.Mouse(wheelAt(true), image.Point{})
 	if got := app.railModel.Cursor(); got != before {

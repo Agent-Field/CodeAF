@@ -1,24 +1,24 @@
-› how is the parity push going
-
-  the diff i───────────────────────────────────────────────────────────────────────────
-             threads  type to filter                                   3/3 · close esc
-
-             ▎  the wisp parity push  left at: the diff is ready when you …         2h
-              ● importer rewrite      left at: parked on the schema questi…  yesterday
-
-                new thread            start one now — it names itself afte…     ctrl+n
-
-
-
-
-
-
-
-
-            ───────────────────────────────────────────────────────────────────────────
+› how is the parity push going                                          ▎● aforge                 ›
+                                                                           2 running, 1 queued
+  the dif─────────────────────────────────────────────────────          ────────────────────────────
+          threads  type to filter             3/3 · close esc           threads
+                                                                           the wisp parity push   2h
+          ▎  the wisp parity …  left at: the diff…         2h              you are here
+           ● importer rewrite   left at: parked o…  yesterday              importer rewri… yesterday
+                                                                           parked on the schema que…
+             new thread         start one now — i…     ctrl+t              + new
+                                                                        work
+                                                                         ◐ wisp-parity            ›
+                                                                           reworking NavCtx after t…
+                                                                           $8.65 · 1◐ 1○
+                                                                         ├─ ◐ H2
+                                                                         └─ ⚑ KeyCutter
+                                                                              waits: H2
+                                                                         ✓ perf-audit
+         ─────────────────────────────────────────────────────           ○ homes
 
 
 ▍ ›
 
 
-  chat  work  notebook  the wisp parity push                               ~/aforge-v2 · ◐ 1 working
+  chat  work  notebook  threads ▾ ctrl+t  +  the wisp parity push                        ~/aforge-v2

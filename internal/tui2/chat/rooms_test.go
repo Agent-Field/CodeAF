@@ -118,31 +118,62 @@ func boardApp(t *testing.T) (*App, *boardBackend) {
 
 // press drives one keystroke through the real ladder, exactly as a terminal
 // would, and runs whatever command it produced.
+//
+// A CHORD IS BUILT AS THE EVENT A TERMINAL REALLY SENDS, which is the whole
+// reason [chordKey] exists. The default arm below fabricates a key by putting
+// the spelling in [tea.Key.Text], and for a bare letter that is honest — but for
+// a chord it is a forgery that flatters the binding: Bubble Tea's String()
+// returns Text whenever Text is set, so `{Code:'a', Text:"alt+t"}` stringifies
+// to "alt+t" while a REAL alt+t arrives as `{Code:'t', Mod:ModAlt}` with Text
+// empty. The two are indistinguishable to a `switch msg.String()` and completely
+// different to everything else, and the forgery is why a switcher door that
+// never opened in a live terminal had a passing test over it.
 func press(app *App, key string) tea.Msg {
-	var msg tea.KeyPressMsg
-	switch key {
-	case "enter":
-		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
-	case "esc":
-		msg = tea.KeyPressMsg{Code: tea.KeyEscape}
-	case "ctrl+o":
-		msg = tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
-	case "ctrl+k":
-		msg = tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}
-	case "ctrl+u":
-		msg = tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
-	case "up":
-		msg = tea.KeyPressMsg{Code: tea.KeyUp}
-	case "down":
-		msg = tea.KeyPressMsg{Code: tea.KeyDown}
-	default:
-		msg = tea.KeyPressMsg{Code: rune(key[0]), Text: key}
+	msg, ok := chordKey(key)
+	if !ok {
+		switch key {
+		case "enter":
+			msg = tea.KeyPressMsg{Code: tea.KeyEnter}
+		case "esc":
+			msg = tea.KeyPressMsg{Code: tea.KeyEscape}
+		case "up":
+			msg = tea.KeyPressMsg{Code: tea.KeyUp}
+		case "down":
+			msg = tea.KeyPressMsg{Code: tea.KeyDown}
+		default:
+			msg = tea.KeyPressMsg{Code: rune(key[0]), Text: key}
+		}
 	}
 	cmd := app.drain(app.key(msg))
 	if cmd == nil {
 		return nil
 	}
 	return cmd()
+}
+
+// chordKey builds the [tea.KeyPressMsg] a terminal really delivers for a
+// `ctrl+x` or `alt+x` spelling: the letter in Code, the modifier in Mod, and
+// Text EMPTY.
+//
+// The empty Text is the load-bearing part. Bubble Tea's decoder clears it for
+// every modified key — the legacy path wipes it when it unwraps an ESC prefix,
+// the Kitty path wipes it for any modifier above shift — and Key.String()
+// returns Text when Text is set. So a chord with Text filled in is a key that
+// exists nowhere outside a test.
+func chordKey(key string) (tea.KeyPressMsg, bool) {
+	var mod tea.KeyMod
+	switch {
+	case strings.HasPrefix(key, "ctrl+"):
+		mod, key = tea.ModCtrl, strings.TrimPrefix(key, "ctrl+")
+	case strings.HasPrefix(key, "alt+"):
+		mod, key = tea.ModAlt, strings.TrimPrefix(key, "alt+")
+	default:
+		return tea.KeyPressMsg{}, false
+	}
+	if len([]rune(key)) != 1 {
+		return tea.KeyPressMsg{}, false
+	}
+	return tea.KeyPressMsg{Code: []rune(key)[0], Mod: mod}, true
 }
 
 // pressThrough is press plus the one thing a terminal does that press does not:
@@ -163,6 +194,15 @@ func pressThrough(app *App, key string) tea.Msg {
 	return msg
 }
 
+// settledTaskPlace is the digit that reaches the fixture's settled job.
+//
+// It is a NAMED PLACE and not a literal because the digits count rows a cursor
+// can rest on ([App.scopeKey]), and the home rail grew two of them between the
+// cards when a live job started drawing its own parts. A test that spelled the
+// number would have to be re-counted every time the fixture's plan changes; this
+// one only has to be re-counted when the fixture's JOBS do.
+const settledTaskPlace = "8"
+
 // rowNames is what the rail is showing, in order, with the ids it is never
 // allowed to draw kept out of the comparison.
 func rowNames(app *App) []string {
@@ -176,15 +216,20 @@ func rowNames(app *App) []string {
 
 // -- the scope adapter -------------------------------------------------------
 
-// 5.24: row 0 is `aforge`, the home thread list carries a `+ new` row at its
-// foot, the task cards follow, and the collapsed dim group is last.
+// 5.24, in TWO SECTIONS: row 0 is `aforge`, the `threads` heading opens the
+// conversation list with its `+ new` door at the foot, the `work` heading opens
+// the job cards with each live job's own parts hanging under it as the tree's
+// second level, and the collapsed dim group is last under no heading of its own
+// — the lid IS its heading.
 func TestHomeScopeCarriesRoomsTasksAndTheCollapsedGroup(t *testing.T) {
 	app, _ := boardApp(t)
 	names := rowNames(app)
 	want := []string{
 		"aforge",
-		"the wisp parity push", "importer rewrite", "+ new room",
-		"wisp-parity", "perf-audit",
+		sectionThreads,
+		"the wisp parity push", "importer rewrite", newRoomDoor,
+		sectionWork,
+		"wisp-parity", "H2", "KeyCutter", "perf-audit",
 		// 5.24's collapsed group, now the real one (12.10) rather than the
 		// placeholder row that cited the section and opened nothing.
 		homes.GroupWord,
@@ -328,8 +373,10 @@ func TestTheMapTakesTheKeyboardOnlyWhenItHasFocus(t *testing.T) {
 
 	press(app, "ctrl+o")
 	press(app, "j")
-	if app.railModel.Cursor() != 1 {
-		t.Fatalf("j did not move the focused rail: cursor = %d", app.railModel.Cursor())
+	// One PLACE, which from row 0 is over the `threads` heading and onto the
+	// first conversation. A heading is chrome and never a stop.
+	if got := app.railModel.Cursor(); got != 2 {
+		t.Fatalf("j did not move the focused rail: cursor = %d", got)
 	}
 	if got := app.composer.Draft(); got != "j" {
 		t.Fatalf("the map's j reached the draft too: %q", got)
@@ -339,21 +386,22 @@ func TestTheMapTakesTheKeyboardOnlyWhenItHasFocus(t *testing.T) {
 func TestArrowsAndDigitsMoveTheCursor(t *testing.T) {
 	app, _ := boardApp(t)
 	press(app, "ctrl+o")
+	// Two places down from row 0 is the second conversation: the `threads`
+	// heading between them is chrome and costs no keystroke.
 	press(app, "down")
 	press(app, "down")
-	if app.railModel.Cursor() != 2 {
-		t.Fatalf("arrows moved to %d", app.railModel.Cursor())
+	if got := app.railModel.Cursor(); got != 3 {
+		t.Fatalf("arrows moved to %d", got)
 	}
 	press(app, "up")
-	if app.railModel.Cursor() != 1 {
-		t.Fatalf("up moved to %d", app.railModel.Cursor())
+	if got := app.railModel.Cursor(); got != 2 {
+		t.Fatalf("up moved to %d", got)
 	}
+	// A digit counts PLACES too, so the fifth is the first job card whatever
+	// chrome stands between it and the top.
 	press(app, "5")
-	if app.railModel.Cursor() != 4 {
-		t.Fatalf("the digit 5 jumped to row %d, not the fifth", app.railModel.Cursor())
-	}
 	if name := app.railModel.Selected().Name; name != "wisp-parity" {
-		t.Fatalf("row 5 is %q", name)
+		t.Fatalf("the fifth place is %q", name)
 	}
 }
 
@@ -444,7 +492,7 @@ func TestTheComposerBindsTheRoomTheReaderEntered(t *testing.T) {
 
 	press(app, "ctrl+o")
 	press(app, "esc")
-	press(app, "6")
+	press(app, settledTaskPlace)
 	press(app, "enter")
 	if bind := app.composerMode(); bind.mode != rail.ComposerDisabled ||
 		!strings.Contains(bind.note, "settled") {
@@ -482,7 +530,7 @@ func TestTheSteerLineDrawsItsOwnPromptAndHint(t *testing.T) {
 func TestADisabledComposerRefusesTheKeyboardAndSaysWhy(t *testing.T) {
 	app, _ := boardApp(t)
 	press(app, "ctrl+o")
-	press(app, "6")
+	press(app, settledTaskPlace)
 	// 13.18: it is ENTERING settled work that disables the composer, never
 	// looking at it from the map. A preview that could disable the mouth is the
 	// defect this wave closed.
@@ -608,7 +656,7 @@ func TestNarrowAndWideShowTheSameScope(t *testing.T) {
 
 	wide := ansi.Strip(app.Frame(120, 30))
 	narrow := ansi.Strip(app.Frame(80, 30))
-	for _, name := range []string{"aforge", "the wisp parity push", "+ new room", "wisp-parity"} {
+	for _, name := range []string{"aforge", "the wisp parity push", newRoomDoor, "wisp-parity"} {
 		if !strings.Contains(wide, name) {
 			t.Fatalf("the wide rail is missing %q:\n%s", name, wide)
 		}
@@ -616,8 +664,8 @@ func TestNarrowAndWideShowTheSameScope(t *testing.T) {
 			t.Fatalf("the narrow scope pane is missing %q:\n%s", name, narrow)
 		}
 	}
-	if app.railModel.Cursor() != 2 {
-		t.Fatalf("the cursor moved across the breakpoint: %d", app.railModel.Cursor())
+	if name := app.railModel.Selected().Name; name != "importer rewrite" {
+		t.Fatalf("the cursor moved across the breakpoint: it is on %q", name)
 	}
 }
 
@@ -637,7 +685,7 @@ func TestTheHudIsBoundedNarrowAndCarriesOnlyWork(t *testing.T) {
 	if !strings.Contains(joined, "wisp-parity") {
 		t.Fatalf("the HUD does not carry the live work:\n%s", joined)
 	}
-	for _, navigation := range []string{"+ new room", "more", "importer rewrite"} {
+	for _, navigation := range []string{newRoomDoor, "more", "importer rewrite"} {
 		if strings.Contains(joined, navigation) {
 			t.Fatalf("the HUD counted the navigation row %q as work:\n%s", navigation, joined)
 		}
@@ -657,8 +705,8 @@ func TestTheNewRoomRowMintsARoomAndSwitchesToIt(t *testing.T) {
 	app, backend := boardApp(t)
 	press(app, "ctrl+o")
 	press(app, "4")
-	if name := app.railModel.Selected().Name; name != "+ new room" {
-		t.Fatalf("row 4 is %q", name)
+	if name := app.railModel.Selected().Name; name != newRoomDoor {
+		t.Fatalf("the fourth place is %q", name)
 	}
 	msg := press(app, "enter")
 	opened, ok := msg.(roomOpenedMsg)
@@ -1260,7 +1308,7 @@ func TestAnEnteredRoomKnowsWhatItsCardKnew(t *testing.T) {
 
 	for _, tc := range []struct{ digit, name string }{
 		{"5", "wisp-parity"},
-		{"6", "perf-audit"}, // atomic, settled: the shape the screenshot caught
+		{settledTaskPlace, "perf-audit"}, // atomic, settled: the shape the screenshot caught
 	} {
 		if !app.railFocus {
 			press(app, "ctrl+o")
@@ -1300,7 +1348,7 @@ func TestAnEnteredRoomKnowsWhatItsCardKnew(t *testing.T) {
 func TestAnEmptyTaskRoomSaysSoRatherThanDrawingNothing(t *testing.T) {
 	app, _ := boardApp(t)
 	press(app, "ctrl+o")
-	press(app, "6") // perf-audit: no rows under it in the fixture
+	press(app, settledTaskPlace) // perf-audit: no rows under it in the fixture
 	msg := press(app, "enter")
 
 	if app.view == nil || app.view.kind != viewNode {

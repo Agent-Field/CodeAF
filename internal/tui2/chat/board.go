@@ -553,10 +553,16 @@ func (a *App) boardJobs() (working, recent []rail.Row) {
 	rows := a.source.home.Rows
 	for i := range rows {
 		row := rows[i]
-		if !strings.HasPrefix(row.ID, rowTaskPrefix) {
-			// Rooms, the `+ new` door and 5.24's group lid are navigation and
-			// not work. The board is the WORK view; the rooms live in the hug's
-			// own places and in the palette.
+		if row.Kind != rail.RowTask {
+			// Rooms, the `+ new` door, the two section headings and 5.24's group
+			// lid are navigation and not work. The board is the WORK view; the
+			// rooms live in the hug's own places and in the palette.
+			//
+			// IT IS THE KIND AND NOT THE ID PREFIX, and the distinction became
+			// load-bearing when the rail grew a tree: a job's own parts are rail
+			// rows with `task:` ids too, and counting them here made one job
+			// with two parts read as three jobs on the board and in the bar's
+			// dock. A card is a kind; a prefix is a namespace.
 			continue
 		}
 		// A QUESTION OUTRANKS A LIFECYCLE. A job that has stopped and is still

@@ -8,6 +8,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
 )
 
 // The scope adapter: the store's board and plan sight, in the rail's words.
@@ -177,7 +178,44 @@ const (
 	rowNewRoomID  = "new-room"
 	rowRoomPrefix = "room:"
 	rowTaskPrefix = "task:"
+
+	// The two headings and the one note. They are rows so that the fold, the
+	// stable-order merge and the hit table all account for them the way they
+	// account for everything else — a heading drawn outside the row list would
+	// be a line the pointer table has never heard of, which is the hand-
+	// maintained-rectangle failure hit.go exists to avoid.
+	rowSectionThreads = "section:threads"
+	rowSectionWork    = "section:work"
+	rowNoteWork       = "note:work"
 )
+
+// The words the two sections are called, and the one line the work section says
+// when it is empty.
+//
+// `work` rather than `tasks`, and `threads` rather than `chats`, because those
+// are the two words the rest of the product already uses for these two things:
+// the work PAGE is called work, and the switcher and its chord are threads. A
+// third spelling in the rail would be the same fact with two names in a column
+// 28 cells wide.
+//
+// THE QUIET LINE IS THE HEAD'S OWN SENTENCE. `nothing running` is exactly what
+// row 0 says when the board is empty ([scopeSource.headStatus]), and saying it
+// again here in the dimmest tier is not §19's same-fact-twice: the head's line
+// is about the whole board and this one is about a section that has nothing in
+// it. What matters is that they cannot disagree, which is why it is the same
+// string.
+const (
+	sectionThreads = "threads"
+	sectionWork    = "work"
+	quietWork      = "nothing running"
+)
+
+// newRoomDoor is the last row of the threads section (§5.24's `+ new`).
+//
+// `+ new` and not `+ new room`: it is drawn inside a section already headed
+// `threads`, and repeating the noun in the row under its own heading is the
+// column spending two of its 28 columns on a word the heading just said.
+const newRoomDoor = "+ new"
 
 // scopeLimits bound what one rail can hold. None of them is a policy about what
 // exists — they are what a 28-column column can show before the fold line does
@@ -189,6 +227,16 @@ const (
 	// maxTaskRows bounds the task cards. Unsettled work is kept first, so the
 	// cap only ever drops history.
 	maxTaskRows = 24
+	// maxPlanRows is how many of a job's own parts hang under its card in the
+	// home rail's tree.
+	//
+	// Six, and the arithmetic is the rail's height rather than the plan's size:
+	// a card is three lines and a limb is one, so a job that expands fully costs
+	// nine rows, and two of those beside a threads section already fill a
+	// 24-row terminal. What accounts for the rest is not a fold line but the
+	// card's own census — `2◐ 4✓` counts every part whether or not it has a row
+	// — so the cap drops rows and never drops information.
+	maxPlanRows = 6
 	// maxQuestionRead is the question page. A window with more open questions
 	// than this has a bigger problem than a rail.
 	maxQuestionRead = 200
@@ -243,6 +291,9 @@ type scopeSource struct {
 	// titles is the room-title lookup the status line reads, so a breadcrumb
 	// never has to fall back to an id (13.3.4).
 	titles map[string]string
+	// threads is the thread index the threads section is drawn from, pushed in
+	// by the app rather than read here. See [scopeSource.setThreads].
+	threads []Thread
 	// label caches each node's drawable name, so the DAG walk names a waits-on
 	// edge without re-deriving the label per edge.
 	label map[string]string
@@ -430,6 +481,14 @@ func (s *scopeSource) refresh(journal int64, force bool) bool {
 	// card's tokens never wait a poll. Bounded by the same card-root cap.
 	s.topUpCardReceipts()
 	return true
+}
+
+// rebuild forces the cache to be rebuilt at the journal position it already
+// holds. It is for the facts that do NOT arrive with the journal — the thread
+// index, which is read when a door opens — so a caller that has just pushed one
+// in can have it on the next frame without pretending the journal moved.
+func (s *scopeSource) rebuild() {
+	s.refresh(s.stamp, true)
 }
 
 // readSessions reads the room list and refreshes the title lookup.
@@ -650,6 +709,20 @@ func (s *scopeSource) rememberSubtree(root string, nodes []store.Node) bool {
 // the thing a person switches between; the tasks are the thing they watch; the
 // doors that are not built yet are last, dim, and collapsed, so live work keeps
 // the top of the rail exactly as 5.24 asks.
+//
+// TWO SECTIONS, ONE COLUMN. The lists used to run into each other — a room, a
+// room, a door, a job, a job, a lid — with nothing but a change of anatomy
+// between them, and a reader scanning for "where are my conversations" had to
+// work it out from the shapes. Two words in the chrome tier say it instead
+// ([rail.RowSection]), and they cost one row each because they are what makes
+// the rest of the column readable at a glance.
+//
+// THE THREADS SECTION CANNOT BE EMPTY AND THE WORK SECTION CAN. The reader is
+// standing in one of the threads, and the door to a new one is the section's
+// last row, so there is always something under that heading; a board with
+// nothing on it is an ordinary morning, and the heading says so in one faint
+// line rather than standing over a gap (§5: an empty rail is composed, never
+// broken).
 func (s *scopeSource) buildHome(sessions []store.Session, snapshot store.Snapshot,
 	usage map[string]store.JobUsage, questions []store.AgentQuestion) rail.Scope {
 
@@ -661,11 +734,25 @@ func (s *scopeSource) buildHome(sessions []store.Session, snapshot store.Snapsho
 		Composer: rail.ComposerChat,
 		Status:   s.headStatus(snapshot),
 	})
+	rows = append(rows, rail.Row{ID: rowSectionThreads, Kind: rail.RowSection, Name: sectionThreads})
 	rows = append(rows, s.roomRows(sessions)...)
-	rows = append(rows, s.taskRows(snapshot, usage, questions)...)
+	rows = append(rows, rail.Row{ID: rowSectionWork, Kind: rail.RowSection, Name: sectionWork})
+	// taskRows is called unconditionally: it is also what builds every task
+	// scope the rail can descend into and what caches the board for the record
+	// page, so a board with nothing on it still has to walk it.
+	if work := s.taskRows(snapshot, usage, questions); len(work) > 0 {
+		rows = append(rows, work...)
+	} else {
+		rows = append(rows, rail.Row{ID: rowNoteWork, Kind: rail.RowNote, Name: quietWork})
+	}
 	// 5.24's collapsed dim group, and the four rooms behind it. It used to be a
 	// placeholder row that cited this section by name and opened nothing;
 	// internal/tui2/homes is what it was a placeholder FOR.
+	//
+	// It is under no heading, and that is deliberate: the lid IS its heading —
+	// one collapsed row naming what is behind it — and a section word over a row
+	// that is already a section word would be the same fact twice at the dimmest
+	// end of the column.
 	rows = append(rows, homes.Rows(s.homes)...)
 	return rail.Scope{ID: rail.HomeScopeID, Title: "aforge", Rows: rows}
 }
@@ -723,46 +810,142 @@ func (s *scopeSource) headStatus(snapshot store.Snapshot) string {
 // The current room is always present even when it has aged out of the top of
 // the list, because a switcher that cannot show you where you are is a switcher
 // that can strand you.
+// THE ROWS ARE THE THREAD INDEX AND NOT THE SESSION LIST. A session knows its
+// id, its title and when it last moved; a thread also knows the LINE IT WAS LEFT
+// AT and whether something has landed in it since this window last looked, and
+// those two are the whole reason the section is worth its column. The index is
+// what the switcher has always read (threads.go), so the rail and the switcher
+// now draw one list two ways instead of two lists that happen to overlap.
+//
+// It falls back to the session list when nobody has handed it an index, which is
+// every test built on a bare [Rooms] and every backend that is only a message
+// log: a rail with names and no left-at lines is degraded, and a rail with no
+// conversations at all would be broken.
 func (s *scopeSource) roomRows(sessions []store.Session) []rail.Row {
 	rows := make([]rail.Row, 0, maxRoomRows+1)
 	seen := false
-	for _, session := range sessions {
-		if len(rows) >= maxRoomRows && session.ID != s.session {
+	for _, thread := range s.threadList(sessions) {
+		if len(rows) >= maxRoomRows && thread.SessionID != s.session {
 			continue
 		}
-		if session.ID == s.session {
+		if thread.SessionID == s.session {
 			seen = true
 		}
-		rows = append(rows, s.roomRow(session))
+		rows = append(rows, s.roomRow(thread))
 	}
 	if !seen && s.session != "" {
-		rows = append([]rail.Row{s.roomRow(store.Session{ID: s.session,
-			Title: s.titles[s.session]})}, rows...)
+		rows = append([]rail.Row{s.roomRow(Thread{SessionID: s.session})}, rows...)
 	}
 	rows = append(rows, rail.Row{
-		ID:       rowNewRoomID,
-		Kind:     rail.RowStep,
-		Name:     "+ new room",
+		ID:   rowNewRoomID,
+		Kind: rail.RowThread,
+		Name: newRoomDoor,
+		// NO STATUS. `start a fresh conversation` was a second line explaining a
+		// row that says `+ new`, and a door whose label is a verb has already
+		// said what it does. The row is a thread-kind row so the door lines up
+		// with the list it belongs to — same ornament column, same left edge —
+		// and its blank ornament cell is what makes the whole column straight.
 		Composer: rail.ComposerNone,
-		Status:   "start a fresh conversation",
 	})
 	return rows
 }
 
-func (s *scopeSource) roomRow(session store.Session) rail.Row {
+// threadList is the rows this frame draws: the SESSION LIST for which
+// conversations exist and in what order, enriched from the thread index for what
+// each of them was left saying.
+//
+// THE SESSIONS DECIDE WHO IS ON THE LIST, and they have to. The session read
+// rides the poll and the index does not (see [scopeSource.setThreads]), so a
+// list driven by the index alone would not show a room minted in another window
+// until this one happened to open a door — a rail that is missing a
+// conversation is worse than a rail whose left-at line is one exchange old. The
+// index therefore decorates rows and never decides that one exists, which is
+// the same rule ThreadIndex itself was renamed to state (threads.go).
+func (s *scopeSource) threadList(sessions []store.Session) []Thread {
+	if len(sessions) == 0 {
+		// No room read at all — a backend that is only a message log. The index
+		// is then the only thing that knows there are conversations.
+		return s.threads
+	}
+	known := make(map[string]Thread, len(s.threads))
+	for _, thread := range s.threads {
+		known[thread.SessionID] = thread
+	}
+	out := make([]Thread, 0, len(sessions))
+	for _, session := range sessions {
+		thread := known[session.ID]
+		thread.SessionID = session.ID
+		if thread.Name == "" {
+			thread.Name = strings.TrimSpace(session.Title)
+		}
+		if session.LastActive.After(thread.LastActive) {
+			thread.LastActive = session.LastActive
+		}
+		out = append(out, thread)
+	}
+	return out
+}
+
+// roomRow is one conversation: its name, the line it was left at, when it last
+// moved, and the ornament if something landed there unseen.
+//
+// THE NAME IS TAKEN FRESH AND EVERYTHING ELSE IS TAKEN FROM THE INDEX, and the
+// split is the cost note on [App.readThreads] made structural. The index is
+// re-read when a door opens, not on the poll, so a thread the scribe named
+// thirty seconds ago would carry its old name for as long as the reader stared
+// at it; the TITLE lookup is refreshed every poll for free (readSessions), so
+// the one field that changes on its own is read from there. Nothing else in the
+// row can go stale in a way a reader would notice: a left-at line that is one
+// exchange behind is still where the conversation was left.
+func (s *scopeSource) roomRow(thread Thread) rail.Row {
+	name := strings.TrimSpace(s.titles[thread.SessionID])
+	if name == "" {
+		name = strings.TrimSpace(thread.Name)
+	}
+	if name == "" {
+		name = untitledRoom
+	}
 	row := rail.Row{
-		ID:       rowRoomPrefix + session.ID,
-		Kind:     rail.RowStep,
-		Name:     roomLabel(session),
+		ID:       rowRoomPrefix + thread.SessionID,
+		Kind:     rail.RowThread,
+		Name:     name,
+		Status:   thread.LeftAt,
+		When:     reltime.Short(thread.LastActive, s.now()),
+		Unseen:   thread.Unseen,
 		Composer: rail.ComposerChat,
 	}
-	if session.ID == s.session {
+	if thread.SessionID == s.session {
+		// YOU ARE HERE OUTRANKS WHERE YOU LEFT OFF, and the dot cannot be lit on
+		// the row you are standing in — you are looking at whatever landed. The
+		// window's own markSeen already refuses the ornament for this row; this
+		// is the same refusal said where the row is built, because a rail that
+		// depended on somebody else having said it first is a rail one refactor
+		// away from dotting the room the reader is in.
 		row.Status = "you are here"
+		row.Unseen = false
 		if s.haveSpend {
 			row.Meta.Cost, row.Meta.HasCost = s.spendCost, true
 		}
 	}
 	return row
+}
+
+// setThreads hands the source the thread index the app has just read.
+//
+// IT IS PUSHED IN RATHER THAN READ HERE, and that is the cost note on
+// [App.readThreads] obeyed rather than restated: the index costs two indexed
+// queries PER LISTED THREAD on a backend that cannot answer it wholesale, and
+// this source rebuilds on every journal move. Putting the read behind that
+// rebuild would put a per-room query behind the poll — the exact cost five waves
+// of this package have spent removing from everything else.
+//
+// So the app refreshes it at the three moments a stale list would be visible:
+// when the window is built, when the reader switches threads, and when the rail
+// EXPANDS. Between those the names still track (see [scopeSource.roomRow]) and
+// the ornament is at worst one door-opening behind — which is the same freshness
+// the switcher itself has always had.
+func (s *scopeSource) setThreads(threads []Thread) {
+	s.threads = threads
 }
 
 // roomLabel is 13.3.4 made a function: a room is drawn by its title, and a room
@@ -854,8 +1037,61 @@ func (s *scopeSource) taskRows(snapshot store.Snapshot, usage map[string]store.J
 		}
 		card := s.taskCard(root, byID, children, usage, waits, asks, rolls, money, now)
 		rows = append(rows, card)
+		rows = append(rows, s.planRows(card, root, byID, children, waits, asks, rolls, money, now)...)
 		s.tasks[rowTaskPrefix+root.ID] =
 			s.taskScope(card, root, byID, children, waits, asks, rolls, money, now)
+	}
+	return rows
+}
+
+// planRows are a job's own parts, hanging off its card as the home rail's tree.
+//
+// TWO LEVELS AND NEVER THREE (the owner's spec, and the column's arithmetic).
+// The rail is 28 columns and a connector costs three of them per level, so a
+// third level would start a row's name at column ten — and a plan that split
+// itself four deep mid-flight would walk the names off the right edge one
+// refresh at a time. What happens to the depth below is not a truncation: every
+// limb carries the CENSUS of its own subtree on its right (`2◐ 1✓`, see
+// [treeMeta]), so a step that fanned into six workers says six, in one cell, and
+// the reader who wants their names enters the job — which is where 5.9 has
+// always put full depth.
+//
+// A SETTLED JOB DOES NOT EXPAND. The tree exists to show what is happening now;
+// history is one card and a receipt, and a finished job that kept eight rows
+// would push live work off the bottom of the column — §6's "live floats,
+// settled sinks" read as a height budget.
+//
+// NEITHER DOES A JOB THAT IS ONE HAND (§14). One leaf under one card is a limb
+// whose name and clock are the card's own, drawn twice — and §14 is explicit
+// that a single-part job has nothing to say about its shape.
+func (s *scopeSource) planRows(card rail.Row, root store.Node, byID map[string]store.Node,
+	children map[string][]string, waits map[string][]string, asks map[string]int,
+	rolls map[string]roll, money spend, now time.Time) []rail.Row {
+
+	if card.Life.Terminal() {
+		return nil
+	}
+	kids := childrenInOrder(children[root.ID], byID)
+	if len(kids) == 0 {
+		return nil
+	}
+	if len(kids) == 1 && len(children[kids[0]]) == 0 {
+		return nil
+	}
+	rows := make([]rail.Row, 0, len(kids))
+	for _, kid := range kids {
+		if len(rows) >= maxPlanRows {
+			break
+		}
+		kind := rail.RowWorker
+		if len(children[kid]) > 0 {
+			kind = rail.RowStep
+		}
+		row := s.treeRow(byID[kid], kind, waits, asks, rolls, money, now)
+		row.Depth = 1
+		row.Tree = true
+		row.Seed = root.ID
+		rows = append(rows, row)
 	}
 	return rows
 }

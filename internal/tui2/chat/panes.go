@@ -940,6 +940,7 @@ type statusPane struct {
 	// window is gone, what the day has cost. Filled by refresh and the poll;
 	// every absent one renders as nothing at all (§16's EMPTINESS).
 	places    []footer.Place
+	doors     []footer.Door
 	spend     float64
 	haveSpend bool
 	// dir is the abbreviated ground, rendered by internal/tui2/placeline and
@@ -965,12 +966,20 @@ type statusPane struct {
 	// the same act esc takes on a live turn, reached by a pointer.
 	interrupt func() tea.Cmd
 
-	// dock is §6's hidden sidebar, collapsed onto this row (footer/dock.go). It
-	// is filled by refresh: whether the drawer is shut, and how much live work
-	// is inside it. openRail is the one act it performs, and it is the very act
-	// the rail chord performs — a click and a chord that opened the drawer by
-	// two different routes would be two drawers.
-	dock     footer.Dock
+	// dock is §6's collapsed sidebar on this row (footer/dock.go): whether the
+	// map is off the frame, and how much live work is behind it. openRail is the
+	// one act it performs, and it is the very act the rail chord performs — a
+	// click and a chord that opened the drawer by two different routes would be
+	// two drawers.
+	//
+	// IT IS A FUNCTION AND NOT A FIELD, and the reason is the width. Whether the
+	// map is on the frame is no longer a flag the surface holds: a terminal too
+	// narrow for the column squeezes it out on its own, and the collapsed rung
+	// draws a handle rather than the rows. Both of those are facts about the
+	// SOLVED FRAME, so the answer has to be taken while the frame is being
+	// drawn — a value filled by refresh was one resize behind, and the bar spent
+	// a whole size class saying there was nothing to see.
+	dock     func() footer.Dock
 	openRail func() tea.Cmd
 
 	// Filled every frame by the app's refresh, from the state that decides
@@ -1006,6 +1015,10 @@ type statusPane struct {
 	// row knows which word was pointed at and nothing else, and a chip and a key
 	// that opened the list by two different routes would be two lists.
 	openThreads func() tea.Cmd
+	// newThread mints a conversation and walks into it — the `+` door, and the
+	// same act the switcher's last row performs. It is a function for the same
+	// reason [statusPane.openThreads] is.
+	newThread func() tea.Cmd
 	// foldable says the transcript holds a row the receipts fold can act on.
 	// The accelerator is only offered while it does — 5.20 rule 3 forbids
 	// naming a door that opens nothing.
@@ -1102,6 +1115,7 @@ func (p *statusPane) row(width int) string {
 func (p *statusPane) focusContext(width int) footer.FocusContext {
 	return footer.FocusContext{
 		Places:        p.places,
+		Doors:         p.doors,
 		Spend:         p.spend,
 		HaveSpend:     p.haveSpend,
 		Verbs:         p.offeredVerbs(width),
@@ -1112,7 +1126,7 @@ func (p *statusPane) focusContext(width int) footer.FocusContext {
 		KeyMode:       p.keyMode,
 		KeyModeCount:  p.keyCount,
 		Health:        p.health(),
-		Dock:          p.dock,
+		Dock:          p.dockNow(),
 		Thread:        strings.TrimSpace(p.thread),
 		ScopeTail:     p.scopeTail(),
 		Hover:         p.hover,
@@ -1162,12 +1176,26 @@ func (p *statusPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 			return p.interrupt()
 		}
 		return nil
-	case footer.ThreadTarget:
-		// The title chip is the switcher's door (5.3). It goes through the app's
-		// own [App.openSwitcher] rather than raising anything itself, so the
-		// chip and the `t` key cannot leave the surface in two different states.
+	case footer.ThreadTarget, footer.ThreadsDoorTarget:
+		// The title chip is the switcher's door (5.3), and so is the `threads`
+		// word beside the tabs. Both go through the app's own
+		// [App.openSwitcher] rather than raising anything themselves, so the
+		// chip, the word and the chord cannot leave the surface in three
+		// different states.
+		//
+		// TWO DOORS ONTO ONE ACT IS NOT TWO DOORS TOO MANY. The chip is absent
+		// until the scribe has named the conversation; the word is always there.
+		// A reader in a fresh window has only the word.
 		if p.openThreads != nil {
 			return p.openThreads()
+		}
+		return nil
+	case footer.NewThreadTarget:
+		// The `+`. It performs exactly what the switcher's last row performs,
+		// through the same call, so the bar and the list cannot disagree about
+		// what minting a thread does.
+		if p.newThread != nil {
+			return p.newThread()
 		}
 		return nil
 	case footer.DockTarget:
@@ -1211,6 +1239,15 @@ func (p *statusPane) Hover(local image.Point, inside bool) bool {
 // A visitor says so for as long as it is true, and says what it is waiting on —
 // which is the notice that used to go to stderr and got swallowed whole by the
 // alt screen, leaving a window that looked like a dead app.
+// dockNow asks the app for the collapsed sidebar's counts at the moment the bar
+// is being painted. A nil seam is a window with no sidebar to collapse.
+func (p *statusPane) dockNow() footer.Dock {
+	if p.dock == nil {
+		return footer.Dock{}
+	}
+	return p.dock()
+}
+
 func (p *statusPane) health() []string {
 	note := strings.TrimSpace(p.residency.Note)
 	if !p.residency.Visitor {

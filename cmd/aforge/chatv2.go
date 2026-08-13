@@ -199,6 +199,9 @@ func runChatV2(args []string) error {
 		Profile:   profile,
 		Linear:    linearOn,
 		GlyphSet:  glyphs,
+		// The sidebar's remembered rung, and the door back (chatv2_rail.go).
+		Rail:     resolveRail(),
+		SaveRail: saveRail,
 	})
 	seenErr := role.sessionClosed()
 	role.stop()

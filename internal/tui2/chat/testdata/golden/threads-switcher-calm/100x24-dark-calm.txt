@@ -6,7 +6,7 @@
              ▎  1. the wisp parity pu…  left at: the diff is ready when yo…         2h
               ● 2. importer rewrite     left at: parked on the schema ques…  yesterday
 
-                new thread              start one now — it names itself af…     ctrl+n
+                new thread              start one now — it names itself af…     ctrl+t
 
 
 
@@ -21,4 +21,4 @@
 ▍ ›
 
 
-  chat  work  notebook  the wisp parity push                               ~/aforge-v2 · ◐ 1 working
+  chat  work  notebook  threads ▾ ctrl+t  +  the wisp parity push          ~/aforge-v2 · ◐ 1 working

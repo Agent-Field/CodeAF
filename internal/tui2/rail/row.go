@@ -26,6 +26,31 @@ const (
 	// RowWorker is a worker inside a task scope, or a per-worker row under a
 	// focused card.
 	RowWorker
+	// RowSection is a heading: one faint word naming what follows it. The rail
+	// carries exactly two — `threads` and `work` — and they are the whole of
+	// what makes one column two lists.
+	//
+	// IT IS CHROME AND THEREFORE NOT SELECTABLE. A heading is a fact about the
+	// rows under it, and a cursor that could rest on one would be a cursor with
+	// a position that means nothing: enter would have nothing to open, the
+	// composer would have nothing to bind, and j would need two presses to
+	// cross a line the reader does not think of as a row at all.
+	RowSection
+	// RowNote is a section that has nothing in it, said in one faint line —
+	// `nothing running`. It is not an error state and must never read as one
+	// (§5's empty rail is composed, not broken), and like [RowSection] it is
+	// chrome and not selectable.
+	RowNote
+	// RowThread is one working conversation in the threads section: its name,
+	// the line it was left at, when it last moved, and the unseen ornament.
+	//
+	// It is its own kind rather than a [RowStep] wearing extra fields because
+	// its ANATOMY is different — a step's telemetry rides the right of its own
+	// name and a thread's second line is always drawn, since "what was this
+	// conversation saying when I walked away" is the question the list exists to
+	// answer and a status that only appeared under the cursor would answer it
+	// one row at a time.
+	RowThread
 )
 
 // String names the kind.
@@ -39,8 +64,22 @@ func (k RowKind) String() string {
 		return "step"
 	case RowWorker:
 		return "worker"
+	case RowSection:
+		return "section"
+	case RowNote:
+		return "note"
+	case RowThread:
+		return "thread"
 	}
 	return "invalid"
+}
+
+// Selectable reports whether the cursor may rest on this kind. Only the two
+// chrome kinds refuse it, and they refuse it everywhere at once: the model's
+// movement, its clamp and its refresh all ask this one question, so a heading
+// cannot be reachable by one gesture and not by another.
+func (k RowKind) Selectable() bool {
+	return k != RowSection && k != RowNote
 }
 
 // Lifecycle is the durable state of the work behind a row. It mirrors
@@ -421,6 +460,35 @@ type Row struct {
 	// Seed is the identity seed for the pastel accent (5.16) — normally the
 	// top-level task's ID. Empty means the row inherits its scope's seed.
 	Seed string
+
+	// When is the row's relative time, ALREADY FORMATTED — `2h`, `now`, `3d`.
+	//
+	// The rail does not own a clock and does not own a spelling for one. There
+	// is exactly one reading of relative time in this product
+	// (internal/tui2/reltime) and it is the source's job to have taken it, for
+	// the same reason [StateCounts.Cell] is exported: two surfaces spelling one
+	// fact two ways is the failure that package exists to prevent. Empty draws
+	// nothing.
+	When string
+	// Unseen is THE ONE ORNAMENT (chat-simplify 5.1 law 3): a delivery landed
+	// in this row's conversation that this window has not shown anyone.
+	//
+	// It has exactly one meaning and there are no others. It is never progress,
+	// never a new thread, never a fresh window — the source is expected to have
+	// applied that discipline before setting it (chat's markSeen), because the
+	// dot's whole value is that a reader who has learned to trust it never has
+	// to check one that turns out to be nothing.
+	Unseen bool
+	// Tree says this row is a LIMB of the tree its parent draws, so it wears a
+	// connector rather than a plain indent.
+	//
+	// It is on the row and not derived from the scope because at home the two
+	// lists live in one column: a thread is a flat list item at depth 0 and a
+	// plan step is a branch at depth 1, and the same [RowKind] appearing in both
+	// places would have to be told apart by something. Whether the row has a
+	// parent is a fact about the ROW; which of its siblings is last is a fact
+	// about its NEIGHBOURS and stays out of here (see [treeGuide]).
+	Tree bool
 }
 
 // key is what the cursor and the stable-order merge remember a row by.

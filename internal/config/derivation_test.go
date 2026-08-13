@@ -125,6 +125,7 @@ var settingReaders = map[string]string{
 	KeyVisionModel:    "VisionModel",
 	KeyAttribution:    "Attribution",
 	KeyLinearMode:     "LinearModeAt",
+	KeyRailState:      "RailStateAt",
 	KeyNerdFont:       "NerdFontChosenAt",
 	// The context law's knobs are read live by ctxbudget on every call — the
 	// environment name is the reader, as with tenure; Load seeds the

@@ -74,15 +74,27 @@ func (s rowShape) height() int {
 // tree drawn with a ├ where a ╰ belongs is a picture of a plan that does not
 // exist.
 type treeGuide struct {
-	// on is whether this row draws a connector at all. Only a JOB SCOPE's
-	// members do: the home rail is a list of jobs, rooms and doors, and a tree
-	// drawn over it would claim a structure those rows do not have.
+	// on is whether this row draws a connector at all. A JOB SCOPE's members
+	// all do, and at home the rows that carry [Row.Tree] do: the home rail is a
+	// list of conversations, jobs and doors, and only the plan steps hanging off
+	// a job card have a parentage to draw. A tree over the rest would claim a
+	// structure those rows do not have.
 	on bool
 	// last says the row is the last child at its depth: its branch is the
 	// corner, and the guide under it is blank.
 	last bool
-	// open is the set of ancestor depths whose branch continues below this row,
-	// one bit per depth. A set bit draws the vertical guide in that column; a
+	// level is how many tree columns stand to the left of this row's branch: 0
+	// for a first-level limb, 1 for its child.
+	//
+	// It is measured from the shallowest connector row in the SCOPE rather than
+	// from the row's own depth, because the same tree is drawn at two altitudes.
+	// Inside a job the steps are the surface row's children and sit at depth 0;
+	// at home they hang off a card that is itself a member, so they sit at depth
+	// 1 — and a tree that indented by six columns at home and three inside the
+	// job would be one grammar with two spellings, in a column that has 28.
+	level int
+	// open is the set of ancestor LEVELS whose branch continues below this row,
+	// one bit per level. A set bit draws the vertical guide in that column; a
 	// clear one draws the three spaces that say the ancestor is finished.
 	open uint8
 }
@@ -116,7 +128,7 @@ type rowIndent struct {
 // glyphCol is where the row's state glyph goes.
 func (a rowIndent) glyphCol() int {
 	if a.guide.on {
-		return a.base + (a.depth+1)*treeStep
+		return a.base + (a.guide.level+1)*treeStep
 	}
 	return a.base + a.depth*indentStep
 }
@@ -133,7 +145,7 @@ func (a rowIndent) textCol() int { return a.glyphCol() + indentStep }
 func (v *View) indentTo(l *lineBuf, at rowIndent, sub bool) {
 	l.padTo(at.base)
 	if at.guide.on {
-		for k := 0; k < at.depth; k++ {
+		for k := 0; k < at.guide.level; k++ {
 			if at.guide.open&(1<<uint(k)) != 0 {
 				l.add(guideVert, tokens.TextTertiary)
 			} else {
@@ -178,6 +190,18 @@ func (v *View) shapeOf(r Row, sel bool, detail int) rowShape {
 		return true
 	}
 	switch r.Kind {
+	case RowSection, RowNote:
+		// Chrome is one line and stays one line. A heading that grew under the
+		// cursor could not — the cursor cannot rest on one.
+		return s
+	case RowThread:
+		// TWO LINES, ALWAYS. The left-at line is not a preview: "what was this
+		// conversation saying when I walked away" is the question the threads
+		// list exists to answer, and a status that appeared only under the
+		// cursor would answer it one row at a time, which is a list the reader
+		// has to interrogate instead of read. The relative time rides line 1
+		// beside the name, so there is no third line to drop.
+		s.status = v.clean(r.Status) != ""
 	case RowStep, RowWorker:
 		// A tree row is one line, telemetry included: it carries its cells on
 		// the right of its own name rather than on a line of its own, which is
@@ -209,6 +233,14 @@ func (v *View) appendRow(r Row, sel bool, width, limit, detail int,
 	at := rowIndent{base: gutterFor(width) + v.leadWidth(), depth: r.Depth, guide: guide}
 
 	switch r.Kind {
+	case RowSection:
+		v.push(v.sectionLine(r, width), limit)
+		return
+	case RowNote:
+		v.push(v.noteLine(r, width, at), limit)
+		return
+	case RowThread:
+		v.push(v.threadLine(r, width, at, sel, banded, band, ident), limit)
 	case RowStep, RowWorker:
 		v.push(v.treeLine(r, width, at, sel, banded, band, ident), limit)
 	default:
@@ -321,6 +353,84 @@ func (v *View) treeLine(r Row, width int, at rowIndent, sel, banded bool, band, 
 	if n > 0 && l.room() >= rightW {
 		l.padTo(l.max - rightW + 1)
 		v.addMeta(l, n)
+	}
+	return v.emit(width, banded, band)
+}
+
+// sectionLine is one of the rail's two headings: a single faint word, hanging
+// at column zero.
+//
+// IT IS NOT A RULE, and that is a decision rather than an omission. 5.13 allows
+// rules only at ROOM boundaries and the rail already spends its one on the seam
+// between a scope's surface and its members; two more inside the same room would
+// make a 28-column column look like a form. The register does the work instead —
+// the heading is the same tertiary tier as the connectors and the fold line —
+// which is also why it takes no blank line above it: a rail buys vertical space
+// with rows of work, and a word in the chrome tier is already a boundary to the
+// eye without one.
+//
+// It hangs at column zero, one further left than every row, because the gutter
+// belongs to the selection accent and a heading is never selected. A hanging
+// heading is a piece of typography this surface can afford; an indented one
+// would read as an item in the list it is naming.
+func (v *View) sectionLine(r Row, width int) string {
+	l := &v.line
+	l.reset(width)
+	l.add(blocks.Truncate(v.clean(r.Name), width), tokens.TextTertiary)
+	return v.emit(width, false, tokens.Ground)
+}
+
+// noteLine is a section with nothing in it, said once: `nothing running`.
+//
+// IT MUST NOT READ AS AN ERROR (§5). It is drawn where its rows would have been,
+// in their own tier's dimmest neighbour, with no glyph — there is no state to
+// carry a state glyph, and ○ on an absence would be claiming that something is
+// pending. A rail with nothing live is a composed rail, not a broken one.
+func (v *View) noteLine(r Row, width int, at rowIndent) string {
+	l := &v.line
+	l.reset(width)
+	l.padTo(at.base)
+	l.add(blocks.Truncate(v.clean(r.Name), l.room()), tokens.TextTertiary)
+	return v.emit(width, false, tokens.Ground)
+}
+
+// threadLine is line 1 of a conversation: the ornament column, the thread's
+// name, and when it last moved, flush right.
+//
+// THE ORNAMENT COLUMN IS ALWAYS RESERVED AND ALMOST ALWAYS EMPTY. The dot is
+// the one thing on this rail that is allowed to pull an eye, so it takes the
+// strongest position a row has — first cell, leading the name — and every other
+// thread indents past a blank there. Alignment is what makes it work: a dot that
+// pushed its own row's name one column right would be an ornament the reader
+// finds by noticing that a line is crooked.
+//
+// It is CYAN, and palette's switcher paints the same dot the same colour for the
+// same reason: 5.16 spends amber on one thing only, a human actually being
+// needed, and a delivery that landed is the opposite of a demand. It is news.
+// Spending the product's one alarm colour on good outcomes is how a reader
+// learns to stop trusting it on the row where it matters.
+func (v *View) threadLine(r Row, width int, at rowIndent, sel, banded bool, band, ident tokens.Token) string {
+	l := &v.line
+	l.reset(width)
+	v.gutter(l, sel, banded, ident)
+	l.padTo(at.glyphCol())
+	if r.Unseen {
+		l.add(roomDot, tokens.Cyan)
+	} else {
+		l.padTo(at.glyphCol() + 1)
+	}
+	l.add(" ", tokens.TextTertiary)
+
+	when := v.clean(r.When)
+	rightW := blocks.Width(when)
+	if rightW > 0 {
+		rightW++
+	}
+	room := l.max - l.w - rightW
+	l.add(blocks.Truncate(v.clean(r.Name), room), v.nameToken(r))
+	if when != "" && l.max-l.w >= rightW {
+		l.padTo(l.max - rightW + 1)
+		l.add(when, tokens.TextTertiary)
 	}
 	return v.emit(width, banded, band)
 }

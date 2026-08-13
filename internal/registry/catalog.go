@@ -151,10 +151,32 @@ func threadKeyRows() []Entry {
 		// `t` is the key the doc names and the one a reader learns, and in a
 		// composer-first room a bare letter is draft text — so the chat surface
 		// claims `t` only where it cannot mean anything else (an empty draft, no
-		// overlay) and binds alt+t everywhere. Both are real bindings in live
-		// code, so both are recorded.
+		// overlay) and binds the chord everywhere. Both are real bindings in
+		// live code, so both are recorded.
+		//
+		// THE CHORD IS ctrl+t AND NOT alt+t, and the correction is the whole
+		// reason this row is being touched. A catalog row is what the `?` sheet
+		// and the summon palette TEACH; teaching a key that the reader's
+		// terminal eats before the program sees it is worse than teaching none,
+		// because the reader concludes the feature is missing rather than that
+		// the door is elsewhere. macOS composes Option+t into `†` — see
+		// internal/tui2/chat's threadsCtrl for the full decode — so alt+t is a
+		// door that opens on some machines and silently does not exist on
+		// others. ctrl+t survives every terminal. The chat surface still binds
+		// alt+t as well, for a reader whose terminal does deliver it; it is not
+		// recorded here because a catalog that lists two chords for one row
+		// teaches the reader a choice they do not have to make.
 		{ID: "key.threads", Verb: "switch thread", Description: "open the list of working conversations, or start one",
-			Scope: ScopeThread, Key: "t", ChordKey: "alt+t"},
+			Scope: ScopeThread, Key: "t", ChordKey: "ctrl+t"},
+		// THERE IS DELIBERATELY NO `key.thread.new` ROW. Minting is not a second
+		// door standing beside the switcher — it is the last ROW of the
+		// switcher, always drawn and never filtered away, reached by one `end`
+		// and enter. Its accelerator (internal/tui2/palette's NewThreadKey) is
+		// ctrl+t pressed a second time, the same chord that opened the list, on
+		// the reading every browser has taught: the key that shows you your tabs
+		// is the key that makes one. Registering that as a row of its own would
+		// trip this file's own chord-uniqueness law for a door the reader can
+		// already see, and the `?` sheet would teach one chord two verbs.
 		{ID: "key.thread.narrow-split", Verb: "narrow split", Description: "narrow the chat/task split",
 			Scope: ScopeThread, Key: "["},
 		{ID: "key.thread.widen-split", Verb: "widen split", Description: "widen the chat/task split",

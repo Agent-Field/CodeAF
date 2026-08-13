@@ -90,6 +90,24 @@ type Options struct {
 	Profile tokens.Profile
 	// Linear selects the accessible rendering (10.1.5): one column, no motion.
 	Linear bool
+	// Rail is the remembered collapse state of the right rail — "open", "slim"
+	// or "hidden" (internal/config.RailStates). Anything else, the empty string
+	// included, opens: a window that was told nothing is a window nobody has
+	// collapsed.
+	//
+	// It is a STRING and not a typed state because this package must not import
+	// internal/config: the entry point owns the profile directory and the
+	// registry, and the surface owns the rendering. The two meet on three words.
+	Rail string
+	// SaveRail records the rung the reader has just collapsed to, so the next
+	// window opens where this one was left. Nil makes the preference last for
+	// the session only, which is what a test and a window with no profile both
+	// want.
+	//
+	// It is the shape internal/config.Options.SaveSplitPct already has, for the
+	// same reason: the divider and the sidebar are the two settings a person
+	// changes with their hands rather than by visiting the sheet.
+	SaveRail func(state string)
 	// GlyphSet is the glyph repertoire tier (12.7), decided by the entry point.
 	// The zero value is tokens.Plain, so an unset field renders the 5.17 floor.
 	GlyphSet tokens.GlyphSet
@@ -231,24 +249,30 @@ type App struct {
 
 	railFocus bool
 	scopeOpen bool
-	// railShown is §6's `sidebar: hidden`, remembered for this session.
+	// railState is §6's `sidebar`, in three positions and REMEMBERED ON DISK.
 	//
-	// IT IS FALSE AT LAUNCH, on every page, and that is the wave's decision
-	// rather than a default nobody chose. A reader said it twice — "still in
-	// chat I see side rail" — and the reason it reads as clutter now is that
-	// everything the column was carrying got a better home in the meantime: work
-	// and notebook became full pages, the palette searches every room, and the
-	// hug's own tabs are the door to all three. What is left of an always-open
-	// sidebar is a second copy of a list one keystroke away, which is §15's
-	// same-fact-twice standing permanently in a quarter of the window.
+	// The history is worth keeping because both previous answers were wrong in
+	// opposite directions. It began always-open, and a reader said it twice —
+	// "still in chat I see side rail" — because everything the column was
+	// carrying had got a better home in the meantime: work and notebook became
+	// full pages, the palette searches every room, and the hug's own tabs are
+	// the door to all three. So it became a drawer, shut at launch and
+	// remembered only for the session — and that overshot: a window that opens
+	// with no column beside it has to TELL the reader in prose that there are
+	// conversations and running work, where a column that is simply there says
+	// it in furniture.
 	//
-	// So the rail is a DRAWER: shut by default, compressed to the dock on the
-	// bar row (footer/dock.go), opened by the same chord that has always meant
-	// "let me talk to the map" and by a click on the dock itself. It is
-	// remembered for the session and not persisted — a preference file would
-	// make this a setting, and §6 already has one (`sidebar: right|left|hidden`)
-	// for the reader who wants to decide once.
-	railShown  bool
+	// The middle rung is what makes a persisted preference honest. Open teaches;
+	// slim keeps the one thing a hidden rail cannot say (something landed where
+	// you were not looking) for the price of one column; hidden is for the
+	// reader who has decided. It is persisted through the settings registry
+	// (internal/config's rail_state) — a preference a person expresses with a
+	// keystroke and finds thrown away at the next launch is a preference the
+	// product did not take seriously — and it is never auto-reopened, whatever
+	// happens. The dot on the handle is the only attention ask this surface
+	// keeps.
+	railState  tui2.RailState
+	saveRail   func(string)
 	termWidth  int
 	termHeight int
 
@@ -401,6 +425,7 @@ func Metrics() tui2.Metrics {
 	return tui2.Metrics{
 		RailBreakpoint: tokens.RailAtWidth,
 		RailWidth:      tokens.RailWidth,
+		RailSlimWidth:  tokens.RailSlimWidth,
 		MinMainWidth:   tokens.RailTranscriptFloor,
 		// THREE rows: two of writing area and one blank under them (§7's hug,
 		// as amended by a reader who found the one-row version cramped). The bar
@@ -441,6 +466,8 @@ func New(opts Options) *App {
 		now:       now,
 		pollEvery: every,
 		linear:    opts.Linear,
+		railState: railStateOf(opts.Rail),
+		saveRail:  opts.SaveRail,
 		// The token layer implements both of blocks' seams directly, so the
 		// transcript is styled by handing it one of these and nothing else.
 		style:      tokens.NewStylerIn(opts.Profile, tokens.FocusNormal, opts.GlyphSet),
@@ -483,12 +510,19 @@ func New(opts Options) *App {
 		// interrupt is the `interrupt esc` chip's act — esc's own, reached by
 		// a pointer. The row offers it only while EscInterrupts says it works.
 		interrupt: app.interrupt,
-		// openRail is the dock's act: the shut drawer, clicked. It is the very
-		// function the rail chord runs (§6, [App.toggleRail]).
+		// dock is what the collapsed sidebar has inside it, asked at PAINT time
+		// because the answer depends on the solved frame (panes.go says why).
+		dock: app.dockCounts,
+		// openRail is the dock's act: the collapsed sidebar, clicked. It is the
+		// very function the rail chord runs (§6, [App.toggleRail]).
 		openRail: app.toggleRail,
 		// openThreads is the title chip's act: the switcher, clicked. It is the
 		// very function the `t` key runs (5.3, [App.openSwitcher]).
 		openThreads: app.openSwitcher,
+		// newThread is the `+` door's act. It is [App.openRoomCmd] — the very
+		// function the switcher's last row runs through [App.choose] — so the
+		// bar and the list mint a conversation by one route.
+		newThread: app.openRoomCmd,
 		// The places tabs (§7's left zone) are filled by refresh from the page
 		// enum — see [App.places]. They are deliberately NOT written out here as
 		// well: the words and which of them is bright are one fact, and a copy
@@ -974,11 +1008,16 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "alt+,":
 		return a.openSettings()
 
-	case threadsChord:
-		// The switcher's chorded spelling, bound unconditionally. The bare `t`
-		// below is the key the doc names and the registry leads with; this is
-		// the one a reader can press mid-sentence, which is the same pair every
-		// other bare-key row on this surface carries.
+	case threadsChord, threadsCtrl:
+		// The switcher's chorded spellings, bound unconditionally. The bare `t`
+		// below is the key the doc names; these are the ones a reader can press
+		// mid-sentence, which is the same pair every other bare-key row on this
+		// surface carries.
+		//
+		// TWO SPELLINGS BECAUSE ONE OF THEM DOES NOT ARRIVE. See [threadsCtrl]:
+		// a macOS terminal composes Option+t into `†` and the alt chord never
+		// reaches this switch at all. ctrl+t is the spelling that survives every
+		// terminal, and it is the one the registry teaches.
 		return a.openSwitcher()
 
 	case "ctrl+o":
@@ -1037,6 +1076,26 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	case "pgup", "pgdown", "shift+up", "shift+down", "ctrl+home", "ctrl+end":
 		return a.pane.Key(msg)
+	}
+
+	// EVERY CHORD THE CATALOG PROMISES, ANSWERED BY THE ONE EXECUTOR.
+	//
+	// The arms above are the chords this file has a reason to intercept — quit,
+	// interrupt, the overlays, the scroll keys. Everything else the registry
+	// records as a chord for this room used to reach NOTHING: alt+g, alt+1,
+	// alt+2 and alt+3 were all declared in the catalog, drawn on the empty first
+	// frame, and had no arm anywhere in this ladder. The product's first
+	// impression was two dead doors out of three.
+	//
+	// Binding them one at a time would fix today's four and leave the next
+	// catalog row to be discovered by a person pressing a key that does nothing.
+	// So the ladder asks the registry instead, and the answer runs through
+	// [App.runEntry] — the same executor the tabs, the palette rows and the `?`
+	// sheet all arrive at. A row that is REACHABLE is now reachable every way it
+	// is advertised, by construction rather than by diligence.
+	if cmd, claimed := a.registryKey(key); claimed {
+		a.shell.Invalidate()
+		return cmd
 	}
 
 	// The capability door 5.20 rule 3 promises in EVERY room, reachable from the
@@ -1176,7 +1235,12 @@ func (a *App) runFooterVerb(id string) tea.Cmd {
 // working AND is a question, which is two facts about one row and exactly what
 // §6's dock line says.
 func (a *App) dockCounts() footer.Dock {
-	if a.shell == nil || !a.shell.RailHidden() {
+	// A HANDLE IS NOT A LIST. The dock draws whenever the map is not on the
+	// frame as a column — hidden, collapsed to the handle, or squeezed out by a
+	// terminal too narrow for the column — because in all three the reader can
+	// see that there is work and cannot see what it is. The handle carries one
+	// dot and cannot carry a count; this row is where the count lives.
+	if a.shell == nil || a.shell.RailMap() {
 		return footer.Dock{}
 	}
 	if a.page == pageBoard {
@@ -1509,12 +1573,12 @@ func (a *App) refresh() {
 	// swap forgot to move would be the footer naming a place the reader is not
 	// in, which is 5.20's affordance lying about where you are.
 	a.status.places = a.places()
+	a.status.doors = a.doors()
 	// The work page's own wider read, at most once per journal move and only
 	// while that page is the lens (see [App.syncBoard]).
 	a.syncBoard()
 	a.status.input, a.status.hint = a.inputState()
 	a.status.attention = a.openQuestions()
-	a.status.dock = a.dockCounts()
 	// The terminal's title carries the same count the footer paints (10.5.27).
 	a.noticeAttention(a.status.attention)
 	a.status.keyMode, a.status.keyCount = a.keyMode()
@@ -1727,6 +1791,39 @@ const (
 	placeNotebookID = "slash.notebook"
 )
 
+// The words on the two thread doors. `threads` carries the disclosure mark
+// because it OPENS A LIST rather than performing an act — the same ▾ every other
+// expandable thing on this surface wears (tokens.GlyphExpanded), so a reader who
+// has learned the mark anywhere has learned it here. `+` carries none, because
+// it does the thing immediately and has no list to show.
+const (
+	threadsDoorWord   = "threads " + tokens.GlyphExpanded
+	newThreadDoorWord = "+"
+)
+
+// doors is the pair of visible thread doors on the bar (§7's left zone, past the
+// tabs).
+//
+// THEY ARE DRAWN ONLY IN THE CHAT. On the work and notebook pages the bar's
+// left zone is naming a lens that has nothing to do with conversations, and a
+// door to the thread list there would be offering an act about a thing the
+// reader is not looking at. The chord still works from every page — the
+// switcher is global — so nothing is lost but the clutter.
+//
+// The threads door teaches the chord that actually fires ([threadsCtrl]). The
+// `+` teaches none: its accelerator lives inside the list it would open, and a
+// key drawn on the bar that only works somewhere else is the exact defect this
+// whole wave is repairing.
+func (a *App) doors() []footer.Door {
+	if a.page != pageThread {
+		return nil
+	}
+	return []footer.Door{
+		{ID: footer.ThreadsDoorTarget, Verb: threadsDoorWord, Key: threadsCtrl},
+		{ID: footer.NewThreadTarget, Verb: newThreadDoorWord},
+	}
+}
+
 // showPage is the tab's act: swap the lens, and leave whatever room the reader
 // was in.
 //
@@ -1836,58 +1933,185 @@ func (a *App) applyLens() {
 // when the answer moved — so a caller may ask on every page swap and every
 // toggle without thinking about which of them changed what.
 func (a *App) applyRail() {
-	a.shell.SetRailHidden(a.page == pageBoard || !a.railShown)
-}
-
-// setRailShown opens or shuts the drawer and puts the keyboard where the answer
-// implies: on the map when it arrives, back on the mouth when it leaves.
-//
-// The two are one act rather than two calls a caller has to remember, because
-// every way this is reached wants both — a rail that opened without the
-// keyboard would be a column the reader then has to find a second chord for,
-// and a rail that closed while still holding it would leave j and k typing into
-// nothing (5.20: focusing what is not drawn is a keystroke with no effect).
-func (a *App) setRailShown(on bool) tea.Cmd {
-	if a.railShown != on {
-		a.railShown = on
-		a.applyRail()
+	if a.page == pageBoard {
+		// The work page's own rule, and it never touches the preference: the
+		// board IS this list at page altitude, so the column is off the frame
+		// while the lens is there and comes back the moment the reader leaves.
+		a.shell.SetRailState(tui2.RailHidden)
+		return
 	}
-	return a.setScope(on)
+	a.shell.SetRailState(a.railState)
 }
 
-// toggleRail is what the rail chord and the dock's click both perform: one
-// three-rung ladder, walked toward the map and then away from it.
+// railStateOf reads the three words the entry point persists. Anything else
+// opens: a window told nothing is a window nobody has collapsed.
+func railStateOf(name string) tui2.RailState {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "slim":
+		return tui2.RailSlim
+	case "hidden":
+		return tui2.RailHidden
+	}
+	return tui2.RailOpen
+}
+
+// setRail moves the rail to a rung, remembers it, and puts the keyboard where
+// the answer implies: on the map when the column arrives, back on the mouth
+// when it leaves.
+//
+// They are one act rather than three calls a caller has to remember, because
+// every way this is reached wants all of them — a rail that opened without the
+// keyboard would be a column the reader then has to find a second chord for, a
+// rail that closed while still holding it would leave j and k typing into
+// nothing (5.20), and a rung nobody wrote down would be a preference the
+// product asked for and threw away.
+func (a *App) setRail(state tui2.RailState) tea.Cmd {
+	if a.railState != state {
+		was := a.railState
+		a.railState = state
+		a.rememberRail(state)
+		a.applyRail()
+		if state == tui2.RailOpen && was != tui2.RailOpen {
+			a.reopenRail()
+		}
+		// The bar row's dock is what the collapsed rail's counts move to, and it
+		// is recomputed by refresh — which the focus half below only reaches
+		// when the KEYBOARD moved. Collapsing a rail the keyboard had already
+		// left moves no focus and would otherwise leave the bar carrying the
+		// answer to the previous rung.
+		a.refresh()
+	}
+	return a.setScope(state == tui2.RailOpen)
+}
+
+// rememberRail writes the rung down. A window with no writer keeps it for the
+// session, which is what a test and a profile-less window both want.
+func (a *App) rememberRail(state tui2.RailState) {
+	if a.saveRail != nil {
+		a.saveRail(state.String())
+	}
+}
+
+// reopenRail is everything the column owes at the moment it comes back.
+//
+// TWO THINGS ARE STALE AFTER A COLLAPSE and both are fixed here rather than on
+// the poll. The thread index is read when a door opens and not per tick (see
+// [scopeSource.setThreads]), so it is re-read now; and the ORDER on screen is
+// whatever it was when the rail was put away, because [rail.Model]'s stable
+// merge freezes it continuously. Re-opening to an hour-old order would be 7.2
+// protecting a place nobody was standing in, so the resort barrier is armed
+// here — at the one moment the reader's eye has not landed anywhere yet — and
+// never while the column is open under a pointer.
+func (a *App) reopenRail() {
+	if a.source != nil {
+		a.source.setThreads(a.readThreads())
+		a.source.rebuild()
+	}
+	if a.railModel != nil {
+		a.railModel.Resort()
+		a.railModel.Refresh()
+	}
+}
+
+// toggleRail is what the rail chord and the dock's click both perform: ONE
+// RING, walked toward the map and then away from it, and every position on it
+// reachable from every other.
 //
 // The rungs are in the order a reader's intent arrives in, and each is a thing
 // that is TRUE right now rather than a mode someone selected:
 //
-//  1. the drawer is shut — open it, and hand it the keyboard;
-//  2. it is open but the keyboard is elsewhere (entering a room hands the
+//  1. the rail is a handle — the reader has already collapsed it once, and the
+//     next press means "all the way", so it goes;
+//  2. it is gone — bring it back, and hand it the keyboard;
+//  3. it is open but the keyboard is elsewhere (entering a room hands the
 //     keyboard to that room's composer — rooms.go's handOverTheKeyboard) — this
 //     is the chord's oldest meaning, "let me talk to the map", and it survives
-//     the drawer intact;
-//  3. it is open and you are standing in it — put it away.
+//     the collapse states intact;
+//  4. it is open and you are standing in it — put it away, one step, to the
+//     handle rather than to nothing.
 //
-// Collapsing 2 into 3 was the tempting simplification and it is the wrong one:
+// Collapsing 3 into 4 was the tempting simplification and it is the wrong one:
 // it would answer "let me go back to the map" by closing the map, which is the
 // exact defect the ctrl+o comment in [App.key] already describes one wave back.
+//
+// The ring's DIRECTION is open → slim → hidden → open, so a reader who wants the
+// column gone presses twice and one who wants it back presses once. The pointer
+// does not walk it in the same direction and must not: a click on the handle
+// EXPANDS ([App.expandRail]), because the handle's whole content is an
+// invitation — a dot saying something landed — and answering it by taking the
+// last of the rail away would be the affordance lying at the one moment it had
+// something to say.
 func (a *App) toggleRail() tea.Cmd {
 	switch {
-	case a.page == pageBoard:
-		// There is no drawer on the work page: the board IS the list, so there
-		// is nothing to open and focusing a rail the frame has no column for
-		// would be a keystroke with no visible effect (5.20). The chord never
-		// arrives here — [App.key] gives it the page's own meaning — and the
-		// dock is not drawn here either ([App.dockCounts]); this rung exists so
-		// that neither of those two facts is the only thing holding the promise.
+	case a.linear:
+		// Linear gets nothing that is not linear (10.1.5). The frame has no
+		// column at any width, so every rung of this ladder would be a keystroke
+		// with no visible effect (5.20).
 		return nil
-	case !a.railShown:
-		return a.setRailShown(true)
+	case a.page == pageBoard:
+		// There is no sidebar on the work page: the board IS the list, so there
+		// is nothing to open and focusing a rail the frame has no column for
+		// would be a keystroke with no visible effect. The chord never arrives
+		// here — [App.key] gives it the page's own meaning — and the dock is not
+		// drawn here either ([App.dockCounts]); this rung exists so that neither
+		// of those two facts is the only thing holding the promise.
+		return nil
+	case a.railState == tui2.RailSlim:
+		return a.setRail(tui2.RailHidden)
+	case a.railState == tui2.RailHidden:
+		return a.setRail(tui2.RailOpen)
 	case !a.railFocus:
 		return a.setScope(true)
 	default:
-		return a.setRailShown(false)
+		return a.setRail(tui2.RailSlim)
 	}
+}
+
+// expandRail is the pointer's answer to the handle: the column, back.
+//
+// It is not [App.toggleRail] and the difference is deliberate — see that
+// function's last paragraph. A handle is clicked because the reader wants what
+// is behind it.
+func (a *App) expandRail() tea.Cmd {
+	if a.linear || a.page == pageBoard {
+		return nil
+	}
+	return a.setRail(tui2.RailOpen)
+}
+
+// registryKey runs the catalog row this chord belongs to, if one does.
+//
+// THREE REFUSALS, AND EACH CLOSES A WAY THIS COULD LIE:
+//
+//   - CHORDS ONLY. A bare printable key is draft text in a composer-first room
+//     and always outranks an accelerator ([registry.Entry.KeyOn] already returns
+//     "" for one, and this is the second lock on the same door). A named key
+//     like `tab` or `esc` is refused too: those are the shell's and the
+//     composer's, and a catalog row must never take one out from under them.
+//   - ONLY WHAT THIS ROOM CAN DO. An entry the room has a REASON against is
+//     drawn disabled on the `?` sheet, and a key that performed a verb the sheet
+//     says is unavailable would be the affordance lying in the loudest possible
+//     way. `key.voice` and `key.boost` are both in that state today.
+//   - ONLY WHILE NOTHING ELSE OWNS THE KEYBOARD. An overlay has already taken
+//     its keys before this runs; a draft in progress is left alone, because §8's
+//     rest state is typing and a chord is not worth interrupting a sentence for
+//     — except that a CHORD cannot be typed into a sentence, so the draft guard
+//     is deliberately NOT applied here. It is stated and dismissed so the next
+//     reader does not add it.
+func (a *App) registryKey(key string) (tea.Cmd, bool) {
+	if !strings.Contains(key, "+") {
+		return nil, false
+	}
+	for _, entry := range registry.ForScope(registry.ScopeThread) {
+		if entry.KeyOn(registry.SurfaceComposerFirst) != key {
+			continue
+		}
+		if a.entryReason(entry.ID) != "" {
+			return nil, false
+		}
+		return a.runEntry(entry.ID), true
+	}
+	return nil, false
 }
 
 // pageKey offers a keystroke to the page on screen.
