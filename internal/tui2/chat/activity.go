@@ -374,10 +374,13 @@ func compressActivity(steps []activityStep) string {
 	}
 	order := make([]string, 0, len(steps))
 	counts := make(map[string]int, len(steps))
-	failed := 0
+	failed, firstFailure := 0, ""
 	for _, step := range steps {
 		if step.done && step.failed {
 			failed++
+			if firstFailure == "" {
+				firstFailure = strings.TrimSpace(step.gloss)
+			}
 		}
 		act := pastAct(step.gloss)
 		if act == "" {
@@ -409,10 +412,30 @@ func compressActivity(steps []activityStep) string {
 		}
 	}
 	if failed > 0 {
-		line.WriteString(" " + tokens.GlyphSeparator + " " +
-			strconv.Itoa(failed) + " didn't land")
+		line.WriteString(" " + tokens.GlyphSeparator + " " + failureClause(failed, firstFailure))
 	}
 	return line.String()
+}
+
+// failureClause names what did not land.
+//
+// `1 didn't land` was a report with its subject removed: a reader learns that
+// something failed and has no way to find out which, and the one place that
+// knows — the step's own gloss — was already on the block. So the clause says
+// it. One failure names itself; several name the first and keep the count,
+// because a row is one line and the rest is one keystroke away in the
+// disclosure that already draws every step with its own marker.
+func failureClause(failed int, gloss string) string {
+	gloss = strings.TrimSpace(gloss)
+	if gloss == "" {
+		// A failure whose begin this window never saw. The count is the whole of
+		// what it honestly knows.
+		return strconv.Itoa(failed) + " didn't land"
+	}
+	if failed == 1 {
+		return gloss + " didn't land"
+	}
+	return strconv.Itoa(failed) + " didn't land, from " + gloss
 }
 
 // activitySummaryActs is how many kinds of act the row names before it stops.
@@ -440,10 +463,17 @@ func timesSuffix(n int) string {
 // `putting work in hand: «…»`   → `put work in hand`
 // `looking at the work`         → `looked at the work`
 //
-// The subject is cut off at the quote or the colon that introduces it, then a
-// dangling preposition is dropped, then the leading gerund is put in the past.
-// A verb the table has never heard of keeps its gerund, which is a slightly
-// awkward sentence and never a wrong one.
+// The subject is cut off at the quote or the colon that introduces it, then
+// every word left dangling by the cut is dropped, then the leading gerund is
+// put in the past. A verb the table has never heard of keeps its gerund, which
+// is a slightly awkward sentence and never a wrong one.
+//
+// THE DANGLE IS DROPPED UNTIL IT STOPS, and the set is wider than prepositions.
+// Cutting "reading what «task-8» came back with" at the quote left "reading
+// what", and "read what" is not a phrase — it is the gloss's grammar leaking
+// through the seam. A gloss with nothing after its subject cannot dangle at all
+// (internal/head/activity.go keeps subjects last for that reason); this is the
+// floor under any gloss that does, here and in whatever is written next.
 func pastAct(gloss string) string {
 	act := strings.TrimSpace(gloss)
 	if cut := strings.IndexAny(act, "«:"); cut >= 0 {
@@ -453,8 +483,8 @@ func pastAct(gloss string) string {
 		return ""
 	}
 	fields := strings.Fields(act)
-	if last := len(fields) - 1; last > 0 && activityPrepositions[fields[last]] {
-		fields = fields[:last]
+	for len(fields) > 1 && activityDanglers[fields[len(fields)-1]] {
+		fields = fields[:len(fields)-1]
 	}
 	if past, known := activityPastTense[fields[0]]; known {
 		fields[0] = past
@@ -462,11 +492,16 @@ func pastAct(gloss string) string {
 	return strings.Join(fields, " ")
 }
 
-// activityPrepositions are the words a gloss ends on when its subject has been
-// cut away. Dropping them is what turns "searching for" back into "searching".
-var activityPrepositions = map[string]bool{
+// activityDanglers are the words a gloss ends on when its subject has been cut
+// away: the prepositions that introduced it, and the pronouns and articles that
+// stood in for it. Dropping them turns "searching for" back into "searching"
+// and "reading what" back into "reading".
+var activityDanglers = map[string]bool{
 	"for": true, "at": true, "on": true, "to": true, "with": true,
 	"through": true, "over": true, "of": true, "in": true, "from": true,
+	"by": true, "about": true,
+	"what": true, "that": true, "which": true, "it": true,
+	"a": true, "an": true, "the": true,
 }
 
 // activityPastTense is the whole irregular verb list this vocabulary needs. It

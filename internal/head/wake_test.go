@@ -240,3 +240,34 @@ func TestTheWakeOnlyCoversKindsTheHeadAlreadySpokeFor(t *testing.T) {
 		t.Fatal("a delivery reads as a receipt — it would be absorbed and woken for")
 	}
 }
+
+// §3d. This turn is told an empty reply is correct, and the room was shown
+// "(no reply — nothing new to report; the request is read, and the work already
+// described remains in hand)" as an ordinary conversation row: the model wrote
+// a stage direction where it was asked for silence. The test is the shape of
+// the reply and never its words, so it holds for a sentinel nobody has written
+// yet, in a language nobody has read.
+func TestAReplyThatOnlyAnnouncesItsOwnEmptinessIsSilence(t *testing.T) {
+	for _, silent := range []string{
+		"",
+		"   ",
+		"(no reply — nothing new to report; the request is read, and the work already described remains in hand)",
+		"(nothing to add)",
+		"[no response]",
+		"（返信なし）",
+	} {
+		if !silentReply(silent) {
+			t.Errorf("%q was posted as speech", silent)
+		}
+	}
+	for _, spoken := range []string{
+		"It's underway — read as a competitor sweep on the three names.",
+		"Done (all three sections), and the file is at /tmp/brief.md.",
+		"(a) the filings are in, and (b) the interviews are booked.",
+		"The rate held (barely) through the quarter",
+	} {
+		if silentReply(spoken) {
+			t.Errorf("%q was swallowed as silence", spoken)
+		}
+	}
+}

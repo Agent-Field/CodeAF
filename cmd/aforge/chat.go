@@ -697,6 +697,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// its cursor starts at zero; a single-leaf job carries neither the tool
 		// nor the poll, so the atomic path pays nothing.
 		jobRoot := jobIDOf(graph, node)
+		// Which board rows this leaf wrote. A leaf must not read its own notes
+		// back, and it used to know which were its own by finding its own TITLE
+		// glued to the front of them — so every note carried a clipped node title
+		// colon-joined to a sentence, and the room showed lines like
+		// "⚑ Assemble the three country sections into a: Brief saved to …": a
+		// name cut mid-phrase, wearing a colon it never earned, in front of the
+		// one part of the line that says anything. The row's own sequence answers
+		// the same question exactly, so the note is just the note.
+		mine := map[int64]bool{}
 		var share func(string) error
 		if node.Parent != store.RootID {
 			share = func(line string) error {
@@ -705,11 +714,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// nothing is lost by keeping the conversation out of it — a person
 				// watching a job saw one ⚑ line per note per leaf, which is the
 				// machinery's internal correspondence delivered to their inbox.
-				_, postErr := thread.Record(graph, store.Message{
+				posted, postErr := thread.Record(graph, store.Message{
 					Role:   store.RoleAgent,
 					NodeID: jobRoot,
-					Body:   jobNoteBody(leafTitle, line),
+					Body:   jobNoteBody(line),
 				})
+				if postErr == nil {
+					mine[posted.Seq] = true
+				}
 				return postErr
 			}
 		}
@@ -726,7 +738,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			for _, message := range messages {
 				boardCursor = message.Seq
 				note, isNote := jobNoteLine(message)
-				if !isNote || strings.HasPrefix(note, leafTitle+": ") {
+				if !isNote || mine[message.Seq] {
 					continue
 				}
 				lines = append(lines, note)
@@ -3606,8 +3618,13 @@ func recordOnNode(graph *store.Store, nodeID, body string, role store.Role) {
 // phrase the model is asked to produce.
 const jobNoteMark = "⚑ "
 
-func jobNoteBody(from, line string) string {
-	return jobNoteMark + from + ": " + line
+// jobNoteBody is the marker and the worker's own words, and nothing between
+// them. What used to sit between them was the writing leaf's title, clipped to
+// the plan's rail width and joined on with a colon, which read as a sentence and
+// was not one. Who wrote a note is a fact about the row, not a phrase to put in
+// front of its content.
+func jobNoteBody(line string) string {
+	return jobNoteMark + strings.TrimSpace(line)
 }
 
 // jobNoteLine reads a message back as a board note, or says it is not one.

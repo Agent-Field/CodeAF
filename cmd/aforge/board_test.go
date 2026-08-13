@@ -11,9 +11,9 @@ import (
 // a board that mistook any of them for a worker's line would inject a
 // question card into a sibling's transcript as testimony.
 func TestOnlyAWorkersSharedLineReadsBackAsABoardNote(t *testing.T) {
-	body := jobNoteBody("parse and filter", "the totals column is EUR, not USD")
+	body := jobNoteBody("the totals column is EUR, not USD")
 	note, ok := jobNoteLine(store.Message{Role: store.RoleAgent, Body: body})
-	if !ok || note != "parse and filter: the totals column is EUR, not USD" {
+	if !ok || note != "the totals column is EUR, not USD" {
 		t.Fatalf("round trip = %q, %v", note, ok)
 	}
 

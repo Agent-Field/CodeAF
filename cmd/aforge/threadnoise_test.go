@@ -83,7 +83,7 @@ func TestTheSurfacesRunNotesStayOffTheConversation(t *testing.T) {
 func TestTheJobBoardIsStillDeliveredWithoutBeingOverheard(t *testing.T) {
 	graph := openNoiseStore(t)
 	if _, err := thread.Record(graph, store.Message{
-		Role: store.RoleAgent, NodeID: "job", Body: jobNoteBody("a part of it", "the API returns pages, not a list"),
+		Role: store.RoleAgent, NodeID: "job", Body: jobNoteBody("the API returns pages, not a list"),
 	}); err != nil {
 		t.Fatal(err)
 	}
