@@ -584,6 +584,10 @@ const forThreadID = "record-for-thread"
 // every one of those cases the row would either name an id (13.3.4) or offer a
 // door onto the room it is drawn in.
 func (a *App) forThreadRow(session string) blocks.Block {
+	session = strings.TrimSpace(session)
+	if session == "" || session == a.session {
+		return nil
+	}
 	name := a.threadName(session)
 	if name == "" {
 		return nil

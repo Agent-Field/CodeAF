@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/modelui"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -112,6 +113,7 @@ const (
 	boardWorkingWord  = "working"
 	boardRecentWord   = "recent"
 	boardHistoryWord  = "history"
+	boardThreadsWord  = "threads"
 	boardWatchingWord = "watching"
 	boardServicesWord = "services"
 )
@@ -169,6 +171,10 @@ const (
 	boardOpensService
 	// boardOpensFold performs in place: the history fold (§10).
 	boardOpensFold
+	// boardOpensThread is a working conversation (chat-simplify.md 5.2's J5):
+	// [App.switchThread] on the session id, which re-points the window rather
+	// than opening a lens onto the one it is already in.
+	boardOpensThread
 )
 
 // boardSpan is one painted run of a line: text, and the tier it is drawn at. A
@@ -258,8 +264,11 @@ type boardState struct {
 	models   map[string][]string
 	charters []boardCharter
 	services []boardService
-	stamp    int64
-	read     bool
+	// threads is the alive glance's open conversations (5.2's J5), newest
+	// activity first, read by the same stamped batch as everything above.
+	threads []Thread
+	stamp   int64
+	read    bool
 
 	// detail is the open detail page, or the zero value for the list. cursorWas
 	// is the door the list was on when it opened, so esc restores the reader to
@@ -304,6 +313,11 @@ func (a *App) boardLines() []boardLine {
 			}
 		}
 	}
+	// THE ALIVE GLANCE (chat-simplify.md 5.2's J5): "what's going on" answers
+	// running work AND open threads in one breath. The threads come after the
+	// work and before the standing charters, which is the order of the sentence
+	// — what is happening, who is still talking about it, what is being watched.
+	page.threads(a)
 	page.watching(a)
 	page.services(a)
 
@@ -402,6 +416,76 @@ func (p *boardPage) job(a *App, row rail.Row, live bool) {
 		twig.block = block
 		p.push(twig)
 	}
+}
+
+// threads writes the open-conversations band (chat-simplify.md 5.3's `alive
+// glance`): a name, and the line the conversation was left on.
+//
+// It is the SWITCHER'S OWN ROWS in the board's own anatomy — two lines, the
+// name then the quiet receipt — so the two surfaces cannot disagree about what
+// a thread is called or where it stopped. What it deliberately does NOT carry
+// is the switcher's unseen `●`: a dot on a page a reader is already looking at
+// is not an ornament about attention, it is decoration, and 5.1 law 3 spends
+// the product's one thread ornament in the one place a reader is choosing
+// between conversations.
+//
+// The thread the reader is IN is not listed. A door back to the room you are
+// standing in is not a door, and this page's whole job is to say what else is
+// going on.
+func (p *boardPage) threads(a *App) {
+	threads := a.boardThreads()
+	if len(threads) == 0 {
+		return
+	}
+	p.word(boardThreadsWord)
+	for i := range threads {
+		if i > 0 {
+			p.push(boardLine{kind: boardBlank})
+		}
+		thread := threads[i]
+		block := p.next()
+		name := thread.Name
+		if name == "" {
+			name = palette.UnnamedThread
+		}
+		p.push(boardLine{
+			kind: boardEntry, target: boardOpensThread, id: thread.SessionID, block: block,
+			indent: boardNameCol,
+			// The gutter marker is the CHAT PROMPT (§20 gives every entry line
+			// one, and this page's grammar is that the marker says what kind of
+			// thing the row is). `›` is the glyph this product already spends on
+			// "you talk to this" — it is the prompt the composer draws when it
+			// is bound to a conversation — so a thread row and the mouth under
+			// it wear the same mark. It is chrome-tier and it is not the unseen
+			// ornament: a state glyph would claim a thread has a lifecycle, and
+			// 5.1 law 5 is that threads never close.
+			mark: tokens.GlyphPromptChat, markTier: tokens.TextTertiary,
+			spans: []boardSpan{
+				{text: name, tier: tokens.TextPrimary},
+			},
+		})
+		if left := strings.TrimSpace(thread.LeftAt); left != "" {
+			p.push(boardLine{kind: boardMeta, block: block, indent: boardMetaCol,
+				spans: []boardSpan{{text: left, tier: tokens.TextTertiary}}})
+		}
+	}
+}
+
+// boardThreads is the alive glance's rows: every open thread but the one the
+// reader is in.
+//
+// The READ is [App.syncBoard]'s, stamped with the journal like every other fact
+// on this page; this is the projection of it, which costs a walk over at most
+// [maxThreadRows] values and no query at all.
+func (a *App) boardThreads() []Thread {
+	out := make([]Thread, 0, len(a.board.threads))
+	for _, thread := range a.board.threads {
+		if thread.SessionID == a.session {
+			continue
+		}
+		out = append(out, thread)
+	}
+	return out
 }
 
 // watching writes the standing charters band.
@@ -790,6 +874,17 @@ func (a *App) boardEnter(index int) tea.Cmd {
 		// it.
 		a.showPage(pageThread)
 		return a.jumpTo(line.id)
+	case boardOpensThread:
+		if line.id == "" {
+			return nil
+		}
+		// A THREAD IS NOT A ROOM ON THE RAIL. Opening one re-points the session,
+		// so it goes through [App.switchThread] and not through jumpTo — the
+		// distinction [palette.SwitchThread] exists to make impossible to get
+		// wrong. The page swap comes first, for the same reason a job's does:
+		// the conversation is what the reader asked to be taken to.
+		page := a.showPage(pageThread)
+		return tea.Batch(page, a.switchThread(line.id))
 	}
 	return nil
 }
