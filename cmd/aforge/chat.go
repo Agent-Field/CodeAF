@@ -1013,7 +1013,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// a result that is not coming, and the reason it died is the fact
 			// they need. Structural — the reason already exists; no model call.
 			if share != nil {
-				_ = share("did not finish — " + firstLine(err.Error()))
+				// The board is workers talking to workers, but it is written onto
+				// the job root's thread, which is a room a person is watching. So
+				// it gets the same cause clause: a sibling needs to know what
+				// died and why, and neither of them needs the attempt count or
+				// the JSON body to know it. The writer's identity is the row's,
+				// not the sentence's, exactly as jobNoteBody already says.
+				_ = share("did not finish — " + firstLine(failure.Error()))
 			}
 			if len(absolute) > 0 {
 				// One part of a job stopping is not the job's failure, and the
@@ -2372,39 +2378,70 @@ func failedPartsNote(graph *store.Store, node store.Node) string {
 // something a person reads.
 var leafErrorPrefix = regexp.MustCompile(`^node \d+: `)
 
-// humanFailure turns an executor error into a sentence about the errand.
+// leafCause is the one clause a person can act on, taken from the parts of the
+// failure that are typed rather than from the sentence it printed.
 //
-// The failure formatter downstream renders whatever this returns as
-// `I hit a problem with "<label>": <first line>`, so the first line is the
-// whole of what most people ever read about a failure. It used to be a leaked
-// Go error carrying an internal integer id. What replaces it says what the work
-// was and keeps the cause clause verbatim — the provider's own words are the
-// only diagnosis anyone has, and paraphrasing them would be inventing one.
+// A provider refusal now travels as a value with its own message field, so the
+// clause is READ rather than recovered: no unwrapping of colon chains, no
+// guessing which half of a wrapped string is the diagnosis. Only when nothing
+// typed is in the chain does this fall back to the text, and then it hands the
+// string to the same envelope decoder every other reader of a failure uses, so
+// the two paths cannot drift into disagreeing about what a failure said.
 //
-// The partial files ride below the first line, where clipping bites and the
-// formatter does not look, because they are for the retry and for the person
-// who wants them, not for the notification.
+// Nothing is invented. A failure that says nothing readable comes back empty and
+// the composition says so in its own words rather than making one up.
+func leafCause(node store.Node, err error) string {
+	var refused *provider.APIError
+	if errors.As(err, &refused) {
+		if message := strings.TrimSpace(refused.Message); message != "" {
+			return message
+		}
+	}
+	stamped := strings.TrimSpace(leafErrorPrefix.ReplaceAllString(strings.TrimSpace(err.Error()), ""))
+	return resident.FailureCause(resident.StripNodeStamp(node.ID, stamped))
+}
+
+// humanFailure turns an executor error into what a node records about why it
+// stopped.
+//
+// THE FIRST LINE IS THE CAUSE AND ONLY THE CAUSE. Every reader of this string
+// puts it beside the work it belongs to — the room's failure row leads with the
+// person's own ask (see resident.Failed), the parent's missing-parts note leads
+// with the part's name, the record page draws it in the node's own row — so a
+// label glued onto the front here is the same name printed twice, and the
+// second printing is the one that pushed the actual reason off the end of the
+// line. It used to read `Launch the analysis fan did not finish — node
+// craft-3799~launch: after 3 node call attempts: API error (404): {"error":…`,
+// which is a title, an id, an attempt count and a JSON body in front of a
+// sentence the reader needed.
+//
+// The provider's own words are kept verbatim, because they are the only
+// diagnosis anyone has and paraphrasing them would be inventing one. What is
+// dropped from the line is the envelope, not the message — and dropped is the
+// wrong word for it, because the whole transport rides immediately BELOW,
+// unedited, where the record page shows it in full and no clipping reaches.
+//
+// The partial files ride below too, for the retry and for the person who wants
+// them, not for the notification.
 func humanFailure(node store.Node, err error, artifacts []string) error {
 	if err == nil {
 		return nil
 	}
-	cause := strings.TrimSpace(leafErrorPrefix.ReplaceAllString(strings.TrimSpace(err.Error()), ""))
+	cause := leafCause(node, err)
 	if cause == "" {
 		cause = "it stopped without saying why"
 	}
-	label := strings.TrimSpace(node.Title)
-	if label == "" {
-		label = firstLine(node.Brief)
-	}
-	body := clipUTF8Bytes(firstLine(label), 80) + " did not finish — " + firstLine(cause)
-	if rest := strings.TrimSpace(strings.TrimPrefix(cause, firstLine(cause))); rest != "" {
-		body += "\n" + rest
-	}
+	body := clipUTF8Bytes(firstLine(cause), failureCauseBytes) + "\n\n" + strings.TrimSpace(err.Error())
 	if len(artifacts) > 0 {
 		body += "\n\nFiles it left behind:\n" + strings.Join(artifacts, "\n")
 	}
 	return errors.New(body)
 }
+
+// failureCauseBytes bounds the cause line. A provider that answers a refusal
+// with a paragraph has said the useful part first; the paragraph is whole, one
+// line down.
+const failureCauseBytes = 300
 
 // shouldGate keeps the delivery ceremony off the reflex rung. A promoted
 // partial is evidence for the compiled job, not a deliverable to review.

@@ -86,8 +86,9 @@ func TestStructuringCallsReachTheRail(t *testing.T) {
 	}
 }
 
-// A failure the user reads should be about their errand, keep the provider's
-// own words, and never carry an integer that appears on no surface.
+// A failure the user reads should keep the provider's own words, never carry an
+// integer that appears on no surface, and lead with the reason rather than with
+// a name every reader already has beside it.
 func TestHumanFailureDropsTheInternalIDAndKeepsTheCause(t *testing.T) {
 	node := store.Node{ID: "task-9", Title: "audit the billing code", Brief: "audit the billing code"}
 	failure := humanFailure(node, errors.New("node 7: openrouter: 500 upstream is unavailable"),
@@ -96,18 +97,23 @@ func TestHumanFailureDropsTheInternalIDAndKeepsTheCause(t *testing.T) {
 		t.Fatal("a real error humanized to nil")
 	}
 	body := failure.Error()
-	if strings.Contains(body, "node 7") {
-		t.Fatalf("the internal id survived: %q", body)
+	first := firstLine(body)
+	if strings.Contains(first, "node 7") {
+		t.Fatalf("the internal id survived onto the line people read: %q", first)
 	}
-	if !strings.Contains(body, "audit the billing code") {
-		t.Fatalf("the failure does not say what failed: %q", body)
+	if first != "openrouter: 500 upstream is unavailable" {
+		t.Fatalf("the reason is not the whole of the first line: %q", first)
 	}
 	if !strings.Contains(body, "openrouter: 500 upstream is unavailable") {
 		t.Fatalf("the cause clause was paraphrased away: %q", body)
 	}
+	// The transport that produced it stays reachable, whole, below the line the
+	// room quotes — deleted evidence is the other way to lie about a failure.
+	if !strings.Contains(body, "node 7: openrouter: 500 upstream is unavailable") {
+		t.Fatalf("the raw error is unreachable: %q", body)
+	}
 	// The partial rides below the first line, where the failure formatter does
 	// not look and clipping does.
-	first := firstLine(body)
 	if strings.Contains(first, "01-notes.md") {
 		t.Fatalf("the file list crowded out the reason: %q", first)
 	}
