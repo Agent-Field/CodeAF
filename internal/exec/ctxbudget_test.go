@@ -5,18 +5,27 @@ import (
 	"testing"
 )
 
-// Every byte bound this package spends is a share of the model's window or a
-// named fallback for not knowing the window, and nothing in between.
+// Every byte bound this package spends is a share of what the leaf can HOLD, or
+// a named fallback for not knowing the window, and nothing in between.
 //
 // The literals are still written down — they are what an unrecognised model
 // gets, and keeping them is what makes an offline run byte-for-byte what it
 // always was — but they are no longer what a recognised model gets. That was
-// the defect: a leaf on a model holding a million tokens was handed the same
-// twelve kilobytes of result, the same ten-kilobyte spill threshold and the
-// same six kilobytes of upstream input as a leaf on a model holding thirty-two
-// thousand, because the numbers had been measured once against the small case
-// and then written as absolutes.
-func TestToolBudgetsAreSharesOfTheWindow(t *testing.T) {
+// the first defect: a leaf on a model holding a million tokens was handed the
+// same twelve kilobytes of result as a leaf holding thirty-two thousand,
+// because the numbers had been measured once against the small case and then
+// written as absolutes.
+//
+// The law this test used to state was the correction to that, and it overshot:
+// "a 1M model gets more than a 200k model" made the share a function of the
+// window, while the memory the result has to live in was already a function of
+// min(window, working set). The measured consequence is in toolBudgetsFor — one
+// sh result permitted 7.5x the whole observation window that must carry it, so
+// two results overflowed on arrival and the decay pass fired every turn. The
+// honest law is the one below: the bounds converge on the NAMED WORKING SET,
+// they are not a belief about a window, and the operator who raises the working
+// set raises them with it.
+func TestToolBudgetsConvergeOnTheNamedWorkingSet(t *testing.T) {
 	// Unknown is the honest unknown, and it resolves to exactly the old numbers.
 	unknown := toolBudgetsFor(0)
 	if unknown != (toolBudgets{result: maxToolResultBytes, spill: spillBytes,
@@ -24,18 +33,47 @@ func TestToolBudgetsAreSharesOfTheWindow(t *testing.T) {
 		t.Fatalf("an unnamed model got %+v, want the named fallbacks", unknown)
 	}
 
-	// A model the catalog answered for gets several times as much, and a much
-	// larger one gets more again. The multiples are the point: what is being
-	// tested is that the answer follows the model rather than a constant.
+	// A model the catalog answered for still gets several times as much, and the
+	// answer still follows the model rather than a constant.
 	roomy := toolBudgetsFor(200_000)
-	if roomy.result < 4*maxToolResultBytes {
+	if roomy.result <= 2*maxToolResultBytes {
 		t.Errorf("a 200k-token model may carry a %d-byte result, barely more than the %d fallback",
 			roomy.result, maxToolResultBytes)
 	}
+
+	// Past the working set it stops following the window, because the memory
+	// holding it stopped following the window there too. Every model above the
+	// ceiling gets the ceiling's answer.
 	huge := toolBudgetsFor(1 << 20)
-	if huge.result <= roomy.result || huge.spill <= roomy.spill ||
-		huge.preview <= roomy.preview || huge.recall <= roomy.recall {
-		t.Errorf("a 1M-token model got %+v, no more than the 200k model's %+v", huge, roomy)
+	if huge != roomy {
+		t.Errorf("a 1M-token model got %+v where a 200k model got %+v; both are over the "+
+			"working set, so both must get the working set's answer", huge, roomy)
+	}
+
+	// And every bound is inside the window that has to hold it — the whole point
+	// of the clamp. A single result may not be most of the leaf's memory.
+	fitting := toolBudgetsFor(128_000)
+	for _, context := range []int{128_000, 200_000, 1 << 20} {
+		budgets, window := toolBudgetsFor(context), observationWindow(context)
+		if budgets.result >= window/2 {
+			t.Errorf("a %d-token model may carry a %d-byte result into a %d-byte observation "+
+				"window — one result is half the leaf's memory", context, budgets.result, window)
+		}
+	}
+
+	// A dial rather than a belief, exactly as the observation window is: the
+	// operator with evidence of their own moves the ceiling and the bounds move.
+	t.Setenv("AFORGE_WORKING_SET", "400000")
+	if wider := toolBudgetsFor(1 << 20); wider.result <= huge.result ||
+		wider.spill <= huge.spill || wider.preview <= huge.preview || wider.recall <= huge.recall {
+		t.Errorf("with the working set raised to 400k the bounds are %+v, no more than the %+v "+
+			"they were; the ceiling is a buried literal again", wider, huge)
+	}
+	// A model smaller than the working set is sized by itself either way: the
+	// ceiling may only ever clamp down.
+	if small := toolBudgetsFor(128_000); small != fitting {
+		t.Errorf("raising the working set changed a 128k model's bounds from %+v to %+v",
+			fitting, small)
 	}
 
 	// The ratios between them are the part that must survive being made

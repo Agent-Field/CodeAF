@@ -54,7 +54,7 @@ func TestTheLeafIsToldWhereItsOwnCheckingGoes(t *testing.T) {
 // run — TestEveryLeafOfARunSharesOneSystemMessage owns that property, and this
 // only pins that the new text is in the message that test compares.
 func TestTheCheckingRuleLivesInTheSharedPrefix(t *testing.T) {
-	shared := (&Linear{}).system(Task{})
+	shared := (&Linear{}).system(Task{}, nil)
 	if !strings.Contains(flatten(shared), flatten("working is for the record rather than for the delivery")) {
 		t.Fatal("the checking rule is not in the assembled system message, so no leaf ever reads it")
 	}
