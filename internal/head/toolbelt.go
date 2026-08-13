@@ -1563,12 +1563,23 @@ type boardRow struct {
 	// this clause the board could say three steps are queued without saying what
 	// they are queued behind, which describes a workforce as a number.
 	waits string
-	// runningFor is how long the longest-running step at or under this row has
-	// been going. A job root usually carries no start time of its own — its parts
-	// do the work — so a row that said "running" with no duration was the whole
-	// reason the head could describe a job forty-nine minutes in as if it had
-	// just been asked for.
+	// runningFor is how long this work has been going, measured from the moment
+	// it was ADMITTED. A job root usually carries no start time of its own — its
+	// parts do the work — so a row that said "running" with no duration was the
+	// whole reason the head could describe a job forty-nine minutes in as if it
+	// had just been asked for.
+	//
+	// It used to be the longest live member's own clock, and that clock is the
+	// CURRENT ATTEMPT's: a restart clears started_at, so a job whose root was
+	// restarted after thirty-two minutes came back as "running under a minute"
+	// and was described that way to the person watching it. Admission is the one
+	// stamp no lifecycle transition rewrites ([store.JobLife]).
 	runningFor time.Duration
+	// attempts is the row's own attempt count, said only when it is more than
+	// one. A long clock with no attempt clause invites the wrong correction —
+	// "half an hour and still on step one" reads as stuck rather than as
+	// retried.
+	attempts string
 	// owner is the job a part belongs to, empty on a job root.
 	owner string
 	// result is the row's own first finding. A settled row's finding is what
@@ -1714,7 +1725,18 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 			// invent which of them are the workstreams a person would name.
 			row.owner = boardOwnerLabel(candidate.Node, byID)
 		}
-		row.runningFor = boardRunningFor(candidate.Node, byID, children, now)
+		if row.running > 0 {
+			// Whole-work truth where the graph can give it, and the member walk
+			// where it cannot — a node the journal has no admission stamp for
+			// still has the clock it always had.
+			row.runningFor = boardRunningFor(candidate.Node, byID, children, now)
+			if life, found, lifeErr := h.store.NodeLife(candidate.Node.ID); lifeErr == nil && found {
+				if elapsed, known := life.Elapsed(now); known && elapsed > row.runningFor {
+					row.runningFor = elapsed
+				}
+				row.attempts = life.AttemptWords()
+			}
+		}
 		if impact, err := h.store.Impact(candidate.Node.ID, now); err == nil {
 			row.cost = impact.Cost
 		}
@@ -1911,6 +1933,9 @@ func renderBoardWithin(rows []boardRow, thread string, opened map[string]bool, b
 		}
 		if row.runningFor > 0 {
 			line += " | running " + boardElapsed(row.runningFor)
+		}
+		if row.attempts != "" {
+			line += " | " + row.attempts
 		}
 		if row.elsewhere {
 			line += crossSessionMark

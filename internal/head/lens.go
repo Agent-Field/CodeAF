@@ -609,18 +609,41 @@ func (h *Head) lensOpen(id, job string, raw bool, part int) (string, error) {
 func (h *Head) lensJob(node store.Node) (string, error) {
 	now := time.Now()
 	var rendered strings.Builder
-	fmt.Fprintf(&rendered, "%s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
+	// THE TITLE LEADS. The id used to stand in the first column of this line,
+	// and the sentence that came out of the read quoted it back to the person:
+	// "The benchmark run (craft-4958) is still in its first step." A raw id said
+	// out loud is the machinery talking about itself (5.14), and no list of
+	// forbidden words fixes that — what fixes it is not putting the id where a
+	// composition naturally starts. It travels one line down, marked as a
+	// handle, exactly as absorbPromptFor marks it.
+	fmt.Fprintf(&rendered, "%s | %s", surgeryTargetLabel(node), lensJobStateWord(node))
 	spend, spendErr := h.store.NodeSpend(node.ID)
 	if spendErr != nil {
 		spend = store.SpendSlice{}
 	}
-	fmt.Fprintf(&rendered, " | %s", moneyUSD(spend.Cost))
-	if age := store.AgeLabel(lensNodeTime(node), now); age != "" {
-		rendered.WriteString(" | " + age)
+	// ABSENT IS NOT ZERO, on the headline as much as on the spend line below it.
+	// "$0.00" reads as free rather than as unmeasured, and a model shown free
+	// will supply a mechanism for the nothing.
+	if spend.Runs > 0 {
+		fmt.Fprintf(&rendered, " | %s", moneyUSD(spend.Cost))
+	} else {
+		rendered.WriteString(" | nothing priced yet")
 	}
-	rendered.WriteString("\n")
+	life, lifeFound, lifeErr := h.store.NodeLife(node.ID)
+	if lifeErr != nil || !lifeFound {
+		life = store.JobLife{}
+	}
+	if clause := lensLifeClause(node, life, now); clause != "" {
+		rendered.WriteString(" | " + clause)
+	}
+	rendered.WriteString("\n" + lensHandleLine(node.ID) + "\n")
 
 	if h.lensLive(node) {
+		// THE RUN HISTORY STANDS WITH THE PLAN, above it, because a plan read
+		// alone is how "one step, still on it" became "it just started". Plan
+		// shape is a true answer to a question nobody asked; what a person
+		// watching thirty-two minutes tick by asked was how it is GOING.
+		rendered.WriteString(h.lensRunHistory(node, life, now) + "\n")
 		// The plan renderer, uncapped: this read is a page of its own and the
 		// question behind opening running work is exactly which step is where.
 		plan, failed := h.renderPlanWithin(node, 0, 0)
@@ -658,6 +681,152 @@ func (h *Head) lensJob(node store.Node) (string, error) {
 		rendered.WriteString("how its parts ended:\n" + strings.Join(children, "\n") + "\n")
 	}
 	return strings.TrimSpace(rendered.String()), nil
+}
+
+// lensJobStateWord is the job's state in the product's own vocabulary rather
+// than the column's. The raw status used to be printed here, and "claimed" is
+// not a word this product says to anyone.
+func lensJobStateWord(node store.Node) string {
+	if node.Held {
+		return "paused"
+	}
+	return surgeryStatusWord(node.Status)
+}
+
+// lensHandleLine is the id, demoted.
+//
+// It is on its own line, after the sentence-shaped one, wearing the same
+// marking absorbPromptFor gives it: this is for the tools, and it is not part
+// of anything said to a person. The id has to be here — every verb on this belt
+// takes one — so the question was never whether to hand it over but where, and
+// the answer is nowhere a composition would pick it up on its way past.
+func lensHandleLine(id string) string {
+	return "id " + id + " — for your reads, never say an id to them"
+}
+
+// lensLifeClause is HOW LONG, and it is measured from the moment the work was
+// taken on.
+//
+// The read it replaces measured from store.Node.StartedAt through AgeLabel, and
+// both halves of that were wrong for a restarted job at once: StartedAt is the
+// CURRENT ATTEMPT's claim stamp, which a restart resets, and AgeLabel's finest
+// grain is an hour, so everything under sixty minutes came back as "just now".
+// A craft job thirty-two minutes and six finished parts deep, restarted a
+// minute earlier after a deadline, therefore read as brand new — and the
+// sentence that came out said so, to the person who had been watching it.
+//
+// The attempt count travels with the clock because the clock without it invites
+// the wrong correction: "thirty-two minutes and still on step one" reads as
+// stuck rather than as retried. See [store.JobLife].
+func lensLifeClause(node store.Node, life store.JobLife, now time.Time) string {
+	parts := make([]string, 0, 3)
+	if elapsed, known := life.Elapsed(now); known {
+		if life.Live() {
+			parts = append(parts, "going "+boardElapsed(elapsed))
+		} else {
+			parts = append(parts, "took "+boardElapsed(elapsed))
+		}
+	}
+	if words := life.AttemptWords(); words != "" {
+		parts = append(parts, words)
+	}
+	// When the work has stopped, when it stopped is still worth saying — and it
+	// is a settled stamp, so the coarse label is the right grain for it.
+	if !life.Live() {
+		if age := store.AgeLabel(lensNodeTime(node), now); age != "" {
+			parts = append(parts, "finished "+age)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// lensRunHistory is the paragraph a running job's plan may not be read without:
+// how long it has been at it, how many goes it has taken, and the last thing it
+// actually said, with how long ago it said it.
+//
+// Every fact here was already in the store and none of them reached this read.
+// The composition that went out — "still in its first step, just started,
+// running under a minute" — was three wrong clauses assembled honestly out of
+// three wrong reads, which is why the fix is here and not in a prompt.
+func (h *Head) lensRunHistory(node store.Node, life store.JobLife, now time.Time) string {
+	var line strings.Builder
+	line.WriteString("run so far: ")
+	if elapsed, known := life.Elapsed(now); known {
+		line.WriteString(boardElapsed(elapsed) + " since this work was taken on")
+	} else {
+		line.WriteString("how long it has been going is not recorded")
+	}
+	if life.Restarted() {
+		// The count and not the attempt's own clock. [store.JobLife] carries that
+		// clock and it is a true figure, but it is a SHORT one on exactly the job
+		// this line exists for, and a short figure sitting beside a long one is
+		// an invitation to quote the wrong one. What the reader needs from a
+		// restart is that it happened, not when.
+		line.WriteString(", on its " + strings.TrimSuffix(life.AttemptWords(), " attempt") + " attempt")
+	}
+	if latest, found := h.lensLatestWord(node.ID, now); found {
+		line.WriteString("\n" + latest)
+	} else {
+		line.WriteString("\nlast word: nothing has been said on this job yet")
+	}
+	return line.String()
+}
+
+// lensLatestWord is the newest thing anybody working on this job has SAID, with
+// its age in the same words the clock above it uses.
+//
+// The progress feed already carried it, at the bottom of a list, stamped with a
+// wall-clock time a reader has to subtract from to learn anything. A relative
+// age is the fact the question is actually about — "is it alive" — and putting
+// it on its own line is what makes a live job unmistakable from a hung one.
+func (h *Head) lensLatestWord(root string, now time.Time) (string, bool) {
+	nodes, err := h.store.SubtreeNodes(root)
+	if err != nil {
+		return "", false
+	}
+	var newest store.Message
+	var step string
+	for _, node := range nodes {
+		messages, readErr := h.store.NodeMessages(node.ID, 0, lensNodeMessagePage)
+		if readErr != nil {
+			continue
+		}
+		for _, message := range messages {
+			if lensSaid(message) == "" || message.Seq <= newest.Seq {
+				continue
+			}
+			newest, step = message, surgeryTargetLabel(node)
+			// The root speaks for the job, so its own lines are the job's own
+			// voice and naming the step would be naming the job twice.
+			if node.ID == root {
+				step = ""
+			}
+		}
+	}
+	if newest.Seq == 0 {
+		return "", false
+	}
+	said := lensSnippet(lensSaid(newest))
+	when := "just now"
+	if !newest.Time.IsZero() && now.After(newest.Time) {
+		when = boardElapsed(now.Sub(newest.Time)) + " ago"
+	}
+	if step == "" {
+		return "last word " + when + ": " + said, true
+	}
+	return "last word " + when + ", from " + step + ": " + said, true
+}
+
+// lensSaid is one message reduced to what it actually says, progress rows
+// included — the same rule the feed applies, written once so the feed and the
+// latest line can never disagree about which row was the last word.
+func lensSaid(message store.Message) string {
+	body := strings.TrimSpace(message.Body)
+	if body == "" && message.Progress != nil {
+		body = strings.TrimSpace(fmt.Sprintf("%s %d/%d %s", message.Progress.Phase,
+			message.Progress.Done, message.Progress.Total, message.Progress.Latest))
+	}
+	return strings.TrimSpace(body)
 }
 
 // lensSpendLine is what one job cost, as a READ rather than as a recollection.
@@ -736,12 +905,8 @@ func (h *Head) lensProgressFeed(root string, tail int) []string {
 	}
 	lines := make([]string, 0, len(merged))
 	for _, message := range merged {
-		body := strings.TrimSpace(message.Body)
-		if body == "" && message.Progress != nil {
-			body = fmt.Sprintf("%s %d/%d %s", message.Progress.Phase,
-				message.Progress.Done, message.Progress.Total, message.Progress.Latest)
-		}
-		if strings.TrimSpace(body) == "" {
+		body := lensSaid(message)
+		if body == "" {
 			continue
 		}
 		step := labels[message.NodeID]
