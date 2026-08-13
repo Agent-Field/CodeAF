@@ -101,28 +101,20 @@ type threadTails interface {
 // the new session id; the surface applies it on its poll and the head simply
 // serves the new room. No in-process channel, no second seam.
 //
-// TODO(chats, engine half): the engine lane adds `store.PartRoomSwitch` to
-// [store.PartKind]'s vocabulary and to knownPartKind, at which point a part of
-// this kind decodes with its Text filled and the constant below becomes an
-// alias for it. Until then a part of an unrecognized kind round-trips by its raw
-// bytes with no Text (message_parts.go's forward-compatibility rule), so this
-// reads nothing and the contract is simply inert — which is the correct
-// behaviour for a build whose engine does not write the row.
-const roomSwitchKind store.PartKind = "room-switch"
+// The engine half landed (store.PartRoomSwitch, store.RoomSwitchTarget); the
+// constant is its alias and the reader below goes through the store's own
+// decoder, so the payload spelling lives in exactly one package.
+const roomSwitchKind = store.PartRoomSwitch
 
 // roomSwitchTarget is the one place a journaled row becomes a room switch.
 //
-// It is a function variable so a test can drive the contract without the engine
-// half, and so the merge that lands [store.PartRoomSwitch] has exactly one line
-// to re-point. Everything downstream — the closing row, the watermark
-// discipline, the atomic re-point — is written against the session id it
-// returns and does not care where the id came from.
+// It is a function variable so a test can drive the contract without a real
+// row. Everything downstream — the closing row, the watermark discipline, the
+// atomic re-point — is written against the session id it returns and does not
+// care where the id came from.
 var roomSwitchTarget = func(message store.Message) string {
 	for i := range message.Parts {
-		if message.Parts[i].Kind != roomSwitchKind {
-			continue
-		}
-		if target := strings.TrimSpace(message.Parts[i].Text); target != "" {
+		if target, ok := store.RoomSwitchTarget(message.Parts[i]); ok {
 			return target
 		}
 	}
@@ -157,6 +149,26 @@ func (a *App) readThreads() []Thread {
 		}
 		// A read that failed is not a store with no threads in it. Fall through
 		// to the reads that exist rather than claiming an empty list.
+	}
+	// The engine's own projection (store.OpenThreads) speaks in its vocabulary,
+	// not this package's; the adaptation is four field names, done here so the
+	// store never has to know what a switcher row is.
+	if reader, ok := a.backend.(interface {
+		OpenThreads(limit int) ([]store.ThreadArc, error)
+	}); ok {
+		if arcs, err := reader.OpenThreads(maxThreadRows); err == nil {
+			threads := make([]Thread, 0, len(arcs))
+			for _, arc := range arcs {
+				threads = append(threads, Thread{
+					SessionID:  arc.SessionID,
+					Name:       arc.Title,
+					LeftAt:     arc.Left,
+					LastActive: arc.LastActive,
+					Unseen:     arc.UnseenDelivery,
+				})
+			}
+			return a.markSeen(threads)
+		}
 	}
 	if a.source == nil || a.source.rooms == nil {
 		return nil
