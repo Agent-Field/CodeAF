@@ -54,6 +54,19 @@ func warmTurn(windowBytes, hitPercent int) turnBilling {
 	return turn
 }
 
+// calibratedWindow is the observation window the default grant is actually
+// calibrated against: the one a leaf gets when nothing could name its model.
+//
+// The tests below used to spell it observationWindow(1<<20), and that was the
+// same number by accident. Every long-context model was clamped to 64KB, so
+// naming a frontier model and naming none picked windows within a factor of two
+// of each other and it did not matter which was written down. The clamp is gone
+// — see TestTheObservationWindowHasNoAbsoluteCeiling — and the two are now
+// orders of magnitude apart, so these tests have to say which they mean. They
+// mean this one: they are tests about the default grant, and a window sized for
+// a million tokens is a question about a grant sized for a million tokens.
+func calibratedWindow() int { return observationWindow(0) }
+
 // turnsAffordable counts the turns a leaf can pay for out of one ceiling, using
 // the production accounting rather than a copy of it: the same exhausted() the
 // loop tests on every pass, which reads both of the leaf's bounds.
@@ -108,9 +121,9 @@ func TestAffordableTurnsDidNotFallWhenTheWindowGrew(t *testing.T) {
 		t.Fatalf("the baseline arithmetic is wrong: %d turns, expected the low teens", before)
 	}
 
-	// The harness as it is: the window a long-context model is handed, billed
-	// with the cached share weighted down to what it actually costs.
-	after := turnsAffordable(observationWindow(1<<20), defaultLeafTokens, true)
+	// The harness as it is: the window the default grant is calibrated against,
+	// billed with the cached share weighted down to what it actually costs.
+	after := turnsAffordable(calibratedWindow(), defaultLeafTokens, true)
 	if after < before {
 		t.Fatalf("growing the observation window cost the leaf turns: %d before, %d after — "+
 			"a leaf that cannot finish inside one budget is bought out in extension nodes",
@@ -118,17 +131,46 @@ func TestAffordableTurnsDidNotFallWhenTheWindowGrew(t *testing.T) {
 	}
 }
 
-// The cap is what makes the window a fixed cost rather than a function of
-// whichever model happens to be configured. Every model past the clamp gets the
-// same window, so every one of them affords the same number of turns; a run
-// that moves from a 600k-context model to a 2M one must not quietly lose its
-// ability to finish.
-func TestEveryLongContextModelAffordsTheSameTurns(t *testing.T) {
-	want := turnsAffordable(observationWindow(600_000), defaultLeafTokens, true)
-	for _, context := range []int{1 << 20, 2_000_000, 10_000_000} {
-		if got := turnsAffordable(observationWindow(context), defaultLeafTokens, true); got != want {
-			t.Fatalf("a %d-token model affords %d turns where a 600k one affords %d", context, got, want)
+// The other half of the same statement, and the one the deleted ceiling used to
+// hide: window and grant are one decision made twice.
+//
+// The 64KB clamp made the window a fixed cost, so a run could move from a 600k
+// model to a 2M one and afford exactly the same turns. That looked like safety
+// and was a category error wearing safety's clothes — it capped MEMORY to
+// protect SPEND, and every model above about 600k tokens was handed the same
+// sixty-four kilobytes whatever the catalog said about it. The window is now a
+// share of the model's own context, which means the grant beside it has to be
+// sized for the same model, and nothing inside exec can do that: the grant is
+// the caller's, arriving through NewLinear.
+//
+// So what is pinned is the coupling, as a number a reader can act on. A leaf on
+// a much larger model needs a proportionally larger grant to afford the turns
+// the default one buys, and if that multiple ever runs away the sizing has
+// stopped being proportional and this fails.
+func TestALargerWindowCostsAProportionallyLargerGrant(t *testing.T) {
+	want := turnsAffordable(calibratedWindow(), defaultLeafTokens, true)
+
+	for _, context := range []int{200_000, 1 << 20} {
+		window := observationWindow(context)
+		// The grant that buys the same number of turns at this window. Doubling
+		// rather than solving: what is being asserted is the order of magnitude,
+		// and the exact figure is the caller's to pick anyway.
+		grant := defaultLeafTokens
+		for grant < 4096*defaultLeafTokens && turnsAffordable(window, grant, true) < want {
+			grant *= 2
 		}
+		multiple := grant / defaultLeafTokens
+		if turnsAffordable(window, grant, true) < want {
+			t.Fatalf("a %d-token model's %d-byte window never affords %d turns", context, window, want)
+		}
+		// The window grew by this much, so the grant may grow by about this much
+		// and no more. Slack of 2x covers the doubling itself.
+		if ratio := window / calibratedWindow(); multiple > 2*ratio+2 {
+			t.Errorf("a %d-token model's window is %dx the calibrated one but needs %dx the grant — "+
+				"the sizing has stopped being proportional", context, ratio, multiple)
+		}
+		t.Logf("a %d-token model: %d-byte window, %dx the default grant to afford %d turns",
+			context, window, multiple, want)
 	}
 }
 
@@ -141,7 +183,7 @@ func TestEveryLongContextModelAffordsTheSameTurns(t *testing.T) {
 // bound beside the ceiling cannot push a first turn into landing mode either.
 func TestOneTurnDoesNotCrossTheWrapUpThreshold(t *testing.T) {
 	outcome := &Outcome{}
-	turn := steadyTurn(observationWindow(1<<20), false)
+	turn := steadyTurn(calibratedWindow(), false)
 	outcome.Usage.PromptTokens = turn.prompt
 	outcome.Usage.CompletionTokens = turn.completion
 	if used := budgetUsed(outcome, defaultLeafTokens); used > wrapUpAt {
@@ -217,7 +259,7 @@ func (w *warmRunaway) CompleteWithMessages(context.Context, []ai.Message, ...ai.
 // what ends it, it has to end it inside the turn backstop rather than at it, and
 // it has to end it the graceful way: a landing that delivers what exists.
 func TestACacheDiscountedRunawayLandsOnTheRawBound(t *testing.T) {
-	client := &warmRunaway{window: observationWindow(1 << 20), hitPercent: 98}
+	client := &warmRunaway{window: calibratedWindow(), hitPercent: 98}
 	linear := NewLinear(client, workspace(t), nil, maxTurnBackstop, defaultLeafTokens, time.Hour)
 	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
 	if err != nil {
@@ -244,7 +286,7 @@ func TestACacheDiscountedRunawayLandsOnTheRawBound(t *testing.T) {
 	// grants after crossing.
 	raw := rawSpent(outcome)
 	ceiling := rawCeiling(defaultLeafTokens)
-	turn := warmTurn(observationWindow(1<<20), 98)
+	turn := warmTurn(calibratedWindow(), 98)
 	if slack := (landingTurns + 1) * (turn.prompt + turn.completion); raw > ceiling+slack {
 		t.Fatalf("raw spend %d overran the %d bound by more than the %d its landing reserve costs",
 			raw, ceiling, slack)
@@ -255,7 +297,7 @@ func TestACacheDiscountedRunawayLandsOnTheRawBound(t *testing.T) {
 	costOnly := 0
 	usage := &Outcome{}
 	for costOnly < 10_000 && spent(usage) < defaultLeafTokens {
-		turn := warmTurn(observationWindow(1<<20), 98)
+		turn := warmTurn(calibratedWindow(), 98)
 		usage.Usage.PromptTokens += turn.prompt
 		usage.Usage.CachedTokens += turn.cached
 		usage.Usage.CompletionTokens += turn.completion
@@ -272,7 +314,7 @@ func TestACacheDiscountedRunawayLandsOnTheRawBound(t *testing.T) {
 // become, the leaf converges inside its raw allowance and inside the backstop —
 // and at zero caching nothing changes at all, because cost still binds first.
 func TestTheRawBoundHoldsAtEveryHitRate(t *testing.T) {
-	window := observationWindow(1 << 20)
+	window := calibratedWindow()
 	cold := turnsUntilExhausted(defaultLeafTokens, func(int) turnBilling {
 		return warmTurn(window, 0)
 	})

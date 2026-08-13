@@ -111,7 +111,7 @@ func TestAPlainTaskCarriesNoSchemaItCannotUse(t *testing.T) {
 
 	// What turn 1 used to cost unconditionally, measured through the same
 	// toolbox with every family in hand.
-	full := newToolboxWithMedia(workspace(t), "1", nil, nil, offersEverything(t))
+	full := newToolbox(workspace(t), "1", nil, nil, offersEverything(t), 0)
 	full.Arm(FamilyMedia, FamilyDocument)
 	before, after := schemaBytes(t, full.Definitions()), schemaBytes(t, client.tools[0])
 	saved := before - after
@@ -169,7 +169,7 @@ func TestAskingForACapabilityArmsItForTheNextTurn(t *testing.T) {
 // Arming everything does not silence the door, and a worker that asks again is
 // not left thinking its request failed.
 func TestAskingForACapabilityAlreadyHeldIsACheapNoOp(t *testing.T) {
-	toolbox := newToolboxWithMedia(workspace(t), "1", nil, nil, offersEverything(t))
+	toolbox := newToolbox(workspace(t), "1", nil, nil, offersEverything(t), 0)
 	toolbox.Arm(FamilyMedia)
 	result := toolbox.capabilities(map[string]any{"need": FamilyMedia})
 	if result.IsError {
@@ -224,8 +224,8 @@ func TestAnAttachedDocumentArmsItsReaderBeforeTurnOne(t *testing.T) {
 // it offers are the same bytes on every turn of every leaf.
 func TestTheCapabilitiesDefinitionDoesNotMoveWhenAFamilyIsArmed(t *testing.T) {
 	space := workspace(t)
-	unarmed := newToolboxWithMedia(space, "1", nil, nil, offersEverything(t))
-	armed := newToolboxWithMedia(space, "1", nil, nil, offersEverything(t))
+	unarmed := newToolbox(space, "1", nil, nil, offersEverything(t), 0)
+	armed := newToolbox(space, "1", nil, nil, offersEverything(t), 0)
 	armed.Arm(FamilyMedia)
 
 	find := func(toolbox *Toolbox) (ai.ToolDefinition, bool) {
@@ -263,8 +263,8 @@ func TestTheCapabilitiesDefinitionDoesNotMoveWhenAFamilyIsArmed(t *testing.T) {
 			t.Errorf("the frozen description does not name %s: %q", family, before.Function.Description)
 		}
 	}
-	bare := newToolboxWithMedia(space, "1", nil, nil,
-		&MediaTools{Provider: &fakeMediaProvider{}, Catalog: fakeModalities{}, WorkingModel: "work/model"})
+	bare := newToolbox(space, "1", nil, nil,
+		&MediaTools{Provider: &fakeMediaProvider{}, Catalog: fakeModalities{}, WorkingModel: "work/model"}, 0)
 	unconfigured := bare.capabilities(map[string]any{"need": FamilyDocument})
 	if !unconfigured.IsError || !strings.Contains(unconfigured.Content, "not configured") {
 		t.Fatalf("asking for an unconfigured family was answered with %+v", unconfigured)

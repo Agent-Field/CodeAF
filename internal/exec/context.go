@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -18,27 +19,6 @@ const (
 	// small window, and clamping it upwards would size a prompt past what the
 	// model accepts in order to look generous.
 	observationBudget = 24 << 10
-
-	// maxObservationBudget caps the window every long-context model would
-	// otherwise be handed in full, and the cap is a cost decision rather than a
-	// memory one.
-	//
-	// It was 256KB, which is what the formula returns for any model with more
-	// than about 600k tokens of context — i.e. for every model the product
-	// actually runs on. The window is re-sent on every turn and every one of
-	// those tokens is billed against the leaf's spend ceiling, which did not
-	// move when the window did: measured on one task, a leaf's first call came
-	// back at 152k prompt tokens against a 150k ceiling, so it crossed its
-	// wrap-up threshold before doing any work and had to be extended three
-	// times to finish. Four turns of memory is not memory.
-	//
-	// 64KB is a quarter of the per-turn cost and keeps the whole of what the
-	// larger window was for: the 26KB subject that motivated the change fits
-	// two and a half times over, and everything past the window is spilled to
-	// the workspace and re-readable rather than lost. What it removes is the
-	// case nobody asked for — a quarter of a megabyte of stale tool output
-	// riding every turn of a leaf that read one file.
-	maxObservationBudget = 64 << 10
 
 	// minObservationBudget is arithmetic protection rather than policy. Below
 	// it the fixed floor and the completion reserve have already eaten the
@@ -74,51 +54,59 @@ const (
 	// observationBytesPerToken converts a context length into the byte budget
 	// this package actually measures. Four is the conservative direction for
 	// mixed prose and code: over-estimating bytes per token would size the
-	// window past the context it is supposed to fit inside.
-	observationBytesPerToken = 4
+	// window past the context it is supposed to fit inside. It is the shared
+	// estimator rather than a second opinion about the same question — when a
+	// real tokenizer arrives it replaces ctxbudget's constant and this follows.
+	observationBytesPerToken = ctxbudget.BytesPerToken
 
 	// observationFixedFloorTokens is the measured per-turn cost of everything
 	// that is not observations — the standing contract, the tool schemas, the
 	// brief. Measured at ~3,778 tokens across 332 leaf turns; rounded up,
 	// because the window must not be sized from an optimistic floor.
 	observationFixedFloorTokens = 4_000
-
-	// observationCompletionReserve is what the turn itself needs room for:
-	// reasoning tokens plus the reply. A window that fills the context to the
-	// brim leaves the model no room to think, which is the same failure as
-	// forgetting, arriving from the other side.
-	observationCompletionReserve = 32_000
 )
 
 // observationWindow sizes the leaf's observation window from the one quantity
 // that governs it: how much the model can hold in a single request.
 //
-// Half the usable context, and no more. The other half is not slack — it is the
-// assistant messages, which are compressed state and are never faded, plus the
-// user's brief, the upstream results, and everything the loop appends as it
-// goes. A window sized at the whole remainder would be right on turn one and
-// wrong by turn ten, and the failure would arrive as a provider rejection
-// rather than as degradation.
+// The share of the context it may take is no longer this file's opinion. It is
+// the process-wide fill law — see ctxbudget, which owns the one statement of how
+// full an agent's window may get before compaction fires, and the completion
+// reserve every call keeps for its answer and its reasoning. What is left after
+// the fixed floor and that reserve is what observations may carry. The rest of
+// the window is not slack: it is the assistant messages, which are compressed
+// state and are never faded, plus the user's brief, the upstream results, and
+// everything the loop appends as it goes.
 //
-// A known context always gets the formula's own answer, including when that
-// answer is small. Only the unknown case takes a default, and only the default
-// gets a floor under it — see observationBudget.
+// There is no longer a ceiling over the answer, and the deleted one is worth
+// naming because it was the only absolute byte number left in the sizing. It
+// stood at 64KB and it was a cost decision wearing a memory decision's clothes:
+// the window is re-sent every turn and billed against the leaf's spend ceiling,
+// so a big window on a small grant was measured crossing the wrap-up threshold
+// before the leaf had done any work. Capping the memory was the wrong half to
+// fix. A model that holds a million tokens gets a window sized for a million
+// tokens, and what has to move beside it is the grant — which is a spend
+// question, decided where spend is decided, and never here.
+//
+// A known context always gets the law's own answer, including when that answer
+// is small. Only the unknown case takes a default, and only the default gets a
+// floor under it — see observationBudget.
 func observationWindow(contextTokens int) int {
-	if contextTokens <= 0 {
+	budget := ctxbudget.For(contextTokens).WithFloor(observationFixedFloorTokens)
+	if !budget.Known() {
 		if defaultObservationBudget < observationBudget {
 			return observationBudget
 		}
 		return defaultObservationBudget
 	}
-	usable := contextTokens/2 - observationFixedFloorTokens - observationCompletionReserve
-	budget := usable * observationBytesPerToken
-	if budget < minObservationBudget {
-		return minObservationBudget
+	// Deliberately not BytesOr: an unaffordable window on a genuinely small
+	// model must come back small, not fall through to the unknown-case default.
+	// Sizing a prompt past what the model accepts in order to look generous is
+	// a provider rejection rather than a shorter memory.
+	if window := budget.Bytes(); window > minObservationBudget {
+		return window
 	}
-	if budget > maxObservationBudget {
-		return maxObservationBudget
-	}
-	return budget
+	return minObservationBudget
 }
 
 // decayLowWaterPercent is where a firing decay pass stops before the loop has
