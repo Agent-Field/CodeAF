@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -143,5 +144,61 @@ func TestAGatheringLeafsGrantIsSizedFromWhatLandedInIt(t *testing.T) {
 	if huge <= 0 {
 		t.Fatalf("an enormous fan-in starved the pot to %d; a node that cannot read "+
 			"its inputs cannot assemble them either", huge)
+	}
+}
+
+// The fold's grant, and the shape it is arithmetic over.
+//
+// A gathering leaf's grant buys hands to fetch with — a turn per dependency, and
+// twice the landed text for reading it in and writing it back out. A fold
+// fetches nothing: its material is in its prompt, so its run is a prompt and an
+// answer, and its grant is that, times the two calls the loop permits it, and
+// never more than the open shape it replaces would have taken.
+func TestAFoldsGrantIsSizedForThePassItActuallyMakes(t *testing.T) {
+	const window = 200_000
+	// The measured shape: four producers, about 28 KB of material between them.
+	const pushed = 28 << 10
+	_, open := gatheringGrant(chatLeafTurns, chatLeafTokens,
+		store.DependencyFanIn{Count: 4, Bytes: pushed})
+	turns, tokens := foldGrant(window, exec.FoldTurns, pushed, open)
+
+	// The saving that is actually the point: the measured join ran thirteen turns
+	// and 181,354 tokens over a single pass worth about 7,700.
+	if turns != exec.FoldTurns {
+		t.Fatalf("turns = %d, want the %d the loop permits", turns, exec.FoldTurns)
+	}
+	if turns >= chatLeafTurns+4 {
+		t.Fatalf("a fold was granted %d turns; the open shape's own grant is %d",
+			turns, chatLeafTurns+4)
+	}
+	// And the guarantee that the token ceiling does not quietly hand it back: the
+	// completion reserve is a generous per-call output cap, and two of them plus
+	// two prompts can outrun the open shape's whole envelope.
+	if tokens > open {
+		t.Fatalf("a fold was granted %d tokens against the open shape's %d; the cheaper "+
+			"mode must not buy the bigger allowance", tokens, open)
+	}
+
+	// It is not a fixed number either: more material pushed is more room to write
+	// the assembly of it, monotonically and with no threshold anywhere. Measured
+	// below the ceiling, where the fold's own arithmetic is what answers.
+	previous := 0
+	for _, bytes := range []int{0, 4 << 10, 16 << 10} {
+		_, grant := foldGrant(window, exec.FoldTurns, bytes, 0)
+		if grant <= previous {
+			t.Fatalf("%d pushed bytes granted %d tokens, no more than the %d before it",
+				bytes, grant, previous)
+		}
+		previous = grant
+	}
+
+	// A window nobody could size keeps the process-wide reserve rather than
+	// guessing small, which is what every budget in the tree does when nobody
+	// can say how large the window is.
+	_, unknown := foldGrant(0, exec.FoldTurns, pushed, 0)
+	want := exec.FoldTurns * (leafPromptFloorTokens + pushed/ctxbudget.BytesPerToken +
+		ctxbudget.CompletionReserve())
+	if unknown != want {
+		t.Fatalf("an unsized window granted %d tokens, want the process-wide %d", unknown, want)
 	}
 }

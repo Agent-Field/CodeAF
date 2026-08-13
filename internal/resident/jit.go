@@ -200,7 +200,7 @@ func (e JITExpander) expand(ctx context.Context, node store.Node) (int, error) {
 
 	// 2. What the build could not have known: what the work feeding this node
 	//    actually produced.
-	inputs, err := e.Graph.DependencyInputs(node.ID, e.digestPot())
+	inputs, err := e.Graph.DependencyAccounts(node.ID, e.digestPot())
 	if err != nil {
 		return 0, fmt.Errorf("read what landed: %w", err)
 	}
@@ -341,7 +341,7 @@ func (e JITExpander) admit(node store.Node, target JITTarget, children []plan.No
 // whose results are its inputs. They become the entry children's inputs, which
 // is what makes the division see what the node would have seen.
 func (e JITExpander) parentNeeds(id string) ([]string, error) {
-	inputs, err := e.Graph.DependencyInputs(id, e.digestPot())
+	inputs, err := e.Graph.DependencyAccounts(id, e.digestPot())
 	if err != nil {
 		return nil, fmt.Errorf("read the inputs of %s: %w", id, err)
 	}

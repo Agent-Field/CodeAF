@@ -488,12 +488,18 @@ type DependencyInput struct {
 	// Handle is the absolute path of a file holding this dependency's complete
 	// text, and it is set exactly when the digest above is short of it.
 	//
-	// It exists because the alternative to pulling is pushing, and pushing is
-	// what cost 37×: once the pot was sized from a real window, every evaluator
-	// and every join was handed every upstream result in full — a join billed
-	// 163k tokens against a 29.6k expectation — for the sake of the one consumer
-	// in ten whose contract genuinely says reproduce all of it. That consumer
-	// opens the handle. The other nine read the digest and pay for the digest.
+	// It was written on the belief that pushing was what cost 37× — that a
+	// window-sized pot had been handing every join every upstream result in
+	// full. That belief was wrong, and the measurement says so: the join that
+	// billed 163k tokens was handed 2.3 KB, and this field was never once set in
+	// either benchmark run, because a fan-in of one-sentence summaries is never
+	// large enough to overrun anything. What actually cost was the opposite, the
+	// pulling: a consumer handed paths instead of results went and read them.
+	//
+	// So the digest carries the product now, and this is what remains true of
+	// the handle: a fan-in genuinely too large for its reader is clipped, and
+	// every withheld byte is one ordinary path away instead of gone. It is the
+	// exception it was always meant to be rather than the rule it silently was.
 	//
 	// The path is content-addressed, so the same settled result yields the same
 	// handle on every read: a prompt prefix built from these does not move
@@ -538,19 +544,59 @@ func dependencyFloor(pot int) int {
 	return minDependencyBytes
 }
 
-// dependencyCeiling is the most one dependency may take of any pot, however
-// large the pot is. It is MaxDigestBytes because MaxDigestBytes is this
-// package's own definition of a digest: past it the consumer is no longer being
-// handed a summary of the work, it is being handed the work.
+// There was a dependencyCeiling here: a flat MaxDigestBytes past which no one
+// dependency could take more of the prompt, however large the pot was. It was
+// written to close the opposite hole to the one this file has now — a pot sized
+// from a 1M-token window handed every consumer every upstream summary whole —
+// and it is gone, deliberately, because its premise was measured and found
+// false and because it is exactly what defeats a product-carrying edge.
 //
-// The pot still governs the total — a wide fan-in on a small window is starved
-// exactly as it was. What the ceiling governs is the other direction, the one
-// that had no bound at all: a pot sized from a 1M-token window is megabytes, and
-// under a per-dependency share of megabytes every settled summary arrived whole,
-// at MaxSummaryBytes apiece, in every evaluator and every join. The bytes above
-// the ceiling are not withheld; they are moved from the prompt to a handle, and
-// the consumer that needs them fetches them.
-const dependencyCeiling = MaxDigestBytes
+// False premise first. The join that was supposed to have been handed "every
+// upstream result in full" was handed 2.3 KB; its 163k tokens were eleven turns
+// of accumulated transcript, not one fat prompt. The machinery the ceiling
+// installed — clip, spill, handle — never engaged in either benchmark run: the
+// content-addressed store was empty in both, because a fan-in of press releases
+// is never large enough to bite a window-sized pot.
+//
+// And a flat ceiling is the wrong shape now. With the product on the edge, four
+// producers of a 7 KB report each are 28 KB of material that fits in the pot of
+// any modern window with room to spare — and a 4 KiB per-dependency cap would
+// clip all four and hand back four file handles, which is the archaeology this
+// whole change exists to end, reintroduced by a constant.
+//
+// What bounds one dependency now is the pot and the two-pass share below: every
+// dependency is given an equal share first, and only genuinely unspent share is
+// handed on to whoever is still clipped. A verbose producer therefore cannot
+// take a terse sibling's room — which is the property the ceiling was reached
+// for — and when the material fits, it arrives.
+
+// potForMaterial bounds a window-derived pot by the material actually on the
+// edges. The window says what the consumer can hold; this says what there is to
+// hold, and the smaller of the two is the budget.
+//
+// It changes no byte of what is pushed — the allotment below already gives each
+// dependency min(its share, what it wrote) — and that is precisely why it is
+// worth stating. A pot of 1.1 MB over 28 KB of material is not a budget, it is a
+// number nobody has looked at since the window was consulted, and every judgment
+// made from it is made at a scale the run does not have: how many inputs are
+// worth carrying, what counts as a fragment rather than a summary, whether
+// anything needed spilling. Sized from the material, those judgments are made
+// against the run that is actually happening.
+//
+// It is applied here, over the assembled lines, rather than by the caller over a
+// measurement, because here the number is exact. An estimate that lands one byte
+// under the material would clip and spill the largest producer for no reason and
+// announce it to the consumer as though something had genuinely not fit.
+func potForMaterial(window int, lines []int) int {
+	material := 0
+	for _, length := range lines {
+		material += length
+	}
+	if material <= 0 || material >= window {
+		return window
+	}
+	return material
+}
 
 // dependencyClipNote is appended to a digest the budget cut short. It exists
 // because the alternative is the failure this whole function used to have: a
@@ -585,13 +631,33 @@ func dependencyClipNote(handle string) string {
 // what a caller passes when nothing can say how big that window is; it is a
 // fallback, not a ceiling, and a caller that knows better must not use it.
 //
-// What every input carries is a digest first and a handle always: no dependency
-// may take more than dependencyCeiling of the prompt, and any dependency whose
-// text did not fit in its share comes back with the path of a file holding all
-// of it. The consumer decides what to open. That is the whole policy — the pot
-// is a push budget, the handle is the pull, and a fan-in therefore costs what
-// its consumer reads rather than what its producers wrote.
+// What every input carries is as much of the producer's product as its share
+// buys, and a handle whenever that was not all of it — a path to a file holding
+// the whole. The consumer decides what to open. That is the whole policy: the
+// pot is the push, the handle is the pull, and a fan-in costs what its consumer
+// reads rather than what its producers wrote.
+//
+// This is the shape for the node that has to WORK from what fed it, and the
+// files a producer left are read back into its digest. For the reader that is
+// deciding a shape rather than doing the work, see DependencyAccounts.
 func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, error) {
+	return s.dependencyInputs(id, maxBytes, true)
+}
+
+// DependencyAccounts is DependencyInputs for a reader that needs to know what
+// exists rather than to hold it: a sub-planner deciding how to divide a claimed
+// node, an audit, anything whose next act is a judgment about shape.
+//
+// It carries the producers' own accounts of their work — which is what this edge
+// carried for everyone until the consumers that have to work from it were told
+// apart from the consumers that do not. The files still travel, so a reader that
+// turns out to need a byte of the material has the path; it simply is not handed
+// eight reports to decide that three parts are really four.
+func (s *Store) DependencyAccounts(id string, maxBytes int) ([]DependencyInput, error) {
+	return s.dependencyInputs(id, maxBytes, false)
+}
+
+func (s *Store) dependencyInputs(id string, maxBytes int, product bool) ([]DependencyInput, error) {
 	if maxBytes <= 0 {
 		return nil, nil
 	}
@@ -610,8 +676,13 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 		line    string
 		summary string
 		failure string
+		files   []string
 	}
 	settled := make([]produced, 0)
+	// One file is inlined once for one consumer, however many producers name it.
+	// Two panelists that both cite the shared spec used to hand the join two
+	// copies of it and pay twice.
+	inlined := make(map[string]bool)
 	for rows.Next() {
 		var dependencyID, summary, failure string
 		var status Status
@@ -622,7 +693,21 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 		if line == "" {
 			continue
 		}
-		settled = append(settled, produced{id: dependencyID, line: line, summary: summary, failure: failure})
+		// A producer's files are its files whether it finished or failed, and
+		// this is the only durable record of either: the executor's path→node
+		// map lives in the worker's memory and dies with it.
+		files := summaryPaths(summary + "\n" + failure)
+		// And here the edge stops carrying the announcement and starts carrying
+		// the work. A node that recorded files answered by writing them, so the
+		// files are the answer; a node that recorded none answered in its final
+		// message, so the message is the answer and the line above is already
+		// all of it. That is the whole test, and it is a fact about the record
+		// rather than a reading of the prose.
+		if product {
+			line += readProduct(files, maxBytes, inlined)
+		}
+		settled = append(settled, produced{
+			id: dependencyID, line: line, summary: summary, failure: failure, files: files})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("read dependencies for %q: %w", id, err)
@@ -634,6 +719,14 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 	// How many can be carried at all. A share below the floor is not a small
 	// digest, it is a fragment, so the pot buys as many whole inputs as it can
 	// and the ones that did not fit are named rather than vanishing.
+	//
+	// This question is asked of the window's pot and not of the material's,
+	// because it is a question about the consumer: "would this dependency's
+	// share be too small to read?" is answerable only against the room the
+	// reader has. Asked of the material instead, six short results totalling 90
+	// bytes would divide into 45-byte shares, fall under the floor, and be
+	// declared a fan-in too wide to carry — five of them dropped for not fitting
+	// inside themselves.
 	pot := maxBytes
 	floor := dependencyFloor(pot)
 	carried := len(settled)
@@ -659,16 +752,22 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 		pot -= len(overflow)
 	}
 
+	// And now the second bound, over the inputs that survived the first: the pot
+	// is the smaller of what the consumer can hold and what its producers
+	// actually wrote. See potForMaterial.
+	lengths := make([]int, 0, len(settled))
+	for _, dependency := range settled {
+		lengths = append(lengths, len(dependency.line))
+	}
+	pot = potForMaterial(pot, lengths)
+
 	// Two passes so a short digest's unspent share reaches a long one: the first
 	// gives each only what it needs up to an equal share, the second hands the
-	// unspent remainder to whoever is still clipped. Neither pass may take a
-	// dependency past dependencyCeiling: the pot bounds the fan-in, the ceiling
-	// bounds the one input, and it is the second bound that was missing when a
-	// window-sized pot turned every share into "as much as you wrote".
+	// unspent remainder to whoever is still clipped. There is no third bound on
+	// one input — see the note where the flat ceiling used to be — because these
+	// two already say the thing the ceiling was reached for: nothing a verbose
+	// producer takes was ever a terse sibling's.
 	share := pot / len(settled)
-	if share > dependencyCeiling {
-		share = dependencyCeiling
-	}
 	allotted := make([]int, len(settled))
 	remaining := pot
 	for index, dependency := range settled {
@@ -683,9 +782,6 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 			break
 		}
 		growth := len(dependency.line) - allotted[index]
-		if headroom := dependencyCeiling - allotted[index]; growth > headroom {
-			growth = headroom
-		}
 		if growth <= 0 {
 			continue
 		}
@@ -718,7 +814,7 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 			NodeID: dependency.id, Digest: line, Handle: handle,
 			// A failed step's files are as real as a finished one's, and the
 			// only place a failure records them is its error text.
-			Artifacts: summaryPaths(dependency.summary + "\n" + dependency.failure),
+			Artifacts: dependency.files,
 		})
 	}
 	if overflow != "" {
@@ -776,19 +872,39 @@ type DependencyFanIn struct {
 // read once, at claim time, by a caller that then holds the two numbers fixed
 // for the life of the worker: a budget that moved between turns would move the
 // prompt prefix with it.
+//
+// The measurement counts the product and not the announcement of it. A summary
+// reading "The evaluation is complete. The file is at /w/job/07-vendors.md" is
+// 61 bytes and stands for 7 KB, so a fan-in of four such nodes measured 244
+// bytes and sized its consumer's completion reserve, turn grant and token grant
+// for 244 bytes of assembly. Every one of those numbers is arithmetic over this
+// one, which is why this one has to be about the work.
 func (s *Store) DependencyFanIn(id string) (DependencyFanIn, error) {
-	var fanIn DependencyFanIn
-	// LENGTH over a BLOB cast counts bytes rather than characters, which is what
-	// a byte budget is spent in.
-	err := s.db.QueryRow(`
-		SELECT COUNT(*), COALESCE(SUM(
-		    LENGTH(CAST(dependency.summary AS BLOB)) + LENGTH(CAST(dependency.error AS BLOB))), 0)
+	rows, err := s.db.Query(`
+		SELECT dependency.summary, dependency.error
 		FROM edges AS edge
 		JOIN nodes AS dependency ON dependency.id = edge.from_id
 		WHERE edge.to_id = ? AND edge.kind IN (?, ?)
 		  AND dependency.status IN (?, ?, ?)`,
-		id, FeedsInto, Blocks, Done, Failed, Cancelled).Scan(&fanIn.Count, &fanIn.Bytes)
+		id, FeedsInto, Blocks, Done, Failed, Cancelled)
 	if err != nil {
+		return DependencyFanIn{}, fmt.Errorf("measure the fan-in of %q: %w", id, err)
+	}
+	defer rows.Close()
+	var fanIn DependencyFanIn
+	// One file counted once, matching what the fan-in will actually carry: two
+	// producers naming the same file hand their consumer one copy of it.
+	counted := make(map[string]bool)
+	for rows.Next() {
+		var summary, failure string
+		if err := rows.Scan(&summary, &failure); err != nil {
+			return DependencyFanIn{}, fmt.Errorf("measure the fan-in of %q: %w", id, err)
+		}
+		fanIn.Count++
+		fanIn.Bytes += len(summary) + len(failure) +
+			productBytes(summaryPaths(summary+"\n"+failure), counted)
+	}
+	if err := rows.Err(); err != nil {
 		return DependencyFanIn{}, fmt.Errorf("measure the fan-in of %q: %w", id, err)
 	}
 	return fanIn, nil
