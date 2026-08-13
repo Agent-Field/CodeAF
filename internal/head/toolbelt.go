@@ -453,6 +453,15 @@ type beltRun struct {
 	// first, and two workforces doing the same thing to the same files. One ask
 	// is one job however many times the loop asks for it in one breath.
 	commissioned map[string]bool
+	// narrowed records that this turn reached its runaway bound and is holding
+	// the work verbs alone (narrow.go). Two things read it: the loop, which
+	// refuses everything else and ends the turn after one round, and task, which
+	// sends what the turn found out along with the work.
+	narrowed bool
+	// found is what this turn's tools reported, in order. It is memory of a
+	// different kind from `did`: `did` is what the reply may claim, and this is
+	// what the work would otherwise have to find out for itself.
+	found []string
 }
 
 // alreadyCommissioned reports that these exact words have already become work

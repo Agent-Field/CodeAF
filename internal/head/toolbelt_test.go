@@ -38,6 +38,10 @@ type beltClient struct {
 	// only thing it can honestly answer from, so assertions about what it knows
 	// are assertions about this.
 	seen []ai.Message
+	// offered is the tool names each tooled completion carried, in order. What
+	// the model is HOLDING is the whole of the narrowing mechanism (narrow.go),
+	// so it has to be observable from outside the loop.
+	offered [][]string
 }
 
 func (client *beltClient) CompleteWithMessages(_ context.Context, messages []ai.Message,
@@ -52,6 +56,11 @@ func (client *beltClient) CompleteWithMessages(_ context.Context, messages []ai.
 	}
 	if len(request.Tools) > 0 {
 		client.tooled++
+		names := make([]string, 0, len(request.Tools))
+		for _, tool := range request.Tools {
+			names = append(names, tool.Function.Name)
+		}
+		client.offered = append(client.offered, names)
 		if client.opening == "" && len(messages) > 1 && len(messages[1].Content) > 0 {
 			client.opening = messages[1].Content[0].Text
 		}
@@ -76,6 +85,16 @@ func (client *beltClient) counts() (calls int, tooled int) {
 	client.mutex.Lock()
 	defer client.mutex.Unlock()
 	return client.calls, client.tooled
+}
+
+// beltOffered is the tool names one tooled completion was given, by index.
+func (client *beltClient) beltOffered(round int) []string {
+	client.mutex.Lock()
+	defer client.mutex.Unlock()
+	if round < 0 || round >= len(client.offered) {
+		return nil
+	}
+	return append([]string(nil), client.offered[round]...)
 }
 
 func (client *beltClient) openingPrompt() string {
@@ -593,16 +612,19 @@ func TestTheControlVocabularySurvivesAsAReadingRatherThanAsAGate(t *testing.T) {
 }
 
 // A model that keeps reading instead of finishing spends a bounded number of
-// tools and is then told to speak. The cap has been four, then eight-divided —
-// six for looking, two held back for acting — and is now sixteen and undivided,
-// because the two things the division was standing in for exist: the turn can
-// speak mid-flight, and a command it journals wakes it when the receipt lands.
-// What it bounds is unchanged: one sentence can never become an open tab.
+// tools and then holds the narrowed belt. The cap has been four, then
+// eight-divided — six for looking, two held back for acting — and is now sixteen
+// and undivided, because the two things the division was standing in for exist:
+// the turn can speak mid-flight, and a command it journals wakes it when the
+// receipt lands. What reaching it means is what changed (narrow.go): the belt
+// narrows to the work verbs instead of emptying. A turn that finished its work
+// exactly at the bound has nothing to hand over, so it simply answers — and
+// nothing is journaled by a belt nobody reached for.
 func TestTheLoopSpendsAtMostItsToolCallCap(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	turns := make([]beltTurn, 0, orchestratorToolCallCap+2)
-	for index := 0; index <= orchestratorToolCallCap; index++ {
+	for index := 0; index < orchestratorToolCallCap; index++ {
 		turns = append(turns, beltTurn{calls: []ai.ToolCall{
 			beltCall(fmt.Sprintf("c%d", index), beltToolBoard, map[string]any{})}})
 	}
@@ -612,8 +634,13 @@ func TestTheLoopSpendsAtMostItsToolCallCap(t *testing.T) {
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
-	if _, tooled := client.counts(); tooled > orchestratorToolCallCap+2 {
+	_, tooled := client.counts()
+	if tooled > orchestratorToolCallCap+2 {
 		t.Fatalf("loop ran %d tooled turns, cap is %d tool calls", tooled, orchestratorToolCallCap)
+	}
+	if narrowed := client.beltOffered(orchestratorToolCallCap); !sameStrings(narrowed, beltWorkVerbNames()) {
+		t.Fatalf("the round past the bound was offered %v, want the work verbs %v",
+			narrowed, beltWorkVerbNames())
 	}
 	reply := waitForAgentReply(t, graph, session, user.Seq)
 	if reply.Body != "Three jobs are waiting to start." {
@@ -649,11 +676,10 @@ func TestLookingNeverRunsOutBeforeTheBeltDoes(t *testing.T) {
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
-	for _, message := range client.seen {
-		for _, part := range message.Content {
-			if strings.Contains(part.Text, orchestratorSpentBelt) {
-				t.Fatal("thirteen calls exhausted a sixteen-call belt")
-			}
+	_, tooled := client.counts()
+	for round := 0; round < tooled; round++ {
+		if sameStrings(client.beltOffered(round), beltWorkVerbNames()) {
+			t.Fatalf("round %d held the narrowed belt: thirteen calls do not exhaust sixteen", round)
 		}
 	}
 	facts, err := graph.RecentFacts(5)
@@ -666,9 +692,15 @@ func TestLookingNeverRunsOutBeforeTheBeltDoes(t *testing.T) {
 	}
 }
 
-// The whole belt still ends, and a turn that spends every call ACTING is told so
-// — the read cap holds hands back, it does not hand out an unbounded number.
-func TestPastTheWholeCapTheBeltIsSpentAndTheTurnStillSpeaks(t *testing.T) {
+// The whole belt still ends, and a turn that spends every call ACTING keeps only
+// the verbs that hand work over — a hand past the bound is refused rather than
+// dispatched, and the turn still ends in words.
+//
+// This test used to assert the sentence that told the model its belt was spent.
+// That sentence is gone: what the loop does at the bound is take the doing hands
+// away and leave the giving ones, so the assertion is about the belt the round
+// was HOLDING and about the note that never landed (narrow.go).
+func TestPastTheWholeCapTheBeltNarrowsToTheWorkVerbs(t *testing.T) {
 	graph := openHeadStore(t)
 	seedExceptBoard(t, graph)
 	turns := make([]beltTurn, 0, orchestratorToolCallCap+2)
@@ -678,18 +710,30 @@ func TestPastTheWholeCapTheBeltIsSpentAndTheTurnStillSpeaks(t *testing.T) {
 				"body": fmt.Sprintf("they prefer the %dth thing", index), "scope": "user"})}})
 	}
 	client := &beltClient{turns: append(turns, beltTurn{text: "Noted."})}
-	user := postUser(t, graph, "acts", "remember all of that")
+	session := "acts"
+	user := postUser(t, graph, session, "remember all of that")
 	if err := New(client, graph).answer(context.Background(), user); err != nil {
 		t.Fatal(err)
 	}
-	spent := false
-	for _, message := range client.seen {
-		for _, part := range message.Content {
-			spent = spent || strings.Contains(part.Text, orchestratorSpentBelt)
+	if narrowed := client.beltOffered(orchestratorToolCallCap); !sameStrings(narrowed, beltWorkVerbNames()) {
+		t.Fatalf("the round past the bound was offered %v, want the work verbs %v",
+			narrowed, beltWorkVerbNames())
+	}
+	facts, err := graph.RecentFacts(orchestratorToolCallCap + 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := fmt.Sprintf("they prefer the %dth thing", orchestratorToolCallCap)
+	for _, fact := range facts {
+		if fact.Body == last {
+			t.Fatal("a hand past the bound was dispatched: the narrowed belt has no note in it")
 		}
 	}
-	if !spent {
-		t.Fatal("a call past the whole cap was never told the belt was spent")
+	if len(facts) != orchestratorToolCallCap {
+		t.Fatalf("the belt landed %d notes, want the whole cap %d", len(facts), orchestratorToolCallCap)
+	}
+	if reply := waitForAgentReply(t, graph, session, user.Seq); strings.TrimSpace(reply.Body) == "" {
+		t.Fatal("the turn past the bound said nothing at all")
 	}
 }
 

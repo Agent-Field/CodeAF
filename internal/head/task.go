@@ -96,6 +96,16 @@ func (run *beltRun) task(args map[string]any) (string, bool) {
 		}
 		taskContext = context
 	}
+	// A handoff from the narrowed belt carries what the turn found out (narrow.go).
+	// The context FLAG does not gate it and neither does amends: the conversation
+	// travels because the model judged the requirements were in it, while these
+	// are tool results the person never saw and the model is one round from
+	// forgetting. They ride in the context column rather than in the ask for the
+	// same reason the transcript does — the person's words are the order, and
+	// everything else is evidence about what the order will meet.
+	if run.narrowed {
+		taskContext = joinContext(taskContext, run.findings())
+	}
 
 	// The model words, read here and resolved where the catalog is (modelwords.go).
 	// The head cannot know which models exist; what it can do is write down what
