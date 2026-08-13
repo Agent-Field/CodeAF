@@ -60,6 +60,11 @@ type SWE struct {
 	// quiet. Between events they are read anyway; this is the floor under a
 	// stage that takes ten minutes and says nothing.
 	pollEvery time.Duration
+	// attribution carries the operator's settings row into the one commit this
+	// worker writes with a message of its own. It is the same law the generalist
+	// leaf reads (linear.go's WithAttribution), reaching the one place a coding
+	// worker signs anything.
+	attribution bool
 }
 
 // SWESubharness is this worker's name, and the one string the graph carries
@@ -132,6 +137,14 @@ func (s *SWE) WithMaxCost(usd float64) *SWE {
 	return s
 }
 
+// WithAttribution admits the attribution law into the commit this worker lands
+// on the shared workspace. Off is the absence of the trailer, exactly as it is
+// the absence of the paragraph for a generalist leaf.
+func (s *SWE) WithAttribution(on bool) *SWE {
+	s.attribution = on
+	return s
+}
+
 func (s *SWE) Subharness() string { return SWESubharness }
 
 // Run drives one engine process from start to terminal line.
@@ -151,31 +164,36 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	trace := newTracer(s.workspace, task.leafKey())
 	defer trace.close()
 
-	directory := s.workspace.Root()
-	// The leaf's spilled output and its own flight recorder both live in the
-	// workspace, and the engine audits the change set it finds there. It
-	// git-excludes its own sidecars; ours get the same treatment, or a
-	// 47,000-line trace of the run shows up in the diff and the auditor —
-	// correctly — refuses to ship it. Both directories are named because the
-	// recorder moved out of .obs and an exclusion that covered it by accident
-	// would stop covering it silently. They are handed to the initializer
-	// rather than written after it, because the recorder is already open by now
-	// and an exclusion that arrives after the baseline commit excludes nothing.
-	initialized, err := ensureGitRepository(runCtx, directory, obsDir+"/", traceDir+"/")
+	// Where this leaf's engine runs, and how what it writes gets back to the
+	// workspace everyone else can see. The leaf's spilled output and its own
+	// flight recorder both live in the workspace, and the engine audits the
+	// change set it finds there. It git-excludes its own sidecars; ours get the
+	// same treatment, or a 47,000-line trace of the run shows up in the diff and
+	// the auditor — correctly — refuses to ship it. Both directories are named
+	// because the recorder moved out of .obs and an exclusion that covered it by
+	// accident would stop covering it silently. They are handed to the
+	// initializer rather than written after it, because the recorder is already
+	// open by now and an exclusion that arrives after the baseline commit
+	// excludes nothing. See sweview.go for what a view is and why.
+	view, initialized, err := sweOpen(runCtx, s.workspace, task.leafKey(), trace)
 	if err != nil {
 		outcome.Stop = StopError
 		outcome.Text = err.Error()
 		trace.note("workspace: " + err.Error())
-		return s.land(ctx, task, outcome, started, repoState{}), fmt.Errorf("node %s: %w", task.leafKey(), err)
+		return s.land(ctx, task, nil, outcome, started, repoState{}), fmt.Errorf("node %s: %w", task.leafKey(), err)
 	}
-	if initialized {
-		trace.note("workspace: no committed git repository here — initialised one and committed a baseline")
-	} else {
-		trace.note("workspace: an existing git repository, run in place")
-	}
-	before := readRepoState(runCtx, directory)
+	// The shared root is given back the moment this run is over, however it
+	// ends. A view that never took it releases nothing.
+	defer view.release()
+	trace.note(view.where(initialized))
+	directory := view.dir
+	// The repository state is read at the SHARED root rather than at the view.
+	// It is the "before" half of the artifact list, and the artifact list is
+	// about what this leaf added to the workspace a person will open — which a
+	// diff taken inside a checkout nobody else can see cannot answer.
+	before := readRepoState(runCtx, s.workspace.Root())
 
-	goal := sweGoal(task)
+	goal := sweGoal(task, view)
 	resuming := resumableCheckpoint(directory)
 	argv := s.argv(directory, goal, resuming)
 	trace.note("engine: " + s.binary + " " + strings.Join(argv[:len(argv)-2], " ") + " -- <goal>")
@@ -196,11 +214,11 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	pipe, err := command.StdoutPipe()
 	if err != nil {
 		outcome.Stop = StopError
-		return s.land(ctx, task, outcome, started, before), fmt.Errorf("node %s: swe stdout: %w", task.leafKey(), err)
+		return s.land(ctx, task, view, outcome, started, before), fmt.Errorf("node %s: swe stdout: %w", task.leafKey(), err)
 	}
 	if err := command.Start(); err != nil {
 		outcome.Stop = StopError
-		return s.land(ctx, task, outcome, started, before), fmt.Errorf("node %s: swe start: %w", task.leafKey(), err)
+		return s.land(ctx, task, view, outcome, started, before), fmt.Errorf("node %s: swe start: %w", task.leafKey(), err)
 	}
 
 	lines := make(chan string, 256)
@@ -272,7 +290,7 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	}
 	waitErr := command.Wait()
 
-	return s.settle(ctx, task, state, started, before, stopped, waitErr, stderr.String())
+	return s.settle(ctx, task, view, state, started, before, stopped, waitErr, stderr.String())
 }
 
 // stopFor names the ending a control action produces. Pause and cancel kill the
@@ -290,7 +308,7 @@ func stopFor(action ControlAction) StopReason {
 // six returns for linear.land's reason: there are several ways out of the loop
 // above and a verdict set on some of them is worse than none at all.
 func (s *SWE) settle(
-	ctx context.Context, task Task, state *sweRun, started time.Time,
+	ctx context.Context, task Task, view *sweView, state *sweRun, started time.Time,
 	before repoState, stopped StopReason, waitErr error, stderrTail string,
 ) (*Outcome, error) {
 	outcome := state.outcome
@@ -322,7 +340,7 @@ func (s *SWE) settle(
 	case StopCancelled, StopPaused, StopDeadline:
 		state.estimated = outcome.Usage.Cost > 0
 		outcome.Stop = stopped
-		if stopped == StopDeadline && s.deliveredAtTheBell(ctx, state, before) {
+		if stopped == StopDeadline && s.deliveredAtTheBell(ctx, view, state, before) {
 			// The bell caught the wrap-up, not the work. Everything a finished
 			// run is judged on is already true — the repository's own checks
 			// passed against this tree, the engine's audit passed on top of
@@ -338,10 +356,10 @@ func (s *SWE) settle(
 			state.trace.note("deadline: the work was finished and verified before the clock ran out — " +
 				"delivering it rather than failing the leaf")
 			outcome.Text = state.text(StopDone, nil)
-			return s.land(ctx, task, outcome, started, before), nil
+			return s.land(ctx, task, view, outcome, started, before), nil
 		}
 		outcome.Text = state.text(stopped, nil)
-		return s.land(ctx, task, outcome, started, before), nil
+		return s.land(ctx, task, view, outcome, started, before), nil
 	}
 
 	terminal := state.terminal
@@ -358,7 +376,7 @@ func (s *SWE) settle(
 		state.estimated = outcome.Usage.Cost > 0
 		outcome.Text = state.text(StopError, nil)
 		state.trace.note("engine: died with no terminal event — " + reason)
-		return s.land(ctx, task, outcome, started, before),
+		return s.land(ctx, task, view, outcome, started, before),
 			fmt.Errorf("node %s: the coding pipeline stopped without a verdict: %s", task.leafKey(), reason)
 	}
 
@@ -412,7 +430,7 @@ func (s *SWE) settle(
 	}
 	outcome.Text = state.text(outcome.Stop, terminal)
 	s.calibrate(outcome, state.fit, terminal.Status, time.Since(started))
-	return s.land(ctx, task, outcome, started, before), runErr
+	return s.land(ctx, task, view, outcome, started, before), runErr
 }
 
 // deliveredAtTheBell reports whether a run stopped by the wall clock had
@@ -429,16 +447,21 @@ func (s *SWE) settle(
 //
 // It reads the repository rather than the outcome's artifact list because the
 // list is assembled later, in land, and this decides what land is landing.
-func (s *SWE) deliveredAtTheBell(ctx context.Context, state *sweRun, before repoState) bool {
+func (s *SWE) deliveredAtTheBell(ctx context.Context, view *sweView, state *sweRun, before repoState) bool {
 	if !state.state.deliverable() {
 		return false
 	}
 	// The leaf's own context is gone by now — that is what a deadline is — so
 	// the read is made against the caller's, with a short ceiling of its own.
 	// A git call that cannot answer leaves the ending exactly as it was.
+	//
+	// The read is of the VIEW rather than of the shared root: an isolated leaf's
+	// work is still on its own branch at this point — landing it is what this
+	// answer decides — and the shared root would truthfully report that nothing
+	// had happened.
 	read, cancel := context.WithTimeout(ctx, sweBellRead)
 	defer cancel()
-	after := readRepoState(read, s.workspace.Root())
+	after := readRepoState(read, view.dir)
 	if after.top == "" {
 		return false
 	}
@@ -528,7 +551,25 @@ const sweUnderBudgetShare = 0.2
 // land collects what the leaf left behind and grades it, exactly as linear.land
 // does. verdictFor is shared deliberately: a verdict this executor did not set
 // itself must be read by the same law every other leaf is read by.
-func (s *SWE) land(ctx context.Context, task Task, outcome *Outcome, started time.Time, before repoState) *Outcome {
+func (s *SWE) land(ctx context.Context, task Task, view *sweView, outcome *Outcome, started time.Time, before repoState) *Outcome {
+	// The work comes home before it is counted. Everything below reads the
+	// shared workspace — the artifact list, the sizes, the paths a person will
+	// open — and for an isolated leaf none of it is true until its branch has
+	// been squashed back in.
+	if view != nil {
+		landing := view.land(ctx, outcome.Stop == StopDone,
+			sweLandingMessage(task, outcome.Text, s.attribution))
+		if landing.before.top != "" {
+			// The change arrived as one commit, and this is the state of the
+			// workspace immediately underneath it. Reading the artifact list
+			// against the state an hour and three siblings ago would credit this
+			// leaf with every file they landed in between.
+			before = landing.before
+		}
+		if landing.refusal != "" {
+			outcome.Text = strings.TrimSpace(outcome.Text) + "\n\n" + landing.refusal
+		}
+	}
 	if extra := s.recordArtifacts(ctx, task, before); extra > 0 {
 		outcome.Text = strings.TrimSpace(outcome.Text) +
 			fmt.Sprintf("\n\n(%d further changed files are named in the run's trace rather than here)", extra)
@@ -841,7 +882,14 @@ func trimFloat(value float64) string {
 // swe leaf has no share tool — its siblings hear from it through milestones the
 // executor posts, not through anything the engine can call — and an instruction
 // to use a tool that does not exist is how a run spends a cycle looking for it.
-func sweGoal(task Task) string {
+// The one thing the view changes about the prompt is where an upstream file is.
+// A dependency's artifacts are recorded relative to the shared workspace, and a
+// leaf reading them from a checkout of its own would find nothing at those
+// names — untracked deliverables a sibling wrote are in the workspace and not in
+// this leaf's view of the repository. Spelled absolutely they resolve from
+// either place, so the pointer keeps working and the in-place prompt stays
+// byte-identical to what it always was.
+func sweGoal(task Task, view *sweView) string {
 	var block strings.Builder
 	// A single-leaf splice sets Brief == Goal, and sending the same text twice
 	// is not context, it is size: the doubled prompt measured a band larger and
@@ -857,8 +905,8 @@ func sweGoal(task Task) string {
 			"is the one way to be wrong with everything you need in hand:\n")
 		for _, input := range task.Inputs {
 			fmt.Fprintf(&block, "\n=== from %q ===\n%s\n", input.Title, input.Result)
-			if len(input.Artifacts) > 0 {
-				fmt.Fprintf(&block, "(files: %s — read them if you need the full detail)\n", strings.Join(input.Artifacts, ", "))
+			if paths := sweInputPaths(input.Artifacts, view); len(paths) > 0 {
+				fmt.Fprintf(&block, "(files: %s — read them if you need the full detail)\n", strings.Join(paths, ", "))
 			}
 		}
 		block.WriteString("\n")
@@ -867,6 +915,22 @@ func sweGoal(task Task) string {
 	block.WriteString(task.Brief)
 	block.WriteString(outputClause(task))
 	return block.String()
+}
+
+// sweInputPaths spells an upstream's files so this leaf can open them from
+// wherever it is working. In place that is the list untouched.
+func sweInputPaths(artifacts []string, view *sweView) []string {
+	if view == nil || !view.isolated || len(artifacts) == 0 {
+		return artifacts
+	}
+	paths := make([]string, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		if trimmed := strings.TrimSpace(artifact); trimmed != "" && !filepath.IsAbs(trimmed) {
+			artifact = filepath.Join(view.root, trimmed)
+		}
+		paths = append(paths, artifact)
+	}
+	return paths
 }
 
 // ── the workspace's git precondition ─────────────────────────────────────────
@@ -981,7 +1045,7 @@ func ensureGitRepository(ctx context.Context, directory string, exclude ...strin
 	// `init` — which is exit 128, and is exactly how three of four leaves died
 	// on a live run. Nothing here is unsafe once it is one-at-a-time: the
 	// loser wakes, finds a HEAD, and truthfully reports an existing repository.
-	bootstrap := workspaceBootstrap(directory)
+	bootstrap := &sweRootLocksFor(directory).bootstrap
 	bootstrap.Lock()
 	defer bootstrap.Unlock()
 
@@ -1015,21 +1079,6 @@ func ensureGitRepository(ctx context.Context, directory string, exclude ...strin
 		return false, fmt.Errorf("the swe worker could not commit a baseline: %w", err)
 	}
 	return true, nil
-}
-
-// workspaceBootstraps keys the lock above by workspace, so two jobs in flight
-// bootstrap their own directories in parallel and only siblings sharing one
-// wait on each other. Keyed by the cleaned absolute path — the same directory
-// reached by two spellings is still one repository and one .git to race on.
-var workspaceBootstraps sync.Map // string → *sync.Mutex
-
-func workspaceBootstrap(directory string) *sync.Mutex {
-	key := filepath.Clean(directory)
-	if absolute, err := filepath.Abs(directory); err == nil {
-		key = filepath.Clean(absolute)
-	}
-	lock, _ := workspaceBootstraps.LoadOrStore(key, &sync.Mutex{})
-	return lock.(*sync.Mutex)
 }
 
 func gitQuiet(ctx context.Context, directory string, args ...string) error {

@@ -72,6 +72,16 @@ func (w *Workspace) WithScratch(dir string) *Workspace {
 // Root is the absolute directory.
 func (w *Workspace) Root() string { return w.root }
 
+// PrivateScratch reports that the harness's own files have been sent somewhere
+// other than the root — which is the same question as "does this directory
+// belong to a person?", because WithScratch is called by exactly the one caller
+// whose workspace is not its own.
+//
+// It is asked by any worker that would otherwise leave machinery behind. A
+// directory the harness made for a job may hold whatever a job needs; a
+// directory somebody handed us holds their work and nothing of ours.
+func (w *Workspace) PrivateScratch() bool { return w.scratch != w.root }
+
 // ScratchPath maps a harness-owned relative path onto disk and returns, beside
 // it, the spelling to show a model. The two differ only when scratch has been
 // moved out of the workspace: a relative path would then name nothing an agent

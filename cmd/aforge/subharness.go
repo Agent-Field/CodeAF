@@ -188,7 +188,8 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 	exec.SWESubharness: func(build leafBuild) exec.Executor {
 		return exec.NewSWE(build.workspace, engineModelID(build.models, build.model),
 			build.settings.APIKey, build.settings.BaseURL, build.deadline).
-			WithMaxCost(sweMaxCost(os.Getenv))
+			WithMaxCost(sweMaxCost(os.Getenv)).
+			WithAttribution(config.AttributionAt(build.settings.ProfileDir))
 	},
 }
 
