@@ -293,10 +293,10 @@ func ClockDeath(outcome *executor.Outcome, err error) bool {
 // The rule it enforces, and the reason it exists: a leaf that dies on its time
 // ceiling was WORKING. It ran out of clock, which is a fact about the clock. In
 // the incident this file was written for, a writeup-and-benchmark leaf that died
-// nine minutes after announcing its finished document was recalibrated onto the
-// SWE coding pipeline for its retry, and the retry opened by "preparing the
-// repository" for a comparison document. Nothing about the ending said the
-// worker was the wrong kind; only that the hour was up.
+// nine minutes after announcing its finished document was recalibrated onto a
+// repository-shaped coding worker for its retry, and the retry opened by
+// "preparing the repository" for a comparison document. Nothing about the ending
+// said the worker was the wrong kind; only that the hour was up.
 //
 // The taxonomy is not a new one. provider.Verdict already separates what may be
 // learned from — a budget stop, a turn cap, an empty response, a reply that did
