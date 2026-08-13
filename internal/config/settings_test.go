@@ -44,7 +44,10 @@ func TestRegistryCoversEveryUserFacingEnvironmentPin(t *testing.T) {
 			return err
 		}
 		if entry.IsDir() {
-			if entry.Name() == ".git" {
+			// .claude holds other branches' worktrees; their pins register
+			// in their own settings.go, and reading them here fails this
+			// branch for a variable it cannot see.
+			if entry.Name() == ".git" || entry.Name() == ".claude" {
 				return filepath.SkipDir
 			}
 			return nil

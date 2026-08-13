@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -86,6 +87,12 @@ const (
 	KeySplitPct       = "split_pct"
 	KeyLinearMode     = "linear_mode"
 	KeyNerdFont       = "nerd_font"
+
+	// The two context-law knobs. Fill is how much of a model's window any
+	// agent may use before compaction fires; the reserve is the room every
+	// call keeps for its answer and its reasoning.
+	KeyContextFill       = "context_fill_pct"
+	KeyCompletionReserve = "completion_reserve"
 )
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
@@ -475,6 +482,24 @@ func (s *Settings) build() []Setting {
 			Hint:  "how long you have to be away before aforge greets you with a summary. 0 always briefs.",
 			read:  func() string { return formatDuration(resolvedDuration(BriefAfterAt(dir))) },
 			write: func(raw string) error { return writeDuration(dir, KeyBriefAfter, raw) },
+		},
+		Setting{
+			Key: KeyContextFill, Category: CategoryModels, Kind: SettingCount,
+			Label: "context fill", Env: "AFORGE_CONTEXT_FILL_PCT",
+			Hint: "how much of a model's context window aforge fills before it starts " +
+				"compacting, as a percent. Higher packs more in; the rest stays as thinking " +
+				"and answer room. A change lands on the next call.",
+			read:  func() string { return strconv.Itoa(ContextFillAt(dir)) },
+			write: func(raw string) error { return writeContextFill(dir, raw) },
+		},
+		Setting{
+			Key: KeyCompletionReserve, Category: CategoryModels, Kind: SettingCount,
+			Label: "answer room", Env: "AFORGE_COMPLETION_RESERVE",
+			Hint: "tokens every call keeps free for its answer and its reasoning. " +
+				"Generous costs nothing on turns that do not use it; small produces empty " +
+				"replies from a model that thinks past it. A change lands on the next call.",
+			read:  func() string { return strconv.Itoa(CompletionReserveAt(dir)) },
+			write: func(raw string) error { return writeCompletionReserve(dir, raw) },
 		},
 		Setting{
 			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
@@ -949,6 +974,68 @@ func writeChoice(profileDir, key, raw string, choices []string) error {
 
 func writeText(profileDir, key, raw string) error {
 	return writeProfileValue(profileDir, key, strings.TrimSpace(raw))
+}
+
+// ContextFillAt resolves the fill law: environment pin, then the persisted
+// row, then the package default. A malformed pin reads as the default.
+func ContextFillAt(profileDir string) int {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_CONTEXT_FILL_PCT")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+			return value
+		}
+		return ctxbudget.DefaultFillPercent
+	}
+	if value, ok := persistedInt(profileDir, KeyContextFill); ok && value > 0 {
+		return value
+	}
+	return ctxbudget.DefaultFillPercent
+}
+
+// CompletionReserveAt resolves the answer-and-reasoning reserve the same way.
+func CompletionReserveAt(profileDir string) int {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_COMPLETION_RESERVE")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+			return value
+		}
+		return ctxbudget.DefaultCompletionReserveTokens
+	}
+	if value, ok := persistedInt(profileDir, KeyCompletionReserve); ok && value > 0 {
+		return value
+	}
+	return ctxbudget.DefaultCompletionReserveTokens
+}
+
+// writeContextFill persists the fill percent and hands it to ctxbudget, so
+// the change lands in this process as well as the next one.
+func writeContextFill(profileDir, raw string) error {
+	value, err := parseCount(raw)
+	if err != nil {
+		return err
+	}
+	if value < 10 || value > 90 {
+		return fmt.Errorf("that needs to be between 10 and 90")
+	}
+	if err := writeProfileValue(profileDir, KeyContextFill, value); err != nil {
+		return err
+	}
+	ctxbudget.Configure(value, CompletionReserveAt(profileDir))
+	return nil
+}
+
+// writeCompletionReserve persists the reserve and hands it to ctxbudget.
+func writeCompletionReserve(profileDir, raw string) error {
+	value, err := parseCount(raw)
+	if err != nil {
+		return err
+	}
+	if value < 1024 {
+		return fmt.Errorf("that needs to be at least 1024 tokens")
+	}
+	if err := writeProfileValue(profileDir, KeyCompletionReserve, value); err != nil {
+		return err
+	}
+	ctxbudget.Configure(ContextFillAt(profileDir), value)
+	return nil
 }
 
 // writeTenure persists the count and exports it, because the standing watch

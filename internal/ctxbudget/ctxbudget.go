@@ -16,6 +16,7 @@ package ctxbudget
 import (
 	"os"
 	"strconv"
+	"sync"
 )
 
 // BytesPerToken is the estimator used everywhere a budget is spent in bytes.
@@ -35,28 +36,64 @@ const (
 	DefaultCompletionReserveTokens = 65536
 )
 
-// FillPercent is the process-wide fill law, from the environment or the
-// default. Clamped so a typo can neither starve nor overrun a window.
+// The configured values arrive from the settings sheet at process start via
+// Configure. The environment still wins — a pin is a pin — and the defaults
+// carry when neither has spoken. Plain ints behind a mutex: read on every
+// call so a settings write lands in the running process.
+var (
+	configMu          sync.RWMutex
+	configuredFill    int
+	configuredReserve int
+)
+
+// Configure hands the persisted settings values down. Zero means unset; the
+// environment and the defaults are unaffected either way.
+func Configure(fillPercent, reserveTokens int) {
+	configMu.Lock()
+	configuredFill = fillPercent
+	configuredReserve = reserveTokens
+	configMu.Unlock()
+}
+
+// FillPercent is the process-wide fill law: environment pin, then the
+// configured setting, then the default. Clamped so a typo can neither starve
+// nor overrun a window.
 func FillPercent() int {
 	if v, ok := envInt("AFORGE_CONTEXT_FILL_PCT"); ok {
-		if v < 10 {
-			return 10
-		}
-		if v > 90 {
-			return 90
-		}
-		return v
+		return clampFill(v)
+	}
+	configMu.RLock()
+	v := configuredFill
+	configMu.RUnlock()
+	if v > 0 {
+		return clampFill(v)
 	}
 	return DefaultFillPercent
 }
 
-// CompletionReserve is the process-wide completion+reasoning reserve, from
-// the environment or the default.
+// CompletionReserve is the process-wide completion+reasoning reserve:
+// environment pin, then the configured setting, then the default.
 func CompletionReserve() int {
 	if v, ok := envInt("AFORGE_COMPLETION_RESERVE"); ok && v > 0 {
 		return v
 	}
+	configMu.RLock()
+	v := configuredReserve
+	configMu.RUnlock()
+	if v > 0 {
+		return v
+	}
 	return DefaultCompletionReserveTokens
+}
+
+func clampFill(v int) int {
+	if v < 10 {
+		return 10
+	}
+	if v > 90 {
+		return 90
+	}
+	return v
 }
 
 // Budget is a window turned into spendable room. The zero value is unusable
