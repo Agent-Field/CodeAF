@@ -9,6 +9,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The scope adapter: the store's board and plan sight, in the rail's words.
@@ -1138,7 +1139,7 @@ func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 		Workers:   s.workerRows(root, byID, children, waits, asks, rolls, money, now),
 	}
 	sum := rolls[root.ID]
-	parts, running := sum.parts, sum.active
+	parts := sum.parts
 	row.Meta.Counts = sum.states
 	// The ledger wins when the reader has entered this job, because then the
 	// card and every row of the tree are quoting one read: a card whose total
@@ -1159,8 +1160,17 @@ func (s *scopeSource) taskCard(root store.Node, byID map[string]store.Node,
 	// A job root usually carries no status of its own worth showing — its parts
 	// do the work — so the subtree answers "what is happening" when the node
 	// itself has nothing to say. 13.3.3 again: queued parts count.
-	if row.Status == "" && running > 0 {
-		row.Status = plural(running, "part running", "parts running")
+	if row.Status == "" {
+		row.Status = liveWorkPhrase(root, sum)
+		// AND WHICH GO IT IS ON. A root that has been restarted is the one case
+		// where a long clock has an explanation, and the explanation was in the
+		// graph the whole time with no reader for it. Only on live work: what a
+		// finished job took to get there is history's business.
+		if row.Status != "" && !settled(root.Status) {
+			if words := attemptWords(root.Attempt); words != "" {
+				row.Status += " " + tokens.GlyphSeparator + " " + words
+			}
+		}
 	}
 	// A planned job has a chat because it has a plan to redirect; a job that is
 	// one hand takes steering mail only (5.11). The mark on the card is a
@@ -1666,6 +1676,41 @@ func nodeLabelOf(node store.Node) string {
 		return brief
 	}
 	return nodeLabel(node.ID)
+}
+
+// liveWorkPhrase says what is moving in this job, in words that are true of the
+// thing that is actually moving.
+//
+// A ROOT DOING THE WORK IS NOT A PART. [roll.active] counts the node itself
+// alongside its parts — deliberately, it is the reading a card's dot needs — and
+// the card spent that number on the sentence "1 part running", which on a job
+// whose parts have all finished is a sentence about a part that does not exist.
+// The person watching it saw a root six finished parts deep, delivering, called
+// "1 part running", and a room that otherwise said nothing at all; the job read
+// as hung. Whatever else the room shows, it may not describe the root as one of
+// its own children.
+//
+// The three phrases are the three shapes this job can be in, and there is no
+// fourth: parts moving, no parts at all and the root itself at work, or parts
+// that have all stopped with the root still going — which is delivery.
+func liveWorkPhrase(root store.Node, sum roll) string {
+	parts := sum.active
+	if !settled(root.Status) {
+		parts--
+	}
+	if parts > 0 {
+		return plural(parts, "part running", "parts running")
+	}
+	switch root.Status {
+	case store.Running, store.Claimed:
+		if sum.parts == 0 {
+			return "working"
+		}
+		return "finishing up"
+	case store.Pending:
+		return "queued"
+	}
+	return ""
 }
 
 // plural spells a count with the right noun, so a rail never says "1 parts".
