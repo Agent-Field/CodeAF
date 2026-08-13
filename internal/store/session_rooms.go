@@ -76,7 +76,7 @@ func (s *Store) LatestSession() (Session, bool, error) {
 	}
 
 	session, err := scanSession(s.db.QueryRow(`
-		SELECT id, title, surface, created_at, last_active_at
+		SELECT id, title, tags, surface, created_at, last_active_at
 		FROM sessions ORDER BY last_active_at DESC, id LIMIT 1`))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, false, nil
@@ -97,7 +97,7 @@ func (s *Store) LatestSession() (Session, bool, error) {
 // in it, so the only titles this excludes are the ones a person typed.
 func (s *Store) EmptySessions() ([]Session, error) {
 	rows, err := s.db.Query(`
-		SELECT s.id, s.title, s.surface, s.created_at, s.last_active_at
+		SELECT s.id, s.title, s.tags, s.surface, s.created_at, s.last_active_at
 		FROM sessions s
 		WHERE s.title = ''
 		  AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id)

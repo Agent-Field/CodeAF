@@ -4335,10 +4335,16 @@ func checkSentinel(settings config.Config, client *liveClient) resident.Sentinel
 			}
 		}
 		system := sentinelSystemPrompt + prompt.Voice
+		// Sixty tokens is a yes, a no, and a line of reason — and nothing at all
+		// on a model that reasons first, because the thinking is spent out of
+		// this same budget before the verdict is written. That reads here as
+		// "sentinel returned no clear yes" on every wake forever. A cap is a cap
+		// and not a purchase, so the number has to hold what the reply can
+		// legitimately need; head/scribe.go carries the full accounting.
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "sentinel"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(60))
+		}, ai.WithMaxTokens(1024))
 		if err != nil {
 			return resident.SentinelVerdict{}, err
 		}
@@ -4373,10 +4379,16 @@ Judge a good name by one test: someone who asked for this work yesterday must re
 // root node per job that would otherwise show a paragraph.
 func titleGoal(settings config.Config, client *liveClient) resident.TitleFunc {
 	return func(ctx context.Context, goal string) (string, error) {
+		// A CAP IS NOT A PURCHASE, and 30 was arithmetic on the answer: five
+		// words are ten tokens, so thirty looked generous. On a model that
+		// reasons before it speaks the thinking is spent out of this same budget
+		// first and the call returns nothing at all — the same failure that left
+		// every room in the rail untitled (head/scribe.go, where the mechanism
+		// and its one escalation are written out).
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "title"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: titleGoalPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: firstLine(goal)}}},
-		}, ai.WithMaxTokens(30))
+		}, ai.WithMaxTokens(512))
 		if err != nil || response == nil {
 			return "", err
 		}

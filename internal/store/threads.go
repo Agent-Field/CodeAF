@@ -89,6 +89,11 @@ const (
 type ThreadArc struct {
 	SessionID string
 	Title     string
+	// Tags are the subjects the naming pass filed this room under
+	// ([Session.Tags]). They are carried here for one reason: a switcher's
+	// filter is the only place they are read, and a switcher is driven from
+	// this projection. Nothing draws them as ornaments.
+	Tags []string
 	// LastActive is the room's own activity mark, which is what the list is
 	// ordered by; Since is when the OPEN thing started, which is what "parked
 	// for two days" measures.
@@ -263,6 +268,7 @@ func threadArcOf(session Session, tail []Message, seenSeq int64) (ThreadArc, boo
 	arc := ThreadArc{
 		SessionID:  session.ID,
 		Title:      strings.TrimSpace(session.Title),
+		Tags:       session.Tags,
 		LastActive: session.LastActive,
 	}
 	var lastUser, lastAgent, lastQuestion, lastDelivery Message

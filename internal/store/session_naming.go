@@ -30,7 +30,7 @@ func (s *Store) UnnamedSessionsWithExchange(limit int) ([]Session, error) {
 		return nil, nil
 	}
 	rows, err := s.db.Query(`
-		SELECT s.id, s.title, s.surface, s.created_at, s.last_active_at
+		SELECT s.id, s.title, s.tags, s.surface, s.created_at, s.last_active_at
 		FROM sessions s
 		WHERE s.title = ''
 		  AND EXISTS (SELECT 1 FROM messages m WHERE m.session_id = s.id AND m.role = ?)
