@@ -186,6 +186,18 @@ type liveTurn struct {
 	// nil until the first call, so an ordinary conversational turn allocates
 	// nothing for it — see activity.go.
 	activity *activityBlock
+	// interim says a belt call in this turn may still put ONE line in front of
+	// the person before the turn is over — `say` (internal/head/acts.go), which
+	// goes through the ordinary posting door and therefore lands as an agent row
+	// with no node behind it: the exact shape [endsTurn] reads as the ending.
+	// See [App.retires] for why the grant is one row and where it is spent.
+	interim bool
+	// companion names WHICH TURN owns the live region: empty for the room's own,
+	// and the companion suffix (companion.go) for one of the head's short turns
+	// against this room — the delivery answer, the receipt wake. It is what
+	// [App.streamOwns] compares a boundary's key against, so two turns that
+	// overlap cannot interleave their bytes into one buffer.
+	companion string
 	// raw is the provider's bytes as they arrive; shown is what has been drawn.
 	raw   strings.Builder
 	shown string

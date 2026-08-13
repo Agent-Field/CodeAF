@@ -230,6 +230,15 @@ func (a *App) applyToolStream(event StreamEvent) bool {
 	case StreamToolFailed:
 		moved = a.turn.activity.settle(event.Delta, true)
 	}
+	// EVERY tool boundary grants the interim line, both ends of the call and not
+	// just its opening. `say` posts from inside the call, so the opening alone
+	// would do — but a belt call may make a KEYED COMPLETION OF ITS OWN before it
+	// posts (the revision voice, internal/head/revisionvoice.go, which speaks in
+	// the room's own voice on the room's own key), and that nested completion's
+	// Finished would spend the grant before the row it was granted for arrived.
+	// Re-granting at the close is what makes the window the whole call rather
+	// than its first instant. See [App.retires].
+	a.turn.interim = true
 	if !moved {
 		return false
 	}
