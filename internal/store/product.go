@@ -59,66 +59,106 @@ const artifactBlockOverhead = 64
 // absolute-looking words from prose, so some of them are not files at all), a
 // file that reads as binary, and a file already inlined for this same consumer.
 func readProduct(files []string, limit int, seen map[string]bool) string {
-	if limit <= 0 || len(files) == 0 {
-		return ""
+	block, _ := InlineProduct(files, limit, seen)
+	return block
+}
+
+// InlineProduct is readProduct with its second answer kept: whether the block it
+// returns is ALL of what those files hold.
+//
+// The bool exists because the sentence rendered under the block is an
+// instruction either way and the two instructions are opposites — "read them if
+// you need the full detail" is an invitation to go and fetch what the consumer
+// is already holding, and following it is what nineteen turns of filesystem
+// archaeology looked like. Only the caller that inlined the files can answer it,
+// and until this it was answered by proxy: the resident surface asked whether
+// the digest had been clipped, and the headless scheduler never asked at all.
+//
+// Whole means every named file is in the consumer's hands: inlined here entire,
+// or already inlined for this same consumer by an earlier dependency that named
+// the same file. Anything short of that — a file past the budget, a file that
+// reads as binary, a path that is not a regular file — is false, because the
+// consumer would have to go and open something.
+func InlineProduct(files []string, limit int, seen map[string]bool) (string, bool) {
+	if len(files) == 0 {
+		return "", true
+	}
+	if limit <= 0 {
+		return "", false
+	}
+	if seen == nil {
+		seen = make(map[string]bool, len(files))
 	}
 	var block strings.Builder
+	whole := true
 	remaining := limit
 	for _, path := range files {
-		if remaining < productReadFloor {
-			break
-		}
 		if seen[path] {
 			continue
 		}
-		body, ok := readArtifact(path, remaining-artifactBlockOverhead)
-		if !ok || strings.TrimSpace(body) == "" {
+		if remaining < productReadFloor {
+			whole = false
+			continue
+		}
+		body, ok, entire := readArtifact(path, remaining-artifactBlockOverhead)
+		if !ok {
+			whole = false
 			continue
 		}
 		seen[path] = true
+		if !entire {
+			whole = false
+		}
+		if strings.TrimSpace(body) == "" {
+			// An empty file is held by whoever was told nothing is in it, and a
+			// header over no bytes is a header for its own sake.
+			continue
+		}
 		header := "\n\n--- what it wrote, the file " + path + " ---\n"
 		block.WriteString(header)
 		block.WriteString(body)
 		remaining -= len(header) + len(body)
 	}
-	return block.String()
+	return block.String(), whole
 }
 
 // readArtifact reads one file, bounded, and reports whether what came back is
-// text a consumer can be handed.
+// text a consumer can be handed and whether it is the whole of the file.
 //
 // It reads one byte past the bound so a clipped read can say it was clipped.
 // The note matters more here than it does in the pot's own clipping: the
 // consumer is being told this is what the producer wrote, and a file that
 // stops mid-sentence with nothing saying why is the one shape that reads as a
-// finished thought and is not one.
-func readArtifact(path string, limit int) (string, bool) {
+// finished thought and is not one. The third result is that same fact returned
+// rather than only written into the prose, for the caller that has to decide
+// what to tell the consumer it is holding.
+func readArtifact(path string, limit int) (body string, ok, whole bool) {
 	if limit <= 0 {
-		return "", false
+		return "", false, false
 	}
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
-		return "", false
+		return "", false, false
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return "", false
+		return "", false, false
 	}
 	defer file.Close()
 	raw, err := io.ReadAll(io.LimitReader(file, int64(limit)+1))
 	if err != nil {
-		return "", false
+		return "", false, false
 	}
 	if strings.IndexByte(string(raw), 0) >= 0 {
 		// Not text. A consumer handed the first kilobyte of a PNG has been
 		// handed noise it will spend a turn making sense of.
-		return "", false
+		return "", false, false
 	}
 	if len(raw) > limit {
 		clipped := bounded(string(raw), limit)
-		return clipped + "\n[the rest of this file is past the budget for it — open " + path + " for all of it]", true
+		return clipped + "\n[the rest of this file is past the budget for it — open " + path + " for all of it]", true, false
 	}
-	return string(raw), true
+	return string(raw), true, true
 }
 
 // productBytes is how many bytes a settled node's files hold, without reading

@@ -142,8 +142,10 @@ visibly happened.
 Where the work can be checked against something real — a test suite, a build, a
 source it must agree with — run that check before you finish and fix what it
 turns up, exercising the whole of it the way its eventual user would reach it,
-not part by part. Done means shown to work, not believed to. Once a check
-passes, stop; re-running what already passed buys nothing.
+not part by part. Done means shown to work, not believed to. A check that came
+back green is a finished question. Asking it again spends the person's money to
+re-learn a fact you already have, and nothing you learn the second time was
+worth the first. Once a check passes, move on.
 
 Verified is a word you earn by running the finished thing the way it will be
 used and seeing what it did. Parts that each work are not evidence that the
@@ -1194,6 +1196,22 @@ func (l *Linear) brief(task Task) string {
 		}
 		block.WriteString("\n")
 	}
+	if l.briefIsWhole(task) {
+		// The claim that was never made. The prompt fences the leaf inside its
+		// working directory and tells it what it holds; nothing in it ever said
+		// the holding was COMPLETE, and an agent with no such assurance does the
+		// only responsible thing — it goes and looks. Measured: five of eleven
+		// turns spent listing machinery and reading files back. The one place this
+		// assurance already existed is the Whole fan-in line four lines up, and
+		// that is precisely where the looking stopped.
+		//
+		// It is one sentence and it is stated only where it is a fact — see
+		// [Linear.briefIsWhole], which reads the task's own data and then reads
+		// the directory rather than assuming anything about it.
+		block.WriteString("This is the whole of what exists for this job: everything above is in your hands, " +
+			"and there is nothing in the working directory to discover before you produce. " +
+			"Begin on the work itself.\n\n")
+	}
 	block.WriteString("Your work:\n")
 	block.WriteString(task.Brief)
 	if task.Share != nil {
@@ -1209,6 +1227,41 @@ func (l *Linear) brief(task Task) string {
 	}
 	block.WriteString(outputClause(task))
 	return block.String()
+}
+
+// briefIsWhole reports that the brief this leaf is about to read is the whole of
+// what exists for its job.
+//
+// Three conditions, and every one of them is a fact rather than a judgment:
+//
+//   - Every input arrived with its material rather than a pointer at it. Whole
+//     is set by whoever assembled the task, from what it actually inlined; an
+//     input on a handle, or one clipped to fit, is an input the leaf has to open.
+//   - Nothing was attached that still has to be read. A staged document or an
+//     image is material the leaf holds only after it has gone and got it, which
+//     is the exact act this sentence would be telling it not to do.
+//   - The working directory holds no file the leaf could discover other than the
+//     ones its inputs already named. This is the half that cannot be reasoned
+//     out — a person's repository and a fresh job directory are the same shape
+//     to a Task — so it is measured, once, by a bounded walk that returns on the
+//     first unaccounted file. See [Workspace.HoldsNothingBut].
+//
+// A leaf with no inputs at all can satisfy all three, and that is correct: a
+// first leaf in an empty directory genuinely has nothing to find. The same leaf
+// pointed at somebody's project fails the third and is told nothing, which is
+// also correct — the project is the material.
+func (l *Linear) briefIsWhole(task Task) bool {
+	if len(task.DocumentPaths) > 0 || len(task.ImagePaths) > 0 {
+		return false
+	}
+	var named []string
+	for _, input := range task.Inputs {
+		if !input.Whole {
+			return false
+		}
+		named = append(named, input.Artifacts...)
+	}
+	return l.workspace.HoldsNothingBut(named)
 }
 
 // outputClause says where a file goes, and — far more often — that there is no

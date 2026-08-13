@@ -35,6 +35,21 @@ const (
 	backgroundJobNice = 10
 )
 
+// jobLogName is where one background job's output lands, and it carries the
+// leaf as well as the number because the number alone is unique only within one
+// Workspace handle. Concurrent leaves each hold their own handle and now share
+// one scratch home, so `1.log` is a name two of them would both claim; the leaf
+// is what makes it one file per job again. The same slug every other per-leaf
+// file in this package uses (traceName, the spill names), for the same reason:
+// one worker, one identity, one spelling.
+func jobLogName(leaf string, id int) string {
+	slug := pathSlug(leaf)
+	if slug == "" {
+		return fmt.Sprintf("%d.log", id)
+	}
+	return fmt.Sprintf("%s-%d.log", slug, id)
+}
+
 // setProcessGroupPriority renices a detached process group. It is a variable
 // so the spawn path can be exercised where a sandbox forbids the syscall, and
 // the error is dropped because not every environment permits renicing at all —
@@ -135,7 +150,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	}
 
 	id := r.workspace.nextJobID()
-	full, relative, err := r.workspace.ScratchPath(filepath.Join(jobsDir, fmt.Sprintf("%d.log", id)))
+	full, relative, err := r.workspace.ScratchPath(filepath.Join(jobsDir, jobLogName(r.leaf, id)))
 	if err != nil {
 		return errorf("could not create background log: %v", err)
 	}

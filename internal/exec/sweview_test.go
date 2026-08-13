@@ -232,13 +232,14 @@ func TestParallelCodingLeavesVerifyInIsolationAndBothLand(t *testing.T) {
 	t.Setenv(home.EnvVar, t.TempDir())
 	root := personsRepository(t)
 	base := gitOut(t, root, "rev-parse", "HEAD")
-	// A person's own directory: the harness's files go somewhere else, which is
-	// how this workspace says whose it is.
+	// A person's own directory, said as its own fact. It used to be inferred from
+	// the harness's files having been sent elsewhere, which stopped being the
+	// same question the moment they always were.
 	space, err := NewWorkspace(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	space = space.WithScratch(t.TempDir())
+	space = space.WithScratch(t.TempDir()).OwnedByPerson()
 	records := t.TempDir()
 
 	type landing struct {
@@ -450,7 +451,7 @@ func TestAViewThatCannotBeAppliedRefusesAndSaysWhereTheWorkIs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	space = space.WithScratch(t.TempDir())
+	space = space.WithScratch(t.TempDir()).OwnedByPerson()
 
 	view, _, err := sweOpen(context.Background(), space, "n9", newTracer(space, "n9"))
 	if err != nil {
@@ -511,7 +512,7 @@ func TestARestartedLeafKeepsItsOwnView(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	space = space.WithScratch(t.TempDir())
+	space = space.WithScratch(t.TempDir()).OwnedByPerson()
 
 	first, _, err := sweOpen(context.Background(), space, "n3", newTracer(space, "n3"))
 	if err != nil {
@@ -575,7 +576,7 @@ func TestTheLandingCommitCarriesTheWorkAndNoneOfTheEnginesBookkeeping(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	space = space.WithScratch(t.TempDir())
+	space = space.WithScratch(t.TempDir()).OwnedByPerson()
 	view, _, err := sweOpen(context.Background(), space, "n5", newTracer(space, "n5"))
 	if err != nil {
 		t.Fatal(err)
@@ -675,7 +676,7 @@ func TestTheViewRootIsOwnedByTheLastViewOutOfIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	space = space.WithScratch(t.TempDir())
+	space = space.WithScratch(t.TempDir()).OwnedByPerson()
 
 	first, _, err := sweOpen(context.Background(), space, "n1", newTracer(space, "n1"))
 	if err != nil {
@@ -725,7 +726,7 @@ func TestStaleViewsAreReapedWhenALeafOpensAndTheLeafsOwnIsNot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	space = space.WithScratch(t.TempDir())
+	space = space.WithScratch(t.TempDir()).OwnedByPerson()
 
 	abandoned, _, err := sweOpen(context.Background(), space, "n-old", newTracer(space, "n-old"))
 	if err != nil {
@@ -815,7 +816,7 @@ func TestTrackedEngineStateIsReportedAndNeverRemoved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	space = space.WithScratch(t.TempDir())
+	space = space.WithScratch(t.TempDir()).OwnedByPerson()
 	trace := newTracer(space, "n1")
 	view, _, err := sweOpen(context.Background(), space, "n1", trace)
 	if err != nil {

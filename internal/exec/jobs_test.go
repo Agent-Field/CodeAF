@@ -83,15 +83,15 @@ func TestBackgroundStartReturnsImmediatelyAndCreatesDurableLog(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > slack(time.Second) {
 		t.Fatalf("background start blocked for %s", elapsed)
 	}
-	if !strings.Contains(result.Content, "job 1 started · log .aforge/jobs/1.log") {
+	if !strings.Contains(result.Content, "job 1 started · log "+filepath.Join(jobsDir, jobLogName("1", 1))) {
 		t.Fatalf("start result = %q", result.Content)
 	}
-	logPath := filepath.Join(space.Root(), ".aforge", "jobs", "1.log")
+	logPath := filepath.Join(space.Root(), jobsDir, jobLogName("1", 1))
 	waitForFileText(t, logPath, "ready")
 	// The log is durable and locatable; it is not a deliverable. Named to the
 	// user among "the files that job wrote", a process log stands beside the
 	// actual report as though it were a peer.
-	if _, ok := space.Locate(".aforge/jobs/1.log"); !ok {
+	if _, ok := space.Locate(filepath.Join(jobsDir, jobLogName("1", 1))); !ok {
 		t.Fatal("the durable job log was not written")
 	}
 	if artifacts := space.Artifacts("1"); len(artifacts) != 0 {
@@ -184,7 +184,7 @@ func TestJobPeekReturnsOnlyNewOutput(t *testing.T) {
 	if started.IsError {
 		t.Fatal(started.Content)
 	}
-	logPath := filepath.Join(space.Root(), ".aforge", "jobs", "1.log")
+	logPath := filepath.Join(space.Root(), jobsDir, jobLogName("1", 1))
 	waitForFileText(t, logPath, "first")
 	first := primaryJobResult(tools.Execute(context.Background(), "job", `{"id":1}`).Content)
 	if !strings.Contains(first, "first") {
@@ -334,7 +334,7 @@ func TestJobListShowsEveryStateAndLastLogLine(t *testing.T) {
 	if result := tools.Execute(context.Background(), "sh", `{"cmd":"printf '\\033[32mlatest line\\033[0m\\n'; sleep 30","bg":true}`); result.IsError {
 		t.Fatal(result.Content)
 	}
-	waitForFileText(t, filepath.Join(space.Root(), ".aforge", "jobs", "1.log"), "latest line")
+	waitForFileText(t, filepath.Join(space.Root(), jobsDir, jobLogName("1", 1)), "latest line")
 	result := tools.Execute(context.Background(), "job", `{}`)
 	if result.IsError || !strings.Contains(result.Content, "job 1 · running") ||
 		!strings.Contains(result.Content, "last: latest line") {
@@ -384,14 +384,14 @@ func TestLeafEndTerminatesSurvivorsAndNotesCount(t *testing.T) {
 	}
 	pidBody, err := os.ReadFile(filepath.Join(space.Root(), "survivor.pid"))
 	if err != nil {
-		logBody, _ := os.ReadFile(filepath.Join(space.Root(), ".aforge", "jobs", "1.log"))
+		logBody, _ := os.ReadFile(filepath.Join(space.Root(), jobsDir, jobLogName("1", 1)))
 		t.Fatalf("survivor did not start: %v; log=%q artifacts=%v", err, logBody, outcome.Artifacts)
 	}
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(pidBody)))
 	if err := syscall.Kill(pid, 0); err == nil {
 		t.Fatalf("process %d survived leaf end", pid)
 	}
-	if _, ok := space.Locate(".aforge/jobs/1.log"); !ok {
+	if _, ok := space.Locate(filepath.Join(jobsDir, jobLogName("1", 1))); !ok {
 		t.Fatal("the job log was not retained past leaf end")
 	}
 	if artifacts := outcome.Artifacts; len(artifacts) != 0 {
@@ -444,7 +444,7 @@ func TestSchedulerAbandonmentTearsDownLeafJobs(t *testing.T) {
 	}
 	pidBody, err := os.ReadFile(filepath.Join(space.Root(), "abandoned.pid"))
 	if err != nil {
-		logBody, _ := os.ReadFile(filepath.Join(space.Root(), ".aforge", "jobs", "1.log"))
+		logBody, _ := os.ReadFile(filepath.Join(space.Root(), jobsDir, jobLogName("1", 1)))
 		t.Fatalf("abandoned process did not start: %v; log=%q", err, logBody)
 	}
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(pidBody)))
