@@ -513,6 +513,13 @@ const lengthStopBatchFailure = "This tool call was NOT executed. The reply carry
 // Run executes one task.
 func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr error) {
 	started := time.Now()
+	// One leaf is one routing lineage. The run key inherited from above already
+	// says "keep this run together"; this narrows it to "keep THIS leaf's turns
+	// together", which is the grain an automatic prefix cache can actually hit
+	// at — see provider.WithLeafCacheKey for what the narrowing gives up and why
+	// it is not close. It is applied before the deadline so that every call the
+	// leaf makes, including the tool-side model calls, rides the same key.
+	ctx = provider.WithLeafCacheKey(ctx, task.leafKey())
 	ctx, cancel := context.WithTimeout(ctx, l.deadline)
 	defer cancel()
 	deadline, _ := ctx.Deadline()
@@ -686,12 +693,26 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// the window crosses the budget, and then clears to a low-water mark so
 		// the turns that follow can resend a byte-identical prefix and be billed
 		// at the cached rate.
-		outcome.Decayed += fade.decay(messages, obsBudget)
+		retired := fade.decay(messages, obsBudget)
+		outcome.Decayed += retired
 		// And, only when retiring spent raw material was not enough to bring the
 		// whole live body back inside the working set, the leaf's own aged
 		// reasoning folds the same way. It does nothing on the ordinary leaf; see
 		// decayer.fold for the order and what protects the live edge.
-		outcome.Folded += fade.fold(messages, obsBudget)
+		folded := fade.fold(messages, obsBudget)
+		outcome.Folded += folded
+		// A rewrite anywhere in the transcript invalidates the prefix from that
+		// point on, so THIS is the turn whose hit= will read near zero however
+		// well the discipline is working. Written down beside the turn it belongs
+		// to, the dip has a cause; without it, a benchmark reading the ratio can
+		// only see a cache that intermittently fails. Both passes are batched
+		// precisely so this line is rare — a run where it appears every turn is
+		// the run whose hysteresis is not doing its job.
+		if retired > 0 || folded > 0 {
+			trace.note(fmt.Sprintf(
+				"prefix rewritten — %d observation(s) retired, %d turn(s) folded; this turn re-reads cold",
+				retired, folded))
+		}
 		// What the leaf had left before this turn, so the circuit breaker below
 		// can weigh what the turn cost against what remained rather than against
 		// the budget it started with.

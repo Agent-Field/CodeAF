@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -46,7 +45,7 @@ func noteReasoningMandatory(model string) {
 	if quirks.note(model, time.Now().UTC()) {
 		// Off the request path: the call that discovered this is waiting to be
 		// re-sent, and it should not wait on a disk write to do it.
-		guard.Go("provider/quirks", quirks.save)
+		quirks.persist()
 	}
 }
 
@@ -96,13 +95,29 @@ func refusesDisabledReasoning(payload []byte) bool {
 type wireRequest struct {
 	*requestAlias
 
+	// Messages and Tools shadow the SDK's own fields for one reason: a cache
+	// breakpoint has to be written INSIDE them, and neither ai.Message nor
+	// ai.ToolDefinition has a field for it. Serializing them here — element by
+	// element, through the SDK's own marshaller for everything unmarked — is how
+	// the adapter expresses a wire fact the pinned SDK type cannot hold, without
+	// forking the SDK or reshaping anything the harness above it sees.
+	//
+	// Both are populated on EVERY request, marked or not. Go resolves a shadowed
+	// JSON field at the type level, so an empty shadow would delete the embedded
+	// field rather than fall through to it; leaving them unset would send a
+	// request with no messages at all.
+	Messages []json.RawMessage `json:"messages"`
+	Tools    []json.RawMessage `json:"tools,omitempty"`
+
 	MaxTokens           *int `json:"max_tokens,omitempty"`
 	MaxCompletionTokens *int `json:"max_completion_tokens,omitempty"`
 
 	// PromptCacheKey is the request-body half of prompt-cache affinity. Paired
-	// with the session-affinity header it asks the router to keep one run on
+	// with the session-affinity header it asks the router to keep one lineage on
 	// one warm instance instead of scattering a byte-stable prefix across
-	// providers that each have to write the cache from cold.
+	// providers that each have to write the cache from cold. The lineage is the
+	// leaf rather than the run — see provider.WithLeafCacheKey for why a fan-out
+	// sharing one key is what made the prefix miss in the first place.
 	PromptCacheKey string `json:"prompt_cache_key,omitempty"`
 
 	// Reasoning is omitted entirely unless the model is known to accept it or
@@ -130,8 +145,23 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 
 	model := c.modelFor(&scrubbed)
 
+	// The dialect is resolved once per encode rather than cached on the client,
+	// because the model can be pinned per request by the router and the learned
+	// refusal below can change the answer mid-run.
+	dialect := c.dialectFor(model)
+	messages, err := encodeMessages(scrubbed.Messages, dialect)
+	if err != nil {
+		return nil, err
+	}
+	tools, err := encodeTools(scrubbed.Tools, dialect)
+	if err != nil {
+		return nil, err
+	}
+
 	wire := wireRequest{
 		requestAlias:   (*requestAlias)(&scrubbed),
+		Messages:       messages,
+		Tools:          tools,
 		PromptCacheKey: knobs.cacheKey,
 	}
 	wire.Reasoning = reasoningFor(c.resolveEffort(model, knobs.effort))
@@ -312,18 +342,17 @@ func needsMaxCompletionTokens(model string) bool {
 var vouchedRewriteDomains = []string{"openai.com", "openai.azure.com", "openrouter.ai"}
 
 func isVouchedRewriteEndpoint(baseURL string) bool {
+	return hostIn(baseURL, vouchedRewriteDomains)
+}
+
+// hostOf reads the host out of a configured base URL, empty when there is not
+// one to read. Every endpoint-shape decision in this package is made on the host
+// rather than on the whole string, so that a path or a query cannot vouch for a
+// domain it merely mentions.
+func hostOf(baseURL string) string {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil {
-		return false
+		return ""
 	}
-	host := strings.ToLower(parsed.Hostname())
-	if host == "" {
-		return false
-	}
-	for _, domain := range vouchedRewriteDomains {
-		if host == domain || strings.HasSuffix(host, "."+domain) {
-			return true
-		}
-	}
-	return false
+	return strings.ToLower(parsed.Hostname())
 }
