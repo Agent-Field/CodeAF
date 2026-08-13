@@ -82,7 +82,11 @@ func TestAnOperatorsOwnCacheOutranksTheSharedDefault(t *testing.T) {
 func TestAControlledStopStillReportsWhatItSpent(t *testing.T) {
 	probe := newSWEProbe(t, "hang")
 	task := probe.task()
-	task.Control = func() ControlAction { return ControlCancel }
+	// The cancel waits until the run has demonstrably read something off the
+	// stream. Cancelling unconditionally raced the child's own start, and the
+	// test then measured a run killed before it ever heard about the money —
+	// which is a different thing from the defect it is named for.
+	controlWhenItSpeaks(&task, ControlCancel)
 	outcome, err := probe.worker.Run(context.Background(), task)
 	if err != nil {
 		t.Fatal(err)

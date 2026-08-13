@@ -219,7 +219,7 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 		}
 	}()
 
-	state := &sweRun{task: task, trace: trace, outcome: outcome}
+	state := &sweRun{task: task, trace: trace, outcome: outcome, root: directory}
 	stopped := StopReason("")
 	killed := false
 	// The kill timer outlives the polite request and must not outlive the
@@ -297,6 +297,18 @@ func (s *SWE) settle(
 	outcome.Usage = state.usage()
 	outcome.Turns = state.turns
 	outcome.ToolCalls = state.turns
+
+	// The account is complete the moment the stream is: every file the engine
+	// wrote and every check it ran has already gone past. It is attached here,
+	// once, ahead of every ending below — including the ones that used to leave
+	// the leaf with nothing to say — because what the work did is true whatever
+	// stopped it. The engine's last word joins it when there was one.
+	if state.terminal != nil {
+		state.account.Final = strings.TrimSpace(state.terminal.Message)
+	}
+	if !state.account.Empty() {
+		outcome.Account = &state.account
+	}
 
 	// A user's decision outranks whatever the engine managed to say on its way
 	// down: a killed run may still have flushed a terminal line, and reporting
@@ -1109,6 +1121,16 @@ type sweRun struct {
 	task    Task
 	trace   *tracer
 	outcome *Outcome
+	// root is the leaf's workspace, and is here for one job: the engine names
+	// files by absolute path, from inside worktrees it made under the workspace,
+	// and the account has to speak in paths a reader of this job recognises. See
+	// [sweRun.accountPath].
+	root string
+
+	// account is the structured story of the work, assembled as the stream goes
+	// past. Everything in it is something the engine said out loud on the wire
+	// and nothing else in the system was in a position to hear.
+	account Account
 
 	terminal *sweEvent
 	turns    int
@@ -1284,6 +1306,13 @@ type swePart struct {
 		Input  json.RawMessage `json:"input"`
 		Output string          `json:"output"`
 		Error  string          `json:"error"`
+		// Metadata is what a finished tool call reports about itself beyond its
+		// printed output. For the three tools that write files it is the only
+		// place the change set exists in structured form — the printed output is
+		// "Edit applied successfully." — and it is decoded lazily, by the one
+		// reader that wants it, because every other tool in the engine puts
+		// something different in here.
+		Metadata json.RawMessage `json:"metadata"`
 	} `json:"state"`
 	Time struct {
 		End float64 `json:"end"`
@@ -1374,6 +1403,13 @@ func (r *sweRun) narratePart(part swePart) {
 		case "completed", "error":
 			if !once(part.ID + "-result") {
 				return
+			}
+			// The same once-per-part guard the row is written under, because the
+			// account is counting lines: a part republished four times whose
+			// additions were added four times would report a change four times
+			// the size of the one on disk.
+			if part.State.Status == "completed" {
+				r.noteFiles(tool, part)
 			}
 			body, mark := part.State.Output, ""
 			if part.State.Status == "error" {
@@ -1472,6 +1508,7 @@ func (r *sweRun) noteFit(event sweEvent) {
 			r.state.verified = false
 		}
 		r.notePreExisting(event)
+		r.noteChecks(event)
 	}
 }
 
@@ -1503,6 +1540,249 @@ func (r *sweRun) notePreExisting(event sweEvent) {
 		r.seenBaseline[note] = true
 		r.outcome.Baseline = append(r.outcome.Baseline, note)
 	}
+}
+
+// ── the account ──────────────────────────────────────────────────────────────
+//
+// What follows is the whole of how a pipeline behind a process boundary comes
+// to say what it did. Nothing here asks the engine for anything new: the change
+// set is already in the metadata of the three tools that write files, and the
+// verification story is already in the stage event the gate publishes. Both
+// were being read past on the way to the trace, which is why a run that ended
+// without a terminal line could only report that it had ended.
+
+// noteFiles reads one finished tool call for the files it wrote.
+//
+// Three tools write, and each reports itself differently because each is
+// answering a different question — an edit knows its own patch, a write knows
+// whether the file was there before, a patch knows a whole change set at once.
+// The switch is that table and nothing more; a tool that is not one of them
+// wrote no files and is not silently assumed to have.
+func (r *sweRun) noteFiles(tool string, part swePart) {
+	if len(part.State.Metadata) == 0 {
+		return
+	}
+	switch tool {
+	case "edit":
+		var meta struct {
+			FileDiff struct {
+				File      string `json:"file"`
+				Additions int    `json:"additions"`
+				Deletions int    `json:"deletions"`
+			} `json:"filediff"`
+		}
+		if json.Unmarshal(part.State.Metadata, &meta) != nil {
+			return
+		}
+		r.account.Note(r.accountPath(meta.FileDiff.File), ChangeChanged,
+			meta.FileDiff.Additions, meta.FileDiff.Deletions)
+
+	case "write":
+		var meta struct {
+			FilePath string `json:"filepath"`
+			Exists   bool   `json:"exists"`
+			Diff     string `json:"diff"`
+		}
+		if json.Unmarshal(part.State.Metadata, &meta) != nil {
+			return
+		}
+		// A write reports no line counts of its own, only the patch it applied.
+		// Counting the patch is the same arithmetic the other two tools did
+		// before publishing theirs, so the three agree rather than one of them
+		// reporting a file with no size.
+		change := ChangeAdded
+		if meta.Exists {
+			change = ChangeChanged
+		}
+		added, removed := patchStat(meta.Diff)
+		r.account.Note(r.accountPath(meta.FilePath), change, added, removed)
+
+	case "apply_patch":
+		var meta struct {
+			Files []struct {
+				FilePath     string `json:"filePath"`
+				RelativePath string `json:"relativePath"`
+				Type         string `json:"type"`
+				MovePath     string `json:"movePath"`
+				Additions    int    `json:"additions"`
+				Deletions    int    `json:"deletions"`
+			} `json:"files"`
+		}
+		if json.Unmarshal(part.State.Metadata, &meta) != nil {
+			return
+		}
+		for _, file := range meta.Files {
+			// The relative path is the engine's own spelling of where the file
+			// sits in the repository, and is right even when the absolute one
+			// points inside a worktree this leaf has never heard of.
+			path := strings.TrimSpace(file.RelativePath)
+			if path == "" {
+				path = r.accountPath(file.FilePath)
+			} else {
+				path = accountSpelling(path)
+			}
+			if move := strings.TrimSpace(file.MovePath); move != "" {
+				path = r.accountPath(move)
+			}
+			r.account.Note(path, sweChangeKind(file.Type), file.Additions, file.Deletions)
+		}
+	}
+}
+
+// sweChangeKind is the engine's word for a change in the account's vocabulary.
+// The two lists are close enough that a translation looks like ceremony and far
+// enough apart that leaving it out would put "update" and "changed" on the same
+// surface for the same fact.
+func sweChangeKind(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case "add":
+		return ChangeAdded
+	case "delete":
+		return ChangeDeleted
+	case "move":
+		return ChangeMoved
+	}
+	return ChangeChanged
+}
+
+// accountPath is the file the leaf's reader would recognise.
+//
+// The engine names files absolutely, and the file it names is usually not in
+// the workspace but in a git worktree the scheduler cut under it — the layout
+// is <workspace>/.plandb/wt-<task>/<path> — which it merges onto the branch when
+// the leaf's work is judged. A reader handed that path is handed the machinery
+// instead of the change, and would be handed a different path for the same file
+// on the next run. So the workspace prefix comes off, and the worktree prefix
+// with it; a path from somewhere else entirely is left exactly as the engine
+// said it, because a path we cannot place is still a fact.
+func (r *sweRun) accountPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || r.root == "" || !filepath.IsAbs(path) {
+		return accountSpelling(path)
+	}
+	// macOS spells one directory two honest ways — /var is a symlink to
+	// /private/var — and a Rel between the two spellings escapes. Every
+	// spelling of each side is tried against every spelling of the other,
+	// because resolving is not always available here: a file the engine
+	// reported and then deleted, or one written inside a worktree that has
+	// since been removed, cannot be resolved at all, and one that reads as
+	// outside the workspace on a technicality would be reported to a person as
+	// an absolute path through machinery.
+	for _, base := range spellings(r.root) {
+		for _, target := range spellings(path) {
+			inside, err := filepath.Rel(base, target)
+			if err != nil || strings.HasPrefix(inside, "..") {
+				continue
+			}
+			return accountSpelling(inside)
+		}
+	}
+	return path
+}
+
+// spellings is a path as written and, when the filesystem will say, as
+// resolved. One entry when the two are the same or the path does not exist.
+func spellings(path string) []string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil || resolved == path {
+		return []string{path}
+	}
+	return []string{path, resolved}
+}
+
+// accountSpelling strips the engine's worktree prefix and normalises the
+// separator. The prefix is a two-segment fact about where a leaf was run and
+// says nothing about what changed.
+func accountSpelling(path string) string {
+	path = filepath.ToSlash(strings.TrimSpace(path))
+	head, rest, found := strings.Cut(path, "/")
+	if !found || head != sweWorktreeDir {
+		return path
+	}
+	branch, tail, found := strings.Cut(rest, "/")
+	if !found || !strings.HasPrefix(branch, sweWorktreePrefix) {
+		return path
+	}
+	return tail
+}
+
+const (
+	// sweWorktreeDir and sweWorktreePrefix are the engine's own worktree layout
+	// (internal/swepro/internal/session/scheduler/worktree.go), read from
+	// outside. They are named rather than pattern-matched because a directory
+	// that merely looks like one is a directory somebody's repository owns.
+	sweWorktreeDir    = ".plandb"
+	sweWorktreePrefix = "wt-"
+)
+
+// patchStat counts a unified diff. The header lines are the two that begin with
+// a tripled marker, and they are not content — counting them would report every
+// written file as one line larger than it is on both sides.
+func patchStat(patch string) (added, removed int) {
+	for _, line := range strings.Split(patch, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+		case strings.HasPrefix(line, "+"):
+			added++
+		case strings.HasPrefix(line, "-"):
+			removed++
+		}
+	}
+	return added, removed
+}
+
+// noteChecks carries the verification gate's own evidence out of the stream.
+//
+// The gate publishes every entrypoint it discovered and ran, with the command,
+// the exit status, the tail of what the process printed, and — for a red one —
+// whether the same red was already there before this work began. That is the
+// verification story in full, and it is the thing a judge two processes away
+// most needs and can least reconstruct: it holds prose and a file list, and
+// cannot run anything.
+//
+// The last pass replaces the ones before it. Verification runs once per audit
+// cycle over a tree that keeps changing, so a union of four passes would report
+// a suite both red and green; what is true is what the last run found.
+func (r *sweRun) noteChecks(event sweEvent) {
+	raw, ok := event.Data["commands"].([]any)
+	if !ok {
+		return
+	}
+	checks := make([]Check, 0, len(raw))
+	for _, item := range raw {
+		row, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		command := strings.TrimSpace(sweText(row["cmd"]))
+		if command == "" {
+			continue
+		}
+		exit, reported := row["exit"].(float64)
+		timedOut, _ := row["timedOut"].(bool)
+		known, _ := row["preExisting"].(bool)
+		checks = append(checks, Check{
+			Command: command,
+			Kind:    strings.TrimSpace(sweText(row["kind"])),
+			// A suite killed at the harness ceiling never produced an exit
+			// status at all. That is an INCOMPLETE observation and not a green
+			// one, so it fails here exactly as it fails inside the engine.
+			Passed: reported && exit == 0 && !timedOut,
+			Known:  known,
+			Tail:   strings.TrimSpace(sweText(row["tail"])),
+		})
+	}
+	if len(checks) > 0 {
+		r.account.Checks = checks
+	}
+}
+
+// sweText reads a string out of a decoded event field, answering empty for
+// anything that is not one. Every value here came off a wire whose shape is
+// documented and not enforced.
+func sweText(value any) string {
+	text, _ := value.(string)
+	return text
 }
 
 // record keeps the bounded tail of what the engine actually did, in the shape
@@ -1610,12 +1890,21 @@ func (r *sweRun) text(stop StopReason, terminal *sweEvent) string {
 			block.WriteString(message)
 		}
 	}
+	// The account goes under whatever the run said for itself, never over it.
+	// The engine's own final message is the deliverable when there is one; this
+	// is the evidence for it, and on the endings that carry no message at all it
+	// is the whole of what the leaf knows — which is the difference between a
+	// node summary somebody can act on and the void sentence it replaces.
+	report := r.account.Report()
 	if block.Len() == 0 {
 		if r.landing != "" {
 			block.WriteString(r.landing)
 		} else {
-			block.WriteString(sweEndingText(stop))
+			block.WriteString(sweEndingText(stop, report != ""))
 		}
+	}
+	if report != "" {
+		block.WriteString("\n\n" + report)
 	}
 	status := string(stop)
 	cycles := 0
@@ -1641,7 +1930,16 @@ func (r *sweRun) text(stop StopReason, terminal *sweEvent) string {
 
 // sweEndingText is what a run says when the engine said nothing. Each of these
 // is a real ending with no message of its own attached to it.
-func sweEndingText(stop StopReason) string {
+//
+// accounted is whether the leaf has the work itself to show. The default arm
+// used to be "it ended without saying how it went" unconditionally, and that
+// sentence was the most expensive one in the system: the delivery gate judged a
+// void and reacted differently every time, and the remainder judge, seeing a
+// node that reported nothing, kept adding children to re-investigate work that
+// was finished and green. A run that changed files and ran its suite has an
+// account whatever the process did on the way out, and the sentence says which
+// of the two it is rather than collapsing them.
+func sweEndingText(stop StopReason, accounted bool) string {
 	switch stop {
 	case StopCancelled:
 		return "The coding run was cancelled. Its checkpoint is in the workspace, so the same node can pick it up."
@@ -1649,6 +1947,10 @@ func sweEndingText(stop StopReason) string {
 		return "The coding run is paused. Its checkpoint is in the workspace, so resuming continues rather than restarts."
 	case StopDeadline:
 		return "The coding run ran out of wall clock. Its checkpoint is in the workspace."
+	}
+	if accounted {
+		return "The coding run ended without a verdict of its own. What it did is below, " +
+			"taken from the engine's own record as the work went past."
 	}
 	return "The coding run ended without saying how it went."
 }

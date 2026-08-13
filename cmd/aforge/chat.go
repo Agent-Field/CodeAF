@@ -2009,6 +2009,12 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// "`make all` exited 2, therefore this change is broken" from a run tail
 		// it cannot rerun.
 		evidence.Baseline = outcome.Baseline
+		// And the account of the work itself, when the worker kept one: the
+		// files it changed and the checks it ran. The gate that used to be
+		// handed "the run ended without saying how it went" is handed the diff
+		// and the verification story instead, which is the whole difference
+		// between judging a claim and judging a void.
+		evidence.Account = outcome.Account
 	}
 	return evidence
 }
@@ -2428,40 +2434,113 @@ const failedPartsNamed = 3
 // direct children because a fan-out's failures are usually two levels down, and
 // it names the first few with their own reasons, because "3 of 4 parts landed"
 // without saying which one is missing is only marginally better than silence.
+//
+// A part that ended settled-and-not-done is not automatically a part that was
+// lost, and reading it as one was a measured lie about finished work. The
+// job's own second thought withdraws steps: when a landed result shows that
+// what a later step was for is already covered, the reviser drops it, and the
+// store records that as a cancellation like any other. Told nothing else, this
+// counted the withdrawal as a casualty and closed the delivery with "much of it
+// is missing" over a job that had landed whole. So the two are separated by the
+// only thing that can separate them — who cancelled it and why — and each gets
+// its own sentence, because "we decided not to do this" and "we could not do
+// this" are opposite facts about a deliverable.
 func failedPartsNote(graph *store.Store, node store.Node) string {
 	nodes, err := graph.SubtreeNodes(node.ID)
 	if err != nil || len(nodes) <= 1 {
 		return ""
 	}
-	total, lost := 0, make([]store.Node, 0)
+	total := 0
+	lost, withdrawn := make([]store.Node, 0), make([]store.Node, 0)
 	for _, part := range nodes {
 		if part.ID == node.ID {
 			continue
 		}
 		total++
-		if part.Status == store.Failed || part.Status == store.Cancelled {
+		switch {
+		case withdrawnByPlan(part):
+			withdrawn = append(withdrawn, part)
+		case part.Status == store.Failed || part.Status == store.Cancelled:
 			lost = append(lost, part)
 		}
 	}
-	if len(lost) == 0 || total == 0 {
+	if total == 0 || (len(lost) == 0 && len(withdrawn) == 0) {
 		return ""
 	}
-	note := fmt.Sprintf("Not all of this landed: %d of %d parts finished.", total-len(lost), total)
-	named := lost
+	// The denominator is what the job was still trying to do. A step withdrawn
+	// mid-run was taken off the list rather than failed on, so counting it as
+	// one of the parts that did not finish would understate a job that finished
+	// everything it was still asking for.
+	asked := total - len(withdrawn)
+	var note string
+	if len(withdrawn) > 0 {
+		note = fmt.Sprintf(
+			"%s of the plan became unnecessary while the work ran and %s dropped: what %s for was already covered.",
+			plainCount(len(withdrawn), "part"), wasWere(len(withdrawn)), itThey(len(withdrawn)))
+		note += namedParts(withdrawn, "no reason was recorded")
+	}
+	if len(lost) > 0 {
+		if note != "" {
+			note += "\n\n"
+		}
+		note += fmt.Sprintf("Not all of this landed: %d of %d parts finished.", asked-len(lost), asked)
+		note += namedParts(lost, "no reason was recorded")
+		note += "\nRead what is above knowing that much of it is missing."
+	}
+	return note
+}
+
+// withdrawnByPlan reports that a part was taken off the job by the job's own
+// revision rather than lost. The prefix is the contract resident writes when it
+// drops a step; nothing else in the tree cancels with those words.
+func withdrawnByPlan(part store.Node) bool {
+	return part.Status == store.Cancelled &&
+		strings.HasPrefix(strings.TrimSpace(part.Error), resident.WithdrawnByPlan)
+}
+
+// namedParts is the bulleted list both halves of the note share: the first few
+// by name with their own reason, then a count of the rest.
+func namedParts(parts []store.Node, absent string) string {
+	named := parts
 	if len(named) > failedPartsNamed {
 		named = named[:failedPartsNamed]
 	}
+	var body string
 	for _, part := range named {
-		reason := firstLine(strings.TrimSpace(part.Error))
+		reason := firstLine(strings.TrimSpace(strings.TrimPrefix(
+			strings.TrimSpace(part.Error), resident.WithdrawnByPlan)))
 		if reason == "" {
-			reason = "no reason was recorded"
+			reason = absent
 		}
-		note += "\n- " + clipUTF8Bytes(firstLine(nodeDisplay(part)), 70) + " — " + clipUTF8Bytes(reason, 160)
+		body += "\n- " + clipUTF8Bytes(firstLine(nodeDisplay(part)), 70) + " — " + clipUTF8Bytes(reason, 160)
 	}
-	if len(lost) > len(named) {
-		note += fmt.Sprintf("\n- and %d more that did not finish", len(lost)-len(named))
+	if left := len(parts) - len(named); left > 0 {
+		body += fmt.Sprintf("\n- and %d more", left)
 	}
-	return note + "\nRead what is above knowing that much of it is missing."
+	return body
+}
+
+// plainCount, wasWere and itThey keep the two sentences above grammatical
+// without a caller having to compose "1 parts became".
+func plainCount(count int, noun string) string {
+	if count == 1 {
+		return "One " + noun
+	}
+	return fmt.Sprintf("%d %ss", count, noun)
+}
+
+func wasWere(count int) string {
+	if count == 1 {
+		return "was"
+	}
+	return "were"
+}
+
+func itThey(count int) string {
+	if count == 1 {
+		return "it was"
+	}
+	return "they were"
 }
 
 // leafErrorPrefix is how the executor stamps its own errors: `node 7: ...`,
@@ -2957,6 +3036,7 @@ func (j *jobPlans) recordOutcome(graph *plan.Graph, node *plan.Node, outcome *ex
 		node.Verdict = outcome.Verdict
 		node.Artifacts = outcome.Artifacts
 		node.Result = outcome.Text
+		node.Checked = outcome.Account.Summary()
 		node.Calibration = append([]string(nil), outcome.Calibration...)
 	}
 	if err != nil || outcome == nil || strings.TrimSpace(node.Result) == "" {
