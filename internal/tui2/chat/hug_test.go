@@ -274,25 +274,28 @@ func TestTheHugSpeaksEveryStateFromTheFrame(t *testing.T) {
 // defective, and the one row a lost reader looks at should not read as a filing
 // error.
 //
-// The chats wave settled it more strongly than the original rule did. The trail
-// used to lead with the thread's name and invent a word for it when there was
-// none; the title chip owns that fact now and draws NOTHING while the thread is
-// unnamed (threads.go's threadName, footer's FocusContext.Thread). So the trail
-// says only how deep inside the reader is, and neither surface has a
-// placeholder left to say.
+// The chats wave settled it more strongly than the original rule did, and the
+// place line settled it again by taking both halves off this row: the chip said
+// WHICH conversation and the trail said HOW DEEP inside it, and neither half
+// could say the other. The path above the caret says both (chat/place.go).
+//
+// So the bar carries neither, and the honest answer to "what is an unnamed
+// thread called" moved with them. A chip could decline to name one, because an
+// absent chip reads as no chip; a SEGMENT cannot, because the path would lose
+// its second rung and the room the reader is standing in would have no name at
+// all. [untitledRoom] is the true answer there, and it is still not an id.
 func TestTheBarNeverSaysUntitled(t *testing.T) {
-	pane := &statusPane{thread: "", breadcrumb: "some step"}
-	tail := pane.scopeTail()
-	if strings.Contains(strings.ToLower(tail), "untitled") {
-		t.Fatalf("the trail calls an unnamed thread untitled: %q", tail)
+	pane := &statusPane{}
+	ctx := pane.focusContext(120)
+	if ctx.Thread != "" {
+		t.Fatalf("the bar still draws a title chip: %q", ctx.Thread)
 	}
-	if !strings.Contains(tail, "some step") {
-		t.Fatalf("the trail dropped the scope the reader is standing in: %q", tail)
+	if ctx.ScopeTail != "" {
+		t.Fatalf("the bar still draws a breadcrumb trail: %q", ctx.ScopeTail)
 	}
-	// And the chip is silent rather than inventive: an unnamed thread has no
-	// name, and 13.3.4 forbids the id standing in for one.
-	if got := pane.focusContext(120).Thread; got != "" {
-		t.Fatalf("the title chip named an unnamed thread %q", got)
+	row := ansi.Strip(pane.Render(120, 1))
+	if strings.Contains(row, tokens.GlyphScopeUp) {
+		t.Fatalf("a way-out glyph survived on the bar row: %q", row)
 	}
 }
 

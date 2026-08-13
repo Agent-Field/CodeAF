@@ -80,6 +80,23 @@ type composerStack struct {
 	// the rows it wants and never more than it is offered; nil means this frame
 	// has a rail and does not need one.
 	hud func(width, height int) []string
+	// place is the breadcrumb welded to this region's TOP edge (place.go). It is
+	// here rather than in a slot of its own because the shell gives a pane its
+	// whole rectangle and reserves nothing inside it (pane.go's contract), and
+	// because the whole reason the row is worth its cell is that it sits
+	// directly over the caret — a slot between the transcript and the composer
+	// would be one more strip a resize could put somewhere else.
+	//
+	// A nil place is a region with no line, which is what a composer built
+	// without an app behind it gets and what the composer's own tests want.
+	place *placeLine
+	// placeClick performs a click on one segment, and placeHidden opens the
+	// picker behind the collapse mark. Both are functions for the reason mode
+	// and focus below are: the region knows which word was pointed at and
+	// nothing else — the ACT is the app's, and it is the same act the keyboard
+	// reaches.
+	placeClick  func(seg int) tea.Cmd
+	placeHidden func() tea.Cmd
 	// focus is 5.14's "you talk to what you are looking at", read for a hand
 	// instead of an eye: POINTING IS LOOKING, so a click anywhere in this
 	// rectangle asks for the keyboard. It is a function for the same reason the
@@ -157,17 +174,41 @@ const draftPad = 1
 // before ([composer.Model.GrowRows]).
 const draftFloor = 2
 
+// placeRow is the breadcrumb's one row at the top of this region (place.go).
+//
+// It is reserved in [Metrics] rather than borrowed from the draft, because the
+// line is PERSISTENT — it is the row that says where you are, and a region that
+// gave it up whenever the draft grew would take the answer away exactly when a
+// reader is typing a long instruction into a room they navigated to. It is given
+// up only under the same pressure the padding row is: a region too short to hold
+// the writing floor and the line spends every row it has on words.
+const placeRow = 1
+
+// placeBand is the rows the place line takes off the top of this region: one
+// when there is a line to draw and the region can afford it, none otherwise.
+func (s *composerStack) placeBand(height int) int {
+	if s.place == nil || height <= draftFloor {
+		return 0
+	}
+	return placeRow
+}
+
 // draftBand is where the composer's own rows sit inside this region and how
-// many of them there are: the bounded HUD borrows from the top, the padding row
-// takes the bottom, and the draft takes the rest. It restates Render's own
-// reservations rather than recording them, so the pointer and the paint answer
-// the same question from the same numbers.
+// many of them there are: the place line takes the top row, the bounded HUD
+// borrows what is under it, the padding row takes the bottom, and the draft
+// takes the rest. It restates Render's own reservations rather than recording
+// them, so the pointer and the paint answer the same question from the same
+// numbers.
 func (s *composerStack) draftBand() (top, body int) {
 	height := s.lastHeight
 	if height <= 0 {
 		return 0, 0
 	}
 	body = height
+	if head := s.placeBand(body); head > 0 {
+		body -= head
+		top += head
+	}
 	// The padding row is given up before the draft is: a region squeezed to two
 	// rows should spend both on words.
 	if body > draftFloor {
@@ -196,6 +237,27 @@ func (s *composerStack) draftBand() (top, body int) {
 func (s *composerStack) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 	click, ok := msg.(tea.MouseClickMsg)
 	if !ok || click.Button != tea.MouseLeft {
+		return nil
+	}
+	// THE PLACE LINE IS THE ONE ROW OF THIS RECTANGLE THAT IS NOT THE COMPOSER,
+	// so it is answered before the rule below claims the whole region for the
+	// draft. Every segment on it is a button (place.go): clicking an ancestor
+	// walks there, and clicking the word you are already standing on is a
+	// no-op, which the app decides rather than this side.
+	if head := s.placeBand(s.lastHeight); head > 0 && local.Y < head {
+		seg, hit := s.place.targetAt(local.X)
+		if !hit {
+			return nil
+		}
+		if seg == placeHidden {
+			if s.placeHidden != nil {
+				return s.placeHidden()
+			}
+			return nil
+		}
+		if s.placeClick != nil {
+			return s.placeClick(seg)
+		}
 		return nil
 	}
 	// Pointing at the composer is talking to the composer. It happens before
@@ -232,6 +294,13 @@ func (s *composerStack) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 // stood on, and what is left in this rectangle is the draft and its own lists.
 func (s *composerStack) Hover(local image.Point, inside bool) bool {
 	if !inside || s.draft == nil {
+		return false
+	}
+	// The place line does not light under the pointer. Its segments are words at
+	// rest in the grey ramp and the current one is already the brightest thing
+	// on the row — a hover tier would be a fourth brightness on a row that has
+	// three, for a button whose target is a word the reader is reading anyway.
+	if head := s.placeBand(s.lastHeight); head > 0 && local.Y < head {
 		return false
 	}
 	top, body := s.draftBand()
@@ -300,6 +369,14 @@ func (s *composerStack) Render(width, height int) string {
 	s.lastWidth, s.lastHeight = width, height
 	rows := make([]string, 0, height)
 	body := height
+	// The place line first, because it is the row welded to this region's top
+	// edge and everything below it is measured from what it leaves.
+	head := s.placeBand(body)
+	if head > 0 {
+		body -= head
+		s.place.retarget(width)
+		rows = append(rows, s.place.Render(width))
+	}
 	pad := 0
 	if body > draftFloor {
 		body -= draftPad

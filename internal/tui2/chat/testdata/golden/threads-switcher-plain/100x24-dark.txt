@@ -14,11 +14,11 @@
                                                                          ├─ ◐ H2
                                                                          └─ ⚑ KeyCutter
                                                                               waits: H2
-                                                                         ✓ perf-audit
-         ─────────────────────────────────────────────────────           ○ homes
+         ─────────────────────────────────────────────────────           ✓ perf-audit
+                                                                         ○ homes
 
-
+  aforge ‹ the wisp parity push                                     ◐ 1
 ▍ ›
 
 
-  chat  work  notebook  threads ▾ ctrl+t  +  the wisp parity push                        ~/aforge-v2
+  chat  work  notebook  threads ▾ ctrl+t  +                                              ~/aforge-v2

@@ -592,18 +592,18 @@ func TestEnteringARoomHandsTheKeyboardToItsComposer(t *testing.T) {
 // frame — the rail's last crumb and the main pane's title are the same object
 // seen from two sides, and appending both read as a level of nesting that does
 // not exist.
-func TestAnEnteredRoomNamesItselfOnceOnTheFooter(t *testing.T) {
+func TestAnEnteredRoomNamesItselfOnceOnThePlaceLine(t *testing.T) {
 	app, _ := boardApp(t)
 	press(app, "ctrl+o")
 	press(app, "5")
 	press(app, "enter")
 
-	crumbs := app.breadcrumb()
+	crumbs := strings.Join(placeWords(app), " ")
 	if crumbs == "" {
-		t.Fatal("an entered room left no breadcrumb")
+		t.Fatal("an entered room left no place path")
 	}
 	if n := strings.Count(crumbs, "wisp-parity"); n != 1 {
-		t.Fatalf("the breadcrumb names the room %d times: %q", n, crumbs)
+		t.Fatalf("the place line names the room %d times: %q", n, crumbs)
 	}
 	frame := ansi.Strip(app.Frame(120, 30))
 	footer := frame[strings.LastIndex(frame, "\n")+1:]

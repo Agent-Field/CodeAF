@@ -810,8 +810,8 @@ func TestShowOverviewIsTheDoorOntoRoot(t *testing.T) {
 	if app.page != pageBoard {
 		t.Fatalf("the root door left the window on the %s page", app.page)
 	}
-	if app.status.breadcrumb != "" {
-		t.Fatalf("arriving at root kept a trail below it: %q", app.status.breadcrumb)
+	if app.view != nil {
+		t.Fatal("arriving at root kept the drilled room below it")
 	}
 	// And what it lands on is the overview: both sections, and the door out.
 	frame := boardFrame(t, app, 100, 40)
@@ -839,8 +839,8 @@ func TestEnterOnABoardRowOpensTheJobsRoom(t *testing.T) {
 	if app.view == nil || app.view.kind != viewNode || app.view.node != "job-1" {
 		t.Fatalf("the lens is not the job's room: %+v", app.view)
 	}
-	if app.status.breadcrumb == "" {
-		t.Fatal("the trail is empty inside a room, so the tabs never gave way")
+	if words := placeWords(app); len(words) < 3 || words[len(words)-1] != "wisp-parity" {
+		t.Fatalf("the place line does not stand in the job's room: %q", words)
 	}
 }
 

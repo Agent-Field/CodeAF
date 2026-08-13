@@ -533,7 +533,6 @@ func (a *App) refreshScope(journal int64) {
 	if a.hudModel != nil {
 		a.hudModel.Refresh()
 	}
-	a.status.breadcrumb = a.breadcrumb()
 	a.shell.Invalidate()
 }
 

@@ -65,16 +65,25 @@ func threadsApp(t *testing.T) (*App, *threadsBackend) {
 	return app, backend
 }
 
-// -- the title chip ------------------------------------------------------------
+// -- naming the thread ---------------------------------------------------------
 
-// The chip is always on the bar row and it is the thread's NAME. A reader who
-// looks down should be able to say which conversation they are in without
-// navigating anywhere.
-func TestTheTitleChipNamesTheThread(t *testing.T) {
+// A reader should be able to say which conversation they are in without
+// navigating anywhere. The chip on the bar row used to be how; the place line
+// over the caret is how now, and the difference is that the same row also says
+// how deep inside the conversation they have gone (chat/place.go).
+//
+// The frame is what is asserted, not the model, because the whole claim is
+// about a reader looking at a screen.
+func TestThePlaceLineNamesTheThread(t *testing.T) {
 	app, _ := threadsApp(t)
+	frame := ansi.Strip(app.Frame(120, 24))
+	if !strings.Contains(frame, placeRootWord+" "+tokens.GlyphScopeUp+" the wisp parity push") {
+		t.Fatalf("the frame does not name the thread on the place line:\n%s", frame)
+	}
+	// And the bar row no longer says it a second time (§15).
 	row := ansi.Strip(app.status.Render(120, 1))
-	if !strings.Contains(row, "the wisp parity push") {
-		t.Fatalf("the bar row does not name the thread:\n%q", row)
+	if strings.Contains(row, "the wisp parity push") {
+		t.Fatalf("the bar row still names the thread:\n%q", row)
 	}
 }
 
@@ -89,14 +98,26 @@ func TestAnUnnamedThreadDrawsNoChipAtAll(t *testing.T) {
 	if strings.Contains(row, testSession) {
 		t.Fatalf("the session id reached the bar row:\n%q", row)
 	}
-	if got := app.status.thread; got != "" {
-		t.Fatalf("an unnamed thread produced the chip text %q", got)
+	// The chip is gone from this row entirely; the place line is where a thread
+	// is named now, and it names an unnamed one honestly (place.go).
+	if got := app.status.focusContext(120).Thread; got != "" {
+		t.Fatalf("the bar row still draws a title chip: %q", got)
+	}
+	if got := placeThreadWord(app); got != untitledRoom {
+		t.Fatalf("the place line calls an unnamed thread %q", got)
 	}
 }
 
-// The chip is a DOOR, and it is the same door the key opens. 5.22's parity
-// clause, at the one word on the bar row that opens a list.
-func TestClickingTheTitleChipOpensTheSwitcher(t *testing.T) {
+// The `threads` word is a DOOR, and it is the same door the key opens. 5.22's
+// parity clause, at the one word on the bar row that opens a list.
+//
+// IT IS THE ONLY ONE NOW. The title chip beside it used to be a second hand on
+// this act, and it left with the rest of the naming: a thread is named on the
+// place line, over the caret, and that row's segments are pops rather than a
+// switcher (chat/place.go). The word was always the door a first-run window had
+// — the chip was absent until the scribe had named something — so nothing a
+// reader could rely on went with it.
+func TestClickingTheThreadsDoorOpensTheSwitcher(t *testing.T) {
 	app, _ := threadsApp(t)
 	const width = 120
 	_ = app.Frame(width, 30)
@@ -104,16 +125,19 @@ func TestClickingTheTitleChipOpensTheSwitcher(t *testing.T) {
 	targets := app.status.bar.Targets(app.status.focusContext(width), width)
 	at := -1
 	for _, target := range targets {
-		if target.ID == "footer:thread" {
+		if target.ID == "footer:threads-door" {
 			at = target.From
+		}
+		if target.ID == "footer:thread" {
+			t.Fatalf("the title chip is still drawn on the bar row: %+v", target)
 		}
 	}
 	if at < 0 {
-		t.Fatalf("the title chip is not a click target: %+v", targets)
+		t.Fatalf("the threads door is not a click target: %+v", targets)
 	}
 	app.status.Mouse(clickAt(at, 0), image.Point{X: at})
 	if app.overlay != overlayThreads {
-		t.Fatalf("clicking the chip raised overlay %d, want the switcher", app.overlay)
+		t.Fatalf("clicking the door raised overlay %d, want the switcher", app.overlay)
 	}
 }
 
@@ -270,8 +294,8 @@ func TestSwitchingRepointsTheWindowWithNoGhostRows(t *testing.T) {
 	if strings.Contains(out, "the diff is ready when you are") {
 		t.Fatalf("the old thread's rows came back after a poll:\n%s", out)
 	}
-	if app.status.thread != "importer rewrite" {
-		t.Fatalf("the chip still says %q", app.status.thread)
+	if got := placeThreadWord(app); got != "importer rewrite" {
+		t.Fatalf("the place line still says %q", got)
 	}
 }
 

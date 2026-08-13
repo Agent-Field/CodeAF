@@ -1,4 +1,3 @@
-    reworking NavCtx after the worker died
 
   Here is the plan:
 
@@ -18,6 +17,7 @@
     ✓ searching for «navctx» · 2 rows
     ✓ reading the plan for «task-9»
 
+  aforge ‹ untitled room
 ▍ ›  ask for anything · @ jobs · / commands
 
 

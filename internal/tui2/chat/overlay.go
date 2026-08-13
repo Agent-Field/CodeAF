@@ -58,6 +58,9 @@ const (
 	// overlayThreads is the chats switcher (chat-simplify.md 5.2's J3): `t`, or
 	// a click on the title chip. See threads.go.
 	overlayThreads
+	// overlayPlace is the place line's collapse mark, opened: the segments a
+	// narrow terminal folded behind the `…`, as a list. See place.go.
+	overlayPlace
 )
 
 // -- raising and dropping ----------------------------------------------------
@@ -282,6 +285,8 @@ func (a *App) overlayKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.models.Key(msg), true
 	case overlayThreads:
 		return a.switcher.Key(msg), true
+	case overlayPlace:
+		return a.placePicker.Key(msg), true
 	}
 	return nil, false
 }
@@ -468,6 +473,11 @@ func (a *App) runEntry(id string) tea.Cmd {
 	// that draws them: the tabs, the chords and a palette row that names the
 	// same place all arrive at this switch, so a place cannot be reachable one
 	// way and not another (5.22).
+	case placeEntryID:
+		// The place line's walk (place.go). It is a registry row and not a bare
+		// binding so the `?` sheet and the palette teach the chord that actually
+		// fires — 5.22 admits no typed-only action.
+		return a.focusPlace(true)
 	case placeThreadID:
 		return a.showPage(pageThread)
 	case placeBoardID:
