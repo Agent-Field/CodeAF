@@ -876,7 +876,7 @@ func TestTheAssemblerNeverRunsBesideASectionStillBeingWritten(t *testing.T) {
 	const assembler = "task-8-n4"
 	const held = "task-8-n2"
 
-	nodes := []store.NodeSpec{{ID: "task-8", Brief: "Deliver together", Stage: 2}}
+	nodes := []store.NodeSpec{{ID: "task-8", Brief: "Compare how three countries measure road distance", Stage: 2}}
 	inputs := make([]store.Need, 0, len(researchers))
 	for _, id := range researchers {
 		nodes = append(nodes, store.NodeSpec{ID: id, Parent: "task-8", Brief: "research " + id, Stage: 1})
