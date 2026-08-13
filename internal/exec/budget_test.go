@@ -327,31 +327,35 @@ func TestTheRawBoundNeverBindsBeforeTheCostCeiling(t *testing.T) {
 	}
 }
 
-// The backstop's value is a calibration, not a taste, so it is pinned here with
-// the measurements that set it. It has to sit above every honest leaf the audit
-// traced — a well-sized one finishes in 8 to 16 turns, the profile's own spread
-// reports identical briefs landing at 9, 16 and 25, and the longest honest leaf
-// in the traces ran 25 — and far enough below the old 200 that a warm runaway
-// meets it in useful time. Anything outside this band is a change of policy and
-// should have to say so here.
+// The backstop's value is a policy, and this test is where the policy has to
+// say so. It was 40, calibrated to the measured spread of well-sized leaves
+// (8-16 turns, longest honest leaf 25) — and it also stopped honest complex
+// work, which is the worse failure: the token budget is the meter that binds,
+// and a turn count exists only for the runaway tokens cannot see (turns gone
+// cheap on cache). The 2026-08-12 product decision: complex tasks are never
+// stopped by an iteration counter. Four hundred sits an order of magnitude
+// past the longest honest leaf while still ending a loop stuck on rails.
 func TestTheTurnBackstopIsCalibratedToTheMeasuredSpread(t *testing.T) {
 	const longestHonestLeaf = 25
-	if maxTurnBackstop <= longestHonestLeaf {
-		t.Fatalf("a %d-turn backstop cuts off the %d-turn leaves the audit traced finishing honestly",
+	if maxTurnBackstop <= longestHonestLeaf*4 {
+		t.Fatalf("a %d-turn backstop crowds the %d-turn leaves the audit traced finishing honestly",
 			maxTurnBackstop, longestHonestLeaf)
 	}
-	if maxTurnBackstop < 30 || maxTurnBackstop > 50 {
-		t.Fatalf("the backstop is %d, outside the 30-50 the measured spread supports", maxTurnBackstop)
+	if maxTurnBackstop < 300 || maxTurnBackstop > 500 {
+		t.Fatalf("the backstop is %d, outside the 300-500 the policy set; changing it is a policy change and says so here", maxTurnBackstop)
 	}
 }
 
 // The backstop is a backstop: it is the loop's own, and no caller may raise it.
 func TestTheTurnBackstopCannotBeRaisedByACaller(t *testing.T) {
-	if got := NewLinear(nil, nil, nil, 200, defaultLeafTokens, time.Minute).maxTurns; got != maxTurnBackstop {
-		t.Fatalf("a caller asking for 200 turns got %d, want the %d backstop", got, maxTurnBackstop)
+	if got := NewLinear(nil, nil, nil, 1000, defaultLeafTokens, time.Minute).maxTurns; got != maxTurnBackstop {
+		t.Fatalf("a caller asking for 1000 turns got %d, want the %d backstop", got, maxTurnBackstop)
 	}
 	if got := NewLinear(nil, nil, nil, 0, defaultLeafTokens, time.Minute).maxTurns; got != maxTurnBackstop {
 		t.Fatalf("an unset turn count got %d, want the %d backstop", got, maxTurnBackstop)
+	}
+	if got := NewLinear(nil, nil, nil, 200, defaultLeafTokens, time.Minute).maxTurns; got != 200 {
+		t.Fatalf("a caller asking for 200 turns under the backstop got %d", got)
 	}
 	if got := NewLinear(nil, nil, nil, 4, defaultLeafTokens, time.Minute).maxTurns; got != 4 {
 		t.Fatalf("a caller asking for a tighter 4 turns got %d", got)

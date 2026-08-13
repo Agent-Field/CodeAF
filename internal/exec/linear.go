@@ -389,7 +389,15 @@ const rawTokenCeilingMultiple = 3
 //
 // It stays a backstop. On a cache-discounted runaway the raw bound above is what
 // fires first, and it fires into a landing rather than into a stop.
-const maxTurnBackstop = 40
+//
+// Raised 40 → 400 (2026-08-12, product decision): forty was calibrated on the
+// measured distribution of well-sized leaves, but it also stopped honest
+// complex work — and stopping a paid-for leaf mid-thought is worse than
+// letting the token budget, which is the meter that actually binds, do its
+// job. Four hundred is not a target; it is the point past which a loop is
+// running on rails no token bound can see, which is the only case a turn
+// count was ever for.
+const maxTurnBackstop = 400
 
 // NewLinear builds the loop. maxTokens is the limit that actually binds; maxTurns
 // is the runaway backstop, clamped to maxTurnBackstop however high a caller asks.
