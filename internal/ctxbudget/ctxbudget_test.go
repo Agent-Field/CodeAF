@@ -39,6 +39,46 @@ func TestFloorAndReserveCannotGoNegative(t *testing.T) {
 	}
 }
 
+// A consumer whose reply has to carry what it was given may say so, and the
+// budget takes room from the prompt to make room for it. The constant reserve is
+// right for a call that answers and wrong for a call that reproduces.
+func TestACompletionReserveMayBeRaisedByAConsumerThatCanSayWhy(t *testing.T) {
+	base := For(200_000).WithFloor(8192)
+	before := base.Tokens()
+
+	// Below the law's reserve is not a request, it is a claim to need less, and
+	// nothing gets to make it: the process-wide reserve is a floor.
+	if got := base.WithCompletionReserve(1).Tokens(); got != before {
+		t.Fatalf("a reserve below the law changed the budget: %d then %d", before, got)
+	}
+
+	// Above it, every token reserved is a token the prompt no longer has. That
+	// exchange is the point: the material moves to a handle the consumer pulls.
+	raised := base.WithCompletionReserve(base.CompletionReserveTokens + 20_000)
+	if raised.CompletionReserveTokens != base.CompletionReserveTokens+20_000 {
+		t.Fatalf("reserve = %d, want %d", raised.CompletionReserveTokens,
+			base.CompletionReserveTokens+20_000)
+	}
+	if raised.Tokens() != before-20_000 {
+		t.Fatalf("prompt room = %d, want %d", raised.Tokens(), before-20_000)
+	}
+
+	// The clamp is stated in the consumer's own units: the reserve stops where
+	// the prompt's remaining room reaches the prompt's own fixed cost. A demand
+	// for the whole window therefore leaves a usable prompt rather than none.
+	greedy := base.WithCompletionReserve(1 << 30)
+	if greedy.Tokens() != base.FixedFloorTokens {
+		t.Fatalf("an unbounded demand left %d tokens of prompt, want the %d-token floor",
+			greedy.Tokens(), base.FixedFloorTokens)
+	}
+
+	// An unknown window spends nothing and states nothing; the caller's named
+	// fallback still carries the day.
+	if got := For(0).WithCompletionReserve(1 << 20).BytesOr(4096); got != 4096 {
+		t.Fatalf("an unknown window answered %d rather than falling back", got)
+	}
+}
+
 func TestShareSplitsThePot(t *testing.T) {
 	b := Budget{ContextTokens: 200_000, CompletionReserveTokens: 20_000, FillPercent: 50}
 	pot := b.Bytes()

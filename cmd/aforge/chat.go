@@ -576,9 +576,24 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// it here is the whole point of journaling it: a leaf claimed an hour
 		// after its splice runs on what it was promised.
 		subharness := leafSubharness(node)
-		// Ordinary leaves retain the byte-identical headless envelope. Reflexes use
+		// What actually fed this leaf, counted and weighed once, here, at the
+		// moment it is claimed. Every budget below is arithmetic over these two
+		// numbers, and they are read once precisely so that they cannot move: a
+		// grant recomputed between turns would move the prompt prefix with it,
+		// under a cache that is counting on it not moving.
+		fanIn, fanInErr := graph.DependencyFanIn(node.ID)
+		if fanInErr != nil {
+			// A budget that could not be measured falls back to the flat one,
+			// which is what every leaf had before this existed. Zero is the
+			// correct value for "nothing fed this", and it is also the safe
+			// value for "nobody could say".
+			log.Printf("note: could not measure what fed %s: %v", node.ID, fanInErr)
+			fanIn = store.DependencyFanIn{}
+		}
+		// Ordinary leaves retain the byte-identical headless envelope, raised by
+		// exactly what their own fan-in measures — see gatheringGrant. Reflexes use
 		// the deliberately tiny rung budget and a seconds-scale watchdog.
-		turns, tokens := chatLeafTurns, chatLeafTokens
+		turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, fanIn)
 		deadline := exec.SubharnessFor(subharness).Deadline(tokens)
 		watchdog := deadline + 2*time.Minute
 		if isReflex {
@@ -623,7 +638,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		build := leafBuild{
 			settings: settings, client: workingClient, workspace: jobSpace, web: web,
 			graph: graph, media: &leafMedia, model: workingModel, models: modelCatalog,
-			maxTurns: turns, maxTokens: tokens, deadline: deadline,
+			maxTurns: turns, maxTokens: tokens, deadline: deadline, fanIn: fanIn,
 		}
 		worker := executorFor(subharness, build)
 		shape := "atomic"
@@ -658,10 +673,26 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// file, and its consumer can only honour that split if it is
 				// told where the file is. Without this the pointer was written
 				// and never delivered.
+				files := dependency.Artifacts
+				if dependency.Handle != "" {
+					// Digest in the prompt, whole result on the end of a path.
+					// The handle joins the artifacts because that is already the
+					// list the brief renders as "read them if you need the full
+					// detail" — which is exactly the sentence a handle wants said
+					// about it, and the leaf already reads paths with sh.
+					//
+					// This is the pull side of the policy. The push side is the
+					// pot, and the pot alone is what billed a join 163k tokens
+					// for eight upstream results it summarised in two paragraphs.
+					// A consumer whose contract really does say reproduce every
+					// finding in full now opens eight files and pays for eight
+					// files; every other consumer pays for eight digests.
+					files = append(append([]string(nil), files...), dependency.Handle)
+				}
 				inputs = append(inputs, exec.Input{
 					Title:     dependency.NodeID,
 					Result:    dependency.Digest,
-					Artifacts: dependency.Artifacts,
+					Artifacts: files,
 				})
 			}
 		}
@@ -871,8 +902,22 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					previousAttemptInput(outcome, jobDir))
 				// Who takes the retry, asked once, of the same judge machinery
 				// that already reads failures. An empty menu never reaches here.
+				//
+				// The failure is the judge's evidence channel, so a recorded
+				// out-of-envelope cost rides in on it rather than in the brief:
+				// the brief is the assignment and is handed on to whoever takes
+				// the retry, while this is a fact about the last attempt and has
+				// no business surviving into the next one's prompt. A judge
+				// choosing between a generalist and a specialist should know the
+				// last attempt cost multiples of what anything predicted.
+				failed := err
+				if failed != nil {
+					if clause := surpriseEvidence(graph, node.ID); clause != "" {
+						failed = fmt.Errorf("%s — %s", firstLine(err.Error()), clause)
+					}
+				}
 				if chosen := revision.JudgeRetryWorker(ctx, settings, planClient, node,
-					attempted, outcome, err, specialists, workerModel); chosen != "" {
+					attempted, outcome, failed, specialists, workerModel); chosen != "" {
 					escalatedFrom = subharness
 					if escalatedFrom == "" {
 						escalatedFrom = exec.LinearSubharness
@@ -1067,7 +1112,18 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			if remainder.Checked && remainder.Done {
 				outcome.Verdict = provider.VerdictVerifiedSuccess
 			} else {
-				spliced, _, replanErr := resident.ReplanOverrunOn(ctx, graph, node, outcome.Text, remainder.Remaining, absolute,
+				// The gap is what the continuation is aimed at, and it is the one
+				// string on this path that reaches the overrun planner, the
+				// continuation's own brief, and every judge downstream of it. A
+				// node whose lineage already blew its prediction by multiples is
+				// about to be given more money on the strength of an estimate the
+				// measurement has already contradicted; the gap says so, and the
+				// planner sizes the remainder knowing it.
+				gap := remainder.Remaining
+				if clause := surpriseEvidence(graph, node.ID); clause != "" {
+					gap = strings.TrimSpace(gap + "\n\n" + clause)
+				}
+				spliced, _, replanErr := resident.ReplanOverrunOn(ctx, graph, node, outcome.Text, gap, absolute,
 					settings.DailyBudgetUSD, remainder.Worker,
 					replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
 				if replanErr == nil && spliced > 0 {
@@ -3285,12 +3341,76 @@ func recordProfileSurprise(graph *store.Store, nodeID string, record profile.Rec
 	if record.Surprise == nil || record.ExpectedTokens == nil {
 		return
 	}
-	_ = graph.RecordSurprise(store.NodeSurprise{
+	measured := store.NodeSurprise{
 		NodeID:         nodeID,
 		ActualTokens:   record.Tokens,
 		ExpectedTokens: *record.ExpectedTokens,
 		Surprise:       *record.Surprise,
-	})
+	}
+	if err := graph.RecordSurprise(measured); err != nil {
+		return
+	}
+	if !measured.OutOfEnvelope() {
+		return
+	}
+	// A residual this large is not a calibration detail, it is a fact about the
+	// work, and until now it went into an analytics table that nothing consults
+	// while a decision is being made. It goes on the node's own record too, in
+	// the same place a governor's refusal and a failed leaf's leftover files
+	// already go — so that reading what happened to this node includes reading
+	// that it cost multiples of what anything expected.
+	recordOnNode(graph, nodeID, surpriseNotice(measured), store.RoleSystem)
+}
+
+// surpriseNotice is the recorded miss as one sentence. It names both numbers
+// because the ratio alone is unreadable — 2.85 is a catastrophe over a 60k
+// prediction and a rounding error over 200.
+func surpriseNotice(measured store.NodeSurprise) string {
+	return fmt.Sprintf("this cost %d tokens against a prediction of %d — a surprise of %.2f, "+
+		"past the %.1f envelope where the estimate stops describing the work",
+		measured.ActualTokens, measured.ExpectedTokens, measured.Surprise, store.SurpriseEnvelope)
+}
+
+// surpriseEvidence is what the prediction residual recorded against a node says
+// to the machinery about to spend more money on it — in one clause, when it says
+// anything at all.
+//
+// Surprise has been measured and journaled for a long time and consulted at no
+// decision point in the product: summed into receipts, averaged into competence
+// trends, rendered as a percentage on a page a person might open later. A leaf
+// that cost 2.85× its own profile's prediction was then retried, escalated and
+// continued by machinery that had never been told. This is the sentence that
+// tells it, and it is evidence rather than a rule — the judge still decides.
+//
+// Only an out-of-envelope residual produces a clause (store.SurpriseEnvelope).
+// Inside the envelope the number is the ordinary spread of an estimator, and
+// putting it in front of a judge would be noise wearing the clothes of a signal.
+//
+// An overrun continuation asks about its lineage base as well as itself: the
+// round that was surprising is the round whose remainder is being planned, and
+// by the time the continuation exists it has no measurement of its own.
+func surpriseEvidence(graph *store.Store, nodeID string) string {
+	if graph == nil {
+		return ""
+	}
+	for _, id := range surpriseLineage(nodeID) {
+		measured, recorded, err := graph.SurpriseFor(id)
+		if err != nil || !recorded || !measured.OutOfEnvelope() {
+			continue
+		}
+		return fmt.Sprintf("Measured, on %s: %s. Size what is bought next for what this work "+
+			"actually costs rather than for what it was expected to cost.", id, surpriseNotice(measured))
+	}
+	return ""
+}
+
+// surpriseLineage is the node itself, then the base it is a continuation of.
+func surpriseLineage(nodeID string) []string {
+	base, round := resident.OverrunLineage(nodeID)
+	if round == 0 || base == "" || base == nodeID {
+		return []string{nodeID}
+	}
+	return []string{nodeID, base}
 }
 
 // journalPlanSpend bills the planner's passes to the spine.

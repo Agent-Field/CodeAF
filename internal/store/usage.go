@@ -53,6 +53,25 @@ type NodeSurprise struct {
 	Surprise       float64 `json:"surprise"`
 }
 
+// SurpriseEnvelope is where a miss stops being a calibration error and starts
+// being a different job than the one that was planned.
+//
+// It is not a tuned threshold, it is the arithmetic identity of the measure.
+// Surprise is a normalized residual — |actual − expected| / expected — so 1.0 is
+// exactly "the prediction was wrong by as much as the prediction itself": the
+// node cost twice what was expected, or a fifth of it. Below that the number is
+// the ordinary spread every estimator has. Above it, the estimate did not
+// describe this work, and nothing downstream should keep spending as though it
+// did. The measured blowout logged 2.85.
+const SurpriseEnvelope = 1.0
+
+// OutOfEnvelope reports whether this residual is large enough to be evidence
+// rather than noise. An undefined expectation is never out of envelope: a node
+// with nothing to be surprised against has not surprised anyone.
+func (n NodeSurprise) OutOfEnvelope() bool {
+	return n.ExpectedTokens > 0 && n.Surprise > SurpriseEnvelope
+}
+
 // TotalUsage is the graph-wide running total.
 type TotalUsage struct {
 	Nodes            int
