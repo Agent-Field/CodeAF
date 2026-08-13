@@ -4218,7 +4218,12 @@ func checkSentinel(settings config.Config, client *liveClient) resident.Sentinel
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "sentinel"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: input}}},
-		}, ai.WithMaxTokens(60))
+			// Sixty tokens is a yes, a no, and a line of reason — and nothing at
+			// all on a model that reasons first, which reads here as "sentinel
+			// returned no clear yes" on every wake forever. Same correction as
+			// head/scribe.go's, for the same reason: the ceiling has to hold
+			// what the reply can legitimately need, not what it usually costs.
+		}, ai.WithMaxTokens(1024))
 		if err != nil {
 			return resident.SentinelVerdict{}, err
 		}
@@ -4256,7 +4261,13 @@ func titleGoal(settings config.Config, client *liveClient) resident.TitleFunc {
 		response, err := client.CompleteWithMessages(settings.Context(ctx, "title"), []ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: titleGoalPrompt}}},
 			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: firstLine(goal)}}},
-		}, ai.WithMaxTokens(30))
+			// A CAP IS NOT A PURCHASE, and 30 was arithmetic on the answer: five
+			// words are ten tokens, so thirty looked generous. On a model that
+			// reasons before it speaks the thinking is spent out of this same
+			// budget first and the call returns nothing at all — the same
+			// failure that left every room in the rail untitled (head/scribe.go,
+			// where the mechanism and its escalation are written out).
+		}, ai.WithMaxTokens(512))
 		if err != nil || response == nil {
 			return "", err
 		}

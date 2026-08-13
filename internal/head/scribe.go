@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -31,8 +32,9 @@ import (
 //     There is no "named" flag to keep in step with the thing it describes: a
 //     titled room is a named room, and the check is the same read the rail does.
 //   - It costs pennies. The scribe role (5.23's ladder) resolves the model — a
-//     labeller, not a judge — and the call carries two clipped messages and a
-//     ceiling of a few dozen tokens, because the whole answer is four words.
+//     labeller, not a judge — and the call carries two clipped messages under a
+//     ceiling. The ceiling is a CAP AND NOT A PURCHASE, which is exactly what
+//     the first version of this file got wrong: see [scribeMaxTokens].
 //   - The title goes through the same normalizer every other title in this
 //     package goes through, so a model that answers `"Billing audit."` and one
 //     that answers `Billing audit` land on the same row.
@@ -330,7 +332,7 @@ func roomTags(raw string) []string {
 	tags := make([]string, 0, store.MaxSessionTags)
 	for _, field := range strings.Split(line, ",") {
 		tag := strings.TrimSpace(normalizeTitle(strings.Trim(field, " \t-*#")))
-		if tag == "" || len(strings.Fields(tag)) > scribeTagWords {
+		if tag == "" || len(strings.Fields(tag)) > scribeTagWords || !tagLike(tag) {
 			continue
 		}
 		tags = append(tags, tag)
@@ -344,6 +346,27 @@ func roomTags(raw string) []string {
 // a word or a compound of two, and a filter's index is worth nothing once its
 // entries are phrases.
 const scribeTagWords = 2
+
+// tagLike reports that a tag is WORDS rather than SYNTAX.
+//
+// A clerk asked for a comma-separated line sometimes answers with the shape it
+// was trained to serialize lists in — a JSON array, an object, a bracketed
+// fragment — and splitting that on commas produces entries that are punctuation
+// with a word inside them. They would file the room under nothing a person will
+// ever type. The test is the characters rather than any particular wrapping, so
+// it holds for whichever syntax the next model reaches for, and it is generous
+// about the ones that appear inside real subjects (`c++`, `net/http`, `v2.1`).
+func tagLike(tag string) bool {
+	if strings.ContainsAny(tag, "{}[]()<>\"'`|\\:;=") {
+		return false
+	}
+	for _, r := range tag {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
+}
 
 // roomTitle is the sanitize chokepoint for a room's name: normalizeTitle, which
 // every title in this package already passes through, plus the one bound that is
