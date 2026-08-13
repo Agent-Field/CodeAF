@@ -89,11 +89,15 @@ const (
 	KeyNerdFont       = "nerd_font"
 	KeyRailState      = "rail_state"
 
-	// The two context-law knobs. Fill is how much of a model's window any
+	// The four context-law knobs. Fill is how much of a model's window any
 	// agent may use before compaction fires; the reserve is the room every
-	// call keeps for its answer and its reasoning.
+	// call keeps for its answer and its reasoning; the working set caps what
+	// an agent keeps quoted in front of itself however large the window is;
+	// and reuse caps how many times over it may re-send that working set.
 	KeyContextFill       = "context_fill_pct"
 	KeyCompletionReserve = "completion_reserve"
+	KeyWorkingSet        = "working_set_tokens"
+	KeyContextReuse      = "context_reuse_pct"
 )
 
 // RailStates are the three rungs the v2 right rail collapses through, in the
@@ -533,6 +537,26 @@ func (s *Settings) build() []Setting {
 				"replies from a model that thinks past it. A change lands on the next call.",
 			read:  func() string { return strconv.Itoa(CompletionReserveAt(dir)) },
 			write: func(raw string) error { return writeCompletionReserve(dir, raw) },
+		},
+		Setting{
+			Key: KeyWorkingSet, Category: CategoryModels, Kind: SettingCount,
+			Label: "working set", Env: "AFORGE_WORKING_SET",
+			Hint: "the most material aforge keeps quoted in front of a worker at once, in tokens, " +
+				"however large the model's window is. A huge window is permission to send a lot, " +
+				"not a reason to: past this the older material fades to pointers it can still read " +
+				"back. A change lands on the next call.",
+			read:  func() string { return strconv.Itoa(WorkingSetAt(dir)) },
+			write: func(raw string) error { return writeWorkingSet(dir, raw) },
+		},
+		Setting{
+			Key: KeyContextReuse, Category: CategoryModels, Kind: SettingCount,
+			Label: "context reuse", Env: "AFORGE_CONTEXT_REUSE_PCT",
+			Hint: "how many times over one piece of work may re-send its whole context before " +
+				"aforge tells it to land, as a percent — 250 is two and a half times. Every turn " +
+				"re-sends everything before it, so this is what stops a worker going round in " +
+				"circles at full price. A change lands on the next job.",
+			read:  func() string { return strconv.Itoa(ContextReuseAt(dir)) },
+			write: func(raw string) error { return writeContextReuse(dir, raw) },
 		},
 		Setting{
 			Key: KeyTenureAfter, Category: CategoryPractice, Kind: SettingCount,
@@ -1095,8 +1119,50 @@ func CompletionReserveAt(profileDir string) int {
 	return ctxbudget.DefaultCompletionReserveTokens
 }
 
-// writeContextFill persists the fill percent and hands it to ctxbudget, so
-// the change lands in this process as well as the next one.
+// WorkingSetAt resolves the cap on the live working set the same way.
+func WorkingSetAt(profileDir string) int {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_WORKING_SET")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+			return value
+		}
+		return ctxbudget.DefaultWorkingSetTokens
+	}
+	if value, ok := persistedInt(profileDir, KeyWorkingSet); ok && value > 0 {
+		return value
+	}
+	return ctxbudget.DefaultWorkingSetTokens
+}
+
+// ContextReuseAt resolves the cumulative re-send allowance the same way.
+func ContextReuseAt(profileDir string) int {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_CONTEXT_REUSE_PCT")); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
+			return value
+		}
+		return ctxbudget.DefaultReusePercent
+	}
+	if value, ok := persistedInt(profileDir, KeyContextReuse); ok && value > 0 {
+		return value
+	}
+	return ctxbudget.DefaultReusePercent
+}
+
+// contextLaw is the whole of the context law as this profile currently states
+// it. It is assembled in one place because the law is configured as one value:
+// a writer that rebuilt only its own field would hand ctxbudget zeroes for the
+// other three and quietly revert them to their defaults for the life of the
+// process.
+func contextLaw(profileDir string) ctxbudget.Limits {
+	return ctxbudget.Limits{
+		FillPercent:             ContextFillAt(profileDir),
+		CompletionReserveTokens: CompletionReserveAt(profileDir),
+		WorkingSetTokens:        WorkingSetAt(profileDir),
+		ReusePercent:            ContextReuseAt(profileDir),
+	}
+}
+
+// writeContextFill persists the fill percent and hands the whole law to
+// ctxbudget, so the change lands in this process as well as the next one.
 func writeContextFill(profileDir, raw string) error {
 	value, err := parseCount(raw)
 	if err != nil {
@@ -1108,7 +1174,7 @@ func writeContextFill(profileDir, raw string) error {
 	if err := writeProfileValue(profileDir, KeyContextFill, value); err != nil {
 		return err
 	}
-	ctxbudget.Configure(value, CompletionReserveAt(profileDir))
+	ctxbudget.Configure(contextLaw(profileDir))
 	return nil
 }
 
@@ -1124,7 +1190,43 @@ func writeCompletionReserve(profileDir, raw string) error {
 	if err := writeProfileValue(profileDir, KeyCompletionReserve, value); err != nil {
 		return err
 	}
-	ctxbudget.Configure(ContextFillAt(profileDir), value)
+	ctxbudget.Configure(contextLaw(profileDir))
+	return nil
+}
+
+// writeWorkingSet persists the working-set ceiling and hands it to ctxbudget.
+// The lower bound is the completion reserve: a working set smaller than the
+// room every call already keeps for its own answer leaves nothing for the work.
+func writeWorkingSet(profileDir, raw string) error {
+	value, err := parseCount(raw)
+	if err != nil {
+		return err
+	}
+	if floor := CompletionReserveAt(profileDir); value < floor {
+		return fmt.Errorf("that needs to be at least %d tokens — the room kept for the answer", floor)
+	}
+	if err := writeProfileValue(profileDir, KeyWorkingSet, value); err != nil {
+		return err
+	}
+	ctxbudget.Configure(contextLaw(profileDir))
+	return nil
+}
+
+// writeContextReuse persists the re-send allowance and hands it to ctxbudget.
+// Below 100 it would stop a worker before it had sent its context once, which
+// is a refusal rather than a governor.
+func writeContextReuse(profileDir, raw string) error {
+	value, err := parseCount(raw)
+	if err != nil {
+		return err
+	}
+	if value < 100 {
+		return fmt.Errorf("that needs to be at least 100 — one whole context")
+	}
+	if err := writeProfileValue(profileDir, KeyContextReuse, value); err != nil {
+		return err
+	}
+	ctxbudget.Configure(contextLaw(profileDir))
 	return nil
 }
 

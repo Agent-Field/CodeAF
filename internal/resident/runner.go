@@ -41,6 +41,12 @@ type ExecResult struct {
 	// the outside.
 	CachedTokens int
 	Cost         float64
+	// Turns is the same spend with its shape kept: one row per model call,
+	// summing to the three totals above. It rides here for the same reason
+	// CachedTokens does — the executor has always known it and the journal now
+	// has somewhere to put it — and an executor that does not meter turns leaves
+	// it empty, which journals nothing rather than journalling a zero.
+	Turns []executor.TurnUsage
 	// Promote asks the runner to settle this reflex partial and enqueue the
 	// same verbatim instruction on the ordinary compiled path atomically.
 	Promote         bool
@@ -952,6 +958,33 @@ func (r *Runner) recordSpend(node store.Node, result ExecResult) {
 		Cost:             result.Cost,
 		Model:            result.Model,
 	})
+	// The same spend with its shape kept, in its own table, beside the summed
+	// row every existing reader counts. It is written after the total and it is
+	// allowed to fail on its own: shape is evidence, and losing the evidence
+	// must never cost the money.
+	_ = r.graph.RecordTurnUsage(node.ID, result.Model, turnLedger(result.Turns))
+}
+
+// turnLedger carries the executor's per-turn rows across the seam into the
+// journal's own shape. It is a translation and nothing else — a field added at
+// one end and forgotten here is a column that silently reads zero, which is
+// exactly how cached tokens went unrecorded for a wave.
+func turnLedger(turns []executor.TurnUsage) []store.TurnUsage {
+	if len(turns) == 0 {
+		return nil
+	}
+	rows := make([]store.TurnUsage, 0, len(turns))
+	for _, turn := range turns {
+		rows = append(rows, store.TurnUsage{
+			Turn:             turn.Turn,
+			PromptTokens:     turn.PromptTokens,
+			CompletionTokens: turn.CompletionTokens,
+			CachedTokens:     turn.CachedTokens,
+			SentTokens:       turn.Sent,
+			Cost:             turn.Cost,
+		})
+	}
+	return rows
 }
 
 // noteFault journals the one quiet line a fault earns in the thread. It is

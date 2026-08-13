@@ -933,6 +933,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		ctx = provider.WithCacheKey(ctx, provider.RunCacheKey(node.Provenance.Intent, workingModel))
 		var outcome *exec.Outcome
 		var spent exec.Usage
+		// The same spend with its per-turn shape kept, accumulated across every
+		// attempt this node makes. See leafShape.
+		var spentShape []exec.TurnUsage
 		spentTurns := 0
 		workerModel := taskClient.Model()
 		// The straggler watch: the same judgement the retry loop below makes,
@@ -1078,6 +1081,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// cache hits were 0%.
 				spent.CachedTokens += outcome.Usage.CachedTokens
 				spent.Cost += outcome.Usage.Cost
+				spentShape = leafShape(spentShape, outcome)
 				spentTurns += outcome.Turns
 			}
 			if err == nil && outcome != nil && !outcome.Verdict.Escalates() {
@@ -1098,7 +1102,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				plans.reviseAfterCancel(ctx, settings, planClient, graph, node, planPrefix, planGraph,
 					outcome.Text, store.UserCancelReason, workerModel)
 			}
-			result := leafSpend(spent, workerModel)
+			result := leafSpend(spent, spentShape, workerModel)
 			result.Summary = outcome.Text
 			result.ServiceRequests = outcome.ServiceRequests
 			return result, nil
@@ -1188,7 +1192,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// task twice by the time we arrive here, so this is the most
 			// expensive kind of result there is — and returning a bare zero
 			// value is what made real spend journal as $0.00 on the daily rail.
-			return leafSpend(spent, workerModel), failure
+			return leafSpend(spent, spentShape, workerModel), failure
 		}
 		// The user's next act is opening the file, so the summary carries where
 		// it actually lives; the absolute paths were resolved above.
@@ -1512,7 +1516,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 			}
 		}
-		result := leafSpend(spent, workerModel)
+		result := leafSpend(spent, spentShape, workerModel)
 		result.Summary = text
 		result.Promote = promoted
 		result.ServiceRequests = outcome.ServiceRequests
@@ -2040,14 +2044,35 @@ func residentDeliveryBrief(graph *store.Store, node store.Node) string {
 // executor, written by the runner, and never once carried across this seam, so
 // the leaf rows — the ones holding almost all the tokens — journalled a warm
 // prefix as a cold run. Anything added to the ledger belongs here, once.
-func leafSpend(spent exec.Usage, model string) resident.ExecResult {
+func leafSpend(spent exec.Usage, shape []exec.TurnUsage, model string) resident.ExecResult {
 	return resident.ExecResult{
 		PromptTokens:     spent.PromptTokens,
 		CompletionTokens: spent.CompletionTokens,
 		CachedTokens:     spent.CachedTokens,
 		Cost:             spent.Cost,
+		Turns:            shape,
 		Model:            model,
 	}
+}
+
+// leafShape accumulates one attempt's per-turn ledger onto whatever earlier
+// attempts left, renumbering as it goes.
+//
+// The renumbering is the honest reading of an escalation. Three attempts at one
+// node produce three turn-ones, and the row this ledger has to sum to is the
+// node's — one row covering every attempt — so the turns are numbered
+// consecutively across them: turn 12 means the twelfth model call made on behalf
+// of this node, which is what a reader asking "how many turns did this take"
+// means by the question.
+func leafShape(shape []exec.TurnUsage, outcome *exec.Outcome) []exec.TurnUsage {
+	if outcome == nil {
+		return shape
+	}
+	for _, row := range outcome.PerTurn {
+		row.Turn = len(shape) + 1
+		shape = append(shape, row)
+	}
+	return shape
 }
 
 // gateEvidence is the record the delivery gate is held to, assembled from the

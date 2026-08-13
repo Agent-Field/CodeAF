@@ -132,6 +132,8 @@ var settingReaders = map[string]string{
 	// persisted half through ctxbudget.Configure.
 	KeyContextFill:       "AFORGE_CONTEXT_FILL_PCT",
 	KeyCompletionReserve: "AFORGE_COMPLETION_RESERVE",
+	KeyWorkingSet:        "AFORGE_WORKING_SET",
+	KeyContextReuse:      "AFORGE_CONTEXT_REUSE_PCT",
 }
 
 // Every persisted row names a reader, and every named reader is really there.
