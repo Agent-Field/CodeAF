@@ -1095,6 +1095,37 @@ const errandSpendQuery = `
 		FROM usage LEFT JOIN nodes ON nodes.id = usage.node_id
 		WHERE usage.seq > ?`
 
+// NodeSpend is what one job and everything under it has actually cost: the
+// usage rows themselves, summed, with the number of priced model calls behind
+// the figure.
+//
+// Impact already summed the cost, and a caller that only has the cost cannot
+// tell "nothing was ever billed here" from "what was billed rounds to nothing"
+// — the two facts a question about money most needs kept apart. The run count
+// separates them, so a read can say a figure is small without anybody having to
+// explain why it might be zero.
+func (s *Store) NodeSpend(id string) (SpendSlice, error) {
+	var spend SpendSlice
+	err := s.db.QueryRow(`
+		WITH RECURSIVE descendants(id) AS (
+			SELECT id FROM nodes WHERE id = ?
+			UNION ALL
+			SELECT child.id FROM nodes AS child
+			JOIN descendants ON child.parent_id = descendants.id
+		)
+		SELECT COUNT(usage.seq), COALESCE(SUM(usage.cost), 0),
+		       COALESCE(SUM(usage.prompt_tokens), 0),
+		       COALESCE(SUM(usage.completion_tokens), 0),
+		       COALESCE(SUM(usage.cached_tokens), 0)
+		FROM usage JOIN descendants ON descendants.id = usage.node_id`, id).
+		Scan(&spend.Runs, &spend.Cost, &spend.PromptTokens,
+			&spend.CompletionTokens, &spend.CachedTokens)
+	if err != nil {
+		return SpendSlice{}, fmt.Errorf("node spend for %q: %w", id, err)
+	}
+	return spend, nil
+}
+
 // NodeModels names every model that served one node's subtree, most expensive
 // first. This is the read behind "which model produced this?" — a question that
 // had no answer on any surface until the usage row started carrying the name.
