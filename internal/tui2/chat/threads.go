@@ -502,6 +502,35 @@ type roomSwitchIntent struct {
 // head did not say it itself.
 const roomSwitchNote = "continuing in "
 
+// noteRoomSwitchSeen records that this window has acted on one settlement row,
+// and reports whether it is the first time.
+//
+// THE TRANSCRIPT'S OWN DEDUPE IS NOT ENOUGH, and the gap is the reason this
+// exists. A switch RESETS the transcript, so walking back into the thread the
+// split was journaled in re-reads that row into an empty block list, where
+// [blocks.Transcript.IndexOf] has never heard of it — and the window would be
+// yanked straight back out of the room the reader had just deliberately
+// returned to, forever. The journal sequence is the row's identity and it
+// outlives the transcript, so the claim is kept against that.
+//
+// The set is bounded by the thing it counts: a settled split is one row and a
+// window sees a handful in a session. It is deliberately NOT persisted — a
+// window that opens fresh on a thread whose conversation moved elsewhere SHOULD
+// follow it, once, which is J7's "recall reaches them forever" read forwards.
+func (a *App) noteRoomSwitchSeen(seq int64) bool {
+	if seq <= 0 {
+		return true
+	}
+	if a.roomSwitched == nil {
+		a.roomSwitched = make(map[int64]bool, 2)
+	}
+	if a.roomSwitched[seq] {
+		return false
+	}
+	a.roomSwitched[seq] = true
+	return true
+}
+
 // drainRoomSwitch performs a settled split and clears it.
 //
 // It runs from the poll's own call site rather than from inside applyPoll, and

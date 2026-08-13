@@ -267,6 +267,10 @@ type App struct {
 	// roomSwitch is a split the head has settled in the journal and this window
 	// has read but not yet performed (5.4). See [App.drainRoomSwitch].
 	roomSwitch roomSwitchIntent
+	// roomSwitched is the set of settlement rows this window has already acted
+	// on, by journal sequence. It is what makes "exactly once" survive the reset
+	// a switch performs — see [App.noteRoomSwitchSeen].
+	roomSwitched map[int64]bool
 
 	// threadSeen is when this window last had each thread's state on screen,
 	// keyed by session id. It is what the switcher's unseen-delivery `●` is
@@ -1036,16 +1040,6 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.openCapability()
 	}
 
-	// The thread switcher (chat-simplify.md 5.2's J3), claimed on the same terms
-	// as `?` above and for the same reason: on an empty draft nothing is being
-	// written and the letter can only have been the door, while a sentence in
-	// progress keeps `t` as the character it is. [App.helpKeyLive] is the one
-	// predicate both doors consult, so the two bare keys can never disagree
-	// about when a bare key is a key.
-	if key == threadsKey && a.helpKeyLive() {
-		return a.openSwitcher()
-	}
-
 	// An open question owns the bare answer keys, and owns them BEFORE the rail
 	// and the composer see them (JOURNEY 6). It claims nothing while a draft is
 	// in progress, while an overlay is raised, or while the map holds the
@@ -1071,6 +1065,26 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	// not a mode, not a focus carousel, one chord in and one chord (or esc at
 	// home) out — and while the composer has focus, j and k are letters.
 	if a.railFocus {
+		// THE BARE `t` LIVES HERE AND NOWHERE ELSE (5.2's J3, and the reason is
+		// worth stating because the doc writes the key as a bare `t`).
+		//
+		// A composer-first room hands every printable character to the draft, and
+		// `t` is not `?`: it opens a large fraction of English sentences. Claiming
+		// it on an empty draft — the rule `?` keeps, and the rule this lane tried
+		// first — meant that typing "the diff looks right" opened a thread list
+		// on the first keystroke and filtered it with the rest. That is the same
+		// trap the switcher's own `new thread` key was moved off, one surface
+		// over, and it fails harder here because the composer is where a person
+		// spends their whole day.
+		//
+		// So the bare key is bound where a bare letter is already navigation
+		// rather than text: while the MAP holds the keyboard. Everywhere else the
+		// door is alt+t, which is exactly what the registry's ChordKey means and
+		// what every surface that reads the catalog will teach in a
+		// composer-first room ([registry.SurfaceComposerFirst]).
+		if msg.String() == threadsKey {
+			return a.openSwitcher()
+		}
 		if cmd, claimed := a.scopeKey(msg); claimed {
 			a.shell.Invalidate()
 			return cmd

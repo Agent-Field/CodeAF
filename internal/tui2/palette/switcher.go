@@ -92,11 +92,16 @@ type Thread struct {
 
 // UnnamedThread is what a thread the scribe has not named yet is called.
 //
-// NEVER "untitled". A thread nobody has named is NEW, not defective, and the
-// naming scribe names it from its first exchange — so this is a transitional
-// face and it should say what is transitional about it. Same reasoning 13.3.4
-// gives for never falling back to an id.
-const UnnamedThread = "new thread"
+// NEVER "untitled" and never an id. A thread nobody has named is NEW, not
+// defective: the scribe names one from its FIRST EXCHANGE, so a nameless thread
+// is precisely a thread nobody has said anything in yet, and the honest word for
+// that is what it is doing rather than what it is missing.
+//
+// It is deliberately NOT [NewThreadWord]. The two would collide in the one place
+// it matters — the switcher lists both, one row apart — and a list where the
+// door and a row on it share a name is a list a reader has to disambiguate by
+// position.
+const UnnamedThread = "just started"
 
 // NewThreadWord is the affordance at the foot of the list. It starts a fresh
 // conversation immediately: there is no naming prompt, because naming is the
@@ -104,8 +109,23 @@ const UnnamedThread = "new thread"
 // this product something other than typing (5.1 law 2).
 const NewThreadWord = "new thread"
 
-// NewThreadKey is the accelerator that reaches it from inside the switcher.
-const NewThreadKey = "n"
+// NewThreadKey is the accelerator that reaches the door from inside the
+// switcher.
+//
+// IT IS A CHORD AND NOT A BARE `n`, and the correction is worth stating because
+// 5.2 writes the key as "n". This surface's whole body is a search field: a bare
+// letter here is a letter, and a bare `n` that minted a conversation would mean
+// no reader could ever search for a thread whose name begins with one. The
+// alternative that was tried — bare `n` only on an empty filter — is the same
+// trap wearing a condition, because an empty filter is exactly the state a
+// reader is in when they start typing.
+//
+// Nothing is lost. The door is the last row of the list and it never filters
+// away, so the keyboard reaches it in one arrow or one `end` and enter; the
+// chord is the accelerator for the reader who already knows it is there. The
+// row teaches the chord, which is the whole of what the accelerator column is
+// for.
+const NewThreadKey = "ctrl+n"
 
 // leftAtLead opens the second column. It is a WORD and not a glyph because it
 // is the one piece of chrome on this surface that has to be read rather than
@@ -338,11 +358,10 @@ func (s *Switcher) header(width int) string {
 // a query can never swallow esc or enter, and the default arm inserts only what
 // the terminal reported as printable text.
 //
-// ctrl+n MINTS A THREAD and does not move the cursor, which is the one place
-// this surface parts company with [core.navigate]'s vocabulary. The reason is
-// that `n` is the door this list advertises on its own last row, and a reader
-// who reaches for the chorded spelling of a key the surface just taught them
-// should not be answered with a scroll. The arrows, tab and ctrl+p still move.
+// [NewThreadKey] MINTS A THREAD and does not move the cursor, which is the one
+// place this surface parts company with [core.navigate]'s vocabulary — ctrl+n is
+// "next" in that table and is "new" here, because this list has a door and that
+// door is what the chord names on the row that teaches it.
 func (s *Switcher) Key(msg tea.KeyPressMsg) tea.Cmd {
 	switch key := msg.String(); key {
 	case "esc":
@@ -355,18 +374,9 @@ func (s *Switcher) Key(msg tea.KeyPressMsg) tea.Cmd {
 		s.setQuery(dropWord(s.list.query))
 	case "backspace":
 		s.setQuery(dropRune(s.list.query))
-	case "ctrl+n":
+	case NewThreadKey:
 		return s.mint()
 	default:
-		// THE BARE `n` IS THE DOOR ONLY ON AN EMPTY FILTER, which is the same
-		// rule the chat surface keeps for its own bare keys (app.go's
-		// helpKeyLive): a letter typed into a search field is a letter, and a
-		// key that sometimes filtered and sometimes minted a conversation would
-		// make typing here feel dangerous. With nothing typed, `n` can only have
-		// been the row the list is advertising two lines down.
-		if key == NewThreadKey && s.list.query == "" {
-			return s.mint()
-		}
 		if s.navigate(key) {
 			return nil
 		}
