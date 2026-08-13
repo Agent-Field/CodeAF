@@ -291,12 +291,16 @@ func runPlan(args []string) error {
 		// The window this document is planned through, so a later revision of
 		// it is sized from the same fact.
 		ContextTokens: settings.Models.ContextLength(settings.PlanModelResolved()),
-		MaxDepth:      settings.MaxDepth,
-		NodeBudget:    settings.NodeBudget,
-		Briefs:        *briefs,
-		Ensemble:      *ensemble,
-		Report:        report,
-		Progress:      headlessPlanProgress(os.Stderr),
+		// What work of this kind has really cost here, for the passes that
+		// decide whether to divide it. Empty on a machine with nothing measured,
+		// which is what every prompt below has always been sent. See invoice.go.
+		Invoice:    measuredInvoice(settings, settings.Model),
+		MaxDepth:   settings.MaxDepth,
+		NodeBudget: settings.NodeBudget,
+		Briefs:     *briefs,
+		Ensemble:   *ensemble,
+		Report:     report,
+		Progress:   headlessPlanProgress(os.Stderr),
 		OnReady: func(node plan.Node, elapsed time.Duration) {
 			if !*asJSON {
 				fmt.Printf("    ready   %-22s %s\n", clip(node.Title, 22), elapsed.Round(10*time.Millisecond))

@@ -216,7 +216,14 @@ func (p *Panel) normalize(goal string) {
 // bodies split up, and what the workspace holds is the most direct answer
 // available to it: one document is a panel, forty are a division. An empty
 // terrain leaves the prompt byte for byte the one this pass has always sent.
-func DecidePanel(ctx context.Context, client Completer, goal, terrain string, stages []Stage) (*Panel, *ai.Usage, error) {
+// The invoice is the third piece of evidence and the newest. This decision
+// spends parallelism one of two ways and both of them are bought in the same
+// currency, so what a leaf of this worker has actually cost — and what a merge
+// over N of them has actually cost — is exactly the fact the choice turns on.
+// It rides the tail of the same user message, behind the goal and the spine, for
+// the reason every invoice does: the system prompt above is a constant this
+// process never rewrites, and the prices move whenever a leaf lands.
+func DecidePanel(ctx context.Context, client Completer, goal, terrain string, stages []Stage, invoice string) (*Panel, *ai.Usage, error) {
 	var evidence strings.Builder
 	evidence.WriteString(goalBlock(strings.TrimSpace(goal), terrain))
 	if len(stages) > 0 {
@@ -226,7 +233,7 @@ func DecidePanel(ctx context.Context, client Completer, goal, terrain string, st
 
 	messages := []ai.Message{
 		systemMessage(ensemblePrompt),
-		userMessage(evidence.String()),
+		userMessage(withInvoice(evidence.String(), invoice)),
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanEnsemble)
 	var panel Panel
@@ -542,7 +549,7 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	emitProgress(progress, "ensemble", "deciding whether independent passes beat splitting the work", "")
 	forced := options.Ensemble >= 2
 
-	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Terrain, graph.Stages)
+	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Terrain, graph.Stages, graph.Invoice)
 	graph.Usage.Add(usage)
 	switch {
 	case err != nil && !forced:

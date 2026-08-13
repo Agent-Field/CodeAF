@@ -199,6 +199,18 @@ const (
 	EventOverrunDeferred EventKind = "overrun_deferred"
 	EventOverrunResumed  EventKind = "overrun_resumed"
 
+	// EventOverrunEvidence is a leaf caught running far past what work of its
+	// kind has ever cost on this machine, journaled at the moment the comparison
+	// was made rather than reconstructed afterwards from a bill.
+	//
+	// It is evidence and never control: the verdict beside it is the judge's,
+	// and nothing reads this record back to decide anything. It exists because
+	// the incident it was written for — one leaf at thirty-six times its
+	// siblings, 31% of a run's cost, setting the wall time of the barrier they
+	// were all waiting at — left no trace at all in the journal, and a cost that
+	// leaves no trace is a cost nobody can audit twice.
+	EventOverrunEvidence EventKind = "overrun_evidence"
+
 	// EventDeliveryGate is the final judge's evidence about one delivered job.
 	EventDeliveryGate EventKind = "delivery_gate"
 
