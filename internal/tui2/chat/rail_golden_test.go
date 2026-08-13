@@ -66,6 +66,38 @@ func railQuietView(profile tokens.Profile) golden.View {
 	}
 }
 
+// newRoomCardView is the `+ new` door's own frame: the door selected, its card in
+// the main pane, and the map still holding the keyboard — which is exactly what a
+// reader gets by pressing the digit.
+//
+// It is a stored frame because this card is COPY and geometry and nothing else,
+// and both are the kind of thing an assertion can only spot-check. What the
+// frames pin is the shape: a titled rule where a lifecycle glyph used to be, one
+// paragraph at the readable measure rather than the full width of a 120-column
+// terminal, and the two ways in as verb·key chips — with the notes behind them
+// leaving as ONE column when the pane cannot pay for them.
+func newRoomCardView(profile tokens.Profile, mouth bool) golden.View {
+	return func(width, height int, theme golden.Theme) []string {
+		app := goldenAppRail(railGoldenBackend(), profile, theme, "open")
+		drivePoll(app)
+		app.setScope(true)
+		for i, row := range app.railModel.Rows() {
+			if row.ID == rowNewRoomID {
+				app.applyScope(app.railModel.Select(i))
+				break
+			}
+		}
+		if mouth {
+			// The keyboard back on the composer, which is the incident's own
+			// state: the pane is a card and the mouth is bound elsewhere. This is
+			// the frame where the composer has to NAME the room its words go to.
+			app.focusConversation()
+			app.refresh()
+		}
+		return strings.Split(app.Frame(width, height), "\n")
+	}
+}
+
 // goldenAppRail is [goldenApp] with the sidebar's persisted rung wired, which is
 // the pair the entry point supplies (cmd/aforge/chatv2_rail.go).
 func goldenAppRail(backend Backend, profile tokens.Profile, theme golden.Theme, rung string) *App {
@@ -130,6 +162,17 @@ func TestGoldenRailQuiet(t *testing.T) {
 	}
 }
 
+func TestGoldenNewRoomCard(t *testing.T) {
+	for _, tier := range contrastTiers() {
+		t.Run(tier.name, func(t *testing.T) {
+			golden.RunSizes(t, "new-room-card-"+tier.name, newRoomCardView(tier.profile, false),
+				railSizes, goldenThemes)
+			golden.RunSizes(t, "new-room-mouth-"+tier.name, newRoomCardView(tier.profile, true),
+				railSizes, goldenThemes)
+		})
+	}
+}
+
 // The stored frames — the ones a reviewer reads.
 //
 // The open rail is kept at BOTH profiles because the tree is this wave's one new
@@ -160,6 +203,14 @@ func TestGoldenRailSnapshots(t *testing.T) {
 		// The composed empty state, wide and narrow.
 		{"quiet-plain", railQuietView(tokens.NoColor), 120, 30, "rail-quiet-plain"},
 		{"quiet-narrow-plain", railQuietView(tokens.NoColor), 90, 24, "rail-quiet-plain"},
+		// The fresh room's card: wide, at the width where its notes leave, and
+		// once in colour so the three tiers it spends are in a stored frame.
+		{"new-room-plain", newRoomCardView(tokens.NoColor, false), 120, 30, "new-room-card-plain"},
+		{"new-room-truecolor", newRoomCardView(tokens.TrueColor, false), 120, 30, "new-room-card-truecolor"},
+		{"new-room-breakpoint-plain", newRoomCardView(tokens.NoColor, false), 90, 24, "new-room-card-plain"},
+		// The same card with the keyboard on the composer: the frame the incident
+		// happened in, with the line that now names where the words go.
+		{"new-room-mouth-plain", newRoomCardView(tokens.NoColor, true), 120, 30, "new-room-mouth-plain"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
