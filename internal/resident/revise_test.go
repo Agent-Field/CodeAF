@@ -101,6 +101,117 @@ func TestApplyRevisionMirrorsSentinelEditsOntoTheStore(t *testing.T) {
 	}
 }
 
+// The sink is the one node a splice names with the bare prefix, and the mirror
+// used to spell every node "<prefix>-n<id>", root included. So a revision that
+// rewired the deliverable's own inputs addressed "<prefix>-n<root>" — an id no
+// store has ever held — and was refused as an unknown node, into a batch note
+// nobody reads, while the plan document recorded the edit as applied.
+//
+// What that costs is not an edge. It is the whole answer: a job delivered an
+// empty deliverable with the finished report sitting on disk, because the sink
+// was still waiting on the work the revision had moved it off.
+//
+// The store's edges are what is pinned here, not the plan document — the
+// document was never the thing that was wrong.
+func TestARevisionRewiresTheSinkInTheStoreAndNotOnlyInThePlan(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	planGraph := &plan.Graph{Goal: "report on the API", Nodes: []plan.Node{
+		{ID: 1, Title: "Read the API docs", Kind: plan.KindWork},
+		{ID: 2, Title: "Read the changelog", Kind: plan.KindWork},
+		{ID: 3, Title: "Write the report", Kind: plan.KindSynthesis, Stage: 2, Needs: []int{1}},
+	}}
+	subtree, err := SubtreeFromPlan(planGraph, "task-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(store.RootID, subtree,
+		store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "report on the API"}); err != nil {
+		t.Fatal(err)
+	}
+	// The premise: the sink carries the bare prefix, which is the fact the two
+	// spellings disagreed about.
+	if _, ok, err := graph.Node("task-4"); err != nil || !ok {
+		t.Fatalf("the sink is not named by the bare prefix: ok=%t err=%v", ok, err)
+	}
+
+	applied, notes := ApplyRevision(graph, planGraph, "task-4", "task-4", []plan.Operation{
+		{Op: "rewire", Node: 3, Needs: []int{1, 2}, Reason: "the report needs the changelog too", Applied: true},
+	})
+	if applied != 1 {
+		t.Fatalf("applied=%d notes=%v", applied, notes)
+	}
+	edges, err := graph.ActiveEdges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wired := false
+	for _, edge := range edges {
+		if edge.From == "task-4-n2" && edge.To == "task-4" {
+			wired = true
+		}
+	}
+	if !wired {
+		t.Fatalf("the rewire never reached the edges table: %v (notes=%v)", edges, notes)
+	}
+}
+
+// The other half of the same law: a node this batch adds cannot be the root.
+//
+// The root is decided by reading the plan for the sink nothing consumes, and a
+// revision that adds a node consuming the deliverable makes that reading answer
+// differently a minute after the store minted the names. The store cannot rename
+// a node, so the reading has to be taken as of admission — which is what makes
+// the shared mapper a shared law rather than a shared expression.
+func TestARevisionsOwnAdditionNeverRenamesTheSink(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+
+	planGraph := &plan.Graph{Goal: "report on the API", Nodes: []plan.Node{
+		{ID: 1, Title: "Read the API docs", Kind: plan.KindWork},
+		{ID: 2, Title: "Write the report", Kind: plan.KindSynthesis, Stage: 2, Needs: []int{1}},
+	}}
+	subtree, err := SubtreeFromPlan(planGraph, "task-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(store.RootID, subtree,
+		store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "report on the API"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The sentinel adds a check that reads the finished report, and retitles the
+	// report in the same breath. The add makes node 2 a consumed node.
+	planGraph.Nodes = append(planGraph.Nodes, plan.Node{
+		ID: 3, Title: "Check the report against the docs", Kind: plan.KindWork, Stage: 3, Needs: []int{2},
+	})
+	planGraph.Nodes[1].Title = "Write the report, with versions"
+	applied, notes := ApplyRevision(graph, planGraph, "task-7", "task-7", []plan.Operation{
+		{Op: "add", Node: 3, Reason: "the report should be checked", Applied: true},
+		{Op: "retitle", Node: 2, Reason: "versions matter", Applied: true},
+	})
+	if applied != 2 {
+		t.Fatalf("applied=%d notes=%v", applied, notes)
+	}
+	sink, ok, err := graph.Node("task-7")
+	if err != nil || !ok {
+		t.Fatalf("the sink lost its name: ok=%t err=%v", ok, err)
+	}
+	if sink.Title != "Write the report, with versions" {
+		t.Fatalf("the retitle missed the sink: %q (notes=%v)", sink.Title, notes)
+	}
+	if _, ok, _ := graph.Node("task-7-n3"); !ok {
+		t.Fatalf("the addition was not named as a child: %v", notes)
+	}
+}
+
 // §5d. The redirection receipt prints these notes straight under its own, so
 // they are read by the person who asked for the change. What they read was
 // "· retitle task-8-n4: node 4 is running": the op's own verb, the store's id

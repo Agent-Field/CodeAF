@@ -26,7 +26,22 @@ func nodeGroup(node plan.Node, groupOf func(plan.Node) string) string {
 	return groupOf(node)
 }
 
-func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
+// planShape is the admission reading of a planned graph: which nodes an
+// executor would actually run, and which of them is the subtree's root.
+//
+// It exists as one function because two files used to answer the root question
+// differently and neither could see the other. See PlanStoreIDs.
+//
+// grown names plan nodes minted after the subtree was admitted — a revision's
+// own adds. They are read out of the shape entirely, because the root is a fact
+// about the plan the store already holds: an added node that consumes the sink
+// would otherwise become the new sink and silently rename a store node that was
+// minted minutes ago and cannot be renamed.
+func planShape(graph *plan.Graph, grown map[int]bool) (admitted []plan.Node, included map[int]bool, rootID int) {
+	included = make(map[int]bool)
+	if graph == nil {
+		return nil, included, 0
+	}
 	// Container nodes that were expanded into children are structure, not
 	// work; only the nodes an executor would actually run are admitted.
 	expanded := make(map[int]bool)
@@ -35,17 +50,16 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 			expanded[node.Parent] = true
 		}
 	}
-	admitted := make([]plan.Node, 0, len(graph.Nodes))
-	included := make(map[int]bool)
+	admitted = make([]plan.Node, 0, len(graph.Nodes))
 	for _, node := range graph.Nodes {
-		if expanded[node.ID] {
+		if expanded[node.ID] || grown[node.ID] {
 			continue
 		}
 		admitted = append(admitted, node)
 		included[node.ID] = true
 	}
 	if len(admitted) == 0 {
-		return store.Subtree{}, fmt.Errorf("planned graph has no executable nodes")
+		return admitted, included, 0
 	}
 
 	// The root is the sink nothing else consumes — preferring a synthesis
@@ -56,7 +70,7 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 			consumed[need] = true
 		}
 	}
-	rootID, rootStage, rootSynthesis := 0, 0, false
+	rootStage, rootSynthesis := 0, false
 	for _, node := range admitted {
 		if consumed[node.ID] {
 			continue
@@ -71,6 +85,65 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 	}
 	if rootID == 0 {
 		rootID = admitted[len(admitted)-1].ID
+	}
+	return admitted, included, rootID
+}
+
+// storeID is the naming law itself, in one expression: the subtree's root is the
+// bare prefix and every other plan node is "<prefix>-n<id>".
+func storeID(prefix string, rootID int) func(planID int) string {
+	return func(planID int) string {
+		if planID == rootID && rootID != 0 {
+			return prefix
+		}
+		return fmt.Sprintf("%s-n%d", prefix, planID)
+	}
+}
+
+// PlanStoreIDs is that law, offered to everything that has to name a store node
+// it did not mint.
+//
+// It exists because the law had two authors. The splice named the subtree's root
+// with the bare prefix; every later edit of the same subtree spelled every node
+// "<prefix>-n<id>", root included. So a revision that rewired the deliverable's
+// inputs addressed "<prefix>-n<root>" — an id that has never existed in any
+// store — and the store answered "unknown node", which the batch recorded as a
+// note nobody reads while the plan document recorded the edit as applied. The
+// measured shape of that is a job that delivers nothing while the report it was
+// supposed to deliver sits finished on disk.
+//
+// grown is the set of plan nodes minted after admission; see planShape. Nil is
+// the answer for every caller that is naming the plan as it was admitted.
+func PlanStoreIDs(graph *plan.Graph, prefix string, grown map[int]bool) func(planID int) string {
+	_, _, rootID := planShape(graph, grown)
+	return storeID(prefix, rootID)
+}
+
+// SoleWorkNode is the one-node plan document: a job that is one leaf and nothing
+// else, with no synthesis over it. It answers the plan node's id.
+//
+// It is the reading that tells a claim-time division apart from the one thing it
+// must never divide. A store node carrying the bare prefix is normally the job's
+// deliverable sink — the gathering node, not work — and dividing it would be
+// dividing the answer. When the document holds exactly one node, that same bare
+// prefix is instead the whole of the work, and it is as divisible as any other
+// leaf. Both readings are the same question asked of the document rather than of
+// the id, which carries neither fact.
+func SoleWorkNode(graph *plan.Graph) (int, bool) {
+	if graph == nil || len(graph.Nodes) != 1 {
+		return 0, false
+	}
+	node := graph.Nodes[0]
+	if node.Kind == plan.KindSynthesis {
+		return 0, false
+	}
+	return node.ID, true
+}
+
+func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
+	admitted, included, rootID := planShape(graph, nil)
+	if len(admitted) == 0 {
+		return store.Subtree{}, fmt.Errorf("planned graph has no executable nodes")
 	}
 
 	// The dropped containers still carry the plan's shape: each admitted
@@ -96,12 +169,7 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 		return strings.Join(chain, " › ")
 	}
 
-	id := func(planID int) string {
-		if planID == rootID {
-			return prefix
-		}
-		return fmt.Sprintf("%s-n%d", prefix, planID)
-	}
+	id := storeID(prefix, rootID)
 
 	// A need may point at a container that was expanded away. Dropping it
 	// dropped the dependency itself: a "connect the scans" node ran first,

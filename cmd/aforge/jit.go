@@ -54,14 +54,26 @@ func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, pl
 // from, and hands back everything a division needs to grow that document.
 //
 // Not ok is the ordinary answer and covers three cases that all mean the same
-// thing: the node's id carries no plan node (a one-leaf job, a craft node, a
-// splice), the job is not retained and could not be rehydrated, or the document
-// holds no node by that id any more. All three run the node whole, which is what
-// every node did before this existed.
+// thing: the node's id carries no plan node (a craft node, a bare splice), the
+// job is not retained and could not be rehydrated, or the document holds no node
+// by that id any more. All three run the node whole, which is what every node
+// did before this existed.
+//
+// The one-leaf job used to be a fourth, and it was the only one that was an
+// accident. A task-scale ask is spliced as a single node carrying the bare
+// prefix, which is the same spelling a planned job's deliverable sink wears — so
+// the id alone could not tell "this is the whole job's answer, never divide it"
+// from "this IS the work". Refusing both meant a task-scale coding errand could
+// never divide at claim, structurally, whatever the reading of it said, which is
+// the commonest job there is left out of the one mechanism that decides shape
+// against what is really there. The document draws the distinction the id
+// cannot (resident.SoleWorkNode), and the judgment is the free predicate's, as
+// everywhere else.
 func (j *jobPlans) divisionTarget(nodeID string, settings config.Config, planner func() plan.Completer, planContextTokens int) (resident.JITTarget, bool) {
-	prefix, planID, ok := planNodeID(nodeID)
-	if !ok {
-		return resident.JITTarget{}, false
+	prefix, planID, named := planNodeID(nodeID)
+	if !named {
+		// The other id a plan node can wear: its job's own namespace, unadorned.
+		prefix = nodeID
 	}
 	// A repair runs flat, and it says so where it is planned: replanRemainder
 	// builds its graph at MaxDepth 0 because depth multiplies, and because the
@@ -74,6 +86,15 @@ func (j *jobPlans) divisionTarget(nodeID string, settings config.Config, planner
 	entry, found := j.get(prefix)
 	if !found || entry.graph == nil {
 		return resident.JITTarget{}, false
+	}
+	if !named {
+		// One node in the document means the bare prefix is the work itself.
+		// Anything else means it is the sink, and a sink is a gathering step.
+		sole, ok := resident.SoleWorkNode(entry.graph)
+		if !ok {
+			return resident.JITTarget{}, false
+		}
+		planID = sole
 	}
 	if planner == nil {
 		return resident.JITTarget{}, false
@@ -120,9 +141,11 @@ func (j *jobPlans) divisionTarget(nodeID string, settings config.Config, planner
 // planNodeID splits a store node id back into the namespace it was minted under
 // and the plan node it was minted from.
 //
-// A job's sink carries the bare prefix and therefore has no plan id here, which
-// is the right answer twice over: the sink is the gathering node, not work, and
-// dividing it would be dividing the job's own deliverable.
+// A job's root carries the bare prefix and therefore has no plan id here. That
+// is a fact about the SPELLING and not a verdict: which plan node the bare
+// prefix stands for is a question only the plan document answers, and its two
+// answers — the deliverable sink of a planned job, the single leaf of a
+// task-scale one — want opposite treatment. See divisionTarget, which asks.
 func planNodeID(nodeID string) (string, int, bool) {
 	cut := strings.LastIndex(nodeID, "-n")
 	if cut <= 0 {

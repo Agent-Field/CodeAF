@@ -94,9 +94,21 @@ changes when a specialist ran the leaf. See `docs/SUBHARNESSES.md`.
 
 | Code | Name | Means |
 | --- | --- | --- |
-| `0` | success | The errand settled and the work stands. |
+| `0` | success | The errand settled and the whole of the work stands. |
 | `1` | failed | It did not work — including *nothing was attempted*. |
-| `2` | timeout | The wall arrived first. Partial work exists and is reported. |
+| `2` | partial | Something usable is above and it is not the whole of what was asked for. |
+
+`2` has three causes and they are one fact: **the deliverable did not land
+whole.** The wall arrived first; or the delivery gate — the judge that asks
+whether the person who asked would accept this — rejected the deliverable and
+stood by the rejection; or part of the job failed or was cancelled, which the
+deliverable itself says out loud ("Not all of this landed: 1 of 2 parts
+finished"). Each of the last two used to print that shortfall to stdout and
+leave `0` under it, so a harness reading the code — the contract — recorded them
+as work that stands.
+
+A gate verdict the system overruled is **not** a rejection: a gap the one polish
+pass closed, and a gap refused as ungrounded or as already closed, exit `0`.
 
 **The exit code is the verdict; `settled` is not.** `settled` says only that
 nothing this process is waiting for can still move. The two disagree in exactly
@@ -107,8 +119,9 @@ this happened, and `blocked_on` exists so it cannot happen again.
 
 | `settled` | exit | Situation |
 | --- | --- | --- |
-| `true` | `0` | Worked. |
+| `true` | `0` | Worked, whole. |
 | `true` | `1` | Refused or asked back — `blocked_on` carries the question, `deliverable` is empty. |
+| `true` | `2` | Delivered, but not whole — the gate rejected it, or parts of it did not land. `deliverable` says which. |
 | `false` | `1` | The price crossed the threshold and was not approved; nothing was bought. |
 | `false` | `2` | Hit the wall. Partial work; `blocked_on` is set if a question was standing behind the wall. |
 
