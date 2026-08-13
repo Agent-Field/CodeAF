@@ -159,10 +159,18 @@ func quirksAt(t *testing.T, models ...string) string {
 	dir := t.TempDir()
 	LoadQuirks(dir)
 	t.Cleanup(func() {
+		// Before anything else: the memo's write is scheduled, not performed, so
+		// a test that learned a fact may still have a writer inside the temp dir
+		// t.TempDir is about to remove. Waiting here is what makes the removal —
+		// and therefore the test — deterministic rather than load-dependent.
+		quirks.settle()
 		quirks.mutex.Lock()
 		defer quirks.mutex.Unlock()
 		for _, model := range models {
 			delete(quirks.mandatory, normalizeModel(model))
+			// Both memos, because both are process-wide and a fact left behind
+			// by one test silently changes the request shape of the next.
+			delete(quirks.noCacheControl, normalizeModel(model))
 		}
 		quirks.path = ""
 	})

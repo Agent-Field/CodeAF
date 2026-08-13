@@ -273,7 +273,17 @@ func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, resu
 		// which is exactly the blindness this number exists to remove.
 		cached = response.Usage.CacheReadTokens()
 	}
-	fmt.Fprintf(&block, "── turn %d  finish=%s  in=%d out=%d cached=%d", turn, finish, in, out, cached)
+	// hit= is cached as a share of in=, and it is the number a benchmark asserts
+	// on. The two counts beside it are absolute, so they move with the
+	// transcript's size and cannot be compared between turns, between leaves or
+	// between runs: a turn that cached 40k of 50k and a turn that cached 40k of
+	// 400k read the same until the division is done. The ratio is the discipline
+	// itself, stated once per turn — a leaf whose breakpoints, affinity key and
+	// frozen prefix are all working reads in the nineties from its second turn
+	// on, and a leaf whose prefix is being invalidated reads near zero on the
+	// turn it happened. Neither is visible in cached= alone.
+	fmt.Fprintf(&block, "── turn %d  finish=%s  in=%d out=%d cached=%d hit=%d%%",
+		turn, finish, in, out, cached, hitPercent(cached, in))
 	if note != "" {
 		fmt.Fprintf(&block, "  [%s]", note)
 	}
@@ -303,6 +313,26 @@ func (t *tracer) turn(turn int, response *ai.Response, calls []ai.ToolCall, resu
 	}
 	t.writer.WriteString(block.String())
 	t.writer.Flush()
+}
+
+// hitPercent is the share of a turn's prompt the provider served from its cache,
+// rounded down to a whole percent.
+//
+// A turn with no prompt at all reads 0 rather than being omitted, because a
+// missing number and a zero mean different things to a reader and only one of
+// them is true here: nothing was sent, so nothing was cached. The count is
+// clamped to the prompt for the same reason spent() clamps it — a provider
+// reporting more cache reads than prompt tokens is reporting something this
+// arithmetic cannot use, and a ratio over 100% would read as a defect in the
+// discipline rather than in the report.
+func hitPercent(cached, prompt int) int {
+	if prompt <= 0 || cached <= 0 {
+		return 0
+	}
+	if cached > prompt {
+		cached = prompt
+	}
+	return cached * 100 / prompt
 }
 
 func snip(text string, limit int) string {
