@@ -405,6 +405,29 @@ const rawTokenCeilingMultiple = 3
 // count was ever for.
 const maxTurnBackstop = 400
 
+// ModeFold is what Outcome.Mode says when the loop ran a task as a fold.
+const ModeFold = "fold"
+
+// FoldTurns is the whole run of a node whose material is already in its prompt.
+//
+// Two, and the second is a recovery rather than a continuation. A fold is a
+// read-and-write over material it was handed, so one call is the honest shape of
+// it: the measured alternative is a join that read three files it had already
+// been given and spent thirteen turns and 181,354 tokens doing it, against about
+// 7,700 for the single pass — 23×, and 160 of the 366 seconds of that job's
+// critical path.
+//
+// One turn alone would be a trap, though, and the trap is not the model's fault.
+// A first call can come back asking for a tool — to write the file it was told
+// to produce, most often — and a first call can come back empty or truncated,
+// which the loop already refuses to accept as a deliverable. Either is a turn
+// spent without an answer, and a cap of one would settle the node on it. So the
+// second call exists for exactly those two endings, and after it the loop stops:
+// a fold still asking for tools on its third breath is not folding, and what
+// happens to it is what happens to any leaf that reaches its cap, which the
+// retry and judging paths above this loop already know how to handle.
+const FoldTurns = 2
+
 // NewLinear builds the loop. maxTokens is the limit that actually binds; maxTurns
 // is the runaway backstop, clamped to maxTurnBackstop however high a caller asks.
 //
@@ -586,7 +609,24 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// sizing memory.
 	obsBudget := observationWindow(l.contextTokens)
 
-	for turn := 0; turn < l.maxTurns; turn++ {
+	// The turn ceiling this run is actually bound by. It is l.maxTurns for every
+	// leaf that has anything to go and find, and FoldTurns for the one whose
+	// material is already in the prompt above. The clamp is one-directional: a
+	// fold never buys turns a caller did not grant, it only declines to use
+	// them.
+	turnCap := l.maxTurns
+	if task.Fold {
+		outcome.Mode = ModeFold
+		if FoldTurns < turnCap {
+			turnCap = FoldTurns
+		}
+		trace.note(fmt.Sprintf(
+			"mode: fold — %d results were pushed into this prompt whole, so this leaf assembles "+
+				"rather than gathers; %d calls, the second only for a tool call or an undeliverable reply",
+			len(task.Inputs), turnCap))
+	}
+
+	for turn := 0; turn < turnCap; turn++ {
 		if task.Control != nil {
 			switch task.Control() {
 			case ControlCancel:
@@ -723,7 +763,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			// deliverable they asked for. A leaf under a landing reserve is
 			// exempt — it is out of clock or out of budget, and reopening work
 			// there buys a truncated answer instead of a redirected one.
-			if landing == 0 && turn+1 < l.maxTurns {
+			if landing == 0 && turn+1 < turnCap {
 				draft := ai.Message{Role: "assistant", Content: text(response.Text())}
 				messages = append(messages, draft)
 				if steered := readSteering(task, &messages, trace); steered > 0 {
@@ -803,6 +843,18 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				continue
 			}
 			messages = append(messages, ai.Message{Role: "user", Content: result.Followup})
+		}
+
+		// A fold about to take its last call is told so. This is not a rule
+		// about how to behave, it is the mechanism stated: the loop stops after
+		// the next reply, and a model that does not know that will spend the
+		// reply asking for another tool and be cut off holding it. The same
+		// courtesy the deadline and budget reserves already extend, for the same
+		// reason and in the same place.
+		if task.Fold && turn+2 >= turnCap {
+			messages = append(messages, ai.Message{Role: "user", Content: text(
+				"That was the one round of tool calls this step has. Your next reply is the " +
+					"result: state it in full, in the body of the message.")})
 		}
 
 		// The budget ends work in two stages, and the staging is what protects
@@ -1105,9 +1157,25 @@ func (l *Linear) brief(task Task) string {
 			"is the one way to be wrong with everything you need in hand:\n")
 		for _, input := range task.Inputs {
 			fmt.Fprintf(&block, "\n=== from %q ===\n%s\n", input.Title, input.Result)
-			if len(input.Artifacts) > 0 {
-				fmt.Fprintf(&block, "(files: %s — read them if you need the full detail)\n", strings.Join(input.Artifacts, ", "))
+			if len(input.Artifacts) == 0 {
+				continue
 			}
+			// The header above claims the leaf already holds this work, and
+			// until the edge carried the product that claim was false for every
+			// producer whose deliverable was a file: the leaf was handed a
+			// sentence naming a path and an invitation to go and read it, and it
+			// read it — measured, nineteen turns of archaeology across four
+			// nodes of one job. The invitation is now made only where it is
+			// still true. Where the text above IS the file, the paths are given
+			// for citation and for the one case the block cannot serve, and the
+			// line says which it is.
+			if input.Whole {
+				fmt.Fprintf(&block, "(the text above is the whole of what those files contain: %s — "+
+					"you are holding their contents, so opening them again buys nothing)\n",
+					strings.Join(input.Artifacts, ", "))
+				continue
+			}
+			fmt.Fprintf(&block, "(files: %s — read them if you need the full detail)\n", strings.Join(input.Artifacts, ", "))
 		}
 		block.WriteString("\n")
 	}

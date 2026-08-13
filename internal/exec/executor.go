@@ -42,6 +42,14 @@ type Input struct {
 	Title     string
 	Result    string
 	Artifacts []string
+	// Whole says Result above is the producer's material and not an account of
+	// it: the files were read back and their text is in the block. It exists
+	// because the sentence under that block is an instruction either way, and
+	// the two instructions are opposites — "read them if you need the full
+	// detail" is an invitation to go and get what the leaf is already holding.
+	// False is the older and weaker claim, and is what every caller that does
+	// not set this keeps.
+	Whole bool
 }
 
 // Task is one leaf, ready to run.
@@ -100,6 +108,19 @@ type Task struct {
 	// it an explicit promotion verdict when the assignment is larger than it
 	// first appeared.
 	Reflex bool
+
+	// Fold says this leaf's material is entirely in Inputs above, whole, and
+	// that its job is to assemble it — so the loop runs it as a fold: one model
+	// call, and a second only if the first asked for a tool or produced nothing
+	// deliverable. See foldTurns.
+	//
+	// It is set by whatever assembled this task, from two structural facts it
+	// can check and this package cannot: that the plan gives this node nothing
+	// to go and find (plan.Folds), and that every dependency arrived pushed
+	// rather than clipped to a handle. The second is what makes the first safe —
+	// a node told to assemble material it was only handed a pointer to has to go
+	// and get it, whatever its plan says.
+	Fold bool
 
 	// Subharness names the worker this leaf was routed to. It is carried on the
 	// task rather than looked up again at dispatch because the choice was made
@@ -213,6 +234,11 @@ type Outcome struct {
 	// nothing ran out.
 	Exhausted StopReason
 	Elapsed   time.Duration
+	// Mode names the shape the loop actually ran in, when it ran in one that is
+	// not the open loop. It is written so a benchmark can assert that a fold
+	// fired rather than inferring it from a turn count that any well-behaved
+	// leaf might also have produced. Empty is the ordinary loop.
+	Mode string
 	// Promote is the executor's explicit verdict that a reflex needs the normal
 	// compiled path. Text remains the useful partial discovered before stopping.
 	Promote bool
