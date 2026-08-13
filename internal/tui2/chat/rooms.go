@@ -851,8 +851,12 @@ func (a *App) paintRoom() {
 		money:      money,
 		models:     a.source.jobModels(view.node),
 		nodeModels: a.source.jobModels,
-		now:        a.now(),
-		clock:      view.transcript.Clock(),
+		// The attribution row's seam (5.3): only this side knows what a session
+		// is called, and only this side knows which one the reader is standing
+		// in. See [App.forThreadRow].
+		forThread: a.forThreadRow,
+		now:       a.now(),
+		clock:     view.transcript.Clock(),
 	})
 	// AN EMPTY ROOM MUST SAY IT IS EMPTY (12.14 finding 4), and it must say so
 	// only while it is TRUE. The teaching line used to appear whenever the

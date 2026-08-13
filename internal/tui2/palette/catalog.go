@@ -241,6 +241,12 @@ const (
 	sectionRooms
 	sectionHistory
 	sectionSettings
+	// The two groups of the thread switcher (5.3's `switcher` row). They are
+	// last because they are never built into the summon palette's catalog:
+	// [buildRows] does not emit them and [Switcher] builds only them, so the two
+	// surfaces share the list and share no rows.
+	sectionThreads
+	sectionNewThread
 	sectionCount
 )
 
@@ -259,6 +265,14 @@ func (s section) title() string {
 		return "history"
 	case sectionSettings:
 		return "settings"
+	case sectionThreads:
+		return "threads"
+	case sectionNewThread:
+		// The door at the foot of the switcher titles nothing: it is one row and
+		// its own words say what it is. The switcher draws no headers at all
+		// ([list.noHeaders]), so this is never rendered — it is spelled so the
+		// vocabulary is total and a future caller cannot get "" by accident.
+		return "new"
 	}
 	return ""
 }

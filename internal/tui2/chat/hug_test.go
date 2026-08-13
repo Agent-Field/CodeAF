@@ -270,17 +270,29 @@ func TestTheHugSpeaksEveryStateFromTheFrame(t *testing.T) {
 	})
 }
 
-// TestTheBarNeverSaysUntitled: a room nobody has named yet is NEW, not
+// TestTheBarNeverSaysUntitled: a thread nobody has named yet is NEW, not
 // defective, and the one row a lost reader looks at should not read as a filing
 // error.
+//
+// The chats wave settled it more strongly than the original rule did. The trail
+// used to lead with the thread's name and invent a word for it when there was
+// none; the title chip owns that fact now and draws NOTHING while the thread is
+// unnamed (threads.go's threadName, footer's FocusContext.Thread). So the trail
+// says only how deep inside the reader is, and neither surface has a
+// placeholder left to say.
 func TestTheBarNeverSaysUntitled(t *testing.T) {
-	pane := &statusPane{room: "", breadcrumb: "some step"}
+	pane := &statusPane{thread: "", breadcrumb: "some step"}
 	tail := pane.scopeTail()
 	if strings.Contains(strings.ToLower(tail), "untitled") {
-		t.Fatalf("the trail calls an unnamed room untitled: %q", tail)
+		t.Fatalf("the trail calls an unnamed thread untitled: %q", tail)
 	}
-	if !strings.Contains(tail, newRoomWord) {
-		t.Fatalf("the trail does not name an unnamed room at all: %q", tail)
+	if !strings.Contains(tail, "some step") {
+		t.Fatalf("the trail dropped the scope the reader is standing in: %q", tail)
+	}
+	// And the chip is silent rather than inventive: an unnamed thread has no
+	// name, and 13.3.4 forbids the id standing in for one.
+	if got := pane.focusContext(120).Thread; got != "" {
+		t.Fatalf("the title chip named an unnamed thread %q", got)
 	}
 }
 
