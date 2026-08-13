@@ -179,6 +179,19 @@ type Node struct {
 	Calibration   []string `json:"calibration,omitempty"`
 	EscalatedFrom string   `json:"escalated_from,omitempty"`
 
+	// Checked is what this node's own worker ran to check itself, and what each
+	// one found — one clause, already composed by whoever observed it.
+	//
+	// It is here for exactly one reader: the pass that looks at a job's
+	// remainder and decides whether anything more is worth adding. A node that
+	// changed files and whose suite came back green is finished, and that fact
+	// existed only inside the worker — so the reviser, seeing a title and a
+	// state, kept proposing children to run the tests again and re-investigate
+	// what was already proved. Between 48% and 57% of a run's measured cost went
+	// there. This is not a rule telling the reviser what to conclude; it is the
+	// evidence it was reasoning without.
+	Checked string `json:"checked,omitempty"`
+
 	Failure string `json:"failure,omitempty"`
 }
 
@@ -1068,7 +1081,8 @@ func writeStateResult(block *strings.Builder, node Node, budget, perNode int) in
 		body = strings.TrimSpace(node.Result)
 		label = "produced"
 	}
-	if body == "" && len(node.Artifacts) == 0 {
+	checked := strings.TrimSpace(node.Checked)
+	if body == "" && len(node.Artifacts) == 0 && checked == "" {
 		return 0
 	}
 	room := budget
@@ -1078,6 +1092,12 @@ func writeStateResult(block *strings.Builder, node Node, budget, perNode int) in
 	line := fmt.Sprintf("      %s: %s", label, firstParagraph(clipRunes(body, room)))
 	if len(node.Artifacts) > 0 {
 		line += "\n      files: " + strings.Join(node.Artifacts, ", ")
+	}
+	// What the node's own worker checked, on its own line, in the worker's
+	// words. It is the one thing here the reviser cannot infer from anything
+	// else it is shown: a result reads the same whether or not it was proved.
+	if checked != "" {
+		line += "\n      checked: " + firstParagraph(clipRunes(checked, perNode))
 	}
 	line += "\n"
 	block.WriteString(line)

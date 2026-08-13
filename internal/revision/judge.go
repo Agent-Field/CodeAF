@@ -377,6 +377,22 @@ type Evidence struct {
 	// measured battery (audit-notes §14.4.1). It is stated as fact rather than
 	// as an excuse, and it acquits only what it names.
 	Baseline []string
+	// Account is the worker's own structured account of the work: the files it
+	// changed, with the kind and size of each change, and the checks it ran
+	// with what each one found.
+	//
+	// It is the other half of the same correction Baseline made. A worker that
+	// drives a whole pipeline behind a process boundary used to hand the gate
+	// one sentence, and when the pipeline ended without a verdict the sentence
+	// said only that it had ended — so the gate judged a void and answered
+	// differently each time it was asked. The account is that void filled with
+	// what the worker actually observed, and it arrives as rows, beside the run
+	// tail, in the same grammar: facts the judge could not gather for itself,
+	// and no instruction about what to make of them.
+	//
+	// Nil on every leaf whose worker cannot photograph its own change set,
+	// which is nearly all of them, and nil reads as no claim.
+	Account *exec.Account
 }
 
 // gateEvidenceRan bounds what travels when the window is unknown. The executor
@@ -418,7 +434,7 @@ const UnexercisedRecord = "Nothing. The work called no tools and left nothing be
 // hand cannot manufacture the strongest record in the block by omission.
 func (e Evidence) block(budget ctxbudget.Budget) string {
 	if len(e.Artifacts) == 0 && len(e.Ran) == 0 && len(e.Named) == 0 &&
-		len(e.Baseline) == 0 && e.Done.Empty() {
+		len(e.Baseline) == 0 && e.Done.Empty() && e.Account.Empty() {
 		if !e.Observed {
 			return ""
 		}
@@ -457,6 +473,17 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 		}
 		body.WriteString("What this work was to produce, stated before it ran:\n")
 		body.WriteString(criterion + "\n")
+	}
+	// The worker's own account of the change, in rows. It sits above the run
+	// tail for the reason the artifact list does: the tail is what the work
+	// typed, and this is what came of it.
+	if rows := e.Account.Lines(); len(rows) > 0 {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		for _, row := range rows {
+			body.WriteString(row + "\n")
+		}
 	}
 	if len(e.Baseline) > 0 {
 		if body.Len() > 0 {

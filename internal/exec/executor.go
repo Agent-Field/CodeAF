@@ -243,6 +243,16 @@ type Outcome struct {
 	// this in; every other leaf leaves it empty, which reads as "no claim".
 	Baseline []string
 
+	// Account is the worker's structured account of the work itself: the files
+	// it changed, the checks it ran, and what each one found. See [Account] for
+	// why a leaf that reports only prose is expensive.
+	//
+	// It is a pointer and it is usually nil. Only a worker that can observe its
+	// own change set and run its own verifier has anything to put here; every
+	// other leaf leaves it unset, which reads as "no claim" — the same silence
+	// Baseline uses, and for the same reason.
+	Account *Account
+
 	// Calibration is what the worker noticed about its own fit for this job:
 	// free-text sentences, in the worker's own voice, about whether the work sat
 	// comfortably inside its envelope, under it, or at the top of it.

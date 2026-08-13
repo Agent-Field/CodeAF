@@ -639,6 +639,7 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 		node.Verdict = outcome.Verdict
 		node.Artifacts = outcome.Artifacts
 		node.Result = outcome.Text
+		node.Checked = outcome.Account.Summary()
 	}
 	// A leaf that failed in a way a stronger model might fix is worth one more
 	// run. It is expressed by putting the node back to pending rather than by
