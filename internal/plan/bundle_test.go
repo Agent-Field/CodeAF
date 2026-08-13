@@ -137,3 +137,95 @@ func TestIdenticalPartsStillGetOneRowEach(t *testing.T) {
 		t.Fatalf("identical parts collapsed to one rail row: %q", names[0])
 	}
 }
+
+// The probe shape, at the layer where the order is still recordable.
+//
+// A compile call declared four independent parts for "research three countries,
+// then assemble a comparison brief": three researchers and, as a fourth peer,
+// the assembler that reads all three. Bundle laid the four side by side with no
+// edges — because that is what a bundle IS — and the assembler was claimable
+// from the first tick. It ran beside its own inputs, invented the country
+// section it was supposed to read, and shipped a brief with one of the three
+// countries missing for good.
+//
+// Sequence is the check on the declaration the whole cheap route rests on.
+func TestSequencePutsTheAssemblerBehindTheRequestsItWorksOver(t *testing.T) {
+	graph := Bundle("Compare how three countries measure road distance.", []string{
+		"Research and write the section for the first country, France.",
+		"Research and write the section for the second country, Germany.",
+		"Research and write the section for the third country, Australia.",
+		"Assemble the three country sections into a comparison brief.",
+	})
+	client := &stubClient{reply: func(system, _ string) string {
+		if !strings.Contains(system, "which of these requests must wait") {
+			t.Errorf("an unexpected pass was called with: %s", system)
+			return "{}"
+		}
+		return `{"waits":[{"request":1,"after":[]},{"request":2,"after":[]},
+		         {"request":3,"after":[]},{"request":4,"after":[1,2,3]}]}`
+	}}
+
+	if _, err := Sequence(t.Context(), client, graph); err != nil {
+		t.Fatalf("sequence: %v", err)
+	}
+
+	assembler := graph.Node(4)
+	if assembler == nil {
+		t.Fatal("the assembler left the graph")
+	}
+	for _, researcher := range []int{1, 2, 3} {
+		if !contains(assembler.Needs, researcher) {
+			t.Fatalf("the assembler waits for %v, not for %d — it can start beside its own input",
+				assembler.Needs, researcher)
+		}
+		if node := graph.Node(researcher); len(node.Needs) != 0 {
+			t.Errorf("researcher %d was chained behind %v; the three stand alone", researcher, node.Needs)
+		}
+	}
+	// The synthesis still reads every part. It is the delivery, and nothing this
+	// pass answers may narrow what it waits for.
+	sink := graph.Node(5)
+	if sink == nil || len(sink.Needs) != 4 {
+		t.Fatalf("the synthesis reads %v, want all four parts", sink.Needs)
+	}
+}
+
+// The ordinary bundle is the one this pass must not damage: unrelated asks stay
+// unchained, and the person waits for the longest of them rather than the sum.
+func TestSequenceLeavesIndependentRequestsUnchained(t *testing.T) {
+	graph := Bundle("Three unrelated things.", []string{
+		"Fix the failing test in the fixtures repository.",
+		"Compute March revenue from orders.csv.",
+		"Draft the sponsorship decline email.",
+	})
+	client := &stubClient{reply: func(string, string) string {
+		return `{"waits":[{"request":1,"after":[]},{"request":2,"after":[]},{"request":3,"after":[]}]}`
+	}}
+	if _, err := Sequence(t.Context(), client, graph); err != nil {
+		t.Fatalf("sequence: %v", err)
+	}
+	for _, id := range []int{1, 2, 3} {
+		if node := graph.Node(id); len(node.Needs) != 0 {
+			t.Errorf("part %d was chained behind %v", id, node.Needs)
+		}
+	}
+}
+
+// Two answers that must not take the job down with them: a mutual wait, which
+// would be an unsplicable cycle, and ids the model invented. Both have to leave
+// a graph that still runs.
+func TestSequenceSurvivesACycleAndInventedIDs(t *testing.T) {
+	graph := Bundle("Two things.", []string{"First thing.", "Second thing."})
+	client := &stubClient{reply: func(string, string) string {
+		return `{"waits":[{"request":1,"after":[2]},{"request":2,"after":[1]},{"request":9,"after":[41]}]}`
+	}}
+	if _, err := Sequence(t.Context(), client, graph); err != nil {
+		t.Fatalf("sequence: %v", err)
+	}
+	if graph.hasCycle() {
+		t.Fatal("a mutual wait was wired as a cycle; the splice would refuse the whole job")
+	}
+	if graph.Node(9) != nil || graph.Node(41) != nil {
+		t.Fatal("an invented id became a node")
+	}
+}

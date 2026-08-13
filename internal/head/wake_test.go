@@ -7,6 +7,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/thread"
 )
 
 // journaledCommand puts one command through the belt exactly as a head turn
@@ -238,6 +239,102 @@ func TestTheWakeOnlyCoversKindsTheHeadAlreadySpokeFor(t *testing.T) {
 	}
 	if receiptRow(store.Message{Role: store.RoleSystem, NodeID: "task-1", SessionID: "room", Body: "delivered"}) {
 		t.Fatal("a delivery reads as a receipt — it would be absorbed and woken for")
+	}
+	// And the head's own sentence about the change it just made. It carries the
+	// same command number by design and, when the change was refused, the same
+	// role and the same room as the refusal it is about — so nothing but Answers
+	// separates the two, and without it the head reads its own words as mail.
+	if receiptRow(store.Message{Role: store.RoleAgent, SessionID: "room",
+		CommandSeq: 4, Answers: 3, Body: "Taking that over now."}) {
+		t.Fatal("the head's own acknowledgement reads as a settlement it must speak to")
+	}
+}
+
+// One steer, one settled answer.
+//
+// The probe: "also make sure it uses metric units", typed once. The head handed
+// the words over — "those words are with the team, they'll make sure the brief
+// uses metric units" — and then answered that sentence of its own as if the
+// workforce had sent it back, a moment later, in the same room: "the brief stays
+// in metric units, as you asked." The person had no way to tell the paraphrase
+// from a report, and when the real receipt landed it said something different
+// again.
+//
+// The wake may speak once, for the settlement, and never for the head's own
+// commitment — however long the workforce takes and whichever row the poll
+// happens to read first.
+func TestTheHeadDoesNotWakeToAnswerItsOwnAcknowledgement(t *testing.T) {
+	graph := openHeadStore(t)
+	client := &fakeClient{responses: []string{"It's underway, read as a metric-units brief."}}
+	head := New(client, graph)
+
+	command := journaledCommand(t, head, graph, "room", "also make sure it uses metric units")
+	// Applied before the head's own line is even posted, which is the ordering
+	// that produced the defect: the reconciler runs on its own clock, and the
+	// pending-command guard the wake leans on had already let go.
+	const receiptBody = "redirected the brief — nothing in the remaining plan needed to change"
+	if err := graph.ResolveCommand(command.Seq, store.CommandApplied, receiptBody); err != nil {
+		t.Fatal(err)
+	}
+	head.turnAnswers = command.Seq
+	own, err := thread.Post(graph, store.Message{
+		SessionID: "room", Role: store.RoleAgent, CommandSeq: command.Seq,
+		Answers: command.Seq, Body: "Those words are with the team — they'll use metric units.",
+	})
+	if err != nil {
+		t.Fatalf("post the head's own line: %v", err)
+	}
+
+	// The head's own sentence, walked past with nothing back from the workforce
+	// yet. There is nothing to say and nothing to say it about.
+	cursors := newSessionCursors(own.Seq - 1)
+	cursors.mark("room", own.Seq-1)
+	if err := head.poll(context.Background(), cursors); err != nil {
+		t.Fatalf("poll over the head's own row: %v", err)
+	}
+	if calls := client.callCount(); calls != 0 {
+		t.Fatalf("the head answered its own acknowledgement — %d turns bought before anything settled", calls)
+	}
+
+	// Now the settlement, and exactly one sentence for it — composed from the
+	// receipt, which is the only thing in this turn the head did not write.
+	spliceSurgeryJob(t, graph, "task-settled", "the brief", command.Instruction)
+	receipt, err := graph.PostMessage(store.Message{
+		Role: store.RoleSystem, NodeID: "task-settled", CommandSeq: command.Seq, Body: receiptBody,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := head.poll(context.Background(), cursors); err != nil {
+		t.Fatalf("poll over the settlement: %v", err)
+	}
+	if calls := client.callCount(); calls != 1 {
+		t.Fatalf("the settlement bought %d turns, want exactly 1", calls)
+	}
+	if prompt := client.userPrompt(); !strings.Contains(prompt, receiptBody) {
+		t.Fatalf("the wake was composed from something other than the receipt:\n%s", prompt)
+	}
+
+	// And the claim is spent, so re-reading the same rows says nothing more.
+	if err := head.poll(context.Background(), newSessionCursors(receipt.Seq-1)); err != nil {
+		t.Fatalf("second poll: %v", err)
+	}
+	if calls := client.callCount(); calls != 1 {
+		t.Fatalf("re-reading the same rows bought %d turns, want 1", calls)
+	}
+	messages, err := graph.Messages("room", 0, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spoke int
+	for _, message := range messages {
+		if message.Role == store.RoleAgent {
+			spoke++
+		}
+	}
+	// The commitment and the settled answer. Nothing else speaks for one steer.
+	if spoke != 2 {
+		t.Fatalf("the room holds %d agent rows for one steer, want the commitment and one settled answer", spoke)
 	}
 }
 
