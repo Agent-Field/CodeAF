@@ -807,3 +807,75 @@ func TestDependencyInputsShareTheBudgetAndSayWhatTheyClipped(t *testing.T) {
 		t.Fatalf("the overflow notice does not name what was left out: %q", last.Digest)
 	}
 }
+
+// The floor under one dependency's share scales with the pot, because "a stub
+// rather than a summary" is a judgment relative to the window doing the reading.
+// A leaf whose model holds 200k tokens and whose pot is therefore large must not
+// be handed sixty 512-byte fragments on the authority of a number chosen when
+// every pot was 4 KiB.
+func TestTheDependencyFloorRisesWithThePotAndNeverFallsBelowTheOldOne(t *testing.T) {
+	// The old pair exactly: a 4 KiB pot keeps the 512-byte floor it always had,
+	// so a caller that could not size its pot behaves as it did before.
+	if floor := dependencyFloor(MaxDigestBytes); floor != minDependencyBytes {
+		t.Fatalf("the fallback pot's floor moved to %d; it must stay %d", floor, minDependencyBytes)
+	}
+	for _, small := range []int{0, 1, 512, 4096, 32768} {
+		if floor := dependencyFloor(small); floor < minDependencyBytes {
+			t.Fatalf("a pot of %d produced a floor of %d, under the absolute floor %d",
+				small, floor, minDependencyBytes)
+		}
+	}
+	if floor := dependencyFloor(1 << 20); floor <= minDependencyBytes {
+		t.Fatalf("a megabyte pot still floors at %d; the floor is meant to scale", floor)
+	}
+}
+
+// The same fan-in, read through two pots: the small one starves and says so, the
+// window-sized one carries every input whole. This is the defect in one test —
+// the results were always there, and the consumer's view of them was a constant.
+func TestAWindowSizedPotCarriesAFanInTheOldCeilingStarved(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "wide-fanin.db"))
+	nodes := []NodeSpec{{ID: "merge", Brief: "merge the findings", Stage: 2}}
+	for index := 0; index < 40; index++ {
+		id := fmt.Sprintf("finder-%d", index)
+		nodes = append(nodes, NodeSpec{ID: id, Parent: "merge", Brief: "read a slice", Stage: 1})
+		nodes[0].Needs = append(nodes[0].Needs, Need{NodeID: id, Kind: FeedsInto})
+	}
+	if err := graph.Splice(RootID, Subtree{Nodes: nodes}, Provenance{
+		Origin: OriginUser, Intent: "audit the service",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 40; index++ {
+		claim := mustClaim(t, graph, fmt.Sprintf("finder-%d", index), "worker")
+		if err := graph.Complete(claim, fmt.Sprintf("finding %d: ", index)+
+			strings.Repeat("a use-after-free in parser.c. ", 60)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The old ceiling: 4096 bytes over a 512-byte floor carries eight of forty,
+	// and the other thirty-two arrive as one sentence saying they exist.
+	starved, err := graph.DependencyInputs("merge", MaxDigestBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overflow := starved[len(starved)-1]
+	if overflow.NodeID != "" || !strings.Contains(overflow.Digest, "did not fit here") {
+		t.Fatalf("the 4 KiB pot carried a 40-way fan-in whole: %d inputs", len(starved))
+	}
+
+	// A pot sized from a real window carries all forty, each of them whole.
+	whole, err := graph.DependencyInputs("merge", 512<<10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(whole) != 40 {
+		t.Fatalf("a window-sized pot carried %d of 40 inputs", len(whole))
+	}
+	for _, input := range whole {
+		if strings.Contains(input.Digest, "clipped to fit") {
+			t.Fatalf("%s was clipped inside a pot that had room for it", input.NodeID)
+		}
+	}
+}

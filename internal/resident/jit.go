@@ -31,15 +31,39 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
-// jitDigestBytes bounds what an expansion is shown of its landed inputs. It is
-// the same order as a leaf's own dependency budget and for the same reason: the
+// jitDigestBytes bounds what an expansion is shown of its landed inputs, for an
+// expander that could not be told what window it plans through. It is the same
+// order as a leaf's own dependency fallback and for the same reason: the
 // sub-planner is reading results to decide a shape, not to do the work, so it
 // needs to know what is there and not to hold all of it.
 const jitDigestBytes = 4096
+
+// The sub-planner's share of its own prompt. The landed inputs are half of what
+// ExpandOne reads; the other half is the plan document it is dividing a node of.
+const (
+	jitLandedShare = 1
+	jitPlanShares  = 2
+
+	// jitFloorTokens is the expansion prompt and its schema, before either half.
+	jitFloorTokens = 4 << 10
+)
+
+// digestPot is what one expansion may be shown of everything that landed into
+// the node it is dividing, sized from the window of the planning model.
+//
+// It is arithmetic over a field fixed at construction, so both reads below —
+// the landed context and the inputs the children inherit — get the same number
+// for the same division, and every division of a job gets the same number as
+// the one before it.
+func (e JITExpander) digestPot() int {
+	return ctxbudget.For(e.ContextTokens).WithFloor(jitFloorTokens).
+		Share(jitLandedShare, jitPlanShares, jitDigestBytes)
+}
 
 // JITDepthCeiling is the arithmetic backstop under the atomicity judgment, and
 // it is deliberately not the policy.
@@ -89,6 +113,11 @@ type JITTarget struct {
 type JITExpander struct {
 	Graph          *store.Store
 	DailyBudgetUSD float64
+	// ContextTokens is the window of the planning model this expander divides
+	// through — the same model the build asked, and not the leaf's. Zero is
+	// unknown and falls back to jitDigestBytes, which is what every expansion
+	// took before the window was threaded here.
+	ContextTokens int
 	// Resolve finds the job a claimed node belongs to. Not ok means "this node
 	// has no plan" — a one-leaf job, a craft node, a rehydration miss — and is
 	// the ordinary answer for most of what a resident claims.
@@ -171,7 +200,7 @@ func (e JITExpander) expand(ctx context.Context, node store.Node) (int, error) {
 
 	// 2. What the build could not have known: what the work feeding this node
 	//    actually produced.
-	inputs, err := e.Graph.DependencyInputs(node.ID, jitDigestBytes)
+	inputs, err := e.Graph.DependencyInputs(node.ID, e.digestPot())
 	if err != nil {
 		return 0, fmt.Errorf("read what landed: %w", err)
 	}
@@ -312,7 +341,7 @@ func (e JITExpander) admit(node store.Node, target JITTarget, children []plan.No
 // whose results are its inputs. They become the entry children's inputs, which
 // is what makes the division see what the node would have seen.
 func (e JITExpander) parentNeeds(id string) ([]string, error) {
-	inputs, err := e.Graph.DependencyInputs(id, jitDigestBytes)
+	inputs, err := e.Graph.DependencyInputs(id, e.digestPot())
 	if err != nil {
 		return nil, fmt.Errorf("read the inputs of %s: %w", id, err)
 	}

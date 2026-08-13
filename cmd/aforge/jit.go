@@ -24,7 +24,12 @@ import (
 // The planning client is this process's, not the job's. A job's retained client
 // is the one its leaves run on — the work model — and a division is a planning
 // question asked of the planning model, the same one the build asked it of.
-func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, planClient *liveClient) resident.JITExpander {
+//
+// planContextTokens is that model's window, read from the catalog by the caller
+// — the surface owns the catalog and hands facts down, the same doctrine the
+// leaf's own context length travels by. Zero is the honest answer for a model
+// the catalog cannot place, and every budget sized from it falls back.
+func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, planClient *liveClient, planContextTokens int) resident.JITExpander {
 	planner := func() plan.Completer {
 		if planClient == nil {
 			return nil
@@ -38,8 +43,9 @@ func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, pl
 	return resident.JITExpander{
 		Graph:          graph,
 		DailyBudgetUSD: settings.DailyBudgetUSD,
+		ContextTokens:  planContextTokens,
 		Resolve: func(node store.Node) (resident.JITTarget, bool) {
-			return plans.divisionTarget(node.ID, settings, planner)
+			return plans.divisionTarget(node.ID, settings, planner, planContextTokens)
 		},
 	}
 }
@@ -52,7 +58,7 @@ func jitExpander(graph *store.Store, plans *jobPlans, settings config.Config, pl
 // splice), the job is not retained and could not be rehydrated, or the document
 // holds no node by that id any more. All three run the node whole, which is what
 // every node did before this existed.
-func (j *jobPlans) divisionTarget(nodeID string, settings config.Config, planner func() plan.Completer) (resident.JITTarget, bool) {
+func (j *jobPlans) divisionTarget(nodeID string, settings config.Config, planner func() plan.Completer, planContextTokens int) (resident.JITTarget, bool) {
 	prefix, planID, ok := planNodeID(nodeID)
 	if !ok {
 		return resident.JITTarget{}, false
@@ -90,6 +96,10 @@ func (j *jobPlans) divisionTarget(nodeID string, settings config.Config, planner
 			// question this wave moved.
 			MaxDepth:   settings.MaxDepth + 1,
 			NodeBudget: settings.NodeBudget,
+			// The window the sub-plan is written through. It is the same one
+			// the build used, because it is the same model: a division is a
+			// planning question asked of the planning model.
+			ContextTokens: planContextTokens,
 		},
 		// The deeper document is journaled so a restart, and every reader that
 		// rehydrates from the journal, sees the shape the job actually has. The

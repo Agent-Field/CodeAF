@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
@@ -67,6 +68,43 @@ type leafBuild struct {
 	// name to another process needs the answer, and only the surface has the
 	// catalog, so it is threaded rather than looked up in exec.
 	models *catalog.Catalog
+}
+
+// The leaf's prompt budget, in the two numbers this package has to state for
+// ctxbudget to do the arithmetic.
+const (
+	// leafPromptFloorTokens is what a leaf's turn costs before a single byte of
+	// dependency text is added: the harness's own system message, the working
+	// method, the tool schemas, the standing blocks. It is an estimate and it is
+	// meant to be a generous one — being wrong upward here costs a little room,
+	// and being wrong downward costs a compaction mid-job.
+	leafPromptFloorTokens = 8 << 10
+
+	// leafDependencyShare of leafPromptShares is how much of what is left the
+	// results feeding this leaf may take. The other share is everything else the
+	// leaf is handed and that grows with the job rather than with the fan-in —
+	// the notebook, the brief and its contract, the job board, steering — and it
+	// must not be squeezed to nothing by one verbose upstream.
+	leafDependencyShare = 1
+	leafPromptShares    = 2
+)
+
+// dependencyPot is what this leaf may be shown of everything that fed into it,
+// sized from the window of the model that will actually read it.
+//
+// It is computed once per worker build and handed to the store as one number,
+// which is what keeps it stable: the pot decides how many inputs are carried and
+// how hard each is clipped, so a value that drifted between two reads in the
+// same pass would move the prompt prefix under a cache that is counting on it
+// not moving.
+//
+// An unknown window falls back to store.MaxDigestBytes — the literal every leaf
+// had before this existed — because zero is "nobody could say", never "small".
+func (b leafBuild) dependencyPot() int {
+	// A nil catalog answers zero, which is the same answer as an unlisted model
+	// and wants the same handling: fall back, never guess small.
+	return ctxbudget.For(b.models.ContextLength(b.model)).WithFloor(leafPromptFloorTokens).
+		Share(leafDependencyShare, leafPromptShares, store.MaxDigestBytes)
 }
 
 // leafExecutors is name-to-constructor: what a surface calls when a node says

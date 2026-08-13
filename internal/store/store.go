@@ -31,6 +31,14 @@ const (
 	// pointers instead. It is a bound on what a reader TAKES — a dependency
 	// input, a partial quoted into a prompt, a receipt line — and every such
 	// reader applies it at the read.
+	//
+	// For a reader whose model window is known it is the FALLBACK and not the
+	// bound: DependencyInputs takes its pot as an argument, and a caller that
+	// can size that pot from the consuming model's window (see ctxbudget) names
+	// this only for the case where nothing could say how big the window is. The
+	// literal was set when every reader was assumed to be small, and a leaf on a
+	// 200k-token model given 4 KiB for everything feeding it is not being
+	// bounded, it is being blinded.
 	MaxDigestBytes = 4 << 10
 
 	// MaxSummaryBytes bounds what a settled node records as its own outcome.

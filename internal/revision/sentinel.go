@@ -56,7 +56,9 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 	// itself. It is asked only after the free caps pass, and only when the job
 	// carries a criterion to be judged against.
 	applied, notes := resident.ApplyRevisionGoverned(judgeCtx,
-		resident.Growth{Reason: resident.GrowRevision, Ask: resident.SatisfierFor(client)},
+		// The gate reads through the same window the plan was structured
+		// through, which the document itself records.
+		resident.Growth{Reason: resident.GrowRevision, Ask: resident.SatisfierFor(client, planGraph.Window())},
 		graph, planGraph, prefix, root, operations)
 	if applied > 0 && journal != nil {
 		// The journaled structure is now behind the graph in memory. Re-writing
