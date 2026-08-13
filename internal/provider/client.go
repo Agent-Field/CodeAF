@@ -467,13 +467,74 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 	return scaled
 }
 
-// apiError keeps the SDK's exact error phrasing. The harness's provider-error
-// taxonomy recovers a status code from that text, so changing the wording here
-// would silently disable rate-limit and transient-failure retries.
-func apiError(status int, payload []byte) error {
-	var decoded ai.ErrorResponse
-	if err := json.Unmarshal(payload, &decoded); err == nil && strings.TrimSpace(decoded.Error.Message) != "" {
-		return fmt.Errorf("API error (%d): %s", status, decoded.Error.Message)
+// APIError is one refusal from the model provider, with the two things about it
+// that are facts rather than prose: the status it came back under, and — when
+// the body decoded — the provider's own sentence about why.
+//
+// It exists because the only carrier those facts ever had was the formatted
+// string, and everything downstream that wanted to say something honest about a
+// failure had to go mining in it. A room row that reads "API error (404):
+// {"error":{"message":"No endpoints found ...\"sh\"..." is that mining not
+// happening: a JSON blob delivered to a person as an explanation. With the
+// message in a field, the sentence a reader gets is composed from parts rather
+// than cut out of transport.
+//
+// Error() is byte-for-byte what this used to return. That is deliberate and
+// load-bearing: the harness's provider-error taxonomy recovers a status code by
+// reading the text, so a rewording here would silently disable rate-limit and
+// transient-failure retries.
+type APIError struct {
+	// Status is the HTTP status the refusal arrived under.
+	Status int
+	// Message is the provider's own words, decoded out of the error body. Empty
+	// when the body did not decode, in which case Body carries it whole.
+	Message string
+	// Body is the undecoded payload, kept so nothing is lost when the provider
+	// answered with something this client does not know the shape of.
+	Body string
+}
+
+// Error keeps the SDK's exact error phrasing.
+func (e *APIError) Error() string {
+	if e == nil {
+		return ""
 	}
-	return fmt.Errorf("API error (%d): %s", status, string(payload))
+	if strings.TrimSpace(e.Message) != "" {
+		return fmt.Sprintf("API error (%d): %s", e.Status, e.Message)
+	}
+	return fmt.Sprintf("API error (%d): %s", e.Status, e.Body)
+}
+
+// errorBody is the shape a refusal arrives in, read for the one field anybody
+// downstream can use.
+//
+// It is declared here rather than reusing the SDK's ai.ErrorResponse, and that
+// is a fix rather than a preference: ai.ErrorDetail types `code` as a string,
+// OpenRouter sends it as a number, and json.Unmarshal fails the WHOLE object on
+// that one field. So every OpenRouter refusal — the routing 404s, which are the
+// ones a person most needs explained — fell through to the raw-payload arm and
+// arrived as a JSON blob with the readable sentence trapped inside it. Reading
+// only the field that is used, and leaving the rest as raw bytes, is what makes
+// the message reachable regardless of what a provider types its own codes as.
+type errorBody struct {
+	Error struct {
+		Message string          `json:"message"`
+		Code    json.RawMessage `json:"code,omitempty"`
+	} `json:"error"`
+	// Some providers put the sentence at the top level instead.
+	Message string `json:"message"`
+}
+
+// apiError decodes one refusal into its parts.
+func apiError(status int, payload []byte) error {
+	failure := &APIError{Status: status, Body: string(payload)}
+	var decoded errorBody
+	if err := json.Unmarshal(payload, &decoded); err == nil {
+		if message := strings.TrimSpace(decoded.Error.Message); message != "" {
+			failure.Message = message
+		} else {
+			failure.Message = strings.TrimSpace(decoded.Message)
+		}
+	}
+	return failure
 }

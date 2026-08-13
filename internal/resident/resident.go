@@ -2045,7 +2045,18 @@ func (r *Reconciler) announceTransitions(ctx context.Context) error {
 				// left their subtree open on the board forever, so the partial is
 				// distilled and the subtree folded exactly as any other landing's.
 				if !continuing {
-					if err := r.announceNode(event); err != nil {
+					// The fallback runs BEFORE the announcement, and the order is
+					// the whole point: the row a person reads has to say what
+					// happens next, and "next" is not known until the fresh plan
+					// has either landed or been refused. Announcing first and
+					// replanning after would produce the two rows this wave
+					// exists to delete — a failure that reads as the end, then
+					// unexplained work appearing beside it.
+					replanned := false
+					if ok && event.Kind == store.EventNodeFailed {
+						replanned = r.craftFallback(ctx, node)
+					}
+					if err := r.announceNode(event, craftFallbackNext(replanned)); err != nil {
 						return err
 					}
 					r.recordForNarration(byID, event)
@@ -2238,7 +2249,11 @@ func (r *Reconciler) announceRoom(node store.Node) string {
 	return r.deliverySessionID(origin)
 }
 
-func (r *Reconciler) announceNode(event store.Event) error {
+// announceNode posts the one row a landing owes the room. next is what the
+// caller has already arranged to happen after a failure — a fallback that is
+// running, or nothing — and it is a parameter rather than something read back
+// out of the graph because only the caller can know it in time.
+func (r *Reconciler) announceNode(event store.Event, next string) error {
 	node, ok, err := r.store.Node(event.NodeID)
 	if err != nil {
 		return err
@@ -2269,11 +2284,14 @@ func (r *Reconciler) announceNode(event store.Event) error {
 			body = "That's done — it finished without leaving a summary."
 		}
 	case store.EventNodeFailed:
-		failure := firstLine(node.Error)
-		if failure == "" {
-			failure = "no reason was recorded"
-		}
-		body = fmt.Sprintf("I hit a problem with %q: %s", clipLabel(firstLine(node.Brief), 60), failure)
+		// COMPOSED FROM PARTS, NEVER FORWARDED. This row used to be
+		// `I hit a problem with "<brief>": <the whole first line of the error>`,
+		// which is a template with transport poured into it: the brief is the
+		// machine's own phrasing of a step, and the error is whatever the
+		// executor last wrapped — node ids, attempt counts and a JSON body, all
+		// of it delivered to a person as an explanation. See failure.go for the
+		// four things a reader is actually owed and where the raw text goes.
+		body = FailedNode(node, next).Room()
 	default:
 		return nil
 	}
