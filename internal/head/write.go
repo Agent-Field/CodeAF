@@ -60,6 +60,11 @@ const (
 	// writeArtifactNameBytes bounds a filename. Longer than this is a sentence
 	// rather than a name, and several filesystems refuse it outright.
 	writeArtifactNameBytes = 96
+	// writeArtifactPathBytes bounds the whole destination once a directory may
+	// be named. It is a sanity bound rather than a rule about taste: most
+	// filesystems refuse a path past about this length anyway, and the refusal
+	// they give is not one a model can read.
+	writeArtifactPathBytes = 1024
 	// writeArtifactCollisionCap is how many times a name is minted around an
 	// existing file before this gives up and says so.
 	writeArtifactCollisionCap = 50
@@ -111,14 +116,6 @@ func (h *Head) workspaceRoot() (string, error) {
 // write is the tool body. It returns what the loop may say and nothing more:
 // the path that now exists, or the reason none does.
 func (run *beltRun) write(args map[string]any) (string, bool) {
-	root, err := run.head.workspaceRoot()
-	if err != nil {
-		return err.Error(), true
-	}
-	target, err := artifactDestination(root, beltString(args, "name"), beltString(args, "dir"))
-	if err != nil {
-		return err.Error(), true
-	}
 	body := beltString(args, "body")
 	if strings.TrimSpace(body) == "" {
 		return "body must carry the whole document, exactly as it should be on disk", true
@@ -127,8 +124,17 @@ func (run *beltRun) write(args map[string]any) (string, bool) {
 		return fmt.Sprintf("that document is %d bytes, over the %d-byte ceiling for one write — split it, or have the workforce produce it",
 			len(body), writeArtifactMaxBytes), true
 	}
-	// Every refusal above happens before a byte is on disk, which is the whole
-	// of "say it first". Nothing below this line can decline the destination.
+	root, err := run.head.workspaceRoot()
+	if err != nil {
+		return err.Error(), true
+	}
+	// Resolving the destination is the last thing that can refuse, and it is the
+	// only one that touches the disk before the write — so a forbidden place is
+	// said before a directory is made for it, not after a file is in one.
+	target, err := artifactDestination(root, beltString(args, "name"), beltString(args, "dir"))
+	if err != nil {
+		return err.Error(), true
+	}
 	path, replaced, err := writeArtifactFile(target, body, run.head.wroteArtifact(target))
 	if err != nil {
 		return err.Error(), true
@@ -185,10 +191,10 @@ func artifactDestination(root, rawName, rawDir string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("name must be the file's own name with its extension, like architecture.svg or notes.md")
 	}
-	if len(name) > writeArtifactNameBytes+len(root) {
-		return "", fmt.Errorf("%q is too long for a path — give the file a short name with an extension", name)
-	}
 	directory := expandArtifactHome(strings.TrimSpace(rawDir))
+	if len(name)+len(directory) > writeArtifactPathBytes {
+		return "", fmt.Errorf("that destination is longer than %d characters — give the file a short name in a directory you can spell", writeArtifactPathBytes)
+	}
 	if parent, base := filepath.Split(expandArtifactHome(name)); parent != "" {
 		switch {
 		case filepath.IsAbs(parent) || directory == "":
@@ -213,6 +219,9 @@ func artifactDestination(root, rawName, rawDir string) (string, error) {
 // refusal it can correct and a silently rewritten name is an artifact nobody
 // can find.
 func artifactName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name must end in the file's own name with its extension, like architecture.svg or notes.md")
+	}
 	if len(name) > writeArtifactNameBytes {
 		return fmt.Errorf("%q is too long for a filename — give it a short name with an extension", name)
 	}
