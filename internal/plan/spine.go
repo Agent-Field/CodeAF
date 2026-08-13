@@ -50,6 +50,15 @@ them out as stages — laying a bundle end to end makes every request wait for
 strangers. They are one stage, they divide into parts there, and they run at
 the same time. A stage exists where output feeds input, and nowhere else.
 
+One request among several is the exception, and missing it is the worse of the
+two mistakes: the request whose own job is to work over what the others produce
+— to assemble them, compare them, weigh them against each other, or write them
+up as a single thing. It cannot begin before they have finished. Put it in a
+stage of its own behind them; left beside them it starts against the very
+material it exists to consume, and produces that material itself rather than
+wait. That is the only reason requests spoken in one breath ever need a second
+stage.
+
 Do not add a final merge, synthesis, or summary stage. That is added
 automatically after you.
 

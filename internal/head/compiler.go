@@ -58,8 +58,8 @@ Rules:
 
 Be precise enough for downstream planning, but do not design the task graph yourself.`
 
-// PartList tolerates the shapes models actually send for a bundle
-// declaration. The strict form is an array of strings; live models were
+// PartList tolerates the shapes models actually send when they list the ask's
+// separate requests. The strict form is an array of strings; live models were
 // measured wrapping each part in an object instead, and a declaration field
 // must never be able to fail the compile — the worst legal outcome of a
 // malformed parts array is no declaration, which is exactly what the field
@@ -153,11 +153,14 @@ type Brief struct {
 	// answer and the caller falls back to that separate pass.
 	Contract string `json:"contract,omitempty"`
 
-	// Parts is the compiler's declaration that this instruction is a bundle:
-	// several requests in one breath that do not feed each other, each written
-	// as a complete standalone assignment. Independence is the model's
-	// judgment, made here where the whole ask was read; the layout downstream
-	// is geometry. Empty means the work is one thing.
+	// Parts is the compiler's reading of how many separate answers the ask
+	// wants: several requests in one breath that do not feed each other, each
+	// written as a complete standalone assignment. The reading is made here,
+	// where the whole ask was read; what shape the work then takes is decided
+	// downstream by the planner, which is handed these words verbatim as
+	// evidence and nothing more. There was once a route that took this field
+	// as a layout instead, and its whole failure was that a layout cannot say
+	// a request waits. Empty means one thing comes back.
 	Parts PartList `json:"parts,omitempty"`
 
 	// BuildsOn names earlier jobs this instruction continues or improves.
@@ -344,7 +347,7 @@ func (c *Compiler) Compile(ctx context.Context, instruction string, graphContext
 		"\n\nUser instruction (verbatim; preserve exactly):\n" + instruction +
 		settledQuestionBrief(instruction) + c.surfaceBrief() + c.subharnessBrief()
 	// The compile reply carries the goal with the verbatim ask inside it, the
-	// title, the task method, and any bundle parts — all in one JSON object,
+	// title, the task method, and any separate requests — all in one JSON object,
 	// which is exactly why a completion cap sized for the goal alone became a
 	// guillotine: two GAIA questions long enough to echo hit 1000 tokens to
 	// the digit, the JSON was cut mid-structure, and both questions were lost

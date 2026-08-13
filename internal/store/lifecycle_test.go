@@ -153,7 +153,7 @@ func TestAnAssemblerIsUnclaimableUntilEveryInputIsTerminal(t *testing.T) {
 	}
 	// And the sink waits for the assembler in turn, which is why the probe's
 	// root was correctly pending while the assembler read done — the parent of
-	// a bundle is a node with edges, not a projection of its children.
+	// a fan-out is a node with edges, not a projection of its children.
 	if names := offered(); names["task-8"] {
 		t.Fatal("the delivery was offered while the assembler was still claimed")
 	}

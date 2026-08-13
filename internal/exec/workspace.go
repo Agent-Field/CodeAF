@@ -310,9 +310,9 @@ func SuggestPath(nodeID int, title string) string {
 // per node and a title that is only there to be read.
 //
 // Uniqueness has to come from the key alone. The title cannot carry it: titles
-// are clipped for display (a bundle's parts to 48 characters, a spliced job's
-// to the same), and five parts of one ask share their opening words, so five
-// distinct topics arrive here as one identical string. Siblings run
+// are clipped for display — a spliced job's to 48 characters — and five parts
+// of one ask share their opening words, so five distinct topics arrive here as
+// one identical string. Siblings run
 // concurrently by construction, so a shared name is not a warning in a log —
 // it is four deliverables silently overwritten by the fifth.
 func SuggestPathFor(key, title string) string {
