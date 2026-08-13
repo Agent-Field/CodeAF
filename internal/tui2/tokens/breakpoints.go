@@ -38,6 +38,21 @@ const (
 	// breakpoints_test.go asserts it equals the three numbers above summed, so
 	// the derivation cannot rot into a magic number.
 	RailAtWidth = RailTranscriptFloor + RailGutter + RailWidth // 90
+
+	// RailSlimWidth is the collapsed rail: the HANDLE.
+	//
+	// One column, and the arithmetic is the whole argument. The handle carries
+	// exactly one thing — the unseen dot — and a dot is one cell; every further
+	// column would have to be filled with something, and there is nothing else
+	// this state is allowed to say. The seam (RailGutter's first column, held
+	// by railSeam) already keeps it off the transcript's last character, so one
+	// column of handle plus one of air is two columns of chrome and no more:
+	// affordable at 80, where the open rail is not.
+	//
+	// It is deliberately not zero. A handle nobody can click is a state with no
+	// way out but the keyboard, and the pointer has to be able to answer the
+	// dot it can see.
+	RailSlimWidth = 1
 )
 
 // The lens's left edge, and the measure chrome prose is wrapped to. Both are

@@ -1,24 +1,24 @@
-
-─ importer rewrite ─────────────────────────────────────────────────────────────────────────────────
-
-  parked on the schema question
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                                                                         ● aforge                 ›
+─ importer rewrite ────────────────────────────────────────────────────    2 running, 1 queued
+                                                                        ────────────────────────────
+  parked on the schema question                                         threads
+                                                                           the wisp parity push   2h
+                                                                           the diff is ready when y…
+                                                                        ▎  importer rewri… yesterday
+                                                                           you are here
+                                                                           + new
+                                                                        work
+                                                                         ◐ wisp-parity            ›
+                                                                           reworking NavCtx after t…
+                                                                           $8.65 · 1◐ 1○
+                                                                         ├─ ◐ H2
+                                                                         └─ ⚑ KeyCutter
+                                                                              waits: H2
+                                                                         ✓ perf-audit
+                                                                         ○ homes
 
 
 ▍ ›  ask for anything · @ jobs · / commands
 
 
-  chat  work  notebook  importer rewrite                                   ~/aforge-v2 · ◐ 1 working
+  chat  work  notebook  threads ▾ ctrl+t  +  importer rewrite                            ~/aforge-v2

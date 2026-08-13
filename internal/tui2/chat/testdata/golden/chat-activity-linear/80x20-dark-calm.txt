@@ -17,4 +17,4 @@
 ▍ › █ ask for anything · @ jobs · / commands
 
 
-  chat  work  notebook                                               ~/aforge-v2
+  chat  work  notebook  threads ▾ ctrl+t  +                          ~/aforge-v2

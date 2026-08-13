@@ -47,6 +47,14 @@ const (
 	// InterruptTarget is the `interrupt esc` chip. Clicking it is the same act
 	// as pressing esc while a turn is streaming.
 	InterruptTarget = "footer:interrupt"
+	// ThreadsDoorTarget is the `threads` word in the left zone. Clicking it is
+	// the same act the chord performs and the same act the title chip performs;
+	// it exists because the chip is ABSENT until the scribe has named the
+	// conversation, and a first-run window would otherwise show no door at all.
+	ThreadsDoorTarget = "footer:threads-door"
+	// NewThreadTarget is the `+` beside it. It mints a conversation and walks
+	// into it, which is the same act the last row of the switcher performs.
+	NewThreadTarget = "footer:new-thread"
 	// ThreadTarget is the title chip: the name of the working conversation this
 	// window is in (chat-simplify.md 5.3). Clicking it opens the thread
 	// switcher, which is the same act the `t` key performs — one door, two

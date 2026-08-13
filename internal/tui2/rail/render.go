@@ -248,6 +248,49 @@ func (v *View) HUD(m *Model, width, height int) []string {
 	return v.Render(m, ModeHUD, width, height)
 }
 
+// handleDotRow is where the collapsed rail's one signal sits: the top line,
+// which is where the threads section's own dot would have been had the column
+// been open. A mark that moved when the rail collapsed would make the reader
+// look for it.
+const handleDotRow = 0
+
+// Handle draws the COLLAPSED rail: a column of ground carrying at most one
+// thing.
+//
+// IT CARRIES EXACTLY ONE SIGNAL and it is the unseen dot. Everything else the
+// open rail says — how many jobs are running, what they cost, which
+// conversation you are in — is a fact the reader collapsed the rail in order to
+// stop being told, and a handle that kept one of them would be the drawer
+// re-opening itself a column at a time. What survives is the one statement a
+// hidden rail genuinely cannot make: something landed where you were not
+// looking.
+//
+// A blank handle is therefore the ordinary case, and that is correct rather than
+// unfinished. Discoverability is not this column's job — the chord and the bar's
+// dock are both doors to the same map — and a handle that drew furniture to be
+// noticed would be noticed exactly as often as the dot.
+//
+// The returned slice aliases the View's buffer, like [View.Render]'s.
+func (v *View) Handle(unseen bool, width, height int) []string {
+	v.lines = v.lines[:0]
+	v.marks = v.marks[:0]
+	v.mark = markChrome
+	v.hovered = false
+	v.upLine, v.upFrom, v.upTo = -1, 0, 0
+	if width <= 0 || height <= 0 {
+		return v.lines
+	}
+	for y := 0; y < height; y++ {
+		l := &v.line
+		l.reset(width)
+		if y == handleDotRow && unseen {
+			l.add(roomDot, tokens.Cyan)
+		}
+		v.push(v.emit(width, false, tokens.Ground), height)
+	}
+	return v.lines
+}
+
 // renderMap draws the scope map: scope header, the surface row that never
 // folds, a hairline at the room boundary, then the members under the overflow
 // policy.
@@ -482,36 +525,73 @@ func (v *View) sizeMembers(members []Row) (total, preview int) {
 // state carried is "have I seen a row at this depth yet", and a row at depth d
 // cuts off everything deeper, because those rows were its own children.
 //
-// It never asks the source. The alternative — a Row field saying "I am the last
-// one" — would be a fact about a row's NEIGHBOURS stored on the row, and a
-// refresh that dropped a sibling would leave a ╰ above three more branches.
+// It never asks the source which of its siblings is last. The alternative — a
+// Row field saying "I am the last one" — would be a fact about a row's
+// NEIGHBOURS stored on the row, and a refresh that dropped a sibling would leave
+// a ╰ above three more branches. What the source DOES say is whether a row has a
+// parent at all ([Row.Tree]), which is a fact about the row itself.
+//
+// A ROW WITH NO CONNECTOR IS A WALL. Walking backwards, anything that is not a
+// limb — a job card, a conversation, a section heading — ends the tree below it,
+// because the limbs above it belong to something else. Without the wall the home
+// rail's two lists would be read as one shape: the four rows behind the homes
+// lid sit at depth 1 like a plan step does, and the last step of the last job
+// would lose its ╰ to a sibling three sections away that it has never met.
 func (v *View) sizeGuides(members []Row, tree bool) {
 	if cap(v.guides) < len(members) {
 		v.guides = make([]treeGuide, len(members))
 	}
 	v.guides = v.guides[:len(members)]
+	// The tree's own root depth, so a plan reads the same whether it is drawn
+	// under its card at home or under the surface row inside the job (see
+	// [treeGuide.level]). Nothing below root can be a limb.
+	root := maxIndentDepth + 1
+	for i := range members {
+		if !connects(members[i], tree) {
+			continue
+		}
+		if depth := clamp(members[i].Depth, 0, maxIndentDepth); depth < root {
+			root = depth
+		}
+	}
 	var seen [maxIndentDepth + 1]bool
 	for i := len(members) - 1; i >= 0; i-- {
 		depth := clamp(members[i].Depth, 0, maxIndentDepth)
+		limb := connects(members[i], tree) && depth >= root
 		g := treeGuide{last: !seen[depth]}
-		// A tree row is what wears a connector. A card that found its way into
-		// a job scope keeps a card's plain indent rather than claiming a place
-		// in a plan it is not part of.
-		switch members[i].Kind {
-		case RowStep, RowWorker:
-			g.on = tree
-		}
-		for k := 0; k < depth; k++ {
-			if seen[k] {
-				g.open |= 1 << uint(k)
+		if limb {
+			g.on = true
+			g.level = depth - root
+			for k := root; k < depth; k++ {
+				if seen[k] {
+					g.open |= 1 << uint(k-root)
+				}
 			}
 		}
 		v.guides[i] = g
+		if !limb {
+			// The wall. Everything the walk had accumulated belonged to the
+			// tree that has just ended.
+			seen = [maxIndentDepth + 1]bool{}
+		}
 		seen[depth] = true
 		for k := depth + 1; k <= maxIndentDepth; k++ {
 			seen[k] = false
 		}
 	}
+}
+
+// connects reports whether a row wears a connector: every step and worker
+// inside a job scope, and anywhere at all a row the source has named a limb.
+func connects(r Row, tree bool) bool {
+	if r.Tree {
+		return true
+	}
+	switch r.Kind {
+	case RowStep, RowWorker:
+		return tree
+	}
+	return false
 }
 
 // previewOf is how many lines SELECTING a row would add to it: the difference
@@ -585,6 +665,22 @@ func (v *View) renderHUD(m *Model, width, height int) {
 // 10.3.15 is explicit that everything else must be carried — background work
 // with no panel goes invisible.
 func hudWorthy(r Row) bool {
+	switch r.Kind {
+	case RowSection, RowNote, RowThread:
+		// The HUD is the live summary of WORK. A heading has nothing to
+		// summarise, and a conversation is not a thing that finishes — carrying
+		// every thread in the store into a bounded eight-row summary would spend
+		// the whole budget on rows that will never leave it.
+		return false
+	}
+	if r.Tree {
+		// A LIMB IS ALREADY IN THE SUMMARY, as a number. The card above it
+		// carries the census of everything under it (`2◐ 1✓`), so a HUD that
+		// listed the parts as well would spend its whole budget saying the same
+		// thing twice — and at eight rows that is the difference between a
+		// summary of the running work and a fold line where the summary was.
+		return false
+	}
 	if r.Questions > 0 {
 		return true
 	}

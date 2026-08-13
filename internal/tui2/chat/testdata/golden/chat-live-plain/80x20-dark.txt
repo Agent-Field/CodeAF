@@ -17,4 +17,4 @@
 ▍ ⠋  keep typing — messages queue
 
 
-  chat  work  notebook  interrupt esc                                ~/aforge-v2
+  chat  work  notebook  threads ▾ ctrl+t  +  interrupt esc           ~/aforge-v2

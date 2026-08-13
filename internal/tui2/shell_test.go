@@ -229,8 +229,11 @@ func TestShellScopeIsTheSameObjectAtEveryWidth(t *testing.T) {
 	}
 
 	narrow := sized(t, 70, 30, Options{})
-	if _, ok := narrow.comp.rect(LayerRail); ok {
-		t.Fatal("narrow frame drew a rail before scope was asked for")
+	if handle, ok := narrow.comp.rect(LayerRail); ok && handle.Dx() > DefaultMetrics().RailSlimWidth {
+		// The HANDLE may stand here before scope is asked for — it is the door,
+		// one column wide. A rail wider than that would be the column arriving
+		// below its breakpoint.
+		t.Fatalf("narrow frame drew a %d-column rail before scope was asked for", handle.Dx())
 	}
 	narrow.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
 	rail, ok := narrow.comp.rect(LayerRail)

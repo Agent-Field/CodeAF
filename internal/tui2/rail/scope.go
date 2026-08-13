@@ -118,6 +118,22 @@ func (s Scope) Members() []Row {
 	return s.Rows[1:]
 }
 
+// Unseen reports that something in this scope is carrying the one ornament: a
+// delivery that landed where the reader was not looking.
+//
+// It is asked of the WHOLE scope because that is the question the collapsed
+// rail's handle answers — "is there anything in there" — and a handle is one
+// cell with no room to say which row. See [Row.Unseen] for the discipline the
+// source owes before it may set the flag at all.
+func (s Scope) Unseen() bool {
+	for i := range s.Rows {
+		if s.Rows[i].Unseen {
+			return true
+		}
+	}
+	return false
+}
+
 // Live reports whether anything in the scope is moving. It picks the overflow
 // policy (8.1.7): a live list protects its running rows, a finalized one gives
 // the slots to its failures.
