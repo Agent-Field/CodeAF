@@ -83,6 +83,10 @@ func TestLayoutZeroSizeDrawsNothing(t *testing.T) {
 	}
 }
 
+// The COLUMN appears only at the breakpoint. Below it a frame may still carry
+// the HANDLE — one column, no rows, a door — and that is not the rail arriving
+// early: [layout.Narrow] stays true, so scope is still reached as a full pane
+// and every promise Part 9.12 makes at 80 columns is unchanged.
 func TestLayoutRailAppearsOnlyAtTheBreakpoint(t *testing.T) {
 	metrics := DefaultMetrics()
 	for w := 0; w < metrics.RailBreakpoint; w++ {
@@ -91,8 +95,12 @@ func TestLayoutRailAppearsOnlyAtTheBreakpoint(t *testing.T) {
 			t.Fatalf("width %d claimed a rail below the breakpoint", w)
 		}
 		for _, slot := range l.Slots {
-			if slot.ID == LayerRail {
-				t.Fatalf("width %d drew a rail column", w)
+			if slot.ID != LayerRail {
+				continue
+			}
+			if !l.RailSlim || slot.Rect.Dx() != metrics.RailSlimWidth {
+				t.Fatalf("width %d drew a rail column %d wide below the breakpoint",
+					w, slot.Rect.Dx())
 			}
 		}
 	}
@@ -158,9 +166,13 @@ func TestLayoutScopeIsTheSameLayerAtEveryWidth(t *testing.T) {
 	}
 
 	// Closed scope in a narrow frame gives the pane back to the transcript.
+	// What is left of the rail there is the handle, which is a door and not a
+	// pane: one column, and the lens keeps the rest.
 	closed := solve(70, 30, metrics, mode{})
-	if _, ok := find(closed, LayerRail); ok {
-		t.Fatal("narrow frame drew a rail with scope closed")
+	if handle, ok := find(closed, LayerRail); ok {
+		if !closed.RailSlim || handle.Dx() != metrics.RailSlimWidth {
+			t.Fatalf("narrow frame drew a rail %d columns wide with scope closed", handle.Dx())
+		}
 	}
 	if _, ok := find(closed, LayerTranscript); !ok {
 		t.Fatal("narrow frame with scope closed lost the transcript")
@@ -390,13 +402,18 @@ func TestDialogRectanglesAtTheTwoReportedSizes(t *testing.T) {
 			image.Rect(0, 0, 91, 27),
 			image.Rect(11, 3, 79, 24),
 			image.Rect(12, 4, 78, 23)},
-		// 80×24: under the rail breakpoint, so the lens is the full 80×19.
-		// 75% is 60 columns, 80% is 15 rows, centred at (10,2) — a 58×13 panel
-		// where the old fraction gave 51×10.
+		// 80×24: under the rail breakpoint, so the rail is the HANDLE — one
+		// column and its seam — and the lens is 78×19. 75% of 78 is 58 columns,
+		// 80% of 19 is 15 rows, centred at (10,2).
+		//
+		// The two columns are the whole cost of the collapsed rail existing at
+		// this width, and they are charged HERE rather than hidden: a dialog
+		// sited over a lens it does not fit is the defect these rectangles were
+		// written down to catch.
 		{80, 24,
-			image.Rect(0, 0, 80, 19),
-			image.Rect(10, 2, 70, 17),
-			image.Rect(11, 3, 69, 16)},
+			image.Rect(0, 0, 78, 19),
+			image.Rect(10, 2, 68, 17),
+			image.Rect(11, 3, 67, 16)},
 	}
 	for _, c := range cases {
 		l := solve(c.w, c.h, chatShapedMetrics(), mode{OverlayOpen: true})
@@ -582,7 +599,7 @@ func TestAHiddenRailGivesItsColumnsBackToTheLens(t *testing.T) {
 		t.Fatal("120x32 lost the transcript")
 	}
 
-	hidden := solve(120, 32, metrics, mode{ScopeOpen: true, RailHidden: true})
+	hidden := solve(120, 32, metrics, mode{ScopeOpen: true, Rail: RailHidden})
 	if _, still := find(hidden, LayerRail); still {
 		t.Fatal("the rail kept its slot while hidden")
 	}
@@ -603,7 +620,7 @@ func TestAHiddenRailGivesItsColumnsBackToTheLens(t *testing.T) {
 // asked for it not to be there, and falling back would draw the very duplicate
 // the hiding prevented.
 func TestAHiddenRailIsNeverTheNarrowFallback(t *testing.T) {
-	l := solve(60, 24, chatShapedMetrics(), mode{ScopeOpen: true, RailHidden: true})
+	l := solve(60, 24, chatShapedMetrics(), mode{ScopeOpen: true, Rail: RailHidden})
 	if !l.Narrow {
 		t.Fatal("a 60-column frame is not narrow")
 	}

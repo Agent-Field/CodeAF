@@ -66,7 +66,18 @@ type layout struct {
 	// Narrow reports that the rail did not fit as a column, so scope must be
 	// reached as a full pane instead. It is a fact about this frame, not a
 	// preference: linear mode and a 60-column terminal both produce it.
+	//
+	// A SLIM HANDLE IS STILL NARROW. The handle is a door, not the map — one
+	// column cannot carry a row — so a frame showing it keeps every promise a
+	// railless frame makes, including that scope is reachable as a full pane.
 	Narrow bool
+
+	// RailSlim reports that the rail on this frame is the handle rather than
+	// the column. The surface reads it to know which of the two renderings its
+	// rail pane owes, and it is a fact about the FRAME: a terminal too narrow
+	// for the column produces it without anybody having asked for it, and
+	// without the stored preference being touched.
+	RailSlim bool
 
 	// Linear reports the accessible single-column, no-motion rendering
 	// (10.1.5). Same product, less motion — so it is a rendering mode here,
@@ -74,6 +85,42 @@ type layout struct {
 	Linear bool
 
 	Slots []slot
+}
+
+// RailState is how much of the right rail the surface is asking this frame for.
+//
+// THREE STATES, NOT TWO, and the middle one is the point. §6's sidebar used to
+// be a drawer — there, or not there — and both ends were wrong for the same
+// reader at different moments: the open column reads as clutter beside a
+// conversation, and a hidden one cannot say the one thing worth interrupting
+// for, which is that something landed in a thread you are not standing in. The
+// handle is that sentence with the clutter removed.
+//
+// The zero value is [RailOpen] so a caller that never thinks about the rail
+// gets the state a first-run window opens in.
+type RailState uint8
+
+const (
+	// RailOpen is the full column beside the transcript.
+	RailOpen RailState = iota
+	// RailSlim is the handle: [Metrics.RailSlimWidth] columns, carrying at most
+	// the unseen dot.
+	RailSlim
+	// RailHidden is no rail on the frame at all.
+	RailHidden
+)
+
+// String names the state, in the same words internal/config persists.
+func (r RailState) String() string {
+	switch r {
+	case RailOpen:
+		return "open"
+	case RailSlim:
+		return "slim"
+	case RailHidden:
+		return "hidden"
+	}
+	return "invalid"
 }
 
 // mode is the shell state the solver is allowed to see. Keeping it this small
@@ -86,17 +133,23 @@ type mode struct {
 	// drawn and this changes nothing (4.3: persistent, not toggle-hidden); in
 	// a narrow frame it is what swaps the main pane to the scope list.
 	ScopeOpen bool
-	// RailHidden takes the rail off this frame entirely — §6's `sidebar:
-	// hidden`, and what the work PAGE asks for while it is the lens.
+	// Rail is how much of the rail the surface is asking for: the column, the
+	// handle, or nothing.
 	//
 	// It is not the same fact as [layout.Narrow] and must not be confused with
 	// it. Narrow says the rail did not FIT, which is why scope then has to be
-	// reachable as a full pane; this says the surface has asked for the rail not
-	// to be there, because the lens is already showing the same list at page
-	// altitude and two copies of one list on one screen is §15's same-fact-twice.
-	// So a hidden rail never becomes the main pane: there is nothing to fall
-	// back to, and falling back would draw the duplicate the hiding prevented.
-	RailHidden bool
+	// reachable as a full pane; this says what the surface WANTS, because the
+	// lens may already be showing the same list at page altitude and two copies
+	// of one list on one screen is §15's same-fact-twice. So a hidden rail never
+	// becomes the main pane: there is nothing to fall back to, and falling back
+	// would draw the duplicate the hiding prevented.
+	//
+	// THE ASK IS A CEILING, NEVER A FLOOR. A frame that cannot afford the
+	// column gives the handle instead, and one that cannot afford the handle
+	// gives nothing — the preference is not rewritten, it is simply not
+	// reachable at this size, which is the same contract every other number in
+	// [Metrics] has.
+	Rail RailState
 	// OverlayOpen asks for the overlay plane. Wave 3 fills it.
 	OverlayOpen bool
 }
@@ -132,30 +185,54 @@ func solveInto(slots []slot, w, h int, m Metrics, md mode) layout {
 	// Columns. The rail takes its width only if what remains is still a
 	// usable transcript; a rail that leaves forty columns of conversation has
 	// cost more than it showed.
+	//
+	// THE LADDER RUNS DOWNWARD AND NEVER UP. The ask is the widest rung this
+	// frame may draw, and each rung falls to the next when it cannot be paid
+	// for: the column wants the breakpoint AND a transcript left over, the
+	// handle wants only the columns it occupies, and below that there is
+	// nothing. Nothing here writes the preference back — a reader who half
+	// closes their terminal has not changed their mind about the sidebar, and a
+	// surface that persisted the resize as a choice would give them back a
+	// different window than the one they left.
 	railW := 0
-	if !md.RailHidden && !md.Linear && w >= m.RailBreakpoint && m.RailWidth > 0 && bodyH+composerH > 0 {
-		if w-m.RailWidth-railSeam >= m.MinMainWidth {
-			railW = m.RailWidth
-		}
+	drawable := !md.Linear && bodyH+composerH > 0
+	if drawable && md.Rail == RailOpen &&
+		w >= m.RailBreakpoint && m.RailWidth > 0 && w-m.RailWidth-railSeam >= m.MinMainWidth {
+		railW = m.RailWidth
+	}
+	if drawable && railW == 0 && md.Rail != RailHidden &&
+		m.RailSlimWidth > 0 && w-m.RailSlimWidth-railSeam >= m.MinMainWidth {
+		railW = m.RailSlimWidth
+		l.RailSlim = true
 	}
 	// Narrow is a fact about this frame rather than about its width: a frame
 	// one row tall has no column to give the rail either, and scope has to be
-	// reachable the narrow way in both cases.
-	l.Narrow = railW == 0
-	seamW := 0
-	if railW > 0 {
-		seamW = railSeam
-	}
-	mainW := w - railW - seamW
+	// reachable the narrow way in both cases. A handle is narrow too — it is a
+	// door and not the map (see [layout.Narrow]).
+	l.Narrow = railW == 0 || l.RailSlim
 
 	// In a narrow frame the scope map is not a column, it is the pane: the
 	// same rows, the same keys, the same selection, drawn where the transcript
 	// was (5.15). The transcript yields rather than shrinking, because two
 	// half-panes in sixty columns is the shape the doc rejects.
+	//
+	// It is decided BEFORE the seam, because the answer can give the handle's
+	// columns back: THE MAP IS ON SCREEN, SO THE DOOR TO IT IS NOT DRAWN. The
+	// handle and the full-pane list are one layer, and two slots claiming it
+	// would put the same pane on the frame twice — the compositor would draw
+	// the map into a one-column rectangle over the map. A door standing beside
+	// the room it opens is §15's same-fact-twice besides.
 	mainID := LayerTranscript
-	if l.Narrow && md.ScopeOpen && !md.RailHidden {
+	if l.Narrow && md.ScopeOpen && md.Rail != RailHidden {
 		mainID = LayerRail
+		railW, l.RailSlim = 0, false
 	}
+
+	seamW := 0
+	if railW > 0 {
+		seamW = railSeam
+	}
+	mainW := w - railW - seamW
 
 	if bodyH > 0 && mainW > 0 {
 		l.Slots = append(l.Slots, slot{ID: mainID, Rect: image.Rect(0, 0, mainW, bodyH), Z: zBase})

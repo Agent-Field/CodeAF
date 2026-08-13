@@ -104,6 +104,31 @@ type Model struct {
 	// [Model.SetClock].
 	clock *Clock
 	at    time.Time
+	// resort arms ONE refresh to take the source's order verbatim. See
+	// [Model.Resort].
+	resort bool
+}
+
+// Resort arms the next [Model.Refresh] to take the source's order as it comes,
+// instead of merging it into the order already on screen.
+//
+// IT IS THE OTHER HALF OF 7.2, and without it the stability law slowly becomes
+// a lie about freshness. [Model.stableOrder] freezes the visible order
+// CONTINUOUSLY, which is exactly right while somebody is looking: a row that
+// moved out from under a pointer already aimed at it is the betrayal that law
+// exists to prevent. But a rail that has been collapsed for an hour is not
+// being looked at, and re-opening it to the order of an hour ago — a job that
+// finished at nine still sitting above one that started at ten — is the
+// stability law protecting a place nobody was standing in.
+//
+// So the resort is a BARRIER rather than a policy: it happens at the moment the
+// rail comes back, before the reader's eye has landed anywhere, and never
+// while the column is open. The caller that knows when that moment is, is the
+// one that owns the collapse state; this is the door it reaches for.
+func (m *Model) Resort() {
+	if m != nil {
+		m.resort = true
+	}
 }
 
 // Clock is the shared animation clock, named here so this package's callers do
@@ -227,20 +252,61 @@ func (m *Model) Preview() Event { return m.event(EventSelected) }
 // selection previews, enter commits). It CLAMPS rather than wrapping — a rail
 // that wraps teleports the eye from the bottom of a list to the top, and the
 // gesture the user meant was "further down".
+//
+// A HEADING IS NOT A STOP. j crossing the seam between the threads section and
+// the work section lands on the first job, not on the word `work`: the section
+// row is chrome (see [RowKind.Selectable]), and a cursor that had to be pressed
+// past it twice would be charging the reader a keystroke for a line that is not
+// a place. The step is taken in the direction of travel, which is what makes
+// the skip invisible in both directions.
 func (m *Model) Move(delta int) Event {
 	lv := m.top()
-	return m.Select(lv.cursor + delta)
+	step := 1
+	if delta < 0 {
+		step = -1
+	}
+	return m.Select(seekSelectable(lv.scope.Rows, lv.cursor+delta, step))
 }
 
-// Select moves the cursor to an index, clamped.
+// Select moves the cursor to an index, clamped, and snapped onto the nearest
+// row a cursor may rest on.
+//
+// The snap searches FORWARD first because the two chrome kinds both stand
+// ABOVE what they describe — a heading names the rows under it and a note
+// stands where those rows would have been — so the row a caller pointing at one
+// meant is the one after it. Falling back to a backwards search covers the one
+// case forward cannot: a note at the very foot of the rail.
 func (m *Model) Select(i int) Event {
 	lv := m.top()
-	i = clamp(i, 0, len(lv.scope.Rows)-1)
+	i = seekSelectable(lv.scope.Rows, i, 1)
 	if i == lv.cursor {
 		return Event{}
 	}
 	lv.cursor = i
 	return m.event(EventSelected)
+}
+
+// seekSelectable clamps an index into the scope and walks it in step's
+// direction until it finds a row the cursor may hold, then back the other way.
+// A scope of nothing but chrome — which normalisation makes impossible, since
+// row 0 is always the surface — returns the clamped index unchanged rather than
+// looping.
+func seekSelectable(rows []Row, i, step int) int {
+	if len(rows) == 0 {
+		return 0
+	}
+	i = clamp(i, 0, len(rows)-1)
+	for j := i; j >= 0 && j < len(rows); j += step {
+		if rows[j].Kind.Selectable() {
+			return j
+		}
+	}
+	for j := i; j >= 0 && j < len(rows); j -= step {
+		if rows[j].Kind.Selectable() {
+			return j
+		}
+	}
+	return i
 }
 
 // SelectID moves the cursor to the row with this ID (or name, for a row with no
@@ -332,6 +398,11 @@ func (m *Model) Refresh() Event {
 	if m.clock != nil {
 		m.at = m.clock.Now()
 	}
+	// The barrier is consumed whether or not a scope answered, so an armed
+	// resort cannot survive to reorder a LATER refresh that the reader is
+	// watching.
+	resort := m.resort
+	m.resort = false
 	popped := false
 	for i := 0; i < len(m.stack); i++ {
 		scope, ok := scopeFrom(m.src, m.stack[i].scope.ID)
@@ -346,7 +417,9 @@ func (m *Model) Refresh() Event {
 		}
 		lv := &m.stack[i]
 		before := lv.scope.Rows[clamp(lv.cursor, 0, len(lv.scope.Rows)-1)].key()
-		scope.Rows = m.stableOrder(lv.scope.Rows, scope.Rows)
+		if !resort {
+			scope.Rows = m.stableOrder(lv.scope.Rows, scope.Rows)
+		}
 		lv.scope = scope
 		lv.cursor = indexOfKey(scope.Rows, before, lv.cursor)
 	}
@@ -483,7 +556,7 @@ func indexOfKey(rows []Row, key string, fallback int) int {
 			}
 		}
 	}
-	return clamp(fallback, 0, len(rows)-1)
+	return seekSelectable(rows, fallback, 1)
 }
 
 func (m *Model) inStack(id string) bool {
@@ -499,7 +572,7 @@ func (m *Model) top() *level { return &m.stack[len(m.stack)-1] }
 
 func (m *Model) event(kind EventKind) Event {
 	lv := m.top()
-	lv.cursor = clamp(lv.cursor, 0, len(lv.scope.Rows)-1)
+	lv.cursor = seekSelectable(lv.scope.Rows, lv.cursor, 1)
 	row := lv.scope.Rows[lv.cursor]
 	return Event{
 		Kind:     kind,

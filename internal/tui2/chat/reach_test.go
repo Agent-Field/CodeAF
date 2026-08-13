@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/registry"
+	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
 )
 
@@ -283,7 +284,7 @@ func surfaceMark(app *App) [4]int {
 	if app.railFocus {
 		focus = 1
 	}
-	if app.railShown {
+	if app.railState == tui2.RailOpen {
 		shown = 1
 	}
 	return [4]int{int(app.page), int(app.overlay), focus, shown}

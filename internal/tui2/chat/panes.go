@@ -966,12 +966,20 @@ type statusPane struct {
 	// the same act esc takes on a live turn, reached by a pointer.
 	interrupt func() tea.Cmd
 
-	// dock is §6's hidden sidebar, collapsed onto this row (footer/dock.go). It
-	// is filled by refresh: whether the drawer is shut, and how much live work
-	// is inside it. openRail is the one act it performs, and it is the very act
-	// the rail chord performs — a click and a chord that opened the drawer by
-	// two different routes would be two drawers.
-	dock     footer.Dock
+	// dock is §6's collapsed sidebar on this row (footer/dock.go): whether the
+	// map is off the frame, and how much live work is behind it. openRail is the
+	// one act it performs, and it is the very act the rail chord performs — a
+	// click and a chord that opened the drawer by two different routes would be
+	// two drawers.
+	//
+	// IT IS A FUNCTION AND NOT A FIELD, and the reason is the width. Whether the
+	// map is on the frame is no longer a flag the surface holds: a terminal too
+	// narrow for the column squeezes it out on its own, and the collapsed rung
+	// draws a handle rather than the rows. Both of those are facts about the
+	// SOLVED FRAME, so the answer has to be taken while the frame is being
+	// drawn — a value filled by refresh was one resize behind, and the bar spent
+	// a whole size class saying there was nothing to see.
+	dock     func() footer.Dock
 	openRail func() tea.Cmd
 
 	// Filled every frame by the app's refresh, from the state that decides
@@ -1118,7 +1126,7 @@ func (p *statusPane) focusContext(width int) footer.FocusContext {
 		KeyMode:       p.keyMode,
 		KeyModeCount:  p.keyCount,
 		Health:        p.health(),
-		Dock:          p.dock,
+		Dock:          p.dockNow(),
 		Thread:        strings.TrimSpace(p.thread),
 		ScopeTail:     p.scopeTail(),
 		Hover:         p.hover,
@@ -1231,6 +1239,15 @@ func (p *statusPane) Hover(local image.Point, inside bool) bool {
 // A visitor says so for as long as it is true, and says what it is waiting on —
 // which is the notice that used to go to stderr and got swallowed whole by the
 // alt screen, leaving a window that looked like a dead app.
+// dockNow asks the app for the collapsed sidebar's counts at the moment the bar
+// is being painted. A nil seam is a window with no sidebar to collapse.
+func (p *statusPane) dockNow() footer.Dock {
+	if p.dock == nil {
+		return footer.Dock{}
+	}
+	return p.dock()
+}
+
 func (p *statusPane) health() []string {
 	note := strings.TrimSpace(p.residency.Note)
 	if !p.residency.Visitor {

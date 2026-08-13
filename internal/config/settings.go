@@ -86,6 +86,29 @@ const (
 	KeySplitPct       = "split_pct"
 	KeyLinearMode     = "linear_mode"
 	KeyNerdFont       = "nerd_font"
+	KeyRailState      = "rail_state"
+)
+
+// RailStates are the three rungs the v2 right rail collapses through, in the
+// order the chord walks them.
+//
+// IT IS A CHOICE AND NOT A BOOLEAN, and that is the whole reason it is not
+// shaped like [KeyLinearMode]. The rail used to be a drawer with two positions
+// — there, or not there — and the middle rung is what makes the third state
+// worth persisting: a slim handle keeps the ONE thing a hidden rail cannot say
+// (something landed in a conversation you are not in) without keeping the
+// twenty-eight columns that made the open rail read as clutter.
+var RailStates = []string{RailOpen, RailSlim, RailHidden}
+
+// The three rungs by name. They are the strings on disk and in the environment,
+// so they are spelled once here and never quoted anywhere else.
+const (
+	// RailOpen is the full column: threads over work, roughly 30 columns.
+	RailOpen = "open"
+	// RailSlim is the handle: one column carrying at most the unseen dot.
+	RailSlim = "slim"
+	// RailHidden is no rail at all.
+	RailHidden = "hidden"
 )
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
@@ -192,6 +215,16 @@ const (
 	// tints, same widths, asserted by a parity gate rather than hoped for — so
 	// a user whose font is not patched loses one keystroke and no layout.
 	DefaultNerdFont = true
+
+	// DefaultRailState opens the rail on a window that has never been told
+	// otherwise, and the reason is the one thing a hidden default cannot do:
+	// THE RAIL TEACHES BY EXISTING. A first-run window with no column beside it
+	// is a window whose threads and whose running work are facts the reader has
+	// to be told about in prose; a column that is simply there is the same
+	// sentence said once, in furniture. After the reader collapses it we never
+	// open it again on their behalf — the handle's dot is the only attention
+	// ask this surface has left.
+	DefaultRailState = RailOpen
 )
 
 // Setting is one row: what it is called, what it reads now, and what happens
@@ -504,6 +537,15 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeBool(dir, KeyLinearMode, raw) },
 		},
 		Setting{
+			Key: KeyRailState, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "sidebar", Env: "AFORGE_RAIL", Choices: RailStates,
+			Hint: "how much of the right rail stands beside the chat: open is the full column, " +
+				"slim is a one-column handle that still shows the unseen dot, hidden is nothing. " +
+				"ctrl+o walks the three; this is where the answer is remembered.",
+			read:  func() string { return RailStateAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyRailState, raw, RailStates) },
+		},
+		Setting{
 			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
 			Label: "attribution", Env: "AFORGE_ATTRIBUTION",
 			Hint: "signs commits and PRs aforge writes for you — one trailer, one footer line. " +
@@ -802,6 +844,54 @@ func LinearModeAt(profileDir string) bool {
 		return value
 	}
 	return DefaultLinearMode
+}
+
+// RailStateAt resolves how much of the v2 right rail this window opens with.
+// It is shaped exactly like [LinearModeAt], including the forgiveness: a
+// spelling nobody recognises reads as the default rather than refusing a launch
+// over a rendering preference.
+//
+// The environment PINS it, which is the ordinary registry contract and is worth
+// one sentence here because of what it means for the chord: while AFORGE_RAIL
+// is set, ctrl+o still moves the rail for this window and [SaveRailState] still
+// writes what the reader chose — the pin decides where the NEXT window opens,
+// not what this one may do. A key that stopped working because a variable was
+// exported would be the affordance lying (5.20).
+func RailStateAt(profileDir string) string {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_RAIL")); raw != "" {
+		if state := strings.ToLower(raw); knownRailState(state) {
+			return state
+		}
+		return DefaultRailState
+	}
+	if value, ok := persistedString(profileDir, KeyRailState); ok {
+		if state := strings.ToLower(strings.TrimSpace(value)); knownRailState(state) {
+			return state
+		}
+	}
+	return DefaultRailState
+}
+
+// SaveRailState records the rung the reader collapsed to.
+//
+// It is EXPORTED where [writeBool] and friends are not, because this row is the
+// one interface setting whose value is chosen by a keystroke rather than by
+// visiting the sheet. The surface has no profile directory of its own — the
+// entry point wires the reader and the writer as a pair, the way
+// [Options.SaveSplitPct] already does for the divider — so this is that pair's
+// other half, and it goes through the same [writeChoice] the sheet's own row
+// does. Two doors, one validation.
+func SaveRailState(profileDir, state string) error {
+	return writeChoice(profileDir, KeyRailState, state, RailStates)
+}
+
+func knownRailState(state string) bool {
+	for _, known := range RailStates {
+		if known == state {
+			return true
+		}
+	}
+	return false
 }
 
 // NerdFontAt resolves whether the v2 chat surface draws its chrome with Nerd
