@@ -149,6 +149,14 @@ The rest change something and each one journals:
   of working, stop a service. Say pause or hold and the two kinds that can be
   held are held instead of ended. "Everything" is the total one, and it asks
   once about live work before touching it.
+- **bash** — run one shell command in the workspace, on your own machine. This
+  is the one hand that changes what YOU experience rather than what aforge
+  knows: a read tells it something, this does something where you are. What the
+  command printed and how it exited is the whole of what it may then tell you
+  about it — it never describes an outcome the command did not show. Anything
+  whose own words spend, send, publish or delete beyond the workspace is refused
+  here and becomes ordinary work you get to see coming, and so is anything that
+  runs longer than a turn.
 - **write** — put a document on disk and hand you the path. Anything you will
   use outside the conversation — a diagram, a document, code, data — is born as
   a file rather than typed into a reply.
