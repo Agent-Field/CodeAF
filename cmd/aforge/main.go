@@ -138,6 +138,8 @@ const usageText = `aforge — build and revise task graphs
                        [--subharness name] [--context-fill 60] [--completion-reserve 65536]
                          do one task and exit — the same living brain the chat runs, with nobody watching
                          the task is run verbatim: what you type is the goal, and what it has to assume it declares
+                         exit 0 the whole of it stands · 1 nothing usable · 2 partial: the wall came first,
+                         the delivery gate rejected it, or parts of it did not land
   aforge plan "<goal>" [-o graph.json] [-w dir] [--json] [--brief] [--ensemble N] [--model slug] [--plan-model slug]
   aforge revise <graph.json> "<what happened>" [--done 1,2,3] [-o graph.json] [--model slug] [--plan-model slug]
   aforge run  <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--model slug] [--plan-model slug]
