@@ -51,6 +51,14 @@ type pollResultMsg struct {
 	messages []store.Message
 	err      error
 
+	// session is the thread this read was ISSUED for, and it is what makes a
+	// thread switch safe (threads.go's switchThread). A read is in flight for a
+	// third of a second; a switch inside that window used to land the old
+	// thread's rows in the new thread's transcript, which is exactly the ghost
+	// the reset was for. The result names its own room now, and applyPoll drops
+	// one addressed to a room the reader has left.
+	session string
+
 	// room and turn are the two money windows (10.5.23), read on the same trip
 	// as the messages because they answer the same watermark: a journal that
 	// did not move cannot have billed anything, so a quiet poll carries neither
@@ -108,16 +116,16 @@ func (a *App) pollCmd() tea.Cmd {
 	return func() tea.Msg {
 		seq, err := backend.LatestEventSeq()
 		if err != nil {
-			return pollResultMsg{err: err}
+			return pollResultMsg{session: session, err: err}
 		}
 		if seq == journal {
-			return pollResultMsg{journal: seq, quiet: true}
+			return pollResultMsg{session: session, journal: seq, quiet: true}
 		}
 		messages, err := backend.Messages(session, watermark, messagePage)
 		if err != nil {
-			return pollResultMsg{journal: seq, err: err}
+			return pollResultMsg{session: session, journal: seq, err: err}
 		}
-		result := pollResultMsg{journal: seq, messages: messages,
+		result := pollResultMsg{session: session, journal: seq, messages: messages,
 			more: len(messages) >= messagePage}
 		result.readSpend(backend, session)
 		if reader, ok := backend.(commandReader); ok {
@@ -309,6 +317,20 @@ func (a *App) behind() bool { return a.journal < a.watermark }
 
 // applyPoll folds one read into the transcript.
 func (a *App) applyPoll(result pollResultMsg) {
+	// A READ BELONGS TO THE THREAD IT WAS ISSUED FOR. Everything below writes
+	// into this window's one transcript, one watermark and one journal claim,
+	// and a switch that happened while this read was out has already reset all
+	// three for a different conversation. Folding the old room's answer in would
+	// put its tail in the new room's window and would move the journal claim
+	// forward past rows the new room has never been asked for — the ghost the
+	// reset exists to prevent, arriving through the back door.
+	//
+	// An empty session on the result is the legacy shape a test may still build
+	// by hand, and it is accepted: the guard is about a read that names ANOTHER
+	// room, not about one that names none.
+	if result.session != "" && result.session != a.session {
+		return
+	}
 	if result.err != nil {
 		a.status.err = result.err.Error()
 		a.shell.Invalidate()
@@ -516,6 +538,21 @@ func (a *App) absorb(messages []store.Message) int {
 		}
 		if _, exists := a.transcript.IndexOf(messageID(message.Seq)); exists {
 			continue
+		}
+		// THE ROOM-SWITCH CONTRACT (chat-simplify.md 5.4), read exactly once.
+		//
+		// This is the only place a journaled row becomes a move of the window,
+		// and it is below the two guards that make "exactly once" true: the read
+		// was issued for this session (pollCmd scopes it, applyPoll re-checks
+		// it), and the row has not been absorbed before (the IndexOf test
+		// immediately above). It is recorded rather than performed, because
+		// performing it here would reset the transcript this loop is still
+		// appending into. See [App.drainRoomSwitch].
+		if target := roomSwitchTarget(message); target != "" && a.roomSwitch.target == "" {
+			a.roomSwitch = roomSwitchIntent{
+				target: target,
+				spoken: strings.TrimSpace(message.Body) != "",
+			}
 		}
 		sanitizeMessage(&message)
 		block := newMessageBlock(message, a.style, a.source)

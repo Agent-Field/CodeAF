@@ -47,6 +47,11 @@ const (
 	// InterruptTarget is the `interrupt esc` chip. Clicking it is the same act
 	// as pressing esc while a turn is streaming.
 	InterruptTarget = "footer:interrupt"
+	// ThreadTarget is the title chip: the name of the working conversation this
+	// window is in (chat-simplify.md 5.3). Clicking it opens the thread
+	// switcher, which is the same act the `t` key performs — one door, two
+	// hands, exactly as the dock and its chord are one drawer.
+	ThreadTarget = "footer:thread"
 )
 
 // Target is one clickable run of the footer, in pane-local columns.

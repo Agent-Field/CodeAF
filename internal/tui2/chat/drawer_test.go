@@ -25,13 +25,19 @@ import (
 // The tests read the FRAME rather than [App.railShown], because the flag is not
 // what the reader is complaining about.
 
-// railOnFrame reports whether the sidebar's own rows are drawn.
+// railSentinel is a row ONLY the sidebar ever draws.
 //
-// It looks for a room name from the fixture rather than for a column of cells:
-// the rail is the only surface in this product that draws the room list, so its
-// presence in a frame IS the rail's presence.
+// It used to be a room's NAME from the fixture, on the reasoning that the rail
+// is the only surface that draws the room list. The chats wave ended that: the
+// bar row's title chip names the thread this window is in, permanently, which is
+// the same string — so a frame with the drawer shut still carried it and every
+// drawer test read as a failure. The `+ new room` door has no such twin: it is
+// the rail's own affordance and nothing else in the product prints it.
+const railSentinel = "+ new room"
+
+// railOnFrame reports whether the sidebar's own rows are drawn.
 func railOnFrame(app *App, width, height int) bool {
-	return strings.Contains(ansi.Strip(app.Frame(width, height)), "the wisp parity push")
+	return strings.Contains(ansi.Strip(app.Frame(width, height)), railSentinel)
 }
 
 // TestTheDrawerIsShutOnEveryPage is the reported defect, one assertion per page.
@@ -253,13 +259,13 @@ func TestANarrowFrameStillReachesTheMapThroughTheDrawer(t *testing.T) {
 	app, _ := boardApp(t)
 	const width, height = 60, 24
 	shut := ansi.Strip(app.Frame(width, height))
-	if strings.Contains(shut, "the wisp parity push") {
+	if strings.Contains(shut, railSentinel) {
 		t.Fatalf("a narrow frame opened with the map as its pane:\n%s", shut)
 	}
 
 	press(app, "ctrl+o")
 	opened := ansi.Strip(app.Frame(width, height))
-	if !strings.Contains(opened, "the wisp parity push") {
+	if !strings.Contains(opened, railSentinel) {
 		t.Fatalf("the chord did not swap the narrow pane to the map:\n%s", opened)
 	}
 	// The transcript yields rather than shrinking — the map IS the pane here.
@@ -268,7 +274,7 @@ func TestANarrowFrameStillReachesTheMapThroughTheDrawer(t *testing.T) {
 	}
 
 	press(app, "ctrl+o")
-	if back := ansi.Strip(app.Frame(width, height)); strings.Contains(back, "the wisp parity push") {
+	if back := ansi.Strip(app.Frame(width, height)); strings.Contains(back, railSentinel) {
 		t.Fatalf("the chord did not put the narrow map away:\n%s", back)
 	}
 }
@@ -310,7 +316,7 @@ func TestTheHiddenRailNeverBecomesTheMainPane(t *testing.T) {
 	// rail that is off the frame into the lens.
 	app.setScope(true)
 	frame := ansi.Strip(app.Frame(60, 24))
-	if strings.Contains(frame, "the wisp parity push") {
+	if strings.Contains(frame, railSentinel) {
 		t.Fatalf("a narrow board swapped its lens for a hidden rail:\n%s", frame)
 	}
 	if !app.shell.RailHidden() {

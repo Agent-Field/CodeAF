@@ -85,6 +85,15 @@ type list struct {
 	// linear is [Options.Linear], copied once at construction: it is a rendering
 	// mode the surface is built in, not a state that moves under it.
 	linear bool
+	// noHeaders drops the group NAME above each section and keeps the blank line
+	// between them. It is for a surface whose own header already names what the
+	// list holds — [Switcher] — where a `threads` row over a sheet titled
+	// `threads` would be §19's same-fact-twice at the top of a four-row list.
+	//
+	// The groups themselves survive: the blank is the structure (5.13 spends
+	// this surface's structure budget on whitespace), and the header is the
+	// label on it. Dropping the label is not dropping the boundary.
+	noHeaders bool
 
 	rows   []row
 	hits   []hit
@@ -389,7 +398,9 @@ func (l *list) buildItems() {
 			if len(l.items) > 0 {
 				l.items = append(l.items, item{blank: true, hit: -1})
 			}
-			l.items = append(l.items, item{header: true, sec: sec, hit: -1})
+			if !l.noHeaders {
+				l.items = append(l.items, item{header: true, sec: sec, hit: -1})
+			}
 			prev = sec
 		}
 		l.items = append(l.items, item{hit: int32(i)})

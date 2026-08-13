@@ -259,6 +259,21 @@ type App struct {
 	capability *palette.Capability
 	settings   *settings.Model
 	models     *modelui.Picker
+	// switcher is the chats switcher (threads.go). It is built on first use like
+	// every other door on this plane, so a window whose reader never presses `t`
+	// never pays for one.
+	switcher *palette.Switcher
+
+	// roomSwitch is a split the head has settled in the journal and this window
+	// has read but not yet performed (5.4). See [App.drainRoomSwitch].
+	roomSwitch roomSwitchIntent
+
+	// threadSeen is when this window last had each thread's state on screen,
+	// keyed by session id. It is what the switcher's unseen-delivery `●` is
+	// derived from until the engine's own [ThreadReader] answers, and it is
+	// deliberately a claim about THIS WINDOW rather than about the person: a
+	// thread nobody here has visited carries no entry and therefore no dot.
+	threadSeen map[string]time.Time
 
 	// view is the main pane's current lens: nil is the room's own conversation,
 	// anything else is a task room or the card a cursor move previewed.
@@ -462,6 +477,9 @@ func New(opts Options) *App {
 		// openRail is the dock's act: the shut drawer, clicked. It is the very
 		// function the rail chord runs (§6, [App.toggleRail]).
 		openRail: app.toggleRail,
+		// openThreads is the title chip's act: the switcher, clicked. It is the
+		// very function the `t` key runs (5.3, [App.openSwitcher]).
+		openThreads: app.openSwitcher,
 		// The places tabs (§7's left zone) are filled by refresh from the page
 		// enum — see [App.places]. They are deliberately NOT written out here as
 		// well: the words and which of them is bright are one fact, and a copy
@@ -800,7 +818,11 @@ func (a *App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case pollResultMsg:
 		a.applyPoll(msg)
-		return a, tea.Batch(a.afterPoll(), a.probeResidency(), a.followNode(msg))
+		// The read chain is taken down BEFORE a settled split is performed, so
+		// the switch arms the poll for the thread it is arriving in rather than
+		// colliding with the one it is leaving. See [App.drainRoomSwitch].
+		chain := tea.Batch(a.afterPoll(), a.probeResidency(), a.followNode(msg))
+		return a, tea.Batch(chain, a.drainRoomSwitch())
 
 	case residencyMsg:
 		a.applyResidency(msg)
@@ -943,6 +965,13 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "alt+,":
 		return a.openSettings()
 
+	case threadsChord:
+		// The switcher's chorded spelling, bound unconditionally. The bare `t`
+		// below is the key the doc names and the registry leads with; this is
+		// the one a reader can press mid-sentence, which is the same pair every
+		// other bare-key row on this surface carries.
+		return a.openSwitcher()
+
 	case "ctrl+o":
 		// The chord toggles WHERE THE KEYBOARD IS, not whether a flag is set.
 		//
@@ -1005,6 +1034,16 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	// state a reader is actually in. See [App.helpKeyLive].
 	if key == helpKey && a.helpKeyLive() {
 		return a.openCapability()
+	}
+
+	// The thread switcher (chat-simplify.md 5.2's J3), claimed on the same terms
+	// as `?` above and for the same reason: on an empty draft nothing is being
+	// written and the letter can only have been the door, while a sentence in
+	// progress keeps `t` as the character it is. [App.helpKeyLive] is the one
+	// predicate both doors consult, so the two bare keys can never disagree
+	// about when a bare key is a key.
+	if key == threadsKey && a.helpKeyLive() {
+		return a.openSwitcher()
 	}
 
 	// An open question owns the bare answer keys, and owns them BEFORE the rail
@@ -1420,9 +1459,13 @@ func (a *App) refresh() {
 	}
 	a.status.residency = a.residency
 	a.sizeComposer()
-	if a.source != nil {
-		a.status.room = a.source.RoomTitle(a.session)
-	}
+	// The title chip (chat-simplify.md 5.3): the scribe's name for the thread
+	// this window is in, and NOTHING while it has none. It is asked through
+	// [App.threadName] rather than through [scopeSource.RoomTitle] because the
+	// two answer different questions — the rail needs a word for every row it
+	// draws and falls back to "untitled room", and the chip would rather say
+	// nothing than say that.
+	a.status.thread = a.threadName(a.session)
 	a.status.live = a.turn.active
 	a.status.escInterrupts = a.canInterrupt()
 	a.status.verbs = a.verbs

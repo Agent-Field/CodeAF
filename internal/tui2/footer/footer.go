@@ -78,6 +78,21 @@ type FocusContext struct {
 	// them yet.
 	Places []Place
 
+	// Thread is the TITLE CHIP: the scribe's name for the working conversation
+	// this window is in (chat-simplify.md 5.3, "thread name in the placeline,
+	// always visible; click = switcher"). It leads the middle zone, ahead of the
+	// breadcrumb, because it names the conversation and the trail names how deep
+	// inside it you have gone — WHICH, then WHERE.
+	//
+	// EMPTY DRAWS NOTHING, and the silence is the rule rather than a fallback. A
+	// thread the naming scribe has not reached yet has no name, and 13.3.4 puts
+	// an id in the never-shown tier — so the honest rendering of "this
+	// conversation is not named yet" is an absence, never `chat-20260812-…` and
+	// never a placeholder word standing where a name will be. See
+	// [ThreadTarget]: the chip is also the only door on this row that opens a
+	// list, so a chip that is not drawn is one the reader reaches by its key.
+	Thread string
+
 	// ScopeTail is the breadcrumb — the trail of where the reader has descended
 	// to. It rides the MIDDLE zone, beside the tabs rather than instead of them.
 	//
@@ -324,6 +339,9 @@ func runsWidth(runs []run) int {
 const (
 	zonePlaces = "places"
 	zoneGrowth = "places-growth"
+	// zoneThread is the title chip — which working conversation this window is
+	// in. See [FocusContext.Thread].
+	zoneThread = "thread"
 	zoneTrail  = "trail"
 	zoneMiddle = "middle"
 	zoneHealth = "right-health"
@@ -342,6 +360,15 @@ func priorityOf(id string) int {
 	switch id {
 	case zonePlaces:
 		return 100
+	// THE THREAD OUTRANKS EVERY RECEIPT AND YIELDS ONLY TO THE TABS. §7's ladder
+	// ends "the last thing standing is where you are", and with chats the answer
+	// to that question has two halves: which of the product's three places, and
+	// which of the conversations inside the first of them. A row that dropped
+	// the conversation's name to keep the day's spend would be answering "how
+	// much have I spent" on a frame that could no longer say what it was spent
+	// on.
+	case zoneThread:
+		return 95
 	case zoneSpend:
 		return 90
 	// The dock outranks every other standing fact and yields only to the money
@@ -464,16 +491,25 @@ func (m *Model) layout(ctx FocusContext, width int) ([]placed, bool) {
 	x0 := blocks.Width(pad)
 
 	leftFloor, leftFull := m.leftWidths(ctx)
+	threadFloor, threadFull := threadWidths(ctx)
 	trailFloor, trailFull := trailWidths(ctx)
 	middle := middleRuns(ctx)
 	facts := rightFacts(ctx)
 
-	cols := make([]tokens.FooterColumn, 0, 5+len(facts))
+	cols := make([]tokens.FooterColumn, 0, 6+len(facts))
 	if leftFloor > 0 {
 		cols = append(cols, tokens.FooterColumn{ID: zonePlaces, MinWidth: leftFloor, Priority: priorityOf(zonePlaces)})
 		if grow := leftFull - leftFloor; grow > 0 {
 			cols = append(cols, tokens.FooterColumn{ID: zoneGrowth, MinWidth: grow, Priority: priorityOf(zoneGrowth)})
 		}
+	}
+	// The title chip is fitted at its floor and grows into the slack, for the
+	// reason the trail below it is: fitting a name at what it wants would let one
+	// long thread title push the gauge and the day's money off a terminal that
+	// had room for all three.
+	if threadFloor > 0 {
+		cols = append(cols, tokens.FooterColumn{ID: zoneThread,
+			MinWidth: threadFloor + zoneGapWidth, Priority: priorityOf(zoneThread)})
 	}
 	// The trail is fitted at its FLOOR — the way out, the mark for everything
 	// above it, and enough of the name to recognise it — and grows into the
@@ -535,6 +571,24 @@ func (m *Model) layout(ctx FocusContext, width int) ([]placed, bool) {
 	if slack < 0 {
 		slack = 0
 	}
+	// The THREAD is asked before the trail, and the order is the sentence the
+	// middle zone reads as: which conversation, then how deep inside it. A
+	// budget spent tail-first would spell three levels of a task's path over a
+	// row that could no longer say which thread the task belonged to.
+	var thread []run
+	if keep[zoneThread] {
+		budget := threadFloor + slack
+		if budget > threadFull {
+			budget = threadFull
+		}
+		thread = threadRuns(ctx, budget)
+		if grown := runsWidth(thread) - threadFloor; grown > 0 {
+			slack -= grown
+		}
+		if slack < 0 {
+			slack = 0
+		}
+	}
 	var trail []run
 	if keep[zoneTrail] {
 		budget := trailFloor + slack
@@ -565,6 +619,16 @@ func (m *Model) layout(ctx FocusContext, width int) ([]placed, bool) {
 			trail = append(trail, run{text: sep, tok: tokens.TextTertiary})
 		}
 		middle = append(trail, middle...)
+	}
+	// And the thread leads them both. It is joined by the SEPARATOR rather than
+	// by the trail's own `‹`: the way-out glyph means "there is a step above
+	// this", and there is no step above a thread — it is the conversation, not a
+	// scope inside one.
+	if len(thread) > 0 {
+		if len(middle) > 0 {
+			thread = append(thread, run{text: sep, tok: tokens.TextTertiary})
+		}
+		middle = append(thread, middle...)
 	}
 
 	return placeZones(x0, inner, left, middle, right), true
@@ -610,6 +674,62 @@ func placeZones(x0, inner int, left, middle, right []run) []placed {
 // the whole trail and its floor, or every tab and the current one alone.
 func (m *Model) leftWidths(ctx FocusContext) (floor, full int) {
 	return runsWidth(m.placeRuns(ctx.Places, 0)), runsWidth(m.placeRuns(ctx.Places, -1))
+}
+
+// threadNameFloor is the fewest cells of a thread's name worth keeping, and
+// threadNameMax is the most this row will ever spend on one.
+//
+// The floor is [scopeNameFloor]'s: below it a name stops being an answer and
+// becomes a shape, and the column is better dropped whole. The cap is the other
+// end of the same argument — a thread the scribe named in a long sentence must
+// not be able to push the tabs, the trail and every receipt off a wide terminal
+// to spell itself in full. Both cuts happen in the MIDDLE ([middleCut]), for
+// the reason scope.go gives: a title is recognized by its head and
+// disambiguated by its tail.
+const (
+	threadNameFloor = scopeNameFloor
+	threadNameMax   = 28
+)
+
+// threadWidths is what the title chip wants and the least it is worth keeping
+// at.
+func threadWidths(ctx FocusContext) (floor, full int) {
+	name := strings.TrimSpace(ctx.Thread)
+	if name == "" {
+		return 0, 0
+	}
+	full = blocks.Width(name)
+	if full > threadNameMax {
+		full = threadNameMax
+	}
+	floor = full
+	if floor > threadNameFloor {
+		floor = threadNameFloor
+	}
+	return floor, full
+}
+
+// threadRuns is the title chip at a budget: the name, middle-cut to fit, as one
+// run answering to [ThreadTarget].
+//
+// It is ONE RUN and one tier — the secondary grey — because the chip is not a
+// verb·key pair. §16's chip grammar spends two tiers on a control that names an
+// act and the key that reaches it; this names a PLACE, the way the current tab
+// and the trail's last name do, and it is drawn at exactly their tier so the
+// three read as one sentence about where the reader is rather than as a control
+// wedged between two labels.
+func threadRuns(ctx FocusContext, budget int) []run {
+	name := strings.TrimSpace(ctx.Thread)
+	if name == "" || budget <= 0 {
+		return nil
+	}
+	if blocks.Width(name) > budget {
+		name = middleCut(name, budget)
+	}
+	if name == "" {
+		return nil
+	}
+	return []run{{id: ThreadTarget, text: name, tok: tokens.TextSecondary}}
 }
 
 // trailWidths is what the breadcrumb wants and the least it is worth keeping

@@ -55,6 +55,9 @@ const (
 	// models beneath. It is raised by the settings sheet's model rows, by the
 	// registry's own `/model` entry, and by nothing that bypasses either.
 	overlayModel
+	// overlayThreads is the chats switcher (chat-simplify.md 5.2's J3): `t`, or
+	// a click on the title chip. See threads.go.
+	overlayThreads
 )
 
 // -- raising and dropping ----------------------------------------------------
@@ -277,6 +280,8 @@ func (a *App) overlayKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.settings.Key(msg), true
 	case overlayModel:
 		return a.models.Key(msg), true
+	case overlayThreads:
+		return a.switcher.Key(msg), true
 	}
 	return nil, false
 }
@@ -316,6 +321,13 @@ func (a *App) chooseFrom(result palette.Result, from []string) tea.Cmd {
 		return a.runEntryFrom(chosen.ID, from)
 	case palette.OpenSetting:
 		return a.openSettingRowFrom(chosen.Key, from)
+	// The two chats results (threads.go). Neither takes the path: both leave the
+	// window in a different conversation, and there is nothing on screen
+	// afterwards to walk back to — which is the same reason a jump takes none.
+	case palette.SwitchThread:
+		return a.switchThread(chosen.ID)
+	case palette.NewThread:
+		return a.openRoomCmd()
 	}
 	return nil
 }
@@ -396,6 +408,11 @@ func (a *App) runEntry(id string) tea.Cmd {
 		// nothing with. A row that named a door and opened none is the exact
 		// shape 5.22 rule 5 refuses.
 		return a.openModelPicker()
+	case threadsEntryID:
+		// The switcher, reached by its registry row rather than by its key: the
+		// palette lists it, the `?` sheet teaches it, and all three arrive here.
+		return a.openSwitcher()
+
 	case helpEntryID:
 		// `?` from inside `?` is not a loop: the sheet was raised over the room
 		// the reader is in, and raising it again re-reads that room's catalog.

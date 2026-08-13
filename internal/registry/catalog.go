@@ -146,6 +146,15 @@ func threadKeyRows() []Entry {
 		// "y" are not.
 		{ID: "key.thread.clear-draft", Verb: "clear draft", Description: "clear the draft from the cursor back to its start",
 			Scope: ScopeThread, Key: "ctrl+u"},
+		// The thread switcher (chat-simplify.md 5.2's J3). It is recorded with
+		// BOTH spellings for the reason the receipts and copy rows above it are:
+		// `t` is the key the doc names and the one a reader learns, and in a
+		// composer-first room a bare letter is draft text — so the chat surface
+		// claims `t` only where it cannot mean anything else (an empty draft, no
+		// overlay) and binds alt+t everywhere. Both are real bindings in live
+		// code, so both are recorded.
+		{ID: "key.threads", Verb: "switch thread", Description: "open the list of working conversations, or start one",
+			Scope: ScopeThread, Key: "t", ChordKey: "alt+t"},
 		{ID: "key.thread.narrow-split", Verb: "narrow split", Description: "narrow the chat/task split",
 			Scope: ScopeThread, Key: "["},
 		{ID: "key.thread.widen-split", Verb: "widen split", Description: "widen the chat/task split",

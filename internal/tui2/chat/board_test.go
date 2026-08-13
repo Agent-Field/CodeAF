@@ -316,12 +316,12 @@ func TestThePlacesCurrentFollowsThePage(t *testing.T) {
 // on the thread the rail is a drawer, and on the board there is no drawer.
 func TestTheSidebarHidesOnTheBoardAndComesBack(t *testing.T) {
 	app := pageApp(t)
-	if shut := ansi.Strip(app.Frame(120, 24)); strings.Contains(shut, "the wisp parity push") {
+	if shut := ansi.Strip(app.Frame(120, 24)); strings.Contains(shut, railSentinel) {
 		t.Fatalf("the sidebar stood open on a fresh window:\n%s", shut)
 	}
 	press(app, "ctrl+o")
 	wide := ansi.Strip(app.Frame(120, 24))
-	if !strings.Contains(wide, "the wisp parity push") {
+	if !strings.Contains(wide, railSentinel) {
 		t.Fatalf("the chord did not open the sidebar beside the thread:\n%s", wide)
 	}
 
@@ -329,20 +329,20 @@ func TestTheSidebarHidesOnTheBoardAndComesBack(t *testing.T) {
 	board := boardFrame(t, app, 120, 24)
 	// The room list is the sidebar's and only the sidebar's: the board is the
 	// WORK view, so a room name on this frame means the rail is still there.
-	if strings.Contains(board, "the wisp parity push") {
+	if strings.Contains(board, railSentinel) {
 		t.Fatalf("the sidebar is still drawn beside the board:\n%s", board)
 	}
 	// And the chord cannot summon it here: on this page it moves the keyboard
 	// between the board and the mouth, which is what it has always meant on a
 	// page (see [App.key]).
 	press(app, "ctrl+o")
-	if still := boardFrame(t, app, 120, 24); strings.Contains(still, "the wisp parity push") {
+	if still := boardFrame(t, app, 120, 24); strings.Contains(still, railSentinel) {
 		t.Fatalf("the chord opened a sidebar the board has no room for:\n%s", still)
 	}
 
 	// Back on the thread the drawer is remembered as the reader left it.
 	app.showPage(pageThread)
-	if back := ansi.Strip(app.Frame(120, 24)); !strings.Contains(back, "the wisp parity push") {
+	if back := ansi.Strip(app.Frame(120, 24)); !strings.Contains(back, railSentinel) {
 		t.Fatalf("the sidebar did not come back on the chat page:\n%s", back)
 	}
 }
@@ -1402,14 +1402,14 @@ func TestTheNotebookTabDrawsTheHomesPage(t *testing.T) {
 	// [App.railShown]). The chord keeps its PAGE meaning here (it moves the
 	// keyboard between the notebook and the mouth), so the drawer's door on a
 	// page is the dock in the bar row.
-	if strings.Contains(frame, "the wisp parity push") {
+	if strings.Contains(frame, railSentinel) {
 		t.Fatalf("the notebook page opened the drawer by itself:\n%s", frame)
 	}
 	if app.dockCounts().Shown != true {
 		t.Fatal("the notebook page draws no dock, so the shut drawer has no door")
 	}
 	app.toggleRail()
-	if opened := ansi.Strip(app.Frame(100, 20)); !strings.Contains(opened, "the wisp parity push") {
+	if opened := ansi.Strip(app.Frame(100, 20)); !strings.Contains(opened, railSentinel) {
 		t.Fatalf("the notebook page refuses the sidebar:\n%s", opened)
 	}
 }
