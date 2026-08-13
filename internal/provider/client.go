@@ -505,12 +505,36 @@ func (e *APIError) Error() string {
 	return fmt.Sprintf("API error (%d): %s", e.Status, e.Body)
 }
 
+// errorBody is the shape a refusal arrives in, read for the one field anybody
+// downstream can use.
+//
+// It is declared here rather than reusing the SDK's ai.ErrorResponse, and that
+// is a fix rather than a preference: ai.ErrorDetail types `code` as a string,
+// OpenRouter sends it as a number, and json.Unmarshal fails the WHOLE object on
+// that one field. So every OpenRouter refusal — the routing 404s, which are the
+// ones a person most needs explained — fell through to the raw-payload arm and
+// arrived as a JSON blob with the readable sentence trapped inside it. Reading
+// only the field that is used, and leaving the rest as raw bytes, is what makes
+// the message reachable regardless of what a provider types its own codes as.
+type errorBody struct {
+	Error struct {
+		Message string          `json:"message"`
+		Code    json.RawMessage `json:"code,omitempty"`
+	} `json:"error"`
+	// Some providers put the sentence at the top level instead.
+	Message string `json:"message"`
+}
+
 // apiError decodes one refusal into its parts.
 func apiError(status int, payload []byte) error {
 	failure := &APIError{Status: status, Body: string(payload)}
-	var decoded ai.ErrorResponse
-	if err := json.Unmarshal(payload, &decoded); err == nil && strings.TrimSpace(decoded.Error.Message) != "" {
-		failure.Message = decoded.Error.Message
+	var decoded errorBody
+	if err := json.Unmarshal(payload, &decoded); err == nil {
+		if message := strings.TrimSpace(decoded.Error.Message); message != "" {
+			failure.Message = message
+		} else {
+			failure.Message = strings.TrimSpace(decoded.Message)
+		}
 	}
 	return failure
 }
