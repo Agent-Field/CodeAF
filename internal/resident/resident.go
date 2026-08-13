@@ -256,7 +256,12 @@ type Reconciler struct {
 	// not write another one, which would otherwise make the lane a perpetual
 	// writer and defeat the quiet-tick gate.
 	settlementMark    int64
-	progress          map[string]*subtreeProgress
+	progress map[string]*subtreeProgress
+	// commandStrikes counts how many times each pending command has stalled.
+	// In memory on purpose: it is a fact about this process's luck with a
+	// provider, not about the request, and a restart re-reads the same pending
+	// row with a clean slate — which is exactly what a fresh process should do.
+	commandStrikes    map[int64]int
 	learningMoments   map[string]*pendingLearningMoment
 	lastConsolidation time.Time
 	// charterOutcomeSeq is how far the charter ladder has finished reading. It
@@ -577,10 +582,15 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("resident tick: pending commands: %w", err)
 		}
-		if err := r.reconcileBatch(ctx, commands); err != nil {
+		deferred, err := r.reconcileBatch(ctx, commands)
+		if err != nil {
 			return fmt.Errorf("resident tick: %w", err)
 		}
-		if len(commands) < commandBatchSize {
+		// A deferred command is still at the head of the pending queue, so
+		// re-reading here would hand it straight back and burn its second strike
+		// against the same wedged provider in the same breath. The next tick is
+		// the retry; this one is done draining.
+		if deferred || len(commands) < commandBatchSize {
 			break
 		}
 	}
@@ -827,14 +837,21 @@ func independentCommand(command store.Command) bool {
 // pool would have fixed. The runner was never the thing holding the second job
 // back — the second job did not exist yet, because the first one's planner was
 // still talking to a model on the only goroutine allowed to make work.
-func (r *Reconciler) reconcileBatch(ctx context.Context, commands []store.Command) error {
+// It reports whether any command in the batch was left pending. A stalled
+// command is not a reason to stop applying the ones behind it — that was the
+// entire failure this guards against — so the batch runs to the end either way
+// and only the drain's re-read is held back.
+func (r *Reconciler) reconcileBatch(ctx context.Context, commands []store.Command) (bool, error) {
+	deferred := false
 	for start := 0; start < len(commands); {
 		if !independentCommand(commands[start]) {
 			if err := ctx.Err(); err != nil {
-				return err
+				return deferred, err
 			}
-			if err := r.reconcileCommand(ctx, commands[start]); err != nil {
-				return fmt.Errorf("command %d: %w", commands[start].Seq, err)
+			left, err := r.reconcileCommand(ctx, commands[start])
+			deferred = deferred || left
+			if err != nil {
+				return deferred, fmt.Errorf("command %d: %w", commands[start].Seq, err)
 			}
 			start++
 			continue
@@ -843,12 +860,14 @@ func (r *Reconciler) reconcileBatch(ctx context.Context, commands []store.Comman
 		for end < len(commands) && independentCommand(commands[end]) {
 			end++
 		}
-		if err := r.reconcileGroup(ctx, commands[start:end]); err != nil {
-			return err
+		left, err := r.reconcileGroup(ctx, commands[start:end])
+		deferred = deferred || left
+		if err != nil {
+			return deferred, err
 		}
 		start = end
 	}
-	return nil
+	return deferred, nil
 }
 
 // reconcileGroup applies a run of independent commands concurrently and then
@@ -859,14 +878,16 @@ func (r *Reconciler) reconcileBatch(ctx context.Context, commands []store.Comman
 // resolution, the receipt and any askback — the parts a reader sees, and the
 // parts that touch the reconciler's own locked helpers — and those stay
 // single-file, in the order the person said them.
-func (r *Reconciler) reconcileGroup(ctx context.Context, group []store.Command) error {
+func (r *Reconciler) reconcileGroup(ctx context.Context, group []store.Command) (bool, error) {
 	if len(group) < 2 {
 		if len(group) == 1 {
-			if err := r.reconcileCommand(ctx, group[0]); err != nil {
-				return fmt.Errorf("command %d: %w", group[0].Seq, err)
+			left, err := r.reconcileCommand(ctx, group[0])
+			if err != nil {
+				return left, fmt.Errorf("command %d: %w", group[0].Seq, err)
 			}
+			return left, nil
 		}
-		return nil
+		return false, nil
 	}
 	type applied struct {
 		outcome commandOutcome
@@ -895,26 +916,37 @@ func (r *Reconciler) reconcileGroup(ctx context.Context, group []store.Command) 
 				}()
 				defer wait.Done()
 				defer func() { <-slots }()
-				results[index].outcome, results[index].err = r.applyCommand(ctx, group[index])
+				results[index].outcome, results[index].err = r.applyBounded(ctx, group[index])
 			}(index)
 		}
 		wait.Wait()
 	})
 	// Only what was actually applied is settled. A command the context cut off
-	// before it started is still pending, and the next tick owns it.
+	// before it started is still pending, and the next tick owns it — and so is
+	// one whose own wall expired, which settleOrStrike leaves for the same tick
+	// to collect. Settling every started command in seq order is unchanged: a
+	// stall is a settlement that decided not to resolve, not a gap in the order.
+	deferred := false
 	for index, command := range group[:started] {
-		if err := r.settleCommand(command, results[index].outcome, results[index].err); err != nil {
-			return fmt.Errorf("command %d: %w", command.Seq, err)
+		left, err := r.settleOrStrike(ctx, command, results[index].outcome, results[index].err)
+		deferred = deferred || left
+		if err != nil {
+			return deferred, fmt.Errorf("command %d: %w", command.Seq, err)
 		}
 	}
-	return ctx.Err()
+	if started < len(group) {
+		deferred = true
+	}
+	return deferred, ctx.Err()
 }
 
-func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command) error {
+// reconcileCommand applies one command and settles it, reporting whether the
+// command was left pending for a later tick.
+func (r *Reconciler) reconcileCommand(ctx context.Context, command store.Command) (bool, error) {
 	var outcome commandOutcome
 	var err error
-	r.thinking(func() { outcome, err = r.applyCommand(ctx, command) })
-	return r.settleCommand(command, outcome, err)
+	r.thinking(func() { outcome, err = r.applyBounded(ctx, command) })
+	return r.settleOrStrike(ctx, command, outcome, err)
 }
 
 // thinking runs one stretch of model work with the reconciler's lock released,
@@ -1201,10 +1233,17 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 			"node: " + promotion.ID + "\nverbatim ask: " + promotion.Provenance.Intent +
 			"\npartial result:\n" + clipBlock(promotion.Summary, store.MaxDigestBytes)
 	}
+	// The first model round-trip of every splice, and until now the longest
+	// silence on the card: nothing between the head saying "on it" and the
+	// planner's first row said the request was even being read.
+	r.noteCommandStage(command, stageReading, "")
 	compiled, err := r.compile(ctx, command.Instruction, compileContext)
 	if err != nil {
 		return commandOutcome{}, fmt.Errorf("compile request: %w", err)
 	}
+	// What the compiler made of the ask, in the compiler's own words. This is
+	// the reading, and it is the one piece of the phase a person can check.
+	r.noteCommandStage(command, stageReading, firstLine(compiled.Goal))
 	compiled.Goal = anchorAttachedDocuments(compiled.Goal, command.Attachments)
 	if promoted {
 		compiled.BuildsOn = append([]string{promotion.ID}, compiled.BuildsOn...)
@@ -1278,6 +1317,11 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	}
 
 	var subtree store.Subtree
+	// The compile is answered and the plan has not started. Saying so closes the
+	// reading and opens the pass that produces every row after this one — and it
+	// is the only row the two silent shapes of splice, a recognized craft and a
+	// planner-less single leaf, will ever produce before the work exists.
+	r.noteCommandStage(command, stagePlanning, "")
 	// Learned know-how is asked for before anything is planned: a request the
 	// shelf answers decisively compiles to that workflow's subtree, and every
 	// other request plans exactly as it always did.
@@ -1286,13 +1330,13 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		subtree = use.subtree
 	} else if r.plan == nil {
 		subtree = store.Subtree{Nodes: []store.NodeSpec{{
-			ID:    fmt.Sprintf("task-%d", command.Seq),
+			ID:    commandPlanAnchor(command),
 			Brief: compiled.Goal,
 			Stage: 1,
 		}}}
 	} else {
 		planCtx := withPlanAnchor(ctx, PlanAnchor{
-			NodeID:    fmt.Sprintf("task-%d", command.Seq),
+			NodeID:    commandPlanAnchor(command),
 			SessionID: command.SessionID, CommandSeq: command.Seq,
 		})
 		// The planner sees the decisions, not just the goal. An assumption that
@@ -1333,6 +1377,11 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 			return commandOutcome{}, err
 		}
 	}
+	// The work exists. This is the last row the command posts and the one that
+	// ends the wait — the receipt that follows it is filed rather than spoken
+	// (HeadSpeaksFor), so without this the card's final transition from being
+	// made to being real was signalled by nothing at all.
+	r.noteCommandStage(command, stageStarting, spliceStageLatest(subtree))
 
 	receipt := compileReceipt(compiled.Goal, compiled.Assumptions, compiled.ModelNote)
 	switch {
