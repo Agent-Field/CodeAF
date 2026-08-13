@@ -181,19 +181,100 @@ type errorEnvelope struct {
 }
 
 // decodeErrorEnvelope reads a provider's own sentence out of an error body, or
-// says there is none. It tolerates trailing bytes — an error string is often a
-// body that was clipped mid-JSON on its way through a bounded field, and half a
-// blob is exactly the case a reader most needs saved from.
+// says there is none.
+//
+// Trailing bytes past the envelope are ignored, which json.Decoder gives for
+// free, and a body that was CUT SHORT is closed and read once more. That second
+// attempt matters more than it looks: an error string travels through bounded
+// fields on its way to a person, so the blob that reaches a reader is routinely
+// half a blob — and half a blob is exactly the case they most need saved from.
+// Closing it adds no content, it only lets the decoder finish reading content
+// that is already there; a repair that produced nothing readable still returns
+// nothing.
 func decodeErrorEnvelope(body string) string {
-	decoder := json.NewDecoder(strings.NewReader(body))
-	var envelope errorEnvelope
-	if err := decoder.Decode(&envelope); err != nil {
-		return ""
-	}
-	if message := strings.TrimSpace(envelope.Error.Message); message != "" {
+	if message, ok := decodeEnvelopeExactly(body); ok {
 		return message
 	}
-	return strings.TrimSpace(envelope.Message)
+	if closed, ok := closeTruncatedJSON(body); ok {
+		if message, ok := decodeEnvelopeExactly(closed); ok {
+			return message
+		}
+	}
+	return ""
+}
+
+func decodeEnvelopeExactly(body string) (string, bool) {
+	var envelope errorEnvelope
+	if err := json.NewDecoder(strings.NewReader(body)).Decode(&envelope); err != nil {
+		return "", false
+	}
+	if message := strings.TrimSpace(envelope.Error.Message); message != "" {
+		return message, true
+	}
+	message := strings.TrimSpace(envelope.Message)
+	return message, message != ""
+}
+
+// closeTruncatedJSON balances a body that was cut mid-object.
+//
+// It walks the bytes once, tracking whether it is inside a string and how deep
+// the nesting is, then closes whatever is still open — dropping a dangling key
+// or half-written value at the end, which by construction carries no complete
+// field anybody could have read. It reports false when there was nothing to
+// close, so a body that failed to decode for some other reason is not handed a
+// second chance it cannot use.
+func closeTruncatedJSON(body string) (string, bool) {
+	var stack []byte
+	inString, escaped := false, false
+	// cut is the offset just past the last byte that was structurally complete:
+	// a closed value, or the comma or brace that ended one.
+	cut := 0
+	for index := 0; index < len(body); index++ {
+		char := body[index]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case char == '\\':
+				escaped = true
+			case char == '"':
+				inString = false
+				cut = index + 1
+			}
+			continue
+		}
+		switch char {
+		case '"':
+			inString = true
+		case '{':
+			stack = append(stack, '}')
+		case '[':
+			stack = append(stack, ']')
+		case '}', ']':
+			if len(stack) == 0 || stack[len(stack)-1] != char {
+				return "", false
+			}
+			stack = stack[:len(stack)-1]
+			cut = index + 1
+		case ',', ':':
+			cut = index
+		case ' ', '\t', '\n', '\r':
+		default:
+			cut = index + 1
+		}
+	}
+	// A body cut mid-string is the common shape rather than an odd one — a clip
+	// lands wherever it lands — and it needs no special case: cut already points
+	// at the last thing that was structurally complete, which is before the
+	// dangling key's opening quote.
+	if len(stack) == 0 || cut == 0 {
+		return "", false
+	}
+	closing := make([]byte, 0, len(stack))
+	for index := len(stack) - 1; index >= 0; index-- {
+		closing = append(closing, stack[index])
+	}
+	return strings.TrimRight(body[:cut], ",:") + string(closing), true
 }
 
 // firstSentence is one clause of somebody else's paragraph. A provider that
