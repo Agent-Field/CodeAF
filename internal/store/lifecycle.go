@@ -426,7 +426,7 @@ func (s *Store) ReleaseOrphans() ([]string, error) {
 func (s *Store) finishParkedCancellations() error {
 	rows, err := s.db.Query(
 		`SELECT id, error FROM nodes
-		 WHERE status = ? AND cancel_requested = 1 AND folded = 0 AND id != ?`,
+		 WHERE status = ? AND cancel_requested = 1 AND id != ?`,
 		Pending, RootID)
 	if err != nil {
 		return fmt.Errorf("finish parked cancellations: %w", err)

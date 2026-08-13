@@ -146,3 +146,13 @@ func (s *Store) NodeLife(id string) (JobLife, bool, error) {
 	}
 	return life, true, nil
 }
+
+// notFiledAway is the SQL predicate for "this row is not history".
+//
+// Folding files SETTLED work away, and every verb below already refuses work
+// that has settled — so `folded = 0` beside a status gate was redundant on
+// every row except the one it must not refuse: a node that is still running,
+// claimed or pending under a lineage that was filed. On that row the redundant
+// clause turned "stop that" into "there is no such work", which is the shape a
+// read defect takes when it reaches a person as a decision.
+const notFiledAway = `(folded = 0 OR status NOT IN ('done', 'failed', 'cancelled'))`
