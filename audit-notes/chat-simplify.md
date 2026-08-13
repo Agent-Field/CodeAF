@@ -583,3 +583,38 @@ reuse of deliverBrief), the split-offer judgment (prompt + ask category +
 the room-switch settlement), alive/nudge surfacing (open-threads in the
 board home, status read, presence line). The switcher/chip/ruled-line/dot
 are the surface's half.
+
+### 5.6 The rail (finalized after design review, 2026-08-13)
+
+One unified RIGHT rail, two sections. THREADS on top: name, left-at line,
+relative time, the one ● for unseen deliveries, `+ new` last. WORK below as a
+real tree — box-drawing connectors (├─ └─ │) in the faintest register, status
+glyphs carry state, two levels max. Three collapse states (open ~30 cols →
+slim 1–3 col handle → hidden); the slim handle carries exactly one signal:
+the ● if anything in the rail is unseen. Collapse state is a remembered
+preference (settings registry, the linear-mode idiom); narrow widths force
+slim without overwriting it; first run opens; after a manual collapse it
+never auto-reopens. Spatial stability: rows never reorder live — resort on
+reopen. Top-bar-with-dropdowns was considered and rejected: a dropdown in a
+terminal is an overlay anyway, and a second bar costs a permanent row without
+answering "what's alive" at a glance.
+
+### 5.7 Thread adoption is gravity, never policy
+
+The product never says "make a thread". Four forces do the work:
+- the rail existing is the whole cold-start education (recognition over
+  recall);
+- the split offer fires at the one moment a thread has felt value — a pivot
+  that would pollute a live context — with "yes, separate" first when the
+  divergence is clear (default bias), and the VOI learning retires even the
+  asking;
+- the re-entry brief is the reward that converts: "it kept my place" is the
+  peak moment (peak-end), so it must stay magical — journal-derived, instant,
+  never wrong;
+- the left-at line and the parked nudge are the open-loop pull (Zeigarnik) —
+  unfinished things bring people back.
+Refused on principle: badges, counts, streaks, "organize your workspace"
+prompts. The monolith user is never punished — one giant thread works
+forever; threads are gravity, not policy. And the dot never lies: one
+ornament, one meaning, zero false positives — the first false attention
+signal unlearns all of them.
