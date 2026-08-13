@@ -324,7 +324,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 
 	workspaceRoot := strings.TrimSpace(opts.workspaceRoot)
 	if workspaceRoot == "" {
-		workspaceRoot = filepath.Join(filepath.Dir(path), "workspace")
+		workspaceRoot = home.StoreDir(path, "workspace")
 	}
 	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
 		return nil, brain.abandon(fmt.Errorf("create chat workspace: %w", err))
@@ -335,7 +335,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// own directory, which for a one-shot evaporates with it.
 	scratchRoot := ""
 	if opts.sharedWorkspace {
-		scratchRoot = filepath.Join(filepath.Dir(path), "scratch")
+		scratchRoot = home.StoreDir(path, "scratch")
 	}
 	// What the planner is allowed to see of the world before it plans. Only a
 	// shared workspace holds the person's own material; in the per-job layout the

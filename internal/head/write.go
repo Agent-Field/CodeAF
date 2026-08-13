@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // The artifact law's door (12.5.1).
@@ -26,19 +28,28 @@ import (
 //
 // Three properties make it a door rather than a filesystem.
 //
-//   - The name is a name, not a path. Directories, traversal, absolute spellings
-//     and hidden files are refused rather than sanitized, because a refusal the
-//     model can read is a refusal it can correct, and a silently rewritten path
-//     is an artifact nobody can find.
-//   - It never clobbers. A file already at that name is left exactly as it is
-//     and the new one is minted beside it, with the receipt saying so. The repair
-//     doctrine means this tool is called precisely when a previous attempt was
-//     broken, and overwriting the person's own edits to repair OUR mistake is the
-//     wrong trade.
+//   - The workspace is the default, not a cage. A person who says "save it to
+//     /tmp/probe-story" gets /tmp/probe-story; only when they name nowhere does
+//     the file land in the workspace. This tool used to refuse every path
+//     outright, so the four probes that named a directory each had their
+//     deliverable written somewhere else and were then ASKED, afterwards,
+//     whether it should be moved — the product knowing it had disobeyed and
+//     shipping anyway. A floor may still forbid a place, and when it does the
+//     refusal is returned before anything is written, never discovered after.
+//   - It revises what it wrote and never clobbers what it did not. A file this
+//     conversation put on disk is updated in place, because "make the middle
+//     column narrower" is a new version of one artifact and not a second
+//     artifact: forking it to `-2` while calling it "the updated file" leaves
+//     the person owning two files with no signal which is live. A file the
+//     system did not write is left exactly as it is and the new one is minted
+//     beside it, with the receipt saying so — overwriting the person's own bytes
+//     to repair OUR mistake is still the wrong trade.
 //   - What it writes, it can read back. artifact.go's boundary is that the only
 //     openable bytes are ones the SYSTEM recorded a path for; a file this head
 //     wrote is recorded exactly as firmly as a file a worker wrote, so it joins
-//     that set rather than opening a second door beside it.
+//     that set rather than opening a second door beside it. Recording is by
+//     absolute path, so a file written outside the workspace is as openable as
+//     one written inside it.
 
 const (
 	// writeArtifactMaxBytes bounds one document. It is generous by the standards
@@ -100,7 +111,11 @@ func (h *Head) workspaceRoot() (string, error) {
 // write is the tool body. It returns what the loop may say and nothing more:
 // the path that now exists, or the reason none does.
 func (run *beltRun) write(args map[string]any) (string, bool) {
-	name, err := artifactName(beltString(args, "name"))
+	root, err := run.head.workspaceRoot()
+	if err != nil {
+		return err.Error(), true
+	}
+	target, err := artifactDestination(root, beltString(args, "name"), beltString(args, "dir"))
 	if err != nil {
 		return err.Error(), true
 	}
@@ -112,18 +127,20 @@ func (run *beltRun) write(args map[string]any) (string, bool) {
 		return fmt.Sprintf("that document is %d bytes, over the %d-byte ceiling for one write — split it, or have the workforce produce it",
 			len(body), writeArtifactMaxBytes), true
 	}
-	root, err := run.head.workspaceRoot()
-	if err != nil {
-		return err.Error(), true
-	}
-	path, err := writeArtifactFile(root, name, body)
+	// Every refusal above happens before a byte is on disk, which is the whole
+	// of "say it first". Nothing below this line can decline the destination.
+	path, replaced, err := writeArtifactFile(target, body, run.head.wroteArtifact(target))
 	if err != nil {
 		return err.Error(), true
 	}
 	run.head.recordWrittenArtifact(path)
 
 	what := strings.TrimSpace(beltString(args, "what"))
-	receipt := "Wrote " + path
+	verb := "Wrote "
+	if replaced {
+		verb = "Updated "
+	}
+	receipt := verb + path
 	if what != "" {
 		receipt += " — " + firstLine(what)
 	}
@@ -133,45 +150,164 @@ func (run *beltRun) write(args map[string]any) (string, bool) {
 	// turned into work is never a silent side effect does not care whether the
 	// work was a command or a document.
 	run.record(0, receipt)
-	renamed := ""
-	if filepath.Base(path) != name {
-		renamed = fmt.Sprintf(" (%s was already there and was left alone)", name)
-	}
-	return fmt.Sprintf("wrote %d bytes to %s%s — name this path in your reply; it is what the person will open", len(body), path, renamed), false
+	return writeArtifactResult(target, path, len(body), replaced), false
 }
 
-// artifactName is the whole of the path boundary on the write side. It admits a
-// plain filename and refuses everything else by name, so a model that reached
-// for a path learns what to pass instead.
-func artifactName(raw string) (string, error) {
-	name := strings.TrimSpace(raw)
+// writeArtifactResult is what the loop is allowed to say about where the bytes
+// went, and it is written so the reply cannot be wrong. The three outcomes read
+// differently on purpose: a revision must be called an update of the file they
+// already have, and a mint-beside must be called a second file with the first
+// one still there — the failure this replaces called a forked `-2` file "the
+// updated file" while the original sat untouched next to it.
+func writeArtifactResult(target, path string, size int, replaced bool) string {
+	switch {
+	case replaced:
+		return fmt.Sprintf("replaced %s in place with %d bytes — same path, same file. It is the document they already have, so say it was updated; naming a new file would be false",
+			path, size)
+	case path != target:
+		return fmt.Sprintf("wrote %d bytes to %s. %s was already there and is not this conversation's to overwrite, so it was left exactly as it is — say plainly that the original was kept and that this is a second file",
+			size, path, target)
+	default:
+		return fmt.Sprintf("wrote %d bytes to %s — name this path in your reply; it is what the person will open", size, path)
+	}
+}
+
+// artifactDestination resolves the one path this write will land on. It is the
+// whole of the path boundary on the write side, and its shape is "honour what
+// they named, refuse what a floor forbids, default to the workspace".
+//
+// A model holding a whole path reaches for the whole path, so a name carrying
+// directories is SPLIT rather than refused: refusing it and being told to pass
+// the parts separately reaches the same file one round trip later, and until
+// this wave it reached a different file entirely.
+func artifactDestination(root, rawName, rawDir string) (string, error) {
+	name := strings.TrimSpace(rawName)
 	if name == "" {
 		return "", fmt.Errorf("name must be the file's own name with its extension, like architecture.svg or notes.md")
 	}
-	if len(name) > writeArtifactNameBytes {
-		return "", fmt.Errorf("%q is too long for a filename — give it a short name with an extension", name)
+	if len(name) > writeArtifactNameBytes+len(root) {
+		return "", fmt.Errorf("%q is too long for a path — give the file a short name with an extension", name)
 	}
-	if strings.ContainsAny(name, `/\`) || name != filepath.Clean(name) {
-		return "", fmt.Errorf("%q names a path; pass a plain filename with no directories in it and it lands in the workspace", name)
+	directory := expandArtifactHome(strings.TrimSpace(rawDir))
+	if parent, base := filepath.Split(expandArtifactHome(name)); parent != "" {
+		switch {
+		case filepath.IsAbs(parent) || directory == "":
+			directory = parent
+		default:
+			directory = filepath.Join(directory, parent)
+		}
+		name = base
+	}
+	if err := artifactName(name); err != nil {
+		return "", err
+	}
+	directory, err := artifactDirectory(root, directory)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(directory, name), nil
+}
+
+// artifactName checks the file's own name once the directories are off it. What
+// it refuses, it refuses by name, because a refusal the model can read is a
+// refusal it can correct and a silently rewritten name is an artifact nobody
+// can find.
+func artifactName(name string) error {
+	if len(name) > writeArtifactNameBytes {
+		return fmt.Errorf("%q is too long for a filename — give it a short name with an extension", name)
+	}
+	if name != filepath.Clean(name) {
+		return fmt.Errorf("%q is not a filename — give the file its own name and put the directory in dir", name)
 	}
 	if strings.HasPrefix(name, ".") {
-		return "", fmt.Errorf("%q is a hidden file; artifacts are things the person opens, so give it an ordinary name", name)
+		return fmt.Errorf("%q is a hidden file; artifacts are things the person opens, so give it an ordinary name", name)
 	}
 	for _, character := range name {
 		if unicode.IsControl(character) {
-			return "", fmt.Errorf("that filename contains control characters")
+			return fmt.Errorf("that filename contains control characters")
 		}
 	}
 	if filepath.Ext(name) == "" {
-		return "", fmt.Errorf("%q has no extension — the extension is how the person's machine knows what to open it with", name)
+		return fmt.Errorf("%q has no extension — the extension is how the person's machine knows what to open it with", name)
 	}
-	return name, nil
+	return nil
 }
 
-// writeArtifactFile puts the bytes down without ever overwriting. It creates
+// artifactDirectory resolves where the file lands and opens it for writing.
+//
+// An absolute directory is the person's own answer to "where", and it is taken.
+// A relative one is read against the workspace and may not climb out of it: a
+// bare "../reports" is as likely to be a model's guess as a person's
+// instruction, and the spelling that means it is the absolute one. The single
+// floor is aforge's own state root — the journal, the CAS, the craft repo live
+// there, and a deliverable written among them is a deliverable that can corrupt
+// the product's memory of itself. The workspace is exempt from that floor even
+// when it sits under the state root, because the workspace is exactly the place
+// deliverables belong.
+func artifactDirectory(root, named string) (string, error) {
+	if named == "" {
+		return root, nil
+	}
+	directory := named
+	if !filepath.IsAbs(directory) {
+		directory = filepath.Join(root, directory)
+		if !artifactWithin(root, directory) {
+			return "", fmt.Errorf("%q climbs out of the workspace; if that is where they want it, give dir as the full path from /", named)
+		}
+	}
+	directory = filepath.Clean(directory)
+	if !artifactWithin(root, directory) && artifactWithin(home.Dir(), directory) {
+		return "", fmt.Errorf("%s is inside aforge's own state directory and nothing may be written there — it holds the journal, not their files. Say so, and write it somewhere of theirs or leave dir out for the workspace", directory)
+	}
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return "", fmt.Errorf("%s could not be opened for writing: %w", directory, err)
+	}
+	return directory, nil
+}
+
+// artifactWithin reports whether child is parent or sits under it. Both sides
+// are resolved as far as they exist, because on this platform a workspace's own
+// prefix is frequently a symlink and comparing a resolved child to an
+// unresolved parent would answer no for every honest path.
+func artifactWithin(parent, child string) bool {
+	parent, child = artifactResolved(parent), artifactResolved(child)
+	relative, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)))
+}
+
+// artifactResolved follows the symlinks of the deepest part of a path that
+// exists and puts the rest back on the end, so a directory nobody has created
+// yet still compares against a resolved parent.
+func artifactResolved(path string) string {
+	path = filepath.Clean(path)
+	rest := ""
+	for current := path; ; current = filepath.Dir(current) {
+		if real, err := filepath.EvalSymlinks(current); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return path
+		}
+		rest = filepath.Join(filepath.Base(current), rest)
+	}
+}
+
+// writeArtifactFile puts the bytes down. It replaces the file only when the
+// caller says this path is one the system itself produced; otherwise it creates
 // exclusively, so the check and the write are one operation and a file that
 // appeared between them cannot be lost.
-func writeArtifactFile(root, name, body string) (string, error) {
+func writeArtifactFile(target, body string, revise bool) (string, bool, error) {
+	if revise {
+		if err := os.WriteFile(target, []byte(body), 0o644); err != nil {
+			return "", false, fmt.Errorf("%s could not be written: %w", target, err)
+		}
+		return target, true, nil
+	}
+	directory, name := filepath.Dir(target), filepath.Base(target)
 	extension := filepath.Ext(name)
 	stem := strings.TrimSuffix(name, extension)
 	for attempt := 0; attempt <= writeArtifactCollisionCap; attempt++ {
@@ -179,24 +315,24 @@ func writeArtifactFile(root, name, body string) (string, error) {
 		if attempt > 0 {
 			candidate = fmt.Sprintf("%s-%d%s", stem, attempt+1, extension)
 		}
-		path := filepath.Join(root, candidate)
+		path := filepath.Join(directory, candidate)
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 		if os.IsExist(err) {
 			continue
 		}
 		if err != nil {
-			return "", fmt.Errorf("%s could not be written: %w", path, err)
+			return "", false, fmt.Errorf("%s could not be written: %w", path, err)
 		}
 		if _, err := file.WriteString(body); err != nil {
 			file.Close()
-			return "", fmt.Errorf("%s could not be written: %w", path, err)
+			return "", false, fmt.Errorf("%s could not be written: %w", path, err)
 		}
 		if err := file.Close(); err != nil {
-			return "", fmt.Errorf("%s could not be closed: %w", path, err)
+			return "", false, fmt.Errorf("%s could not be closed: %w", path, err)
 		}
-		return path, nil
+		return path, false, nil
 	}
-	return "", fmt.Errorf("%d files are already named like %s — give this one a different name", writeArtifactCollisionCap, name)
+	return "", false, fmt.Errorf("%d files are already named like %s — give this one a different name", writeArtifactCollisionCap, name)
 }
 
 // recordWrittenArtifact adds one path to the set this head may open again.
@@ -217,6 +353,21 @@ func (h *Head) recordWrittenArtifact(path string) {
 		h.wrote = make(map[string]bool, 4)
 	}
 	h.wrote[path] = true
+}
+
+// wroteArtifact reports whether this exact path is one this conversation put on
+// disk. It is the only licence to overwrite: a revision of the product's own
+// artifact is that artifact's next version, while a file the system never wrote
+// is the person's, and the person's bytes are never replaced by a repair of
+// ours. The set is process state, so the worst a restart can do is fork a file
+// the way this always used to — never clobber one it should not have.
+func (h *Head) wroteArtifact(path string) bool {
+	if h == nil || strings.TrimSpace(path) == "" {
+		return false
+	}
+	h.turnMu.Lock()
+	defer h.turnMu.Unlock()
+	return h.wrote[path]
 }
 
 // writtenArtifacts is the recorded set, copied. artifact.go decides what may be

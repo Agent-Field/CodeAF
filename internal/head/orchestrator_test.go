@@ -63,16 +63,16 @@ func TestADeliverableIsBornOnDiskAndReferencedByPath(t *testing.T) {
 }
 
 // The write door is a door, not a filesystem. What it refuses, it refuses in
-// words the model can act on — a sanitized path would be an artifact nobody
-// could find, and a silent overwrite would destroy the person's own edits in
-// the exact case this tool is called for.
-func TestTheWriteDoorRefusesPathsAndNeverClobbers(t *testing.T) {
+// words the model can act on — a sanitized name would be an artifact nobody
+// could find — and a file the system did not write is never overwritten to
+// repair a mistake of ours.
+func TestTheWriteDoorRefusesUnusableNamesAndNeverClobbersTheirFiles(t *testing.T) {
 	graph := openHeadStore(t)
 	workspace := t.TempDir()
 	run := &beltRun{head: New(nil, graph).WithWorkspace(workspace),
 		user: postUser(t, graph, "artifact", "write it down")}
 
-	for _, name := range []string{"../escape.md", "notes/report.md", "/etc/passwd", ".hidden.md", "report"} {
+	for _, name := range []string{"../escape.md", ".hidden.md", "report", "note\x00.md"} {
 		message, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
 			"name": name, "body": "x"}))
 		if !failed {
@@ -83,25 +83,144 @@ func TestTheWriteDoorRefusesPathsAndNeverClobbers(t *testing.T) {
 		t.Fatalf("a refused write left something behind: %+v err=%v", entries, err)
 	}
 
-	if _, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
-		"name": "report.md", "body": "first"})); failed {
-		t.Fatal("an ordinary write was refused")
+	// A file this conversation did not write is theirs. The new one is minted
+	// beside it and the result says so in the words the reply has to use.
+	theirs := filepath.Join(workspace, "report.md")
+	if err := os.WriteFile(theirs, []byte("their own draft"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	second, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
-		"name": "report.md", "body": "second"}))
+	beside, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
+		"name": "report.md", "body": "ours"}))
 	if failed {
-		t.Fatalf("a colliding write failed instead of minting a name: %s", second)
+		t.Fatalf("a colliding write failed instead of minting a name: %s", beside)
 	}
-	first, err := os.ReadFile(filepath.Join(workspace, "report.md"))
-	if err != nil || string(first) != "first" {
-		t.Fatalf("the existing file was clobbered: %q err=%v", first, err)
+	kept, err := os.ReadFile(theirs)
+	if err != nil || string(kept) != "their own draft" {
+		t.Fatalf("the person's own file was clobbered: %q err=%v", kept, err)
 	}
 	minted, err := os.ReadFile(filepath.Join(workspace, "report-2.md"))
-	if err != nil || string(minted) != "second" {
+	if err != nil || string(minted) != "ours" {
 		t.Fatalf("the second write did not land beside the first: %q err=%v", minted, err)
 	}
-	if !strings.Contains(second, "report-2.md") {
-		t.Fatalf("the receipt did not say where the file actually went: %s", second)
+	if !strings.Contains(beside, "report-2.md") || !strings.Contains(beside, "left exactly as it is") {
+		t.Fatalf("the result did not say where the file went and what was kept: %s", beside)
+	}
+}
+
+// Probe §1a, four times over: the person named /tmp/probe-story, every
+// deliverable landed in the workspace, and the head then ASKED whether to move
+// it — it knew it had disobeyed and shipped anyway. A named destination is the
+// destination, whichever field it arrives in.
+func TestANamedDirectoryIsWhereTheFileLands(t *testing.T) {
+	graph := openHeadStore(t)
+	workspace, elsewhere := t.TempDir(), filepath.Join(t.TempDir(), "probe-story")
+	head := New(nil, graph).WithWorkspace(workspace)
+	run := &beltRun{head: head, user: postUser(t, graph, "artifact",
+		"write me a story and save it to a file in "+elsewhere)}
+
+	// Named as its own field, and named as part of the filename, because a model
+	// holding a whole path reaches for the whole path.
+	for index, args := range []map[string]any{
+		{"name": "story.txt", "dir": elsewhere, "body": "the lighthouse keeper"},
+		{"name": filepath.Join(elsewhere, "second.txt"), "body": "the lighthouse keeper"},
+	} {
+		result, failed := run.execute(beltToolWrite, beltArguments(t, args))
+		if failed {
+			t.Fatalf("call %d: a named destination was refused: %s", index, result)
+		}
+		if !strings.Contains(result, elsewhere) {
+			t.Fatalf("call %d: the result does not name the directory they asked for: %s", index, result)
+		}
+	}
+	for _, name := range []string{"story.txt", "second.txt"} {
+		if _, err := os.Stat(filepath.Join(elsewhere, name)); err != nil {
+			t.Fatalf("%s never landed in the directory the person named: %v", name, err)
+		}
+	}
+	if entries, err := os.ReadDir(workspace); err != nil || len(entries) != 0 {
+		t.Fatalf("the workspace overrode the named directory: %+v err=%v", entries, err)
+	}
+
+	// And it stays openable: recording is by absolute path, so a file outside
+	// the workspace is as readable back as one inside it.
+	reopened, failed := run.execute(beltToolRead, beltArguments(t, map[string]any{
+		"file": filepath.Join(elsewhere, "story.txt")}))
+	if failed || !strings.Contains(reopened, "the lighthouse keeper") {
+		t.Fatalf("a file written outside the workspace was not recorded as openable failed=%t: %s", failed, reopened)
+	}
+}
+
+// The floor's rule: it refuses BEFORE anything is on disk. The probe's failure
+// was the other order — write somewhere, then ask about the place — and a
+// refusal discovered after the fact is not a refusal at all.
+func TestAForbiddenDirectoryIsRefusedBeforeAnythingIsWritten(t *testing.T) {
+	graph := openHeadStore(t)
+	root := t.TempDir()
+	// Hermetic: the state root under test is a temp directory, never the real one.
+	t.Setenv("AFORGE_HOME", root)
+	workspace := filepath.Join(root, "graph-workspace")
+	run := &beltRun{head: New(nil, graph).WithWorkspace(workspace),
+		user: postUser(t, graph, "artifact", "put it in the aforge folder")}
+
+	refusal, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
+		"name": "notes.md", "dir": filepath.Join(root, "cas"), "body": "x"}))
+	if !failed {
+		t.Fatalf("a write into aforge's own state directory was accepted: %s", refusal)
+	}
+	if !strings.Contains(refusal, "state directory") {
+		t.Fatalf("the refusal does not say why the place is forbidden: %s", refusal)
+	}
+	if _, err := os.Stat(filepath.Join(root, "cas")); err == nil {
+		t.Fatal("the refused write created the directory it refused to write in")
+	}
+
+	// The workspace is exempt from that floor even when it lives under the state
+	// root, because the workspace is exactly where deliverables belong.
+	inside, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
+		"name": "notes.md", "dir": "drafts", "body": "x"}))
+	if failed {
+		t.Fatalf("a write into the workspace's own subdirectory was refused: %s", inside)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "drafts", "notes.md")); err != nil {
+		t.Fatalf("the file did not land under the workspace: %v", err)
+	}
+}
+
+// Probe §2d: "make the middle column narrower" produced
+// pricing-tiers-comparison-2.md while the reply called it "the updated file"
+// and the original sat untouched beside it. A revision of an artifact this
+// conversation produced is that artifact's next version, in place.
+func TestARevisionOfOurOwnArtifactUpdatesItInPlace(t *testing.T) {
+	graph := openHeadStore(t)
+	workspace := t.TempDir()
+	run := &beltRun{head: New(nil, graph).WithWorkspace(workspace),
+		user: postUser(t, graph, "artifact", "make me a comparison table")}
+
+	if _, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
+		"name": "pricing-tiers-comparison.md", "body": "wide middle column"})); failed {
+		t.Fatal("the first write was refused")
+	}
+	revision, failed := run.execute(beltToolWrite, beltArguments(t, map[string]any{
+		"name": "pricing-tiers-comparison.md", "body": "narrow middle column"}))
+	if failed {
+		t.Fatalf("the revision was refused: %s", revision)
+	}
+
+	entries, err := os.ReadDir(workspace)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("the revision forked the file instead of updating it: %+v err=%v", entries, err)
+	}
+	body, err := os.ReadFile(filepath.Join(workspace, "pricing-tiers-comparison.md"))
+	if err != nil || string(body) != "narrow middle column" {
+		t.Fatalf("the file the person has is not the revised one: %q err=%v", body, err)
+	}
+	// The result is what makes the reply honest: it says the same path was
+	// replaced, so "the updated file" is a true sentence rather than a false one.
+	if !strings.Contains(revision, "replaced") || !strings.Contains(revision, "in place") {
+		t.Fatalf("the result does not confirm the replacement: %s", revision)
+	}
+	if strings.Contains(revision, "-2.md") {
+		t.Fatalf("the result still names a forked file: %s", revision)
 	}
 }
 
