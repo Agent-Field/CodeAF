@@ -880,17 +880,30 @@ func TestAWindowSizedPotCarriesAFanInTheOldCeilingStarved(t *testing.T) {
 	}
 }
 
-// The 37× blowout, as a test. Sizing the pot from a real window fixed the
-// starvation and opened the opposite hole: with megabytes to hand out, every
-// evaluator and every join was pushed every upstream result in full, and a join
-// billed 163k tokens against a 29.6k expectation.
+// What a fan-in costs, at two scales, and the rule that decides between them.
 //
-// The fix is structural rather than a smaller number. No dependency may take
-// more than a digest of the prompt however large the pot is, and the bytes above
-// that are moved to a handle rather than dropped — so the fan-in costs what its
-// consumer reads instead of what its producers wrote, and the one consumer whose
-// contract really does say reproduce every finding in full opens the files.
-func TestAWideFanInArrivesAsDigestsWithHandlesRatherThanEveryByte(t *testing.T) {
+// This test used to assert the opposite of its second half: that no dependency
+// may take more than MaxDigestBytes of the prompt however large the pot is. That
+// flat ceiling was written for the 37× blowout, on the premise that a join had
+// been "handed every upstream result in full" — and the premise was measured and
+// found false. The join that billed 163k tokens was handed 2.3 KB; its bill was
+// eleven turns of accumulated transcript. The clip-and-spill machinery the
+// ceiling installed never engaged in either benchmark run: the content-addressed
+// store was empty in both.
+//
+// The ceiling was also the thing standing in front of the real fix. Four
+// producers of a 7 KB report each are 28 KB of material that fits in the pot of
+// any modern window with room to spare, and clipping all four to 4 KiB apiece
+// hands the consumer four file handles — which is the filesystem archaeology
+// this whole edge exists to end, reintroduced by a constant.
+//
+// So the law is the pot, and the pot is the smaller of what the consumer can
+// hold and what its producers wrote. When the material fits, it arrives whole
+// and nothing spills. When it does not, the equal-share allotment clips, and the
+// withheld bytes move to a handle rather than being dropped — which is the half
+// of the old fix that was right, and is what this test now exercises with a
+// fan-in that genuinely overruns its reader.
+func TestAFanInArrivesWholeWhenItFitsAndOnHandlesWhenItDoesNot(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "handles.db"))
 	nodes := []NodeSpec{{ID: "join", Brief: "assemble the findings", Stage: 2}}
 	for index := 0; index < 8; index++ {
@@ -914,9 +927,20 @@ func TestAWideFanInArrivesAsDigestsWithHandlesRatherThanEveryByte(t *testing.T) 
 		}
 	}
 
-	// A pot sized from a 1M-token window — the case that produced the bill.
-	const pot = 1 << 20
-	inputs, err := graph.DependencyInputs("join", pot)
+	// And what the join's budget is sized from: the measurement, not an estimate.
+	fanIn, err := graph.DependencyFanIn("join")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fanIn.Count != 8 {
+		t.Fatalf("measured %d dependencies, want 8", fanIn.Count)
+	}
+
+	// First scale: a pot sized from a 1M-token window, against eight records of
+	// 15 KB. It fits, so it arrives — and the pot the run actually spends is the
+	// material, not the megabyte the window offered.
+	const roomy = 1 << 20
+	inputs, err := graph.DependencyInputs("join", roomy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -926,10 +950,36 @@ func TestAWideFanInArrivesAsDigestsWithHandlesRatherThanEveryByte(t *testing.T) 
 	pushed := 0
 	for _, input := range inputs {
 		pushed += len(input.Digest)
-		if len(input.Digest) > MaxDigestBytes {
-			t.Fatalf("%s took %d bytes of prompt; no dependency may exceed the %d a digest is",
-				input.NodeID, len(input.Digest), MaxDigestBytes)
+		if input.Handle != "" {
+			t.Fatalf("%s was spilled to a handle inside a pot with room for it", input.NodeID)
 		}
+		if strings.Contains(input.Digest, "clipped to fit") {
+			t.Fatalf("%s was clipped inside a pot with room for it", input.NodeID)
+		}
+	}
+	if pushed > fanIn.Bytes+8*MaxDigestBytes {
+		t.Fatalf("pushed %d bytes over %d of material; the pot is meant to be the "+
+			"material and not the window", pushed, fanIn.Bytes)
+	}
+	if pushed < fanIn.Bytes {
+		t.Fatalf("pushed %d of %d landed bytes with room for all of it; a consumer told "+
+			"it holds the results must actually hold them", pushed, fanIn.Bytes)
+	}
+
+	// Second scale: the same fan-in read by a consumer that genuinely cannot hold
+	// it. Now the clipping is real, and every withheld byte moves to a handle
+	// rather than being dropped.
+	const cramped = 24 << 10
+	tight, err := graph.DependencyInputs("join", cramped)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tight) != 8 {
+		t.Fatalf("carried %d of 8 dependencies under a cramped pot", len(tight))
+	}
+	crampedPush := 0
+	for _, input := range tight {
+		crampedPush += len(input.Digest)
 		if input.Handle == "" {
 			t.Fatalf("%s was clipped with no handle: the withheld bytes are unreachable", input.NodeID)
 		}
@@ -938,8 +988,8 @@ func TestAWideFanInArrivesAsDigestsWithHandlesRatherThanEveryByte(t *testing.T) 
 				"consumer the rest exists: %q", input.NodeID, input.Digest)
 		}
 	}
-	if pushed > 8*MaxDigestBytes {
-		t.Fatalf("the fan-in pushed %d bytes; eight digests is %d", pushed, 8*MaxDigestBytes)
+	if crampedPush > cramped {
+		t.Fatalf("a %d-byte pot pushed %d bytes", cramped, crampedPush)
 	}
 
 	// The round trip that makes the clipping a move and not a loss: the handle is
@@ -950,7 +1000,7 @@ func TestAWideFanInArrivesAsDigestsWithHandlesRatherThanEveryByte(t *testing.T) 
 		t.Fatalf("read finder-3: found=%v err=%v", found, err)
 	}
 	var handle string
-	for _, input := range inputs {
+	for _, input := range tight {
 		if input.NodeID == "finder-3" {
 			handle = input.Handle
 		}
@@ -966,27 +1016,14 @@ func TestAWideFanInArrivesAsDigestsWithHandlesRatherThanEveryByte(t *testing.T) 
 
 	// Content-addressed, so the same fan-in read twice hands out the same paths.
 	// A prompt prefix built from these must not move under a cache counting on it.
-	again, err := graph.DependencyInputs("join", pot)
+	again, err := graph.DependencyInputs("join", cramped)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for index, input := range again {
-		if input.Handle != inputs[index].Handle || input.Digest != inputs[index].Digest {
+		if input.Handle != tight[index].Handle || input.Digest != tight[index].Digest {
 			t.Fatalf("%s moved between two reads of the same settled fan-in", input.NodeID)
 		}
-	}
-
-	// And what the join's budget is sized from: the measurement, not an estimate.
-	fanIn, err := graph.DependencyFanIn("join")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fanIn.Count != 8 {
-		t.Fatalf("measured %d dependencies, want 8", fanIn.Count)
-	}
-	if fanIn.Bytes <= pushed {
-		t.Fatalf("measured %d landed bytes but pushed %d into the prompt; the whole "+
-			"policy is that what landed exceeds what is carried", fanIn.Bytes, pushed)
 	}
 	// A node nothing fed measures zero on both, which is what keeps its budget
 	// byte-identical to the one it had before any of this existed.
