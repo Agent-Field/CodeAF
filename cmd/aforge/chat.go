@@ -294,6 +294,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	taskClient.WithUsageJournal(journalSpend)
 	planClient.WithUsageJournal(journalSpend)
 	boostClients.WithUsageJournal(journalSpend)
+	// The two structuring slots get a wall on a single completion; the work slot
+	// deliberately does not. Everything the talk and plan slots do is one
+	// round-trip that either answers or has stopped answering — compiling an ask,
+	// titling it, writing briefs, setting contracts, judging a deliverable — and
+	// none of it has an honest duration measured in minutes. A leaf is the other
+	// kind of thing: an agent loop with the executor's own deadline over it, where
+	// a long silence is often just a long tool call.
+	chatClient.WithCallWall(pool.DefaultCallWall)
+	planClient.WithCallWall(pool.DefaultCallWall)
 	// The positive stopping condition, installed once for every path that can
 	// grow a running job. It is asked last, after rounds, nodes and the daily
 	// rail have all passed, so on the common path it is never asked at all; the
