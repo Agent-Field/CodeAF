@@ -171,7 +171,10 @@ func (h *Head) absorbDelivery(ctx context.Context, message store.Message) {
 	// spoken answer and never the work: the delivery row is journaled, the job's
 	// card draws it, and a read reaches it forever. Posting the raw result a
 	// second time in the head's own voice is what this contract stopped doing.
-	if answer == "" {
+	//
+	// A reply that only announces its own emptiness is that same nothing, said
+	// out loud. See [silentReply].
+	if silentReply(answer) {
 		return
 	}
 	// Unannotated, like every other ordinary reply: attribution in the thread is

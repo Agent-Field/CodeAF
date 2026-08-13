@@ -235,6 +235,21 @@ func TestOpenOnLiveWorkShowsTheePlanTheFeedAndTheSpend(t *testing.T) {
 	if strings.Contains(read, "how its parts ended") {
 		t.Fatalf("live work was rendered as settled work:\n%s", read)
 	}
+	// §3d/§5d. Every progress line used to carry the row's node id and its role
+	// word, so the model composed sentences out of a context that read
+	// "market-n2 | system | …" and the room got "system: ruler: 1 samples,
+	// need 8". A line is attributed by the step it came from.
+	for _, line := range strings.Split(read, "\n") {
+		if !strings.HasPrefix(line, "- ") || !strings.Contains(line, "vendor concentration") {
+			continue
+		}
+		if strings.Contains(line, "market-n2") || strings.Contains(line, "system") {
+			t.Fatalf("the progress feed handed the model an id and a role to copy: %q", line)
+		}
+		if !strings.Contains(line, "Interview the vendors") {
+			t.Fatalf("the progress feed lost the step it came from: %q", line)
+		}
+	}
 }
 
 // The settled branch is the same read from the other side: the whole result,

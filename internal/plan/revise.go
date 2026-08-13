@@ -176,6 +176,12 @@ func Revise(ctx context.Context, client Completer, graph *Graph, event string) (
 // recorded rather than silently swallowed: a sentinel that keeps trying to edit
 // locked work is telling us something about the prompt, and we only find out if
 // the refusals are visible.
+// A refusal names the REASON and never the subject. The one reader of these
+// strings puts them in front of a person (internal/resident/revise.go composes
+// the receipt note), and it is the reader that knows which step is meant and
+// what the person calls it. A refusal that named its own subject produced
+// "retitle task-8-n4: node 4 is running" — the id and the machine's word for a
+// step, both in the room, in a line the person did not ask for.
 func apply(graph *Graph, operation Operation) Operation {
 	refuse := func(reason string) Operation {
 		operation.Refused = reason
@@ -205,10 +211,10 @@ func apply(graph *Graph, operation Operation) Operation {
 	case "rewire":
 		node := graph.Node(operation.Node)
 		if node == nil {
-			return refuse(fmt.Sprintf("node %d does not exist", operation.Node))
+			return refuse("it is no longer in the plan")
 		}
 		if node.State.Frozen() {
-			return refuse(fmt.Sprintf("node %d is %s", operation.Node, node.State))
+			return refuse(fmt.Sprintf("it is already %s", node.State))
 		}
 		previous := node.Needs
 		node.Needs = nil
@@ -223,10 +229,10 @@ func apply(graph *Graph, operation Operation) Operation {
 	case "retitle":
 		node := graph.Node(operation.Node)
 		if node == nil {
-			return refuse(fmt.Sprintf("node %d does not exist", operation.Node))
+			return refuse("it is no longer in the plan")
 		}
 		if node.State.Frozen() {
-			return refuse(fmt.Sprintf("node %d is %s", operation.Node, node.State))
+			return refuse(fmt.Sprintf("it is already %s", node.State))
 		}
 		if title := trim(operation.Title); title != "" {
 			node.Title = title

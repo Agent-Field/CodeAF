@@ -104,7 +104,7 @@ func TestABundleSinkWithNothingToReconcileIsAssembledByCode(t *testing.T) {
 	// reflect — the merge needs the model after all.
 	if _, err := graph.PostMessage(store.Message{
 		SessionID: "bundle", Role: store.RoleAgent, NodeID: "job",
-		Body: jobNoteBody("part two", "amounts were in cents"),
+		Body: jobNoteBody("amounts were in cents"),
 	}); err != nil {
 		t.Fatal(err)
 	}
