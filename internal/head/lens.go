@@ -1225,6 +1225,12 @@ func (h *Head) lensStatus(sessionID string) string {
 	rendered.WriteString(nowLine(now) + "\n\n")
 
 	rendered.WriteString("WORK\n" + h.lensWorkCounts(sessionID, now) + "\n\n")
+	// Open threads sit directly under work because "what's going on" is one
+	// question with two halves (chat-simplify J5): the jobs that are running, and
+	// the conversations that are still hanging. Answering only the first is what
+	// made a thread parked on an unanswered question invisible to the one read
+	// that claims to be the whole system on one page.
+	rendered.WriteString("OPEN THREADS\n" + h.openThreads(sessionID, now) + "\n\n")
 	rendered.WriteString("MONEY\n" + h.lensMoney() + "\n\n")
 	rendered.WriteString("WATCH\n" + h.lensWatch() + "\n\n")
 	rendered.WriteString("SERVICES\n" + h.lensServices() + "\n\n")
