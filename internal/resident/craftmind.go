@@ -108,6 +108,21 @@ type craftUse struct {
 // something we already know how to do? A false is silent by construction —
 // every miss is an ordinary plan, and the user is never asked to confirm a
 // craft they did not bring up.
+// RECOGNITION IS HANDED THE ASK AND NEVER THE BRIEF. command.Instruction is the
+// person's words for this piece of work; command.Context is the conversation it
+// came out of, and it stops here. Everything below this call — the BM25 match,
+// the subject check, the param filler, the named-outright override — believes it
+// is reading the user's own words, and for one release it was reading a room's
+// worth of transcript instead. The live failure (2026-08-12): "help me think
+// through JEPA models" in a room that had spent the morning on multi-level DAGs
+// matched a learned multi-level-DAG workflow on the CONTEXT's words, cleared the
+// subject check on the same words, and ran a DAG job with `model=jepa` filled in
+// from the only two words of the ask the filler could see.
+//
+// The compiler gets both halves ([store.Command.Brief]) because planning is what
+// the context is FOR. Recognition is not planning: it is a claim that this exact
+// request has been answered before, and a claim made about somebody else's
+// sentence is not a claim about this one.
 func (r *Reconciler) craftCompile(ctx context.Context, command store.Command) (craftUse, bool) {
 	// The command sequence is the id namespace for the same reason task-<seq>
 	// is: it is unique, it is derivable from the journal, and a retried splice

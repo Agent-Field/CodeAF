@@ -312,6 +312,12 @@ type scopeSource struct {
 	// journal has a run to show for it. See SetRoomSpend.
 	spendCost float64
 	haveSpend bool
+
+	// commands answers for the ask a job was admitted from — specifically its
+	// other half, the conversation it came out of, which rides the COMMAND and
+	// not the node (a 6KB transcript copied onto every part of a subtree would
+	// be provenance nobody asked for). See [scopeSource.jobContext].
+	commands Commands
 }
 
 var _ rail.ScopeSource = (*scopeSource)(nil)
@@ -345,6 +351,9 @@ func newScopeSource(backend Backend, session string, now func() time.Time) *scop
 	}
 	if rooms, ok := backend.(Rooms); ok {
 		source.rooms = rooms
+	}
+	if commands, ok := backend.(Commands); ok {
+		source.commands = commands
 	}
 	source.homeSource = homes.NewSource(source.homes)
 	return source

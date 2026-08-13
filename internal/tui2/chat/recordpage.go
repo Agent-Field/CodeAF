@@ -70,6 +70,10 @@ type recordInputs struct {
 	treeOpen func(id string) bool
 	// money is the entered job's ledger.
 	money spend
+	// context is the conversation the job's ask came out of, when it forked one
+	// ([scopeSource.jobContext]). Empty is nearly every job and draws nothing;
+	// what it never does is stand above the fold (see [chargeBlock]).
+	context string
 	// models is the deduped list of models that billed the ROOT, for its card.
 	models []string
 	// nodeModels answers the same question per part, for the tree's rows. Nil
@@ -119,7 +123,7 @@ func roomBlocks(in recordInputs) []blocks.Block {
 			out = append(out, row)
 		}
 	}
-	out = append(out, chargeBlock(root, in.style))
+	out = append(out, chargeBlock(root, in.style, in.context))
 
 	// THE PROGRESS LINE, AND THERE IS EXACTLY ONE (user review, 2026-08-11).
 	// See [recordStatusBlock] for the defect it kills.

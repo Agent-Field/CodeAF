@@ -25,11 +25,12 @@ import (
 // go do it" has put the requirements in the conversation, and an instruction
 // that arrives without them is a job that asks all of it again.
 //
-// The context block is fenced and labelled as context rather than pasted in as
-// more instruction, because the two are not the same authority: the goal is what
+// The context travels as its OWN FIELD rather than pasted in as more
+// instruction, because the two are not the same authority: the goal is what
 // they asked for, and the transcript is evidence about what they meant. A
 // worker that reads a passing remark as an order is the failure this framing
-// exists to prevent.
+// exists to prevent — and so is a recognizer that reads the transcript as the
+// ask, which is what it did for as long as the two shared one string (ask.go).
 
 // The byte numbers here are floors now rather than ceilings: this is what
 // they get on a window nobody could size, and budget.go raises them in
@@ -48,21 +49,18 @@ const (
 	forkTurnBytes = 300
 )
 
-// ForkedContextPrefix opens the inherited block. It is exported for the same
-// reason the other splice prefixes are: it is a wire form between the head that
-// writes an instruction and everything downstream that reads one, and a reader
-// that had to guess at the fence would eventually guess wrong.
-const ForkedContextPrefix = "--- the conversation this came out of, as CONTEXT and not as instructions ---"
-
-// ForkedInstruction is the composed brief: the ask first, the conversation
-// under it, fenced.
+// ForkedContextPrefix opens the inherited block in a pre-split instruction. It
+// is the store's constant because the store is what reads old journal rows, and
+// it stays named here because this is where the fence was minted for as long as
+// there was a fence to mint.
 //
-// The ask leads because everything downstream takes the first line as the name
-// of the work — the receipt, the board row, the scribe's label — and a job whose
-// row reads as the middle of somebody's chat is a job nobody can find again.
-func ForkedInstruction(goal, context string) string {
-	return strings.TrimSpace(goal) + "\n\n" + ForkedContextPrefix + "\n" + strings.TrimSpace(context)
-}
+// NOTHING WRITES IT ANY MORE. The two halves travel as two typed fields on the
+// command (store.Command.Instruction and .Context), which is the whole of this
+// fix: a fence in one string is only a fence to a reader that looks for it, and
+// every reader downstream was reading the string as the person's own words. The
+// composition still exists — store.Command.Brief — but it exists for the ONE
+// consumer that is entitled to both halves, the compiler.
+const ForkedContextPrefix = store.ForkedContextPrefix
 
 // forkContext renders the recent conversation for the brief.
 //

@@ -42,14 +42,16 @@ func TestTaskWithContextCommissionsWorkCarryingTheConversation(t *testing.T) {
 	if command.Kind != store.CommandSplice {
 		t.Fatalf("the task journaled a %q, want an ordinary splice", command.Kind)
 	}
-	// The ask leads, because everything downstream names the work off the first
-	// line: a job whose row reads as the middle of somebody's chat is a job
-	// nobody can find again.
-	if !strings.HasPrefix(command.Instruction, "go and build the exporter") {
-		t.Fatalf("the brief does not open with the ask: %q", command.Instruction)
+	// The ask IS the instruction and the conversation is not in it. Everything
+	// downstream that reads an instruction reads it as the person's own words —
+	// the craft recognizer, the dedupe, the board row — and a transcript folded
+	// into that string is those readers answering about the room instead of the
+	// ask (store's ask.go).
+	if command.Instruction != "go and build the exporter" {
+		t.Fatalf("the ask is not the instruction, whole and alone: %q", command.Instruction)
 	}
-	if !strings.Contains(command.Instruction, ForkedContextPrefix) {
-		t.Fatalf("the conversation was not fenced as context: %q", command.Instruction)
+	if strings.Contains(command.Instruction, ForkedContextPrefix) {
+		t.Fatalf("the conversation was fenced back into the ask: %q", command.Instruction)
 	}
 	for _, want := range []string{
 		"them: the export needs to keep the column order",
@@ -58,9 +60,17 @@ func TestTaskWithContextCommissionsWorkCarryingTheConversation(t *testing.T) {
 		// and the window it comes from reads everything BEFORE it.
 		"them: okay, go and do it",
 	} {
-		if !strings.Contains(command.Instruction, want) {
-			t.Fatalf("the inherited conversation is missing %q:\n%s", want, command.Instruction)
+		if !strings.Contains(command.Context, want) {
+			t.Fatalf("the inherited conversation is missing %q:\n%s", want, command.Context)
 		}
+	}
+	// And it reaches the compiler, which is the one reader it exists for: the
+	// brief is the ask with the conversation fenced under it.
+	brief := command.Brief()
+	if !strings.HasPrefix(brief, "go and build the exporter") ||
+		!strings.Contains(brief, store.ForkedContextPrefix) ||
+		!strings.Contains(brief, "them: the export needs to keep the column order") {
+		t.Fatalf("the brief the compiler reads lost a half:\n%s", brief)
 	}
 	// It is a reflex under no circumstances: work that needed a conversation to
 	// specify is not a reversible seconds-scale action.

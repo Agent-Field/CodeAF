@@ -79,9 +79,12 @@ func (run *beltRun) task(args map[string]any) (string, bool) {
 		target = node.ID
 	}
 
-	// The conversation travels (fork.go). It is fenced and labelled as context
-	// rather than pasted in as more instruction, because the goal is what they
-	// asked for and the transcript is only evidence about what they meant.
+	// The conversation travels (fork.go) — in its own field, beside the ask and
+	// never inside it. Everything below this line reads `instruction`, and every
+	// one of those readings wants the person's words for THIS work: the turn's
+	// own dedupe, the consequence gate, the receipt. A transcript folded into
+	// that string makes all three answer about the room instead of the ask.
+	taskContext := ""
 	if beltBool(args, "context") && correcting == "" {
 		context, err := run.head.forkContext(run.user)
 		if err != nil {
@@ -91,7 +94,7 @@ func (run *beltRun) task(args map[string]any) (string, bool) {
 			return "there is nothing discussed in this conversation yet for the work to inherit — " +
 				"commission it without context", true
 		}
-		instruction = ForkedInstruction(instruction, context)
+		taskContext = context
 	}
 
 	// The model words, read here and resolved where the catalog is (modelwords.go).
@@ -125,6 +128,7 @@ func (run *beltRun) task(args map[string]any) (string, bool) {
 		Deliberate:  beltBool(args, "separate"),
 		Target:      target,
 		Instruction: instruction,
+		Context:     taskContext,
 		Attachments: append([]string(nil), run.user.Attachments...),
 	})
 	if err != nil {

@@ -1226,6 +1226,11 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		return commandOutcome{}, err
 	}
 
+	// The ASK and not the brief: everything this assembles is retrieval — the
+	// notebook digest, the recall, the cues — and retrieval over an inherited
+	// transcript retrieves whatever the room happened to be about rather than
+	// what was asked for. Same reason craft recognition reads the ask
+	// (craftmind.go), and the same failure when it did not.
 	compileContext := r.renderCompileContextFor(snapshot, command.Instruction, command.SessionID)
 	compileContext += attachedDocumentCompileContext(command.Attachments)
 	if r.oneShotErrand {
@@ -1244,7 +1249,12 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	// silence on the card: nothing between the head saying "on it" and the
 	// planner's first row said the request was even being read.
 	r.noteCommandStage(command, stageReading, "")
-	compiled, err := r.compile(ctx, command.Instruction, compileContext)
+	// THE COMPILER IS THE ONE READER ENTITLED TO BOTH HALVES. A forked ask
+	// carries the conversation it came out of precisely so planning is
+	// well-informed, so this is where it is spent — fenced and labelled as
+	// context, which is what [store.Command.Brief] composes. Every other reading
+	// of this command below is `command.Instruction`, the ask alone.
+	compiled, err := r.compile(ctx, command.Brief(), compileContext)
 	if err != nil {
 		return commandOutcome{}, fmt.Errorf("compile request: %w", err)
 	}
@@ -1302,7 +1312,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		if gateErr == nil && !ask && defaultAnswer != "" {
 			assumedContext := compileContext + "\n\nEmpirical ask policy: assume and declare this answered default:\n" +
 				question + "\nDefault answer: " + defaultAnswer
-			if assumed, compileErr := r.compile(ctx, command.Instruction, assumedContext); compileErr == nil &&
+			if assumed, compileErr := r.compile(ctx, command.Brief(), assumedContext); compileErr == nil &&
 				strings.TrimSpace(assumed.Question) == "" {
 				if err := r.store.RecordAssumedWithDefault(store.QuestionCategoryCompileAssumption,
 					defaultAnswer, command.SessionID, question); err == nil {
