@@ -621,7 +621,9 @@ func TestTerrainRollupCountsWholeAndNamesItsKinds(t *testing.T) {
 // a run that carries no terrain has to produce the exact bytes it produced
 // before terrain existed — not merely equivalent prose.
 func TestGraphContextWithoutTerrainIsByteIdentical(t *testing.T) {
-	settled := []string{"The three cities are Berlin, Lisbon and Warsaw."}
+	// A settlement that came off disk in the older spelling carries its whole
+	// sentence and no values, and must render as that sentence unchanged.
+	settled := []Settlement{{Variable: "The three cities are Berlin, Lisbon and Warsaw."}}
 	open := []string{"Which of the three suits the workload best."}
 	const evidence = "Read published documentation and cite it; build nothing."
 
@@ -662,7 +664,7 @@ func TestGraphContextCarriesTheTerrainBetweenGoalAndSettled(t *testing.T) {
 	graph := &Graph{
 		Goal:    "summarise the responses",
 		Terrain: "responses/               41 files (.csv)\nREADME.md                2 B",
-		Settled: []string{"The regions are north and south."},
+		Settled: []Settlement{{Variable: "The regions are north and south."}},
 	}
 	got := graph.context()
 	const want = "Goal:\nsummarise the responses" +

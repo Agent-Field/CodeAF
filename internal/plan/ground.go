@@ -96,10 +96,25 @@ part of the work may quietly buy stronger evidence than this, and none may
 settle for weaker. Read the goal, not your ambition for it: the cheapest
 standard that actually satisfies what was asked is the correct one.`
 
+// groundSchema types the one property the prompt above already states as
+// decidable: "If a point does not contain the actual names, numbers, or values,
+// it is not settled." A free-text line cannot carry that property, so nothing
+// could check it and a tautology — "the vendors are the vendors in scope" —
+// entered the graph looking exactly like a binding. Splitting the point into the
+// variable and the values it is bound to makes the property structural: an empty
+// values array IS an unsettled point, and it is refused rather than rendered.
 var groundSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
-    "settled":  { "type": "array", "items": { "type": "string" } },
+    "settled":  { "type": "array", "items": {
+      "type": "object",
+      "properties": {
+        "variable": { "type": "string" },
+        "values":   { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["variable", "values"],
+      "additionalProperties": false
+    } },
     "open":     { "type": "array", "items": { "type": "string" } },
     "evidence": { "type": "string" }
   },
@@ -107,20 +122,133 @@ var groundSchema = json.RawMessage(`{
   "additionalProperties": false
 }`)
 
+// Settlement is one bound scope variable: the thing the goal left free, and the
+// actual names, numbers or values it is now bound to.
+//
+// The pair is the whole point. The prompt has always demanded that a settled
+// point contain real values and has always been free to return a sentence that
+// merely sounds like one; the enumeration and the thing enumerated were fused
+// into one string, so no reader downstream could tell "the three cities are
+// Berlin, Lisbon and Warsaw" from "the cities are the ones in scope". Separated,
+// the difference is a slice length.
+type Settlement struct {
+	// Variable names what the goal left free — "the three cities", "the vendors
+	// compared", "the period covered".
+	Variable string `json:"variable"`
+	// Values are what it is bound to, by name. Empty means nothing was bound,
+	// which is not a settlement however it is worded.
+	Values []string `json:"values"`
+}
+
+// Bound reports a settlement that actually settles something.
+func (s Settlement) Bound() bool {
+	return strings.TrimSpace(s.Variable) != "" && len(s.Values) > 0
+}
+
+// Line is the settlement as one line of a prompt.
+//
+// It is byte-identical to what the untyped list rendered for a well-formed
+// point: the variable, a colon, the values in the order they were bound. A
+// settlement decoded from a legacy graph carries its whole sentence in Variable
+// and no values, and renders as that sentence unchanged — which is what keeps
+// every plan document written before this schema existed rendering the bytes it
+// always did.
+func (s Settlement) Line() string {
+	variable := strings.TrimSpace(s.Variable)
+	if len(s.Values) == 0 {
+		return variable
+	}
+	values := strings.Join(s.Values, ", ")
+	if variable == "" {
+		return values
+	}
+	return variable + ": " + values
+}
+
+// UnmarshalJSON accepts the object this schema now emits and the bare string
+// every plan document written before it carries. A graph on disk is a durable
+// artifact that is loaded and re-planned long after it was written, so the older
+// spelling decodes into the same type rather than failing the load.
+func (s *Settlement) UnmarshalJSON(data []byte) error {
+	var line string
+	if err := json.Unmarshal(data, &line); err == nil {
+		s.Variable, s.Values = trim(line), nil
+		return nil
+	}
+	var decoded struct {
+		Variable string   `json:"variable"`
+		Values   []string `json:"values"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	s.Variable, s.Values = trim(decoded.Variable), cleanStrings(decoded.Values)
+	return nil
+}
+
 // Grounding is everything the ground pass binds: the goal's scope variables and
 // the standard of evidence the goal warrants. They travel together because they
 // are the same kind of decision — settled once, upstream, and inherited by every
 // call after it rather than re-answered per subtree.
 type Grounding struct {
-	Settled  []string
+	Settled  []Settlement
 	Open     []string
 	Evidence string
+}
+
+// cleanSettlements drops the points that bind nothing.
+//
+// A point with no values is the failure this schema was introduced to name: the
+// prompt asks for a decision already made, and a variable returned without
+// values is the ambiguity handed back. It is not repairable here and it must not
+// reach a fan-out, so it is dropped and the count of what was dropped is
+// returned for the caller to decide what to do about.
+func cleanSettlements(values []Settlement) ([]Settlement, int) {
+	kept := make([]Settlement, 0, len(values))
+	unbound := 0
+	for _, value := range values {
+		settlement := Settlement{Variable: trim(value.Variable), Values: cleanStrings(value.Values)}
+		if !settlement.Bound() {
+			unbound++
+			continue
+		}
+		kept = append(kept, settlement)
+	}
+	return kept, unbound
+}
+
+// SettledLines renders a settlement list the way every prompt in this package
+// reads it. It is the one conversion, so a caller that wants the settled points
+// as text cannot spell them differently from the preamble every planning call
+// shares.
+func SettledLines(settled []Settlement) []string {
+	lines := make([]string, 0, len(settled))
+	for _, settlement := range settled {
+		if line := settlement.Line(); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return lines
+}
+
+// Enumerated reports that some variable was bound to more than one value —
+// that the material now carries an enumeration the work is expected to follow.
+// It is the reference the fan-out's acceptance check is keyed on: a stage split
+// under an enumeration owes one unit per part, and a stage split under none owes
+// nothing of the kind.
+func Enumerated(settled []Settlement) bool {
+	for _, settlement := range settled {
+		if len(settlement.Values) > 1 {
+			return true
+		}
+	}
+	return false
 }
 
 // Ground resolves the goal's free variables. It runs concurrently with the
 // spine — both need only the goal — so it costs no wall clock, and its output
 // joins the prefix every later call already shares, so it costs no cache either.
-func Ground(ctx context.Context, client Completer, goal string) (Grounding, *ai.Usage, error) {
+func Ground(ctx context.Context, client Completer, goal string) (Grounding, Usage, error) {
 	return GroundWith(ctx, client, goal, "", nil, nil)
 }
 
@@ -136,7 +264,9 @@ func Ground(ctx context.Context, client Completer, goal string) (Grounding, *ai.
 // that settles "the responses" as three regions when four are on disk is the
 // exact failure terrain exists to prevent, and it happens before any graph
 // exists, so the terrain is handed in directly rather than read off one.
-func GroundWith(ctx context.Context, client Completer, goal, terrain string, asked []string, recall []store.RecallHit) (Grounding, *ai.Usage, error) {
+// The usage is the pass's rather than one response's, because a reply that
+// bound nothing buys one free retry and both calls are the plan's to pay for.
+func GroundWith(ctx context.Context, client Completer, goal, terrain string, asked []string, recall []store.RecallHit) (Grounding, Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanGround)
 	user := goalBlock(strings.TrimSpace(goal), terrain, asked)
 	if remembered := store.FormatRecall(recall, 8<<10); remembered != "" {
@@ -146,24 +276,54 @@ func GroundWith(ctx context.Context, client Completer, goal, terrain string, ask
 		systemMessage(groundPrompt),
 		userMessage(user),
 	}
-	var decoded struct {
-		Settled  []string `json:"settled"`
-		Open     []string `json:"open"`
-		Evidence string   `json:"evidence"`
-	}
+	var decoded groundReply
+	var usage Usage
 	response, err := structured(ctx, client, messages, groundSchema, &decoded)
+	usage.Add(usageOf(response))
 	if err != nil {
-		return Grounding{}, usageOf(response), fmt.Errorf("ground: %w", err)
+		return Grounding{}, usage, fmt.Errorf("ground: %w", err)
 	}
-	// Grounding has no wrong answer a checker could name — an empty settled list
-	// is a legitimate reading of a goal with no free variables — so the schema is
-	// the whole of the verification here.
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	settled, unbound := cleanSettlements(decoded.Settled)
+	if unbound > 0 {
+		// One free retry, on the same bytes. This is the empty-reply retry beside
+		// it (see structured) applied to the other failure this pass can have: a
+		// reply that parsed and settled nothing. The prompt is not changed and no
+		// rule is added — the same question is asked once more, because a point
+		// returned without values is a miss rather than a position.
+		var again groundReply
+		retry, retryErr := structured(ctx, client, messages, groundSchema, &again)
+		usage.Add(usageOf(retry))
+		if retryErr == nil {
+			if retried, stillUnbound := cleanSettlements(again.Settled); stillUnbound < unbound {
+				decoded, settled, unbound = again, retried, stillUnbound
+			}
+		}
+	}
+	// Grounding does have a wrong answer a checker can name, and this is it. The
+	// prompt states the property — a point without actual names, numbers or
+	// values is not settled — and the schema above makes it structural, so a
+	// reply carrying a variable nobody bound is reported as the semantic failure
+	// it is rather than counted as a verified pass. An empty settled list remains
+	// a legitimate reading of a goal with no free variables; a list of points that
+	// bind nothing is not.
+	if unbound > 0 {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+	} else {
+		provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	}
 	return Grounding{
-		Settled:  cleanStrings(decoded.Settled),
+		Settled:  settled,
 		Open:     cleanStrings(decoded.Open),
 		Evidence: trim(decoded.Evidence),
-	}, usageOf(response), nil
+	}, usage, nil
+}
+
+// groundReply is the ground pass's wire shape, named because it is decoded
+// twice: once, and again on the one free retry a reply that bound nothing buys.
+type groundReply struct {
+	Settled  []Settlement `json:"settled"`
+	Open     []string     `json:"open"`
+	Evidence string       `json:"evidence"`
 }
 
 // context is the frozen preamble every planning call shares: the goal, the
@@ -180,7 +340,7 @@ func (g *Graph) context() string {
 	block.WriteString(goalBlock(g.Goal, g.Terrain, g.Asked))
 	if len(g.Settled) > 0 {
 		block.WriteString("\n\nSettled for this goal. Use these exactly as written. Never substitute\nyour own choice for one of these, and never leave one of them vague:\n")
-		for _, item := range g.Settled {
+		for _, item := range SettledLines(g.Settled) {
 			fmt.Fprintf(&block, "  - %s\n", item)
 		}
 	}

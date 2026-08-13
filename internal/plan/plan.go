@@ -443,7 +443,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 			}
 		}()
 		grounding, usage, err := GroundWith(ctx, client, goal, terrain, asked, options.Recall)
-		groundUsage.Add(usage)
+		groundUsage.merge(usage)
 		graph.Settled, graph.Open, graph.Evidence, groundErr = grounding.Settled, grounding.Open, grounding.Evidence, err
 	}()
 	opening.Wait()
@@ -487,7 +487,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}
 	// --- end ensemble hook --------------------------------------------------
 
-	nodes, fanUsage, fanErr := FanOut(ctx, client, graph.context(), choice.Stages)
+	nodes, fanUsage, fanErr := FanOutWith(ctx, client, graph.context(), choice.Stages, graph.Settled)
 	graph.Usage.merge(fanUsage)
 	if len(nodes) == 0 {
 		return nil, errors.Join(fanErr, errors.New("fan-out produced no nodes"))
@@ -720,14 +720,32 @@ func serialProgress(callback Progress) Progress {
 }
 
 // groundedSummary names the scope variable the grounding pass actually bound.
-// Grounding commonly returns one sentence containing several concrete members
-// ("The three cities are ..."), so counting result rows alone would hide the
-// load-bearing number the user is waiting to learn.
-func groundedSummary(settled []string) string {
+// Grounding binds several concrete members under one variable ("the three
+// cities" → Berlin, Lisbon, Warsaw), so counting result rows alone would hide
+// the load-bearing number the user is waiting to learn.
+//
+// The typed settlement makes the first branch exact rather than parsed: the
+// number is the length of the values slice and the noun is the variable's own
+// last word. The sentence scan below it remains for graphs whose settlements
+// came off disk as prose.
+func groundedSummary(settled []Settlement) string {
 	if len(settled) == 0 {
 		return "scope already clear"
 	}
-	for _, point := range settled {
+	for _, settlement := range settled {
+		if len(settlement.Values) < 2 {
+			continue
+		}
+		fields := strings.Fields(settlement.Variable)
+		if len(fields) == 0 {
+			continue
+		}
+		noun := strings.ToLower(strings.Trim(fields[len(fields)-1], ".,:;()[]{}\"'"))
+		if noun != "" {
+			return fmt.Sprintf("%d %s settled", len(settlement.Values), noun)
+		}
+	}
+	for _, point := range SettledLines(settled) {
 		fields := strings.Fields(point)
 		for index, field := range fields {
 			count, ok := cardinal(strings.Trim(field, ".,:;()[]{}\"'"))
