@@ -242,7 +242,7 @@ func TestEditRefusesAmbiguousMatch(t *testing.T) {
 	tools := NewToolbox(space, "1", nil)
 
 	result := tools.Execute(context.Background(), "edit", `{"path":"doc.md","old":"alpha","new":"beta"}`)
-	if !result.IsError || !strings.Contains(result.Content, "appears 2 times") {
+	if !result.IsError || !strings.Contains(result.Content, "Found 2 occurrences") {
 		t.Fatalf("ambiguous edit was not refused: %+v", result)
 	}
 	body, _ := os.ReadFile(path)

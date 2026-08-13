@@ -61,7 +61,7 @@ func TestEveryLeafVariantCarriesTheAnswerFirstLaw(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			linear := &Linear{attribution: build.attribution}
-			system := linear.system(build.task)
+			system := linear.system(build.task, nil)
 			if !strings.Contains(system, law) {
 				t.Fatalf("the answer-first law is missing from %s", name)
 			}

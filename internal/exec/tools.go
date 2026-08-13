@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -95,6 +97,237 @@ const (
 	toolBudgetReference = defaultObservationBudget
 )
 
+// maxResultLines is the other half of every result bound, and the half no byte
+// count can express.
+//
+// A byte cap cuts where the byte falls: mid-line, mid-path, mid-JSON. What the
+// model gets back is a half-line it cannot use and cannot address, so it
+// re-runs the command to see the whole of it — the exact duplication the caps
+// exist to prevent. Lines are the unit the shell speaks in and the unit sed,
+// head and tail address, so a cut on a line boundary is a cut the continuation
+// command in the notice can name exactly: `sed -n '2001,4000p' <file>` is only
+// a true statement about where the reader got to if the reader got to the end
+// of a line.
+//
+// The two caps bind together, whichever is reached first, because output comes
+// in two shapes and each defeats the other cap alone. A build log is thin and
+// long — two thousand lines of it is well inside any byte budget, and without a
+// line cap the model is handed a wall it will not read. A minified bundle or a
+// one-line JSON dump is the opposite — a single line of megabytes, inside any
+// line cap, which the byte cap is the only thing standing in front of.
+//
+// Two thousand is the number pi settled on independently, and it is where a
+// listing stops being read and starts being searched: past it the right move is
+// never "read more", it is grep, and the notice says where to grep.
+const maxResultLines = 2000
+
+// resultShape says which END of an over-long result is the end worth keeping.
+// It travels on the Result because only the tool that produced it knows, and
+// getting it wrong is expensive in a way truncation normally is not: keeping
+// the head of a failed build discards the error, and keeping the tail of a
+// document discards the part that was asked for.
+type resultShape uint8
+
+const (
+	// shapeRead is material read forward — a fetched page, a parsed document, a
+	// recall map. The beginning is what was asked for, and the rest continues
+	// from an offset the notice states.
+	shapeRead resultShape = iota
+	// shapeCommand is what a command printed. The verdict is at the end: the
+	// compiler's error count, the test summary, the traceback, the exit reason.
+	// Head-truncating command output is the single most common way a tool loop
+	// throws away the only line that mattered.
+	shapeCommand
+)
+
+// spillRef names the file the whole result was preserved in, so a truncation
+// notice can hand the model a command that works instead of an apology. The
+// zero value means nothing was saved, which is a real case — the workspace may
+// be read-only — and the notice says so rather than naming a path that is not
+// there.
+type spillRef struct {
+	path    string
+	bytes   int
+	partial bool // the file holds only the beginning of the output
+}
+
+// truncation is one over-long result decomposed into everything a notice has to
+// state. It is built from the whole text (boundResult) or from the tail of a
+// stream (cappedOutput.String), and both render through the same method, which
+// is what keeps a streamed command's notice identical to a held one's.
+type truncation struct {
+	kept      string
+	keptLines int // 0 when not one whole line fit and a line had to be cut
+	// totalLines and totalBytes describe the whole output, which the streaming
+	// collector knows from counters rather than from the bytes it still holds.
+	totalLines int
+	totalBytes int
+	// byteWindow and lineWindow are the two caps that were applied, and they
+	// are in the struct because the continuation command is written from them:
+	// the next window is the same size as this one.
+	byteWindow int
+	lineWindow int
+	tail       bool
+	spill      spillRef
+}
+
+// countLines counts lines the way a line-addressing tool counts them: a
+// trailing newline terminates the last line rather than starting an empty one,
+// so `wc -l`, `sed -n '$p'` and this function agree about which line is last.
+func countLines(text string) int {
+	if text == "" {
+		return 0
+	}
+	lines := strings.Count(text, "\n")
+	if !strings.HasSuffix(text, "\n") {
+		lines++
+	}
+	return lines
+}
+
+// truncateHead keeps the first whole lines that fit both caps. When not even
+// the first line fits — a minified file, a one-line JSON dump — it keeps the
+// first byteLimit bytes of that line and says which line it cut.
+func truncateHead(text string, byteLimit, lineLimit int) truncation {
+	cut := truncation{totalBytes: len(text), totalLines: countLines(text)}
+	end, lines := 0, 0
+	for lines < lineLimit {
+		next := strings.IndexByte(text[end:], '\n')
+		if next < 0 || end+next+1 > byteLimit {
+			break
+		}
+		end += next + 1
+		lines++
+	}
+	if lines == 0 {
+		cut.kept = wholeRunesHead(text[:min(byteLimit, len(text))])
+		return cut
+	}
+	cut.kept, cut.keptLines = text[:end], lines
+	return cut
+}
+
+// truncateTail keeps the last whole lines that fit both caps — the tail rule,
+// for output whose verdict is at the end. When the final line alone is over the
+// byte cap it keeps that line's last bytes, because on a single-line output the
+// end is still where the answer is.
+func truncateTail(text string, byteLimit, lineLimit int) truncation {
+	cut := truncation{totalBytes: len(text), totalLines: countLines(text)}
+	search := len(text)
+	if strings.HasSuffix(text, "\n") {
+		// The trailing newline belongs to the last line; the line before it is
+		// where the search for a boundary starts.
+		search--
+	}
+	start, lines := len(text), 0
+	for lines < lineLimit && search >= 0 {
+		boundary := strings.LastIndexByte(text[:search], '\n')
+		begin := boundary + 1
+		if len(text)-begin > byteLimit {
+			break
+		}
+		start, lines = begin, lines+1
+		if boundary < 0 {
+			break
+		}
+		search = boundary
+	}
+	if lines == 0 {
+		cut.kept = wholeRunesTail(text[max(0, len(text)-byteLimit):])
+		return cut
+	}
+	cut.kept, cut.keptLines = text[start:], lines
+	return cut
+}
+
+// render puts the notice where the cut is: in front of a tail, because that is
+// where the missing material was, and behind a head for the same reason. A
+// model reading downwards meets the explanation at the seam either way.
+func (c truncation) render() string {
+	if c.tail {
+		return c.notice() + "\n" + c.kept
+	}
+	return strings.TrimRight(c.kept, "\n") + "\n\n" + c.notice()
+}
+
+// notice is the whole of what truncation costs the model to recover from: what
+// it is holding, of what, and the exact command that reads the rest.
+//
+// Exactness beats byte-stability here. These lines land in the transcript once,
+// at the moment the result arrives, and are then re-sent as cached prefix like
+// everything else — so a notice that differs per call costs nothing after that
+// call, while a generic example ("for example: sed -n '1,80p' file") costs a
+// wasted turn every time a model has to work out the real one.
+func (c truncation) notice() string {
+	var head string
+	switch {
+	case c.keptLines == 0 && c.tail:
+		head = fmt.Sprintf("[Line %d of %d is longer than the %d bytes that fit; showing its last %d, of %d bytes in all.",
+			c.totalLines, c.totalLines, c.byteWindow, len(c.kept), c.totalBytes)
+	case c.keptLines == 0:
+		head = fmt.Sprintf("[Line 1 of %d is longer than the %d bytes that fit; showing its first %d, of %d bytes in all.",
+			c.totalLines, c.byteWindow, len(c.kept), c.totalBytes)
+	case c.tail:
+		head = fmt.Sprintf("[Showing lines %d-%d of %d, the last %d of %d bytes.",
+			c.totalLines-c.keptLines+1, c.totalLines, c.totalLines, len(c.kept), c.totalBytes)
+	default:
+		head = fmt.Sprintf("[Showing lines 1-%d of %d, the first %d of %d bytes.",
+			c.keptLines, c.totalLines, len(c.kept), c.totalBytes)
+	}
+	if c.spill.path == "" {
+		return head + " The rest was not saved — re-run narrowed (grep, head, tail) if you need it.]"
+	}
+	whole := "Whole output: " + c.spill.path
+	if c.spill.partial {
+		whole = fmt.Sprintf("First %d bytes: %s", c.spill.bytes, c.spill.path)
+	}
+	return head + " " + whole + " — " + c.command() + "]"
+}
+
+// command is the exact next call, against the file that exists, with the
+// numbers this cut actually produced. The window it reads is the same size as
+// the window that was kept, so a model that keeps issuing it walks the file at
+// a pace its context can hold.
+func (c truncation) command() string {
+	switch {
+	case c.keptLines == 0 && c.tail:
+		return fmt.Sprintf("read that line from the start with sh: sed -n '%dp' %s | head -c %d",
+			c.totalLines, c.spill.path, c.byteWindow)
+	case c.keptLines == 0:
+		return fmt.Sprintf("read on with sh: sed -n '1p' %s | cut -b %d-%d",
+			c.spill.path, len(c.kept)+1, len(c.kept)+c.byteWindow)
+	case c.tail:
+		first := c.totalLines - c.keptLines + 1
+		window := min(c.lineWindow, first-1)
+		return fmt.Sprintf("read the start with sh: sed -n '1,%dp' %s", window, c.spill.path)
+	default:
+		return fmt.Sprintf("continue with sh: sed -n '%d,%dp' %s",
+			c.keptLines+1, c.keptLines+c.lineWindow, c.spill.path)
+	}
+}
+
+// boundResult renders one whole result under both caps, and reports whether
+// anything was cut. It is the held-in-memory twin of cappedOutput, which does
+// the same arithmetic on a stream; the two must agree byte for byte, and a test
+// holds them to it.
+func boundResult(text string, carry, keep int, shape resultShape, spill spillRef) (string, bool) {
+	if len(text) <= carry && countLines(text) <= maxResultLines {
+		return text, false
+	}
+	if keep <= 0 || keep >= carry {
+		keep = carry / 2
+	}
+	var cut truncation
+	if shape == shapeCommand {
+		cut = truncateTail(text, keep, maxResultLines)
+		cut.tail = true
+	} else {
+		cut = truncateHead(text, keep, maxResultLines)
+	}
+	cut.byteWindow, cut.lineWindow, cut.spill = keep, maxResultLines, spill
+	return cut.render(), true
+}
+
 // toolBudgets is one leaf's four result bounds in bytes, resolved once.
 //
 // Once is the whole point and it is a cache property rather than a performance
@@ -113,8 +346,27 @@ type toolBudgets struct {
 // nobody could name yields exactly the old literals — see ctxbudget: unknown is
 // never treated as small, it is treated as unmeasured, and every consumer names
 // what it used to do.
+//
+// The share is taken of the WORKING SET rather than of the raw window, because
+// the memory that has to HOLD these results is taken of the working set — see
+// observationWindow, working-set clamped since the fill law arrived. Sizing the
+// result off one pot and the memory off a smaller one was a mismatch with a
+// measured cost: on a 200k model a single sh result was permitted 75,696 bytes
+// against a 105,856-byte observation window — 71% of the leaf's whole memory in
+// one call — and on a 1M model the same call was permitted 795,696 bytes
+// against that identical window, 7.5x more than could ever be held. Two results
+// put the window over budget on arrival, so the decay pass fired every turn,
+// rewrote the middle of the transcript every turn, and nothing behind the fade
+// line was ever served warm again. That is a structural contributor to the
+// 5.76x duplication this leaf was measured at.
+//
+// The convergence this introduces is the honest part rather than the cost: past
+// the working set a result cap stops growing because the memory holding it
+// stopped growing. It is a dial and not a belief — AFORGE_WORKING_SET raises
+// the window and these four bounds together, which is the only coherent way to
+// raise either.
 func toolBudgetsFor(contextTokens int) toolBudgets {
-	budget := ctxbudget.For(contextTokens).WithFloor(observationFixedFloorTokens)
+	budget := ctxbudget.For(contextTokens).WithinWorkingSet().WithFloor(observationFixedFloorTokens)
 	return toolBudgets{
 		result:  budget.Share(maxToolResultBytes, toolBudgetReference, maxToolResultBytes),
 		spill:   budget.Share(spillBytes, toolBudgetReference, spillBytes),
@@ -132,6 +384,15 @@ type Result struct {
 	// reportedJobs prevents a status-bearing result from being memoised and
 	// replayed later as if its transient background state were still current.
 	reportedJobs bool
+	// shape is which end of this result survives if it has to be cut. The
+	// default is shapeRead because most results are read forward; the tools
+	// whose output ends in a verdict say so. See resultShape.
+	shape resultShape
+	// bounded says this result already went through the caps and carries its
+	// own truncation notice — a streamed command, which had to be bounded as it
+	// arrived because nothing could hold the whole of it. Bounding it a second
+	// time at the turn boundary would cut the notice off the end of itself.
+	bounded bool
 	// Followup carries multimodal content that must reach the next model turn.
 	// The ordinary text result is still emitted first so tool-call pairing
 	// remains valid on every OpenAI-compatible backend.
@@ -436,6 +697,49 @@ func newToolbox(workspace *Workspace, leaf string, web *Web, history *store.Stor
 // the point. It is resent every turn, so it stays one sentence.
 const mediaModelArgDescription = `optional model: omit for the default, "best" when the user asked for quality or this is the final deliverable, or a model name`
 
+// toolGuidelines is the standing guidance each tool contributes to the system
+// prompt, keyed by the tool that owns it — and it is owned by the tool rather
+// than by the prompt for one reason: a leaf that is not holding the tool must
+// not be reading the instruction.
+//
+// The monolithic prompt cannot express that. Every leaf pays for every sentence
+// in it, including the paragraphs about capabilities this leaf does not have
+// and will never arm, and the only way to add guidance for one tool is to widen
+// the text every other leaf reads. Assembling it from the toolbox that was
+// actually built inverts that: two tools, two lines.
+//
+// What lives here is deliberately narrow — the behaviour of a tool that a model
+// cannot infer from its schema and that costs a wasted turn to learn by doing.
+// The prompt's own paragraphs are not moved here and must not be: they are the
+// shared warm prefix, a sibling owns their wording, and rewriting them to prove
+// a mechanism would re-bill every leaf in flight to say the same thing
+// differently. This is the mechanism, carrying the lines the recent tool
+// changes actually created.
+var toolGuidelines = map[string]string{
+	"sh": "Long command output is cut to its LAST lines — where the error and the summary are — " +
+		"and the whole of it is saved to a file the result names. Read the part you need from that " +
+		"file with the command the notice gives you; do not re-run the command to see the beginning.",
+	"edit": "To change several places in one file, pass them all in one edit call as edits: every old " +
+		"is matched against the file as it is now, so you do not have to reason about how the earlier " +
+		"edits in the same call moved the text.",
+}
+
+// Guidelines returns the guidance lines for the tools this leaf is actually
+// holding, in the order the tools are defined. It is read once, when the system
+// message is assembled: the set of tools a leaf holds is fixed at that point
+// except for arming, and arming appends schemas rather than rewriting the
+// standing text — a system message that changed mid-run would cost the whole
+// prompt at full price on the turn it changed.
+func (t *Toolbox) Guidelines() []string {
+	var lines []string
+	for _, definition := range t.Definitions() {
+		if line, ok := toolGuidelines[definition.Function.Name]; ok {
+			lines = append(lines, definition.Function.Name+": "+line)
+		}
+	}
+	return lines
+}
+
 // Definitions are what the model sees. Descriptions are terse because they are
 // resent every turn, but each one states the thing an agent gets wrong without
 // being told.
@@ -475,11 +779,19 @@ func (t *Toolbox) Definitions() []ai.ToolDefinition {
 			"path": prop("string", "workspace-relative path"),
 			"text": prop("string", "full file content"),
 		}, "path", "text"),
-		define("edit", "Replace an exact string in a file. Far cheaper than rewriting a long file to change part of it.", map[string]any{
+		define("edit", "Replace exact text in a file. Pass edits to change several places in one call. Far cheaper than rewriting a long file to change part of it.", map[string]any{
 			"path": prop("string", "workspace-relative path"),
-			"old":  prop("string", "exact text to replace, must appear once"),
-			"new":  prop("string", "replacement text"),
-		}, "path", "old", "new"),
+			"edits": map[string]any{"type": "array", "description": "several replacements, each matched against the current file",
+				"items": map[string]any{"type": "object", "properties": map[string]any{
+					"old": prop("string", "exact text to replace, must appear once"),
+					"new": prop("string", "replacement text"),
+				}, "required": []string{"old", "new"}}},
+			"old": prop("string", "exact text to replace, must appear once"),
+			"new": prop("string", "replacement text"),
+			// Only the path is required, because there are two legal shapes: one
+			// old/new pair, or the edits array. A schema that demanded both would
+			// make the batched form invalid on its face.
+		}, "path"),
 		define("web", "Search the web, or fetch pages as text. Pass q to search. Pass urls to fetch several pages in one call, which is much faster than one at a time.", map[string]any{
 			"q":    prop("string", "search query"),
 			"urls": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "page urls to fetch"},
@@ -856,20 +1168,60 @@ func wholeRunesTail(window string) string {
 	return window
 }
 
-// spill moves a large result out of context and leaves a pointer to it. Errors
-// are never spilled: they are usually short, and the whole value of an error is
-// that the model reads it immediately rather than going to fetch it.
+// spill moves a large result out of context and leaves a pointer to it, cut on
+// a line boundary at the end that matters for the tool that produced it, with
+// the exact command that reads the rest.
+//
+// Errors are never spilled: they are usually short, and the whole value of an
+// error is that the model reads it immediately rather than going to fetch it. A
+// long error is the failed command's own output, and that one arrives already
+// bounded — see runShell, where the same caps are applied to the stream.
 func (t *Toolbox) spill(result Result) Result {
-	if result.IsError || len(result.Content) <= t.budgets.spill {
+	if result.IsError || result.bounded {
 		return result
 	}
-	relative, ok := t.writeObs(fmt.Sprintf("%s-%d.txt", pathSlug(t.leaf), t.spills.Add(1)), result.Content)
-	if !ok {
+	if len(result.Content) <= t.budgets.spill && countLines(result.Content) <= maxResultLines {
 		return result
 	}
-	return Result{Content: fmt.Sprintf(
-		"%s\n\n... [%d of %d bytes shown. Full output saved to %s — read the part you need with sh, for example: sed -n '1,80p' %s]",
-		result.Content[:t.budgets.preview], t.budgets.preview, len(result.Content), relative, relative)}
+	// The file is written before the cut so the notice can name it, and it holds
+	// exactly the bytes the line numbers in the notice were counted against.
+	var ref spillRef
+	if relative, ok := t.writeObs(t.spillName(), result.Content); ok {
+		ref = spillRef{path: relative, bytes: len(result.Content)}
+	}
+	bounded, cut := boundResult(result.Content, t.budgets.spill, t.budgets.preview, result.shape, ref)
+	// The result is amended rather than rebuilt: a spilled document read still
+	// carries the tokens it cost, and a spilled image read still carries the
+	// content part the next turn needs.
+	result.Content, result.bounded = bounded, cut
+	return result
+}
+
+// spillName is the next observation file name for this leaf. The counter is
+// atomic because a turn's tool calls execute concurrently, and it is shared
+// with the streaming collector so a teed command log and a spilled result can
+// never land on the same name.
+func (t *Toolbox) spillName() string {
+	return fmt.Sprintf("%s-%d.txt", pathSlug(t.leaf), t.spills.Add(1))
+}
+
+// openSpill creates the file a running command's whole output is teed to. It is
+// handed to the collector as a closure because opening it is a decision the
+// collector makes — on the first byte past what it can carry, and never for the
+// overwhelming majority of commands whose output fits.
+func (t *Toolbox) openSpill() (io.WriteCloser, string, bool) {
+	full, shown, err := t.workspace.ScratchPath(filepath.Join(obsDir, t.spillName()))
+	if err != nil {
+		return nil, "", false
+	}
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return nil, "", false
+	}
+	file, err := os.Create(full)
+	if err != nil {
+		return nil, "", false
+	}
+	return file, shown, true
 }
 
 // decaySpill preserves a decaying observation's full body under the
@@ -977,6 +1329,9 @@ type shellRun struct {
 	exitCode int
 	timedOut bool
 	detached bool
+	// bounded says the body was cut as it streamed and already carries its own
+	// truncation notice naming the file the whole output went to.
+	bounded bool
 }
 
 // trustworthy asks whether a wrapped run may stand as the answer.
@@ -998,25 +1353,34 @@ func (r shellRun) trustworthy(class rtk.Class) bool {
 	return class == rtk.ClassCheck || r.exitCode == 0
 }
 
+// result turns a finished command into what the model reads. Every shape of it
+// is shapeCommand: what a command has to say is at the END of what it printed —
+// the error, the summary, the exit reason — so if this has to be cut, the cut
+// comes off the front. bounded rides along so the turn boundary does not cut an
+// already-cut body a second time.
 func (r shellRun) result(seconds int) Result {
 	if r.timedOut {
-		return errorf("command timed out after %ds. Partial output:\n%s", seconds, r.body)
+		out := errorf("command timed out after %ds. Partial output:\n%s", seconds, r.body)
+		out.shape, out.bounded = shapeCommand, r.bounded
+		return out
 	}
 	if r.detached {
 		// The command itself finished; something it started in the background
 		// kept the output pipe open until the grace ran out. That is a
 		// completed command with a detached child, not a failure.
-		return Result{Content: r.body + "\n(a background process the command started was left running detached)"}
+		return Result{Content: r.body + "\n(a background process the command started was left running detached)",
+			shape: shapeCommand, bounded: r.bounded}
 	}
 	if r.err != nil {
 		// The exit status matters less than the output; a build failure's value
 		// is entirely in what it printed.
-		return Result{Content: fmt.Sprintf("exit: %v\n%s", r.err, r.body), IsError: true}
+		return Result{Content: fmt.Sprintf("exit: %v\n%s", r.err, r.body), IsError: true,
+			shape: shapeCommand, bounded: r.bounded}
 	}
 	if strings.TrimSpace(r.body) == "" {
-		return Result{Content: "(no output)"}
+		return Result{Content: "(no output)", shape: shapeCommand}
 	}
-	return Result{Content: r.body}
+	return Result{Content: r.body, shape: shapeCommand, bounded: r.bounded}
 }
 
 // runShell runs one command to completion in the workspace. rtkBin is the
@@ -1076,10 +1440,15 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 			return rtk.StripNudge(line) != line
 		}
 	}
-	collected := newCappedOutput(strip, t.budgets.result)
+	// The collector's two limits are the leaf's own: carry what a result may
+	// cost the transcript, keep what survives when the command printed more
+	// than that. Everything past the first is teed to a file as it arrives, so
+	// the notice that ends up in context names a command that actually works.
+	collected := newCappedOutput(strip, t.budgets.spill, t.budgets.preview, t.openSpill)
 	cmd.Stdout, cmd.Stderr = collected, collected
 	err := cmd.Run()
-	run := shellRun{body: collected.String(), err: err, exitCode: exitCode(cmd, err)}
+	run := shellRun{body: collected.String(), bounded: collected.truncated(),
+		err: err, exitCode: exitCode(cmd, err)}
 	run.timedOut = runCtx.Err() == context.DeadlineExceeded
 	run.detached = errors.Is(err, exec.ErrWaitDelay)
 	return run
@@ -1116,10 +1485,45 @@ func (t *Toolbox) write(args map[string]any) Result {
 	return Result{Content: fmt.Sprintf("wrote %s (%d bytes)", path, len(text))}
 }
 
+// replacement is one exact-text substitution. A call carries one of these or
+// several; the several are the point.
+type replacement struct {
+	old string
+	new string
+}
+
+// edit replaces exact text in a file, one block or several in a single call.
+//
+// Several is the shape the work actually has. A function rename touches five
+// places in a file, and five separate edit calls are five round-trips, five
+// tool definitions re-sent, five results in the transcript forever, and — the
+// expensive part — five chances for the file to have moved under an offset the
+// model was remembering. Batched, it is one call, one read, one write, and one
+// sentence back.
+//
+// The semantics that make batching safe are the ones pi settled on and they are
+// all consequences of a single rule: every old is matched against the ORIGINAL
+// file, never against the file as the previous edits in this same call left it.
+// A model writing five edits is looking at one file — the one it read — and
+// matching against a moving target would mean the third edit had to be written
+// against a file that has never existed anywhere. From that rule the other two
+// follow: each old must appear exactly once in the original, because otherwise
+// "the" match is a guess; and no two matched spans may overlap, because two
+// edits to the same bytes have no defined result and applying them in call
+// order would silently pick one.
+//
+// Nothing is written unless every edit resolves. A file half-edited by a call
+// that then failed is the worst outcome available here — it is broken in a way
+// the model cannot see from the error — so the failure is total and the message
+// says which edit failed and how to fix it.
 func (t *Toolbox) edit(args map[string]any) Result {
-	path, old, replacement := stringArg(args, "path"), stringArg(args, "old"), stringArg(args, "new")
-	if path == "" || old == "" {
-		return errorf("edit needs path and old")
+	path := stringArg(args, "path")
+	edits, argErr := editList(args)
+	if path == "" || argErr != "" {
+		if argErr == "" {
+			argErr = "edit needs path"
+		}
+		return errorf("%s", argErr)
 	}
 	full, err := t.workspace.Resolve(path)
 	if err != nil {
@@ -1130,21 +1534,98 @@ func (t *Toolbox) edit(args map[string]any) Result {
 		return errorf("could not read %s: %v", path, err)
 	}
 	body := string(data)
-	// Ambiguity is reported rather than resolved. Replacing the first of three
-	// matches silently is the kind of edit that looks like it worked.
-	switch strings.Count(body, old) {
-	case 0:
-		return errorf("that exact text is not in %s. Read the file and match it byte for byte.", path)
-	case 1:
-	default:
-		return errorf("that text appears %d times in %s. Include more surrounding context so it matches once.", strings.Count(body, old), path)
+	// Every span is located in the original before any of them is applied, which
+	// is what makes the edits independent and what lets an overlap be a refusal
+	// rather than a race between two Replace calls.
+	type span struct{ start, end, index int }
+	spans := make([]span, 0, len(edits))
+	for index, one := range edits {
+		switch matches := strings.Count(body, one.old); matches {
+		case 1:
+			at := strings.Index(body, one.old)
+			spans = append(spans, span{start: at, end: at + len(one.old), index: index})
+		case 0:
+			return errorf("%s is not in %s. Read the file and match it byte for byte, whitespace included.",
+				editNoun(index, len(edits)), path)
+		default:
+			return errorf("Found %d occurrences of %s in %s — an edit must match exactly one. Provide more surrounding context so it matches once.",
+				matches, editNoun(index, len(edits)), path)
+		}
 	}
-	updated := strings.Replace(body, old, replacement, 1)
-	if err := os.WriteFile(full, []byte(updated), 0o644); err != nil {
+	sort.Slice(spans, func(a, b int) bool { return spans[a].start < spans[b].start })
+	for i := 1; i < len(spans); i++ {
+		if spans[i].start < spans[i-1].end {
+			return errorf("edits %d and %d overlap the same text in %s — they cannot both apply. Combine them into one edit.",
+				spans[i-1].index+1, spans[i].index+1, path)
+		}
+	}
+	var updated strings.Builder
+	updated.Grow(len(body))
+	at := 0
+	for _, s := range spans {
+		updated.WriteString(body[at:s.start])
+		updated.WriteString(edits[s.index].new)
+		at = s.end
+	}
+	updated.WriteString(body[at:])
+	if err := os.WriteFile(full, []byte(updated.String()), 0o644); err != nil {
 		return errorf("could not write %s: %v", path, err)
 	}
 	t.workspace.Record(t.leaf, full)
-	return Result{Content: fmt.Sprintf("edited %s (%d bytes)", path, len(updated))}
+	// One sentence, and deliberately not a diff.
+	//
+	// The diff is the most tempting thing to return here and the most expensive:
+	// it is the size of the change, it lands in the transcript, and it is then
+	// re-sent on every remaining turn of the leaf — to a model that already
+	// knows what it asked for, because it wrote both sides of it a moment ago.
+	// The human-facing surfaces still get the diff; they read it from the trace,
+	// which is where per-call detail belongs. See account.go.
+	return Result{Content: fmt.Sprintf("Successfully replaced %d block(s) in %s.", len(spans), path)}
+}
+
+// editList reads either shape of the call: the single old/new pair the tool has
+// always taken, or an edits array. Both are accepted because the single form is
+// most real calls and a schema that forced an array around one edit would spend
+// tokens on brackets in every one of them.
+//
+// A call carrying both is taken at its word and applies both, in that order,
+// rather than quietly dropping one. It is a shape a model does produce — the
+// pair it started writing plus the batch it then decided on — and dropping
+// either half would be an edit the model believes it made. Applying both is
+// safe for exactly the reason the batch is safe: every old is still matched
+// once against the original and overlapping spans are still refused, so a
+// duplicate written twice is caught rather than applied twice.
+func editList(args map[string]any) ([]replacement, string) {
+	var edits []replacement
+	if old := stringArg(args, "old"); old != "" {
+		edits = append(edits, replacement{old: old, new: stringArg(args, "new")})
+	}
+	raw, _ := args["edits"].([]any)
+	for index, item := range raw {
+		fields, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Sprintf("edit %d is not an object with old and new", index+1)
+		}
+		old := stringArg(fields, "old")
+		if old == "" {
+			return nil, fmt.Sprintf("edit %d has no old text to match", index+1)
+		}
+		edits = append(edits, replacement{old: old, new: stringArg(fields, "new")})
+	}
+	if len(edits) == 0 {
+		return nil, "edit needs old and new, or an edits array of {old, new} pairs"
+	}
+	return edits, ""
+}
+
+// editNoun names the edit an error is about, in the words the caller used: a
+// single edit is "that exact text", one of several is numbered, because a model
+// holding five edits has to know which one to fix.
+func editNoun(index, total int) string {
+	if total == 1 {
+		return "that exact text"
+	}
+	return fmt.Sprintf("edit %d's text", index+1)
 }
 
 func (t *Toolbox) webCall(ctx context.Context, args map[string]any) Result {
@@ -1167,12 +1648,18 @@ func (t *Toolbox) webCall(ctx context.Context, args map[string]any) Result {
 	if len(urls) > 0 {
 		sections = append(sections, t.web.Fetch(ctx, urls))
 	}
-	return Result{Content: clamp(strings.Join(sections, "\n\n"), t.budgets.result)}
+	// Whole, for the same reason a document is handed over whole: pages are read
+	// forward, and the turn boundary cuts them on a line boundary with the rest
+	// preserved and a command that reads on. See Toolbox.spill.
+	return Result{Content: strings.Join(sections, "\n\n")}
 }
 
-// clamp bounds a result at both ends, at whatever the consuming leaf can afford
-// — see toolBudgets, which is where the limit comes from and why it is passed
-// in rather than read from a constant.
+// clamp bounds a COMPOSED report at both ends — a job listing, a status block,
+// an upstream error body — at whatever the consuming leaf can afford. It is no
+// longer what bounds a tool result: that is boundResult, which cuts on line
+// boundaries at the end that matters and hands back the command that reads the
+// rest. This one stays for the assembled strings, where there is no single
+// underlying file to point at and the pieces are already short.
 //
 // Keeping only the head is the obvious implementation and the wrong one: a
 // command's most valuable line is usually its last, because that is where the

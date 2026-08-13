@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -14,12 +15,22 @@ import (
 // string the old path rendered. Bounded memory is worth nothing if the answer
 // moved by a byte.
 
-// oldPath is what runShell used to do: read everything, strip the nudge, clamp.
-func oldPath(output string, wrapped bool) string {
+// The two limits the tests run the collector at. They are the unknown-model
+// fallbacks, which is what a toolbox with no catalog behind it uses.
+const (
+	testCarry = spillBytes
+	testKeep  = previewBytes
+)
+
+// heldWhole is what the collector would be if memory were free: read the whole
+// output, strip the nudge, bound it. The collector must render exactly this
+// from a stream it never holds.
+func heldWhole(output string, wrapped bool) string {
 	if wrapped {
 		output = rtk.StripNudge(output)
 	}
-	return clamp(output, maxToolResultBytes)
+	bounded, _ := boundResult(output, testCarry, testKeep, shapeCommand, spillRef{})
+	return bounded
 }
 
 // nudgeFilter is the predicate runShell hands the collector for a wrapped run.
@@ -34,7 +45,7 @@ func collect(t *testing.T, output string, chunk int, wrapped bool) *cappedOutput
 	if wrapped {
 		filter = nudgeFilter
 	}
-	collector := newCappedOutput(filter, maxToolResultBytes)
+	collector := newCappedOutput(filter, testCarry, testKeep, nil)
 	for rest := output; len(rest) > 0; {
 		size := min(chunk, len(rest))
 		n, err := collector.Write([]byte(rest[:size]))
@@ -46,7 +57,7 @@ func collect(t *testing.T, output string, chunk int, wrapped bool) *cappedOutput
 	return collector
 }
 
-func TestCappedOutputRendersWhatClampWouldHave(t *testing.T) {
+func TestCappedOutputRendersWhatHoldingItWholeWould(t *testing.T) {
 	// Multibyte characters sit across both cut points, which is what the
 	// whole-rune trimming exists for.
 	multibyte := strings.Repeat("日本語のテキストが続きます。", 4000)
@@ -59,19 +70,27 @@ func TestCappedOutputRendersWhatClampWouldHave(t *testing.T) {
 		{"one line", "hello\n"},
 		{"no trailing newline", "hello"},
 		{"under the limit", strings.Repeat("a line of output\n", 100)},
-		{"one byte under the limit", strings.Repeat("x", maxToolResultBytes-1)},
-		{"exactly the limit", strings.Repeat("x", maxToolResultBytes)},
-		{"one byte over the limit", strings.Repeat("x", maxToolResultBytes+1)},
-		{"just over the head window", strings.Repeat("x", maxToolResultBytes*2/3+1)},
+		{"one byte under the limit", strings.Repeat("x", testCarry-1)},
+		{"exactly the limit", strings.Repeat("x", testCarry)},
+		{"one byte over the limit", strings.Repeat("x", testCarry+1)},
+		{"just over the kept window", strings.Repeat("x", testKeep+1)},
 		{"far over the limit", strings.Repeat("a verbose build says a great deal\n", 200_000)},
 		{"multibyte over the limit", multibyte},
 		{"binary", string(binaryNoise(1 << 20))},
+		// The line cap alone, with no byte cap in sight: thin output, well
+		// inside the carry limit, and past two thousand lines.
+		{"over the line cap and under the byte cap", strings.Repeat("x\n", maxResultLines+50)},
+		{"exactly the line cap", strings.Repeat("x\n", maxResultLines)},
+		// A giant final line, which is where whole-line truncation has to give
+		// up and cut inside one.
+		{"one line, no newline at all", strings.Repeat("j", 4*testCarry)},
+		{"a short line then a giant one", "first\n" + strings.Repeat("j", 4*testCarry)},
 	} {
 		for _, chunk := range []int{1, 7, 4096, 32 << 10, 1 << 30} {
 			for _, wrapped := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/chunks of %d/wrapped=%v", sample.name, chunk, wrapped), func(t *testing.T) {
 					got := collect(t, sample.output, chunk, wrapped).String()
-					if want := oldPath(sample.output, wrapped); got != want {
+					if want := heldWhole(sample.output, wrapped); got != want {
 						t.Fatalf("rendered %d bytes, want %d\n got %q\nwant %q",
 							len(got), len(want), snipEnds(got), snipEnds(want))
 					}
@@ -103,7 +122,7 @@ func TestCappedOutputStripsTheNudgeExactly(t *testing.T) {
 	} {
 		for _, chunk := range []int{1, 3, 64, 4096, 1 << 30} {
 			got := collect(t, sample, chunk, true).String()
-			if want := oldPath(sample, true); got != want {
+			if want := heldWhole(sample, true); got != want {
 				t.Fatalf("stripping %q in chunks of %d gave %q, want %q",
 					snipEnds(sample), chunk, snipEnds(got), snipEnds(want))
 			}
@@ -114,13 +133,13 @@ func TestCappedOutputStripsTheNudgeExactly(t *testing.T) {
 // The reason the collector exists. Whatever the command prints, what is held is
 // the limit and not the output.
 func TestCappedOutputHoldsOnlyWhatItKeeps(t *testing.T) {
-	collector := newCappedOutput(nudgeFilter, maxToolResultBytes)
+	collector := newCappedOutput(nudgeFilter, testCarry, testKeep, nil)
 	piece := []byte(strings.Repeat("this line is thrown away almost immediately\n", 1000))
-	for range 2000 { // ~86 MB through a collector that may hold 12 KB
+	for range 2000 { // ~86 MB through a collector that may hold 10 KB
 		collector.Write(piece)
 	}
-	held := cap(collector.head) + cap(collector.tail) + cap(collector.pending)
-	if held > maxToolResultBytes+cappedLineDecision {
+	held := cap(collector.ring) + cap(collector.pending)
+	if held > testCarry+cappedLineDecision {
 		t.Fatalf("the collector is holding %d bytes of an 86 MB output", held)
 	}
 	// The last newline is the separator in front of the empty final line, so it
@@ -129,6 +148,70 @@ func TestCappedOutputHoldsOnlyWhatItKeeps(t *testing.T) {
 	if collector.total != len(piece)*2000 {
 		t.Fatalf("counted %d bytes of %d", collector.total, len(piece)*2000)
 	}
+}
+
+// The file the whole output is teed to holds the whole output, and when the
+// command prints more than even a file should take, it holds the beginning and
+// the notice stops claiming otherwise.
+//
+// Both halves matter. Disk is not context, so the multiple is generous and
+// almost nothing reaches it — but a command CAN print at line rate for two
+// minutes, and a truncation notice that promised a complete file when the file
+// stopped at a quarter of the output would be a lie the model discovers a turn
+// later.
+func TestTheSpilledFileHoldsTheWholeOutputUntilItCannot(t *testing.T) {
+	const carry, keep = 1024, 256
+	for name, size := range map[string]int{
+		"comfortably inside the ceiling": 4 * carry,
+		"past the ceiling":               2 * carry * spillFileMultiple,
+	} {
+		t.Run(name, func(t *testing.T) {
+			sink := &memoryFile{}
+			collector := newCappedOutput(nil, carry, keep,
+				func() (io.WriteCloser, string, bool) { return sink, ".obs/x.txt", true })
+			body := strings.Repeat("a line of a very loud command\n", size/30)
+			collector.Write([]byte(body))
+			rendered := collector.String()
+
+			if !sink.closed {
+				t.Error("the spill file was left open after the command finished")
+			}
+			complete := sink.Len() == collector.total
+			if complete != !collector.partial {
+				t.Fatalf("the file holds %d of %d bytes but partial=%v", sink.Len(), collector.total, collector.partial)
+			}
+			if complete {
+				if sink.String() != body {
+					t.Error("the file does not hold what the command printed")
+				}
+				if !strings.Contains(rendered, "Whole output: .obs/x.txt") {
+					t.Errorf("the notice does not point at the complete file: %q", noticeOf(rendered))
+				}
+				return
+			}
+			if sink.Len() != carry*spillFileMultiple {
+				t.Errorf("the file grew to %d bytes, past the ceiling of %d", sink.Len(), carry*spillFileMultiple)
+			}
+			if !strings.Contains(rendered, fmt.Sprintf("First %d bytes: .obs/x.txt", sink.Len())) {
+				t.Errorf("the notice claims more than the file holds: %q", noticeOf(rendered))
+			}
+		})
+	}
+}
+
+// memoryFile is a spill file that never touches a disk.
+type memoryFile struct {
+	strings.Builder
+	closed bool
+}
+
+func (m *memoryFile) Close() error { m.closed = true; return nil }
+
+func (m *memoryFile) Write(p []byte) (int, error) {
+	if m.closed {
+		return 0, io.ErrClosedPipe
+	}
+	return m.Builder.Write(p)
 }
 
 func binaryNoise(size int) []byte {
