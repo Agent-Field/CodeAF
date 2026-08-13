@@ -80,10 +80,17 @@ func fakeEngine(scenario string, argv []string) int {
 					[]byte(fmt.Sprint(child.Process.Pid)), 0o644)
 			}
 		}
-		stage("bootstrap", "ready", nil)
 		// A hang that has already spent money. The engine publishes each
 		// assistant message's own running cost, and a run killed before it can
 		// write a terminal line has no other accounting at all.
+		//
+		// It goes out BEFORE the stage line, and the stage line is what the
+		// cancelling test waits for. The other order made the spend assertion a
+		// race the machine won under load: the stub is a re-exec of this binary,
+		// so a loaded box can leave it descheduled between two writes for longer
+		// than the leaf's poll interval, and the kill landed with the money
+		// still unsaid. Nothing asserts a bootstrap row on this scenario, so
+		// ordering the two by which one a test has to observe costs nothing.
 		_ = out.Encode(map[string]any{
 			"id": "evt_1", "type": "message.updated",
 			"properties": map[string]any{"info": map[string]any{
@@ -92,6 +99,7 @@ func fakeEngine(scenario string, argv []string) int {
 					"cache": map[string]any{"read": 0}},
 			}},
 		})
+		stage("bootstrap", "ready", nil)
 		time.Sleep(10 * time.Minute)
 		return 0
 	case "bell", "bell-unaudited", "bell-untouched":
@@ -279,6 +287,37 @@ func (p *sweProbe) task() Task {
 			p.milestone = append(p.milestone, line)
 			return nil
 		},
+	}
+}
+
+// controlWhenItSpeaks arms a control action that holds until the run has read
+// something off the engine's stream, and reports through the task's own
+// progress channel that it has.
+//
+// A test that cancels unconditionally is racing the child's own start. The stub
+// is a re-exec of this binary; on a loaded machine the process can take longer
+// to reach its first write than the leaf's poll interval, and the leaf then
+// kills something that has done nothing — which passes a cancellation test for
+// the wrong reason and fails every test that asserts what the run had already
+// managed to say. Waiting for the first stage row is the one signal a test has
+// that the stream is really flowing.
+func controlWhenItSpeaks(task *Task, action ControlAction) {
+	spoken := make(chan struct{})
+	var once sync.Once
+	reported := task.Progress
+	task.Progress = func(phase string, done, total int, latest string) {
+		if reported != nil {
+			reported(phase, done, total, latest)
+		}
+		once.Do(func() { close(spoken) })
+	}
+	task.Control = func() ControlAction {
+		select {
+		case <-spoken:
+			return action
+		default:
+			return ControlNone
+		}
 	}
 }
 
@@ -589,7 +628,9 @@ func TestSWEControlStopsTheEngine(t *testing.T) {
 func TestSWECancelReachesTheWholeProcessTree(t *testing.T) {
 	probe := newSWEProbe(t, "hang-with-child")
 	task := probe.task()
-	task.Control = func() ControlAction { return ControlCancel }
+	// The grandchild is started before the stub says anything, so waiting for
+	// the first row is also waiting for the pid file to exist.
+	controlWhenItSpeaks(&task, ControlCancel)
 	if _, err := probe.worker.Run(context.Background(), task); err != nil {
 		t.Fatal(err)
 	}
