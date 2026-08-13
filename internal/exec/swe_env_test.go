@@ -21,7 +21,7 @@ func TestChildPathLeadsWithTheProjectVenv(t *testing.T) {
 		t.Fatal(err)
 	}
 	worker := NewSWE(nil, "vendor/model", "key", "", 0)
-	path := childPath(t, worker.environ(dir))
+	path := childPath(t, worker.environ(placeView(dir)))
 	prefix := bin + string(os.PathListSeparator)
 	if !strings.HasPrefix(path, prefix) {
 		t.Fatalf("child PATH does not lead with the project venv:\n%s", path)
@@ -31,7 +31,7 @@ func TestChildPathLeadsWithTheProjectVenv(t *testing.T) {
 // A workspace without a venv changes nothing: the child inherits PATH as-is.
 func TestChildPathUntouchedWithoutAVenv(t *testing.T) {
 	worker := NewSWE(nil, "vendor/model", "key", "", 0)
-	if got, want := childPath(t, worker.environ(t.TempDir())), os.Getenv("PATH"); got != want {
+	if got, want := childPath(t, worker.environ(placeView(t.TempDir()))), os.Getenv("PATH"); got != want {
 		t.Fatalf("child PATH rewritten with no venv present:\ngot  %s\nwant %s", got, want)
 	}
 }

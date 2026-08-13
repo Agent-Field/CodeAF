@@ -29,8 +29,8 @@ func TestChildToolchainCachesAreSharedAcrossSessions(t *testing.T) {
 		_ = os.Unsetenv(name)
 	}
 	worker := NewSWE(nil, "vendor/model", "key", "", 0)
-	first := environmentMap(worker.environ(t.TempDir()))
-	second := environmentMap(worker.environ(t.TempDir()))
+	first := environmentMap(worker.environ(placeView(t.TempDir())))
+	second := environmentMap(worker.environ(placeView(t.TempDir())))
 
 	root := home.Join("cache", "toolchain")
 	for name, leaf := range map[string]string{
@@ -62,7 +62,7 @@ func TestAnOperatorsOwnCacheOutranksTheSharedDefault(t *testing.T) {
 	mounted := t.TempDir()
 	t.Setenv("GOMODCACHE", mounted)
 	worker := NewSWE(nil, "vendor/model", "key", "", 0)
-	environment := environmentMap(worker.environ(t.TempDir()))
+	environment := environmentMap(worker.environ(placeView(t.TempDir())))
 	if environment["GOMODCACHE"] != mounted {
 		t.Fatalf("GOMODCACHE = %q, want the operator's %q", environment["GOMODCACHE"], mounted)
 	}

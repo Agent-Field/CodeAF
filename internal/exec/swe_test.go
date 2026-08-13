@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
@@ -269,6 +270,11 @@ func newSWEProbe(t *testing.T, scenario string) *sweProbe {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("the swe worker needs git")
 	}
+	// aforge's own state root, disposable. A leaf keeps things outside the
+	// workspace now — the view root, and the plan database beside it — and a
+	// test that let those land in the developer's real ~/.aforge would both
+	// litter it and read whatever an earlier run left there.
+	t.Setenv(home.EnvVar, t.TempDir())
 	directory := t.TempDir()
 	workspace, err := NewWorkspace(directory)
 	if err != nil {
@@ -516,7 +522,19 @@ func TestSWEHandsTheEngineItsArgvAndEnvironment(t *testing.T) {
 		"CODEAF_CP_URL":       "off",
 		"OPENROUTER_API_KEY":  "sk-test",
 		"OPENROUTER_BASE_URL": "https://gateway.example/api/v1",
-		"PLANDB_DB":           filepath.Join(probe.directory, ".plandb.db"),
+	}
+	// THE PLAN DATABASE IS NOT IN THE DELIVERABLE. Left to itself the engine
+	// puts it at <run dir>/.plandb.db and holds it out of the change with an
+	// exclude file — advisory, and dead the moment anything commits. This is the
+	// one piece of the engine's state a variable can move, so it is moved: a
+	// file outside the tree cannot be staged, squashed, or landed in somebody's
+	// history by any mistake made anywhere else.
+	plandb := environment["PLANDB_DB"]
+	if plandb != filepath.Join(sweStateDir(probe.directory, probe.task().leafKey()), "plandb.db") {
+		t.Fatalf("PLANDB_DB = %q, want the leaf's own state directory beside its view", plandb)
+	}
+	if inside, err := filepath.Rel(probe.directory, plandb); err == nil && !strings.HasPrefix(inside, "..") {
+		t.Fatalf("the plan database is inside the workspace the leaf delivers: %q", plandb)
 	}
 	for name, value := range want {
 		if environment[name] != value {

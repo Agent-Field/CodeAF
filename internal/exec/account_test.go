@@ -125,6 +125,35 @@ func TestTheAccountIsBuiltFromWhatTheEngineAlreadyEmits(t *testing.T) {
 	}
 }
 
+// THE ENGINE'S OWN BOOKKEEPING IS NOT A CHANGE THE WORK MADE.
+//
+// The two halves of what a coding leaf reports were read from two places under
+// two rules. The artifact list came from the repository and was filtered; the
+// account's rows came from the engine's own tool metadata and were not, so a
+// delivered account named `.codeaf/contract.json` — the engine writing its own
+// contract file, reported to a person as their change, in the one surface a
+// dependent leaf reads to decide what happened. Every row goes through the one
+// filter now, whichever tool wrote it.
+func TestTheEnginesOwnBookkeepingNeverReachesTheAccount(t *testing.T) {
+	run := scriptedRun(t, []string{
+		filePart("1", "write",
+			`{"filepath":".codeaf/contract.json","exists":false,"diff":"--- a\n+++ b\n+{}\n"}`),
+		filePart("2", "edit",
+			`{"filediff":{"file":".codeaf/plan/architecture.md","patch":"…","additions":40,"deletions":0}}`),
+		filePart("3", "apply_patch",
+			`{"files":[{"filePath":"/w/.plandb.db","relativePath":".plandb.db","type":"update",`+
+				`"additions":1,"deletions":0},`+
+				`{"filePath":"/w/internal/parser/commas.go","relativePath":"internal/parser/commas.go",`+
+				`"type":"update","additions":3,"deletions":1}]}`),
+	})
+	if len(run.account.Files) != 1 {
+		t.Fatalf("the account reports the engine's machinery as the work: %#v", run.account.Files)
+	}
+	if run.account.Files[0].Path != "internal/parser/commas.go" {
+		t.Fatalf("the one real change is not the row that survived: %#v", run.account.Files[0])
+	}
+}
+
 // The void sentence, and what replaces it. A run whose engine died without a
 // terminal line is the exact case the account exists for.
 func TestASilentEndingStillDeliversTheAccount(t *testing.T) {

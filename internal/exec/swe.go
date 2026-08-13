@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/enginestate"
 )
 
 // SWE is the second kind of worker: a whole software-engineering pipeline taken
@@ -203,7 +204,7 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 
 	command := exec.Command(s.binary, argv...)
 	command.Dir = directory
-	command.Env = s.environ(directory)
+	command.Env = s.environ(view)
 	// Its own process group, so a cancel reaches the engine's own children —
 	// the auto-resume supervisor re-execs this binary again, and a TERM to the
 	// leader alone would leave the grandchild running against a leaf nobody is
@@ -569,6 +570,12 @@ func (s *SWE) land(ctx context.Context, task Task, view *sweView, outcome *Outco
 		if landing.refusal != "" {
 			outcome.Text = strings.TrimSpace(outcome.Text) + "\n\n" + landing.refusal
 		}
+		// Damage from a run before these defences, said once where the person
+		// reading the leaf's answer will see it. It is not this change and it is
+		// not this leaf's to fix; it is theirs to know about.
+		if view.tracked != "" {
+			outcome.Text = strings.TrimSpace(outcome.Text) + "\n\n" + view.tracked
+		}
 	}
 	if extra := s.recordArtifacts(ctx, task, before); extra > 0 {
 		outcome.Text = strings.TrimSpace(outcome.Text) +
@@ -639,16 +646,26 @@ func (s *SWE) recordArtifacts(ctx context.Context, task Task, before repoState) 
 	return overflow
 }
 
-// sweSidecar names the engine's own bookkeeping. It git-excludes these itself,
-// but a workspace that was already a repository may not, and a checkpoint file
-// listed as a deliverable is noise in every downstream context.
+// sweSidecar names bookkeeping rather than work: the engine's own, and the
+// harness's own beside it. A checkpoint file listed as a deliverable is noise
+// in every downstream context, and a path that reached a person's file list is
+// a path they will open.
+//
+// The engine's half is its own declaration (internal/swepro/enginestate) rather
+// than a copy. The copy that used to be here is exactly why this exists as one
+// function: it named `.plandb.db` and its sqlite sidecars and had never named
+// the `.plandb/` directory the engine cuts its worktrees into, so the two lists
+// aforge kept disagreed about what the engine's own files were.
 func sweSidecar(path string) bool {
-	head, _, _ := strings.Cut(filepath.ToSlash(path), "/")
-	switch head {
-	case ".codeaf", ".plandb.db", ".obs", ".aforge":
+	if enginestate.Holds(path) {
 		return true
 	}
-	return strings.HasPrefix(head, ".plandb.db")
+	head, _, _ := strings.Cut(filepath.ToSlash(path), "/")
+	switch head {
+	case obsDir, ".aforge":
+		return true
+	}
+	return false
 }
 
 // argv is the engine's command line. The goal goes last, behind `--`, so a
@@ -693,7 +710,8 @@ func (s *SWE) maxHours() float64 {
 // HOME for its git identity and credential helpers, PATH for git itself, and
 // TMPDIR for its worktrees, and a list of "the four variables an engine needs"
 // is a list that is wrong the first time the engine grows a fifth.
-func (s *SWE) environ(directory string) []string {
+func (s *SWE) environ(view *sweView) []string {
+	directory := view.dir
 	pinned := map[string]string{
 		sweproSentinelEnv: "1",
 		// The engine refuses to run without an AgentField control plane
@@ -701,11 +719,16 @@ func (s *SWE) environ(directory string) []string {
 		// "off" is the one value the embedding patch added to that gate.
 		"CODEAF_CP_URL":      "off",
 		"OPENROUTER_API_KEY": s.apiKey,
-		// The plandb singleton, kept beside the run it belongs to. This is the
-		// path the engine's own resume arm picks when the variable is unset, so
-		// setting it explicitly changes nothing except that a run and its
-		// resume cannot disagree about where the database was.
-		"PLANDB_DB": filepath.Join(directory, ".plandb.db"),
+		// The plandb singleton, kept beside the leaf's view rather than inside
+		// it (sweStateDir). Unset, the engine puts it at <run dir>/.plandb.db —
+		// which is to say inside the deliverable, held out of it by an exclude
+		// file that is advisory and that dies the moment anything commits. This
+		// is the one piece of the engine's state that a variable can move, and
+		// moving it is worth more than the exclusion was: a file that is not in
+		// the tree cannot be staged, cannot be squashed, and cannot be in
+		// somebody's history. Keyed by root and leaf, so a run and its resume
+		// still open the same database.
+		"PLANDB_DB": view.plandb(),
 	}
 	if s.baseURL != "" {
 		pinned["OPENROUTER_BASE_URL"] = s.baseURL
@@ -1623,7 +1646,7 @@ func (r *sweRun) noteFiles(tool string, part swePart) {
 		if json.Unmarshal(part.State.Metadata, &meta) != nil {
 			return
 		}
-		r.account.Note(r.accountPath(meta.FileDiff.File), ChangeChanged,
+		r.note(r.accountPath(meta.FileDiff.File), ChangeChanged,
 			meta.FileDiff.Additions, meta.FileDiff.Deletions)
 
 	case "write":
@@ -1644,7 +1667,7 @@ func (r *sweRun) noteFiles(tool string, part swePart) {
 			change = ChangeChanged
 		}
 		added, removed := patchStat(meta.Diff)
-		r.account.Note(r.accountPath(meta.FilePath), change, added, removed)
+		r.note(r.accountPath(meta.FilePath), change, added, removed)
 
 	case "apply_patch":
 		var meta struct {
@@ -1673,9 +1696,26 @@ func (r *sweRun) noteFiles(tool string, part swePart) {
 			if move := strings.TrimSpace(file.MovePath); move != "" {
 				path = r.accountPath(move)
 			}
-			r.account.Note(path, sweChangeKind(file.Type), file.Additions, file.Deletions)
+			r.note(path, sweChangeKind(file.Type), file.Additions, file.Deletions)
 		}
 	}
+}
+
+// note is the one door every change row goes through, and the filter on it is
+// the same one the artifact list has always had (recordArtifacts, sweSidecar).
+//
+// The two halves of what a leaf reports were being read from two places under
+// two rules: the artifact list from the repository, filtered, and the account's
+// rows from the engine's own tool metadata, unfiltered. So a delivered account
+// named `.codeaf/contract.json` as a file the work changed — the engine writing
+// its own bookkeeping, reported to a person as their change. A path is either
+// the work or it is machinery, and which one it is cannot depend on which
+// surface is asking.
+func (r *sweRun) note(path, change string, added, removed int) {
+	if strings.TrimSpace(path) == "" || sweSidecar(path) {
+		return
+	}
+	r.account.Note(path, change, added, removed)
 }
 
 // sweChangeKind is the engine's word for a change in the account's vocabulary.
