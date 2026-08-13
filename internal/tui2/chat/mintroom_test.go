@@ -279,6 +279,50 @@ func TestNavigatingPastTheFreshRoomCardMintsNothing(t *testing.T) {
 	}
 }
 
+// THE MAP'S ONE BARE-LETTER ACCELERATOR GIVES WAY. `t` opens the switcher while
+// the map holds the keyboard, on the argument that there a bare letter is
+// navigation rather than text — and in front of a fresh room that argument is the
+// other way round. A person typing "take another look at the importer" may not
+// have their first letter answered with a list.
+func TestTheBareSwitcherKeyIsTextInFrontOfTheFreshRoomCard(t *testing.T) {
+	app, backend := boardApp(t)
+	previewFreshRoom(t, app)
+
+	typeText(t, app, "take")
+
+	if app.overlay != overlayNone {
+		t.Fatalf("the first letter raised overlay %d instead of writing a word", app.overlay)
+	}
+	if len(backend.opened) != 1 {
+		t.Fatalf("typing minted %d rooms", len(backend.opened))
+	}
+	if draft := app.composer.Draft(); draft != "take" {
+		t.Fatalf("the draft reads %q", draft)
+	}
+}
+
+// The pane does NOT flash the old room on the way through. The one thing this
+// frame must never do again is show a reader a conversation their words are not
+// going into, so the card stands until the new room is there to replace it.
+func TestTheCardStandsUntilTheFreshRoomLands(t *testing.T) {
+	app, _ := boardApp(t)
+	previewFreshRoom(t, app)
+	before := app.session
+
+	mint := app.drain(app.key(tea.KeyPressMsg{Code: 'a', Text: "a"}))
+
+	if !app.previewingNewRoom() {
+		t.Fatal("the card came down mid-mint, showing the room the words are leaving")
+	}
+	if app.session != before {
+		t.Fatal("the window moved before the store answered")
+	}
+	runCmd(t, app, mint, 0)
+	if app.previewingNewRoom() {
+		t.Fatal("the card outlived the room it was a card for")
+	}
+}
+
 // A chord is an instruction and not a letter. No accelerator anywhere in the
 // product may mint a room, and the test is on the predicate because that is where
 // the rule is: the ladder above it is a list of keys, and this is the law.
