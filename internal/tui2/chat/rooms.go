@@ -5,15 +5,18 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/registry"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/keychip"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -86,6 +89,15 @@ type mainView struct {
 	kind viewKind
 	// node is the graph node a viewNode is anchored to.
 	node string
+	// rowID is the rail row a viewCard is a preview OF.
+	//
+	// A card is the one lens whose subject is not a surface the window is
+	// standing in, so it is the one lens that cannot be identified by anything
+	// else it holds: the transcript is a block built for the frame and the title
+	// is a name a second row could share. The id is what the row was already
+	// carrying, kept so a keystroke can ask what the reader is looking at
+	// ([App.previewingNewRoom]) instead of comparing drawn words.
+	rowID string
 	// title is the breadcrumb tail this view contributes.
 	title string
 	// transcript is the block list this view draws. viewThread's is the app's
@@ -602,12 +614,21 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 		if commit {
 			cmd = a.openRoomCmd()
 		}
-		// The card says which key mints the room; the composer says nothing,
-		// because the reader is still standing in the room they were in and it
-		// still takes their draft. Disabling it here used to survive the mint —
-		// nothing on the way through applyRoomOpened bound it back — so a fresh
-		// room opened with a mouth that refused to take a word.
-		a.showCard(row, "enter opens a fresh room")
+		// The composer stays where it was, because the reader is still standing
+		// in the room they were in and it still takes their draft. Disabling it
+		// here used to survive the mint — nothing on the way through
+		// applyRoomOpened bound it back — so a fresh room opened with a mouth
+		// that refused to take a word.
+		//
+		// THE CARD IS THE ONE THAT HAS TO SAY WHERE THE DRAFT GOES, and until
+		// 13.19 it did not: the reader who selected this row saw a card and
+		// believed they were in the new room, typed, and their words went into
+		// the old room — invisibly, because the pane was showing the card. Two
+		// answers, and they are both here. The card is a real empty state now
+		// ([App.showNewRoomCard]) that names both ways in, and the first
+		// printable key is one of them ([App.mintOnType]) — so a person acting
+		// on the belief the card used to leave them with is right.
+		a.showNewRoomCard(row)
 
 	case id == homes.GroupRowID:
 		a.showCard(row, "enter opens the rest of aforge")
@@ -675,6 +696,109 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 	a.handOverTheKeyboard(commit)
 	a.refresh()
 	return cmd
+}
+
+// -- typing your way into a fresh room (13.19) --------------------------------
+
+// previewingNewRoom reports whether the main pane is showing the `+ new` card.
+//
+// It asks the VIEW rather than the rail's cursor, and the difference is the whole
+// point: the cursor can be resting on a row whose card is not what is drawn — a
+// commit swaps the pane to a room and leaves the cursor where it was — and what
+// this question is really about is what the READER CAN SEE. The trap being closed
+// was a preview of nothing on screen while the mouth pointed somewhere else, so
+// the screen is what has to answer.
+func (a *App) previewingNewRoom() bool {
+	return a.view != nil && a.view.kind == viewCard && a.view.rowID == rowNewRoomID
+}
+
+// mintOnType is the `+ new` card's second door: the first printable key makes the
+// room and lands in it.
+//
+// THE INCIDENT. A reader selected `+ new`, the pane drew the card, and — believing
+// they were in the new room, which is what a card with a room's name on it means —
+// they typed a sentence and sent it. The composer was still bound to the room
+// they had been standing in, deliberately (see [App.bind]), and the pane was
+// showing the card, so their words went into a conversation they could not see and
+// were answered with that conversation's whole context behind them. Nothing lied
+// about a key; the surface simply had no answer for the most natural thing a
+// person can do in front of an empty room, and silence was the answer it gave.
+//
+// The intent is unambiguous — nobody selects `+ new` and starts typing in order to
+// speak to the room they just left — so the keystroke is taken as the commitment
+// it obviously is. Enter still opens; this only adds the door a person was
+// already trying to walk through.
+//
+// THE ORDERING, which is the part that has to be right:
+//
+//   - The mint is issued but not waited for. It is an ordinary [tea.Cmd] and the
+//     store answers on another goroutine.
+//   - The KEYBOARD moves to the composer synchronously, before the letter is
+//     delivered. Without this the map still holds it and the next letters would be
+//     eaten by j/k/g/G — 13.8's "jack knife kayak" arriving as "ac nife aya", one
+//     wave later.
+//   - The BINDING becomes a chat synchronously, for the same reason and one more:
+//     a composer left disabled by whatever the reader was previewing before would
+//     refuse the very key that just minted a room.
+//   - The LETTER is delivered synchronously, into that composer. It survives the
+//     mint by simply staying where it was put: [App.switchRoom] resets the
+//     transcript, the watermarks and the rail, and touches no draft.
+//   - A SEND that beats the store is held rather than posted ([mintHold]), so even
+//     a paste-and-enter faster than a disk write cannot reach the old room.
+//
+// The pane deliberately does NOT swap to the old room's thread on the way past.
+// The card stands until the new room lands, because the one thing this frame must
+// never do again is show a reader a conversation their words are not going into.
+func (a *App) mintOnType(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// ONE ROOM PER SENTENCE. The card deliberately stands until the store answers
+	// — see the note at the foot of this comment — so without this guard the
+	// second letter would find the same frame the first one did and mint again,
+	// and a person typing eight characters would leave eight rooms behind them.
+	// The gap is the flag: while a mint is in flight the door is already walked
+	// through, and every later key is an ordinary letter for the composer.
+	if a.composer == nil || a.mint.active || !a.previewingNewRoom() || !typedRune(msg) {
+		return nil, false
+	}
+	mint := a.openRoomCmd()
+	if mint == nil {
+		// A window with no rooms door. [App.openRoomCmd] has already said so on
+		// the status line; the key falls through to whatever would have had it.
+		return nil, false
+	}
+	a.composerBind = composerBind{mode: rail.ComposerChat}
+	a.focusScope(false)
+	typed := a.composer.Key(msg)
+	a.sizeComposer()
+	a.shell.Invalidate()
+	return tea.Batch(mint, typed), true
+}
+
+// typedRune reports whether a keystroke is a person writing a character, as
+// opposed to a person navigating.
+//
+// It is the composer's OWN test for insertion (composer/key.go's default arm:
+// text that is not empty becomes a rune in the draft), narrowed by two things the
+// composer can afford to be relaxed about and this door cannot. A MODIFIER means
+// the key is a chord, and a chord is an instruction rather than a letter — no
+// accelerator anywhere in this product should be able to mint a room. A
+// NON-PRINTING rune means a key cap that happens to carry text (enter's carriage
+// return is the one that matters), and a key cap is not a sentence.
+//
+// Shift is not a modifier for this purpose: a capital letter is a letter.
+func typedRune(msg tea.KeyPressMsg) bool {
+	if msg.Mod&^tea.ModShift != 0 {
+		return false
+	}
+	text := msg.Key().Text
+	if text == "" {
+		return false
+	}
+	for _, r := range text {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // handOverTheKeyboard is 5.15's one rule at the moment it matters most: you
@@ -818,7 +942,35 @@ func (a *App) showThread() {
 func (a *App) showCard(row rail.Row, note string) {
 	transcript := blocks.New(80, 24)
 	transcript.Append(cardBlock(row, note, a.style))
-	a.view = &mainView{kind: viewCard, title: row.Name, transcript: transcript}
+	a.view = &mainView{kind: viewCard, title: row.Name, rowID: row.ID, transcript: transcript}
+	a.pane.homes = nil
+	a.pane.transcript = transcript
+	a.shell.Invalidate()
+}
+
+// showNewRoomCard draws the `+ new` door's own lens: an empty state, not a
+// preview of a row.
+//
+// It is [App.showCard]'s sibling and deliberately not a call to it. Every other
+// card is a LOOK AT SOMETHING — a room with a last line in it, a job with a
+// status and a cost — and [cardBlock] is the renderer for exactly that: the row's
+// name under its lifecycle glyph, its telemetry, its artifact. Pointed at a door,
+// that renderer had nothing true to say and said it anyway. The shipped frame
+// read `○ + new` over a bare `$—`: a queued-state glyph on something that is not
+// work, a label that is a button caption rather than a title, and 10.2.8's honest
+// missing-money mark answering a question nobody asked about a room that does not
+// exist yet. §15's delete test takes all three away and loses nothing.
+//
+// What replaces them is what a reader actually needs here, in the order they
+// need it: what a fresh room IS, that it will name itself, and the two ways in.
+// See [newRoomCardBlock] for the typography.
+func (a *App) showNewRoomCard(row rail.Row) {
+	transcript := blocks.New(80, 24)
+	transcript.Append(&newRoomCardBlock{style: a.style})
+	// The TITLE is the card's own word and not the row's. `+ new` is a door's
+	// label — a verb with a mark in front of it — and the breadcrumb it feeds
+	// says where the reader IS, which is in front of a fresh room (5.14, 12.13.2).
+	a.view = &mainView{kind: viewCard, title: newRoomCardTitle, rowID: row.ID, transcript: transcript}
 	a.pane.homes = nil
 	a.pane.transcript = transcript
 	a.shell.Invalidate()
@@ -1102,6 +1254,13 @@ func (a *App) openRoomCmd() tea.Cmd {
 	}
 	rooms := a.source.rooms
 	id := newRoomID(a.now())
+	// THE GAP OPENS HERE, so it is declared here and nowhere else. Every door
+	// that mints a room comes through this function — the rail row, the palette,
+	// the switcher, and now the first letter typed at the card — and between this
+	// return and [App.applyRoomOpened] the window is still standing in the OLD
+	// room. A send that arrives in that gap would land there, which is the
+	// incident this whole lane is about, one race further down. See [mintHold].
+	a.mint.open()
 	return func() tea.Msg {
 		if reuser, ok := rooms.(RoomReuser); ok {
 			opened, _, err := reuser.OpenOrReuseSession(id, "tui")
@@ -1112,6 +1271,48 @@ func (a *App) openRoomCmd() tea.Cmd {
 	}
 }
 
+// mintHold is a room being made, and the words said while it was being made.
+//
+// A MINT IS ASYNCHRONOUS AND A KEYSTROKE IS NOT. [App.openRoomCmd] hands Bubble
+// Tea a command and the store answers on another goroutine, so there is a window
+// — one frame, usually, and no promise of that — in which the reader believes
+// they are in the new room, the composer takes their draft, and [App.session] is
+// still the old room. The DRAFT itself survives that window without help: nothing
+// on the way through [App.switchRoom] clears the composer's buffer, so the words
+// are simply still there when the new room arrives. A SEND does not survive it,
+// because a send reads the session, so a send that arrives early is HELD here and
+// performed when the room lands.
+//
+// It holds [composer.Send] rather than text so the two send doors — a plain draft
+// and one carrying attachments — are one queue. Holding only strings would have
+// dropped the pictures.
+type mintHold struct {
+	active bool
+	held   []composer.Send
+}
+
+// open marks a mint in flight.
+func (m *mintHold) open() { m.active = true }
+
+// take keeps a send until the room lands, and reports whether it did. A window
+// with no mint in flight holds nothing and the send goes out at once, which is
+// every send this product has ever made except the ones inside the gap.
+func (m *mintHold) take(send composer.Send) bool {
+	if !m.active {
+		return false
+	}
+	m.held = append(m.held, send)
+	return true
+}
+
+// drain closes the gap and hands back what was said inside it.
+func (m *mintHold) drain() []composer.Send {
+	m.active = false
+	held := m.held
+	m.held = nil
+	return held
+}
+
 // roomOpenedMsg is one minted room, folded in on the render goroutine.
 type roomOpenedMsg struct {
 	session store.Session
@@ -1119,9 +1320,22 @@ type roomOpenedMsg struct {
 }
 
 // applyRoomOpened lands a minted room and moves the window into it.
+//
+// It is also where the gap closes, and the ORDER inside it is the whole of the
+// ordering design: the window is moved into the new room FIRST, and only then are
+// the held sends performed — so a draft the reader submitted while the store was
+// still working posts into the room they were typing to, not the one they were
+// standing in. The reverse order would be the incident with an extra step.
 func (a *App) applyRoomOpened(msg roomOpenedMsg) tea.Cmd {
+	held := a.mint.drain()
 	if msg.err != nil {
 		a.status.err = msg.err.Error()
+		// THE WORDS COME BACK. A mint that failed leaves the window in the old
+		// room, and performing the held draft there is exactly what was refused a
+		// moment ago — so the sentence goes back into the draft instead, where the
+		// reader can read the failure beside it and decide. It is [App.failSend]'s
+		// own rule: a notice whose words have been destroyed is worse than none.
+		a.restoreHeld(held)
 		a.shell.Invalidate()
 		return nil
 	}
@@ -1132,7 +1346,32 @@ func (a *App) applyRoomOpened(msg roomOpenedMsg) tea.Cmd {
 	// conversation it just opened.
 	scope := a.setScope(false)
 	a.refresh()
-	return tea.Batch(scope, a.startPoll())
+	cmds := make([]tea.Cmd, 0, len(held)+2)
+	cmds = append(cmds, scope, a.startPoll())
+	for _, send := range held {
+		cmds = append(cmds, a.submitSend(send))
+	}
+	return tea.Batch(cmds...)
+}
+
+// restoreHeld puts words that were never sent back into the draft.
+//
+// The composer refuses if the reader has already started typing something else
+// ([composer.Model.Restore]), which is the right refusal: their new sentence
+// outranks the one the store lost.
+func (a *App) restoreHeld(held []composer.Send) {
+	texts := make([]string, 0, len(held))
+	for _, send := range held {
+		if text := strings.TrimSpace(send.Text); text != "" {
+			texts = append(texts, text)
+		}
+	}
+	if len(texts) == 0 {
+		return
+	}
+	if r, ok := a.composer.(interface{ Restore(string) bool }); ok {
+		r.Restore(strings.Join(texts, "\n"))
+	}
 }
 
 // newRoomID mints an id for a new room. It is never drawn — 13.3.4 is the rule
@@ -1398,35 +1637,196 @@ func cardTelemetry(row rail.Row) string {
 	return strings.Join(cells, " "+tokens.GlyphSeparator+" ")
 }
 
+// -- the fresh room's empty state --------------------------------------------
+
+// The `+ new` door's card, in the words a person standing in front of an empty
+// room actually needs.
+//
+// THE COPY IS THREE FACTS AND NOTHING ELSE, in the order the reader needs them:
+// what this is, that it will name itself, and how to go in. Everything the row
+// dump used to carry — the lifecycle glyph, the `$—`, the `+` from the door's own
+// label — is a fact about a room that does not exist yet, which is to say not a
+// fact.
+//
+// THE TWO WAYS IN ARE BOTH REAL, and that is the whole reason there are two. The
+// card used to name one key and the surface honoured only that key; a person who
+// took the other way — believing the card meant they had arrived, and typing —
+// was speaking into the room they had left. Both rows below are live doors now.
+const (
+	// newRoomCardTitle is the ruled word at the top: the THING, not the door.
+	// §16's CASE keeps it lowercase, like every other section word on the surface.
+	newRoomCardTitle = "a fresh room"
+	// newRoomCardNote is the one paragraph. It says what a room is, because the
+	// product's unit of work is a conversation and this is the frame where that
+	// is worth one sentence, and it promises the naming rather than leaving a
+	// reader to discover that `untitled room` is temporary.
+	newRoomCardNote = "a conversation of its own, with no history behind it. " +
+		"it takes its name from the first exchange in it."
+	// The two ways in. The verbs are the acts and the keys are annotation
+	// (§16's verb·key chip, drawn through internal/tui2/keychip), and the notes
+	// behind them say what each way actually does with the words in the draft —
+	// which is the difference the reader was never told and paid for.
+	newRoomTypeVerb = "start typing"
+	newRoomTypeNote = "the room is made and takes the draft"
+	newRoomOpenVerb = "open"
+	newRoomOpenKey  = "enter"
+	newRoomOpenNote = "arrive with nothing said"
+)
+
+// newRoomCardBlock is that card as a transcript block.
+//
+// It is its own type for [threadBreakBlock]'s reason: a [blocks.TextBlock] paints
+// one body at one state, and this card is a composed frame — a titled rule, a
+// paragraph at the readable measure, and two two-tier chip rows — whose parts sit
+// at three different tiers and shed independently under width pressure.
+type newRoomCardBlock struct {
+	style *tokens.Styler
+
+	width    int
+	measured bool
+	rows     []string
+}
+
+var _ blocks.Block = (*newRoomCardBlock)(nil)
+
+// ID is the anchor and cache key. It is a constant because a transcript holds
+// exactly one: the card is the whole of this lens.
+func (b *newRoomCardBlock) ID() string { return "new-room-card" }
+
+// IsFinalized is always true: an empty state has nothing left to do.
+func (b *newRoomCardBlock) IsFinalized() bool { return true }
+
+// SettledRows is every row.
+func (b *newRoomCardBlock) SettledRows(width int) int { return len(b.Rows(width)) }
+
+// Version never moves. The card is rebuilt, never edited.
+func (b *newRoomCardBlock) Version() uint64 { return 0 }
+
+// End is completed — a card is not a turn that could have been cut.
+func (b *newRoomCardBlock) End() blocks.EndState { return blocks.EndCompleted }
+
+// Rows lays the card out at width.
+//
+// THE HIERARCHY IS TYPOGRAPHIC AND THERE IS NO BOX. Four bands separated by
+// blank rows, which is §16's answer to separation and the same rhythm the thread
+// break and the taught empty state already keep: the titled rule, the paragraph
+// at [tokens.ProseMeasure] so a wide terminal does not run prose to column 200,
+// a blank, and the two ways in. Under width pressure each band degrades on its
+// own — the rule falls back to a bare hairline ([blocks.Ruled]), the paragraph
+// rewraps, and the notes behind the chips leave as one column so two doors are
+// never taught in two different formats.
+func (b *newRoomCardBlock) Rows(width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	if b.measured && b.width == width {
+		return b.rows
+	}
+	measure := width
+	if measure > tokens.ProseMeasure {
+		measure = tokens.ProseMeasure
+	}
+	rows := append(b.rows[:0], "")
+	rows = append(rows, blocks.Ruled{Title: newRoomCardTitle, State: blocks.StateChrome}.
+		Render(width, b.styler()))
+	rows = append(rows, "")
+	rows = prose{style: b.style, base: tokens.TextTertiary}.rows(rows, newRoomCardNote, measure, bodyIndent)
+	rows = append(rows, "")
+
+	ways := []registry.Chip{
+		registry.ChipFor(newRoomTypeVerb, ""),
+		registry.ChipFor(newRoomOpenVerb, newRoomOpenKey),
+	}
+	notes := []string{newRoomTypeNote, newRoomOpenNote}
+	// The notes are ONE COLUMN and they leave as one, exactly as the taught empty
+	// state's descriptions do: dropping only the row whose sentence happened not
+	// to fit would teach two doors in two formats and leave the reader deciding
+	// what the difference meant.
+	described := true
+	for i := range ways {
+		if bodyIndent+keychip.Width(ways[i:i+1])+blocks.Width(cardNoteTail(notes[i])) > width {
+			described = false
+			break
+		}
+	}
+	for i := range ways {
+		note := ""
+		if described {
+			note = notes[i]
+		}
+		rows = append(rows, b.wayRow(ways[i], note, width))
+	}
+	b.rows, b.width, b.measured = rows, width, true
+	return b.rows
+}
+
+// cardNoteTail is a note behind the telemetry separator (5.17), which is how it
+// is measured as well as how it is drawn.
+func cardNoteTail(note string) string {
+	if note == "" {
+		return ""
+	}
+	return " " + tokens.GlyphSeparator + " " + note
+}
+
+// wayRow draws one way in: the verb·key chip at the body's own left edge, and —
+// when the column fits — what that way does behind the separator. The chip is
+// only ever cut, never dropped: a row that named no verb would name no door.
+func (b *newRoomCardBlock) wayRow(chip registry.Chip, note string, width int) string {
+	room := width - bodyIndent
+	if room < 1 {
+		return ""
+	}
+	var line strings.Builder
+	line.WriteString(strings.Repeat(" ", bodyIndent))
+	for _, span := range keychip.Of(chip, tokens.TextSecondary) {
+		text := blocks.Truncate(span.Text, room)
+		line.WriteString(b.paint(text, tokens.Token(span.Tok)))
+		room -= blocks.Width(text)
+		if room < 1 {
+			return line.String()
+		}
+	}
+	if tail := cardNoteTail(note); tail != "" {
+		line.WriteString(b.paint(blocks.Truncate(tail, room), tokens.TextTertiary))
+	}
+	return line.String()
+}
+
+// paint draws one span, or returns it unchanged for a block built without a
+// profile — the golden harness and every headless test.
+func (b *newRoomCardBlock) paint(text string, tier tokens.Token) string {
+	if b.style == nil || text == "" {
+		return text
+	}
+	return b.style.PaintToken(text, tier)
+}
+
+func (b *newRoomCardBlock) styler() blocks.Styler {
+	if b.style == nil {
+		return nil
+	}
+	return b.style
+}
+
 // -- the steered draft -------------------------------------------------------
 
 // submit sends one draft to whatever the composer is bound to (5.15).
 //
-// There is exactly one branch and it reads the binding rather than the screen,
-// because the binding is what the prompt glyph promised: a `↦` row's draft
-// becomes steering mail anchored to its node, and a `›` row's draft becomes a
-// turn in the room. A disabled composer never gets here — it does not take the
+// It is a plain draft — no attachments — expressed as the one send [submitSend]
+// already routes, rather than as a second copy of that routing. The two used to
+// be written out separately and they had already grown apart once: only one of
+// them carried pictures. One door, read off the binding rather than off the
+// screen, because the binding is what the prompt glyph promised — a `↦` row's
+// draft becomes steering mail anchored to its node and a `›` row's becomes a turn
+// in the room. A disabled composer never gets here: it does not take the
 // keyboard, so it has no draft to submit.
 func (a *App) submit(text string) tea.Cmd {
 	// A new attempt ends the last one's failure, whatever becomes of this one.
 	// The state is about the most recent send and nothing else, so it is cleared
 	// where the next send begins rather than on a timer somebody has to tune.
 	a.clearSendFailure()
-	if a.composerBind.mode == rail.ComposerSteer && a.composerBind.node != "" {
-		return a.steerCmd(text)
-	}
-	return a.postCmd(text)
-}
-
-// steerCmd posts a draft to the row the composer is bound to.
-//
-// A steer is a user message anchored to a node: the same shape the old window's
-// steer line posts (internal/tui/node.go), through the same single door, so a
-// worker's steering mailbox is one mailbox and not two. Nothing here is a new
-// verb — 4.6's v1 promise is that a room's composer uses the verbs that already
-// exist, and this is that promise as four fields.
-func (a *App) steerCmd(text string) tea.Cmd {
-	return a.steerNode(a.composerBind.node, text)
+	return a.submitSend(composer.Send{Text: text})
 }
 
 // steerNode is the same door, aimed by the caller rather than by the binding.

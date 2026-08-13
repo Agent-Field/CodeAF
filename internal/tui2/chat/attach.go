@@ -206,10 +206,19 @@ func keepAttachments(keeper AttachmentKeeper, list []composer.Attachment) []stri
 	return out
 }
 
-// submitSend is [App.submit] for a draft that carried files: the same fork
-// between the steer door and the post door, with the attachments threaded
-// through whichever one the composer is bound to.
+// submitSend is the ONE send door: the fork between the steer door and the post
+// door, with any attachments threaded through whichever one the composer is
+// bound to. [App.submit] is this call with no files.
+//
+// A ROOM STILL BEING MINTED HOLDS THE SEND instead of performing it, and this is
+// the last place that can be decided — everything below reads [App.session], and
+// during a mint that is still the room the reader has just left. See [mintHold]
+// for the gap and [App.applyRoomOpened] for where the queue is performed, in the
+// new room, one instruction after the window moves into it.
 func (a *App) submitSend(send composer.Send) tea.Cmd {
+	if a.mint.take(send) {
+		return nil
+	}
 	if a.composerBind.mode == rail.ComposerSteer && a.composerBind.node != "" {
 		return a.steerNode(a.composerBind.node, send.Text, send.Attachments...)
 	}
