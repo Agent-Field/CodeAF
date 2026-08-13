@@ -157,7 +157,7 @@ func FailureCause(raw string) string {
 	line := firstLine(raw)
 	open := strings.IndexByte(line, '{')
 	if open < 0 {
-		return line
+		return firstSentence(line)
 	}
 	if message := decodeErrorEnvelope(line[open:]); message != "" {
 		return firstSentence(message)
@@ -167,7 +167,7 @@ func FailureCause(raw string) string {
 	// stage that failed; the bytes themselves stay in Detail where a reader who
 	// wants them can open them.
 	prefix := strings.TrimSpace(line[:open])
-	return strings.TrimSpace(strings.TrimSuffix(prefix, ":"))
+	return firstSentence(strings.TrimSpace(strings.TrimSuffix(prefix, ":")))
 }
 
 // errorEnvelope is the shape a provider's error body comes in. Both spellings

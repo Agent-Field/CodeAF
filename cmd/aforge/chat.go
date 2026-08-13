@@ -2394,7 +2394,11 @@ func leafCause(node store.Node, err error) string {
 	var refused *provider.APIError
 	if errors.As(err, &refused) {
 		if message := strings.TrimSpace(refused.Message); message != "" {
-			return message
+			// Through the same reducer the string path uses, so a provider that
+			// answers a refusal with a diagnosis and three lines of advice about
+			// which options to change is quoted once and identically wherever
+			// the failure is read. The advice is still whole, one line down.
+			return resident.FailureCause(message)
 		}
 	}
 	stamped := strings.TrimSpace(leafErrorPrefix.ReplaceAllString(strings.TrimSpace(err.Error()), ""))
