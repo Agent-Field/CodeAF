@@ -226,6 +226,7 @@ func applySessionOpened(tx *sql.Tx, payload sessionOpenedPayload, at time.Time) 
 // rename does not need it anyway — applySessionRenamed deliberately does not
 // touch last_active_at, so the payload carries nothing that could disagree
 // with the envelope.
+//
 // Tags is ABSENT rather than empty when the rename does not state them, and
 // the distinction is the whole of "a person's rename never touches tags": an
 // omitted list means leave what is there, and only a rename that carries one
@@ -331,20 +332,6 @@ func applySessionRenamed(tx *sql.Tx, payload sessionRenamedPayload) error {
 	if err != nil {
 		return err
 	}
-	// The tags are a second statement rather than a second column in the one
-	// above, because a rename that says nothing about the subject must not
-	// write over what the naming pass filed the room under. Normalized again on
-	// the way in: replay reads a payload written by an older build, and the
-	// row a rebuild lands must be the row the live write landed.
-	if tags := normalizeSessionTags(payload.Tags); len(tags) > 0 {
-		encoded, err := json.Marshal(tags)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`UPDATE sessions SET tags = ? WHERE id = ?`, string(encoded), id); err != nil {
-			return err
-		}
-	}
 	changed, err := result.RowsAffected()
 	if err != nil {
 		return err
@@ -352,7 +339,21 @@ func applySessionRenamed(tx *sql.Tx, payload sessionRenamedPayload) error {
 	if changed != 1 {
 		return fmt.Errorf("session renamed but %q has no row", id)
 	}
-	return nil
+	// The tags are a second statement rather than a second column in the one
+	// above, because a rename that says nothing about the subject must not
+	// write over what the naming pass filed the room under. Normalized again on
+	// the way in: replay reads a payload written by an older build, and the
+	// row a rebuild lands must be the row the live write landed.
+	tags := normalizeSessionTags(payload.Tags)
+	if len(tags) == 0 {
+		return nil
+	}
+	encoded, err := json.Marshal(tags)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(`UPDATE sessions SET tags = ? WHERE id = ?`, string(encoded), id)
+	return err
 }
 
 // EnsureSession mints the row for a session the first time it is seen and
