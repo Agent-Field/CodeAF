@@ -117,7 +117,7 @@ func TestACancelledRunningLeafIsLeftToTheLeafWrapper(t *testing.T) {
 // just stopped paying for.
 func TestTheCancelledEventForbidsRedoingTheCancelledWork(t *testing.T) {
 	node := store.Node{ID: "job-n3", Title: "Draft the findings"}
-	event := CancelledRevisionEvent(node, "sections 1 and 2 are written", store.UserCancelReason)
+	event := CancelledRevisionEvent(node, "sections 1 and 2 are written", store.UserCancelReason, 0)
 	for _, wanted := range []string{
 		"CANCELLED by the user", "Draft the findings", "sections 1 and 2 are written",
 		"unstarted remainder", "Never add a node that redoes",

@@ -111,19 +111,26 @@ func (f SatisfierFunc) Satisfied(ctx context.Context, criterion plan.Done, lande
 	return f(ctx, criterion, landed, inflight)
 }
 
-// SatisfierFor binds a planning client to the seam.
+// SatisfierFor binds a planning client, and the window that client reads
+// through, to the seam. Zero tokens is unknown and clips the gate's tables
+// exactly where they were clipped before any of this existed.
+//
+// The window is bound once with the client rather than read per call, because
+// it decides how much of the landed table each row carries and that table is
+// this call's cache prefix: a number that moved between two asks about the same
+// job would move the prefix with it.
 //
 // The call's usage is dropped rather than threaded back: it is one small call
 // against a refused round's full replan plus the leaf that round would have
 // spawned, and the paths that grow a job mid-run have no accounting slot to
 // return it through. What it costs is visible where every other plan call's
 // cost is, under the job's own spend node.
-func SatisfierFor(client plan.Completer) Satisfier {
+func SatisfierFor(client plan.Completer, contextTokens int) Satisfier {
 	if client == nil {
 		return nil
 	}
 	return SatisfierFunc(func(ctx context.Context, criterion plan.Done, landed []plan.Landed, inflight []plan.Spec) (plan.Satisfaction, error) {
-		verdict, _, err := plan.Satisfied(ctx, client, criterion, landed, inflight)
+		verdict, _, err := plan.Satisfied(ctx, client, contextTokens, criterion, landed, inflight)
 		return verdict, err
 	})
 }

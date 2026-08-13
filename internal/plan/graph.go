@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
@@ -235,10 +236,33 @@ type Graph struct {
 	// happened against a workspace it was told about but cannot see.
 	Terrain string `json:"terrain,omitempty"`
 
+	// ContextTokens is the window of the model that structures this job: the
+	// one that planned it, and the ones that later revise it and judge whether
+	// it is finished. Zero means unknown, which is the honest answer for a graph
+	// nobody told and never a claim that the model is small.
+	//
+	// It is persisted for the same reason Terrain is. The passes that read this
+	// document after the build — the revision sentinel, the growth gate — are
+	// reached through signatures that carry the document and nothing else, and a
+	// graph read back off disk that had lost the window would quietly go back to
+	// showing a 200k-token reviser 4 KiB of what has happened.
+	ContextTokens int `json:"context_tokens,omitempty"`
+
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
 	NextID int     `json:"next_id"`
 	Usage  Usage   `json:"usage"`
+}
+
+// Window is the graph's context window, asked safely of a graph that may not be
+// there. A caller reaching for a budget usually holds a *Graph that is nil on
+// every path where the job was never planned, and nil is the same answer as
+// unknown: use the fallback.
+func (g *Graph) Window() int {
+	if g == nil {
+		return 0
+	}
+	return g.ContextTokens
 }
 
 // Node returns the node with the given stable ID.
@@ -939,7 +963,10 @@ func (g *Graph) planBlock() string {
 // touch.
 func (g *Graph) stateBlock() string {
 	var block strings.Builder
-	budget := stateResultsBytes
+	// Read once, at the top, and spent down from there: the two numbers decide
+	// what the reviser is shown, so they must be the same two for every node of
+	// one render.
+	budget, perNode := g.stateResultBudget()
 	children := map[int][]int{}
 	for _, node := range g.Nodes {
 		if node.Parent != 0 {
@@ -975,7 +1002,7 @@ func (g *Graph) stateBlock() string {
 		// Bounded per node and per block, because this is a structuring call
 		// whose whole value is that it is short — a plan with thirty landed
 		// leaves must not turn one revision into a full transcript replay.
-		if written := writeStateResult(&block, node, budget); written > 0 {
+		if written := writeStateResult(&block, node, budget, perNode); written > 0 {
 			budget -= written
 		}
 	}
@@ -986,15 +1013,52 @@ func (g *Graph) stateBlock() string {
 // and stateResultsBytes is what all of them may contribute together. The first
 // keeps a single verbose leaf from crowding out its siblings; the second keeps
 // a large graph from crowding out the plan.
+//
+// They are the fallback pair now, not the pair: a graph that knows the window of
+// the model revising it sizes both from it. See stateResultBudget.
 const (
 	stateResultBytes  = 600
 	stateResultsBytes = 4 << 10
 )
 
+// stateResultsShare of statePromptShares is how much of the reviser's prompt the
+// landed results may take. The rest is the block they are hung on — one line per
+// node for the whole graph — plus the goal's context and the event being judged,
+// and the reviser's whole job is to read the second against the first.
+const (
+	stateResultsShare = 1
+	statePromptShares = 2
+
+	// stateFloorTokens is the reviser's turn before any of this: the revise
+	// prompt, the schema, the context block.
+	stateFloorTokens = 4 << 10
+
+	// stateNodeDivisor is how many nodes' worth of result the whole pot is cut
+	// into. It is what makes the per-node clip a share rather than a second
+	// absolute ceiling; the fallback pair already stood in roughly this ratio
+	// (4096/600 is under seven), so an unknown window keeps its old numbers.
+	stateNodeDivisor = 8
+)
+
+// stateResultBudget is what the reviser may be shown of what has happened: the
+// whole pot, and the most any single node may take of it.
+//
+// An unknown window returns exactly the pair this file carried before ctxbudget
+// existed, which is the whole of the rollback.
+func (g *Graph) stateResultBudget() (pot, perNode int) {
+	pot = ctxbudget.For(g.Window()).WithFloor(stateFloorTokens).
+		Share(stateResultsShare, statePromptShares, stateResultsBytes)
+	perNode = pot / stateNodeDivisor
+	if perNode < stateResultBytes {
+		perNode = stateResultBytes
+	}
+	return pot, perNode
+}
+
 // writeStateResult renders one settled node's outcome and reports what it
 // spent. A failure is rendered in preference to a result because a failure is
 // the sharper signal: it says the plan's next steps may have nothing to consume.
-func writeStateResult(block *strings.Builder, node Node, budget int) int {
+func writeStateResult(block *strings.Builder, node Node, budget, perNode int) int {
 	if budget <= 0 {
 		return 0
 	}
@@ -1008,8 +1072,8 @@ func writeStateResult(block *strings.Builder, node Node, budget int) int {
 		return 0
 	}
 	room := budget
-	if room > stateResultBytes {
-		room = stateResultBytes
+	if room > perNode {
+		room = perNode
 	}
 	line := fmt.Sprintf("      %s: %s", label, firstParagraph(clipRunes(body, room)))
 	if len(node.Artifacts) > 0 {
