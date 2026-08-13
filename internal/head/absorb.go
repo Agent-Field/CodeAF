@@ -219,7 +219,12 @@ func (h *Head) deliveryAnswer(ctx context.Context, client Client, message store.
 				body = absorbSpentReads
 			default:
 				spent++
-				result, failed := run.execute(name, call.Function.Arguments)
+				// THE SAME ACTIVITY SEAM the ordinary turn uses (activity.go).
+				// `streamed` and not `ctx`, so the reads this wake performs are
+				// keyed to the absorption's own stream session — the same key its
+				// tokens already carry, which is what keeps a delivery answer's
+				// narration out of a live conversation's live region.
+				result, failed := run.executeWatched(streamed, name, call.Function.Arguments)
 				if failed {
 					result = "ERROR: " + result
 				}

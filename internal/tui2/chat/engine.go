@@ -100,6 +100,21 @@ const (
 	StreamFinished
 	// StreamFailed is the call ending on someone else's.
 	StreamFailed
+	// The TOOL ACTIVITY boundaries (activity.go). They are the answer to a turn
+	// that reads for a minute and shows a pulsing `thinking` line for all of it:
+	// the head narrates each belt call as it makes it, on this same feed, and
+	// the live region interleaves the narration with the words.
+	//
+	// StreamToolBegin carries a person-readable GLOSS of the call in Delta —
+	// "searching for «navctx»", never the arguments (internal/head/activity.go
+	// owns the vocabulary). The two endings carry a short result hint, which is
+	// usually empty.
+	//
+	// THE OUTCOME IS A KIND AND NOT A FIELD, so this struct stays three strings
+	// wide and the bridge from the engine's vocabulary stays a copy.
+	StreamToolBegin
+	StreamToolEnd
+	StreamToolFailed
 )
 
 // String names the boundary for the trace. It is the surface's own vocabulary
@@ -116,6 +131,12 @@ func (k StreamKind) String() string {
 		return "finished"
 	case StreamFailed:
 		return "failed"
+	case StreamToolBegin:
+		return "tool-begin"
+	case StreamToolEnd:
+		return "tool-end"
+	case StreamToolFailed:
+		return "tool-failed"
 	}
 	return "unknown"
 }

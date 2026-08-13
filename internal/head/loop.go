@@ -168,7 +168,12 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 				body = orchestratorSpentBelt
 			default:
 				spent++
-				result, failed := run.execute(name, call.Function.Arguments)
+				// THE ACTIVITY SEAM (activity.go). The call is unchanged; what is
+				// added is that the turn says what it is doing while it does it,
+				// on the same feed its words ride. `ctx` and not `callContext`:
+				// the fold watch is only armed on turn zero and a cancelled watch
+				// must not silence the narration of a call that is still running.
+				result, failed := run.executeWatched(ctx, name, call.Function.Arguments)
 				if failed {
 					result = "ERROR: " + result
 				}

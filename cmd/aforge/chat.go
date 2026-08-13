@@ -1433,19 +1433,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// 600/600 completion tokens of thought and zero answer on the default model.
 	brain.serveHead = func(ctx context.Context) {
 		headContext := provider.WithStreamObserver(settings.Context(ctx, "head"), func(event provider.StreamEvent) {
-			translated := tui.StreamEvent{Delta: event.Delta, Session: event.Session}
-			switch event.Kind {
-			case provider.StreamStarted:
-				translated.Kind = tui.StreamStarted
-			case provider.StreamDelta:
-				translated.Kind = tui.StreamDelta
-			case provider.StreamThinking:
-				translated.Kind = tui.StreamThinking
-			case provider.StreamFinished:
-				translated.Kind = tui.StreamFinished
-			case provider.StreamFailed:
-				translated.Kind = tui.StreamFailed
+			kind, known := headStreamKind(event.Kind)
+			if !known {
+				// A boundary this build has never heard of is DROPPED rather than
+				// mapped to whatever the zero value happens to be. The zero value
+				// is StreamStarted, which resets the live region — so the old
+				// unguarded switch turned every future provider boundary into a
+				// wiped reply. See headStreamKind.
+				return
 			}
+			translated := tui.StreamEvent{Kind: kind, Delta: event.Delta, Session: event.Session}
 			select {
 			case streamEvents <- translated:
 			case <-ctx.Done():
@@ -1461,6 +1458,40 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		_ = conversationalHead.Serve(headContext)
 	}
 	return brain, nil
+}
+
+// headStreamKind maps the provider's stream vocabulary onto the window's, and
+// says when it could not.
+//
+// IT REPORTS FAILURE BECAUSE THE ZERO VALUE IS A REAL BOUNDARY. tui.StreamStarted
+// is ordinal zero and means "wipe the live region and start again"; a switch
+// that silently left an unrecognised kind at the zero value therefore did the
+// most destructive possible thing with the least information. Two vocabularies
+// only stay in step if the seam between them can say "I do not know this one".
+//
+// The tool-activity boundaries ride here with the rest (internal/head/
+// activity.go emits them): they cross into the window on the same channel the
+// tokens do, because they are the same turn happening.
+func headStreamKind(kind provider.StreamEventKind) (tui.StreamEventKind, bool) {
+	switch kind {
+	case provider.StreamStarted:
+		return tui.StreamStarted, true
+	case provider.StreamDelta:
+		return tui.StreamDelta, true
+	case provider.StreamThinking:
+		return tui.StreamThinking, true
+	case provider.StreamFinished:
+		return tui.StreamFinished, true
+	case provider.StreamFailed:
+		return tui.StreamFailed, true
+	case provider.StreamToolBegin:
+		return tui.StreamToolBegin, true
+	case provider.StreamToolEnd:
+		return tui.StreamToolEnd, true
+	case provider.StreamToolFailed:
+		return tui.StreamToolFailed, true
+	}
+	return 0, false
 }
 
 // chatBrain is the resident half of a window: the head that replies, the
