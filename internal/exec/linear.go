@@ -620,6 +620,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// the turns that follow can resend a byte-identical prefix and be billed
 		// at the cached rate.
 		outcome.Decayed += fade.decay(messages, obsBudget)
+		// And, only when retiring spent raw material was not enough to bring the
+		// whole live body back inside the working set, the leaf's own aged
+		// reasoning folds the same way. It does nothing on the ordinary leaf; see
+		// decayer.fold for the order and what protects the live edge.
+		outcome.Folded += fade.fold(messages, obsBudget)
 		// What the leaf had left before this turn, so the circuit breaker below
 		// can weigh what the turn cost against what remained rather than against
 		// the budget it started with.
@@ -634,7 +639,10 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			return l.land(ctx, task, outcome, started), fmt.Errorf("node %s: %w", task.leafKey(), err)
 		}
 		outcome.Turns++
-		addUsage(&outcome.Usage, response)
+		// The node total, and the same numbers kept per turn. See meter.go: a
+		// summed row cannot reproduce turns x context, and turns x context is
+		// what every governor below is really about.
+		outcome.meterTurn(response)
 
 		calls := response.ToolCalls()
 		if task.Reflex {
@@ -768,7 +776,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		}
 		group.Wait()
 		for index := range results {
-			outcome.Usage.merge(results[index].Usage)
+			outcome.meterTool(results[index].Usage)
 		}
 		// The run record is written here rather than in the workers, because it
 		// is one slice and several goroutines just finished. It records every
@@ -875,7 +883,8 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				"straggler threshold crossed at %d tokens against a measured median of %d — judged worth continuing",
 				evidence.Spent, evidence.Anchor))
 		}
-		if exhausted(outcome, l.maxTokens) && landing == 0 {
+		pressure, pressureCeiling := outcome.contextPressure(), reuseCeiling(l.contextTokens)
+		if (exhausted(outcome, l.maxTokens) || pressureReached(pressure, pressureCeiling)) && landing == 0 {
 			landing = landingTurns
 			landingStop = StopBudget
 			// Same reason as the deadline reserve above: the budget is spent
@@ -886,6 +895,12 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 				reached = fmt.Sprintf(
 					"raw token bound reached (%d of %d, cost only %d of %d) — landing reserve granted",
 					rawSpent(outcome), rawCeiling(l.maxTokens), spent(outcome), l.maxTokens)
+			}
+			if pressureReached(pressure, pressureCeiling) {
+				reached = fmt.Sprintf(
+					"context reuse bound reached (%d prompt tokens sent across %d turns, %d permitted "+
+						"against a %d-token window; cost only %d of %d) — landing reserve granted",
+					pressure, outcome.Turns, pressureCeiling, l.contextTokens, spent(outcome), l.maxTokens)
 			}
 			trace.note(reached)
 			messages = append(messages, ai.Message{Role: "user", Content: text(
@@ -1262,6 +1277,9 @@ func exhausted(outcome *Outcome, maxTokens int) bool {
 
 // rawCeiling is the grant expressed in undiscounted tokens.
 func rawCeiling(maxTokens int) int { return maxTokens * rawTokenCeilingMultiple }
+
+// The leaf's third bound — the cumulative one — is reuseCeiling in meter.go,
+// beside the ledger it is measured off.
 
 // budgetUsed is how far into its allowance the leaf is, read on whichever of
 // the two bounds it is closer to. The wrap-up warning is measured against this

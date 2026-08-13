@@ -75,24 +75,34 @@ const (
 // reserve every call keeps for its answer and its reasoning. What is left after
 // the fixed floor and that reserve is what observations may carry. The rest of
 // the window is not slack: it is the assistant messages, which are compressed
-// state and are never faded, plus the user's brief, the upstream results, and
-// everything the loop appends as it goes.
+// state and fade last and only under pressure (see fold), plus the user's brief,
+// the upstream results, and everything the loop appends as it goes.
 //
-// There is no longer a ceiling over the answer, and the deleted one is worth
-// naming because it was the only absolute byte number left in the sizing. It
-// stood at 64KB and it was a cost decision wearing a memory decision's clothes:
-// the window is re-sent every turn and billed against the leaf's spend ceiling,
-// so a big window on a small grant was measured crossing the wrap-up threshold
-// before the leaf had done any work. Capping the memory was the wrong half to
-// fix. A model that holds a million tokens gets a window sized for a million
-// tokens, and what has to move beside it is the grant — which is a spend
-// question, decided where spend is decided, and never here.
+// There is no longer a ceiling over the answer that is this file's own opinion,
+// and the deleted one is worth naming because it was the only absolute byte
+// number left in the sizing. It stood at 64KB and it was a cost decision wearing
+// a memory decision's clothes: the window is re-sent every turn and billed
+// against the leaf's spend ceiling, so a big window on a small grant was
+// measured crossing the wrap-up threshold before the leaf had done any work.
+// Capping the memory at a buried literal was the wrong half to fix.
 //
-// A known context always gets the law's own answer, including when that answer
-// is small. Only the unknown case takes a default, and only the default gets a
-// floor under it — see observationBudget.
+// What replaced it is not that literal coming back. The pot the fill law is
+// taken of is now min(window, working set) — see ctxbudget.WithinWorkingSet —
+// and the difference between the two is the whole point: 64KB was a number this
+// file believed about every model in existence, while the working set is a named
+// setting with a stated default, an environment pin, a row in the sheet, and a
+// reason measured on this harness. It is also the correction to a real, measured
+// failure of the unbounded version: on a 1M-context model the fill law alone
+// handed a leaf a 2.2MB observation window against 181KB of tool output across
+// TWELVE nodes, so the decayer fired zero times, nothing ever left any
+// transcript, and 90% of every input token billed was material the model had
+// already been shown.
+//
+// A known context under the ceiling still gets the law's own answer, including
+// when that answer is small. Only the unknown case takes a default, and only the
+// default gets a floor under it — see observationBudget.
 func observationWindow(contextTokens int) int {
-	budget := ctxbudget.For(contextTokens).WithFloor(observationFixedFloorTokens)
+	budget := ctxbudget.For(contextTokens).WithinWorkingSet().WithFloor(observationFixedFloorTokens)
 	if !budget.Known() {
 		if defaultObservationBudget < observationBudget {
 			return observationBudget
@@ -201,14 +211,48 @@ func (m *inflowMeter) mean() (int, bool) {
 // could not be written and the caller must not claim a path.
 type spillFunc func(toolCallID, body string) (path string, ok bool)
 
-// decayer shrinks old tool results in place, losslessly.
+// foldKeepAssistantTurns is how many of the newest assistant messages the fold
+// pass may never touch, and it is the invariant the original "never touched"
+// rule was really protecting.
 //
-// The asymmetry is the whole idea. An assistant message is *compressed state*:
-// the model already read the raw output and wrote down what mattered, so those
-// messages are never touched. A tool result is *spent raw material* — by the
-// time three more turns have happened, its value has usually already been
-// extracted into the reasoning above it, and all it does is get re-billed on
-// every remaining turn.
+// The rule was written as "assistant messages are compressed state", and that
+// reasoning is sound about the RECENT ones and only about those. The model's
+// last few turns are its live working memory — the plan it is executing, the
+// conclusion it just reached, the draft that becomes the deliverable when the
+// loop ends — and folding any of them would be deleting the thing the next turn
+// is written against. Twenty turns back, the same message is a paragraph about a
+// file that has since been rewritten, re-billed on every remaining turn: it is
+// spent, exactly as a tool result is spent, and the measured evidence is that
+// assistant output was 45% of context growth while the decayer could not reach
+// a byte of it.
+//
+// Three keeps the current thought and the two it was built on. It is deliberately
+// smaller than the eight-to-sixteen turns a well-sized leaf runs, because a fold
+// that kept most of the run would reclaim nothing, and deliberately more than
+// one, because a model that has just been told its own last message is a stub
+// has been made to distrust its own memory.
+//
+// The deliverable is covered by this same keep and needs no separate rule: the
+// leaf's contract is that the final message IS the deliverable (see
+// systemPrompt), the fold runs at the top of a turn before that message exists,
+// and lastAssistantText — what land() hands over when a leaf is stopped early —
+// reads the newest assistant text there is, which is never foldable.
+const foldKeepAssistantTurns = 3
+
+// decayer shrinks old tool results in place, losslessly, and — only when that
+// is not enough — folds aged assistant text the same way.
+//
+// The asymmetry is the whole idea, and it is an ORDER rather than an exemption.
+// A tool result is *spent raw material*: by the time three more turns have
+// happened its value has usually already been extracted into the reasoning above
+// it, and all it does is get re-billed on every remaining turn, so it retires
+// first and it retires deep. An assistant message is *compressed state* — the
+// model already read the raw output and wrote down what mattered — so it is
+// worth many times its bytes and it is touched last, never while stubbing tool
+// output would do, and never within foldKeepAssistantTurns of the live edge.
+//
+// What is not true, and was assumed for a long time, is that compressed state is
+// worth its bytes forever. See fold.
 //
 // Newest results are kept in full until the budget runs out, then everything
 // older collapses to a single line naming what it was and where its bytes
@@ -443,6 +487,138 @@ func (d *decayer) retire(messages []ai.Message, budget, lowWater int) int {
 		decayed++
 	}
 	return decayed
+}
+
+// liveTranscriptBytes is what the whole re-sent body of the transcript costs as
+// it currently stands — spent raw material and compressed state together, each
+// counted as what the provider is actually billed for.
+//
+// It is the quantity the working set is a statement about. liveObservationBytes
+// answers a narrower question (how much raw output is quoted) and is what the
+// tool-decay pass fires on; this one is what decides whether that pass was
+// enough.
+func liveTranscriptBytes(messages []ai.Message) int {
+	total := 0
+	for _, message := range messages {
+		switch message.Role {
+		case "tool", "assistant":
+			for _, part := range message.Content {
+				total += len(part.Text)
+			}
+		}
+	}
+	return total
+}
+
+// fold retires aged assistant text, and only once retiring tool output has
+// failed to bring the transcript back inside the working set.
+//
+// The order is the policy. decay runs first and reaches as deep as it likes into
+// spent raw material; fold is asked afterwards, sees what that left, and does
+// nothing at all unless the whole live body — results and reasoning together —
+// is still over. So on the ordinary leaf, whose bulk is tool output, this pass
+// measures and mutates nothing, and the "assistant messages are never touched"
+// behaviour of every run before this one is exactly what still happens. It fires
+// on the leaf whose own prose became the context: measured, assistant output was
+// 45% of context growth, and no governor in the harness could see a byte of it.
+//
+// When it does fire it folds every foldable message in one batch rather than
+// shaving off the overflow, for the reason decayLowWaterPercent spells out at
+// length: a rewrite anywhere in the transcript re-bills the entire tail cold, so
+// the cheap shape is one invalidation followed by many quiet turns, and the
+// expensive shape is a small correct rewrite every turn. Everything newer than
+// foldKeepAssistantTurns is untouchable, which is what stops the batch reaching
+// the model's live working memory or the deliverable.
+//
+// After that first batch the keep window slides forward one message per turn, so
+// a transcript that stays over budget folds one newly-aged turn per turn. That
+// is a rewrite per turn and it is affordable where the decay pass's would not
+// be, because of WHERE it lands: the fold point advances with the tail, so what
+// is re-billed cold behind it is the last few assistant turns and their results
+// rather than the whole history a head-of-transcript rewrite invalidates.
+//
+// Nothing is lost. The full text goes to the same workspace spill the decay pass
+// writes to, under the same write-once bookkeeping, and the stub left behind
+// names that path — so a model that finds it needs its own earlier reasoning can
+// read it back with sh, exactly as it can for a superseded result. A message
+// whose bytes cannot be given a durable address is left alone rather than
+// summarised away: a fold that cannot point is a deletion.
+//
+// Tool-call pairing is preserved absolutely. Only the text content of a message
+// is replaced; its ToolCalls travel untouched, because an assistant tool_call
+// with no answering tool message — or a tool message answering nothing — is a
+// hard provider rejection rather than a degraded prompt.
+func (d *decayer) fold(messages []ai.Message, budget int) int {
+	if liveTranscriptBytes(messages) <= budget {
+		return 0
+	}
+	// Which assistant message this is, counting from the start, so a stub can
+	// say which turn's reasoning it stands for. The transcript is append-only,
+	// so the ordinal is stable for the life of the leaf.
+	ordinal := make([]int, len(messages))
+	turns := 0
+	for index := range messages {
+		if messages[index].Role == "assistant" {
+			turns++
+			ordinal[index] = turns
+		}
+	}
+
+	folded, fresh := 0, 0
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index].Role != "assistant" {
+			continue
+		}
+		if fresh < foldKeepAssistantTurns {
+			fresh++
+			continue
+		}
+		body := contentOf(messages[index])
+		if body == "" {
+			continue
+		}
+		key := fmt.Sprintf("assistant#%d", index)
+		if _, done := d.spilled[key]; done {
+			// Already a stub from an earlier pass; it stays exactly as it is.
+			continue
+		}
+		// The length test comes before the write, so no file is produced for a
+		// message that is going to be kept — the same discipline retire applies
+		// to itself. The path only lengthens the note, so a body that cannot
+		// beat the pathless form can never beat the real one either.
+		if len(foldStub(ordinal[index], len(body), "")) >= len(body) {
+			continue
+		}
+		path, kept := d.preserved[key]
+		if !kept && d.spill != nil {
+			path, kept = d.spill(key, body)
+		}
+		if !kept {
+			// No durable address, so no pointer may be made: the bytes are
+			// carried again, which is the cheap failure. See observations.
+			continue
+		}
+		stub := foldStub(ordinal[index], len(body), path)
+		if len(stub) >= len(body) {
+			continue
+		}
+		d.spilled[key] = path
+		messages[index].Content = text(stub)
+		folded++
+	}
+	return folded
+}
+
+// foldStub is what a folded turn leaves in the transcript. It is written in the
+// model's own first person because that is whose message it replaces, and it
+// names the file rather than merely admitting something was there — a fold that
+// does not say where is a deletion with a receipt.
+func foldStub(turn, bytes int, path string) string {
+	if path == "" {
+		return fmt.Sprintf("[my turn %d — %d bytes of my own earlier reasoning, folded]", turn, bytes)
+	}
+	return fmt.Sprintf("[my turn %d — %d bytes of my own earlier reasoning, folded; the full text is in %s — read it with sh if it matters]",
+		turn, bytes, path)
 }
 
 func labelFor(labels map[string]string, id string) string {
