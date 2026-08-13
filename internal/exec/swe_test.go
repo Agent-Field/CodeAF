@@ -167,6 +167,14 @@ func fakeEngine(scenario string, argv []string) int {
 		}},
 	})
 	verification := map[string]any{"commands": "go test ./..."}
+	if scenario == "silent-pass" {
+		// The structured shape the contract carries, so the account gets a
+		// verification story as well as a change set — the two halves the repair
+		// path reads together before it decides not to re-run the engine.
+		verification = map[string]any{"commands": []any{
+			map[string]any{"cmd": "go test ./...", "exit": 0, "tail": "ok  github.com/x 1.2s", "kind": "test"},
+		}}
+	}
 	if scenario == "baseline" {
 		// The engine's baseline delta, in the shape the contract carries it:
 		// a check that came back red and was already red before the run.
@@ -187,9 +195,24 @@ func fakeEngine(scenario string, argv []string) int {
 		stage("audit", "pass", map[string]any{"cycle": 2})
 	}
 
-	if directory != "" && scenario == "pass" {
+	if directory != "" && (scenario == "pass" || scenario == "silent-pass") {
 		_ = os.WriteFile(filepath.Join(directory, "fixed.txt"), []byte("the parser is fixed\n"), 0o644)
 		fakeCommit(directory)
+	}
+	if scenario == "silent-pass" {
+		// The engine's real shape on a clean pass: the worker says what it found
+		// as an ordinary completed text part, and the terminal line that follows
+		// carries no message at all (internal/swepro/codeaf/pipeline.go's
+		// StatusPass arm left result.Reason empty). Everything the run has to say
+		// for itself is on this channel and nowhere else.
+		_ = out.Encode(map[string]any{
+			"id": "evt_9", "type": "message.part.updated",
+			"properties": map[string]any{"part": map[string]any{
+				"id": "prt_final", "type": "text", "messageID": "msg_1",
+				"text": fakeSilentPassText,
+				"time": map[string]any{"start": 1, "end": 2},
+			}},
+		})
 	}
 
 	switch scenario {
@@ -217,6 +240,11 @@ func fakeEngine(scenario string, argv []string) int {
 			"message": "The flag name was corrected.",
 			"data":    map[string]any{"cycle": 1, "cost_usd": 0.0104},
 		})
+	case "silent-pass":
+		_ = out.Encode(map[string]any{
+			"type": "terminal", "status": "pass",
+			"data": map[string]any{"cycle": 2, "cost_usd": 0.4212},
+		})
 	case "strained":
 		// Most of the ceiling, so the cheap-run note stays silent and only the
 		// audit's own exhaustion speaks.
@@ -239,6 +267,12 @@ func fakeEngine(scenario string, argv []string) int {
 // engineRecordFile is where the stub leaves its argv and environment. It is a
 // dotfile so the artifact assertions are about the work, not the harness.
 const engineRecordFile = ".engine-call.json"
+
+// fakeSilentPassText is the worker's own last word on a run whose terminal line
+// says nothing: the real deliverable, the thing that used to be written to the
+// trace and thrown away.
+const fakeSilentPassText = "The trailing-comma failure was a lookahead that consumed the comma " +
+	"before checking for a closing bracket, so the parser saw an empty element where the input had none."
 
 func fakeCommit(directory string) {
 	for _, args := range [][]string{

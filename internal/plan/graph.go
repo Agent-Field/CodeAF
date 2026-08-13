@@ -242,6 +242,39 @@ type Graph struct {
 	// here matches a phrase against the goal.
 	FileShaped bool `json:"file_shaped,omitempty"`
 
+	// Continues says this plan is the remainder of work that already happened —
+	// a repair, an extension, a continuation — as opposed to a plan for work
+	// nobody has started.
+	//
+	// It is a separate fact from Records and not derivable from it, because the
+	// two questions it separates are the ones that were being collapsed. A plan
+	// that continues nothing has no record because there is nothing to have a
+	// record OF, and telling its method writer that no record was handed in
+	// would be answering a question nobody asked. A plan that continues work and
+	// still has no readable record is the case that goes wrong: its agents will
+	// be asked to state facts about work they cannot see, and the method they are
+	// held to has to say so out loud rather than leave them to improvise.
+	Continues bool `json:"continues,omitempty"`
+
+	// Records are the files the work this plan continues left behind, which the
+	// agents it plans can open and read: the text of a change, a measurement, a
+	// transcript. Empty is a plan that continues nothing, which is nearly every
+	// plan there is.
+	//
+	// It rides the graph because the pass that needs it is not the one that
+	// receives it. What a remainder can KNOW is settled four calls before any
+	// leaf runs, in the pass that writes each leaf's working method, and that
+	// pass had no way to tell "the agent will be handed the record and must read
+	// it" from "the agent will be handed nothing and must say so". Handed
+	// neither, it wrote methods that instructed inference — and one of them
+	// offered an illustrative root cause that the leaf then shipped verbatim as
+	// a real one, into a person's answer, past a gate holding only file names.
+	//
+	// It is a roster of what EXISTS, never an instruction about what to write
+	// with it. What the method pass makes of a roster, empty or full, is that
+	// pass's own business. See contract.go.
+	Records []string `json:"records,omitempty"`
+
 	// Terrain is the workspace this run stands on, drawn in code at build start
 	// and frozen. It is persisted with the graph for the same reason the settled
 	// points are: a graph read back off disk is revised against the premises it

@@ -377,6 +377,36 @@ type Executor interface {
 	Run(ctx context.Context, task Task) (*Outcome, error)
 }
 
+// Mutator is a worker whose product is a change to the workspace itself rather
+// than a message about it.
+//
+// It is a capability interface rather than a method on Executor because it is a
+// fact about a minority of workers and every reader of it is optional: a build
+// with only the generalist answers no to everything here and behaves exactly as
+// it did. The distinction it draws is the one that decides whether a second
+// attempt at a leaf is worth anything. A worker that produces prose can always
+// produce better prose by being run again; a worker that produces a diff, whose
+// diff has already landed and whose checks are already green, cannot — running
+// it again re-executes a whole pipeline against a tree where the work is
+// finished, which was measured at 23 model calls, zero edits and 80% of the
+// leaf's spend.
+//
+// It is deliberately not "is this the swe worker": nothing here names a
+// subharness, so a second mutating worker is a registration and not an edit to
+// the repair path.
+type Mutator interface {
+	// Mutates reports that this worker's deliverable is a change to the
+	// workspace. It is a property of the worker and never of one run.
+	Mutates() bool
+}
+
+// Mutates asks the question of any executor, including the ones that have never
+// heard of it. Nil and non-mutating both answer false.
+func Mutates(executor Executor) bool {
+	mutator, ok := executor.(Mutator)
+	return ok && mutator.Mutates()
+}
+
 // Registry picks an executor by subharness. Nearly every node carries none and
 // resolves to the general loop; the lookup is what makes adding a specialised
 // worker a registration rather than a change to the scheduler.
