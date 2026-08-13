@@ -90,7 +90,7 @@ func TestAnAssemblerIsUnclaimableUntilEveryInputIsTerminal(t *testing.T) {
 
 	researchers := []string{"task-8-n1", "task-8-n2", "task-8-n3"}
 	const assembler = "task-8-n4"
-	nodes := []NodeSpec{{ID: "task-8", Brief: "Deliver together", Stage: 2}}
+	nodes := []NodeSpec{{ID: "task-8", Brief: "Compare how three countries measure road distance", Stage: 2}}
 	inputs := make([]Need, 0, len(researchers))
 	for _, id := range researchers {
 		nodes = append(nodes, NodeSpec{ID: id, Parent: "task-8", Brief: "research " + id, Stage: 1})

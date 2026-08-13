@@ -487,3 +487,46 @@ func TestCraftMindWithoutAShelfIsInert(t *testing.T) {
 		t.Fatal("the planner did not run without a craft mind")
 	}
 }
+
+// Precedence, checked against the ask most likely to test it.
+//
+// A request read as several separate ones used to skip the planner by its own
+// door. That door is gone and every project-scale ask is planned — which makes
+// it worth pinning that the shelf still comes first: learned know-how answers
+// before anything is planned, whatever the compiler read in the ask, and a
+// decisive match spends no structuring call at all.
+func TestADecisiveCraftMatchOutranksAMultiRequestAsk(t *testing.T) {
+	graph := openStore(t)
+	shelf := matchedPresentation(5.0)
+	mind := NewCraftMind(shelf, "/home/craft", fillsTopic, nil)
+
+	const ask = "make me a presentation about the Q3 numbers"
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: "craft-parts", Kind: store.CommandSplice, Instruction: ask,
+	})
+	if err != nil {
+		t.Fatalf("request command: %v", err)
+	}
+	compile := func(_ context.Context, instruction, _ string) (Compiled, error) {
+		return Compiled{Goal: instruction, Scale: "project", Parts: []string{
+			"Pull the Q3 numbers.",
+			"Draft the slides around them.",
+		}}, nil
+	}
+	planned := false
+	plan := func(ctx context.Context, compiled Compiled) (store.Subtree, error) {
+		planned = true
+		anchor, _ := PlanAnchorFromContext(ctx)
+		return store.Subtree{Nodes: []store.NodeSpec{{ID: anchor.NodeID, Brief: compiled.Goal, Stage: 1}}}, nil
+	}
+	reconciler := New(graph, compile, plan).WithCraftMind(mind)
+	if err := reconciler.Tick(context.Background()); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if planned {
+		t.Fatal("a decisive craft match still reached the planner because the ask named several requests")
+	}
+	if _, ok, err := graph.Node(fmt.Sprintf("craft-%d", command.Seq)); err != nil || !ok {
+		t.Fatalf("the learned way of working did not run: ok=%t err=%v", ok, err)
+	}
+}
