@@ -467,6 +467,74 @@ func TestDoSaysWhatItIsWaitingOnWhenNothingMoves(t *testing.T) {
 	}
 }
 
+// THE WAITING LINE'S CLOCK ONLY EVER GOES FORWARD.
+//
+// Observed on a live run: `30s`, `30s`, `1m0s`, `30s`. The line was printing the
+// SILENCE — how long since the journal last moved — so every leaf that made any
+// progress at all reset it, and a person reading four lines in a row saw a
+// stopwatch somebody kept restarting. A number that goes backwards is not a
+// duration, it is a puzzle. What the line is for is "how long has this been
+// going on", which is the run's own clock and the one that cannot run backwards.
+func TestTheWaitingLinesElapsedNeverGoesBackwards(t *testing.T) {
+	root := t.TempDir()
+	graph, err := store.Open(filepath.Join(root, "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	session := "headless-monotonic"
+	command, err := graph.RequestCommand(store.Command{
+		SessionID: session, Kind: store.CommandSplice, Instruction: "fix the failing test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-1", Brief: "fix the failing test", Stage: 0},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: session, Intent: "fix the failing test"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var progress strings.Builder
+	watcher := &settlementWatch{
+		graph: graph, session: session, commandSeq: command.Seq,
+		refused: make(chan planEstimate, 1), progress: &progress,
+		started: time.Now().Add(-2 * time.Minute), quiet: time.Millisecond,
+	}
+	// Four lines with the journal moving between every one of them — which is
+	// exactly the run that produced the reported sequence.
+	for range 4 {
+		watcher.lastMoved, watcher.lastSaid = time.Now(), time.Time{}
+		time.Sleep(3 * time.Millisecond)
+		if err := watcher.saySomethingIfQuiet(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	said := strings.TrimSpace(progress.String())
+	lines := strings.Split(said, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("the watcher said %d lines, want four:\n%s", len(lines), said)
+	}
+	previous := time.Duration(0)
+	for _, line := range lines {
+		_, tail, found := strings.Cut(line, "\u2014 ")
+		if !found {
+			t.Fatalf("the line carries no elapsed: %q", line)
+		}
+		elapsed, err := time.ParseDuration(strings.TrimSpace(tail))
+		if err != nil {
+			t.Fatalf("the elapsed is not a duration (%q): %v", tail, err)
+		}
+		if elapsed < 2*time.Minute {
+			t.Fatalf("the line reports the silence rather than the run: %q", line)
+		}
+		if elapsed < previous {
+			t.Fatalf("the clock went backwards, %s after %s:\n%s", elapsed, previous, said)
+		}
+		previous = elapsed
+	}
+}
+
 // The factoring itself: one construction, two shapes. A chat window still gets
 // every piece it ever had, and headless differs by exactly the conversational
 // half — no head, no commander, no stream, no arrival brief — over an
