@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -198,7 +199,7 @@ func TestDecayHoldsTheBudgetInvariant(t *testing.T) {
 // floor is what keeps a small task's window usable, and the mark has to stay
 // under the budget it fired at or the invariant above is unenforceable.
 func TestDecayLowWaterRespectsTheFloor(t *testing.T) {
-	for _, budget := range []int{observationBudget, observationBudget * 3, maxObservationBudget} {
+	for _, budget := range []int{observationBudget, observationBudget * 3, observationWindow(200_000)} {
 		mark := decayLowWater(budget)
 		if mark >= budget {
 			t.Errorf("low-water mark %d for budget %d does not retire anything", mark, budget)
@@ -306,22 +307,12 @@ func TestObservationWindowIsSizedFromContextNotSpend(t *testing.T) {
 		t.Fatalf("the no-answer default is %d bytes; an unknown model must not be treated as a frontier one", unknown)
 	}
 
-	// A real context is where the room actually comes from, and a large one is
-	// held at the ceiling rather than allowed to eat the whole prompt.
-	//
-	// Two subjects, not three. The ceiling came down from 256KB to 64KB once it
-	// was measured what the window costs rather than what it holds: the window
-	// is re-sent every turn and billed against the leaf's spend ceiling, so a
-	// quarter-megabyte of memory bought two affordable turns. Fitting the
-	// re-read subject twice over is what the change was for and is what is
-	// pinned here; room for a third copy of it was never the point.
+	// A real context is where the room actually comes from, and there is no
+	// longer a ceiling standing between a model and the memory it can hold.
 	roomy := observationWindow(200_000)
 	if roomy < 2*reReadSubject {
 		t.Errorf("a 200k-token model got %d bytes, not even two of the %d-byte subjects it re-reads",
 			roomy, reReadSubject)
-	}
-	if huge := observationWindow(2_000_000); huge != maxObservationBudget {
-		t.Errorf("a 2M-token model got %d bytes, want the %d ceiling", huge, maxObservationBudget)
 	}
 	// A genuinely small model gets the formula's own answer, small. Clamping it
 	// up to the unknown-case floor would size a prompt past what the model
@@ -335,12 +326,49 @@ func TestObservationWindowIsSizedFromContextNotSpend(t *testing.T) {
 		t.Errorf("an 8k-token model got %d bytes, want the %d arithmetic minimum", tiny, minObservationBudget)
 	}
 	// Whatever the context, the window leaves room for the turn itself: the
-	// bytes it may carry must fit well inside the tokens the model accepts.
-	for _, context := range []int{64_000, 128_000, 200_000, 400_000} {
-		if tokens := observationWindow(context) / observationBytesPerToken; tokens > context/2 {
-			t.Errorf("a %d-token model got a window of about %d tokens, more than half its context",
-				context, tokens)
+	// bytes it may carry must fit inside the share of the model's context the
+	// fill law permits filling, with the fixed floor and the completion reserve
+	// already taken out of it.
+	for _, context := range []int{64_000, 128_000, 200_000, 400_000, 1 << 20} {
+		window := observationWindow(context)
+		if window == minObservationBudget {
+			// The arithmetic minimum rather than the law's answer: the floor and
+			// the reserve have already eaten this model's whole context, and
+			// what is under test here is the law.
+			continue
 		}
+		permitted := context*ctxbudget.FillPercent()/100 - observationFixedFloorTokens - ctxbudget.CompletionReserve()
+		if tokens := window / observationBytesPerToken; tokens > permitted {
+			t.Errorf("a %d-token model got a window of about %d tokens, past the %d the fill law permits",
+				context, tokens, permitted)
+		}
+	}
+}
+
+// The deleted ceiling, pinned as an absence.
+//
+// 64KB used to be the most memory any model could be given, whatever it held.
+// It was the last absolute byte number in the sizing and it made every
+// long-context model identical to every other: a 200k model and a 2M model were
+// handed the same window and the catalog's answer stopped mattering above about
+// 600k tokens. The law now is that a cap is a fraction of the model's own
+// context or it does not exist.
+func TestTheObservationWindowHasNoAbsoluteCeiling(t *testing.T) {
+	const deletedCeiling = 64 << 10
+	million := observationWindow(1 << 20)
+	if million <= deletedCeiling {
+		t.Fatalf("a 1M-token model got %d bytes; the %d ceiling is back", million, deletedCeiling)
+	}
+	// And it keeps going: the window follows the model rather than converging on
+	// one number, which is the whole difference between a share and a clamp.
+	last := 0
+	for _, context := range []int{200_000, 600_000, 1 << 20, 2_000_000, 10_000_000} {
+		window := observationWindow(context)
+		if window <= last {
+			t.Fatalf("a %d-token model got %d bytes, no more than the smaller model's %d",
+				context, window, last)
+		}
+		last = window
 	}
 }
 

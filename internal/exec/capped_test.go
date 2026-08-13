@@ -19,7 +19,7 @@ func oldPath(output string, wrapped bool) string {
 	if wrapped {
 		output = rtk.StripNudge(output)
 	}
-	return clamp(output)
+	return clamp(output, maxToolResultBytes)
 }
 
 // nudgeFilter is the predicate runShell hands the collector for a wrapped run.
@@ -34,7 +34,7 @@ func collect(t *testing.T, output string, chunk int, wrapped bool) *cappedOutput
 	if wrapped {
 		filter = nudgeFilter
 	}
-	collector := newCappedOutput(filter)
+	collector := newCappedOutput(filter, maxToolResultBytes)
 	for rest := output; len(rest) > 0; {
 		size := min(chunk, len(rest))
 		n, err := collector.Write([]byte(rest[:size]))
@@ -62,7 +62,7 @@ func TestCappedOutputRendersWhatClampWouldHave(t *testing.T) {
 		{"one byte under the limit", strings.Repeat("x", maxToolResultBytes-1)},
 		{"exactly the limit", strings.Repeat("x", maxToolResultBytes)},
 		{"one byte over the limit", strings.Repeat("x", maxToolResultBytes+1)},
-		{"just over the head window", strings.Repeat("x", cappedHeadBytes+1)},
+		{"just over the head window", strings.Repeat("x", maxToolResultBytes*2/3+1)},
 		{"far over the limit", strings.Repeat("a verbose build says a great deal\n", 200_000)},
 		{"multibyte over the limit", multibyte},
 		{"binary", string(binaryNoise(1 << 20))},
@@ -114,7 +114,7 @@ func TestCappedOutputStripsTheNudgeExactly(t *testing.T) {
 // The reason the collector exists. Whatever the command prints, what is held is
 // the limit and not the output.
 func TestCappedOutputHoldsOnlyWhatItKeeps(t *testing.T) {
-	collector := newCappedOutput(nudgeFilter)
+	collector := newCappedOutput(nudgeFilter, maxToolResultBytes)
 	piece := []byte(strings.Repeat("this line is thrown away almost immediately\n", 1000))
 	for range 2000 { // ~86 MB through a collector that may hold 12 KB
 		collector.Write(piece)

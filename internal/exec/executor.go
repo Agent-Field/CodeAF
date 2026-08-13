@@ -273,6 +273,15 @@ func (o *Outcome) Calibrate(note string) {
 // length of any single verification pass and small enough to hand to a judge
 // whole; the argument clip keeps a command recognisable without carrying a
 // pasted file into someone else's context.
+//
+// These two stay absolute where every other bound in this package became a
+// share of a window, and the exception is the reason rather than an oversight.
+// The record is not this leaf's memory — it is a fixed-size artifact handed to
+// SOMEBODY ELSE, a judge or a reconciler reading many nodes at once, and what
+// bounds it is that reader's budget rather than this worker's model. Sizing it
+// from the producer's window would let one long-context leaf eat the judge's
+// whole prompt, which is the failure a relative bound is supposed to prevent,
+// arriving from the other direction.
 const (
 	ranLimit         = 40
 	ranArgumentBytes = 200
