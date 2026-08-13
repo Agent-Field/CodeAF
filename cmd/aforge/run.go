@@ -17,6 +17,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
@@ -119,6 +120,17 @@ func runExecute(args []string) error {
 	if err != nil {
 		return err
 	}
+	// The harness's own files leave the leaf's working directory here too, and
+	// they go to aforge's state root rather than to a sibling of the workspace:
+	// `-w` may name a person's repository, and a run that answered "outside your
+	// cwd" by putting a directory next to their project would have moved the mess
+	// rather than removed it. One home per workspace name, so a resumed run
+	// appends to the recorders it already wrote.
+	scratchRoot := home.Join("scratch", filepath.Base(space.Root()))
+	if err := os.MkdirAll(scratchRoot, 0o700); err != nil {
+		return err
+	}
+	space = space.WithScratch(scratchRoot)
 	history := openDefaultHistory()
 	if history != nil {
 		defer history.Close()
@@ -130,7 +142,9 @@ func runExecute(args []string) error {
 	}
 	defer railStore.Close()
 
-	fmt.Printf("goal:      %s\nworkspace: %s\n", graph.Goal, space.Root())
+	// The scratch home is printed because it is now the only place the flight
+	// recorders are, and a debugger who cannot find them has no run to read.
+	fmt.Printf("goal:      %s\nworkspace: %s\nrecorders: %s\n", graph.Goal, space.Root(), scratchRoot)
 	if settings.PlanSplit() {
 		fmt.Printf("models:    %s plans, %s works\n", settings.PlanModelResolved(), settings.Model)
 	}

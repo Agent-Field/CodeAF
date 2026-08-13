@@ -49,6 +49,40 @@ func TestTheLeafIsToldWhereItsOwnCheckingGoes(t *testing.T) {
 	}
 }
 
+// THE OTHER SIDE OF THE SCALE. Verification is asked for in three separate
+// paragraphs of this prompt and again in every model-authored method; the bound
+// on it — that a green check is a finished question — was nine words on the end
+// of one sentence, and a leaf reading the two weighed them the way they were
+// weighed. Measured against the harness we benchmark on, that imbalance is a
+// large part of a 2-4× turn gap at equal quality: the same check run twice, the
+// same file read again to confirm what the first read said.
+//
+// The repair is weight rather than volume. The stop keeps its paragraph and gets
+// its own sentences inside it, and it says WHY in the terms that make it stick —
+// a fact already in hand, bought a second time with the person's money.
+func TestTheStopAfterGreenCarriesItsOwnSentenceWeight(t *testing.T) {
+	prompt := flatten(systemPrompt)
+	for name, clause := range map[string]string{
+		"a green check is a finished question":  "a check that came back green is a finished question",
+		"asking again is spending their money":  "asking it again spends the person's money to re-learn a fact you already have",
+		"the second answer was never worth it":  "nothing you learn the second time was worth the first",
+		"and the instruction itself is present": "once a check passes, move on",
+	} {
+		if !strings.Contains(prompt, flatten(clause)) {
+			t.Errorf("the anti-spiral clause no longer states that %s: %q missing", name, clause)
+		}
+	}
+	// In the same paragraph as the demand it bounds. A stop that has drifted into
+	// a paragraph of its own is a rule a leaf reads separately from the rule it
+	// qualifies, which is how the imbalance is read back in.
+	demand := strings.Index(prompt, flatten("run that check before you finish"))
+	stop := strings.Index(prompt, flatten("once a check passes, move on"))
+	verified := strings.Index(prompt, flatten("verified is a word you earn"))
+	if demand < 0 || stop < demand || stop > verified {
+		t.Error("the stop left the paragraph whose demand it bounds")
+	}
+}
+
 // The cache law, restated against this edit. The paragraph is a property of
 // every leaf, so it belongs in the shared prefix and may not be compiled in per
 // run — TestEveryLeafOfARunSharesOneSystemMessage owns that property, and this
