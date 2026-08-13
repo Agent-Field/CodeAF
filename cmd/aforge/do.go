@@ -70,8 +70,16 @@ type exitStatus int
 func (e exitStatus) Error() string { return fmt.Sprintf("exit status %d", int(e)) }
 
 const (
-	exitFailed  exitStatus = 1
-	exitTimeout exitStatus = 2
+	exitFailed exitStatus = 1
+	// exitPartial is the third answer and the one the table always described:
+	// something usable is above, and it is not the whole of what was asked for.
+	// The wall is one way to get here and was for a long time the only one — the
+	// other is a delivery that did not land whole, either because the delivery
+	// gate stood by a rejection of it or because parts of the job failed. Both of
+	// those printed their own shortfall to stdout under exit 0, which is the one
+	// thing a harness reads: "Not all of this landed: 1 of 2 parts finished", and
+	// $? = 0 under it.
+	exitPartial exitStatus = 2
 )
 
 // headlessOutcome is what one errand came to, in the shape --json prints.
@@ -616,7 +624,7 @@ func (w *settlementWatch) wait(ctx context.Context) (headlessOutcome, error) {
 			if err != nil {
 				return headlessOutcome{}, err
 			}
-			outcome.Settled, outcome.status = false, exitTimeout
+			outcome.Settled, outcome.status = false, exitPartial
 			// A wall a question was standing behind is not a slow run. Saying
 			// which of the two it was costs one read and is the difference
 			// between a diagnosable timeout and fifteen minutes of nothing.
@@ -1024,6 +1032,14 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 			outcome.Deliverable = midFlightWords(outcome.Artifacts)
 		default:
 			outcome.Deliverable = strings.TrimSpace(final.Summary)
+			// The verdict has to agree with the page. A rejected delivery and a
+			// job missing its own parts both wrote the shortfall into the
+			// deliverable and then left exit 0 under it, so every harness that
+			// reads the code — which is the contract, and the only thing a
+			// pipeline reads — recorded them as work that stands.
+			if !w.deliveredWhole(*final) {
+				outcome.status = exitPartial
+			}
 		}
 		outcome.Deliverable = groundedInArtifacts(outcome.Deliverable, outcome.Artifacts)
 	}
@@ -1042,6 +1058,44 @@ func (w *settlementWatch) compose(nodes []store.Node) headlessOutcome {
 		}
 	}
 	return outcome
+}
+
+// deliveredWhole answers the exit code's own question of a settled job: is what
+// is above the whole of what was asked for?
+//
+// Two facts say no, and both were already written on the page before this
+// existed. The delivery gate is the system's own reading of whether the person
+// who asked would accept this, and a rejection it stood by is not a success. A
+// part of the job that failed or was cancelled is the same shortfall stated
+// structurally, and the deliverable already carries it in words — "Not all of
+// this landed: 1 of 2 parts finished" — which is precisely the line that was
+// measured going out over exit 0.
+//
+// A verdict the system itself overruled is not a rejection. A gap the one polish
+// pass closed, and a gap refused as ungrounded or as already closed, are the gate
+// being wrong and being caught at it; those deliver whole, and charging them a
+// non-zero code would teach a harness to distrust the gate's own corrections.
+//
+// An unreadable store answers whole. This decides an exit code, not the work,
+// and a failed read is not evidence of a shortfall.
+func (w *settlementWatch) deliveredWhole(node store.Node) bool {
+	if gate, ok, err := w.graph.DeliveryGateFor(node.ID); err == nil && ok &&
+		!gate.Pass && !gate.PolishClosed && strings.TrimSpace(gate.Refused) == "" {
+		return false
+	}
+	parts, err := w.graph.SubtreeNodes(node.ID)
+	if err != nil {
+		return true
+	}
+	for _, part := range parts {
+		if part.ID == node.ID {
+			continue
+		}
+		if part.Status == store.Failed || part.Status == store.Cancelled {
+			return false
+		}
+	}
+	return true
 }
 
 // artifactsNamed bounds how many paths a grounded closing line spells out. The
@@ -1198,8 +1252,9 @@ func sayBlocked(stderr io.Writer, outcome headlessOutcome) {
 }
 
 // errandStatus is the contract a script reads: nothing to say means it worked,
-// 1 means the work failed or was refused, 2 means the wall came first and what
-// is above is a partial.
+// 1 means the work failed or was refused, 2 means what is above is a partial —
+// the wall came first, the delivery gate rejected it, or parts of it did not
+// land.
 func errandStatus(outcome headlessOutcome) error {
 	if outcome.status == 0 {
 		return nil

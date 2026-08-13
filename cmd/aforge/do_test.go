@@ -211,7 +211,7 @@ func TestDoTimesOutWithAPartialAndCodeTwo(t *testing.T) {
 		timeout: 2 * time.Second, stdout: &stdout, stderr: &stderr, newClient: script.client,
 	})
 	var status exitStatus
-	if !asExitStatus(err, &status) || status != exitTimeout {
+	if !asExitStatus(err, &status) || status != exitPartial {
 		t.Fatalf("timeout exit = %v, want exit status 2", err)
 	}
 	if strings.TrimSpace(stdout.String()) == "" {
@@ -1320,5 +1320,150 @@ func TestTheContextFlagsSetTheWindowLawAndSilenceLeavesItAlone(t *testing.T) {
 	}
 	if fill := ctxbudget.FillPercent(); fill != 90 {
 		t.Fatalf("an over-large fill was not clamped by the law: %d", fill)
+	}
+}
+
+// The exit code is the verdict, and the verdict has to agree with the page.
+//
+// Two settled runs put their own shortfall on stdout and then left `0` under it:
+// one whose delivery gate rejected the deliverable and stood by the rejection,
+// and one that told the caller "Not all of this landed: 1 of 2 parts finished".
+// A pipeline reads the code and nothing else, so both were recorded as work that
+// stands. They are partials, and 2 is what a partial leaves with.
+func TestASettledRunThatDidNotLandWholeLeavesWithAPartialCode(t *testing.T) {
+	for _, shape := range []struct {
+		name  string
+		build func(t *testing.T, graph *store.Store, session string)
+		want  exitStatus
+	}{
+		{
+			name: "a part of the job failed",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{
+					{ID: "task-1", Brief: "reconcile the ledgers"},
+					{ID: "task-1-n1", Parent: "task-1", Brief: "read the bank export"},
+					{ID: "task-1-n2", Parent: "task-1", Brief: "read the invoices"},
+				})
+				settleNode(t, graph, "task-1-n1", "the export is read", "")
+				settleNode(t, graph, "task-1-n2", "", "the invoice API answers 410 Gone")
+				settleNode(t, graph, "task-1", "Here is the reconciliation.", "")
+			},
+			want: exitPartial,
+		},
+		{
+			name: "the gate stood by its rejection",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the release note"}})
+				settleNode(t, graph, "task-1", "RELEASE NOTE DRAFT: the parser is faster.", "")
+				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
+					Gap: "the migration steps the ask named are not in it", Quote: "with migration steps",
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: exitPartial,
+		},
+		{
+			name: "the polish pass closed the gap",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{{ID: "task-1", Brief: "write the release note"}})
+				settleNode(t, graph, "task-1", "RELEASE NOTE FINAL: faster parser, and the migration steps.", "")
+				if err := graph.RecordDeliveryGate("task-1", store.DeliveryGate{
+					Gap: "the migration steps the ask named are not in it", PolishClosed: true,
+				}); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: 0,
+		},
+		{
+			name: "the whole of it landed",
+			build: func(t *testing.T, graph *store.Store, session string) {
+				t.Helper()
+				spliceForErrand(t, graph, session, []store.NodeSpec{
+					{ID: "task-1", Brief: "reconcile the ledgers"},
+					{ID: "task-1-n1", Parent: "task-1", Brief: "read the bank export"},
+				})
+				settleNode(t, graph, "task-1-n1", "the export is read", "")
+				settleNode(t, graph, "task-1", "Here is the reconciliation.", "")
+			},
+			want: 0,
+		},
+	} {
+		t.Run(shape.name, func(t *testing.T) {
+			graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer graph.Close()
+			session := "headless-verdict"
+			command, err := graph.RequestCommand(store.Command{
+				SessionID: session, Kind: store.CommandSplice, Instruction: "do the thing",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := graph.ResolveCommand(command.Seq, store.CommandApplied, "spliced"); err != nil {
+				t.Fatal(err)
+			}
+			shape.build(t, graph, session)
+
+			watcher := &settlementWatch{
+				graph: graph, session: session, commandSeq: command.Seq,
+				refused: make(chan planEstimate, 1), started: time.Now(),
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			outcome, err := watcher.wait(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !outcome.Settled {
+				t.Fatalf("the errand never settled: %+v", outcome)
+			}
+			assertErrandIsHonest(t, outcome, errandStatus(outcome))
+			if outcome.status != shape.want {
+				t.Fatalf("exit %d, wanted %d: %+v", outcome.status, shape.want, outcome)
+			}
+			// Whatever the verdict, the work that did land is still handed over.
+			if strings.TrimSpace(outcome.Deliverable) == "" {
+				t.Fatalf("a settled run reported nothing at all: %+v", outcome)
+			}
+		})
+	}
+}
+
+// spliceForErrand admits one subtree under the spine on this errand's session.
+func spliceForErrand(t *testing.T, graph *store.Store, session string, nodes []store.NodeSpec) {
+	t.Helper()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: nodes}, store.Provenance{
+		Origin: store.OriginUser, SessionID: session, Intent: "do the thing",
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// settleNode runs one node to its ending the way a worker does: claim, start,
+// and either a summary or the reason it failed.
+func settleNode(t *testing.T, graph *store.Store, id, summary, failure string) {
+	t.Helper()
+	claim, claimed, err := graph.Claim(id, "test")
+	if err != nil || !claimed {
+		t.Fatalf("claim %s: %v (claimed=%v)", id, err, claimed)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if failure != "" {
+		if err := graph.Fail(claim, failure); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if err := graph.Complete(claim, summary); err != nil {
+		t.Fatal(err)
 	}
 }

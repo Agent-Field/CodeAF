@@ -43,7 +43,22 @@ func ApplyRevision(graph *store.Store, planGraph *plan.Graph, prefix, jobRoot st
 func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Store, planGraph *plan.Graph, prefix, jobRoot string, operations []plan.Operation) (int, []string) {
 	applied := 0
 	var notes []string
-	id := func(planID int) string { return fmt.Sprintf("%s-n%d", prefix, planID) }
+	// The batch's own additions, named before anything is mirrored, because they
+	// are the one thing the naming law must not see: a node added this round
+	// cannot be the root of a subtree that was minted before it existed.
+	grown := make(map[int]bool)
+	for _, operation := range operations {
+		if operation.Op == "add" && operation.Applied {
+			grown[operation.Node] = true
+		}
+	}
+	// The store's name for a plan node, from the one place that knows it. This
+	// file used to spell it out itself, as "<prefix>-n<id>" for every node
+	// including the root — which the splice names with the bare prefix. Every
+	// edit aimed at a job's deliverable therefore addressed a node that has never
+	// existed, and was refused as unknown while the plan document recorded it as
+	// applied.
+	id := PlanStoreIDs(planGraph, prefix, grown)
 	// A note is read by a PERSON: the redirection receipt prints these lines
 	// straight under its own (redirect.go). So a note names the step by what the
 	// step is for, and never by the op's verb or the store's id for the row —
@@ -70,12 +85,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 	// One verdict for the batch, asked once with the whole count, because the
 	// batch is what the sentinel decided: adds admitted one at a time would let
 	// a batch of twenty walk through a ceiling that had room for one.
-	adds := 0
-	for _, operation := range operations {
-		if operation.Op == "add" && operation.Applied {
-			adds++
-		}
-	}
+	adds := len(grown)
 	request := GrowRequest{JobRoot: jobRoot, Lineage: jobRoot, Reason: growth.reason(),
 		Adding: adds, Ungated: growth.Ungated}
 	if root, ok, err := graph.Node(jobRoot); err == nil && ok {
