@@ -88,14 +88,17 @@ const (
 // arguments: it is the one rendering of "what this call was" already written in
 // a person's words, and the worker reading the handoff is no more entitled to a
 // JSON object than the person watching was.
+// It clips BEFORE it sanitizes, which is the whole of why this is cheap enough
+// to do on every call of every turn: a bash page can be a hundred kilobytes and
+// only the paragraph that survives the clip is ever scanned.
 func (run *beltRun) learned(name, arguments, result string) {
-	result = strings.TrimSpace(promptSafe(result))
+	result = strings.TrimSpace(result)
 	if run == nil || result == "" {
 		return
 	}
 	// A tool result is a page and a finding is one item of a list, so every line
 	// after the first sits under its own bullet instead of reading as a new one.
-	body := strings.ReplaceAll(truncateBytes(result, turnFindingBytes), "\n", "\n  ")
+	body := strings.ReplaceAll(promptSafe(truncateBytes(result, turnFindingBytes)), "\n", "\n  ")
 	run.found = append(run.found, "- "+toolGloss(name, arguments)+": "+body)
 }
 
