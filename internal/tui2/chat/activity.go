@@ -375,15 +375,22 @@ func compressActivity(steps []activityStep) string {
 	var line strings.Builder
 	line.WriteString(plural(len(steps), "step", "steps"))
 	phrases := make([]string, 0, activitySummaryActs)
+	more := false
 	for _, act := range order {
 		if len(phrases) == activitySummaryActs {
-			phrases = append(phrases, tokens.GlyphEllipsis)
+			more = true
 			break
 		}
 		phrases = append(phrases, act+timesSuffix(counts[act]))
 	}
 	if len(phrases) > 0 {
 		line.WriteString(" — " + strings.Join(phrases, ", "))
+		if more {
+			// §16's ONE ELLIPSIS GRAMMAR, and NOT a fourth list item: what it
+			// says is "the rest is off the edge", so it hangs off the last
+			// phrase rather than being separated from it by a comma.
+			line.WriteString(" " + tokens.GlyphEllipsis)
+		}
 	}
 	if failed > 0 {
 		line.WriteString(" " + tokens.GlyphSeparator + " " +

@@ -73,6 +73,11 @@ type pollResultMsg struct {
 	// may only be buried on a claim.
 	commands     []store.Command
 	haveCommands bool
+	// stages is the newest phase each pending command has reached, keyed by the
+	// command the skeleton subscribes by (stage.go). Absent for a backend that
+	// cannot answer, and for a command whose planner has not said anything yet
+	// — both of which draw the bare pulse the skeleton has always had.
+	stages map[int64]store.MessageProgress
 }
 
 type postResultMsg struct {
@@ -128,6 +133,10 @@ func (a *App) pollCmd() tea.Cmd {
 						result.commands = append(result.commands, command)
 					}
 				}
+				// What the planner has said about each of them, so the skeleton
+				// can narrate the interval instead of pulsing through it
+				// (stage.go). No pending commands is no reads at all.
+				result.readStages(backend, result.commands)
 			}
 		}
 		return result
@@ -349,6 +358,9 @@ func (a *App) applyPoll(result pollResultMsg) {
 	// session message at all is exactly the moment a commission lands — the
 	// command row is the only artifact the store has yet.
 	skeletons := a.reconcilePending(result.commands, result.haveCommands)
+	// After the skeletons, so a stage lands on a card that already exists —
+	// including one minted on this very poll (stage.go).
+	skeletons = a.applyStages(result.stages) || skeletons
 	if appended == 0 && !skeletons {
 		traceJournal(a, result, 0)
 		return
