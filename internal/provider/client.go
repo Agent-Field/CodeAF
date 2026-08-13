@@ -137,16 +137,20 @@ func (c *Client) modelFor(request *ai.Request) string {
 	return c.config.Model
 }
 
-// sendShaped encodes the request and sends it, recovering once from the single
-// 400 this adapter can answer by itself: an endpoint that reasons
-// unconditionally refusing the disable the harness sends as a planning economy.
+// sendShaped encodes the request and sends it, recovering once from the 400s
+// this adapter can answer by itself.
 //
-// The knob is a request-shape decision made here, so its rejection is repaired
-// here. Anywhere else it is a failed node the operator has to reconfigure
-// around — which is what MiniMax M2.7 produced: every planning call 400ing on a
-// default the model was never able to honour. The retry costs nothing: a 400
-// generated no tokens, and the answer is remembered so only the first call on a
-// model pays for the discovery.
+// There are two, and they are the same shape of mistake: a request-shape
+// decision made HERE, on a knob the catalog cannot vouch for. An endpoint that
+// reasons unconditionally refuses the disable the harness sends as a planning
+// economy; an endpoint fronting an Anthropic-family slug that does not in fact
+// carry a cache breakpoint refuses the marker. Both are repaired here because
+// anywhere else they are a failed node the operator has to reconfigure around —
+// which is what MiniMax M2.7 produced: every planning call 400ing on a default
+// the model was never able to honour.
+//
+// The retry costs nothing: a 400 generated no tokens, and the answer is
+// remembered so only the first call on a model pays for the discovery.
 func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
@@ -157,23 +161,46 @@ func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs call
 		return response, err
 	}
 	model := c.modelFor(request)
-	if c.resolveEffort(model, knobs.effort) != EffortOff {
+	if !c.repairable(model, knobs) {
 		return response, nil
 	}
 	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
-	if readErr != nil || !refusesDisabledReasoning(peek) {
+	if readErr != nil || !c.learn(model, knobs, peek) {
 		// Not ours to fix. The body is handed back whole — the caller still has
 		// to read the provider's own words to build the error it reports.
 		response.Body = rewound(peek, response.Body)
 		return response, nil
 	}
 	response.Body.Close()
-	noteReasoningMandatory(model)
 	body, err = c.encodeRequest(request, knobs)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 	return c.send(ctx, request, body, stream)
+}
+
+// repairable reports whether this request carried a knob whose refusal this
+// adapter knows how to answer. It is asked before the error body is touched, so
+// a 400 that could not be ours costs no extra read.
+func (c *Client) repairable(model string, knobs callKnobs) bool {
+	return c.resolveEffort(model, knobs.effort) == EffortOff ||
+		c.dialectFor(model) == cacheDialectBreakpoints
+}
+
+// learn reads a refusal for the facts this adapter can remember and reports
+// whether the next encode will differ. Both memos are consulted rather than the
+// first match winning, because a single 400 can name both fields.
+func (c *Client) learn(model string, knobs callKnobs, payload []byte) bool {
+	learned := false
+	if c.resolveEffort(model, knobs.effort) == EffortOff && refusesDisabledReasoning(payload) {
+		noteReasoningMandatory(model)
+		learned = true
+	}
+	if c.dialectFor(model) == cacheDialectBreakpoints && refusesCacheControl(payload) {
+		noteCacheControlRefused(model)
+		learned = true
+	}
+	return learned
 }
 
 // rewound puts an already-read prefix back in front of a body, so peeking at a

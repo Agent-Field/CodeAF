@@ -675,7 +675,14 @@ func feedRule(label string, width int) string {
 // command in primary ink; output dim behind a faint "│" gutter with failure as
 // a rose ✗ on the status position only; and you in powder behind ›.
 var (
-	feedTurnRule   = regexp.MustCompile(`^── turn (\d+)\s+finish=(\S*)\s+in=(\d+) out=(\d+)\s*(?:\[([^\]]*)\])?\s*──$`)
+	// The trailing (?:\s+\S+=\S+)* is what keeps this rule from going stale. The
+	// recorder's turn line grows telemetry over time — cached= arrived with the
+	// prefix-cache work and hit= with the metering after it — and a pattern that
+	// enumerated the fields it knew stopped matching the moment one was added,
+	// silently turning every turn rule in the feed back into an ordinary line.
+	// The four fields this feed actually reads are still named; anything else
+	// the recorder chooses to write is absorbed.
+	feedTurnRule   = regexp.MustCompile(`^── turn (\d+)\s+finish=(\S*)\s+in=(\d+) out=(\d+)(?:\s+\S+=\S+)*\s*(?:\[([^\]]*)\])?\s*──$`)
 	feedThought    = powderStyle
 	feedToolName   = peachStyle.Bold(true)
 	feedResult     = lipgloss.NewStyle().Foreground(muted).Faint(true)
