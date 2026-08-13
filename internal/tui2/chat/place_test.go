@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"image"
 	"strings"
 	"testing"
 
@@ -385,6 +386,54 @@ func TestTheCollapseMarkOpensThePicker(t *testing.T) {
 	}
 }
 
+// AND THE POINTER REACHES IT THROUGH THE COMPOSER REGION, which is the row's
+// actual home: the region owns the whole rectangle and answers its top row
+// before it claims the rest for the draft.
+func TestAClickOnTheRegionsTopRowWalksThePath(t *testing.T) {
+	app, _ := boardApp(t)
+	press(app, "ctrl+o")
+	press(app, "5")
+	press(app, "enter")
+	app.refresh()
+
+	stack, ok := app.composer.(*composerStack)
+	if !ok {
+		t.Fatal("the composer region is not the stack this row lives on")
+	}
+	const width = 100
+	_ = stack.Render(width, placeRow+draftFloor+draftPad)
+	at := app.placeBar.hits[1]
+
+	// A click on the thread segment walks out of the task, and it does NOT take
+	// the keyboard on the way: the place line is the one row of this rectangle
+	// that is not the composer.
+	app.drain(stack.Mouse(clickAt(at.from, 0), image.Point{X: at.from, Y: 0}))
+	if got := placeWords(app); len(got) != 2 {
+		t.Fatalf("the click did not walk out of the task: %q", got)
+	}
+}
+
+// The mark's own click, through the same door.
+func TestAClickOnTheCollapseMarkRaisesThePicker(t *testing.T) {
+	app, _ := boardApp(t)
+	stack, ok := app.composer.(*composerStack)
+	if !ok {
+		t.Fatal("the composer region is not the stack this row lives on")
+	}
+	app.placeBar.setPath(deepPath(), -1, false, 0)
+	const width = 30
+	_ = stack.Render(width, placeRow+draftFloor+draftPad)
+	at := app.placeBar.hits[1]
+	if at.seg != placeHidden {
+		t.Fatalf("the second run at %d cells is segment %d, not the mark", width, at.seg)
+	}
+
+	app.drain(stack.Mouse(clickAt(at.from, 0), image.Point{X: at.from, Y: 0}))
+	if app.overlay != overlayPlace {
+		t.Fatalf("clicking the mark raised overlay %d", app.overlay)
+	}
+}
+
 // The row never exceeds the width it was given, never panics, and says nothing
 // rather than something unreadable at the bottom of the ladder.
 func TestThePlaceLineSurvivesEveryWidth(t *testing.T) {
@@ -466,6 +515,12 @@ func TestThePlaceChordIsDeclaredAndFocusesTheLine(t *testing.T) {
 	// The walk opens on the segment the reader is already standing on.
 	if got, want := app.placeBar.focus, len(app.placeBar.segs)-1; got != want {
 		t.Fatalf("the walk opened on segment %d, want %d", got, want)
+	}
+	// And the chord that entered it leaves it — the same round trip ctrl+o
+	// makes for the map.
+	press(app, placeChord)
+	if app.placeBar.focused() {
+		t.Fatalf("%s did not leave the walk", placeChord)
 	}
 }
 

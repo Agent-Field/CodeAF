@@ -331,6 +331,12 @@ const placeSep = " " + tokens.GlyphScopeUp + " "
 // placeNameFloor is the fewest cells of the current segment worth keeping,
 // borrowed from footer/scope.go's own floor for the same judgement: below it
 // the row stops being an answer and becomes a shape.
+//
+// It is what the ORNAMENT is measured against rather than a floor the path
+// itself refuses to go below. The path has no choice — it is the only statement
+// of where the reader is and it says it however few cells it is given — but the
+// dot and the count do have one, so they are asked to justify their cells
+// against this number and give them back when they cannot.
 const placeNameFloor = 8
 
 // placeFit collapses the MIDDLE and never the ends.
@@ -422,10 +428,23 @@ func placeHiddenSegs(segs []placeSeg, items []placeItem) []int {
 	return out
 }
 
-// placeKeepsEnds reports whether a fitted row still opens with the root, which
-// is the half of law 3 a caller can lose by asking for too little width.
-func placeKeepsEnds(items []placeItem) bool {
-	return len(items) > 0 && items[0].seg == 0
+// affordsOrnament reports whether the path can still say what it is for beside
+// the ornament: it opens with the root, and the segment the reader is standing
+// on has not been cut below [placeNameFloor].
+//
+// Both halves are law 3 read as a budget question. A row that kept a dot and a
+// count while the answer had collapsed to `aforge ‹ … ‹ c…` would have spent
+// its last cells on the fact the reader did not ask for.
+func (p *placeLine) affordsOrnament(items []placeItem) bool {
+	if len(items) == 0 || items[0].seg != 0 {
+		return false
+	}
+	last := items[len(items)-1]
+	if last.seg != len(p.segs)-1 {
+		return false
+	}
+	floor := min(placeNameFloor, blocks.Width(p.segs[last.seg].Word))
+	return blocks.Width(last.word) >= floor
 }
 
 // placeWidth is what a fitted row costs, separators included.
@@ -545,7 +564,7 @@ func (p *placeLine) layout(width int) (items []placeItem, orn string, ornTok tok
 		// while the answer collapsed to one cut word would have spent the cells
 		// on the fact the reader did not ask for.
 		room := inner - blocks.Width(orn) - placeGap
-		if tight := placeFit(p.segs, p.mouth, room); room > 0 && placeKeepsEnds(tight) {
+		if tight := placeFit(p.segs, p.mouth, room); room > 0 && p.affordsOrnament(tight) {
 			return tight, orn, ornTok, pad
 		}
 		orn = ""
@@ -765,7 +784,13 @@ func (a *App) placeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		seg := a.placeBar.focus
 		cmd := a.focusPlace(false)
 		return tea.Batch(cmd, a.jumpPlace(seg)), true
-	case "esc":
+	case "esc", placeChord:
+		// The chord that entered the walk leaves it, which is what every other
+		// mode door on this surface does (ctrl+o is the same round trip for the
+		// map). Claiming it here rather than letting it fall through to the
+		// registry is the difference between one round trip and a flicker: the
+		// row would otherwise drop focus on the way down and take it back one
+		// rung later, having done nothing.
 		return a.focusPlace(false), true
 	}
 	return a.focusPlace(false), false
