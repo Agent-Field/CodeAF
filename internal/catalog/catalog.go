@@ -427,6 +427,50 @@ func (c *Catalog) Concrete(modelID string, resolves Resolves) string {
 	return id
 }
 
+// Identity is the one model behind a spelling of it, and it is what an
+// accumulated history has to be keyed by.
+//
+// Concrete answers a different question — which spelling a FOREIGN catalog will
+// accept — and it is deliberately conservative about substituting, because a
+// name that catalog does not carry kills a subprocess. Nothing is being handed
+// to anybody here. This is the local question: two spellings the operator used
+// on two days, and whether the measurements taken under them describe one model.
+// The alias target and the canonical slug both say they do, so both are applied
+// and the dated spelling wins, because it is the one name that cannot float.
+//
+// It never waits. Identity is asked on the launch path, before anything has been
+// planned, and a still-warming catalog blocking there would put a fetch in front
+// of the first frame of every run. A catalog that has not resolved yet answers
+// the id as written, which is what every caller did before this existed — and the
+// records written under it are merged into the resolved identity by the first
+// process that can see one (see profile.Load).
+func (c *Catalog) Identity(modelID string) string {
+	// Lowercased as well as ~-stripped, which Concrete does not do: Concrete is
+	// building a name to hand to another process and must not alter one beyond
+	// what this catalog can vouch for, while this is asking whether two things
+	// somebody typed are the same thing, and case never was a difference.
+	id := strings.ToLower(normalizeID(modelID))
+	resolved := c.rowsNow()
+	if resolved == nil {
+		return id
+	}
+	model, ok := resolved.byID[id]
+	if !ok {
+		return id
+	}
+	if target := normalizeID(model.AliasTarget); target != "" && target != id {
+		aliased, known := resolved.byID[target]
+		if !known {
+			return target
+		}
+		model, id = aliased, target
+	}
+	if canonical := normalizeID(model.CanonicalSlug); canonical != "" {
+		return canonical
+	}
+	return id
+}
+
 // Supports answers whether modelID advertises modality in direction. Unknown
 // models and directions calmly return false.
 func (c *Catalog) Supports(modelID, direction, modality string) bool {

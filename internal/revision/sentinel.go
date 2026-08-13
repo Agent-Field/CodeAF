@@ -58,7 +58,14 @@ func Sentinel(ctx context.Context, settings config.Config, client plan.Completer
 	applied, notes := resident.ApplyRevisionGoverned(judgeCtx,
 		// The gate reads through the same window the plan was structured
 		// through, which the document itself records.
-		resident.Growth{Reason: resident.GrowRevision, Ask: resident.SatisfierFor(client, planGraph.Window())},
+		//
+		// The landed node travels with it because the additions are a reaction
+		// to that node and to nothing else: it is the evidence they must be able
+		// to read, and its consumers are who they stand in front of. Without it
+		// this pass admitted a replacement for a failed leaf that was wired to
+		// neither.
+		resident.Growth{Reason: resident.GrowRevision, After: node,
+			Ask: resident.SatisfierFor(client, planGraph.Window())},
 		graph, planGraph, prefix, root, operations)
 	if applied > 0 && journal != nil {
 		// The journaled structure is now behind the graph in memory. Re-writing

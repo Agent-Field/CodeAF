@@ -527,7 +527,7 @@ func TestTheReviserSeesTheAssumptionsAndWhatTheWorkFound(t *testing.T) {
 	client := &reviseCaptureClient{}
 	graph := &Graph{
 		Goal:     "ship the client",
-		Settled:  []string{"the client targets the v2 API"},
+		Settled:  []Settlement{{Variable: "the client targets the v2 API"}},
 		Open:     []string{"whether pagination is cursor-based"},
 		Evidence: "one working end-to-end call",
 		NextID:   4,

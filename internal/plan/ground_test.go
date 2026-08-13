@@ -78,7 +78,7 @@ func TestGroundWithRecallCarriesDigestAndPointers(t *testing.T) {
 // planning call shares, alongside the scope it was settled with.
 func TestGroundReturnsTheEvidenceStandard(t *testing.T) {
 	client := &stubClient{reply: func(_, _ string) string {
-		return `{"settled":["The three databases are Qdrant, Weaviate and pgvector."],
+		return `{"settled":[{"variable":"The three databases","values":["Qdrant","Weaviate","pgvector"]}],
 		         "open":["Which of the three suits the workload best."],
 		         "evidence":"Read the projects' own documentation and cite it; run and measure nothing."}`
 	}}
@@ -109,15 +109,15 @@ func TestSubtreeInheritsTheEvidenceStandard(t *testing.T) {
 	client := &stubClient{reply: func(system, _ string) string {
 		if strings.Contains(system, "You list the parts of one stage") {
 			return `{"parts":[
-				{"title":"Qdrant","summary":"Profile Qdrant from its documentation","sources":["its docs"]},
-				{"title":"Weaviate","summary":"Profile Weaviate from its documentation","sources":["its docs"]}]}`
+				{"title":"Qdrant","summary":"Profile Qdrant from its documentation","sources":["Qdrant's docs"]},
+				{"title":"Weaviate","summary":"Profile Weaviate from its documentation","sources":["Weaviate's docs"]}]}`
 		}
 		return `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"atomic","split_into":[]}]}`
 	}}
 
 	graph := &Graph{
 		Goal:     "a short written report comparing three vector databases",
-		Settled:  []string{"The three databases are Qdrant, Weaviate and pgvector."},
+		Settled:  []Settlement{{Variable: "The three databases", Values: []string{"Qdrant", "Weaviate", "pgvector"}}},
 		Evidence: standard,
 		Stages:   []Stage{{Title: "Compare"}},
 		NextID:   1,

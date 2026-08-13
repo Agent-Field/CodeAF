@@ -496,7 +496,7 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 		Stages:  []Stage{{Title: node.Title, Summary: node.Summary}},
 		NextID:  1,
 	}
-	nodes, fanUsage, err := FanOut(ctx, client, sub.context(), sub.Stages)
+	nodes, fanUsage, err := FanOutWith(ctx, client, sub.context(), sub.Stages, sub.Settled)
 	usage := fanUsage
 	if len(nodes) == 0 {
 		return expansion{nodeID: nodeID, usage: usage, err: fmt.Errorf("expand %q: %w", node.Title, err)}
