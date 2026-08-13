@@ -172,6 +172,11 @@ const (
 	// prediction becomes known when the complete plan lands, after its spend.
 	EventUsageRecorded    EventKind = "usage_recorded"
 	EventSurpriseRecorded EventKind = "surprise_recorded"
+	// EventTurnUsageRecorded carries one execution's per-turn shape beside the
+	// summed row EventUsageRecorded already writes. It is a separate kind and a
+	// separate table because every existing reader counts usage rows to mean
+	// executions; see usage_turns.go.
+	EventTurnUsageRecorded EventKind = "turn_usage_recorded"
 	// EventSelfReceipt is the cost-and-learning receipt produced when one
 	// self-originated splice settles.
 	EventSelfReceipt EventKind = "self_receipt"
@@ -660,6 +665,9 @@ func Open(path string) (*Store, error) {
 	}
 	if err := migrateUsageSchema(db); err != nil {
 		return closeOnError(fmt.Errorf("migrate usage schema: %w", err))
+	}
+	if _, err := db.Exec(turnUsageSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize turn usage schema: %w", err))
 	}
 	if _, err := db.Exec(surpriseSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize surprise schema: %w", err))

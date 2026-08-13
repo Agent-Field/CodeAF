@@ -54,6 +54,9 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM usage`); err != nil {
 		return fmt.Errorf("rebuild usage: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM usage_turns`); err != nil {
+		return fmt.Errorf("rebuild turn usage: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM task_budgets`); err != nil {
 		return fmt.Errorf("rebuild task budgets: %w", err)
 	}
@@ -446,6 +449,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyUsageView(tx, payload, event.Seq, event.Time)
+
+	case EventTurnUsageRecorded:
+		var payload turnUsagePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyTurnUsageView(tx, payload, event.Seq, event.Time)
 
 	case EventSurpriseRecorded:
 		var payload NodeSurprise
