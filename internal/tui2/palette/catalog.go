@@ -325,6 +325,12 @@ type row struct {
 
 	lowerVerb string
 	lowerDesc string
+	// lowerTags is the row's hidden matchable text, already lower-cased and
+	// joined. It is a THIRD haystack for [filter] and it is never drawn: a
+	// thread's subjects make it findable without making its row noisier, which
+	// is the whole of why tags are a filter feature and not a chip strip. Empty
+	// for every row that has none, which is every row that is not a thread.
+	lowerTags string
 }
 
 // enabled reports whether choosing this row yields anything.

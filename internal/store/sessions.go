@@ -2,8 +2,10 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -23,6 +25,7 @@ const sessionSchema = `
 CREATE TABLE IF NOT EXISTS sessions (
     id             TEXT PRIMARY KEY,
     title          TEXT NOT NULL DEFAULT '',
+    tags           JSON NOT NULL DEFAULT '[]' CHECK (json_valid(tags)),
     surface        TEXT NOT NULL DEFAULT '',
     created_at     TEXT NOT NULL,
     last_active_at TEXT NOT NULL
@@ -39,8 +42,19 @@ CREATE INDEX IF NOT EXISTS messages_session_role_seq ON messages (session_id, ro
 
 // Session is one conversation thread's own row.
 type Session struct {
-	ID      string
-	Title   string
+	ID    string
+	Title string
+	// Tags are the subject words the naming pass filed this room under. They
+	// are a FINDING aid and not a second title: nothing draws them as chips,
+	// and the one place they earn their keep is a switcher's filter, where a
+	// person who remembers what a conversation was ABOUT but not what it ended
+	// up called can still type their way back into it.
+	//
+	// They are written by the same pass that names the room and by nothing
+	// else. A person renaming a tab states a new NAME; they are not restating
+	// what the conversation is about, so [Store.RenameSession] leaves whatever
+	// is here exactly as it stands.
+	Tags    []string
 	Surface string
 	// Created is the first message that named this session; LastActive is the
 	// newest one. Both are message times rather than wall-clock times taken
@@ -53,6 +67,59 @@ type Session struct {
 // not a description; anything longer is truncated rather than refused, because
 // what a person types into a rename box should never fail to open a room.
 const MaxSessionTitleBytes = 256
+
+const (
+	// MaxSessionTags is how many subjects one room may be filed under. Three,
+	// because a tag list long enough to need scrolling is a summary wearing a
+	// filter's clothes — and because a room that is about six things is a room
+	// whose tags will match everything a person types.
+	MaxSessionTags = 3
+	// MaxSessionTagBytes bounds one tag. A tag is a word or two; anything
+	// longer is a sentence, and a sentence never helps a subsequence filter.
+	MaxSessionTagBytes = 32
+)
+
+// normalizeSessionTags is the one door a tag list takes into the store:
+// lower-cased, trimmed, bounded, de-duplicated, and capped.
+//
+// It runs on the write path rather than at the caller so a replay lands exactly
+// what the live write landed — the projection is derived from the journal, and
+// a normalizer that lived in the head would leave a rebuilt store holding
+// different rows from the one it rebuilt.
+func normalizeSessionTags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	out := make([]string, 0, MaxSessionTags)
+	for _, tag := range tags {
+		tag = strings.ToLower(strings.TrimSpace(tag))
+		if tag == "" {
+			continue
+		}
+		tag = strings.TrimSpace(bounded(tag, MaxSessionTagBytes))
+		if tag == "" || slices.Contains(out, tag) {
+			continue
+		}
+		out = append(out, tag)
+		if len(out) == MaxSessionTags {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// migrateSessionSchema gives an existing database the tags column. It follows
+// the thread migration's shape exactly ([addJSONColumn]) and is idempotent: an
+// empty list is the true thing to say about every room named before tags
+// existed, and the naming pass never runs again on a room that already has a
+// title, so those rooms stay findable by name alone rather than being re-billed
+// for a label.
+func migrateSessionSchema(db *sql.DB) error {
+	return addJSONColumn(db, "sessions", "tags")
+}
 
 // sessionOpenedPayload is a room's birth certificate on the wire. There is no
 // created-at field: the event's own journal timestamp IS the birthday, exactly
@@ -159,9 +226,16 @@ func applySessionOpened(tx *sql.Tx, payload sessionOpenedPayload, at time.Time) 
 // rename does not need it anyway — applySessionRenamed deliberately does not
 // touch last_active_at, so the payload carries nothing that could disagree
 // with the envelope.
+// Tags is ABSENT rather than empty when the rename does not state them, and
+// the distinction is the whole of "a person's rename never touches tags": an
+// omitted list means leave what is there, and only a rename that carries one
+// writes one. A scribe that produced a title and no tags therefore also leaves
+// them alone, which is the same answer for the same reason — nothing was said
+// about the subject, so nothing about the subject changes.
 type sessionRenamedPayload struct {
-	SessionID string `json:"session_id"`
-	Title     string `json:"title"`
+	SessionID string   `json:"session_id"`
+	Title     string   `json:"title"`
+	Tags      []string `json:"tags,omitempty"`
 }
 
 // RenameSession retitles an existing room. It is the door OpenSession
@@ -183,6 +257,21 @@ type sessionRenamedPayload struct {
 // nobody spoke, nothing happened in the room — so created_at and
 // last_active_at are exactly what they were before this call.
 func (s *Store) RenameSession(id, title string) (Session, error) {
+	return s.renameSession(id, title, nil)
+}
+
+// RenameSessionTagged is RenameSession plus the subjects the room is filed
+// under. It is the naming pass's door and deliberately not a second verb: a
+// title and the tags beside it come out of ONE reading of what the room is
+// about, so they are one event and land or fail together.
+//
+// An empty tag list states nothing about the subject and therefore changes
+// nothing about it — see [sessionRenamedPayload].
+func (s *Store) RenameSessionTagged(id, title string, tags []string) (Session, error) {
+	return s.renameSession(id, title, normalizeSessionTags(tags))
+}
+
+func (s *Store) renameSession(id, title string, tags []string) (Session, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return Session{}, fmt.Errorf("rename session: %w: empty id", ErrInvalid)
@@ -202,11 +291,11 @@ func (s *Store) RenameSession(id, title string) (Session, error) {
 	if err != nil {
 		return Session{}, fmt.Errorf("rename session: %w", err)
 	}
-	if existing.Title == title {
+	if existing.Title == title && (len(tags) == 0 || slices.Equal(existing.Tags, tags)) {
 		return existing, nil
 	}
 
-	payload := sessionRenamedPayload{SessionID: id, Title: title}
+	payload := sessionRenamedPayload{SessionID: id, Title: title, Tags: tags}
 	// The room is not a node, the same shape OpenSession's mint uses.
 	_, _, err = appendEvent(tx, "", EventSessionRenamed, payload)
 	if err != nil {
@@ -241,6 +330,20 @@ func applySessionRenamed(tx *sql.Tx, payload sessionRenamedPayload) error {
 		bounded(payload.Title, MaxSessionTitleBytes), id)
 	if err != nil {
 		return err
+	}
+	// The tags are a second statement rather than a second column in the one
+	// above, because a rename that says nothing about the subject must not
+	// write over what the naming pass filed the room under. Normalized again on
+	// the way in: replay reads a payload written by an older build, and the
+	// row a rebuild lands must be the row the live write landed.
+	if tags := normalizeSessionTags(payload.Tags); len(tags) > 0 {
+		encoded, err := json.Marshal(tags)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE sessions SET tags = ? WHERE id = ?`, string(encoded), id); err != nil {
+			return err
+		}
 	}
 	changed, err := result.RowsAffected()
 	if err != nil {
@@ -311,7 +414,7 @@ func (s *Store) TouchSession(id string, at time.Time) error {
 // Sessions lists every known thread, most recently active first.
 func (s *Store) Sessions() ([]Session, error) {
 	rows, err := s.db.Query(`
-		SELECT id, title, surface, created_at, last_active_at
+		SELECT id, title, tags, surface, created_at, last_active_at
 		FROM sessions ORDER BY last_active_at DESC, id`)
 	if err != nil {
 		return nil, fmt.Errorf("list sessions: %w", err)
@@ -400,8 +503,8 @@ func (s *Store) SessionLastNonUserMessageSeq(sessionID string) (int64, error) {
 // and it runs at open rather than on any read path.
 func backfillSessions(db *sql.DB) error {
 	_, err := db.Exec(`
-		INSERT INTO sessions (id, title, surface, created_at, last_active_at)
-		SELECT m.session_id, '', '', MIN(m.ts), MAX(m.ts)
+		INSERT INTO sessions (id, title, tags, surface, created_at, last_active_at)
+		SELECT m.session_id, '', '[]', '', MIN(m.ts), MAX(m.ts)
 		FROM messages m
 		WHERE m.session_id <> ''
 		  AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = m.session_id)
@@ -436,12 +539,12 @@ func ensureSessionTx(tx *sql.Tx, id, surface string, at time.Time) error {
 
 func readSession(db *sql.DB, id string) (Session, error) {
 	return scanSession(db.QueryRow(`
-		SELECT id, title, surface, created_at, last_active_at FROM sessions WHERE id = ?`, id))
+		SELECT id, title, tags, surface, created_at, last_active_at FROM sessions WHERE id = ?`, id))
 }
 
 func readSessionTx(tx *sql.Tx, id string) (Session, error) {
 	return scanSession(tx.QueryRow(`
-		SELECT id, title, surface, created_at, last_active_at FROM sessions WHERE id = ?`, id))
+		SELECT id, title, tags, surface, created_at, last_active_at FROM sessions WHERE id = ?`, id))
 }
 
 // scanRow is what a *sql.Row and a *sql.Rows have in common, so one scanner
@@ -452,9 +555,19 @@ type scanRow interface {
 
 func scanSession(row scanRow) (Session, error) {
 	var session Session
-	var created, lastActive string
-	if err := row.Scan(&session.ID, &session.Title, &session.Surface, &created, &lastActive); err != nil {
+	var created, lastActive, tags string
+	if err := row.Scan(&session.ID, &session.Title, &tags, &session.Surface, &created, &lastActive); err != nil {
 		return Session{}, err
+	}
+	// A tag list that will not decode is a room with no tags, not a read that
+	// fails. Tags are a finding aid over a working conversation; refusing to
+	// hand back the room because its label list is malformed would take the
+	// conversation away over an ornament.
+	if tags != "" && tags != "[]" && tags != "null" {
+		var decoded []string
+		if err := json.Unmarshal([]byte(tags), &decoded); err == nil {
+			session.Tags = normalizeSessionTags(decoded)
+		}
 	}
 	at, err := parseTime(created)
 	if err != nil {

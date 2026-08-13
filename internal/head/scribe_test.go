@@ -18,11 +18,15 @@ import (
 // no ceiling on a room that opened with a long deliverable is the one way four
 // words become expensive.
 type scribeClientRecorder struct {
-	mutex     sync.Mutex
-	answers   []string
+	mutex   sync.Mutex
+	answers []string
+	// raw is scripted ahead of answers, for a test that needs a reply shape
+	// textResponse cannot make — an empty completion wearing a finish reason.
+	raw       []*ai.Response
 	calls     int
 	prompts   []string
 	maxTokens int
+	ceilings  []int
 	model     string
 }
 
@@ -37,6 +41,12 @@ func (client *scribeClientRecorder) CompleteWithMessages(_ context.Context, mess
 	}
 	if request.MaxTokens != nil {
 		client.maxTokens = *request.MaxTokens
+		client.ceilings = append(client.ceilings, *request.MaxTokens)
+	}
+	if len(client.raw) > 0 {
+		response := client.raw[0]
+		client.raw = client.raw[1:]
+		return response, nil
 	}
 	var seen strings.Builder
 	for _, message := range messages {
