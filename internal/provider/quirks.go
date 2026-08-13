@@ -8,13 +8,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 // Quirks are the request-shape facts a provider will not publish and only a
 // rejected call can teach.
 //
-// There is exactly one of them today, and it is the reason this file exists:
+// The first of them is the reason this file exists:
 // an endpoint that refuses to have its reasoning turned off. OpenRouter's
 // listing says which knobs a model ACCEPTS — that is the catalog's
 // supported_parameters, and it is enough to keep the harness from sending a
@@ -41,10 +42,27 @@ type quirksStore struct {
 	path  string
 	// mandatory is the learned set, keyed by normalized model.
 	mandatory map[string]time.Time
-	loaded    bool
+	// noCacheControl is the second learned set: models whose endpoint rejected
+	// an ephemeral cache breakpoint. It is a separate map rather than a flag on
+	// one record because the two facts are independent — a model may reason
+	// unconditionally and take breakpoints, or neither, or both.
+	noCacheControl map[string]time.Time
+	loaded         bool
+
+	// writes counts saves in flight. The save is deliberately off the request
+	// path — the call that learned the fact is waiting to be re-sent and must
+	// not wait on a disk — which means the process can be holding a file
+	// descriptor into a directory its owner believes it has finished with. In
+	// production nothing cares; in a test whose profile directory is removed at
+	// cleanup, the write and the removal race, and the removal loses. See
+	// settle.
+	writes sync.WaitGroup
 }
 
-var quirks = &quirksStore{mandatory: map[string]time.Time{}}
+var quirks = &quirksStore{
+	mandatory:      map[string]time.Time{},
+	noCacheControl: map[string]time.Time{},
+}
 
 // LoadQuirks seeds the process from a profile directory and names the file
 // later discoveries are written to. Empty dir means ~/.aforge, which is where
@@ -71,6 +89,12 @@ type quirksWire struct {
 	// economy it can live without, while re-testing a refusal on a schedule
 	// would cost a failed call on a cadence nobody asked for.
 	ReasoningMandatory map[string]time.Time `json:"reasoning_mandatory,omitempty"`
+
+	// CacheControlRejected maps a model to when its endpoint refused an
+	// ephemeral cache breakpoint. It costs the same as the field above: one
+	// rejected call per model per profile, after which the adapter falls back to
+	// the automatic prefix cache every provider has anyway.
+	CacheControlRejected map[string]time.Time `json:"cache_control_rejected,omitempty"`
 }
 
 func (q *quirksStore) load(path string) {
@@ -86,10 +110,17 @@ func (q *quirksStore) load(path string) {
 	if json.Unmarshal(raw, &wire) != nil {
 		return
 	}
-	for model, learnedAt := range wire.ReasoningMandatory {
+	seed(q.mandatory, wire.ReasoningMandatory)
+	seed(q.noCacheControl, wire.CacheControlRejected)
+}
+
+// seed folds a loaded set into a live one without ever dropping a fact learned
+// in this process: a read only adds.
+func seed(into, from map[string]time.Time) {
+	for model, learnedAt := range from {
 		if key := normalizeModel(model); key != "" {
-			if _, known := q.mandatory[key]; !known {
-				q.mandatory[key] = learnedAt
+			if _, known := into[key]; !known {
+				into[key] = learnedAt
 			}
 		}
 	}
@@ -98,27 +129,45 @@ func (q *quirksStore) load(path string) {
 // note records a refusal and reports whether it was new. Only a new fact is
 // worth a write, so a model that refuses on every call still costs one.
 func (q *quirksStore) note(model string, at time.Time) bool {
-	key := normalizeModel(model)
-	if key == "" {
-		return false
-	}
-	q.mutex.Lock()
-	defer q.mutex.Unlock()
-	if _, known := q.mandatory[key]; known {
-		return false
-	}
-	q.mandatory[key] = at
-	return true
+	return q.record(func(s *quirksStore) map[string]time.Time { return s.mandatory }, model, at)
 }
 
 func (q *quirksStore) knows(model string) bool {
+	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.mandatory }, model)
+}
+
+// noteNoCacheControl records that this model's endpoint rejected a breakpoint.
+func (q *quirksStore) noteNoCacheControl(model string, at time.Time) bool {
+	return q.record(func(s *quirksStore) map[string]time.Time { return s.noCacheControl }, model, at)
+}
+
+func (q *quirksStore) knowsNoCacheControl(model string) bool {
+	return q.recorded(func(s *quirksStore) map[string]time.Time { return s.noCacheControl }, model)
+}
+
+func (q *quirksStore) record(set func(*quirksStore) map[string]time.Time, model string, at time.Time) bool {
 	key := normalizeModel(model)
 	if key == "" {
 		return false
 	}
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	_, known := q.mandatory[key]
+	learned := set(q)
+	if _, known := learned[key]; known {
+		return false
+	}
+	learned[key] = at
+	return true
+}
+
+func (q *quirksStore) recorded(set func(*quirksStore) map[string]time.Time, model string) bool {
+	key := normalizeModel(model)
+	if key == "" {
+		return false
+	}
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	_, known := set(q)[key]
 	return known
 }
 
@@ -128,12 +177,36 @@ func (q *quirksStore) knows(model string) bool {
 func (q *quirksStore) snapshot() (string, quirksWire) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	wire := quirksWire{ReasoningMandatory: make(map[string]time.Time, len(q.mandatory))}
+	wire := quirksWire{
+		ReasoningMandatory:   make(map[string]time.Time, len(q.mandatory)),
+		CacheControlRejected: make(map[string]time.Time, len(q.noCacheControl)),
+	}
 	for model, learnedAt := range q.mandatory {
 		wire.ReasoningMandatory[model] = learnedAt
 	}
+	for model, learnedAt := range q.noCacheControl {
+		wire.CacheControlRejected[model] = learnedAt
+	}
 	return q.path, wire
 }
+
+// persist schedules the memo's write and counts it while it is in flight. Every
+// new fact goes through here rather than spawning its own goroutine, so there is
+// exactly one place that knows a write is outstanding.
+func (q *quirksStore) persist() {
+	q.writes.Add(1)
+	guard.Go("provider/quirks", func() {
+		defer q.writes.Done()
+		q.save()
+	})
+}
+
+// settle waits for every scheduled write to land. Nothing on a request path may
+// call it — the whole point of the write being scheduled is that no request
+// waits for it — and nothing does: its one caller is the test helper that owns
+// the profile directory being written into, which cannot remove that directory
+// while a writer still has business in it.
+func (q *quirksStore) settle() { q.writes.Wait() }
 
 // save writes the whole memo. It is called off the request path, after a new
 // fact, and a failure is silent: a cache that could not be written is a cache
