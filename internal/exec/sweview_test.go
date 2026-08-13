@@ -359,6 +359,25 @@ func TestParallelCodingLeavesVerifyInIsolationAndBothLand(t *testing.T) {
 		}
 	}
 
+	// NEITHER LEAF CLAIMS THE OTHER'S FILES. Both landed on the same shared
+	// history, so a change set read as one wide range from either leaf's base to
+	// the tip would carry the sibling's work — which is why the range is recorded
+	// per pass, at the moment of landing, under the lease.
+	for index, leaf := range leaves {
+		account := results[index].outcome.Account
+		if account == nil || !account.Landed() {
+			t.Fatalf("leaf %s derived no change set from the repository: %#v", leaf, account)
+		}
+		for _, file := range account.Files {
+			if strings.HasPrefix(file.Path, "fix-") && file.Path != "fix-"+leaf+".txt" {
+				t.Fatalf("leaf %s claimed its sibling's file %s:\n%#v", leaf, file.Path, account.Files)
+			}
+		}
+		if account.Patch == "" {
+			t.Fatalf("leaf %s left no readable record of what it changed", leaf)
+		}
+	}
+
 	// AND NOTHING IS LEFT OVER. A view that succeeded is gone, branch and all.
 	if branches := gitOut(t, root, "branch", "--list", "aforge/leaf/*"); branches != "" {
 		t.Fatalf("branches survived their leaves:\n%s", branches)

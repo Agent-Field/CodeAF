@@ -295,6 +295,14 @@ type Options struct {
 	// before they are. See Graph.FileShaped and DeliveryLaw.
 	FileShaped bool
 
+	// Continues says this plan is the remainder of work that already happened.
+	// See Graph.Continues.
+	Continues bool
+
+	// Records are the files the work this plan continues left behind, which the
+	// agents it plans can open and read. See Graph.Records.
+	Records []string
+
 	// Undivided stops the build at the spine when the spine says there is
 	// nothing to divide. It exists for the remainder path and it is opt-in
 	// because it is the wrong answer for a fresh project: a one-stage project
@@ -388,7 +396,8 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		// The requests the ask was read as containing, cleaned once and frozen
 		// for the build like the terrain beside them, and for the same reason:
 		// they join the shared prefix every pass reads.
-		Asked: cleanStrings(options.Asked),
+		Asked:     cleanStrings(options.Asked),
+		Continues: options.Continues, Records: append([]string(nil), options.Records...),
 		// The window rides onto the document at the same moment the terrain
 		// does, and for the same reason: every later pass over this graph has to
 		// size itself from the same fact the build was sized from.
