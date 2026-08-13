@@ -31,7 +31,7 @@ func runExecute(args []string) error {
 	workspace := flags.String("w", "", "workspace directory (default ./aforge-run-<goal hash>)")
 	output := flags.String("o", "", "write the completed graph as JSON to this file")
 	concurrency := flags.Int("j", 32, "how many leaves may run at once")
-	maxTurns := flags.Int("turns", 40, "runaway backstop on iterations per leaf (clamped to the executor's own backstop)")
+	maxTurns := flags.Int("turns", 200, "runaway backstop on iterations per leaf (clamped to the executor's own backstop)")
 	maxTokens := flags.Int("budget", 150000, "token budget per leaf — the limit that actually binds")
 	runBudget := flags.Int("run-budget", 0, "global token budget for the whole run; once passed, nothing new launches and in-flight leaves land (0 = per-leaf budgets only)")
 	contracts := flags.Bool("contracts", true, "write a per-leaf working method before executing")
