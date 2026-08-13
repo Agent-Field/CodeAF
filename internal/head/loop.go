@@ -311,7 +311,7 @@ func (h *Head) turnPrompt(user store.Message) (string, error) {
 		body.WriteString("\n\n" + deep)
 	}
 	body.WriteString("\n\nNotebook (durable memory across jobs and conversations):\n" +
-		renderNotebook(h.store, user.Body, thread))
+		renderNotebook(h.store, user.Body, thread, h.budget.notebook))
 	if hints := h.renderHints(user, active); hints != "" {
 		body.WriteString("\n\n" + hints)
 	}
@@ -347,16 +347,16 @@ func (h *Head) renderTurnBoard(sessionID, thread string, opened map[string]bool)
 	if err != nil {
 		return "", fmt.Errorf("serve head: read board: %w", err)
 	}
-	return boardBlock(rows, thread, opened), nil
+	return h.boardBlock(rows, thread, opened), nil
 }
 
 // boardBlock is the prompt's board as a string, clock and all, so the ordering
 // and truncation rules have one spelling rather than one per caller.
-func boardBlock(rows []boardRow, thread string, opened map[string]bool) string {
+func (h *Head) boardBlock(rows []boardRow, thread string, opened map[string]bool) string {
 	if len(rows) == 0 {
 		return emptyBoardLine
 	}
-	return renderBoardWithin(rows, thread, opened, maxGraphContextBytes)
+	return renderBoardWithin(rows, thread, opened, h.budget.board)
 }
 
 // emptyBoardLine says what an empty board means without saying the head is
@@ -373,5 +373,5 @@ func (h *Head) boardFor(sessionID, thread string, opened map[string]bool, now ti
 	if err != nil {
 		return emptyBoardLine
 	}
-	return boardBlock(rows, thread, opened)
+	return h.boardBlock(rows, thread, opened)
 }

@@ -84,7 +84,9 @@ const (
 	// wrote.
 	lensSnippetBytes = 200
 	// lensPageBytes is one transport page. It is a page, not a ceiling: past it
-	// the read continues at part+1 and says so in the same breath.
+	// the read continues at part+1 and says so in the same breath. Paging is the
+	// honest half and the size is the budgeted half — budget.go buys a bigger
+	// page out of a bigger window, and the paging behind it does not change.
 	lensPageBytes = 8 << 10
 	// lensProgressTail is how much of a live job's feed one open shows. The tail
 	// rather than the head, because the question behind opening running work is
@@ -563,36 +565,36 @@ func (h *Head) lensOpen(id, job string, raw bool, part int) (string, error) {
 			if rawErr != nil {
 				return "", rawErr
 			}
-			return lensPage(id, body, part), nil
+			return lensPage(id, body, part, h.budget.lensPage), nil
 		}
 		body, jobErr := h.lensJob(node)
 		if jobErr != nil {
 			return "", jobErr
 		}
-		return lensPage(id, body, part), nil
+		return lensPage(id, body, part, h.budget.lensPage), nil
 	}
 	if seq, ok := lensMessageSeq(id); ok {
 		body, err := h.lensMessage(seq)
 		if err != nil {
 			return "", err
 		}
-		return lensPage(id, body, part), nil
+		return lensPage(id, body, part, h.budget.lensPage), nil
 	}
 	if seq, ok := lensFactSeq(id); ok {
 		body, err := h.lensFact(seq)
 		if err != nil {
 			return "", err
 		}
-		return lensPage(id, body, part), nil
+		return lensPage(id, body, part, h.budget.lensPage), nil
 	}
 	if charter, found, err := h.store.Charter(id); err == nil && found {
-		return lensPage(id, lensCharterRecord(charter), part), nil
+		return lensPage(id, lensCharterRecord(charter), part, h.budget.lensPage), nil
 	}
 	if service, found, err := h.store.ServiceByName(id); err == nil && found {
-		return lensPage(id, lensServiceRecord(service), part), nil
+		return lensPage(id, lensServiceRecord(service), part, h.budget.lensPage), nil
 	}
 	if service, found, err := h.store.Service(id); err == nil && found {
-		return lensPage(id, lensServiceRecord(service), part), nil
+		return lensPage(id, lensServiceRecord(service), part, h.budget.lensPage), nil
 	}
 	if rendered, resolved, err := h.lensAnyFile(id, part); resolved {
 		return rendered, err
@@ -799,7 +801,7 @@ func (h *Head) lensJobFile(node store.Node, name string, part int) (string, erro
 		return "", fmt.Errorf("%q is not a file that job wrote; it wrote: %s",
 			name, strings.Join(paths, ", "))
 	}
-	return lensFilePage(picked, name, part)
+	return lensFilePage(picked, name, part, h.budget.lensPage)
 }
 
 // lensAnyFile is open with no job named. It tries the files this conversation
@@ -815,7 +817,7 @@ func (h *Head) lensAnyFile(name string, part int) (string, bool, error) {
 	if written := h.writtenArtifacts(); len(written) > 0 {
 		sort.Strings(written)
 		if picked, chosen := artifactPick(written, name); chosen {
-			rendered, err := lensFilePage(picked, name, part)
+			rendered, err := lensFilePage(picked, name, part, h.budget.lensPage)
 			return rendered, true, err
 		}
 	}
@@ -849,7 +851,7 @@ func (h *Head) lensAnyFile(name string, part int) (string, bool, error) {
 	case 0:
 		return "", false, nil
 	case 1:
-		rendered, fileErr := lensFilePage(picks[0], name, part)
+		rendered, fileErr := lensFilePage(picks[0], name, part, h.budget.lensPage)
 		return rendered, true, fileErr
 	}
 	names := make([]string, 0, len(owners))
@@ -864,7 +866,7 @@ func (h *Head) lensAnyFile(name string, part int) (string, bool, error) {
 // the page's own offset. Paging rather than buffering is not an optimisation: a
 // read that had to hold the whole file to page it would have a size past which
 // it silently stopped being total, and totality is the entire point.
-func lensFilePage(picked, spoken string, part int) (string, error) {
+func lensFilePage(picked, spoken string, part, pageBytes int) (string, error) {
 	real, err := artifactRealPath(picked)
 	if err != nil {
 		return "", err
@@ -886,13 +888,13 @@ func lensFilePage(picked, spoken string, part int) (string, error) {
 	if size == 0 {
 		return header + "\nthe file is empty", nil
 	}
-	pages := int((size + lensPageBytes - 1) / lensPageBytes)
+	pages := int((size + int64(pageBytes) - 1) / int64(pageBytes))
 	if part > pages {
 		return "", fmt.Errorf("%s has %d %s; there is no part %d",
 			picked, pages, pluralWord(pages, "part", "parts"), part)
 	}
-	offset := int64(part-1) * lensPageBytes
-	length := lensPageBytes
+	offset := int64(part-1) * int64(pageBytes)
+	length := pageBytes
 	if remaining := size - offset; remaining < int64(length) {
 		length = int(remaining)
 	}
@@ -1173,8 +1175,8 @@ func (h *Head) lensNodeEvents(members map[string]bool, limit int) ([]store.Event
 // boundary when there is one near the end of the page, because a page that
 // stops mid-sentence reads as damage while a page that stops at a line reads as
 // a page.
-func lensPage(id, body string, part int) string {
-	pages := lensPageBounds(body)
+func lensPage(id, body string, part, pageBytes int) string {
+	pages := lensPageBounds(body, pageBytes)
 	if len(pages) <= 1 {
 		if part > 1 {
 			// Handing back page one under the name of page two is how a loop
@@ -1192,24 +1194,24 @@ func lensPage(id, body string, part int) string {
 
 // lensPageBounds is the split itself, done once so the part count and the part
 // contents can never disagree about how many there are.
-func lensPageBounds(body string) []string {
-	if len(body) <= lensPageBytes {
+func lensPageBounds(body string, pageBytes int) []string {
+	if len(body) <= pageBytes {
 		return []string{body}
 	}
-	pages := make([]string, 0, len(body)/lensPageBytes+1)
-	for len(body) > lensPageBytes {
-		cut := lensPageBytes
+	pages := make([]string, 0, len(body)/pageBytes+1)
+	for len(body) > pageBytes {
+		cut := pageBytes
 		// Back off to a line boundary, but only inside the last quarter of the
 		// page: further back than that and the page loses more than the ragged
 		// edge cost it.
-		if newline := strings.LastIndexByte(body[:cut], '\n'); newline > cut-lensPageBytes/4 {
+		if newline := strings.LastIndexByte(body[:cut], '\n'); newline > cut-pageBytes/4 {
 			cut = newline + 1
 		}
 		for cut > 0 && !utf8.ValidString(body[:cut]) {
 			cut--
 		}
 		if cut == 0 {
-			cut = lensPageBytes
+			cut = pageBytes
 		}
 		pages = append(pages, body[:cut])
 		body = body[cut:]

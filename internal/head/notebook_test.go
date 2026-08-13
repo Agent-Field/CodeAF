@@ -29,7 +29,7 @@ func TestNotebookPacksPastAnOversizedBelief(t *testing.T) {
 
 	// A message that matches nothing, so only the recency layer is in play and
 	// the ordering under test is the pass's own.
-	rendered := renderNotebook(graph, "zzzz", "")
+	rendered := renderNotebook(graph, "zzzz", "", notebookContextBytes)
 	if len(rendered) > notebookContextBytes+len(short)+64 {
 		t.Fatalf("the notebook overran its budget at %d bytes", len(rendered))
 	}

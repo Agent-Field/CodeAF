@@ -50,6 +50,7 @@ const (
 	// correctionPreviousBytes bounds the previous attempt carried into the
 	// revision. It matches the deep slice's per-job budget: enough to revise
 	// against, and the files line beside it is how the whole document is read.
+	// It is the floor under that bound now; budget.go raises it with the window.
 	correctionPreviousBytes = 1200
 	// correctionAskLineBytes bounds the deliverable quoted back in the question.
 	// One clause, so the question stays a question rather than a re-delivery.
@@ -86,7 +87,15 @@ func IsCorrection(instruction string) bool {
 // obeys — and the deterministic block follows, in the idiom attached documents
 // and quality words already use: a compiler that ignores the prompt cannot lose
 // what the sentence was about.
-func SpliceCorrection(words string, job store.Node, previous string, files []string) string {
+//
+// previousBytes is how much of the last version travels; a non-positive value
+// is the literal this file argues for. It is the caller's number because the
+// caller is the head, and how much of a deliverable fits in a brief is a
+// question about the window the head is speaking through (budget.go).
+func SpliceCorrection(words string, job store.Node, previous string, files []string, previousBytes int) string {
+	if previousBytes <= 0 {
+		previousBytes = correctionPreviousBytes
+	}
 	var block strings.Builder
 	block.WriteString(strings.TrimSpace(words))
 	block.WriteString("\n\n" + CorrectionPrefix + " " + job.ID)
@@ -94,7 +103,7 @@ func SpliceCorrection(words string, job store.Node, previous string, files []str
 		block.WriteString(" (" + label + ")")
 	}
 	if previous = strings.TrimSpace(previous); previous != "" {
-		block.WriteString("\nWhat was delivered:\n" + truncateBytes(previous, correctionPreviousBytes))
+		block.WriteString("\nWhat was delivered:\n" + truncateBytes(previous, previousBytes))
 	}
 	if len(files) > 0 {
 		block.WriteString("\nFiles it wrote: " + strings.Join(files, ", "))
@@ -114,7 +123,7 @@ func (h *Head) requestCorrection(user store.Message, job store.Node, message, pr
 		SessionID:   user.SessionID,
 		Kind:        store.CommandSplice,
 		Target:      job.ID,
-		Instruction: SpliceCorrection(message, job, previous, resultFiles(job)),
+		Instruction: SpliceCorrection(message, job, previous, resultFiles(job, h.budget.deepFiles), h.budget.correction),
 		Attachments: append([]string(nil), user.Attachments...),
 	})
 	if err != nil {

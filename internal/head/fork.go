@@ -31,6 +31,9 @@ import (
 // worker that reads a passing remark as an order is the failure this framing
 // exists to prevent.
 
+// The byte numbers here are floors now rather than ceilings: this is what
+// they get on a window nobody could size, and budget.go raises them in
+// proportion on a window with room to spare.
 const (
 	// forkContextTurns is how much conversation a fork inherits. It is the
 	// person-window's own size: what was settled in this room's recent turns is
@@ -82,8 +85,8 @@ func (h *Head) forkContext(user store.Message) (string, error) {
 			continue
 		}
 		line := forkSpeaker(message) + ": " +
-			truncateBytes(promptSafe(body), forkTurnBytes) + "\n"
-		if rendered.Len()+len(line) > forkContextBytes {
+			truncateBytes(promptSafe(body), h.budget.forkTurn) + "\n"
+		if rendered.Len()+len(line) > h.budget.fork {
 			break
 		}
 		rendered.WriteString(line)
@@ -91,7 +94,7 @@ func (h *Head) forkContext(user store.Message) (string, error) {
 	// The message being answered right now is part of what was discussed and is
 	// not in the window, which reads everything BEFORE it.
 	if body := strings.TrimSpace(user.Body); body != "" {
-		rendered.WriteString("them: " + truncateBytes(promptSafe(body), forkTurnBytes) + "\n")
+		rendered.WriteString("them: " + truncateBytes(promptSafe(body), h.budget.forkTurn) + "\n")
 	}
 	return strings.TrimSpace(rendered.String()), nil
 }
