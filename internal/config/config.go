@@ -233,11 +233,11 @@ func Load() (Config, error) {
 	provider.LoadQuirks(config.ProfileDir)
 	config.VisionModel = VisionModelAt(config.ProfileDir)
 	config.Attribution = AttributionAt(config.ProfileDir)
-	// The context law's two knobs, handed to the one package that spends
-	// them. The reserve also floors the wire ceiling: a reasoning pass that
-	// thinks past a small MaxTokens returns an empty reply, so the ceiling is
-	// never allowed below the room the law promised.
-	ctxbudget.Configure(ContextFillAt(config.ProfileDir), CompletionReserveAt(config.ProfileDir))
+	// The context law's knobs, handed to the one package that spends them.
+	// The reserve also floors the wire ceiling: a reasoning pass that thinks
+	// past a small MaxTokens returns an empty reply, so the ceiling is never
+	// allowed below the room the law promised.
+	ctxbudget.Configure(contextLaw(config.ProfileDir))
 	config.MaxTokens = max(config.MaxTokens, ctxbudget.CompletionReserve())
 	if config.PracticeIdle, err = PracticeIdleAt(config.ProfileDir); err != nil {
 		return Config{}, err

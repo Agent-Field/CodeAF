@@ -195,11 +195,23 @@ type Outcome struct {
 	Turns     int
 	ToolCalls int
 	Decayed   int // observations faded to stubs, a measure of how much context was reclaimed
+	// Folded counts the leaf's own aged assistant turns retired to pointers. It
+	// is separate from Decayed because the two say different things about a run:
+	// decay means the work produced more raw material than fits, fold means the
+	// work produced more of its own prose than fits, and only the second is
+	// evidence that a leaf was talking to itself.
+	Folded int
 	// Steered counts the user's mid-flight lines this run actually read. It is
 	// the difference between a redirection delivered to a mailbox and one
 	// delivered to a mind, and it is zero on every leaf nobody steered.
 	Steered int
 	Usage   Usage
+	// PerTurn is Usage with its shape kept: one row per turn, summing to Usage
+	// exactly. See meter.go for why a summed row alone cannot answer the
+	// question anybody asks of it. Executors that do not meter turns leave it
+	// empty, which reads as "no shape recorded" rather than as a leaf with no
+	// turns.
+	PerTurn []TurnUsage
 	Stop    StopReason
 	// Exhausted is what ran out, when something did. It is separate from Stop
 	// because the two answer different questions and the common case makes them

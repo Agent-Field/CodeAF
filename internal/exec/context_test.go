@@ -345,30 +345,69 @@ func TestObservationWindowIsSizedFromContextNotSpend(t *testing.T) {
 	}
 }
 
-// The deleted ceiling, pinned as an absence.
+// The deleted ceiling, pinned as an absence — and the named one that replaced
+// it, pinned as a dial.
 //
-// 64KB used to be the most memory any model could be given, whatever it held.
-// It was the last absolute byte number in the sizing and it made every
-// long-context model identical to every other: a 200k model and a 2M model were
-// handed the same window and the catalog's answer stopped mattering above about
-// 600k tokens. The law now is that a cap is a fraction of the model's own
-// context or it does not exist.
-func TestTheObservationWindowHasNoAbsoluteCeiling(t *testing.T) {
+// 64KB used to be the most memory any model could be given, whatever it held. It
+// was a number this file believed about every model in existence, with no way to
+// move it and no evidence behind it, and it made a 200k model and a 2M model
+// identical.
+//
+// What stands there now is not that number returning. Above the working-set
+// ceiling the window does converge — deliberately, because a window is what a
+// provider accepts and not evidence that carrying that much is useful, and the
+// unbounded version was measured handing a leaf a 2.2MB observation window
+// against 181KB of tool output across twelve nodes, so the decayer fired zero
+// times and 90% of every input token billed was a re-send. The difference from
+// the deleted ceiling is what this test is really about: the convergence point
+// is a named setting with a stated default, it sits an order of magnitude above
+// the 64KB it replaces, and moving the setting moves the window.
+func TestTheObservationWindowConvergesOnlyOnTheNamedWorkingSet(t *testing.T) {
 	const deletedCeiling = 64 << 10
 	million := observationWindow(1 << 20)
 	if million <= deletedCeiling {
 		t.Fatalf("a 1M-token model got %d bytes; the %d ceiling is back", million, deletedCeiling)
 	}
-	// And it keeps going: the window follows the model rather than converging on
-	// one number, which is the whole difference between a share and a clamp.
+
+	// Below the working set the window still follows the model exactly as it
+	// did: nothing clamps a model that fits. The band starts where the fill
+	// share finally clears the fixed floor and the completion reserve — under
+	// that every model gets the arithmetic minimum, which is the law's answer
+	// and not a ceiling.
 	last := 0
-	for _, context := range []int{200_000, 600_000, 1 << 20, 2_000_000, 10_000_000} {
+	for _, context := range []int{128_000, 144_000, 156_000} {
 		window := observationWindow(context)
 		if window <= last {
 			t.Fatalf("a %d-token model got %d bytes, no more than the smaller model's %d",
 				context, window, last)
 		}
 		last = window
+	}
+	fitting := observationWindow(128_000)
+
+	// At and above it every model gets the working set's own answer, and gets
+	// the same one. That is the point rather than a regression: the leaf's memory
+	// is sized by what is useful to re-send every turn, not by what the provider
+	// would accept once.
+	ceiling := observationWindow(ctxbudget.WorkingSetCeiling())
+	for _, context := range []int{200_000, 600_000, 1 << 20, 2_000_000, 10_000_000} {
+		if window := observationWindow(context); window != ceiling {
+			t.Fatalf("a %d-token model got %d bytes, want the working set's %d", context, window, ceiling)
+		}
+	}
+
+	// And it is a dial rather than a belief. The operator who has evidence of
+	// their own moves the ceiling and the window moves with it, which is exactly
+	// what the deleted 64KB could not do.
+	t.Setenv("AFORGE_WORKING_SET", "400000")
+	if wider := observationWindow(1 << 20); wider <= ceiling {
+		t.Fatalf("with the working set raised to 400k the window is %d bytes, no more than the %d it was; "+
+			"the ceiling is a buried literal again", wider, ceiling)
+	}
+	// A model smaller than the raised ceiling is still sized by itself.
+	if small := observationWindow(128_000); small != fitting {
+		t.Fatalf("raising the working set changed a 128k model's window from %d to %d; "+
+			"the ceiling may only ever clamp down", fitting, small)
 	}
 }
 

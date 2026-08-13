@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,8 +43,19 @@ func TestALeafsCachedTokensReachTheJournal(t *testing.T) {
 	}
 
 	spent := exec.Usage{PromptTokens: 1_877_154, CompletionTokens: 4_000, CachedTokens: 1_750_000, Cost: 0.42}
+	// The same spend with its shape kept. Three turns, each re-sending what the
+	// one before it left: the totals are identical and the story is not, which
+	// is the whole reason the ledger exists.
+	shape := []exec.TurnUsage{
+		{Turn: 1, Usage: exec.Usage{Calls: 1, PromptTokens: 600_000, CompletionTokens: 1_500,
+			CachedTokens: 550_000, Cost: 0.14}, Sent: 600_000},
+		{Turn: 2, Usage: exec.Usage{Calls: 1, PromptTokens: 620_000, CompletionTokens: 1_500,
+			CachedTokens: 600_000, Cost: 0.14}, Sent: 620_000},
+		{Turn: 3, Usage: exec.Usage{Calls: 1, PromptTokens: 657_154, CompletionTokens: 1_000,
+			CachedTokens: 600_000, Cost: 0.14}, Sent: 657_154},
+	}
 	runner := resident.NewRunner(graph, func(context.Context, store.Node) (resident.ExecResult, error) {
-		result := leafSpend(spent, "worker/model")
+		result := leafSpend(spent, shape, "worker/model")
 		result.Summary = "done"
 		return result, nil
 	}, "meter-runner", 1)
@@ -62,6 +74,41 @@ func TestALeafsCachedTokensReachTheJournal(t *testing.T) {
 	}
 	if room.Work.PromptTokens != spent.PromptTokens || room.Work.CompletionTokens != spent.CompletionTokens {
 		t.Fatalf("the rest of the ledger moved with it: %+v", room.Work)
+	}
+
+	// The other half of the same seam: the shape underneath the total. A summed
+	// row cannot say whether 1.88M prompt tokens were three enormous turns or a
+	// hundred and eleven ordinary ones, and those are opposite findings.
+	turns, err := graph.TurnUsageFor("job-n1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != len(shape) {
+		t.Fatalf("the journal kept %d turn rows, want %d", len(turns), len(shape))
+	}
+	var prompt, completion, cached, sent int
+	var cost float64
+	for index, turn := range turns {
+		if turn.Turn != index+1 {
+			t.Fatalf("turn %d is numbered %d; the ledger must be in order and one-based", index, turn.Turn)
+		}
+		prompt += turn.PromptTokens
+		completion += turn.CompletionTokens
+		cached += turn.CachedTokens
+		sent += turn.SentTokens
+		cost += turn.Cost
+	}
+	if prompt != spent.PromptTokens || completion != spent.CompletionTokens || cached != spent.CachedTokens {
+		t.Fatalf("the turn rows sum to prompt=%d completion=%d cached=%d, and the node row says %+v",
+			prompt, completion, cached, spent)
+	}
+	if math.Abs(cost-spent.Cost) > 1e-9 {
+		t.Fatalf("the turn rows sum to $%.6f, and the node row says $%.6f", cost, spent.Cost)
+	}
+	// Cumulative context pressure — Σ over turns of what went on the wire — is
+	// the quantity no other row in the journal carries.
+	if sent != spent.PromptTokens {
+		t.Fatalf("the ledger records %d tokens sent across the run, want %d", sent, spent.PromptTokens)
 	}
 }
 
