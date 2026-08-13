@@ -65,7 +65,24 @@ func (h *Head) resolveAgentQuestion(ctx context.Context, user store.Message,
 		// asked the question never told what came back. So: settle the row for the
 		// measurement, then decline, and the reply travels on to the loop with the
 		// question beside it.
-		return false, h.settleLearnedAsk(question.Seq, question.Options, body, user.Seq)
+		if err := h.settleLearnedAsk(question.Seq, question.Options, body, user.Seq); err != nil {
+			return false, err
+		}
+		// One categorized ask is settled HERE rather than declined, and it is the
+		// only one: a yes to the split offer moves the person's window, and a
+		// window move is not something a model can be asked to say. The turn ends
+		// with it — their pivot is reposted into the new room and answered there
+		// by the ordinary poll, so a reply in this room would land behind them.
+		if splitAnswered(question, body) {
+			split, err := h.settleThreadSplit(user)
+			if err != nil {
+				return false, err
+			}
+			if split {
+				return true, nil
+			}
+		}
+		return false, nil
 	}
 	answer := strings.TrimSpace(body)
 	if option, selected := selectQuestionOption(body, question.Options); selected {

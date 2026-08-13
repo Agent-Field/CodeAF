@@ -47,9 +47,18 @@ func (run *beltRun) change(args map[string]any) (string, bool) {
 	if run.confirm != nil {
 		return "the user has already been asked to confirm a change; nothing else may act until they answer", true
 	}
+	// "call this thread pricing" is a change like any other, and the thing it
+	// changes is the room the two of them are standing in. It is resolved before
+	// the id lookup because the person names it by pointing rather than by id,
+	// and there is no id they could have read for it.
+	if threadTarget(target) {
+		return run.changeThread(run.user.SessionID, words)
+	}
 	switch found := run.head.resolveTarget(target); found.kind {
 	case targetJob:
 		return run.changeJob(found.job, words)
+	case targetThread:
+		return run.changeThread(found.thread.ID, words)
 	case targetRule:
 		return run.changeRule(found.rule, words)
 	case targetService:
@@ -256,6 +265,11 @@ const (
 	targetRule
 	targetService
 	targetCraft
+	// targetThread is the conversation itself. It joined the list when threads
+	// became a thing the person names ("call this thread pricing"), and it is
+	// last on purpose: every other kind is checked first, so a room whose id
+	// happens to collide with a job's can never shadow the work.
+	targetThread
 )
 
 type resolvedTarget struct {
@@ -264,6 +278,7 @@ type resolvedTarget struct {
 	rule    store.Charter
 	service store.Service
 	craft   string
+	thread  store.Session
 }
 
 // resolveTarget reads one id against everything the person owns. All four kinds
@@ -301,6 +316,9 @@ func (h *Head) resolveTarget(id string) resolvedTarget {
 				return resolvedTarget{kind: targetCraft, craft: name}
 			}
 		}
+	}
+	if session, found, err := h.store.Session(id); err == nil && found {
+		return resolvedTarget{kind: targetThread, thread: session}
 	}
 	if foreign.ID != "" {
 		// It exists and it is not theirs — the resident's own practice, or a
