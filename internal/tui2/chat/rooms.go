@@ -163,7 +163,16 @@ type scopePane struct {
 	// function because the answer is the TERMINAL's width, and a pane is only
 	// ever told its own rectangle (pane.go's contract).
 	mode func() rail.Mode
-	keys func(tea.KeyPressMsg) (tea.Cmd, bool)
+	// slim reports that this frame drew the collapsed rail's handle rather than
+	// the map. It is a function for the same reason mode is: the answer is the
+	// SOLVED FRAME's, and a pane is only ever told its own rectangle — a pane
+	// that inferred it from being one column wide would be guessing, and would
+	// guess wrong the day the handle earns a second column.
+	slim func() bool
+	// expand is what a click on the handle performs. The handle has exactly one
+	// act and this is it (see [App.expandRail]).
+	expand func() tea.Cmd
+	keys   func(tea.KeyPressMsg) (tea.Cmd, bool)
 	// point is what the pointer did to the map. It is a function for the same
 	// reason keys is: the ACT belongs to the app — selecting, entering, popping
 	// — and the pane's whole job is to say which row was pointed at.
@@ -198,6 +207,11 @@ func (p *scopePane) Render(width, height int) string {
 	if p.mode != nil {
 		p.pane.Mode = p.mode()
 	}
+	// The handle is a RENDERING of the same pane, not a second pane: the model
+	// keeps its cursor, its scope stack and its place across a collapse, so
+	// expanding costs a flag rather than a rebuild and the reader comes back to
+	// the row they left.
+	p.pane.Slim = p.slim != nil && p.slim()
 	return p.pane.Render(width, height)
 }
 
@@ -235,6 +249,17 @@ func (p *scopePane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 	case tea.MouseClickMsg:
 		if event.Button != tea.MouseLeft {
 			return nil
+		}
+		if p.slim != nil && p.slim() {
+			// THE WHOLE HANDLE IS THE TARGET, its blank rows included. It is one
+			// column wide and the thing on it is at most one cell; a target a
+			// reader has to hit exactly would be an affordance only a mouse with
+			// good aim can reach, and the column has nothing else on it that a
+			// click could have meant instead.
+			if p.expand == nil {
+				return nil
+			}
+			return p.expand()
 		}
 		if p.pane.ScopeUpAt(local.X, local.Y) {
 			return p.point(railPoint{row: -1, up: true})
@@ -281,6 +306,10 @@ func (p *scopePane) Focus(focused bool) {
 // the composer to whatever the cursor starts on.
 func (a *App) buildScope() {
 	a.source = newScopeSource(a.backend, a.session, a.now)
+	// The thread index BEFORE the first build, so the very first frame's rail
+	// carries left-at lines rather than a list of bare names that fills in when
+	// something else happens to open a door.
+	a.source.setThreads(a.readThreads())
 	a.source.refresh(0, true)
 	a.railModel = rail.New(a.source)
 	a.hudModel = rail.New(hudSource{a.source})
@@ -288,10 +317,12 @@ func (a *App) buildScope() {
 	a.hudView = rail.NewView(a.style)
 	a.scope = &scopePane{
 		pane:  rail.Pane{Model: a.railModel, View: a.railView},
-		style: a.style,
-		mode:  a.railMode,
-		keys:  a.scopeKey,
-		point: a.scopePoint,
+		style:  a.style,
+		mode:   a.railMode,
+		slim:   a.railSlim,
+		expand: a.expandRail,
+		keys:   a.scopeKey,
+		point:  a.scopePoint,
 	}
 	a.scope.Focus(false)
 	a.bind(a.railModel.Preview(), false)
@@ -312,6 +343,18 @@ func (a *App) railMode() rail.Mode {
 // the HUD is the NARROW fallback, never a second rail).
 func (a *App) wide() bool {
 	return a.termWidth >= tokens.RailAtWidth
+}
+
+// railSlim reports that the solved frame drew the handle rather than the map.
+//
+// It asks the SHELL and not [App.railState], because the two are different
+// questions: the flag is what the reader asked for and this is what the width
+// could pay for. A terminal too narrow for 28 columns draws the handle without
+// anybody having chosen it, and — this is the half that matters — without the
+// stored preference being touched, so widening the window brings the column
+// back rather than needing the chord again.
+func (a *App) railSlim() bool {
+	return a.shell != nil && a.shell.RailSlim()
 }
 
 // -- the scope grammar -------------------------------------------------------
@@ -356,14 +399,43 @@ func (a *App) scopeKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			// product (an overlay, a scope, a turn); a rail that stayed standing
 			// after esc had emptied it would be the one surface where the key
 			// meant "look elsewhere" instead.
-			return a.setRailShown(false), true
+			//
+			// IT PUTS AWAY ONE STEP, to the handle rather than to nothing.
+			// Esc is a retreat and not a decision — the reader is going
+			// back to the conversation, not declaring that they never want
+			// the sidebar again — and the handle is exactly that
+			// distinction made visible: the column is gone and the one
+			// signal it carries is not.
+			return a.setRail(tui2.RailSlim), true
 		}
 		return a.applyScope(event), true
 	}
 	if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
-		return a.applyScope(a.railModel.Select(int(key[0] - '1'))), true
+		// A DIGIT COUNTS PLACES, NOT LINES. The rail is a numbered list to the
+		// eye whether or not it draws the numbers, and the eye does not number
+		// the section headings — nobody looks at `work` and counts it as an
+		// item. So the digit walks the rows a cursor may rest on, and a heading
+		// costs a reader nothing, exactly as it costs them nothing when they
+		// press j past it ([rail.Model.Move]).
+		return a.applyScope(a.railModel.Select(nthPlace(a.railModel.Rows(), int(key[0]-'1')))), true
 	}
 	return nil, false
+}
+
+// nthPlace is the model index of the n-th row a cursor may rest on, counting
+// from zero. A list with fewer places than that returns the last row's index,
+// which [rail.Model.Select] then clamps and snaps like any other.
+func nthPlace(rows []rail.Row, n int) int {
+	for i := range rows {
+		if !rows[i].Kind.Selectable() {
+			continue
+		}
+		if n == 0 {
+			return i
+		}
+		n--
+	}
+	return len(rows) - 1
 }
 
 // scopePoint is the map's pointer, and it is the keyboard's grammar reached by

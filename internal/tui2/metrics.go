@@ -28,6 +28,16 @@ type Metrics struct {
 	// RailWidth is the rail's column count when it is drawn.
 	RailWidth int
 
+	// RailSlimWidth is the collapsed rail's column count: the handle.
+	//
+	// It is a SECOND width rather than a flag because the solver's whole job is
+	// arithmetic — a rail that is sometimes 28 columns and sometimes 1 is one
+	// number with two values, and everything downstream (the seam, the main
+	// column, the narrow fallback) already reads that number. Zero means a
+	// surface that has no handle rendering, and the slim rung then collapses to
+	// hidden rather than reserving a column nothing draws in.
+	RailSlimWidth int
+
 	// MinMainWidth is the narrowest the transcript column may become before
 	// the rail gives up its columns entirely. Without this a wide-but-not-wide-
 	// enough terminal ends up with two unusable panes instead of one good one.
@@ -80,6 +90,7 @@ func DefaultMetrics() Metrics {
 	return Metrics{
 		RailBreakpoint:              100,
 		RailWidth:                   28,
+		RailSlimWidth:               1,
 		MinMainWidth:                56,
 		ComposerHeight:              3,
 		StatusHeight:                1,
@@ -99,6 +110,15 @@ func (m Metrics) sane() Metrics {
 	}
 	if m.RailWidth < 0 {
 		m.RailWidth = 0
+	}
+	if m.RailSlimWidth < 0 {
+		m.RailSlimWidth = 0
+	}
+	if m.RailSlimWidth > m.RailWidth {
+		// A handle wider than the column it stands in for is not a handle. The
+		// clamp is here rather than at the call site because the table is data
+		// and data arrives wrong eventually (see this function's own contract).
+		m.RailSlimWidth = m.RailWidth
 	}
 	if m.MinMainWidth < 0 {
 		m.MinMainWidth = 0

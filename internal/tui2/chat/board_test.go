@@ -310,19 +310,15 @@ func TestThePlacesCurrentFollowsThePage(t *testing.T) {
 // is the fuller copy. The sidebar goes — and on the work page it is the one page
 // where it cannot be brought back, which is what this test now pins.
 //
-// The OTHER pages hide it too, since §6's hidden form became the default (see
-// [App.railShown]), so the chord is what opens the drawer here. That is the
-// difference between the two rules and the reason this test opens it explicitly:
-// on the thread the rail is a drawer, and on the board there is no drawer.
+// The OTHER pages carry it by default — the rail teaches by existing (see
+// [App.railState]) — so what is asserted here is the DIFFERENCE: a rung the
+// reader chose survives every page swap, and the work page is the one place the
+// column cannot be brought back at all.
 func TestTheSidebarHidesOnTheBoardAndComesBack(t *testing.T) {
 	app := pageApp(t)
-	if shut := ansi.Strip(app.Frame(120, 24)); strings.Contains(shut, railSentinel) {
-		t.Fatalf("the sidebar stood open on a fresh window:\n%s", shut)
-	}
-	press(app, "ctrl+o")
 	wide := ansi.Strip(app.Frame(120, 24))
 	if !strings.Contains(wide, railSentinel) {
-		t.Fatalf("the chord did not open the sidebar beside the thread:\n%s", wide)
+		t.Fatalf("a fresh window drew no sidebar beside the thread:\n%s", wide)
 	}
 
 	app.showPage(pageBoard)
@@ -1397,20 +1393,24 @@ func TestTheNotebookTabDrawsTheHomesPage(t *testing.T) {
 	if !strings.Contains(frame, "beliefs") {
 		t.Fatalf("the notebook page is not on screen:\n%s", frame)
 	}
-	// The sidebar is a different list about a different thing, so this page may
-	// have one — it just starts shut like every other page does now (§6, and
-	// [App.railShown]). The chord keeps its PAGE meaning here (it moves the
-	// keyboard between the notebook and the mouth), so the drawer's door on a
-	// page is the dock in the bar row.
-	if strings.Contains(frame, railSentinel) {
-		t.Fatalf("the notebook page opened the drawer by itself:\n%s", frame)
+	// The sidebar is a different list about a different thing, so this page HAS
+	// one — it opens like every other page that can carry a column (§6, and
+	// [App.railState]) — and the chord keeps its PAGE meaning here, moving the
+	// keyboard between the notebook and the mouth.
+	if !strings.Contains(frame, railSentinel) {
+		t.Fatalf("the notebook page dropped the sidebar:\n%s", frame)
 	}
-	if app.dockCounts().Shown != true {
-		t.Fatal("the notebook page draws no dock, so the shut drawer has no door")
+	if app.dockCounts().Shown {
+		t.Fatal("the notebook drew a dock beside an open rail")
 	}
+	// Collapsed, the page still reaches the map through the dock in the bar row.
 	app.toggleRail()
-	if opened := ansi.Strip(app.Frame(100, 20)); !strings.Contains(opened, railSentinel) {
-		t.Fatalf("the notebook page refuses the sidebar:\n%s", opened)
+	app.toggleRail()
+	if shut := ansi.Strip(app.Frame(100, 20)); strings.Contains(shut, railSentinel) {
+		t.Fatalf("the notebook page refuses to collapse the sidebar:\n%s", shut)
+	}
+	if !app.dockCounts().Shown {
+		t.Fatal("the notebook page draws no dock, so the collapsed rail has no door")
 	}
 }
 

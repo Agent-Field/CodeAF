@@ -92,9 +92,10 @@ type Shell struct {
 
 	scopeOpen   bool
 	overlayOpen bool
-	// railHidden is §6's `sidebar: hidden`, asked for by the surface rather than
-	// by the width. See [mode.RailHidden] and [Shell.SetRailHidden].
-	railHidden bool
+	// railState is how much of the sidebar the surface is asking for, asked for
+	// by the surface rather than by the width. See [mode.Rail] and
+	// [Shell.SetRailState].
+	railState RailState
 	// composerGrow is the extra rows the composer region has asked for, so its
 	// inline completions have somewhere to be (GrowComposer).
 	composerGrow int
@@ -210,15 +211,68 @@ func (s *Shell) OverlayOpen() bool { return s.overlayOpen }
 // draws the skeleton's placeholder in it, which is a rail-shaped hole rather
 // than a full-width page.
 func (s *Shell) SetRailHidden(hidden bool) {
-	if s.railHidden == hidden {
+	if hidden {
+		s.SetRailState(RailHidden)
 		return
 	}
-	s.railHidden = hidden
+	s.SetRailState(RailOpen)
+}
+
+// SetRailState asks for one of the three rungs (see [RailState]). It is the
+// door [Shell.SetRailHidden] is now the two-valued shorthand for, kept because
+// one caller — the work page — genuinely has a boolean opinion: the lens IS the
+// list, so there is nothing to open, at any rung.
+//
+// It is idempotent, so a surface may ask on every page swap and every toggle
+// without working out which of them changed what.
+func (s *Shell) SetRailState(state RailState) {
+	if s.railState == state {
+		return
+	}
+	s.railState = state
 	s.relayout()
 }
 
 // RailHidden reports whether the rail has been taken off the frame.
-func (s *Shell) RailHidden() bool { return s.railHidden }
+func (s *Shell) RailHidden() bool { return s.railState == RailHidden }
+
+// RailState reports which rung the surface has asked for. It is the ASK and not
+// the answer: whether the frame could afford it is [Shell.RailSlim] and
+// [layout.Narrow].
+func (s *Shell) RailState() RailState { return s.railState }
+
+// RailMap reports that the rail's ROWS are on the frame — as the column beside
+// the lens, or as the full pane a narrow frame swaps in (5.15: they are one
+// layer and one object).
+//
+// THE HANDLE IS NOT THE MAP, which is the whole reason this is not
+// `!RailHidden()`. A surface asking "does the reader need the door I keep in the
+// corner" wants to know whether they can SEE the list, and one column carrying
+// one dot is not seeing it. Neither is a frame too narrow to give the rail a
+// column at all, which is the case a two-valued question got wrong: at sixty
+// columns the map is nowhere and the answer was "it is not hidden".
+//
+// Before the first frame is solved there is no picture to ask about, so it
+// answers from the ask — which is what the shell would draw if it were asked to
+// draw now.
+func (s *Shell) RailMap() bool {
+	if s.railState == RailHidden {
+		return false
+	}
+	if !s.sized {
+		return s.railState == RailOpen
+	}
+	if s.layout.RailSlim {
+		return false
+	}
+	_, drawn := s.comp.rect(LayerRail)
+	return drawn
+}
+
+// RailSlim reports that the frame drew the handle rather than the column —
+// either because the surface asked for it, or because this width could not
+// afford the column. The rail pane reads it to know which rendering it owes.
+func (s *Shell) RailSlim() bool { return s.layout.RailSlim }
 
 // GrowComposer asks the composer region for extra rows, on top of the metric
 // table's own, and reports nothing — the frame simply gets taller there and
@@ -607,7 +661,7 @@ func (s *Shell) relayout() {
 	s.layout = solveInto(s.layout.Slots, s.width, s.height, metrics, mode{
 		Linear:      s.linear,
 		ScopeOpen:   s.scopeOpen,
-		RailHidden:  s.railHidden,
+		Rail:        s.railState,
 		OverlayOpen: s.overlayOpen,
 	})
 	s.comp.setLayout(s.layout)

@@ -14,10 +14,15 @@ import (
 func TestTheMentionFilterOffersTheRailsOwnWork(t *testing.T) {
 	app, _ := boardApp(t)
 	targets := app.mentionTargets()
-	if len(targets) != 2 {
-		t.Fatalf("targets = %d, want the board's two jobs: %#v", len(targets), targets)
+	// THE PARTS ARE ADDRESSABLE TOO, now that the home rail draws a job's own
+	// plan under its card: `@h2` reaches the step the reader can see, and the
+	// filter is a projection of the rail rather than a second list with its own
+	// idea of what exists. What is asserted here is the two JOB ROOTS and what
+	// they say about themselves; the limbs between them are the tree's.
+	if len(targets) < 2 {
+		t.Fatalf("targets = %d, want at least the board's two jobs: %#v", len(targets), targets)
 	}
-	live, settled := targets[0], targets[1]
+	live, settled := targets[0], targets[len(targets)-1]
 	if live.Word != "wisp-parity" || live.Title != "wisp-parity" {
 		t.Fatalf("the live target reads %q / %q", live.Word, live.Title)
 	}

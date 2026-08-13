@@ -23,6 +23,12 @@ type Pane struct {
 	// Mode is which rendering to draw. [ModeAuto] — the zero value — picks the
 	// rail or the full-pane list by width (Part 9.12).
 	Mode Mode
+	// Slim draws the collapsed rail's handle instead of the map ([View.Handle]).
+	// The pane still owns the same model, so expanding costs a flag and not a
+	// rebuild — and the model keeps its cursor, its scope stack and its place
+	// across a collapse, which is why the handle is a rendering here rather than
+	// a second pane the shell swaps in.
+	Slim bool
 }
 
 // Render implements the shell's pane contract: at most height lines, each at
@@ -34,7 +40,12 @@ func (p *Pane) Render(width, height int) string {
 	if p.View == nil {
 		p.View = NewView(nil)
 	}
-	lines := p.View.Render(p.Model, p.Mode, width, height)
+	var lines []string
+	if p.Slim {
+		lines = p.View.Handle(p.Model.Scope().Unseen(), width, height)
+	} else {
+		lines = p.View.Render(p.Model, p.Mode, width, height)
+	}
 	if len(lines) == 0 {
 		return ""
 	}

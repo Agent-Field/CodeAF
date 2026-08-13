@@ -438,6 +438,15 @@ func (a *App) switchThread(session string) tea.Cmd {
 	// no longer recoverable.
 	a.noteThreadSeen(a.session, a.now())
 	a.switchRoom(session)
+	// The rail's threads section is drawn from this index (scope.go's
+	// roomRows), and a switch changes two rows of it at once: the one you left
+	// stops saying `you are here` and starts saying what it was left at, and the
+	// one you arrived in does the reverse. It is one of the three moments the
+	// index is re-read — this is a door opening, which is exactly what
+	// [App.readThreads] is priced for.
+	if a.source != nil {
+		a.source.setThreads(a.readThreads())
+	}
 	a.markThreadBreak(session)
 	scope := a.setScope(false)
 	a.refresh()
