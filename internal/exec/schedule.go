@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // Scheduler drives a graph to completion.
@@ -520,30 +521,101 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 	// Sized for the worker that will read it, which is the executor this node
 	// was routed to and not the one that produced the material.
 	inputBudget := s.inputBudget(node.Subharness)
+	// One file is inlined once for one consumer, however many producers name it,
+	// exactly as the resident surface's own fan-in does it: two upstream nodes
+	// that both cite the shared spec must not hand the join two copies of it.
+	inlined := make(map[string]bool)
 	for _, need := range node.Needs {
 		source := graph.Node(need)
 		if source == nil {
 			continue
 		}
-		task.Inputs = append(task.Inputs, Input{
-			Title:     source.Title,
-			Result:    boundInput(source.Result, source.Artifacts, inputBudget),
-			Artifacts: source.Artifacts,
-		})
+		task.Inputs = append(task.Inputs, s.input(source.Title, source.Result, source.Artifacts, inputBudget, inlined))
 	}
 	// A node put back to pending for escalation still carries what its last
 	// attempt produced — the scheduler wrote it there and is about to overwrite
 	// it. Handing it back is the difference between buying a stronger model and
 	// buying a stronger model plus a second run of the work already done.
 	if previous := strings.TrimSpace(node.Result); previous != "" {
-		task.Inputs = append(task.Inputs, Input{
-			Title: "your own earlier attempt at this same task",
-			Result: "An earlier attempt on a weaker model ended as " + string(node.Verdict) +
-				". What it had when it stopped:\n" + boundInput(previous, node.Artifacts, inputBudget),
-			Artifacts: node.Artifacts,
-		})
+		own := s.input("your own earlier attempt at this same task", previous, node.Artifacts, inputBudget, inlined)
+		own.Result = "An earlier attempt on a weaker model ended as " + string(node.Verdict) +
+			". What it had when it stopped:\n" + own.Result
+		task.Inputs = append(task.Inputs, own)
 	}
 	return task
+}
+
+// input routes one producer's work into one consumer, and it is the headless
+// half of the same policy the resident surface has been running: the edge
+// carries the WORK, not an announcement of it.
+//
+// A leaf that answered by writing a file says so in one sentence — "the
+// evaluation is complete, the file is at 07-vendors.md" — and that sentence is
+// the honest final message for such a leaf. Handed on alone, under a header
+// promising the consumer already holds this work, it made the header false: the
+// consumer discovered it held a path and went and got the material. The resident
+// path fixed that by reading the files back into the digest (store.readProduct);
+// this path never did, so every headless fan-in leaf opened its inputs by hand
+// and was invited to by the brief, which had no way to say otherwise because
+// nothing here ever set Whole.
+//
+// Both halves are settled here from the same two structural facts: how much of
+// the producer's own text fit, and whether every file it left is now in the
+// block. Neither is a reading of what the text says.
+func (s *Scheduler) input(title, result string, artifacts []string, budget int, inlined map[string]bool) Input {
+	bounded := boundInput(result, artifacts, budget)
+	// What the producer's own message did not spend is what its files may. A
+	// message that already filled the budget buys no inlining, which is the
+	// correct answer rather than a shortfall: the consumer is over its share
+	// before a file is opened.
+	block, held := "", len(artifacts) == 0
+	if room := budget - len(bounded); room > 0 {
+		// Recorded artifact paths are workspace-relative; the reader here is this
+		// process rather than the leaf, whose cwd is the workspace. Locate is what
+		// knows both spellings of the root.
+		block, held = inlineProduct(s.workspace, artifacts, room, inlined)
+	}
+	return Input{
+		Title:     title,
+		Result:    bounded + block,
+		Artifacts: artifacts,
+		// True exactly when the block above IS the producer's material: its own
+		// text uncut, and every file it left read back whole.
+		Whole: len(bounded) == len(result) && held,
+	}
+}
+
+// inlineProduct reads a producer's files back into the consumer's block, through
+// the workspace so a recorded relative path resolves to the file it names.
+//
+// The reading itself is the store's (store.InlineProduct) rather than a second
+// copy of it: the structural refusals — not a regular file, reads as binary,
+// past the budget — are one judgment about what a consumer can be handed, and
+// two spellings of it would be two answers to one question. A nil workspace
+// reads the paths as given, which is what a caller holding absolute paths has.
+func inlineProduct(space *Workspace, artifacts []string, budget int, inlined map[string]bool) (string, bool) {
+	if len(artifacts) == 0 {
+		return "", true
+	}
+	located := make([]string, 0, len(artifacts))
+	found := true
+	for _, path := range artifacts {
+		if space == nil {
+			located = append(located, path)
+			continue
+		}
+		full, ok := space.Locate(path)
+		if !ok {
+			// A recorded path that is no longer on disk is not held, and saying
+			// so is the difference between a consumer that opens a file and a
+			// consumer that is told it need not.
+			found = false
+			continue
+		}
+		located = append(located, full)
+	}
+	block, whole := store.InlineProduct(located, budget, inlined)
+	return block, whole && found
 }
 
 // maxInputBytes bounds one upstream result as it is routed downstream, on a

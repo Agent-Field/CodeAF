@@ -2,6 +2,7 @@ package exec
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -27,11 +28,32 @@ type Workspace struct {
 	// that learned one from pwd must not be refused for using the other.
 	real string
 	// scratch is where the harness's own files land — spilled observations,
-	// turn traces, background job logs. It is the workspace itself whenever the
-	// workspace belongs to the harness, which is every layout but one: an errand
-	// that works directly in a person's own directory must not leave machinery
-	// in it, so that caller points scratch at its private home instead.
+	// turn traces, background job logs.
+	//
+	// IT IS MEANT TO BE OUTSIDE THE ROOT ON EVERY LAYOUT, and that is a measured
+	// repair rather than tidiness. It used to be the root itself for every caller
+	// but one, on the reasoning that a directory the harness made for a job may
+	// hold whatever the job needs. What it held was the leaf's own transcript:
+	// `.aforge/trace/` carries the worker's turn-by-turn recorder, its raw event
+	// stream and its patch, in the directory the worker was told to work in,
+	// beside `.obs/` and `.aforge/jobs/`. A measured atomic leaf spent five of its
+	// eleven turns listing that machinery and reading its OWN trace log back into
+	// its own context — orientation bought at full price, of files it had written
+	// itself a second earlier. The harness it was benchmarked against writes
+	// nothing whatever into its working directory and pays for none of it.
+	//
+	// What deliberately stays in the root is work product: the NN-title.md a
+	// sibling is meant to find. Machinery is not work product and does not.
 	scratch string
+	// personal records that the root is somebody's own directory rather than one
+	// the harness made for a job.
+	//
+	// It used to be inferred from scratch having been moved, which was sound for
+	// exactly as long as one caller moved it. With separation universal that
+	// inference answers "a person's" for every layout, and the engine would never
+	// again run in a directory it owns. They were always two facts; they are now
+	// two fields.
+	personal bool
 
 	mutex     sync.Mutex
 	artifacts map[string]map[string]bool
@@ -57,9 +79,9 @@ func NewWorkspace(root string) (*Workspace, error) {
 }
 
 // WithScratch sends the harness's own files somewhere other than the workspace.
-// It is for the one caller whose workspace is not its own: `aforge do` edits a
-// person's directory in place, and a run that left .obs and .aforge behind in
-// someone's repository would be a mess they never asked for.
+// Every surface that runs leaves calls it — see [Workspace.scratch] for what it
+// costs when nobody does. A caller that does not (a test, an embedder) keeps the
+// old shape, which is the workspace itself.
 func (w *Workspace) WithScratch(dir string) *Workspace {
 	if trimmed := strings.TrimSpace(dir); trimmed != "" {
 		if absolute, err := filepath.Abs(trimmed); err == nil {
@@ -69,18 +91,29 @@ func (w *Workspace) WithScratch(dir string) *Workspace {
 	return w
 }
 
+// OwnedByPerson records that this root is somebody's own directory. It is the
+// one caller whose workspace is not its own — `aforge do -w` edits a person's
+// project in place — and it is said explicitly rather than inferred from where
+// the machinery went, because the machinery now always goes elsewhere.
+func (w *Workspace) OwnedByPerson() *Workspace {
+	w.personal = true
+	return w
+}
+
 // Root is the absolute directory.
 func (w *Workspace) Root() string { return w.root }
 
-// PrivateScratch reports that the harness's own files have been sent somewhere
-// other than the root — which is the same question as "does this directory
-// belong to a person?", because WithScratch is called by exactly the one caller
-// whose workspace is not its own.
+// PersonalRoot reports that the root belongs to a person rather than to the
+// harness.
 //
-// It is asked by any worker that would otherwise leave machinery behind. A
-// directory the harness made for a job may hold whatever a job needs; a
-// directory somebody handed us holds their work and nothing of ours.
-func (w *Workspace) PrivateScratch() bool { return w.scratch != w.root }
+// It is asked by any worker that would otherwise take the directory over: a
+// directory the harness made for a job may be checked out, reset and swept; a
+// directory somebody handed us holds their work and none of that is ours to do.
+func (w *Workspace) PersonalRoot() bool { return w.personal }
+
+// ScratchRoot is where this workspace's machinery lands. It equals Root only for
+// a caller that never named one, which in the product is nobody.
+func (w *Workspace) ScratchRoot() string { return w.scratch }
 
 // ScratchPath maps a harness-owned relative path onto disk and returns, beside
 // it, the spelling to show a model. The two differ only when scratch has been
@@ -191,6 +224,68 @@ func (w *Workspace) DirectoryAt(path string) bool {
 	return err == nil && info.IsDir()
 }
 
+// HoldsNothingBut reports that the working directory contains no file a leaf
+// could go and discover other than the ones named.
+//
+// It is the measured half of the sufficiency claim the brief makes (see
+// [Linear.brief]). A leaf may only be told that its brief is the whole of what
+// exists for its job if that is a fact about this directory, and the only honest
+// way to hold a fact about a directory is to read it. So it is read: one bounded
+// walk, at task assembly, skipping dot-entries — machinery lives outside the
+// root now and .git is the tooling's — and the dependency trees producedSkipDir
+// already names as somebody else's files.
+//
+// Cheap by construction and by shape. A harness-made job directory answers in
+// one syscall because it is empty or holds only its siblings' deliverables; a
+// person's repository answers false on the first source file it meets, before it
+// has walked anything. An unreadable or unreasonably large tree answers false,
+// because "could not tell" and "there is material here" must lead to the same
+// silence.
+func (w *Workspace) HoldsNothingBut(named []string) bool {
+	if w == nil {
+		return false
+	}
+	allowed := make(map[string]bool, len(named))
+	for _, path := range named {
+		if located, ok := w.Locate(path); ok {
+			allowed[located] = true
+			if resolved, err := filepath.EvalSymlinks(located); err == nil {
+				allowed[resolved] = true
+			}
+		}
+	}
+	held := true
+	visited := 0
+	_ = filepath.WalkDir(w.root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			held = false
+			return fs.SkipAll
+		}
+		if visited++; visited > producedScanLimit {
+			held = false
+			return fs.SkipAll
+		}
+		if path == w.root {
+			return nil
+		}
+		if entry.IsDir() {
+			if producedSkipDir(entry.Name()) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(entry.Name(), ".") {
+			return nil
+		}
+		if allowed[path] {
+			return nil
+		}
+		held = false
+		return fs.SkipAll
+	})
+	return held
+}
+
 // Size reports an artifact's size on disk. The second result separates a file
 // that is empty from one that is not there — a summary listing every artifact
 // as 0 bytes looks like a run that produced nothing.
@@ -241,9 +336,13 @@ func (w *Workspace) record(leaf string, path string, deliverable bool) {
 	w.artifacts[leaf][relative] = w.artifacts[leaf][relative] || deliverable
 }
 
-// nextJobID gives every background process in the shared workspace a distinct
-// log name. Registries remain per-leaf, but concurrent leaves must not append
-// unrelated output to the same .aforge/jobs/N.log file.
+// nextJobID gives every background process started through THIS workspace
+// handle a distinct log name. It is not distinct across handles, and it never
+// was — the surfaces build one Workspace per claimed node — which was harmless
+// only while each of those handles kept its logs inside its own job directory.
+// With machinery pooled in one scratch home, two leaves both starting their
+// first background job would write `1.log` on top of each other, so the leaf's
+// own identity carries the rest of the uniqueness. See [jobLogName].
 func (w *Workspace) nextJobID() int {
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
