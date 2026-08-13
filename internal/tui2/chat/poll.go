@@ -509,6 +509,10 @@ func (a *App) refreshScope(journal int64) {
 func (a *App) absorb(messages []store.Message) int {
 	a.detachLive()
 	settled, appended := false, 0
+	// The block the live turn's activity collapses under: the durable reply that
+	// ended the turn, and nothing else (activity.go). Nil for every poll that did
+	// not end one, which is almost all of them.
+	var landedInto *messageBlock
 	for i := range messages {
 		message := messages[i]
 		if message.Seq > a.watermark {
@@ -544,10 +548,14 @@ func (a *App) absorb(messages []store.Message) int {
 			a.noticeQuestion(message.Body)
 		}
 		if a.turn.active && endsTurn(message, a.turn.since) {
-			settled = true
+			settled, landedInto = true, block
 		}
 	}
 	if settled {
+		// Before endTurn, which throws the live turn away: the activity has to be
+		// handed to the row that ends it while there is still a live turn holding
+		// it.
+		a.collapseActivity(landedInto)
 		a.endTurn()
 		return appended
 	}
@@ -820,6 +828,14 @@ func (a *App) attachLive() {
 	if a.turn.reply != nil {
 		a.transcript.Append(a.turn.reply)
 	}
+	// THE ACTIVITY PINS BELOW THE TEXT AND ABOVE THE WAIT (activity.go). The
+	// order is the reading order of the turn: what it has said, what it is doing,
+	// and that it is not finished. It is skipped entirely while it holds no
+	// steps, so an ordinary turn's live region is exactly the two blocks it has
+	// always been.
+	if a.turn.activity.live() {
+		a.transcript.Append(a.turn.activity)
+	}
 	a.transcript.Append(a.turn.await)
 }
 
@@ -898,6 +914,13 @@ func (a *App) applyStream(event StreamEvent) bool {
 			a.turn.await.phase = "stream lost"
 		}
 		return true
+
+	// THE TOOL ACTIVITY BOUNDARIES (activity.go). One arm rather than three
+	// bodies, because what they share — the live region, the session filter
+	// above, the attach — is all of it, and what differs is one line inside
+	// [App.applyToolStream].
+	case StreamToolBegin, StreamToolEnd, StreamToolFailed:
+		return a.applyToolStream(event)
 	}
 	return false
 }

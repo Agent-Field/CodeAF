@@ -23,6 +23,19 @@ const (
 	StreamThinking
 	StreamFinished
 	StreamFailed
+	// The TOOL ACTIVITY boundaries, mirroring provider's (internal/provider/
+	// stream.go) and internal/tui2/chat's, in that order, so the three
+	// vocabularies keep the same ordinals.
+	//
+	// THIS SURFACE DRAWS NONE OF THEM, and that is deliberate rather than
+	// pending. The v1 window is disconnected, not deleted (11.1): it renders the
+	// bytes it rendered yesterday, and applyStreamEvent's switch has no default
+	// arm — an event it has never heard of falls through to the refresh and
+	// changes nothing on screen. The kinds exist here only so the one channel
+	// between the engine and both surfaces stays ONE channel.
+	StreamToolBegin
+	StreamToolEnd
+	StreamToolFailed
 )
 
 // StreamEvent is the TUI-facing stream protocol. Head deltas carry the raw
