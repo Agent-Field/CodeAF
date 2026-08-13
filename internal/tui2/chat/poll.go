@@ -908,7 +908,21 @@ func (a *App) applyStream(event StreamEvent) bool {
 	// window is not showing is dropped rather than drawn; an event that names
 	// no room at all is this one's, which is what every existing emitter means
 	// by an empty key.
-	if event.Session != "" && event.Session != a.session {
+	//
+	// A COMPANION TURN'S KEY IS THIS ROOM'S KEY PLUS A SUFFIX (companion.go), so
+	// the split happens before the comparison. The two companions whose text
+	// lands as an ordinary row here — the delivery answer and the receipt wake —
+	// pass; the aside, whose text lands folded, does not.
+	room, suffix, drawn := streamRoom(event.Session)
+	if !drawn || (room != "" && room != a.session) {
+		traceStream(a, event, true)
+		return false
+	}
+	// ONE LIVE REGION, ONE OWNER. The suffix is the owner's name — empty for the
+	// room's own turn — and a boundary from anyone but the owner is dropped while
+	// the region is held. That is what keeps a delivery answer's words out of the
+	// reply a person is waiting on, which is the whole reason these keys exist.
+	if !a.streamOwns(suffix, event.Kind) {
 		traceStream(a, event, true)
 		return false
 	}
@@ -918,11 +932,27 @@ func (a *App) applyStream(event StreamEvent) bool {
 	case StreamStarted:
 		if !a.turn.active {
 			a.beginTurn(a.watermark)
+		} else if a.turn.companion != suffix {
+			// The room's own turn taking the live region back off a companion
+			// ([App.streamOwns] is what let the companion have it). The words the
+			// companion drew are dropped rather than grown past: they belong to a
+			// different answer, and the durable row carrying them is already on
+			// its way up from the journal.
+			a.dropLiveReply()
 		}
+		a.turn.companion = suffix
 		a.turn.raw.Reset()
 		a.turn.shown = ""
 		a.turn.await.phase = "thinking"
-		a.turn.await.interruptible = a.commander != nil
+		// A COMPANION NEVER ADVERTISES AN INTERRUPT. esc's handle is
+		// Head.Interrupt, which cancels the CONVERSATION's turn and nothing else
+		// — the absorption and receipt turns run inline on the head's own poll
+		// and are deliberately outside that machinery, exactly as the aside is.
+		// So the awaiting line says nothing about esc, esc falls through to the
+		// next rung of the one pop order, and the draft ring keeps working
+		// (8.2.21, [App.navigate]). A line that offered a stop it cannot perform
+		// would be the surface lying in the one place the reader is watching.
+		a.turn.await.interruptible = a.commander != nil && suffix == ""
 		return true
 
 	case StreamThinking:
@@ -978,6 +1008,55 @@ func (a *App) applyStream(event StreamEvent) bool {
 		return a.applyToolStream(event)
 	}
 	return false
+}
+
+// streamOwns reports whether a boundary keyed by this companion suffix may move
+// the live region.
+//
+// Two rules, and they are the whole of the concurrency story:
+//
+//   - AN IDLE REGION IS CLAIMED BY AN OPENING AND BY NOTHING ELSE. A stray delta
+//     whose Started this window never saw — the tail of a turn that began before
+//     the room was opened, most often — has no block to grow and must not mint
+//     one, because what it would draw is a reply beginning in the middle.
+//   - A HELD REGION ANSWERS ONLY TO ITS OWNER. The room's own turn and a
+//     companion cannot both be drawing, so whichever opened it keeps it until it
+//     is retired or until the OTHER kind opens (the takeover above, which is
+//     always the room's own turn arriving over a companion: the head runs the
+//     absorption and receipt turns inline on its own poll, ahead of the answering
+//     turn, so the reverse ordering is not reachable from one head).
+//
+// The loser is not lost. Its text is journaled either way, and the poll draws it
+// whole a moment later — which is the correct rendering of a turn the reader was
+// not watching arrive.
+func (a *App) streamOwns(suffix string, kind StreamKind) bool {
+	if !a.turn.active {
+		return kind == StreamStarted
+	}
+	if a.turn.companion == suffix {
+		return true
+	}
+	// The room's own turn may always take the region; a companion may not take
+	// it back.
+	return suffix == "" && kind == StreamStarted
+}
+
+// dropLiveReply takes the streamed block off the transcript and forgets it,
+// leaving the turn itself standing.
+//
+// It is the takeover's half-step and deliberately not [App.endTurn]: the turn is
+// not over, it is changing hands, and the awaiting line under it must stay
+// exactly where it is so the reader never sees the live region blink out and
+// back. detach-then-attach around the drop is the same pairing every other
+// mutation of the live tail uses (see [App.attachLive]).
+func (a *App) dropLiveReply() {
+	if a.turn.reply == nil {
+		return
+	}
+	a.detachLive()
+	a.turn.reply = nil
+	a.turn.shown = ""
+	a.attachLive()
 }
 
 // writeReply advances the streamed block.
