@@ -119,6 +119,21 @@ func migrateThreadSchema(db *sql.DB) error {
 		}
 	}
 
+	// The conversation a forked ask came out of, split off the instruction it
+	// used to be pasted into (ask.go). The empty default is the true thing to
+	// say about every existing row: either it inherited no conversation, or it
+	// still carries one behind the prose fence, and the read path recovers that
+	// one rather than a migration guessing at it in place.
+	hasContext, err := tableHasColumn(db, "commands", "context")
+	if err != nil {
+		return err
+	}
+	if !hasContext {
+		if _, err := db.Exec(`ALTER TABLE commands ADD COLUMN context TEXT NOT NULL DEFAULT ''`); err != nil {
+			return err
+		}
+	}
+
 	if err := addJSONColumn(db, "messages", "attachments"); err != nil {
 		return err
 	}
@@ -134,8 +149,8 @@ func migrateThreadSchema(db *sql.DB) error {
 		return nil
 	}
 	// The rebuild lifts the legacy kind CHECK so charter commands replay. The
-	// attachments and issuer columns were added above, so they must survive the
-	// copy.
+	// attachments, issuer and context columns were added above, so they must
+	// survive the copy.
 	_, err = db.Exec(`
 		ALTER TABLE commands RENAME TO commands_legacy;
 		CREATE TABLE commands (
@@ -148,13 +163,14 @@ func migrateThreadSchema(db *sql.DB) error {
 		    fresh       INTEGER NOT NULL DEFAULT 0 CHECK (fresh IN (0, 1)),
 		    target      TEXT NOT NULL DEFAULT '',
 		    instruction TEXT NOT NULL,
+		    context     TEXT NOT NULL DEFAULT '',
 		    attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
 		    status      TEXT NOT NULL CHECK (status IN ('pending', 'applied', 'rejected')),
 		    result      TEXT NOT NULL DEFAULT '',
 		    updated_seq INTEGER NOT NULL
 		);
 		INSERT INTO commands SELECT seq, ts, session_id, kind, issuer, reflex, fresh, target,
-		    instruction, attachments, status, result, updated_seq FROM commands_legacy;
+		    instruction, context, attachments, status, result, updated_seq FROM commands_legacy;
 		DROP TABLE commands_legacy;
 		CREATE INDEX commands_status_seq ON commands (status, seq);
 	`)

@@ -191,7 +191,15 @@ const chargeAskID = "room-ask"
 // request quoted in their own voice, the `Assumed:` bullets under it — and it is
 // asked here rather than copied, so the card in the conversation and the top of
 // the record it opens cannot spell one reading two ways (12.14).
-func chargeBlock(item workRow, style *tokens.Styler) *messageBlock {
+//
+// THE CONVERSATION IT CAME OUT OF GOES BEHIND THE DOOR AND NEVER ABOVE IT. A
+// forked task inherits the recent chat so PLANNING is well-informed, and for one
+// release that transcript was pasted into the instruction — so this block opened
+// on a hundred and fifty lines of somebody's earlier morning, dressed as the ask
+// (user journal, 2026-08-12). The ask is the lead; the context is a quotation
+// under it, folded by construction rather than by a budget that happened to run
+// out ([messageBlock.foldContext]).
+func chargeBlock(item workRow, style *tokens.Styler, context string) *messageBlock {
 	block := &messageBlock{id: chargeAskID, style: style, job: item.node.ID}
 	// The reading, in its zones. A brief that does not answer the head's grammar
 	// is drawn as the plain paragraph it always was — [parseReading.matched] is
@@ -213,8 +221,37 @@ func chargeBlock(item workRow, style *tokens.Styler) *messageBlock {
 	if n := len(block.segs); n > 0 && block.segs[n-1].kind == segSeam {
 		block.segs = block.segs[:n-1]
 	}
+	// After the budget, deliberately: the context is not competing with the ask
+	// for the rows above the fold, it is behind the fold whatever the ask cost.
+	block.foldContext(context)
 	block.markLead()
 	return block
+}
+
+// foldContext puts the conversation an ask came out of behind the block's door.
+//
+// It is appended AFTER [messageBlock.openReading] rather than handed to it,
+// because the two are different judgements. The reading's zones compete for a
+// line budget — a small ask stands open, a large one folds the remainder — and
+// the context is not in that competition at all: it is evidence about what the
+// ask meant, it is the length of a conversation rather than the length of a
+// sentence, and a page that let it win the budget would be a page about the room
+// instead of the work.
+//
+// It wears the reader's own voice ([readingSegs]' verbatim zone: dim, indented,
+// `│` in the gutter), because that is what it is — people talking, quoted inside
+// a card, and not more of the head's sentence.
+func (b *messageBlock) foldContext(context string) {
+	context = strings.TrimSpace(context)
+	if b == nil || context == "" {
+		return
+	}
+	b.segs = append(b.segs, segment{
+		kind: segGutter, text: context, indent: bodyIndent + partIndent, folded: true,
+	})
+	b.collapsible, b.tailFold = true, true
+	b.hidden += readingRows(context)
+	b.measured = false
 }
 
 // chargeReading is what the room's top card LEADS WITH: the ask this work was
@@ -397,6 +434,47 @@ func chargeCells(item workRow, money spend, models []string) []string {
 // lacks this one would lose the whole rail over a single dim word.
 type Models interface {
 	NodeModels(nodeID string) ([]string, error)
+}
+
+// Commands is the optional read that recovers THE OTHER HALF OF THE ASK: the
+// conversation a forked task came out of.
+//
+// The ask and its context are two typed fields on the command (store's ask.go),
+// and only the ask rides onto the node as provenance. That asymmetry is
+// deliberate — provenance is copied onto every node of a subtree, and a room's
+// worth of transcript copied thirty times is a cost nobody chose — so a page
+// that wants to SHOW the context has to ask the journal for it, once, here.
+//
+// Optional for the reason every other read on this surface is: a backend that
+// cannot answer draws the ask alone, which is exactly the page every record drew
+// before the two halves were told apart.
+type Commands interface {
+	CommandBySeq(seq int64) (store.Command, bool, error)
+}
+
+// jobContext is the conversation an entered job's ask came out of, or none.
+//
+// ONE READ PER REBUILD OF AN OPEN ROOM, on [scopeSource.jobModels]' bargain and
+// no looser: paintRoom is stamped on the journal, so this runs when the record
+// itself is being rebuilt and at no other time.
+//
+// It answers for JOB ROOTS only ([commandSeqOf]), which is [ownsTheAsk] stated
+// where the read is: a drilled-into part's page is about the part, and leading
+// it with the room the whole job was commissioned in would be the same mistake
+// in the other direction.
+func (s *scopeSource) jobContext(nodeID string) string {
+	if s == nil || s.commands == nil {
+		return ""
+	}
+	seq, ok := commandSeqOf(nodeID)
+	if !ok {
+		return ""
+	}
+	command, found, err := s.commands.CommandBySeq(seq)
+	if err != nil || !found {
+		return ""
+	}
+	return strings.TrimSpace(command.Context)
 }
 
 // jobModels is the deduped list of models that ran an entered job, or none.

@@ -218,6 +218,11 @@ func (h *Head) continueAgentCompilerQuestion(user store.Message, question store.
 	instruction := SpliceCompilerAnswer(source.Instruction, answer)
 	command, err := h.store.RequestCommand(store.Command{
 		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
+		// The answer joins the ASK, which is what it is an answer to. The
+		// conversation the original ask came out of travels beside it, still in
+		// its own field: a continuation that dropped it would plan the second
+		// half of the job with less than the first half had.
+		Context: source.Context,
 		// The answer continues the original ask, and what the user attached to
 		// it is part of that ask. Dropping the files here is how a question
 		// about a PDF turns into a job that never sees it.
@@ -426,7 +431,8 @@ func (h *Head) continueCompilerQuestion(user store.Message, question store.Messa
 	command, err := h.store.RequestCommand(store.Command{
 		SessionID: user.SessionID, Kind: store.CommandSplice, Instruction: instruction,
 		// Same law on the conversational path: the continuation is the same ask
-		// carrying the same files.
+		// carrying the same conversation and the same files.
+		Context:     source.Context,
 		Attachments: append([]string(nil), source.Attachments...),
 	})
 	if err != nil {

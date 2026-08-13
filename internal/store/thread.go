@@ -324,9 +324,18 @@ type Command struct {
 	// in admission.go. It is transient: no column, no replay, no meaning past
 	// the moment of admission, because what it records is a fact about the
 	// sentence rather than a property of the work.
-	Deliberate  bool
-	Target      string
+	Deliberate bool
+	Target     string
+	// Instruction is the ASK: the person's words for this piece of work and
+	// nothing else. Everything that treats a command as "what they said" reads
+	// this field, which is why the conversation a fork inherits is no longer
+	// allowed anywhere near it (ask.go).
 	Instruction string
+	// Context is the conversation this ask came out of, carried so PLANNING is
+	// well-informed. It is evidence about what the ask meant, never more ask:
+	// see [Command.Brief], which is the only composition of the two, and the
+	// only reader of it is the compiler.
+	Context     string
 	Attachments []string
 	Status      CommandStatus
 	Result      string
@@ -363,6 +372,7 @@ CREATE TABLE IF NOT EXISTS commands (
     fresh       INTEGER NOT NULL DEFAULT 0 CHECK (fresh IN (0, 1)),
     target      TEXT NOT NULL DEFAULT '',
 	instruction TEXT NOT NULL,
+	context     TEXT NOT NULL DEFAULT '',
 	attachments JSON NOT NULL DEFAULT '[]' CHECK (json_valid(attachments)),
     status      TEXT NOT NULL CHECK (status IN ('pending', 'applied', 'rejected')),
     result      TEXT NOT NULL DEFAULT '',
@@ -404,7 +414,12 @@ type commandPayload struct {
 	Fresh       bool          `json:"fresh,omitempty"`
 	Target      string        `json:"target,omitempty"`
 	Instruction string        `json:"instruction"`
-	Attachments []string      `json:"attachments,omitempty"`
+	// Context is omitempty so a command that inherited no conversation — which
+	// is nearly all of them — journals the byte-identical payload it journaled
+	// before the split existed, and replay of an old event is the same decode
+	// rather than merely a compatible one.
+	Context     string   `json:"context,omitempty"`
+	Attachments []string `json:"attachments,omitempty"`
 }
 
 type commandResolvedPayload struct {
@@ -724,6 +739,10 @@ func (s *Store) NodeMessages(nodeID string, afterSeq int64, limit int) ([]Messag
 // immediately. The reconciler picks it up via PendingCommands and settles it
 // with ResolveCommand; the requester never blocks on the mutation itself.
 func (s *Store) RequestCommand(command Command) (Command, error) {
+	// Before anything reads the ask — including the duplicate guard below,
+	// which is a test on the person's words and would otherwise be comparing
+	// two rooms' worth of transcript.
+	command = command.separated()
 	if err := validateCommandRequest(command); err != nil {
 		return Command{}, fmt.Errorf("request command: %w", err)
 	}
@@ -777,6 +796,10 @@ func validateCommandRequest(command Command) error {
 // the caller's transaction. Keeping this primitive shared lets a question
 // resolution and its continuation command commit as one journaled decision.
 func requestCommandTx(tx *sql.Tx, command Command) (Command, error) {
+	// Idempotent, and repeated here rather than left to the caller because this
+	// is the primitive every door shares: whatever composed the instruction, the
+	// row this writes has the two halves apart.
+	command = command.separated()
 	// Who asked is checked here rather than in validateCommandRequest because
 	// this is the primitive both entry paths share, and an unauthorized command
 	// must be refused whichever door it arrived through.
@@ -831,6 +854,7 @@ func requestCommandTx(tx *sql.Tx, command Command) (Command, error) {
 		Fresh:       command.Fresh,
 		Target:      command.Target,
 		Instruction: command.Instruction,
+		Context:     command.Context,
 		Attachments: append([]string(nil), command.Attachments...),
 	}
 	seq, at, err := appendEvent(tx, command.Target, EventCommandRequested, payload)
@@ -937,7 +961,7 @@ func (s *Store) ResolveCommand(seq int64, status CommandStatus, result string) e
 
 func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 	rows, err := s.db.Query(`
-		SELECT seq, ts, session_id, kind, issuer, reflex, fresh, target, instruction, attachments, status, result, updated_seq
+		SELECT seq, ts, session_id, kind, issuer, reflex, fresh, target, instruction, context, attachments, status, result, updated_seq
 		FROM commands WHERE `+where, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list commands: %w", err)
@@ -950,14 +974,18 @@ func (s *Store) queryCommands(where string, args []any) ([]Command, error) {
 		var reflex, fresh int
 		var timestamp, attachments string
 		if err := rows.Scan(&command.Seq, &timestamp, &command.SessionID, &command.Kind, &command.Issuer,
-			&reflex, &fresh, &command.Target, &command.Instruction, &attachments, &command.Status, &command.Result,
-			&command.UpdatedSeq); err != nil {
+			&reflex, &fresh, &command.Target, &command.Instruction, &command.Context, &attachments,
+			&command.Status, &command.Result, &command.UpdatedSeq); err != nil {
 			return nil, fmt.Errorf("list commands: %w", err)
 		}
 		at, err := parseTime(timestamp)
 		if err != nil {
 			return nil, fmt.Errorf("list commands: parse time: %w", err)
 		}
+		// A row written before the typed column existed carries both halves in
+		// one string. It reads out as though it had always been two, so history
+		// does not have to be a second case for every consumer.
+		command = command.separated()
 		command.Reflex = reflex != 0
 		command.Fresh = fresh != 0
 		if err := json.Unmarshal([]byte(attachments), &command.Attachments); err != nil {
@@ -1114,10 +1142,10 @@ func applyCommandView(tx *sql.Tx, payload commandPayload, seq int64, at time.Tim
 		return err
 	}
 	_, err = tx.Exec(`
-		INSERT INTO commands (seq, ts, session_id, kind, issuer, reflex, fresh, target, instruction, attachments, status, result, updated_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
+		INSERT INTO commands (seq, ts, session_id, kind, issuer, reflex, fresh, target, instruction, context, attachments, status, result, updated_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
 		seq, formatTime(at), payload.SessionID, payload.Kind, payload.Issuer, payload.Reflex, payload.Fresh, payload.Target,
-		payload.Instruction, string(attachments), CommandPending, seq)
+		payload.Instruction, payload.Context, string(attachments), CommandPending, seq)
 	return err
 }
 

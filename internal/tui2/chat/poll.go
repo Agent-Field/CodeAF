@@ -470,7 +470,13 @@ func (a *App) reconcilePending(pending []store.Command, havePending bool) bool {
 			SessionID:  command.SessionID,
 			Role:       store.RoleSystem,
 			CommandSeq: command.Seq,
-			Body:       command.Instruction,
+			// The ASK and not the brief. A commissioning row is one row of a
+			// conversation, and the conversation a forked ask inherited is the
+			// rows immediately above this one — saying it again here would be
+			// the room quoting itself back at the reader. The task room, which
+			// is a page about this ask and not the room it came from, folds the
+			// context in behind its own door (record.go).
+			Body: command.Instruction,
 		}
 		block := newMessageBlock(message, a.style, a.source)
 		a.applyFold(block)

@@ -253,9 +253,11 @@ func (s *Store) CompleteAndRequestFollowup(claim Claim, summary string, command 
 		return Command{}, fmt.Errorf("receipt for completion %q with follow-up: %w", claim.ID, err)
 	}
 
+	command = command.separated()
 	payload := commandPayload{
 		SessionID: command.SessionID, Kind: command.Kind, Target: command.Target,
-		Instruction: command.Instruction, Attachments: append([]string(nil), command.Attachments...),
+		Instruction: command.Instruction, Context: command.Context,
+		Attachments: append([]string(nil), command.Attachments...),
 	}
 	commandSeq, commandAt, err := appendEvent(tx, command.Target, EventCommandRequested, payload)
 	if err != nil {

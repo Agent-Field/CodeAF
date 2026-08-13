@@ -144,6 +144,28 @@ func commandJobIDs(commandSeq int64) [2]string {
 	return [2]string{taskIDPrefix + seq, craftIDPrefix + seq}
 }
 
+// commandSeqOf runs [commandJobIDs] backwards: the command a job root was
+// minted from, or nothing.
+//
+// It answers only for the ROOT spellings and deliberately so. A part's id
+// carries its own suffix — `task-12-3` — and a part is not the node the ask was
+// made of ([ownsTheAsk]), so refusing it here is the same rule stated once more
+// where the read is, rather than a second opinion about which node owns a job.
+func commandSeqOf(nodeID string) (int64, bool) {
+	for _, prefix := range [2]string{taskIDPrefix, craftIDPrefix} {
+		rest, cut := strings.CutPrefix(strings.TrimSpace(nodeID), prefix)
+		if !cut {
+			continue
+		}
+		seq, err := strconv.ParseInt(rest, 10, 64)
+		if err != nil || seq <= 0 {
+			continue
+		}
+		return seq, true
+	}
+	return 0, false
+}
+
 // -- the receipt --------------------------------------------------------------
 
 // jobReceipts is the optional read that lets a delivery card carry the whole

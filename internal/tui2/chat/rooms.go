@@ -920,7 +920,10 @@ func (a *App) paintRoom() {
 		// job the home rail's bounded top-up has not reached — and it is the one
 		// read that puts money on this page's header and on every row of its
 		// tree ([scopeSource.roomSpend]).
-		money:      money,
+		money: money,
+		// The ask's other half, read off the command this job was admitted from
+		// rather than off the node, and folded rather than led with (record.go).
+		context:    a.source.jobContext(view.node),
 		models:     a.source.jobModels(view.node),
 		nodeModels: a.source.jobModels,
 		// The attribution row's seam (5.3): only this side knows what a session
