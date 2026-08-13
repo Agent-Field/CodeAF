@@ -1834,7 +1834,9 @@ const (
 	// that has never touched a tab is in the chat, which is where a chat surface
 	// starts.
 	pageThread page = iota
-	// pageBoard is the work board — §6's sidebar at page altitude (board.go).
+	// pageBoard is the OVERVIEW: the shape of the whole space — every
+	// conversation, and everything being worked on — at page altitude
+	// (board.go). It is what the place line's root segment lands on.
 	pageBoard
 	// pageNotebook is the homes page, drawn by internal/tui2/homes.
 	pageNotebook
@@ -1934,6 +1936,22 @@ func (a *App) showPage(target page) tea.Cmd {
 	a.refresh()
 	return nil
 }
+
+// showOverview is THE DOOR ONTO ROOT, and it is one line so that everything
+// that means "take me to the top" is one act.
+//
+// The place line's root segment routes here; so does the footer's threads word,
+// which used to raise the switcher — a modal jump onto a list you cannot stand
+// on. The switcher is still there and still bound to its chord: it is the FAST
+// path, for a reader who knows which conversation they want. The overview is the
+// SLOW one, for a reader who is looking around, and the difference between them
+// is exactly the difference between a jump and a place.
+//
+// It is [App.showPage] and nothing else, deliberately: a door that did anything
+// of its own — a read, a cursor reset, a focus decision — would be a second way
+// of arriving at a page, and the two would diverge on the first frame either
+// forgot.
+func (a *App) showOverview() tea.Cmd { return a.showPage(pageBoard) }
 
 // setPageFocus moves the keyboard between the page and the composer, and tells
 // the composer so it paints the state it is actually in.

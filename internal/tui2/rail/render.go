@@ -541,10 +541,34 @@ func (v *View) sizeGuides(members []Row, tree bool) {
 	if cap(v.guides) < len(members) {
 		v.guides = make([]treeGuide, len(members))
 	}
-	v.guides = v.guides[:len(members)]
+	v.guides = appendGuides(v.guides[:0], members, tree)
+}
+
+// Guides is [View.sizeGuides] for a caller outside this package: the connectors
+// a row list wears, one per row, worked out from the depths alone.
+//
+// tree says the rows are the members of a JOB SCOPE, where every step and worker
+// is a limb; at home only the rows the source marked [Row.Tree] are. It is the
+// same argument the rail passes itself, and it is the only thing about the
+// caller's altitude this needs to know.
+//
+// IT EXISTS SO A SECOND SURFACE CAN DRAW THE RAIL'S TREE WITHOUT BUILDING ONE.
+// The overview page shows the same plan under the same job at page altitude; two
+// independent readings of "which of these is the last child" is two pictures of
+// one plan, and the one that is wrong is the one nobody checks.
+func Guides(members []Row, tree bool) []Guide {
+	return appendGuides(make([]Guide, 0, len(members)), members, tree)
+}
+
+// appendGuides is the walk itself, into a caller's buffer.
+func appendGuides(dst []Guide, members []Row, tree bool) []Guide {
+	dst = dst[:0]
+	for range members {
+		dst = append(dst, Guide{})
+	}
 	// The tree's own root depth, so a plan reads the same whether it is drawn
 	// under its card at home or under the surface row inside the job (see
-	// [treeGuide.level]). Nothing below root can be a limb.
+	// [Guide.Level]). Nothing below root can be a limb.
 	root := maxIndentDepth + 1
 	for i := range members {
 		if !connects(members[i], tree) {
@@ -558,17 +582,17 @@ func (v *View) sizeGuides(members []Row, tree bool) {
 	for i := len(members) - 1; i >= 0; i-- {
 		depth := clamp(members[i].Depth, 0, maxIndentDepth)
 		limb := connects(members[i], tree) && depth >= root
-		g := treeGuide{last: !seen[depth]}
+		g := Guide{Last: !seen[depth]}
 		if limb {
-			g.on = true
-			g.level = depth - root
+			g.On = true
+			g.Level = depth - root
 			for k := root; k < depth; k++ {
 				if seen[k] {
-					g.open |= 1 << uint(k-root)
+					g.Open |= 1 << uint(k-root)
 				}
 			}
 		}
-		v.guides[i] = g
+		dst[i] = g
 		if !limb {
 			// The wall. Everything the walk had accumulated belonged to the
 			// tree that has just ended.
@@ -579,6 +603,7 @@ func (v *View) sizeGuides(members []Row, tree bool) {
 			seen[k] = false
 		}
 	}
+	return dst
 }
 
 // connects reports whether a row wears a connector: every step and worker

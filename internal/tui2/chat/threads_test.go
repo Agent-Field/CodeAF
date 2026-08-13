@@ -10,7 +10,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/golden"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The chats lane's laws, driven through the real app.
@@ -472,41 +475,110 @@ func TestTheClosingRowIsOnlyDrawnWhenNobodySaidIt(t *testing.T) {
 	})
 }
 
-// -- the alive glance (J5) -----------------------------------------------------
+// -- the overview's threads section --------------------------------------------
 
-// The board home lists the open threads beside the running work, name and
-// left-at line, and NOT the thread the reader is already in.
-func TestTheBoardHomeListsOpenThreads(t *testing.T) {
+// The overview lists EVERY conversation the index holds — the one the reader is
+// standing in included — each with its name, the line it was left on and how
+// long ago it moved.
+func TestTheOverviewListsEveryThreadInTheIndex(t *testing.T) {
 	app, _ := threadsApp(t)
 	app.showPage(pageBoard)
 	_ = app.Frame(120, 40)
 
-	found, current := false, false
+	doors := map[string]bool{}
 	for _, line := range app.boardLines() {
 		if line.target == boardOpensThread {
-			found = true
-			if line.id == testSession {
-				current = true
-			}
+			doors[line.id] = true
 		}
 	}
-	if !found {
-		t.Fatal("the board home lists no threads at all")
+	// A map with no you-are-here on it is not an overview.
+	if !doors[testSession] {
+		t.Fatal("the overview left out the conversation the reader is standing in")
 	}
-	if current {
-		t.Fatal("the board offered a door back to the room it is drawn in")
+	if !doors["session-two"] {
+		t.Fatal("the overview left out the other conversation")
 	}
 
 	page := ansi.Strip(app.renderBoard(120, 40))
-	for _, want := range []string{boardThreadsWord, "importer rewrite", "parked on the schema question"} {
+	for _, want := range []string{
+		boardThreadsWord,
+		"importer rewrite",
+		// The `left at:` tail is the switcher's composition, not a respelling.
+		palette.LeftAtLine("parked on the schema question"),
+		// The row the reader is on says so in the rail's own words.
+		boardYouAreHere,
+		// And the door out is the last row of the section.
+		newRoomDoor,
+	} {
 		if !strings.Contains(page, want) {
-			t.Fatalf("the board home is missing %q:\n%s", want, page)
+			t.Fatalf("the overview is missing %q:\n%s", want, page)
 		}
 	}
-	// One ornament, and it is the switcher's. A dot on a page the reader is
-	// already looking at is decoration.
-	if strings.Contains(page, "●") {
-		t.Fatalf("the board grew the switcher's ornament:\n%s", page)
+	// The relative time rides the same line as the quotation.
+	if !strings.Contains(page, reltime.Short(fixedNow().Add(-30*time.Hour), fixedNow())) {
+		t.Fatalf("a thread row carries no relative time:\n%s", page)
+	}
+}
+
+// THE READ IS THE INDEX AND NEVER THE OPEN-LOOPS QUERY.
+//
+// store.OpenThreads drops every conversation whose last exchange finished
+// properly, and a surface driven from it showed a store full of real work as a
+// list of none. This is that regression in the shape it actually took: a backend
+// whose conversations are all ANSWERED still fills the overview.
+func TestTheOverviewReadsTheThreadIndexAndNotTheOpenLoops(t *testing.T) {
+	backend := threadsGoldenBackend()
+	// Every exchange settled: a question asked and answered, in both rooms. An
+	// open-loops read answers nothing at all for this store.
+	backend.add(store.Message{SessionID: "session-two", Role: store.RoleUser,
+		Body: "is the schema question settled"})
+	backend.add(store.Message{SessionID: "session-two", Role: store.RoleAgent,
+		Body: "yes — merged an hour ago"})
+	app := goldenApp(backend, tokens.NoColor, golden.Theme{Mode: golden.Dark})
+	drivePoll(app)
+	app.showPage(pageBoard)
+	_ = app.Frame(120, 40)
+
+	rooms := 0
+	for _, line := range app.boardLines() {
+		if line.target == boardOpensThread {
+			rooms++
+		}
+	}
+	if rooms != 2 {
+		t.Fatalf("the overview lists %d settled conversations, want 2 — it is reading "+
+			"an open-loops query rather than the index", rooms)
+	}
+}
+
+// The unseen ornament is drawn here too: this is a page a reader lands on to
+// CHOOSE a conversation, which is exactly where 5.1 law 3 spends the product's
+// one thread ornament. It rides the gutter, so nothing moves when it appears.
+func TestAThreadWithNewsWearsTheOneOrnament(t *testing.T) {
+	app, _ := threadsApp(t)
+	app.noteThreadSeen("session-two", fixedNow().Add(-40*time.Hour))
+	app.showPage(pageBoard)
+	_ = app.Frame(120, 40)
+
+	for _, line := range app.boardLines() {
+		if line.target != boardOpensThread {
+			continue
+		}
+		want := tokens.GlyphPromptChat
+		if line.id == "session-two" {
+			want = tokens.GlyphStepDone
+		}
+		if line.mark != want {
+			t.Fatalf("thread %q wears %q in its gutter, want %q", line.id, line.mark, want)
+		}
+	}
+	// And never on the row the reader is standing in: you are looking at
+	// whatever landed.
+	for _, line := range app.boardLines() {
+		if line.target == boardOpensThread && line.id == testSession &&
+			line.mark == tokens.GlyphStepDone {
+			t.Fatal("the overview dotted the room the reader is in")
+		}
 	}
 }
 
@@ -521,7 +593,10 @@ func TestActivatingABoardThreadRowSwitchesToIt(t *testing.T) {
 			door := -1
 			lines := app.boardLines()
 			for i, at := range boardDoors(lines) {
-				if lines[at].target == boardOpensThread {
+				// The OTHER conversation: the row for the one the window is
+				// already in is a door onto the chat page and moves no session,
+				// which is its own law one test down.
+				if lines[at].target == boardOpensThread && lines[at].id == "session-two" {
 					door = i
 					break
 				}
@@ -548,6 +623,75 @@ func TestActivatingABoardThreadRowSwitchesToIt(t *testing.T) {
 				t.Fatalf("the %s did not take the reader to the conversation", hand)
 			}
 		})
+	}
+}
+
+// The row for the conversation the window is already in opens it — which from
+// the overview means the chat page, and no session move at all.
+func TestOpeningTheCurrentThreadFromTheOverviewJustGoesThere(t *testing.T) {
+	app, _ := threadsApp(t)
+	app.showPage(pageBoard)
+	_ = app.Frame(120, 40)
+
+	lines := app.boardLines()
+	door := -1
+	for i, at := range boardDoors(lines) {
+		if lines[at].target == boardOpensThread && lines[at].id == testSession {
+			door = i
+			break
+		}
+	}
+	if door < 0 {
+		t.Fatal("the overview has no row for the conversation the reader is in")
+	}
+	if cmd := app.boardEnter(door); cmd != nil {
+		_ = cmd()
+	}
+	if app.session != testSession {
+		t.Fatalf("opening the current room moved the window to %q", app.session)
+	}
+	if app.page != pageThread {
+		t.Fatal("opening the current room did not take the reader to the conversation")
+	}
+}
+
+// `+ new` mints — or reuses — through the one OpenOrReuseSession path every
+// other `+ new` on this surface takes, and walks into the room it opened.
+func TestTheOverviewsNewRowMintsARoom(t *testing.T) {
+	app, backend := threadsApp(t)
+	app.showPage(pageBoard)
+	_ = app.Frame(120, 40)
+
+	lines := app.boardLines()
+	door := -1
+	for i, at := range boardDoors(lines) {
+		if lines[at].target == boardOpensNewThread {
+			door = i
+			break
+		}
+	}
+	if door < 0 {
+		t.Fatal("the overview offers no `+ new` door")
+	}
+	cmd := app.boardEnter(door)
+	if cmd == nil {
+		t.Fatal("`+ new` performed nothing")
+	}
+	// The page swap is synchronous; the mint is the command.
+	if app.page != pageThread {
+		t.Fatal("`+ new` left the reader on the overview")
+	}
+	opened, ok := cmd().(roomOpenedMsg)
+	if !ok {
+		t.Fatalf("`+ new` produced %T, not a minted room", cmd())
+	}
+	app.applyRoomOpened(opened)
+
+	if len(backend.opened) != 1 {
+		t.Fatalf("the store minted %d rooms", len(backend.opened))
+	}
+	if app.session != backend.opened[0] {
+		t.Fatalf("the window is in %q, not the room it minted", app.session)
 	}
 }
 
