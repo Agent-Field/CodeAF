@@ -905,9 +905,18 @@ func (w *settlementWatch) saySomethingIfQuiet() error {
 	if err != nil {
 		return err
 	}
-	quiet := time.Since(w.lastMoved).Round(time.Second)
+	// The clock a person reads is the run's, not the gap's.
+	//
+	// This used to print the silence — time since the journal last moved — and
+	// on a real run that reads as a stopwatch someone keeps resetting: 30s, 30s,
+	// 1m0s, 30s. A number that goes backwards is not a duration, it is a puzzle,
+	// and the thing anyone actually wants to know from a waiting line is how long
+	// this has been going on. Since the errand started, which is the same clock
+	// every other progress line in this file already prints, and the only one
+	// that can never run backwards.
+	elapsed := time.Since(w.started).Round(time.Second)
 	if len(nodes) == 0 {
-		fmt.Fprintf(w.progress, "  still waiting: the task is being turned into work — %s\n", quiet)
+		fmt.Fprintf(w.progress, "  still waiting: the task is being turned into work — %s\n", elapsed)
 		return nil
 	}
 	var pending, running int
@@ -920,7 +929,7 @@ func (w *settlementWatch) saySomethingIfQuiet() error {
 		}
 	}
 	fmt.Fprintf(w.progress, "  still waiting: %s pending, %s — %s\n",
-		plural(pending, "task"), runningWords(running), quiet)
+		plural(pending, "task"), runningWords(running), elapsed)
 	return nil
 }
 

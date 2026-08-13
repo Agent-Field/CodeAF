@@ -55,7 +55,17 @@ func fakeEngine(scenario string, argv []string) int {
 			environment[name] = os.Getenv(name)
 		}
 		record, _ := json.Marshal(map[string]any{"argv": argv, "env": environment})
-		_ = os.WriteFile(filepath.Join(directory, engineRecordFile), record, 0o644)
+		// A run that works in its own view leaves nothing behind for the test to
+		// read: the view is removed the moment its work is home. A record file
+		// named from outside is where such a run says what it was handed.
+		where := filepath.Join(directory, engineRecordFile)
+		if named := strings.TrimSpace(os.Getenv(fakeEngineRecordEnv)); named != "" {
+			where = named
+		}
+		_ = os.WriteFile(where, record, 0o644)
+	}
+	if scenario == "isolation" {
+		return fakeIsolationEngine(directory)
 	}
 	out := json.NewEncoder(os.Stdout)
 	stage := func(name, status string, data map[string]any) {
