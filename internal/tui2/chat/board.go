@@ -114,11 +114,12 @@ const (
 	// zero, and [App.boardRow] is the one place that knows it.
 	boardNameCol = blocks.ContentEdge
 	boardMetaCol = boardNameCol
-	// boardStep is one level of descent inside a job's live subtree:
-	// [blocks.IndentStep], the house two-space rhythm. A child's GLYPH lands in
-	// the two marker cells before its own edge, which is what makes indent read
-	// as descent without a connector.
-	boardStep = blocks.IndentStep
+	// There is no boardStep any more. One level of descent inside a job's live
+	// subtree used to be [blocks.IndentStep], the house two-space rhythm, and it
+	// is the rail's three-cell BRANCH now: `├─ ` says both "one deeper" and
+	// "there is more below" in the columns a plain indent spent saying neither.
+	// The number lives with the grammar, in rail's own treeStep.
+	//
 	// boardRecentCap is how many settled jobs the `recent` section carries
 	// before the rest becomes history — §6's "recent (settled, dim, ~5)".
 	boardRecentCap = 5
@@ -160,7 +161,6 @@ const (
 	boardThreadsNote = "a conversation with aforge. everything you say lives in one."
 	boardWorkNote    = "what aforge is doing for you. ask for something and it lands here."
 )
-
 
 // boardNeedsYou is the attention cell's word. It is the census's slot spent on
 // the one fact that outranks a census: a blocked human is the most expensive
