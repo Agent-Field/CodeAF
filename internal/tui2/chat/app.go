@@ -520,10 +520,10 @@ func New(opts Options) *App {
 		session: app.session,
 		// The footer's words become live here and nowhere else. run is the ONE
 		// executor the palette, the `?` sheet and the `/` line already reach —
-		// a fourth hand on the same door, not a fourth door — and pop is the
-		// breadcrumb's way out, which is esc and the rail's ‹ said a third way.
+		// a fourth hand on the same door, not a fourth door. The breadcrumb's
+		// own way out is not wired here any more: the trail left this row for
+		// the place line, whose separators are the same step (place.go).
 		run: app.runFooterVerb,
-		pop: app.popScope,
 		// interrupt is the `interrupt esc` chip's act — esc's own, reached by
 		// a pointer. The row offers it only while EscInterrupts says it works.
 		interrupt: app.interrupt,
@@ -1310,17 +1310,6 @@ func (a *App) dockCounts() footer.Dock {
 	working, _ := a.boardJobs()
 	dock.Working = len(working)
 	return dock
-}
-
-// popScope is the breadcrumb's click: one step out, the same step esc takes
-// (App.navigate) and the same step the rail's ‹ takes (scopePoint). A
-// breadcrumb at home pops nothing and says nothing, because there is nowhere
-// above home to go.
-func (a *App) popScope() tea.Cmd {
-	if a.railModel == nil || a.railModel.Depth() == 0 {
-		return nil
-	}
-	return a.applyScope(a.railModel.Escape())
 }
 
 // sizeComposer asks the region for however many rows its open inline completion

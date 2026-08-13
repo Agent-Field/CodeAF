@@ -1020,12 +1020,15 @@ type statusPane struct {
 	// naming a door that opens nothing.
 	foldable bool
 
-	// run performs a footer word, and pop is the breadcrumb's way out. Both are
-	// functions for the reason the rail's are: the row knows which word was
-	// pointed at and nothing else — the acts belong to the app, and they are
-	// the same acts the keyboard reaches.
+	// run performs a footer word. It is a function for the reason the rail's
+	// are: the row knows which word was pointed at and nothing else — the act
+	// belongs to the app, and it is the same act the keyboard reaches.
+	//
+	// There used to be a `pop` beside it, which was the breadcrumb's way out.
+	// The breadcrumb is the place line now and its own separators are the way
+	// out, so a second spelling of the pop wired to a column this row no longer
+	// draws would have been dead code that could still drift.
 	run func(entryID string) tea.Cmd
-	pop func() tea.Cmd
 	// hover is the word the pointer is resting on, or "" for none.
 	hover string
 	// lastWidth is the width the row was last drawn at, so a pointer can be
@@ -1158,11 +1161,6 @@ func (p *statusPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 		return nil
 	}
 	switch id {
-	case footer.ScopeTarget:
-		if p.pop != nil {
-			return p.pop()
-		}
-		return nil
 	case footer.InterruptTarget:
 		// The chip performs what esc performs, and only while it is drawn —
 		// the row only offers it while EscInterrupts is true.
