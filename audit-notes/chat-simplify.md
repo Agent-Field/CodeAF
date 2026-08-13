@@ -503,3 +503,83 @@ hygiene that gets cheaper after the surface shrinks.
 4. **JOURNEY.md** is product law (one mouth, 19 journeys). Steps 1–6 should
    be provable against the journey suite as-is; where a journey encodes old
    tool names, the suite moves with step 4, not before.
+
+---
+
+## Part 5 — The product layer: chats (added after product review, same day)
+
+The product has exactly two places to talk: the chat, and a task's page. The
+missing use case is the WORKING CONVERSATION — alive for days or weeks,
+drifting as it evolves, commissioning several tasks along the way, receiving
+their results back into the conversation, resumable after weeks. Possibly two
+or three alive at once. The engine already has the primitive (sessions: per-
+room head cursors, delivery routing to the owning room, scribe naming, the
+thread tool); the product never admitted it. The admission is called
+**chats** — plural of the word the person already uses.
+
+### 5.1 The law
+
+1. Threads talk to the colleague; task pages talk to the work. Two talking
+   surfaces, one became plural.
+2. Creation and splitting are conversational offers, never chrome. The only
+   deliberate gesture is typing.
+3. One ornament: the unseen-delivery dot. No badges, counts, or competing
+   color.
+4. Naming is the scribe's job, silently; "call this thread X" works as a
+   change.
+5. The list is a switcher, not a manager: open, filter, enter. Nothing to
+   organize, tag, or archive. Threads never close; they go quiet and sink.
+
+### 5.2 The journeys (J1–J7, join the journey suite)
+
+- **J1 split-on-divergence**: mid-conversation pivot → head offers "own
+  thread?" as a numbered ask (category-learned like scope; consistent yeses
+  collapse into acting with one clause said). Transcript breathes one ruled
+  line + title chip; you are already talking.
+- **J2 working session**: ideate → task commissioned FROM the thread → keep
+  talking while it runs → delivery returns INTO the thread → more tasks. The
+  thread is the desk; 1 thread : N tasks.
+- **J3 switching**: one key (`t`) or click the title chip → quiet overlay
+  list: name, "left at:" line, relative time, ● only where something landed
+  unseen. Typeahead, enter, esc.
+- **J4 re-entry brief**: first turn after a gap opens with the head speaking
+  the arc — what this thread is about, positions taken, tasks run and what
+  they returned, what was left open. Journal-derived, rebuildable.
+- **J5 alive glance**: "what's going on" answers running work AND open
+  threads in one breath; threads with unresolved arcs are alive.
+- **J6 nudge**: parked-thread mention on the presence line / first morning
+  exchange; the response teaches cadence (note/scope machinery).
+- **J7 no lifecycle**: threads sink when quiet, recall reaches them forever;
+  months later the head finds the old thread and offers it before starting
+  fresh.
+
+### 5.3 UI treatment (tui2, existing machinery, Apple-calm)
+
+| Element | Treatment | Built on |
+|---|---|---|
+| title chip | thread name in the placeline, always visible; click = switcher | placeline + keychip |
+| switcher | overlay list (J3), `t` / chip click, typeahead | overlay + palette idiom |
+| birth/split | numbered ask rows | question affordance |
+| thread break | one ruled line + title | blocks.Ruled |
+| re-entry brief | the head's ordinary first message — content is the feature | nothing new |
+| alive glance | open-threads section on the board home: name + left-at line | homes/board |
+| delivery elsewhere | dot in switcher + one presence-line word | presence line |
+| attribution | task page adds "for: <thread>"; activating it jumps to the thread | ran-by row |
+
+### 5.4 The one cross-seam contract
+
+The split answer must move the SURFACE to a new session, and the coupling
+stays journal-only: the deterministic answer gate settles the split by
+posting a system row in the old thread ("continuing in <name>") carrying a
+typed message part `room-switch` whose payload is the new session id; the
+surface applies it on its poll (switch composer + view), the head simply
+serves the new room. No in-process channel, no second seam.
+
+### 5.5 Engine cost
+
+Three pieces, each roughly one agent-task: the re-entry brief (per-thread
+journal projection injected into the first turn after a gap, plus arrival
+reuse of deliverBrief), the split-offer judgment (prompt + ask category +
+the room-switch settlement), alive/nudge surfacing (open-threads in the
+board home, status read, presence line). The switcher/chip/ruled-line/dot
+are the surface's half.
