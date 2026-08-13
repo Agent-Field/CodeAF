@@ -56,6 +56,44 @@ func TestEnsureCodeafExcludedIdempotent(t *testing.T) {
 	}
 }
 
+// D7, held from the inside: the exclusions must land in the file git actually
+// reads, and in a LINKED WORKTREE that is not the one `--git-dir` names.
+//
+// A worktree has a private gitdir of its own, and git consults the COMMON
+// directory's info/exclude for exclusions. Written to the private path this
+// function did its whole job and reported success into a file nothing ever
+// opens — silently, on the layout aforge runs every isolated coding leaf in.
+// The assertion is `git status`, not the file: what matters is whether git
+// ignores the engine's state, and only git can answer that.
+func TestEnsureCodeafExcludedReachesTheFileGitReadsInAWorktree(t *testing.T) {
+	root := initGitRepo(t)
+	if err := os.WriteFile(filepath.Join(root, "work.txt"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitTestRun(t, root, "add", "-A")
+	gitTestRun(t, root, "commit", "-q", "--no-verify", "-m", "the work as it stands")
+
+	linked := filepath.Join(t.TempDir(), "view")
+	gitTestRun(t, root, "worktree", "add", "-q", "-b", "leaf", linked)
+
+	ok, err := EnsureCodeafExcluded(context.Background(), linked)
+	if err != nil || !ok {
+		t.Fatalf("ensure = %v, %v", ok, err)
+	}
+	if err := os.MkdirAll(filepath.Join(linked, ".codeaf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".codeaf", "contract.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".plandb.db"), []byte("sqlite"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if status := gitTestRun(t, linked, "status", "--porcelain"); strings.TrimSpace(status) != "" {
+		t.Fatalf("git still sees the engine's own state in a worktree:\n%s", status)
+	}
+}
+
 func TestSuppressCaseCollisions(t *testing.T) {
 	dir := initGitRepo(t)
 	if err := os.WriteFile(filepath.Join(dir, "A.txt"), []byte("A"), 0o644); err != nil {

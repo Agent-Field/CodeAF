@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/enginestate"
 )
 
 // ── the engine's half ────────────────────────────────────────────────────────
@@ -101,10 +102,24 @@ func fakeIsolationEngine(directory string) int {
 	return 0
 }
 
-// fakeExclude writes the engine's own untracked-file exclusions, through git so
-// it lands in the right file whether this is a clone or a worktree.
+// fakeExclude writes the engine's own untracked-file exclusions the way the
+// REAL engine wrote them, which is the point of it.
+//
+// It resolves through `rev-parse --git-dir` and appends `info/exclude`, exactly
+// as internal/swepro/internal/util/gitexclude.go did before D7 and exactly as
+// the TS source still does. In an ordinary clone that is the same file git
+// reads. In a LINKED WORKTREE — which is what every isolated coding leaf runs
+// in — `--git-dir` answers with the worktree's private gitdir, and the file git
+// consults for exclusions is the one in the common directory: the write lands,
+// reports success, and excludes nothing.
+//
+// The double this replaced used `--git-path`, which is to say it modelled the
+// harness as already fixed. The suite could not fail on the defect it was
+// written to hold, and 490 files of engine machinery reached a person's history
+// through a green test run. A test double may be simpler than the thing it
+// stands in for; it may not be BETTER BEHAVED than it.
 func fakeExclude(directory string, patterns ...string) {
-	command := exec.Command("git", "rev-parse", "--git-path", "info/exclude")
+	command := exec.Command("git", "rev-parse", "--git-dir")
 	command.Dir = directory
 	raw, err := command.Output()
 	if err != nil {
@@ -114,6 +129,7 @@ func fakeExclude(directory string, patterns ...string) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(directory, path)
 	}
+	path = filepath.Join(path, "info", "exclude")
 	_ = os.MkdirAll(filepath.Dir(path), 0o755)
 	handle, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -177,6 +193,15 @@ func isolationLeaf(t *testing.T, space *Workspace, leaf, title string, record st
 		fakeEngineRecordEnv + "=" + record,
 	}
 	return worker, Task{NodeKey: leaf, NodeID: 1, Title: title, Brief: title + ", with a test."}
+}
+
+// placeView is a leaf running in the directory it was pointed at, for the tests
+// that ask what the child's environment is rather than where the run happened.
+func placeView(directory string) *sweView {
+	return &sweView{
+		root: directory, dir: directory, leaf: "n1",
+		state: sweStateDir(directory, "n1"),
+	}
 }
 
 func gitOut(t *testing.T, directory string, args ...string) string {
@@ -313,6 +338,25 @@ func TestParallelCodingLeavesVerifyInIsolationAndBothLand(t *testing.T) {
 	}
 	if body := gitOut(t, root, "log", "--format=%b", base+"..HEAD"); !strings.Contains(body, AttributionTrailer) {
 		t.Fatalf("the landing commit carries no provenance:\n%s", body)
+	}
+
+	// AND THE COMMITS THEMSELVES CARRY NONE OF THE ENGINE'S MACHINERY.
+	//
+	// This is the assertion the suite did not have, and its absence is how 490
+	// engine files reached a person's history through a green run. The old test
+	// asked whether the litter was in the directory; a file that is committed
+	// and then removed is gone from the directory and in the history forever.
+	// So the question is asked of the landing commits: every path in every one
+	// of them, which is the only place the boundary is finally either held or
+	// broken.
+	for _, path := range strings.Split(gitOut(t, root, "log", "--format=", "--name-only", base+"..HEAD"), "\n") {
+		if path = strings.TrimSpace(path); path == "" {
+			continue
+		}
+		if enginestate.Holds(path) {
+			t.Fatalf("the engine's own bookkeeping is in a landing commit: %s\n%s", path,
+				gitOut(t, root, "log", "--format=%s", "--name-only", base+"..HEAD"))
+		}
 	}
 
 	// AND NOTHING IS LEFT OVER. A view that succeeded is gone, branch and all.
@@ -476,6 +520,310 @@ func TestARestartedLeafKeepsItsOwnView(t *testing.T) {
 	}
 	if !resumableCheckpoint(second.dir) {
 		t.Fatal("the restart lost the checkpoint it would have resumed from")
+	}
+}
+
+// THE LANDING COMMIT IS THE CHANGE AND NOTHING ELSE, EVEN WHEN EVERY EARLIER
+// DEFENCE HAS ALREADY FAILED.
+//
+// Exclusions govern untracked files. The moment the engine's state is committed
+// onto the leaf's branch — by its own eager checkpoint, by an `add -A` that
+// beat an exclusion into place, or because the repository already tracks it
+// from an earlier run — `merge --squash` takes the tree wholesale and no
+// exclude file anywhere is consulted. That is how this became self-
+// perpetuating: state that lands once is tracked forever after, and every later
+// view checks it back out.
+//
+// So the branch here is built the way the broken world built it: forced,
+// ignoring every exclusion. What is left is the last defence on its own, and
+// the two halves of its rule are both exercised — a path the repository already
+// tracks is restored to what HEAD says, and a path it does not is the engine's
+// litter and is taken off the person's disk. Nothing is ever removed from an
+// index.
+func TestTheLandingCommitCarriesTheWorkAndNoneOfTheEnginesBookkeeping(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	root := personsRepository(t)
+	if err := os.MkdirAll(filepath.Join(root, ".codeaf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".codeaf", "contract.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fakeWIPCommit(root, "an earlier run's machinery, already tracked")
+	base := gitOut(t, root, "rev-parse", "HEAD")
+
+	space, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	space = space.WithScratch(t.TempDir())
+	view, _, err := sweOpen(context.Background(), space, "n5", newTracer(space, "n5"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer view.release()
+	if !view.isolated {
+		t.Fatal("a person's own directory was made the run directory")
+	}
+
+	// The work, and the machinery beside it: a tracked bookkeeping file the
+	// engine rewrote, and two it created.
+	write := func(name, content string) {
+		t.Helper()
+		full := filepath.Join(view.dir, name)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("fix.txt", "the change a person asked for\n")
+	write(".codeaf/contract.json", "{\"the engine rewrote this\":true}\n")
+	write(".codeaf/plan/architecture.md", "# plan\n")
+	write(".plandb.db", "sqlite")
+	forcedCommit(t, view.dir, "wip(edit): everything, exclusions ignored")
+
+	landing := view.land(context.Background(), true, "the leaf's change")
+	if landing.refusal != "" {
+		t.Fatalf("the change was refused: %s", landing.refusal)
+	}
+
+	// THE COMMIT. One path, and it is the work.
+	landed := strings.Fields(gitOut(t, root, "show", "--format=", "--name-only", "HEAD"))
+	if len(landed) != 1 || landed[0] != "fix.txt" {
+		t.Fatalf("the landing commit is %v, want just the change", landed)
+	}
+	// THE TRACKED HALF. It reads as it did, because this change did not touch
+	// it — and it is still tracked, because that is not aforge's to decide.
+	if kept := gitOut(t, root, "show", "HEAD:.codeaf/contract.json"); kept != "{}" {
+		t.Fatalf("the tracked bookkeeping file was rewritten by the landing: %q", kept)
+	}
+	if found, err := os.ReadFile(filepath.Join(root, ".codeaf", "contract.json")); err != nil ||
+		string(found) != "{}\n" {
+		t.Fatalf("the working tree was left holding the engine's version: %q, %v", string(found), err)
+	}
+	if tracked := gitOut(t, root, "ls-files", ".codeaf"); tracked == "" {
+		t.Fatal("aforge removed tracked files from a person's index")
+	}
+	// THE UNTRACKED HALF. Litter the squash materialised in somebody's
+	// directory, gone — and the directory it emptied with it.
+	for _, name := range []string{".plandb.db", filepath.Join(".codeaf", "plan")} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Fatalf("the engine's litter was left in the person's directory: %s (%v)", name, err)
+		}
+	}
+	if status := gitOut(t, root, "status", "--porcelain"); status != "" {
+		t.Fatalf("the landing left the person's tree dirty:\n%s", status)
+	}
+	if base == gitOut(t, root, "rev-parse", "HEAD") {
+		t.Fatal("nothing landed at all")
+	}
+}
+
+// forcedCommit stages everything including what git was told to ignore. It is
+// the broken world in one line: an exclusion is a hint about untracked files,
+// and this is what happens when anything at all overrides it.
+func forcedCommit(t *testing.T, directory, message string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"add", "-A", "-f"},
+		{"-c", "user.name=engine", "-c", "user.email=engine@example.com",
+			"-c", "commit.gpgsign=false", "commit", "--no-verify", "-m", message},
+	} {
+		command := exec.Command("git", args...)
+		command.Dir = directory
+		if out, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// NOTHING OWNED THE DIRECTORY THE VIEWS LIVE IN.
+//
+// Every view of one repository sits under a directory named for that
+// repository's digest, and removing the last view left that directory behind
+// with no mechanism anywhere that would ever remove it: a machine that had run
+// coding leaves against fifty repositories kept fifty empty directories, and
+// they were never going away. The removal is a BARE Remove rather than a
+// recursive one, which is what makes it safe to attempt on every landing —
+// empty goes, occupied refuses, and a sibling still working under it needs no
+// lock and no check to be protected.
+func TestTheViewRootIsOwnedByTheLastViewOutOfIt(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	root := personsRepository(t)
+	space, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	space = space.WithScratch(t.TempDir())
+
+	first, _, err := sweOpen(context.Background(), space, "n1", newTracer(space, "n1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := sweOpen(context.Background(), space, "n2", newTracer(space, "n2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !first.isolated || !second.isolated {
+		t.Fatal("a person's own directory was made the run directory")
+	}
+	views := filepath.Dir(first.dir)
+
+	// A SIBLING KEEPS IT. The first view goes; the second is still working
+	// under the same digest, so the directory holding it may not be touched.
+	first.discard(context.Background())
+	first.release()
+	if _, err := os.Stat(second.dir); err != nil {
+		t.Fatalf("a live sibling's view was taken: %v", err)
+	}
+	if _, err := os.Stat(views); err != nil {
+		t.Fatalf("the view root was removed with a view still in it: %v", err)
+	}
+
+	// AND THE LAST ONE OUT TAKES IT.
+	second.discard(context.Background())
+	second.release()
+	if _, err := os.Stat(views); !os.IsNotExist(err) {
+		t.Fatalf("the view root outlived its last view: %v", err)
+	}
+}
+
+// A VIEW THAT NEVER DELIVERED IS KEPT, BUT NOT FOREVER.
+//
+// A failed leaf keeps its checkout on purpose — the engine's checkpoint is in
+// it and a restart resumes from it — and nothing was keeping the other half of
+// that promise. Every leaf that ever failed left a checkout and a branch in
+// somebody's `aforge/leaf/*` namespace with no expiry, so the reaper runs at
+// the one moment somebody is already here holding the lock: a leaf opening a
+// view. The leaf being opened is never reaped however old it looks, because
+// that is the view it is about to resume into.
+func TestStaleViewsAreReapedWhenALeafOpensAndTheLeafsOwnIsNot(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	root := personsRepository(t)
+	space, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	space = space.WithScratch(t.TempDir())
+
+	abandoned, _, err := sweOpen(context.Background(), space, "n-old", newTracer(space, "n-old"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	abandoned.release()
+	mine, _, err := sweOpen(context.Background(), space, "n-mine", newTracer(space, "n-mine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine.release()
+	if !abandoned.isolated || !mine.isolated {
+		t.Fatal("a person's own directory was made the run directory")
+	}
+	// Both are older than the retention window — which is the case that proves
+	// the skip is by identity rather than by luck of the clock.
+	backdate(t, abandoned.dir, sweViewRetention+time.Hour)
+	backdate(t, mine.dir, sweViewRetention+time.Hour)
+
+	reopened, _, err := sweOpen(context.Background(), space, "n-mine", newTracer(space, "n-mine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.release()
+
+	if _, err := os.Stat(abandoned.dir); !os.IsNotExist(err) {
+		t.Fatalf("a view a week past its retention was kept: %v", err)
+	}
+	if branches := gitOut(t, root, "branch", "--list", abandoned.branch); branches != "" {
+		t.Fatalf("the reaped view's branch is still in the person's repository:\n%s", branches)
+	}
+	if trees := gitOut(t, root, "worktree", "list"); strings.Contains(trees, abandoned.dir) {
+		t.Fatalf("the reaped view is still registered as a worktree:\n%s", trees)
+	}
+	if reopened.dir != mine.dir {
+		t.Fatalf("the leaf was given a different view: %s, was %s", reopened.dir, mine.dir)
+	}
+	if _, err := os.Stat(mine.dir); err != nil {
+		t.Fatalf("the leaf's own view was reaped out from under it: %v", err)
+	}
+	if branches := gitOut(t, root, "branch", "--list", mine.branch); branches == "" {
+		t.Fatal("the leaf's own branch was deleted while its worktree was live")
+	}
+}
+
+// backdate makes a directory look untouched for a while, top level and one
+// level in — which is what sweFreshness reads, because a directory's own
+// timestamp does not move when a file deeper inside it is written.
+func backdate(t *testing.T, directory string, age time.Duration) {
+	t.Helper()
+	when := time.Now().Add(-age)
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if err := os.Chtimes(filepath.Join(directory, entry.Name()), when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(directory, when, when); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// DAMAGE FROM BEFORE THE DEFENCES IS SAID, NOT SILENTLY REPAIRED.
+//
+// A repository that already has the engine's bookkeeping COMMITTED in it — from
+// a run before any of this existed — is the self-perpetuating case: tracked
+// content is checked out into every view, staged by every `add -A`, carried by
+// every squash, and no exclusion anywhere can touch it. aforge will not remove
+// it. Deleting tracked files from somebody's index is their decision, and a
+// harness that quietly did it would be a worse actor than the one that put them
+// there. So it is said once, and the change itself is kept clean.
+func TestTrackedEngineStateIsReportedAndNeverRemoved(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	root := personsRepository(t)
+	if err := os.MkdirAll(filepath.Join(root, ".codeaf"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".codeaf", "contract.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fakeWIPCommit(root, "an earlier run's machinery, committed")
+
+	space, err := NewWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	space = space.WithScratch(t.TempDir())
+	trace := newTracer(space, "n1")
+	view, _, err := sweOpen(context.Background(), space, "n1", trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer view.release()
+	trace.close()
+
+	if !strings.Contains(view.tracked, "earlier run") {
+		t.Fatalf("the damage was not reported: %q", view.tracked)
+	}
+	if !strings.Contains(view.tracked, ".codeaf/contract.json") {
+		t.Fatalf("the report does not say what is tracked: %q", view.tracked)
+	}
+	if found := gitOut(t, root, "ls-files", ".codeaf"); found == "" {
+		t.Fatal("aforge removed tracked files from a person's index")
+	}
+	full, _, err := space.ScratchPath(traceName("n1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(full)
+	if err != nil {
+		t.Fatalf("no trace was written: %v", err)
+	}
+	if !strings.Contains(string(raw), "earlier run") {
+		t.Fatalf("the trace does not say it:\n%s", raw)
 	}
 }
 

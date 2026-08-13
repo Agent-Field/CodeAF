@@ -9,38 +9,49 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/swepro/enginestate"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
 )
 
-var ExcludedPaths = []string{
-	".codeaf/",
-	".plandb/",
-	".plandb.db",
-	".plandb.db-shm",
-	".plandb.db-wal",
-}
+// aforge-embed: D7 — the list is declared once, at
+// internal/swepro/enginestate, and read from both sides of the embedding.
+// Upstream (and the TS source) spell these five strings here. They are the
+// boundary between the engine's machinery and somebody's repository, and the
+// harness draws that boundary too — in what it excludes, in what it refuses to
+// stage onto a landing commit, and in what it keeps out of a delivered file
+// list. Three copies of one list is three lists, and one of aforge's had
+// already drifted.
+var ExcludedPaths = enginestate.ExcludePatterns()
 
 const excludeSentinel = "# codeaf: workflow artifacts (managed by ensureCodeafExcluded)"
 
 func EnsureCodeafExcluded(ctx context.Context, workspace string) (bool, error) {
-	result, err := RunProcess(ctx, []string{"git", "rev-parse", "--git-dir"}, RunOptions{
+	// aforge-embed: D7 — `--git-path info/exclude` where the TS source says
+	// `--git-dir` + "/info/exclude". The two agree in an ordinary clone and
+	// disagree in a linked worktree, where `--git-dir` answers with the
+	// worktree's PRIVATE gitdir and the file git actually reads for exclusions
+	// is the one in the COMMON directory. Written to the private path this
+	// function did its whole job — created the directory, wrote the five
+	// patterns, returned (true, nil) — into a file git never opens, and the
+	// engine's state was staged by the next `add -A` with nothing anywhere
+	// saying so. aforge runs every isolated coding leaf in a linked worktree,
+	// so the layout the bug needs is the layout it always has.
+	result, err := RunProcess(ctx, []string{"git", "rev-parse", "--git-path", "info/exclude"}, RunOptions{
 		ProcessOptions: ProcessOptions{Cwd: workspace},
 		NoThrow:        true,
 	})
 	if err != nil || result.Code != 0 {
 		return false, nil
 	}
-	gitDirText := jscompat.Trim(string(result.Stdout))
-	if gitDirText == "" {
+	excludeText := jscompat.Trim(string(result.Stdout))
+	if excludeText == "" {
 		return false, nil
 	}
-	gitDir := gitDirText
-	if !filepath.IsAbs(gitDir) {
-		gitDir, _ = filepath.Abs(filepath.Join(workspace, gitDir))
+	excludePath := excludeText
+	if !filepath.IsAbs(excludePath) {
+		excludePath, _ = filepath.Abs(filepath.Join(workspace, excludePath))
 	}
-	infoDir := filepath.Join(gitDir, "info")
-	_ = os.MkdirAll(infoDir, 0o777)
-	excludePath := filepath.Join(infoDir, "exclude")
+	_ = os.MkdirAll(filepath.Dir(excludePath), 0o777)
 	currentBytes, err := os.ReadFile(excludePath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		currentBytes = nil
