@@ -126,6 +126,11 @@ var settingReaders = map[string]string{
 	KeyAttribution:    "Attribution",
 	KeyLinearMode:     "LinearModeAt",
 	KeyNerdFont:       "NerdFontChosenAt",
+	// The context law's knobs are read live by ctxbudget on every call — the
+	// environment name is the reader, as with tenure; Load seeds the
+	// persisted half through ctxbudget.Configure.
+	KeyContextFill:       "AFORGE_CONTEXT_FILL_PCT",
+	KeyCompletionReserve: "AFORGE_COMPLETION_RESERVE",
 }
 
 // Every persisted row names a reader, and every named reader is really there.

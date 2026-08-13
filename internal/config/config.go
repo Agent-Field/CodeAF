@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
 )
@@ -51,7 +52,10 @@ const (
 	// rather than a short one. 16k was still not enough once the executor ran
 	// with reasoning restored: a hard turn thinks past it, gets truncated, and
 	// returns an empty message with no tool calls. The cap is a ceiling, not a
-	// spend — room costs nothing on the turns that do not use it.
+	// spend — room costs nothing on the turns that do not use it. Load takes
+	// the live value from ctxbudget.CompletionReserve (AFORGE_COMPLETION_RESERVE,
+	// default 65536); this constant remains the floor no configuration may
+	// sink below.
 	DefaultMaxTokens = 32768
 
 	// DefaultTimeout is generous because a reasoning pass can run for minutes on
@@ -229,6 +233,12 @@ func Load() (Config, error) {
 	provider.LoadQuirks(config.ProfileDir)
 	config.VisionModel = VisionModelAt(config.ProfileDir)
 	config.Attribution = AttributionAt(config.ProfileDir)
+	// The context law's two knobs, handed to the one package that spends
+	// them. The reserve also floors the wire ceiling: a reasoning pass that
+	// thinks past a small MaxTokens returns an empty reply, so the ceiling is
+	// never allowed below the room the law promised.
+	ctxbudget.Configure(ContextFillAt(config.ProfileDir), CompletionReserveAt(config.ProfileDir))
+	config.MaxTokens = max(config.MaxTokens, ctxbudget.CompletionReserve())
 	if config.PracticeIdle, err = PracticeIdleAt(config.ProfileDir); err != nil {
 		return Config{}, err
 	}
