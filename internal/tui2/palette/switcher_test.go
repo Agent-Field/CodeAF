@@ -147,6 +147,80 @@ func TestTypingMatchesTheLeftAtLine(t *testing.T) {
 	}
 }
 
+// taggedThreads is the fixture with the scribe's filing on it: the subjects it
+// decided each conversation is about, none of which appear in the name or in
+// the line the thread was left on.
+func taggedThreads() []Thread {
+	threads := fixtureThreads()
+	threads[0].Tags = []string{"rendering", "latency"}
+	threads[1].Tags = []string{"billing", "migrations"}
+	return threads
+}
+
+// THE FILING IS A WAY IN. A person who remembers a conversation was about
+// billing types `billing` and reaches the room, even though the word appears
+// nowhere on its row.
+func TestTypingMatchesATagAndSaysWhichOne(t *testing.T) {
+	s := NewSwitcher(Options{})
+	s.SetThreads(taggedThreads())
+	typeSwitcher(s, "billing")
+
+	frame := strings.Join(plainRows(s, 90, 14), "\n")
+	if !strings.Contains(frame, "importer rewrite") {
+		t.Fatalf("a search over the filing found nothing:\n%s", frame)
+	}
+	if strings.Contains(frame, "the wisp parity push") {
+		t.Fatalf("the filter kept a thread filed under something else:\n%s", frame)
+	}
+	// The match is not mysterious: the row that is here for a reason nobody can
+	// see says what the reason was.
+	if !strings.Contains(frame, tagLead+"billing") {
+		t.Fatalf("the row matched on a tag it never showed:\n%s", frame)
+	}
+}
+
+// A thread found by its NAME explains itself, so its row says nothing about
+// tags — the hint is for the row that would otherwise look like a bug in the
+// filter, and drawing it everywhere would be noise on every search.
+func TestATitleMatchDrawsNoTagNoise(t *testing.T) {
+	s := NewSwitcher(Options{})
+	s.SetThreads(taggedThreads())
+	typeSwitcher(s, "import")
+
+	frame := strings.Join(plainRows(s, 90, 14), "\n")
+	if !strings.Contains(frame, "importer rewrite") {
+		t.Fatalf("the name search found nothing:\n%s", frame)
+	}
+	if strings.Contains(frame, tagLead) {
+		t.Fatalf("a name match grew a tag:\n%s", frame)
+	}
+	if !strings.Contains(frame, "left at: parked on the schema question") {
+		t.Fatalf("the left-at line was displaced by a hint nobody needed:\n%s", frame)
+	}
+}
+
+// AND NOTHING IS DRAWN AT REST. Tags are matchable, not decorative: an unfiltered
+// list is exactly the list it was before the scribe started filing anything.
+func TestTheFilingIsInvisibleUntilItIsWhyARowIsThere(t *testing.T) {
+	s := NewSwitcher(Options{})
+	s.SetThreads(taggedThreads())
+
+	frame := strings.Join(plainRows(s, 90, 14), "\n")
+	for _, tag := range []string{"rendering", "latency", "billing", "migrations", tagLead} {
+		if strings.Contains(frame, tag) {
+			t.Fatalf("the resting list painted %q:\n%s", tag, frame)
+		}
+	}
+
+	// And a query that comes and goes leaves nothing behind it.
+	typeSwitcher(s, "billing")
+	s.Reset()
+	frame = strings.Join(plainRows(s, 90, 14), "\n")
+	if strings.Contains(frame, tagLead) {
+		t.Fatalf("a cleared query left a tag hint behind:\n%s", frame)
+	}
+}
+
 // An over-filtered list names the query back, so the failure a reader sees is
 // their own typo — and the door to start a thread survives it, because a reader
 // who searched for a conversation that does not exist is precisely the reader

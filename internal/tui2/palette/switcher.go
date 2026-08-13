@@ -75,6 +75,19 @@ type Thread struct {
 	// scribe names a thread from its first exchange — and renders as
 	// [UnnamedThread] rather than as an id.
 	Name string
+	// Tags are the subjects the scribe filed this thread under, and they are
+	// MATCHABLE RATHER THAN DRAWN.
+	//
+	// That is the whole design and it is 5.1's one-ornament law read straight:
+	// a strip of chips on every row would be a second column of colour on a
+	// surface whose entire budget is one dot, and it would be paid on every row
+	// to help the reader on one of them. So a tag is a way IN — a person who
+	// remembers a conversation was about billing types `billing` and the room
+	// surfaces even though nobody ever put that word in its name — and the only
+	// time one is drawn is the moment it is the reason a row is there at all
+	// (see [Switcher.threadRow]), because a match a reader cannot see is a list
+	// that looks broken.
+	Tags []string
 	// LeftAt is the line the conversation was left on, one line, already
 	// flattened by the caller or by [clean] here. Empty draws nothing at all:
 	// a thread with nothing said in it has no line to quote, and inventing one
@@ -204,12 +217,12 @@ func (s *Switcher) Threads() []Thread { return s.threads }
 // opens: a switcher that reopened still holding the last search is one whose
 // first keystroke edits a query the reader cannot see the origin of.
 func (s *Switcher) Reset() {
-	changed := s.list.setQuery("")
+	// Through [Switcher.setQuery] rather than the list's own, so the rows shed
+	// the tag hints the cleared query put on them. It is a no-op on an already
+	// empty query, which is why the cursor is put back afterwards regardless.
+	s.setQuery("")
 	s.list.cursor, s.list.top = 0, 0
 	s.refreshEmptyText()
-	if changed {
-		s.invalidate()
-	}
 }
 
 // Query is the current filter text.
@@ -240,8 +253,9 @@ func (s *Switcher) Select(id string) bool {
 // order, and [filter] depends on it.
 func (s *Switcher) buildThreadRows(dst []row) []row {
 	dst = dst[:0]
+	needle := s.list.needle
 	for i := range s.threads {
-		dst = append(dst, s.threadRow(&s.threads[i], i+1))
+		dst = append(dst, s.threadRow(&s.threads[i], i+1, needle))
 	}
 	// The door is last and it is its own section, so the blank line above it is
 	// the list's own group rhythm rather than a spacer somebody remembered to
@@ -254,7 +268,14 @@ func (s *Switcher) buildThreadRows(dst []row) []row {
 
 // threadRow is one conversation: the ornament, the name, the line it was left
 // on, and how long ago that was.
-func (s *Switcher) threadRow(t *Thread, ordinal int) row {
+//
+// It is built against the CURRENT QUERY, which is the one thing on this surface
+// a row depends on beyond its thread. The reason is the tag match: a row that
+// survives only because of a subject nobody can see is a row a reader reads as
+// a bug in the filter, so that row — and only that row — spends its second
+// column saying which subject matched. A thread found by its name shows no tag
+// at all, because there is nothing mysterious about it.
+func (s *Switcher) threadRow(t *Thread, ordinal int, needle string) row {
 	name := clean(t.Name)
 	if name == "" {
 		name = UnnamedThread
@@ -262,13 +283,18 @@ func (s *Switcher) threadRow(t *Thread, ordinal int) row {
 	if s.list.linear {
 		name = strconv.Itoa(ordinal) + ". " + name
 	}
+	desc := leftAtLine(t.LeftAt)
+	if tag := tagHint(name, desc, t.Tags, needle); tag != "" {
+		desc = tagLead + tag
+	}
 	out := row{
-		sec:    sectionThreads,
-		verb:   name,
-		desc:   leftAtLine(t.LeftAt),
-		accel:  clean(t.When),
-		band:   tokens.Band,
-		result: SwitchThread{ID: t.ID},
+		sec:       sectionThreads,
+		verb:      name,
+		desc:      desc,
+		accel:     clean(t.When),
+		band:      tokens.Band,
+		result:    SwitchThread{ID: t.ID},
+		lowerTags: lowerTags(t.Tags),
 	}
 	if t.Unseen && !t.Current {
 		// The dot is CYAN and not amber. 5.16 spends amber on one thing only —
@@ -282,6 +308,55 @@ func (s *Switcher) threadRow(t *Thread, ordinal int) row {
 	out.lowerDesc = lower(out.desc)
 	return out
 }
+
+// lowerTags is a thread's subjects as one lower-case haystack for [filter].
+// One string rather than a slice because ranking runs over every row on every
+// keystroke and must not walk a nested loop to do it; the separator is a space
+// so a subsequence query cannot silently bridge two tags into a match neither
+// of them supports — it can, across the space, exactly as it can across the
+// words of a title, which is the same behaviour a reader already has.
+func lowerTags(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	return lower(clean(strings.Join(tags, " ")))
+}
+
+// tagHint is the tag to show on a row, or "" for the rows that need none.
+//
+// It answers one question: is this row here ONLY because of a subject? A row
+// whose name or left-at line already contains the query explains itself, and
+// drawing a tag beside it would be noise on every row of a search — 5.13 spends
+// no cells restating what the reader can already see. A row that matched on
+// nothing visible is the opposite case, and the first tag that matches is drawn
+// so the reader can see the filter working rather than guessing at it.
+func tagHint(name, desc string, tags []string, needle string) string {
+	if needle == "" || len(tags) == 0 {
+		return ""
+	}
+	if _, ok := score(lower(name), needle); ok {
+		return ""
+	}
+	if _, ok := score(lower(desc), needle); ok {
+		return ""
+	}
+	for _, tag := range tags {
+		tag = clean(tag)
+		if tag == "" {
+			continue
+		}
+		if _, ok := score(lower(tag), needle); ok {
+			return tag
+		}
+	}
+	return ""
+}
+
+// tagLead opens the second column when a subject is what put the row there. It
+// is a word for [leftAtLead]'s reason — the column is a quotation by default,
+// and a reader has to be told when it is not — and it is the SAME chrome tier,
+// because a hint about why a row matched must never outrank the row.
+const tagLead = "tagged: "
 
 // leftAtLine is the second column: what was said last, quoted, or nothing at
 // all. A thread with no line yet draws NO lead word — `left at:` with nothing
@@ -428,9 +503,28 @@ func (s *Switcher) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 	return s.mouse(msg, local, s.bodyTop)
 }
 
+// setQuery installs the filter and REBUILDS the rows behind it.
+//
+// The rebuild is what the shared list does not do, and it is needed for exactly
+// one column: [Switcher.threadRow] draws the matching tag on a row that matched
+// on nothing else, and which row that is changes with every keystroke. The cost
+// is bounded by the surface — a switcher lists a dozen threads, and the work per
+// row is three subsequence scans over strings a few words long — and the columns
+// cannot dance, because a rebuild here changes only the description while the
+// widths [list.measure] took are the verb's and the accelerator's.
+//
+// The cursor returns to the top exactly as [list.setQuery] takes it there, and
+// for its reason: after a keystroke the best match is a different row, and
+// leaving the selection where it sat would mean enter opens whatever landed at
+// that index.
 func (s *Switcher) setQuery(q string) {
-	if s.list.setQuery(q) {
-		s.refreshEmptyText()
-		s.invalidate()
+	if q == s.list.query {
+		return
 	}
+	s.list.query = q
+	s.list.needle = lower(q)
+	s.list.rows = s.buildThreadRows(s.list.rows)
+	s.list.refilter()
+	s.refreshEmptyText()
+	s.invalidate()
 }

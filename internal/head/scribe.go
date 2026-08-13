@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -31,16 +32,44 @@ import (
 //     There is no "named" flag to keep in step with the thing it describes: a
 //     titled room is a named room, and the check is the same read the rail does.
 //   - It costs pennies. The scribe role (5.23's ladder) resolves the model — a
-//     labeller, not a judge — and the call carries two clipped messages and a
-//     ceiling of a few dozen tokens, because the whole answer is four words.
+//     labeller, not a judge — and the call carries two clipped messages under a
+//     ceiling. The ceiling is a CAP AND NOT A PURCHASE, which is exactly what
+//     the first version of this file got wrong: see [scribeMaxTokens].
 //   - The title goes through the same normalizer every other title in this
 //     package goes through, so a model that answers `"Billing audit."` and one
 //     that answers `Billing audit` land on the same row.
 const (
-	// scribeMaxTokens is the ceiling on the naming call. A 2-5 word title is
-	// under ten tokens; the rest is room for a model that starts with a
-	// preamble, which normalizeTitle's first-line rule then throws away.
-	scribeMaxTokens = 32
+	// scribeMaxTokens is the ceiling on the naming call.
+	//
+	// IT WAS 32, AND 32 IS WHY NOTHING WAS EVER NAMED. The old number was
+	// arithmetic on the ANSWER — "a 2-5 word title is under ten tokens, leave
+	// room for a preamble" — and it was correct arithmetic about a world that
+	// stopped existing. On a model that reasons before it speaks, the thinking
+	// is spent out of this same budget BEFORE the first character of the title
+	// is written: measured live against the owner's own endpoint, the naming
+	// call came back `finish_reason:"length"` with `content:null` every single
+	// time. roomTitle("") is empty, nameRoom returned in silence, and the room
+	// was handed back to the scribe after the next turn to fail identically
+	// forever. Every room in the rail wore the placeholder.
+	//
+	// A max_tokens cap is a CAP AND NOT A PURCHASE — a call that stops early is
+	// billed for what it wrote — so the number that matters is what the reply
+	// can legitimately need, not what four words usually cost. The same
+	// correction was made for the same reason on the standing compiler
+	// (standing.go) and the ordinary one beside it. Several hundred is the
+	// honest floor for a labeller in a reasoning world, and it is the register
+	// the small calls around here already sit in (aside.go's 600).
+	scribeMaxTokens = 512
+	// scribeReliefTokens is the one escalation. A reply that came back with no
+	// visible text and a length-shaped finish is a model that ran out of room
+	// mid-thought, and that is the ONE failure a bigger ceiling can actually
+	// fix — so it gets exactly one more try with room to spare.
+	//
+	// It is a mechanism rather than a bigger magic number. The next model whose
+	// reasoning appetite exceeds the default corrects itself here on the second
+	// call instead of waiting for somebody to notice every room is untitled
+	// again and edit a constant. It is not a loop: once, and then silence.
+	scribeReliefTokens = 8192
 	// scribeExcerptBytes is how much of each side of the first exchange the
 	// scribe is shown. A room is named for what it is ABOUT, and what it is
 	// about is in the opening sentences — paying for the whole of a long
@@ -60,16 +89,30 @@ const (
 // scribePrompt is the whole of the clerk's brief. It says what a title is FOR —
 // telling one room from another in a list — because that is the difference
 // between a name and a summary, and a clerk given no purpose writes summaries.
+//
+// It asks for TWO things in one call, and they are one job rather than two: a
+// title is what this conversation is called and the tags are what it is about,
+// and both come out of the same single reading of the opening exchange. A
+// second call for the second line would double the bill for one act of
+// judgment. The tags exist for the switcher's filter — a person who remembers
+// the subject of a conversation but not the name it ended up with — which is
+// why they are asked for as SUBJECTS and not as a summary in list form.
 const scribePrompt = `You name conversations.
 
-Given the first exchange of a conversation, answer with a title of 2 to 5 words
-naming what it is about, so a reader can tell this conversation from a dozen
-others in a list.
+Given the first exchange of a conversation, answer with exactly two lines.
 
-Rules:
+Line 1 — the title: 2 to 5 words naming what the conversation is about, so a
+reader can tell it from a dozen others in a list.
 - 2 to 5 words. No sentence, no punctuation at the end, no quotes.
 - Name the subject, not the act: "billing audit", not "user asks for help".
-- No preamble and no explanation. The title alone is the whole answer.`
+
+Line 2 — the tags: up to 3 topic words, lowercase, separated by commas.
+- One or two words each. They are for searching, so use the words a person
+  would type months later when looking for this conversation again.
+- Name subjects, not sentiments and not the shape of the request.
+- If nothing beyond the title is worth filing it under, leave the line empty.
+
+No preamble, no explanation, no labels. The two lines are the whole answer.`
 
 // nameRoomLater is the poll's post-turn hook: the room this turn happened in
 // may now have a name, and finding out is nobody's critical path.
@@ -187,18 +230,142 @@ func (h *Head) nameRoom(ctx context.Context, sessionID string) {
 	if client == nil {
 		return
 	}
-	response, err := client.CompleteWithMessages(ctx, []ai.Message{
+	messages := []ai.Message{
 		textMessage("system", scribePrompt),
 		textMessage("user", "Them:\n"+ask+"\n\nYou:\n"+answer),
-	}, ai.WithMaxTokens(scribeMaxTokens))
+	}
+	response, err := client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(scribeMaxTokens))
 	if err != nil || response == nil {
 		return
 	}
-	title := roomTitle(response.Text())
+	if spentOnThinking(response) {
+		// The whole ceiling went on reasoning and nothing was said. One more
+		// try with room to spare, and then silence — see [scribeReliefTokens].
+		response, err = client.CompleteWithMessages(ctx, messages, ai.WithMaxTokens(scribeReliefTokens))
+		if err != nil || response == nil {
+			return
+		}
+	}
+	title, tags := roomLabel(response.Text())
 	if title == "" {
 		return
 	}
-	_, _ = h.store.RenameSession(sessionID, title)
+	_, _ = h.store.RenameSessionTagged(sessionID, title, tags)
+}
+
+// spentOnThinking reports the one failure shape a bigger ceiling can fix: a
+// reply that said nothing visible and stopped because it ran out of room.
+//
+// The finish reason is the honest signal and the provider layer surfaces it —
+// `ai.Choice.FinishReason`, which internal/plan already reads for the same
+// question about truncated JSON. Both spellings are accepted because both are
+// in the wild ("length" from the OpenAI shape, "max_tokens" from the Anthropic
+// one) and neither is a model name.
+//
+// A finish reason that is ABSENT counts, because a provider that reports none
+// has told us nothing and empty-text-on-a-successful-call is then the only
+// signal there is. A finish reason that is present and says something else —
+// the model stopped of its own accord, a filter cut it off — does NOT count: a
+// model that chose to say nothing will choose it again with eight thousand
+// tokens, and paying twice to hear the same silence is a loop with a bill.
+func spentOnThinking(response *ai.Response) bool {
+	if response == nil || strings.TrimSpace(response.Text()) != "" {
+		return false
+	}
+	if len(response.Choices) == 0 {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(response.Choices[0].FinishReason)) {
+	case "", "length", "max_tokens":
+		return true
+	}
+	return false
+}
+
+// roomLabel splits the clerk's two-line answer into the name and the subjects.
+//
+// IT IS DEFENSIVE IN ONE DIRECTION ONLY: a tags line that is missing, empty,
+// mangled or full of prose costs the room its tags and never its title. The
+// title is what a rail row is; tags are a finding aid over it, and a parser
+// that let the second line take down the first would have reintroduced the
+// exact bug this file exists to close — a room left untitled because something
+// downstream of the name went wrong.
+func roomLabel(raw string) (string, []string) {
+	head, rest, _ := strings.Cut(strings.TrimSpace(raw), "\n")
+	title := roomTitle(head)
+	if title == "" {
+		// The first line was a preamble rather than the name. roomTitle's own
+		// first-line rule has already been spent on it, so the whole answer goes
+		// through again — which is what an unsplit answer used to get, and the
+		// tags are forfeit rather than guessed at from a line whose position no
+		// longer means anything.
+		return roomTitle(raw), nil
+	}
+	return title, roomTags(rest)
+}
+
+// roomTags reads the subjects off the clerk's second line.
+//
+// A model asked for "up to 3 lowercase topic words, comma separated" answers
+// with those, and sometimes with a label in front of them, a bulleted list, or
+// a sentence. All of it goes through one splitter and then the store's own
+// normalizer, and anything that survives as a word or two is a tag: this is a
+// filter's index, so a slightly odd tag costs a person nothing and a refused
+// one costs them the search.
+//
+// A LINE THAT IS A SENTENCE IS NOT TAGS. The count bound is the whole test —
+// a "tag" of several words is prose, and prose in a subsequence filter matches
+// everything — so it is dropped rather than clipped.
+func roomTags(raw string) []string {
+	line, _, _ := strings.Cut(strings.TrimSpace(raw), "\n")
+	line = strings.TrimSpace(line)
+	// A label in front of the list is the label, not a tag — the same
+	// correction roomTitle makes for the same reason.
+	for _, prefix := range []string{"tags:", "topics:"} {
+		if len(line) >= len(prefix) && strings.EqualFold(line[:len(prefix)], prefix) {
+			line = strings.TrimSpace(line[len(prefix):])
+		}
+	}
+	if line == "" {
+		return nil
+	}
+	tags := make([]string, 0, store.MaxSessionTags)
+	for _, field := range strings.Split(line, ",") {
+		tag := strings.TrimSpace(normalizeTitle(strings.Trim(field, " \t-*#")))
+		if tag == "" || len(strings.Fields(tag)) > scribeTagWords || !tagLike(tag) {
+			continue
+		}
+		tags = append(tags, tag)
+	}
+	// The store lower-cases, de-duplicates, bounds and caps them, so a replay
+	// lands exactly what this write landed.
+	return tags
+}
+
+// scribeTagWords is how long a tag may be before it is prose. Two: a subject is
+// a word or a compound of two, and a filter's index is worth nothing once its
+// entries are phrases.
+const scribeTagWords = 2
+
+// tagLike reports that a tag is WORDS rather than SYNTAX.
+//
+// A clerk asked for a comma-separated line sometimes answers with the shape it
+// was trained to serialize lists in — a JSON array, an object, a bracketed
+// fragment — and splitting that on commas produces entries that are punctuation
+// with a word inside them. They would file the room under nothing a person will
+// ever type. The test is the characters rather than any particular wrapping, so
+// it holds for whichever syntax the next model reaches for, and it is generous
+// about the ones that appear inside real subjects (`c++`, `net/http`, `v2.1`).
+func tagLike(tag string) bool {
+	if strings.ContainsAny(tag, "{}[]()<>\"'`|\\:;=") {
+		return false
+	}
+	for _, r := range tag {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
 }
 
 // roomTitle is the sanitize chokepoint for a room's name: normalizeTitle, which

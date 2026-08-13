@@ -51,13 +51,21 @@ import (
 //
 // It is the surface's own shape rather than the engine's, for the reason
 // [palette.SettingRow] is not config's: this package is a leaf of the TUI tree,
-// and the fields below are the four facts a switcher row draws — everything
-// else a session carries is somebody else's question.
+// and the fields below are what a switcher row is made of — the four facts it
+// draws, and the one it is findable by. Everything else a session carries is
+// somebody else's question.
 type Thread struct {
 	// SessionID is the room this thread IS. It is never drawn.
 	SessionID string
 	// Name is the scribe's name for it, empty until the scribe has run.
 	Name string
+	// Tags are the subjects the scribe filed it under, and they exist for the
+	// switcher's FILTER alone. Nothing draws them: a row that grew a strip of
+	// chips would be this surface learning to decorate, and 5.1's one-ornament
+	// law spends the row's only mark on the unseen dot. What they buy is the
+	// reader who remembers what a conversation was ABOUT and not what it ended
+	// up being called.
+	Tags []string
 	// LeftAt is the line the conversation was left on — the last thing that was
 	// not the person's own typing, flattened to one line. Empty is honest.
 	LeftAt string
@@ -173,6 +181,7 @@ func (a *App) readThreads() []Thread {
 				threads = append(threads, Thread{
 					SessionID:  arc.SessionID,
 					Name:       arc.Title,
+					Tags:       arc.Tags,
 					LeftAt:     arc.Left,
 					LastActive: arc.LastActive,
 					Unseen:     arc.UnseenDelivery,
@@ -208,6 +217,7 @@ func (a *App) readThreads() []Thread {
 		threads = append(threads, Thread{
 			SessionID:  session.ID,
 			Name:       strings.TrimSpace(session.Title),
+			Tags:       session.Tags,
 			LeftAt:     a.leftAt(session.ID),
 			LastActive: session.LastActive,
 		})
@@ -371,6 +381,7 @@ func switcherRows(threads []Thread, current string, now time.Time) []palette.Thr
 		rows = append(rows, palette.Thread{
 			ID:      threads[i].SessionID,
 			Name:    threads[i].Name,
+			Tags:    threads[i].Tags,
 			LeftAt:  threads[i].LeftAt,
 			When:    reltime.Short(threads[i].LastActive, now),
 			Unseen:  threads[i].Unseen,

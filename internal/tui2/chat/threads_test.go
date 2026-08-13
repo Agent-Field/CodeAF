@@ -203,6 +203,31 @@ func TestTheSwitcherListsTheThreadsAndWhereTheyWereLeft(t *testing.T) {
 	}
 }
 
+// The scribe's filing reaches the switcher's filter, which is the only place it
+// is ever read. Nothing draws it — the assertion is that a subject appearing in
+// NO row's text still reaches the conversation it belongs to.
+func TestTheSwitcherFiltersOnTheScribesFiling(t *testing.T) {
+	app, backend := threadsApp(t)
+	backend.sessions[1].Tags = []string{"billing", "migrations"}
+	_ = app.Frame(120, 30)
+	press(app, threadsChord)
+
+	resting := ansi.Strip(app.switcher.Render(90, 12))
+	if strings.Contains(resting, "billing") {
+		t.Fatalf("the resting list painted the filing:\n%s", resting)
+	}
+	for _, r := range "billing" {
+		press(app, string(r))
+	}
+	frame := ansi.Strip(app.switcher.Render(90, 12))
+	if !strings.Contains(frame, "importer rewrite") {
+		t.Fatalf("a search over the filing did not reach the thread:\n%s", frame)
+	}
+	if strings.Contains(frame, "the wisp parity push") {
+		t.Fatalf("the filter kept a thread filed under nothing:\n%s", frame)
+	}
+}
+
 // -- switching -----------------------------------------------------------------
 
 // THE SWITCH RE-POINTS EVERYTHING, ATOMICALLY. The transcript, the read

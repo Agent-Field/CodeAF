@@ -2,6 +2,7 @@ package head
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,11 +19,15 @@ import (
 // no ceiling on a room that opened with a long deliverable is the one way four
 // words become expensive.
 type scribeClientRecorder struct {
-	mutex     sync.Mutex
-	answers   []string
+	mutex   sync.Mutex
+	answers []string
+	// raw is scripted ahead of answers, for a test that needs a reply shape
+	// textResponse cannot make — an empty completion wearing a finish reason.
+	raw       []*ai.Response
 	calls     int
 	prompts   []string
 	maxTokens int
+	ceilings  []int
 	model     string
 }
 
@@ -37,6 +42,12 @@ func (client *scribeClientRecorder) CompleteWithMessages(_ context.Context, mess
 	}
 	if request.MaxTokens != nil {
 		client.maxTokens = *request.MaxTokens
+		client.ceilings = append(client.ceilings, *request.MaxTokens)
+	}
+	if len(client.raw) > 0 {
+		response := client.raw[0]
+		client.raw = client.raw[1:]
+		return response, nil
 	}
 	var seen strings.Builder
 	for _, message := range messages {
@@ -220,6 +231,109 @@ func TestTheScribeTitleGoesThroughTheSanitizer(t *testing.T) {
 	}
 }
 
+// thoughtOnly is what a mandatory-reasoning model hands back when the whole
+// ceiling went on thinking: a real, successful, paid-for response with a
+// length-shaped finish and not one visible character in it. This is the exact
+// shape measured against the owner's own endpoint, and it is the shape that
+// made every room in the rail untitled.
+func thoughtOnly(finish string) *ai.Response {
+	return &ai.Response{Choices: []ai.Choice{{
+		Message:      ai.Message{Role: "assistant"},
+		FinishReason: finish,
+	}}}
+}
+
+// THE ESCALATION. A ceiling spent entirely on reasoning is the one failure a
+// bigger ceiling can fix, so the clerk asks once more with room to spare — and
+// the room gets its name from the second answer.
+func TestTheScribeRetriesOnceWhenTheCeilingWentOnThinking(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExchange(t, graph, "room", "can you audit last quarter's billing code", "On it.")
+
+	scribe := &scribeClientRecorder{
+		raw:     []*ai.Response{thoughtOnly("length")},
+		answers: []string{"Billing code audit"},
+	}
+	New(scribe, graph).nameRoom(context.Background(), "room")
+
+	if title := roomTitleOf(t, graph, "room"); title != "Billing code audit" {
+		t.Fatalf("the room is called %q after the escalation", title)
+	}
+	if scribe.count() != 2 {
+		t.Fatalf("naming cost %d calls, want the try and one escalation", scribe.count())
+	}
+	if len(scribe.ceilings) != 2 {
+		t.Fatalf("the calls carried %d ceilings, want two", len(scribe.ceilings))
+	}
+	if scribe.ceilings[0] != scribeMaxTokens {
+		t.Fatalf("the first call was capped at %d, want %d", scribe.ceilings[0], scribeMaxTokens)
+	}
+	// SUBSTANTIALLY larger, and pinned as a ratio rather than as a number: the
+	// escalation is only a mechanism if the second ceiling is big enough to
+	// hold a reasoning budget the first one could not.
+	if scribe.ceilings[1] != scribeReliefTokens || scribe.ceilings[1] < 4*scribe.ceilings[0] {
+		t.Fatalf("the escalation was capped at %d, want %d and several times the first",
+			scribe.ceilings[1], scribeReliefTokens)
+	}
+}
+
+// A provider that reports no finish reason at all has told us nothing, and an
+// empty answer on a successful call is then the only signal there is.
+func TestTheScribeEscalatesWhenNoFinishReasonIsReported(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExchange(t, graph, "room", "audit the billing code", "On it.")
+
+	scribe := &scribeClientRecorder{
+		raw:     []*ai.Response{thoughtOnly("")},
+		answers: []string{"Billing code audit"},
+	}
+	New(scribe, graph).nameRoom(context.Background(), "room")
+
+	if title := roomTitleOf(t, graph, "room"); title != "Billing code audit" {
+		t.Fatalf("the room is called %q", title)
+	}
+	if scribe.count() != 2 {
+		t.Fatalf("naming cost %d calls, want the try and one escalation", scribe.count())
+	}
+}
+
+// ONCE, AND THEN SILENCE. A model that thinks its way through the escalated
+// ceiling too leaves the room exactly as it was, and does not buy a third call.
+// The room is untitled, which is the true answer, and the next turn is another
+// chance at the same two calls — never a loop inside one pass.
+func TestAScribeThatOnlyEverThinksNamesNothing(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExchange(t, graph, "room", "audit the billing code", "On it.")
+
+	scribe := &scribeClientRecorder{raw: []*ai.Response{thoughtOnly("length"), thoughtOnly("length")}}
+	New(scribe, graph).nameRoom(context.Background(), "room")
+
+	if title := roomTitleOf(t, graph, "room"); title != "" {
+		t.Fatalf("a reply with nothing in it became the title %q", title)
+	}
+	if scribe.count() != 2 {
+		t.Fatalf("the scribe made %d calls, want one escalation and no more", scribe.count())
+	}
+}
+
+// A model that CHOSE to say nothing will choose it again with sixteen times the
+// room. That is a different failure from running out of budget, the finish
+// reason says which, and the clerk pays for one call rather than two.
+func TestAnEmptyAnswerThatFinishedProperlyIsNotEscalated(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExchange(t, graph, "room", "audit the billing code", "On it.")
+
+	scribe := &scribeClientRecorder{raw: []*ai.Response{thoughtOnly("stop")}}
+	New(scribe, graph).nameRoom(context.Background(), "room")
+
+	if title := roomTitleOf(t, graph, "room"); title != "" {
+		t.Fatalf("an empty answer became the title %q", title)
+	}
+	if scribe.count() != 1 {
+		t.Fatalf("the scribe made %d calls, want the one it was owed", scribe.count())
+	}
+}
+
 // An empty answer is not a name. The room keeps saying "untitled", which is the
 // true answer, and the next turn is another chance.
 func TestAnUnusableAnswerLeavesTheRoomUntitled(t *testing.T) {
@@ -235,6 +349,103 @@ func TestAnUnusableAnswerLeavesTheRoomUntitled(t *testing.T) {
 	conversationalHead.nameRoom(context.Background(), "room")
 	if title := roomTitleOf(t, graph, "room"); title != "Billing code audit" {
 		t.Fatalf("the second attempt produced %q", title)
+	}
+}
+
+// The clerk answers with a name and the subjects under it, and the parse is
+// defensive IN ONE DIRECTION: everything that can go wrong with the second line
+// costs the room its tags and never its title.
+func TestTheScribeReadsATitleAndItsTags(t *testing.T) {
+	for name, want := range map[string]struct {
+		raw   string
+		title string
+		tags  []string
+	}{
+		"both lines": {"Billing code audit\nbilling, invoices, proration",
+			"Billing code audit", []string{"billing", "invoices", "proration"}},
+		"title only":         {"Billing code audit", "Billing code audit", nil},
+		"an empty tags line": {"Billing code audit\n   \n", "Billing code audit", nil},
+		"a labelled tags line": {"Billing code audit\nTags: billing, invoices",
+			"Billing code audit", []string{"billing", "invoices"}},
+		"a bulleted tags line": {"Billing code audit\n- billing, - invoices",
+			"Billing code audit", []string{"billing", "invoices"}},
+		// Prose is not a tag: an entry of several words matches everything a
+		// subsequence filter is asked, so it is dropped rather than clipped.
+		"a sentence where the tags were": {
+			"Billing code audit\nThis conversation is about the billing package and its tests",
+			"Billing code audit", nil},
+		"prose with commas in it": {
+			"Billing code audit\nthey asked about billing, and I said I would look at it",
+			"Billing code audit", nil},
+		// The title survives whatever the second line is, which is the whole
+		// point: a room without tags is findable, a room without a name is not.
+		"garbage after the name": {"Billing code audit\n{\"tags\": [\"billing\"]}",
+			"Billing code audit", nil},
+		"a paragraph": {"Billing code audit\n\nBecause they asked about billing.",
+			"Billing code audit", nil},
+		"nothing at all": {"   ", "", nil},
+	} {
+		title, tags := roomLabel(want.raw)
+		if title != want.title {
+			t.Errorf("%s: %q named the room %q, want %q", name, want.raw, title, want.title)
+		}
+		if !slices.Equal(tags, want.tags) {
+			t.Errorf("%s: %q filed the room under %v, want %v", name, want.raw, tags, want.tags)
+		}
+	}
+}
+
+// The tags reach the row, through the same store door the title does, and a
+// person who renames the room afterwards restates its NAME and nothing about
+// what it is about.
+func TestTheScribeFilesTheRoomAndAManualRenameLeavesTheFilingAlone(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExchange(t, graph, "room", "audit the billing code", "On it.")
+
+	scribe := &scribeClientRecorder{answers: []string{"Billing code audit\nbilling, proration"}}
+	New(scribe, graph).nameRoom(context.Background(), "room")
+
+	session, found, err := graph.Session("room")
+	if err != nil || !found {
+		t.Fatalf("read room: %v (found %v)", err, found)
+	}
+	if session.Title != "Billing code audit" {
+		t.Fatalf("the room is called %q", session.Title)
+	}
+	if want := []string{"billing", "proration"}; !slices.Equal(session.Tags, want) {
+		t.Fatalf("the room is filed under %v, want %v", session.Tags, want)
+	}
+
+	if _, err := graph.RenameSession("room", "quarterly numbers"); err != nil {
+		t.Fatal(err)
+	}
+	renamed, _, err := graph.Session("room")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.Title != "quarterly numbers" {
+		t.Fatalf("the hand-typed name became %q", renamed.Title)
+	}
+	if want := []string{"billing", "proration"}; !slices.Equal(renamed.Tags, want) {
+		t.Fatalf("a rename rewrote the filing to %v, want %v left alone", renamed.Tags, want)
+	}
+}
+
+// The brief asks for the second line, and the clerk that never sees the ask
+// cannot answer it.
+func TestTheScribeBriefAsksForTheSubjectsToo(t *testing.T) {
+	graph := openHeadStore(t)
+	seedExchange(t, graph, "room", "audit the billing code", "On it.")
+	scribe := &scribeClientRecorder{answers: []string{"Billing code audit\nbilling"}}
+	New(scribe, graph).nameRoom(context.Background(), "room")
+
+	if len(scribe.prompts) == 0 {
+		t.Fatal("the scribe made no call")
+	}
+	for _, required := range []string{"two lines", "up to 3 topic words", "lowercase"} {
+		if !strings.Contains(scribe.prompts[0], required) {
+			t.Fatalf("the naming brief did not carry %q:\n%s", required, scribe.prompts[0])
+		}
 	}
 }
 

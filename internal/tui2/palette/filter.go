@@ -151,15 +151,25 @@ func filter(dst []hit, rows []row, needle string) []hit {
 	dst = dst[:0]
 	for i := range rows {
 		r := &rows[i]
-		verbScore, verbOK := score(r.lowerVerb, needle)
-		descScore, descOK := score(r.lowerDesc, needle)
-		switch {
-		case verbOK && descOK:
-			dst = append(dst, hit{idx: int32(i), score: int32(min(verbScore, descScore))})
-		case verbOK:
-			dst = append(dst, hit{idx: int32(i), score: int32(verbScore)})
-		case descOK:
-			dst = append(dst, hit{idx: int32(i), score: int32(descScore)})
+		best, matched := 0, false
+		// Three haystacks, and the row scores as its BEST of them: what it is
+		// called, what it says, and — for a thread — what it is about. The
+		// third is [row.lowerTags], which is the only matchable text on this
+		// surface that is never drawn, and it takes no privilege for that: a
+		// row whose name begins with the query still outranks a row that merely
+		// carries it as a subject, because the prefix bonus is in the score and
+		// not in the order these are tried.
+		for _, haystack := range [...]string{r.lowerVerb, r.lowerDesc, r.lowerTags} {
+			s, ok := score(haystack, needle)
+			if !ok {
+				continue
+			}
+			if !matched || s < best {
+				best, matched = s, true
+			}
+		}
+		if matched {
+			dst = append(dst, hit{idx: int32(i), score: int32(best)})
 		}
 	}
 	// Rows are built section-grouped, so the survivors already are; only the
