@@ -2219,10 +2219,20 @@ func (b *messageBlock) dressDelivery(message store.Message, board jobSource) {
 	// reading standing up, and the rest one click away. §4's card anatomy says
 	// the same thing in its own words — "3–5 sentences the assistant absorbed,
 	// never 'see the file'".
-	brief, rest := splitCardBody(message.Body)
 	facts, known := jobFacts{}, false
 	if board != nil {
 		facts, known = board.jobFacts(message.NodeID)
+	}
+	// A FAILURE IS NOT A RESULT, AND ORGANIZING IT IS THE WRONG SERVICE. The
+	// paragraph above is about a finding — enough of the answer to be worth
+	// reading standing up. A job that broke has no finding: it has one composed
+	// sentence and the transport that caused it, and the producer says which is
+	// which by putting a blank line between them. Reading the row cap instead
+	// put a node id, an attempt count and a JSON body on the card, because four
+	// lines is under the cap and the cap was the only rule being read.
+	brief, rest := splitCardBody(message.Body)
+	if facts.Life == rail.LifeFailed || facts.Life == rail.LifeCancelled {
+		brief, rest = splitWorkBody(message.Body)
 	}
 
 	title := "delivered"
@@ -2382,7 +2392,7 @@ func (b *messageBlock) dressWork(message store.Message, board jobSource) {
 	// time the job spoke would be a new card each time in everything but name.
 	b.card, b.tailFold = dressCommitment, true
 	b.wearCardHead(workGlyph(message), title)
-	b.appendBody(message, tokens.TextSecondary, bodyIndent)
+	b.appendWorkBody(message)
 	b.readBoard(board)
 
 	cells := make([]string, 0, 3)
@@ -2590,6 +2600,68 @@ func (b *messageBlock) dressBrief(message store.Message) {
 // parts, and its parts are the whole truth; a message without them is a legacy
 // prose message whose Body IS the line, and re-deriving it from parts that do
 // not exist would render an empty turn.
+// appendWorkBody puts a work card's status on the card and its detail behind
+// the card's own door.
+//
+// dressWork has set tailFold since it was written, and nothing ever marked a run
+// folded, so the door it asked for never appeared and a card grew to whatever
+// its producer wrote. That is how a failure row put a node id, an attempt count
+// and a JSON body on screen: the producer had already separated its headline
+// from its transport with a blank line — the boundary §5 and splitCardBody both
+// already read as one — and the renderer drew both halves as one paragraph.
+//
+// So the blank line is honoured as what it is: a producer saying "this line is
+// the status, the rest is detail". With no blank line the card falls back to
+// splitCardBody's row cap, which is what every other card has always used.
+func (b *messageBlock) appendWorkBody(message store.Message) {
+	for _, part := range message.Parts {
+		if part.Kind == store.PartText && strings.TrimSpace(part.Text) != "" {
+			return
+		}
+	}
+	shown, rest := splitWorkBody(message.Body)
+	if shown != "" {
+		b.segs = append(b.segs, segment{
+			kind: segProse, text: shown, tier: tokens.TextSecondary, indent: bodyIndent,
+		})
+	}
+	if rest == "" {
+		return
+	}
+	b.collapsible = true
+	b.hidden = strings.Count(rest, "\n") + 1
+	b.segs = append(b.segs, segment{
+		kind: segProse, text: rest, tier: tokens.TextSecondary,
+		indent: bodyIndent, folded: true,
+	})
+}
+
+// splitWorkBody cuts a work card's body into what it shows and what it holds.
+//
+// A blank line wins when there is one, because a blank line is a producer's own
+// declaration of a boundary and nothing the renderer inferred. Everything else
+// is splitCardBody, unchanged: a card that grew with its content stops being a
+// card.
+func splitWorkBody(body string) (shown, rest string) {
+	trimmed := strings.TrimRight(strings.TrimSpace(body), "\n")
+	if trimmed == "" {
+		return "", ""
+	}
+	lines := strings.Split(trimmed, "\n")
+	for index, line := range lines {
+		if index == 0 || strings.TrimSpace(line) != "" {
+			continue
+		}
+		head := strings.TrimRight(strings.Join(lines[:index], "\n"), "\n")
+		tail := strings.TrimLeft(strings.Join(lines[index:], "\n"), "\n")
+		if tail == "" {
+			return head, ""
+		}
+		return head, tail
+	}
+	return splitCardBody(trimmed)
+}
+
 func (b *messageBlock) appendBody(message store.Message, tier tokens.Token, indent int) {
 	for _, part := range message.Parts {
 		if part.Kind == store.PartText && strings.TrimSpace(part.Text) != "" {
