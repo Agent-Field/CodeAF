@@ -43,6 +43,24 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 	applied := 0
 	var notes []string
 	id := func(planID int) string { return fmt.Sprintf("%s-n%d", prefix, planID) }
+	// A note is read by a PERSON: the redirection receipt prints these lines
+	// straight under its own (redirect.go). So a note names the step by what the
+	// step is for, and never by the op's verb or the store's id for the row —
+	// "retitle task-8-n4: node 4 is running" is three pieces of machinery in the
+	// room, in a line nobody asked for, saying nothing the reader can act on.
+	step := func(planID int) string {
+		if node := planGraph.Node(planID); node != nil {
+			if title := strings.TrimSpace(node.Title); title != "" {
+				return title
+			}
+		}
+		return fmt.Sprintf("step %d", planID)
+	}
+	note := func(planID int, reason string) {
+		if reason = strings.TrimSpace(reason); reason != "" {
+			notes = append(notes, step(planID)+": "+reason)
+		}
+	}
 	exists := func(storeID string) bool {
 		_, ok, err := graph.Node(storeID)
 		return err == nil && ok
@@ -66,7 +84,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 	if adds > 0 {
 		decided, err := growJob(ctx, graph, growth.Ask, request)
 		if err != nil {
-			notes = append(notes, fmt.Sprintf("add: %v", err))
+			notes = append(notes, "the plan could not be grown: "+err.Error())
 		} else {
 			verdict = decided
 		}
@@ -76,7 +94,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 	for _, operation := range operations {
 		if !operation.Applied {
 			if strings.TrimSpace(operation.Refused) != "" {
-				notes = append(notes, fmt.Sprintf("%s %s: %s", operation.Op, id(operation.Node), operation.Refused))
+				note(operation.Node, operation.Refused)
 			}
 			continue
 		}
@@ -84,14 +102,14 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 		case "add":
 			if !verdict.Allow {
 				// The governor has already said this in the person's own words
-				// on the job's record; the note is the same refusal in the
-				// sentinel's vocabulary, for whoever is reading the batch.
-				notes = append(notes, fmt.Sprintf("add %s: %s", id(operation.Node), growthRefusalNote(verdict)))
+				// on the job's record; the note repeats it against the step it
+				// stopped, for whoever is reading the batch.
+				note(operation.Node, growthRefusalNote(verdict))
 				continue
 			}
 			node := planGraph.Node(operation.Node)
 			if node == nil {
-				notes = append(notes, fmt.Sprintf("add %d: vanished from the plan", operation.Node))
+				note(operation.Node, "it vanished from the plan before it could be added")
 				continue
 			}
 			spec := store.NodeSpec{
@@ -127,7 +145,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 				Intent:    "revision: " + operation.Reason,
 			})
 			if err != nil {
-				notes = append(notes, fmt.Sprintf("add %s: %v", spec.ID, err))
+				note(operation.Node, "it could not be added: "+err.Error())
 				continue
 			}
 			spliced++
@@ -135,7 +153,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 
 		case "remove":
 			if err := graph.CancelPending(id(operation.Node), "revision: "+operation.Reason); err != nil {
-				notes = append(notes, fmt.Sprintf("remove %s: %v", id(operation.Node), err))
+				note(operation.Node, "it could not be dropped: "+err.Error())
 				continue
 			}
 			applied++
@@ -150,7 +168,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 			}
 			edges, err := graph.ActiveEdges()
 			if err != nil {
-				notes = append(notes, fmt.Sprintf("rewire %s: %v", target, err))
+				note(operation.Node, "its inputs could not be moved: "+err.Error())
 				continue
 			}
 			ok := true
@@ -163,7 +181,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 					continue
 				}
 				if err := graph.RemoveEdge(edge.From, target, edge.Kind); err != nil {
-					notes = append(notes, fmt.Sprintf("rewire %s: %v", target, err))
+					note(operation.Node, "its inputs could not be moved: "+err.Error())
 					ok = false
 					break
 				}
@@ -173,7 +191,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 			}
 			for from := range wanted {
 				if err := graph.AddEdge(from, target, store.FeedsInto); err != nil {
-					notes = append(notes, fmt.Sprintf("rewire %s: %v", target, err))
+					note(operation.Node, "its inputs could not be moved: "+err.Error())
 					ok = false
 					break
 				}
@@ -185,11 +203,11 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 		case "retitle":
 			node := planGraph.Node(operation.Node)
 			if node == nil {
-				notes = append(notes, fmt.Sprintf("retitle %d: vanished from the plan", operation.Node))
+				note(operation.Node, "it vanished from the plan before it could be renamed")
 				continue
 			}
 			if err := graph.AmendPending(id(node.ID), nodeBrief(*node), strings.TrimSpace(node.Title)); err != nil {
-				notes = append(notes, fmt.Sprintf("retitle %s: %v", id(node.ID), err))
+				note(operation.Node, "it could not be renamed: "+err.Error())
 				continue
 			}
 			applied++

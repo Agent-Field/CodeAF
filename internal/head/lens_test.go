@@ -198,6 +198,14 @@ func TestOpenOnLiveWorkShowsTheePlanTheFeedAndTheSpend(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Two priced calls under a leaf, at the sub-cent scale a real job actually
+	// bills at. Nothing about this figure may round to nothing.
+	for _, cost := range []float64{0.000512, 0.000379} {
+		if err := graph.RecordUsage(store.NodeUsage{NodeID: "market-n2",
+			PromptTokens: 900, CompletionTokens: 120, Cost: cost}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	run := lensRun(t, graph, "market")
 
 	read, failed := run.execute(beltToolOpen, mustJSON(map[string]any{"id": "market"}))
@@ -218,12 +226,29 @@ func TestOpenOnLiveWorkShowsTheePlanTheFeedAndTheSpend(t *testing.T) {
 		!strings.Contains(read, "Two vendor interviews booked") {
 		t.Fatalf("the progress feed missed what the workers actually said:\n%s", read)
 	}
-	if !strings.Contains(read, "spend so far: $") {
+	// The figure at the precision it has, and the calls behind it. "$0.00" here
+	// would be the §3c fabrication's premise, delivered by the read itself.
+	if !strings.Contains(read, "spend so far: $0.0009 over 2 model calls") {
 		t.Fatalf("open on live work never said what it has cost:\n%s", read)
 	}
 	// A live job is not reported as if it had concluded.
 	if strings.Contains(read, "how its parts ended") {
 		t.Fatalf("live work was rendered as settled work:\n%s", read)
+	}
+	// §3d/§5d. Every progress line used to carry the row's node id and its role
+	// word, so the model composed sentences out of a context that read
+	// "market-n2 | system | …" and the room got "system: ruler: 1 samples,
+	// need 8". A line is attributed by the step it came from.
+	for _, line := range strings.Split(read, "\n") {
+		if !strings.HasPrefix(line, "- ") || !strings.Contains(line, "vendor concentration") {
+			continue
+		}
+		if strings.Contains(line, "market-n2") || strings.Contains(line, "system") {
+			t.Fatalf("the progress feed handed the model an id and a role to copy: %q", line)
+		}
+		if !strings.Contains(line, "Interview the vendors") {
+			t.Fatalf("the progress feed lost the step it came from: %q", line)
+		}
 	}
 }
 
@@ -574,5 +599,76 @@ func TestThePlanToolKeepsItsOwnBoundsWhileTheLensBorrowsTheRenderer(t *testing.T
 	}
 	if !strings.Contains(capped, "plan for Northern market") {
 		t.Fatalf("the plan read lost its heading:\n%s", capped)
+	}
+}
+
+// §3c. Asked what one job cost, the head answered "$0.00 — a single instant
+// write, so it never crossed into paid work" about a job that had spent
+// $0.000891 across two model calls. No tool on the belt could say otherwise:
+// the figure a read handed back was rounded to nothing and carried no run
+// count, so the only thing left to explain the nothing was invention.
+//
+// This pins the route, not the sentence. What the belt hands back must carry
+// the figure at the precision it has and the number of paid calls behind it,
+// from both doors a cost question can arrive at.
+func TestAPerJobCostQuestionHasATruthfulRouteThroughTheBelt(t *testing.T) {
+	graph := openHeadStore(t)
+	spliceSurgeryJob(t, graph, "haiku", "Rain haiku", "write a haiku about rain")
+	spliceSurgeryJob(t, graph, "rustweb", "Top Rust web frameworks", "research the frameworks")
+	completeNodeWith(t, graph, "haiku", "Rain on the tin roof.")
+	for _, priced := range []store.NodeUsage{
+		{NodeID: "haiku", PromptTokens: 700, CompletionTokens: 60, Cost: 0.000512},
+		{NodeID: "haiku", PromptTokens: 420, CompletionTokens: 40, Cost: 0.000379},
+		{NodeID: "rustweb", PromptTokens: 2200, CompletionTokens: 900, Cost: 0.002178},
+	} {
+		if err := graph.RecordUsage(priced); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := lensRun(t, graph, "haiku")
+
+	// Door one: open the job itself.
+	read, failed := run.execute(beltToolOpen, mustJSON(map[string]any{"id": "haiku"}))
+	if failed {
+		t.Fatalf("open failed: %s", read)
+	}
+	if !strings.Contains(read, "spend: $0.0009 over 2 model calls") {
+		t.Fatalf("open on a settled job did not say what it cost or how many calls it bought:\n%s", read)
+	}
+	if strings.Contains(read, "$0.00 ") || strings.Contains(read, "$0.00\n") {
+		t.Fatalf("a real cost was rounded away to nothing:\n%s", read)
+	}
+
+	// Door two: the whole system on one page, which is where a question about
+	// "the first one" lands when no id has been read yet.
+	page, failed := run.execute(beltToolStatus, mustJSON(map[string]any{}))
+	if failed {
+		t.Fatalf("status failed: %s", page)
+	}
+	if !strings.Contains(page, "what each piece of work has cost, dearest first:") {
+		t.Fatalf("status carried no per-job breakdown:\n%s", page)
+	}
+	if !strings.Contains(page, "haiku | Rain haiku | $0.0009 over 2 model calls") ||
+		!strings.Contains(page, "rustweb | Top Rust web frameworks | $0.0022 over 1 model call") {
+		t.Fatalf("the per-job breakdown lost a job or its figure:\n%s", page)
+	}
+}
+
+// The other half of the same honesty: a job nothing has ever been billed for
+// says so in words. "$0.00" and "nothing was priced here" are different facts,
+// and rendering the second as the first is what invites a mechanism to be
+// invented for it.
+func TestAJobWithNoPricedRunSaysSoRatherThanQuotingZero(t *testing.T) {
+	graph := openHeadStore(t)
+	spliceSurgeryJob(t, graph, "note", "Jot it down", "write one line")
+	completeNodeWith(t, graph, "note", "Written.")
+	run := lensRun(t, graph, "note")
+
+	read, failed := run.execute(beltToolOpen, mustJSON(map[string]any{"id": "note"}))
+	if failed {
+		t.Fatalf("open failed: %s", read)
+	}
+	if !strings.Contains(read, "spend: nothing priced has run under this job") {
+		t.Fatalf("an unpriced job did not say it was unpriced:\n%s", read)
 	}
 }

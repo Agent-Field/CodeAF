@@ -37,6 +37,45 @@ import (
 // tool reported, and a promise to speak again is a promise something actually
 // executes. This test pins the words and the wiring together, so the voice and
 // the machinery can never again disagree about what the head is able to do.
+// §7. A one-sentence question got twenty-one lines with four bold headers and
+// eight bullets, and every single turn ended with "Want me to …?". Neither is a
+// capability limit — the same head answers a recall question in one line — so
+// both are stated as principles and neither as a rule with a case list.
+//
+// What this pins is that the calibration is stated, and that it is stated
+// WITHOUT a worked example: the offer's own model sentence used to sit in the
+// prompt, which is a template to copy in the one place the failure was
+// copying. The campaign removes case law rather than adding to it.
+func TestTheVoiceSizesTheReplyAndDoesNotTemplateTheOffer(t *testing.T) {
+	for name, want := range map[string]string{
+		"the reply is calibrated to the ask": "The reply is the size of the question",
+		"the offer is judged, not habitual":  "an offer made because the turn is ending is one they learn to skip",
+	} {
+		if !strings.Contains(orchestratorVoice, want) {
+			t.Errorf("the voice no longer states %s: %q missing", name, want)
+		}
+	}
+	// No sentence in the whole prompt is offered as one to copy. A quoted
+	// example is the template a model reaches for first.
+	if strings.Contains(orchestratorPrompt, "Want me to") {
+		t.Error("the prompt carries a worked offer for the model to copy")
+	}
+}
+
+// §3c. Money, time and completion are the three things a person cannot check,
+// and the head narrated all three from its own impression of what happened.
+// The judgment section says where those figures come from, once and generally.
+func TestTheJudgmentSendsMoneyAndCompletionToARead(t *testing.T) {
+	for name, want := range map[string]string{
+		"the three unverifiable figures": "Money, time and completion come from a read taken this turn",
+		"and the invented mechanism":     "never from a mechanism that would explain them",
+	} {
+		if !strings.Contains(orchestratorJudgment, want) {
+			t.Errorf("the judgment no longer states %s: %q missing", name, want)
+		}
+	}
+}
+
 func TestTheHeadOnlyPromisesWhatTheWakeCanKeep(t *testing.T) {
 	for name, want := range map[string]string{
 		"the receipt survives":        "say what you have put in hand",

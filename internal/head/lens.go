@@ -608,11 +608,11 @@ func (h *Head) lensJob(node store.Node) (string, error) {
 	now := time.Now()
 	var rendered strings.Builder
 	fmt.Fprintf(&rendered, "%s | %s | %s", node.ID, node.Status, surgeryTargetLabel(node))
-	spend := 0.0
-	if impact, err := h.store.Impact(node.ID, now); err == nil {
-		spend = impact.Cost
+	spend, spendErr := h.store.NodeSpend(node.ID)
+	if spendErr != nil {
+		spend = store.SpendSlice{}
 	}
-	fmt.Fprintf(&rendered, " | $%.2f", spend)
+	fmt.Fprintf(&rendered, " | %s", moneyUSD(spend.Cost))
 	if age := store.AgeLabel(lensNodeTime(node), now); age != "" {
 		rendered.WriteString(" | " + age)
 	}
@@ -636,7 +636,7 @@ func (h *Head) lensJob(node store.Node) (string, error) {
 		if files := h.lensFiles(node); len(files) > 0 {
 			rendered.WriteString("files so far: " + strings.Join(files, ", ") + "\n")
 		}
-		fmt.Fprintf(&rendered, "spend so far: $%.2f\n", spend)
+		rendered.WriteString(lensSpendLine("spend so far", spend, spendErr) + "\n")
 		return strings.TrimSpace(rendered.String()), nil
 	}
 
@@ -651,11 +651,35 @@ func (h *Head) lensJob(node store.Node) (string, error) {
 	if files := h.lensFiles(node); len(files) > 0 {
 		rendered.WriteString("files: " + strings.Join(files, ", ") + "\n")
 	}
-	fmt.Fprintf(&rendered, "spend: $%.2f\n", spend)
+	rendered.WriteString(lensSpendLine("spend", spend, spendErr) + "\n")
 	if children := h.resultChildren(node.ID); len(children) > 0 {
 		rendered.WriteString("how its parts ended:\n" + strings.Join(children, "\n") + "\n")
 	}
 	return strings.TrimSpace(rendered.String()), nil
+}
+
+// lensSpendLine is what one job cost, as a READ rather than as a recollection.
+//
+// Two things were wrong with the figure this replaces and both of them were the
+// rendering. Two decimals turned a real $0.000891 into "$0.00", and "$0.00"
+// does not read as "very small" — it reads as free, which is exactly the
+// premise a model then explains: shown nothing, it supplied a mechanism for the
+// nothing ("a single instant write, so it never crossed into paid work") and
+// said it to a person who had in fact been billed for two model calls. moneyUSD
+// spends the digits the figure actually has, and the call count says outright
+// how much paid work stands behind it, so neither half is left to be inferred.
+//
+// A read that failed says so. A cost question answered from a broken read is
+// the same fabrication arriving through a different door.
+func lensSpendLine(label string, spend store.SpendSlice, err error) string {
+	if err != nil {
+		return label + ": the usage rows could not be read — " + err.Error()
+	}
+	if spend.Runs == 0 {
+		return label + ": nothing priced has run under this job, so there is no cost to quote"
+	}
+	return fmt.Sprintf("%s: %s over %d model %s", label, moneyUSD(spend.Cost),
+		spend.Runs, pluralWord(spend.Runs, "call", "calls"))
 }
 
 // lensLive reads liveness off the whole job rather than off its root row, for
@@ -681,13 +705,23 @@ func (h *Head) lensLive(node store.Node) bool {
 // the reason the task room does: a job root usually says nothing at all while
 // its workers do the talking, so a feed filtered to the root draws a job with
 // three people working on it as a job with nothing happening in it.
+//
+// EACH LINE IS ATTRIBUTED BY STEP, NEVER BY ID AND NEVER BY ROLE. The feed used
+// to carry `task-8-n4` and `system` in every row, and both of them reached the
+// person: a model composing a sentence out of a context that reads
+// `system | ruler: 1 samples, need 8` will sooner or later write that sentence
+// down. Vocabulary the product has ruled out (§14) cannot be kept out of speech
+// by asking; it is kept out by not putting it in front of the model. The step's
+// own label says the same thing in the words the person already has.
 func (h *Head) lensProgressFeed(root string, tail int) []string {
 	nodes, err := h.store.SubtreeNodes(root)
 	if err != nil {
 		return nil
 	}
+	labels := make(map[string]string, len(nodes))
 	merged := make([]store.Message, 0, lensNodeMessagePage)
 	for _, node := range nodes {
+		labels[node.ID] = surgeryTargetLabel(node)
 		messages, readErr := h.store.NodeMessages(node.ID, 0, lensNodeMessagePage)
 		if readErr != nil {
 			continue
@@ -708,8 +742,12 @@ func (h *Head) lensProgressFeed(root string, tail int) []string {
 		if strings.TrimSpace(body) == "" {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("- %s | %s | %s | %s",
-			message.Time.Local().Format(nowLineLayout), message.NodeID, message.Role, lensSnippet(body)))
+		step := labels[message.NodeID]
+		if step == "" {
+			step = "this job"
+		}
+		lines = append(lines, fmt.Sprintf("- %s | %s | %s",
+			message.Time.Local().Format(nowLineLayout), step, lensSnippet(body)))
 	}
 	return lines
 }
@@ -1313,10 +1351,40 @@ func (h *Head) lensMoney() string {
 	if self, err := h.store.SelfSpendToday(); err == nil {
 		fmt.Fprintf(&rendered, "your own upkeep today: $%.2f\n", self)
 	}
+	// What each piece of work cost, because "what did that one cost?" is asked
+	// about a job and answered nowhere else on this page. A total with no
+	// breakdown under it is a total a per-job question has to be improvised
+	// against, and §3c is what improvising against it produces.
+	rendered.WriteString(h.lensJobSpend())
 	if rendered.Len() == 0 {
 		return "no spend has been recorded."
 	}
 	return strings.TrimSpace(rendered.String())
+}
+
+// lensJobSpend is the money section's per-job breakdown: what each piece of
+// work has cost over the whole journal, dearest first.
+//
+// The window is everything rather than today, because a job asked about in the
+// afternoon may have started yesterday and a breakdown that ended at midnight
+// would answer a question about that job with silence — and silence is what the
+// improvised answer fills.
+func (h *Head) lensJobSpend() string {
+	jobs, err := h.store.SpendByJob(time.Time{}, time.Time{}, lensStatusListCap)
+	if err != nil || len(jobs) == 0 {
+		return ""
+	}
+	var rendered strings.Builder
+	rendered.WriteString("what each piece of work has cost, dearest first:\n")
+	for _, job := range jobs {
+		label := strings.TrimSpace(job.Title)
+		if label == "" {
+			label = job.JobID
+		}
+		fmt.Fprintf(&rendered, "- %s | %s | %s over %d model %s\n", job.JobID, label,
+			moneyUSD(job.Cost), job.Runs, pluralWord(job.Runs, "call", "calls"))
+	}
+	return rendered.String()
 }
 
 func (h *Head) lensWatch() string {

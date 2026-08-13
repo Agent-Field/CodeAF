@@ -395,12 +395,32 @@ func TestTheCompressorSaysTheCountAndTheNotableActs(t *testing.T) {
 			want: "3 steps — read 3 times",
 		},
 		{
-			name: "a failure is counted and named at the end",
+			// §1b. "1 didn't land" named no failure. The step that failed knows
+			// which one it was, and its own gloss is the whole of the answer.
+			name: "a single failure names itself at the end",
 			steps: []activityStep{
 				{gloss: "looking at the work", done: true},
 				{gloss: "opening «task-3»", done: true, failed: true},
 			},
-			want: "2 steps — looked at the work, opened · 1 didn't land",
+			want: "2 steps — looked at the work, opened · opening «task-3» didn't land",
+		},
+		{
+			name: "several failures keep the count and name the first",
+			steps: []activityStep{
+				{gloss: "opening «task-3»", done: true, failed: true},
+				{gloss: "reading «a.md»", done: true, failed: true},
+			},
+			want: "2 steps — opened, read · 2 didn't land, from opening «task-3»",
+		},
+		{
+			// A window that attached mid-turn saw the end and never the begin, so
+			// it has no gloss to name. The count is all it honestly knows.
+			name: "a failure with no gloss falls back to the count",
+			steps: []activityStep{
+				{gloss: "looking at the work", done: true},
+				{gloss: "", done: true, failed: true},
+			},
+			want: "2 steps — looked at the work · 1 didn't land",
 		},
 	}
 	for _, testCase := range cases {
@@ -432,10 +452,47 @@ func TestPastActTakesTheSubjectOffAndTheTenseBack(t *testing.T) {
 		// A verb the table has never heard of keeps its gerund, which is a
 		// slightly awkward sentence and never a wrong one.
 		"frobnicating «x»": "frobnicating",
+		// §1b. The gloss the trail printed as "read what". Whatever the cut
+		// leaves hanging comes off, however many words deep it goes.
+		"reading what came back from «task-8»": "read what came back",
+		"reading what":                         "read",
+		"reading a file from «task-8»":         "read a file",
+		"reading a":                            "read",
+		"opening the":                          "opened",
 	}
 	for gloss, want := range cases {
 		if got := pastAct(gloss); got != want {
 			t.Errorf("pastAct(%q) = %q, want %q", gloss, got, want)
+		}
+	}
+}
+
+// §1b, as the property rather than the table: no act this vocabulary can
+// produce ends on a word that was holding a place for a subject that is gone.
+// A trail that says "read what" has printed the seam it was supposed to hide.
+func TestNoActEndsOnAWordLeftHangingByTheCut(t *testing.T) {
+	glosses := []string{
+		"reading what came back from «task-8»",
+		"reading a file from «task-8»",
+		"reading the plan for «task-1»",
+		"looking through the work for «finance»",
+		"looking at «task-1»",
+		"changing «task-1»",
+		"reading the manual on «threads»",
+		"putting work in hand: «fix the leak»",
+		"searching for «pricing»",
+		"writing «brief.md»",
+		"opening «task-1»",
+	}
+	for _, gloss := range glosses {
+		act := pastAct(gloss)
+		if act == "" {
+			t.Errorf("pastAct(%q) said nothing at all", gloss)
+			continue
+		}
+		fields := strings.Fields(act)
+		if activityDanglers[fields[len(fields)-1]] {
+			t.Errorf("pastAct(%q) = %q, which ends on a word with nothing after it", gloss, act)
 		}
 	}
 }

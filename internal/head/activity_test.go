@@ -155,7 +155,10 @@ func TestAGlossQuotesItsSubjectOrHonestlyHasNone(t *testing.T) {
 		{beltToolBoard, `{"q":"the finance one"}`, "looking through the work for «the finance one»"},
 		{beltToolTask, `{"instruction":"fix the leak"}`, "putting work in hand: «fix the leak»"},
 		{beltToolPlan, `{"job":"task-1"}`, "reading the plan for «task-1»"},
-		{beltToolRead, `{"job":"task-1"}`, "reading what «task-1» wrote"},
+		// The subject sits LAST, so the summariser's cut at the quote leaves a
+		// whole phrase behind it rather than a dangling "reading what".
+		{beltToolRead, `{"job":"task-1"}`, "reading a file from «task-1»"},
+		{beltToolResult, `{"id":"task-1"}`, "reading what came back from «task-1»"},
 		{beltToolOpen, `{"id":"task-1"}`, "opening «task-1»"},
 		// Arguments the model mangled are not a reason to say something untrue.
 		{beltToolOpen, `not json at all`, "opening what was found"},
@@ -164,6 +167,43 @@ func TestAGlossQuotesItsSubjectOrHonestlyHasNone(t *testing.T) {
 	for _, testCase := range cases {
 		if got := toolGloss(testCase.name, testCase.args); got != testCase.want {
 			t.Errorf("%s(%s) glossed %q, want %q", testCase.name, testCase.args, got, testCase.want)
+		}
+	}
+}
+
+// §1b. THE SUBJECT IS THE LAST THING A GLOSS SAYS, without exception.
+//
+// The summary row under a landed turn takes the act off the front of a gloss by
+// cutting it at its subject (internal/tui2/chat/activity.go), so anything a
+// gloss says AFTER its subject is thrown away and whatever preposition or
+// pronoun introduced it is left hanging. That is where "read what" came from.
+// A gloss that ends on its subject cannot produce one.
+func TestAGlossEndsOnItsSubjectSoTheSummaryCannotDangle(t *testing.T) {
+	withSubject := []struct{ name, args string }{
+		{beltToolBoard, `{"id":"task-1"}`},
+		{beltToolBoard, `{"q":"the finance one"}`},
+		{beltToolRecall, `{"q":"pricing"}`},
+		{beltToolSearch, `{"q":"pricing"}`},
+		{beltToolTask, `{"instruction":"fix the leak"}`},
+		{beltToolChange, `{"target":"task-1"}`},
+		{beltToolManual, `{"page":"threads"}`},
+		{beltToolResult, `{"id":"task-1"}`},
+		{beltToolPlan, `{"job":"task-1"}`},
+		{beltToolRead, `{"file":"/tmp/a.md"}`},
+		{beltToolRead, `{"job":"task-1"}`},
+		{beltToolOpen, `{"id":"task-1"}`},
+		{beltToolWrite, `{"name":"brief.md"}`},
+		{beltToolBash, `{"command":"open /tmp/a.md"}`},
+	}
+	for _, call := range withSubject {
+		gloss := toolGloss(call.name, call.args)
+		if !strings.Contains(gloss, "«") {
+			t.Errorf("%s(%s) glossed without its subject: %q", call.name, call.args, gloss)
+			continue
+		}
+		if !strings.HasSuffix(gloss, "»") {
+			t.Errorf("%s(%s) said something after its subject, which the summary will drop and dangle on: %q",
+				call.name, call.args, gloss)
 		}
 	}
 }
