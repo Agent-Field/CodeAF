@@ -31,7 +31,7 @@ func TestAttributionConstantsAreTheExactStrings(t *testing.T) {
 
 func TestAttributionLawEntersTheContractOnlyWhenItIsOn(t *testing.T) {
 	on := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute).
-		WithAttribution(true).system(Task{NodeID: 1, Brief: "work"})
+		WithAttribution(true).system(Task{NodeID: 1, Brief: "work"}, nil)
 	for _, want := range attributionStrings {
 		if !strings.Contains(on, want) {
 			t.Fatalf("the contract is missing %q", want)
@@ -44,7 +44,7 @@ func TestAttributionLawEntersTheContractOnlyWhenItIsOn(t *testing.T) {
 	}
 
 	off := NewLinear(&scriptedCompleter{}, workspace(t), nil, 10, 1_000_000, time.Minute).
-		system(Task{NodeID: 1, Brief: "work"})
+		system(Task{NodeID: 1, Brief: "work"}, nil)
 	for _, unwanted := range append(attributionStrings, "agentfield", "Co-Authored-By") {
 		if strings.Contains(off, unwanted) {
 			t.Fatalf("attribution is off and the contract still says %q", unwanted)

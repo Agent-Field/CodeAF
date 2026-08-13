@@ -77,7 +77,7 @@ func TestNeitherLawDemandsFullTextOfSomethingTheRunProduced(t *testing.T) {
 	// message costs every leaf of a run its warm prefix, which is why the
 	// artifact clause is phrased for the worker to apply rather than compiled
 	// in by a caller that knows what the run produced.
-	first, second := (&Linear{}).system(Task{}), (&Linear{}).system(Task{})
+	first, second := (&Linear{}).system(Task{}, nil), (&Linear{}).system(Task{}, nil)
 	if first != second {
 		t.Error("the leaf system message is no longer byte-identical across leaves of a run")
 	}
