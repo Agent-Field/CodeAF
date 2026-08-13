@@ -44,7 +44,7 @@ func TestOnlyAPlannedJobsOwnNodesAreDivisible(t *testing.T) {
 		{"a repair, which is planned flat on purpose", "task-4-x1-n2", false, 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			target, ok := plans.divisionTarget(test.nodeID, settings, planner)
+			target, ok := plans.divisionTarget(test.nodeID, settings, planner, 0)
 			if ok != test.resolved {
 				t.Fatalf("resolved = %t, want %t", ok, test.resolved)
 			}

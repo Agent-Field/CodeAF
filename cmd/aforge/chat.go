@@ -262,6 +262,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// or AFORGE_PLAN_MODEL splits structuring from execution, and a /model
 	// change lands on the very next planning call.
 	planModel := firstNonEmptyString(opts.planModel, prefs.PlanModel, settings.PlanModel, workModel)
+	// How much the structuring model can hold, read once for the session. Every
+	// budget on the planning side — what a reviser is shown of what happened,
+	// what a claim-time division is shown of what landed, what the completion
+	// gate is shown of the table it judges — is a share of this. Zero is the
+	// catalog saying it cannot place the model, and each of those falls back to
+	// the literal it carried before this number existed.
+	planContextTokens := modelCatalog.ContextLength(planModel)
 	planClient, err := newClient(settings, planModel)
 	if err != nil {
 		return nil, brain.abandon(err)
@@ -309,7 +316,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// paths that ask it reach it through a package seam because they are
 	// reached through signatures that carry a plan function and a budget and
 	// have no client to give it. AFORGE_GROWTH_GATE=0 turns it off.
-	resident.SetGrowthSatisfier(resident.SatisfierFor(planClient))
+	resident.SetGrowthSatisfier(resident.SatisfierFor(planClient, planContextTokens))
 	// The standing watch is a host timer: installing it shells out to launchctl
 	// or systemctl and leaves something behind that outlives the process. A
 	// one-shot command may not do that to a machine, so headless never builds
@@ -643,7 +650,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// before Y" arrived as a claim that X had been checked. The notebook is
 		// not a prior result and says so; a dependency says whose it is.
 		inputs := leafNotebookInputs(graph, node)
-		dependencies, err := graph.DependencyInputs(node.ID, store.MaxDigestBytes)
+		dependencies, err := graph.DependencyInputs(node.ID, build.dependencyPot())
 		if err == nil {
 			for _, dependency := range dependencies {
 				// The files are what make the 300-word cap survivable: a
@@ -1347,7 +1354,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		WithDailyBudgetUSD(settings.DailyBudgetUSD).
 		// The depth loop, asked at the claim instead of at the build. See
 		// cmd/aforge/jit.go; a nil hook here is the whole rollback.
-		WithExpand(jitExpander(graph, plans, settings, planClient).Expand)
+		WithExpand(jitExpander(graph, plans, settings, planClient, planContextTokens).Expand)
 	if craftRunner != nil {
 		runner = runner.WithCraftRunner(craftRunner)
 	}
@@ -2889,7 +2896,7 @@ func (j *jobPlans) reviseAfter(ctx context.Context, settings config.Config, clie
 	// time a leaf has landed, the splice that owed the money has long happened.
 	j.settleOwedPlanSpend(graph)
 	j.reviseOn(ctx, settings, client, graph, node, prefix, planGraph,
-		resident.RevisionEvent(node, summary, artifacts, failure), workerModel)
+		resident.RevisionEvent(node, summary, artifacts, failure, planGraph.Window()), workerModel)
 }
 
 // reviseAfterCancel is the same pass convened by a withdrawal rather than a
@@ -2903,7 +2910,7 @@ func (j *jobPlans) reviseAfterCancel(ctx context.Context, settings config.Config
 	graph *store.Store, node store.Node, prefix string, planGraph *plan.Graph,
 	partial, reason, workerModel string) {
 	j.reviseOn(ctx, settings, client, graph, node, prefix, planGraph,
-		resident.CancelledRevisionEvent(node, partial, reason), workerModel)
+		resident.CancelledRevisionEvent(node, partial, reason, planGraph.Window()), workerModel)
 }
 
 func (j *jobPlans) reviseOn(ctx context.Context, settings config.Config, client *liveClient, graph *store.Store, node store.Node, prefix string, planGraph *plan.Graph, event string, workerModel string) {
@@ -3378,6 +3385,24 @@ func fileShapedAsk(terrainRoot, goal string) bool {
 	return namedFileInAsk.MatchString(goal)
 }
 
+// planWindow is how much the plan slot's current model can hold, asked of the
+// live handle rather than of a value captured at startup: /model may have moved
+// the slot since, and the graph about to be built should record the window it is
+// actually being written through.
+//
+// Zero is the catalog declining to place the model — an unlisted slug, a catalog
+// that never loaded — and every budget downstream of it falls back to the
+// literal it carried before any of this existed. Zero is never "small".
+func planWindow(settings config.Config, client *liveClient) int {
+	if client == nil {
+		return 0
+	}
+	model, _ := client.Snapshot()
+	// A nil catalog answers zero rather than panicking, which is the same
+	// answer as an unlisted model and wants the same handling.
+	return settings.Models.ContextLength(model)
+}
+
 // terrainRoot is the directory the planner is allowed to look at before it
 // plans, and it is empty for every surface but a shared workspace. See
 // buildBrain, where the judgement is made once.
@@ -3491,6 +3516,11 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			// after it.
 			FileShaped:   fileShapedAsk(terrainRoot, compiled.Goal),
 			SpineSamples: settings.SpineSamples,
+			// The window this document is written and later revised through.
+			// It rides onto the graph so the sentinel and the completion gate,
+			// which are handed the document and nothing else, size themselves
+			// from the same number the build did.
+			ContextTokens: planWindow(settings, planClient),
 			// One level deeper than the one-shot default: chat projects are
 			// where visible fan-out is the product, and the compiler now
 			// names the parts for the planner to expand.
@@ -3754,13 +3784,14 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			// A remainder is planned against a workspace a worker has already been
 			// writing in, which is the case where this is worth the most: the
 			// replan can see what the exhausted leaf actually left behind.
-			Terrain:      plan.RenderTerrain(terrainRoot, goal),
-			FileShaped:   fileShapedAsk(terrainRoot, goal),
-			SpineSamples: settings.SpineSamples,
-			MaxDepth:     0,
-			NodeBudget:   min(settings.NodeBudget, replanNodeBudget),
-			Briefs:       true,
-			Ensemble:     plan.EnsembleNever,
+			Terrain:       plan.RenderTerrain(terrainRoot, goal),
+			FileShaped:    fileShapedAsk(terrainRoot, goal),
+			SpineSamples:  settings.SpineSamples,
+			ContextTokens: planWindow(settings, planClient),
+			MaxDepth:      0,
+			NodeBudget:    min(settings.NodeBudget, replanNodeBudget),
+			Briefs:        true,
+			Ensemble:      plan.EnsembleNever,
 			// A remainder that the spine finds nothing gated in is one fresh
 			// worker's assignment, and buying a seven-pass planning bundle to
 			// discover that was measured at 13.8k and 23.9k prompt tokens on

@@ -153,6 +153,16 @@ var OperatorEnvPins = []string{
 	// has proven itself, which is exactly the lifetime a persisted setting
 	// must not have.
 	"AFORGE_GROWTH_GATE",
+	// AFORGE_CONTEXT_FILL_PCT and AFORGE_COMPLETION_RESERVE are the two dials
+	// of the window law (internal/ctxbudget): how much of a model's context an
+	// agent may fill before compaction, and how much room every call keeps for
+	// its answer and its reasoning. They are plumbing rather than settings
+	// because they are calibration against a provider's arithmetic, not a
+	// preference the product has an opinion about — the product's opinion is
+	// the default — and the number a person actually tunes for the same purpose
+	// is the model they picked, which the sheet already offers.
+	"AFORGE_CONTEXT_FILL_PCT",
+	"AFORGE_COMPLETION_RESERVE",
 }
 
 // Defaults the registry owns beyond the ones config.go already declares.

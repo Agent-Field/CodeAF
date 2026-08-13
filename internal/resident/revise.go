@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -242,17 +243,21 @@ func growthRefusalNote(verdict GrowVerdict) string {
 // is here for the same reason it is in OverrunGoal: a leaf that says "wrote the
 // notes to api-notes.md" has reported its whole finding in a filename, and a
 // sentinel that cannot see the file at least learns one exists.
-func RevisionEvent(node store.Node, summary string, artifacts []string, failure string) string {
+//
+// contextTokens is the window of the model that will read the event. Zero is
+// unknown and keeps the two literals this function was written with.
+func RevisionEvent(node store.Node, summary string, artifacts []string, failure string, contextTokens int) string {
 	label := strings.TrimSpace(node.Title)
 	if label == "" {
 		label = firstLine(node.Brief)
 	}
+	resultRoom, failureRoom := revisionBytes(contextTokens)
 	ending := "finished"
 	if failure = strings.TrimSpace(failure); failure != "" {
-		ending = "FAILED: " + clipEventBytes(firstLine(failure), revisionFailureBytes)
+		ending = "FAILED: " + clipEventBytes(firstLine(failure), failureRoom)
 	}
 	event := fmt.Sprintf("Node %q %s. Its result:\n%s", label, ending,
-		clipEventBytes(strings.TrimSpace(summary), revisionResultBytes))
+		clipEventBytes(strings.TrimSpace(summary), resultRoom))
 	if len(artifacts) > 0 {
 		event += "\n\nFiles it left in the workspace:\n" + strings.Join(artifacts, "\n")
 	}
@@ -272,7 +277,7 @@ func RevisionEvent(node store.Node, summary string, artifacts []string, failure 
 // behind, spends the user's money undoing the decision they just made. The
 // prompt refuses it and this says it again at the event, because the event is
 // what the sentinel reads last.
-func CancelledRevisionEvent(node store.Node, partial, reason string) string {
+func CancelledRevisionEvent(node store.Node, partial, reason string, contextTokens int) string {
 	label := strings.TrimSpace(node.Title)
 	if label == "" {
 		label = firstLine(node.Brief)
@@ -280,11 +285,12 @@ func CancelledRevisionEvent(node store.Node, partial, reason string) string {
 	if reason = strings.TrimSpace(reason); reason == "" {
 		reason = "no reason given"
 	}
+	resultRoom, failureRoom := revisionBytes(contextTokens)
 	event := fmt.Sprintf("Node %q was CANCELLED by the user: %s.", label,
-		clipEventBytes(firstLine(reason), revisionFailureBytes))
+		clipEventBytes(firstLine(reason), failureRoom))
 	if partial = strings.TrimSpace(partial); partial != "" {
 		event += "\n\nWhat it had written when they stopped it:\n" +
-			clipEventBytes(partial, revisionResultBytes)
+			clipEventBytes(partial, resultRoom)
 	}
 	return event + "\n\nThe user stopped this on purpose; it is not a failure and it is not " +
 		"waiting to be finished. Reconsider only the unstarted remainder: a step that can no " +
@@ -293,10 +299,43 @@ func CancelledRevisionEvent(node store.Node, partial, reason string) string {
 		"never treat what it left behind as something to be repaired."
 }
 
+// What an event may carry, for a sentinel whose window nobody could name. Every
+// other case is a share of the real thing; see revisionBytes.
 const (
 	revisionResultBytes  = 1200
 	revisionFailureBytes = 300
 )
+
+// The event's share of the sentinel's prompt. The plan and its landed results
+// are the larger half and are budgeted where they are rendered (see
+// plan.Graph.stateBlock); this is the one thing that has just happened, and it
+// is what the rest is being read against.
+const (
+	revisionEventShare = 1
+	revisionShares     = 4
+
+	// revisionFloorTokens is the revise prompt, its schema and the goal's
+	// context block — everything the event is added to.
+	revisionFloorTokens = 4 << 10
+
+	// revisionFailureDivisor keeps a failure line the sharp fraction of a result
+	// it has always been: 1200 and 300 stood in this ratio, and the pair scales
+	// together rather than one of them being left behind at a literal.
+	revisionFailureDivisor = 4
+)
+
+// revisionBytes is how much of a landed result, and of the line saying why one
+// failed, the event may carry — sized from the window of the model that reads
+// it. An unknown window returns exactly the old pair.
+func revisionBytes(contextTokens int) (result, failure int) {
+	result = ctxbudget.For(contextTokens).WithFloor(revisionFloorTokens).
+		Share(revisionEventShare, revisionShares, revisionResultBytes)
+	failure = result / revisionFailureDivisor
+	if failure < revisionFailureBytes {
+		failure = revisionFailureBytes
+	}
+	return result, failure
+}
 
 // clipEventBytes bounds prompt-bound text at a rune boundary. A byte cut
 // through a character produces a replacement glyph that rides the whole
