@@ -631,6 +631,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(sessionSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize session schema: %w", err))
 	}
+	if err := migrateSessionSchema(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate session schema: %w", err))
+	}
 	if err := backfillSessions(db); err != nil {
 		return closeOnError(fmt.Errorf("backfill sessions: %w", err))
 	}

@@ -151,15 +151,22 @@ func filter(dst []hit, rows []row, needle string) []hit {
 	dst = dst[:0]
 	for i := range rows {
 		r := &rows[i]
-		verbScore, verbOK := score(r.lowerVerb, needle)
-		descScore, descOK := score(r.lowerDesc, needle)
-		switch {
-		case verbOK && descOK:
-			dst = append(dst, hit{idx: int32(i), score: int32(min(verbScore, descScore))})
-		case verbOK:
-			dst = append(dst, hit{idx: int32(i), score: int32(verbScore)})
-		case descOK:
-			dst = append(dst, hit{idx: int32(i), score: int32(descScore)})
+		best, matched := 0, false
+		// The three haystacks in the order they rank: what the row is called,
+		// what it says, and — for a thread — what it is ABOUT. The tags are the
+		// last of the three and never the best of them by construction, because
+		// a row whose NAME contains the query is the row the reader meant.
+		for _, haystack := range [...]string{r.lowerVerb, r.lowerDesc, r.lowerTags} {
+			s, ok := score(haystack, needle)
+			if !ok {
+				continue
+			}
+			if !matched || s < best {
+				best, matched = s, true
+			}
+		}
+		if matched {
+			dst = append(dst, hit{idx: int32(i), score: int32(best)})
 		}
 	}
 	// Rows are built section-grouped, so the survivors already are; only the

@@ -4,10 +4,19 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
+
+// sameSession is what `==` was before a room carried a tag list: every field,
+// with the two times compared as instants rather than as structs.
+func sameSession(a, b Session) bool {
+	return a.ID == b.ID && a.Title == b.Title && a.Surface == b.Surface &&
+		slices.Equal(a.Tags, b.Tags) &&
+		a.Created.Equal(b.Created) && a.LastActive.Equal(b.LastActive)
+}
 
 func TestASessionIsMintedByTheFirstMessageThatNamesIt(t *testing.T) {
 	s := openThreadStore(t)
@@ -166,7 +175,7 @@ func TestSessionsBackfillOnOpenAndSurviveARebuild(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("read rebuilt session: %v (found %v)", err, ok)
 	}
-	if rebuilt != filled {
+	if !sameSession(rebuilt, filled) {
 		t.Fatalf("a rebuild produced %+v, want the same row %+v", rebuilt, filled)
 	}
 	after, err := reopened.Sessions()
@@ -270,11 +279,11 @@ func TestAnEmptyRoomExistsBeforeItsFirstMessage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(listed) != 1 || listed[0] != opened {
+	if len(listed) != 1 || !sameSession(listed[0], opened) {
 		t.Fatalf("sessions = %+v, want the empty room %+v", listed, opened)
 	}
 	read, ok, err := s.Session("chat-new")
-	if err != nil || !ok || read != opened {
+	if err != nil || !ok || !sameSession(read, opened) {
 		t.Fatalf("read empty room = %+v (found %v, err %v), want %+v", read, ok, err, opened)
 	}
 
@@ -331,7 +340,7 @@ func TestOpeningAnExistingRoomJournalsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-open: %v", err)
 	}
-	if again != first {
+	if !sameSession(again, first) {
 		t.Fatalf("re-opening produced %+v, want the room as it stands %+v", again, first)
 	}
 	if after := countEvents(t, s, EventSessionOpened); after != before {
@@ -396,7 +405,7 @@ func TestEmptyRoomsSurviveARebuild(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("the empty room did not survive the rebuild: found %v, err %v", ok, err)
 	}
-	if rebuilt != opened {
+	if !sameSession(rebuilt, opened) {
 		t.Fatalf("the rebuilt empty room is %+v, want %+v", rebuilt, opened)
 	}
 }
@@ -426,7 +435,7 @@ func TestRenameSessionRetitlesWithoutTouchingBirthdayOrActivity(t *testing.T) {
 			renamed.LastActive, opened.LastActive)
 	}
 	read, _, err := s.Session("chat-1")
-	if err != nil || read != renamed {
+	if err != nil || !sameSession(read, renamed) {
 		t.Fatalf("read after rename = %+v (err %v), want %+v", read, err, renamed)
 	}
 
@@ -496,7 +505,7 @@ func TestRenamingToTheSameTitleJournalsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rename to the same title: %v", err)
 	}
-	if same != opened {
+	if !sameSession(same, opened) {
 		t.Fatalf("renaming to the same title produced %+v, want the room as it stands %+v", same, opened)
 	}
 	if after := countEvents(t, s, EventSessionRenamed); after != before {
