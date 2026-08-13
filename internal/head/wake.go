@@ -60,10 +60,31 @@ func ReceiptStreamSession(sessionID string) string { return sessionID + receiptS
 // session), an applied receipt with nowhere to be filed (a system row in the
 // room), and a refusal (an agent row in the room, because a refusal always
 // speaks). What they share is the only column that matters here — the command
-// they settle. Nothing else in the journal carries one.
+// they settle.
+//
+// Answers is what keeps the head out of its own mail. The command number is NOT
+// unique to a settlement: the head stamps it on its own acknowledgement too, so
+// that the surfaces drawing cards can tie the sentence to the work it is about,
+// and the head's acknowledgement of a refusal is an agent row in the room
+// carrying a command number and a body — the refusal shape, exactly. The two
+// were indistinguishable, and the poll reaches the head's own row first because
+// the head speaks before the workforce settles.
+//
+// So a redirect got answered twice by one head. It handed the words over ("those
+// words are with the team — they'll make sure the brief uses metric units"), the
+// poll read that very sentence back as news from the workforce, and the wake
+// paraphrased it into the room a moment later as though something had come back
+// ("it stays in metric units, as you asked"). Nothing had come back. The person
+// could not tell the restatement from a report, which is the whole thing this
+// wake exists to be.
+//
+// Answers is the discriminator because it already means precisely this and is
+// already in the journal: it is the user turn a reply answers, set on every row
+// the head posts and on nothing the reconciler writes. A settlement answers no
+// turn — it reports one.
 func receiptRow(message store.Message) bool {
 	return message.CommandSeq != 0 && message.Role != store.RoleUser &&
-		strings.TrimSpace(message.Body) != ""
+		message.Answers == 0 && strings.TrimSpace(message.Body) != ""
 }
 
 // receiptInterprets reports whether a settled command of this kind comes back

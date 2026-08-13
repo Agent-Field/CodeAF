@@ -3444,10 +3444,26 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// judged the requests independent and wrote each as a standalone
 		// assignment; laying them side by side is geometry, and the spine was
 		// measured restating the independence rule and then chaining them
-		// anyway. This is also the cheaper path: no spine, no fan-out, no bind
-		// — the contract pass below is the only structuring these jobs buy.
+		// anyway. This is also the cheaper path: no spine, no fan-out — the
+		// sequencing and contract passes below are the only structuring these
+		// jobs buy.
+		//
+		// Sequencing is not a second opinion on whether to bundle; it is the one
+		// thing the flat layout cannot carry. A compile call that declared four
+		// independent parts where the fourth assembled the other three admitted
+		// four leaves with no edges between them, and the assembler was
+		// claimable from the first tick: it ran beside its own inputs, invented
+		// the section it was supposed to read, and its file went out with one of
+		// the three countries missing for good. The declaration is checked here
+		// because here is the last place an order can still be recorded — after
+		// the splice there is nothing left to infer it from.
 		if parts := trimmedParts(compiled.Parts); len(parts) >= 2 {
 			graph := plan.Bundle(compiled.Goal, parts)
+			sequenceUsage, sequenceErr := plan.Sequence(settings.Context(ctx, compiled.Goal), structuring, graph)
+			if sequenceErr != nil {
+				log.Printf("note: could not sequence bundle parts: %v", sequenceErr)
+			}
+			journalPlanSpend(history, plans, planClient, prefix, sequenceUsage)
 			contractUsage, contractErr := plan.Contracts(settings.Context(ctx, compiled.Goal), structuring, graph, resident.ContractPlaybook(history), progress)
 			if contractErr != nil {
 				log.Printf("note: could not write contracts: %v", contractErr)

@@ -1119,9 +1119,14 @@ func (a *App) applySubtreeRead(msg subtreeReadMsg) {
 }
 
 // nodeMessagesMsg is one read of a task room's trail.
+//
+// read is the highest sequence the gather actually looked at, which is not the
+// highest it kept: rows it drops still have to move the watermark or the next
+// poll fetches them again forever.
 type nodeMessagesMsg struct {
 	node     string
 	messages []store.Message
+	read     int64
 	err      error
 }
 
@@ -1149,15 +1154,36 @@ func (a *App) readNodeCmd(node string, after int64) tea.Cmd {
 	nodes := a.source.subtreeNodes(node)
 	return func() tea.Msg {
 		var merged []store.Message
+		var read int64
 		for _, id := range nodes {
 			messages, err := graph.NodeMessages(id, after, messagePage)
 			if err != nil {
 				return nodeMessagesMsg{node: node, err: err}
 			}
-			merged = append(merged, messages...)
+			for _, message := range messages {
+				if message.Seq > read {
+					read = message.Seq
+				}
+				// The one class of row this gather must drop. It reads N nodes,
+				// and a steer is written once per node, so a person who typed
+				// "also make sure it uses metric units" once into a job with four
+				// workers mid-turn opened that job and found their own sentence in
+				// it four times over — consecutively, under their own name, each
+				// copy prefixed with a word for a thing they have never heard of.
+				//
+				// One saying is not four events, and their words are already in
+				// the room they typed them in. What belongs here is what the steer
+				// DID, which arrives on its own as the settlement filed on the
+				// card. The watermark still advances past these rows: they are
+				// read and discarded, never re-read.
+				if mailboxCopy(message) {
+					continue
+				}
+				merged = append(merged, message)
+			}
 		}
 		sort.SliceStable(merged, func(i, j int) bool { return merged[i].Seq < merged[j].Seq })
-		return nodeMessagesMsg{node: node, messages: merged}
+		return nodeMessagesMsg{node: node, messages: merged, read: read}
 	}
 }
 
@@ -1174,6 +1200,9 @@ func (a *App) applyNodeMessages(msg nodeMessagesMsg) {
 	}
 	if a.view == nil || a.view.kind != viewNode || a.view.node != msg.node {
 		return
+	}
+	if msg.read > a.view.watermark {
+		a.view.watermark = msg.read
 	}
 	for i := range msg.messages {
 		message := msg.messages[i]
@@ -1203,6 +1232,20 @@ func (v *mainView) absorb(message store.Message) {
 	v.messages = append(v.messages, store.Message{})
 	copy(v.messages[at+1:], v.messages[at:])
 	v.messages[at] = message
+}
+
+// mailboxCopy reports whether one row is a worker's copy of a steer rather than
+// something said in a room.
+//
+// A redirection has no shared mailbox to go in: the steering poll reads a node's
+// own messages, so the broadcast writes one node-anchored copy per worker still
+// mid-turn, session-less on purpose so no room draws it (resident's
+// BroadcastRedirection, thread.Record). That is delivery, and it is the whole
+// reason those three fields sit together this way — nothing a person types
+// arrives session-less. An amendment aimed at one node carries the room it was
+// typed in, and so does a steer typed at a node directly; both stay visible.
+func mailboxCopy(message store.Message) bool {
+	return message.Role == store.RoleUser && message.NodeID != "" && message.SessionID == ""
 }
 
 // -- the preview card --------------------------------------------------------

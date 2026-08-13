@@ -1029,6 +1029,85 @@ func TestATaskRoomShowsTheWholeSubtreesTrail(t *testing.T) {
 	}
 }
 
+// One steer is one saying, however many workers have to be handed it.
+//
+// A redirection has no shared mailbox: the steering poll reads a node's own
+// messages, so the broadcast writes one session-less copy per worker mid-turn.
+// The room reads the whole subtree, so a person who typed "also make sure it
+// uses metric units" once, into a job with four workers, opened that job and
+// found their own sentence in it four consecutive times, each copy prefixed
+// with a word for a thing they have never heard of.
+//
+// Delivery is not conversation. Their words are in the room they typed them in,
+// and what the steer DID arrives here on its own as the settlement.
+func TestOneSteerIsNotFourRowsInTheTaskRoom(t *testing.T) {
+	app, backend := boardApp(t)
+	const words = "also make sure it uses metric units"
+	// The broadcast: one copy per worker mid-turn, node-anchored and
+	// session-less, exactly as resident.BroadcastRedirection writes them.
+	backend.node["job-1/h2"] = []store.Message{
+		{Seq: 91, Role: store.RoleUser, NodeID: "job-1/h2", Body: "redirection from the user: " + words},
+		{Seq: 93, SessionID: testSession, Role: store.RoleAgent, NodeID: "job-1/h2", Body: "H2 is measuring in km"},
+	}
+	backend.node["job-1/keycutter"] = []store.Message{
+		{Seq: 92, Role: store.RoleUser, NodeID: "job-1/keycutter", Body: "redirection from the user: " + words},
+	}
+	backend.journal++
+	poll(t, app)
+
+	for range 10 {
+		if app.view != nil && app.view.kind == viewNode {
+			break
+		}
+		if !app.railFocus {
+			press(app, "ctrl+o")
+		}
+		press(app, "down")
+		press(app, "enter")
+	}
+	if app.view == nil || app.view.kind != viewNode {
+		t.Fatalf("never reached a task room: %#v", app.view)
+	}
+	msg, ok := run(t, app.readNodeCmd(app.view.node, 0)).(nodeMessagesMsg)
+	if !ok {
+		t.Fatal("the task room read did not answer with messages")
+	}
+	app.applyNodeMessages(msg)
+
+	out := shown(t, app, 80)
+	if strings.Contains(out, words) {
+		t.Fatalf("the person's own steer was played back at them by the machinery:\n%s", out)
+	}
+	if strings.Contains(out, "redirection from the user") {
+		t.Fatalf("the mailbox's own vocabulary is on the page:\n%s", out)
+	}
+	// The room is not emptied — everything the workers actually said is still
+	// there. Only the delivery copies are gone.
+	if !strings.Contains(out, "H2 is measuring in km") {
+		t.Fatalf("the room lost the work's own trail:\n%s", out)
+	}
+	// And the dropped rows still move the watermark, or the next poll fetches
+	// them again forever.
+	if app.view.watermark < 93 {
+		t.Fatalf("the watermark stalled at %d behind the rows the gather discarded", app.view.watermark)
+	}
+
+	// A steer typed AT a node carries the room it was typed in, and stays: the
+	// difference is delivery versus something somebody said somewhere.
+	if !mailboxCopy(store.Message{Role: store.RoleUser, NodeID: "job-1/h2"}) {
+		t.Fatal("a broadcast copy is not read as one")
+	}
+	for _, kept := range []store.Message{
+		{Role: store.RoleUser, NodeID: "job-1/h2", SessionID: testSession},
+		{Role: store.RoleUser, SessionID: testSession},
+		{Role: store.RoleAgent, NodeID: "job-1/h2"},
+	} {
+		if mailboxCopy(kept) {
+			t.Fatalf("a room's own row was read as delivery: %+v", kept)
+		}
+	}
+}
+
 // The subtree read is derived from the scope the rail already built, so it can
 // never disagree with what the room shows, and it is bounded by that scope.
 func TestTheSubtreeReadFollowsTheRailsOwnScope(t *testing.T) {

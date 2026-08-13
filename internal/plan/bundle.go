@@ -1,8 +1,13 @@
 package plan
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // Bundle lays several requests that do not feed each other side by side: every
@@ -64,6 +69,159 @@ func Bundle(goal string, parts []string) *Graph {
 			"the rest.", len(ids)),
 	})
 	return graph
+}
+
+// sequencePrompt recovers the one thing the bundle layout cannot express and
+// therefore destroys: the order the parts actually had.
+//
+// A bundle is laid out on a declaration — the call that read the whole ask said
+// these requests do not feed each other — and that declaration is the single
+// point of failure in the cheap route, because it is the one judgment nothing
+// downstream can check. When it is wrong the parts are admitted with no edges
+// at all, and no edge is not a weak claim about order, it is a positive claim
+// that there is none: a part whose whole job is to work over its siblings is
+// claimable the instant the job is admitted, runs against nothing, and invents
+// what it was supposed to read. The layout is geometry, but only once the
+// order is known, and a flat list carries no order to know it from.
+//
+// So the same question every planned graph already answers is asked of the
+// parts, once, in the cheapest possible form. It is written against the bias
+// bind.go names: asked what depends on what, a model returns a chain. The empty
+// answer is stated as the normal one, the test for an edge is made operational
+// — name the material that crosses over — and the one case that motivated the
+// pass is described by its structure rather than by any list of words a
+// gathering request might happen to use.
+const sequencePrompt = `You decide which of these requests must wait for another.
+
+They arrived together in one breath. Each is run by a separate agent that
+receives its own request and the outputs of whatever you list for it — and
+nothing else. So the list does two jobs at once: it decides when a request may
+start, and it decides what its agent is allowed to see.
+
+One request waits for another only when it cannot produce a correct, complete
+result without reading that one's actual output. Name to yourself the specific
+fact, figure, file, or finding that crosses over. If you cannot name one, there
+is no edge.
+
+These are not reasons to wait: sharing a subject, being spoken later in the
+sentence, matching format or tone, or being "informed by" another request.
+
+Most of the time nothing waits. Requests asked in one breath usually stand
+alone, every edge you record is time the person spends waiting that they would
+not otherwise spend, and an empty list is the normal and expected answer.
+
+The exception is the request whose own job is to work over what the others
+produce — to assemble them, compare them, weigh them against each other, or
+write them up as a single thing. That request cannot begin before the requests
+it works over have finished. Leaving it empty would start it beside the very
+material it exists to consume, and it would then produce that material itself
+rather than wait. Name every request whose output it works from.
+
+Answer with one bare JSON object and nothing else.`
+
+var sequenceSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "waits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "request": { "type": "integer" },
+          "after":   { "type": "array", "items": { "type": "integer" } }
+        },
+        "required": ["request", "after"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["waits"],
+  "additionalProperties": false
+}`)
+
+type sequenceReply struct {
+	Waits []struct {
+		Request int   `json:"request"`
+		After   []int `json:"after"`
+	} `json:"waits"`
+}
+
+// Sequence records the order a declared bundle actually has, on the graph
+// Bundle laid out. It is the bundle route's whole check on the declaration it
+// was built from, and it costs one call however many parts there are.
+//
+// Edges are added rather than assigned: the synthesis already needs every part
+// and must keep needing them whatever this pass answers, and AddNeed drops any
+// edge that would close a cycle, so a model that answers a mutual wait leaves
+// the graph runnable instead of unsplicable. A failed call leaves the layout
+// exactly as Bundle wrote it — the same flat shape the route had before this
+// pass existed — which is a worse plan than a sequenced one and still a
+// plan, and the error is returned so the caller can say so.
+func Sequence(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
+	if graph == nil {
+		return Usage{}, nil
+	}
+	parts := make([]Node, 0, len(graph.Nodes))
+	for _, node := range graph.Nodes {
+		if node.Stage == 1 {
+			parts = append(parts, node)
+		}
+	}
+	// One part cannot wait for a sibling it does not have.
+	if len(parts) < 2 {
+		return Usage{}, nil
+	}
+
+	ctx = provider.WithCall(ctx, provider.ClassPlanBind)
+	var listed strings.Builder
+	for _, part := range parts {
+		fmt.Fprintf(&listed, "%d. %s — %s\n", part.ID, part.Title, part.Summary)
+	}
+	messages := []ai.Message{
+		systemMessage(sequencePrompt),
+		userMessage("The whole ask, as it was made: " + graph.Goal),
+		userMessage("For each of these requests, list the requests it must wait for:\n" + listed.String()),
+	}
+	var reply sequenceReply
+	response, err := structured(ctx, client, messages, sequenceSchema, &reply)
+	var usage Usage
+	usage.Add(usageOf(response))
+	if err != nil {
+		return usage, fmt.Errorf("sequence bundle: %w", err)
+	}
+
+	inside := make(map[int]bool, len(parts))
+	for _, part := range parts {
+		inside[part.ID] = true
+	}
+	// An id nobody has heard of is this call's characteristic failure, and the
+	// same one bind reports: the answer is numbers, and a model that has lost
+	// the list invents them. The reachable edges are still wired — a bundle that
+	// gets three of its four edges is ordered better than one that gets none —
+	// and the verdict says the answer was not clean.
+	clean := true
+	for _, entry := range reply.Waits {
+		if !inside[entry.Request] {
+			clean = false
+			continue
+		}
+		for _, after := range entry.After {
+			if !inside[after] {
+				clean = false
+				continue
+			}
+			if after == entry.Request {
+				continue
+			}
+			_ = graph.AddNeed(entry.Request, after)
+		}
+	}
+	if clean {
+		provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	} else {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+	}
+	return usage, nil
 }
 
 // railWidth is how much of a part's own words a rail row can hold.
