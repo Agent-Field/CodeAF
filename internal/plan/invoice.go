@@ -79,11 +79,20 @@ type InvoiceShape struct {
 // shape rows is one nobody has enough evidence for, and it renders to nothing.
 func (i Invoice) Priced() bool { return len(i.Shapes) > 0 }
 
-// invoiceShapeOrder is the reading order of the size buckets: cheapest first,
-// so the two rows a division is actually weighed against — what one piece costs
-// and what the undivided node costs — sit next to each other.
+// invoiceShapeOrder is the reading order of the size buckets: the judged ruler
+// ascending, then the node nobody judged. The two rows a division is actually
+// weighed against — what one piece costs, and what the whole thing costs
+// undivided — are the ends of this list, which is the comparison the block
+// exists to make.
+//
+// The whole bucket is last and was missing entirely. Undivided goals, single-leaf
+// remainders and post-planning splices are the commonest shape the product runs
+// and they carried no size at all, so they landed in a bucket with no name and no
+// reader: the one row a planner most needs — what happens if you do not split
+// this — was the one row the price list could never show.
 var invoiceShapeOrder = []string{
 	profile.BucketDirect, string(SizeAtomic), string(SizeBorderline), string(SizeOversized),
+	profile.BucketWhole,
 }
 
 // InvoiceFor prices one worker from its journaled records.
@@ -108,10 +117,22 @@ func InvoiceFor(worker string, records []profile.Record) (Invoice, bool) {
 			continue
 		}
 		byShape[record.Size] = append(byShape[record.Size], record)
-		// The floor is taken across every shape rather than within one. What it
-		// measures is the cost of existing as a leaf at all, and the cheapest
-		// leaf ever seen is the cheapest leaf ever seen whatever the planner
-		// had guessed its size would be.
+		// The floor is taken across every NAMED shape rather than within one.
+		// What it measures is the cost of existing as a leaf at all, and the
+		// cheapest leaf ever seen is the cheapest leaf ever seen whatever the
+		// planner had guessed its size would be — but only where somebody said
+		// what was being guessed at.
+		//
+		// The unlabelled rows are excluded because they are not a shape. They
+		// are what every surface that did not say wrote, including a
+		// one-turn no-op that fabricated a result and spent 7,215 tokens doing
+		// it, and that number was then advertised to every planning call as
+		// "what a piece costs before it does any work" — a floor read off a leaf
+		// that did no work. The shapes are named now (profile.BucketWhole), so
+		// an unlabelled record is a legacy row and nothing else.
+		if !record.Labelled() {
+			continue
+		}
 		if !invoice.FloorKnown || record.Tokens < invoice.Floor {
 			invoice.Floor, invoice.FloorKnown = record.Tokens, true
 		}
@@ -158,25 +179,34 @@ func priceShape(shape string, records []profile.Record) (InvoiceShape, bool) {
 }
 
 // priceJoin measures what reassembly has cost, from the records that recorded
-// how many earlier results they consumed.
+// how many earlier results actually landed in them.
 //
-// Only records that actually carry a source count participate, which is the
-// whole of the honesty here: a record written before source counts existed, or
-// by a surface that does not know the number, is indistinguishable from a leaf
-// that consumed nothing, and counting it as zero would price a join from leaves
-// that never made one. Below the evidence floor the fan-in tax is simply
-// unknown and the line is absent.
+// It selects on the measured fan-in and never on the source count, and that
+// distinction is the whole of the fix. Sources is the touch-list the fan-out
+// prompt collects — the pages, datasets and files a part must visit — and for as
+// long as this function read it, "a leaf that read earlier results" meant "a leaf
+// that named two things", which nearly every leaf does. So the join row was
+// computed over the ordinary population and came back at the ordinary price, and
+// the one number a fan-out prompt cannot see said reassembly was free.
+//
+// Only records that carry a counted fan-in participate, which is the honesty
+// here: a record written before fan-in was measured, or by a surface that does
+// not know the number, is indistinguishable from a leaf that consumed nothing,
+// and counting it as zero would price a join from leaves that never made one.
+// Below the evidence floor the fan-in tax is simply unknown and the line is
+// absent.
 func priceJoin(records []profile.Record) (tokens, inputs, runs int) {
 	var joinTokens, joinInputs []int
 	for _, record := range records {
 		if record.Size == profile.BucketReflex || record.Tokens <= 0 {
 			continue
 		}
-		if !record.HasSourceCount() || record.Sources < 2 {
+		fanIn, counted := record.FanInCount()
+		if !counted || fanIn < 2 {
 			continue
 		}
 		joinTokens = append(joinTokens, record.Tokens)
-		joinInputs = append(joinInputs, record.Sources)
+		joinInputs = append(joinInputs, fanIn)
 	}
 	if len(joinTokens) < profile.MinSamples {
 		return 0, 0, 0

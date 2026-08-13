@@ -478,6 +478,21 @@ func TestReflexEnvelopeSkipsDeliveryGate(t *testing.T) {
 	if got, want := continuationMessage(3), "splitting the remaining work -- 3 pieces queued"; got != want {
 		t.Fatalf("continuation message = %q, want %q", got, want)
 	}
+	// The other splice path arrives here by the same door and by no other. A
+	// repair the revision sentinel adds because a leaf failed is judged when it
+	// stands on the spine — which is where resident.ApplyRevisionGoverned puts
+	// one that nothing in its job is left to gather — and is not judged when it
+	// stands inside a job, because there the deliverable that gathers it is what
+	// the gate reads. The parent is the whole of the test; there is no second
+	// predicate for spliced work.
+	revised := store.Node{ID: "task-1-n3", Parent: store.RootID}
+	if !shouldGate(revised, outcome, false) {
+		t.Fatal("a revision repair standing on the spine skipped the delivery gate")
+	}
+	gathered := store.Node{ID: "task-1-n3", Parent: "task-1"}
+	if shouldGate(gathered, outcome, false) {
+		t.Fatal("a node its own job gathers was judged as a deliverable")
+	}
 }
 
 func TestRecordReflexPersistsBoundaryEvidence(t *testing.T) {

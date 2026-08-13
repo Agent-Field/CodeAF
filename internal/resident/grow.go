@@ -176,6 +176,18 @@ type Growth struct {
 	// has just said what they want more of is not answerable by "the goal is
 	// already covered", because they have just redefined the goal.
 	Ungated bool
+	// After is the landed node this growth is a reaction to — the result that
+	// convened the revision sentinel, exhausted or failed or merely surprising.
+	// The zero node is growth with no such result behind it (a person changing
+	// the goal), and it wires no evidence.
+	//
+	// It travels with the reason because it answers the same kind of question:
+	// the reason says why the job grew, and this says what it grew from, which
+	// is what an added node has to be able to read. The overrun splice has
+	// always had it in hand — it is that path's whole subject — and the
+	// revision path used to have nowhere to put it, so its additions were
+	// admitted with no edge to the work they were replacing.
+	After store.Node
 }
 
 func (g Growth) reason() string {

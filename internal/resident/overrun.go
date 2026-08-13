@@ -561,17 +561,34 @@ func attachNeeds(subtree store.Subtree, sources []string) store.Subtree {
 		if !entry {
 			continue
 		}
-		existing := make(map[string]bool, len(spec.Needs))
-		for _, need := range spec.Needs {
-			existing[need.NodeID] = true
-		}
-		for _, source := range sources {
-			if existing[source] {
-				continue
-			}
-			subtree.Nodes[index].Needs = append(subtree.Nodes[index].Needs,
-				store.Need{NodeID: source, Kind: store.FeedsInto})
-		}
+		subtree.Nodes[index].Needs = entryNeeds(spec.Needs, sources)
 	}
 	return subtree
+}
+
+// entryNeeds is that wiring for one entry node, and it is the one
+// implementation of it. The revision sentinel splices its own repairs a node at
+// a time rather than as a subtree (see ApplyRevisionGoverned), and while it
+// spelled the wiring for itself it spelled none of it: a replacement for a
+// failed leaf was admitted with whatever inputs a model had named by integer and
+// no edge at all to the work it was replacing. Both paths ask the same question
+// now — what prior work must this node be able to see — and get the same answer
+// from here.
+//
+// Anything already needed is left as it is: a source the planner named for
+// itself is not named twice, and the caller's order is preserved so the digest
+// reads in the order the work happened.
+func entryNeeds(needs []store.Need, sources []string) []store.Need {
+	existing := make(map[string]bool, len(needs)+len(sources))
+	for _, need := range needs {
+		existing[need.NodeID] = true
+	}
+	for _, source := range sources {
+		if existing[source] {
+			continue
+		}
+		existing[source] = true
+		needs = append(needs, store.Need{NodeID: source, Kind: store.FeedsInto})
+	}
+	return needs
 }

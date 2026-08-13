@@ -100,6 +100,49 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 	// batch is what the sentinel decided: adds admitted one at a time would let
 	// a batch of twenty walk through a ceiling that had room for one.
 	adds := len(grown)
+
+	// What the additions must be able to see, and who will read what they
+	// produce. Both are facts about the result this revision reacted to, and
+	// both are wiring the overrun splice has always performed around the node it
+	// repairs: entry nodes consume that node and the parts it was assembled from
+	// (repairSources, attachNeeds), and the consumers that were waiting on it
+	// come to wait on the repair instead.
+	//
+	// This path performed neither. An addition arrived with whatever inputs a
+	// model had named by integer — no edge to the failed work it was standing in
+	// for, no evidence of the job it belongs to — and it was parented under a
+	// deliverable that was not waiting for it, so its result reached the person
+	// through no channel at all. Both reads happen only when something is
+	// actually being added; a batch of removals and rewires costs what it always
+	// did.
+	var (
+		sources    []string
+		candidates []string
+		edges      []store.Edge
+		readByAdd  = make(map[int]bool, adds)
+	)
+	if adds > 0 {
+		if strings.TrimSpace(growth.After.ID) != "" {
+			sources = repairSources(graph, growth.After)
+		}
+		edges, _ = graph.ActiveEdges()
+		candidates = revisionReaders(graph, jobRoot, growth.After, edges)
+		// An addition that another addition in the same batch consumes is
+		// already read, and wiring it to the deliverable as well would widen the
+		// sink's fan-in with a result that arrives through its consumer anyway.
+		for _, operation := range operations {
+			if operation.Op != "add" || !operation.Applied {
+				continue
+			}
+			if node := planGraph.Node(operation.Node); node != nil {
+				for _, need := range node.Needs {
+					if grown[need] {
+						readByAdd[need] = true
+					}
+				}
+			}
+		}
+	}
 	request := GrowRequest{JobRoot: jobRoot, Lineage: jobRoot, Reason: growth.reason(),
 		Adding: adds, Ungated: growth.Ungated}
 	if root, ok, err := graph.Node(jobRoot); err == nil && ok {
@@ -151,8 +194,48 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 				Spec: EncodeSpec(node.Spec),
 			}
 			for _, need := range node.Needs {
-				if exists(id(need)) {
-					spec.Needs = append(spec.Needs, store.Need{NodeID: id(need), Kind: store.FeedsInto})
+				target := id(need)
+				if !exists(target) {
+					// Surfaced rather than dropped. An input named by an integer
+					// that resolves to no store node is the sentinel wiring this
+					// node to something expanded away at admission, refused
+					// earlier in this same batch, or never there at all — and the
+					// addition still lands, one input short, with nothing
+					// anywhere to say which. Silence here is how a replacement
+					// ends up reading none of the work it was replacing.
+					note(operation.Node, "it was added without one of its inputs — "+
+						step(need)+" is not part of the running job")
+					continue
+				}
+				spec.Needs = append(spec.Needs, store.Need{NodeID: target, Kind: store.FeedsInto})
+			}
+			// The evidence edge, on the same terms the overrun splice wires it:
+			// an entry — an addition depending on nothing else this batch adds —
+			// reads the result that convened the revision and the parts that
+			// result was assembled from.
+			entry := true
+			for _, need := range node.Needs {
+				if grown[need] {
+					entry = false
+					break
+				}
+			}
+			if entry {
+				spec.Needs = entryNeeds(spec.Needs, sources)
+			}
+			// Where the addition belongs is decided by who will read it, which is
+			// the same law overrun.go states for a repair: work whose result
+			// nobody is waiting for is not a part of a job, it is a deliverable,
+			// and a deliverable parented inside a job that is no longer gathering
+			// finishes correctly and is delivered to nobody. The delivery gate
+			// and the announcer both look at exactly one place — the nodes
+			// standing on the spine — so that is where such an addition stands.
+			readers := []string(nil)
+			parent := jobRoot
+			if !readByAdd[operation.Node] {
+				readers = readersOf(candidates, spec, edges)
+				if len(readers) == 0 {
+					parent = store.RootID
 				}
 			}
 			// The job's session rides along so a failure of this node can
@@ -164,7 +247,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 			if root, ok, err := graph.Node(jobRoot); err == nil && ok {
 				session = root.Provenance.SessionID
 			}
-			err := graph.Splice(jobRoot, store.Subtree{Nodes: []store.NodeSpec{spec}}, store.Provenance{
+			err := graph.Splice(parent, store.Subtree{Nodes: []store.NodeSpec{spec}}, store.Provenance{
 				Origin:    store.OriginSelf,
 				SessionID: session,
 				Intent:    "revision: " + operation.Reason,
@@ -172,6 +255,20 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 			if err != nil {
 				note(operation.Node, "it could not be added: "+err.Error())
 				continue
+			}
+			for _, reader := range readers {
+				// Idempotent, and refused by the store the moment a reader has
+				// started — rewriting what a running transcript was built from is
+				// not on offer, here or on the overrun path.
+				if err := graph.AddEdge(spec.ID, reader, store.FeedsInto); err == nil {
+					edges = append(edges, store.Edge{From: spec.ID, To: reader, Kind: store.FeedsInto})
+				}
+			}
+			// The batch's own edges join the picture the next addition is read
+			// against: one addition consuming another must not then be wired into
+			// anything that addition already waits for.
+			for _, need := range spec.Needs {
+				edges = append(edges, store.Edge{From: need.NodeID, To: spec.ID, Kind: need.Kind})
 			}
 			spliced++
 			applied++
@@ -243,6 +340,78 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 	// is not one to charge.
 	admitGrowth(graph, request, verdict, spliced)
 	return applied, notes
+}
+
+// revisionReaders names the pending work that could read an addition's result:
+// whatever was waiting on the node this revision reacted to, and the job's own
+// deliverable, which gathers everything the job does.
+//
+// It is the overrun splice's closing move (the consumer rewiring at the end of
+// replanOverrun) asked one step earlier, because on this path the answer decides
+// where the addition is parented and not only what it feeds. Only pending
+// readers are named: a consumer that has already started built its transcript
+// from what it had, and the store refuses the edge anyway.
+func revisionReaders(graph *store.Store, jobRoot string, after store.Node, edges []store.Edge) []string {
+	seen := make(map[string]bool, len(edges)+1)
+	var readers []string
+	consider := func(id string) {
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		if node, ok, err := graph.Node(id); err == nil && ok && node.Status == store.Pending {
+			readers = append(readers, id)
+		}
+	}
+	if strings.TrimSpace(after.ID) != "" {
+		for _, edge := range edges {
+			if edge.From == after.ID && edge.Kind != store.Suggests {
+				consider(edge.To)
+			}
+		}
+	}
+	consider(jobRoot)
+	return readers
+}
+
+// readersOf narrows those candidates to the ones this particular addition may
+// legally feed: everything it does not already, transitively, wait for.
+//
+// The exclusion is not fastidiousness. The store's AddEdge checks that a
+// consumer is pending and nothing else, so an edge from an addition to its own
+// dependency is accepted and the job is deadlocked from that instant — neither
+// end can ever be ready. The one shape that produces it is real and already in
+// the tests: a sentinel that adds a check reading the finished deliverable, and
+// a deliverable that would then be wired to wait for its own checker.
+func readersOf(candidates []string, spec store.NodeSpec, edges []store.Edge) []string {
+	waiting := make(map[string]bool, len(spec.Needs))
+	frontier := make([]string, 0, len(spec.Needs))
+	for _, need := range spec.Needs {
+		if need.Kind == store.Suggests || waiting[need.NodeID] {
+			continue
+		}
+		waiting[need.NodeID] = true
+		frontier = append(frontier, need.NodeID)
+	}
+	for len(frontier) > 0 {
+		current := frontier[len(frontier)-1]
+		frontier = frontier[:len(frontier)-1]
+		for _, edge := range edges {
+			if edge.To != current || edge.Kind == store.Suggests || waiting[edge.From] {
+				continue
+			}
+			waiting[edge.From] = true
+			frontier = append(frontier, edge.From)
+		}
+	}
+	readers := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate == spec.ID || waiting[candidate] {
+			continue
+		}
+		readers = append(readers, candidate)
+	}
+	return readers
 }
 
 // growthRefusalNote is the refusal in the batch's own vocabulary. A rail pause

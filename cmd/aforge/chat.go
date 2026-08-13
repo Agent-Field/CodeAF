@@ -280,7 +280,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// The ruler stays keyed to the work model even when a different model
 	// plans: the anchors measure how the executor spends turns, and the plan
 	// model only reads them to size work for that executor.
-	measured := installMeasuredRulers(settings.ProfileDir, taskClient.Model())
+	measured := installMeasuredRulers(settings, taskClient.Model())
 	// What each worker has actually cost, under its own name on the menu. The
 	// hook is read at render time rather than captured, so a specialist that
 	// crosses its evidence gate mid-session is grounded in that session.
@@ -648,8 +648,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if planNode != nil {
 			shape = exec.LeafShape(planNode)
 			// Frozen means frozen everywhere: the sentinel may not edit a
-			// node whose transcript is already being written.
-			plans.markRunning(planGraph, planNode)
+			// node whose transcript is already being written. The two facts
+			// settled a few lines above go on with it, because this is the
+			// moment both are known and the plan node is what the profile
+			// record is later written from.
+			plans.markClaimed(planGraph, planNode, subharness, fanIn.Count)
 		}
 		// One ledger bucket per worker and no finer. What a router learns about
 		// a specialist says nothing about a generalist leaf, and a key any
@@ -1507,7 +1510,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// files live, and what a work-model switch means to the measured ruler.
 		JobID: func(node store.Node) string { return jobIDOf(graph, node) },
 		InstallRuler: func(model string) {
-			installMeasuredRulers(settings.ProfileDir, model)
+			installMeasuredRulers(settings, model)
 		},
 	})
 
@@ -3083,11 +3086,27 @@ func (j *jobPlans) takeIfRoot(nodeID string) (*plan.Graph, string) {
 	return entry.graph, prefix
 }
 
-func (j *jobPlans) markRunning(graph *plan.Graph, node *plan.Node) {
+// markClaimed settles onto the plan node everything the claim just decided, so
+// that the measurement this node becomes describes what happened rather than
+// what was planned.
+//
+// Three facts, one lock, because they are one event. The state is the freeze the
+// sentinel obeys. The worker is whoever the STORE says will run this leaf, and
+// it is written here because the store's answer is the one that is true: the
+// plan node carried the planner's intention and nothing updated it except an
+// escalation, so a leaf promised to a coding pipeline at splice time ran forty
+// minutes on the specialist and was then journaled into the generalist's file —
+// the file the generalist's ruler is rewritten from. The fan-in is what actually
+// landed in this leaf, measured against the live store moments ago, and it is
+// the number a join is priced from; without it the profile had only the
+// touch-list, which is a different fact and made reassembly look free.
+func (j *jobPlans) markClaimed(graph *plan.Graph, node *plan.Node, subharness string, fanIn int) {
 	locks := j.locksFor(graph)
 	locks.document.Lock()
 	defer locks.document.Unlock()
 	node.State = plan.StateRunning
+	node.Subharness = strings.TrimSpace(subharness)
+	node.FanIn = &fanIn
 }
 
 // reviseAfter runs the sentinel over a job's remaining plan in light of one

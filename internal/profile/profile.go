@@ -34,17 +34,32 @@ type Record struct {
 	Summary string `json:"summary"`
 	// Time is when this observation landed. Older profiles omit it; readers
 	// may use the profile file's modification time as a coarse fallback.
-	Time    time.Time `json:"time,omitempty"`
-	Sources int       `json:"sources"`
+	Time time.Time `json:"time,omitempty"`
+	// Sources is the touch-list: how many distinct things this leaf had to
+	// visit to finish. It is a size signal and it is NOT a fan-in — a node that
+	// names four datasets and waits on nobody has four sources and no inputs.
+	// Reading it as one is what priced reassembly at the price of an atomic.
+	Sources int `json:"sources"`
 	// SourcesKnown distinguishes an observed zero from old and direct records
 	// whose omitted source count decoded to zero.
-	SourcesKnown bool    `json:"sources_known,omitempty"`
-	Size         string  `json:"size"`  // planner prediction, or direct when none was made
-	Turns        int     `json:"turns"` // what it actually took
-	Tokens       int     `json:"tokens"`
-	Stop         string  `json:"stop"`
-	Cost         float64 `json:"cost,omitempty"`
-	Promoted     bool    `json:"promoted,omitempty"`
+	SourcesKnown bool `json:"sources_known,omitempty"`
+	// FanIn is how many earlier results actually landed in this leaf: its
+	// settled dependency count, measured rather than inferred. It is the number
+	// a join is priced from, and it is a different question from Sources — the
+	// one the fan-out prompt has never been shown, because until this field
+	// existed nothing recorded it.
+	//
+	// Nil is "nobody counted", which every record written before this field
+	// existed is, and which the join price is required to skip: counting an
+	// unmeasured leaf as a zero-input one would price a join from leaves that
+	// never made one.
+	FanIn    *int    `json:"fan_in,omitempty"`
+	Size     string  `json:"size"`  // planner prediction, or direct when none was made
+	Turns    int     `json:"turns"` // what it actually took
+	Tokens   int     `json:"tokens"`
+	Stop     string  `json:"stop"`
+	Cost     float64 `json:"cost,omitempty"`
+	Promoted bool    `json:"promoted,omitempty"`
 
 	// ExpectedTurns and ExpectedTokens are the profile's own medians for this
 	// size before the record landed. Nil means the bucket had too little prior
@@ -81,20 +96,51 @@ type Record struct {
 // BucketDirect labels work dispatched without a planner size judgment. Keeping
 // it separate lets the compiler learn direct-job costs without teaching the
 // ruler that an unmeasured task was atomic.
+//
+// BucketWhole is the shape that had no name at all, and its absence was
+// expensive. An undivided goal, a single-leaf remainder and a node spliced in
+// after planning all run as one worker over the whole job and none of them was
+// ever sized, so each was journaled under the empty string — a bucket no reader
+// looks up, which is why the commonest shape in the product could never reach
+// the evidence floor and never acquired an expectation of its own. Worse, the
+// unlabelled rows were still the population the cheapest-leaf floor was taken
+// over, so a one-turn no-op's 7,215 tokens became the advertised price of
+// existing as a leaf. Labelled, the shape accrues its own row and the floor is
+// taken over shapes somebody named.
 const (
 	BucketDirect = "direct"
 	BucketReflex = "reflex"
+	BucketWhole  = "whole"
 )
 
 func (r Record) rulerEvidence() bool {
 	return r.Size != BucketDirect && r.Size != BucketReflex
 }
 
+// Labelled reports that somebody named this record's shape. An empty size is a
+// record written by a surface that did not say, and it is evidence about no
+// shape in particular — see BucketWhole for why there is now no reason to write
+// one.
+func (r Record) Labelled() bool { return strings.TrimSpace(r.Size) != "" }
+
 // HasSourceCount keeps nonzero counts from legacy profiles usable while
 // treating their indistinguishable zero value as unknown.
 func (r Record) HasSourceCount() bool {
 	return r.SourcesKnown || r.Sources != 0
 }
+
+// FanInCount is the measured inbound dependency count and whether anybody
+// measured it. A record from before fan-in was recorded answers false, and a
+// caller pricing a join has to skip it rather than read it as zero.
+func (r Record) FanInCount() (int, bool) {
+	if r.FanIn == nil {
+		return 0, false
+	}
+	return *r.FanIn, true
+}
+
+// FanInOf is the pointer a caller writes into a Record.
+func FanInOf(count int) *int { return &count }
 
 // Overran reports a task that could not finish inside its budget — the clearest
 // evidence that the ruler let too much into one node.
@@ -172,6 +218,12 @@ var decodes sync.Map // path -> decoded
 // Load reads the profile for a model and subharness, returning an empty one when
 // there is nothing recorded yet.
 //
+// The file is keyed on the model's IDENTITY rather than on its spelling (see
+// identity.go). With no resolver installed that is the free normalisation alone,
+// which slug already collapsed, so every existing profile file keeps its exact
+// name; with one installed, two spellings of one model open one history, and the
+// history written under the other spelling is adopted on the first miss.
+//
 // The result is always a fresh value owning its own records: callers Add to a
 // profile and Save it, so a remembered parse must never become shared mutable
 // state.
@@ -179,12 +231,18 @@ func Load(dir, model, subharness string) (*Profile, error) {
 	if strings.TrimSpace(dir) == "" {
 		dir = home.Dir()
 	}
-	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(model), slug(subharness)))
+	resolved := Identity(model)
+	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(resolved), slug(subharness)))
 	profile := &Profile{Model: model, Subharness: subharness, path: path}
 
 	before, statErr := os.Stat(path)
 	if errors.Is(statErr, os.ErrNotExist) {
 		decodes.Delete(path)
+		// No file under this identity yet — so this is the moment, and the only
+		// moment, at which evidence written under another spelling of the same
+		// model can be taken in without any risk of double-counting it.
+		found := adopt(dir, resolved, subharness, path)
+		profile.Records, profile.Anchors = found.records, found.anchors
 		return profile, nil
 	}
 	if statErr == nil {
@@ -202,7 +260,12 @@ func Load(dir, model, subharness string) (*Profile, error) {
 
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
+		// The file went away between the stat and the read. Same answer as the
+		// miss above, including the adoption: a race must not be the one path
+		// that silently starts a model's history over.
 		decodes.Delete(path)
+		found := adopt(dir, resolved, subharness, path)
+		profile.Records, profile.Anchors = found.records, found.anchors
 		return profile, nil
 	}
 	if err != nil {

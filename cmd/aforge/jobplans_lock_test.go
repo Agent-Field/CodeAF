@@ -110,11 +110,11 @@ func TestRevisionDoesNotBlockLeavesWhileTheModelThinks(t *testing.T) {
 	go func() {
 		defer close(moved)
 		if prefix, document, node, _, _ := plans.lookup("task-2-n1"); prefix == "task-2" && node != nil {
-			plans.markRunning(document, node)
+			plans.markClaimed(document, node, "", 0)
 			plans.recordOutcome(document, node, nil, nil, "")
 		}
 		if prefix, document, node, _, _ := plans.lookup("task-1-n2"); prefix == "task-1" && node != nil {
-			plans.markRunning(document, node)
+			plans.markClaimed(document, node, "", 0)
 		}
 		_ = plans.takeContract("task-1-n2")
 		_, _ = plans.get("task-1")
