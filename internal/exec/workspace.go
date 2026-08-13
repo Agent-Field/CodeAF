@@ -268,6 +268,35 @@ func (w *Workspace) Artifacts(leaf string) []string {
 	return paths
 }
 
+// Existing lists the files already sitting in the workspace, as absolute paths
+// in stable order.
+//
+// It answers the one question the in-memory artifact register cannot: what did a
+// PREVIOUS process leave here. A leaf whose run was interrupted — by its own
+// time ceiling, or by the terminal closing — comes back to a fresh Workspace
+// whose register is empty and a directory that is not, and the files in it are
+// the whole of what that attempt has to hand on. Reading them off disk is the
+// only honest source, because the register never survived.
+//
+// Only the top level, and never the harness's own dot-directories: a
+// deliverable is written where the output hint points, which is here, and
+// everything below a dot is machinery an agent was deliberately not shown.
+func (w *Workspace) Existing() []string {
+	entries, err := os.ReadDir(w.root)
+	if err != nil {
+		return nil
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		paths = append(paths, filepath.Join(w.root, entry.Name()))
+	}
+	sort.Strings(paths)
+	return paths
+}
+
 // obsDir holds spilled tool output. It is dot-prefixed so an agent listing the
 // workspace sees its own deliverables rather than the machinery behind them.
 const obsDir = ".obs"

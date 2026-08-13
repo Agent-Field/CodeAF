@@ -388,6 +388,32 @@ const (
 	StopOverrun StopReason = "overrun"
 )
 
+// Abandoned is the node watchdog's own ending: the executor was still inside a
+// worker that had already run past every limit it was given, and the runner
+// stopped waiting for it.
+//
+// It is a type rather than fmt.Errorf so that the fact it carries — the clock
+// ran out, nothing about the work refused — survives the trip to whoever decides
+// what happens next. A retry reading this by matching on the words "abandoned"
+// would be a second, private answer to a question the ending already answers,
+// and the first thing to go wrong with a second answer is that it disagrees.
+// The message is unchanged from the sentence this replaced.
+type Abandoned struct {
+	// After is the watchdog it outlived.
+	After time.Duration
+}
+
+func (a *Abandoned) Error() string {
+	if a == nil {
+		return ""
+	}
+	return fmt.Sprintf("executor did not return within %s; abandoned", a.After.Round(time.Second))
+}
+
+// Timeout satisfies the same interface net.Error uses, which is how a caller
+// asks "was this the clock?" without knowing which layer answered.
+func (a *Abandoned) Timeout() bool { return true }
+
 // Usage is the running cost of one task.
 type Usage struct {
 	Calls            int     `json:"calls"`

@@ -82,7 +82,11 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap string
 		goal.WriteString(plan.Spec{Done: criterion}.Render(overrunCriterionLimit))
 	}
 	if strings.TrimSpace(partial) != "" {
-		goal.WriteString("\n\nWhat the previous agent produced before stopping (its partial result arrives as a dependency input; build on it):\n")
+		// The header is Bank's, not this function's. Three paths now hand
+		// unfinished work on — a re-decomposed leaf, an in-place retry, a requeue
+		// at launch — and one wording of "here is what the last agent got to"
+		// serves all three. See bank.go.
+		goal.WriteString("\n\n" + ContinuationPartialHeader + "\n")
 		goal.WriteString(partial)
 	}
 	if strings.TrimSpace(gap) != "" {
@@ -97,7 +101,7 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap string
 		goal.WriteString("\n\nWhat this work hands back is the finished assignment as the person will read it — the whole answer, standing on its own. It is not a reply to the review, not a note on what was missing, and not an account of what was repaired.")
 	}
 	if len(artifacts) > 0 {
-		goal.WriteString("\n\nFiles already produced, to reuse rather than recreate:\n")
+		goal.WriteString("\n\n" + ContinuationFilesHeader + "\n")
 		goal.WriteString(strings.Join(artifacts, "\n"))
 	}
 	if len(records) > 0 {
