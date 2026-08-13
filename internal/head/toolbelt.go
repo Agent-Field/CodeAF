@@ -387,8 +387,9 @@ func beltDefinitions() []ai.ToolDefinition {
 			"kind":     beltProp("string", `"preference" for how they want things done, "fact" for something simply true`),
 			"replaces": beltProp("integer", "the number of the notebook line this makes untrue; never a number you were not shown"),
 		}, "body"),
-		beltTool(beltToolWrite, "Put a document on disk and hand back its path: how anything they will use outside this conversation is produced.", map[string]any{
-			"name": beltProp("string", "the file's own name with its extension, like architecture.svg — no directories"),
+		beltTool(beltToolWrite, "Put a document on disk and hand back its path: how anything they will use outside this conversation is produced. Writing the path of a file this conversation already wrote replaces it in place, which is how a revision is delivered.", map[string]any{
+			"name": beltProp("string", "the file's own name with its extension, like architecture.svg"),
+			"dir":  beltProp("string", "the directory they named, as they spelled it; leave it out and the file lands in the workspace"),
 			"body": beltProp("string", "the whole document, exactly as it should be on disk"),
 			"what": beltProp("string", "one short line saying what it is, for the receipt"),
 		}),

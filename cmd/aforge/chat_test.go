@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
@@ -54,7 +55,7 @@ func TestChatCommanderResolvesJobWorkspaceFilesAndDirectory(t *testing.T) {
 	}}, store.Provenance{Origin: store.OriginUser, Intent: "produce the artifact"}); err != nil {
 		t.Fatal(err)
 	}
-	workspaceRoot := filepath.Join(root, "workspace")
+	workspaceRoot := homepkg.StoreDir(filepath.Join(root, "graph.db"), "workspace")
 	jobDir := filepath.Join(workspaceRoot, "job")
 	if err := os.MkdirAll(jobDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -98,7 +99,7 @@ func TestChatCommanderKeepsFoldedJobWorkspaceAfterTerritoryReparent(t *testing.T
 	if err := graph.Complete(claim, "artifact delivered"); err != nil {
 		t.Fatal(err)
 	}
-	workspaceRoot := filepath.Join(root, "workspace")
+	workspaceRoot := homepkg.StoreDir(filepath.Join(root, "graph.db"), "workspace")
 	jobDir := filepath.Join(workspaceRoot, "job")
 	if err := os.MkdirAll(jobDir, 0o700); err != nil {
 		t.Fatal(err)
@@ -1064,7 +1065,7 @@ func TestNodeTraceWindowStartsOnALineBoundary(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("read the job: found=%t err=%v", found, err)
 	}
-	workspaceRoot := filepath.Join(root, "workspace")
+	workspaceRoot := homepkg.StoreDir(filepath.Join(root, "graph.db"), "workspace")
 	observed := filepath.Join(workspaceRoot, "job", ".obs")
 	if err := os.MkdirAll(observed, 0o700); err != nil {
 		t.Fatal(err)

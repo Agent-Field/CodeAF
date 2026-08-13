@@ -29,6 +29,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/head"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -1187,7 +1188,7 @@ func NewVisitor(path, sessionID string, graph *store.Store,
 	return &Commander{
 		database:      path,
 		prefsDir:      filepath.Dir(path),
-		workspaceRoot: filepath.Join(filepath.Dir(path), "workspace"),
+		workspaceRoot: home.StoreDir(path, "workspace"),
 		store:         graph,
 		prefs:         LoadPrefs(filepath.Dir(path)),
 		sessionID:     sessionID,

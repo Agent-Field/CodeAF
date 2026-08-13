@@ -373,7 +373,7 @@ func TestChatKeepsItsPerJobWorkspaceLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(brain.closeAll)
-	if brain.workspaceRoot != filepath.Join(root, "workspace") {
+	if brain.workspaceRoot != homepkg.StoreDir(filepath.Join(root, "graph.db"), "workspace") {
 		t.Fatalf("chat workspace root = %q, want the store's own", brain.workspaceRoot)
 	}
 	// The commander resolves a node to its own job directory beneath that root,
