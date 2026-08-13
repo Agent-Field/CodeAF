@@ -217,17 +217,12 @@ func (s *Switcher) Threads() []Thread { return s.threads }
 // opens: a switcher that reopened still holding the last search is one whose
 // first keystroke edits a query the reader cannot see the origin of.
 func (s *Switcher) Reset() {
-	changed := s.list.query != ""
-	if changed {
-		// Through [Switcher.setQuery] rather than the list's own, so the rows
-		// shed the tag hints the cleared query put on them.
-		s.setQuery("")
-	}
+	// Through [Switcher.setQuery] rather than the list's own, so the rows shed
+	// the tag hints the cleared query put on them. It is a no-op on an already
+	// empty query, which is why the cursor is put back afterwards regardless.
+	s.setQuery("")
 	s.list.cursor, s.list.top = 0, 0
 	s.refreshEmptyText()
-	if changed {
-		s.invalidate()
-	}
 }
 
 // Query is the current filter text.
