@@ -283,7 +283,7 @@ func (s *Switcher) threadRow(t *Thread, ordinal int, needle string) row {
 	if s.list.linear {
 		name = strconv.Itoa(ordinal) + ". " + name
 	}
-	desc := leftAtLine(t.LeftAt)
+	desc := LeftAtLine(t.LeftAt)
 	if tag := tagHint(name, desc, t.Tags, needle); tag != "" {
 		desc = tagLead + tag
 	}
@@ -358,10 +358,15 @@ func tagHint(name, desc string, tags []string, needle string) string {
 // because a hint about why a row matched must never outrank the row.
 const tagLead = "tagged: "
 
-// leftAtLine is the second column: what was said last, quoted, or nothing at
+// LeftAtLine is the second column: what was said last, quoted, or nothing at
 // all. A thread with no line yet draws NO lead word — `left at:` with nothing
 // after it would be chrome announcing an absence, which §16 spends no cells on.
-func leftAtLine(text string) string {
+//
+// IT IS EXPORTED FOR THE OVERVIEW, which lists the same threads on a page and
+// must say the same thing about each of them. A page that respelled this would
+// be the product's one quotation grammar in two spellings, drifting on the
+// commit that changed either.
+func LeftAtLine(text string) string {
 	line := clean(text)
 	if line == "" {
 		return ""

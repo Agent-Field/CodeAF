@@ -16,15 +16,42 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
-// The work page: everything this resident is DOING.
+// The overview: the shape of the whole space, on one page you can stand on.
 //
-// Three bands, one grammar. `working` / `recent` / `history` are the jobs — §6's
-// sidebar read at page altitude, and the SAME rows the rail draws, from the same
-// scope source. `watching` is the standing charters and `services` is the
-// promoted processes; both moved here from the notebook the day the split was
-// approved (notebook-split.md §2: doing vs knowing), because a charter is a
-// thing that fires and a service is a thing that runs, and neither is something
-// the resident has learned.
+// # What changed, and why this file is now the root's landing page
+//
+// This was the WORK page. It listed everything the resident is doing — jobs,
+// standing charters, promoted processes — and it had grown a threads band at the
+// bottom as the "alive glance", under the work, between the jobs and the
+// charters.
+//
+// The place line put a root segment on the surface (`aforge ‹ thread ‹ task`),
+// and a breadcrumb whose first step goes nowhere is a breadcrumb with a lie in
+// it. Root had to become a PLACE. The only honest thing for that place to be is
+// the shape of the whole space — which conversations exist, and what is being
+// worked on — and this page was already three quarters of it.
+//
+// So it was EVOLVED rather than duplicated, and the alternative is worth naming
+// because it was the tempting one: a second page listing threads and jobs, beside
+// a page listing jobs and threads, is two surfaces both claiming to be the
+// overview, drifting from the first commit that touched either. There is one.
+//
+// THREADS COME FIRST NOW. The overview's sentence is "here are your
+// conversations, here is the work" — a person arriving at root is deciding where
+// to go, and every door out of this page except one is a conversation. Under the
+// work, the threads band was answering a question nobody had got to yet.
+//
+// # The bands
+//
+// `threads` is every conversation the index holds, the one you are in included,
+// with `+ new` as its quiet last row. `working` / `recent` / `history` are the
+// jobs — §6's sidebar read at page altitude, and the SAME rows the rail draws,
+// from the same scope source, with the SAME connectors ([rail.Guides]).
+// `watching` is the standing charters and `services` is the promoted processes;
+// both moved here from the notebook the day the split was approved
+// (notebook-split.md §2: doing vs knowing), because a charter is a thing that
+// fires and a service is a thing that runs, and neither is something the
+// resident has learned.
 //
 // THE ROW IS TWO LINES, and that is the whole of this file's shape (§5b, user
 // feedback on the single-line form). A name on the left and `1m · $0.09` flush
@@ -87,11 +114,12 @@ const (
 	// zero, and [App.boardRow] is the one place that knows it.
 	boardNameCol = blocks.ContentEdge
 	boardMetaCol = boardNameCol
-	// boardStep is one level of descent inside a job's live subtree:
-	// [blocks.IndentStep], the house two-space rhythm. A child's GLYPH lands in
-	// the two marker cells before its own edge, which is what makes indent read
-	// as descent without a connector.
-	boardStep = blocks.IndentStep
+	// There is no boardStep any more. One level of descent inside a job's live
+	// subtree used to be [blocks.IndentStep], the house two-space rhythm, and it
+	// is the rail's three-cell BRANCH now: `├─ ` says both "one deeper" and
+	// "there is more below" in the columns a plain indent spent saying neither.
+	// The number lives with the grammar, in rail's own treeStep.
+	//
 	// boardRecentCap is how many settled jobs the `recent` section carries
 	// before the rest becomes history — §6's "recent (settled, dim, ~5)".
 	boardRecentCap = 5
@@ -114,14 +142,25 @@ const (
 	boardRecentWord   = "recent"
 	boardHistoryWord  = "history"
 	boardThreadsWord  = "threads"
+	boardWorkWord     = "work"
 	boardWatchingWord = "watching"
 	boardServicesWord = "services"
 )
 
-// boardEmptyNote is what a board with no work at all says. An unwired surface
-// and an empty one must never look alike (12.10), and a blank page is what an
-// unwired one looks like.
-const boardEmptyNote = "no work yet — ask for something and it shows up here"
+// The two empty states, one sentence each. A fresh install is the frame this
+// page is judged on: an unwired surface and an empty one must never look alike
+// (12.10), and a blank page is what an unwired one looks like.
+//
+// EACH SENTENCE SAYS WHAT THE SECTION IS, not that it is empty. The heading
+// above it already says the section is there and the absence of rows already
+// says it is empty; what a first-time reader is missing is what would ever put a
+// row under it, which is 5.22 rule 6 taken literally. No box art, no exclamation
+// — one dim line at the section's own edge, which is the same thing the rail's
+// `nothing running` note is and the same tier it wears.
+const (
+	boardThreadsNote = "a conversation with aforge. everything you say lives in one."
+	boardWorkNote    = "what aforge is doing for you. ask for something and it lands here."
+)
 
 // boardNeedsYou is the attention cell's word. It is the census's slot spent on
 // the one fact that outranks a census: a blocked human is the most expensive
@@ -175,6 +214,12 @@ const (
 	// [App.switchThread] on the session id, which re-points the window rather
 	// than opening a lens onto the one it is already in.
 	boardOpensThread
+	// boardOpensNewThread is the `+ new` row at the foot of the threads section:
+	// [App.openRoomCmd], which is the OpenOrReuseSession path every other `+ new`
+	// on this surface takes — the rail's door, the switcher's last row and the
+	// bar's `+`. A fourth spelling of "mint a room" would be a fourth chance to
+	// mint one that the other three cannot see.
+	boardOpensNewThread
 )
 
 // boardSpan is one painted run of a line: text, and the tier it is drawn at. A
@@ -301,35 +346,46 @@ func (a *App) boardLines() []boardLine {
 	history := a.boardHistoryRows(shown)
 
 	page := boardPage{lines: make([]boardLine, 0, 32)}
-	page.jobs(a, boardWorkingWord, working, true)
-	page.jobs(a, boardRecentWord, recent, false)
-
-	if len(history) > 0 {
-		page.gap()
-		page.push(a.boardFoldLine(history))
-		if a.board.open {
-			for _, row := range history {
-				page.job(a, row, false)
-			}
-		}
-	}
-	// THE ALIVE GLANCE (chat-simplify.md 5.2's J5): "what's going on" answers
-	// running work AND open threads in one breath. The threads come after the
-	// work and before the standing charters, which is the order of the sentence
-	// — what is happening, who is still talking about it, what is being watched.
+	// THREADS, THEN WORK. It is the overview's own sentence and the order the
+	// place line reads in: a person standing at root is choosing where to go, and
+	// all but one of the doors out of here is a conversation.
 	page.threads(a)
+	page.work(a, working, recent, history)
 	page.watching(a)
 	page.services(a)
-
-	// The note appears only when the WHOLE page is empty. A window with no jobs
-	// but with a charter and a service is visibly wired, and 12.10's rule is
-	// about telling an empty surface apart from a broken one — not about
-	// announcing every band that happens to have nothing in it.
-	if len(page.lines) == 0 {
-		page.push(boardLine{kind: boardNote, indent: boardNameCol,
-			spans: []boardSpan{{text: boardEmptyNote, tier: tokens.TextTertiary}}})
-	}
 	return page.lines
+}
+
+// work writes the job half: the three lifecycle bands, or — when there is no
+// work at all — the section's own word and the one sentence that says what work
+// IS.
+//
+// THE `work` WORD IS DRAWN ONLY OVER THE EMPTY SECTION, and the asymmetry is
+// deliberate. When there is work the bands say `working`, `recent` and
+// `history`, in the same faint lowercase register, and the first of them stands
+// over the section exactly as `threads` stands over its own; a `work` word above
+// `working` would be §19's same-fact-twice at the dimmest end of the page, and
+// two heading tiers in one register is a hierarchy the eye cannot read. Empty,
+// there is no band word to stand in for it — so the section says its own name,
+// and then says what it is.
+func (p *boardPage) work(a *App, working, recent, history []rail.Row) {
+	if len(working) == 0 && len(recent) == 0 && len(history) == 0 {
+		p.word(boardWorkWord)
+		p.note(boardWorkNote)
+		return
+	}
+	p.jobs(a, boardWorkingWord, working, true)
+	p.jobs(a, boardRecentWord, recent, false)
+	if len(history) == 0 {
+		return
+	}
+	p.gap()
+	p.push(a.boardFoldLine(history))
+	if a.board.open {
+		for _, row := range history {
+			p.job(a, row, false)
+		}
+	}
 }
 
 // boardPage is the line list under construction. It exists so the blank-line
@@ -366,6 +422,13 @@ func (p *boardPage) word(text string) {
 	// used to sit at the glyph column, which put a section's word one step left
 	// of every row it announced.
 	p.push(boardLine{kind: boardWord, indent: boardNameCol,
+		spans: []boardSpan{{text: text, tier: tokens.TextTertiary}}})
+}
+
+// note writes a section's one dim sentence: what would ever put a row under the
+// word above it. It is not a door and a cursor never rests on it.
+func (p *boardPage) note(text string) {
+	p.push(boardLine{kind: boardNote, indent: boardNameCol,
 		spans: []boardSpan{{text: text, tier: tokens.TextTertiary}}})
 }
 
@@ -418,75 +481,154 @@ func (p *boardPage) job(a *App, row rail.Row, live bool) {
 	}
 }
 
-// threads writes the open-conversations band (chat-simplify.md 5.3's `alive
-// glance`): a name, and the line the conversation was left on.
+// threads writes the conversations band: every thread the index holds, newest
+// activity first, and `+ new` as the quiet last row.
 //
-// It is the SWITCHER'S OWN ROWS in the board's own anatomy — two lines, the
-// name then the quiet receipt — so the two surfaces cannot disagree about what
-// a thread is called or where it stopped. What it deliberately does NOT carry
-// is the switcher's unseen `●`: a dot on a page a reader is already looking at
-// is not an ornament about attention, it is decoration, and 5.1 law 3 spends
-// the product's one thread ornament in the one place a reader is choosing
-// between conversations.
+// It is the SWITCHER'S OWN ROWS in the board's own anatomy — two lines, the name
+// then the quiet receipt — so the two surfaces cannot disagree about what a
+// thread is called, where it stopped, or how long ago that was. The `left at:`
+// tail is [palette.LeftAtLine] itself and not a second spelling of it.
 //
-// The thread the reader is IN is not listed. A door back to the room you are
-// standing in is not a door, and this page's whole job is to say what else is
-// going on.
+// THE THREAD THE READER IS IN IS LISTED NOW, and the reversal is what turned
+// this band into an overview. Under the old rule — "a door back to the room you
+// are standing in is not a door" — the page could show every conversation except
+// the one fact a person arriving at root most wants first, which is where they
+// already are. An overview that omitted the reader's own position would be a map
+// with no you-are-here on it. The rail has always kept the row for the same
+// reason and says the same words on it ([scopeSource.roomRow]).
+//
+// THE UNSEEN `●` IS DRAWN. It used to be withheld here on the grounds that a dot
+// on a page the reader is looking at is decoration — which was true of a band at
+// the bottom of the work page and is false of the page a reader lands on to
+// choose a conversation. 5.1 law 3 spends the product's one thread ornament
+// exactly where a reader is choosing between threads, and that is now here as
+// well as in the switcher. It rides the GUTTER, in the marker cell every row on
+// this page keeps for what kind of thing it is, so it costs no column and
+// nothing moves when it appears.
 func (p *boardPage) threads(a *App) {
 	threads := a.boardThreads()
-	if len(threads) == 0 {
-		return
-	}
 	p.word(boardThreadsWord)
+	if len(threads) == 0 {
+		p.note(boardThreadsNote)
+	}
 	for i := range threads {
 		if i > 0 {
 			p.push(boardLine{kind: boardBlank})
 		}
-		thread := threads[i]
-		block := p.next()
-		name := thread.Name
-		if name == "" {
-			name = palette.UnnamedThread
-		}
-		p.push(boardLine{
-			kind: boardEntry, target: boardOpensThread, id: thread.SessionID, block: block,
-			indent: boardNameCol,
-			// The gutter marker is the CHAT PROMPT (§20 gives every entry line
-			// one, and this page's grammar is that the marker says what kind of
-			// thing the row is). `›` is the glyph this product already spends on
-			// "you talk to this" — it is the prompt the composer draws when it
-			// is bound to a conversation — so a thread row and the mouth under
-			// it wear the same mark. It is chrome-tier and it is not the unseen
-			// ornament: a state glyph would claim a thread has a lifecycle, and
-			// 5.1 law 5 is that threads never close.
-			mark: tokens.GlyphPromptChat, markTier: tokens.TextTertiary,
-			spans: []boardSpan{
-				{text: name, tier: tokens.TextPrimary},
-			},
-		})
-		if left := strings.TrimSpace(thread.LeftAt); left != "" {
-			p.push(boardLine{kind: boardMeta, block: block, indent: boardMetaCol,
-				spans: []boardSpan{{text: left, tier: tokens.TextTertiary}}})
-		}
+		p.thread(a, threads[i])
+	}
+	// The door, one blank above it like every other block on the page. It is
+	// LAST and it is QUIET: it is the one row here that is not a conversation,
+	// and a bright row at the foot of a list of names would read as the newest
+	// name.
+	//
+	// ITS GUTTER CELL IS BLANK, and the whole label stands at the content edge.
+	// It is the rail's own answer for the same door — "its blank ornament cell
+	// is what makes the whole column straight" (scope.go's roomRows) — and it is
+	// what §20 requires: the gutter holds a state glyph or nothing, a door that
+	// has not happened yet has no state, and the `+` in the label is a WORD's
+	// first character rather than a mark. Putting the `+` in the gutter drew
+	// `+▎new` the moment the cursor arrived, which is the label wearing the
+	// selection rail through its middle.
+	p.push(boardLine{kind: boardBlank})
+	p.push(boardLine{
+		kind: boardEntry, target: boardOpensNewThread, block: p.next(),
+		indent: boardNameCol,
+		spans:  []boardSpan{{text: newRoomDoor, tier: tokens.TextTertiary}},
+	})
+}
+
+// thread writes one conversation's block: the name, and the quiet line under it
+// saying where it was left and when.
+//
+// THE NAME FALLS BACK TO [untitledRoom] AND NEVER TO AN ID (13.3.4). It is the
+// rail's word rather than the switcher's `just started`, deliberately: the rail
+// and this page are both LISTS OF PLACES a reader walks, drawn on the same
+// screen a keystroke apart, and one of them calling an unnamed room something
+// the other does not is the reader learning two names for one state.
+func (p *boardPage) thread(a *App, thread Thread) {
+	block := p.next()
+	name := strings.TrimSpace(thread.Name)
+	if name == "" {
+		name = untitledRoom
+	}
+	// The gutter marker says what kind of thing the row is (§20, and this page's
+	// grammar). `›` is the glyph this product already spends on "you talk to
+	// this" — it is the prompt the composer draws when it is bound to a
+	// conversation — so a thread row and the mouth under it wear the same mark.
+	// It is not a state glyph: a state glyph would claim a thread has a
+	// lifecycle, and 5.1 law 5 is that threads never close.
+	//
+	// The unseen dot REPLACES it rather than joining it. One marker cell, one
+	// answer: while there is news in a room, what the reader needs from that cell
+	// is the news.
+	mark, markTier := tokens.GlyphPromptChat, tokens.TextTertiary
+	if thread.Unseen && thread.SessionID != a.session {
+		// Cyan and not amber, for the switcher's own reason: amber is spent on a
+		// human actually being needed, and a delivery that landed is news.
+		mark, markTier = tokens.GlyphStepDone, tokens.Cyan
+	}
+	p.push(boardLine{
+		kind: boardEntry, target: boardOpensThread, id: thread.SessionID, block: block,
+		indent: boardNameCol, mark: mark, markTier: markTier,
+		spans: []boardSpan{{text: name, tier: tokens.TextPrimary}},
+	})
+	if spans := a.boardThreadReceipt(thread); len(spans) > 0 {
+		p.push(boardLine{kind: boardMeta, block: block, indent: boardMetaCol, spans: spans})
 	}
 }
 
-// boardThreads is the alive glance's rows: every open thread but the one the
-// reader is in.
+// boardThreadReceipt is a thread's quiet second line: where the conversation was
+// left, and how long ago it moved.
+//
+// The order is the switcher's reading order — what was said, then when — because
+// the two surfaces list the same rows and a reader who has learned one should not
+// have to re-learn the other. Every cell is absent rather than invented: a thread
+// with nothing said in it quotes nothing, and a thread with no clock says no
+// time.
+//
+// THE ROOM YOU ARE IN SAYS `you are here` INSTEAD. It is the rail's own word for
+// the same row ([scopeSource.roomRow]), and it outranks the left-at line for the
+// reason the rail gives: you are looking at whatever this room was left saying.
+func (a *App) boardThreadReceipt(thread Thread) []boardSpan {
+	out := make([]boardSpan, 0, 3)
+	add := func(text string, tier tokens.Token) {
+		if text == "" {
+			return
+		}
+		if len(out) > 0 {
+			out = append(out, boardSpan{text: boardSeparator, tier: tokens.TextTertiary})
+		}
+		out = append(out, boardSpan{text: text, tier: tier})
+	}
+	if thread.SessionID == a.session {
+		add(boardYouAreHere, tokens.TextTertiary)
+		return out
+	}
+	add(palette.LeftAtLine(strings.TrimSpace(thread.LeftAt)), tokens.TextTertiary)
+	add(reltime.Short(thread.LastActive, a.boardNow()), tokens.TextTertiary)
+	return out
+}
+
+// boardYouAreHere is what the current conversation's row says instead of a
+// quotation. It is the rail's string verbatim, so the two lists cannot come to
+// different words for one fact.
+const boardYouAreHere = "you are here"
+
+// boardThreads is the overview's conversations: the thread index, unfiltered.
+//
+// IT IS AN INDEX AND NEVER AN OPEN-LOOPS QUERY. [App.readThreads] answers it
+// from store.ThreadIndex, and the distinction is a shipped product bug this
+// package has already paid for once: store.OpenThreads drops every conversation
+// whose last exchange finished properly, so a surface driven from it showed a
+// store with three real conversations in it as a list of none. Whether a thread
+// has an open loop is the dot on its row, never the filter that decides the row
+// exists.
 //
 // The READ is [App.syncBoard]'s, stamped with the journal like every other fact
 // on this page; this is the projection of it, which costs a walk over at most
 // [maxThreadRows] values and no query at all.
-func (a *App) boardThreads() []Thread {
-	out := make([]Thread, 0, len(a.board.threads))
-	for _, thread := range a.board.threads {
-		if thread.SessionID == a.session {
-			continue
-		}
-		out = append(out, thread)
-	}
-	return out
-}
+func (a *App) boardThreads() []Thread { return a.board.threads }
 
 // watching writes the standing charters band.
 func (p *boardPage) watching(a *App) {
@@ -588,10 +730,22 @@ func (a *App) boardJobs() (working, recent []rail.Row) {
 // the same depths the room would draw. Row 0 of that scope is the job's own
 // surface and is skipped: it is the line above.
 //
+// THE CONNECTORS ARE THE RAIL'S OWN ([rail.Guides]). They used to be a plain
+// indent here, which drew the same plan as two pictures on one screen: `├─ H2`
+// in the sidebar and a nameless two-space step on the page. Which sibling is the
+// LAST one is a fact about a row's neighbours, and a surface that worked it out
+// for itself would be a second answer to a question with one right answer — the
+// ├-where-a-╰-belongs defect rail.Guide's own comment warns about, now between
+// two surfaces rather than inside one.
+//
+// The guides are computed over the WHOLE scope and not over the rows that
+// survive the depth cap, which is what keeps a corner honest: a step whose only
+// remaining sibling is too deep to draw is still not the last one.
+//
 // The depth cap is what keeps it a shape rather than a document. Past
-// [boardTreeDepth] the tree becomes one `…` at the cap's own indent, which is
-// §16's one ellipsis grammar answering "there is more of this, and it is
-// downward" without pretending to say how much.
+// [boardTreeDepth] the tree becomes one `…` under the deepest branch drawn,
+// which is §16's one ellipsis grammar answering "there is more of this, and it
+// is downward" without pretending to say how much.
 func (a *App) boardTwigs(row rail.Row) []boardLine {
 	if a.source == nil {
 		return nil
@@ -600,26 +754,32 @@ func (a *App) boardTwigs(row rail.Row) []boardLine {
 	if !ok || len(scope.Rows) < 2 {
 		return nil
 	}
+	// tree:true is the argument the rail passes for a job scope's members, where
+	// every step and worker is a limb. This IS a job scope.
+	guides := rail.Guides(scope.Rows, true)
 	out := make([]boardLine, 0, len(scope.Rows)-1)
-	deeper := false
-	for _, member := range scope.Rows[1:] {
+	deeper, tail := false, 0
+	for i, member := range scope.Rows[1:] {
 		// The scope's own depth is zero-based from the job's parts; the board
 		// reads it one-based, because on this page the parts are already one
 		// level under the name above them.
-		depth := member.Depth + 1
-		if depth > boardTreeDepth {
+		if member.Depth+1 > boardTreeDepth {
 			deeper = true
 			continue
 		}
+		guide := guides[i+1]
 		glyph, tier := boardGlyph(member)
-		// §20's ladder: depth-n content hangs at 2+2n and its glyph occupies
-		// the two marker cells before that edge. So a first-level twig marks at
-		// col 2 and reads at col 4, under the job name at col 2.
-		indent := blocks.MarkerCol(depth)
+		if w := guide.Width(); w > tail {
+			tail = w
+		}
 		out = append(out, boardLine{
-			kind: boardTwig, indent: indent,
+			kind: boardTwig, indent: boardNameCol,
 			spin: member.Attention() == rail.AttnWorking,
 			spans: []boardSpan{
+				// The branch is chrome and it is the INDENT: `├─ ` says both
+				// "one deeper" and "there is more below" in the columns a plain
+				// indent would have spent saying neither (rail's treeStep).
+				{text: guide.Prefix(false), tier: tokens.TextTertiary},
 				{text: glyph, tier: tier},
 				{text: " ", tier: tokens.TextTertiary},
 				// A twig is DIM: it is the shape of the work, not the work's
@@ -631,10 +791,10 @@ func (a *App) boardTwigs(row rail.Row) []boardLine {
 	}
 	if deeper {
 		out = append(out, boardLine{
-			// The tail sits at the deepest DRAWN twig's own marker column — it
+			// The tail sits under the deepest branch actually drawn — it
 			// summarizes those rows, so it stands with them rather than one
 			// rung below anything on screen.
-			kind: boardTwig, indent: blocks.MarkerCol(boardTreeDepth),
+			kind: boardTwig, indent: boardNameCol + tail,
 			spans: []boardSpan{{text: tokens.GlyphEllipsis, tier: tokens.TextTertiary}},
 		})
 	}
@@ -889,8 +1049,21 @@ func (a *App) boardEnter(index int) tea.Cmd {
 		// distinction [palette.SwitchThread] exists to make impossible to get
 		// wrong. The page swap comes first, for the same reason a job's does:
 		// the conversation is what the reader asked to be taken to.
+		//
+		// The row for the session the window is ALREADY in still opens:
+		// switchThread refuses a move to where it already is, and what is left is
+		// the page swap — which is exactly right, because from the overview
+		// "open the conversation I am in" is a real act with somewhere to go.
 		page := a.showPage(pageThread)
 		return tea.Batch(page, a.switchThread(line.id))
+	case boardOpensNewThread:
+		// ONE MINT. [App.openRoomCmd] is the OpenOrReuseSession path the rail's
+		// `+ new`, the switcher's last row and the bar's `+` all take, so a
+		// reader cannot end up with a room one of the four doors cannot see. The
+		// page swap comes first for the same reason it does above: a fresh room
+		// is a conversation, and the conversation is where the reader asked to be.
+		page := a.showPage(pageThread)
+		return tea.Batch(page, a.openRoomCmd())
 	}
 	return nil
 }

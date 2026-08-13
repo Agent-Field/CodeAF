@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -14,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/command"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -444,14 +446,28 @@ func TestAnOpenQuestionReplacesTheCensusWithNeedsYou(t *testing.T) {
 	// glyph is the vocabulary's own (5.21's amber ⚑ for a waits-on edge, the
 	// amber ? for a question); amber on prose would be emphasis, which 5.16
 	// forbids outright.
+	// It is the WORDS that are checked, not every span: amber on a state glyph
+	// is the vocabulary's own, and a glyph is not a word. The test used to skip
+	// span zero for that, which only held while the glyph happened to be first —
+	// a tree row leads with its connector now, and the glyph moved one along.
 	for _, other := range app.boardLines() {
-		for i, span := range other.spans {
-			if i == 0 || span.tier != tokens.Amber || span.text == boardNeedsYou {
+		for _, span := range other.spans {
+			if span.tier != tokens.Amber || span.text == boardNeedsYou || !hasLetter(span.text) {
 				continue
 			}
 			t.Fatalf("amber is being spent on the word %q, which is not a question", span.text)
 		}
 	}
+}
+
+// hasLetter reports that a span carries prose rather than glyphs or padding.
+func hasLetter(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
 }
 
 // Tree as progress (§5b): a working job shows its live subtree, a settled one
@@ -549,14 +565,74 @@ func TestTheReceiptNamesModelsAsWordsAndNeverSlugs(t *testing.T) {
 	}
 }
 
-// A window with nothing in it says so. An unwired surface and an empty one must
-// never look alike (12.10).
-func TestAnEmptyBoardSaysItIsEmpty(t *testing.T) {
+// A fresh install says what each half of the overview IS — one sentence each,
+// under its own word. An unwired surface and an empty one must never look alike
+// (12.10), and a blank page is what an unwired one looks like.
+func TestAFreshOverviewTeachesWhatThreadsAndWorkAre(t *testing.T) {
 	app := newTestApp(&fakeBackend{}, nil, nil)
 	poll(t, app)
 	app.showPage(pageBoard)
-	if frame := boardFrame(t, app, 80, 12); !strings.Contains(frame, boardEmptyNote) {
-		t.Fatalf("an empty board drew nothing at all:\n%s", frame)
+	frame := boardFrame(t, app, 80, 20)
+	for _, want := range []string{
+		boardThreadsWord, boardThreadsNote,
+		boardWorkWord, boardWorkNote,
+		// The door out of the empty state is on the page, not in a footnote.
+		newRoomDoor,
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("a fresh overview is missing %q:\n%s", want, frame)
+		}
+	}
+}
+
+// ONE TREE IN THE PRODUCT. The overview's work rows are the rail's own scope,
+// wearing the rail's own connectors, worked out by the rail's own function — so
+// the sidebar and the page cannot draw two pictures of one plan.
+//
+// It is asserted against [rail.Guides] rather than against a literal `├─`,
+// because a literal would pass on the day this page started computing its own
+// corners and getting one of them wrong, which is the whole failure mode.
+func TestTheOverviewsWorkTreeIsTheRailsOwn(t *testing.T) {
+	app := pageApp(t)
+	app.showOverview()
+	_ = boardFrame(t, app, 110, 40)
+
+	scope, ok := app.source.Scope(rowTaskPrefix + "job-1")
+	if !ok || len(scope.Rows) < 3 {
+		t.Fatalf("the fixture's job has no plan to draw: %d rows", len(scope.Rows))
+	}
+	guides := rail.Guides(scope.Rows, true)
+
+	twigs := make([]boardLine, 0, 4)
+	for _, line := range app.boardLines() {
+		if line.kind == boardTwig {
+			twigs = append(twigs, line)
+		}
+	}
+	if len(twigs) != len(scope.Rows)-1 {
+		t.Fatalf("the overview drew %d tree rows for a plan of %d parts",
+			len(twigs), len(scope.Rows)-1)
+	}
+	for i, twig := range twigs {
+		want := guides[i+1]
+		if !want.On {
+			t.Fatalf("part %q is not a limb in the rail's own reading", scope.Rows[i+1].Name)
+		}
+		if got := twig.spans[0].text; got != want.Prefix(false) {
+			t.Fatalf("part %q wears the connector %q, the rail draws %q",
+				scope.Rows[i+1].Name, got, want.Prefix(false))
+		}
+		// The connector is chrome and it IS the indent: the row hangs from the
+		// content edge and the branch spends the columns a plain indent would
+		// have spent saying nothing.
+		if twig.indent != boardNameCol {
+			t.Fatalf("a tree row sits at %d, not the name column", twig.indent)
+		}
+	}
+	// And the last part wears the corner, which is the one thing a second
+	// reading of this plan would be able to get wrong.
+	if last := twigs[len(twigs)-1]; !strings.Contains(last.spans[0].text, tokens.GlyphTreeLast) {
+		t.Fatalf("the last part of the plan does not close the tree: %q", last.spans[0].text)
 	}
 }
 
@@ -693,7 +769,12 @@ func TestTheBandsShareOneColumnGrammar(t *testing.T) {
 				t.Fatalf("an entry line sits at %d, not the name column: %q",
 					line.indent, boardLineText(line))
 			}
-			if line.mark == "" {
+			// A marker is not required, and the one row without one says why:
+			// the `+ new` door has no state to report, so its ornament cell is
+			// blank and its whole label stands at the edge — the rail's own
+			// answer for the same door. What the law is about is the COLUMN, and
+			// the column is the same either way.
+			if line.mark == "" && line.target != boardOpensNewThread {
 				t.Fatalf("an entry line carries no gutter marker: %q", boardLineText(line))
 			}
 		case boardMeta:
@@ -706,6 +787,40 @@ func TestTheBandsShareOneColumnGrammar(t *testing.T) {
 }
 
 // -- the doors ---------------------------------------------------------------
+
+// [App.showOverview] IS the door onto root, and it is the same door the work tab
+// already was. Anything routing the place line's root segment here — or the
+// footer's threads word — reaches this one call, so a reader cannot arrive at
+// root by two routes and find two states.
+func TestShowOverviewIsTheDoorOntoRoot(t *testing.T) {
+	app := pageApp(t)
+	// Start somewhere else, and somewhere DEEP: the page is a place, so arriving
+	// at one leaves whatever room the reader had descended into.
+	app.showPage(pageBoard)
+	_ = app.Frame(100, 30)
+	app.boardSelect(boardDoorOf(t, app, boardOpensRoom, "wisp-parity"))
+	press(app, "enter")
+	if app.page != pageThread || app.view == nil {
+		t.Fatal("the fixture did not descend into a room")
+	}
+
+	if cmd := app.showOverview(); cmd != nil {
+		_ = cmd()
+	}
+	if app.page != pageBoard {
+		t.Fatalf("the root door left the window on the %s page", app.page)
+	}
+	if app.status.breadcrumb != "" {
+		t.Fatalf("arriving at root kept a trail below it: %q", app.status.breadcrumb)
+	}
+	// And what it lands on is the overview: both sections, and the door out.
+	frame := boardFrame(t, app, 100, 40)
+	for _, want := range []string{boardThreadsWord, newRoomDoor, boardWorkingWord} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("root is not the overview — missing %q:\n%s", want, frame)
+		}
+	}
+}
 
 // Enter on a job opens its ROOM — the same JumpToRoom path the sidebar and the
 // palette take — and the room is a CHAT-page thing, so the trail replaces the
