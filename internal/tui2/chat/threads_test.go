@@ -167,6 +167,26 @@ func TestTheChordOpensTheSwitcherMidSentence(t *testing.T) {
 	}
 }
 
+// 5.22 admits no typed-only action: the `?` sheet names the switcher and the
+// key that reaches it, so a reader who never read this file still finds it.
+func TestTheHelpSheetTeachesTheSwitcher(t *testing.T) {
+	app, _ := threadsApp(t)
+	_ = app.Frame(120, 30)
+	if cmd := app.openCapability(); cmd != nil {
+		_ = cmd()
+	}
+	// Tall enough for the whole belt: the sheet is honest about clipping ("N
+	// more"), and what is under test is that the row EXISTS on it, not where
+	// the fold happens to land.
+	sheet := ansi.Strip(app.capability.Render(90, 44))
+	if !strings.Contains(sheet, "switch thread") {
+		t.Fatalf("the capability sheet does not name the switcher:\n%s", sheet)
+	}
+	if !strings.Contains(sheet, threadsKey) {
+		t.Fatalf("the sheet teaches no key for the switcher:\n%s", sheet)
+	}
+}
+
 // The list the switcher opens on is this window's threads, with the line each
 // was left on — the fallback read, since the fixture is not the engine.
 func TestTheSwitcherListsTheThreadsAndWhereTheyWereLeft(t *testing.T) {
