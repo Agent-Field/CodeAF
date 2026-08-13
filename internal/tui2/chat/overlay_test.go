@@ -54,7 +54,7 @@ func ranWithoutACommand(id string) bool {
 		"slash.tasks", "slash.self", "slash.notebook", "slash.memory",
 		"slash.standing", "slash.history", "slash.budget",
 		"key.palette", "key.place-thread", "key.place-board",
-		"key.thread.receipts", "key.thread.clear-draft":
+		"key.thread.receipts", "key.thread.clear-draft", "key.threads":
 		return true
 	}
 	return false

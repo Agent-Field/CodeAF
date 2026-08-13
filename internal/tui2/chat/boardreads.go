@@ -117,6 +117,11 @@ func (a *App) syncBoard() {
 	a.board.models = a.boardModelReads()
 	a.board.charters = a.boardCharterReads()
 	a.board.services = a.boardServiceReads()
+	// The alive glance's other half (chat-simplify.md 5.2's J5). It rides this
+	// batch rather than the paint for the reason everything else here does: it
+	// is a per-thread read, and a page that took one on every frame would put a
+	// query behind the spinner's tick.
+	a.board.threads = a.readThreads()
 	if a.board.detail.target == boardOpensService && a.board.detail.id != "" {
 		// An open service page's log ages with the journal like everything else
 		// on this surface. It is FILE I/O, so it is emphatically not re-read per

@@ -637,6 +637,27 @@ func (a *App) recordTreeAt(y int) (*recordTreeBlock, treeRow, bool) {
 	return tree, row, ok
 }
 
+// recordForThreadAt resolves a viewport row of the open record to the
+// attribution row's thread, when that is what is drawn there.
+//
+// It is the same arithmetic [App.recordTreeAt] runs, asked about a different
+// block type, so the paint and the pointer can never disagree about which row
+// is which — the page's own transcript is what answers both.
+func (a *App) recordForThreadAt(y int) (string, bool) {
+	if a.view == nil || a.view.kind != viewNode || a.view.transcript == nil {
+		return "", false
+	}
+	index, _, ok := a.view.transcript.BlockAtScreenRow(y)
+	if !ok {
+		return "", false
+	}
+	row, ok := a.view.transcript.Block(index).(*forThreadBlock)
+	if !ok || row.session == "" {
+		return "", false
+	}
+	return row.session, true
+}
+
 // recordPointer is what a click on the record's tree means (§10, and the drill
 // the reader asked for).
 //
@@ -646,6 +667,15 @@ func (a *App) recordTreeAt(y int) (*recordTreeBlock, treeRow, bool) {
 // opens that worker's own record page, which is the same page one level down.
 // Nothing on a tree row is inert and nothing needs a second target.
 func (a *App) recordPointer(y int) tea.Cmd {
+	// THE ATTRIBUTION ROW IS A DOOR, and it is asked first because it is the one
+	// row on this page that leaves it (5.3: "activating it jumps to the
+	// thread"). It cannot overlap a tree row — the two are different block types
+	// at different places in the page — so the order is habit rather than
+	// necessity: the row that navigates away is the one worth resolving before
+	// the rows that rearrange what is on screen.
+	if session, ok := a.recordForThreadAt(y); ok {
+		return a.switchThread(session)
+	}
 	_, row, ok := a.recordTreeAt(y)
 	if !ok {
 		return nil

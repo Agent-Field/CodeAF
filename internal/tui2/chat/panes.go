@@ -988,11 +988,24 @@ type statusPane struct {
 	keyMode   footer.KeyMode
 	keyCount  int
 	residency Residency
-	// room is the humane name of the room this window is in, and breadcrumb is
-	// how deep inside it the reader has navigated. Neither is ever an id
-	// (13.3.4); an unnamed room says it is unnamed.
-	room       string
+	// thread is the TITLE CHIP: the scribe's name for the working conversation
+	// this window is in (chat-simplify.md 5.3), and breadcrumb is how deep
+	// inside it the reader has navigated. Neither is ever an id (13.3.4); an
+	// unnamed thread draws NOTHING, which is [App.threadName]'s empty string
+	// arriving here unchanged.
+	//
+	// It replaced a `room` field that fed the breadcrumb's head. The two were
+	// the same fact and the chip is the better home for it: the trail is the way
+	// UP, and a thread has nothing above it — it is the conversation, not a
+	// scope inside one — so the name it used to lead with was a step nobody
+	// could take. See [statusPane.scopeTail].
+	thread     string
 	breadcrumb string
+	// openThreads raises the switcher, and it is the very act the `t` key
+	// performs. It is a function for the reason [statusPane.openRail] is: the
+	// row knows which word was pointed at and nothing else, and a chip and a key
+	// that opened the list by two different routes would be two lists.
+	openThreads func() tea.Cmd
 	// foldable says the transcript holds a row the receipts fold can act on.
 	// The accelerator is only offered while it does — 5.20 rule 3 forbids
 	// naming a door that opens nothing.
@@ -1100,6 +1113,7 @@ func (p *statusPane) focusContext(width int) footer.FocusContext {
 		KeyModeCount:  p.keyCount,
 		Health:        p.health(),
 		Dock:          p.dock,
+		Thread:        strings.TrimSpace(p.thread),
 		ScopeTail:     p.scopeTail(),
 		Hover:         p.hover,
 		// What the meta strip used to say, said here (§7). The model word is
@@ -1146,6 +1160,14 @@ func (p *statusPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 		// the row only offers it while EscInterrupts is true.
 		if p.interrupt != nil {
 			return p.interrupt()
+		}
+		return nil
+	case footer.ThreadTarget:
+		// The title chip is the switcher's door (5.3). It goes through the app's
+		// own [App.openSwitcher] rather than raising anything itself, so the
+		// chip and the `t` key cannot leave the surface in two different states.
+		if p.openThreads != nil {
+			return p.openThreads()
 		}
 		return nil
 	case footer.DockTarget:
@@ -1213,32 +1235,24 @@ func (p *statusPane) health() []string {
 
 // scopeTail is the breadcrumb tail, and the lowest-priority column on the row.
 //
-// It says WHERE the reader is, in the words they navigated by: the room's name,
-// and then the scope they have descended into. 13.3.4 is why it can never fall
-// back to the session id — 5.14 puts ids in the never-shown tier, and a
-// truncated uuid on the footer was the rule being broken in the one place a
-// reader looks when they are lost. A room nobody has named says so.
+// It says HOW DEEP INSIDE the conversation the reader has gone — the scopes they
+// descended through, in the words they navigated by. 13.3.4 is why nothing on it
+// can ever fall back to a session id.
+//
+// IT NO LONGER LEADS WITH THE THREAD'S NAME. It used to, and the name was the
+// only part of it that survived the elision ladder on a narrow row — which was
+// the tell that it was doing the title chip's job. The chip does that job now,
+// permanently and one zone to the left ([FocusContext.Thread]), so repeating it
+// here would be §19's same-fact-twice inside one row. What is left is the part
+// the chip cannot say: how far in you are, and that every separator on it is a
+// step you can take back.
 func (p *statusPane) scopeTail() string {
-	// Empty at home, on purpose: the trail REPLACES the places tabs while set
-	// (§7's cohabitation), so a standing `‹ room` here would hide the tabs
-	// forever. The trail begins only when the reader has descended.
+	// Empty at home, on purpose. The trail begins only when the reader has
+	// descended; the chip beside it says which conversation they descended
+	// INSIDE OF, and it is drawn whether or not they have.
 	crumbs := strings.TrimSpace(p.breadcrumb)
 	if crumbs == "" {
 		return ""
 	}
-	room := strings.TrimSpace(p.room)
-	if room == "" {
-		// NEVER THE WORD "untitled". A room nobody has named yet is NEW, not
-		// defective, and `untitled room` on the one row a lost reader looks at
-		// reads as a filing error rather than as a room that has not had its
-		// first exchange yet. The naming scribe names a room from that exchange,
-		// so this is a transitional face and it should say what is transitional
-		// about it. Same reasoning 13.3.4 gives for never falling back to an id.
-		room = newRoomWord
-	}
-	return tokens.GlyphScopeUp + " " + room + " " + tokens.GlyphScopeUp + " " + crumbs
+	return tokens.GlyphScopeUp + " " + crumbs
 }
-
-// newRoomWord is what an unnamed room is called on the bar row. See
-// [statusPane.scopeTail].
-const newRoomWord = "new room"

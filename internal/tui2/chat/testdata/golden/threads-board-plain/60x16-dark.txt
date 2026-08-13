@@ -1,0 +1,16 @@
+  working
+⠦▎wisp-parity
+  1 running · $8.65
+  ◐ H2
+  ⚑ KeyCutter
+
+  recent
+✓ perf-audit
+
+  threads
+› importer rewrite
+  parked on the schema question
+◐ wisp-parity · reworking NavCtx after the worker died $8.65
+▍ ›
+
+  chat  work  notebook  the wisp parity push     ~/aforge-v2

@@ -1,0 +1,24 @@
+› how is the parity push going
+
+  the diff i───────────────────────────────────────────────────────────────────────────
+             threads  type to filter                                   3/3 · close esc
+
+             ▎  the wisp parity push  left at: the diff is ready when you …         2h
+              ● importer rewrite      left at: parked on the schema questi…  yesterday
+
+                new thread            start one now — it names itself afte…     ctrl+n
+
+
+
+
+
+
+
+
+            ───────────────────────────────────────────────────────────────────────────
+
+
+▍ ›
+
+
+  chat  work  notebook  the wisp parity push                               ~/aforge-v2 · ◐ 1 working
