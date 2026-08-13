@@ -145,11 +145,11 @@ func toolGloss(name, arguments string) string {
 			return "writing " + quoteGloss(name)
 		}
 		return "writing a document"
-	case beltToolAct:
+	case beltToolBash:
 		// The one gloss that quotes something the MACHINE would read, and it is
 		// allowed because a shell command is exactly what the person at the
 		// keyboard would have typed themselves — the tool's own boundary
-		// (act.go). It is still their vocabulary, not the belt's.
+		// (bash.go). It is still their vocabulary, not the belt's.
 		if command := glossArg(args, "command"); command != "" {
 			return "running " + quoteGloss(command)
 		}

@@ -152,7 +152,7 @@ func TestThePromptDescribesTheBeltItActuallyHas(t *testing.T) {
 		names[definition.Function.Name] = true
 	}
 	for _, named := range []string{
-		beltToolBoard, beltToolTask, beltToolChange, beltToolStop, beltToolAct, beltToolWrite,
+		beltToolBoard, beltToolTask, beltToolChange, beltToolStop, beltToolBash, beltToolWrite,
 		beltToolNote, beltToolForget, beltToolAsk,
 	} {
 		if !names[named] {
