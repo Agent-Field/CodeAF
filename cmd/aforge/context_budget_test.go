@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -68,11 +69,79 @@ func TestALeafsDependencyPotIsSizedFromItsOwnWindow(t *testing.T) {
 // The pot decides how many inputs are carried and how hard each is clipped, so
 // it is read once per worker build and must not move underneath a pass.
 func TestTheDependencyPotIsStableForOneBuild(t *testing.T) {
-	build := leafBuild{models: windowCatalog(t), model: "vendor/wide"}
+	build := leafBuild{models: windowCatalog(t), model: "vendor/wide",
+		fanIn: store.DependencyFanIn{Count: 8, Bytes: 8 * 16 << 10}}
 	first := build.dependencyPot()
 	for attempt := 0; attempt < 4; attempt++ {
 		if again := build.dependencyPot(); again != first {
 			t.Fatalf("the pot moved between reads: %d then %d", first, again)
 		}
+	}
+}
+
+// The other half of the incident: the join that blew its budget was granted the
+// flat leaf defaults, which are the defaults for a leaf that gathers nothing.
+// The assembler ran out of room partway through the assembly and had to be
+// bought a paid continuation splice to finish typing results it had already
+// read. Its grant is now arithmetic over what actually landed in it.
+func TestAGatheringLeafsGrantIsSizedFromWhatLandedInIt(t *testing.T) {
+	// A leaf nothing fed measures zero on both terms and keeps, byte for byte,
+	// the envelope every leaf had before any of this existed.
+	if turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, store.DependencyFanIn{}); turns != chatLeafTurns || tokens != chatLeafTokens {
+		t.Fatalf("an ungathered leaf got %d turns / %d tokens, want the flat %d / %d",
+			turns, tokens, chatLeafTurns, chatLeafTokens)
+	}
+
+	// Eight dependencies at the record's own bound apiece: 128 KiB of upstream
+	// text, which the shared estimator makes 32k tokens.
+	wide := store.DependencyFanIn{Count: 8, Bytes: 8 * 16 << 10}
+	landed := wide.Bytes / ctxbudget.BytesPerToken
+	turns, tokens := gatheringGrant(chatLeafTurns, chatLeafTokens, wide)
+	// One turn per dependency, because opening one handle is one tool call.
+	if turns != chatLeafTurns+wide.Count {
+		t.Fatalf("turns = %d, want %d: a node told to pull needs a hand per handle",
+			turns, chatLeafTurns+wide.Count)
+	}
+	// Twice the landed tokens, because a gathering node reads all of it in and
+	// writes an assembly that cannot exceed what it assembles.
+	if tokens != chatLeafTokens+2*landed {
+		t.Fatalf("tokens = %d, want %d", tokens, chatLeafTokens+2*landed)
+	}
+
+	// Monotone in the measurement, with no threshold anywhere: twice the landed
+	// bytes is strictly more budget, and a two-way join is strictly more than a
+	// leaf that gathers nothing.
+	previous := chatLeafTokens
+	for _, bytes := range []int{1 << 10, 64 << 10, 8 * 16 << 10, 1 << 20} {
+		_, grant := gatheringGrant(chatLeafTurns, chatLeafTokens, store.DependencyFanIn{Count: 2, Bytes: bytes})
+		if grant <= previous {
+			t.Fatalf("%d landed bytes granted %d tokens, no more than the %d before it",
+				bytes, grant, previous)
+		}
+		previous = grant
+	}
+
+	// The reserve rises with the same measurement, and the pot it leaves falls.
+	// That trade is the whole policy in one inequality: the more there is
+	// upstream, the more of it a gathering node pulls on demand and the less of
+	// it is pushed into its prompt whether it will read it or not.
+	if gatheringReserve(wide) <= gatheringReserve(store.DependencyFanIn{}) {
+		t.Fatalf("the completion reserve did not move with the fan-in: %d vs %d",
+			gatheringReserve(wide), gatheringReserve(store.DependencyFanIn{}))
+	}
+	models := windowCatalog(t)
+	alone := leafBuild{models: models, model: "vendor/wide"}.dependencyPot()
+	gathering := leafBuild{models: models, model: "vendor/wide", fanIn: wide}.dependencyPot()
+	if gathering >= alone {
+		t.Fatalf("a join's push budget (%d) did not fall below an ordinary leaf's (%d) "+
+			"even though its reply now has to carry the assembly", gathering, alone)
+	}
+	// And it never falls to nothing: the clamp in ctxbudget stops the reserve
+	// where the prompt's remaining room reaches the prompt's own fixed cost.
+	huge := leafBuild{models: models, model: "vendor/wide",
+		fanIn: store.DependencyFanIn{Count: 400, Bytes: 64 << 20}}.dependencyPot()
+	if huge <= 0 {
+		t.Fatalf("an enormous fan-in starved the pot to %d; a node that cannot read "+
+			"its inputs cannot assemble them either", huge)
 	}
 }
