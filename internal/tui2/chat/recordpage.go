@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/reltime"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -127,10 +129,11 @@ func roomBlocks(in recordInputs) []blocks.Block {
 
 	// THE PROGRESS LINE, AND THERE IS EXACTLY ONE (user review, 2026-08-11).
 	// See [recordStatusBlock] for the defect it kills.
-	if status := recordStatus(in.messages, consumed); status != "" {
+	if said, found := recordStatusRow(in.messages, consumed); found {
 		out = append(out, &recordStatusBlock{
-			style: in.style, clock: in.clock, text: status,
-			live: !settledLife(root.row.Life),
+			style: in.style, clock: in.clock, text: recordSaid(said),
+			aside: recordStatusAside(said, root.node, in.now),
+			live:  !settledLife(root.row.Life),
 		})
 	}
 
@@ -370,21 +373,85 @@ func isMachineryRow(message store.Message) bool {
 	return !speaks(message.Body)
 }
 
-// recordStatus is the NEWEST machinery row's own words, or none.
+// recordStatusRow is the NEWEST machinery row, whole.
 //
 // The row the RESULT CARD took is not a status and never was: it is the job's
 // answer, dressed at the bottom of the page, and saying it twice on one screen
 // is §19's own named defect.
-func recordStatus(messages []store.Message, consumed string) string {
+//
+// It returns the ROW rather than its words because the words alone were not
+// enough to make a room read as alive. A working root six finished parts deep
+// drew one motionless sentence and nothing else — no clock on it, no way to
+// tell a line written four seconds ago from one written twenty minutes ago —
+// and a reader watching that is looking at a hung job. WHEN it was said is half
+// of what the line is for.
+func recordStatusRow(messages []store.Message, consumed string) (store.Message, bool) {
 	for i := len(messages) - 1; i >= 0; i-- {
 		if !isMachineryRow(messages[i]) || messageID(messages[i].Seq) == consumed {
 			continue
 		}
-		if body := flattenLine(messages[i].Body); body != "" {
-			return body
+		if recordSaid(messages[i]) != "" {
+			return messages[i], true
 		}
 	}
-	return ""
+	return store.Message{}, false
+}
+
+// recordSaid is one row reduced to what it actually says.
+//
+// PROGRESS ROWS COUNT. A worker that reports through the structured progress
+// column rather than in a body was invisible to this line — the row exists, the
+// phase and the counter and the latest word are all on it, and the page skipped
+// it because Body was empty. On a job whose workers report that way the room
+// went silent for exactly the reason its workers were being loudest.
+func recordSaid(message store.Message) string {
+	if body := flattenLine(message.Body); body != "" {
+		return body
+	}
+	if message.Progress == nil {
+		return ""
+	}
+	said := strings.TrimSpace(message.Progress.Latest)
+	phase := strings.TrimSpace(message.Progress.Phase)
+	if said == "" {
+		said = phase
+	} else if phase != "" {
+		said = phase + " " + tokens.GlyphSeparator + " " + said
+	}
+	if message.Progress.Total > 0 {
+		said = strings.TrimSpace(fmt.Sprintf("%s %d/%d", said,
+			message.Progress.Done, message.Progress.Total))
+	}
+	return flattenLine(said)
+}
+
+// recordStatus is recordStatusRow's words, for the readers that only want them.
+func recordStatus(messages []store.Message, consumed string) string {
+	row, found := recordStatusRow(messages, consumed)
+	if !found {
+		return ""
+	}
+	return recordSaid(row)
+}
+
+// recordStatusAside is the two facts that turn one motionless sentence into a
+// sign of life: how long ago it was said, and which attempt is saying it.
+//
+// Both are absent by default. A line said seconds ago on a first attempt needs
+// neither — reltime draws "now" and there is no attempt worth naming — and a
+// surface that printed "now · 1st attempt" under every row would have spent the
+// reader's attention on nothing.
+func recordStatusAside(said store.Message, root store.Node, now time.Time) string {
+	cells := make([]string, 0, 2)
+	if when := reltime.Short(said.Time, now); when != "" {
+		cells = append(cells, when)
+	}
+	if !settled(root.Status) {
+		if words := attemptWords(root.Attempt); words != "" {
+			cells = append(cells, words)
+		}
+	}
+	return strings.Join(cells, " "+tokens.GlyphSeparator+" ")
 }
 
 // recordStatusBlock is the page's one progress line.
@@ -392,6 +459,10 @@ type recordStatusBlock struct {
 	style *tokens.Styler
 	clock *blocks.Clock
 	text  string
+	// aside is when the line was said and, when there is one, which attempt is
+	// saying it. It is drawn flush after the words at the dimmest tier, and it
+	// is what makes the difference between a line and a heartbeat.
+	aside string
 	// live says the job is still running, which is the only condition §18.2
 	// allows the breathe under: "the thinking line while a model is working".
 	live bool
@@ -425,11 +496,29 @@ func (b *recordStatusBlock) Rows(width int) []string {
 	if room < 1 {
 		return append(b.rows[:0], "")
 	}
-	text := blocks.Truncate(b.text, room)
+	// THE ASIDE IS NOT TRUNCATED AWAY. It is the shortest thing on the line and
+	// the half a reader is actually checking, so the words yield to it: the
+	// sentence ellipsizes at the room left over, exactly as §19 has every other
+	// sentence-length row ellipsize at its own measure.
+	words, aside := b.text, strings.TrimSpace(b.aside)
+	if aside != "" {
+		tail := " " + tokens.GlyphSeparator + " " + aside
+		if left := room - blocks.Width(tail); left > 0 {
+			words = blocks.Truncate(words, left)
+		} else {
+			words, tail = "", ""
+		}
+		aside = tail
+	}
+	text := blocks.Truncate(words, room)
 	if b.style != nil {
 		mark = b.style.Paint(mark, blocks.StateLive, blocks.HueAlive)
 		text = b.style.PaintToken(text, tokens.TextTertiary)
+		if aside != "" {
+			aside = b.style.PaintToken(aside, tokens.TextTertiary)
+		}
 	}
+	text += aside
 	// §20's gutter: the marker in cols 0–1, the words at the content edge.
 	return append(b.rows[:0], mark+" "+text, "")
 }
