@@ -879,3 +879,165 @@ func TestAWindowSizedPotCarriesAFanInTheOldCeilingStarved(t *testing.T) {
 		}
 	}
 }
+
+// The 37× blowout, as a test. Sizing the pot from a real window fixed the
+// starvation and opened the opposite hole: with megabytes to hand out, every
+// evaluator and every join was pushed every upstream result in full, and a join
+// billed 163k tokens against a 29.6k expectation.
+//
+// The fix is structural rather than a smaller number. No dependency may take
+// more than a digest of the prompt however large the pot is, and the bytes above
+// that are moved to a handle rather than dropped — so the fan-in costs what its
+// consumer reads instead of what its producers wrote, and the one consumer whose
+// contract really does say reproduce every finding in full opens the files.
+func TestAWideFanInArrivesAsDigestsWithHandlesRatherThanEveryByte(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "handles.db"))
+	nodes := []NodeSpec{{ID: "join", Brief: "assemble the findings", Stage: 2}}
+	for index := 0; index < 8; index++ {
+		id := fmt.Sprintf("finder-%d", index)
+		nodes = append(nodes, NodeSpec{ID: id, Parent: "join", Brief: "read a slice", Stage: 1})
+		nodes[0].Needs = append(nodes[0].Needs, Need{NodeID: id, Kind: FeedsInto})
+	}
+	if err := graph.Splice(RootID, Subtree{Nodes: nodes}, Provenance{
+		Origin: OriginUser, Intent: "audit the service",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Each finder writes a record near the record's own bound, which is four
+	// times a digest. This is the real shape: MaxSummaryBytes exists precisely
+	// so a deliverable is not guillotined at the routing bound.
+	for index := 0; index < 8; index++ {
+		claim := mustClaim(t, graph, fmt.Sprintf("finder-%d", index), "worker")
+		if err := graph.Complete(claim, fmt.Sprintf("finding %d: ", index)+
+			strings.Repeat("a use-after-free in parser.c. ", 500)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A pot sized from a 1M-token window — the case that produced the bill.
+	const pot = 1 << 20
+	inputs, err := graph.DependencyInputs("join", pot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inputs) != 8 {
+		t.Fatalf("carried %d of 8 dependencies", len(inputs))
+	}
+	pushed := 0
+	for _, input := range inputs {
+		pushed += len(input.Digest)
+		if len(input.Digest) > MaxDigestBytes {
+			t.Fatalf("%s took %d bytes of prompt; no dependency may exceed the %d a digest is",
+				input.NodeID, len(input.Digest), MaxDigestBytes)
+		}
+		if input.Handle == "" {
+			t.Fatalf("%s was clipped with no handle: the withheld bytes are unreachable", input.NodeID)
+		}
+		if !strings.Contains(input.Digest, input.Handle) {
+			t.Fatalf("%s carries a handle its digest never names, so nothing tells the "+
+				"consumer the rest exists: %q", input.NodeID, input.Digest)
+		}
+	}
+	if pushed > 8*MaxDigestBytes {
+		t.Fatalf("the fan-in pushed %d bytes; eight digests is %d", pushed, 8*MaxDigestBytes)
+	}
+
+	// The round trip that makes the clipping a move and not a loss: the handle is
+	// an ordinary path, opened with an ordinary read, holding every byte the
+	// producer wrote. The leaf reads it with sh, exactly as it reads an artifact.
+	produced, found, err := graph.Node("finder-3")
+	if err != nil || !found {
+		t.Fatalf("read finder-3: found=%v err=%v", found, err)
+	}
+	var handle string
+	for _, input := range inputs {
+		if input.NodeID == "finder-3" {
+			handle = input.Handle
+		}
+	}
+	opened, err := os.ReadFile(handle)
+	if err != nil {
+		t.Fatalf("the handle handed to the consumer does not open: %v", err)
+	}
+	if !strings.Contains(string(opened), produced.Summary) {
+		t.Fatalf("the handle holds %d bytes and not the producer's %d-byte record",
+			len(opened), len(produced.Summary))
+	}
+
+	// Content-addressed, so the same fan-in read twice hands out the same paths.
+	// A prompt prefix built from these must not move under a cache counting on it.
+	again, err := graph.DependencyInputs("join", pot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, input := range again {
+		if input.Handle != inputs[index].Handle || input.Digest != inputs[index].Digest {
+			t.Fatalf("%s moved between two reads of the same settled fan-in", input.NodeID)
+		}
+	}
+
+	// And what the join's budget is sized from: the measurement, not an estimate.
+	fanIn, err := graph.DependencyFanIn("join")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fanIn.Count != 8 {
+		t.Fatalf("measured %d dependencies, want 8", fanIn.Count)
+	}
+	if fanIn.Bytes <= pushed {
+		t.Fatalf("measured %d landed bytes but pushed %d into the prompt; the whole "+
+			"policy is that what landed exceeds what is carried", fanIn.Bytes, pushed)
+	}
+	// A node nothing fed measures zero on both, which is what keeps its budget
+	// byte-identical to the one it had before any of this existed.
+	empty, err := graph.DependencyFanIn("finder-0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if empty.Count != 0 || empty.Bytes != 0 {
+		t.Fatalf("a leaf nothing fed measured %+v", empty)
+	}
+}
+
+// Surprise was measured, journaled and then only ever averaged onto a page. The
+// read that lets a decision consult it did not exist, and the envelope that says
+// when it is evidence rather than spread had never been written down.
+func TestAnOutOfEnvelopeSurpriseCanBeReadBackForOneNode(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "surprise.db"))
+	if err := graph.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "assemble", Brief: "assemble the report", Stage: 1},
+	}}, Provenance{Origin: OriginUser, Intent: "write the report"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := graph.SurpriseFor("assemble"); err != nil || ok {
+		t.Fatalf("a node nothing measured reported a surprise: ok=%v err=%v", ok, err)
+	}
+	// The measured blowout: 163k tokens against a 29.6k expectation.
+	if err := graph.RecordSurprise(NodeSurprise{NodeID: "assemble",
+		ActualTokens: 163_000, ExpectedTokens: 29_600, Surprise: 2.85}); err != nil {
+		t.Fatal(err)
+	}
+	measured, ok, err := graph.SurpriseFor("assemble")
+	if err != nil || !ok {
+		t.Fatalf("the recorded surprise cannot be read back: ok=%v err=%v", ok, err)
+	}
+	if measured.ActualTokens != 163_000 || measured.ExpectedTokens != 29_600 {
+		t.Fatalf("read back %+v", measured)
+	}
+	if !measured.OutOfEnvelope() {
+		t.Fatalf("a surprise of %.2f is inside the %.1f envelope; 2.85 is the incident",
+			measured.Surprise, SurpriseEnvelope)
+	}
+	// The envelope is the identity of the measure, not a tuned number: at 1.0 the
+	// prediction is wrong by exactly as much as the prediction. Ordinary spread
+	// below it is not evidence, and an undefined expectation never is.
+	for _, quiet := range []NodeSurprise{
+		{ExpectedTokens: 29_600, Surprise: SurpriseEnvelope},
+		{ExpectedTokens: 29_600, Surprise: 0.2},
+		{ExpectedTokens: 0, Surprise: 9},
+	} {
+		if quiet.OutOfEnvelope() {
+			t.Fatalf("%+v was treated as evidence", quiet)
+		}
+	}
+}

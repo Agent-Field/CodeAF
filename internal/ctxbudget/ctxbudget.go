@@ -133,6 +133,46 @@ func (b Budget) WithFloor(tokens int) Budget {
 	return b
 }
 
+// WithCompletionReserve states a completion reserve of this consumer's own, for
+// the case where the process-wide constant is wrong about it.
+//
+// The constant is a constant because most calls write about as much as each
+// other. A node whose job is to reproduce what fed it writes as much as fed it,
+// and for that node a constant reserve is the difference between landing the
+// assembly and stopping halfway through it.
+//
+// It only ever raises. A consumer that can say why it needs more room gets more
+// room; nothing gets to quietly claim it needs less than the law grants.
+//
+// The clamp is stated in the consumer's own units rather than in a fraction
+// invented here. The reserve may grow until the budgeted material the prompt can
+// still carry has shrunk to the size of the prompt's own fixed cost — that is,
+// until Tokens() would fall below FixedFloorTokens:
+//
+//	reserve ≤ window*fill/100 − 2*FixedFloorTokens
+//
+// Past that point the turn is mostly its own overhead and the node is being
+// asked to assemble from nothing, which is the opposite failure to the one the
+// reserve exists to prevent. A consumer that stated no floor has said it cannot
+// measure that point, and gets the fill allowance as its only bound.
+func (b Budget) WithCompletionReserve(tokens int) Budget {
+	if !b.Known() || tokens <= b.CompletionReserveTokens {
+		return b
+	}
+	fill := b.FillPercent
+	if fill <= 0 {
+		fill = DefaultFillPercent
+	}
+	if ceiling := b.ContextTokens*fill/100 - 2*b.FixedFloorTokens; tokens > ceiling {
+		tokens = ceiling
+	}
+	if tokens <= b.CompletionReserveTokens {
+		return b
+	}
+	b.CompletionReserveTokens = tokens
+	return b
+}
+
 // Known reports whether the window was known at construction. An unknown
 // budget spends nothing; the caller's fallback carries the day.
 func (b Budget) Known() bool { return b.ContextTokens > 0 }

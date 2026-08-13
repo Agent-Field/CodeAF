@@ -535,12 +535,23 @@ func growthRefusal(cause string) string {
 // reads. The files travel with the digest because they are the one part a
 // division has to be able to name: a part that does not know what already
 // exists is a part that recreates it.
+//
+// The handle travels for the same reason, one step further out. A digest says
+// what a step found; the handle is the whole of what it said, and a division
+// that has to decide whether a part is already covered may need the whole of it.
+// It rides as a path beside the artifacts because it is a file like any other —
+// the planner does not open it, but the part the planner writes is handed the
+// same list and can.
 func landedFrom(inputs []store.DependencyInput) []plan.Landed {
 	landed := make([]plan.Landed, 0, len(inputs))
 	for _, input := range inputs {
 		result := strings.TrimSpace(input.Digest)
-		if len(input.Artifacts) > 0 {
-			result += "\nFiles it left behind: " + strings.Join(input.Artifacts, "; ")
+		files := input.Artifacts
+		if input.Handle != "" {
+			files = append(append([]string(nil), files...), input.Handle)
+		}
+		if len(files) > 0 {
+			result += "\nFiles it left behind: " + strings.Join(files, "; ")
 		}
 		if result == "" {
 			continue
