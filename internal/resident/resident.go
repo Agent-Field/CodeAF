@@ -255,8 +255,8 @@ type Reconciler struct {
 	// exists so a pass that consumed nothing but its own watermark event does
 	// not write another one, which would otherwise make the lane a perpetual
 	// writer and defeat the quiet-tick gate.
-	settlementMark    int64
-	progress map[string]*subtreeProgress
+	settlementMark int64
+	progress       map[string]*subtreeProgress
 	// commandStrikes counts how many times each pending command has stalled.
 	// In memory on purpose: it is a fact about this process's luck with a
 	// provider, not about the request, and a restart re-reads the same pending
@@ -355,6 +355,11 @@ func (r *Reconciler) WithCraftRunner(craft *CraftRunner) *Reconciler {
 // keyboard is auto-resolved exactly as the caller already chose by typing the
 // verb: once, not standing. The resolution is journaled, and the work then
 // runs, which is the whole point of the errand.
+//
+// It is also the switch for the surface's other law, which is about words
+// rather than time: the submitted ask is the goal, kept byte for byte, and a
+// question the compiler wanted to ask is answered here rather than returned.
+// See keepTheAskVerbatim and assumeAndDeclare.
 func (r *Reconciler) WithOneShotErrands() *Reconciler {
 	r.oneShotErrand = true
 	return r
@@ -1243,6 +1248,10 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	if err != nil {
 		return commandOutcome{}, fmt.Errorf("compile request: %w", err)
 	}
+	// On the headless surface the reading is not allowed to become the ask.
+	// This runs before the reading is posted so the row a person reads back
+	// says the sentence that was actually submitted.
+	compiled = r.keepTheAskVerbatim(command, compiled)
 	// What the compiler made of the ask, in the compiler's own words. This is
 	// the reading, and it is the one piece of the phase a person can check.
 	r.noteCommandStage(command, stageReading, firstLine(compiled.Goal))
@@ -1276,6 +1285,15 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 		if err != nil {
 			return commandOutcome{}, err
 		}
+	}
+
+	// A headless errand answers its own questions, because the alternative is
+	// not "ask carefully" but "do nothing". This is the same move the empirical
+	// ask policy below makes, taken unconditionally and without the second
+	// compile: the goal on this surface is fixed to the submitted ask, so a
+	// recompile could only re-open what the surface has already settled.
+	if question := strings.TrimSpace(compiled.Question); question != "" && r.oneShotErrand {
+		compiled = r.assumeAndDeclare(command, compiled, question)
 	}
 
 	if question := strings.TrimSpace(compiled.Question); question != "" {
@@ -1420,6 +1438,66 @@ const oneShotErrandContext = "\n\nSurface: this ask arrived as a single headless
 // that never had a ratification card to stand on.
 const oneShotErrandOnceEvidence = "one-shot errand surface: `aforge do` is the choice of once, not standing"
 
+// keepTheAskVerbatim is the headless surface's half of the compile contract.
+//
+// Chat's whole value at this seam is that it re-asks the question better: it
+// rewrites a half-formed sentence into a goal, declares the assumptions it is
+// working under, and asks back when one of them is too consequential to guess.
+// An errand submitted from a script has none of that to gain and one specific
+// thing to lose. The caller wrote the task; the task is the specification; and
+// a compiler that improves it means a harness measured something nobody wrote,
+// with no way to see that it happened — the reworded goal is the only goal the
+// journal ever holds.
+//
+// So on this surface the goal is the instruction, trimmed and otherwise
+// untouched, and the compiler's speculative assumptions are dropped rather than
+// anchored into the work as decisions the leaves are held to. Everything the
+// planner genuinely needs still comes from the compile — scale, parts, the
+// chosen worker, the jobs this one builds on, the title, the model words. Only
+// the wording of the ask is refused, because only the wording was the person's.
+//
+// An empty instruction leaves the compile alone: there is nothing verbatim to
+// keep, and the empty-goal check downstream is the honest place for it to fail.
+func (r *Reconciler) keepTheAskVerbatim(command store.Command, compiled Compiled) Compiled {
+	if !r.oneShotErrand {
+		return compiled
+	}
+	verbatim := strings.TrimSpace(command.Instruction)
+	if verbatim == "" {
+		return compiled
+	}
+	compiled.Goal = verbatim
+	compiled.Assumptions = nil
+	return compiled
+}
+
+// assumeAndDeclare turns a compiler askback into a decision on the record.
+//
+// Headless, a question is not a smaller failure than a wrong answer — it is a
+// run that compiled, asked into an empty room, and returned an interactive card
+// where its caller expected work. The only useful thing left is to pick the
+// answer the compiler itself ranked first and say so out loud, which is exactly
+// what the empirical ask policy does for a resident that has learned this
+// category is not worth asking about.
+//
+// Declared means two things and both matter. The journal records the skipped
+// ask, so a later correction can find it; and the answer joins Assumptions,
+// which is what carries it into the goal the planner reads and onto the node
+// the delivery gate judges. An assumption nothing is held to is a guess.
+func (r *Reconciler) assumeAndDeclare(command store.Command, compiled Compiled, question string) Compiled {
+	answer := defaultQuestionAnswer(compiled.QuestionOptions)
+	// Best effort, exactly as the empirical path treats it: a journal write that
+	// fails costs the correction trail, and doing the work anyway is still the
+	// better of the two outcomes available to a run with nobody at the keyboard.
+	_ = r.store.RecordAssumedWithDefault(store.QuestionCategoryCompileAssumption,
+		answer, command.SessionID, question)
+	compiled.Question, compiled.QuestionOptions = "", nil
+	compiled.Assumptions = append([]string{
+		fmt.Sprintf("%s — nobody was at the keyboard on this surface; assumed %s", question, answer),
+	}, compiled.Assumptions...)
+	return compiled
+}
+
 // resolveStandingAsOnce answers the ratification question the way the caller
 // already answered it by typing the verb, and hands back ordinary work.
 //
@@ -1429,17 +1507,19 @@ const oneShotErrandOnceEvidence = "one-shot errand surface: `aforge do` is the c
 // planner, working method, gate — because "do it once" means do it properly
 // once, not splice a bare node and hope.
 //
-// The goal is the invariant, which the temporal compiler is required to keep
-// verbatim: the user's own sentence, done now. The action template is the
-// fallback for a spec that lost it, and the raw instruction backstops both.
+// The goal is the submitted ask itself — this only ever runs on the one-shot
+// surface, whose law is that the caller's sentence is the specification
+// (keepTheAskVerbatim). The charter's invariant, which the temporal compiler is
+// required to keep verbatim anyway, is the fallback for the command that
+// somehow arrived without words, and the action template backstops that.
 func (r *Reconciler) resolveStandingAsOnce(command store.Command, compiled Compiled) (Compiled, string, error) {
 	spec := *compiled.Charter
-	goal := strings.TrimSpace(spec.Invariant)
+	goal := strings.TrimSpace(command.Instruction)
 	if goal == "" {
-		goal = strings.TrimSpace(spec.Action)
+		goal = strings.TrimSpace(spec.Invariant)
 	}
 	if goal == "" {
-		goal = strings.TrimSpace(command.Instruction)
+		goal = strings.TrimSpace(spec.Action)
 	}
 	// A spec complete enough to be a charter is recorded as one and retired in
 	// the same breath. One too thin to draft is not an error here — it was
@@ -1447,7 +1527,7 @@ func (r *Reconciler) resolveStandingAsOnce(command store.Command, compiled Compi
 	// still runs, which is the only thing the caller asked for.
 	id := fmt.Sprintf("charter-%d", command.Seq)
 	if charter, err := r.store.DraftCharter(id, command.SessionID, command.Seq, spec); err == nil {
-		if template := strings.TrimSpace(charter.Invariant); template != "" {
+		if template := strings.TrimSpace(charter.Invariant); template != "" && goal == "" {
 			goal = template
 		}
 		if err := r.store.SetCharterStatusWithReason(charter.ID, store.CharterRetired, store.Ratification{
