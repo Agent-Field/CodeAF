@@ -15,6 +15,20 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
+// WithdrawnByPlan prefixes the reason on a node the job's own second thought
+// dropped, and it is the one thing that tells a step withdrawn from a step
+// lost.
+//
+// Both end as a cancelled node, and until this had a name every reader
+// downstream had to guess which it was — so a delivery whose plan had correctly
+// dropped a step because another node had already done that work announced
+// itself as "Not all of this landed… much of it is missing", about a job that
+// had in fact landed whole. The prefix is a contract between the pass that
+// withdraws work and the composition that has to describe it, and the reason
+// after it is the reviser's own words about why, which is usually the name of
+// the node that covered it.
+const WithdrawnByPlan = "revision: "
+
 // ApplyRevision mirrors the sentinel's applied plan-graph operations onto the
 // durable store, governed as an overrun replan is.
 //
@@ -153,7 +167,7 @@ func ApplyRevisionGoverned(ctx context.Context, growth Growth, graph *store.Stor
 			applied++
 
 		case "remove":
-			if err := graph.CancelPending(id(operation.Node), "revision: "+operation.Reason); err != nil {
+			if err := graph.CancelPending(id(operation.Node), WithdrawnByPlan+operation.Reason); err != nil {
 				note(operation.Node, "it could not be dropped: "+err.Error())
 				continue
 			}
