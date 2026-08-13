@@ -141,6 +141,15 @@ type Commander struct {
 	database      string
 	prefsDir      string
 	workspaceRoot string
+	// scratchRoot is where the harness keeps its own files for this profile —
+	// the flight recorders in particular. It is a second root rather than a
+	// subdirectory of the first because the recorder was deliberately moved OUT
+	// of the leaf's working directory (see exec.Workspace), and a reader that
+	// still looked for it under the job would open nothing, render empty, and
+	// look exactly like a worker that is thinking rather than writing. That
+	// failure has already happened once here, for the same reason, one directory
+	// earlier — see NodeTraceTail.
+	scratchRoot string
 
 	chatClient *pool.Client
 	taskClient *pool.Client
@@ -202,6 +211,10 @@ type Options struct {
 	Database      string
 	PrefsDir      string
 	WorkspaceRoot string
+	// ScratchRoot is where this process sends the harness's own files. Empty
+	// falls back to the store's own scratch directory, which is where every
+	// surface in the product puts it — see the field it lands on.
+	ScratchRoot string
 
 	ChatClient *pool.Client
 	TaskClient *pool.Client
@@ -232,6 +245,7 @@ func New(options Options) *Commander {
 		database:         options.Database,
 		prefsDir:         options.PrefsDir,
 		workspaceRoot:    options.WorkspaceRoot,
+		scratchRoot:      scratchRootFor(options.ScratchRoot, options.Database),
 		chatClient:       options.ChatClient,
 		taskClient:       options.TaskClient,
 		planClient:       options.PlanClient,
@@ -312,6 +326,22 @@ func (c *Commander) KeepAttachment(path string) (string, error) {
 // one profile, one blob store.
 func AttachmentStoreRoot(database string) string {
 	return filepath.Join(filepath.Dir(database), "cas")
+}
+
+// scratchRootFor answers where this profile's machinery lives, from what the
+// host said and, failing that, from the store it is keyed to — which is the same
+// derivation the surface itself makes (home.StoreDir), so a visitor and the
+// resident read one directory rather than two spellings of one intention. A
+// commander built with no database at all — a test double — answers empty, and
+// the readers treat that as one home fewer rather than as an error.
+func scratchRootFor(given, database string) string {
+	if trimmed := strings.TrimSpace(given); trimmed != "" {
+		return trimmed
+	}
+	if strings.TrimSpace(database) == "" {
+		return ""
+	}
+	return home.StoreDir(database, "scratch")
 }
 
 func (c *Commander) StreamEvents() <-chan tui.StreamEvent { return c.streamEvents }
@@ -922,15 +952,38 @@ func (c *Commander) NodeTraceTail(
 	if err != nil || !ok {
 		return "", 0, noTime, true
 	}
-	jobDir := filepath.Join(c.workspaceRoot, c.jobDir(node))
+	// Two homes, in the order the recorder moved through them, because both are
+	// on disk right now. The scratch root is where a worker files it today; the
+	// job directory is where it was filed for every run recorded before the
+	// machinery left the leaf's own working directory, and a surface that silently
+	// emptied every finished run's execution feed would be a worse defect than the
+	// contamination the move was fixing. This exact repair has now been made twice
+	// on this exact reader — see the comment above — which is why the fallback is
+	// a list rather than a spelling.
+	homes := []string{c.scratchRoot, filepath.Join(c.workspaceRoot, c.jobDir(node))}
 	// The node's own id, which is what the worker filed its recorder under. The
 	// creation sequence is the fallback and nothing more: it belongs to the whole
 	// splice, so before the recorders were named per node one file held every
 	// sibling's turns — and every run written that way is still on disk and still
 	// worth reading.
-	path := exec.TracePath(jobDir, node.ID)
-	if _, statErr := os.Stat(path); statErr != nil {
-		path = exec.TracePath(jobDir, strconv.FormatInt(node.CreatedSeq, 10))
+	path := ""
+	for _, where := range homes {
+		if where == "" {
+			continue
+		}
+		for _, leaf := range []string{node.ID, strconv.FormatInt(node.CreatedSeq, 10)} {
+			candidate := exec.TracePath(where, leaf)
+			if _, statErr := os.Stat(candidate); statErr == nil {
+				path = candidate
+				break
+			}
+		}
+		if path != "" {
+			break
+		}
+	}
+	if path == "" {
+		return "", 0, noTime, true
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -1189,6 +1242,7 @@ func NewVisitor(path, sessionID string, graph *store.Store,
 		database:      path,
 		prefsDir:      filepath.Dir(path),
 		workspaceRoot: home.StoreDir(path, "workspace"),
+		scratchRoot:   scratchRootFor("", path),
 		store:         graph,
 		prefs:         LoadPrefs(filepath.Dir(path)),
 		sessionID:     sessionID,

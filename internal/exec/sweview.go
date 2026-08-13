@@ -182,7 +182,7 @@ func sweOpen(ctx context.Context, space *Workspace, leaf string, trace *tracer) 
 	view := &sweView{
 		root: root, dir: root, leaf: leaf,
 		state:   sweStateDir(root, leaf),
-		private: space.PrivateScratch(),
+		private: space.PersonalRoot(),
 		locks:   sweRootLocksFor(root), trace: trace,
 	}
 	_ = os.MkdirAll(view.state, 0o755)

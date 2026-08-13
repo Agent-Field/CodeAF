@@ -336,13 +336,16 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	if err := os.MkdirAll(workspaceRoot, 0o700); err != nil {
 		return nil, brain.abandon(fmt.Errorf("create chat workspace: %w", err))
 	}
-	// A shared workspace belongs to the person rather than to the run, so the
-	// machinery that would otherwise pile up beside their files — spilled
-	// observations, turn traces, background job logs — is sent to the store's
-	// own directory, which for a one-shot evaporates with it.
-	scratchRoot := ""
-	if opts.sharedWorkspace {
-		scratchRoot = home.StoreDir(path, "scratch")
+	// The machinery goes to the store's own directory on EVERY layout, not just
+	// the shared one. It used to move only when the workspace belonged to a
+	// person, on the reading that a per-job directory is the harness's to litter;
+	// what actually sat in it was the worker's own flight recorder, its raw event
+	// stream and its spilled observations, in the one directory the worker was
+	// told to work in. A measured leaf spent five of eleven turns listing that and
+	// reading its own trace back. See [exec.Workspace] on the scratch field.
+	scratchRoot := home.StoreDir(path, "scratch")
+	if err := os.MkdirAll(scratchRoot, 0o700); err != nil {
+		return nil, brain.abandon(fmt.Errorf("create chat scratch: %w", err))
 	}
 	// What the planner is allowed to see of the world before it plans. Only a
 	// shared workspace holds the person's own material; in the per-job layout the
@@ -543,8 +546,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		if err != nil {
 			return resident.ExecResult{}, err
 		}
-		if scratchRoot != "" {
-			jobSpace = jobSpace.WithScratch(scratchRoot)
+		jobSpace = jobSpace.WithScratch(scratchRoot)
+		if opts.sharedWorkspace {
+			// Whose directory this is, said as its own fact. The engine reads it
+			// to decide it may never check the root out from under somebody's
+			// work; it used to read "the machinery went elsewhere" instead, which
+			// stopped being the same question the moment the machinery always did.
+			jobSpace = jobSpace.OwnedByPerson()
 		}
 		staged, err := exec.StageAttachments(jobSpace, attachmentStoreRoot(path), node.Provenance.Attachments)
 		if err != nil {
@@ -1632,6 +1640,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		Database:         path,
 		PrefsDir:         filepath.Dir(path),
 		WorkspaceRoot:    workspaceRoot,
+		ScratchRoot:      scratchRoot,
 		ChatClient:       chatClient,
 		TaskClient:       taskClient,
 		PlanClient:       planClient,
@@ -2003,7 +2012,14 @@ const notebookInputTitle = "your notebook — standing preferences and lessons, 
 func leafNotebookInputs(graph *store.Store, node store.Node) []exec.Input {
 	inputs := make([]exec.Input, 0, 4)
 	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, node.Provenance.Intent, 8); digest != "" {
-		inputs = append(inputs, exec.Input{Title: notebookInputTitle, Result: digest})
+		// Whole, because there is nowhere for this one to be incomplete. The
+		// digest names no file, and the notebook is not a place the leaf can go —
+		// what it is handed is the retrieval, and the retrieval is the memory as
+		// far as this leaf is concerned. Left false it would read as an account of
+		// something fetchable, and the brief's sufficiency claim, which asks
+		// exactly that question of every input, would be refused on every leaf
+		// that has ever been taught anything.
+		inputs = append(inputs, exec.Input{Title: notebookInputTitle, Result: digest, Whole: true})
 	}
 	return inputs
 }

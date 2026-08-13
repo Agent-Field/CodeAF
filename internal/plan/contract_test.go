@@ -51,6 +51,57 @@ func TestContractsNoPlaybookPromptIsByteIdentical(t *testing.T) {
 	}
 }
 
+// THE ORIENTATION FACTORY, shut down. The first bullet used to require every
+// model-authored method to state "what to understand before touching anything",
+// and the method is rendered FIRST in every leaf's brief — so every leaf in
+// every graph opened on an instruction to go and understand something, and did.
+// The cost was per-leaf and unauditable: it does not read as waste in a trace,
+// it reads as diligence.
+//
+// The reading half is not deleted, it is moved to where the knowledge is. Only
+// the planner knows whether there is anything here to read — it holds the
+// terrain and writes "It is expected to touch: …" into this very message — so
+// the method may name a specific thing and may not ask for understanding in the
+// abstract.
+func TestTheMethodWriterMayNotManufactureOrientation(t *testing.T) {
+	if strings.Contains(contractPrompt, "What to understand before touching anything") {
+		t.Error("the understand-first requirement is still manufacturing a turn per leaf")
+	}
+	for name, want := range map[string]string{
+		"production order is what the first bullet asks for": "- What order the work is best produced in.",
+		"a thing to read is named rather than implied":       "name that thing — the file, the source, the\n  record it is expected to touch",
+		"understanding in general is refused":                "Never ask for\n  understanding in general",
+	} {
+		if !strings.Contains(contractPrompt, want) {
+			t.Errorf("the contract prompt no longer says %s: %q missing", name, want)
+		}
+	}
+}
+
+// The other half of the same imbalance. Verification is demanded in three places
+// in this prompt and in the standing contract the leaf reads; the bound on it —
+// that a green check is a finished question — was nowhere in the method writer's
+// instructions at all, so methods routinely sent an agent back over something it
+// had already proved.
+func TestTheMethodsCheckIsBoundToRunOnce(t *testing.T) {
+	for _, want := range []string{
+		"Write it as one check,\n  run once, immediately before finishing",
+		"a check that came back green is a\n  finished question",
+	} {
+		if !strings.Contains(contractPrompt, want) {
+			t.Errorf("the verify bullet lost its bound: %q missing", want)
+		}
+	}
+	// Inside the verify bullet, where a method writer reads it as part of the
+	// check it is writing, rather than adrift as general advice.
+	verify := strings.Index(contractPrompt, "- How to verify:")
+	mistakes := strings.Index(contractPrompt, "- The two or three mistakes")
+	bound := strings.Index(contractPrompt, "run once, immediately before finishing")
+	if verify < 0 || bound < verify || bound > mistakes {
+		t.Error("the run-once bound drifted out of the verify step")
+	}
+}
+
 // The working method is where a domain's own idea of "checked" gets written
 // down, so it is where the inference across the join has to be refused: a
 // contract that says which parts to test is what lets a leaf prove every part

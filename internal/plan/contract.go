@@ -37,6 +37,23 @@ import (
 // know the routes exist, and the tool descriptions themselves say how to drive
 // them.
 //
+// THE FIRST BULLET USED TO MANUFACTURE ORIENTATION AND IS THE MEASURED REASON
+// THIS COMMENT IS LONGER THAN IT WAS. It required every model-authored method to
+// state "what to understand before touching anything", and the method is
+// rendered FIRST in every leaf's brief (exec.Linear.brief) — so every leaf in
+// every graph opened on an instruction to go and understand something, and did.
+// The cost was per-leaf, unauditable, and invisible in any single trace: it does
+// not read as waste, it reads as diligence. What a method is for is how the work
+// is PRODUCED and how it is CHECKED, and those are the two things the bullets
+// now ask for.
+//
+// The reading half is not deleted, it is moved to where the knowledge is. Some
+// jobs genuinely cannot begin until a file has been read; the planner is the one
+// party that knows which, because it holds the terrain and writes "It is
+// expected to touch: …" into this very message. So the method may name a
+// specific thing to read and may not ask for understanding in the abstract —
+// which is the difference between a pointer and a scavenger hunt.
+//
 // The verify bullet binds to the brief for the same reason. Done-means has two
 // authors — the instruction states the acceptance bar, the method states how to
 // check — and the second was never told the first was binding. One task's brief
@@ -59,8 +76,12 @@ method: what someone experienced in exactly this kind of work does differently
 from someone merely competent.
 
 Concretely, for this kind of work:
-- What to understand before touching anything, and what order the work is best
-  produced in.
+- What order the work is best produced in. Where this job truly cannot begin
+  until something has been read, name that thing — the file, the source, the
+  record it is expected to touch — and say what to take from it. Never ask for
+  understanding in general: an agent told to understand the material before it
+  touches anything goes and looks around, and only you know whether there is
+  anything here to look at.
 - What "done" means here, said as what whoever ends up using the result does
   with it and sees — including how it must connect to or be reachable from what
   already exists, if anything does. Work that functions only in isolation is
@@ -70,7 +91,10 @@ Concretely, for this kind of work:
   add up to a working result — and, for whatever cannot be run from here, what
   to declare unverified and the one short check that would settle it. Where the
   agent's instruction already states the bar for done, the check you write
-  exercises that bar itself rather than a stand-in for it.
+  exercises that bar itself rather than a stand-in for it. Write it as one check,
+  run once, immediately before finishing: a check that came back green is a
+  finished question, and a method that sends the agent back to ask it again
+  spends the person's money to re-learn a fact.
 - The two or three mistakes most often made in this kind of work, stated as
   things to watch for.
 - Where this kind of work most often gets stuck — the source that is down, the
