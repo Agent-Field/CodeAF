@@ -51,8 +51,9 @@ import (
 //
 // It is the surface's own shape rather than the engine's, for the reason
 // [palette.SettingRow] is not config's: this package is a leaf of the TUI tree,
-// and the fields below are the four facts a switcher row draws — everything
-// else a session carries is somebody else's question.
+// and the fields below are what a switcher row is made of — the four facts it
+// draws, and the one it is findable by. Everything else a session carries is
+// somebody else's question.
 type Thread struct {
 	// SessionID is the room this thread IS. It is never drawn.
 	SessionID string
