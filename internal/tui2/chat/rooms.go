@@ -1662,6 +1662,23 @@ const (
 	// reader to discover that `untitled room` is temporary.
 	newRoomCardNote = "a conversation of its own, with no history behind it. " +
 		"it takes its name from the first exchange in it."
+	// newRoomCardKeeps is the sentence that answers the only question a person
+	// hesitates over in front of this card: what do I lose by starting here.
+	//
+	// NOTHING DURABLE LIVES IN A THREAD. Preferences, standing rules, the
+	// notebook and every task are stored beside threads and not inside them — a
+	// thread carries one conversation's own context and nothing else — so a fresh
+	// room costs a reader their scrollback and never their machine. The fear is
+	// real (it is the same fear that keeps people typing into a room that has
+	// drifted off topic) and it is cheapest to answer HERE, in the frame where it
+	// is being felt, in one sentence rather than in a paragraph that would read
+	// as reassurance.
+	//
+	// It rides the same paragraph as the note above rather than opening a band of
+	// its own: the card is four bands (§16's typographic hierarchy) and a fifth
+	// would make the card an explanation. One measure, one voice, one wrap.
+	newRoomCardKeeps = "you lose nothing by starting here — your preferences, " +
+		"standing rules, the notebook and all the work live outside threads."
 	// The two ways in. The verbs are the acts and the keys are annotation
 	// (§16's verb·key chip, drawn through internal/tui2/keychip), and the notes
 	// behind them say what each way actually does with the words in the draft —
@@ -1730,7 +1747,8 @@ func (b *newRoomCardBlock) Rows(width int) []string {
 	rows = append(rows, blocks.Ruled{Title: newRoomCardTitle, State: blocks.StateChrome}.
 		Render(width, b.styler()))
 	rows = append(rows, "")
-	rows = prose{style: b.style, base: tokens.TextTertiary}.rows(rows, newRoomCardNote, measure, bodyIndent)
+	rows = prose{style: b.style, base: tokens.TextTertiary}.
+		rows(rows, newRoomCardNote+" "+newRoomCardKeeps, measure, bodyIndent)
 	rows = append(rows, "")
 
 	ways := []registry.Chip{
