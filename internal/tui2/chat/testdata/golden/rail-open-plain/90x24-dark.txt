@@ -17,8 +17,8 @@
                                                                ✓ perf-audit
                                                                ○ homes
 
-
+  aforge ‹ the wisp parity push                           ◐ 1
 ▍ ›  ask for anything · @ jobs · / commands
 
 
-  chat  work  notebook  threads ▾ ctrl+t  +  the wisp parity push              ~/aforge-v2
+  chat  work  notebook  threads ▾ ctrl+t  +                                    ~/aforge-v2

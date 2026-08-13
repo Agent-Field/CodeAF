@@ -23,8 +23,8 @@
 
 
 
-
+  aforge ‹ the wisp parity push                                                                                    ◐ 1
 ▍ ›  ask for anything · @ jobs · / commands
 
 
-  chat  work  notebook  threads ▾ ctrl+t  +  the wisp parity push                              ~/aforge-v2 · ◐ 1 working
+  chat  work  notebook  threads ▾ ctrl+t  +                                                    ~/aforge-v2 · ◐ 1 working

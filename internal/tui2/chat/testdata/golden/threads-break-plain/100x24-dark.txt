@@ -17,8 +17,8 @@
                                                                          ✓ perf-audit
                                                                          ○ homes
 
-
+  aforge ‹ importer rewrite                                         ◐ 1
 ▍ ›  ask for anything · @ jobs · / commands
 
 
-  chat  work  notebook  threads ▾ ctrl+t  +  importer rewrite                            ~/aforge-v2
+  chat  work  notebook  threads ▾ ctrl+t  +                                              ~/aforge-v2

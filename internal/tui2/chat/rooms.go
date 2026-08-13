@@ -692,7 +692,6 @@ func (a *App) bind(event rail.Event, commit bool) tea.Cmd {
 		a.showCard(row, "")
 	}
 
-	a.status.breadcrumb = a.breadcrumb()
 	a.handOverTheKeyboard(commit)
 	a.refresh()
 	return cmd
@@ -898,30 +897,6 @@ func bindWork(row rail.Row, node string) composerBind {
 			note: "this work is settled — ask aforge about it"}
 	}
 	return composerBind{mode: rail.ComposerSteer, node: node}
-}
-
-// breadcrumb is the spatial truth (5.15): where the reader is, in the words
-// they navigated by, and never an id (5.14, 13.3.4).
-func (a *App) breadcrumb() string {
-	if a.railModel == nil {
-		return ""
-	}
-	crumbs := a.railModel.Breadcrumb()
-	// 12.13.2's merge law, asked of the footer: an entered room says its name
-	// ONCE. The rail's breadcrumb already ends with the scope the reader
-	// descended into, and the main pane's title is usually that same object
-	// seen from the other side — so appending it unconditionally drew
-	// `‹ untitled room ‹ wisp-parity ‹ wisp-parity`, which reads as two levels
-	// of nesting that do not exist. The title is appended only when it names
-	// something the crumbs do not, which is exactly when it is worth its cells.
-	if a.view != nil && a.view.title != "" &&
-		(len(crumbs) == 0 || !strings.EqualFold(strings.TrimSpace(crumbs[len(crumbs)-1]), strings.TrimSpace(a.view.title))) {
-		crumbs = append(crumbs, a.view.title)
-	}
-	if len(crumbs) <= 1 {
-		return ""
-	}
-	return strings.Join(crumbs[1:], " "+tokens.GlyphScopeUp+" ")
 }
 
 // -- the main pane's three lenses --------------------------------------------

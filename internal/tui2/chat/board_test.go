@@ -724,8 +724,8 @@ func TestEnterOnABoardRowOpensTheJobsRoom(t *testing.T) {
 	if app.view == nil || app.view.kind != viewNode || app.view.node != "job-1" {
 		t.Fatalf("the lens is not the job's room: %+v", app.view)
 	}
-	if app.status.breadcrumb == "" {
-		t.Fatal("the trail is empty inside a room, so the tabs never gave way")
+	if words := placeWords(app); len(words) < 3 || words[len(words)-1] != "wisp-parity" {
+		t.Fatalf("the place line does not stand in the job's room: %q", words)
 	}
 }
 

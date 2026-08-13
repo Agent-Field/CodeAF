@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/composer"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/rail"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // 13.19: the `+ new` card, and the trap it used to be.
@@ -353,44 +354,54 @@ func TestOnlyAWrittenCharacterMintsARoom(t *testing.T) {
 	}
 }
 
-// -- the composer names its room ---------------------------------------------
+// -- the place line names where words go -------------------------------------
+//
+// THE GHOST LINE'S DUTY, MOVED. 13.19's rule is that the surface must always say
+// where words go when the eyes and the mouth are in different places. The old
+// answer was a sentence under the draft (`typing goes to the wisp parity push`);
+// the place line answers it by marking the SEGMENT the words land in with the
+// composer's own prompt glyph, which is one cell instead of a sentence naming a
+// room the path is already drawing. These are the incident's own scenarios,
+// asked of the row that answers them now.
 
-// THE COMPOSER ALWAYS SAYS WHERE WORDS GO when the eyes and the mouth are in
-// different places. A card in the main pane is a look at something the composer
-// is not bound to, and that is the frame the incident happened in.
-func TestTheComposerNamesItsRoomWhileThePaneShowsSomethingElse(t *testing.T) {
+// A card in the main pane is a look at something the composer is not bound to,
+// and that is the frame the incident happened in.
+func TestThePlaceLineMarksWhereWordsGoWhileThePaneShowsSomethingElse(t *testing.T) {
 	app, _ := boardApp(t)
-	if target := app.composerTarget(); target != "" {
-		t.Fatalf("the composer names %q while the pane IS its room: that is chrome announcing itself", target)
+	if seg := app.placeBar.mouth; seg != -1 {
+		t.Fatalf("the line marks segment %d while the pane IS the mouth's room: that is chrome announcing itself", seg)
 	}
 
-	// Previewing another room: the words still go to this one, and it says so.
+	// Previewing another room: the words still go to this one, and the mark
+	// says so on the segment that names it.
 	press(app, "ctrl+o")
 	press(app, "3")
 	app.focusConversation()
 	app.refresh()
-	target := app.composerTarget()
-	if !strings.Contains(target, "the wisp parity push") {
-		t.Fatalf("the composer's line reads %q and does not name the room it is bound to", target)
+	marked := placeMouthWord(app)
+	if marked != "the wisp parity push" {
+		t.Fatalf("the mark sits on %q and not on the room the composer is bound to", marked)
 	}
-	if out := ansi.Strip(app.Frame(100, 24)); !strings.Contains(out, target) {
-		t.Fatalf("the line never reaches the frame:\n%s", out)
+	want := tokens.GlyphHugEdge + marked
+	if out := ansi.Strip(app.Frame(100, 24)); !strings.Contains(out, want) {
+		t.Fatalf("the mark never reaches the frame (want %q):\n%s", want, out)
 	}
 
-	// And back in the room, it goes quiet again.
+	// And back in the room, the mark goes away: the eyes and the mouth agree.
 	pressThrough(app, "esc")
 	press(app, "ctrl+o")
 	press(app, "2")
 	press(app, "enter")
-	if target := app.composerTarget(); target != "" {
-		t.Fatalf("an entered room still names itself: %q", target)
+	if seg := app.placeBar.mouth; seg != -1 {
+		t.Fatalf("an entered room still marks segment %d", seg)
 	}
 }
 
-// A room being minted has no name yet, and answering with the OLD room's name
-// here would be the exact lie the line exists to prevent — the words are going to
-// the new room, and the card's own word is what they are going to.
-func TestTheComposerNamesTheFreshRoomWhileItIsBeingMinted(t *testing.T) {
+// A room being minted is ALREADY the leaf: the pane shows the fresh room's card,
+// the mint is committed to it, and the eyes and the mouth are therefore in the
+// same place. The old sentence had to say the card's word out loud precisely
+// because it could not point at the card the reader was looking at.
+func TestThePlaceLineStandsInTheFreshRoomWhileItIsBeingMinted(t *testing.T) {
 	app, _ := boardApp(t)
 	previewFreshRoom(t, app)
 	app.drain(app.key(tea.KeyPressMsg{Code: 'q', Text: "q"}))
@@ -398,14 +409,19 @@ func TestTheComposerNamesTheFreshRoomWhileItIsBeingMinted(t *testing.T) {
 	if !app.mint.active {
 		t.Fatal("typing did not open the mint")
 	}
-	if target := app.composerTarget(); target != newRoomCardTitle {
-		t.Fatalf("mid-mint the composer names %q, want %q", target, newRoomCardTitle)
+	app.refresh()
+	words := placeWords(app)
+	if len(words) == 0 || words[len(words)-1] != newRoomCardTitle {
+		t.Fatalf("mid-mint the place line stands at %q, want a leaf of %q", words, newRoomCardTitle)
+	}
+	if seg := app.placeBar.mouth; seg != -1 {
+		t.Fatalf("mid-mint the line marks segment %d, but the words go where the reader is looking", seg)
 	}
 }
 
 // An untitled room is named by the only honest thing there is to say about it,
 // never by an id (13.3.4).
-func TestTheComposerNamesAnUntitledRoomHonestly(t *testing.T) {
+func TestThePlaceLineNamesAnUntitledRoomHonestly(t *testing.T) {
 	app, backend := boardApp(t)
 	backend.sessions = append(backend.sessions, store.Session{ID: "chat-nameless"})
 	backend.journal++
@@ -413,13 +429,15 @@ func TestTheComposerNamesAnUntitledRoomHonestly(t *testing.T) {
 	app.switchRoom("chat-nameless")
 	previewRow(t, app, rowNewRoomID)
 	app.focusConversation()
+	app.refresh()
 
-	target := app.composerTarget()
-	if !strings.Contains(target, untitledRoom) {
-		t.Fatalf("the composer's line reads %q", target)
+	if got := placeMouthWord(app); got != untitledRoom {
+		t.Fatalf("the mark sits on %q", got)
 	}
-	if strings.Contains(target, "chat-nameless") {
-		t.Fatalf("the line drew a session id: %q", target)
+	for _, word := range placeWords(app) {
+		if strings.Contains(word, "chat-nameless") {
+			t.Fatalf("the place line drew a session id: %q", word)
+		}
 	}
 }
 
