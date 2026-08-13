@@ -601,6 +601,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			deadline = reflexDeadline
 			watchdog = deadline + 15*time.Second
 		}
+		// The open envelope, kept whole, because a fold may hand it back. A node
+		// run as an assembly that could not assemble has had its own premise
+		// refused by the attempt, and the retry gets the shape and the room this
+		// leaf would have had if nothing had judged it — so a predicate that is
+		// wrong about a node costs one short call rather than the node.
+		openTurns, openTokens, openDeadline := turns, tokens, deadline
 		leafMedia := mediaModels.Snapshot()
 		leafMedia.WorkingModel = workingModel
 		leafMedia.VisionModel = settings.ResolveVisionModel(modelCatalog, chatClient.Model(), workingModel)
@@ -640,7 +646,6 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			graph: graph, media: &leafMedia, model: workingModel, models: modelCatalog,
 			maxTurns: turns, maxTokens: tokens, deadline: deadline, fanIn: fanIn,
 		}
-		worker := executorFor(subharness, build)
 		shape := "atomic"
 		if isReflex {
 			shape = "reflex"
@@ -665,6 +670,11 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// before Y" arrived as a claim that X had been checked. The notebook is
 		// not a prior result and says so; a dependency says whose it is.
 		inputs := leafNotebookInputs(graph, node)
+		// What the fan-in actually delivered, measured here because the fold
+		// decision below turns on it: a node may only be run as an assembly if
+		// every result it assembles arrived whole. Handles are the count of the
+		// ones that did not.
+		pushed, handles, carried := 0, 0, 0
 		dependencies, err := graph.DependencyInputs(node.ID, build.dependencyPot())
 		if err == nil {
 			for _, dependency := range dependencies {
@@ -674,28 +684,75 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				// told where the file is. Without this the pointer was written
 				// and never delivered.
 				files := dependency.Artifacts
+				pushed += len(dependency.Digest)
+				if dependency.NodeID != "" {
+					carried++
+				}
 				if dependency.Handle != "" {
+					handles++
 					// Digest in the prompt, whole result on the end of a path.
 					// The handle joins the artifacts because that is already the
 					// list the brief renders as "read them if you need the full
 					// detail" — which is exactly the sentence a handle wants said
 					// about it, and the leaf already reads paths with sh.
 					//
-					// This is the pull side of the policy. The push side is the
-					// pot, and the pot alone is what billed a join 163k tokens
-					// for eight upstream results it summarised in two paragraphs.
-					// A consumer whose contract really does say reproduce every
-					// finding in full now opens eight files and pays for eight
-					// files; every other consumer pays for eight digests.
+					// This is the pull side of the policy, and with the product
+					// on the edge it is finally the exception rather than the
+					// rule: a dependency comes back on a handle when its material
+					// genuinely did not fit, and not merely because its producer
+					// summarised itself in one sentence.
 					files = append(append([]string(nil), files...), dependency.Handle)
 				}
 				inputs = append(inputs, exec.Input{
 					Title:     dependency.NodeID,
 					Result:    dependency.Digest,
 					Artifacts: files,
+					// True exactly when the text above is the material and not an
+					// account of it. A clipped input is an account of it again,
+					// and the brief must not tell the leaf otherwise.
+					Whole: dependency.Handle == "",
 				})
 			}
 		}
+
+		// The fold decision, taken here because here is the only place both
+		// halves of it are knowable: the plan says whether this node has
+		// anything to go and find, and the fan-in that just landed says whether
+		// it is holding what it was promised.
+		//
+		// Neither half alone is safe. A plan that names no sources describes a
+		// node that should be able to assemble in one pass, and a node whose
+		// inputs came back on handles cannot, whatever its plan says — it has
+		// files to open, and opening them is turns. The conjunction is what makes
+		// the cap honest.
+		//
+		// carried must equal what was measured, not merely reach two: a fan-in
+		// too wide for the pot arrives with its tail named in one sentence
+		// instead of carried, and a node assembling from a list of the things it
+		// was not shown is a node with fetching to do.
+		fold := !isReflex && planNode != nil && plan.Folds(planNode) &&
+			fanIn.Count >= 2 && carried == fanIn.Count && handles == 0
+		if fold {
+			turns, tokens = foldGrant(modelCatalog.ContextLength(workingModel),
+				exec.FoldTurns, pushed, tokens)
+			deadline = exec.SubharnessFor(subharness).Deadline(tokens)
+			watchdog = deadline + 2*time.Minute
+			build.maxTurns, build.maxTokens, build.deadline = turns, tokens, deadline
+		}
+		// Journaled either way, so a benchmark can tell a fold that fired from a
+		// node that merely finished quickly, and so a fold that did not fire can
+		// be argued with rather than guessed at.
+		leafMode := store.LeafMode{
+			Mode: store.LeafModeOpen, Deps: carried, Pushed: pushed, Handles: handles,
+			Turns: turns, Tokens: tokens,
+		}
+		if fold {
+			leafMode.Mode = store.LeafModeFold
+		}
+		if modeErr := graph.RecordLeafMode(node.ID, leafMode); modeErr != nil {
+			log.Printf("note: could not journal the dispatch shape of %s: %v", node.ID, modeErr)
+		}
+		worker := executorFor(subharness, build)
 		// The steering mailbox: user messages anchored to this node land in
 		// the worker's transcript before its next turn. The cursor starts at
 		// zero so guidance sent while the node was still queued applies too.
@@ -785,6 +842,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		}
 		task := exec.Task{
 			Reflex:     isReflex,
+			Fold:       fold,
 			Subharness: subharness,
 			NodeID:     int(node.CreatedSeq),
 			// The identity everything this leaf writes is filed under, and it is
@@ -926,6 +984,23 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				attempted := task
 				attempted.Inputs = append(append([]exec.Input{}, inputs...),
 					previousAttemptInput(outcome, jobDir))
+				// The fold is released here and nowhere else. Whatever brought
+				// this leaf to a second attempt, it is evidence that this node
+				// did not assemble in one pass, and running the retry under the
+				// same two-call cap would buy the same ending twice.
+				if attempted.Fold {
+					attempted.Fold = false
+					build.maxTurns, build.maxTokens = openTurns, openTokens
+					build.deadline = openDeadline
+					watchdog = build.deadline + 2*time.Minute
+					worker = executorFor(subharness, build)
+					if modeErr := graph.RecordLeafMode(node.ID, store.LeafMode{
+						Mode: store.LeafModeOpen, Deps: carried, Pushed: pushed,
+						Handles: handles, Turns: openTurns, Tokens: openTokens,
+					}); modeErr != nil {
+						log.Printf("note: could not journal the retry shape of %s: %v", node.ID, modeErr)
+					}
+				}
 				// Who takes the retry, asked once, of the same judge machinery
 				// that already reads failures. An empty menu never reaches here.
 				//

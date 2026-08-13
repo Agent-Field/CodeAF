@@ -164,6 +164,54 @@ func gatheringGrant(turns, tokens int, fanIn store.DependencyFanIn) (int, int) {
 	return turns + fanIn.Count, tokens + 2*landed
 }
 
+// foldGrant sizes the whole run of a leaf that is going to make one model call.
+//
+// The gathering grant above is the right arithmetic for a node that has to go
+// and open what fed it: a turn per dependency to fetch with, and twice the
+// landed text to read it in and write it back out. A fold opens nothing. Its
+// material is in its prompt already, so its run is a prompt and an answer, and
+// its grant is that and no more:
+//
+//	pass   = promptFloor + pushed/BytesPerToken + reserve
+//	tokens = turns * pass
+//
+// The reserve is the consumer's own rather than the process-wide constant, and
+// it is stated the same way a gathering leaf states it — through ctxbudget,
+// which owns both the clamp and the window it is clamped against. An assembly
+// is bounded above by the material it assembles, so a node handed 28 KB of
+// results needs room to write up to 28 KB back; a constant reserve is what left
+// an assembler mid-assembly, buying a paid continuation splice to finish typing
+// results it had already read.
+//
+// Turns multiply because the second call resends the first call's prompt: two
+// passes are two prompts and two answers, and a ceiling that budgeted one would
+// stop the recovery pass the fold exists to be allowed.
+//
+// ceiling is what this node would have been granted as an open-ended gathering
+// leaf, and the fold may not exceed it. The reserve is a generous per-call
+// output cap by design — "a ceiling only costs on the turns that use it" — so
+// two of them plus two prompts can add up to more than the open shape's whole
+// envelope, and a mode that exists to be the cheaper one must never buy a
+// bigger allowance than the mode it replaces. The saving a fold is actually
+// for is the turn cap; this is the guarantee that the token ceiling does not
+// quietly give it back.
+//
+// An unknown window keeps the process-wide reserve, which is what every budget
+// in the tree does when nobody can say how large the window is.
+func foldGrant(window, turns, pushed, ceiling int) (int, int) {
+	landed := pushed / ctxbudget.BytesPerToken
+	reserve := ctxbudget.CompletionReserve()
+	if budget := ctxbudget.For(window).WithFloor(leafPromptFloorTokens).
+		WithCompletionReserve(reserve + landed); budget.Known() {
+		reserve = budget.CompletionReserveTokens
+	}
+	tokens := turns * (leafPromptFloorTokens + landed + reserve)
+	if ceiling > 0 && tokens > ceiling {
+		tokens = ceiling
+	}
+	return turns, tokens
+}
+
 // leafExecutors is name-to-constructor: what a surface calls when a node says
 // it wants a particular worker. Linear's entry builds exactly what every leaf
 // has always been built with, so routing through the table changes nothing for
