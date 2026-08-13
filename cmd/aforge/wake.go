@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/craft"
 	"github.com/Agent-Field/aforge-v2/internal/lease"
+	"github.com/Agent-Field/aforge-v2/internal/provider/pool"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
@@ -49,6 +50,10 @@ func runWake(args []string) error {
 		if err != nil {
 			return nil, err
 		}
+		// A wake pass is unattended by definition, which makes an unbounded
+		// structuring call worse here than in chat: there is nobody to notice.
+		chatClient.WithCallWall(pool.DefaultCallWall)
+		planClient.WithCallWall(pool.DefaultCallWall)
 		installMeasuredRulers(settings.ProfileDir, taskClient.Model())
 		plans := &jobPlans{graphs: map[string]plannedJob{}}
 		// A wake pass has no live boost slot to resolve model words against;
