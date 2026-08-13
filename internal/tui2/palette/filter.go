@@ -152,10 +152,13 @@ func filter(dst []hit, rows []row, needle string) []hit {
 	for i := range rows {
 		r := &rows[i]
 		best, matched := 0, false
-		// The three haystacks in the order they rank: what the row is called,
-		// what it says, and — for a thread — what it is ABOUT. The tags are the
-		// last of the three and never the best of them by construction, because
-		// a row whose NAME contains the query is the row the reader meant.
+		// Three haystacks, and the row scores as its BEST of them: what it is
+		// called, what it says, and — for a thread — what it is about. The
+		// third is [row.lowerTags], which is the only matchable text on this
+		// surface that is never drawn, and it takes no privilege for that: a
+		// row whose name begins with the query still outranks a row that merely
+		// carries it as a subject, because the prefix bonus is in the score and
+		// not in the order these are tried.
 		for _, haystack := range [...]string{r.lowerVerb, r.lowerDesc, r.lowerTags} {
 			s, ok := score(haystack, needle)
 			if !ok {
