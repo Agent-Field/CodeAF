@@ -333,6 +333,9 @@ type App struct {
 	notebookPane *pagePane
 	// composerBind is what the composer is talking to (5.15's one rule).
 	composerBind composerBind
+	// mint is the fresh room a door has asked for and the store has not yet
+	// handed back, plus whatever the reader said into the gap (rooms.go).
+	mint mintHold
 
 	// The residency chain. residents is the door, residency is the last answer
 	// it gave, and probing keeps exactly one question in flight — the same
@@ -1129,6 +1132,22 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	// not a mode, not a focus carousel, one chord in and one chord (or esc at
 	// home) out — and while the composer has focus, j and k are letters.
 	if a.railFocus {
+		// THE MAP'S OWN KEYS FIRST: j, k, g, G, the digits, enter and esc. They
+		// are how a reader walks the list, and walking has to keep working in
+		// front of every card the list can draw — including the one below, whose
+		// door would otherwise swallow `j` as a letter.
+		if cmd, claimed := a.scopeKey(msg); claimed {
+			a.shell.Invalidate()
+			return cmd
+		}
+		// TYPING IN FRONT OF THE `+ new` CARD MINTS THE ROOM (13.19). It is
+		// checked here — after navigation, before every bare-letter accelerator
+		// below — because that is exactly what the card promises: once the pane is
+		// an empty room, a printable key is a person starting to talk, and the one
+		// thing it must not be is a key that does nothing. See [App.mintOnType].
+		if cmd, minted := a.mintOnType(msg); minted {
+			return cmd
+		}
 		// THE BARE `t` LIVES HERE AND NOWHERE ELSE (5.2's J3, and the reason is
 		// worth stating because the doc writes the key as a bare `t`).
 		//
@@ -1145,13 +1164,11 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		// rather than text: while the MAP holds the keyboard. Everywhere else the
 		// door is alt+t, which is exactly what the registry's ChordKey means and
 		// what every surface that reads the catalog will teach in a
-		// composer-first room ([registry.SurfaceComposerFirst]).
+		// composer-first room ([registry.SurfaceComposerFirst]). It sits UNDER the
+		// mint above for the same reason it sits under the composer everywhere
+		// else: in front of a fresh room a bare letter is already text.
 		if msg.String() == threadsKey {
 			return a.openSwitcher()
-		}
-		if cmd, claimed := a.scopeKey(msg); claimed {
-			a.shell.Invalidate()
-			return cmd
 		}
 		// AND THE MAP KEEPS IT. A key the map does not claim is not a letter
 		// for the composer to take, and letting it fall through was the second
@@ -1170,6 +1187,15 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	if a.composer == nil {
 		return nil
+	}
+	// THE SAME DOOR, REACHED WITH THE KEYBOARD ALREADY ON THE COMPOSER. This is
+	// the shape the incident was actually reported in: the reader selected
+	// `+ new`, clicked back into the writing area — which takes the keyboard
+	// (13.14's [App.focusConversation]) and leaves the pane on the card — and
+	// typed. The mint has to happen from both sides of that flag or the fix would
+	// be one the reader could walk around by touching the mouse.
+	if cmd, minted := a.mintOnType(msg); minted {
+		return cmd
 	}
 	// A keystroke the composer takes is a fact that moved: the draft grew, the
 	// caret walked, the ring turned. The shell cannot see any of that from the
@@ -1693,8 +1719,67 @@ func (a *App) composerHint() (composer.Hint, string) {
 	if a.openQuestions() > 0 {
 		return composer.HintQuestion, ""
 	}
-	return composer.HintIdle, ""
+	return composer.HintIdle, a.composerTarget()
 }
+
+// composerTarget names the room a draft would land in, and ONLY when that room is
+// not the thing the main pane is showing.
+//
+// THE COMPOSER MUST ALWAYS NAME WHERE WORDS GO when the eyes and the mouth are in
+// different places (13.19). The pane and the composer normally agree — you talk to
+// what you are looking at (5.14) — and while they agree this says nothing, because
+// a line naming the room you are visibly standing in is chrome announcing itself
+// (§15). They come apart on exactly one class of frame: a CARD or a HOME in the
+// main pane, which is a look at something the composer is not bound to. That is
+// the frame the incident happened in, and it is the frame this line exists for.
+//
+// It goes through the hint's DETAIL cell rather than a strip of its own
+// ([composer.Hint.cells] replaces the leading cell — "the half that says where you
+// are" — and keeps the `@ jobs` and `/ commands` accelerators behind it), so a
+// surface that already had one place for this sentence still has one place for it.
+//
+// It answers for a CHAT composer only. A steer line says `steer — one-way` and the
+// node it is aimed at is named on the card above it; a disabled one draws its own
+// sentence instead of a draft (chat/composer.go).
+func (a *App) composerTarget() string {
+	if a.composerMode().mode != rail.ComposerChat {
+		return ""
+	}
+	// A room being minted is the one target that has no name yet, and saying the
+	// old room's name here would be the exact lie this line prevents — the mint is
+	// already committed and the words are going to the new room. It is named by
+	// what it is, in the card's own words.
+	if a.mint.active {
+		return newRoomCardTitle
+	}
+	if a.view == nil {
+		// The pane IS the room the composer is bound to.
+		return ""
+	}
+	if a.source == nil {
+		return ""
+	}
+	name := a.source.RoomTitle(a.session)
+	if name == "" {
+		return ""
+	}
+	// A cell that does not fit is a cell [composer.ghostHint] drops whole, and
+	// dropping this one would take the naming away exactly where the frame is
+	// tightest. So the NAME is what gives, and the sentence stays.
+	return composerTargetWord + blocks.Truncate(name, composerTargetRoom)
+}
+
+const (
+	// composerTargetWord is how the line reads. Lowercase chrome, a statement
+	// about this keyboard rather than an instruction, and the verb the reader is
+	// already performing — the sentence is only ever drawn under words about to
+	// be typed.
+	composerTargetWord = "typing goes to "
+	// composerTargetRoom is the most cells a room's name may spend on that line.
+	// A conversation can be titled a whole sentence by the scribe, and a hint
+	// cell as long as the draft above it would be the chrome shouting.
+	composerTargetRoom = 28
+)
 
 func (a *App) openQuestions() int {
 	open := 0
