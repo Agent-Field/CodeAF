@@ -843,6 +843,32 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		var spent exec.Usage
 		spentTurns := 0
 		workerModel := taskClient.Model()
+		// The straggler watch: the same judgement the retry loop below makes,
+		// asked while the siblings are still waiting at the barrier this leaf is
+		// holding rather than after its money is gone. It is installed only
+		// where this worker's own record can derive a threshold, so a fresh
+		// machine and every reflex leaf carry nothing at all and the loop is
+		// exactly what it always was. See straggler.go.
+		//
+		// stragglerChoice holds a judgement that has already been made and paid
+		// for. Without it a handed-back leaf would reach the retry below and be
+		// asked the identical question a second time, of the same judge, about
+		// the same leaf.
+		stragglerChoice := &stragglerHandoff{}
+		if !isReflex {
+			task.Overrun = stragglerWatch(settings, workingModel, stragglerJudge{
+				ctx:      ctx,
+				settings: settings,
+				graph:    graph,
+				client:   planClient,
+				node:     node,
+				worker:   subharness,
+				menu:     specialists,
+				brief:    task.Brief,
+				model:    func() string { return workerModel },
+				chose:    stragglerChoice.set,
+			})
+		}
 		// A bundle sink with nothing to reconcile is assembly, not judgment:
 		// the parts are self-contained deliveries and the board is silent, so
 		// joining them in the asked order is geometry — measured, a model sink
@@ -871,8 +897,20 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					previousAttemptInput(outcome, jobDir))
 				// Who takes the retry, asked once, of the same judge machinery
 				// that already reads failures. An empty menu never reaches here.
-				if chosen := revision.JudgeRetryWorker(ctx, settings, planClient, node,
-					attempted, outcome, err, specialists, workerModel); chosen != "" {
+				//
+				// Asked once is literal. A leaf handed back mid-flight was put
+				// to this judge while it was still running and the answer is
+				// carried here, because the question — whose essence is this
+				// assignment, and does it match a specialist — is answered by
+				// the assignment rather than by how far the attempt got, and
+				// paying for the same answer twice would be the mechanism
+				// charging for its own promptness.
+				chosen := stragglerChoice.take()
+				if chosen == "" {
+					chosen = revision.JudgeRetryWorker(ctx, settings, planClient, node,
+						attempted, outcome, err, specialists, workerModel)
+				}
+				if chosen != "" {
 					escalatedFrom = subharness
 					if escalatedFrom == "" {
 						escalatedFrom = exec.LinearSubharness
@@ -3569,6 +3607,12 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			// which are handed the document and nothing else, size themselves
 			// from the same number the build did.
 			ContextTokens: planWindow(settings, planClient),
+			// What work of this kind has really cost on this machine, rendered
+			// once and frozen for the build like the terrain above it. Every
+			// pass that decides whether to divide something reads it off the
+			// tail of its own call; on a machine with nothing measured yet it is
+			// the empty string and no prompt gains a byte. See invoice.go.
+			Invoice: measuredInvoice(settings, workingModel),
 			// One level deeper than the one-shot default: chat projects are
 			// where visible fan-out is the product, and the compiler now
 			// names the parts for the planner to expand.
@@ -3836,10 +3880,15 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			FileShaped:    fileShapedAsk(terrainRoot, goal),
 			SpineSamples:  settings.SpineSamples,
 			ContextTokens: planWindow(settings, planClient),
-			MaxDepth:      0,
-			NodeBudget:    min(settings.NodeBudget, replanNodeBudget),
-			Briefs:        true,
-			Ensemble:      plan.EnsembleNever,
+			// The same prices the original build was weighed against. A
+			// remainder is the one plan most at risk of being over-divided —
+			// it is already smaller than one worker's assignment — so it is the
+			// one that most needs the price of a child in front of it.
+			Invoice:    measuredInvoice(settings, workingModel),
+			MaxDepth:   0,
+			NodeBudget: min(settings.NodeBudget, replanNodeBudget),
+			Briefs:     true,
+			Ensemble:   plan.EnsembleNever,
 			// A remainder that the spine finds nothing gated in is one fresh
 			// worker's assignment, and buying a seven-pass planning bundle to
 			// discover that was measured at 13.8k and 23.9k prompt tokens on

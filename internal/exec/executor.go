@@ -128,6 +128,15 @@ type Task struct {
 	// then the claim owner releases through the store CAS path.
 	Control func() ControlAction
 
+	// Overrun is the straggler watch: the spend past which this leaf has stopped
+	// resembling anything this worker has been measured doing, and the judge to
+	// ask when it does. The threshold is derived by the caller from that
+	// worker's own profile spread (profile.Straggler), never chosen here, and
+	// nil — the value on every path that has no measurement, which is every path
+	// that existed before this — means the question is never asked and the loop
+	// runs precisely as it always has. See straggler.go.
+	Overrun *OverrunWatch
+
 	// Progress is within-node visibility: where the work has got to, said in a
 	// way that replaces the last thing it said rather than adding to it.
 	//
@@ -320,6 +329,15 @@ const (
 	// was paid for in full — and separate from StopDone because nothing was
 	// produced.
 	StopEmpty StopReason = "empty"
+
+	// StopOverrun is the straggler handed back on measured evidence: this leaf
+	// ran far past what work of its kind has ever cost on this machine, a judge
+	// was shown the numbers and what it had produced, and the judge said the
+	// work should go somewhere else. It is separate from StopBudget because
+	// nothing ran out — the grant was still there and would have gone on being
+	// spent — and separate from StopError because nothing failed. See
+	// straggler.go.
+	StopOverrun StopReason = "overrun"
 )
 
 // Usage is the running cost of one task.
@@ -380,8 +398,15 @@ func (r *Registry) For(subharness string) Executor {
 // told to land and complying (Exhausted). Only the resource endings count; a
 // deadline is a fact about the clock rather than about work left undone, and a
 // user pause or cancel is a decision rather than an overrun.
+//
+// A judged hand-back counts. The straggler was still working when it was told
+// to land — that is the entire finding against it — so the question "is there
+// work left here" is exactly the question the continuation subsystem exists to
+// answer about it, and answering it is the "divide" arm of the judgement the
+// hand-back was made to reach.
 func (o *Outcome) Overran() bool {
-	return o.Stop == StopBudget || o.Stop == StopTurnCap || o.Exhausted == StopBudget
+	return o.Stop == StopBudget || o.Stop == StopTurnCap || o.Stop == StopOverrun ||
+		o.Exhausted == StopBudget || o.Exhausted == StopOverrun
 }
 
 func (o *Outcome) String() string {

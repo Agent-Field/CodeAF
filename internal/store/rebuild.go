@@ -498,6 +498,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		var payload DeferredOverrun
 		return json.Unmarshal(event.Payload, &payload)
 
+	case EventOverrunEvidence:
+		// A straggler comparison has no materialized view — it is diagnosis, and
+		// nothing reads it back to decide anything — but a payload that no
+		// longer decodes should fail here rather than go quiet in an audit.
+		var payload OverrunEvidence
+		return json.Unmarshal(event.Payload, &payload)
+
 	case EventOverrunResumed:
 		// Deferred continuations are journal-native; replay validates both sides
 		// while PendingOverruns derives their current state from event order.
