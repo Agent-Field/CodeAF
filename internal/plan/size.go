@@ -599,10 +599,18 @@ func sizeStage(ctx context.Context, client Completer, shared string, graph *Grap
 		return nil, nil, nil
 	}
 	specialists := Subharnesses()
+	// The prices go on the very last message and nowhere else. The system prompt
+	// above is the same bytes for every stage of every job on this machine and
+	// the catalog block is the same bytes for every stage of this one; an
+	// invoice spliced into either would rewrite a shared prefix every time a
+	// leaf finished, and cost every cache hit behind it for a table of six
+	// numbers. See invoice.go on cache shape.
 	messages := []ai.Message{
 		systemMessage(sizePromptFor(Anchors(), specialists)),
 		userMessage(shared),
-		userMessage(fmt.Sprintf("Judge the size of each of these stage %d nodes:\n%s", stage, targets.String())),
+		userMessage(withInvoice(
+			fmt.Sprintf("Judge the size of each of these stage %d nodes:\n%s", stage, targets.String()),
+			graph.Invoice)),
 	}
 	var decoded struct {
 		Sizes []sizeVerdict `json:"sizes"`

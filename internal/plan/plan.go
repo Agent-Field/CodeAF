@@ -58,6 +58,21 @@ import (
 // replaced by the honest trade — width is bought with context and paid back in
 // waiting — and it is stated here, once, because every pass that can add work
 // reads this paragraph.
+//
+// Its last sentence is the other half of the same correction, and it is the one
+// that makes the trade decidable rather than merely stated. Three quantities are
+// being spent by every division — the wait, the money, the quality of what comes
+// back — and a prompt that names them separately invites a planner to improve
+// one and call the decision made; every audited over-decomposition did exactly
+// that, buying wall time nobody was waiting for at a cost nobody counted. So
+// they are named once, as a single objective, and the sentence points at the
+// prices rather than restating a rule: on this machine those three quantities
+// are measured, the measurements ride the tail of this very call when they
+// exist (see invoice.go), and a division that cannot be paid for out of them is
+// a division nobody has a reason for. It says "when they are there" and not
+// "always", because on a fresh machine they are not there, and a premise that
+// demanded arithmetic against numbers nobody has would be asking the planner to
+// invent them.
 const agentPremise = `The work is done by AI agents. They can be started in any number and they start
 together; they never talk to each other and never see each other's work. So
 there are no owners, roles, hand-offs, schedules, or budgets, and no
@@ -69,7 +84,12 @@ first was already told. A split that shares almost everything is nearly free; a
 split that has to re-explain the whole subject twice is not. What the person
 waits for is the longest chain, never the total — so width is worth buying, and
 worth buying only where the pieces genuinely do not need the same thing said
-twice.`
+twice.
+
+The wait, the money and the quality of the answer are one thing being spent
+together and never three things to trade against each other, so where measured
+figures for this machine are given to you, a division has to pay for itself on
+those figures rather than on how well it reads.`
 
 // workerPremise is what the thing on the other side of a prompt actually is.
 //
@@ -301,6 +321,16 @@ type Options struct {
 	// themselves from the same number the build did. See Graph.ContextTokens.
 	ContextTokens int
 
+	// Invoice is the measured price list for this model's workers, rendered by
+	// the caller with RenderInvoice before the build starts. Empty is a machine
+	// with nothing measured yet and leaves every prompt byte for byte as it was.
+	//
+	// The caller renders it for the same reason it renders the terrain: this
+	// package holds no profile directory and no model name, and the block must
+	// be one snapshot frozen for the build rather than a figure that moves under
+	// passes still running. See Graph.Invoice and invoice.go.
+	Invoice string
+
 	Report Report
 
 	// Progress is called at pass boundaries. Nil keeps planning behavior and
@@ -346,7 +376,12 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		// The window rides onto the document at the same moment the terrain
 		// does, and for the same reason: every later pass over this graph has to
 		// size itself from the same fact the build was sized from.
-		ContextTokens: options.ContextTokens}
+		ContextTokens: options.ContextTokens,
+		// The prices, frozen for the build for the third time and the same
+		// reason: sizing, expansion and the panel decision must all weigh a
+		// division against one set of numbers rather than three snapshots taken
+		// as leaves landed underneath them.
+		Invoice: options.Invoice}
 	emitProgress(progress, "grounding", "settling what to look at", "")
 
 	// Grounding and the spine both need only the goal and the workspace it

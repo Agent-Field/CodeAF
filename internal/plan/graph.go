@@ -248,6 +248,23 @@ type Graph struct {
 	// showing a 200k-token reviser 4 KiB of what has happened.
 	ContextTokens int `json:"context_tokens,omitempty"`
 
+	// Invoice is the measured price list rendered by the caller before the build
+	// starts, and it is what the three passes that judge division are given in
+	// place of guessing what a split costs. See invoice.go.
+	//
+	// It rides the graph rather than the options because expansion and the
+	// sizing pass inside it are reached through the document alone, and a
+	// sub-planner that lost the prices would be weighing a division against
+	// nothing — which is the state this whole block exists to end.
+	//
+	// Empty is a machine with nothing measured yet, and it is also the whole of
+	// the compatibility story: every prompt below renders exactly the bytes it
+	// rendered before invoices existed. It is deliberately NOT persisted: prices
+	// move every time a leaf lands, and a graph read back off disk a day later
+	// carrying yesterday's prices would be quoting a measurement as a fact when
+	// the measurement has since changed.
+	Invoice string `json:"-"`
+
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
 	NextID int     `json:"next_id"`

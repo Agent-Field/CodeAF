@@ -751,7 +751,7 @@ func TestThePassesBeforeTheGraphSeeTheTerrain(t *testing.T) {
 		{
 			name: "the ensemble judgment",
 			call: func(t *testing.T, client Completer, terrain string) {
-				if _, _, err := DecidePanel(t.Context(), client, goal, terrain, nil); err != nil {
+				if _, _, err := DecidePanel(t.Context(), client, goal, terrain, nil, ""); err != nil {
 					t.Fatal(err)
 				}
 			},

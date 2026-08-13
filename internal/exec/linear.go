@@ -566,6 +566,11 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// finish; zero means no landing has begun yet.
 	landing := 0
 	landingStop := StopReason("")
+	// The straggler question is put once and once only. Asking it every turn
+	// past the threshold would put a judgement call on the critical path of a
+	// leaf that has already been judged worth continuing, which is the cost this
+	// mechanism exists to avoid rather than to add. See straggler.go.
+	overrunAsked := false
 
 	// The observation window is sized from what the model can hold in one
 	// request, and from nothing else.
@@ -814,6 +819,62 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// landing, and both record the same StopBudget, because from the leaf's
 		// side and from the reconciler's they are one fact: this node was still
 		// working when its allowance ran out.
+		// The straggler check, and it is deliberately here rather than beside the
+		// two ceilings below.
+		//
+		// Those ask whether the leaf has spent what it was granted. This asks a
+		// different question the same number can answer: whether the leaf still
+		// resembles the work it was sized as. A grant is set for the worst honest
+		// leaf, so it cannot see a leaf costing thirty-six times its siblings
+		// until that leaf has spent everything — which is after the siblings have
+		// finished waiting and after the money is gone. The threshold is the
+		// worker's own measured spread, so nothing here is a second budget: it is
+		// the point past which this worker has never been observed to finish.
+		//
+		// Crossing it decides nothing. It assembles what is known and asks the
+		// runner, which is where the judgement about a leaf that did not get
+		// there is already made; a runner with nothing installed, or a judge that
+		// says carry on, leaves the loop exactly as it was and the leaf runs to
+		// its ceilings as before. A hand-back takes the same landing the budget
+		// takes — the workspace is left consistent and the partial goes out whole
+		// — because the work is being returned, not thrown away.
+		//
+		// It is measured in raw tokens rather than in the discounted spend the
+		// two ceilings below use, and the reason is that this is a comparison
+		// against a journaled measurement instead of against a grant. The
+		// profile records what a leaf really read and wrote (prompt plus
+		// completion, undiscounted), so the threshold derived from it is in
+		// those units, and weighing a discounted spend against it would compare
+		// two different quantities and quietly never fire.
+		if landing == 0 && !overrunAsked && task.watching() &&
+			rawSpent(outcome) >= task.Overrun.Threshold {
+			overrunAsked = true
+			evidence, verdict := task.overrun(rawSpent(outcome), outcome.Turns,
+				strings.TrimSpace(lastAssistantText(messages)))
+			if verdict == OverrunHandBack {
+				landing = landingTurns
+				landingStop = StopOverrun
+				// Recorded when the hand-back is ordered rather than when the
+				// landing completes, for the same reason the budget's is: the
+				// landing usually succeeds, and on that path Stop would say the
+				// leaf finished under its own power.
+				outcome.Exhausted = StopOverrun
+				trace.note(fmt.Sprintf(
+					"straggler handed back — %d tokens against a measured median of %d, past the %d "+
+						"this worker's own record supports (%.1fx over %d runs); landing reserve granted",
+					evidence.Spent, evidence.Anchor, evidence.Threshold, evidence.Multiple, evidence.Samples))
+				messages = append(messages, ai.Message{Role: "user", Content: text(
+					"This task is being handed back so the work can be taken up differently. Use " +
+						"the remaining calls only to land what you have safely. In order: make " +
+						"whatever you were changing consistent again; run the single quickest check " +
+						"that would catch breakage; fix only what it reveals. Do not start anything " +
+						"new. Then state plainly what you finished and what you did not.")})
+				continue
+			}
+			trace.note(fmt.Sprintf(
+				"straggler threshold crossed at %d tokens against a measured median of %d — judged worth continuing",
+				evidence.Spent, evidence.Anchor))
+		}
 		if exhausted(outcome, l.maxTokens) && landing == 0 {
 			landing = landingTurns
 			landingStop = StopBudget
@@ -950,6 +1011,13 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 		return provider.VerdictUnverifiedSuccess
 	case StopEmpty:
 		return provider.VerdictEmptyResponse
+	case StopOverrun:
+		// Graded exactly as a budget stop, because it is the same finding
+		// arriving earlier: this worker did not converge inside what work of
+		// this kind takes here. Reading it any other way would leave the one
+		// leaf that most needed to teach the ruler something teaching it
+		// nothing — and the ruler is rewritten from precisely this evidence.
+		return provider.VerdictBudgetStop
 	case StopError, StopDeadline:
 		return provider.VerdictProviderFailure
 	}
@@ -958,7 +1026,7 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 	// work was not finished when the order came, and that is precisely what a
 	// rating measures. Only the budget grades: a deadline is a fact about the
 	// clock rather than about ability, exactly as the StopDeadline arm above.
-	if outcome.Exhausted == StopBudget {
+	if outcome.Exhausted == StopBudget || outcome.Exhausted == StopOverrun {
 		return provider.VerdictBudgetStop
 	}
 	if strings.TrimSpace(outcome.Text) == "" {

@@ -54,6 +54,51 @@ func TestThePremiseNoLongerDeniesWhatAWorkerCosts(t *testing.T) {
 	}
 }
 
+// The other half of W6: the objective is joint, and it is decidable.
+//
+// Naming the wait, the money and the quality as three things invites a planner
+// to improve one of them and call the decision made — which is exactly what
+// every audited over-decomposition did, buying wall time nobody was waiting for
+// at a cost nobody counted. So the premise names them once as a single thing
+// being spent, and points at the measured figures rather than restating the
+// rule: the prices ride the tail of the same calls (invoice.go), and a division
+// that cannot be paid for out of them has no reason behind it.
+func TestThePremiseStatesTheObjectiveAsOneThingPricedOnMeasurement(t *testing.T) {
+	// The premise is hard-wrapped prose, so the reading is done against it with
+	// the wrapping taken out: a line break is a fact about the file, and a test
+	// that failed when a sentence moved one word later would be pinning the
+	// margin rather than the meaning.
+	premise := strings.Join(strings.Fields(agentPremise), " ")
+	for _, want := range []string{
+		"are one thing being spent together",
+		"never three things to trade against each other",
+		"where measured figures for this machine are given to you",
+		"a division has to pay for itself on those figures",
+	} {
+		if !strings.Contains(premise, want) {
+			t.Errorf("the premise does not state the joint objective: %q missing", want)
+		}
+	}
+	// All three axes are named, and named together in one clause.
+	for _, axis := range []string{"The wait", "the money", "the quality of the answer"} {
+		if !strings.Contains(premise, axis) {
+			t.Errorf("the premise leaves out an axis of the joint objective: %q", axis)
+		}
+	}
+}
+
+// The premise change must not disturb the two rules the tests pin byte for
+// byte, which sit next to it and are the counterweight it is stated against.
+func TestTheBytePinnedRulesAreUntouchedByTheJointObjective(t *testing.T) {
+	if !strings.Contains(proportionRule, checkingRule) {
+		t.Error("proportionRule no longer contains checkingRule verbatim")
+	}
+	if strings.Contains(proportionRule, "one thing being spent") ||
+		strings.Contains(checkingRule, "one thing being spent") {
+		t.Error("the joint objective leaked into a rule that is pinned elsewhere")
+	}
+}
+
 // Width follows the grain of the material. The incident this guards is a stage
 // whose units were already enumerated in the material and which was halved into
 // two parts that were each handed the whole enumeration: both did everything,

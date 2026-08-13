@@ -23,6 +23,10 @@ type expandScope struct {
 	Ancestry []string
 	Siblings []string
 	Inputs   []string
+	// Invoice is the measured price list, carried from the graph so the
+	// sub-planner weighs its division against the same numbers the sizing pass
+	// did. Empty on a machine with nothing measured, which renders nothing.
+	Invoice string
 	// Claim is what only a claim-time caller knows: what this node's
 	// dependencies actually produced, and what the node is judged finished
 	// against. Empty at build time, which is why the build's bytes are
@@ -104,7 +108,11 @@ func (s expandScope) render(node *Node) string {
 	if len(node.Sources) > 0 {
 		fmt.Fprintf(&block, "\nIt must touch: %s", strings.Join(node.Sources, "; "))
 	}
-	return block.String()
+	// Last, behind the node itself, which is already the most volatile thing in
+	// this block. The prices move whenever a leaf lands; the goal, the ancestry,
+	// the siblings and the burden do not, and they are the prefix every
+	// expansion in this job shares.
+	return withInvoice(block.String(), s.Invoice)
 }
 
 // landedPreamble introduces the results of the work this node consumes.
@@ -480,8 +488,13 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 		Open:     graph.Open,
 		Evidence: graph.Evidence,
 		Terrain:  graph.Terrain,
-		Stages:   []Stage{{Title: node.Title, Summary: node.Summary}},
-		NextID:   1,
+		// The prices travel with them. The sizing pass inside this expansion is
+		// the same judgment made one level down, and a sub-graph that lost the
+		// invoice would be the one place in the system that still weighs a
+		// division against nothing.
+		Invoice: graph.Invoice,
+		Stages:  []Stage{{Title: node.Title, Summary: node.Summary}},
+		NextID:  1,
 	}
 	nodes, fanUsage, err := FanOut(ctx, client, sub.context(), sub.Stages)
 	usage := fanUsage
@@ -502,7 +515,7 @@ func expandScoped(ctx context.Context, client Completer, graph *Graph, nodeID in
 
 // scopeFor assembles what the sub-planner is allowed to see.
 func scopeFor(graph *Graph, node *Node) expandScope {
-	scope := expandScope{Goal: graph.Goal}
+	scope := expandScope{Goal: graph.Goal, Invoice: graph.Invoice}
 	for ancestor := node.Parent; ancestor != 0; {
 		parent := graph.Node(ancestor)
 		if parent == nil {
