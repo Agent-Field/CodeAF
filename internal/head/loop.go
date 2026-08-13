@@ -49,16 +49,18 @@ const (
 	// left is one number, and it is generous: sixteen calls is a real
 	// investigation with its hands still free, and it still bounds a model that
 	// will not stop calling tools. One sentence can never become an open tab.
-	orchestratorToolCallCap = 16
-	// orchestratorSpentBelt is what a tool call past the cap is told. It is a
-	// tool result rather than a hard stop so the turn still ends in words.
 	//
-	// It says what was NOT done as well as what to do next, because the turn that
-	// produced this text went on to describe work it had never commissioned. A
-	// model at the end of its belt is a model summarizing from memory, and the
-	// memory of intending to act reads exactly like the memory of acting.
-	orchestratorSpentBelt = "the tool belt is spent for this message — say what happened, and claim only what a tool " +
-		"result in front of you actually reported: nothing was commissioned, changed or started this turn unless one says so"
+	// What reaching it MEANS changed once more (narrow.go): the belt narrows to
+	// the work verbs rather than emptying, because a turn whose campaign outgrew
+	// it has somewhere to put the campaign and used to have nowhere.
+	orchestratorToolCallCap = 16
+	// orchestratorNarrowedBelt is what a call to anything else is told once the
+	// belt has narrowed. It is a tool result rather than a hard stop so the round
+	// still ends in the model's own words, and it names what IS in the hand
+	// rather than what is gone — the turn is one round from over and a model
+	// spending it mourning its reads is a turn spent on nothing.
+	orchestratorNarrowedBelt = "that is not in your hand any more — what is left this turn is handing the work over with " +
+		"task, or withdrawing it with stop; anything else is for the words you finish on"
 )
 
 // runTurn answers one folded turn with one agentic loop.
@@ -102,8 +104,8 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 	// — 12.5's truncation law. It is taken from the call whose words are used.
 	var ended *store.EndedPart
 
-	// One provider call per tool call the belt allows, one to be told the belt is
-	// spent, and one to speak. A model that will not stop calling tools still ends
+	// One provider call per tool call the belt allows, one holding the narrowed
+	// belt, and one to speak. A model that will not stop calling tools still ends
 	// in at most this many calls.
 	for turn := 0; turn < orchestratorToolCallCap+2; turn++ {
 		callContext := ctx
@@ -164,8 +166,8 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 			name := call.Function.Name
 			var body string
 			switch {
-			case spent >= orchestratorToolCallCap:
-				body = orchestratorSpentBelt
+			case run.narrowed && !beltWorkVerb(name):
+				body = orchestratorNarrowedBelt
 			default:
 				spent++
 				// THE ACTIVITY SEAM (activity.go). The call is unchanged; what is
@@ -178,6 +180,10 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 					result = "ERROR: " + result
 				}
 				body = result
+				// And what it came back with is kept, because a turn that is one
+				// round from handing its work over is a turn whose reads are the
+				// only thing of value it has to hand over (narrow.go).
+				run.learned(name, call.Function.Arguments, result)
 			}
 			messages = append(messages, ai.Message{
 				Role: "tool", ToolCallID: call.ID,
@@ -192,6 +198,20 @@ func (h *Head) runTurn(ctx context.Context, user store.Message) error {
 		// which is the thread talking to itself in front of the person.
 		if run.confirm != nil || run.spoke {
 			break
+		}
+		// The narrowed round has been and gone, and it gets exactly one. Whatever
+		// it reached for, the turn is over: that is the runaway bound still
+		// bounding, now that reaching it takes hands away rather than all of them.
+		if run.narrowed {
+			break
+		}
+		// The bound, reached. The next completion is armed with the work verbs
+		// alone (narrow.go) — no rule about when to hand work over, just a hand
+		// with nothing else in it, and a model that has finished its work will
+		// still simply answer.
+		if spent >= orchestratorToolCallCap {
+			run.narrowed = true
+			definitions = beltWorkDefinitions()
 		}
 	}
 
