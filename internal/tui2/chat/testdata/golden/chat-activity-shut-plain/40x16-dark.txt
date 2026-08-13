@@ -1,0 +1,16 @@
+
+  ```rust
+    let ctx = NavCtx::new();
+  ```
+
+  │ and a note about the plan
+  ▸ workspace/wisp/plan.md  1.6KB
+
+  Three things are running; navctx is
+  the one that failed.
+  ▸ 3 steps — looked at the work, searc…
+
+▍ ›  ask for anything · @ jobs
+
+
+  chat  work  notebook       ~/aforge-v2

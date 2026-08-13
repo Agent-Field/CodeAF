@@ -163,6 +163,11 @@ type liveTurn struct {
 	reply *blocks.TextBlock
 	// await is the awaiting line, present for as long as the turn is.
 	await *awaitingBlock
+	// activity is what the turn is DOING while it is not talking: one row per
+	// belt call, pinned between the streamed text and the awaiting line. It is
+	// nil until the first call, so an ordinary conversational turn allocates
+	// nothing for it — see activity.go.
+	activity *activityBlock
 	// raw is the provider's bytes as they arrive; shown is what has been drawn.
 	raw   strings.Builder
 	shown string

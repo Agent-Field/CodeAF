@@ -17,6 +17,22 @@ const (
 	StreamThinking
 	StreamFinished
 	StreamFailed
+	// The TOOL ACTIVITY boundaries. They are not produced by the adapter — no
+	// endpoint reports them — but by whoever is RUNNING the tool loop above it,
+	// through [Emit]. They ride this vocabulary rather than a second channel
+	// because the person is watching one turn: a read the head performed and a
+	// word it streamed are the same turn happening, and two feeds would have to
+	// be re-interleaved by every surface that drew them.
+	//
+	// StreamToolBegin carries a person-readable gloss of the call in Delta —
+	// "searching for «navctx»", never the raw arguments. The two ends carry a
+	// short result hint, which is very often empty.
+	//
+	// THE OUTCOME IS A KIND AND NOT A FIELD, so the event struct stays three
+	// strings wide and every bridge between vocabularies stays a copy.
+	StreamToolBegin
+	StreamToolEnd
+	StreamToolFailed
 )
 
 // StreamEvent carries provider text as it arrives. Delta is populated only
@@ -83,4 +99,27 @@ func WithStreamSession(ctx context.Context, session string) context.Context {
 func streamSessionFrom(ctx context.Context) string {
 	session, _ := ctx.Value(streamSessionContextKey{}).(string)
 	return session
+}
+
+// Emit hands one event to whatever observer is listening on this context,
+// stamped with the room the turn is answering for.
+//
+// It is the door for the boundaries no adapter can report: a TOOL CALL is
+// something the caller above the client does, and until this existed the only
+// way to tell a surface about one was to invent a second channel beside the
+// token feed. Everything the surface needs to interleave the two — order, and
+// the room key — is already the property of this one.
+//
+// Nothing listening is the ordinary case (every headless run), and it costs one
+// context lookup. The observer contract is unchanged and still synchronous: a
+// caller emitting from inside a read loop is paying for it in that loop.
+func Emit(ctx context.Context, kind StreamEventKind, delta string) {
+	if ctx == nil {
+		return
+	}
+	observer := streamObserverFrom(ctx)
+	if observer == nil {
+		return
+	}
+	observer(StreamEvent{Kind: kind, Delta: delta, Session: streamSessionFrom(ctx)})
 }
