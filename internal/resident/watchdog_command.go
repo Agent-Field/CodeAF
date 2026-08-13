@@ -69,9 +69,19 @@ func stalled(ctx context.Context, err error) bool {
 // caller — inherits it without having to remember to, and so that the context
 // a command's model calls actually receive is the bounded one.
 func (r *Reconciler) applyBounded(ctx context.Context, command store.Command) (commandOutcome, error) {
-	commandCtx, cancel := context.WithTimeout(ctx, commandWall)
+	commandCtx, cancel := context.WithTimeout(ctx, r.wall())
 	defer cancel()
 	return r.applyCommand(commandCtx, command)
+}
+
+// wall is the command wall in force. The field exists so a test can prove the
+// watchdog in milliseconds rather than in ten minutes; nothing in the product
+// sets it, and an unset one is the constant.
+func (r *Reconciler) wall() time.Duration {
+	if r.commandWall > 0 {
+		return r.commandWall
+	}
+	return commandWall
 }
 
 // settleOrStrike is the watchdog's settlement half: it decides whether what

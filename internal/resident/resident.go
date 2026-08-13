@@ -261,7 +261,9 @@ type Reconciler struct {
 	// In memory on purpose: it is a fact about this process's luck with a
 	// provider, not about the request, and a restart re-reads the same pending
 	// row with a clean slate — which is exactly what a fresh process should do.
-	commandStrikes    map[int64]int
+	commandStrikes map[int64]int
+	// commandWall overrides the package constant. Zero means the constant.
+	commandWall       time.Duration
 	learningMoments   map[string]*pendingLearningMoment
 	lastConsolidation time.Time
 	// charterOutcomeSeq is how far the charter ladder has finished reading. It
