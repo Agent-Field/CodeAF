@@ -282,6 +282,15 @@ func (h *Head) turnPrompt(user store.Message) (string, error) {
 	}
 
 	var body strings.Builder
+	// The re-entry brief goes FIRST, above the transcript it is describing.
+	// A conversation resumed after a gap is one the person is carrying in their
+	// head and the head is meeting cold, and the arc is what tells the model
+	// which of the lines below it are still live business (brief.go). It appears
+	// only after a real gap, so the ordinary next message pays nothing for it —
+	// including the prompt cache, which the block sits above rather than inside.
+	if reentry := h.reentryBlock(user, time.Now()); reentry != "" {
+		body.WriteString(reentry + "\n\n")
+	}
 	body.WriteString("Recent thread before this message:\n" + thread)
 	if h.knowledge != nil {
 		if measured := strings.TrimSpace(h.knowledge()); measured != "" {

@@ -14,8 +14,6 @@
 package command
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1197,17 +1195,14 @@ func NewVisitor(path, sessionID string, graph *store.Store,
 	}
 }
 
-// NewSessionID mints a fresh conversation id. It is random rather than
-// sequential because a session id is a name, not an order: two windows opened
-// in the same second must not collide, and nothing downstream reads it as a
-// number.
-func NewSessionID() string {
-	var random [4]byte
-	if _, err := rand.Read(random[:]); err == nil {
-		return hex.EncodeToString(random[:])
-	}
-	return fmt.Sprintf("%08x", time.Now().UnixNano())
-}
+// NewSessionID mints a fresh conversation id.
+//
+// The generator itself moved to the store when the head learned to open a room
+// of its own by splitting a conversation (chat-simplify 5.4): a room is a store
+// concept, both callers need the same names, and two spellings of "a new room's
+// id" is how two builds come to disagree about what one looks like. This stays
+// as the surface's name for it, and forwards.
+func NewSessionID() string { return store.NewSessionID() }
 
 func firstLine(text string) string {
 	if index := strings.IndexByte(text, '\n'); index >= 0 {

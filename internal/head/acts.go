@@ -291,15 +291,19 @@ func (run *beltRun) ask(args map[string]any) (string, bool) {
 
 // askCategory reads the one argument that turns an askback into a measurement.
 //
-// Exactly one value means anything today, and an unknown one is not an error:
-// the model naming a category this build has never heard of has still asked a
-// perfectly good question, and refusing it would cost the person their answer
-// to protect a statistic. So anything unrecognised falls through to the ordinary
-// conversational ask, which is what would have happened without the argument.
+// Two values mean anything today, and both are boundaries the words alone do not
+// always settle: the quick look or the proper job, and whether a pivot deserves
+// its own thread. An unknown one is not an error — the model naming a category
+// this build has never heard of has still asked a perfectly good question, and
+// refusing it would cost the person their answer to protect a statistic. So
+// anything unrecognised falls through to the ordinary conversational ask, which
+// is what would have happened without the argument.
 func askCategory(value string) store.QuestionCategory {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case string(store.QuestionCategoryScope):
 		return store.QuestionCategoryScope
+	case string(store.QuestionCategoryThreadSplit):
+		return store.QuestionCategoryThreadSplit
 	default:
 		return ""
 	}
@@ -330,6 +334,14 @@ func (run *beltRun) askLearned(category store.QuestionCategory,
 	if ask, stat, err := run.head.store.ShouldAsk(category); err == nil && !ask {
 		if err := run.head.store.RecordAssumedWithDefault(category,
 			preferred, run.user.SessionID, prompt); err == nil {
+			if category == store.QuestionCategoryThreadSplit {
+				// The split is the one learned ask whose default is an ACT rather
+				// than a way of proceeding, and the act moves the person's window.
+				// So the assumption is performed here instead of described to the
+				// loop: telling the model to "proceed on that" would leave it
+				// holding a decision it has no hands for.
+				return run.splitAssumed(preferred, stat.N)
+			}
 			// The turn CONTINUES. Nothing was put to the person, so nothing owns
 			// the words yet — the loop carries on and says the assumption itself.
 			return fmt.Sprintf("assumed: %s (learned from %d earlier answers) — proceed on "+
