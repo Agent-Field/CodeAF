@@ -564,10 +564,10 @@ func (b *messageBlock) SetExpanded(open bool) bool {
 	// otherwise a turn that was BOTH long and cut short would advertise its fold
 	// twice, once beside the truncation badge and once under the words. A card's
 	// A card's tail door is the same arrangement for the same reason ([foldTail]).
-	// An activity fold draws its own row too ([messageBlock.activityRows]), so a
-	// reply that was ALSO cut short does not advertise the same fold twice —
-	// once beside its truncation badge and once under its words.
-	if !b.foldsBody && !b.tailFold && len(b.activity) == 0 {
+	// An activity fold is the third arrangement of the same kind: it draws its
+	// own row ([messageBlock.activityRows]), so a reply that was ALSO cut short
+	// does not advertise one fold beside its truncation badge and again below.
+	if !b.foldsBody && !b.tailFold && !b.activityOwnsFold() {
 		b.head.Hint = blocks.Disclose(open, b.hidden, "line", "lines")
 	}
 	b.measured = false
@@ -669,7 +669,7 @@ func (b *messageBlock) foldRowAt(line, width int) bool {
 	// one way it differs from the long-turn fold: the list is the disclosure, and
 	// §10's law that every row of an opened region closes it again is spelled out
 	// against the rows that are actually there.
-	if len(b.activity) > 0 {
+	if b.activityOwnsFold() {
 		b.Rows(width)
 		if b.foldLine < 0 {
 			return false

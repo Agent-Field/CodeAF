@@ -258,18 +258,33 @@ func (a *App) collapseActivity(into *messageBlock) {
 	if into == nil || !steps.live() {
 		return
 	}
+	// ONE DOOR PER ROW. A block that already folds something of its own — its
+	// own long body, a card's tail — keeps that door, and the activity settles
+	// for the plain summary. Two chevrons on one block is a row with two answers
+	// to "what does clicking me do".
+	//
+	// LINEAR MODE TAKES THE SAME BARGAIN for a different reason (10.1.5): the
+	// accessible rendering is a single column of plain rows, and content behind
+	// an interaction is content that surface cannot deliver.
+	taken := into.foldsBody || into.tailFold || into.collapsible
 	into.activity = append(into.activity[:0], steps.steps...)
-	// Linear mode gets the summary and NOT the door (10.1.5): the accessible
-	// rendering is a single column of plain rows, and a row whose whole content
-	// is behind an interaction is a row that surface cannot deliver. The words
-	// are the same words; what is dropped is the fold.
-	if !a.linear {
+	if !a.linear && !taken {
 		into.collapsible = true
 		a.applyFold(into)
 		a.foldable = true
 	}
 	into.measured = false
 	into.version++
+}
+
+// activityOwnsFold reports that this block's disclosure is the activity's own.
+//
+// It is the one question three places have to agree on — where the door is
+// drawn, where a pointer resolves it, and whether the header may carry a hint —
+// so it is asked once. See [App.collapseActivity] for who is allowed to take it.
+func (b *messageBlock) activityOwnsFold() bool {
+	return b != nil && len(b.activity) > 0 && b.collapsible &&
+		!b.foldsBody && !b.tailFold
 }
 
 // -- the collapse row ---------------------------------------------------------
@@ -288,9 +303,10 @@ func (b *messageBlock) activityRows(rows []string, width int, pad string) []stri
 	if summary == "" {
 		return rows
 	}
-	// LINEAR IS A PLAIN LINE. With no fold there is no chevron to draw, and
-	// [blocks.Disclose]'s mark would be an affordance pointing at nothing.
-	if !b.collapsible {
+	// A PLAIN LINE WHEN THE DOOR IS NOT THIS ROW'S — the accessible rendering,
+	// and a block whose fold belongs to something else. A chevron drawn here
+	// would be an affordance pointing at somebody else's fold, or at nothing.
+	if !b.activityOwnsFold() {
 		return append(rows, pad+b.foldRow(tokens.GlyphSeparator+" "+summary, width))
 	}
 	mark := blocks.CollapsedMark
