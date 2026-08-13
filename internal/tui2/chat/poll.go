@@ -753,10 +753,11 @@ func endsTurn(message store.Message, since int64) bool {
 // It is bounded on every side, so no shape of answer can leave an awaiting line
 // standing forever:
 //
-//   - GRANTED by a tool boundary ([App.applyToolStream]). A turn that made no
-//     belt call cannot have said anything early, so its first qualifying row is
-//     its ending exactly as before — which covers every visitor window, every
-//     window with no stream behind it, and every ordinary conversational turn.
+//   - GRANTED by every tool boundary, both ends of a call ([App.applyToolStream]
+//     says why both). A turn that made no belt call cannot have said anything
+//     early, so its first qualifying row is its ending exactly as before — which
+//     covers every visitor window, every window with no stream behind it, and
+//     every ordinary conversational turn.
 //   - CLEARED by the next completion ending ([App.applyStream]'s Finished and
 //     Failed arms). The LAST Finished of a turn is followed by the reply and by
 //     no further belt call, so the row that really ends the turn always finds

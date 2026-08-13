@@ -87,6 +87,37 @@ func TestTheReplyThatEndsTheTurnStillRetiresTheLiveRegion(t *testing.T) {
 	}
 }
 
+// A belt call that makes a KEYED COMPLETION OF ITS OWN before it posts — the
+// revision voice speaks in the room's own voice on the room's own key
+// (internal/head/revisionvoice.go) — must not spend the interim grant on its
+// nested Finished. The grant runs for the whole call, not for its first instant.
+func TestABeltCallThatSpeaksThroughItsOwnCompletionKeepsTheTurn(t *testing.T) {
+	backend := &fakeBackend{}
+	app := newTestApp(backend, &fakeCommander{}, nil)
+
+	backend.add(store.Message{SessionID: testSession, Role: store.RoleUser,
+		Body: "make it use the other index"})
+	poll(t, app)
+	stream(app, StreamEvent{Kind: StreamStarted, Session: testSession})
+	stream(app, StreamEvent{Kind: StreamFinished, Session: testSession})
+	stream(app, StreamEvent{Kind: StreamToolBegin, Session: testSession, Delta: "changing «task-9»"})
+	// The nested completion the belt call makes, on this same room's key.
+	stream(app, StreamEvent{Kind: StreamStarted, Session: testSession})
+	stream(app, StreamEvent{Kind: StreamDelta, Session: testSession,
+		Delta: `{"reply":"passed that on — every step hears it`})
+	stream(app, StreamEvent{Kind: StreamFinished, Session: testSession})
+	stream(app, StreamEvent{Kind: StreamToolEnd, Session: testSession})
+
+	// What that nested call posted lands as an ordinary agent row.
+	backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent,
+		Body: "passed that on — every step hears it before its next step"})
+	poll(t, app)
+
+	if !app.turn.active {
+		t.Fatal("a belt call's own spoken line retired the turn that made it")
+	}
+}
+
 // A window with no stream behind it — a visitor, or a head that never reported a
 // boundary — retires its turn on the durable row exactly as it always did. The
 // guard above may not become a way for an awaiting line to live forever.
