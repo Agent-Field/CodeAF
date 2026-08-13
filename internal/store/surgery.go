@@ -73,7 +73,7 @@ func (s *Store) RequestNodeCancel(id, reason string) error {
 	defer tx.Rollback()
 	var status Status
 	var requested bool
-	if err := tx.QueryRow(`SELECT status, cancel_requested FROM nodes WHERE id = ? AND folded = 0`, id).
+	if err := tx.QueryRow(`SELECT status, cancel_requested FROM nodes WHERE id = ? AND `+notFiledAway, id).
 		Scan(&status, &requested); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("request node cancel: %w: %q", ErrNotFound, id)
@@ -110,7 +110,7 @@ func (s *Store) SetNodeHold(id string, held bool, reason string) error {
 	defer tx.Rollback()
 	var status Status
 	var current bool
-	if err := tx.QueryRow(`SELECT status, held FROM nodes WHERE id = ? AND folded = 0`, id).
+	if err := tx.QueryRow(`SELECT status, held FROM nodes WHERE id = ? AND `+notFiledAway, id).
 		Scan(&status, &current); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("set node hold: %w: %q", ErrNotFound, id)
@@ -211,7 +211,7 @@ func (s *Store) AttachAmendment(id, sessionID, instruction string) (bool, error)
 	defer tx.Rollback()
 	var brief string
 	var status Status
-	if err := tx.QueryRow(`SELECT brief, status FROM nodes WHERE id = ? AND folded = 0`, id).Scan(&brief, &status); err != nil {
+	if err := tx.QueryRow(`SELECT brief, status FROM nodes WHERE id = ? AND `+notFiledAway, id).Scan(&brief, &status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, fmt.Errorf("attach amendment: %w: %q", ErrNotFound, id)
 		}
@@ -368,6 +368,13 @@ func (s *Store) SearchSurgeryTargets(reference string, includeLeaves bool, allow
 	if err != nil {
 		return nil, err
 	}
+	// FOLDING NEVER HIDES LIVE WORK, on either corpus. See [Store.OpenNodes]:
+	// the compact view speaks for a fold's members through its root, which is
+	// right for members that are over and wrong for one that is not. A search
+	// that cannot see a running node cannot resolve the sentence that would stop
+	// it, and "stop that" answered with "there is no such work" is the worst
+	// shape a read defect can take — it looks like a decision.
+	nodes = withOpenNodes(s, nodes)
 	byID := make(map[string]Node, len(nodes))
 	for _, node := range nodes {
 		byID[node.ID] = node
@@ -379,7 +386,9 @@ func (s *Store) SearchSurgeryTargets(reference string, includeLeaves bool, allow
 			(len(allowedSet) > 0 && !allowedSet[node.Status]) {
 			continue
 		}
-		if node.Folded && !(readOnly && node.FoldRoot) {
+		// Folding is filing, and only settled work can be filed. A folded node
+		// that is still open is live work wearing history's clothes.
+		if node.Folded && terminal(node.Status) && !(readOnly && node.FoldRoot) {
 			continue
 		}
 		if !includeLeaves && !isSurgeryJobRoot(node, byID) {

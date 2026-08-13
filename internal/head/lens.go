@@ -1285,7 +1285,7 @@ func (h *Head) lensStatus(sessionID string) string {
 // a board is read to choose a target, while a count that stopped at twelve
 // would be a wrong number rather than a short list.
 func (h *Head) lensWorkCounts(sessionID string, now time.Time) string {
-	nodes, err := h.store.ActiveNodes()
+	nodes, err := h.headNodes()
 	if err != nil {
 		return "the board could not be read: " + err.Error()
 	}
@@ -1295,7 +1295,9 @@ func (h *Head) lensWorkCounts(sessionID string, now time.Time) string {
 		byID[node.ID] = node
 	}
 	for _, node := range nodes {
-		if node.ID == store.RootID || node.Folded || !beltAddressable(node) {
+		// Folded and still open is live work, and a count of what is running
+		// that omitted it would disagree with the board printed underneath it.
+		if node.ID == store.RootID || (node.Folded && !liveFolded(node)) || !beltAddressable(node) {
 			continue
 		}
 		switch node.Status {

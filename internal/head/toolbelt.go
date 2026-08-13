@@ -1441,7 +1441,7 @@ func beltAddressable(node store.Node) bool {
 // the confirmed replay is lenient, so a unit that settled between the question
 // and the answer simply drops out rather than failing the whole set.
 func (h *Head) beltSet(ids []string, kind store.CommandKind, strict bool) (classSet, error) {
-	nodes, err := h.store.ActiveNodes()
+	nodes, err := h.headNodes()
 	if err != nil {
 		return classSet{}, err
 	}
@@ -1611,7 +1611,7 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 	// The snapshot rather than the node list, because the edges are half of what
 	// a board row means: what a row is waiting on is the one structural fact the
 	// head could never read, and it has been sitting in the same query all along.
-	snapshot, err := h.store.ActiveSnapshot()
+	snapshot, err := h.headSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("the board could not be read: %w", err)
 	}
@@ -1777,7 +1777,13 @@ func boardEnumeration(nodes []store.Node, byID map[string]store.Node) []store.Su
 		// Packed history is not the moving board. A job a territory swallowed is
 		// reached by an aimed read, which falls back to the fold index for
 		// exactly this case.
-		if node.Folded {
+		//
+		// SETTLED history, though — see [liveFolded]. This clause used to drop
+		// every folded node, and a running continuation whose lineage had been
+		// filed away is folded and running at once: the board it belongs on is
+		// precisely the moving one, and dropping it is how "cancel that" came
+		// back as "there is no such work".
+		if node.Folded && !liveFolded(node) {
 			continue
 		}
 		roots = append(roots, node)

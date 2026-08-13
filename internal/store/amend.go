@@ -159,7 +159,7 @@ func (s *Store) RemoveEdge(from, to string, kind EdgeKind) error {
 
 func requirePending(tx *sql.Tx, id, operation string) error {
 	var status Status
-	if err := tx.QueryRow(`SELECT status FROM nodes WHERE id = ? AND folded = 0`, id).Scan(&status); err != nil {
+	if err := tx.QueryRow(`SELECT status FROM nodes WHERE id = ? AND `+notFiledAway, id).Scan(&status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%s: %w: unknown node %q", operation, ErrInvalid, id)
 		}
