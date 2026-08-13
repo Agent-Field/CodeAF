@@ -214,7 +214,7 @@ func (h *Head) wakeReceipt(ctx context.Context, message store.Message) {
 	// journaled, the card carries it, and a sentence that only repeats what the
 	// head said a minute ago is the duplication this wake is bounded against.
 	said := strings.TrimSpace(response.Text())
-	if said == "" {
+	if silentReply(said) {
 		return
 	}
 	// Posted with no command seq of its own. The head's ORIGINAL line already
@@ -225,6 +225,35 @@ func (h *Head) wakeReceipt(ctx context.Context, message store.Message) {
 	if err := h.postAgent(room, said, 0); err != nil {
 		log.Printf("head receipt wake %d: %v", command.Seq, err)
 	}
+}
+
+// silentReply reports that a reply is the model declining to speak rather than
+// speech, so the room gets the silence that was meant instead of a note about
+// it.
+//
+// This turn is told outright that an empty reply is correct, and a model asked
+// for nothing tends to hand back a stage direction instead — the room showed a
+// person "(no reply — nothing new to report; the request is read, and the work
+// already described remains in hand)" as an ordinary conversation row. The test
+// is the SHAPE, not the words: a reply wholly enclosed in one pair of brackets
+// is an aside about the reply and never the reply, whatever it says inside them
+// and in whatever language it says it.
+func silentReply(said string) bool {
+	said = strings.TrimSpace(said)
+	if said == "" {
+		return true
+	}
+	for _, pair := range [][2]string{{"(", ")"}, {"[", "]"}, {"（", "）"}} {
+		if !strings.HasPrefix(said, pair[0]) || !strings.HasSuffix(said, pair[1]) {
+			continue
+		}
+		// One pair, closing at the end: "(a) and (b)" opens a bracket the first
+		// one did not close, and is a sentence with brackets in it.
+		if strings.Index(said[len(pair[0]):], pair[1])+len(pair[0]) == len(said)-len(pair[1]) {
+			return true
+		}
+	}
+	return false
 }
 
 // receiptWakePromptFor assembles what the wake answers from: the conversation

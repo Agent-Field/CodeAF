@@ -705,13 +705,23 @@ func (h *Head) lensLive(node store.Node) bool {
 // the reason the task room does: a job root usually says nothing at all while
 // its workers do the talking, so a feed filtered to the root draws a job with
 // three people working on it as a job with nothing happening in it.
+//
+// EACH LINE IS ATTRIBUTED BY STEP, NEVER BY ID AND NEVER BY ROLE. The feed used
+// to carry `task-8-n4` and `system` in every row, and both of them reached the
+// person: a model composing a sentence out of a context that reads
+// `system | ruler: 1 samples, need 8` will sooner or later write that sentence
+// down. Vocabulary the product has ruled out (§14) cannot be kept out of speech
+// by asking; it is kept out by not putting it in front of the model. The step's
+// own label says the same thing in the words the person already has.
 func (h *Head) lensProgressFeed(root string, tail int) []string {
 	nodes, err := h.store.SubtreeNodes(root)
 	if err != nil {
 		return nil
 	}
+	labels := make(map[string]string, len(nodes))
 	merged := make([]store.Message, 0, lensNodeMessagePage)
 	for _, node := range nodes {
+		labels[node.ID] = surgeryTargetLabel(node)
 		messages, readErr := h.store.NodeMessages(node.ID, 0, lensNodeMessagePage)
 		if readErr != nil {
 			continue
@@ -732,8 +742,12 @@ func (h *Head) lensProgressFeed(root string, tail int) []string {
 		if strings.TrimSpace(body) == "" {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("- %s | %s | %s | %s",
-			message.Time.Local().Format(nowLineLayout), message.NodeID, message.Role, lensSnippet(body)))
+		step := labels[message.NodeID]
+		if step == "" {
+			step = "this job"
+		}
+		lines = append(lines, fmt.Sprintf("- %s | %s | %s",
+			message.Time.Local().Format(nowLineLayout), step, lensSnippet(body)))
 	}
 	return lines
 }

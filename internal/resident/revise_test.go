@@ -94,10 +94,50 @@ func TestApplyRevisionMirrorsSentinelEditsOntoTheStore(t *testing.T) {
 	_ = graph.Start(claim)
 	applied, notes = ApplyRevision(graph, planGraph, "job", "job-n9", []plan.Operation{
 		{Op: "remove", Node: 1, Reason: "should be refused", Applied: true},
-		{Op: "rewire", Node: 1, Refused: "node 1 is running"},
+		{Op: "rewire", Node: 1, Refused: "it is already running"},
 	})
-	if applied != 0 || len(notes) < 2 || !strings.Contains(strings.Join(notes, "\n"), "node 1 is running") {
+	if applied != 0 || len(notes) < 2 || !strings.Contains(strings.Join(notes, "\n"), "it is already running") {
 		t.Fatalf("started node was edited: applied=%d notes=%v", applied, notes)
+	}
+}
+
+// §5d. The redirection receipt prints these notes straight under its own, so
+// they are read by the person who asked for the change. What they read was
+// "· retitle task-8-n4: node 4 is running": the op's own verb, the store's id
+// for the row, and the word the product has ruled out — three pieces of
+// machinery in one line, saying nothing anyone could act on.
+//
+// The note names the step by what the step is for, and says what happened to
+// it. The composition is what is pinned, not a list of words to avoid.
+func TestARevisionNoteNamesTheStepAndNotTheMachinery(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "task-8", Brief: "deliver together"},
+		{ID: "task-8-n4", Parent: "task-8", Brief: "assemble", Title: "Assemble the sections"},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	planGraph := &plan.Graph{Goal: "deliver together", Nodes: []plan.Node{
+		{ID: 4, Title: "Assemble the sections", State: plan.StateRunning},
+	}}
+
+	_, notes := ApplyRevision(graph, planGraph, "task-8", "task-8", []plan.Operation{
+		{Op: "retitle", Node: 4, Refused: "it is already running"},
+	})
+	if len(notes) != 1 {
+		t.Fatalf("notes = %v", notes)
+	}
+	if notes[0] != "Assemble the sections: it is already running" {
+		t.Fatalf("the note reads %q", notes[0])
+	}
+	for _, machinery := range []string{"retitle", "task-8-n4", "node "} {
+		if strings.Contains(notes[0], machinery) {
+			t.Fatalf("the note carries %q into the room: %q", machinery, notes[0])
+		}
 	}
 }
 
