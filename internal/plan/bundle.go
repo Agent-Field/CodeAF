@@ -184,8 +184,10 @@ func Sequence(ctx context.Context, client Completer, graph *Graph) (Usage, error
 	}
 	var reply sequenceReply
 	response, err := structured(ctx, client, messages, sequenceSchema, &reply)
+	var usage Usage
+	usage.Add(usageOf(response))
 	if err != nil {
-		return usageFrom(response), fmt.Errorf("sequence bundle: %w", err)
+		return usage, fmt.Errorf("sequence bundle: %w", err)
 	}
 
 	inside := make(map[int]bool, len(parts))
@@ -219,14 +221,7 @@ func Sequence(ctx context.Context, client Completer, graph *Graph) (Usage, error
 	} else {
 		provider.Report(ctx, provider.VerdictSemanticFailure)
 	}
-	return usageFrom(response), nil
-}
-
-// usageFrom is Usage in the shape the callers of this pass account in.
-func usageFrom(response *ai.Response) Usage {
-	var usage Usage
-	usage.Add(usageOf(response))
-	return usage
+	return usage, nil
 }
 
 // railWidth is how much of a part's own words a rail row can hold.
