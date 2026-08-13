@@ -41,6 +41,9 @@ import (
 //     chokepoint every other body crosses is not optional for the one body that
 //     arrives from somewhere else.
 
+// The byte numbers here are floors now rather than ceilings: this is what
+// they get on a window nobody could size, and budget.go raises them in
+// proportion on a window with room to spare.
 const (
 	// transcriptTurnCap is how many messages one read hands back. It is the
 	// person-window's own size: past this a transcript is a log, and the reason
@@ -176,8 +179,8 @@ func (h *Head) renderTranscript(sessionID string) (string, error) {
 		promptSafe(title), len(kept), pluralWord(len(kept), "turn", "turns"))
 	for _, message := range kept {
 		line := fmt.Sprintf("\n**%s:** %s\n", transcriptSpeaker(message),
-			truncateBytes(promptSafe(strings.TrimSpace(message.Body)), transcriptLineBytes))
-		if rendered.Len()+len(line) > transcriptBytes-len(threadTruncatedMark) {
+			truncateBytes(promptSafe(strings.TrimSpace(message.Body)), h.budget.transcriptLine))
+		if rendered.Len()+len(line) > h.budget.transcript-len(threadTruncatedMark) {
 			rendered.WriteString("\n" + threadTruncatedMark)
 			break
 		}

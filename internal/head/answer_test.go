@@ -113,7 +113,7 @@ func TestADurableReplyPreferenceLandsInTheNotebookAndComesBack(t *testing.T) {
 	if !strings.Contains(receipt, "notebook") || len(run.did) != 1 {
 		t.Fatalf("note receipt = %q, did = %v", receipt, run.did)
 	}
-	if rendered := renderNotebook(graph, "how should you answer me", ""); !strings.Contains(rendered, preference) {
+	if rendered := renderNotebook(graph, "how should you answer me", "", notebookContextBytes); !strings.Contains(rendered, preference) {
 		t.Fatalf("the notebook does not read the preference back:\n%s", rendered)
 	}
 }

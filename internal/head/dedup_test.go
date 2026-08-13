@@ -133,11 +133,11 @@ func TestNotebookDropsWhatTheThreadAlreadyShows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	alone := renderNotebook(graph, preference, "")
+	alone := renderNotebook(graph, preference, "", notebookContextBytes)
 	if !strings.Contains(alone, preference) {
 		t.Fatalf("the notebook lost the belief with no thread at all:\n%s", alone)
 	}
-	beside := renderNotebook(graph, preference, "user: "+preference)
+	beside := renderNotebook(graph, preference, "user: "+preference, notebookContextBytes)
 	if strings.Contains(beside, preference) {
 		t.Fatalf("the notebook restated the sentence sitting above it:\n%s", beside)
 	}
@@ -151,7 +151,7 @@ func TestNotebookDropsWhatTheThreadAlreadyShows(t *testing.T) {
 		store.FactPreference, short); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(renderNotebook(graph, short, "user: "+short), short) {
+	if !strings.Contains(renderNotebook(graph, short, "user: "+short, notebookContextBytes), short) {
 		t.Error("a short belief deduped itself away on too little evidence")
 	}
 }

@@ -23,6 +23,10 @@ import (
 // the same floor — never by a phrase list, because the next phrasing is always
 // one nobody wrote down.
 
+// Every number in this block is a floor now rather than a ceiling: it is what
+// depth gets on a window nobody sized, and budget.go raises it in proportion on
+// a window it can. The arguments below are unchanged — they are why these are
+// the right numbers for the twenty-two-kilobyte prompt they were written for.
 const (
 	// deepSliceLimit is how many jobs one message may open in full. Three is
 	// about as many as a person names in a sentence; past that the message is a
@@ -81,14 +85,14 @@ func (h *Head) renderDeep(message, thread string) (string, map[string]bool) {
 		return "", nil
 	}
 	now := time.Now()
-	openedIDs := make(map[string]bool, deepSliceLimit)
+	openedIDs := make(map[string]bool, h.budget.deepJobs)
 	var rendered strings.Builder
-	// The header is written first and counted, so maxDeepContextBytes bounds
+	// The header is written first and counted, so the depth budget bounds
 	// everything this function can add to the prompt rather than most of it.
 	rendered.WriteString(deepContextHeader)
 	opened := 0
 	for _, target := range targets {
-		if opened == deepSliceLimit {
+		if opened == h.budget.deepJobs {
 			break
 		}
 		// RedirectAnchorScore is the floor at which the user's words are read as
@@ -103,7 +107,7 @@ func (h *Head) renderDeep(message, thread string) (string, map[string]bool) {
 			continue
 		}
 		block := h.renderDeepSlice(target.Node, result, now)
-		if rendered.Len()+len(block) > maxDeepContextBytes {
+		if rendered.Len()+len(block) > h.budget.deep {
 			break
 		}
 		rendered.WriteString(block)
@@ -137,9 +141,9 @@ func (h *Head) renderDeepSlice(node store.Node, result string, now time.Time) st
 	if age := store.AgeLabel(node.FinishedAt, now); age != "" {
 		block.WriteString(" | finished " + age)
 	}
-	body := truncateBytes(result, deepResultBytes)
+	body := truncateBytes(result, h.budget.deepResult)
 	block.WriteString("\n  result: " + indentBlock(body) + "\n")
-	if files := unnamedFiles(node, body); len(files) > 0 {
+	if files := unnamedFiles(node, body, h.budget.deepFiles); len(files) > 0 {
 		block.WriteString("  files: " + strings.Join(files, ", ") + "\n")
 	}
 	return block.String()
@@ -153,14 +157,14 @@ func (h *Head) renderDeepSlice(node store.Node, result string, now time.Time) st
 // paths that needed no second mention, and a job whose first six paths were all
 // quoted in the rendered result printed no files line at all — losing the
 // seventh path, which was the only one this line existed to save.
-func unnamedFiles(node store.Node, body string) []string {
-	files := make([]string, 0, deepFileCap)
+func unnamedFiles(node store.Node, body string, limit int) []string {
+	files := make([]string, 0, limit)
 	for _, file := range collectResultFiles(node, 0) {
 		if strings.Contains(body, file) {
 			continue
 		}
 		files = append(files, file)
-		if len(files) == deepFileCap {
+		if len(files) == limit {
 			break
 		}
 	}
@@ -249,8 +253,13 @@ func deepAlreadyInThread(thread, result string) bool {
 // resultFiles names the artifacts a job points at. A folded job carries them
 // durably; everything else has them only where the worker wrote them down,
 // which is its own summary — inline or on a line of its own.
-func resultFiles(node store.Node) []string {
-	return collectResultFiles(node, deepFileCap)
+//
+// limit is the caller's own file cap, because the three callers spend it on
+// different things: a depth slice pays for these lines out of its block, an
+// artifact read uses them as the openable set, and a correction carries them
+// into somebody else's brief.
+func resultFiles(node store.Node, limit int) []string {
+	return collectResultFiles(node, limit)
 }
 
 // collectResultFiles is resultFiles with the cap as an argument; limit <= 0

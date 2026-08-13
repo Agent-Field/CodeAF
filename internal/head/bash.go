@@ -85,6 +85,9 @@ const (
 	// test run or a diff into something the head confidently described from its
 	// first page. The raw-in rule holds either way — what is never allowed is a
 	// silent clip, and bashOutputCut is why there cannot be one.
+	// It is the floor under the page rather than the page itself: budget.go
+	// buys a longer one out of a window with room, and the cut sentence is
+	// still what says a page ended short of the truth.
 	bashOutputBytes = 16 << 10
 	// bashCommandBytes bounds the command itself. It is a transport bound and no
 	// longer a judgment: "longer than this is a script, and a script is work" was
@@ -150,7 +153,8 @@ func (run *beltRun) bash(args map[string]any) (string, bool) {
 	// for. 5.20's rule that prose turned into work is never a silent side effect
 	// does not care that this one journaled nothing: it RAN.
 	run.record(0, "Ran "+truncateBytes(firstLine(command), bashReceiptBytes)+".")
-	return bashResult(command, root, output, runErr, ctx.Err() != nil, run.head.bashWindowOf()), false
+	return bashResult(command, root, output, runErr, ctx.Err() != nil,
+		run.head.bashWindowOf(), run.head.budget.bash), false
 }
 
 // bashReceiptBytes keeps one command to a clause in the receipt. The result text
@@ -160,10 +164,11 @@ const bashReceiptBytes = 80
 // bashResult is the ground truth, said in the words the loop may repeat. Exit
 // status first, because whether it worked is the answer; then the output,
 // because what it said is the evidence for it.
-func bashResult(command, root string, output []byte, runErr error, timedOut bool, window time.Duration) string {
+func bashResult(command, root string, output []byte, runErr error, timedOut bool,
+	window time.Duration, page int) string {
 	captured := strings.TrimRight(string(output), "\n")
-	if len(captured) > bashOutputBytes {
-		captured = truncateBytes(captured, bashOutputBytes) + bashOutputCut
+	if len(captured) > page {
+		captured = truncateBytes(captured, page) + bashOutputCut
 	}
 	var verdict string
 	switch {
