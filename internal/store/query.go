@@ -500,11 +500,28 @@ func (s *Store) DependencyDigests(id string, maxBytes int) ([]string, error) {
 	return digests, nil
 }
 
-// minDependencyBytes is the floor under one dependency's share. Below roughly
-// this much a digest is a stub rather than a summary, so a fan-in wide enough to
-// push every share under it takes fewer, fuller inputs instead of a hundred
-// unreadable fragments — and says so.
+// minDependencyBytes is the absolute floor under one dependency's share. Below
+// roughly this much a digest is a stub rather than a summary, so a fan-in wide
+// enough to push every share under it takes fewer, fuller inputs instead of a
+// hundred unreadable fragments — and says so.
 const minDependencyBytes = 512
+
+// dependencyFloor is the least one dependency may be given out of a pot of this
+// size. It scales with the pot because "a stub rather than a summary" is a
+// judgment relative to the window doing the reading: a leaf whose model holds
+// 200k tokens, handed sixty 512-byte fragments, has been starved by a number
+// that was chosen for a 4 KiB pot and never revisited.
+//
+// A sixty-fourth is the ratio the old pair already had — 4096/64 is 512 — so a
+// caller that could not size its pot from a real window keeps exactly the floor
+// it always had, and a caller that could buys fuller inputs rather than only
+// more of them.
+func dependencyFloor(pot int) int {
+	if floor := pot / 64; floor > minDependencyBytes {
+		return floor
+	}
+	return minDependencyBytes
+}
 
 // dependencyClipNote is appended to a digest the budget cut short. It exists
 // because the alternative is the failure this whole function used to have: a
@@ -522,6 +539,11 @@ const dependencyClipNote = "\n[clipped to fit — the full text is in this step'
 // therefore synthesised whatever happened to be first. Each dependency now gets
 // an equal share of the pot, unused share is handed back to the ones that need
 // it, and a clipped digest says out loud that it was clipped.
+//
+// The pot itself is the caller's to name, and it must be sized from the window
+// of the model that will read these inputs — see ctxbudget. MaxDigestBytes is
+// what a caller passes when nothing can say how big that window is; it is a
+// fallback, not a ceiling, and a caller that knows better must not use it.
 func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, error) {
 	if maxBytes <= 0 {
 		return nil, nil
@@ -566,9 +588,10 @@ func (s *Store) DependencyInputs(id string, maxBytes int) ([]DependencyInput, er
 	// digest, it is a fragment, so the pot buys as many whole inputs as it can
 	// and the ones that did not fit are named rather than vanishing.
 	pot := maxBytes
+	floor := dependencyFloor(pot)
 	carried := len(settled)
-	if share := pot / carried; share < minDependencyBytes {
-		carried = pot / minDependencyBytes
+	if share := pot / carried; share < floor {
+		carried = pot / floor
 		if carried < 1 {
 			carried = 1
 		}

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -94,11 +95,43 @@ var satisfiedSchema = json.RawMessage(`{
 // expensive half and the least load-bearing — the question is whether a
 // condition is covered, not how well — so each entry is clipped hard and the
 // list is capped.
+//
+// satisfiedResultBytes is the fallback clip, for the gate that could not be told
+// what window it is being asked through. satisfiedBudget is the rest of the law.
 const (
 	satisfiedResultBytes = 600
 	satisfiedLanded      = 24
 	satisfiedInFlight    = 24
 )
+
+// The gate's share of its own prompt. Both tables together are what it reads;
+// the criterion and the static prompt are the rest, and they are short.
+const (
+	satisfiedTablesShare = 2
+	satisfiedShares      = 3
+
+	// satisfiedFloorTokens is the prompt, the schema and the criterion.
+	satisfiedFloorTokens = 4 << 10
+
+	// satisfiedEntries is how many rows the pot is cut into. The two caps above
+	// bound the tables at 24 rows each, and the fallback pair already sat at
+	// this ratio — 48 × 600 is the pot the old numbers implied — so an unknown
+	// window clips exactly where it always did.
+	satisfiedEntries = satisfiedLanded + satisfiedInFlight
+)
+
+// satisfiedBudget is what one row of either table may carry, sized from the
+// window of the model being asked. Computed once per call and passed down, so
+// the two tables — which are the cache-shaped part of this prompt — are clipped
+// by the same number every time the same rows are rendered.
+func satisfiedBudget(contextTokens int) int {
+	pot := ctxbudget.For(contextTokens).WithFloor(satisfiedFloorTokens).
+		Share(satisfiedTablesShare, satisfiedShares, satisfiedResultBytes*satisfiedEntries)
+	if room := pot / satisfiedEntries; room > satisfiedResultBytes {
+		return room
+	}
+	return satisfiedResultBytes
+}
 
 // Satisfied asks whether a criterion is already covered by work that exists.
 //
@@ -112,16 +145,19 @@ const (
 // An empty criterion is not a question: nothing is known about what done means,
 // so nothing can be said about whether it is reached, and the caller is told the
 // job is not complete — which admits growth, the direction that cannot truncate.
-func Satisfied(ctx context.Context, client Completer, criterion Done, landed []Landed, inflight []Spec) (Satisfaction, Usage, error) {
+// contextTokens is the window of the client being asked; zero is unknown and
+// clips the two tables exactly where they were always clipped.
+func Satisfied(ctx context.Context, client Completer, contextTokens int, criterion Done, landed []Landed, inflight []Spec) (Satisfaction, Usage, error) {
 	if client == nil || criterion.Empty() {
 		return Satisfaction{}, Usage{}, nil
 	}
 	ctx = provider.WithCall(ctx, provider.ClassPlanAudit)
+	room := satisfiedBudget(contextTokens)
 	messages := []ai.Message{
 		systemMessage(satisfiedPrompt),
 		userMessage("The criterion this job is judged against:\n" + Spec{Done: criterion}.Render(0)),
-		userMessage(landedBlock(landed)),
-		userMessage(inFlightBlock(inflight)),
+		userMessage(landedBlock(landed, room)),
+		userMessage(inFlightBlock(inflight, room)),
 	}
 	var verdict Satisfaction
 	response, err := structured(ctx, client, messages, satisfiedSchema, &verdict)
@@ -140,7 +176,7 @@ func Satisfied(ctx context.Context, client Completer, criterion Done, landed []L
 	return verdict, usage, nil
 }
 
-func landedBlock(landed []Landed) string {
+func landedBlock(landed []Landed, room int) string {
 	if len(landed) == 0 {
 		return "Nothing has landed yet."
 	}
@@ -158,14 +194,14 @@ func landedBlock(landed []Landed) string {
 		out.WriteString(title)
 		if result := strings.TrimSpace(item.Result); result != "" {
 			out.WriteString(": ")
-			out.WriteString(clipSpec(result, satisfiedResultBytes))
+			out.WriteString(clipSpec(result, room))
 		}
 		out.WriteString("\n")
 	}
 	return out.String()
 }
 
-func inFlightBlock(inflight []Spec) string {
+func inFlightBlock(inflight []Spec, room int) string {
 	if len(inflight) == 0 {
 		return "Nothing is in flight."
 	}
@@ -179,7 +215,7 @@ func inFlightBlock(inflight []Spec) string {
 		out.WriteString(firstLineOf(spec.Instruction))
 		if !spec.Done.Empty() {
 			out.WriteString("\n  commits to: ")
-			out.WriteString(strings.ReplaceAll(Spec{Done: spec.Done}.Render(satisfiedResultBytes), "\n", "\n  "))
+			out.WriteString(strings.ReplaceAll(Spec{Done: spec.Done}.Render(room), "\n", "\n  "))
 		}
 		out.WriteString("\n")
 	}

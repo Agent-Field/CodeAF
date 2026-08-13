@@ -27,7 +27,7 @@ func TestSatisfiedAsksInTheCacheableOrder(t *testing.T) {
 		Produces:   []string{"the comparison table"},
 		Conditions: []Check{{Kind: CheckRead, Check: "the table", Expect: "it names both options"}},
 	}
-	verdict, usage, err := Satisfied(context.Background(), client, criterion,
+	verdict, usage, err := Satisfied(context.Background(), client, 0, criterion,
 		[]Landed{{Title: "First half", Result: "the first option is written up"}},
 		[]Spec{{Instruction: "write the second option", Done: Done{Produces: []string{"the second write-up"}}}})
 	if err != nil {
@@ -60,7 +60,7 @@ func TestSatisfiedAsksInTheCacheableOrder(t *testing.T) {
 // not say stop.
 func TestSatisfiedTreatsSelfContradictionAsIncomplete(t *testing.T) {
 	client := &satisfiedClient{reply: `{"complete":true,"uncovered":[{"condition":"the table","missing":"everything"}]}`}
-	verdict, _, err := Satisfied(context.Background(), client, Done{Produces: []string{"a table"}}, nil, nil)
+	verdict, _, err := Satisfied(context.Background(), client, 0, Done{Produces: []string{"a table"}}, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,11 +73,11 @@ func TestSatisfiedTreatsSelfContradictionAsIncomplete(t *testing.T) {
 // it is reached — and the answer that cannot truncate work is the one given.
 func TestSatisfiedRefusesToAnswerWithoutACriterion(t *testing.T) {
 	client := &satisfiedClient{reply: `{"complete":true,"uncovered":[]}`}
-	verdict, usage, err := Satisfied(context.Background(), client, Done{}, nil, nil)
+	verdict, usage, err := Satisfied(context.Background(), client, 0, Done{}, nil, nil)
 	if err != nil || verdict.Complete || usage.Calls != 0 || len(client.messages) != 0 {
 		t.Fatalf("an empty criterion was answered: %+v %+v err=%v", verdict, usage, err)
 	}
-	if verdict, _, err := Satisfied(context.Background(), nil, Done{Produces: []string{"a table"}}, nil, nil); err != nil || verdict.Complete {
+	if verdict, _, err := Satisfied(context.Background(), nil, 0, Done{Produces: []string{"a table"}}, nil, nil); err != nil || verdict.Complete {
 		t.Fatalf("a build with no client answered: %+v err=%v", verdict, err)
 	}
 }
@@ -91,7 +91,7 @@ func TestSatisfiedBoundsTheTables(t *testing.T) {
 	for index := 0; index < satisfiedLanded+5; index++ {
 		landed = append(landed, Landed{Title: "piece", Result: strings.Repeat("x", satisfiedResultBytes*2)})
 	}
-	if _, _, err := Satisfied(context.Background(), client, Done{Produces: []string{"a table"}}, landed, nil); err != nil {
+	if _, _, err := Satisfied(context.Background(), client, 0, Done{Produces: []string{"a table"}}, landed, nil); err != nil {
 		t.Fatal(err)
 	}
 	block := textOf(client.messages[2])

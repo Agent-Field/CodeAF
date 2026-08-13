@@ -148,7 +148,7 @@ func TestARevisionNoteNamesTheStepAndNotTheMachinery(t *testing.T) {
 func TestRevisionEventCarriesTheFailureReasonAndTheFiles(t *testing.T) {
 	node := store.Node{ID: "task-1-n2", Title: "Survey the API", Brief: "read the docs"}
 	event := RevisionEvent(node, "wrote the notes to api-notes.md",
-		[]string{"/workspace/job/api-notes.md"}, "every v2 endpoint answers 410 Gone")
+		[]string{"/workspace/job/api-notes.md"}, "every v2 endpoint answers 410 Gone", 0)
 	for _, want := range []string{"Survey the API", "FAILED", "410 Gone",
 		"/workspace/job/api-notes.md", "wrote the notes to api-notes.md"} {
 		if !strings.Contains(event, want) {
@@ -156,12 +156,12 @@ func TestRevisionEventCarriesTheFailureReasonAndTheFiles(t *testing.T) {
 		}
 	}
 	// A successful landing says so, and says nothing about a failure.
-	settled := RevisionEvent(node, "the notes are written", nil, "")
+	settled := RevisionEvent(node, "the notes are written", nil, "", 0)
 	if !strings.Contains(settled, "finished") || strings.Contains(settled, "FAILED") {
 		t.Fatalf("settled event = %q", settled)
 	}
 	// Prompt-bound, and never cut through a character.
-	long := RevisionEvent(node, strings.Repeat("é", 4000), nil, strings.Repeat("ü", 900))
+	long := RevisionEvent(node, strings.Repeat("é", 4000), nil, strings.Repeat("ü", 900), 0)
 	if !utf8.ValidString(long) {
 		t.Fatal("the event cut a character in half")
 	}

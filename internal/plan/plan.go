@@ -291,6 +291,16 @@ type Options struct {
 	// N >= 2 forces a panel of N. See ensemble.go.
 	Ensemble int
 
+	// ContextTokens is the window of the model that reads this package's
+	// prompts — the planner, and afterwards the reviser and the completion gate
+	// that read the same document. Zero means nobody could say, and every
+	// budget sized from it then falls back to the literal it always used.
+	//
+	// It rides onto the graph at build so that the passes which happen later,
+	// through signatures that carry a document and not an options struct, size
+	// themselves from the same number the build did. See Graph.ContextTokens.
+	ContextTokens int
+
 	Report Report
 
 	// Progress is called at pass boundaries. Nil keeps planning behavior and
@@ -332,7 +342,11 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// setting it afterwards would give the openers a different prefix from
 	// everything that follows, which is the one thing the shared block exists to
 	// prevent.
-	graph := &Graph{Goal: goal, NextID: 1, Terrain: options.Terrain, FileShaped: options.FileShaped}
+	graph := &Graph{Goal: goal, NextID: 1, Terrain: options.Terrain, FileShaped: options.FileShaped,
+		// The window rides onto the document at the same moment the terrain
+		// does, and for the same reason: every later pass over this graph has to
+		// size itself from the same fact the build was sized from.
+		ContextTokens: options.ContextTokens}
 	emitProgress(progress, "grounding", "settling what to look at", "")
 
 	// Grounding and the spine both need only the goal and the workspace it
