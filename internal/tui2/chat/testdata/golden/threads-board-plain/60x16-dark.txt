@@ -9,8 +9,8 @@
 
   threads
 › importer rewrite
-  parked on the schema question
+  aforge ‹ work                                          ◐ 1
 ◐ wisp-parity · reworking NavCtx after the worker died $8.65
 ▍ ›
 
-  chat  work  notebook  the wisp parity push     ~/aforge-v2
+  chat  work  notebook                           ~/aforge-v2

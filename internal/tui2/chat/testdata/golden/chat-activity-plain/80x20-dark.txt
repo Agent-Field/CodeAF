@@ -1,4 +1,3 @@
-
   • read navctx.rs end to end
   • write the failing test first
 
@@ -14,6 +13,7 @@
   ✕ searching for «navctx» · nothing matched
   ◐ reading «navctx.rs»
 ● replying · interrupt esc
+  aforge ‹ untitled room
 ▍ ⠋  keep typing — messages queue
 
 

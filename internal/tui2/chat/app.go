@@ -227,7 +227,12 @@ type App struct {
 	// place is no longer a ROW of this surface — §7 folded the directory into
 	// the bar's right zone — but it is still the component that knows how to
 	// abbreviate a path, so the app keeps a model and asks it for words.
-	place    *placeline.Model
+	place *placeline.Model
+	// placeBar is THE PLACE LINE (place.go): the one persistent breadcrumb, on
+	// the composer region's top edge, and the spatial truth of this surface. It
+	// holds no navigation state of its own — [App.refresh] pushes the path
+	// [App.placePath] derives — so it cannot drift from the surface it names.
+	placeBar *placeLine
 	composer composerPane
 	verbs    []registry.Entry
 
@@ -292,6 +297,10 @@ type App struct {
 	// every other door on this plane, so a window whose reader never presses `t`
 	// never pays for one.
 	switcher *palette.Switcher
+	// placePicker is the list behind the place line's collapse mark (place.go),
+	// built on first use like every other door on this plane — and on a wide
+	// terminal nothing ever collapses, so it is a door most windows never build.
+	placePicker *palette.Palette
 
 	// roomSwitch is a split the head has settled in the journal and this window
 	// has read but not yet performed (5.4). See [App.drainRoomSwitch].
@@ -430,17 +439,22 @@ func Metrics() tui2.Metrics {
 		RailWidth:      tokens.RailWidth,
 		RailSlimWidth:  tokens.RailSlimWidth,
 		MinMainWidth:   tokens.RailTranscriptFloor,
-		// THREE rows: two of writing area and one blank under them (§7's hug,
-		// as amended by a reader who found the one-row version cramped). The bar
-		// is not in this number — StatusHeight reserves it — and neither is the
-		// place line or the meta strip, which used to bring the total to four
-		// and are gone.
+		// FOUR rows: the place line, two of writing area, and one blank under
+		// them (§7's hug, as amended by a reader who found the one-row version
+		// cramped). The bar is not in this number — StatusHeight reserves it.
 		//
-		// The floor and the padding are the composer region's own
-		// ([draftFloor], [draftPad]); this table only has to reserve enough rows
-		// for them, and the region grows upward past it on demand
+		// The place row is BACK, and it is not the strip §7 dissolved. That one
+		// was a directory — a standing fact, which is why it belongs in the bar's
+		// right zone and still lives there. This one is the breadcrumb, and a
+		// breadcrumb over the caret is the row that pays for itself: it is where
+		// you are AND the address the words below it are going to, and it took
+		// three other pieces of chrome off the screen on its way in (place.go).
+		//
+		// The floor and the padding are the composer region's own ([draftFloor],
+		// [draftPad], [placeRow]); this table only has to reserve enough rows for
+		// them, and the region grows upward past it on demand
 		// ([composerPane.HintRows] into tui2.Shell.GrowComposer).
-		ComposerHeight:              draftFloor + draftPad,
+		ComposerHeight:              placeRow + draftFloor + draftPad,
 		StatusHeight:                1,
 		DialogFullscreenBelowWidth:  tokens.DialogFullscreenBelowWidth,
 		DialogFullscreenBelowHeight: tokens.DialogFullscreenBelowHeight,
@@ -586,6 +600,13 @@ func New(opts Options) *App {
 	}, !app.linear)
 	stack.mode = app.composerMode
 	stack.hud = app.hudRows
+	// The place line, and its two doors. Every segment is a button (law 2) and
+	// the collapse mark opens the picker; both go through the app because the
+	// ACTS are navigation and the region only knows which word was pointed at.
+	app.placeBar = newPlaceLine(app.style)
+	stack.place = app.placeBar
+	stack.placeClick = app.jumpPlace
+	stack.placeHidden = app.openPlacePicker
 	// The region's whole rectangle is a door onto the keyboard, which is the
 	// half of 13.14's pointer law that only ran in one direction (rooms.go's
 	// focusConversation).
@@ -997,6 +1018,15 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	// the cells and the clicks; anything less here would let a keystroke reach a
 	// draft the reader cannot see.
 	if cmd, taken := a.overlayKey(msg); taken {
+		a.shell.Invalidate()
+		return cmd
+	}
+	// THE PLACE LINE'S WALK IS THE SAME RUNG, ONE PLANE DOWN. It is a focus mode
+	// rather than a raised panel, but it is a scope the reader deliberately
+	// entered and it holds the keyboard for exactly as long as they stay in it —
+	// so it is asked here, immediately under the overlays, and esc leaves it
+	// before esc means anything else (place.go, and [App.navigate]'s pop order).
+	if cmd, taken := a.placeKey(msg); taken {
 		a.shell.Invalidate()
 		return cmd
 	}
@@ -1479,39 +1509,118 @@ func (a *App) interrupt() tea.Cmd {
 	return a.startPoll()
 }
 
-// navigate is what esc means when there is no turn to stop and no draft to
-// protect. It never destroys anything, and it walks outward one step at a time:
-// back to the live edge first, and then out of the scope.
+// navigate is what esc means once every scope above the place path has had its
+// turn. It never destroys anything, and it takes exactly one step.
 //
-// The second step is not new behaviour, it is the same rule reached from the
-// other side of the keyboard. 5.15 says esc pops scope, never just selection,
-// and the map's own grammar has always done that (scopeKey). Once entering a
-// room hands the keyboard to that room's composer (bind's handOverTheKeyboard),
-// the map is no longer where esc arrives — so without this the reader who
-// entered a task would have had no way out but a chord, and "esc pops scope"
-// would have quietly become "esc pops scope if you first press ctrl+o".
+// THE ONE POP ORDER, top to bottom, and every rung of it is an esc arm that
+// exists somewhere in this package. The law is that esc pops ONE thing and that
+// the thing is always the innermost scope the reader is inside:
+//
+//	1. a raised OVERLAY — the palette, the switcher, the `?` sheet, the settings
+//	   sheet, the model picker. [App.overlayKey] gives them every key before this
+//	   ladder starts, and each closes itself. They are scopes ABOVE the place
+//	   path, which is why esc closes them first and why that is the law rather
+//	   than an exception to it.
+//	2. the PLACE LINE's own walk, when the keyboard is on it ([App.placeKey]).
+//	   A focus mode is an overlay with no panel: same rung, same reason.
+//	3. an ARMED destructive verb waiting for its second yes (itemverb.go's
+//	   verbKey). A confirmation is the innermost scope there is — it is a
+//	   question this keystroke is the answer to.
+//	4. the STREAMING TURN (8.2.21, [App.canInterrupt] in the key ladder). A reply
+//	   arriving in the room you are watching is the innermost LIVE thing, and esc
+//	   is how it stops.
+//	5. a PAGE'S OWN drill — the board's detail page (boarddetail.go), the
+//	   notebook's (notebook.go). These sit inside a page segment rather than
+//	   beside it, so they pop before it does.
+//	6. a NON-EMPTY DRAFT, stashed into the recall ring by the composer itself and
+//	   never destroyed (composer/key.go's handleEsc). A sentence in progress is a
+//	   thing inside this place, so it goes before the place does; the ring is
+//	   what makes that non-destructive.
+//	7. ONE PLACE SEGMENT — this function, through [App.popPlace].
+//	8. the LIVE EDGE, and only at the floor. See below.
+//
+// Rungs 1–6 are reached before this function is called; 7 and 8 are here.
 func (a *App) navigate() tea.Cmd {
-	// A PAGE IS THE OUTERMOST THING ESC UNDOES. The hug persists on every page,
-	// so the reader who pressed esc on the board or the notebook has no scope to
-	// pop and no transcript to return to — what they are watching is a lens they
-	// swapped in, and esc puts it back (§7).
-	if a.page != pageThread {
-		return a.showPage(pageThread)
+	if cmd, popped := a.popPlace(); popped {
+		return cmd
 	}
-	// A nested drill is the innermost thing on the thread page: esc walks back
-	// up one worker before anything else moves (recordpage.go).
-	if a.drillBack() {
-		return nil
-	}
+	// THE FLOOR, AND WHAT ESC DOES ONCE IT IS REACHED. A reader standing in the
+	// thread with nothing above them has no segment left to pop, and esc puts
+	// them back at the live edge instead of doing nothing.
+	//
+	// It is the LAST rung and not an earlier one, which is a correction: it used
+	// to fire between two place rungs, so a reader who had scrolled up inside a
+	// task room pressed esc and got a scroll instead of the way out. A reading
+	// position is not a place, so it may not stand between two places.
+	//
+	// ROOT IS A FLOOR AND NOT A WRAPAROUND. Nothing here walks past the thread —
+	// the root segment `aforge` is reached by clicking it, never by pressing esc
+	// one more time — because esc that keeps going eventually throws a reader out
+	// of the conversation they were in, and this surface has no undo for that.
 	if !a.transcript.AtBottom() {
 		a.transcript.GotoBottom()
 		a.shell.Invalidate()
 		return nil
 	}
-	if a.railModel == nil || a.railModel.Depth() == 0 {
-		return nil
+	return nil
+}
+
+// popPlace takes one segment off the place path (place.go) and reports whether
+// there was one to take. It is the ONE step: esc takes it, a click on an
+// ancestor takes it as many times as the path is deep, and the rail's own `‹`
+// takes the scope rung of it directly.
+//
+// The rungs are innermost first, which is the same order the path is built in:
+// a part is inside a task, a task is inside a thread, and a lens is inside the
+// page it was swapped into.
+func (a *App) popPlace() (tea.Cmd, bool) {
+	// A nested drill is the innermost place there is: esc walks back up one
+	// worker before anything else moves (recordpage.go).
+	if a.drillBack() {
+		return nil, true
 	}
-	return a.applyScope(a.railModel.Escape())
+	// A scope the rail descended into. This is 5.15's "esc pops scope, never
+	// just selection", reached from the composer's side of the keyboard — the
+	// map's own grammar has always done it (scopeKey), and once entering a room
+	// hands the keyboard to that room's composer the map is no longer where esc
+	// arrives.
+	if a.railModel != nil && a.railModel.Depth() > 0 {
+		cmd := a.applyScope(a.railModel.Escape())
+		// A POP MAY NOT CREATE A SEGMENT. Leaving a scope re-binds the pane to
+		// whatever the map's cursor now rests on, which is the row the reader
+		// just came out of — so the pane landed on that row's CARD and the path
+		// read `aforge ‹ thread ‹ wisp-parity` both before and after the press.
+		// One esc, no visible change, and the reader presses it again.
+		//
+		// The card is a preview the pop produced, not a place anybody navigated
+		// to, so it leaves with the scope that produced it. While the MAP holds
+		// the keyboard the preview is exactly right and scopeKey's own esc is
+		// what runs — this is only the pop taken from the composer's side.
+		if !a.railFocus && a.view != nil && a.view.kind == viewCard {
+			a.showThread()
+			a.composerBind = composerBind{mode: rail.ComposerChat}
+			a.refresh()
+		}
+		return cmd, true
+	}
+	// A PAGE IS A SEGMENT TOO, and the outermost one below the root: the hug
+	// persists on every page, so what the reader is watching is a lens they
+	// swapped in and esc puts it back (§7).
+	if a.page != pageThread {
+		return a.showPage(pageThread), true
+	}
+	// A card or a home in the main pane is the last kind of segment left. It
+	// used to be the one place esc did nothing at all — a reader previewing a
+	// row from the composer's side of the keyboard had no way back to their own
+	// conversation but the mouse — and the place line made the gap visible by
+	// drawing the card as a segment the reader could not leave.
+	if a.view != nil {
+		a.showThread()
+		a.composerBind = composerBind{mode: rail.ComposerChat}
+		a.refresh()
+		return nil, true
+	}
+	return nil, false
 }
 
 // toggleReceipts opens or closes every folded row in the transcript.
@@ -1568,13 +1677,13 @@ func (a *App) refresh() {
 	}
 	a.status.residency = a.residency
 	a.sizeComposer()
-	// The title chip (chat-simplify.md 5.3): the scribe's name for the thread
-	// this window is in, and NOTHING while it has none. It is asked through
-	// [App.threadName] rather than through [scopeSource.RoomTitle] because the
-	// two answer different questions — the rail needs a word for every row it
-	// draws and falls back to "untitled room", and the chip would rather say
-	// nothing than say that.
-	a.status.thread = a.threadName(a.session)
+	// THE PLACE LINE, which is where the thread's name now lives (place.go).
+	//
+	// The bar's title chip and its `‹` trail were both this fact seen from the
+	// wrong row: a chip that said WHICH conversation, a trail that said HOW DEEP
+	// inside it, and neither able to say the two together. One path over the
+	// caret says both, and says them where a reader is already looking.
+	a.syncPlace()
 	a.status.live = a.turn.active
 	a.status.escInterrupts = a.canInterrupt()
 	a.status.verbs = a.verbs
@@ -1719,67 +1828,16 @@ func (a *App) composerHint() (composer.Hint, string) {
 	if a.openQuestions() > 0 {
 		return composer.HintQuestion, ""
 	}
-	return composer.HintIdle, a.composerTarget()
+	// THE GHOST LINE NO LONGER NAMES THE ROOM. Its duty — 13.19's rule that the
+	// composer must always say where words go when the eyes and the mouth are in
+	// different places — moved one row up, onto the place line, as a mark on the
+	// segment the words land in ([App.placeMouth]). The sentence it replaced
+	// (`typing goes to the wisp parity push`) was naming a room the path above it
+	// was already drawing, which is §15's same fact twice; the mark points at
+	// that drawing instead. What is left here is the idle line's own words.
+	return composer.HintIdle, ""
 }
 
-// composerTarget names the room a draft would land in, and ONLY when that room is
-// not the thing the main pane is showing.
-//
-// THE COMPOSER MUST ALWAYS NAME WHERE WORDS GO when the eyes and the mouth are in
-// different places (13.19). The pane and the composer normally agree — you talk to
-// what you are looking at (5.14) — and while they agree this says nothing, because
-// a line naming the room you are visibly standing in is chrome announcing itself
-// (§15). They come apart on exactly one class of frame: a CARD or a HOME in the
-// main pane, which is a look at something the composer is not bound to. That is
-// the frame the incident happened in, and it is the frame this line exists for.
-//
-// It goes through the hint's DETAIL cell rather than a strip of its own
-// ([composer.Hint.cells] replaces the leading cell — "the half that says where you
-// are" — and keeps the `@ jobs` and `/ commands` accelerators behind it), so a
-// surface that already had one place for this sentence still has one place for it.
-//
-// It answers for a CHAT composer only. A steer line says `steer — one-way` and the
-// node it is aimed at is named on the card above it; a disabled one draws its own
-// sentence instead of a draft (chat/composer.go).
-func (a *App) composerTarget() string {
-	if a.composerMode().mode != rail.ComposerChat {
-		return ""
-	}
-	// A room being minted is the one target that has no name yet, and saying the
-	// old room's name here would be the exact lie this line prevents — the mint is
-	// already committed and the words are going to the new room. It is named by
-	// what it is, in the card's own words.
-	if a.mint.active {
-		return newRoomCardTitle
-	}
-	if a.view == nil {
-		// The pane IS the room the composer is bound to.
-		return ""
-	}
-	if a.source == nil {
-		return ""
-	}
-	name := a.source.RoomTitle(a.session)
-	if name == "" {
-		return ""
-	}
-	// A cell that does not fit is a cell [composer.ghostHint] drops whole, and
-	// dropping this one would take the naming away exactly where the frame is
-	// tightest. So the NAME is what gives, and the sentence stays.
-	return composerTargetWord + blocks.Truncate(name, composerTargetRoom)
-}
-
-const (
-	// composerTargetWord is how the line reads. Lowercase chrome, a statement
-	// about this keyboard rather than an instruction, and the verb the reader is
-	// already performing — the sentence is only ever drawn under words about to
-	// be typed.
-	composerTargetWord = "typing goes to "
-	// composerTargetRoom is the most cells a room's name may spend on that line.
-	// A conversation can be titled a whole sentence by the scribe, and a hint
-	// cell as long as the draft above it would be the chrome shouting.
-	composerTargetRoom = 28
-)
 
 func (a *App) openQuestions() int {
 	open := 0
@@ -1930,7 +1988,6 @@ func (a *App) showPage(target page) tea.Cmd {
 	// looking at on the board is a list they walk. The thread's lens is the one
 	// you talk INTO, so the mouth takes the keys back the moment it is up.
 	a.setPageFocus(target != pageThread)
-	a.status.breadcrumb = a.breadcrumb()
 	a.refresh()
 	return nil
 }
@@ -2235,10 +2292,13 @@ func (a *App) pageKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 	// A page may hold a lens of its own — a detail page opened from a row — and
-	// esc closes the innermost thing first. Only an esc the page had nothing to
-	// do with leaves the page itself.
+	// esc closes the innermost thing first (rungs 5 and 7 of [App.navigate]'s
+	// pop order). Only an esc the page had nothing to do with reaches here, and
+	// it goes through the ONE pop rather than calling showPage directly, so a
+	// page reached with the keyboard on it and a page reached with the keyboard
+	// on the composer are left by the same function.
 	if msg.String() == "esc" {
-		return a.showPage(pageThread), true
+		return a.navigate(), true
 	}
 	return nil, true
 }

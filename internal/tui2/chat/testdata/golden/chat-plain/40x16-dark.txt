@@ -1,4 +1,3 @@
-  Here is the plan:
 
   • read navctx.rs end to end
   • write the failing test first
@@ -10,6 +9,7 @@
   │ and a note about the plan
   ▸ workspace/wisp/plan.md  1.6KB
 
+  aforge ‹ untitled room
 ▍ ›  ask for anything · @ jobs
 
 
