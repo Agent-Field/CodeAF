@@ -102,8 +102,14 @@ func toolGloss(name, arguments string) string {
 		}
 		return "reading aforge's own manual"
 	case beltToolResult:
+		// The subject rides at the END of every gloss here, and it is a grammar
+		// rule rather than a preference: the summary row downstream says what
+		// KIND of act a step was by cutting the gloss at its subject, so a gloss
+		// that keeps words after its subject loses them and is left dangling —
+		// "reading what «task-8» came back with" cut at the quote is "read what",
+		// which is not a phrase. Subject last, and the cut is clean.
 		if id := glossArg(args, "id"); id != "" {
-			return "reading what " + quoteGloss(id) + " came back with"
+			return "reading what came back from " + quoteGloss(id)
 		}
 		return "reading what came back"
 	case beltToolPlan:
@@ -116,7 +122,7 @@ func toolGloss(name, arguments string) string {
 			return "reading " + quoteGloss(file)
 		}
 		if job := glossArg(args, "job"); job != "" {
-			return "reading what " + quoteGloss(job) + " wrote"
+			return "reading a file from " + quoteGloss(job)
 		}
 		return "reading a file"
 	case beltToolOpen:
