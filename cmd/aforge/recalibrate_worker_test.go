@@ -54,7 +54,7 @@ func TestASpecialistsRulerIsRewrittenFromItsOwnEvidence(t *testing.T) {
 		PriorAnchors: "the swe worker's three worked examples, as registered",
 	})
 	settings := config.Config{ProfileDir: t.TempDir(), Model: "worker/model"}
-	installMeasuredRulers(settings.ProfileDir, settings.Model)
+	installMeasuredRulers(settings, settings.Model)
 	if got := plan.AnchorsFor("swe"); got != "the swe worker's three worked examples, as registered" {
 		t.Fatalf("the specialist did not start on its own prior: %q", got)
 	}
@@ -125,7 +125,7 @@ func TestASpecialistsRulerIsRewrittenFromItsOwnEvidence(t *testing.T) {
 	}
 	// And it survives a restart: the next process seats it from the file.
 	plan.UseAnchorsFor("swe", "")
-	installMeasuredRulers(settings.ProfileDir, settings.Model)
+	installMeasuredRulers(settings, settings.Model)
 	if got := plan.AnchorsFor("swe"); got != rewritten {
 		t.Fatalf("a restart went back to the prior: %q", got)
 	}

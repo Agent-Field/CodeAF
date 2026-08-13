@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
@@ -74,16 +73,18 @@ func runExecute(args []string) error {
 	// run installs the measured ruler before any planning-capable work starts.
 	// The ruler stays keyed to the work model even when a different model
 	// plans: the anchors measure the executor.
-	installMeasuredRulers(settings.ProfileDir, settings.Model)
+	installMeasuredRulers(settings, settings.Model)
 	ctx := settings.Context(context.Background(), graph.Goal)
-	// Discovery starts before the clients are built, because an adapter reads
+	// Discovery started before the clients are built, because an adapter reads
 	// the catalog to decide which knobs a model will accept. It is started, not
 	// waited for: every question it answers here is asked later than the first
 	// frame of work, and the adapter treats a catalog that has not landed as one
 	// more way of not knowing.
-	modelCatalog := catalog.LoadLazy(ctx, catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
-	})
+	//
+	// It is the same catalog the ruler installation already seated for model
+	// identity rather than a second one over the same cache file: one process,
+	// one discovery.
+	modelCatalog := sharedCatalog(settings)
 	settings.Models = modelCatalog
 	client, err := settings.Client()
 	if err != nil {
@@ -442,11 +443,16 @@ func recordAndCalibrateDetailed(ctx context.Context, client plan.Completer, sett
 			order = append(order, worker)
 		}
 		byWorker[worker] = append(byWorker[worker], landedProfileRecord{planID: node.ID, record: withBoundaryEvidence(settings, model, worker, profile.Record{
-			Title:        node.Title,
-			Summary:      node.Summary,
+			Title:   node.Title,
+			Summary: node.Summary,
+			// The touch-list and the fan-in, which are two different facts and
+			// were one field for as long as the join price was wrong. Sources
+			// says how much this leaf had to visit; FanIn says how much landed
+			// in it, and only the second prices reassembly.
 			Sources:      len(node.Sources),
 			SourcesKnown: true,
-			Size:         string(node.Size),
+			FanIn:        profile.FanInOf(recordedFanIn(node)),
+			Size:         recordedSize(node),
 			Turns:        node.Turns,
 			Tokens:       node.Tokens,
 			Cost:         node.Cost,
@@ -472,6 +478,38 @@ func recordAndCalibrateDetailed(ctx context.Context, client plan.Completer, sett
 		landed = append(landed, pending...)
 	}
 	return strings.Join(reports, "\n"), landed
+}
+
+// recordedSize is the shape this leaf is journaled under, and it never writes
+// the empty string.
+//
+// A node reaches here unsized when nobody ever asked how big it was: the
+// undivided shortcut, a single-leaf remainder, a node spliced in after planning.
+// Those are not a missing measurement, they are a shape — one worker over the
+// whole job — and writing them as "" filed the commonest thing the product does
+// into a bucket no reader looks up, where it could never gather the eight
+// samples an expectation needs. It is the same reasoning that gave direct
+// dispatch its own bucket rather than calling it atomic.
+func recordedSize(node plan.Node) string {
+	if node.Size == plan.SizeUnknown {
+		return profile.BucketWhole
+	}
+	return string(node.Size)
+}
+
+// recordedFanIn is how many earlier results landed in this leaf: what the
+// claiming surface measured against the live store, or the plan's own
+// dependency count when nobody measured.
+//
+// It is deliberately not len(node.Sources). Sources is the touch-list — the
+// pages and datasets a part must visit — and reading it as a fan-in is what made
+// every ordinary leaf look like a join and priced reassembly at the price of an
+// atomic.
+func recordedFanIn(node plan.Node) int {
+	if node.FanIn != nil {
+		return *node.FanIn
+	}
+	return len(node.Needs)
 }
 
 // recordAndCalibrateWorker is that loop for one worker: its records into its

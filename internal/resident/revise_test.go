@@ -1,6 +1,7 @@
 package resident
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -249,6 +250,260 @@ func TestARevisionNoteNamesTheStepAndNotTheMachinery(t *testing.T) {
 		if strings.Contains(notes[0], machinery) {
 			t.Fatalf("the note carries %q into the room: %q", machinery, notes[0])
 		}
+	}
+}
+
+// ── the two splice paths, and what they used to disagree about ───────────────
+//
+// There are two ways a repair reaches a running graph. The overrun splice wires
+// its entry nodes to the node it repairs and to the parts that node was
+// assembled from, points the waiting consumers at it, and stands it where a
+// deliverable stands when there is nothing left to gather it. The revision
+// sentinel did none of that: its additions arrived with whatever inputs a model
+// had named by integer, dropped the ones it could not resolve without a word,
+// and were parented under a deliverable that was not waiting for them. These
+// pin the parity.
+
+// openRevisionGraph is one planned job as the store holds it: a deliverable sink
+// standing on the spine, one work leaf under it, and the plan document both were
+// minted from.
+func openRevisionGraph(t *testing.T, prefix string) (*store.Store, *plan.Graph) {
+	t.Helper()
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { graph.Close() })
+	planGraph := &plan.Graph{Goal: "report on the API", Nodes: []plan.Node{
+		{ID: 1, Title: "Survey the API", Kind: plan.KindWork},
+		{ID: 2, Title: "Write the report", Kind: plan.KindSynthesis, Stage: 2, Needs: []int{1}},
+	}}
+	subtree, err := SubtreeFromPlan(planGraph, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(store.RootID, subtree,
+		store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "report on the API"}); err != nil {
+		t.Fatal(err)
+	}
+	return graph, planGraph
+}
+
+func settleRevisionNode(t *testing.T, graph *store.Store, id, summary, failure string) store.Node {
+	t.Helper()
+	claim, ok, err := graph.Claim(id, "w1")
+	if err != nil || !ok {
+		t.Fatalf("claim %s: ok=%t err=%v", id, ok, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	if failure != "" {
+		if err := graph.Fail(claim, failure); err != nil {
+			t.Fatal(err)
+		}
+	} else if err := graph.Complete(claim, summary); err != nil {
+		t.Fatal(err)
+	}
+	settled, found, err := graph.Node(id)
+	if err != nil || !found {
+		t.Fatalf("read %s: found=%t err=%v", id, found, err)
+	}
+	return settled
+}
+
+func revisionEdge(t *testing.T, graph *store.Store, from, to string) bool {
+	t.Helper()
+	edges, err := graph.ActiveEdges()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, edge := range edges {
+		if edge.From == from && edge.To == to && edge.Kind != store.Suggests {
+			return true
+		}
+	}
+	return false
+}
+
+// A replacement for a failed leaf has to be able to read the leaf it replaces
+// and the parts that leaf had already assembled, or it is a node asked to redo
+// work with no access to any of it. The overrun splice has wired exactly that
+// since it existed (repairSources, attachNeeds); the sentinel's own splice wired
+// nothing, and the honest replacements said so and refused to invent the rest.
+//
+// The other half of the same edge is the reader: the deliverable that was
+// waiting on the failed leaf now waits on its replacement, which is what puts
+// the repair in front of the gate at all.
+func TestARevisionsRepairReadsTheWorkItReplaces(t *testing.T) {
+	graph, planGraph := openRevisionGraph(t, "task-1")
+	for _, part := range []struct{ id, summary string }{
+		{"task-1-n1-p1", "the v1 endpoints, listed"},
+		{"task-1-n1-p2", "the auth flow, described"},
+	} {
+		if err := graph.Splice("task-1-n1", store.Subtree{Nodes: []store.NodeSpec{
+			{ID: part.id, Brief: "part of the survey"},
+		}}, store.Provenance{Origin: store.OriginSelf, SessionID: "s1", Intent: "split the survey"}); err != nil {
+			t.Fatal(err)
+		}
+		settleRevisionNode(t, graph, part.id, part.summary, "")
+	}
+	failed := settleRevisionNode(t, graph, "task-1-n1", "", "every v2 endpoint answers 410 Gone")
+
+	planGraph.Nodes[0].State = plan.StateFailed
+	planGraph.Nodes[0].Failure = "every v2 endpoint answers 410 Gone"
+	planGraph.Nodes = append(planGraph.Nodes, plan.Node{
+		ID: 3, Title: "Survey the API through v1", Summary: "v2 is gone; survey v1 instead", Stage: 1})
+
+	applied, notes := ApplyRevisionGoverned(context.Background(),
+		Growth{Reason: GrowRevision, After: failed}, graph, planGraph, "task-1", "task-1",
+		[]plan.Operation{{Op: "add", Node: 3, Reason: "v2 answers 410 for every endpoint", Applied: true}})
+	if applied != 1 {
+		t.Fatalf("applied=%d notes=%v", applied, notes)
+	}
+
+	if !revisionEdge(t, graph, "task-1-n1", "task-1-n3") {
+		t.Fatal("the replacement cannot see the leaf it replaces")
+	}
+	for _, part := range []string{"task-1-n1-p1", "task-1-n1-p2"} {
+		if !revisionEdge(t, graph, part, "task-1-n3") {
+			t.Fatalf("the replacement cannot see %s, which the failed leaf had already assembled", part)
+		}
+	}
+	if !revisionEdge(t, graph, "task-1-n3", "task-1") {
+		t.Fatal("the deliverable is not waiting for the repair, so the repair is delivered to nobody")
+	}
+	added, ok, err := graph.Node("task-1-n3")
+	if err != nil || !ok {
+		t.Fatalf("the repair was not admitted: ok=%t err=%v", ok, err)
+	}
+	if added.Parent != "task-1" {
+		t.Fatalf("a repair the deliverable gathers stands outside its job: parent=%q", added.Parent)
+	}
+}
+
+// An input the sentinel names by integer and the store cannot resolve was
+// dropped in silence: the addition landed one input short, and nothing anywhere
+// recorded which. A container that was expanded away at admission is the
+// everyday shape of it — the id is real in the plan document and has never named
+// a store node — and the addition wired to it is a repair reading none of the
+// work it was convened over.
+func TestARevisionSurfacesAnInputItCannotResolve(t *testing.T) {
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer graph.Close()
+	// Node 1 is a container: the adapter expands it into its child and admits no
+	// store node of its own.
+	planGraph := &plan.Graph{Goal: "report on the API", Nodes: []plan.Node{
+		{ID: 1, Title: "Explore the API surface"},
+		{ID: 2, Title: "Read the docs", Kind: plan.KindWork, Parent: 1},
+		{ID: 3, Title: "Write the report", Kind: plan.KindSynthesis, Stage: 2, Needs: []int{1}},
+	}}
+	subtree, err := SubtreeFromPlan(planGraph, "task-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Splice(store.RootID, subtree,
+		store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "report on the API"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := graph.Node("task-2-n1"); ok {
+		t.Fatal("the container was admitted; the premise of this test is gone")
+	}
+
+	planGraph.Nodes = append(planGraph.Nodes, plan.Node{
+		ID: 4, Title: "Check the docs against the changelog", Stage: 2, Needs: []int{1}})
+	applied, notes := ApplyRevisionGoverned(context.Background(),
+		Growth{Reason: GrowRevision}, graph, planGraph, "task-2", "task-2",
+		[]plan.Operation{{Op: "add", Node: 4, Reason: "the docs and the changelog disagree", Applied: true}})
+	if applied != 1 {
+		t.Fatalf("the addition itself was lost: applied=%d notes=%v", applied, notes)
+	}
+	if len(notes) != 1 {
+		t.Fatalf("the dropped input was not surfaced: notes=%v", notes)
+	}
+	if !strings.Contains(notes[0], "Explore the API surface") {
+		t.Fatalf("the note does not say which input went missing: %q", notes[0])
+	}
+	// §5d: the note is read by a person, so it names the step and not the row.
+	for _, machinery := range []string{"task-2-n1", "node "} {
+		if strings.Contains(notes[0], machinery) {
+			t.Fatalf("the note carries %q into the room: %q", machinery, notes[0])
+		}
+	}
+}
+
+// The gate and the announcer look at exactly one place: the nodes standing on
+// the spine. A repair the sentinel splices under a deliverable that has already
+// started is therefore work nothing is waiting for and nothing will ever judge —
+// it finishes correctly and is delivered to nobody, which is the failure
+// overrun.go names in its own words and avoids by standing such a repair beside
+// its job rather than inside it.
+//
+// The shape is the everyday one: a leaf fails, its failure settles the
+// dependency, the deliverable that was waiting on it starts, and only then does
+// the sentinel decide the failure needs replacing.
+func TestARevisionRepairNobodyWillGatherStandsOnTheSpine(t *testing.T) {
+	graph, planGraph := openRevisionGraph(t, "task-3")
+	failed := settleRevisionNode(t, graph, "task-3-n1", "", "every v2 endpoint answers 410 Gone")
+	claim, ok, err := graph.Claim("task-3", "w1")
+	if err != nil || !ok {
+		t.Fatalf("claim the deliverable: ok=%t err=%v", ok, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+
+	planGraph.Nodes[0].State = plan.StateFailed
+	planGraph.Nodes = append(planGraph.Nodes, plan.Node{
+		ID: 3, Title: "Survey the API through v1", Summary: "v2 is gone; survey v1 instead", Stage: 1})
+	applied, notes := ApplyRevisionGoverned(context.Background(),
+		Growth{Reason: GrowRevision, After: failed}, graph, planGraph, "task-3", "task-3",
+		[]plan.Operation{{Op: "add", Node: 3, Reason: "v2 answers 410 for every endpoint", Applied: true}})
+	if applied != 1 {
+		t.Fatalf("applied=%d notes=%v", applied, notes)
+	}
+	added, ok, err := graph.Node("task-3-n3")
+	if err != nil || !ok {
+		t.Fatalf("the repair was not admitted: ok=%t err=%v", ok, err)
+	}
+	// This is the whole of it: cmd/aforge's shouldGate admits a node whose
+	// parent is the spine and nothing else, and announceNode reads the same
+	// column.
+	if added.Parent != store.RootID {
+		t.Fatalf("the repair is parented at %q, where neither the gate nor the announcer looks", added.Parent)
+	}
+	// It keeps the job's id namespace, which is what carries its workspace, and
+	// it still reads the work it replaces.
+	if !revisionEdge(t, graph, "task-3-n1", "task-3-n3") {
+		t.Fatal("the repair standing beside its job lost sight of the work it replaces")
+	}
+	if revisionEdge(t, graph, "task-3-n3", "task-3") {
+		t.Fatal("a running deliverable was wired to wait for work it will never read")
+	}
+}
+
+// The cycle the reader law must not close. A sentinel that adds a check reading
+// the finished deliverable is adding a node the deliverable must not then be
+// made to wait for: the store's AddEdge asks whether a consumer is pending and
+// nothing else, so that edge is accepted and both ends wait forever.
+func TestARevisionNeverWiresTheDeliverableToWaitForItsOwnChecker(t *testing.T) {
+	graph, planGraph := openRevisionGraph(t, "task-5")
+	planGraph.Nodes = append(planGraph.Nodes, plan.Node{
+		ID: 3, Title: "Check the report against the docs", Stage: 3, Needs: []int{2}})
+	applied, notes := ApplyRevisionGoverned(context.Background(),
+		Growth{Reason: GrowRevision}, graph, planGraph, "task-5", "task-5",
+		[]plan.Operation{{Op: "add", Node: 3, Reason: "the report should be checked", Applied: true}})
+	if applied != 1 {
+		t.Fatalf("applied=%d notes=%v", applied, notes)
+	}
+	if !revisionEdge(t, graph, "task-5", "task-5-n3") {
+		t.Fatal("the checker lost the deliverable it reads")
+	}
+	if revisionEdge(t, graph, "task-5-n3", "task-5") {
+		t.Fatal("the deliverable and its checker are waiting for each other")
 	}
 }
 

@@ -87,7 +87,7 @@ func TestTheAskedRequestsJoinTheSharedPreamble(t *testing.T) {
 func TestASubPlannerDoesNotInheritTheWholeAsksRequests(t *testing.T) {
 	graph := &Graph{Goal: "Compare three countries.", Terrain: "answers/  3 files",
 		Asked:   []string{"How does France measure road distance?", "Write them up as one comparison."},
-		Settled: []string{"The three countries are France, the UK and Japan."}}
+		Settled: []Settlement{{Variable: "The three countries are France, the UK and Japan."}}}
 	sub := &Graph{
 		Goal:     "Look up France",
 		Settled:  graph.Settled,

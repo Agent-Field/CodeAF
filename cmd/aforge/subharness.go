@@ -289,7 +289,16 @@ func registerLeafExecutors(registry *exec.Registry, build leafBuild) {
 //
 // A worker with no file yet keeps the prior it registered with, which is what
 // an empty Anchors already means everywhere else.
-func installMeasuredRulers(profileDir, model string) *profile.Profile {
+//
+// It is also where model identity is seated, and that is not a coincidence: this
+// is the one function every surface that records anything calls before it reads
+// or writes a profile — the plan command, the headless run, chat, and the wake
+// pass. A history keyed on the operator's spelling instead of on the model is
+// two histories and two rulers for one executor, which is the thing this
+// function exists to prevent one file at a time.
+func installMeasuredRulers(settings config.Config, model string) *profile.Profile {
+	profile.UseIdentity(sharedCatalog(settings).Identity)
+	profileDir := settings.ProfileDir
 	measured, _ := profile.Load(profileDir, model, exec.LinearSubharness)
 	plan.UseAnchors(measured.Anchors)
 	for _, info := range exec.Subharnesses() {
@@ -301,6 +310,27 @@ func installMeasuredRulers(profileDir, model string) *profile.Profile {
 	}
 	return measured
 }
+
+// sharedCatalog is this process's one model catalog.
+//
+// It is lazy and memoised for the same reason the surfaces that build their own
+// are lazy: discovery is a daily-cached file behind a background fetch, nothing
+// it answers is asked before the first frame, and a launch path that waited for
+// it would hold the terminal behind a network round trip. Memoising it means the
+// identity seam and the surface that shows the model list are looking at the
+// same catalog rather than racing two fetches over one cache file.
+var sharedCatalog = func() func(config.Config) *catalog.Catalog {
+	var once sync.Once
+	var resolved *catalog.Catalog
+	return func(settings config.Config) *catalog.Catalog {
+		once.Do(func() {
+			resolved = catalog.LoadLazy(context.Background(), catalog.Options{
+				BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+			})
+		})
+		return resolved
+	}
+}()
 
 // profileSubharness is the file a measurement belongs in. Every measurement
 // belongs in exactly one, and an unregistered name belongs in the generalist's:

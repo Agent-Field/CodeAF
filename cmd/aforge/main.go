@@ -255,7 +255,7 @@ func runPlan(args []string) error {
 
 	// The ruler in force comes from measured work when there is any; the
 	// built-in prior is only the starting point.
-	store := installMeasuredRulers(settings.ProfileDir, settings.Model)
+	store := installMeasuredRulers(settings, settings.Model)
 
 	if !*asJSON {
 		fmt.Printf("goal:   %s\nmodel:  %s (reasoning: %s)\n", goal, settings.PlanModelResolved(), settings.Reasoning)

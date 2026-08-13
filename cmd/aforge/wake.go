@@ -54,7 +54,7 @@ func runWake(args []string) error {
 		// structuring call worse here than in chat: there is nobody to notice.
 		chatClient.WithCallWall(pool.DefaultCallWall)
 		planClient.WithCallWall(pool.DefaultCallWall)
-		installMeasuredRulers(settings.ProfileDir, taskClient.Model())
+		installMeasuredRulers(settings, taskClient.Model())
 		plans := &jobPlans{graphs: map[string]plannedJob{}}
 		// A wake pass has no live boost slot to resolve model words against;
 		// jobs born here run on the configured work model.

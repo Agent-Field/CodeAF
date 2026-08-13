@@ -141,17 +141,35 @@ var fanoutSchema = json.RawMessage(`{
   "additionalProperties": false
 }`)
 
+// stageResult carries the stage's accounting as a plan Usage rather than one
+// response's, because a stage may now cost two calls: the acceptance check
+// below buys one free retry, and a slot that could only hold one response would
+// have billed the second to nobody.
 type stageResult struct {
 	nodes []Node
-	usage *ai.Usage
+	usage Usage
 	err   error
 }
 
-// FanOut expands every stage at once. Each call carries the same frozen prefix —
-// goal plus the whole spine — so the varying part is a single line, which is
-// both the cheapest shape to generate and the friendliest to a prefix cache.
+// FanOut expands every stage at once, with no enumeration in force. It is the
+// call a caller with no grounding to hand over makes.
 func FanOut(ctx context.Context, client Completer, premise string, stages []Stage) ([]Node, Usage, error) {
+	return FanOutWith(ctx, client, premise, stages, nil)
+}
+
+// FanOutWith expands every stage at once. Each call carries the same frozen
+// prefix — goal plus the whole spine — so the varying part is a single line,
+// which is both the cheapest shape to generate and the friendliest to a prefix
+// cache.
+//
+// The settlements travel with it because the acceptance check below is keyed on
+// them and on nothing else. A stage split under a bound enumeration owes one
+// unit per part; a stage split under none owes nothing of the kind, and the
+// check does not run. The list is read, never rendered — the premise already
+// carries the settled block, and re-rendering it here would move the prefix.
+func FanOutWith(ctx context.Context, client Completer, premise string, stages []Stage, settled []Settlement) ([]Node, Usage, error) {
 	shared := premise + "\nThe full stage sequence:\n" + spineBlock(stages)
+	enumerated := Enumerated(settled)
 
 	results := make([]stageResult, len(stages))
 	var group sync.WaitGroup
@@ -164,10 +182,18 @@ func FanOut(ctx context.Context, client Completer, premise string, stages []Stag
 			// the other stages still land.
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					results[index] = stageResult{err: guard.Note(fmt.Sprintf("plan/fanout stage %d", index+1), recovered)}
+					// The call is still counted. A stage that faulted may have
+					// spent one anyway, and a plan that quietly dropped it from
+					// the accounting would understate itself — which is the same
+					// reason Usage.Add counts a response the provider was quiet
+					// about.
+					results[index] = stageResult{
+						usage: Usage{Calls: 1},
+						err:   guard.Note(fmt.Sprintf("plan/fanout stage %d", index+1), recovered),
+					}
 				}
 			}()
-			nodes, usage, err := fanOutStage(ctx, client, shared, index+1, stage)
+			nodes, usage, err := fanOutStage(ctx, client, shared, index+1, stage, enumerated)
 			results[index] = stageResult{nodes: nodes, usage: usage, err: err}
 		}(index, stage)
 	}
@@ -177,7 +203,7 @@ func FanOut(ctx context.Context, client Completer, premise string, stages []Stag
 	var nodes []Node
 	var failures []error
 	for _, result := range results {
-		usage.Add(result.usage)
+		usage.merge(result.usage)
 		if result.err != nil {
 			failures = append(failures, result.err)
 			continue
@@ -187,7 +213,7 @@ func FanOut(ctx context.Context, client Completer, premise string, stages []Stag
 	return nodes, usage, joinErrors(failures)
 }
 
-func fanOutStage(ctx context.Context, client Completer, shared string, stage int, definition Stage) ([]Node, *ai.Usage, error) {
+func fanOutStage(ctx context.Context, client Completer, shared string, stage int, definition Stage, enumerated bool) ([]Node, Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanFanOut)
 	messages := []ai.Message{
 		systemMessage(fanoutPrompt),
@@ -197,12 +223,48 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 	var decoded struct {
 		Parts []Node `json:"parts"`
 	}
+	var usage Usage
 	response, err := structured(ctx, client, messages, fanoutSchema, &decoded)
+	usage.Add(usageOf(response))
 	if err != nil {
-		return nil, usageOf(response), fmt.Errorf("fan-out stage %d: %w", stage, err)
+		return nil, usage, fmt.Errorf("fan-out stage %d: %w", stage, err)
 	}
-	nodes := make([]Node, 0, len(decoded.Parts))
-	for _, node := range decoded.Parts {
+	nodes := fanOutNodes(stage, decoded.Parts)
+	if len(nodes) == 0 {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return nil, usage, annotate(fmt.Errorf("fan-out stage %d: no parts returned", stage), response)
+	}
+	if refusal := worthSplitting(nodes, enumerated); refusal != "" {
+		// One free retry, on the same bytes, for the same reason the ground pass
+		// retries: a split that names no units is a miss rather than a position,
+		// and asking the same question twice is cheaper than running the parts.
+		var again struct {
+			Parts []Node `json:"parts"`
+		}
+		retry, retryErr := structured(ctx, client, messages, fanoutSchema, &again)
+		usage.Add(usageOf(retry))
+		if retryErr == nil {
+			if retried := fanOutNodes(stage, again.Parts); len(retried) > 0 && worthSplitting(retried, enumerated) == "" {
+				provider.Report(ctx, provider.VerdictVerifiedSuccess)
+				return retried, usage, nil
+			}
+		}
+		// Refused twice. The parts are collapsed back into the one stage they
+		// were always a restatement of, which is the answer the prompt itself
+		// calls correct — "return a single part when the stage is genuinely one
+		// piece of work". Running them instead is what produced six identical
+		// briefs, six workers and one job's worth of work done six times.
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return []Node{wholeStage(stage, definition, nodes)}, usage, nil
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	return nodes, usage, nil
+}
+
+// fanOutNodes normalises one reply's parts into work nodes.
+func fanOutNodes(stage int, parts []Node) []Node {
+	nodes := make([]Node, 0, len(parts))
+	for _, node := range parts {
 		node.Stage = stage
 		node.Title = trim(node.Title)
 		node.Summary = trim(node.Summary)
@@ -214,12 +276,73 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 		}
 		nodes = append(nodes, node)
 	}
-	if len(nodes) == 0 {
-		provider.Report(ctx, provider.VerdictSemanticFailure)
-		return nil, usageOf(response), annotate(fmt.Errorf("fan-out stage %d: no parts returned", stage), response)
+	return nodes
+}
+
+// worthSplitting is worthKeeping's shape at the other place work gets divided,
+// and it is here because the two checks were never wired to the same door. The
+// expansion path has refused splits that claim no difference since it existed;
+// the fan-out path — which produces most of the leaves in most plans — accepted
+// anything with a title, and a six-vendor stage came back as six parts that
+// named no vendor at all. Three of the six briefs then invented the same vendor.
+//
+// It is keyed on the enumeration and runs nowhere else. Where the material bound
+// a variable to several values, the prompt's own law is already exact — "Every
+// part names the units it owns and no others" — so a multi-part split owes a
+// reference per part, and two parts referencing the same unit are two parts
+// doing the same job. Where nothing was enumerated there is no reference to
+// check against and the check is silent, which is why an ordinary goal pays it
+// nothing.
+//
+// It names no unit itself, reads no text and calls no model: it is a predicate
+// over the source lists the schema already required.
+func worthSplitting(parts []Node, enumerated bool) string {
+	if !enumerated || len(parts) < 2 {
+		return ""
 	}
-	provider.Report(ctx, provider.VerdictVerifiedSuccess)
-	return nodes, usageOf(response), nil
+	seen := map[string]int{}
+	for index, part := range parts {
+		if len(part.Sources) == 0 {
+			return fmt.Sprintf("part %d names no unit it owns", index+1)
+		}
+		for _, source := range part.Sources {
+			key := squash(source)
+			if key == "" {
+				continue
+			}
+			if owner, taken := seen[key]; taken && owner != index {
+				return fmt.Sprintf("parts %d and %d both own %q", owner+1, index+1, source)
+			}
+			seen[key] = index
+		}
+	}
+	return ""
+}
+
+// wholeStage is the stage left whole: one part, the stage's own title and
+// summary, carrying every unit the refused split named between its parts. The
+// units are kept because they are the honest touch-list of the work either way,
+// and losing them would make the undivided node look smaller than it is.
+func wholeStage(stage int, definition Stage, refused []Node) Node {
+	sources := make([]string, 0)
+	seen := map[string]bool{}
+	for _, part := range refused {
+		for _, source := range part.Sources {
+			if key := squash(source); key != "" && !seen[key] {
+				seen[key] = true
+				sources = append(sources, source)
+			}
+		}
+	}
+	return Node{
+		Stage:     stage,
+		Title:     trim(definition.Title),
+		Summary:   trim(definition.Summary),
+		Sources:   sources,
+		State:     StatePending,
+		Kind:      KindWork,
+		Undivided: RefusalSameAnswer,
+	}
 }
 
 func spineBlock(stages []Stage) string {
@@ -230,9 +353,16 @@ func spineBlock(stages []Stage) string {
 	return block
 }
 
-// cleanStrings normalises the source list. An empty list is meaningful — it
-// says the node touches nothing external — so it is preserved rather than
-// treated as missing data.
+// cleanStrings normalises a string list, dropping the blanks.
+//
+// The empty result is preserved rather than reported, because this function
+// cannot tell the two things it would mean apart. For a long time the comment
+// here said an empty source list "says the node touches nothing external", and
+// that rationalisation was load-bearing: it is why six parts of an enumerated
+// stage, none of which named a single unit, were accepted as six independent
+// subjects. An empty list means either "nothing to touch" or "the reply named
+// nothing", and only a caller that knows whether a reference was owed can say
+// which — see worthSplitting, which is that caller.
 func cleanStrings(values []string) []string {
 	kept := make([]string, 0, len(values))
 	for _, value := range values {

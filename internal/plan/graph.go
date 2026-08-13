@@ -163,6 +163,17 @@ type Node struct {
 	// from a run reads this field and never State.
 	Verdict provider.Verdict `json:"verdict,omitempty"`
 
+	// FanIn is how many earlier results actually landed in this node, measured
+	// by whoever claimed it rather than counted off this document.
+	//
+	// Needs is the plan's intention and is very nearly the same number; this is
+	// what a surface with a live store observed instead, which differs where an
+	// edge was spliced in after planning or where a dependency settled without
+	// producing anything. Nil means nobody measured, and the reader falls back
+	// to len(Needs) — never to Sources, which is the touch-list and was the
+	// number the join price was mistakenly read off for as long as it existed.
+	FanIn *int `json:"fan_in,omitempty"`
+
 	// Calibration is what the worker said about its own fit for this node, and
 	// EscalatedFrom names the worker that tried it first and could not finish.
 	// Both are carried for one reader: the profile record this node becomes when
@@ -227,8 +238,13 @@ type Graph struct {
 	// call works from the same premise. Open are the ones that cannot be bound
 	// in advance because they are the answer to the work — they exist to tell
 	// the binder what must become a real dependency rather than an assumption.
-	Settled []string `json:"settled,omitempty"`
-	Open    []string `json:"open,omitempty"`
+	//
+	// A settlement is the variable and the values together (see Settlement), so
+	// that "bound" is a slice length rather than a reading of a sentence. A graph
+	// written before that split decodes its strings into the same type and
+	// renders them unchanged.
+	Settled []Settlement `json:"settled,omitempty"`
+	Open    []string     `json:"open,omitempty"`
 
 	// Evidence is the standard of support the goal warrants — reading and
 	// citing, running and measuring, or building and demonstrating. It is
