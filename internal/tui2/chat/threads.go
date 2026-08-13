@@ -67,24 +67,26 @@ type Thread struct {
 	Unseen bool
 }
 
-// ThreadReader is the engine's own open-threads read.
+// ThreadReader is the engine's own thread INDEX.
 //
-// TODO(chats, engine half): the engine lane exports `store.OpenThreads()` — the
-// per-thread projection that already knows the left-at line and the unseen
-// delivery, because it is the same projection the re-entry brief (J4) and the
-// board's alive glance (J5) are derived from. When it lands, *store.Store
-// satisfies this interface directly and [App.readThreads]'s fallback below
-// retires. Until then the fallback derives the same four facts from reads that
-// exist today, so this surface is complete and green with or without it.
+// THE NAME IS THE CONTRACT, and it is spelled `index` rather than `open` on
+// purpose. This seam was declared as an open-threads read and wired to
+// `store.OpenThreads`, which returns only conversations with an unresolved arc
+// — so the switcher listed nothing at all in a store full of finished work. An
+// index lists EVERY conversation; whether one has an open loop is a decoration
+// on its row (see [Thread.Unseen]) and may never be the filter that decides the
+// row exists.
 //
 // It is an optional interface on the backend rather than a method on [Backend]
 // for the reason [Rooms], [Graph] and [Ledger] are: a window driven by a stub in
 // a test, or by a backend that is only a message log, must still open and still
-// switch threads.
+// switch threads. *store.Store satisfies the [store.ThreadArc] form of it
+// directly ([App.readThreads]'s second arm); this one is for a backend that
+// would rather speak the surface's own shape.
 type ThreadReader interface {
-	// OpenThreads is every thread worth listing, newest activity first, capped
-	// at limit.
-	OpenThreads(limit int) ([]Thread, error)
+	// ThreadIndex is every thread worth listing, newest activity first, capped
+	// at limit. Settled threads are listed like any other.
+	ThreadIndex(limit int) ([]Thread, error)
 }
 
 // threadTails is the half of the fallback read the message log cannot answer:
@@ -144,19 +146,28 @@ const leftAtRead = 1
 // removing from everything else.
 func (a *App) readThreads() []Thread {
 	if reader, ok := a.backend.(ThreadReader); ok {
-		if threads, err := reader.OpenThreads(maxThreadRows); err == nil {
+		if threads, err := reader.ThreadIndex(maxThreadRows); err == nil {
 			return a.markSeen(threads)
 		}
 		// A read that failed is not a store with no threads in it. Fall through
 		// to the reads that exist rather than claiming an empty list.
 	}
-	// The engine's own projection (store.OpenThreads) speaks in its vocabulary,
-	// not this package's; the adaptation is four field names, done here so the
-	// store never has to know what a switcher row is.
+	// The engine's own projection speaks in its vocabulary, not this package's;
+	// the adaptation is four field names, done here so the store never has to
+	// know what a switcher row is.
+	//
+	// IT IS ThreadIndex AND NOT OpenThreads, and the distinction is the whole of
+	// a bug that made this feature look absent. OpenThreads answers "what is
+	// still alive" — it DROPS every conversation whose last exchange was
+	// finished properly — and a switcher driven from it showed a store with
+	// three real sessions in it as a list of none: one preselected `new thread`
+	// row reading `1/1`, whose enter abandoned the thread the reader was
+	// standing in. A switcher is an INDEX. Whether a thread has an open loop is
+	// a decoration on its row, never the filter that decides it exists.
 	if reader, ok := a.backend.(interface {
-		OpenThreads(limit int) ([]store.ThreadArc, error)
+		ThreadIndex(limit int) ([]store.ThreadArc, error)
 	}); ok {
-		if arcs, err := reader.OpenThreads(maxThreadRows); err == nil {
+		if arcs, err := reader.ThreadIndex(maxThreadRows); err == nil {
 			threads := make([]Thread, 0, len(arcs))
 			for _, arc := range arcs {
 				threads = append(threads, Thread{

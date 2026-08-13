@@ -221,3 +221,70 @@ func TestTheDoorsShedBeforeTheStandingFacts(t *testing.T) {
 		t.Fatalf("a narrow row dropped the place the reader is in:\n%s", narrow)
 	}
 }
+
+// -- every advertised chord ----------------------------------------------------
+
+// NO DEAD DOORS ON THE FIRST FRAME.
+//
+// alt+g, alt+1, alt+2 and alt+3 were all declared in the catalog and drawn on
+// the empty first frame, and none of them reached anything: the key ladder had
+// no arm for any of them. Two of the three doors the product showed a new reader
+// did nothing at all.
+//
+// This walks the CATALOG rather than a list of four spellings, so the next row
+// that promises a chord is covered the day it is added. A row the room has an
+// honest reason against is skipped — the sheet draws it disabled, and it is not
+// supposed to fire.
+func TestEveryChordTheCatalogPromisesActuallyDoesSomething(t *testing.T) {
+	for _, entry := range registry.ForScope(registry.ScopeThread) {
+		key := entry.KeyOn(registry.SurfaceComposerFirst)
+		if key == "" || !strings.Contains(key, "+") {
+			continue
+		}
+		msg, ok := chordKey(key)
+		if !ok {
+			// A named-key chord (ctrl+space, alt+enter): not something this
+			// helper synthesizes, and each has its own test already.
+			continue
+		}
+		t.Run(entry.ID+" "+key, func(t *testing.T) {
+			app, _ := threadsApp(t)
+			_ = app.Frame(120, 30)
+			if reason := app.entryReason(entry.ID); reason != "" {
+				t.Skipf("this room honestly cannot do it: %s", reason)
+			}
+			// ROUTED, not necessarily VISIBLE. Some of these acts are honest
+			// no-ops in the state a fresh window is in — alt+1 asks for the
+			// lens already on screen, ctrl+u clears a draft that is empty — and
+			// asserting a state change would be asserting that the fixture is
+			// in the right mood rather than that the door is wired. What the
+			// dead keys had in common is that NOTHING claimed them, so that is
+			// what is asserted: the registry arm takes it, or the explicit
+			// ladder above it does something with it.
+			if _, claimed := app.registryKey(key); claimed {
+				return
+			}
+			before := surfaceMark(app)
+			cmd := app.drain(app.key(msg))
+			if cmd != nil {
+				_ = cmd()
+			}
+			if cmd == nil && surfaceMark(app) == before {
+				t.Fatalf("%s promises %s and nothing in the key ladder claims it", entry.ID, key)
+			}
+		})
+	}
+}
+
+// surfaceMark is enough of the window's state to notice that a key moved it:
+// which lens is up, which overlay is raised, and where the keyboard is.
+func surfaceMark(app *App) [4]int {
+	focus, shown := 0, 0
+	if app.railFocus {
+		focus = 1
+	}
+	if app.railShown {
+		shown = 1
+	}
+	return [4]int{int(app.page), int(app.overlay), focus, shown}
+}

@@ -27,6 +27,21 @@ type Catalog struct {
 	// failure 5.22 exists to remove.
 	Scope registry.Scope
 
+	// Surface is the KIND of room this catalog is being drawn in, and it decides
+	// which spelling of a key every row teaches. The ZERO VALUE IS
+	// [registry.SurfaceDefault], which is what a surface with a free keyboard
+	// wants and what every non-chat host gets by saying nothing.
+	//
+	// IT EXISTS BECAUSE THE SHEET WAS TEACHING KEYS THAT DO NOT FIRE. This list
+	// used to ask the registry for SurfaceDefault unconditionally, so in a
+	// composer-first room — where every printable character belongs to the draft
+	// — it taught `t` for the thread switcher, `v` for the receipts fold and `y`
+	// for copy-answer, none of which that room can bind. A reader who pressed
+	// them typed letters into their sentence and concluded the feature was
+	// missing. The registry has known the honest answer all along
+	// ([registry.Entry.KeyOn]); the sheet simply was not asking it.
+	Surface registry.Surface
+
 	// Rooms are the live and settled rooms, in the order the wiring wants
 	// them shown within their own group. Order is preserved for equally-good
 	// matches; ranking never reorders across the live/history split.
@@ -537,7 +552,7 @@ func appendActions(dst []row, c Catalog) []row {
 			if a.Disabled == "" && c.Reason != nil {
 				a.Disabled = c.Reason(a.Entry.ID)
 			}
-			dst = append(dst, newActionRow(a))
+			dst = append(dst, newActionRow(a, c.Surface))
 		}
 		return dst
 	}
@@ -553,17 +568,17 @@ func appendActions(dst []row, c Catalog) []row {
 		if c.Reason != nil {
 			a.Disabled = c.Reason(e.ID)
 		}
-		dst = append(dst, newActionRow(a))
+		dst = append(dst, newActionRow(a, c.Surface))
 	}
 	return dst
 }
 
-func newActionRow(a Action) row {
+func newActionRow(a Action, surface registry.Surface) row {
 	out := row{
 		sec:      sectionActions,
 		verb:     a.Entry.Verb,
 		desc:     a.Entry.Description,
-		accel:    accelOf(a.Entry),
+		accel:    accelOf(a.Entry, surface),
 		band:     tokens.Band,
 		disabled: clean(a.Disabled),
 		result:   RunEntry{ID: a.Entry.ID},
@@ -588,13 +603,18 @@ func newActionRow(a Action) row {
 // and the honest thing to print in the column that teaches doors is the door
 // that exists. Printing nothing there would read as "no way to do this",
 // which is the opposite of true.
-func accelOf(e registry.Entry) string {
-	// SurfaceDefault, deliberately: this list shows the catalog's own key for a
-	// row rather than the one the host surface could bind. It is a REQUESTED
-	// SEAM — a composer-first host draws "v" here for a chord it routes as
-	// ctrl+r — and closing it wants a surface on [Catalog], not a quiet change
-	// to what every row teaches.
-	if key := registry.ChipOn(e, registry.SurfaceDefault).Key; key != "" {
+// THE SEAM IS CLOSED, AND surface IS HOW. This function used to pass
+// [registry.SurfaceDefault] unconditionally and said so in a comment calling
+// itself "a REQUESTED SEAM"; the request is now honoured. A host declares the
+// kind of room it is ([Catalog.Surface]) and every row teaches the key that room
+// can really bind — so a composer-first chat draws `ctrl+r` where it used to
+// draw a bare `v` that typed a letter into the reader's sentence.
+//
+// A row with no accelerator ON THIS SURFACE falls to `ask` rather than to the
+// other surface's key, which is the honest answer: the door exists and the way
+// through it here is words.
+func accelOf(e registry.Entry, surface registry.Surface) string {
+	if key := registry.ChipOn(e, surface).Key; key != "" {
 		return key
 	}
 	return askAccel

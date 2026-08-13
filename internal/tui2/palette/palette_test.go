@@ -307,22 +307,64 @@ func TestResetClearsQueryAndSelection(t *testing.T) {
 // be silent about how else to reach it.
 func TestEveryActionRowTeachesADoor(t *testing.T) {
 	for _, e := range registry.All() {
-		if got := accelOf(e); got == "" {
+		if got := accelOf(e, registry.SurfaceDefault); got == "" {
 			t.Errorf("entry %s advertises no door at all", e.ID)
 		}
 		switch {
 		case e.Key != "":
-			if accelOf(e) != e.Key {
-				t.Errorf("entry %s teaches %q, not its key %q", e.ID, accelOf(e), e.Key)
+			if accelOf(e, registry.SurfaceDefault) != e.Key {
+				t.Errorf("entry %s teaches %q, not its key %q", e.ID,
+					accelOf(e, registry.SurfaceDefault), e.Key)
 			}
 		case e.Slash != "":
-			if accelOf(e) != "/"+e.Slash {
-				t.Errorf("entry %s teaches %q, not its alias", e.ID, accelOf(e))
+			if accelOf(e, registry.SurfaceDefault) != "/"+e.Slash {
+				t.Errorf("entry %s teaches %q, not its alias", e.ID,
+					accelOf(e, registry.SurfaceDefault))
 			}
 		default:
-			if accelOf(e) != askAccel {
-				t.Errorf("belt-only entry %s teaches %q, want %q", e.ID, accelOf(e), askAccel)
+			if accelOf(e, registry.SurfaceDefault) != askAccel {
+				t.Errorf("belt-only entry %s teaches %q, want %q", e.ID,
+					accelOf(e, registry.SurfaceDefault), askAccel)
 			}
+		}
+	}
+}
+
+// AND THE SAME PROMISE ON THE SURFACE THAT ACTUALLY SHIPS IT.
+//
+// A composer-first room hands every printable character to the draft, so a row
+// teaching a bare letter there is teaching a key that types into the reader's
+// sentence. This is the regression for the `?` sheet advertising `t` for the
+// thread switcher, `v` for the receipts fold and `y` for copy-answer: every row
+// must teach either a chord, a named key, a slash alias, or `ask`.
+func TestNoRowTeachesABareLetterInAComposerFirstRoom(t *testing.T) {
+	for _, e := range registry.All() {
+		if !e.Scope.Has(registry.ScopeThread) {
+			continue
+		}
+		taught := accelOf(e, registry.SurfaceComposerFirst)
+		if taught == "" {
+			t.Errorf("entry %s advertises no door at all", e.ID)
+			continue
+		}
+		if taught == askAccel || strings.HasPrefix(taught, "/") {
+			continue
+		}
+		if len([]rune(taught)) == 1 {
+			t.Errorf("entry %s teaches the bare letter %q in a room where every "+
+				"printable key is draft text; it needs a ChordKey", e.ID, taught)
+		}
+	}
+}
+
+// And the chord it teaches is the one the catalog recorded, not a guess.
+func TestAComposerFirstRoomTeachesTheRecordedChord(t *testing.T) {
+	for _, e := range registry.All() {
+		if e.ChordKey == "" {
+			continue
+		}
+		if got := accelOf(e, registry.SurfaceComposerFirst); got != e.ChordKey {
+			t.Errorf("entry %s teaches %q, want its recorded chord %q", e.ID, got, e.ChordKey)
 		}
 	}
 }
@@ -413,7 +455,7 @@ func TestTheAcceleratorColumnIsTheChipsKeyHalf(t *testing.T) {
 		if want == "" {
 			want = registry.AskKey
 		}
-		if got := accelOf(e); got != want {
+		if got := accelOf(e, registry.SurfaceDefault); got != want {
 			t.Errorf("entry %s teaches %q, the chip says %q", e.ID, got, want)
 		}
 	}
