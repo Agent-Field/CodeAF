@@ -208,6 +208,12 @@ const (
 	// BoardRowCap bounds every board read. A board longer than this is a log,
 	// not a board: the model reads it to choose a target, and a dozen live jobs
 	// is already more than a person holds in their head at once.
+	//
+	// It is the floor rather than the cap now. The board's rows are what the
+	// board's bytes are spent on, so a head whose board block grew gets rows in
+	// the same proportion (budget.go) — and a head that was told nothing about
+	// its window gets exactly this dozen, which is what every board rendered
+	// before the window was a fact anybody here could reach.
 	BoardRowCap = 12
 	// beltControlIDCap bounds one control call. The unit rule collapses whole
 	// subtrees into single ids, so a legitimate set is small; a longer list is
@@ -221,6 +227,7 @@ const (
 	// because this read was chosen rather than guessed — the model spent a call
 	// on this exact job — and it stays in the manual read's league because both
 	// are one message's whole grounding.
+	// It is the floor under that read; budget.go prices it against the window.
 	beltResultBytes = 4 << 10
 	// beltNoteBytes bounds one notebook line. A durable preference that will not
 	// fit in a sentence is not one preference, and the notebook is read into
@@ -230,6 +237,7 @@ const (
 	// elsewhere for surfaces with a whole pane to spend; here one read is one
 	// answer's grounding and shares a message with the board, so it stays in the
 	// manual read's league rather than the pane's.
+	// The same floor, raised the same way.
 	beltGroundingBytes = 2 << 10
 	// beltSelfReceiptCap is how many recent self-work receipts one spending read
 	// names. Past a handful this is a ledger, and the totals above it already
@@ -643,7 +651,7 @@ func (run *beltRun) competence() (string, bool) {
 	if measured == "" {
 		return "nothing has been measured yet — not enough work has settled to say where you are strong or weak.", false
 	}
-	return truncateBytes(measured, beltGroundingBytes), false
+	return truncateBytes(measured, run.head.budget.grounding), false
 }
 
 func (run *beltRun) standing() (string, bool) {
@@ -654,7 +662,7 @@ func (run *beltRun) standing() (string, bool) {
 	if status == "" {
 		return "nothing is on watch and no standing check is arranged.", false
 	}
-	return truncateBytes(status, beltGroundingBytes), false
+	return truncateBytes(status, run.head.budget.grounding), false
 }
 
 // spending answers the money question the head could not answer at all. The
@@ -720,7 +728,7 @@ func (run *beltRun) spending(args map[string]any) (string, bool) {
 		rendered.WriteString("what that upkeep bought, most recent last:\n" +
 			strings.Join(lines, "\n") + "\n")
 	}
-	return truncateBytes(strings.TrimSpace(rendered.String()), beltGroundingBytes), false
+	return truncateBytes(strings.TrimSpace(rendered.String()), run.head.budget.grounding), false
 }
 
 // spendWindowLines is what one stretch of time cost and what the money went on.
@@ -965,7 +973,7 @@ func (run *beltRun) search(args map[string]any) (string, bool) {
 	if strings.TrimSpace(rendered.String()) == "" {
 		return "nothing remembered matches those words — not in the conversation, not in the notebook, not in finished work. Say that plainly rather than reconstructing it.", false
 	}
-	return truncateBytes(strings.TrimSpace(rendered.String()), beltGroundingBytes), false
+	return truncateBytes(strings.TrimSpace(rendered.String()), run.head.budget.grounding), false
 }
 
 // note is durable feedback landing where durable feedback goes. It records
@@ -1048,13 +1056,13 @@ func (h *Head) renderResult(node store.Node) string {
 		rendered.WriteString(" | finished " + age)
 	}
 	rendered.WriteString("\n")
-	body := truncateBytes(h.jobResult(node), beltResultBytes)
+	body := truncateBytes(h.jobResult(node), h.budget.result)
 	if body != "" {
 		rendered.WriteString("result:\n" + body + "\n")
 	} else {
 		rendered.WriteString("result: nothing recorded yet — this job has not settled.\n")
 	}
-	if files := unnamedFiles(node, body); len(files) > 0 {
+	if files := unnamedFiles(node, body, h.budget.deepFiles); len(files) > 0 {
 		rendered.WriteString("files: " + strings.Join(files, ", ") + "\n")
 	}
 	if children := h.resultChildren(node.ID); len(children) > 0 {
@@ -1116,7 +1124,7 @@ func (h *Head) journaledPlan(node store.Node) (string, store.PlanGraph, bool) {
 // which is the same reason the executor re-derives state from the store when it
 // rehydrates a plan, by the same id mapping.
 func (h *Head) renderPlan(node store.Node) (string, bool) {
-	return h.renderPlanWithin(node, planStepCap, beltResultBytes)
+	return h.renderPlanWithin(node, planStepCap, h.budget.result)
 }
 
 // renderPlanWithin is renderPlan with its two bounds passed in, and it exists
@@ -1324,7 +1332,7 @@ func (h *Head) resultChildren(id string) []string {
 		return nil
 	}
 	depth := map[string]int{id: 0}
-	lines := make([]string, 0, BoardRowCap)
+	lines := make([]string, 0, h.budget.boardRows)
 	for _, node := range nodes {
 		if node.ID == id {
 			continue
@@ -1343,7 +1351,7 @@ func (h *Head) resultChildren(id string) []string {
 			line += " | " + summary
 		}
 		lines = append(lines, line)
-		if len(lines) == BoardRowCap {
+		if len(lines) == h.budget.boardRows {
 			break
 		}
 	}
@@ -1705,7 +1713,7 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 			continue
 		}
 		rows = append(rows, row)
-		if len(rows) == BoardRowCap {
+		if len(rows) == h.budget.boardRows {
 			break
 		}
 	}
@@ -1718,7 +1726,7 @@ func (h *Head) boardRowsAt(sessionID, query, status, id string, now time.Time) (
 // board must never be reordered by it. What it buys is that the id comes back —
 // and an id is all the result and read tools have ever needed.
 func (h *Head) recalledCandidates(query string) ([]store.SurgeryTarget, error) {
-	hits, err := h.store.Recall(query, nil, BoardRowCap)
+	hits, err := h.store.Recall(query, nil, h.budget.boardRows)
 	if err != nil {
 		// Recall is an additive hint everywhere else it is used, and a miss and
 		// a failure are deliberately indistinguishable there. The board keeps

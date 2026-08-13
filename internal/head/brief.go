@@ -36,6 +36,9 @@ import (
 //     the point: the model is the party that turns this into a sentence, and it
 //     does that better from four true facts than from a paragraph of guesswork.
 
+// The byte numbers here are floors now rather than ceilings: this is what
+// they get on a window nobody could size, and budget.go raises them in
+// proportion on a window with room to spare.
 const (
 	// threadGap is how long a room has to have been silent before its next
 	// message is a RE-ENTRY rather than the next line of a conversation. It
@@ -155,16 +158,16 @@ func (h *Head) threadBrief(sessionID string, beforeSeq int64, now time.Time) str
 	if commissioned := h.threadWork(sessionID, now); commissioned != "" {
 		lines = append(lines, "Work it commissioned: "+commissioned)
 	}
-	if files := threadFiles(kept); files != "" {
+	if files := threadFiles(kept, h.budget.reentryFiles); files != "" {
 		lines = append(lines, "Files it produced: "+files)
 	}
-	if left := threadLastExchange(kept); left != "" {
+	if left := threadLastExchange(kept, h.budget.reentryLine); left != "" {
 		lines = append(lines, "Where it was left: "+left)
 	}
 	if open := h.threadOpenThing(sessionID, kept, now); open != "" {
 		lines = append(lines, "Still open: "+open)
 	}
-	return truncateBytes(strings.Join(lines, "\n"), threadBriefBytes)
+	return truncateBytes(strings.Join(lines, "\n"), h.budget.reentry)
 }
 
 // threadSubject is the room's name, or an honest admission that it has none
@@ -193,7 +196,7 @@ func (h *Head) threadOpening(sessionID string) string {
 		if message.Role != store.RoleUser || strings.TrimSpace(message.Body) == "" {
 			continue
 		}
-		return quoted(threadLine(message.Body))
+		return quoted(threadLine(message.Body, h.budget.reentryLine))
 	}
 	return ""
 }
@@ -202,13 +205,13 @@ func (h *Head) threadOpening(sessionID string) string {
 // provenance stamp is the whole of the link: a splice records the room that
 // asked for it on every node it admits, so this is a fact rather than a guess.
 func (h *Head) threadWork(sessionID string, now time.Time) string {
-	nodes, err := h.store.SessionNodes(sessionID, threadBriefJobs*3)
+	nodes, err := h.store.SessionNodes(sessionID, h.budget.reentryJobs*3)
 	if err != nil || len(nodes) == 0 {
 		return ""
 	}
-	parts := make([]string, 0, threadBriefJobs)
+	parts := make([]string, 0, h.budget.reentryJobs)
 	for _, node := range nodes {
-		if len(parts) >= threadBriefJobs {
+		if len(parts) >= h.budget.reentryJobs {
 			break
 		}
 		if node.ID == store.RootID || !beltAddressable(node) {
@@ -224,9 +227,9 @@ func (h *Head) threadWork(sessionID string, now time.Time) string {
 // every deliverable through the same typed reference, whoever produced it — the
 // head writing a document in conversation and a job returning one both land
 // here.
-func threadFiles(messages []store.Message) string {
+func threadFiles(messages []store.Message, limit int) string {
 	seen := make(map[string]bool)
-	paths := make([]string, 0, threadBriefFiles)
+	paths := make([]string, 0, limit)
 	for index := len(messages) - 1; index >= 0; index-- {
 		for _, part := range messages[index].Parts {
 			if part.Kind != store.PartArtifact || part.Artifact == nil {
@@ -237,7 +240,7 @@ func threadFiles(messages []store.Message) string {
 				continue
 			}
 			seen[path] = true
-			if paths = append(paths, path); len(paths) >= threadBriefFiles {
+			if paths = append(paths, path); len(paths) >= limit {
 				return strings.Join(paths, ", ")
 			}
 		}
@@ -248,15 +251,15 @@ func threadFiles(messages []store.Message) string {
 // threadLastExchange is the end of the conversation in one line each way. It is
 // the smallest honest answer to "where were we": the transcript window above it
 // carries the detail, and this says which end of it to look at.
-func threadLastExchange(messages []store.Message) string {
+func threadLastExchange(messages []store.Message, limit int) string {
 	var them, you string
 	for index := len(messages) - 1; index >= 0; index-- {
 		message := messages[index]
 		if them == "" && message.Role == store.RoleUser {
-			them = threadLine(message.Body)
+			them = threadLine(message.Body, limit)
 		}
 		if you == "" && message.Role == store.RoleAgent {
-			you = threadLine(message.Body)
+			you = threadLine(message.Body, limit)
 		}
 		if them != "" && you != "" {
 			break
@@ -321,8 +324,8 @@ func threadOpenPhrase(arc store.ThreadArc, now time.Time) string {
 
 // threadLine is one message reduced to a quotable line: first line, sanitized
 // for a prompt, bounded.
-func threadLine(body string) string {
-	return truncateBytes(promptSafe(firstLine(strings.TrimSpace(body))), threadBriefLineBytes)
+func threadLine(body string, limit int) string {
+	return truncateBytes(promptSafe(firstLine(strings.TrimSpace(body))), limit)
 }
 
 // threadElapsed is coarse relative time for a conversation rather than for a

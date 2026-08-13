@@ -169,7 +169,7 @@ func TestGreetingProducesTodaysContextExactly(t *testing.T) {
 	want := "Recent thread before this message:\n" + thread +
 		"\n\nManual pages available: " + strings.Join(manual.Pages(), ", ") +
 		"\n\nLive board (the work you can read and act on):\n" + board +
-		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting, thread) +
+		"\n\nNotebook (durable memory across jobs and conversations):\n" + renderNotebook(graph, greeting, thread, notebookContextBytes) +
 		"\n\nCurrent user message (verbatim):\n" + greeting
 	if prompt != want {
 		t.Fatalf("greeting context drifted from today's:\ngot:\n%s\n\nwant:\n%s", prompt, want)
@@ -322,13 +322,13 @@ func TestFilesLineNamesWhatTheResultDoesNot(t *testing.T) {
 	}
 	body := strings.Join(visible, "\n")
 
-	files := unnamedFiles(node, body)
+	files := unnamedFiles(node, body, deepFileCap)
 	if len(files) != 1 || files[0] != hidden {
 		t.Fatalf("files line = %v, want only the path the result never shows (%s)", files, hidden)
 	}
-	if len(unnamedFiles(node, "")) != deepFileCap {
+	if len(unnamedFiles(node, "", deepFileCap)) != deepFileCap {
 		t.Errorf("with nothing visible the line holds %d paths, want the %d cap",
-			len(unnamedFiles(node, "")), deepFileCap)
+			len(unnamedFiles(node, "", deepFileCap)), deepFileCap)
 	}
 }
 

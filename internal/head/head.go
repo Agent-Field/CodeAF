@@ -38,6 +38,12 @@ const (
 	// ordering still decides what the ceiling drops.
 	maxGraphContextBytes  = 5 << 10
 	maxThreadContextBytes = 8 << 10
+	// threadMessageBytes is one rendered message's share of the block above. It
+	// stood as a bare 600 inside renderThread, which made it the one number in
+	// the head's prompt that no comment argued for and no budget could reach; it
+	// is a paragraph of somebody's turn, and the block it sits in decides how
+	// many paragraphs there is room for.
+	threadMessageBytes = 600
 	// The truncation markers are part of what gets sent, so they are part of
 	// what the budget covers. Written after the check, they put the block over
 	// its ceiling in exactly the case the ceiling exists for; reserving their
@@ -94,6 +100,12 @@ type Head struct {
 	}
 	defaultModel string
 	dailyRailSet bool
+	// budget is every byte ceiling this head renders under, resolved once from
+	// the window its talk model holds (budget.go). It is computed at
+	// construction and never again: a pot that moved between turns would move
+	// the front of the prompt with it, and every block in front of the current
+	// message is a prefix an endpoint has already been paid to cache.
+	budget promptBudget
 	// foldMu guards fold. The head answers one message at a time, so this is
 	// never contended in the running product; it is here because a cache is a
 	// piece of shared state and shared state that is only accidentally
@@ -177,9 +189,28 @@ func (h *Head) WithImageInput(modalities interface {
 	return h
 }
 
-// New returns a conversational head backed by graphStore.
+// New returns a conversational head backed by graphStore. The window is
+// unknown until a surface says otherwise, and unknown means every block renders
+// at the literal it shipped with (budget.go).
 func New(client Client, graphStore *store.Store) *Head {
-	return &Head{client: client, store: graphStore}
+	return &Head{client: client, store: graphStore, budget: newPromptBudget(0)}
+}
+
+// WithContextLength tells the head how much its talk model holds, in tokens.
+//
+// It is a fact handed down rather than looked up, which is exec.Linear's own
+// doctrine for the same question: the catalog belongs to the surface, and a
+// package that reached for it would be a conversational head with an opinion
+// about model metadata. Zero — a model the catalog cannot size, a visitor
+// client that holds no catalog at all — is not read as small; it leaves the
+// head exactly as New built it.
+//
+// The budget is resolved here, once, for the life of the head.
+func (h *Head) WithContextLength(tokens int) *Head {
+	if tokens > 0 {
+		h.budget = newPromptBudget(tokens)
+	}
+	return h
 }
 
 // WithMessageClient selects a conversational client for one durable user
@@ -972,7 +1003,9 @@ func (h *Head) postAgentModel(sessionID, body string, commandSeq int64, model st
 }
 
 // notebookContextBytes bounds the memory shown to the router: enough for the
-// beliefs that matter to this message, never the whole archive.
+// beliefs that matter to this message, never the whole archive. It is the
+// notebook block's fallback now — what the block gets on an unsized window —
+// and budget.go prices it against the rest of the prompt on a sized one.
 const notebookContextBytes = 2000
 
 // renderNotebook blends the two free retrieval layers — BM25 relevance to
@@ -985,7 +1018,10 @@ const notebookContextBytes = 2000
 // user's own sentence comes back one message later as a numbered notebook line
 // beside the sentence it was taken from, so the model is shown its own capture
 // as independent standing evidence for the thing it captured.
-func renderNotebook(graphStore *store.Store, message, thread string) string {
+//
+// limit is the block's budget in bytes, handed in rather than read off a
+// constant because the two callers are heads with windows of their own.
+func renderNotebook(graphStore *store.Store, message, thread string, limit int) string {
 	if graphStore == nil {
 		return "(no notebook)"
 	}
@@ -1017,7 +1053,7 @@ func renderNotebook(graphStore *store.Store, message, thread string) string {
 			// model read was a function of which long fact happened to match this
 			// message's wording. Packing past an oversized line costs nothing and
 			// makes the budget the bound it claims to be.
-			if total+len(line) > notebookContextBytes {
+			if total+len(line) > limit {
 				continue
 			}
 			total += len(line)
@@ -1305,13 +1341,13 @@ func (h *Head) renderThread(messages []store.Message) string {
 	names := h.jobNames()
 	var rendered strings.Builder
 	for _, message := range messages {
-		body := truncateBytes(strings.TrimSpace(message.Body), 600)
+		body := truncateBytes(strings.TrimSpace(message.Body), h.budget.threadMessage)
 		body = strings.ReplaceAll(body, "\n", "\n  ")
 		line := fmt.Sprintf("%s: %s\n", message.Role, body)
 		if label := names.label(message.NodeID); label != "" {
 			line = fmt.Sprintf("%s [%s]: %s\n", message.Role, label, body)
 		}
-		if rendered.Len()+len(line) > maxThreadContextBytes-len(threadTruncatedMark) {
+		if rendered.Len()+len(line) > h.budget.thread-len(threadTruncatedMark) {
 			rendered.WriteString(threadTruncatedMark)
 			break
 		}
