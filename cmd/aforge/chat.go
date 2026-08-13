@@ -377,8 +377,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		_, _ = thread.Post(graph, store.Message{
 			SessionID: session,
 			Role:      store.RoleSystem,
-			Body: fmt.Sprintf("picked up %d piece(s) of work that were interrupted — each continues from what it had already reached, with the files it had already written still where it left them",
-				len(released)),
+			Body:      pickedUpMessage(len(released)),
 		})
 	}
 	if err := resident.ReAdoptServices(graph, session, nil); err != nil {
@@ -2099,6 +2098,19 @@ func leafContract(plans *jobPlans, planNode *plan.Node, node store.Node) string 
 		return ""
 	}
 	return plans.takeContract(node.ID)
+}
+
+// pickedUpMessage is what the surface says when the startup sweep finds work a
+// dead process left claimed.
+//
+// It is a function so the sentence has one owner and can be held to what the
+// machinery actually does. It used to promise the opposite of the truth this
+// system wants — "each starts again from the beginning" — and that promise was
+// accurate: the requeued leaf came back to an empty context beside a directory
+// full of its own work. The bank changed the behaviour, so the sentence changed
+// with it. See leafBank and the node.Attempt read that feeds it.
+func pickedUpMessage(pieces int) string {
+	return fmt.Sprintf("picked up %d piece(s) of work that were interrupted — each continues from what it had already reached, with the files it had already written still where it left them", pieces)
 }
 
 // sharedLines is what a leaf told the job board, kept for its own retry.
