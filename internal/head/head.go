@@ -120,10 +120,10 @@ type Head struct {
 	// working directory, which is what a person typing into a terminal means by
 	// "put it on disk"; write.go argues the default and the override.
 	workspace string
-	// actWindow overrides how long one act may take. Zero means actWindow, which
-	// is what the running product uses; act.go argues the ceiling and why the
-	// override exists at all.
-	actWindow time.Duration
+	// bashWindow overrides how long one command may take. Zero means bashWindow,
+	// which is what the running product uses; bash.go argues the ceiling and why
+	// the override exists at all.
+	bashWindow time.Duration
 	// wrote is every artifact this head has written, so it can open one again to
 	// repair it. It shares turnMu because it is small, rarely touched, and the
 	// alternative is a second lock guarding one map. write.go records the

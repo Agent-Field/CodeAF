@@ -122,18 +122,22 @@ const (
 	// and then unrecoverable because the only copy was the truncated one. A
 	// document, a diagram, code or data is born on disk and referenced by path.
 	beltToolWrite = "write"
-	// beltToolAct is the head's own hands, and the only thing on this belt that
+	// beltToolBash is the head's own hands, and the only thing on this belt that
 	// touches the world without going through the graph.
 	//
 	// Everything durable flows through spawn, which is right for work and was,
 	// until this tool, the only route ANYTHING had. So a request measured in
-	// seconds — open this file, list that directory, show me the top of that log
-	// — either bought a whole job (compile, plan, workspace, three model calls,
-	// the wrong directory) or came back as a refusal the voice law forbids and
-	// that was said out loud anyway, because it was true. act.go holds the
-	// boundary, which is time and consequence and never topic, and the floor
-	// underneath it.
-	beltToolAct = "act"
+	// seconds either bought a whole job (compile, plan, workspace, three model
+	// calls, the wrong directory) or came back as a refusal the voice law forbids
+	// and that was said out loud anyway, because it was true.
+	//
+	// It answered to `act` for one wave and was never reached for, because `act`
+	// is a concept we invented and an invented concept competes, every turn, with
+	// the reading tools whose names a model already knows. bash.go argues the
+	// rename at length: the name carries the prior, the prose never could. The
+	// boundary — time and consequence, never topic — and the floor underneath it
+	// are unchanged and live there.
+	beltToolBash = "bash"
 	// beltToolAnswerQuestion settles a worker's open question. Part 6 decision 1
 	// is still open and this tool does not settle it: 12.1.4 found that every
 	// existing AskQuestion producer is consent-bearing and none is labeled
@@ -259,8 +263,12 @@ func beltProp(kind, description string) map[string]any {
 // interface plus its arguments, because policy is stated once in the prompt's
 // judgment section and a description that repeats it is the same doctrine paid
 // for twice on every turn. What survives here is only what changes the call
-// itself: the person's words travel verbatim, ids come from a read, act's
-// boundary, and ask ending the turn.
+// itself: the person's words travel verbatim, ids come from a read, bash's own
+// output is the whole of what it may be said to have done, and ask ends the
+// turn. No description names an OCCASION for its tool — a list of the cases we
+// happened to see is the emergent-capability failure this codebase spent a year
+// unlearning, and the one place it grew back (bash.go) is the reason the tool
+// was renamed rather than re-argued.
 // beltReadOnly separates looking from acting. The turn's own budget no longer
 // divides along it — one runaway bound covers the whole belt now — but the
 // DELIVERY turn is armed from it (absorb.go): a turn woken by finished work has
@@ -384,7 +392,7 @@ func beltDefinitions() []ai.ToolDefinition {
 			"body": beltProp("string", "the whole document, exactly as it should be on disk"),
 			"what": beltProp("string", "one short line saying what it is, for the receipt"),
 		}),
-		beltTool(beltToolAct, "Run one instant shell command and read what actually happened: the boundary is one instant, reversible command a person at the keyboard would run in two seconds without thinking, so anything that produces a deliverable, takes real time or cannot be undone is work — use task. When unsure, task.", map[string]any{
+		beltTool(beltToolBash, "Run one shell command in the workspace and read what actually happened: what it printed and how it exited is the whole of what happened, and nothing beyond it may be said.", map[string]any{
 			"command": beltProp("string", "the one command, exactly as it would be typed at a shell"),
 		}, "command"),
 		beltTool(beltToolAnswerQuestion, "Settle a worker's open question; call it with no arguments to see what is open. A question not marked informational is a consent question and is refused here.", map[string]any{
@@ -518,8 +526,8 @@ func (run *beltRun) execute(name, arguments string) (string, bool) {
 		return run.stop(args)
 	case beltToolWrite:
 		return run.write(args)
-	case beltToolAct:
-		return run.act(args)
+	case beltToolBash:
+		return run.bash(args)
 	case beltToolAnswerQuestion:
 		return run.answerQuestion(args)
 	case beltToolSay:
