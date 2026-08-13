@@ -68,6 +68,11 @@ type leafBuild struct {
 	// name to another process needs the answer, and only the surface has the
 	// catalog, so it is threaded rather than looked up in exec.
 	models *catalog.Catalog
+	// fanIn is what actually landed into this leaf, measured once at claim time.
+	// Zero is the honest value for a leaf nothing fed, and it is what every
+	// budget below reduces to for such a leaf — so a node that gathers nothing
+	// keeps byte for byte the budget it had before any of this existed.
+	fanIn store.DependencyFanIn
 }
 
 // The leaf's prompt budget, in the two numbers this package has to state for
@@ -104,7 +109,59 @@ func (b leafBuild) dependencyPot() int {
 	// A nil catalog answers zero, which is the same answer as an unlisted model
 	// and wants the same handling: fall back, never guess small.
 	return ctxbudget.For(b.models.ContextLength(b.model)).WithFloor(leafPromptFloorTokens).
+		WithCompletionReserve(gatheringReserve(b.fanIn)).
 		Share(leafDependencyShare, leafPromptShares, store.MaxDigestBytes)
+}
+
+// gatheringReserve is the room this leaf's reply needs, in tokens, sized from
+// what fed it.
+//
+// The derivation is one line of arithmetic over one measured number. An assembly
+// is bounded above by the text it assembles — a node cannot emit more of its
+// inputs than it was given — so the room to write it is the ordinary reserve
+// plus the landed bytes turned into tokens by the shared estimator:
+//
+//	reserve = ctxbudget.CompletionReserve() + fanIn.Bytes/ctxbudget.BytesPerToken
+//
+// A leaf with no dependencies measures zero and gets the ordinary reserve
+// unchanged. The clamp lives in ctxbudget, where the window is, and so does the
+// consequence: a bigger reserve is a smaller dependency pot, which is the right
+// trade in the right direction — the more there is upstream, the more of it a
+// gathering node should pull on demand and the less of it should be pushed into
+// its prompt whether it needs it or not.
+//
+// Measured, this is the failure it fixes: an assembler ran its budget out
+// partway through the join and had to be bought a paid continuation splice to
+// finish typing results it had already read.
+func gatheringReserve(fanIn store.DependencyFanIn) int {
+	return ctxbudget.CompletionReserve() + fanIn.Bytes/ctxbudget.BytesPerToken
+}
+
+// gatheringGrant sizes one leaf's whole-run budget — its turn ceiling and its
+// token ceiling — from what actually landed into it, instead of from a flat
+// default written for a leaf that gathers nothing.
+//
+// The derivation, in full, from the two numbers store.DependencyFanIn measures:
+//
+//	landed = fanIn.Bytes / ctxbudget.BytesPerToken   the upstream text, in tokens
+//	turns  = turns  + fanIn.Count
+//	tokens = tokens + 2*landed
+//
+// One extra turn per dependency because opening one handle is one tool call, and
+// a node handed fifty results to join and no extra turns to fetch them has been
+// told to pull with no hands.
+//
+// Twice landed because a gathering node does two billable things with what fed
+// it: it reads all of it in — through the digests, and through the handles it
+// chooses to open — and it writes the assembly back out, and an assembly cannot
+// exceed what it assembles. Neither term is a threshold and neither classifies:
+// a node with no dependencies measures zero on both and receives exactly the
+// defaults it always had, a two-way join gets a little more, and the wide join
+// gets what a wide join costs. There is no "is this a synthesis node?" question
+// to get wrong, because the measurement already answers it continuously.
+func gatheringGrant(turns, tokens int, fanIn store.DependencyFanIn) (int, int) {
+	landed := fanIn.Bytes / ctxbudget.BytesPerToken
+	return turns + fanIn.Count, tokens + 2*landed
 }
 
 // leafExecutors is name-to-constructor: what a surface calls when a node says
