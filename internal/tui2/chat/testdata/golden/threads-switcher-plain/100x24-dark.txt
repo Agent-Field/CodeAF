@@ -21,4 +21,4 @@
 ▍ ›
 
 
-  chat  work  notebook  the wisp parity push                               ~/aforge-v2 · ◐ 1 working
+  chat  work  notebook  threads ▾ ctrl+t  +  the wisp parity push          ~/aforge-v2 · ◐ 1 working

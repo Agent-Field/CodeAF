@@ -489,6 +489,10 @@ func New(opts Options) *App {
 		// openThreads is the title chip's act: the switcher, clicked. It is the
 		// very function the `t` key runs (5.3, [App.openSwitcher]).
 		openThreads: app.openSwitcher,
+		// newThread is the `+` door's act. It is [App.openRoomCmd] — the very
+		// function the switcher's last row runs through [App.choose] — so the
+		// bar and the list mint a conversation by one route.
+		newThread: app.openRoomCmd,
 		// The places tabs (§7's left zone) are filled by refresh from the page
 		// enum — see [App.places]. They are deliberately NOT written out here as
 		// well: the words and which of them is bright are one fact, and a copy
@@ -1514,6 +1518,7 @@ func (a *App) refresh() {
 	// swap forgot to move would be the footer naming a place the reader is not
 	// in, which is 5.20's affordance lying about where you are.
 	a.status.places = a.places()
+	a.status.doors = a.doors()
 	// The work page's own wider read, at most once per journal move and only
 	// while that page is the lens (see [App.syncBoard]).
 	a.syncBoard()
@@ -1731,6 +1736,39 @@ const (
 	placeBoardID    = "key.place-board"
 	placeNotebookID = "slash.notebook"
 )
+
+// The words on the two thread doors. `threads` carries the disclosure mark
+// because it OPENS A LIST rather than performing an act — the same ▾ every other
+// expandable thing on this surface wears (tokens.GlyphExpanded), so a reader who
+// has learned the mark anywhere has learned it here. `+` carries none, because
+// it does the thing immediately and has no list to show.
+const (
+	threadsDoorWord   = "threads " + tokens.GlyphExpanded
+	newThreadDoorWord = "+"
+)
+
+// doors is the pair of visible thread doors on the bar (§7's left zone, past the
+// tabs).
+//
+// THEY ARE DRAWN ONLY IN THE CHAT. On the work and notebook pages the bar's
+// left zone is naming a lens that has nothing to do with conversations, and a
+// door to the thread list there would be offering an act about a thing the
+// reader is not looking at. The chord still works from every page — the
+// switcher is global — so nothing is lost but the clutter.
+//
+// The threads door teaches the chord that actually fires ([threadsCtrl]). The
+// `+` teaches none: its accelerator lives inside the list it would open, and a
+// key drawn on the bar that only works somewhere else is the exact defect this
+// whole wave is repairing.
+func (a *App) doors() []footer.Door {
+	if a.page != pageThread {
+		return nil
+	}
+	return []footer.Door{
+		{ID: footer.ThreadsDoorTarget, Verb: threadsDoorWord, Key: threadsCtrl},
+		{ID: footer.NewThreadTarget, Verb: newThreadDoorWord},
+	}
+}
 
 // showPage is the tab's act: swap the lens, and leave whatever room the reader
 // was in.

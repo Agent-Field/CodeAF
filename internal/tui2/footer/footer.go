@@ -69,6 +69,21 @@ type Place struct {
 	Current bool
 }
 
+// Door is one act the bar offers, drawn as the product's ONE chip grammar: the
+// verb, and behind it in the dimmest tier the key that performs it (5.22 rule
+// 4). A door with no Key is a verb the pointer reaches and the keyboard reaches
+// somewhere else — the `+` is one, because its accelerator lives inside the
+// list it opens.
+type Door struct {
+	// ID is the target id handed back on a click. The footer never invents one
+	// and never parses it, exactly as [Place.ID].
+	ID string
+	// Verb is the word, lowercase like every other piece of chrome (§16).
+	Verb string
+	// Key is the accelerator drawn behind the verb, or "" for none.
+	Key string
+}
+
 // FocusContext is everything one frame of the footer needs, assembled by the
 // host from whatever pane currently holds focus. A zero-valued field always
 // means "nothing to say here", never "say nothing loudly".
@@ -77,6 +92,23 @@ type FocusContext struct {
 	// draws no tabs, which is the honest shape for a host that has not wired
 	// them yet.
 	Places []Place
+
+	// Doors is the pair of VISIBLE doors that stand beside the tabs: the thread
+	// switcher, and the one that mints a thread.
+	//
+	// THEY ARE NOT PLACES AND MUST NOT LOOK LIKE THEM. A place is a lens this
+	// window can be IN — one of them is always current, and the current one
+	// wears the pill — whereas a door is a thing you DO and is never a state the
+	// reader is standing in. So they render in the quiet register beside the
+	// tabs, past the gap, and no door ever takes the pill.
+	//
+	// WHY THEY EXIST AT ALL. The switcher had exactly two doors before this: a
+	// chord, and the title chip — and the chip is absent for a thread the scribe
+	// has not named yet, which is precisely the state a first-run window is in.
+	// A reader whose terminal ate the chord therefore had NO way to reach their
+	// conversations and correctly concluded the feature was missing. A door that
+	// is only reachable by a key nobody can see is not a door.
+	Doors []Door
 
 	// Thread is the TITLE CHIP: the scribe's name for the working conversation
 	// this window is in (chat-simplify.md 5.3, "thread name in the placeline,
@@ -339,6 +371,10 @@ func runsWidth(runs []run) int {
 const (
 	zonePlaces = "places"
 	zoneGrowth = "places-growth"
+	// zoneDoors is the pair of thread doors beside the tabs. See
+	// [FocusContext.Doors], and [priorityOf] for why they yield to the health
+	// notice.
+	zoneDoors = "doors"
 	// zoneThread is the title chip — which working conversation this window is
 	// in. See [FocusContext.Thread].
 	zoneThread = "thread"
@@ -395,6 +431,22 @@ func priorityOf(id string) int {
 		return 40
 	case zoneHealth:
 		return 35
+	// THE DOORS YIELD TO THE HEALTH NOTICE AND TO EVERY STANDING FACT.
+	//
+	// They are the most argued-over rung on this ladder, because this whole wave
+	// exists to make them visible — so it is worth saying why they still lose. A
+	// door is an affordance with THREE other spellings: the chord, the `?` sheet
+	// and (once the scribe has named the conversation) the title chip. The
+	// health notice has none: `visitor` is this window telling the reader it
+	// cannot stop the turn it is watching, and 5.20's capability honesty is
+	// violated by dropping it, not merely made less convenient. A row that shed
+	// `visitor` to keep a `+` would be hiding what the window cannot do in order
+	// to offer a shortcut for something it can.
+	//
+	// They still outrank the middle, which is transient chrome and whose resting
+	// state is already silence.
+	case zoneDoors:
+		return 33
 	case zoneMiddle:
 		return 30
 	}
@@ -503,6 +555,11 @@ func (m *Model) layout(ctx FocusContext, width int) ([]placed, bool) {
 			cols = append(cols, tokens.FooterColumn{ID: zoneGrowth, MinWidth: grow, Priority: priorityOf(zoneGrowth)})
 		}
 	}
+	// The doors are their own column so they shed on their own rung rather than
+	// riding the tabs' growth, which outranks every standing fact on the row.
+	if doorsW := m.doorsWidth(ctx); doorsW > 0 {
+		cols = append(cols, tokens.FooterColumn{ID: zoneDoors, MinWidth: doorsW, Priority: priorityOf(zoneDoors)})
+	}
 	// The title chip is fitted at its floor and grows into the slack, for the
 	// reason the trail below it is: fitting a name at what it wants would let one
 	// long thread title push the gauge and the day's money off a terminal that
@@ -609,7 +666,11 @@ func (m *Model) layout(ctx FocusContext, width int) ([]placed, bool) {
 		if keep[zoneGrowth] {
 			budget = leftFull
 		}
-		left = m.leftRuns(ctx, budget+slack)
+		doors := keep[zoneDoors]
+		if doors {
+			budget += m.doorsWidth(ctx)
+		}
+		left = m.leftRuns(ctx, budget+slack, doors)
 	}
 	// The trail leads the middle: it says WHERE, and the chips beside it say
 	// what is happening there. Reading it the other way round would put a
@@ -670,10 +731,58 @@ func placeZones(x0, inner int, left, middle, right []run) []placed {
 	return out
 }
 
-// leftWidths is what the left zone WANTS and the least it is worth keeping at:
-// the whole trail and its floor, or every tab and the current one alone.
+// leftWidths is what the tabs WANT and the least they are worth keeping at:
+// every tab, or the current one alone. The doors are measured separately (see
+// [Model.doorsWidth]) because they shed on a different rung.
 func (m *Model) leftWidths(ctx FocusContext) (floor, full int) {
 	return runsWidth(m.placeRuns(ctx.Places, 0)), runsWidth(m.placeRuns(ctx.Places, -1))
+}
+
+// doorsWidth is what the doors cost, including the gap that holds them off the
+// tabs.
+func (m *Model) doorsWidth(ctx FocusContext) int {
+	return runsWidth(m.doorRuns(ctx.Doors, len(ctx.Places) > 0))
+}
+
+// leftFull is the left zone at full width: the tabs, and the doors when this
+// frame kept them.
+func (m *Model) leftFull(ctx FocusContext, doors bool) []run {
+	runs := m.placeRuns(ctx.Places, -1)
+	if !doors {
+		return runs
+	}
+	extra := m.doorRuns(ctx.Doors, len(runs) > 0)
+	if len(extra) == 0 {
+		return runs
+	}
+	return append(runs, extra...)
+}
+
+// doorRuns draws the doors in the quiet register, each one its own target.
+//
+// lead says a tab was drawn before them and the group therefore opens with the
+// same gap that separates the tabs from each other — so the doors read as a
+// second group on one strip rather than as two more tabs, and a host that wired
+// doors without places still gets a strip that starts at column zero.
+func (m *Model) doorRuns(doors []Door, lead bool) []run {
+	if len(doors) == 0 {
+		return nil
+	}
+	out := make([]run, 0, len(doors)*3)
+	for _, d := range doors {
+		if d.Verb == "" {
+			continue
+		}
+		if lead || len(out) > 0 {
+			out = append(out, run{text: tabGap, tok: tokens.TextTertiary})
+		}
+		// THE CHIP GRAMMAR, NOT A NEW ONE. keychip is what every other
+		// verb-plus-key on this surface is drawn with, so a door on the bar and
+		// the same door on the `?` sheet are the same two tiers in the same
+		// order (5.22 rule 4).
+		out = append(out, chipRuns(d.ID, registry.ChipFor(d.Verb, d.Key), tokens.TextSecondary)...)
+	}
+	return out
 }
 
 // threadNameFloor is the fewest cells of a thread's name worth keeping, and
@@ -750,7 +859,18 @@ func trailWidths(ctx FocusContext) (floor, full int) {
 // is the current word alone (for a trail: the way out, the mark for everything
 // above it, and enough of the name to recognise it). Every other budget asks
 // for the most it can say inside that many cells.
-func (m *Model) leftRuns(ctx FocusContext, budget int) []run {
+// doors says this frame's fit kept the door column; the tabs then collapse on
+// their own ladder underneath them.
+func (m *Model) leftRuns(ctx FocusContext, budget int, doors bool) []run {
+	full := m.leftFull(ctx, doors)
+	if budget < 0 || (budget > 0 && runsWidth(full) <= budget) {
+		return full
+	}
+	if doors && budget > 0 {
+		if tabs := m.placeRuns(ctx.Places, -1); runsWidth(tabs) <= budget {
+			return tabs
+		}
+	}
 	return m.placeRuns(ctx.Places, budget)
 }
 

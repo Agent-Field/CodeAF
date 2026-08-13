@@ -21,4 +21,4 @@
 ▍ ›  ask for anything · @ jobs · / commands
 
 
-  chat  work  notebook  importer rewrite                                   ~/aforge-v2 · ◐ 1 working
+  chat  work  notebook  threads ▾ ctrl+t  +  importer rewrite              ~/aforge-v2 · ◐ 1 working

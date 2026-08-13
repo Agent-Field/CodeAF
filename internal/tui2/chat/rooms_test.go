@@ -118,31 +118,62 @@ func boardApp(t *testing.T) (*App, *boardBackend) {
 
 // press drives one keystroke through the real ladder, exactly as a terminal
 // would, and runs whatever command it produced.
+//
+// A CHORD IS BUILT AS THE EVENT A TERMINAL REALLY SENDS, which is the whole
+// reason [chordKey] exists. The default arm below fabricates a key by putting
+// the spelling in [tea.Key.Text], and for a bare letter that is honest — but for
+// a chord it is a forgery that flatters the binding: Bubble Tea's String()
+// returns Text whenever Text is set, so `{Code:'a', Text:"alt+t"}` stringifies
+// to "alt+t" while a REAL alt+t arrives as `{Code:'t', Mod:ModAlt}` with Text
+// empty. The two are indistinguishable to a `switch msg.String()` and completely
+// different to everything else, and the forgery is why a switcher door that
+// never opened in a live terminal had a passing test over it.
 func press(app *App, key string) tea.Msg {
-	var msg tea.KeyPressMsg
-	switch key {
-	case "enter":
-		msg = tea.KeyPressMsg{Code: tea.KeyEnter}
-	case "esc":
-		msg = tea.KeyPressMsg{Code: tea.KeyEscape}
-	case "ctrl+o":
-		msg = tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
-	case "ctrl+k":
-		msg = tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl}
-	case "ctrl+u":
-		msg = tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
-	case "up":
-		msg = tea.KeyPressMsg{Code: tea.KeyUp}
-	case "down":
-		msg = tea.KeyPressMsg{Code: tea.KeyDown}
-	default:
-		msg = tea.KeyPressMsg{Code: rune(key[0]), Text: key}
+	msg, ok := chordKey(key)
+	if !ok {
+		switch key {
+		case "enter":
+			msg = tea.KeyPressMsg{Code: tea.KeyEnter}
+		case "esc":
+			msg = tea.KeyPressMsg{Code: tea.KeyEscape}
+		case "up":
+			msg = tea.KeyPressMsg{Code: tea.KeyUp}
+		case "down":
+			msg = tea.KeyPressMsg{Code: tea.KeyDown}
+		default:
+			msg = tea.KeyPressMsg{Code: rune(key[0]), Text: key}
+		}
 	}
 	cmd := app.drain(app.key(msg))
 	if cmd == nil {
 		return nil
 	}
 	return cmd()
+}
+
+// chordKey builds the [tea.KeyPressMsg] a terminal really delivers for a
+// `ctrl+x` or `alt+x` spelling: the letter in Code, the modifier in Mod, and
+// Text EMPTY.
+//
+// The empty Text is the load-bearing part. Bubble Tea's decoder clears it for
+// every modified key — the legacy path wipes it when it unwraps an ESC prefix,
+// the Kitty path wipes it for any modifier above shift — and Key.String()
+// returns Text when Text is set. So a chord with Text filled in is a key that
+// exists nowhere outside a test.
+func chordKey(key string) (tea.KeyPressMsg, bool) {
+	var mod tea.KeyMod
+	switch {
+	case strings.HasPrefix(key, "ctrl+"):
+		mod, key = tea.ModCtrl, strings.TrimPrefix(key, "ctrl+")
+	case strings.HasPrefix(key, "alt+"):
+		mod, key = tea.ModAlt, strings.TrimPrefix(key, "alt+")
+	default:
+		return tea.KeyPressMsg{}, false
+	}
+	if len([]rune(key)) != 1 {
+		return tea.KeyPressMsg{}, false
+	}
+	return tea.KeyPressMsg{Code: []rune(key)[0], Mod: mod}, true
 }
 
 // pressThrough is press plus the one thing a terminal does that press does not:
