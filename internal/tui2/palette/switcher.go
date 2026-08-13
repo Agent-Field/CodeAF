@@ -265,7 +265,7 @@ func (s *Switcher) threadRow(t *Thread, ordinal int) row {
 	out := row{
 		sec:    sectionThreads,
 		verb:   name,
-		desc:   leftAtLine(t.LeftAt),
+		desc:   LeftAtLine(t.LeftAt),
 		accel:  clean(t.When),
 		band:   tokens.Band,
 		result: SwitchThread{ID: t.ID},
@@ -283,10 +283,15 @@ func (s *Switcher) threadRow(t *Thread, ordinal int) row {
 	return out
 }
 
-// leftAtLine is the second column: what was said last, quoted, or nothing at
+// LeftAtLine is the second column: what was said last, quoted, or nothing at
 // all. A thread with no line yet draws NO lead word — `left at:` with nothing
 // after it would be chrome announcing an absence, which §16 spends no cells on.
-func leftAtLine(text string) string {
+//
+// IT IS EXPORTED FOR THE OVERVIEW, which lists the same threads on a page and
+// must say the same thing about each of them. A page that respelled this would
+// be the product's one quotation grammar in two spellings, drifting on the
+// commit that changed either.
+func LeftAtLine(text string) string {
 	line := clean(text)
 	if line == "" {
 		return ""

@@ -87,13 +87,31 @@ func breakView(profile tokens.Profile) golden.View {
 	}
 }
 
-// boardThreadsView is the alive glance: running work and open threads in one
-// breath, which is J5's whole sentence.
-func boardThreadsView(profile tokens.Profile) golden.View {
+// overviewView is the page the place line's root segment lands on: every
+// conversation, the `+ new` door, and the work under them.
+//
+// One thread carries the unseen `●` — this window has been in `session-two` and
+// something has landed there since — so the ornament is covered by a stored
+// frame at every profile rather than only by an assertion.
+func overviewView(profile tokens.Profile) golden.View {
 	return func(width, height int, theme golden.Theme) []string {
 		app := goldenApp(threadsGoldenBackend(), profile, theme)
 		drivePoll(app)
-		app.showPage(pageBoard)
+		app.noteThreadSeen("session-two", fixedNow().Add(-40*time.Hour))
+		app.showOverview()
+		return strings.Split(app.Frame(width, height), "\n")
+	}
+}
+
+// freshOverviewView is the frame a first-run window draws: two words, two
+// sentences and one door. It is pinned because it is the frame this page is
+// judged on — 12.10's rule is that an empty surface and an unwired one must
+// never look alike, and only a stored frame keeps that true.
+func freshOverviewView(profile tokens.Profile) golden.View {
+	return func(width, height int, theme golden.Theme) []string {
+		app := goldenApp(&fakeBackend{}, profile, theme)
+		drivePoll(app)
+		app.showOverview()
 		return strings.Split(app.Frame(width, height), "\n")
 	}
 }
@@ -138,10 +156,19 @@ func TestGoldenThreadBreak(t *testing.T) {
 	}
 }
 
-func TestGoldenBoardThreads(t *testing.T) {
+func TestGoldenOverview(t *testing.T) {
 	for _, tier := range contrastTiers() {
 		t.Run(tier.name, func(t *testing.T) {
-			golden.RunSizes(t, "threads-board-"+tier.name, boardThreadsView(tier.profile),
+			golden.RunSizes(t, "overview-"+tier.name, overviewView(tier.profile),
+				threadsSizes, goldenThemes)
+		})
+	}
+}
+
+func TestGoldenFreshOverview(t *testing.T) {
+	for _, tier := range contrastTiers() {
+		t.Run(tier.name, func(t *testing.T) {
+			golden.RunSizes(t, "overview-fresh-"+tier.name, freshOverviewView(tier.profile),
 				threadsSizes, goldenThemes)
 		})
 	}
@@ -167,8 +194,14 @@ func TestGoldenThreadSnapshots(t *testing.T) {
 		{"chip-narrow-plain", chipView(tokens.NoColor), 60, 16, "threads-chip-plain"},
 		{"break-plain", breakView(tokens.NoColor), 100, 24, "threads-break-plain"},
 		{"break-narrow-plain", breakView(tokens.NoColor), 60, 16, "threads-break-plain"},
-		{"board-plain", boardThreadsView(tokens.NoColor), 100, 24, "threads-board-plain"},
-		{"board-narrow-plain", boardThreadsView(tokens.NoColor), 60, 16, "threads-board-plain"},
+		// The overview at both profiles: it is the page root lands on, and the
+		// two things a colour tier takes away — the unseen dot's cyan and the
+		// selection rail's ground — are both on it.
+		{"overview", overviewView(tokens.TrueColor), 100, 24, "overview-truecolor"},
+		{"overview-plain", overviewView(tokens.NoColor), 100, 24, "overview-plain"},
+		{"overview-narrow-plain", overviewView(tokens.NoColor), 60, 16, "overview-plain"},
+		{"overview-fresh-plain", freshOverviewView(tokens.NoColor), 100, 24, "overview-fresh-plain"},
+		{"overview-fresh-narrow-plain", freshOverviewView(tokens.NoColor), 60, 16, "overview-fresh-plain"},
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
