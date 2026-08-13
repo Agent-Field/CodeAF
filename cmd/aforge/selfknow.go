@@ -10,6 +10,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
@@ -103,6 +104,43 @@ func subharnessKnowledge(settings config.Config, model, subharness string) strin
 	return fmt.Sprintf("median %d tokens, %d turns over %d runs; %.0f%% succeeded; avg cost $%.4f",
 		selfKnowledgeMedian(tokens), selfKnowledgeMedian(turns), samples,
 		100*float64(samples-failures)/float64(samples), cost/float64(samples))
+}
+
+// measuredInvoice is the same evidence subharnessKnowledge renders for the
+// compiler, rendered for the three passes that decide whether to divide work.
+//
+// The two exist side by side rather than one being folded into the other
+// because they answer different questions with the same measurements. The menu
+// line prices a CHOICE between workers and is one sentence under each name; the
+// invoice prices a DIVISION and needs what one piece costs before it does
+// anything, and what reassembling several of them has cost. Merging them would
+// make one of the two readers carry the other's numbers.
+//
+// It renders every worker's price list, generalist first, and it renders the
+// empty string whenever nothing clears the evidence gate — which is a fresh
+// machine, and which leaves every planning prompt byte for byte as it was.
+func measuredInvoice(settings config.Config, model string) string {
+	if strings.TrimSpace(model) == "" {
+		model = settings.Model
+	}
+	workers := []string{plan.LinearSubharness}
+	for _, info := range exec.Subharnesses() {
+		workers = append(workers, info.Name)
+	}
+	invoices := make([]plan.Invoice, 0, len(workers))
+	for _, worker := range workers {
+		measured, err := profile.Load(settings.ProfileDir, model, worker)
+		if err != nil {
+			continue
+		}
+		// A worker below the evidence gate contributes nothing rather than a
+		// thinner row: the whole value of this block is that a figure in it can
+		// be read without a qualifier attached.
+		if invoice, ok := plan.InvoiceFor(worker, measured.Records); ok {
+			invoices = append(invoices, invoice)
+		}
+	}
+	return plan.RenderInvoice(invoices...)
 }
 
 func measureSelfKnowledge(settings config.Config, model string) string {
