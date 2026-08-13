@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	homepkg "github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/resident"
@@ -605,18 +606,20 @@ func TestDoResolvesAnUnexpectedCharterDraftAsOnceAndRunsTheWork(t *testing.T) {
 	assertErrandIsHonest(t, outcome, nil)
 }
 
-// The other half of the contract: a question the errand's own semantics cannot
-// answer must not end the run in silence. Three seconds, five thousandths of a
-// cent and an empty stdout is indistinguishable from a fast cheap success in a
-// pipeline, which is exactly how the original defect went unnoticed.
+// A compiler askback is a dead end on a surface with no keyboard, and stopping
+// on one is not the careful answer — it is a run that compiled, asked into an
+// empty room, and handed its caller an interactive card where work was
+// expected. So the errand takes the answer the compiler itself ranked first,
+// declares it, and does the job.
 //
-// So it fails loudly: the question verbatim on stderr, a line saying headless
-// mode cannot answer it, exit 1, and a JSON object whose blocked_on carries the
-// question while deliverable stays empty.
-func TestDoFailsLoudlyOnAQuestionItCannotAnswer(t *testing.T) {
+// This is the same choice the verb already makes about standing-or-once, one
+// rung further in: everything `do` can decide for itself, it decides, and says
+// that it did.
+func TestDoAssumesTheCompilerQuestionNobodyIsHereToAnswerAndRunsTheWork(t *testing.T) {
 	script := newScriptedBrain(t)
 	defer script.close()
 	script.compilerAsks = unanswerableQuestion
+	script.gatePasses = true
 
 	var stdout, stderr strings.Builder
 	err := doErrand(doRequest{
@@ -625,6 +628,31 @@ func TestDoFailsLoudlyOnAQuestionItCannotAnswer(t *testing.T) {
 		timeout: 60 * time.Second, workspace: t.TempDir(),
 		stdout: &stdout, stderr: &stderr, newClient: script.client,
 	})
+	if err != nil {
+		t.Fatalf("a question the errand could have assumed ended the run: %v\nstderr:\n%s", err, stderr.String())
+	}
+	outcome := decodeErrand(t, stdout.String())
+	if outcome.BlockedOn != "" {
+		t.Fatalf("the question reached the caller anyway: %q", outcome.BlockedOn)
+	}
+	if !strings.Contains(outcome.Deliverable, firstDraftAnswer) {
+		t.Fatalf("the deliverable is not the work product: %q", outcome.Deliverable)
+	}
+	assertErrandIsHonest(t, outcome, err)
+}
+
+// The other half of the contract, which the law above narrows but does not
+// repeal: a question that does reach the end of a headless run must not end it
+// in silence. Three seconds, five thousandths of a cent and an empty stdout is
+// indistinguishable from a fast cheap success in a pipeline, which is exactly
+// how the original defect went unnoticed. So it is loud — the question verbatim
+// on stderr and a line saying nobody here could answer it — while stdout, which
+// is the only stream a pipeline reads, stays empty of it.
+func TestABlockedErrandSaysSoOnStderrAndNowhereElse(t *testing.T) {
+	var stdout, stderr strings.Builder
+	outcome := headlessOutcome{BlockedOn: unanswerableQuestion, status: exitFailed}
+	err := reportErrand(doRequest{asJSON: true, stdout: &stdout, stderr: &stderr}, outcome)
+
 	var status exitStatus
 	if !asExitStatus(err, &status) || status != exitFailed {
 		t.Fatalf("a blocked errand exited %v, want exit status 1", err)
@@ -636,14 +664,14 @@ func TestDoFailsLoudlyOnAQuestionItCannotAnswer(t *testing.T) {
 	if !strings.Contains(said, "headless mode cannot answer") {
 		t.Fatalf("stderr never said why nothing was done:\n%s", said)
 	}
-	outcome := decodeErrand(t, stdout.String())
-	if !strings.Contains(outcome.BlockedOn, unanswerableQuestion) {
-		t.Fatalf("blocked_on does not carry the question: %+v", outcome)
+	decoded := decodeErrand(t, stdout.String())
+	if !strings.Contains(decoded.BlockedOn, unanswerableQuestion) {
+		t.Fatalf("blocked_on does not carry the question: %+v", decoded)
 	}
-	if strings.TrimSpace(outcome.Deliverable) != "" {
-		t.Fatalf("the question polluted the deliverable: %q", outcome.Deliverable)
+	if strings.TrimSpace(decoded.Deliverable) != "" {
+		t.Fatalf("the question polluted the deliverable: %q", decoded.Deliverable)
 	}
-	assertErrandIsHonest(t, outcome, err)
+	assertErrandIsHonest(t, decoded, err)
 }
 
 // The pin. `settled` says the errand is over, the exit code says whether it
@@ -810,7 +838,9 @@ const (
 	originalSource = "def overlaps(start, end, other):\n    " + brokenLine + "\n"
 	// unanswerableQuestion is a gap no errand semantics can close: not the
 	// standing-or-once classification the verb already answers, and not a price
-	// --yes-spend covers. Nobody is here, so the run must say so and leave.
+	// --yes-spend covers. Nobody is here to answer it, so the errand assumes an
+	// answer and declares it — and a question that survives to the end of a run
+	// anyway is said out loud rather than swallowed.
 	unanswerableQuestion = "Which ledger is authoritative when the two disagree?"
 )
 
@@ -1249,5 +1279,46 @@ func TestTheClosingNarrationCannotContradictTheArtifacts(t *testing.T) {
 				t.Fatalf("the closing line denied files that exist:\n%s", outcome.Deliverable)
 			}
 		})
+	}
+}
+
+// The two window dials a harness sets per run. They exist because the context
+// law is read from the environment by four kinds of caller that share no config
+// object, so the flags write the environment once rather than threading a
+// budget down through the build — and a run that names neither must leave the
+// shell's own exports exactly as it found them, or a campaign that pinned the
+// window in its wrapper script would silently be overridden per errand.
+func TestTheContextFlagsSetTheWindowLawAndSilenceLeavesItAlone(t *testing.T) {
+	t.Setenv("AFORGE_CONTEXT_FILL_PCT", "42")
+	t.Setenv("AFORGE_COMPLETION_RESERVE", "4242")
+
+	if err := applyContextLaw(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if fill, reserve := ctxbudget.FillPercent(), ctxbudget.CompletionReserve(); fill != 42 || reserve != 4242 {
+		t.Fatalf("a run that named no flag rewrote the environment: fill=%d reserve=%d", fill, reserve)
+	}
+
+	if err := applyContextLaw(80, 32768); err != nil {
+		t.Fatal(err)
+	}
+	if fill, reserve := ctxbudget.FillPercent(), ctxbudget.CompletionReserve(); fill != 80 || reserve != 32768 {
+		t.Fatalf("the flags did not reach the law: fill=%d reserve=%d", fill, reserve)
+	}
+
+	// Clamping is the law's own job (a typo may neither starve nor overrun a
+	// window); refusing a negative is this command's, because there is no
+	// reading of it that was meant.
+	if err := applyContextLaw(-1, 0); err == nil {
+		t.Fatal("a negative fill was accepted")
+	}
+	if err := applyContextLaw(0, -1); err == nil {
+		t.Fatal("a negative reserve was accepted")
+	}
+	if err := applyContextLaw(99, 0); err != nil {
+		t.Fatal(err)
+	}
+	if fill := ctxbudget.FillPercent(); fill != 90 {
+		t.Fatalf("an over-large fill was not clamped by the law: %d", fill)
 	}
 }

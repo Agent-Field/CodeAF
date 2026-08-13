@@ -24,6 +24,13 @@ import (
 // surface, not a judgement about the work, and it travels to both halves that
 // would otherwise have to guess it — the compiler's temporal classification and
 // the reconciler's charter draft.
+//
+// It is the only signal the verbatim law needs, and it is the right one: the
+// compile stage is unchanged for everybody, and the reconciler that applies the
+// result is the one thing that already knows which surface asked. On this
+// surface the submitted sentence survives the compile as the goal
+// (resident.keepTheAskVerbatim); on every other one the compiler's reading and
+// its declared assumptions are the point, and nothing here moves.
 func newResidentReconciler(settings config.Config, graph *store.Store,
 	chatClient, taskClient, planClient *liveClient, plans *jobPlans, terrainRoot string,
 	resolveModel func(head.ModelWords) head.WorkModelChoice, oneShotErrand bool) *resident.Reconciler {

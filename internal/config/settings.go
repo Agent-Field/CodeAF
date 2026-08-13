@@ -118,6 +118,15 @@ var OperatorEnvPins = []string{
 	"AFORGE_SPINE_SAMPLES",
 	"AFORGE_MAX_DEPTH",
 	"AFORGE_NODE_BUDGET",
+	// The two dials on the context-window law (internal/ctxbudget): how full a
+	// window may get before it compacts, and how much room every call keeps for
+	// its answer and its reasoning. They are plumbing for the same reason the
+	// node budget is — numbers the engine spends, not preferences the product
+	// has an opinion about — and the place they are actually turned is a
+	// headless campaign, where `aforge do --context-fill / --completion-reserve`
+	// sets them for one run and docs/HEADLESS.md is their documentation.
+	"AFORGE_CONTEXT_FILL_PCT",
+	"AFORGE_COMPLETION_RESERVE",
 	"AFORGE_SKILL_DIR",
 	"AFORGE_SKILLS_BIN",
 	"AFORGE_RTK",

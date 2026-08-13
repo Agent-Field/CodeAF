@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -143,8 +144,15 @@ func runDo(args []string) error {
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "model that plans, when different from the work model (default AFORGE_PLAN_MODEL)")
 	subharness := flags.String("subharness", "", "force this errand onto one worker, for measuring workers against each other (default: let the compiler choose)")
+	contextFill := flags.Int("context-fill", 0,
+		"how full a model's context window may get before it is compacted, in percent (default 60, clamped 10-90); "+
+			"sets AFORGE_CONTEXT_FILL_PCT for this run")
+	completionReserve := flags.Int("completion-reserve", 0,
+		"tokens every call keeps free for its answer and its reasoning (default 65536); "+
+			"sets AFORGE_COMPLETION_RESERVE for this run")
 	if err := flags.Parse(reorder(args, map[string]bool{
 		"db": true, "w": true, "timeout": true, "model": true, "plan-model": true, "subharness": true,
+		"context-fill": true, "completion-reserve": true,
 	})); err != nil {
 		return err
 	}
@@ -159,8 +167,9 @@ func runDo(args []string) error {
 		task: task, database: *database, keep: *keep, workspace: *workspace,
 		timeout: time.Duration(*timeout) * time.Second, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel,
-		subharness: *subharness,
-		stdout:     os.Stdout, stderr: os.Stderr,
+		subharness:  *subharness,
+		contextFill: *contextFill, completionReserve: *completionReserve,
+		stdout: os.Stdout, stderr: os.Stderr,
 	})
 }
 
@@ -180,8 +189,16 @@ type doRequest struct {
 	// path: an unknown name is a note on stderr and the default worker, so a
 	// measurement run never dies at argument parsing.
 	subharness string
-	stdout     io.Writer
-	stderr     io.Writer
+	// contextFill and completionReserve are this run's two dials on the window
+	// law (internal/ctxbudget). They are integers rather than a struct because
+	// zero has to mean "not asked for": the law's own defaults are the answer
+	// on every run that says nothing, and a flag that always wrote the
+	// environment would make the default unreachable from a shell that had
+	// already set it.
+	contextFill       int
+	completionReserve int
+	stdout            io.Writer
+	stderr            io.Writer
 	// residentWait bounds how long this run defers to a resident that already
 	// holds the lock for its store. Zero is defaultResidentWait; a test names a
 	// shorter one rather than sitting through it.
@@ -197,8 +214,37 @@ func (r doRequest) residentWaitOrDefault() time.Duration {
 	return defaultResidentWait
 }
 
+// applyContextLaw puts this run's two window dials where the law reads them.
+//
+// internal/ctxbudget is deliberately environment-driven and imports nothing: it
+// is asked the same question from a head turn, a planner pass, a leaf worker
+// and a judge, none of which share a config object. So the flags do not carry a
+// budget down through six call layers — they set the two variables the law
+// already consults, once, before anything is built. A run that names neither
+// flag touches the environment not at all, which is what keeps a harness that
+// exports these variables in its shell in charge of its own campaign.
+func applyContextLaw(fillPercent, completionReserve int) error {
+	if fillPercent < 0 || completionReserve < 0 {
+		return fmt.Errorf("--context-fill and --completion-reserve must not be negative")
+	}
+	if fillPercent > 0 {
+		if err := os.Setenv("AFORGE_CONTEXT_FILL_PCT", strconv.Itoa(fillPercent)); err != nil {
+			return fmt.Errorf("set the context fill for this run: %w", err)
+		}
+	}
+	if completionReserve > 0 {
+		if err := os.Setenv("AFORGE_COMPLETION_RESERVE", strconv.Itoa(completionReserve)); err != nil {
+			return fmt.Errorf("set the completion reserve for this run: %w", err)
+		}
+	}
+	return nil
+}
+
 func doErrand(request doRequest) error {
 	started := time.Now()
+	if err := applyContextLaw(request.contextFill, request.completionReserve); err != nil {
+		return err
+	}
 	path, home, ephemeral, err := headlessStore(request.database)
 	if err != nil {
 		return err
@@ -231,6 +277,12 @@ func doErrand(request doRequest) error {
 	// closed by definition — there is no conversation for it to point back
 	// into — so it goes straight into the journal the head would have written
 	// to, and everything downstream cannot tell the difference.
+	//
+	// It stays verbatim past the journal too. Chat's value is that it re-asks
+	// the question better; `do`'s contract is that the text handed to it *is*
+	// the task, so the reconciler this run builds keeps the compiled goal
+	// byte-for-byte (resident.keepTheAskVerbatim). What arrives here is what
+	// the work is held to.
 	command, err := graph.RequestCommand(store.Command{
 		SessionID:   session,
 		Kind:        store.CommandSplice,

@@ -18,6 +18,7 @@ schema, and a person needs to know which command actually thinks.
 aforge do "<task>" [-w dir] [-db path] [-keep] [-timeout N]
                    [--json] [--yes-spend] [--model slug] [--plan-model slug]
                    [--subharness name]
+                   [--context-fill N] [--completion-reserve N]
 ```
 
 **Use this one.** `do` is the resident's own brain with the conversation
@@ -43,9 +44,44 @@ done.
 | `--yes-spend` | off | Approve a plan whose price crosses the consent threshold. Equivalent to `AFORGE_PREAUTHORIZE_SPEND=1`. |
 | `--model slug` | `AFORGE_MODEL` | The work model for this run. |
 | `--plan-model slug` | `AFORGE_PLAN_MODEL` | Model that plans, replans, writes contracts, and runs the delivery gate, when it should differ from the model executing leaves. |
+| `--context-fill N` | `60` | How full a model's context window may get before it is compacted, in percent. Sets `AFORGE_CONTEXT_FILL_PCT` for this run; the law clamps it to 10–90. |
+| `--completion-reserve N` | `65536` | Tokens every call keeps free for its visible answer *and its reasoning*. Sets `AFORGE_COMPLETION_RESERVE` for this run. Raise it for a reasoning-heavy model that truncates; lower it to buy prompt room on a small window. |
 | `--subharness name` | the compiler chooses per node | Force every leaf onto one worker. This build has **`swe`** — a whole software-engineering pipeline that takes a coding issue in a git repository whole: it plans internally, edits in parallel worktrees, judges each change before merging, and audits the result against that repository's own build and tests. It exists for measuring one worker against another; an unknown name is a note on stderr and the default worker, never a refusal. `aforge run` takes the same flag. |
 
-Flags may appear after the task text; `do` reorders its own arguments.
+Flags may appear after the task text; `do` reorders its own arguments. Naming
+neither context flag touches the environment at all, so a wrapper script that
+exported `AFORGE_CONTEXT_FILL_PCT` for a whole campaign stays in charge of it.
+
+### The task is the task — verbatim fidelity
+
+**What you pass to `do` becomes the goal, byte for byte.** The compile stage
+still runs, and the planner still gets everything it reads from it — how large
+the work is, what parts it splits into, which worker takes it, which earlier
+jobs it continues, the model words, the title. What it does not get is a
+rewrite: the goal it plans against is the sentence you submitted, trimmed of
+surrounding whitespace and otherwise untouched, and the compiler's speculative
+assumptions are dropped rather than anchored into the leaves as decisions the
+work is held to.
+
+This is the one deliberate difference between `do` and the chat surface. Chat's
+value at this seam is precisely that it re-asks the question better — it rewords
+a half-formed ask into a goal, declares what it is assuming, and stops to ask
+when one of those assumptions is too consequential to guess. A caller
+programming against `do` already wrote the specification, and a compiler that
+improved it would mean the harness measured something nobody wrote, with the
+reworded goal as the only version the journal ever kept.
+
+**Questions are assumed, not asked.** Where chat would stop and ask,
+`do` takes the answer the compiler itself ranked first, records the skipped ask
+in the journal so a later correction can find it, and declares the answer as a
+working decision on the goal and on the node the delivery gate judges. A run
+that asked into an empty room has done nothing; a run that assumed and said so
+has done the work and left the assumption on the record. So `blocked_on` is
+rarer than the exit-code table below implies — it is what remains when the
+question was not the compiler's to answer at all.
+
+The corollary for a harness: put the answer in the ask. Anything you leave
+implicit is something `do` will decide for you and tell you it decided.
 
 A `swe` leaf is an ordinary node in every way that matters headlessly: it
 reports one `exec.Outcome`, it obeys pause and cancel, its cost lands in
@@ -132,6 +168,12 @@ resident applies it on its next pass with its own head attached, and this
 process becomes what a second chat window is — something watching the same
 journal for the result. It says so on stderr and still reports the outcome.
 
+One thing does change when that happens, and it is the reason to avoid it in a
+measured campaign: the verbatim law above is a fact about the brain that applies
+the command, not about the command itself. A resident that picks it up compiles
+it the way a conversation would — reworded goal, declared assumptions, and a
+question asked into a thread nobody is reading.
+
 For guaranteed isolation from your own resident, give the run its own state
 root with `AFORGE_HOME`.
 
@@ -217,6 +259,8 @@ The full list is `aforge --help`. What matters headless:
 | `AFORGE_PREAUTHORIZE_SPEND` | unset | `1` is `--yes-spend` for every run. |
 | `AFORGE_HOME` | `~/.aforge` | The whole state root — journal, workspace, CAS, craft, profiles, catalog, skills. One word moves everything; this is the isolation seam. |
 | `AFORGE_PROFILE_DIR` | `AFORGE_HOME` | Where measured behaviour is kept. |
+| `AFORGE_CONTEXT_FILL_PCT` | `60` | How full any agent's context window may get before it compacts, in percent; clamped 10–90. One law for head turns, planner passes, leaf workers and judges alike. `--context-fill` sets it per run. |
+| `AFORGE_COMPLETION_RESERVE` | `65536` | Tokens every call keeps free for its answer plus its reasoning. `--completion-reserve` sets it per run. **Pin both when measuring** — they change how much material a call sees and therefore what it costs. |
 | `AFORGE_MAX_DEPTH` | `2` | Levels of decomposition. |
 | `AFORGE_NODE_BUDGET` | `60` | Hard ceiling on total nodes. |
 | `AFORGE_REASONING` | `off` | Planning-call reasoning effort. |
@@ -235,6 +279,11 @@ Rules that came from getting them wrong:
 - **Read the exit code, never `deliverable` alone.** An empty deliverable with
   `blocked_on` set is a task that was never attempted; scoring it as a wrong
   answer overstates capability failure and hides an unanswered question.
+- **The task string is the prompt under test.** `do` runs it verbatim, so a
+  benchmark's phrasing is the phrasing that was measured — no compiler is
+  quietly repairing a bad one, and no campaign is comparing two workers on two
+  differently-reworded asks. What you leave implicit gets assumed and declared,
+  not asked back about; if that matters to your score, say it in the ask.
 - **Report `seconds` and `spend` from the JSON**, not from your own wall clock
   around the process — they are measured inside the run, and `spend` is a real
   ledger delta.
