@@ -162,6 +162,45 @@ episode now costs one turn instead of twelve.
 reading through verbatim and its root orchestrator has no pause wait. A harvest
 touching either must re-apply this.
 
+### D7 — `internal/util/gitexclude.go`: the exclusions reach the file git reads, and the list is declared once
+
+*Wave 6, the state-boundary wave.* Two edits to one file, and they are the same
+subject from either end: where the boundary between the engine's machinery and
+somebody's repository is written down, and whether writing it does anything.
+
+`EnsureCodeafExcluded` resolved the exclude file as `rev-parse --git-dir` +
+`/info/exclude`. In an ordinary clone that is the file git reads. In a **linked
+worktree** it is not: `--git-dir` answers with the worktree's private gitdir,
+and git consults the **common** directory's `info/exclude` for exclusions. The
+function created the directory, wrote the five patterns, and returned
+`(true, nil)` — into a file nothing ever opens. aforge runs every isolated
+coding leaf in a linked worktree (`internal/exec/sweview.go`), so the layout
+the bug needs is the layout it always has, and the measured result was 490 and
+257 engine files committed into user history across two benchmark cells. It now
+resolves through `rev-parse --git-path info/exclude`, which is the file git
+will read in either layout and an error outside a repository — the one case
+where doing nothing is still right. aforge's own `excludeFromGit`
+(`internal/exec/swe.go`) had already fixed this exact class for the same
+reason.
+
+`ExcludedPaths` is now `enginestate.ExcludePatterns()`. The five strings are
+declared at `internal/swepro/enginestate`, a dependency-free package both sides
+of the embedding can import: the engine to tell git what to ignore, aforge to
+exclude the same paths at the repository root, to take them out of the index
+before a landing commit, to keep them out of a delivered file list, and to
+sweep them from a directory that is not ours. Before this there were three
+lists, and one of aforge's had drifted — it named `.plandb.db` and its sqlite
+sidecars and had never named the `.plandb/` directory the scheduler cuts its
+worktrees into.
+
+Held by `internal/swepro/internal/util.TestEnsureCodeafExcludedReachesTheFileGitReadsInAWorktree`,
+which asserts on `git status` in a real linked worktree rather than on the
+contents of a file — only git can say which file git reads.
+
+*Cherry-pick note:* upstream (and the TS source at `src/util/git-exclude.ts`)
+still resolves through `--git-dir` and still declares the five strings inline. A
+harvest that touches this file must re-apply both.
+
 **`codeaf/serve.go` was NOT dropped.** swe-pro-go pinned
 `agentfield/sdk/go` at `v0.0.0-20260724201800-7ee31640a2f4` and aforge at
 `v0.0.0-20260801225427-e6587ade0886`; MVS picks aforge's. serve.go — the only
