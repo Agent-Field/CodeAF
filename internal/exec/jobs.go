@@ -575,9 +575,12 @@ func (r *jobRegistry) read(id int) Result {
 		return errorf("%s\ncould not read log: %v", header, err)
 	}
 	if output == "" {
-		return Result{Content: header}
+		return Result{Content: header, shape: shapeCommand}
 	}
-	return Result{Content: clamp(header+"\n"+output, r.results)}
+	// A job's log is command output like any other, so if it has to be cut the
+	// cut comes off the front and the end — where a crash, a stack trace or the
+	// readiness line lives — is what survives. See resultShape.
+	return Result{Content: clamp(header+"\n"+output, r.results), shape: shapeCommand}
 }
 
 func readSince(path string, offset *int64, limit int) (string, error) {

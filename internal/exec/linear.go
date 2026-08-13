@@ -474,7 +474,13 @@ func (l *Linear) Subharness() string { return LinearSubharness }
 // going to diverge anyway, and the three inputs left here are the model, the
 // operator's attribution setting and whether this is a reflex — a handful of
 // shapes across a whole run instead of one per node.
-func (l *Linear) system(task Task) string {
+// The last block is assembled rather than written: each tool the leaf is
+// actually holding contributes its own standing guidance, and a leaf holding
+// two tools reads two lines. See Toolbox.Guidelines for why the guidance
+// belongs to the tool. It goes LAST because it is the one part that varies with
+// the toolbox, and everything ahead of it stays the byte-identical prefix four
+// sibling leaves share.
+func (l *Linear) system(task Task, guidelines []string) string {
 	system := systemPrompt
 	if l.attribution {
 		system += attributionPrompt
@@ -482,8 +488,27 @@ func (l *Linear) system(task Task) string {
 	if task.Reflex {
 		system += reflexSystemPrompt
 	}
+	if len(guidelines) > 0 {
+		system += "\n\nYour tools, in the words of the tools themselves:\n\n" +
+			strings.Join(guidelines, "\n\n")
+	}
 	return system
 }
+
+// lengthStopBatchFailure is what every call in a length-stopped batch is
+// answered with. It is stated as a fact plus the one move that fixes it: the
+// arguments may be truncated, nothing ran, ask again — and, because the reply
+// hit a ceiling, ask for less at a time. It goes back verbatim for every call in
+// the batch rather than being tailored per tool, so a model reading four of them
+// sees one thing that happened rather than four different problems.
+//
+// It is not routed through the observation memo — these bytes are identical
+// across the batch by design, and collapsing them into "same as the result
+// above" would turn the one sentence that has to be read into a pointer.
+const lengthStopBatchFailure = "This tool call was NOT executed. The reply carrying it hit the output token " +
+	"limit, so its arguments may be truncated mid-write and running them could do something " +
+	"other than what you intended. Nothing was changed. Re-issue the call with complete " +
+	"arguments — and issue fewer or smaller calls this turn, since the last reply did not fit."
 
 // Run executes one task.
 func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr error) {
@@ -547,7 +572,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	}
 	trace := newTracer(l.workspace, task.leafKey())
 	defer trace.close()
-	system := l.system(task)
+	system := l.system(task, tools.Guidelines())
 	if contract := strings.TrimSpace(task.Contract); contract != "" {
 		trace.note("contract:\n" + contract)
 	}
@@ -793,6 +818,43 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			Content:   text(response.Text()),
 			ToolCalls: calls,
 		})
+
+		// A reply that ended at the output limit while holding tool calls is a
+		// reply whose LAST call is very likely cut in half, and NONE of the
+		// batch runs.
+		//
+		// The temptation is to run the ones that parsed. The reason not to is
+		// that "parsed" is not "complete": arguments are JSON, a JSON object
+		// truncated at a string boundary can still close and still validate,
+		// and what arrives is a call the model never finished writing. A write
+		// with half its text is a file silently truncated. An edit with half its
+		// old is either no match — the cheap outcome — or, when the half happens
+		// to be unique, a replacement that deletes the rest of the block. An sh
+		// with half a command is a shell line whose meaning is unrelated to the
+		// one intended: `rm -rf build/tmp` cut at the wrong byte is a different
+		// command that runs fine.
+		//
+		// So the whole batch fails, unexecuted, and each call is answered with
+		// the same sentence: the reply hit the limit, re-issue it. That is
+		// cheap — one wasted turn — and it is the only failure here that leaves
+		// the workspace exactly as the model believes it to be. Failing the
+		// batch rather than the truncated call alone is deliberate too: the
+		// earlier calls in a cut-off batch were written by a model that was
+		// planning all of them together, and re-issuing them as a set keeps that
+		// plan intact instead of half-applying it.
+		if finishOf(response) == "length" {
+			for _, call := range calls {
+				outcome.ToolCalls++
+				labels[call.ID] = callLabel(call)
+				outcome.record(call, true)
+				messages = append(messages, ai.Message{
+					Role: "tool", ToolCallID: call.ID, Content: text(lengthStopBatchFailure),
+				})
+			}
+			trace.turn(outcome.Turns, response, calls, nil, fmt.Sprintf(
+				"reply hit the output limit holding %d tool calls — none executed, all returned for re-issue", len(calls)))
+			continue
+		}
 
 		// A turn may carry several calls. They are independent by definition —
 		// the model asked for them together — so running them concurrently is a

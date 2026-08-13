@@ -117,7 +117,10 @@ func (t *Toolbox) readDocument(ctx context.Context, args map[string]any) Result 
 	cachePath := extractedDocumentCachePath(full)
 	if cached, ok := readDocumentCache(cachePath, sourceHash, pages.raw); ok {
 		t.workspace.RecordInternal(t.leaf, cachePath)
-		return Result{Content: clamp(cached, t.budgets.result)}
+		// Handed over whole: a document is read forward, and the turn boundary
+		// is what cuts it — from the front, on a line boundary, with the whole
+		// text preserved and the exact command to read on. See Toolbox.spill.
+		return Result{Content: cached}
 	}
 
 	engine := documentEngineAuto
@@ -317,7 +320,7 @@ func (t *Toolbox) cacheDocumentResult(cachePath, sourceHash, pages, parserHash, 
 		return errorf("could not cache extracted document text")
 	}
 	t.workspace.RecordInternal(t.leaf, cachePath)
-	return Result{Content: clamp(text, t.budgets.result), Usage: usage}
+	return Result{Content: text, Usage: usage}
 }
 
 func unsupportedOfficeDocument(path string) Result {
