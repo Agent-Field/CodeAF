@@ -387,6 +387,12 @@ func commandReceipt(t *testing.T, graph *store.Store, sessionID string, commandS
 	}
 	for _, message := range messages {
 		if message.CommandSeq == commandSeq {
+			// A phase row carries the same command seq and is not the receipt:
+			// it says where the work has got to, and there are several of them
+			// before the one line that says what was decided.
+			if message.Progress != nil {
+				continue
+			}
 			if message.Role != store.RoleSystem {
 				t.Fatalf("command receipt role = %s", message.Role)
 			}

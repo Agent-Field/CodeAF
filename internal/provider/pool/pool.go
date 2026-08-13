@@ -17,6 +17,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -43,6 +44,10 @@ type Client struct {
 	model    string
 	client   router.Client
 	journal  func(store.NodeUsage)
+	// wall bounds one completion served through this slot. Zero — the default,
+	// and what the work slot keeps — waits as long as the caller's own context
+	// does. See WithCallWall for why it is per-slot rather than global.
+	wall time.Duration
 }
 
 // spendNodeKey carries the node a structuring call is about. Most of them are
@@ -185,10 +190,26 @@ func (l *Client) Model() string {
 
 // Snapshot returns a model and client from the same instant, which keeps the
 // profile key and the executor it describes inseparable.
+//
+// The client it hands back carries this slot's call wall. That is deliberate
+// and it is the whole reason the wall works: the expensive structuring callers
+// — plan.Build, plan.Contracts, the JIT expander — do not hold this handle,
+// they take a snapshot once and call it for the rest of the pass. A wall that
+// lived only on the method below would have bounded every call except the ones
+// that hung.
 func (l *Client) Snapshot() (string, router.Client) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return l.model, l.client
+	return l.model, wallClient(l.client, l.wall)
+}
+
+// raw reads the underlying client with no wall around it. Lifecycle — closing,
+// swapping — is about the object itself, and must never be handed a decorator
+// that would answer an io.Closer assertion for it.
+func (l *Client) raw() router.Client {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.client
 }
 
 // Escalatable reports whether a failed leaf has somewhere stronger to go —
@@ -238,8 +259,7 @@ func (l *Client) swap(model string, client router.Client) router.Client {
 // Close releases the underlying router client so its ledger flushes and its
 // events handle is returned before the process exits.
 func (l *Client) Close() {
-	_, client := l.Snapshot()
-	CloseReplaced(client)
+	CloseReplaced(l.raw())
 }
 
 // Pool keeps per-message chat overrides pinned to the exact model recorded on

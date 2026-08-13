@@ -294,6 +294,15 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	taskClient.WithUsageJournal(journalSpend)
 	planClient.WithUsageJournal(journalSpend)
 	boostClients.WithUsageJournal(journalSpend)
+	// The two structuring slots get a wall on a single completion; the work slot
+	// deliberately does not. Everything the talk and plan slots do is one
+	// round-trip that either answers or has stopped answering — compiling an ask,
+	// titling it, writing briefs, setting contracts, judging a deliverable — and
+	// none of it has an honest duration measured in minutes. A leaf is the other
+	// kind of thing: an agent loop with the executor's own deadline over it, where
+	// a long silence is often just a long tool call.
+	chatClient.WithCallWall(pool.DefaultCallWall)
+	planClient.WithCallWall(pool.DefaultCallWall)
 	// The positive stopping condition, installed once for every path that can
 	// grow a running job. It is asked last, after rounds, nodes and the daily
 	// rail have all passed, so on the common path it is never asked at all; the
@@ -3345,6 +3354,11 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// each branch is what makes it impossible for one exit to journal a
 		// shape and leave the reason behind.
 		structure := plans.takeReading(compiled.Goal)
+		// Built before the scale gate rather than after it. A one-node job still
+		// buys a contract call, and that call was the last structuring round-trip
+		// in the system that reported nothing at all — the poster used to be
+		// constructed on the far side of an early return it never reached.
+		progress := chatPlanProgress(history, anchor)
 		if compiled.Scale != head.ScaleProject {
 			// One leaf is the whole plan, and it still deserves a working
 			// method. A lookup does not: it is a question with an answer, the
@@ -3358,7 +3372,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			if compiled.Scale == head.ScaleTask {
 				method := strings.TrimSpace(compiled.Contract)
 				if method == "" {
-					method = taskContract(ctx, settings, planClient, history, compiled.Goal)
+					method = taskContract(ctx, settings, planClient, history, compiled.Goal, progress)
 				}
 				// One node is a plan. It used to be the one shape of job with
 				// no plan document at all, so its method lived in a memory map
@@ -3383,7 +3397,6 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 		// profile key must name.
 		workingModel, workingClient := workClient.Snapshot()
 		_, structuring := planClient.Snapshot()
-		progress := chatPlanProgress(history, anchor)
 		// A declared bundle never meets the planner. The compile call already
 		// judged the requests independent and wrote each as a standalone
 		// assignment; laying them side by side is geometry, and the spine was
@@ -3508,7 +3521,12 @@ func journalScaleGate(history *store.Store, prefix string, compiled resident.Com
 //
 // The empty string is a real answer: a contract that could not be written
 // degrades to the generic loop, which is what a leaf had before this existed.
-func taskContract(ctx context.Context, settings config.Config, planClient *liveClient, history *store.Store, goal string) string {
+// The progress callback is the same one a planned job's contract pass carries.
+// A one-leaf job spends a real round-trip here and used to report none of it,
+// so its card had a silent gap in exactly the place the loudest phase line
+// lives for every larger job.
+func taskContract(ctx context.Context, settings config.Config, planClient *liveClient, history *store.Store,
+	goal string, progress plan.Progress) string {
 	if planClient == nil || strings.TrimSpace(goal) == "" {
 		return ""
 	}
@@ -3521,7 +3539,7 @@ func taskContract(ctx context.Context, settings config.Config, planClient *liveC
 	// assembled from the store at dispatch, and repeating the goal as a second
 	// field would only pay for the same words twice.
 	graph.Add(plan.Node{Kind: plan.KindWork, Summary: goal, Stage: 1})
-	usage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history))
+	usage, err := plan.Contracts(settings.Context(ctx, goal), structuring, graph, resident.ContractPlaybook(history), progress)
 	if err != nil {
 		log.Printf("note: could not write the working method: %v", err)
 	}
