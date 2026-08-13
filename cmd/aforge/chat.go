@@ -366,16 +366,18 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 	// haunting the rail.
 	//
 	// What it does NOT do is continue a transcript. The executor is rebuilt from
-	// nothing and the worker starts at turn zero; only the workspace directory
-	// survives, because the job id that names it is stable. The old sentence
-	// here promised the opposite — the surface's own bootstrap breaking the
-	// house rule against describing a behaviour nobody recorded — so it now says
-	// what actually happens and what actually survives.
+	// nothing and the worker starts at turn zero. What it does now do is hand
+	// that fresh worker its predecessor's bank: the lines the interrupted attempt
+	// posted to its own record, and the files it left in the job directory,
+	// arriving as one more input under the headers a re-decomposed leaf already
+	// gets (see resident.Bank, and the node.Attempt read in the runner). So the
+	// sentence changed with the behaviour. It used to say "each starts again from
+	// the beginning", which was true and was the bug.
 	if released, err := graph.ReleaseOrphans(); err == nil && len(released) > 0 {
 		_, _ = thread.Post(graph, store.Message{
 			SessionID: session,
 			Role:      store.RoleSystem,
-			Body: fmt.Sprintf("picked up %d piece(s) of work that were interrupted — each starts again from the beginning, with the files it had already written still where it left them",
+			Body: fmt.Sprintf("picked up %d piece(s) of work that were interrupted — each continues from what it had already reached, with the files it had already written still where it left them",
 				len(released)),
 		})
 	}
@@ -536,7 +538,14 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// gate-bought extensions, overrun continuations — shares that directory,
 		// and the files already in it are the work.
 		jobDir := workspaceRoot
-		if !opts.sharedWorkspace {
+		// Whether the directory is the job's own. It matters to one reader: the
+		// bank a dead attempt hands to its retry names the files already there,
+		// and in a job's own folder those files are that attempt's work, while in
+		// an errand's they are the person's project — which nobody produced, and
+		// which must never be announced to a leaf as "files already produced" it
+		// is free to skip.
+		ownWorkspace := !opts.sharedWorkspace
+		if ownWorkspace {
 			jobDir = filepath.Join(workspaceRoot, jobIDOf(graph, node))
 		}
 		jobSpace, err := exec.NewWorkspace(jobDir)
@@ -804,6 +813,12 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// one part of the line that says anything. The row's own sequence answers
 		// the same question exactly, so the note is just the note.
 		mine := map[int64]bool{}
+		// The same lines, kept where a retry can reach them. A note anchors to
+		// the JOB root, so a leaf that is not its own job root cannot find its
+		// own notes again by reading its own record, and the journal cannot tell
+		// a reader which of a job's notes came from which leaf. What this leaf
+		// said, this leaf remembers. See resident.Bank.
+		banked := &sharedLines{}
 		var share func(string) error
 		if node.Parent != store.RootID {
 			share = func(line string) error {
@@ -819,6 +834,7 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				})
 				if postErr == nil {
 					mine[posted.Seq] = true
+					banked.add(line)
 				}
 				return postErr
 			}
@@ -842,6 +858,20 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				lines = append(lines, note)
 			}
 			return lines
+		}
+		// The pickup bank. A node whose attempt counter is already above zero has
+		// been claimed before, which means a previous run of this leaf ended
+		// without settling it — its process went away, or the whole surface did —
+		// and the startup sweep put it back on the queue. It used to come back to
+		// an empty context and a directory full of its own work, and the surface
+		// said so out loud: "each starts again from the beginning". It does not
+		// have to. What that attempt reached is on its own record and its files are
+		// still on disk, and both ride in as one more input under the same headers
+		// a re-decomposed leaf already gets. See resident.Bank.
+		if node.Attempt > 0 {
+			if bank := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, nil, nil); !bank.Empty() {
+				inputs = append(inputs, bank.Input())
+			}
 		}
 		task := exec.Task{
 			Reflex:     isReflex,
@@ -980,10 +1010,18 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 			// including files sitting in the shared workspace it is about to
 			// write again. The gate's revision pass has always been sighted this
 			// way; the escalation was the one retry that was not.
-			if attempt > 0 && outcome != nil {
+			// outcome is deliberately not required. It used to be, and that
+			// condition was the whole of the incident: a leaf abandoned by its
+			// watchdog returns no outcome at all, so the one retry that most
+			// needed sighting — the one whose first attempt had been working for
+			// an hour — was the one that skipped this block entirely and re-ran
+			// the assignment verbatim. What that attempt reached is in the
+			// journal and on disk either way. See resident.Bank.
+			if attempt > 0 {
 				attempted := task
-				attempted.Inputs = append(append([]exec.Input{}, inputs...),
-					previousAttemptInput(outcome, jobDir))
+				if bank := leafBank(graph, node, jobSpace, jobDir, ownWorkspace, outcome, banked.lines()); !bank.Empty() {
+					attempted.Inputs = append(append([]exec.Input{}, inputs...), bank.Input())
+				}
 				// The fold is released here and nowhere else. Whatever brought
 				// this leaf to a second attempt, it is evidence that this node
 				// did not assemble in one pass, and running the retry under the
@@ -1028,6 +1066,26 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				if chosen == "" {
 					chosen = revision.JudgeRetryWorker(ctx, settings, planClient, node,
 						attempted, outcome, failed, specialists, workerModel)
+				}
+				// The class-stability rule, and it is a veto rather than a
+				// preference. An attempt that died on the clock was WORKING; the
+				// hour ran out, and an hour says nothing about what KIND of
+				// worker the assignment needs. Measured: a leaf that had just
+				// announced its finished comparison document, four algorithms
+				// benchmarked on three datasets, hit its time ceiling and was
+				// recalibrated onto the SWE coding pipeline — whose retry opened
+				// by "preparing the repository" for a writeup.
+				//
+				// What may move a class is capability evidence, and which
+				// endings are that is not a new judgement: provider.Verdict has
+				// separated what may be learned from from what may not since the
+				// router lab, and resident.MayReclassify is that same question
+				// asked about a different rung. It is applied here, at the point
+				// the change would land, so it covers both ways a name arrives —
+				// the judge's answer and a straggler hand-back already paid for.
+				if chosen != "" && !resident.MayReclassify(outcome, err) {
+					log.Printf("note: %s kept its worker after a deadline death; the clock is not evidence about %s", node.ID, chosen)
+					chosen = ""
 				}
 				if chosen != "" {
 					escalatedFrom = subharness
@@ -2043,25 +2101,64 @@ func leafContract(plans *jobPlans, planNode *plan.Node, node store.Node) string 
 	return plans.takeContract(node.ID)
 }
 
-// previousAttemptInput hands the escalated attempt what the first one actually
-// produced. It is deliberately shaped like the gate's revision input: the text,
-// then the paths, then the instruction not to start over — because the failure
-// mode is not that the strong model works badly, it is that it works from
-// scratch.
-func previousAttemptInput(outcome *exec.Outcome, jobDir string) exec.Input {
-	body := strings.TrimSpace(outcome.Text)
-	if body == "" {
-		body = "It produced no usable text before it stopped."
+// sharedLines is what a leaf told the job board, kept for its own retry.
+//
+// It is guarded because the executor writes it from the worker's goroutine and
+// the retry loop reads it from the runner's — and those two are not the same
+// goroutine precisely when it matters most, since a leaf abandoned by the node
+// watchdog goes on sharing into a value nobody is waiting on any more.
+type sharedLines struct {
+	mutex  sync.Mutex
+	posted []string
+}
+
+func (s *sharedLines) add(line string) {
+	if s == nil {
+		return
 	}
-	absolute := make([]string, 0, len(outcome.Artifacts))
-	for _, artifact := range outcome.Artifacts {
-		absolute = append(absolute, filepath.Join(jobDir, artifact))
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.posted = append(s.posted, line)
+}
+
+func (s *sharedLines) lines() []string {
+	if s == nil {
+		return nil
 	}
-	return exec.Input{
-		Title:     "your own earlier attempt at this same task",
-		Result:    "An earlier attempt on a weaker model ended as " + string(outcome.Verdict) + ". What it had when it stopped:\n" + body,
-		Artifacts: absolute,
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return append([]string(nil), s.posted...)
+}
+
+// leafBank is everything a dead attempt of this leaf leaves for the next one.
+//
+// Three sources, one composition. What the attempt had in hand comes from its
+// outcome when there is one — a leaf abandoned by the watchdog has none, which
+// is exactly the case the other two exist for. What it said as it went comes
+// from its own record in the journal (the progress rows a long worker posts,
+// which for a top-level or craft-rooted leaf are anchored to itself) joined with
+// whatever it shared to the board in this process, which the journal cannot
+// attribute back to one leaf of a job. What it wrote comes from the outcome's
+// artifact list and from the directory itself, because a register that died with
+// its process remembers nothing and the files are still there.
+//
+// The directory is only read when it is the job's own. See ownWorkspace.
+func leafBank(graph *store.Store, node store.Node, space *exec.Workspace, jobDir string,
+	ownWorkspace bool, outcome *exec.Outcome, shared []string) resident.Bank {
+	bank := resident.Bank{}
+	if outcome != nil {
+		bank.Partial = outcome.Text
+		absolute := make([]string, 0, len(outcome.Artifacts))
+		for _, artifact := range outcome.Artifacts {
+			absolute = append(absolute, filepath.Join(jobDir, artifact))
+		}
+		bank = bank.WithArtifacts(absolute...)
 	}
+	bank = bank.WithShared(resident.BankedProgress(graph, node.ID)...).WithShared(shared...)
+	if ownWorkspace && space != nil {
+		bank = bank.WithArtifacts(space.Existing()...)
+	}
+	return bank
 }
 
 // tasteBriefBytes bounds settled taste inside a leaf's brief. Taste is a short
@@ -3575,7 +3672,10 @@ func runLeafWithWatchdog(ctx context.Context, worker exec.Executor, task exec.Ta
 	case result := <-done:
 		return result.outcome, result.err
 	case <-watchdog.C:
-		return nil, fmt.Errorf("executor did not return within %s; abandoned", timeout.Round(time.Second))
+		// Typed, and the sentence is unchanged. What the type carries that the
+		// sentence could not is that this ending is the clock and nothing else,
+		// which is the one fact the retry above must not have to guess at.
+		return nil, &exec.Abandoned{After: timeout}
 	}
 }
 
@@ -4151,7 +4251,11 @@ func recordOnNode(graph *store.Store, nodeID, body string, role store.Role) {
 // read by code, so a board read can never mistake an anchored ask, receipt or
 // progress post for a worker's shared line. It is a protocol byte, not a
 // phrase the model is asked to produce.
-const jobNoteMark = "⚑ "
+//
+// It is resident's now, because a second reader appeared: the bank a dead
+// attempt hands to its retry reads the same rows back off the journal, and two
+// spellings of one protocol byte is one spelling too many.
+const jobNoteMark = resident.NoteMark
 
 // jobNoteBody is the marker and the worker's own words, and nothing between
 // them. What used to sit between them was the writing leaf's title, clipped to

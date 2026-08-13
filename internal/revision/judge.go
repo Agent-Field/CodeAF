@@ -1313,6 +1313,13 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 		return ""
 	}
 	budget := newBounds(options).budget(retryWorkerPrompt)
+	// A leaf the node watchdog abandoned lands with an error and no outcome at
+	// all, and it reaches this judge now that a retry no longer requires one. An
+	// absent outcome is an absent outcome: nothing was produced and nothing is
+	// claimed about how it ended beyond what the failure itself says.
+	if outcome == nil {
+		outcome = &exec.Outcome{}
+	}
 	var body strings.Builder
 	body.WriteString("The assignment:\n" + task.Brief)
 	if produced := strings.TrimSpace(outcome.Text); produced != "" {
