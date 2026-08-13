@@ -200,7 +200,7 @@ func classStatuses(class classIntent, allowed []store.Status) []store.Status {
 // queued ones" has to mean to be safe: withdraw what has not started, never
 // reach through it into what has.
 func (h *Head) classSet(class classIntent, scopeRoot string, statuses []store.Status) (classSet, error) {
-	nodes, err := h.store.ActiveNodes()
+	nodes, err := h.headNodes()
 	if err != nil {
 		return classSet{}, err
 	}
