@@ -32,6 +32,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -213,9 +214,82 @@ type Judgment struct {
 	// whole reason the field exists rather than being read out of the prose.
 	Exercised bool
 	Checked   bool
+	// Unjudged names, in one line, why there is no verdict behind this value.
+	// Every failure of the gate itself is fail-open — the deliverable ships —
+	// and for as long as that was the whole of it, the cheapest bug in the
+	// system was also the most expensive: a judge that answered with nothing
+	// passed the work, and the pass was indistinguishable at every later
+	// surface from a judge that read the deliverable and found it whole.
+	// Checked already said "no verdict"; this says which way it failed, so the
+	// silence is legible rather than merely absent. It is deliberately not a
+	// fail-closed switch: flipping the default is a behaviour change and it is
+	// not this wave's.
+	Unjudged string
 }
 
+// GateNotebookBytes is the notebook digest's bound when the window is unknown,
+// which is what it always was. Eight distilled lessons of up to 512 bytes each
+// were being clipped into a kilobyte, so items six through eight simply were
+// not in the prompt — a bound written as an absolute number and outlived by the
+// block it bounds. Known windows now spend a share of the budget instead (see
+// gateNotebookShare); this literal is what the unknown case falls back to, and
+// keeping it means a build with no catalog behaves exactly as it did.
 const GateNotebookBytes = 1 << 10
+
+// The gate's prompt is one pot, and three of the things in it are the ones this
+// package may shorten: the notebook digest above the deliverable, the tail of
+// what the run actually ran below it, and — in the retry judgement — the partial
+// the first attempt left behind. The weights are stated out of a hundred and
+// deliberately do not sum to it. What is left over is the request, the compiled
+// goal, the working method and the deliverable itself, none of which may be
+// clipped here at all: a gate that judges an abridged deliverable is judging
+// something the person will never read, which is the one failure no budget is
+// worth causing.
+const (
+	gateShareTotal    = 100
+	gateNotebookShare = 5
+	gateRanShare      = 5
+	gatePartialShare  = 25
+)
+
+// Option carries a fact a judgement cannot ask its client for. There is exactly
+// one today — the context window of the model it is about to call — and it
+// arrives as a variadic tail rather than as a parameter so that a caller which
+// does not know the window compiles unchanged and behaves exactly as it did
+// before this existed. An unknown window spends nothing: every bound below
+// names the literal it was written with and falls back to it.
+type Option func(*bounds)
+
+// bounds is a judgement's own copy of the window law.
+type bounds struct{ contextTokens int }
+
+// WithContextTokens tells a judgement the window of the model it is about to
+// call. Zero is unknown, and unknown is never treated as small.
+func WithContextTokens(tokens int) Option {
+	return func(b *bounds) {
+		if tokens > 0 {
+			b.contextTokens = tokens
+		}
+	}
+}
+
+func newBounds(options []Option) bounds {
+	var settled bounds
+	for _, option := range options {
+		if option != nil {
+			option(&settled)
+		}
+	}
+	return settled
+}
+
+// budget turns the window into spendable prompt room, with the judgement's own
+// system prompt named as the fixed floor. The floor is measured rather than
+// guessed at: the prompt is a constant in this file, so its cost is a fact the
+// package already holds.
+func (b bounds) budget(prompt string) ctxbudget.Budget {
+	return ctxbudget.For(b.contextTokens).WithFloor(len(prompt) / ctxbudget.BytesPerToken)
+}
 
 // GateLessonsHeading labels the notebook block for what it is: an account of
 // OTHER work. The fence below it bounds where the deliverable IS; this bounds
@@ -305,11 +379,27 @@ type Evidence struct {
 	Baseline []string
 }
 
-// gateEvidenceRan bounds what travels. The executor already keeps a short tail;
-// this is the second bound, because the gate's own reply budget is small and a
-// judge reading a hundred lines of shell before the deliverable is a judge
-// reading the wrong thing first.
+// gateEvidenceRan bounds what travels when the window is unknown. The executor
+// already keeps a short tail; this is the second bound, because a judge reading
+// a hundred lines of shell before the deliverable is a judge reading the wrong
+// thing first. It is a floor now rather than a ceiling: a known window buys more
+// of the tail, and a build that knows nothing about its model sends the same
+// twenty-four lines it always did.
 const gateEvidenceRan = 24
+
+// gateEvidenceLine is what one recorded tool call is assumed to cost. The block
+// is bounded in lines because that is what it is made of and what the prompt
+// counts out loud, and the budget is spent in bytes, so one of the two has to be
+// stated. A tool call with a short argument object is the shape being sized.
+const gateEvidenceLine = 256
+
+// gateEvidenceLines is how much of the run tail this window can afford.
+func gateEvidenceLines(budget ctxbudget.Budget) int {
+	if lines := budget.Share(gateRanShare, gateShareTotal, 0) / gateEvidenceLine; lines > gateEvidenceRan {
+		return lines
+	}
+	return gateEvidenceRan
+}
 
 // UnexercisedRecord is what an observed run with nothing in it says for itself.
 // It is the one record in this block that is complete rather than a tail, and it
@@ -326,7 +416,7 @@ const UnexercisedRecord = "Nothing. The work called no tools and left nothing be
 // to give the same one to both. An observed run that did nothing now says so in
 // words; an unobserved one still renders empty, so a caller with no outcome in
 // hand cannot manufacture the strongest record in the block by omission.
-func (e Evidence) block() string {
+func (e Evidence) block(budget ctxbudget.Budget) string {
 	if len(e.Artifacts) == 0 && len(e.Ran) == 0 && len(e.Named) == 0 &&
 		len(e.Baseline) == 0 && e.Done.Empty() {
 		if !e.Observed {
@@ -379,9 +469,9 @@ func (e Evidence) block() string {
 			body.WriteString(note + "\n")
 		}
 	}
-	ran := e.Ran
-	if len(ran) > gateEvidenceRan {
-		ran = ran[len(ran)-gateEvidenceRan:]
+	ran, tail := e.Ran, gateEvidenceLines(budget)
+	if len(ran) > tail {
+		ran = ran[len(ran)-tail:]
 	}
 	if len(ran) > 0 {
 		if body.Len() > 0 {
@@ -593,11 +683,120 @@ func AdmitGapPresent(quote, deliverable string) string {
 	return "everything it names is already in the delivered text, in the words the request used"
 }
 
+// ── how much room a verdict gets, and what happens when it uses it all ───────
+//
+// Every judgement in this file answers with one small JSON object, and for a
+// long time the cap on the call said exactly that: two hundred tokens for a
+// worker's name, four hundred for a verdict. That is the right size for the
+// visible answer and the wrong size for the call. A reasoning model spends its
+// completion budget thinking before it writes, so a cap sized for the object
+// alone is spent entirely on deliberation and the object never arrives — the
+// same failure that killed planner nodes at completion_tokens=32768 before
+// plan.structured grew its retry.
+//
+// What made it worse here than there is what an empty reply MEANS to a gate.
+// An unparseable verdict is a pass (see JudgeDeliverable), so a cap too small
+// for a reasoning model is not a call that fails: it is a gate that stops
+// existing, quietly, on the models most worth pointing it at.
+//
+// The cap is a fraction of the completion reserve the whole tree keeps for a
+// reply and its reasoning — AFORGE_COMPLETION_RESERVE, 65536 by default — so it
+// moves with the law rather than against it. A verdict genuinely is small, which
+// is why it takes a fraction rather than the whole reserve; the floor is what
+// keeps that fraction from ever landing back where it started.
+const (
+	verdictShare       = 8
+	verdictFloorTokens = 4096
+)
+
+func verdictTokens() int {
+	reserve := ctxbudget.CompletionReserve()
+	budget := reserve / verdictShare
+	if budget < verdictFloorTokens {
+		budget = verdictFloorTokens
+	}
+	if budget > reserve {
+		// An operator who set the reserve below the floor has stated what the
+		// room is. The floor guards against reasoning; it is not a licence to
+		// overrun a reserve somebody named on purpose.
+		budget = reserve
+	}
+	return budget
+}
+
+// retryVerdictTokens doubles what the empty attempt actually spent, floored at
+// twice the ordinary cap and bounded by the reserve itself, so one judgement
+// that cannot stop thinking cannot demand an absurd completion. It is
+// plan.retryTokenBudget's arithmetic with the law's numbers where that function
+// has literals.
+func retryVerdictTokens(response *ai.Response) int {
+	first := verdictTokens()
+	spent := 0
+	if response != nil && response.Usage != nil {
+		spent = response.Usage.CompletionTokens
+	}
+	budget := spent * 2
+	if budget < first*2 {
+		budget = first * 2
+	}
+	if ceiling := ctxbudget.CompletionReserve(); budget > ceiling {
+		budget = ceiling
+	}
+	return budget
+}
+
+// spentItThinking reports the one failure the retry exists for: the reply came
+// back with nothing in it, and the reason is that the budget went on
+// deliberation rather than on an answer. finish_reason=length says so outright;
+// a provider that reports a clean stop while billing completion tokens for an
+// empty body is saying the same thing in its own accent, and both are answered
+// the same way. A genuinely silent reply that cost nothing is not retried —
+// there is no evidence a bigger budget would change it.
+func spentItThinking(response *ai.Response) bool {
+	if response == nil || strings.TrimSpace(response.Text()) != "" {
+		return false
+	}
+	if len(response.Choices) > 0 && response.Choices[0].FinishReason == "length" {
+		return true
+	}
+	return response.Usage != nil && response.Usage.CompletionTokens > 0
+}
+
+// askVerdict sends one judgement and, when the model spends the whole cap
+// thinking and hands back nothing, sends it once more with doubled room. One
+// retry, the planner's own: the difference between a contract and a dead node
+// there, and between a gate and a rubber stamp here. A second empty answer is
+// the model's problem and not the budget's — the caller says so out loud.
+func askVerdict(ctx context.Context, client *pool.Client, messages []ai.Message, request []ai.Option) (*ai.Response, error) {
+	response, err := client.CompleteWithMessages(ctx, messages, sized(request, verdictTokens())...)
+	if err != nil || !spentItThinking(response) {
+		return response, err
+	}
+	retry, retryErr := client.CompleteWithMessages(ctx, messages, sized(request, retryVerdictTokens(response))...)
+	if retryErr != nil || retry == nil {
+		return response, nil
+	}
+	return retry, nil
+}
+
+// sized copies the request options and puts the cap last, where it wins. The
+// copy is not a nicety: two appends onto one slice with spare capacity write
+// over each other, and the second call would go out carrying the first call's
+// cap.
+func sized(request []ai.Option, tokens int) []ai.Option {
+	options := make([]ai.Option, 0, len(request)+1)
+	options = append(options, request...)
+	return append(options, ai.WithMaxTokens(tokens))
+}
+
 // judgeDeliverable returns a checked pass or named gap. Every failure of the
 // gate itself remains fail-open: Checked is false, so it neither blocks delivery
-// nor manufactures verified evidence for the profile.
-func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, deliverable, method string, evidence Evidence, workerModel string) Judgment {
+// nor manufactures verified evidence for the profile. It is also said out loud
+// now — see Judgment.Unjudged and unjudged below — because fail-open and silent
+// are two different designs and only one of them was ever chosen.
+func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, deliverable, method string, evidence Evidence, workerModel string, options ...Option) Judgment {
 	ask := node.Provenance.Intent
+	budget := newBounds(options).budget(DeliverablePrompt)
 	// The standing half of the gate comes first and the job in front of it last,
 	// which is both the reading order and the billing order. Settled taste is
 	// the same text for every job in a session, so leading with it makes it the
@@ -621,7 +820,8 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// reads one as a description of the material in front of it is reading a
 	// previous mistake as present evidence and about to write the next one.
 	if digest := resident.NotebookDigest(graph, node.ID, node.Brief, ask, 8); digest != "" {
-		body += GateLessonsHeading + clipUTF8Bytes(digest, GateNotebookBytes) + "\n\n"
+		body += GateLessonsHeading +
+			clipUTF8Bytes(digest, budget.Share(gateNotebookShare, gateShareTotal, GateNotebookBytes)) + "\n\n"
 	}
 	body += "Verbatim request:\n" + ask + "\n\nCompiled goal:\n" + node.Brief
 	// The working method the worker was actually held to, which is where this
@@ -636,7 +836,7 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// The records come last, under the deliverable they are used to check: they
 	// are the most volatile block in the prompt — a revision rewrites the text
 	// and re-runs the work — and the cache pays for volatility by position.
-	if records := evidence.block(); records != "" {
+	if records := evidence.block(budget); records != "" {
 		body += "\n\nWhat actually happened, as recorded while it ran:\n" + records
 	}
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "gate")
@@ -645,19 +845,19 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// overhead: a job whose bill omits its own review reads as cheaper than it
 	// was, and the review is often the second most expensive thing in it.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	options := []ai.Option{ai.WithMaxTokens(400)}
+	var request []ai.Option
 	// Structured output is the cascade's free verifier. Keep the no-panel
 	// adapter's request options unchanged; there is no second rung to unlock.
 	if client.Routed() {
-		options = append(options, ai.WithSchema(deliverableSchema))
+		request = append(request, ai.WithSchema(deliverableSchema))
 	}
-	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
+	response, err := askVerdict(judgeCtx, client, []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: DeliverablePrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body}}},
-	}, options...)
+	}, request)
 	if err != nil || response == nil {
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
-		return Judgment{Pass: true}
+		return unjudged(node, "the gate could not be reached", err)
 	}
 	var verdict struct {
 		Pass      bool   `json:"pass"`
@@ -672,7 +872,11 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// parse, and a failed parse here is a silent pass.
 	if err := provider.DecodeJSONObject(response.Text(), &verdict); err != nil {
 		provider.Report(judgeCtx, provider.VerdictFormatFailure)
-		return Judgment{Pass: true}
+		// The retry above has already spent a doubled budget on this, so what
+		// arrives here is a judge that answered twice and said nothing usable
+		// either time. It still passes — flipping that is a behaviour change and
+		// not this wave's — but it no longer passes silently.
+		return unjudged(node, "the gate answered with nothing this could read", err)
 	}
 	if verdict.Pass {
 		provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
@@ -683,7 +887,9 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	gaps := strings.TrimSpace(verdict.Gaps)
 	if gaps == "" {
 		provider.Report(judgeCtx, provider.VerdictSemanticFailure)
-		return Judgment{Pass: true}
+		// A fail that names nothing is not a fail and is not a pass either: the
+		// gate held an opinion it could not state. It ships, and it says so.
+		return unjudged(node, "the gate failed the work and named no gap", nil)
 	}
 	provider.Report(judgeCtx, provider.VerdictVerifiedSuccess)
 	// An ungrounded gap is still recorded as a gap: it is said out loud, it
@@ -692,6 +898,25 @@ func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.
 	// those refusals happen at the wiring seam rather than being laundered
 	// into a pass here.
 	return Judgment{Gaps: gaps, Quote: strings.TrimSpace(verdict.Quote), Checked: true}
+}
+
+// unjudged is the fail-open pass, said out loud.
+//
+// The behaviour is unchanged and deliberately so: a gate that cannot answer must
+// not hold a finished deliverable hostage, so the work ships. What changes is
+// that the pass is no longer indistinguishable from a verdict. It carries the
+// reason on the judgement, so any surface holding one can tell "read and found
+// whole" from "never read", and it is logged in the same register as everything
+// else in this file that could not do its job — because a gate that has quietly
+// stopped existing on the models most worth pointing it at is exactly the kind
+// of failure nobody goes looking for until it has been true for a month.
+func unjudged(node store.Node, why string, err error) Judgment {
+	note := why
+	if err != nil {
+		note += ": " + firstLine(err.Error())
+	}
+	log.Printf("note: the delivery gate did not judge %s — %s; delivering unjudged", node.ID, note)
+	return Judgment{Pass: true, Unjudged: note}
 }
 
 // The citation invariant: a gate's gap may commission new work only if it
@@ -984,14 +1209,16 @@ var retryWorkerSchema = json.RawMessage(`{
 // happens either way — this decides who gets it, never whether there is one.
 func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.Client,
 	node store.Node, task exec.Task, outcome *exec.Outcome, failure error,
-	menu, workerModel string) string {
+	menu, workerModel string, options ...Option) string {
 	if strings.TrimSpace(menu) == "" || client == nil {
 		return ""
 	}
+	budget := newBounds(options).budget(retryWorkerPrompt)
 	var body strings.Builder
 	body.WriteString("The assignment:\n" + task.Brief)
 	if produced := strings.TrimSpace(outcome.Text); produced != "" {
-		body.WriteString("\n\nWhat the first attempt had produced when it stopped:\n" + boundedDelivery(produced))
+		body.WriteString("\n\nWhat the first attempt had produced when it stopped:\n" +
+			boundedDelivery(produced, budget))
 	}
 	if failure != nil {
 		body.WriteString("\n\nHow it ended: " + firstLine(failure.Error()))
@@ -1001,9 +1228,9 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "retry-worker")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	options := []ai.Option{ai.WithMaxTokens(200)}
+	var request []ai.Option
 	if client.Routed() {
-		options = append(options, ai.WithSchema(retryWorkerSchema))
+		request = append(request, ai.WithSchema(retryWorkerSchema))
 	}
 	// The menu rides the end of the user message, not the system one. It reads
 	// as law — here are the workers, here is how to choose between them — but it
@@ -1013,11 +1240,11 @@ func JudgeRetryWorker(ctx context.Context, settings config.Config, client *pool.
 	// one string in this call that could have been identical from job to job.
 	// Position by volatility: what churns sinks (12.4.1, and the same fix
 	// internal/head/compiler.go took for the same block).
-	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
+	response, err := askVerdict(judgeCtx, client, []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: retryWorkerPrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text",
 			Text: body.String() + WorkerChoiceBrief(menu)}}},
-	}, options...)
+	}, request)
 	if err != nil || response == nil {
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
 		return ""
@@ -1116,27 +1343,32 @@ var remainderWorkerSchema = json.RawMessage(`{
 // belongs with it by default and needs no naming, and the interesting answer is
 // the other one. Who was promised this leaf is read by the dispatch path, which
 // is the one owner of that question, so it arrives here already answered.
+//
+// It takes no Option: nothing in this prompt is clipped here, so there is no
+// window-derived bound for one to move. What it does share with the other two is
+// the completion cap and the empty-reply retry, both of which are facts about
+// the reply rather than about the window.
 func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, produced, menu, workerModel string) Remainder {
 	body := "The assignment:\n" + node.Brief + "\n\nProduced before stopping:\n" + produced
 	judgeCtx := settings.Context(router.WithAvoidModel(ctx, workerModel), "remainder")
 	judgeCtx = provider.WithCall(judgeCtx, provider.ClassPlanAudit)
 	// Like the delivery gate, the judgment is part of what this leaf cost.
 	judgeCtx = pool.WithSpendNode(judgeCtx, node.ID)
-	options := []ai.Option{ai.WithMaxTokens(400)}
+	var request []ai.Option
 	if client.Routed() {
 		schema := remainderSchema
 		if menu != "" {
 			schema = remainderWorkerSchema
 		}
-		options = append(options, ai.WithSchema(schema))
+		request = append(request, ai.WithSchema(schema))
 	}
 	// The menu sits at the end of the user message for the reason the retry
 	// judgement's does: it is measured, it moves within a session, and the
 	// system prompt above it is a constant this build never rewrites.
-	response, err := client.CompleteWithMessages(judgeCtx, []ai.Message{
+	response, err := askVerdict(judgeCtx, client, []ai.Message{
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: remainderPrompt}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: body + WorkerChoiceBrief(menu)}}},
-	}, options...)
+	}, request)
 	if err != nil || response == nil {
 		provider.Report(judgeCtx, provider.VerdictProviderFailure)
 		return Remainder{}
@@ -1168,13 +1400,26 @@ func JudgeRemainder(ctx context.Context, settings config.Config, client *pool.Cl
 		Worker: DecodeWorkerChoice(text)}
 }
 
-// deliveryPartialBytes bounds the partial handed to a judgement. It is the
-// same bound the delivery path uses: what a message can carry, less the room a
-// sentence is posted with.
+// deliveryPartialBytes is what the partial handed to a judgement is bounded to
+// when the window is unknown. It is the same bound the delivery path uses —
+// what a message can carry, less the room a sentence is posted with — which is
+// a fact about the transport and was standing in for a fact about the prompt.
+// This partial is never posted anywhere; it is read by a model, so a known
+// window bounds it by what that model can hold and this literal is only the
+// answer for a build that does not know.
+//
+// It is a fallback and not a floor, which is the difference between it and the
+// run tail above. On a window whose reserve leaves a small pot, fifteen
+// kilobytes of one block is most of the prompt — the partial would crowd out
+// the assignment it is being read against — so a known window that says less is
+// believed. The run tail is floored instead because it is counted in lines and
+// a handful of them convicts nothing: six recorded tool calls are worse to
+// judge against than the twenty-four this always sent.
 const deliveryPartialBytes = store.MaxMessageBytes - 1<<10
 
-func boundedDelivery(text string) string {
-	return clipUTF8Bytes(strings.TrimSpace(text), deliveryPartialBytes)
+func boundedDelivery(text string, budget ctxbudget.Budget) string {
+	return clipUTF8Bytes(strings.TrimSpace(text),
+		budget.Share(gatePartialShare, gateShareTotal, deliveryPartialBytes))
 }
 
 func nodeDisplay(node store.Node) string {

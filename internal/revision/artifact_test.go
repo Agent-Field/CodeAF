@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 )
 
 // The name a person writes is the address they mean. A name carrying a
@@ -108,7 +110,7 @@ func TestTheEvidenceBlockSettlesTheNamedFilesAndCarriesTheCriterion(t *testing.T
 		Artifacts: []string{produced},
 		Named:     []string{"report.md", "docs/appendix.md"},
 		Observed:  true,
-	}.block()
+	}.block(ctxbudget.Budget{})
 	for _, want := range []string{
 		"report.md — produced, at " + produced,
 		"docs/appendix.md — nothing of that name is among what was left behind",
@@ -120,13 +122,13 @@ func TestTheEvidenceBlockSettlesTheNamedFilesAndCarriesTheCriterion(t *testing.T
 	// Named files with nothing produced at all is still a record, not silence:
 	// an ask that named a file and a run that left nothing is the loudest
 	// reading there is, and it used to render as the empty string.
-	bare := Evidence{Named: []string{"report.md"}, Observed: true}.block()
+	bare := Evidence{Named: []string{"report.md"}, Observed: true}.block(ctxbudget.Budget{})
 	if !strings.Contains(bare, "report.md — nothing of that name") {
 		t.Fatalf("an unproduced named file rendered as nothing:\n%s", bare)
 	}
 	// And an evidence with nothing in it at all still renders nothing, so a
 	// caller holding no outcome cannot manufacture a record by omission.
-	if got := (Evidence{}).block(); got != "" {
+	if got := (Evidence{}).block(ctxbudget.Budget{}); got != "" {
 		t.Fatalf("an empty record rendered %q", got)
 	}
 }
@@ -138,7 +140,7 @@ func TestTheEvidenceBlockCarriesWhatWasAlreadyBroken(t *testing.T) {
 	note := "`make all` exited 2, and every failing test it reports " +
 		"(TestFailGenFishCompletionFile) was ALREADY failing at this commit " +
 		"before the run touched the workspace."
-	block := Evidence{Baseline: []string{note}, Observed: true}.block()
+	block := Evidence{Baseline: []string{note}, Observed: true}.block(ctxbudget.Budget{})
 	if !strings.Contains(block, note) {
 		t.Fatalf("the record dropped the baseline delta:\n%s", block)
 	}
@@ -150,7 +152,7 @@ func TestTheEvidenceBlockCarriesWhatWasAlreadyBroken(t *testing.T) {
 	if strings.Contains(block, UnexercisedRecord) {
 		t.Fatalf("a baseline-only record read as an unexercised run:\n%s", block)
 	}
-	if got := (Evidence{Observed: true}).block(); got != UnexercisedRecord {
+	if got := (Evidence{Observed: true}).block(ctxbudget.Budget{}); got != UnexercisedRecord {
 		t.Fatalf("an empty observed record = %q", got)
 	}
 }
