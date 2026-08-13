@@ -48,7 +48,7 @@ func TestTheLeafsWorkingDirectoryHoldsNoMachinery(t *testing.T) {
 
 	tools := NewToolbox(space, "n7", nil)
 	spilled := tools.spill(Result{Content: strings.Repeat("observation bytes ", 4000)})
-	if !strings.Contains(spilled.Content, "Full output saved to") {
+	if !strings.Contains(spilled.Content, "Whole output:") {
 		t.Fatalf("the oversized result was never spilled: %q", spilled.Content)
 	}
 
