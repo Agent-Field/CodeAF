@@ -602,7 +602,7 @@ func (a *App) absorb(messages []store.Message) int {
 		if block.questions > 0 && !block.user {
 			a.noticeQuestion(message.Body)
 		}
-		if a.turn.active && endsTurn(message, a.turn.since) {
+		if a.turn.active && endsTurn(message, a.turn.since) && a.retires(message) {
 			settled, landedInto = true, block
 		}
 	}
@@ -730,6 +730,51 @@ func (a *App) jobCard(job string) (*messageBlock, int, bool) {
 // retire a conversation the head is still having.
 func endsTurn(message store.Message, since int64) bool {
 	return message.Role == store.RoleAgent && message.NodeID == "" && message.Seq > since
+}
+
+// retires decides whether the row [endsTurn] recognised is really this turn's
+// ending, or the turn TALKING while it is still working.
+//
+// `say` is the head putting one line in front of a person mid-turn, and it goes
+// through the ordinary posting door on purpose — it is an ordinary thing for the
+// head to say, and every surface already draws it. What that costs here is that
+// its row is shaped exactly like the reply: an agent line, no node, above the
+// turn's watermark. Retiring the live region on it threw away the words already
+// streamed and left every delta after it with nowhere to go, so the rest of the
+// answer appeared whole at the next poll — the failure this whole wave is about,
+// reached from inside the one path that was already streaming.
+//
+// THE GRANT IS KEYED TO THE HEAD'S OWN LOOP ORDER, which is call, tool, call:
+// internal/head/loop.go runs executeWatched only after CompleteWithMessages has
+// returned, so the boundaries arrive Started, deltas, Finished, ToolBegin,
+// ToolEnd, Started, … A belt call is therefore something that happens BETWEEN
+// two completions, and a row that lands in that window is the turn talking.
+//
+// It is bounded on every side, so no shape of answer can leave an awaiting line
+// standing forever:
+//
+//   - GRANTED by a tool boundary ([App.applyToolStream]). A turn that made no
+//     belt call cannot have said anything early, so its first qualifying row is
+//     its ending exactly as before — which covers every visitor window, every
+//     window with no stream behind it, and every ordinary conversational turn.
+//   - CLEARED by the next completion ending ([App.applyStream]'s Finished and
+//     Failed arms). The LAST Finished of a turn is followed by the reply and by
+//     no further belt call, so the row that really ends the turn always finds
+//     the grant already spent. That is what makes this bounded rather than
+//     hopeful.
+//   - SPENT by the row it excuses, here, so two rows inside one window cannot
+//     both be excused.
+//   - NEVER applied to a row that MATCHES what the live region has drawn. That
+//     row is the preview becoming durable, whatever else is in flight.
+func (a *App) retires(message store.Message) bool {
+	if !a.turn.interim {
+		return true
+	}
+	if strings.TrimSpace(message.Body) == strings.TrimSpace(a.turn.shown) {
+		return true
+	}
+	a.turn.interim = false
+	return false
 }
 
 // sanitizeMessage runs one journaled message through the v2 chokepoint — body
@@ -984,6 +1029,12 @@ func (a *App) applyStream(event StreamEvent) bool {
 		}
 		// The provider is done; the durable line is on its way. The awaiting
 		// line stops offering an interrupt it can no longer perform.
+		//
+		// A completion ending also spends whatever grace a belt call left behind
+		// ([App.retires]): the head's loop puts its tool boundaries AFTER a
+		// completion returns, so the last Finished of a turn is followed by the
+		// reply and by no further call.
+		a.turn.interim = false
 		a.turn.await.interruptible = false
 		if !a.turn.stopped {
 			a.turn.await.phase = "settling"
@@ -994,6 +1045,7 @@ func (a *App) applyStream(event StreamEvent) bool {
 		if !a.turn.active {
 			return false
 		}
+		a.turn.interim = false
 		a.turn.await.interruptible = false
 		if !a.turn.stopped {
 			a.turn.await.phase = "stream lost"

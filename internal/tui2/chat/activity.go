@@ -224,6 +224,10 @@ func (a *App) applyToolStream(event StreamEvent) bool {
 	moved := false
 	switch event.Kind {
 	case StreamToolBegin:
+		// A belt call is in hand, so the turn may put ONE line in front of the
+		// person before it is over — `say` does exactly that, through the
+		// ordinary posting door. See [App.retires] for the whole of the grant.
+		a.turn.interim = true
 		moved = a.turn.activity.begin(event.Delta)
 	case StreamToolEnd:
 		moved = a.turn.activity.settle(event.Delta, false)

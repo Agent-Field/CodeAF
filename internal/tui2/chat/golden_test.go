@@ -113,6 +113,12 @@ func collapsedActivityView(profile tokens.Profile, open bool) golden.View {
 			{Kind: StreamToolEnd, Session: testSession, Delta: "2 rows"},
 			{Kind: StreamToolBegin, Session: testSession, Delta: "reading the plan for «task-9»"},
 			{Kind: StreamToolEnd, Session: testSession, Delta: ""},
+			// The completion that produces the answer. The head's loop is call,
+			// tool, call (internal/head/loop.go), so a reply row is always
+			// preceded by a completion ending — and the surface reads that
+			// Finished as the moment an interim line can no longer be coming
+			// ([App.retires]).
+			{Kind: StreamFinished, Session: testSession},
 		}})
 		backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent,
 			Body: "Three things are running; navctx is the one that failed."})
