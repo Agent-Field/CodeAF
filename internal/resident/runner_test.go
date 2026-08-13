@@ -860,3 +860,97 @@ func TestRunnerServeStillClaimsWorkItWasNeverNudgedAbout(t *testing.T) {
 	cancel()
 	<-served
 }
+
+// The probe shape driven through the whole scheduler, with one researcher held
+// live for the duration: three sections fanned out, an assembler that reads all
+// three, and a delivery that reads the four.
+//
+// The store refuses the claim on its own (see the store's own floor test); this
+// is the pass over every gate that stands in front of that refusal — the ready
+// listing, the open-children skip, the governor, the rails, the slots — pinning
+// that none of them can hand a worker a node whose inputs are still live, no
+// matter how many free slots the run has to fill.
+func TestTheAssemblerNeverRunsBesideASectionStillBeingWritten(t *testing.T) {
+	graph := openRunnerStore(t)
+	researchers := []string{"task-8-n1", "task-8-n2", "task-8-n3"}
+	const assembler = "task-8-n4"
+	const held = "task-8-n2"
+
+	nodes := []store.NodeSpec{{ID: "task-8", Brief: "Deliver together", Stage: 2}}
+	inputs := make([]store.Need, 0, len(researchers))
+	for _, id := range researchers {
+		nodes = append(nodes, store.NodeSpec{ID: id, Parent: "task-8", Brief: "research " + id, Stage: 1})
+		inputs = append(inputs, store.Need{NodeID: id, Kind: store.FeedsInto})
+	}
+	nodes = append(nodes, store.NodeSpec{ID: assembler, Parent: "task-8", Brief: "assemble the three sections",
+		Stage: 1, Needs: inputs})
+	nodes[0].Needs = append(inputs, store.Need{NodeID: assembler, Kind: store.FeedsInto})
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: nodes}, store.Provenance{
+		Origin: store.OriginUser, SessionID: "s1", Intent: "compare three countries"}); err != nil {
+		t.Fatalf("splice fan-out: %v", err)
+	}
+
+	release := make(chan struct{})
+	var mu sync.Mutex
+	var order []string
+	var violation string
+	runner := NewRunner(graph, func(ctx context.Context, node store.Node) (ExecResult, error) {
+		mu.Lock()
+		order = append(order, node.ID)
+		if node.ID == assembler && violation == "" {
+			for _, id := range researchers {
+				section, ok, err := graph.Node(id)
+				if err != nil || !ok || section.Status != store.Done {
+					violation = fmt.Sprintf("the assembler started while %s was %s", id, section.Status)
+				}
+			}
+		}
+		mu.Unlock()
+		if node.ID == held {
+			<-release
+		}
+		return ExecResult{Summary: "wrote " + node.ID}, nil
+	}, "test-runner", 8)
+
+	ctx := context.Background()
+	// Slots to spare and nothing else to do: every tick here is the scheduler
+	// looking for anything at all it is allowed to start.
+	for range 6 {
+		if _, err := runner.Tick(ctx); err != nil {
+			t.Fatalf("tick: %v", err)
+		}
+	}
+	mu.Lock()
+	dispatched := append([]string(nil), order...)
+	mu.Unlock()
+	for _, id := range dispatched {
+		if id == assembler || id == "task-8" {
+			t.Fatalf("%s was dispatched while %s was still running; ran %v", id, held, dispatched)
+		}
+	}
+
+	close(release)
+	runner.Wait()
+	for range 4 {
+		if _, err := runner.Tick(ctx); err != nil {
+			t.Fatalf("tick after release: %v", err)
+		}
+		runner.Wait()
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if violation != "" {
+		t.Fatal(violation)
+	}
+	if len(order) != 5 {
+		t.Fatalf("the job ran %v, want all five nodes", order)
+	}
+	if order[3] != assembler || order[4] != "task-8" {
+		t.Fatalf("run order %v — the assembler and the delivery must come last", order)
+	}
+	brief, ok, err := graph.Node("task-8")
+	if err != nil || !ok || brief.Status != store.Done {
+		t.Fatalf("the delivery did not land: ok=%v err=%v", ok, err)
+	}
+}

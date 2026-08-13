@@ -71,3 +71,116 @@ func TestSpineRootIsNeverOrphanWorkAndSelfHeals(t *testing.T) {
 		t.Fatalf("root after Rebuild: status %q err %v", node.Status, err)
 	}
 }
+
+// The floor under every scheduler that will ever exist, in the shape that
+// exposed the need for one: three researchers fanned out and an assembler that
+// reads all three.
+//
+// The probe's assembler reached done while the second researcher was still
+// running, shipped a brief with that country's section invented, and the person
+// was told all three had been pulled together. The edges were the thing that
+// went missing there — the layout that admitted those four nodes recorded none
+// — so this pins the other half: wherever the inputs ARE recorded, no caller,
+// no ordering, no race and no retry may start a node while one of them is still
+// live. It is a property of the write, not of the queue that leads to it, which
+// is why both the offer and the claim are checked and why the claim is tried
+// directly rather than through anything that reads Ready first.
+func TestAnAssemblerIsUnclaimableUntilEveryInputIsTerminal(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "fanout.db"))
+
+	researchers := []string{"task-8-n1", "task-8-n2", "task-8-n3"}
+	const assembler = "task-8-n4"
+	nodes := []NodeSpec{{ID: "task-8", Brief: "Deliver together", Stage: 2}}
+	inputs := make([]Need, 0, len(researchers))
+	for _, id := range researchers {
+		nodes = append(nodes, NodeSpec{ID: id, Parent: "task-8", Brief: "research " + id, Stage: 1})
+		inputs = append(inputs, Need{NodeID: id, Kind: FeedsInto})
+	}
+	nodes = append(nodes, NodeSpec{ID: assembler, Parent: "task-8", Brief: "assemble the three sections",
+		Stage: 1, Needs: inputs})
+	nodes[0].Needs = append(inputs, Need{NodeID: assembler, Kind: FeedsInto})
+	if err := graph.Splice(RootID, Subtree{Nodes: nodes},
+		Provenance{Origin: OriginUser, SessionID: "s1", Intent: "compare three countries"}); err != nil {
+		t.Fatalf("splice fan-out: %v", err)
+	}
+
+	offered := func() map[string]bool {
+		t.Helper()
+		ready, err := graph.Ready(0)
+		if err != nil {
+			t.Fatalf("Ready: %v", err)
+		}
+		names := make(map[string]bool, len(ready))
+		for _, node := range ready {
+			names[node.ID] = true
+		}
+		return names
+	}
+
+	// Land the researchers one at a time. Until the last of them is terminal
+	// the assembler is neither offered nor takeable — including at the moment
+	// two of its three inputs are already done, which is exactly the state the
+	// probe's assembler started in.
+	for index, id := range researchers {
+		if names := offered(); names[assembler] {
+			t.Fatalf("the assembler was offered with %d of 3 sections written", index)
+		}
+		if _, won, err := graph.Claim(assembler, "runner"); err != nil || won {
+			t.Fatalf("the assembler was claimable with %d of 3 sections written: won=%v err=%v", index, won, err)
+		}
+		claim, won, err := graph.Claim(id, "runner")
+		if err != nil || !won {
+			t.Fatalf("claim %s: won=%v err=%v", id, won, err)
+		}
+		if err := graph.Start(claim); err != nil {
+			t.Fatalf("start %s: %v", id, err)
+		}
+		// Running, not merely claimed: a live input is the case that shipped.
+		if _, won, err := graph.Claim(assembler, "runner"); err != nil || won {
+			t.Fatalf("the assembler was claimable while %s was running: won=%v err=%v", id, won, err)
+		}
+		if err := graph.Complete(claim, "section for "+id); err != nil {
+			t.Fatalf("complete %s: %v", id, err)
+		}
+	}
+
+	if names := offered(); !names[assembler] {
+		t.Fatal("the assembler is still not offered with every section written")
+	}
+	claim, won, err := graph.Claim(assembler, "runner")
+	if err != nil || !won {
+		t.Fatalf("claim the assembler: won=%v err=%v", won, err)
+	}
+	// And the sink waits for the assembler in turn, which is why the probe's
+	// root was correctly pending while the assembler read done — the parent of
+	// a bundle is a node with edges, not a projection of its children.
+	if names := offered(); names["task-8"] {
+		t.Fatal("the delivery was offered while the assembler was still claimed")
+	}
+	if err := graph.Complete(claim, "the comparison brief"); err != nil {
+		t.Fatalf("complete the assembler: %v", err)
+	}
+	if names := offered(); !names["task-8"] {
+		t.Fatal("the delivery never became ready")
+	}
+
+	// A failed input is terminal too: the assembler runs and says what is
+	// missing rather than waiting forever on work that will never land.
+	dead := openTestStore(t, filepath.Join(t.TempDir(), "failed.db"))
+	if err := dead.Splice(RootID, Subtree{Nodes: []NodeSpec{
+		{ID: "job", Brief: "assemble", Needs: []Need{{NodeID: "part", Kind: FeedsInto}}},
+		{ID: "part", Parent: "job", Brief: "research"},
+	}}, Provenance{Origin: OriginUser, Intent: "one part, one assembler"}); err != nil {
+		t.Fatalf("splice failing shape: %v", err)
+	}
+	partClaim, won, err := dead.Claim("part", "runner")
+	if err != nil || !won {
+		t.Fatalf("claim part: won=%v err=%v", won, err)
+	}
+	if err := dead.Fail(partClaim, "the source was down"); err != nil {
+		t.Fatalf("fail part: %v", err)
+	}
+	if _, won, err := dead.Claim("job", "runner"); err != nil || !won {
+		t.Fatalf("a failed input must not wedge its consumer: won=%v err=%v", won, err)
+	}
+}
