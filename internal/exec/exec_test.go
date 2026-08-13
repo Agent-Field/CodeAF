@@ -165,7 +165,7 @@ func TestRecallSurfacesActiveSkillKind(t *testing.T) {
 // that made the output worth reading.
 func TestClampKeepsBothEnds(t *testing.T) {
 	body := strings.Repeat("a", maxToolResultBytes) + "FATAL: the thing that matters"
-	clamped := clamp(body)
+	clamped := clamp(body, maxToolResultBytes)
 
 	if len(clamped) > maxToolResultBytes+128 {
 		t.Errorf("clamped to %d bytes, want about %d", len(clamped), maxToolResultBytes)
@@ -438,7 +438,7 @@ func TestEveryByteBudgetCutsOnACharacterBoundary(t *testing.T) {
 	tail := strings.Repeat("🎯", 4096) + "!"
 
 	t.Run("routed input", func(t *testing.T) {
-		bounded := boundInput(head, []string{"report.md"})
+		bounded := boundInput(head, []string{"report.md"}, maxInputBytes)
 		if !utf8.ValidString(bounded) {
 			t.Fatal("a routed upstream result was cut mid-character")
 		}
@@ -448,7 +448,7 @@ func TestEveryByteBudgetCutsOnACharacterBoundary(t *testing.T) {
 	})
 
 	t.Run("tool result", func(t *testing.T) {
-		clamped := clamp(head + tail)
+		clamped := clamp(head+tail, maxToolResultBytes)
 		if !utf8.ValidString(clamped) {
 			t.Fatal("a tool result was cut mid-character at one of its two ends")
 		}

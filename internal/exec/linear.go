@@ -323,6 +323,12 @@ func (l *Linear) WithContextLength(tokens int) *Linear {
 	return l
 }
 
+// ContextLength answers what this loop's model holds, for the callers that must
+// size something for it before it runs — the scheduler bounding an upstream
+// result on its way in, principally. Zero is the honest unknown, exactly as
+// WithContextLength leaves it, and every reader has a named fallback for that.
+func (l *Linear) ContextLength() int { return l.contextTokens }
+
 // WithAttribution admits the attribution law into the standing contract. Off is
 // the absence of the paragraph rather than a paragraph saying not to: a worker
 // told nothing about attribution does not attribute.
@@ -462,7 +468,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	deadline, _ := ctx.Deadline()
 	landingReserve := deadlineLandingReserve(time.Until(deadline))
 
-	tools := newToolboxWithMedia(l.workspace, task.leafKey(), l.web, l.history, l.media)
+	tools := newToolbox(l.workspace, task.leafKey(), l.web, l.history, l.media, l.contextTokens)
 	tools.share = task.Share
 	task.control.attach(tools)
 	defer func() {

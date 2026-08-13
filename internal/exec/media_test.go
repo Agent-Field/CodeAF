@@ -104,11 +104,11 @@ func (f fakeModalities) Supports(modelID, direction, modality string) bool {
 func mediaToolbox(t *testing.T, provider MediaProvider, modalities ModalityCatalog) (*Toolbox, *Workspace) {
 	t.Helper()
 	space := workspace(t)
-	tools := newToolboxWithMedia(space, "7", nil, nil, &MediaTools{
+	tools := newToolbox(space, "7", nil, nil, &MediaTools{
 		Provider: provider, Catalog: modalities, ImageModel: "paint/model",
 		SpeechModel: "voice/model", MusicModel: "music/model", VideoModel: "motion/model",
 		VideoPrice: 0.5, WorkingModel: "vision/model",
-	})
+	}, 0)
 	return tools, space
 }
 
