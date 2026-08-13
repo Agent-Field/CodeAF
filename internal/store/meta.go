@@ -319,8 +319,16 @@ const (
 	// the wrong one costs a redo rather than a loss, so it is an ordinary
 	// VOI-gated ask. A person who always wants the proper job stops being asked
 	// for it, which is the whole point of asking in the first place.
-	QuestionCategoryScope   QuestionCategory = "scope"
-	QuestionCategoryGeneric QuestionCategory = "generic"
+	QuestionCategoryScope QuestionCategory = "scope"
+	// QuestionCategoryThreadSplit is "shall I take that as its own thread?" —
+	// the offer the head makes when a conversation pivots to something genuinely
+	// new. Like scope it is a boundary the words alone do not always settle, and
+	// like scope nothing about it is consent-bearing: both answers are places to
+	// keep talking, and the wrong one costs a switch rather than a loss. So it is
+	// an ordinary VOI-gated ask, and a person who always says yes stops being
+	// asked and simply gets the new thread with one clause said.
+	QuestionCategoryThreadSplit QuestionCategory = "split"
+	QuestionCategoryGeneric     QuestionCategory = "generic"
 )
 
 const (

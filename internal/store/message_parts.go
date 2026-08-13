@@ -54,6 +54,22 @@ const (
 	PartArtifact PartKind = "artifact"
 	// PartEnded says how the turn that produced this message ended.
 	PartEnded PartKind = "ended"
+	// PartRoomSwitch says the conversation continues in another room, and names
+	// it. It is the one cross-seam contract of the chats layer (chat-simplify
+	// 5.4): when a thread splits, the engine journals this part on a row in the
+	// OLD room and the surface applies it on its ordinary poll — composer and
+	// view re-point, and the head simply serves the new room. The coupling is
+	// journal-only on purpose. An in-process channel between the answer gate and
+	// the window would be a second seam, unreadable after the fact and absent
+	// entirely on a rebuild; a typed part is a fact both halves can read, and a
+	// surface that has never heard of it renders the row's prose and is merely
+	// out of date rather than wrong.
+	//
+	// Text is the new room's session id and nothing else. No title rides here:
+	// the scribe names the new room on its ordinary post-turn lane, moments
+	// later, and a name copied onto this part would be a second truth that is
+	// stale before it is read.
+	PartRoomSwitch PartKind = "room-switch"
 	// PartAside is a side-channel exchange, kept whole and shown collapsed.
 	//
 	// 8.2.9's law is that statements are durable and questions may be ephemeral:
@@ -280,6 +296,22 @@ func AsideRef(aside AsidePart) MessagePart {
 	return MessagePart{Kind: PartAside, Aside: &aside}
 }
 
+// RoomSwitchRef points the conversation at another room by id.
+func RoomSwitchRef(sessionID string) MessagePart {
+	return MessagePart{Kind: PartRoomSwitch, Text: strings.TrimSpace(sessionID)}
+}
+
+// RoomSwitchTarget reads the room a part points at, and reports false for every
+// other kind. It exists so no reader has to know that this part spells its
+// payload in Text — the one place that knowledge lives is here.
+func RoomSwitchTarget(part MessagePart) (string, bool) {
+	if part.Kind != PartRoomSwitch {
+		return "", false
+	}
+	target := strings.TrimSpace(part.Text)
+	return target, target != ""
+}
+
 // maxMessageParts bounds one message's block list. A message is a thing a
 // person reads; past this it is a document, and a document is an artifact.
 const maxMessageParts = 64
@@ -372,7 +404,7 @@ func compactPart(data []byte) json.RawMessage {
 
 func knownPartKind(kind PartKind) bool {
 	switch kind {
-	case PartText, PartQuestion, PartCard, PartProgress, PartArtifact, PartEnded, PartAside:
+	case PartText, PartQuestion, PartCard, PartProgress, PartArtifact, PartEnded, PartAside, PartRoomSwitch:
 		return true
 	default:
 		return false
@@ -540,6 +572,17 @@ func normalizeMessagePart(part MessagePart) (MessagePart, error) {
 		ended := *part.Ended
 		ended.FinishReason = strings.TrimSpace(ended.FinishReason)
 		return MessagePart{Kind: PartEnded, Ended: &ended}, nil
+
+	case PartRoomSwitch:
+		// A switch with no room to switch to is the one way this part can be
+		// wrong, and it is the only thing there is to check: the id is the whole
+		// payload, and whether that room exists is the reader's question rather
+		// than the writer's — the row survives the room being reaped.
+		target := strings.TrimSpace(part.Text)
+		if target == "" {
+			return MessagePart{}, fmt.Errorf("room-switch part names no room")
+		}
+		return MessagePart{Kind: PartRoomSwitch, Text: target}, nil
 
 	case PartAside:
 		if part.Aside == nil {

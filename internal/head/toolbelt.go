@@ -401,7 +401,7 @@ func beltDefinitions() []ai.ToolDefinition {
 			"question": beltProp("string", "one short question, in their terms"),
 			"options": map[string]any{"type": "array", "description": "two to four choices, each named the way the user would recognise it",
 				"items": map[string]any{"type": "string"}},
-			"category": beltProp("string", `omit unless this is the quick-look-or-proper-job boundary, where it is "scope" — that one is learned, so it may come back already assumed instead of asked`),
+			"category": beltProp("string", `omit unless this is one of the two learned boundaries: "scope" for quick-look-or-proper-job, "split" for whether their pivot should become its own thread (first option = its own thread). Both are learned, so either may come back already assumed instead of asked`),
 		}, "question", "options"),
 		beltTool(beltToolInterrupt, "Stop the head turn in flight, only when they asked you to stop what you are doing in this conversation; withdrawing work on the board is stop.", map[string]any{
 			"reason": beltProp("string", "one short line for the record, in the user's terms"),
