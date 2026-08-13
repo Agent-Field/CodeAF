@@ -224,16 +224,21 @@ func (a *App) applyToolStream(event StreamEvent) bool {
 	moved := false
 	switch event.Kind {
 	case StreamToolBegin:
-		// A belt call is in hand, so the turn may put ONE line in front of the
-		// person before it is over — `say` does exactly that, through the
-		// ordinary posting door. See [App.retires] for the whole of the grant.
-		a.turn.interim = true
 		moved = a.turn.activity.begin(event.Delta)
 	case StreamToolEnd:
 		moved = a.turn.activity.settle(event.Delta, false)
 	case StreamToolFailed:
 		moved = a.turn.activity.settle(event.Delta, true)
 	}
+	// EVERY tool boundary grants the interim line, both ends of the call and not
+	// just its opening. `say` posts from inside the call, so the opening alone
+	// would do — but a belt call may make a KEYED COMPLETION OF ITS OWN before it
+	// posts (the revision voice, internal/head/revisionvoice.go, which speaks in
+	// the room's own voice on the room's own key), and that nested completion's
+	// Finished would spend the grant before the row it was granted for arrived.
+	// Re-granting at the close is what makes the window the whole call rather
+	// than its first instant. See [App.retires].
+	a.turn.interim = true
 	if !moved {
 		return false
 	}

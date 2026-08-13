@@ -96,3 +96,58 @@ func streamRoom(key string) (room, suffix string, drawn bool) {
 // StreamRoomOf is streamRoom's exported half, for the one place that can check
 // the two vocabularies against each other. It answers the same three things.
 func StreamRoomOf(key string) (room, suffix string, drawn bool) { return streamRoom(key) }
+
+// -- THE ONE SURFACE THAT STILL APPEARS: A WORKER'S DELIVERABLE ---------------
+//
+// Everything above is about text the HEAD writes. The other model-authored text
+// a person can be looking at is a WORKER's — a leaf composing its deliverable
+// while its task room is open — and that one does not stream, cannot stream
+// today, and is not a matter of teaching this file another key. It is written
+// down here because the gap is invisible from the surface: a room that never
+// receives an event looks exactly like a room whose events it declined to draw.
+//
+// WHAT IS ACTUALLY MISSING. Not a key, and not a filter — an observer. There is
+// exactly one provider.WithStreamObserver in the product (cmd/aforge/chat.go's
+// serveHead), and the leaf path never passes through it:
+//
+//   - The runner is rooted at its own context.Background(), a SIBLING of the
+//     head's, so nothing installed on the head's context can reach a leaf.
+//   - The ExecuteFunc closure the runner is built from is constructed about a
+//     thousand lines before the stream channel exists, so it cannot capture it
+//     even if the roots were shared.
+//   - The head never calls exec at all. It journals a command, the reconciler
+//     applies it, the runner claims the node — the handoff is through SQLite, so
+//     there is no call stack from a turn to a leaf for a context to travel down.
+//
+// Below the missing observer the seam is sound: ctx reaches the adapter through
+// the pool's wall, the router and the client without ever being rebuilt, so an
+// observer installed on a leaf's context WOULD be honoured. This is a wiring
+// gap, not a design one.
+//
+// WHAT IT WOULD TAKE, precisely:
+//
+//  1. cmd/aforge/chat.go: derive the runner's context from a shared root, or
+//     reach the observer through a field on the brain rather than by capture.
+//     Wrap the two leaf call sites (the ordinary execute and the gate-revision
+//     repair) with WithStreamObserver plus WithStreamSession(ctx, node.ID) — a
+//     NODE key, which nothing in the product mints today.
+//  2. internal/tui2/chat: a task room's live region. viewNode has none: liveTurn
+//     is the conversation's, keyed to a room, and the room is painted by rebuild
+//     from the record. A node-keyed live region would subscribe by view.node and
+//     attach at the tail of view.transcript, under the same coalescing.
+//  3. A fan-out policy. One room shows one node, but a graph runs many leaves at
+//     once, and every one of them would be pushing tokens through a single
+//     channel sized for one head. The observer has to be installed per-node and
+//     ONLY for the node a surface is actually watching, which means the runner
+//     needs to know what is open — a subscription the product does not have.
+//
+// AND ONE CLASS OF WORKER CAN NEVER STREAM THIS WAY. The SWE subharness re-execs
+// an external engine binary and reads NDJSON off its stdout; there is no
+// provider client in that path to observe. Its equivalent already exists and is
+// already drawn: Task.Progress rows and the executor's flight recorder, which
+// the task room tails (trace.go's readTraceCmd).
+//
+// So the honest state is: the head's voice streams everywhere it is visible; a
+// worker's deliverable appears. Closing that is a wiring wave of its own, in
+// cmd/aforge's runner construction — which is co-worked territory for this
+// campaign — and not a line in this file.
