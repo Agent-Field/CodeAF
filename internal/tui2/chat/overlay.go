@@ -559,7 +559,11 @@ func (a *App) openSettingRowFrom(key string, from []string) tea.Cmd {
 // never per frame or per keystroke after: see [App.catalogJobs].
 func (a *App) catalog(title string) palette.Catalog {
 	return palette.Catalog{
-		Scope:    registry.ScopeThread,
+		Scope: registry.ScopeThread,
+		// A CHAT IS COMPOSER-FIRST, and saying so is what makes every key this
+		// sheet teaches a key that fires. Without it the list taught bare
+		// letters — `t`, `v`, `y` — which in this room are draft text.
+		Surface:  registry.SurfaceComposerFirst,
 		Title:    title,
 		Rooms:    a.catalogRooms(),
 		Jobs:     a.catalogJobs(),
@@ -580,9 +584,10 @@ func (a *App) catalog(title string) palette.Catalog {
 // shows up on the machine with the biggest store.
 func (a *App) belt(title string) palette.Catalog {
 	return palette.Catalog{
-		Scope:  registry.ScopeThread,
-		Title:  title,
-		Reason: a.entryReason,
+		Scope:   registry.ScopeThread,
+		Surface: registry.SurfaceComposerFirst,
+		Title:   title,
+		Reason:  a.entryReason,
 	}
 }
 

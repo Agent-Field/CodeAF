@@ -157,6 +157,59 @@ func (s *Store) OpenThreads(limit int) ([]ThreadArc, error) {
 	return arcs, nil
 }
 
+// ThreadIndex returns EVERY conversation, newest active first, with its open
+// arc filled in when it has one.
+//
+// IT IS OpenThreads WITHOUT THE FILTER, AND THE DIFFERENCE IS A PRODUCT BUG THAT
+// SHIPPED. [Store.OpenThreads] answers "what is still alive", which is the right
+// question for the head's alive glance and for the nudge — and the WRONG one for
+// a switcher. A switcher is an index: it exists so a person can walk back into a
+// conversation, and the conversations a person most wants to walk back into are
+// usually the ones that were finished properly. Driving the switcher from the
+// open-loops query meant a store holding three real sessions drew a list of
+// none — every answered conversation was invisible, the only row was the
+// `new thread` door, and enter on it abandoned the thread the reader was
+// standing in. That is the whole of "I cannot reach the chats feature".
+//
+// So OPEN IS A DECORATION HERE, NEVER A FILTER. A row's [ThreadArc.Open] and
+// [ThreadArc.UnseenDelivery] still say what is unresolved in it; nothing is
+// dropped for being settled. Callers that genuinely want the live set keep
+// asking OpenThreads, which is unchanged.
+//
+// Cost is OpenThreads': one tail read per room, bounded by the same scan cap,
+// paid when a door opens rather than on a cadence.
+func (s *Store) ThreadIndex(limit int) ([]ThreadArc, error) {
+	if limit <= 0 {
+		limit = OpenThreadsDefaultLimit
+	}
+	sessions, err := s.Sessions()
+	if err != nil {
+		return nil, fmt.Errorf("read thread index: %w", err)
+	}
+	seen, err := s.sessionSeenSeqs()
+	if err != nil {
+		return nil, fmt.Errorf("read thread index: %w", err)
+	}
+	arcs := make([]ThreadArc, 0, limit)
+	for index, session := range sessions {
+		if index >= openThreadScanCap || len(arcs) >= limit {
+			break
+		}
+		tail, err := s.MessageTail(session.ID, openThreadTailDepth)
+		if err != nil {
+			return nil, fmt.Errorf("read thread index: %w", err)
+		}
+		// The second return is deliberately discarded: it says whether the arc
+		// is OPEN, and this reader lists a room whatever the answer is. The arc
+		// itself is fully populated either way — title, activity, left-at line
+		// and the unseen mark — because threadArcOf fills those before it
+		// decides anything about liveness.
+		arc, _ := threadArcOf(session, tail, seen[session.ID])
+		arcs = append(arcs, arc)
+	}
+	return arcs, nil
+}
+
 // ParkedThreads is OpenThreads narrowed to the ones that have been sitting on
 // their open thing longer than idle. It is the nudge's query: a thread parked
 // since this morning is an ordinary working conversation, and one parked since
@@ -243,7 +296,25 @@ func threadArcOf(session Session, tail []Message, seenSeq int64) (ThreadArc, boo
 	case arc.UnseenDelivery && lastDelivery.Seq > lastUser.Seq:
 		arc.Open, arc.Left, arc.Since = ThreadOpenDelivery, lastDelivery.Body, lastDelivery.Time
 	default:
-		return ThreadArc{}, false
+		// SETTLED, AND STILL A REAL THREAD. The arc is filled in and returned
+		// with open=false rather than zeroed, because a settled conversation is
+		// exactly what [Store.ThreadIndex] exists to list — and a switcher row
+		// still needs the title, the activity mark and a line to recognise the
+		// conversation by. Callers asking "what is still alive" (OpenThreads,
+		// the head's brief) test the boolean and drop it, which is what they
+		// already did.
+		//
+		// The line is the AGENT's last word. "Left at" is what the conversation
+		// was saying when you walked away; quoting the reader's own last message
+		// back at them would make the switcher a list of things they already
+		// know they said. A thread whose agent has never spoken has no line, and
+		// absent is honest.
+		arc.Left, arc.Since = lastAgent.Body, lastAgent.Time
+		if arc.Since.IsZero() {
+			arc.Since = session.LastActive
+		}
+		arc.Left = clipThreadLine(arc.Left)
+		return arc, false
 	}
 	arc.Left = clipThreadLine(arc.Left)
 	if arc.Since.IsZero() {

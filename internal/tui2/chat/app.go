@@ -1048,6 +1048,26 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.pane.Key(msg)
 	}
 
+	// EVERY CHORD THE CATALOG PROMISES, ANSWERED BY THE ONE EXECUTOR.
+	//
+	// The arms above are the chords this file has a reason to intercept — quit,
+	// interrupt, the overlays, the scroll keys. Everything else the registry
+	// records as a chord for this room used to reach NOTHING: alt+g, alt+1,
+	// alt+2 and alt+3 were all declared in the catalog, drawn on the empty first
+	// frame, and had no arm anywhere in this ladder. The product's first
+	// impression was two dead doors out of three.
+	//
+	// Binding them one at a time would fix today's four and leave the next
+	// catalog row to be discovered by a person pressing a key that does nothing.
+	// So the ladder asks the registry instead, and the answer runs through
+	// [App.runEntry] — the same executor the tabs, the palette rows and the `?`
+	// sheet all arrive at. A row that is REACHABLE is now reachable every way it
+	// is advertised, by construction rather than by diligence.
+	if cmd, claimed := a.registryKey(key); claimed {
+		a.shell.Invalidate()
+		return cmd
+	}
+
 	// The capability door 5.20 rule 3 promises in EVERY room, reachable from the
 	// state a reader is actually in. See [App.helpKeyLive].
 	if key == helpKey && a.helpKeyLive() {
@@ -1931,6 +1951,41 @@ func (a *App) toggleRail() tea.Cmd {
 	default:
 		return a.setRailShown(false)
 	}
+}
+
+// registryKey runs the catalog row this chord belongs to, if one does.
+//
+// THREE REFUSALS, AND EACH CLOSES A WAY THIS COULD LIE:
+//
+//   - CHORDS ONLY. A bare printable key is draft text in a composer-first room
+//     and always outranks an accelerator ([registry.Entry.KeyOn] already returns
+//     "" for one, and this is the second lock on the same door). A named key
+//     like `tab` or `esc` is refused too: those are the shell's and the
+//     composer's, and a catalog row must never take one out from under them.
+//   - ONLY WHAT THIS ROOM CAN DO. An entry the room has a REASON against is
+//     drawn disabled on the `?` sheet, and a key that performed a verb the sheet
+//     says is unavailable would be the affordance lying in the loudest possible
+//     way. `key.voice` and `key.boost` are both in that state today.
+//   - ONLY WHILE NOTHING ELSE OWNS THE KEYBOARD. An overlay has already taken
+//     its keys before this runs; a draft in progress is left alone, because §8's
+//     rest state is typing and a chord is not worth interrupting a sentence for
+//     — except that a CHORD cannot be typed into a sentence, so the draft guard
+//     is deliberately NOT applied here. It is stated and dismissed so the next
+//     reader does not add it.
+func (a *App) registryKey(key string) (tea.Cmd, bool) {
+	if !strings.Contains(key, "+") {
+		return nil, false
+	}
+	for _, entry := range registry.ForScope(registry.ScopeThread) {
+		if entry.KeyOn(registry.SurfaceComposerFirst) != key {
+			continue
+		}
+		if a.entryReason(entry.ID) != "" {
+			return nil, false
+		}
+		return a.runEntry(entry.ID), true
+	}
+	return nil, false
 }
 
 // pageKey offers a keystroke to the page on screen.
