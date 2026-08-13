@@ -121,8 +121,20 @@ func ForUser(ctx context.Context, settings config.Config, client plan.Completer,
 
 	var redirection resident.Redirection
 	editable := make([]plan.Operation, 0, len(operations))
+	// The same naming law the mirror below applies, from the same place, so this
+	// pre-check and the edit it guards cannot disagree about which store node an
+	// operation means. Spelled out here, a removal aimed at the job's own
+	// deliverable looked at "<job>-n<root>", found nothing, and let the removal
+	// through as though the node were not running.
+	grown := make(map[int]bool)
 	for _, operation := range operations {
-		id := fmt.Sprintf("%s-n%d", job.ID, operation.Node)
+		if operation.Op == "add" && operation.Applied {
+			grown[operation.Node] = true
+		}
+	}
+	storeID := resident.PlanStoreIDs(planGraph, job.ID, grown)
+	for _, operation := range operations {
+		id := storeID(operation.Node)
 		if operation.Op == "remove" {
 			if node, found, err := graph.Node(id); err == nil && found &&
 				(node.Status == store.Running || node.Status == store.Claimed) {
