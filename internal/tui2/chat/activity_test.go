@@ -184,6 +184,11 @@ func TestTheActivityCollapsesUnderTheReplyThatEndsTheTurn(t *testing.T) {
 		toolBegin("looking at the work"), toolEnd("3 rows"),
 		toolBegin("searching for «pricing»"), toolEnd("2 rows"),
 		toolBegin("reading the plan for «task-9»"), toolEnd(""),
+		// The completion that produces the answer. The head's loop is call, tool,
+		// call (internal/head/loop.go), so a reply row always follows a completion
+		// ending — which is the boundary [App.retires] reads as "no interim line
+		// can still be coming".
+		StreamEvent{Kind: StreamFinished},
 	)
 	backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent,
 		Body: "Three things are running."})
@@ -314,6 +319,7 @@ func TestLinearModeStatesTheSummaryWithNoDoor(t *testing.T) {
 		StreamEvent{Kind: StreamStarted},
 		toolBegin("looking at the work"), toolEnd("3 rows"),
 		toolBegin("searching for «pricing»"), toolEnd(""),
+		StreamEvent{Kind: StreamFinished},
 	)
 	backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent,
 		Body: "Three things are running."})
@@ -347,6 +353,11 @@ func collapsedTurn(t *testing.T) (*App, *messageBlock) {
 		toolBegin("looking at the work"), toolEnd("3 rows"),
 		toolBegin("searching for «pricing»"), toolEnd("2 rows"),
 		toolBegin("reading the plan for «task-9»"), toolEnd(""),
+		// The completion that produces the answer. The head's loop is call, tool,
+		// call (internal/head/loop.go), so a reply row always follows a completion
+		// ending — which is the boundary [App.retires] reads as "no interim line
+		// can still be coming".
+		StreamEvent{Kind: StreamFinished},
 	)
 	backend.add(store.Message{SessionID: testSession, Role: store.RoleAgent,
 		Body: "Three things are running."})
