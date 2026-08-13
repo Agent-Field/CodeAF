@@ -548,7 +548,8 @@ func (a *App) absorb(messages []store.Message) int {
 		// immediately above). It is recorded rather than performed, because
 		// performing it here would reset the transcript this loop is still
 		// appending into. See [App.drainRoomSwitch].
-		if target := roomSwitchTarget(message); target != "" && a.roomSwitch.target == "" {
+		if target := roomSwitchTarget(message); target != "" && a.roomSwitch.target == "" &&
+			a.noteRoomSwitchSeen(message.Seq) {
 			a.roomSwitch = roomSwitchIntent{
 				target: target,
 				spoken: strings.TrimSpace(message.Body) != "",
