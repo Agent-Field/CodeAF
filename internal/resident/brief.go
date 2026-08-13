@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -334,10 +335,39 @@ func (r *Reconciler) briefActivity(previous store.Seen, throughSeq int64) (Brief
 	if activity.CostUSD > 0 {
 		activity.Events = append(activity.Events, BriefEvent{
 			Seq: spentSeq, Kind: store.BriefSpend,
-			Text: fmt.Sprintf("$%.2f spent while work continued.", activity.CostUSD),
+			Text: briefMoney(activity.CostUSD) + " spent while work continued.",
 		})
 	}
 	return activity, nil
+}
+
+// briefMoney is the arrival brief's one rounding rule.
+//
+// The brief printed one number twice and rounded it two ways, two lines apart:
+// "while you were away · $0.0023" in the header, "$0.00 spent while work
+// continued" in its own bullet. The header asked the surface's money formatter
+// and the bullet asked fmt for two decimals, and two decimals turn a real cost
+// into nothing — which does not read as "very small", it reads as free.
+//
+// So the sentence climbs the same ladder the header does: exact cents at a cent
+// and above, four decimals below one, and never fewer than one unit of the last
+// digit, because a positive figure may never render as zero. Above a thousand
+// dollars the header abbreviates to a count and this spells the figure out;
+// that is a difference of resolution between two true renderings, and never of
+// rounding. briefmoney_test.go pins the agreement across the range a brief
+// actually reports.
+func briefMoney(usd float64) string {
+	if math.IsNaN(usd) || usd <= 0 {
+		return "$0.00"
+	}
+	if cents := int64(math.Round(usd * 100)); cents > 0 {
+		return fmt.Sprintf("$%d.%02d", cents/100, cents%100)
+	}
+	frac := int64(math.Round(usd * 10_000))
+	if frac <= 0 {
+		frac = 1
+	}
+	return fmt.Sprintf("$0.%04d", frac)
 }
 
 const (
