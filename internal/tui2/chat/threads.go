@@ -280,11 +280,38 @@ func (a *App) threadName(session string) string {
 // -- the switcher --------------------------------------------------------------
 
 // threadsKey is the bare key that opens the switcher (5.2's J3: "one key `t`").
-// threadsChord is the same door for a room where every printable key belongs to
-// the draft — the same pair the registry records.
+// threadsChord and threadsCtrl are the same door for a room where every
+// printable key belongs to the draft — the pair the registry records.
+//
+// WHY THERE ARE TWO CHORDS, and why the ctrl one is the one the catalog leads
+// with. The alt spelling is not wrong: Bubble Tea v2 reports an ESC-prefixed
+// `alt+t` as exactly the string below, in BOTH input protocols — the legacy
+// decoder clears [Key.Text] and sets ModAlt when it unwraps an ESC prefix, and
+// the Kitty decoder clears Text whenever a modifier above ModShift is present,
+// so [Key.String] falls through to Keystroke() and spells it "alt+t" either
+// way. The binding matched what the library produces.
+//
+// IT NEVER PRODUCED IT. On macOS the Option key is a COMPOSE key by default:
+// Terminal.app and iTerm2 both send Option+t as the precomposed glyph `†`, one
+// printable rune with no modifier bit on it. Bubble Tea sees Text="†", and
+// [Key.String] returns the text rather than a keystroke — so the surface is
+// handed "†" and the case below is never entered. No amount of correcting the
+// binding reaches a key the terminal is eating before the program starts.
+//
+// That is the whole reason a chord-only door was the wrong door, and v1 already
+// learned it once: internal/tui binds ctrl+t beside alt+g for its task list and
+// says so in a comment ("Option only reaches the program as alt+g"). So the
+// control spelling is added here rather than swapped in — a reader whose
+// terminal DOES deliver Option keeps the chord in their fingers — and the
+// catalog is pointed at the control one, because the `?` sheet may only teach a
+// key that actually fires on the machine the reader is sitting at.
+//
+// ctrl+t is free on this surface. It is v1's rail toggle, not v2's: v2 reaches
+// the rail through ctrl+o ([App.toggleRail]) and has never bound ctrl+t.
 const (
 	threadsKey   = "t"
 	threadsChord = "alt+t"
+	threadsCtrl  = "ctrl+t"
 )
 
 // threadsEntryID is the registry row for the switcher, named once so the door,

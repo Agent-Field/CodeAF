@@ -120,12 +120,33 @@ const NewThreadWord = "new thread"
 // trap wearing a condition, because an empty filter is exactly the state a
 // reader is in when they start typing.
 //
-// Nothing is lost. The door is the last row of the list and it never filters
-// away, so the keyboard reaches it in one arrow or one `end` and enter; the
-// chord is the accelerator for the reader who already knows it is there. The
-// row teaches the chord, which is the whole of what the accelerator column is
-// for.
-const NewThreadKey = "ctrl+n"
+// IT IS NOT ctrl+n, AND THAT IS A COLLISION BEING PAID BACK. ctrl+n was this
+// constant's first value, and ctrl+n is also [core.navigate]'s "down" — the
+// emacs/readline spelling every list in this package answers, and the one the
+// palette and the model picker beside it both honour. Two meanings shipped on
+// one chord, and the switcher's own [Switcher.Key] resolved it in the WRONG
+// direction: it matched the mint before it offered the key to navigate, so
+// inside the one list in the product that has a door at the bottom, ctrl+n
+// stopped walking the list. A reader pressing it to move the cursor minted a
+// conversation instead.
+//
+// NAVIGATION WINS. It is the ecosystem-wide convention and it is the meaning a
+// reader brings from every other list on this surface; a door is a local
+// affordance and may not take a movement key away from the list it sits in.
+// [Switcher.Key] now offers every key to navigate FIRST and reads this constant
+// only afterwards, so the precedence is structural rather than a matter of
+// which case is written higher up — this constant can never shadow a movement
+// key again, whatever it is set to.
+//
+// ctrl+t is the replacement, and it is not arbitrary: it is the chord that
+// OPENED this list ([chat.threadsCtrl]), pressed again, and it is what "new
+// tab" is bound to in every browser a reader has ever used. Nothing is lost if
+// they never learn it. The door is the last row of the list and it never
+// filters away, so the keyboard reaches it in one arrow or one `end` and enter;
+// the chord is the accelerator for the reader who already knows it is there,
+// and the ROW is the affordance. The row teaches the chord, which is the whole
+// of what the accelerator column is for.
+const NewThreadKey = "ctrl+t"
 
 // leftAtLead opens the second column. It is a WORD and not a glyph because it
 // is the one piece of chrome on this surface that has to be read rather than
@@ -358,10 +379,14 @@ func (s *Switcher) header(width int) string {
 // a query can never swallow esc or enter, and the default arm inserts only what
 // the terminal reported as printable text.
 //
-// [NewThreadKey] MINTS A THREAD and does not move the cursor, which is the one
-// place this surface parts company with [core.navigate]'s vocabulary — ctrl+n is
-// "next" in that table and is "new" here, because this list has a door and that
-// door is what the chord names on the row that teaches it.
+// MOVEMENT OUTRANKS THE DOOR, and the shape of this function is the guarantee
+// rather than a comment asking the next editor to be careful. [core.navigate] is
+// offered every key BEFORE [NewThreadKey] is read, so a mint accelerator can
+// never shadow a movement key again — whatever it is set to. It was set to
+// ctrl+n once, which is [core.navigate]'s own "down", and matching the mint
+// first meant the one list in the product with a door at the bottom was also
+// the one list where ctrl+n stopped walking the list and minted a conversation
+// instead. See [NewThreadKey] for the full accounting.
 func (s *Switcher) Key(msg tea.KeyPressMsg) tea.Cmd {
 	switch key := msg.String(); key {
 	case "esc":
@@ -374,11 +399,12 @@ func (s *Switcher) Key(msg tea.KeyPressMsg) tea.Cmd {
 		s.setQuery(dropWord(s.list.query))
 	case "backspace":
 		s.setQuery(dropRune(s.list.query))
-	case NewThreadKey:
-		return s.mint()
 	default:
 		if s.navigate(key) {
 			return nil
+		}
+		if key == NewThreadKey {
+			return s.mint()
 		}
 		if text := msg.Key().Text; text != "" {
 			s.setQuery(s.list.query + text)

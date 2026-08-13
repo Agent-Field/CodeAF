@@ -974,11 +974,16 @@ func (a *App) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "alt+,":
 		return a.openSettings()
 
-	case threadsChord:
-		// The switcher's chorded spelling, bound unconditionally. The bare `t`
-		// below is the key the doc names and the registry leads with; this is
-		// the one a reader can press mid-sentence, which is the same pair every
-		// other bare-key row on this surface carries.
+	case threadsChord, threadsCtrl:
+		// The switcher's chorded spellings, bound unconditionally. The bare `t`
+		// below is the key the doc names; these are the ones a reader can press
+		// mid-sentence, which is the same pair every other bare-key row on this
+		// surface carries.
+		//
+		// TWO SPELLINGS BECAUSE ONE OF THEM DOES NOT ARRIVE. See [threadsCtrl]:
+		// a macOS terminal composes Option+t into `†` and the alt chord never
+		// reaches this switch at all. ctrl+t is the spelling that survives every
+		// terminal, and it is the one the registry teaches.
 		return a.openSwitcher()
 
 	case "ctrl+o":

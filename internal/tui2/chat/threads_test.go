@@ -658,8 +658,10 @@ func TestChoosingNewThreadMintsOneAndAsksForNothing(t *testing.T) {
 	press(app, threadsChord)
 
 	// Through the component's own key, so the close and the act happen in the
-	// order the surface really performs them.
-	cmd := app.switcher.Key(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+	// order the surface really performs them. The chord is ctrl+t and not the
+	// ctrl+n it shipped as — ctrl+n is the list's own "down" and the mint was
+	// shadowing it. See palette.NewThreadKey.
+	cmd := app.switcher.Key(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	if cmd == nil {
 		t.Fatal("the new-thread door produced no command")
 	}
