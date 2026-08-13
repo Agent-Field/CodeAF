@@ -216,6 +216,9 @@ func TestABareLetterAlwaysReachesTheFilter(t *testing.T) {
 
 // The door's chord means the same thing from any filter state, which is what a
 // chord is for — and it is the chord the row itself advertises.
+//
+// The key is pressed as the exact event Bubble Tea v2 delivers for it rather
+// than through a string, so this asserts the real decode and not a spelling.
 func TestTheDoorsChordMintsAThreadFromAnyState(t *testing.T) {
 	var chosen Result
 	s := newFixtureSwitcher(t, Options{
@@ -223,9 +226,54 @@ func TestTheDoorsChordMintsAThreadFromAnyState(t *testing.T) {
 		OnClose:  func() tea.Cmd { return nil },
 	})
 	typeSwitcher(s, "impor")
-	s.Key(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+	s.Key(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	if _, ok := chosen.(NewThread); !ok {
 		t.Fatalf("%s yielded %T (%v), want NewThread", NewThreadKey, chosen, chosen)
+	}
+}
+
+// THE COLLISION, ASSERTED FROM BOTH SIDES.
+//
+// ctrl+n shipped as the mint accelerator while it was also [core.navigate]'s
+// "down", and the mint was matched first — so inside the one list in the
+// product with a door at the bottom, ctrl+n stopped walking the list. These two
+// tests pin the resolution: movement keeps the key, and the mint is somewhere
+// that is not a movement key.
+func TestCtrlNWalksTheListAndNeverMints(t *testing.T) {
+	var chosen Result
+	s := newFixtureSwitcher(t, Options{
+		OnChoose: func(r Result) tea.Cmd { chosen = r; return nil },
+		OnClose:  func() tea.Cmd { return nil },
+	})
+	before := s.list.cursor
+	s.Key(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+	if chosen != nil {
+		t.Fatalf("ctrl+n minted a thread instead of moving the cursor: %v", chosen)
+	}
+	if got := s.list.cursor; got != before+1 {
+		t.Fatalf("ctrl+n did not move the cursor down: index %d -> %d", before, got)
+	}
+	// And it is the same movement the arrow makes, which is the whole claim.
+	s.Key(tea.KeyPressMsg{Code: tea.KeyUp})
+	if got := s.list.cursor; got != before {
+		t.Fatalf("up did not undo ctrl+n's move: index %d, want %d", got, before)
+	}
+}
+
+// The mint accelerator may never be a key [core.navigate] answers. This is the
+// structural guard rather than a spelling check: whatever NewThreadKey is set
+// to, offering it to a fresh list must not move the cursor.
+func TestTheMintChordIsNotAMovementKey(t *testing.T) {
+	s := newFixtureSwitcher(t, Options{
+		OnChoose: func(Result) tea.Cmd { return nil },
+		OnClose:  func() tea.Cmd { return nil },
+	})
+	before := s.list.cursor
+	if s.navigate(NewThreadKey) {
+		t.Fatalf("NewThreadKey %q is also a navigation key", NewThreadKey)
+	}
+	if got := s.list.cursor; got != before {
+		t.Fatalf("NewThreadKey %q moved the cursor: index %d -> %d", NewThreadKey, before, got)
 	}
 }
 

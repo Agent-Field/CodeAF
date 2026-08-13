@@ -6,7 +6,7 @@
              ▎  the wisp parity push  left at: the diff is ready when you …         2h
               ● importer rewrite      left at: parked on the schema questi…  yesterday
 
-                new thread            start one now — it names itself afte…     ctrl+n
+                new thread            start one now — it names itself afte…     ctrl+t
 
 
 
