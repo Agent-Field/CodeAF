@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/footer"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/homes"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/palette"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -39,9 +40,16 @@ import (
 // is the only surface that draws the room list. The chats wave ended that: the
 // bar row's title chip names the thread this window is in, permanently, which is
 // the same string — so a frame with the drawer shut still carried it and every
-// drawer test read as a failure. The `+ new` door has no such twin: it is the
-// rail's own affordance and nothing else in the product prints it.
-const railSentinel = newRoomDoor
+// drawer test read as a failure.
+//
+// It was then the `+ new` door, "the rail's own affordance and nothing else in
+// the product prints it" — and the overview prints it now, at the foot of its
+// own threads section, which is the whole point of that section. So the sentinel
+// moved again, to the one row of the rail that no page draws: the collapsed
+// homes lid. It is chosen for exactly the property the two previous choices
+// lost — nothing else on any frame says it — and if a page ever grows one, this
+// is the comment that says to move it again rather than to loosen the test.
+const railSentinel = homes.GroupWord
 
 // railOnFrame reports whether the sidebar's own rows are drawn.
 func railOnFrame(app *App, width, height int) bool {

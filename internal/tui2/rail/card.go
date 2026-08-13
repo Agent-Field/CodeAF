@@ -64,26 +64,32 @@ func (s rowShape) height() int {
 	return h
 }
 
-// treeGuide is a member row's place in the plan tree (§3): which ancestor
-// levels still have a branch running past it, and whether it is the last child
-// of its own parent.
+// Guide is a member row's place in the plan tree (§3): which ancestor levels
+// still have a branch running past it, and whether it is the last child of its
+// own parent.
 //
-// It is computed once per frame from the rows' depths (see [View.sizeGuides])
-// and never carried on a [Row], because it is a fact about a row's NEIGHBOURS.
-// A source asked to state it would be stating something it can get wrong, and a
-// tree drawn with a ├ where a ╰ belongs is a picture of a plan that does not
-// exist.
-type treeGuide struct {
-	// on is whether this row draws a connector at all. A JOB SCOPE's members
+// It is computed once per frame from the rows' depths (see [Guides]) and never
+// carried on a [Row], because it is a fact about a row's NEIGHBOURS. A source
+// asked to state it would be stating something it can get wrong, and a tree
+// drawn with a ├ where a ╰ belongs is a picture of a plan that does not exist.
+//
+// IT IS EXPORTED SO THERE IS EXACTLY ONE TREE IN THE PRODUCT. The overview page
+// draws the same plan the sidebar draws, at page altitude, and a second reading
+// of "which of these rows is the last child" would be a second answer to a
+// question with one right answer — the ├/╰ disagreement this type's own comment
+// warns about, now between two surfaces on one screen. The rail keeps drawing it
+// through this type unchanged, which is what its goldens pin.
+type Guide struct {
+	// On is whether this row draws a connector at all. A JOB SCOPE's members
 	// all do, and at home the rows that carry [Row.Tree] do: the home rail is a
 	// list of conversations, jobs and doors, and only the plan steps hanging off
 	// a job card have a parentage to draw. A tree over the rest would claim a
 	// structure those rows do not have.
-	on bool
-	// last says the row is the last child at its depth: its branch is the
+	On bool
+	// Last says the row is the last child at its depth: its branch is the
 	// corner, and the guide under it is blank.
-	last bool
-	// level is how many tree columns stand to the left of this row's branch: 0
+	Last bool
+	// Level is how many tree columns stand to the left of this row's branch: 0
 	// for a first-level limb, 1 for its child.
 	//
 	// It is measured from the shallowest connector row in the SCOPE rather than
@@ -92,11 +98,64 @@ type treeGuide struct {
 	// at home they hang off a card that is itself a member, so they sit at depth
 	// 1 — and a tree that indented by six columns at home and three inside the
 	// job would be one grammar with two spellings, in a column that has 28.
-	level int
-	// open is the set of ancestor LEVELS whose branch continues below this row,
+	Level int
+	// Open is the set of ancestor LEVELS whose branch continues below this row,
 	// one bit per level. A set bit draws the vertical guide in that column; a
 	// clear one draws the three spaces that say the ancestor is finished.
-	open uint8
+	Open uint8
+}
+
+// treeGuide is the name this package has always called it by, kept as an alias
+// so the renderer below reads exactly as it did.
+type treeGuide = Guide
+
+// Width is how many printable cells this guide's connector occupies, so a
+// caller can lay a row against it without drawing it first.
+func (g Guide) Width() int {
+	if !g.On {
+		return 0
+	}
+	return (g.Level + 1) * treeStep
+}
+
+// Prefix is the connector this row wears, as printable cells: the ancestor
+// guides, then the branch or the corner.
+//
+// sub asks for the CONTINUATION rather than the branch — a second line under a
+// row that has siblings below it keeps the vertical guide running past it, and
+// one under the last child draws blank. It is [View.indentTo]'s own switch,
+// spelled once so a page drawing this tree and the rail drawing it cannot come
+// to different conclusions about the same rows.
+func (g Guide) Prefix(sub bool) string {
+	return strings.Join(g.cells(sub), "")
+}
+
+// cells is the connector column by column: one ancestor guide per level, then
+// the branch. It is what both [Guide.Prefix] and the rail's own [View.indentTo]
+// are built from, so there is one place that decides which glyph stands where.
+func (g Guide) cells(sub bool) []string {
+	if !g.On {
+		return nil
+	}
+	out := make([]string, 0, g.Level+1)
+	for k := 0; k < g.Level; k++ {
+		if g.Open&(1<<uint(k)) != 0 {
+			out = append(out, guideVert)
+		} else {
+			out = append(out, guideBlank)
+		}
+	}
+	switch {
+	case sub && g.Last:
+		out = append(out, guideBlank)
+	case sub:
+		out = append(out, guideVert)
+	case g.Last:
+		out = append(out, branchLast)
+	default:
+		out = append(out, branchMid)
+	}
+	return out
 }
 
 // The connector grammar, in the tokens table's own geometry (5.17: box drawing
@@ -127,8 +186,8 @@ type rowIndent struct {
 
 // glyphCol is where the row's state glyph goes.
 func (a rowIndent) glyphCol() int {
-	if a.guide.on {
-		return a.base + (a.guide.level+1)*treeStep
+	if a.guide.On {
+		return a.base + a.guide.Width()
 	}
 	return a.base + a.depth*indentStep
 }
@@ -142,26 +201,18 @@ func (a rowIndent) textCol() int { return a.glyphCol() + indentStep }
 // under a row that has siblings below it keeps the vertical guide running past
 // it, and one under the last child draws blank, which is the same rule the row
 // above it obeyed.
+//
+// The cells themselves are [Guide.Prefix]'s, which is the one spelling of the
+// connector grammar in this package: a page drawing the same plan asks the same
+// method, so the two surfaces cannot disagree about where a corner goes.
 func (v *View) indentTo(l *lineBuf, at rowIndent, sub bool) {
 	l.padTo(at.base)
-	if at.guide.on {
-		for k := 0; k < at.guide.level; k++ {
-			if at.guide.open&(1<<uint(k)) != 0 {
-				l.add(guideVert, tokens.TextTertiary)
-			} else {
-				l.add(guideBlank, tokens.TextTertiary)
-			}
-		}
-		switch {
-		case sub && at.guide.last:
-			l.add(guideBlank, tokens.TextTertiary)
-		case sub:
-			l.add(guideVert, tokens.TextTertiary)
-		case at.guide.last:
-			l.add(branchLast, tokens.TextTertiary)
-		default:
-			l.add(branchMid, tokens.TextTertiary)
-		}
+	// One span per COLUMN, not one span for the whole prefix. Adjacent spans at
+	// one tier each write their own foreground sequence in [View.emit], so
+	// merging them would change the bytes of a frame whose picture is identical
+	// — and the goldens pin the bytes.
+	for _, cell := range at.guide.cells(sub) {
+		l.add(cell, tokens.TextTertiary)
 	}
 	if sub {
 		l.padTo(at.textCol())

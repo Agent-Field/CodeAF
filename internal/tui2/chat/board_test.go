@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -444,14 +445,28 @@ func TestAnOpenQuestionReplacesTheCensusWithNeedsYou(t *testing.T) {
 	// glyph is the vocabulary's own (5.21's amber ⚑ for a waits-on edge, the
 	// amber ? for a question); amber on prose would be emphasis, which 5.16
 	// forbids outright.
+	// It is the WORDS that are checked, not every span: amber on a state glyph
+	// is the vocabulary's own, and a glyph is not a word. The test used to skip
+	// span zero for that, which only held while the glyph happened to be first —
+	// a tree row leads with its connector now, and the glyph moved one along.
 	for _, other := range app.boardLines() {
-		for i, span := range other.spans {
-			if i == 0 || span.tier != tokens.Amber || span.text == boardNeedsYou {
+		for _, span := range other.spans {
+			if span.tier != tokens.Amber || span.text == boardNeedsYou || !hasLetter(span.text) {
 				continue
 			}
 			t.Fatalf("amber is being spent on the word %q, which is not a question", span.text)
 		}
 	}
+}
+
+// hasLetter reports that a span carries prose rather than glyphs or padding.
+func hasLetter(s string) bool {
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
 }
 
 // Tree as progress (§5b): a working job shows its live subtree, a settled one
@@ -549,14 +564,23 @@ func TestTheReceiptNamesModelsAsWordsAndNeverSlugs(t *testing.T) {
 	}
 }
 
-// A window with nothing in it says so. An unwired surface and an empty one must
-// never look alike (12.10).
-func TestAnEmptyBoardSaysItIsEmpty(t *testing.T) {
+// A fresh install says what each half of the overview IS — one sentence each,
+// under its own word. An unwired surface and an empty one must never look alike
+// (12.10), and a blank page is what an unwired one looks like.
+func TestAFreshOverviewTeachesWhatThreadsAndWorkAre(t *testing.T) {
 	app := newTestApp(&fakeBackend{}, nil, nil)
 	poll(t, app)
 	app.showPage(pageBoard)
-	if frame := boardFrame(t, app, 80, 12); !strings.Contains(frame, boardEmptyNote) {
-		t.Fatalf("an empty board drew nothing at all:\n%s", frame)
+	frame := boardFrame(t, app, 80, 20)
+	for _, want := range []string{
+		boardThreadsWord, boardThreadsNote,
+		boardWorkWord, boardWorkNote,
+		// The door out of the empty state is on the page, not in a footnote.
+		newRoomDoor,
+	} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("a fresh overview is missing %q:\n%s", want, frame)
+		}
 	}
 }
 
@@ -693,7 +717,12 @@ func TestTheBandsShareOneColumnGrammar(t *testing.T) {
 				t.Fatalf("an entry line sits at %d, not the name column: %q",
 					line.indent, boardLineText(line))
 			}
-			if line.mark == "" {
+			// A marker is not required, and the one row without one says why:
+			// the `+ new` door has no state to report, so its ornament cell is
+			// blank and its whole label stands at the edge — the rail's own
+			// answer for the same door. What the law is about is the COLUMN, and
+			// the column is the same either way.
+			if line.mark == "" && line.target != boardOpensNewThread {
 				t.Fatalf("an entry line carries no gutter marker: %q", boardLineText(line))
 			}
 		case boardMeta:
