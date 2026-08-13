@@ -1357,38 +1357,102 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 					// is also what the honest handover has to name.
 					unmet := gate
 					revised := false
-					// repair is the one revision round a failed gate buys: the
-					// same task, plus the critique and the draft it is aimed at.
-					repair := task
-					repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
-						Title:     "a review of your own first draft",
-						Artifacts: append([]string(nil), absolute...),
-						Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
-							"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
-							"\n\n" + revision.GateRevisionContract,
-					})
-					retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
-					polished, polishErr := runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
+					// What a failed gate buys depends on what actually failed,
+					// and there are two answers because there are two kinds of
+					// worker.
+					//
+					// A worker whose deliverable is prose is re-run: the thing
+					// that was judged wrong is the thing being remade, and the
+					// second attempt is the repair.
+					//
+					// A worker whose deliverable is a CHANGE is not, when the
+					// change is already in the repository and its own checks
+					// settled. There is nothing for a second run to do — it
+					// starts from a tree where the work has landed and a baseline
+					// that is already green — and it was measured doing exactly
+					// that: 23 model calls, zero edits, 80% of the leaf's bill,
+					// and then its empty outcome REPLACED the pass that had done
+					// the work, which is why the delivered account carried a
+					// verification story and not one file row. What failed there
+					// was the account, so the account is what is bought: one
+					// text-only call over the substrate record, the change's own
+					// text and the worker's last word. See revision.Compose.
+					//
+					// It is also the parallelism answer. A second engine run
+					// holds a leaf's slot for its full duration and takes the
+					// shared working tree's lease to land, which every sibling
+					// view's landing waits on; a composition takes neither.
+					composedOnly := revision.Composable(worker, outcome)
+					var polished *exec.Outcome
 					polishModel := workerModel
-					if model := provider.CallFrom(retryCtx).Model(); model != "" {
-						polishModel = model
+					if composedOnly {
+						composition := revision.Compose(ctx, settings, workingClient, node, task.Contract,
+							gate.Gaps, outcome, outcome.Account.Final, workerModel,
+							revision.WithContextTokens(planWindow(settings, planClient)))
+						if strings.TrimSpace(composition.Text) == "" {
+							// Nothing was composed, so nothing about the work has
+							// changed and the gate's verdict stands on its own.
+							// Falling back to an engine re-run here would buy the
+							// spend this path exists to refuse.
+							composedOnly = false
+							outcome.Verdict = provider.VerdictSemanticFailure
+						} else {
+							spent.PromptTokens += composition.Usage.PromptTokens
+							spent.CompletionTokens += composition.Usage.CompletionTokens
+							spent.CachedTokens += composition.Usage.CachedTokens
+							spent.Cost += composition.Usage.Cost
+							workerModel = composition.Model
+							text = composition.Text
+							if len(absolute) > 0 {
+								text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+							}
+							// The outcome is kept, not replaced. Its account,
+							// artifacts and baseline are the record of work that
+							// really happened and the composition did none of it;
+							// only the words are new.
+							outcome.Text = text
+							polished = outcome
+							polishModel = workerModel
+						}
 					}
-					if polishErr == nil && polished != nil && strings.TrimSpace(polished.Text) != "" {
-						spent.PromptTokens += polished.Usage.PromptTokens
-						spent.CompletionTokens += polished.Usage.CompletionTokens
-						spent.CachedTokens += polished.Usage.CachedTokens
-						spent.Cost += polished.Usage.Cost
-						spentTurns += polished.Turns
-						outcome = polished
-						workerModel = polishModel
-						text = polished.Text
-						absolute = absolute[:0]
-						for _, artifact := range polished.Artifacts {
-							absolute = append(absolute, filepath.Join(jobDir, artifact))
+					if !composedOnly {
+						// repair is the one revision round a failed gate buys: the
+						// same task, plus the critique and the draft it is aimed at.
+						repair := task
+						repair.Inputs = append(append([]exec.Input{}, inputs...), exec.Input{
+							Title:     "a review of your own first draft",
+							Artifacts: append([]string(nil), absolute...),
+							Result: "A reviewer compared the previous attempt against the original request and found gaps that must be closed:\n" + gate.Gaps +
+								"\n\nThe previous attempt (build on it, fix the gaps, do not start over):\n" + text +
+								"\n\n" + revision.GateRevisionContract,
+						})
+						retryCtx := provider.WithCallShape(settings.ExecContext(ctx), provider.ClassExecLeaf, 1, shape)
+						var polishErr error
+						polished, polishErr = runLeafWithWatchdog(retryCtx, worker, repair, deadline+2*time.Minute)
+						if model := provider.CallFrom(retryCtx).Model(); model != "" {
+							polishModel = model
 						}
-						if len(absolute) > 0 {
-							text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+						if polishErr != nil || polished == nil || strings.TrimSpace(polished.Text) == "" {
+							polished = nil
+						} else {
+							spent.PromptTokens += polished.Usage.PromptTokens
+							spent.CompletionTokens += polished.Usage.CompletionTokens
+							spent.CachedTokens += polished.Usage.CachedTokens
+							spent.Cost += polished.Usage.Cost
+							spentTurns += polished.Turns
+							outcome = polished
+							workerModel = polishModel
+							text = polished.Text
+							absolute = absolute[:0]
+							for _, artifact := range polished.Artifacts {
+								absolute = append(absolute, filepath.Join(jobDir, artifact))
+							}
+							if len(absolute) > 0 {
+								text += "\n\nFiles:\n" + strings.Join(absolute, "\n")
+							}
 						}
+					}
+					if polished != nil {
 						closed := revision.JudgeDeliverable(ctx, settings, planClient, graph, node, text, task.Contract,
 							gateEvidence(node, task.Spec, outcome, absolute, true), polishModel)
 						evidence.PolishClosed = closed.Checked && closed.Pass
@@ -1423,8 +1487,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 						// the old path gave up. The job may grow the work that closes
 						// it — once per span of the ask, inside the same round caps,
 						// rails and consent an exhausted leaf lives under.
+						// The change's own text rides with the artifacts and apart
+						// from them: a repair asked to say what was wrong needs to
+						// READ what was done, and everything that ever reached it
+						// before was a list of names.
 						extension := revision.ExtendForGap(ctx, graph, node, outcome.Text, unmet, absolute,
-							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
+							settings.DailyBudgetUSD, replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot),
+							outcomeRecords(outcome)...)
 						evidence.Quote, evidence.Round = extension.Quote, extension.Round
 						evidence.Extended, evidence.Refused = extension.Spliced > 0, extension.Refused
 						if extension.Spliced > 0 {
@@ -2108,8 +2177,38 @@ func gateEvidence(node store.Node, spec plan.Spec, outcome *exec.Outcome, artifa
 		// and the verification story instead, which is the whole difference
 		// between judging a claim and judging a void.
 		evidence.Account = outcome.Account
+		// And the change's own text, when the worker derived one. The account
+		// carries the handle; it is lifted onto the evidence rather than read
+		// through the account because this is the seam the gate's record is
+		// declared at, and a field the record does not name is a field no reader
+		// of the record knows to look for. It is what lets the gate settle a
+		// claim about WHY something changed rather than only about whether a
+		// file exists.
+		if outcome.Account != nil {
+			evidence.Patch = outcome.Account.Patch
+		}
 	}
 	return evidence
+}
+
+// outcomeRecords is what a leaf left behind that a later agent must READ rather
+// than reuse: today that is the text of the change it made, and the shape is one
+// slice so a worker that learns to leave a second kind of record — a measurement,
+// a transcript — adds it here and nowhere else.
+//
+// It is separate from the artifact list because the two invitations are
+// different. An artifact says "this exists, do not make it again"; a record says
+// "this is what happened, and your account of it comes from here". A remainder
+// handed only the first has no way to learn what the work it is finishing
+// actually did.
+func outcomeRecords(outcome *exec.Outcome) []string {
+	if outcome == nil || outcome.Account == nil {
+		return nil
+	}
+	if patch := strings.TrimSpace(outcome.Account.Patch); patch != "" {
+		return []string{patch}
+	}
+	return nil
 }
 
 // A hint is an invitation to write a file at a name, so a directory already
@@ -4131,8 +4230,19 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			// A remainder is planned against a workspace a worker has already been
 			// writing in, which is the case where this is worth the most: the
 			// replan can see what the exhausted leaf actually left behind.
-			Terrain:       plan.RenderTerrain(terrainRoot, goal),
-			FileShaped:    fileShapedAsk(terrainRoot, goal),
+			Terrain:    plan.RenderTerrain(terrainRoot, goal),
+			FileShaped: fileShapedAsk(terrainRoot, goal),
+			// What the finished work left behind that this remainder can READ.
+			// It travels on the context rather than in the goal because the pass
+			// that needs it is four calls in — the one that writes each leaf's
+			// working method — and a method writer that does not know whether
+			// the facts are obtainable writes a method that improvises them.
+			// Continues is unconditional here: this function IS the remainder
+			// planner, so every plan it builds is a continuation, including the
+			// ones whose earlier work left no readable record at all — which is
+			// precisely the case the method has to be honest about.
+			Continues:     true,
+			Records:       resident.PlanRecordsFromContext(ctx),
 			SpineSamples:  settings.SpineSamples,
 			ContextTokens: planWindow(settings, planClient),
 			// The same prices the original build was weighed against. A

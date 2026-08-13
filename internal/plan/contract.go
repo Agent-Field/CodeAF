@@ -138,8 +138,10 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 	sink := graph.deliverableSink()
 	// Read off the graph here rather than inside the goroutines: it is one fact
 	// about the goal, and the discipline in this loop is that nothing concurrent
-	// touches the graph at all.
+	// touches the graph at all. The record roster is read at the same moment and
+	// for the same reason.
 	fileShaped := graph.FileShaped
+	continues, records := graph.Continues, append([]string(nil), graph.Records...)
 	for _, id := range graph.writtenLeaves() {
 		node := graph.Node(id)
 		if node == nil || strings.TrimSpace(node.Contract) != "" {
@@ -172,7 +174,7 @@ func Contracts(ctx context.Context, client Completer, graph *Graph, playbook Con
 			if playbook != nil {
 				notes = playbook(node)
 			}
-			contract, usage, err := writeContract(ctx, client, shared, node, notes, node.ID == sink, fileShaped)
+			contract, usage, err := writeContract(ctx, client, shared, node, notes, node.ID == sink, fileShaped, continues, records)
 			mutex.Lock()
 			defer mutex.Unlock()
 			results = append(results, result{id: node.ID, contract: contract, usage: usage, err: err})
@@ -249,7 +251,47 @@ func contractDeliverableLineFor(fileShaped bool) string {
 	return contractDeliverableLine
 }
 
-func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string, deliverable, fileShaped bool) (string, *ai.Usage, error) {
+// recordBlock tells the method writer what the agent will actually be handed of
+// the work already done, and it is a statement of fact rather than an
+// instruction about what to do with it.
+//
+// It exists because of a false statement that was shipped to a person. A leaf
+// was asked to explain what had been wrong with some code; the pass that wrote
+// its method had been handed nothing about the finished work but a list of file
+// PATHS; with no way to say where the answer could come from, the method it
+// wrote told the agent to infer the cause from the fact that the tests now
+// passed, and offered an example of what such a cause might be. The agent
+// shipped the example verbatim as the real root cause. Every layer behaved
+// exactly as designed: the method writer had nothing, so it improvised, and the
+// gate that should have caught it held file names and no content.
+//
+// So the mechanism is what is HANDED IN, not a rule about what to write. With a
+// record, the writer knows there is somewhere for the facts to come from and can
+// route the method through it. Without one, the writer knows there is not — and
+// the sentence a method needs in that case is the one that permits an agent to
+// say the record does not name something, which a writer who believes the agent
+// can find out anyway will never think to write.
+func recordBlock(continues bool, records []string) string {
+	// A plan that continues nothing renders nothing at all, and the prompt is
+	// what it has always been: there is no earlier work for a record to be of,
+	// so both halves below would be answering a question this job never raised.
+	if !continues {
+		return ""
+	}
+	if len(records) == 0 {
+		return "\nNo record of the earlier work is handed to this agent: it will have its " +
+			"instruction, its inputs, and whatever it can run or read for itself, and nothing else. " +
+			"Where done means stating a fact about work that has already happened, the method must " +
+			"say where that fact is to come from, and must have the agent say plainly that the record " +
+			"does not name it when it is not there to be found.\n"
+	}
+	return "\nThe agent will be handed these records of the work already done, as readable files it " +
+		"can open with its shell:\n" + strings.Join(records, "\n") +
+		"\nAny fact the job needs about what was done, changed, or found is in them, and the method " +
+		"should say to read them for it rather than to reason it out.\n"
+}
+
+func writeContract(ctx context.Context, client Completer, shared string, node Node, playbook string, deliverable, fileShaped, continues bool, records []string) (string, *ai.Usage, error) {
 	var target strings.Builder
 	// A node that came out of a plan always has a title; the one-leaf job does
 	// not, because there was nothing to distinguish it from. Naming the job
@@ -269,6 +311,12 @@ func writeContract(ctx context.Context, client Completer, shared string, node No
 	if deliverable {
 		target.WriteString(contractDeliverableLineFor(fileShaped))
 	}
+	// What this agent will be able to KNOW, stated before the method is written
+	// rather than discovered by an agent that has already promised an answer.
+	// It goes in the per-node message and not in the shared preamble so the
+	// system doctrine and the shared context stay byte-identical across the
+	// fan-out and N-1 of the calls still land on a warm prefix.
+	target.WriteString(recordBlock(continues, records))
 	// The earned notes are per-leaf, retrieved for this node's territory, so
 	// they belong here and nowhere earlier. Every leaf in a project is written
 	// concurrently against the same doctrine and the same shared context; if the

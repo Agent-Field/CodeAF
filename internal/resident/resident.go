@@ -184,6 +184,36 @@ func PlanAnchorFromContext(ctx context.Context) (PlanAnchor, bool) {
 	return anchor, ok && strings.TrimSpace(anchor.NodeID) != ""
 }
 
+type planRecordsKey struct{}
+
+// withPlanRecords carries the files the finished work left behind — the ones a
+// remainder must READ, not reuse — into the planning call.
+//
+// It rides the context for the same reason the anchor does: OverrunPlanFunc is
+// (goal, prefix) and nothing else, on purpose, so that every caller planning a
+// remainder is planning from the same two things. What travels here is not part
+// of the goal — it is a fact about what the PLANNER's own later passes will have
+// available, and the pass that needs it is the one that writes each leaf's
+// working method, four calls further in.
+func withPlanRecords(ctx context.Context, records []string) context.Context {
+	if len(records) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, planRecordsKey{}, append([]string(nil), records...))
+}
+
+// PlanRecordsFromContext returns the readable record of the work this plan is a
+// remainder of. Empty is the ordinary case — a fresh plan is a remainder of
+// nothing — and every pass that reads it renders exactly what it rendered before
+// records existed.
+func PlanRecordsFromContext(ctx context.Context) []string {
+	if ctx == nil {
+		return nil
+	}
+	records, _ := ctx.Value(planRecordsKey{}).([]string)
+	return records
+}
+
 // Reconciler is the replaceable background half of the resident thread. The
 // store remains the source of truth; this type keeps injected planning
 // behavior and a working copy of two durable cursors in memory.

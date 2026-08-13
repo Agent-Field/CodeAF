@@ -87,6 +87,14 @@ func streamName(leaf string) string {
 	return filepath.Join(traceDir, fmt.Sprintf("%s.stream.ndjson", pathSlug(leaf)))
 }
 
+// patchName is where a node's own change set is written out in full, beside the
+// recorder and under the same git-excluded directory — a patch file written into
+// the workspace would be part of the next diff, and the engine's auditor would
+// correctly refuse to ship it. One spelling, for [streamName]'s reason.
+func patchName(leaf string) string {
+	return filepath.Join(traceDir, fmt.Sprintf("%s.patch", pathSlug(leaf)))
+}
+
 // StreamFile is where a node's raw subharness event stream is written. It is
 // referenced by the recorder and read by whoever is debugging a run; no surface
 // renders it, which is the whole point of it being a separate file.

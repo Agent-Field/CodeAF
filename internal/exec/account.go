@@ -40,6 +40,81 @@ type Account struct {
 	Checks []Check
 	// Final is the last thing the worker said about the whole job, verbatim.
 	Final string
+
+	// Range is the two commits this account's change set was measured between,
+	// when it was measured from the repository rather than narrated by the
+	// worker as it went. See [Range] for why the difference is the whole point.
+	Range Range
+	// Patch is where the change set's own text lives: a path to the diff, in
+	// full, written under the harness's own directory for this node.
+	//
+	// It is a handle rather than the bytes because a diff is unbounded and
+	// every reader downstream is bounded — but it is a handle to CONTENT, which
+	// is the thing the file list never was. A judge asked whether the
+	// deliverable's account of the change is true can read the change; a method
+	// writer handed the goal of describing it can read it instead of inferring
+	// it. Empty when nothing was derived, which reads as no claim.
+	Patch string
+}
+
+// Range is the span of repository history one node's work occupies: the commit
+// its own change set is measured from, and the commit it is measured to.
+//
+// It exists because the two accounts of what a coding leaf changed were not the
+// same account. One was narration — the file rows the engine published on the
+// wire as each tool call finished — and it was per-PASS: a second attempt at
+// the same node reported only what the second attempt touched, so a repair
+// round that rewrote prose over a landed diff reported a change set of nothing.
+// The other was git: a before/after read of the shared workspace, keyed by leaf
+// and therefore correct across every pass. The second one is the truth, and
+// this is the handle that lets it be stated rather than recomputed differently
+// by each reader.
+//
+// Base is durable per NODE and not per pass. It is written to a git ref the
+// first time the node opens a view and read back on every later one, so it
+// survives a process restart with no in-memory carry at all — which is the only
+// way an account of "what this node changed" can outlive the run that made it.
+type Range struct {
+	Base, Head string
+}
+
+// Derived reports that this range was actually measured. An empty base or head
+// is a range nobody could compute, and it must not read as "measured, and the
+// answer was nothing".
+func (r Range) Derived() bool {
+	return strings.TrimSpace(r.Base) != "" && strings.TrimSpace(r.Head) != ""
+}
+
+// Landed reports that this account's change set came out of the repository and
+// is not empty: the work is on disk, in commits, and can be read by anyone.
+//
+// It is the fact the repair path turns on. A gate that fails a finished coding
+// leaf for what its PROSE did not say used to buy a second run of the whole
+// engine, into a tree where the change had already landed — 23 model calls and
+// zero edits, because there was nothing left to do. This is how that case is
+// recognised without asking a model: the substrate says the work exists.
+func (a *Account) Landed() bool {
+	return a != nil && a.Range.Derived() && len(a.Files) > 0
+}
+
+// ChangeRange names the span in one clause for a reader who is about to be shown
+// its contents, so a truncated diff can still be placed in the repository's own
+// history. Empty when nothing was measured.
+func (a *Account) ChangeRange() string {
+	if a == nil || !a.Range.Derived() {
+		return ""
+	}
+	return "git diff " + shortCommit(a.Range.Base) + ".." + shortCommit(a.Range.Head)
+}
+
+// shortCommit is git's own abbreviation, which is what a person reading a range
+// expects to see and what they can paste back into git.
+func shortCommit(sha string) string {
+	sha = strings.TrimSpace(sha)
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }
 
 // FileChange is one path the work touched: what kind of change it was, and how
@@ -165,6 +240,22 @@ func (a *Account) Note(path, change string, added, removed int) {
 		change = ChangeChanged
 	}
 	a.Files = append(a.Files, FileChange{Path: path, Change: change, Added: added, Removed: removed})
+}
+
+// SetFiles replaces the change set outright, and it is the counterpart to Note
+// rather than a convenience beside it.
+//
+// Note accumulates because each call is a separate edit that really did add
+// those lines, and that is the right law for narration arriving on a wire. It
+// is the wrong law for a derivation: a change set computed from two commits is
+// already the whole answer, and merging it into whatever the narration had said
+// would double every line it agrees with. So the two channels do not mix — the
+// derived one, when there is one, is the account.
+func (a *Account) SetFiles(files []FileChange) {
+	if a == nil {
+		return
+	}
+	a.Files = files
 }
 
 // accountFileRows and accountTailBytes bound what an account may say.

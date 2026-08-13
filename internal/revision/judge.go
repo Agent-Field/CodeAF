@@ -28,6 +28,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -393,6 +394,21 @@ type Evidence struct {
 	// Nil on every leaf whose worker cannot photograph its own change set,
 	// which is nearly all of them, and nil reads as no claim.
 	Account *exec.Account
+	// Patch is a path to the whole text of the change the work made, when the
+	// worker could derive one from the repository.
+	//
+	// It is the difference between a record of NAMES and a record of CONTENT,
+	// and the gap between the two was measured as a false statement shipped to a
+	// person. A leaf was asked to explain a root cause; its method — written
+	// before the work ran, by a pass handed nothing but file paths — offered an
+	// illustrative example of what a root cause might be; the leaf shipped that
+	// example verbatim as the real one; and this gate passed it, because
+	// everything it held said which files changed and nothing said what the
+	// change was. A judge that can read the diff can convict that claim, and can
+	// equally absolve a correct one it would otherwise have had to guess at.
+	//
+	// Empty on every worker that produces no diff, which reads as no claim.
+	Patch string
 }
 
 // gateEvidenceRan bounds what travels when the window is unknown. The executor
@@ -434,7 +450,7 @@ const UnexercisedRecord = "Nothing. The work called no tools and left nothing be
 // hand cannot manufacture the strongest record in the block by omission.
 func (e Evidence) block(budget ctxbudget.Budget) string {
 	if len(e.Artifacts) == 0 && len(e.Ran) == 0 && len(e.Named) == 0 &&
-		len(e.Baseline) == 0 && e.Done.Empty() && e.Account.Empty() {
+		len(e.Baseline) == 0 && e.Done.Empty() && e.Account.Empty() && e.Patch == "" {
 		if !e.Observed {
 			return ""
 		}
@@ -485,6 +501,15 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 			body.WriteString(row + "\n")
 		}
 	}
+	// The change itself, under the rows that name it. This is the only block in
+	// the record that can settle a claim about WHY something was changed, so it
+	// sits with the account it belongs to rather than with the run tail.
+	if patch := e.patchBlock(budget); patch != "" {
+		if body.Len() > 0 {
+			body.WriteString("\n")
+		}
+		body.WriteString(patch)
+	}
 	if len(e.Baseline) > 0 {
 		if body.Len() > 0 {
 			body.WriteString("\n")
@@ -510,6 +535,48 @@ func (e Evidence) block(budget ctxbudget.Budget) string {
 		}
 	}
 	return strings.TrimRight(body.String(), "\n")
+}
+
+// gatePatchBytes is how much of the change's text travels when the window is
+// unknown, and gatePatchShare is what a known window spends on it. It is the
+// largest share of the three clippable blocks because it is the only one that
+// can settle a claim rather than merely support one — and because a diff is the
+// most compressible thing in the prompt: hunk headers and context lines are
+// cheap tokens, and even a truncated one names the functions it touched.
+const (
+	gatePatchBytes = 6 << 10
+	gatePatchShare = 12
+)
+
+// patchBlock puts the change's own text in front of the judge, clipped, and
+// says out loud that it is clipped.
+//
+// It reads the file here rather than being handed the bytes for the same reason
+// the artifact block stats its paths here: what the record must say is what is
+// TRUE at judging time, and a patch that has been swept away between the run and
+// the review is a fact about the record, not a detail to paper over. A patch
+// that cannot be read renders nothing at all — an unreadable diff must never be
+// able to read as an empty one, which is the direction that acquits.
+func (e Evidence) patchBlock(budget ctxbudget.Budget) string {
+	if strings.TrimSpace(e.Patch) == "" {
+		return ""
+	}
+	body, err := os.ReadFile(e.Patch)
+	if err != nil || strings.TrimSpace(string(body)) == "" {
+		return ""
+	}
+	head := "The change itself, as the repository records it"
+	if span := e.Account.ChangeRange(); span != "" {
+		head += " (" + span + ")"
+	}
+	head += ". Every claim the deliverable makes about WHAT was wrong and WHAT was " +
+		"changed is settled here and nowhere else:\n"
+	clipped := clipUTF8Bytes(string(body), budget.Share(gatePatchShare, gateShareTotal, gatePatchBytes))
+	if len(clipped) < len(body) {
+		head += "(the first " + strconv.Itoa(len(clipped)) + " bytes of " +
+			strconv.Itoa(len(body)) + "; the whole of it is at " + e.Patch + ")\n"
+	}
+	return head + clipped + "\n"
 }
 
 // namedBlock settles every file the request named against the files the run
@@ -1106,9 +1173,14 @@ func GapHandover(gaps string, revised bool, refused string) string {
 // is planned from forbids inventing verification, as the plan's own proportion
 // rule forbids a node whose purpose is to check another's product. Assurance may
 // add work that closes a gap; it may never add work that checks one.
+// records, when there are any, are files the finished work left behind that the
+// remainder must READ rather than reuse — the text of the change it made, above
+// all. They travel apart from the artifact list because a remainder handed only
+// paths cannot learn what the work it is continuing actually did, and a leaf
+// asked to state such a fact with no way to obtain it states something else.
 func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, partial string,
 	unmet Judgment, artifacts []string, dailyBudgetUSD float64,
-	planRemainder resident.OverrunPlanFunc) Extension {
+	planRemainder resident.OverrunPlanFunc, records ...string) Extension {
 	base, round := resident.OverrunLineage(node.ID)
 	extension := Extension{Quote: strings.TrimSpace(unmet.Quote), Round: round + 1}
 	if graph == nil || planRemainder == nil {
@@ -1126,7 +1198,7 @@ func ExtendForGap(ctx context.Context, graph *store.Store, node store.Node, part
 	// growing a job, not resource failure, and the journal that bounds growth
 	// could not tell the two apart while one borrowed the other's whole path.
 	spliced, _, err := resident.ReplanOverrunAs(ctx, graph, node, partial, unmet.Gaps, artifacts,
-		dailyBudgetUSD, "", resident.Growth{Reason: resident.GrowGap}, planRemainder)
+		dailyBudgetUSD, "", resident.Growth{Reason: resident.GrowGap, Records: records}, planRemainder)
 	if err != nil {
 		log.Printf("note: could not plan the rest of %s: %v", node.ID, err)
 		extension.Refused = "the work that would close it could not be planned"

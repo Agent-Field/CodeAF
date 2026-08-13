@@ -141,6 +141,20 @@ type sweView struct {
 	// defences. Empty is the ordinary case.
 	tracked string
 
+	// substrate is the commit this NODE's whole change set is measured from,
+	// across every pass the node ever gets. base above is the commit THIS pass's
+	// worktree grew from, which is a different fact and moves whenever a sibling
+	// lands: a node's second pass grows from a root that already contains the
+	// node's own first pass, so a change set measured from it reports nothing.
+	//
+	// It lives in a git ref rather than on this struct because a pass is a
+	// process. See [sweView.anchor].
+	substrate string
+	// landed records that this run's work reached the shared workspace, which is
+	// what decides WHERE the change set can be read from — the root once it has
+	// landed, the leaf's own branch while it has not.
+	landed bool
+
 	isolated bool
 	// occupying records that this run holds the shared working tree, so release
 	// gives back exactly what was taken and never somebody else's.
@@ -191,6 +205,11 @@ func sweOpen(ctx context.Context, space *Workspace, leaf string, trace *tracer) 
 		trace.note("workspace: " + view.tracked)
 	}
 	sweReap(ctx, root, leaf)
+	// Before either arm, because both of them are a pass of the same node and
+	// the node's substrate must be the same commit for both. A leaf that runs in
+	// place on its first attempt and in a view on its second is one node with
+	// one change set.
+	view.anchor(ctx)
 
 	if !view.private && view.locks.claim() {
 		view.occupying = true
@@ -208,6 +227,103 @@ func sweOpen(ctx context.Context, space *Workspace, leaf string, trace *tracer) 
 	}
 	return view, initialized, nil
 }
+
+// anchor settles the commit this node's change set is measured from, once, for
+// the whole life of the node.
+//
+// The ref is the mechanism and the mechanism is the point. Nothing is carried
+// in memory between passes: a pass is a process, and a process that crashed
+// mid-run, was cancelled at the wall clock, or is a repair round started an hour
+// later has no memory of the one before it. git does. The first pass writes the
+// ref at the shared workspace's HEAD; every later pass reads it and writes
+// nothing, so `base..HEAD` is the node's whole change set on pass one, pass two
+// and pass six alike, including the passes that landed and the passes that did
+// not.
+//
+// It is read-not-rewritten deliberately and that is the whole invariant. A pass
+// that moved the ref to its own starting point would erase the previous passes'
+// work from the account the moment a repair round ran — which is exactly the
+// per-pass narration bug this replaces, reimplemented in git.
+//
+// Failure is silent and leaves substrate empty, which every reader treats as
+// "not measured" rather than "measured, and nothing changed": a workspace with
+// no commits at all reaches here on the path where ensureGitRepository could
+// not make one, and a node whose base cannot be named still has to run.
+func (v *sweView) anchor(ctx context.Context) {
+	ref := sweBaseRef(v.leaf)
+	if existing := gitLines(ctx, v.root, "rev-parse", "--verify", "--quiet", ref+"^{commit}"); len(existing) > 0 {
+		v.substrate = existing[0]
+		return
+	}
+	heads := gitLines(ctx, v.root, "rev-parse", "HEAD")
+	if len(heads) == 0 {
+		return
+	}
+	if err := gitQuiet(ctx, v.root, "update-ref", ref, heads[0]); err != nil {
+		// The commit is still the right answer for THIS pass; what is lost is
+		// only its durability, and a change set measured from a base that a
+		// later pass will recompute is better than none at all.
+		v.trace.note("workspace: this node's base commit could not be recorded (" + err.Error() +
+			") — its change set is measured from the workspace as it stands")
+	}
+	v.substrate = heads[0]
+}
+
+// measure names where THIS PASS's work can be read and the commit it grew from.
+//
+// Two arrangements, and they are not a special case of each other. Work that
+// reached the shared workspace is read there, against the state of that
+// workspace immediately underneath this leaf's own landing — never against the
+// node's durable base, because a sibling that landed while this leaf was working
+// sits between the two, and a diff taken across it would credit this leaf with
+// the sibling's files. Work still sitting on an undelivered branch is read on
+// that branch, from the commit the branch grew from, for exactly the same
+// reason.
+//
+// The node's durable base is not this and does not compete with it: this is one
+// pass, and what makes the ACCOUNT per-node is that every pass records its own
+// range and the account is their union. See [SWE.substrate].
+// live is the third answer and it is a safety fact rather than a convenience.
+// It says this directory's WORKING TREE is ours to read: uncommitted edits and
+// untracked files in it are this leaf's or nobody's. It is false for exactly one
+// arrangement — an isolated leaf that has already landed — because the shared
+// tree stops being ours the moment the lease is given back, and a sibling
+// half-way through its own `merge --squash` has that leaf's files staged in it
+// with the commit not yet written. Reading the porcelain there attributes the
+// sibling's landing to this leaf, which is measured and is exactly what the
+// per-pass range exists to prevent. Nothing of ours is lost by not looking: a
+// branch that landed was squashed and committed in full.
+func (v *sweView) measure(before repoState) (dir, base string, live bool) {
+	if v != nil && v.isolated && !v.landed {
+		return v.dir, v.base, true
+	}
+	if v != nil {
+		return v.root, before.head, !v.isolated
+	}
+	return "", before.head, false
+}
+
+// nodeBase is where this node's history starts — the commit its durable ref was
+// pinned at the first time it ever opened a view. It is what the account reports
+// as the range's near end, and it is nil-safe because a view that could not be
+// opened at all still reaches the code that lands one.
+func (v *sweView) nodeBase() string {
+	if v == nil {
+		return ""
+	}
+	return v.substrate
+}
+
+// sweBaseRef names one node's base commit: where the node's history starts,
+// written once and never moved. It is under refs/aforge/ rather than refs/heads/
+// so it is invisible to `git branch`, never checked out, and deletable by a
+// person in one command — and it is a ref rather than a file because git is the
+// thing that already survives a crash here.
+func sweBaseRef(leaf string) string { return "refs/aforge/leaf-base/" + sweSlug(leaf) }
+
+// swePassRefs is the namespace one node's passes are recorded under, one ref per
+// pass. See [swePassRef].
+func swePassRefs(leaf string) string { return "refs/aforge/leaf-pass/" + sweSlug(leaf) }
 
 // where is the sentence the trace opens with. It is written here rather than at
 // the call site because the three arrangements differ in what a reader needs to
@@ -291,6 +407,16 @@ func (v *sweView) release() {
 type sweLanding struct {
 	before  repoState
 	refusal string
+	// head is the shared workspace's commit immediately AFTER this leaf's
+	// landing, read while the lease is still held.
+	//
+	// It is read here rather than by the caller for the one reason the lease
+	// exists. The caller runs after this returns, by which time the lease is
+	// given back and a sibling may already have landed on top — so a HEAD read
+	// there names a commit that includes somebody else's work, and this leaf's
+	// range would be `before..that`, crediting it with the sibling's files. The
+	// pair (before, head) is one observation and has to be taken as one.
+	head string
 }
 
 // land brings an isolated leaf's work home, and is a no-op for a leaf that was
@@ -304,6 +430,9 @@ type sweLanding struct {
 // refused one.
 func (v *sweView) land(ctx context.Context, delivered bool, message string) sweLanding {
 	if !v.isolated {
+		// A leaf that worked in the shared directory has already landed
+		// everything it will ever land: it committed there.
+		v.landed = true
 		if delivered && v.private {
 			// The fallback path: git could not give this leaf a view, so the
 			// engine ran in somebody's own directory after all. Its state is
@@ -325,6 +454,11 @@ func (v *sweView) land(ctx context.Context, delivered bool, message string) sweL
 	v.commitRemainder(ctx, message)
 	if head := gitLines(ctx, v.dir, "rev-parse", "HEAD"); len(head) == 0 || head[0] == v.base {
 		v.trace.note("workspace: the view is identical to the workspace — nothing to bring back")
+		// Nothing was withheld, so the shared root is where this node's change
+		// set is read from. On a node whose earlier pass DID land, that reading
+		// is the earlier pass's work, which is the honest answer: it is still
+		// there and it is still this node's.
+		v.landed = true
 		v.discard(ctx)
 		return sweLanding{}
 	}
@@ -361,6 +495,7 @@ func (v *sweView) land(ctx context.Context, delivered bool, message string) sweL
 		// empty index.
 		_ = gitQuiet(ctx, v.root, "reset")
 		v.trace.note("workspace: the change was already in the workspace — nothing to land")
+		v.landed = true
 		v.remove(ctx)
 		return sweLanding{}
 	}
@@ -370,8 +505,13 @@ func (v *sweView) land(ctx context.Context, delivered bool, message string) sweL
 			err.Error() + "); it is on branch " + v.branch + " in " + v.dir}
 	}
 	v.trace.note("workspace: landed as one commit on the shared workspace from branch " + v.branch)
+	v.landed = true
+	landed := sweLanding{before: before}
+	if head := gitLines(ctx, v.root, "rev-parse", "HEAD"); len(head) > 0 {
+		landed.head = head[0]
+	}
 	v.remove(ctx)
-	return sweLanding{before: before}
+	return landed
 }
 
 // refuse cleans up after a merge that would not apply and says what happened.
