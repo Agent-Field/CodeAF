@@ -735,7 +735,7 @@ func TestThePassesBeforeTheGraphSeeTheTerrain(t *testing.T) {
 		{
 			name: "grounding",
 			call: func(t *testing.T, client Completer, terrain string) {
-				if _, _, err := GroundWith(t.Context(), client, goal, terrain, nil); err != nil {
+				if _, _, err := GroundWith(t.Context(), client, goal, terrain, nil, nil); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -743,7 +743,7 @@ func TestThePassesBeforeTheGraphSeeTheTerrain(t *testing.T) {
 		{
 			name: "the spine",
 			call: func(t *testing.T, client Completer, terrain string) {
-				if _, _, err := Spine(t.Context(), client, goal, terrain, 1); err != nil {
+				if _, _, err := Spine(t.Context(), client, goal, terrain, nil, 1); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -751,7 +751,7 @@ func TestThePassesBeforeTheGraphSeeTheTerrain(t *testing.T) {
 		{
 			name: "the ensemble judgment",
 			call: func(t *testing.T, client Completer, terrain string) {
-				if _, _, err := DecidePanel(t.Context(), client, goal, terrain, nil, ""); err != nil {
+				if _, _, err := DecidePanel(t.Context(), client, goal, terrain, nil, nil, ""); err != nil {
 					t.Fatal(err)
 				}
 			},

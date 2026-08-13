@@ -45,9 +45,12 @@ type ScaleGate struct {
 	Scale     string `json:"scale,omitempty"`
 	Route     string `json:"route"`
 	Leaves    int    `json:"leaves"`
-	// Parts is how many independent requests the compiler declared. Zero is the
-	// ordinary ask; two or more is a bundle, which is a shape the planner never
-	// sees and therefore a shape no plan document can explain.
+	// Parts is how many separable requests the compiler read in the ask. Zero
+	// is the ordinary ask; two or more once meant a second route out of this
+	// gate — a flat layout with no planner in it — and now means only that the
+	// planner was handed the person's own division as evidence. It is kept
+	// because it is the one number that says whether a wide plan followed a
+	// wide ask or was found by the planner in a single one.
 	Parts int `json:"parts,omitempty"`
 }
 
@@ -58,10 +61,12 @@ const (
 	// ScaleRouteSingleLeaf is the collapse: anything the compiler did not read
 	// as project scale becomes one leaf, with no planner and no fan-out.
 	ScaleRouteSingleLeaf = "single_leaf"
-	// ScaleRouteBundle is a declared bundle laid out side by side — geometry
-	// rather than planning, and the one wide shape that costs no spine.
-	ScaleRouteBundle = "bundle"
-	// ScaleRoutePlanned is the full structuring pipeline.
+	// ScaleRoutePlanned is the full structuring pipeline, and it is now the
+	// only road a project-scale job takes. A third value, "bundle", used to
+	// name a flat layout the planner never saw; a reader counting routes
+	// across a week of runs that spans the change will still find it in the
+	// journal, and it means the shape below is not explained by any plan
+	// document.
 	ScaleRoutePlanned = "planned"
 )
 

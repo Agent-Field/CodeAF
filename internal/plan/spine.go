@@ -109,11 +109,17 @@ type SpineChoice struct {
 // the responses are sitting in the workspace already. Like grounding, this runs
 // before there is a graph to read a preamble from, so it takes the snapshot
 // directly. Empty leaves the prompt exactly as it was.
-func Spine(ctx context.Context, client Completer, goal, terrain string, samples int) (*SpineChoice, Usage, error) {
-	return spineWithProgress(ctx, client, goal, terrain, samples, nil)
+// The requests the ask was read as containing travel beside the terrain and for
+// the same reason. The stage count is a judgment about the work, and how the
+// person divided their own ask is part of that judgment: several requests that
+// do not feed each other are one stage, and one request written over what the
+// others produce is the second. Nothing here decides which; the block says what
+// was asked and the model reads it. Empty leaves the prompt exactly as it was.
+func Spine(ctx context.Context, client Completer, goal, terrain string, asked []string, samples int) (*SpineChoice, Usage, error) {
+	return spineWithProgress(ctx, client, goal, terrain, asked, samples, nil)
 }
 
-func spineWithProgress(ctx context.Context, client Completer, goal, terrain string, samples int, progress Progress) (*SpineChoice, Usage, error) {
+func spineWithProgress(ctx context.Context, client Completer, goal, terrain string, asked []string, samples int, progress Progress) (*SpineChoice, Usage, error) {
 	goal = strings.TrimSpace(goal)
 	if goal == "" {
 		return nil, Usage{}, errors.New("goal is required")
@@ -149,7 +155,7 @@ func spineWithProgress(ctx context.Context, client Completer, goal, terrain stri
 					}
 				}
 			}()
-			stages, usage, err := spineOnce(ctx, client, goal, terrain)
+			stages, usage, err := spineOnce(ctx, client, goal, terrain, asked)
 			results[index] = result{stages: stages, usage: usage, err: err}
 			landed = true
 			if progress != nil && samples > 1 {
@@ -261,11 +267,11 @@ func vocabulary(stages []Stage) map[string]bool {
 	return words
 }
 
-func spineOnce(ctx context.Context, client Completer, goal, terrain string) ([]Stage, *ai.Usage, error) {
+func spineOnce(ctx context.Context, client Completer, goal, terrain string, asked []string) ([]Stage, *ai.Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanSpine)
 	messages := []ai.Message{
 		systemMessage(spinePrompt),
-		userMessage(goalBlock(goal, terrain)),
+		userMessage(goalBlock(goal, terrain, asked)),
 	}
 	var decoded struct {
 		Stages []Stage `json:"stages"`

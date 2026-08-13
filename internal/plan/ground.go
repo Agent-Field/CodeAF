@@ -121,7 +121,7 @@ type Grounding struct {
 // spine — both need only the goal — so it costs no wall clock, and its output
 // joins the prefix every later call already shares, so it costs no cache either.
 func Ground(ctx context.Context, client Completer, goal string) (Grounding, *ai.Usage, error) {
-	return GroundWith(ctx, client, goal, "", nil)
+	return GroundWith(ctx, client, goal, "", nil, nil)
 }
 
 // GroundWith resolves the goal with the workspace it stands on and optional
@@ -136,9 +136,9 @@ func Ground(ctx context.Context, client Completer, goal string) (Grounding, *ai.
 // that settles "the responses" as three regions when four are on disk is the
 // exact failure terrain exists to prevent, and it happens before any graph
 // exists, so the terrain is handed in directly rather than read off one.
-func GroundWith(ctx context.Context, client Completer, goal, terrain string, recall []store.RecallHit) (Grounding, *ai.Usage, error) {
+func GroundWith(ctx context.Context, client Completer, goal, terrain string, asked []string, recall []store.RecallHit) (Grounding, *ai.Usage, error) {
 	ctx = provider.WithCall(ctx, provider.ClassPlanGround)
-	user := goalBlock(strings.TrimSpace(goal), terrain)
+	user := goalBlock(strings.TrimSpace(goal), terrain, asked)
 	if remembered := store.FormatRecall(recall, 8<<10); remembered != "" {
 		user += "\n\n" + remembered
 	}
@@ -177,7 +177,7 @@ func GroundWith(ctx context.Context, client Completer, goal, terrain string, rec
 // which is the failure this whole file exists to prevent.
 func (g *Graph) context() string {
 	var block strings.Builder
-	block.WriteString(goalBlock(g.Goal, g.Terrain))
+	block.WriteString(goalBlock(g.Goal, g.Terrain, g.Asked))
 	if len(g.Settled) > 0 {
 		block.WriteString("\n\nSettled for this goal. Use these exactly as written. Never substitute\nyour own choice for one of these, and never leave one of them vague:\n")
 		for _, item := range g.Settled {
@@ -207,8 +207,41 @@ func (g *Graph) context() string {
 // assembled its own version of the block, the four calls would have described the
 // same workspace four ways, and the prefix every later pass shares would have
 // matched none of them.
-func goalBlock(goal, terrain string) string {
-	return "Goal:\n" + goal + terrainBlock(terrain)
+func goalBlock(goal, terrain string, asked []string) string {
+	return "Goal:\n" + goal + terrainBlock(terrain) + askedBlock(asked)
+}
+
+// askedBlock renders the separable requests the ask was read as containing, in
+// the person's own words.
+//
+// It is evidence, not a layout. What the call that read the whole ask can say
+// is where the person drew their own lines; what it cannot say is what those
+// lines mean for the shape of the work — whether each really stands alone, and
+// whether one of them is written over what the others produce. Laying the lines
+// out flat as if that second question were already answered is precisely what
+// went wrong when a second road existed: an assembling request admitted beside
+// its own inputs ran against nothing and invented the material it was there to
+// read. So the reading arrives here, where every pass that decides shape can
+// see it, and none of them is told what to do with it.
+//
+// The words are verbatim. They are the closest thing this process holds to what
+// the person actually said, and a request restated in the planner's voice
+// before a worker ever sees it has been paraphrased twice.
+//
+// Fewer than two requests is the ordinary ask — one thing comes back, however
+// large — and writes nothing at all, down to the newline.
+func askedBlock(asked []string) string {
+	kept := cleanStrings(asked)
+	if len(kept) < 2 {
+		return ""
+	}
+	var block strings.Builder
+	block.WriteString("\n\nThe ask was read as several separate requests. In the person's own words,\nin the order they were spoken:\n")
+	for index, request := range kept {
+		fmt.Fprintf(&block, "  %d. %s\n", index+1, request)
+	}
+	block.WriteString("\nThat is where the person drew their own lines, and it is not a decision about\nthe shape of the plan. Whether each of them really stands alone, whether any\nof them is written over what the others produce and must therefore wait for\nthem, and how the work divides, are yours to read.")
+	return block.String()
 }
 
 // terrainBlock renders the workspace, or nothing at all.

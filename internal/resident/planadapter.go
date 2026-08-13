@@ -16,15 +16,16 @@ import (
 // SubtreeFromPlan converts a planned graph into the store's admission shape:
 // the deliverable owner becomes the subtree root and every other node its
 // child, so the goal lands last and the whole subtree reads as one task.
-// nodeGroup is the display provenance, except for the one structural marker
-// that rides the same field: a bundle's synthesis carries BundleGroup so the
-// executor can tell assembly from judgment.
-func nodeGroup(node plan.Node, groupOf func(plan.Node) string) string {
-	if node.Bundle {
-		return BundleGroup
-	}
-	return groupOf(node)
-}
+//
+// A node's Group is display provenance and only that. It used to carry one
+// structural marker as well — the synthesis of a declared bundle, which the
+// executor read to skip the model and join the parts by hand. That marker was
+// a claim only the bundle route could make: its leaves were the person's own
+// requests, verbatim and self-contained, so concatenating them was assembly.
+// A planned subtree makes no such promise about its leaves — they are as often
+// fragments of one deliverable — so the claim went out with the route that
+// could support it, and the gathering node writes its own delivery like every
+// other gathering node in the system.
 
 // planShape is the admission reading of a planned graph: which nodes an
 // executor would actually run, and which of them is the subtree's root.
@@ -205,7 +206,7 @@ func SubtreeFromPlan(graph *plan.Graph, prefix string) (store.Subtree, error) {
 			ID:    id(node.ID),
 			Brief: nodeBrief(node),
 			Title: strings.TrimSpace(node.Title),
-			Group: nodeGroup(node, groupOf),
+			Group: groupOf(node),
 			Stage: node.Stage,
 			// The sizing pass's other verdict. A node the planner judged atomic
 			// for a specialist arrives here as one admitted leaf rather than as

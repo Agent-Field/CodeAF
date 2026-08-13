@@ -485,9 +485,6 @@ func childSpec(node store.Node, child plan.Node) plan.Spec {
 // childGroup keeps the rail's nesting readable: a part of a divided step reads
 // under the step it came out of.
 func childGroup(node store.Node) string {
-	if node.Group == BundleGroup {
-		return ""
-	}
 	title := strings.TrimSpace(node.Title)
 	if title == "" {
 		return strings.TrimSpace(node.Group)
