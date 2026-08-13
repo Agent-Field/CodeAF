@@ -147,6 +147,9 @@ func (s *SWE) WithAttribution(on bool) *SWE {
 
 func (s *SWE) Subharness() string { return SWESubharness }
 
+// Mutates: this worker's deliverable is the change in the tree. See [Mutator].
+func (s *SWE) Mutates() bool { return true }
+
 // Run drives one engine process from start to terminal line.
 func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	started := time.Now()
@@ -323,6 +326,14 @@ func (s *SWE) settle(
 	// stopped it. The engine's last word joins it when there was one.
 	if state.terminal != nil {
 		state.account.Final = strings.TrimSpace(state.terminal.Message)
+	}
+	// The engine's terminal line first, the worker's own last word behind it.
+	// The order is the only defensible one — a pipeline that summarises its own
+	// run outranks one of its workers — but the fallback is what makes the field
+	// mean anything, because the vendored engine leaves that message EMPTY on a
+	// clean pass and the harness half must not depend on the vendor to be fixed.
+	if strings.TrimSpace(state.account.Final) == "" {
+		state.account.Final = strings.TrimSpace(state.said)
 	}
 	if !state.account.Empty() {
 		outcome.Account = &state.account
@@ -556,9 +567,11 @@ func (s *SWE) land(ctx context.Context, task Task, view *sweView, outcome *Outco
 	// shared workspace — the artifact list, the sizes, the paths a person will
 	// open — and for an isolated leaf none of it is true until its branch has
 	// been squashed back in.
+	landed := sweLanding{}
 	if view != nil {
 		landing := view.land(ctx, outcome.Stop == StopDone,
 			sweLandingMessage(task, outcome.Text, s.attribution))
+		landed = landing
 		if landing.before.top != "" {
 			// The change arrived as one commit, and this is the state of the
 			// workspace immediately underneath it. Reading the artifact list
@@ -570,7 +583,11 @@ func (s *SWE) land(ctx context.Context, task Task, view *sweView, outcome *Outco
 			outcome.Text = strings.TrimSpace(outcome.Text) + "\n\n" + landing.refusal
 		}
 	}
-	if extra := s.recordArtifacts(ctx, task, before); extra > 0 {
+	// The substrate account, and it is deliberately taken AFTER the landing: the
+	// change set of a node is what its work put in the tree, and until the
+	// branch is squashed home the tree does not have it. See [SWE.substrate].
+	paths := s.substrate(ctx, task, view, outcome, before, landed.head)
+	if extra := s.recordArtifacts(task, paths); extra > 0 {
 		outcome.Text = strings.TrimSpace(outcome.Text) +
 			fmt.Sprintf("\n\n(%d further changed files are named in the run's trace rather than here)", extra)
 	}
@@ -581,19 +598,400 @@ func (s *SWE) land(ctx context.Context, task Task, view *sweView, outcome *Outco
 	return outcome
 }
 
-// recordArtifacts names the files this run changed and returns how many were
-// left out of the bounded list.
+// substrate replaces this node's account of what it changed with the one git
+// can prove, writes the change's own text somewhere a reader can open it, and
+// hands back the paths for the artifact list.
 //
-// It is a before/after read rather than a plain `git status`, because the
-// engine commits: it merges each judged worktree onto the branch, so at the end
-// of a successful run the working tree is frequently clean and the whole change
-// lives between two commits. Reading only the porcelain would have reported a
-// finished refactor as having touched nothing.
-func (s *SWE) recordArtifacts(ctx context.Context, task Task, before repoState) int {
+// It exists because the two accounts of a coding leaf's change set were
+// different accounts and only one of them was true across a node's whole life.
+//
+// The narration — the file rows [sweRun.noteFiles] cuts out of the engine's tool
+// metadata as the stream goes past — is per PASS. It has to be: it is what this
+// process watched happen. So a node judged, failed on the wording of its
+// deliverable and run a second time reported the second run's change set, which
+// on a tree where the fix had already landed was nothing at all. That is
+// measured, and it is why a delivered account carried a verification story and
+// zero file rows.
+//
+// The derivation here is per NODE, because its base is a git ref the node owns
+// (see [sweView.anchor]) rather than a value this process remembers. `base..HEAD`
+// is the whole of what the node changed on pass one and on pass six alike, and
+// nothing about it depends on the process that computes it having been present
+// for the earlier ones.
+//
+// Both channels stay. The narration is live progress — it is what the record
+// shows while the engine is still working, when there is no commit to diff —
+// and this is the account, replacing it the moment there is a repository answer.
+// There is exactly one derived list: the artifact registry, the account rows and
+// the patch are three renderings of it, which is what stops a reader being told
+// two different change sets by two surfaces of the same run.
+//
+// before is the pre-run repository state and is the fallback, unchanged, for
+// every case the derivation cannot reach: a workspace that is not a repository,
+// a base that was never recorded, a git that refused. A leaf must still be able
+// to say what it wrote.
+func (s *SWE) substrate(ctx context.Context, task Task, view *sweView, outcome *Outcome,
+	before repoState, passHead string) []string {
+	dir, passBase, live := view.measure(before)
+	if dir == "" {
+		dir = s.workspace.Root()
+	}
+	// This pass's own range, filed in the repository under the node's name. It
+	// is written before the account is read, so the read that follows includes
+	// the pass that just finished.
+	//
+	// passHead is the landing's own observation of where the shared workspace
+	// ended up, taken while the lease was still held; empty means there was no
+	// landing to observe, which is every leaf that worked in the shared tree
+	// directly (it still holds the lease here, so reading HEAD now is the same
+	// observation) and every leaf whose work is still on its own branch.
+	swePassRef(ctx, dir, task.leafKey(), passBase, passHead)
+	changed, span, ok := sweChangeSet(ctx, dir, task.leafKey(), view.nodeBase(), live)
+	if !ok {
+		// No derivation, so the narration stands as the only account there is,
+		// and the artifact list is read the way it was read before any of this:
+		// what the shared workspace holds now against what it held then.
+		return sweChangedPaths(ctx, s.workspace.Root(), before)
+	}
+	account := outcome.Account
+	if account == nil && len(changed) > 0 {
+		// A run that ended before settle could attach one — a start failure, a
+		// death — still changed what it changed, and the tree is where that is
+		// written down.
+		account = &Account{}
+		outcome.Account = account
+	}
+	if account != nil {
+		account.SetFiles(changed)
+		account.Range = span
+		account.Patch = s.recordPatch(ctx, task, dir, live)
+	}
+	// Artifacts name files in the shared workspace, so only a change that
+	// reached it may be recorded: work still sitting on an undelivered branch is
+	// real, is in the account, and is not in a directory the rest of the job can
+	// open. The refusal sentence is what says where it is.
+	if dir != s.workspace.Root() {
+		return nil
+	}
+	paths := make([]string, 0, len(changed))
+	for _, file := range changed {
+		paths = append(paths, file.Path)
+	}
+	return paths
+}
+
+// swePassRef files one pass's range in the repository, under the node's name.
+//
+// The synthetic commit is the whole trick and it is why this needs no storage of
+// its own. A commit whose TREE is the state the pass ended at and whose PARENT is
+// the state it started from is a git object that means exactly "this range" —
+// `C^..C` is the pass's diff, forever, whatever lands afterwards. One sha per
+// pass, in a ref, in the repository the work is in.
+//
+// The range is per pass and the account is per node because the accounts are
+// UNIONED (see [sweNodeChanges]). Neither half works alone: a single wide range
+// from the node's first base to the current HEAD would swallow every sibling
+// that landed in between, and a single pass's range forgets everything the
+// node's earlier passes did — which is the defect this whole file is about,
+// since a repair round over landed work reported a change set of nothing.
+//
+// Everything about it is best-effort. A pass that cannot be filed leaves the
+// account with one pass fewer, which is a smaller claim rather than a false one.
+func swePassRef(ctx context.Context, dir, leaf, base, head string) {
+	base, head = strings.TrimSpace(base), strings.TrimSpace(head)
+	if strings.TrimSpace(dir) == "" || base == "" {
+		return
+	}
+	heads := []string{head}
+	if head == "" {
+		heads = gitLines(ctx, dir, "rev-parse", "HEAD")
+	}
+	if len(heads) == 0 || heads[0] == base {
+		// Nothing was committed in this pass. Whatever it left uncommitted is
+		// read live off the working tree and needs no range of its own.
+		return
+	}
+	if gitQuiet(ctx, dir, "diff", "--quiet", base, heads[0]) == nil {
+		// A range whose two ends have the same tree is not a change; a
+		// re-landing of work somebody else already applied reaches here.
+		return
+	}
+	namespace := swePassRefs(leaf)
+	// The pass number is the count of what is already filed, so a restarted
+	// process numbers from the repository rather than from a memory it does not
+	// have. Padded because refs sort as strings and a reader listing them should
+	// see them in the order they happened.
+	next := len(gitLines(ctx, dir, "for-each-ref", "--format=%(refname)", namespace))
+	commit := gitLines(ctx, dir,
+		"-c", "user.name=aforge",
+		"-c", "user.email=agentfield-bot@users.noreply.github.com",
+		"commit-tree", heads[0]+"^{tree}", "-p", base,
+		"-m", "aforge: what node "+leaf+" changed in pass "+strconv.Itoa(next+1))
+	if len(commit) == 0 {
+		return
+	}
+	_ = gitQuiet(ctx, dir, "update-ref", fmt.Sprintf("%s/%04d", namespace, next), commit[0])
+}
+
+// sweChangeSet is the one derivation: every range this node has recorded, plus
+// whatever is still uncommitted on top, as account rows.
+//
+// The uncommitted half is not belt-and-braces. The engine commits as it merges
+// its own judged worktrees, so a finished run usually has a clean tree — but a
+// run that was cancelled, deadlined or died has whatever it was in the middle of
+// writing, and a leaf whose account said "nothing" over a tree full of its own
+// edits is the original defect wearing a different hat.
+//
+// base is the node's durable first base and is used for the RANGE the account
+// reports, not for the diff: it is where this node's history starts, which is
+// what a reader needs to place the change in the repository.
+func sweChangeSet(ctx context.Context, dir, leaf, base string, live bool) ([]FileChange, Range, bool) {
+	if strings.TrimSpace(dir) == "" {
+		return nil, Range{}, false
+	}
+	tops := gitLines(ctx, dir, "rev-parse", "--show-toplevel")
+	heads := gitLines(ctx, dir, "rev-parse", "HEAD")
+	if len(tops) == 0 || len(heads) == 0 {
+		return nil, Range{}, false
+	}
+	span := Range{Base: strings.TrimSpace(base), Head: heads[0]}
+	if span.Base == "" {
+		span.Base = heads[0]
+	}
+	place := sweRelocate(tops[0], dir)
+	// An Account is the accumulator rather than a map because the merge law for
+	// a path touched twice — strongest word for the change, summed line counts —
+	// is already written there, once, for both channels. It is also exactly the
+	// law the union across passes needs: a file this node edited twice is one
+	// row at the sum of its two edits.
+	var rows Account
+	passes := sweNodePasses(ctx, dir, leaf)
+	for _, pass := range passes {
+		sweNoteDiff(ctx, dir, &rows, place, pass+"^", pass)
+	}
+	if live {
+		// Tracked edits nobody committed, measured against HEAD so they are
+		// counted once whether or not any range above was recorded.
+		sweNoteDiff(ctx, dir, &rows, place, span.Head)
+		// And files git has never seen, which no diff can reach. They carry no
+		// line counts because none were measured, and a count nobody measured is
+		// not a number this may invent.
+		for _, line := range gitLines(ctx, dir, "status", "--porcelain") {
+			if !strings.HasPrefix(line, "??") {
+				continue
+			}
+			if path, ok := place(porcelainPath(line)); ok {
+				rows.Note(path, ChangeAdded, 0, 0)
+			}
+		}
+	}
+	if len(rows.Files) == 0 && len(passes) == 0 {
+		// No range was ever filed for this node and the tree is clean. There is
+		// no evidence here that the repository was read successfully rather than
+		// read as empty, so the caller keeps whatever it had.
+		return nil, Range{}, false
+	}
+	sort.Slice(rows.Files, func(i, j int) bool { return rows.Files[i].Path < rows.Files[j].Path })
+	return rows.Files, span, true
+}
+
+// sweNodePasses lists the ranges this node has recorded, oldest first.
+func sweNodePasses(ctx context.Context, dir, leaf string) []string {
+	return gitLines(ctx, dir, "for-each-ref", "--sort=refname", "--format=%(objectname)", swePassRefs(leaf))
+}
+
+// sweNoteDiff reads one `git diff` into the account: the sizes from --numstat
+// and the kind of change from --name-status, both NUL-separated so a path is
+// whatever git says it is rather than whatever survives a split on newlines.
+func sweNoteDiff(ctx context.Context, dir string, rows *Account, place func(string) (string, bool), revisions ...string) bool {
+	numstat := append([]string{"diff", "-z", "--numstat", "-M"}, revisions...)
+	body, ok := gitText(ctx, dir, numstat...)
+	if !ok {
+		return false
+	}
+	for _, record := range sweDiffRecords(body, 3) {
+		added, _ := strconv.Atoi(record[0])
+		removed, _ := strconv.Atoi(record[1])
+		if path, ok := place(record[2]); ok {
+			rows.Note(path, ChangeChanged, added, removed)
+		}
+	}
+	status := append([]string{"diff", "-z", "--name-status", "-M"}, revisions...)
+	if body, ok := gitText(ctx, dir, status...); ok {
+		for _, record := range sweDiffRecords(body, 2) {
+			if path, ok := place(record[1]); ok {
+				rows.Note(path, sweStatusKind(record[0]), 0, 0)
+			}
+		}
+	}
+	return true
+}
+
+// sweDiffRecords splits git's NUL-separated porcelain into fixed-width records.
+//
+// The one wrinkle is renames, and it is the reason this is not a plain chunker.
+// `--numstat -z` writes a rename as "adds\tdels\t" with an EMPTY third column
+// and then two more fields, the old name and the new; `--name-status -z` writes
+// "R100" and then two fields. Either way the record grows by one and the name
+// that matters is the last of them, which is what this returns.
+func sweDiffRecords(body string, width int) [][]string {
+	fields := strings.Split(body, "\x00")
+	var records [][]string
+	for index := 0; index < len(fields); {
+		if strings.TrimSpace(fields[index]) == "" {
+			index++
+			continue
+		}
+		head := strings.Split(fields[index], "\t")
+		record := make([]string, 0, width)
+		record = append(record, head...)
+		index++
+		// A tab-joined head short of the record's width, or one whose last
+		// column is empty, is a rename: the names follow as their own fields.
+		for len(record) < width || strings.TrimSpace(record[width-1]) == "" {
+			if index >= len(fields) {
+				return records
+			}
+			if len(record) < width {
+				record = append(record, fields[index])
+			} else {
+				record[width-1] = fields[index]
+			}
+			index++
+		}
+		records = append(records, record[:width])
+	}
+	return records
+}
+
+// sweStatusKind is git's letter in the account's vocabulary. A rename is a move
+// and a copy is an addition; the percentage git appends to both is not part of
+// the answer.
+func sweStatusKind(letter string) string {
+	if letter == "" {
+		return ChangeChanged
+	}
+	switch letter[0] {
+	case 'A', 'C':
+		return ChangeAdded
+	case 'D':
+		return ChangeDeleted
+	case 'R':
+		return ChangeMoved
+	}
+	return ChangeChanged
+}
+
+// sweRelocate maps a path git printed into the spelling a reader of this job
+// recognises, and refuses the ones that are not this leaf's to claim.
+//
+// git speaks in paths relative to the repository's top, and the repository may
+// be an ancestor of the working directory — a leaf working in one directory of a
+// monorepo must not claim its siblings' files. The top may also be spelled
+// differently from the directory: on macOS /var is a symlink to /private/var, so
+// the same directory has two honest names and a naive Rel between them escapes.
+func sweRelocate(top, directory string) func(string) (string, bool) {
+	resolved, err := filepath.EvalSymlinks(top)
+	if err != nil {
+		resolved = top
+	}
+	real, err := filepath.EvalSymlinks(directory)
+	if err != nil {
+		real = directory
+	}
+	return func(path string) (string, bool) {
+		if strings.TrimSpace(path) == "" {
+			return "", false
+		}
+		inside, err := filepath.Rel(real, filepath.Join(resolved, path))
+		if err != nil || strings.HasPrefix(inside, "..") || sweSidecar(inside) {
+			return "", false
+		}
+		return accountSpelling(inside), true
+	}
+}
+
+// recordPatch writes the change's own text where a reader can open it and
+// returns the handle.
+//
+// The text is the half of the record nothing downstream ever had. A gate handed
+// a list of paths can settle whether a file exists; it cannot settle whether the
+// deliverable's account of WHY those lines changed is true, and a method writer
+// handed paths alone was left to infer the reason — which is exactly how a
+// contract's illustrative example of a root cause was shipped verbatim as a real
+// one. A path to the diff costs one line in every context and carries the whole
+// change to any reader willing to open it.
+//
+// It goes under the harness's own directory for this job rather than into the
+// workspace, because that directory is git-excluded before the engine's first
+// stage runs: a patch file written beside the work would be part of the next
+// diff, and the engine's own auditor would — correctly — refuse to ship it.
+func (s *SWE) recordPatch(ctx context.Context, task Task, dir string, live bool) string {
+	body := ""
+	// Pass by pass, in the order they happened, because that is what this node
+	// did and a single wide diff would be a different claim: it would carry
+	// whatever siblings landed in between as though this node had written it.
+	for _, pass := range sweNodePasses(ctx, dir, task.leafKey()) {
+		if text, ok := gitText(ctx, dir, "diff", "-M", pass+"^", pass); ok {
+			body += text
+		}
+	}
+	if live {
+		// Only where the working tree is ours to read; see [sweView.measure].
+		if uncommitted, ok := gitText(ctx, dir, "diff", "-M", "HEAD"); ok {
+			body += uncommitted
+		}
+	}
+	if strings.TrimSpace(body) == "" {
+		return ""
+	}
+	full, _, err := s.workspace.ScratchPath(patchName(task.leafKey()))
+	if err != nil {
+		return ""
+	}
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		return ""
+	}
+	if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+		return ""
+	}
+	// Internal: it is evidence about the deliverable and never the deliverable,
+	// so it must not turn up in the list of files the work produced.
+	s.workspace.RecordInternal(task.leafKey(), full)
+	return full
+}
+
+// recordArtifacts files the derived change set as this leaf's artifacts and
+// returns how many were left out of the bounded list. It is a consumer of the
+// one derivation above and computes nothing of its own: two lists of "what this
+// leaf changed", derived two ways, is two answers to one question.
+func (s *SWE) recordArtifacts(task Task, paths []string) int {
 	directory := s.workspace.Root()
+	sort.Strings(paths)
+	overflow := 0
+	if len(paths) > sweArtifactLimit {
+		overflow = len(paths) - sweArtifactLimit
+		paths = paths[:sweArtifactLimit]
+	}
+	for _, path := range paths {
+		s.workspace.Record(task.leafKey(), filepath.Join(directory, path))
+	}
+	return overflow
+}
+
+// sweChangedPaths is the before/after read the artifact list was always taken
+// from, kept for the runs the substrate derivation cannot reach: no repository,
+// no recorded base, a git that refused.
+//
+// It is a before/after read rather than a plain `git status` because the engine
+// commits — it merges each judged worktree onto the branch, so at the end of a
+// successful run the working tree is frequently clean and the whole change lives
+// between two commits. Reading only the porcelain would have reported a finished
+// refactor as having touched nothing.
+func sweChangedPaths(ctx context.Context, directory string, before repoState) []string {
 	after := readRepoState(ctx, directory)
 	if after.top == "" {
-		return 0
+		return nil
 	}
 	changed := map[string]bool{}
 	for path := range after.dirty {
@@ -606,37 +1004,15 @@ func (s *SWE) recordArtifacts(ctx context.Context, task Task, before repoState) 
 			changed[path] = true
 		}
 	}
-	// git speaks in paths relative to the repository's top, and the repository
-	// may be an ancestor of the workspace — a leaf working in one directory of
-	// a monorepo must not claim its siblings' files. It may also be spelled
-	// differently: on macOS /var is a symlink to /private/var, so the same
-	// directory has two honest names and a naive Rel between them escapes.
-	top, err := filepath.EvalSymlinks(after.top)
-	if err != nil {
-		top = after.top
-	}
-	real, err := filepath.EvalSymlinks(directory)
-	if err != nil {
-		real = directory
-	}
+	place := sweRelocate(after.top, directory)
 	paths := make([]string, 0, len(changed))
 	for path := range changed {
-		inside, err := filepath.Rel(real, filepath.Join(top, path))
-		if err != nil || strings.HasPrefix(inside, "..") || sweSidecar(inside) {
-			continue
+		if inside, ok := place(path); ok {
+			paths = append(paths, inside)
 		}
-		paths = append(paths, inside)
 	}
 	sort.Strings(paths)
-	overflow := 0
-	if len(paths) > sweArtifactLimit {
-		overflow = len(paths) - sweArtifactLimit
-		paths = paths[:sweArtifactLimit]
-	}
-	for _, path := range paths {
-		s.workspace.Record(task.leafKey(), filepath.Join(directory, path))
-	}
-	return overflow
+	return paths
 }
 
 // sweSidecar names the engine's own bookkeeping. It git-excludes these itself,
@@ -1103,6 +1479,20 @@ func gitLines(ctx context.Context, directory string, args ...string) []string {
 	return lines
 }
 
+// gitText is gitLines' other half: the whole of what git wrote, unsplit,
+// for the reads whose record separator is not a newline. Every path git can
+// print inside a NUL-separated record — a name with a newline in it, a name
+// with a quote in it — is a name gitLines would have torn in two.
+func gitText(ctx context.Context, directory string, args ...string) (string, bool) {
+	command := exec.CommandContext(ctx, "git", args...)
+	command.Dir = directory
+	out, err := command.Output()
+	if err != nil {
+		return "", false
+	}
+	return string(out), true
+}
+
 // sweResumableStatuses is internal/swepro/codeaf/resume.go's own table, read
 // from outside. The engine decides for itself whether a checkpoint is
 // resumable; this is only the question of whether to ask it, and asking when
@@ -1208,6 +1598,24 @@ type sweRun struct {
 	// end. None of it changes what runs — it is read once, in settle, and turned
 	// into prose for the ruler that decides what reaches this worker next time.
 	fit sweFit
+
+	// said is the last thing the engine's worker finished saying out loud: the
+	// most recent completed assistant text part on the wire, whole.
+	//
+	// It is here because it was the deliverable all along and was being thrown
+	// away. The engine's terminal event carries a message field and its own
+	// contract promises one (internal/swepro/EVENTS-CONTRACT.md), but the
+	// pipeline leaves it empty on the ending that matters most — a clean pass —
+	// so the leaf's whole account of a successful coding run collapsed to "the
+	// coding run ended without a verdict of its own", every time, while the
+	// worker's actual prose — the root cause it found, the reasoning behind the
+	// change — went past on this channel and was written only to the trace.
+	//
+	// Last rather than concatenated: the intermediate texts are a working
+	// monologue and the final one is the answer, which is the same law the
+	// generalist leaf's deliverable follows. Uncapped, because this is the
+	// deliverable and not a row in a record; the trace keeps its own clipped copy.
+	said string
 
 	// landing replaces the flat "it ended without saying how it went" on the
 	// one ending that has something better to say for itself.
@@ -1427,6 +1835,13 @@ func (r *sweRun) narratePart(part swePart) {
 		text := strings.TrimSpace(part.Text)
 		if text == "" || part.Time.End <= 0 || !once(part.ID) {
 			return
+		}
+		// Only what the worker SAID. Reasoning is the same channel carrying a
+		// different thing — a model thinking out loud on its way to an answer —
+		// and delivering it as the answer would hand a person the working
+		// instead of the result.
+		if part.Type == "text" {
+			r.said = text
 		}
 		r.trace.note("text: " + snip(text, sweSaidCap))
 
@@ -1946,9 +2361,25 @@ func (r *sweRun) text(stop StopReason, terminal *sweEvent) string {
 	// node summary somebody can act on and the void sentence it replaces.
 	report := r.account.Report()
 	if block.Len() == 0 {
-		if r.landing != "" {
+		// The worker's own last word stands in for a terminal message that was
+		// never written, which on this engine is every successful run. It
+		// outranks both sentences below it because they are the harness
+		// describing an ending and this is the work describing itself: a leaf
+		// that found a root cause and said so was delivering "the coding run
+		// ended without a verdict of its own" over the top of it.
+		switch {
+		case strings.TrimSpace(r.said) != "":
+			block.WriteString(strings.TrimSpace(r.said))
+			// The landing sentence is about HOW the run ended and is still owed
+			// when there is one — it is the difference between a delivered
+			// change and a discarded one — so it follows rather than being
+			// displaced.
+			if r.landing != "" {
+				block.WriteString("\n\n" + r.landing)
+			}
+		case r.landing != "":
 			block.WriteString(r.landing)
-		} else {
+		default:
 			block.WriteString(sweEndingText(stop, report != ""))
 		}
 	}

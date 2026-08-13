@@ -439,6 +439,22 @@ func (runner *pipeline) run(
 	switch finalAudit.Status {
 	case auditorgate.StatusPass:
 		result.Status = "pass"
+		// The terminal event's own contract (EVENTS-CONTRACT.md) promises a
+		// top-level `message` on every ending, and this arm — the ending that
+		// matters most, a clean pass — was the one that never wrote one. A
+		// consumer reading the terminal line for the run's verdict therefore got
+		// an empty string on exactly the runs that succeeded, and had to invent
+		// a sentence to stand in for it.
+		//
+		// Nothing is invented here either. The gate's own reason when it wrote
+		// one, and otherwise the auditor's own notes from the verdict that
+		// passed the work — both are the audit speaking about this run, in its
+		// own words, and where it said nothing this stays empty.
+		if finalAudit.Reason != nil {
+			result.Reason = *finalAudit.Reason
+		} else if finalAudit.Verdict != nil && finalAudit.Verdict.Notes != nil {
+			result.Reason = *finalAudit.Verdict.Notes
+		}
 	case auditorgate.StatusSkipped:
 		result.Status = "pass"
 		if finalAudit.Reason != nil {

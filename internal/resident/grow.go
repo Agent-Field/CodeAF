@@ -176,6 +176,22 @@ type Growth struct {
 	// has just said what they want more of is not answerable by "the goal is
 	// already covered", because they have just redefined the goal.
 	Ungated bool
+
+	// Records are files the finished work left behind that the remainder must
+	// READ rather than reuse: the text of a change, a measurement, a transcript.
+	//
+	// They are separate from the artifact list because the two are separate
+	// invitations and collapsing them was measured producing a false statement.
+	// An artifact is "this exists, do not make it again". A record is "this is
+	// what happened, and it is where your account of it has to come from" — and
+	// a repair that was handed only artifact NAMES had no way to learn what the
+	// work it is finishing actually did, so the pass that wrote its method
+	// offered an illustrative root cause instead and the leaf shipped that
+	// example verbatim as the real one.
+	//
+	// Empty is every caller that has one kind of file and not the other, which
+	// renders exactly the bytes this path has always rendered.
+	Records []string
 }
 
 func (g Growth) reason() string {

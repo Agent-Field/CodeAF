@@ -60,7 +60,13 @@ const overrunMarker = store.SplitNamespace
 // and each round of invented verification became the next round's premise.
 // Naming what a reviewer found missing, when a reviewer ran, keeps the replan
 // aimed at the actual gap instead of at whatever sounds like more work.
-func OverrunGoal(node store.Node, partial string, artifacts []string, gap string) string {
+// records, when there are any, are the files the finished work left behind that
+// this remainder must READ. They are rendered apart from the artifact list and
+// said to be readable, because "reuse rather than recreate" is an instruction
+// about not repeating work and this is an instruction about where the facts come
+// from — a leaf handed the second under the first's heading reads a path as a
+// thing it already has rather than as a thing it has to open.
+func OverrunGoal(node store.Node, partial string, artifacts []string, gap string, records ...string) string {
 	var goal strings.Builder
 	goal.WriteString("Finish work a previous agent started. It stopped when its resources ran out, so parts of the assignment may already be complete. Plan only what the assignment still needs — work that is already done must not be redone, and do not add verification, re-verification, or review of existing results unless the assignment itself asks for it.\n\nThe original assignment:\n")
 	goal.WriteString(node.Brief)
@@ -93,6 +99,14 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap string
 	if len(artifacts) > 0 {
 		goal.WriteString("\n\nFiles already produced, to reuse rather than recreate:\n")
 		goal.WriteString(strings.Join(artifacts, "\n"))
+	}
+	if len(records) > 0 {
+		goal.WriteString("\n\nThe record of what the earlier work actually did, as readable files on disk. " +
+			"Open them: any statement this assignment makes about what was wrong, what was changed, " +
+			"or why, has to come from what is in them. Where they do not settle something, the honest " +
+			"answer is that the record does not name it — never an inference from the fact that the " +
+			"work succeeded, and never an example of what the answer might have been:\n")
+		goal.WriteString(strings.Join(records, "\n"))
 	}
 	return goal.String()
 }
@@ -168,6 +182,13 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	}
 	if !verdict.Allow {
 		if verdict.Cause == CauseRail {
+			// A repair held at the rail carries what it needs to be replanned
+			// later, and the record roster is deliberately not among it: the
+			// files it names are the run's own sidecars, which the workspace may
+			// have swept by the time consent arrives, and a path journaled today
+			// and dead tomorrow is worse than a plan that knows it has no record.
+			// The remainder planned on resumption is told exactly that, and its
+			// methods say so rather than improvising. See Growth.Records.
 			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Gap: gap,
 				Artifacts: artifacts, Prefix: prefix, Subharness: worker}
 			if err := graph.DeferOverrun(deferred); err != nil {
@@ -179,7 +200,8 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	}
 	anchor := PlanAnchor{NodeID: request.JobRoot, SessionID: node.Provenance.SessionID}
 	planCtx := withPlanAnchor(ctx, anchor)
-	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts, gap), prefix)
+	planCtx = withPlanRecords(planCtx, growth.Records)
+	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts, gap, growth.Records...), prefix)
 	if err != nil {
 		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
