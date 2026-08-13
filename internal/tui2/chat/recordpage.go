@@ -75,6 +75,12 @@ type recordInputs struct {
 	// nodeModels answers the same question per part, for the tree's rows. Nil
 	// leaves each row on the binding the board resolved.
 	nodeModels func(node string) []string
+	// forThread builds the attribution row (chat-simplify.md 5.3): `for  <thread
+	// name>`, and a door onto that conversation. It is a SEAM rather than a
+	// string because only the window knows what a session is called and whether
+	// naming it here would be a door back to the room the row is drawn in — see
+	// [App.forThreadRow]. Nil, or a nil block, draws nothing.
+	forThread func(session string) blocks.Block
 	// now is the instant the snapshot was folded in, which is what a running
 	// row's start is counted back from ([startedAt]).
 	now time.Time
@@ -102,6 +108,17 @@ func roomBlocks(in recordInputs) []blocks.Block {
 
 	out := make([]blocks.Block, 0, len(in.record)+len(in.messages)+4)
 	out = append(out, chargeRule(root, in.style, in.money, in.models))
+	// THE ATTRIBUTION, immediately under the rule and above the ask (5.3's
+	// `attribution` row). It answers "who is this for", which is the question a
+	// reader asks between "what is this" (the rule) and "what was asked" (the
+	// card) — and it is a door back to the conversation that commissioned the
+	// work, which is J2's whole shape: one thread, N tasks, and a way home from
+	// each of them.
+	if in.forThread != nil {
+		if row := in.forThread(strings.TrimSpace(root.node.Provenance.SessionID)); row != nil {
+			out = append(out, row)
+		}
+	}
 	out = append(out, chargeBlock(root, in.style))
 
 	// THE PROGRESS LINE, AND THERE IS EXACTLY ONE (user review, 2026-08-11).
