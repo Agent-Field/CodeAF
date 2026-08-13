@@ -44,7 +44,7 @@ func TestReadReachesTheAnswerTheResultOnlyNames(t *testing.T) {
 	graph := openHeadStore(t)
 	node, _ := seedAssessmentJob(t, graph, assessmentVerdict)
 	head := New(nil, graph)
-	recorded := resultFiles(node)
+	recorded := resultFiles(node, deepFileCap)
 	if len(recorded) != 1 {
 		t.Fatalf("seeded job recorded %v, want exactly one path", recorded)
 	}

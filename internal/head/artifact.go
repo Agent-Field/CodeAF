@@ -36,6 +36,9 @@ import (
 // is really a link out of the workspace opens nothing. Nothing here writes, and
 // nothing here journals a command: like board, manual and result, it is a read.
 
+// The byte numbers here are floors now rather than ceilings: this is what
+// they get on a window nobody could size, and budget.go raises them in
+// proportion on a window with room to spare.
 const (
 	// beltArtifactBytes is one artifact read's whole budget. It sits a little
 	// above beltResultBytes for the same reason that one does above a deep
@@ -47,7 +50,10 @@ const (
 	// elision. A document's conclusion is the part a verdict question wants and
 	// it is the part a head-only truncation always throws away, so the tail is
 	// bought explicitly rather than left to luck.
-	beltArtifactTailBytes = beltArtifactBytes / 3
+	beltArtifactTailBytes = beltArtifactBytes / artifactTailDivisor
+	// artifactTailDivisor is that third, named so a read on a bigger window can
+	// take the same third of whatever the window bought it.
+	artifactTailDivisor = 3
 	// beltArtifactCap bounds the recorded set one job can offer. resultFiles
 	// already caps each node at deepFileCap; this bounds the union across a job
 	// and its parts, because the set is rendered into an error message the model
@@ -77,7 +83,7 @@ func (h *Head) artifactSet(node store.Node) []string {
 			paths = append(paths, path)
 		}
 	}
-	add(resultFiles(node))
+	add(resultFiles(node, h.budget.deepFiles))
 	nodes, err := h.store.ActiveNodes()
 	if err != nil {
 		return paths
@@ -86,7 +92,7 @@ func (h *Head) artifactSet(node store.Node) []string {
 		if child.Parent != node.ID {
 			continue
 		}
-		add(resultFiles(child))
+		add(resultFiles(child, h.budget.deepFiles))
 	}
 	return paths
 }
@@ -109,12 +115,12 @@ func (h *Head) readArtifact(node store.Node, name string) (string, error) {
 		return "", fmt.Errorf("%q is not a file that job wrote; it wrote: %s",
 			name, strings.Join(paths, ", "))
 	}
-	return readArtifactAt(picked)
+	return readArtifactAt(picked, h.budget.artifact, h.budget.artifactTail)
 }
 
 // readArtifactAt is the opening half, shared by both recorded sets. Whatever
 // chose the path, what happens to it afterwards is one rule.
-func readArtifactAt(picked string) (string, error) {
+func readArtifactAt(picked string, window, tail int) (string, error) {
 	real, err := artifactRealPath(picked)
 	if err != nil {
 		return "", err
@@ -131,7 +137,7 @@ func readArtifactAt(picked string) (string, error) {
 	if info.IsDir() {
 		return "", fmt.Errorf("%s is a directory, not a document", picked)
 	}
-	body, err := readArtifactWindow(file, info.Size())
+	body, err := readArtifactWindow(file, info.Size(), window, tail)
 	if err != nil {
 		return "", fmt.Errorf("%s could not be read: %w", picked, err)
 	}
@@ -161,7 +167,7 @@ func (h *Head) readWrittenArtifact(name string) (string, error) {
 		return "", fmt.Errorf("%q is not a file written from this conversation; these are: %s",
 			name, strings.Join(paths, ", "))
 	}
-	return readArtifactAt(picked)
+	return readArtifactAt(picked, h.budget.artifact, h.budget.artifactTail)
 }
 
 // artifactPick turns whatever the caller typed into one entry of the recorded
@@ -220,8 +226,8 @@ func artifactRealPath(path string) (string, error) {
 // exactly how much is missing — an answer document's verdict is as often in the
 // last paragraph as the first, and a silent truncation would let the model
 // answer confidently from the half it happened to be given.
-func readArtifactWindow(file *os.File, size int64) (string, error) {
-	if size <= beltArtifactBytes {
+func readArtifactWindow(file *os.File, size int64, window, tail int) (string, error) {
+	if size <= int64(window) {
 		buffer := make([]byte, size)
 		read, err := file.ReadAt(buffer, 0)
 		if err != nil && read == 0 {
@@ -229,16 +235,16 @@ func readArtifactWindow(file *os.File, size int64) (string, error) {
 		}
 		return string(buffer[:read]), nil
 	}
-	headBytes := beltArtifactBytes - beltArtifactTailBytes
+	headBytes := window - tail
 	front := make([]byte, headBytes)
 	if _, err := file.ReadAt(front, 0); err != nil {
 		return "", err
 	}
-	back := make([]byte, beltArtifactTailBytes)
-	if _, err := file.ReadAt(back, size-int64(beltArtifactTailBytes)); err != nil {
+	back := make([]byte, tail)
+	if _, err := file.ReadAt(back, size-int64(tail)); err != nil {
 		return "", err
 	}
-	elided := size - int64(beltArtifactBytes)
+	elided := size - int64(window)
 	return artifactWholeRunes(front, false) +
 		fmt.Sprintf("\n…[%d bytes elided of %d]…\n", elided, size) +
 		artifactWholeRunes(back, true), nil

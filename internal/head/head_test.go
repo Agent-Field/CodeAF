@@ -290,7 +290,7 @@ func TestRenderNotebookUsesMessageScopeCues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("record fact: %v", err)
 	}
-	rendered := renderNotebook(graphStore, "Please inspect internal/resident/notebook.go", "")
+	rendered := renderNotebook(graphStore, "Please inspect internal/resident/notebook.go", "", notebookContextBytes)
 	if !strings.Contains(rendered, fmt.Sprintf("#%d [", fact.Seq)) ||
 		!strings.Contains(rendered, "scope-only memory with unrelated vocabulary") {
 		t.Fatalf("scope-exact notebook fact did not reach head: %q", rendered)
@@ -370,7 +370,7 @@ func TestHeadRetractsNumberedNotebookBelief(t *testing.T) {
 		quarantined.EvidenceSeq != user.Seq || quarantined.StatusOrigin != store.FactOriginUser {
 		t.Fatalf("retracted fact = %+v found=%t err=%v", quarantined, found, err)
 	}
-	if rendered := renderNotebook(graphStore, "git worktrees", ""); strings.Contains(rendered, fact.Body) {
+	if rendered := renderNotebook(graphStore, "git worktrees", "", notebookContextBytes); strings.Contains(rendered, fact.Body) {
 		t.Fatalf("quarantined fact reached head retrieval: %q", rendered)
 	}
 	if err := graphStore.Rebuild(); err != nil {
@@ -781,7 +781,7 @@ func TestHeadRememberPathCapturesStatedVoicePreference(t *testing.T) {
 		t.Fatalf("remembered voice preference = %+v", facts)
 	}
 	// And it comes back on the next message, which is the whole point of durable.
-	if rendered := renderNotebook(graphStore, "how should you answer me", ""); !strings.Contains(rendered, preference) {
+	if rendered := renderNotebook(graphStore, "how should you answer me", "", notebookContextBytes); !strings.Contains(rendered, preference) {
 		t.Fatalf("the notebook does not read the preference back:\n%s", rendered)
 	}
 }

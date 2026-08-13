@@ -107,7 +107,7 @@ func (h *Head) composeRevision(ctx context.Context, user store.Message, kind sto
 		body += "\n\nRecent thread before this message:\n" + h.renderThread(recent)
 	}
 	body += "\n\nNotebook (durable memory across jobs and conversations):\n" +
-		renderNotebook(h.store, user.Body, "") +
+		renderNotebook(h.store, user.Body, "", h.budget.notebook) +
 		fmt.Sprintf("\n\nSteps of that work already under way, which hear their words verbatim: %d", audience) +
 		"\n\nCurrent user message (verbatim):\n" + strings.TrimSpace(user.Body)
 	response, err := client.CompleteWithMessages(ctx, []ai.Message{

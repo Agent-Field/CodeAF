@@ -68,7 +68,8 @@ func (run *beltRun) task(args map[string]any) (string, bool) {
 		// correction.go's doctrine, unchanged: their words lead, the previous
 		// version and its files travel underneath, and the user outranks the
 		// predecessor's account of itself.
-		instruction = SpliceCorrection(instruction, node, previous, resultFiles(node))
+		instruction = SpliceCorrection(instruction, node, previous,
+			resultFiles(node, run.head.budget.deepFiles), run.head.budget.correction)
 		target, correcting = node.ID, surgeryTargetLabel(node)
 	case after != "":
 		node, err := run.head.beltRecordedJob(after, "after")

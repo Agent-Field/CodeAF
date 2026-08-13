@@ -1417,6 +1417,13 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 		// beside the work it belongs to. The commander already resolved this
 		// root for every other file the job touches, so the head uses the same.
 		WithWorkspace(workspaceRoot).
+		// How much the talk model holds, which is what every block of the head's
+		// prompt is sized from. The catalog lives here, on the surface, and the
+		// head is handed the fact — the same doctrine the linear leaf's own
+		// window takes (subharness.go). A model the catalog cannot size answers
+		// zero, and zero leaves the head on the literals it shipped with rather
+		// than on a guess about a window nobody knows.
+		WithContextLength(modelCatalog.ContextLength(talkModel)).
 		// The pool answers with its own concrete client; the head asks for its
 		// own interface. The lift is written out rather than passed as a method
 		// value so a failed pin returns a nil interface rather than a non-nil
