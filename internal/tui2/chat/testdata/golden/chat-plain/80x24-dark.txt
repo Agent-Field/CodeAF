@@ -1,4 +1,3 @@
-▸ · reflected — 3 facts, 1 skill  ▸ 2 lines
 
   ○ rework NavCtx after the worker died
     ● creating task…
@@ -18,6 +17,7 @@
   │ and a note about the plan
   ▸ workspace/wisp/plan.md  1.6KB
 
+  aforge ‹ untitled room
 ▍ ›  ask for anything · @ jobs · / commands
 
 

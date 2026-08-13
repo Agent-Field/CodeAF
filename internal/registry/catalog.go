@@ -201,6 +201,14 @@ func threadKeyRows() []Entry {
 			Scope: everywhere, Key: "alt+1"},
 		{ID: "key.place-board", Verb: "go to board", Description: "open the task board",
 			Scope: everywhere, Key: "alt+2"},
+		// The place line's walk (internal/tui2/chat/place.go). ctrl+g rather
+		// than a bare letter or an alt chord, for the two reasons this file
+		// already records one row above: a composer-first room hands every
+		// printable key to the draft, and macOS composes Option into a glyph
+		// the program never sees. It needs no ChordKey because its Key is
+		// already a chord (see [Entry.KeyOn]).
+		{ID: "key.place-line", Verb: "walk where you are", Description: "focus the place line, then walk out to any room above this one",
+			Scope: everywhere, Key: "ctrl+g"},
 		{ID: "key.voice", Verb: "talk", Description: "start or finish voice input",
 			Scope: everywhere, Key: "alt+v"},
 		{ID: "key.boost", Verb: "boost", Description: "cycle boosted next answer, pinned, or off",

@@ -997,19 +997,15 @@ type statusPane struct {
 	keyMode   footer.KeyMode
 	keyCount  int
 	residency Residency
-	// thread is the TITLE CHIP: the scribe's name for the working conversation
-	// this window is in (chat-simplify.md 5.3), and breadcrumb is how deep
-	// inside it the reader has navigated. Neither is ever an id (13.3.4); an
-	// unnamed thread draws NOTHING, which is [App.threadName]'s empty string
-	// arriving here unchanged.
+	// THE TITLE CHIP AND THE BREADCRUMB ARE BOTH GONE FROM THIS ROW, and the two
+	// fields that fed them with them.
 	//
-	// It replaced a `room` field that fed the breadcrumb's head. The two were
-	// the same fact and the chip is the better home for it: the trail is the way
-	// UP, and a thread has nothing above it — it is the conversation, not a
-	// scope inside one — so the name it used to lead with was a step nobody
-	// could take. See [statusPane.scopeTail].
-	thread     string
-	breadcrumb string
+	// They were one fact told in two halves — the chip said WHICH conversation,
+	// the trail said HOW DEEP inside it — and neither half could say the other.
+	// The place line says both, in one path, on the row directly above the caret
+	// where a reader is already looking (chat/place.go). What is left down here
+	// is what §7 asked of this row in the first place: the pages, and the meters.
+	//
 	// openThreads raises the switcher, and it is the very act the `t` key
 	// performs. It is a function for the reason [statusPane.openRail] is: the
 	// row knows which word was pointed at and nothing else, and a chip and a key
@@ -1024,12 +1020,15 @@ type statusPane struct {
 	// naming a door that opens nothing.
 	foldable bool
 
-	// run performs a footer word, and pop is the breadcrumb's way out. Both are
-	// functions for the reason the rail's are: the row knows which word was
-	// pointed at and nothing else — the acts belong to the app, and they are
-	// the same acts the keyboard reaches.
+	// run performs a footer word. It is a function for the reason the rail's
+	// are: the row knows which word was pointed at and nothing else — the act
+	// belongs to the app, and it is the same act the keyboard reaches.
+	//
+	// There used to be a `pop` beside it, which was the breadcrumb's way out.
+	// The breadcrumb is the place line now and its own separators are the way
+	// out, so a second spelling of the pop wired to a column this row no longer
+	// draws would have been dead code that could still drift.
 	run func(entryID string) tea.Cmd
-	pop func() tea.Cmd
 	// hover is the word the pointer is resting on, or "" for none.
 	hover string
 	// lastWidth is the width the row was last drawn at, so a pointer can be
@@ -1127,8 +1126,6 @@ func (p *statusPane) focusContext(width int) footer.FocusContext {
 		KeyModeCount:  p.keyCount,
 		Health:        p.health(),
 		Dock:          p.dockNow(),
-		Thread:        strings.TrimSpace(p.thread),
-		ScopeTail:     p.scopeTail(),
 		Hover:         p.hover,
 		// What the meta strip used to say, said here (§7). The model word is
 		// the picker's door; the gauge and the directory are standing facts;
@@ -1164,11 +1161,6 @@ func (p *statusPane) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
 		return nil
 	}
 	switch id {
-	case footer.ScopeTarget:
-		if p.pop != nil {
-			return p.pop()
-		}
-		return nil
 	case footer.InterruptTarget:
 		// The chip performs what esc performs, and only while it is drawn —
 		// the row only offers it while EscInterrupts is true.
@@ -1270,26 +1262,3 @@ func (p *statusPane) health() []string {
 	return []string{"visitor " + tokens.GlyphSeparator + " " + note}
 }
 
-// scopeTail is the breadcrumb tail, and the lowest-priority column on the row.
-//
-// It says HOW DEEP INSIDE the conversation the reader has gone — the scopes they
-// descended through, in the words they navigated by. 13.3.4 is why nothing on it
-// can ever fall back to a session id.
-//
-// IT NO LONGER LEADS WITH THE THREAD'S NAME. It used to, and the name was the
-// only part of it that survived the elision ladder on a narrow row — which was
-// the tell that it was doing the title chip's job. The chip does that job now,
-// permanently and one zone to the left ([FocusContext.Thread]), so repeating it
-// here would be §19's same-fact-twice inside one row. What is left is the part
-// the chip cannot say: how far in you are, and that every separator on it is a
-// step you can take back.
-func (p *statusPane) scopeTail() string {
-	// Empty at home, on purpose. The trail begins only when the reader has
-	// descended; the chip beside it says which conversation they descended
-	// INSIDE OF, and it is drawn whether or not they have.
-	crumbs := strings.TrimSpace(p.breadcrumb)
-	if crumbs == "" {
-		return ""
-	}
-	return tokens.GlyphScopeUp + " " + crumbs
-}

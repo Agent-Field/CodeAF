@@ -17,8 +17,8 @@
 ✓ perf-audit
 
 
-
+  aforge ‹ work                                                                                  ◐ 1
 ▍ ›
 
 
-  chat  work  notebook  the wisp parity push                                             ~/aforge-v2
+  chat  work  notebook                                                                   ~/aforge-v2
