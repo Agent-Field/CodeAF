@@ -169,6 +169,57 @@ func (s *Store) ActiveNodes() ([]Node, error) {
 		)`, nil)
 }
 
+// OpenNodes is every node the graph has not finished with, FOLDED OR NOT.
+//
+// Folding is a presentation decision about SETTLED work: a job is filed away
+// once it is over, and the fold root then speaks for its members so the active
+// view stays the size of what is happening. Nothing about that reasoning
+// applies to a node that is still running, claimed or pending, and the day the
+// two states met the reasoning failed outright — a running continuation whose
+// lineage had been filed away was invisible to every read the head owns, so a
+// person watching it tick on the rail asked to cancel it and was told, three
+// board reads and five searches later, that no such work existed. The rail
+// could see it; nothing the head could ask could.
+//
+// So this is the corpus that answers "what is still going on", and its one law
+// is that FOLDING HIDES NOTHING THAT IS STILL ALIVE. It is deliberately not a
+// replacement for [Store.ActiveNodes] — the compact view is right for the
+// question it answers — but any reader whose sentence turns on liveness must
+// union this in, because a live node missing from that reader's world is not a
+// tidier answer, it is a false one.
+//
+// The permanent spine is excluded: it is Running forever by construction and is
+// nobody's live work.
+func (s *Store) OpenNodes() ([]Node, error) {
+	return s.queryNodes(`WHERE id != ? AND status NOT IN (?, ?, ?)`,
+		[]any{RootID, Done, Failed, Cancelled})
+}
+
+// withOpenNodes unions the open corpus into a view that may have folded some of
+// it away, keeping the view's own order and appending what it was missing.
+//
+// A failed read leaves the view as it was rather than failing the caller: this
+// is a widening, and a widening that cannot be performed must not narrow the
+// answer to nothing.
+func withOpenNodes(s *Store, view []Node) []Node {
+	open, err := s.OpenNodes()
+	if err != nil || len(open) == 0 {
+		return view
+	}
+	present := make(map[string]bool, len(view))
+	for _, node := range view {
+		present[node.ID] = true
+	}
+	for _, node := range open {
+		if present[node.ID] {
+			continue
+		}
+		present[node.ID] = true
+		view = append(view, node)
+	}
+	return view
+}
+
 // AddressableNodes is ActiveNodes plus the jobs a territory has packed away.
 //
 // The packer is what made a month-old job invisible to every snapshot-derived
