@@ -188,6 +188,39 @@ func newProgressGuard() *progressGuard {
 	return &progressGuard{seenResults: map[string]bool{}}
 }
 
+// readTurn is the half of observe that touches seenResults, and it is its own
+// function for one reason: the lock it takes is released by a defer directly
+// under it. Written inline, the critical section spanned a loop whose body an
+// absorbed panic could leave the mutex held forever — a deadlock in place of a
+// recovered turn. What it reads out is the turn's three facts; everything after
+// it is the main loop's own state, which this mutex has never guarded (see mu).
+func (g *progressGuard) readTurn(calls []ai.ToolCall, results []Result) (mutated, newInfo, anyError bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	for index, call := range calls {
+		if mutationTools[call.Function.Name] {
+			mutated = true
+		}
+		if results[index].IsError {
+			// An error is always new information: the model learned that
+			// something does not work, which is forward progress even if
+			// nothing was written. Counting errors as "not new" would make
+			// the stagnant signal fire on a model that is failing its way
+			// through different approaches, which is the opposite of
+			// spinning.
+			anyError = true
+			newInfo = true
+			continue
+		}
+		key := resultKey(results[index])
+		if !g.seenResults[key] {
+			g.seenResults[key] = true
+			newInfo = true
+		}
+	}
+	return mutated, newInfo, anyError
+}
+
 // callSignature is the key for signal 1: the tool name plus its arguments,
 // canonicalised. Two calls with the same signature asked the same thing.
 func callSignature(call ai.ToolCall) string {
@@ -244,33 +277,7 @@ func (g *progressGuard) observe(
 		return progressContinue
 	}
 
-	mutated := false
-	newInfo := false
-	anyError := false
-
-	g.mu.Lock()
-	for index, call := range calls {
-		if mutationTools[call.Function.Name] {
-			mutated = true
-		}
-		if results[index].IsError {
-			// An error is always new information: the model learned that
-			// something does not work, which is forward progress even if
-			// nothing was written. Counting errors as "not new" would make
-			// the stagnant signal fire on a model that is failing its way
-			// through different approaches, which is the opposite of
-			// spinning.
-			anyError = true
-			newInfo = true
-			continue
-		}
-		key := resultKey(results[index])
-		if !g.seenResults[key] {
-			g.seenResults[key] = true
-			newInfo = true
-		}
-	}
-	g.mu.Unlock()
+	mutated, newInfo, anyError := g.readTurn(calls, results)
 
 	// An artifact count change means a file landed on disk — a mutation by
 	// any tool, including sh, which produces files the mutation-tools set
