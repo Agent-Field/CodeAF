@@ -309,6 +309,65 @@ Levers deliberately not pulled, for a future round: the engine's stock
 multi-tier model pools (pinned here to the one benchmark model for
 like-for-like), hard mode, and further boundary-learning iterations.
 
+## 6. The vs-pi cells and the wave campaign — 2026-08-13 (spark)
+
+A different benchmark from sections 1–4: three hand-authored cells (BUG: fix
+the failing suite; FEATURE: add a bulk discount with tests; REPORT: six
+fictional vendor briefs evaluated into report.md), three replicates each,
+`deepseek/deepseek-v4-flash`, all nine cells of an arm run CONCURRENTLY (the
+only serializer is the provider rate limit). pi is 0.82.1 pinned side-by-side.
+Costs are `normcost.py` (0423 price sheet) for aforge; pi is `picost.py`
+recomputed-at-list in parentheses. Quality: pytest for BUG/FEATURE
+(17 / 20 passes is the fixture bar), report.md presence and six-vendor
+coverage for REPORT.
+
+Same-day medians, 2026-08-13/14, in campaign order:
+
+| arm | bug | feat | report | total |
+|---|---|---|---|---|
+| pi 0.82.1 | 26s / $0.0019 (0.0028) | 48s / $0.0032 (0.0043) | 31s / $0.0012 (0.0017) | **105s / $0.0063** |
+| w4b baseline (= v3 + structural keepers) | 94s / $0.0187 | 89s / $0.0135 | 89s / $0.0111 | 272s / $0.0433 |
+| w5 guard+digest+continuation+spine | 67s / $0.0130 | 86s / $0.0123 | 146s / $0.0225 | 299s / $0.0478 |
+| w6 planner amortization prompts | 105s / $0.0141 | 102s / $0.0125 | 148s / $0.0134 | 355s / $0.0400 |
+| w7 atomic nodes decline specialists | 62s / $0.0130 | 92s / $0.0157 | 102s / $0.0148 | 256s / $0.0405 |
+| w8 + one-sitting chain collapse | 60s / $0.0118 | 92s / $0.0168 | 112s / $0.0148 | 264s / $0.0434 |
+
+What the campaign learned, in the order the evidence forced it:
+
+- **Advisory prompt text does not move a multi-turn coding model on this
+  workload.** Wave 4 injected the boring-cwd/tool-economy discipline verbatim
+  into every swe coder leaf and measured zero turn-count change (~26 turns
+  for a one-line fix, before and after). Reverted. Structural mechanisms are
+  the only ones that paid.
+- **The waves DID fix real defects** (each verified in isolation): the spill
+  tee reopened after filling and pointed "First N bytes" at the last, EMPTY,
+  file; a coder could write the harness's own `.codeaf/contract.json` (the v3
+  FEATURE regression); a leaf could spin 200 turns and burn its 150k budget
+  twice through stateless continuations (no-progress guard + continuation
+  state handover now land both); prefix-stability is now property-tested.
+- **The residual gap (6.3x cost, 1.9–3.4x wall) is architectural, not a
+  missing mechanism.** pi runs a minimal loop: 8–14 calls and ~13.5KB of
+  total tool output per cell. aforge pays a planning layer, per-node
+  orientation, and engine turns of ~7.7k tokens each. On one-sitting tasks
+  that envelope dominates; on the section-1 issues the same machinery is what
+  wins (section 4's grid). Routing cannot see it pre-execution: the sizing
+  pass judges a bug fix borderline under the baseline ruler because the fix's
+  size is unknowable before the work — "atomic" is only ever known in
+  retrospect.
+- **Found gate hole:** wave-8 report-r3 ended with exit 0 and no report.md —
+  the final leaf wrote `ranked-recommendation.md` instead. Nothing compares
+  the landed files against the brief's named deliverable. Tracked as the
+  first move of the next wave.
+- **Quality bar held everywhere else:** BUG 17/17 ×3, FEATURE 19–26 ×3,
+  REPORT six-vendor tables ×2, on every wave-5+ arm.
+
+Levers deliberately not pulled, for a future round: generalist-first with
+swe-escalation-on-overrun (the doctrine's calibrated answer to the sizing
+uncertainty above — needs escalation to carry the generalist's partial state
+into the specialist cheaply); observation slimming (pi's reads average ~1KB;
+the 2000-line read is the default the leaf reaches for); the engine's
+multi-tier model pools; hard mode.
+
 ## 5. Caveats
 
 **pi and opencode cost figures are unreliable.** The starred figures in the #21
