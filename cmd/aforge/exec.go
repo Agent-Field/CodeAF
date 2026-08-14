@@ -6,7 +6,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
@@ -30,11 +32,27 @@ func runExec(args []string) error {
 	system := flags.String("system", "", "working method for the agent")
 	maxTurns := flags.Int("turns", 200, "runaway backstop on agent iterations")
 	maxTokens := flags.Int("budget", 150000, "token budget for the agent")
+	timeout := flags.Int("timeout", 0, "hard wall in seconds (default: scale from the token budget)")
+	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
+	planModel := flags.String("plan-model", "", "accepted for headless model-pin parity; exec performs no planning")
+	contextFill := flags.Int("context-fill", 0, "context compaction threshold in percent (default 60)")
+	completionReserve := flags.Int("completion-reserve", 0, "tokens reserved for each answer and its reasoning")
 	asJSON := flags.Bool("json", false, "print a machine-readable result")
 	output := flags.String("o", "", "write the machine-readable result to this file")
 	if err := flags.Parse(reorder(args, map[string]bool{
-		"w": true, "system": true, "turns": true, "budget": true, "o": true,
+		"w": true, "system": true, "turns": true, "budget": true, "timeout": true,
+		"model": true, "plan-model": true, "context-fill": true, "completion-reserve": true,
+		"o": true,
 	})); err != nil {
+		return err
+	}
+	if *maxTurns <= 0 || *maxTokens <= 0 {
+		return fmt.Errorf("exec turns and budget must be positive")
+	}
+	if *timeout < 0 {
+		return fmt.Errorf("exec timeout must not be negative")
+	}
+	if err := applyContextLaw(*contextFill, *completionReserve); err != nil {
 		return err
 	}
 	prompt, err := readText(flags.Args())
@@ -46,11 +64,24 @@ func runExec(args []string) error {
 	if err != nil {
 		return err
 	}
+	applyModelFlags(&settings, *model, *planModel)
+	modelCatalog := sharedCatalog(settings)
+	settings.Models = modelCatalog
 	client, err := settings.Client()
 	if err != nil {
 		return err
 	}
-	ctx := settings.Context(context.Background(), prompt)
+	defer closeRouter(client)
+
+	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+	deadline := execDeadline(*maxTokens, *timeout)
+	if *timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, deadline)
+		defer cancel()
+	}
+	ctx = settings.Context(ctx, prompt)
 	execCtx := settings.ExecContext(ctx)
 
 	space, err := exec.NewWorkspace(*workspace)
@@ -62,11 +93,9 @@ func runExec(args []string) error {
 		fmt.Fprintln(os.Stderr, "note: EXA_API_KEY unset — the web tool will be unavailable")
 	}
 
-	deadline := 15 * time.Minute
-	if scaled := time.Duration(*maxTokens/50_000) * time.Minute; scaled > deadline {
-		deadline = scaled
-	}
-	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline)
+	linear := exec.NewLinear(client, space, web, *maxTurns, *maxTokens, deadline).
+		WithAttribution(settings.Attribution).
+		WithContextLength(modelCatalog.ContextLength(settings.Model))
 	outcome, runErr := linear.Run(execCtx, execTask(prompt, *system, space.Root()))
 	if outcome == nil {
 		outcome = &exec.Outcome{Stop: exec.StopError, Artifacts: []string{}}
@@ -111,6 +140,17 @@ func runExec(args []string) error {
 		return exitStatus(code)
 	}
 	return nil
+}
+
+func execDeadline(maxTokens, timeoutSeconds int) time.Duration {
+	if timeoutSeconds > 0 {
+		return time.Duration(timeoutSeconds) * time.Second
+	}
+	deadline := 15 * time.Minute
+	if scaled := time.Duration(maxTokens/50_000) * time.Minute; scaled > deadline {
+		deadline = scaled
+	}
+	return deadline
 }
 
 func execExitCode(stop exec.StopReason, text string) int {
