@@ -32,6 +32,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -642,6 +643,21 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 		})
 	}
 
+	// --- the one-sitting collapse ---------------------------------------------
+	// The spine answered a question of gates, not of size: it can draw a chain
+	// whose every link the sizing pass then judges atomic — one agent's sitting,
+	// priced as a graph. A chain of sittings-that-are-each-atomic is one
+	// sitting: the same agent reads its own earlier files, which is sequence
+	// inside a worker, not a gate between workers. When the whole graph is that
+	// chain, with nobody's specialist machinery involved, the graph is the
+	// undivided answer the spine's one-stage sample would have given, reached
+	// by evidence instead of by sampling luck.
+	if collapsed := collapseAtomicChain(graph); collapsed != 0 {
+		report("collapse", time.Since(start), fmt.Sprintf("chain of %d atomic nodes is one sitting", collapsed))
+		emitProgress(progress, "steps", "1", "")
+		return graph, errors.Join(groundErr, fanErr, bindErr, sizeErr, auditErr)
+	}
+
 	graph.Prune()
 	emitProgress(progress, "steps", fmt.Sprintf("%d", len(graph.Nodes)), "")
 	graph.addSynthesis()
@@ -660,6 +676,66 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	}
 
 	return graph, errors.Join(groundErr, fanErr, bindErr, sizeErr, auditErr, briefErr)
+}
+
+// collapseAtomicChain folds a graph that is one short chain of atomic work
+// nodes into a single undivided leaf. The shape it looks for is exact: every
+// work node sized atomic by the sizing pass, no specialist anywhere, one node
+// per stage, and each node's only need the node before it — work the spine
+// drew as stages and the ruler then measured as sittings one agent could each
+// just do. Four links is the most the rule trusts: past that the sittings sum
+// past what one context ought to hold, and the graph stands as drawn.
+//
+// The collapse is the undivided shortcut reached by evidence rather than by
+// the spine's coin: one work node, the goal as its brief, the first link's
+// title. It returns how many nodes were folded, zero when the shape is
+// anything else.
+func collapseAtomicChain(graph *Graph) int {
+	var chain []*Node
+	for index := range graph.Nodes {
+		node := &graph.Nodes[index]
+		if node.Kind != KindWork {
+			return 0
+		}
+		if node.Size != SizeAtomic || node.Depth != 0 {
+			return 0
+		}
+		if node.Subharness != "" && !GeneralistSubharness(node.Subharness) {
+			return 0
+		}
+		chain = append(chain, node)
+	}
+	if len(chain) < 2 || len(chain) > 4 {
+		return 0
+	}
+	sort.Slice(chain, func(i, j int) bool { return chain[i].Stage < chain[j].Stage })
+	for index, node := range chain {
+		if node.Stage != index+1 {
+			return 0
+		}
+		if index == 0 {
+			if len(node.Needs) != 0 {
+				return 0
+			}
+			continue
+		}
+		if len(node.Needs) != 1 || node.Needs[0] != chain[index-1].ID {
+			return 0
+		}
+	}
+	folded := len(chain)
+	first := chain[0]
+	graph.Nodes = graph.Nodes[:0]
+	graph.Stages = graph.Stages[:1]
+	graph.Add(Node{
+		Kind: KindWork, Stage: 1,
+		Title:   strings.TrimSpace(first.Title),
+		Summary: strings.TrimSpace(first.Summary),
+		Brief:   graph.Goal,
+		Undivided: fmt.Sprintf("chain of %d atomic nodes — one sitting",
+			folded),
+	})
+	return folded
 }
 
 // announce settles every node matching the predicate: it starts that node's
