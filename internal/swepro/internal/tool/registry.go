@@ -151,9 +151,14 @@ type Registry struct {
 	taskDispatcher    *TaskDispatcher
 	taskSessionID     func() string
 	guardInFlight     *guardInFlightState
-	question          *question.Service
-	questionEnabled   bool
-	questionRejects   *questionRejectionState
+	// aforge-embed: D11 — readHistory tracks file reads so a re-read of an
+	// unchanged file returns a one-line notice instead of the full content.
+	// It is a pointer so per-context clones share one history, matching the
+	// testMemo pattern.
+	readHistory     *readHistoryState
+	question        *question.Service
+	questionEnabled bool
+	questionRejects *questionRejectionState
 }
 
 type questionRejectionState struct {
@@ -345,8 +350,9 @@ func NewWithOptions(workDir string, options RegistryOptions) *Registry {
 		permission:       service,
 		rules:            rules,
 		guardInFlight:    &guardInFlightState{},
-		planRun:          run,
 		planActive:       active,
+		planRun:          run,
+		readHistory:      &readHistoryState{reads: map[string]readFingerprint{}},
 		config:           configService,
 		allowExternal:    options.AllowExternalDirectories,
 		hardConfineShell: options.HardConfineShellPaths,

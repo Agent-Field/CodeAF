@@ -2,6 +2,7 @@ package resident
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -55,7 +56,7 @@ func TestABankIsComposedUnderTheContinuationHeaders(t *testing.T) {
 		t.Fatalf("the files header moved: %q", ContinuationFilesHeader)
 	}
 	// And the replan brief still writes them, from here.
-	goal := OverrunGoal(store.Node{Brief: "finish the comparison"}, "half of it", []string{"/jobs/x/a.md"}, "")
+	goal := OverrunGoal(store.Node{Brief: "finish the comparison"}, "half of it", []string{"/jobs/x/a.md"}, "", "")
 	if !strings.Contains(goal, ContinuationPartialHeader) || !strings.Contains(goal, ContinuationFilesHeader) {
 		t.Fatalf("the replan brief stopped sharing the continuation headers:\n%s", goal)
 	}
@@ -287,5 +288,161 @@ func record(t *testing.T, graph *store.Store, nodeID string, message store.Messa
 	message.NodeID = nodeID
 	if _, err := thread.Record(graph, message); err != nil {
 		t.Fatalf("record on %s: %v", nodeID, err)
+	}
+}
+
+// LeafState is the general-purpose handoff: what a dead leaf's worker actually
+// did, derived from its own outcome. A worker with a verifier contributes its
+// structured account; every worker contributes the tail of what it did. The
+// continuation that knows this resumes from here instead of re-reading
+// everything the dead leaf already diagnosed.
+func TestLeafStateDerivesFromAccountAndRan(t *testing.T) {
+	// A worker with an account: files changed, checks run, last word.
+	account := &executor.Account{
+		Files: []executor.FileChange{
+			{Path: "main.go", Change: executor.ChangeChanged, Added: 10, Removed: 3},
+			{Path: "main_test.go", Change: executor.ChangeAdded, Added: 42, Removed: 0},
+		},
+		Checks: []executor.Check{
+			{Command: "go test ./...", Kind: "test", Passed: true},
+		},
+		Final: "the parser now accepts trailing commas",
+	}
+	outcome := &executor.Outcome{
+		Text:    "partial deliverable",
+		Account: account,
+		Ran:     []string{`write {"path":"main.go"}`, "bash: go test ./...", "read main_test.go"},
+	}
+	state := LeafState(outcome)
+
+	// The account's structured file rows must appear.
+	if !strings.Contains(state, "What the work changed:") {
+		t.Fatalf("the state does not carry the account's file block:\n%s", state)
+	}
+	if !strings.Contains(state, "main.go") || !strings.Contains(state, "main_test.go") {
+		t.Fatalf("the state does not name the changed files:\n%s", state)
+	}
+	// The account's check results must appear.
+	if !strings.Contains(state, "passed: go test ./...") {
+		t.Fatalf("the state does not carry the check verdict:\n%s", state)
+	}
+	// The worker's last calls must appear, so the continuation knows what the
+	// dead leaf was doing when it stopped.
+	if !strings.Contains(state, "Last calls the worker made, in order:") {
+		t.Fatalf("the state does not carry the last calls:\n%s", state)
+	}
+	if !strings.Contains(state, `write {"path":"main.go"}`) {
+		t.Fatalf("the state does not carry the write call:\n%s", state)
+	}
+}
+
+// A worker with no account — the ordinary generalist — still contributes its
+// last calls, which is the one structured record every worker leaves.
+func TestLeafStateDerivesFromRanAlone(t *testing.T) {
+	outcome := &executor.Outcome{
+		Text: "some prose",
+		Ran:  []string{"read config.go", "edit config.go", "bash: go build ./..."},
+	}
+	state := LeafState(outcome)
+	if !strings.Contains(state, "Last calls the worker made, in order:") {
+		t.Fatalf("a worker with no account still hands on its last calls:\n%s", state)
+	}
+	if !strings.Contains(state, "read config.go") {
+		t.Fatalf("the state does not carry the read call:\n%s", state)
+	}
+	// No account block, because the worker left none.
+	if strings.Contains(state, "What the work changed:") {
+		t.Fatalf("a worker with no account should not fabricate one:\n%s", state)
+	}
+}
+
+// A nil outcome hands on nothing, because there is nothing to hand on.
+func TestLeafStateFromNilOutcome(t *testing.T) {
+	if state := LeafState(nil); state != "" {
+		t.Fatalf("a nil outcome produced state %q, want empty", state)
+	}
+}
+
+// An outcome with no account and no ran hands on nothing.
+func TestLeafStateFromEmptyOutcome(t *testing.T) {
+	if state := LeafState(&executor.Outcome{}); state != "" {
+		t.Fatalf("an empty outcome produced state %q, want empty", state)
+	}
+}
+
+// A bank carrying state composes it under the continuation state header, so
+// the retry's instruction tells the next agent what the dead one already did.
+func TestABankCarriesStateUnderTheContinuationHeader(t *testing.T) {
+	bank := Bank{
+		Partial:   "half the writeup",
+		State:     "What the work changed:\n  2 files changed, +52 -3 lines\n\nLast calls the worker made, in order:\n  write main.go\n  bash: go test ./...",
+		Artifacts: []string{"/jobs/x/main.go"},
+	}
+	body := bank.Continuation()
+	if !strings.Contains(body, ContinuationStateHeader) {
+		t.Fatalf("the state did not arrive under its header:\n%s", body)
+	}
+	if !strings.Contains(body, "2 files changed") {
+		t.Fatalf("the state's content was lost:\n%s", body)
+	}
+	// The state sits after the partial and before nothing — the order is
+	// partial, files, state, which is the order a reader needs: what it had,
+	// what it wrote, what it actually did.
+	partialIdx := strings.Index(body, ContinuationPartialHeader)
+	stateIdx := strings.Index(body, ContinuationStateHeader)
+	if partialIdx < 0 || stateIdx < 0 || stateIdx < partialIdx {
+		t.Fatalf("the state must come after the partial:\n%s", body)
+	}
+}
+
+// A bank with only state and nothing else is not empty, because state alone is
+// enough to tell the next agent what the dead one did.
+func TestABankWithOnlyStateIsNotEmpty(t *testing.T) {
+	bank := Bank{State: "Last calls the worker made, in order:\n  read main.go"}
+	if bank.Empty() {
+		t.Fatal("a bank holding state called itself empty")
+	}
+	body := bank.Continuation()
+	if !strings.Contains(body, ContinuationStateHeader) {
+		t.Fatalf("the state-only bank did not compose:\n%s", body)
+	}
+}
+
+// OverrunGoal renders the state under the same header, so the re-decomposition
+// path — the one that plans the x1/x2 continuation nodes — hands on the dead
+// leaf's findings too, not just the retry path.
+func TestOverrunGoalCarriesTheDeadLeafsState(t *testing.T) {
+	state := "What the work changed:\n  1 file changed, +1 -0 lines\n\nLast calls the worker made, in order:\n  read bug.go\n  edit bug.go"
+	goal := OverrunGoal(store.Node{Brief: "fix the bug"}, "partial fix", nil, "", state)
+	if !strings.Contains(goal, ContinuationStateHeader) {
+		t.Fatalf("the replan goal did not carry the state header:\n%s", goal)
+	}
+	if !strings.Contains(goal, "1 file changed") {
+		t.Fatalf("the state content was lost in the goal:\n%s", goal)
+	}
+	// An empty state renders nothing — the goal is byte-identical to before.
+	bare := OverrunGoal(store.Node{Brief: "fix the bug"}, "partial fix", nil, "", "")
+	if strings.Contains(bare, ContinuationStateHeader) {
+		t.Fatalf("an empty state rendered a header:\n%s", bare)
+	}
+}
+
+// The state survives the daily rail: a deferred overrun carries it, and the
+// resumed repair hands it to the continuation goal.
+func TestDeferredOverrunCarriesStateAcrossTheRail(t *testing.T) {
+	state := "Last calls the worker made, in order:\n  edit bug.go"
+	deferred := store.DeferredOverrun{
+		NodeID: "task-1", Partial: "partial", Prefix: "task-1-x1", State: state,
+	}
+	encoded, err := json.Marshal(deferred)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded store.DeferredOverrun
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.State != state {
+		t.Fatalf("the state did not survive the round trip: %q", decoded.State)
 	}
 }

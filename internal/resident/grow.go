@@ -204,6 +204,15 @@ type Growth struct {
 	// Empty is every caller that has one kind of file and not the other, which
 	// renders exactly the bytes this path has always rendered.
 	Records []string
+	// State is the dead leaf's structured findings — files it touched, checks
+	// it ran, and its last tool calls — derived from the leaf's own outcome
+	// by LeafState. It travels with Records for the same reason: the remainder
+	// needs to know what the finished work actually did, not just what files
+	// it left. A continuation that knows what the dead leaf already found
+	// resumes from there instead of re-reading everything it already diagnosed.
+	// Empty is every caller that has no structured outcome, which renders
+	// exactly the bytes this path has always rendered.
+	State string
 }
 
 func (g Growth) reason() string {

@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler"
 	systemprompt "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/system"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/testmemo"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/orientation"
 )
 
 type turnToolExecutor struct{ request turn }
@@ -174,6 +175,17 @@ func composeTurnSystem(
 	}
 	service := systemprompt.New(turnSystemContext(ctx, request.Workspace))
 	parts = append(parts, service.Environment(model)...)
+	// aforge-embed: D10 — the orientation digest gives the coder the repo's
+	// directory tree and code declaration outlines in its system prompt so
+	// orientation costs zero turns. It is assembled once and cached per
+	// workspace path, so the bytes are stable across turns and the provider
+	// prefix cache stays intact. The digest is only added for coder agents —
+	// the root-orchestrator gets its digest through the root-cut prompt path.
+	if request.Agent == "coder" {
+		if digest := strings.TrimSpace(orientation.BuildDigest(request.Workspace, nil)); digest != "" {
+			parts = append(parts, digest)
+		}
+	}
 	parts = append(parts, instructions...)
 	parts = append(parts, request.Reminder)
 	if instruction := attribution.CommitPromptInstruction(); instruction != "" {

@@ -66,7 +66,7 @@ const overrunMarker = store.SplitNamespace
 // about not repeating work and this is an instruction about where the facts come
 // from — a leaf handed the second under the first's heading reads a path as a
 // thing it already has rather than as a thing it has to open.
-func OverrunGoal(node store.Node, partial string, artifacts []string, gap string, records ...string) string {
+func OverrunGoal(node store.Node, partial string, artifacts []string, gap, state string, records ...string) string {
 	var goal strings.Builder
 	goal.WriteString("Finish work a previous agent started. It stopped when its resources ran out, so parts of the assignment may already be complete. Plan only what the assignment still needs — work that is already done must not be redone, and do not add verification, re-verification, or review of existing results unless the assignment itself asks for it.\n\nThe original assignment:\n")
 	goal.WriteString(node.Brief)
@@ -88,6 +88,10 @@ func OverrunGoal(node store.Node, partial string, artifacts []string, gap string
 		// serves all three. See bank.go.
 		goal.WriteString("\n\n" + ContinuationPartialHeader + "\n")
 		goal.WriteString(partial)
+	}
+	if strings.TrimSpace(state) != "" {
+		goal.WriteString("\n\n" + ContinuationStateHeader + "\n")
+		goal.WriteString(state)
 	}
 	if strings.TrimSpace(gap) != "" {
 		goal.WriteString("\n\nA reviewer compared that result against the assignment and named what is missing. Plan the work that closes these gaps and nothing else:\n")
@@ -194,7 +198,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 			// The remainder planned on resumption is told exactly that, and its
 			// methods say so rather than improvising. See Growth.Records.
 			deferred := store.DeferredOverrun{NodeID: node.ID, Partial: partial, Gap: gap,
-				Artifacts: artifacts, Prefix: prefix, Subharness: worker}
+				Artifacts: artifacts, Prefix: prefix, Subharness: worker, State: growth.State}
 			if err := graph.DeferOverrun(deferred); err != nil {
 				return 0, "", false, fmt.Errorf("replan overrun %s: defer at daily rail: %w", node.ID, err)
 			}
@@ -205,7 +209,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	anchor := PlanAnchor{NodeID: request.JobRoot, SessionID: node.Provenance.SessionID}
 	planCtx := withPlanAnchor(ctx, anchor)
 	planCtx = withPlanRecords(planCtx, growth.Records)
-	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts, gap, growth.Records...), prefix)
+	subtree, err := planRemainder(planCtx, OverrunGoal(node, partial, artifacts, gap, growth.State, growth.Records...), prefix)
 	if err != nil {
 		return 0, "", false, fmt.Errorf("replan overrun %s: %w", node.ID, err)
 	}
@@ -356,7 +360,7 @@ func ResumeDeferredOverruns(ctx context.Context, graph *store.Store, dailyBudget
 			continue
 		}
 		spliced, _, capped, err := replanOverrun(ctx, graph, node, deferred.Partial, deferred.Gap, deferred.Artifacts,
-			dailyBudgetUSD, deferred.Prefix, deferred.Subharness, Growth{Reason: GrowOverrun}, planRemainder)
+			dailyBudgetUSD, deferred.Prefix, deferred.Subharness, Growth{Reason: GrowOverrun, State: deferred.State}, planRemainder)
 		if err != nil {
 			return resumed, err
 		}

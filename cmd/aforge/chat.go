@@ -1300,8 +1300,9 @@ func buildBrain(w *chatWindow, session string, opts brainOptions) (*chatBrain, e
 				if clause := surpriseEvidence(graph, node.ID); clause != "" {
 					gap = strings.TrimSpace(gap + "\n\n" + clause)
 				}
-				spliced, _, replanErr := resident.ReplanOverrunOn(ctx, graph, node, outcome.Text, gap, absolute,
+				spliced, _, replanErr := resident.ReplanOverrunAs(ctx, graph, node, outcome.Text, gap, absolute,
 					settings.DailyBudgetUSD, remainder.Worker,
+					resident.Growth{Reason: resident.GrowOverrun, State: resident.LeafState(outcome)},
 					replanRemainder(settings, planClient, taskClient, plans, graph, terrainRoot))
 				if replanErr == nil && spliced > 0 {
 					continuing = true
@@ -2176,6 +2177,7 @@ func leafBank(graph *store.Store, node store.Node, space *exec.Workspace, jobDir
 	bank := resident.Bank{}
 	if outcome != nil {
 		bank.Partial = outcome.Text
+		bank.State = resident.LeafState(outcome)
 		absolute := make([]string, 0, len(outcome.Artifacts))
 		for _, artifact := range outcome.Artifacts {
 			absolute = append(absolute, filepath.Join(jobDir, artifact))

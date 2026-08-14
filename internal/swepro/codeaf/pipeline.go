@@ -58,6 +58,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/stucksilence"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/validity"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/util"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/orientation"
 )
 
 type pipelineDeps struct {
@@ -767,7 +768,7 @@ func (runner *pipeline) runDirectLeaf(
 	model := agentjsonModel(firstModel(runner.pool.high))
 	prompt := goal
 	if runner.rootCutLeaf && agent == "coder" {
-		prompt = buildRootCutPrompt(goal, runner.workspace)
+		prompt = buildRootCutPrompt(goal, runner.workspace, failingTestNamesFromBaseline(runner.baseline))
 	}
 	if agent == "coder" && runner.initialPlanBlock != "" {
 		prompt += "\n\n" + runner.initialPlanBlock
@@ -808,10 +809,36 @@ func (runner *pipeline) runDirectLeaf(
 	return nil
 }
 
-func buildRootCutPrompt(goal, workspace string) string {
+// failingTestNamesFromBaseline flattens the baseline's per-entrypoint failing
+// test lists into one slice. It is nil-safe and deduplicates.
+func failingTestNamesFromBaseline(record *baselineRecord) []string {
+	if record == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, entry := range record.Entries {
+		for _, name := range entry.Failing {
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func buildRootCutPrompt(goal, workspace string, failingTests []string) string {
 	factSheet := factsheet.GenerateFactSheet(
 		factsheet.GenerateFactSheetOpts{RootDir: workspace},
 	).Markdown
+	// aforge-embed: D10 — the orientation digest gives the coder the repo's
+	// directory tree and code declaration outlines in its first prompt so
+	// orientation costs zero turns. It is assembled once and cached per
+	// workspace; failing tests from the pre-run baseline are included when
+	// available so the coder knows what was already red.
+	orientDigest := orientation.BuildDigest(workspace, failingTests)
 	lines := []string{
 		"## Definition of done (root-cut fast path)",
 		"",
@@ -854,6 +881,9 @@ func buildRootCutPrompt(goal, workspace string) string {
 		"The harness runs this exact command itself at completion; the run cannot",
 		"finish while it fails. Keep it narrow and fast — a check that needs a",
 		"full repo build is the wrong check.",
+	}
+	if orientDigest != "" {
+		lines = append(lines, "", orientDigest)
 	}
 	if factSheet != "" {
 		lines = append(lines, "", factSheet)

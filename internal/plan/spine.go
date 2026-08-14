@@ -32,8 +32,29 @@ const spinePrompt = `You break a goal into its ordered stages.
 ` + agentPremise + `
 
 A stage boundary is a hard gate: nothing in the next stage can begin until this
-stage's output exists. If two stages could run at the same time, they are one
-stage.
+stage's output exists. But a gate is not merely "B reads A's output" — a
+single agent reads its own files sequentially all the time, and that sequence
+lives inside one stage, not between two. A gate exists only when the work in
+the later stage would otherwise run at the same time as the earlier stage —
+the gate is what serialises work that would otherwise be concurrent. If the
+two could not run in parallel even without the gate, they are one stage.
+
+Three things and only three things make a real gate. Separate stages require
+at least one:
+1. Parallelism that would otherwise be serialized: the earlier stage and the
+   later stage are genuinely independent workers, and the only thing keeping
+   the later one from starting is that it needs the earlier one's output.
+   Without the gate they would race; the gate makes the race a handoff.
+2. Worker isolation: the later stage needs a different workspace, harness, or
+   set of skills than the earlier one — a setup change that cannot happen
+   inside one agent's turn loop.
+3. Context-window pressure: the work is too large for one worker to hold in
+   its context at once, and splitting it into stages keeps each worker's
+   context bounded.
+
+A single agent working through its own files in sequence meets none of these.
+The sequence is inside the worker, not between workers, and serialising it
+into stages adds barriers without buying any concurrency. That is one stage.
 
 Every stage you add makes the whole goal slower, because stages run one after
 another. Use the fewest that are genuinely gated: 1 to 4.
@@ -48,16 +69,19 @@ single-stage case in disguise, and it is the one most often missed: the order
 they were listed in is the order they were spoken in, never a gate. Do not lay
 them out as stages — laying a bundle end to end makes every request wait for
 strangers. They are one stage, they divide into parts there, and they run at
-the same time. A stage exists where output feeds input, and nowhere else.
+the same time. A stage exists where one of the three gates above fires, and
+nowhere else.
 
 One request among several is the exception, and missing it is the worse of the
 two mistakes: the request whose own job is to work over what the others produce
 — to assemble them, compare them, weigh them against each other, or write them
-up as a single thing. It cannot begin before they have finished. Put it in a
-stage of its own behind them; left beside them it starts against the very
-material it exists to consume, and produces that material itself rather than
-wait. That is the only reason requests spoken in one breath ever need a second
-stage.
+up as a single thing. It cannot begin before they have finished, and the
+others are genuinely independent workers that would run at the same time
+without it. Put it in a stage of its own behind them; left beside them it
+starts against the very material it exists to consume, and produces that
+material itself rather than wait. That is the only reason requests spoken in
+one breath ever need a second stage.
+
 
 Do not add a final merge, synthesis, or summary stage. That is added
 automatically after you.
