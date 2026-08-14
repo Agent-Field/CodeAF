@@ -95,13 +95,15 @@ func TestSizeApplyHonorsAndDegradesSubharnessVerdicts(t *testing.T) {
 }
 
 // A specialist named for a node the baseline ruler already sized atomic is
-// declined: the specialist's pipeline is a fixed cost the node's size does
-// not repay, and the generalist takes the node whole instead. The verdict's
-// own size judgment is what decides it — the same answer, read against the
-// baseline ruler.
+// declined: the specialist's pipeline is a fixed cost the node's size does not
+// repay. The decline target is the cheap whole-taker (bare), not the
+// generalist — one sitting pays no pipeline, and bare is the cheaper
+// whole-taker for it. Borderline and oversized are exactly the cases the
+// specialist is for, and those stand.
 func TestSizeApplyDeclinesSpecialistForAtomicNodes(t *testing.T) {
 	defer ForgetSubharnesses()
 	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "ruler")
+	UseSubharness(Subharness{Name: BareSubharness, Purpose: "the cheap whole-taker"}, "bare ruler")
 
 	graph := &Graph{Nodes: []Node{
 		{ID: 1, Kind: KindWork, Stage: 1},
@@ -116,9 +118,11 @@ func TestSizeApplyDeclinesSpecialistForAtomicNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sizeApply: %v", err)
 	}
-	if got := graph.Node(1); got.Subharness != LinearSubharness || got.Size != SizeAtomic {
-		t.Fatalf("atomic node = %+v, want the generalist at atomic", *got)
+	// Atomic: the specialist is declined to the cheap whole-taker.
+	if got := graph.Node(1); got.Subharness != BareSubharness || got.Size != SizeAtomic {
+		t.Fatalf("atomic node = %+v, want bare at atomic", *got)
 	}
+	// Borderline and oversized: the specialist keeps the node, forced atomic.
 	for _, id := range []int{2, 3} {
 		if got := graph.Node(id); got.Subharness != "swe" || got.Size != SizeAtomic || len(got.Parts) != 0 {
 			t.Fatalf("node %d = %+v, want swe/atomic with no parts", id, *got)
@@ -135,6 +139,7 @@ func TestSizeApplyDeclinesSpecialistForAtomicNodes(t *testing.T) {
 func TestGeneralistVerdictIsRecordedByName(t *testing.T) {
 	defer ForgetSubharnesses()
 	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "ruler")
+	UseSubharness(Subharness{Name: BareSubharness, Purpose: "the cheap whole-taker"}, "bare ruler")
 
 	verdicts := []sizeVerdict{
 		{Node: 1, Size: "atomic"},
@@ -159,18 +164,20 @@ func TestGeneralistVerdictIsRecordedByName(t *testing.T) {
 	if _, err := sizeApply(graph, []sizeResult{{verdicts: verdicts}}); err != nil {
 		t.Fatalf("sizeApply: %v", err)
 	}
-	// The generalist's name changes nothing else about the judgment: the size
-	// stands and so do the parts, because the node was judged against the
-	// baseline ruler and that is the ruler it was judged against.
-	if node := graph.Node(1); node.Subharness != LinearSubharness || node.Size != SizeAtomic {
-		t.Fatalf("node 1 = %+v, want the generalist named and atomic", *node)
+	// The generalist on atomic work with no inputs defaults to bare — the cheap
+	// whole-taker for one-sitting work. The size stands (atomic) because the
+	// node was judged against the baseline ruler and that is the ruler it was
+	// judged against.
+	if node := graph.Node(1); node.Subharness != BareSubharness || node.Size != SizeAtomic {
+		t.Fatalf("node 1 = %+v, want bare named and atomic", *node)
 	}
-	// Node 2 was named for a specialist while sized atomic under the baseline
-	// ruler — the specialist's pipeline is a fixed cost an atomic node never
-	// repays, so the generalist takes it whole.
-	if node := graph.Node(2); node.Subharness != LinearSubharness || node.Size != SizeAtomic {
-		t.Fatalf("node 2 = %+v, want the generalist named and atomic", *node)
+	// Node 2 was named for a specialist while sized atomic — the pipeline is a
+	// fixed cost an atomic node never repays, so the cheap whole-taker takes it.
+	if node := graph.Node(2); node.Subharness != BareSubharness || node.Size != SizeAtomic {
+		t.Fatalf("node 2 = %+v, want bare named and atomic", *node)
 	}
+	// Node 3 was the generalist on borderline work — not one-sitting, so the
+	// generalist keeps it. The size stands and so do the parts.
 	if node := graph.Node(3); node.Subharness != LinearSubharness || node.Size != SizeBorderline {
 		t.Fatalf("node 3 = %+v, want the generalist named and borderline left alone", *node)
 	}
@@ -199,6 +206,119 @@ func TestGeneralistVerdictIsRecordedByName(t *testing.T) {
 		if got := SubharnessChosen(testCase.name); got != testCase.chosenByAny {
 			t.Fatalf("SubharnessChosen(%q) = %v", testCase.name, got)
 		}
+	}
+}
+
+// TestSizeApplyRoutesByThreeTiers exercises every arm of the three-tier routing
+// policy in one pass: the pipeline specialist keeps non-atomic work and is
+// declined to bare on atomic work; bare keeps atomic work and is declined to
+// linear on non-atomic work; the generalist defaults to bare for standalone
+// atomic work and to linear for everything else. Nodes with inputs (Needs) and
+// synthesis nodes are excluded from bare.
+func TestSizeApplyRoutesByThreeTiers(t *testing.T) {
+	defer ForgetSubharnesses()
+	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "ruler")
+	UseSubharness(Subharness{Name: BareSubharness, Purpose: "the cheap whole-taker"}, "bare ruler")
+
+	graph := &Graph{Nodes: []Node{
+		{ID: 1, Kind: KindWork, Stage: 1},                  // swe, non-atomic → swe
+		{ID: 2, Kind: KindWork, Stage: 1},                  // swe, atomic → bare
+		{ID: 3, Kind: KindWork, Stage: 1},                  // bare, atomic → bare
+		{ID: 4, Kind: KindWork, Stage: 1},                  // bare, non-atomic → linear
+		{ID: 5, Kind: KindWork, Stage: 1},                  // generalist, atomic, no Needs → bare
+		{ID: 6, Kind: KindWork, Stage: 1, Needs: []int{5}}, // generalist, atomic, Needs → linear
+		{ID: 7, Kind: KindWork, Stage: 1},                  // generalist, borderline, no Needs → linear
+		{ID: 8, Kind: KindSynthesis, Stage: 1},             // synthesis → skipped, untouched
+	}, NextID: 9}
+	_, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "oversized", Subharness: "swe", Parts: []string{"one", "two"}},
+		{Node: 2, Size: "atomic", Subharness: "swe"},
+		{Node: 3, Size: "atomic", Subharness: BareSubharness},
+		{Node: 4, Size: "oversized", Subharness: BareSubharness, Parts: []string{"one", "two"}},
+		{Node: 5, Size: "atomic", Subharness: LinearSubharness},
+		{Node: 6, Size: "atomic", Subharness: LinearSubharness},
+		{Node: 7, Size: "borderline", Subharness: LinearSubharness},
+		{Node: 8, Size: "atomic", Subharness: LinearSubharness},
+	}}})
+	if err != nil {
+		t.Fatalf("sizeApply: %v", err)
+	}
+	for _, want := range []struct {
+		id   int
+		sub  string
+		size Size
+	}{
+		{1, "swe", SizeAtomic},                // swe keeps non-atomic, forced atomic
+		{2, BareSubharness, SizeAtomic},       // swe declined to bare
+		{3, BareSubharness, SizeAtomic},       // bare keeps atomic
+		{4, LinearSubharness, SizeOversized},  // bare declined to linear, size stands
+		{5, BareSubharness, SizeAtomic},       // generalist default → bare
+		{6, LinearSubharness, SizeAtomic},     // generalist + Needs → linear
+		{7, LinearSubharness, SizeBorderline}, // generalist borderline → linear
+		{8, "", SizeUnknown},                  // synthesis skipped, untouched
+	} {
+		got := graph.Node(want.id)
+		if got.Subharness != want.sub || got.Size != want.size {
+			t.Errorf("node %d = {Subharness: %q, Size: %q}, want {%q, %q}",
+				want.id, got.Subharness, got.Size, want.sub, want.size)
+		}
+	}
+}
+
+// TestSizeApplyDefaultsSkippedNodesByThreeTiers covers the unknown-size arm: a
+// node the model skipped is treated as atomic, and the same three-tier default
+// applies — standalone work (no Needs) routes to bare, work with inputs keeps
+// the generalist, and synthesis nodes are left untouched.
+func TestSizeApplyDefaultsSkippedNodesByThreeTiers(t *testing.T) {
+	defer ForgetSubharnesses()
+	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "ruler")
+	UseSubharness(Subharness{Name: BareSubharness, Purpose: "the cheap whole-taker"}, "bare ruler")
+
+	// No verdicts at all: every node was skipped.
+	graph := &Graph{Nodes: []Node{
+		{ID: 1, Kind: KindWork, Stage: 1},                  // no Needs → bare
+		{ID: 2, Kind: KindWork, Stage: 1, Needs: []int{1}}, // has Needs → generalist
+		{ID: 3, Kind: KindSynthesis, Stage: 1},             // not work → untouched
+	}, NextID: 4}
+	if _, err := sizeApply(graph, nil); err != nil {
+		t.Fatalf("sizeApply: %v", err)
+	}
+	if n := graph.Node(1); n.Subharness != BareSubharness || n.Size != SizeAtomic {
+		t.Fatalf("skipped no-needs node = %+v, want bare/atomic", *n)
+	}
+	if n := graph.Node(2); n.Subharness != "" || n.Size != SizeAtomic {
+		t.Fatalf("skipped needs node = %+v, want empty subharness/atomic", *n)
+	}
+	if n := graph.Node(3); n.Subharness != "" || n.Size != SizeUnknown {
+		t.Fatalf("skipped synthesis node = %+v, want untouched", *n)
+	}
+}
+
+// TestSizeApplyDegradesToLinearWithoutBare is the additive law: bare is the
+// decline target only when it is registered. A process without bare — one that
+// has not installed the cheap whole-taker — declines specialists and defaults
+// one-sitting work to the generalist, exactly as the system ran before bare
+// existed.
+func TestSizeApplyDegradesToLinearWithoutBare(t *testing.T) {
+	defer ForgetSubharnesses()
+	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "ruler")
+
+	graph := &Graph{Nodes: []Node{
+		{ID: 1, Kind: KindWork, Stage: 1}, // swe, atomic → linear (bare absent)
+		{ID: 2, Kind: KindWork, Stage: 1}, // generalist, atomic, no Needs → linear
+	}, NextID: 3}
+	_, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic", Subharness: "swe"},
+		{Node: 2, Size: "atomic", Subharness: LinearSubharness},
+	}}})
+	if err != nil {
+		t.Fatalf("sizeApply: %v", err)
+	}
+	if got := graph.Node(1); got.Subharness != LinearSubharness || got.Size != SizeAtomic {
+		t.Fatalf("swe+atomic without bare = %+v, want linear/atomic", *got)
+	}
+	if got := graph.Node(2); got.Subharness != LinearSubharness || got.Size != SizeAtomic {
+		t.Fatalf("generalist+atomic without bare = %+v, want linear/atomic", *got)
 	}
 }
 

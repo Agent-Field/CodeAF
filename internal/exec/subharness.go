@@ -27,6 +27,12 @@ import (
 // is the predicate that keeps them apart.
 const LinearSubharness = plan.LinearSubharness
 
+// BareSubharness is the cheap whole-taker for one-sitting work. It is
+// repeated here for the same reason LinearSubharness is: the bare executor
+// lives in a sub-package that imports this one, so importing it back would
+// close a cycle. The string matches bare.BareSubharness exactly.
+const BareSubharness = "bare"
+
 // SubharnessInfo is one registration.
 //
 // Purpose and PriorAnchors are the two halves of teaching a model to choose:
