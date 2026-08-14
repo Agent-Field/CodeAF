@@ -88,6 +88,20 @@ func TestOpenRouterRejectsToolOmittedFromRequestDefinitions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// aforge-embed: D9 — the model-family gate that made write unavailable to
+	// gpt coders is gone (apply_patch is now ungated). Withdraw write via a
+	// project edit-deny — permission.Disabled groups edit/write/apply_patch
+	// under "edit" — so this unavailable-tool rejection contract stays
+	// exercisable: the coder's request definitions omit write, the model's
+	// write call is rejected as unavailable, and disk is not mutated.
+	if err := os.WriteFile(filepath.Join(workspace, "codeaf.json"),
+		[]byte(`{"permission":{"edit":"deny"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadCodeafConfig(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
 	transport := &scriptedRoundTripper{replies: []string{
 		toolCallReply("write", string(arguments)),
 		chatReply("continued after rejection", 10),
@@ -95,7 +109,7 @@ func TestOpenRouterRejectsToolOmittedFromRequestDefinitions(t *testing.T) {
 	backend := &openRouterBackend{
 		apiKey: "test", client: &http.Client{Transport: transport},
 	}
-	runtime := newRuntime(workspace, backend)
+	runtime := newConfiguredRuntime(workspace, backend, cfg)
 	t.Cleanup(runtime.Close)
 	result, err := runtime.RunLeaf(context.Background(), scheduler.LeafRunRequest{
 		Agent: scheduler.AgentInfo{Name: "coder"}, ModelID: "openai/gpt-6.1-codex",

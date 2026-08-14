@@ -86,3 +86,75 @@ func (s *Store) PlanGraphFor(prefix string) (PlanGraph, bool, error) {
 	}
 	return plan, true, nil
 }
+
+// EventNodeBrief is one node's rendered brief journaled as a first-class,
+// queryable event. A run's sufficiency sentence used to live only as an
+// opaque field inside the single plan_graph blob, so a finished leaf's
+// criterion was unfalsifiable from the run's own artifacts: the question
+// "what was this node told to be done by?" could be answered only by reading
+// the whole plan back and finding the node inside it. This event carries the
+// rendered instruction, the criterion and the subharness, one row per briefed
+// node, written beside the blob rather than in place of it — RecordPlanGraph
+// still writes the whole graph, additively.
+const EventNodeBrief EventKind = "node_briefed"
+
+// NodeBrief is one node's brief as it was rendered for the agent that runs it.
+// Node is the plan node id; the event's node_id column carries the store
+// spelling of the same node under its job's prefix (the bare prefix for the
+// deliverable sink, "<prefix>-n<id>" otherwise). Criterion is the rendered
+// sufficiency sentence (Spec.Done), the one statement a reader holding only
+// the result can test.
+type NodeBrief struct {
+	Node       int    `json:"node"`
+	Brief      string `json:"brief"`
+	Criterion  string `json:"criterion"`
+	Subharness string `json:"subharness,omitempty"`
+}
+
+// RecordNodeBrief journals one node's rendered brief against the store id the
+// node was minted under. It is best-effort in the same sense RecordPlanGraph
+// is: a write that fails costs an audit and never the plan. The blob in
+// RecordPlanGraph stays the source of the whole graph; this is the per-node
+// index that makes one leaf's criterion answerable without re-reading it.
+func (s *Store) RecordNodeBrief(nodeID string, brief NodeBrief) error {
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("record node brief: %w: node id is required", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("record node brief: %w", err)
+	}
+	defer tx.Rollback()
+	if _, _, err := appendEvent(tx, nodeID, EventNodeBrief, brief); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record node brief: %w", err)
+	}
+	return nil
+}
+
+// BriefFor returns the newest brief journaled for a node. It reads the event
+// directly, exactly as PlanGraphFor does and for the same reason: the payload
+// is sparse, looked up by id, and has no query anyone would run across it —
+// so a materialized table would be a second copy of the truth with nothing to
+// gain by existing.
+func (s *Store) BriefFor(nodeID string) (NodeBrief, bool, error) {
+	var payload string
+	err := s.db.QueryRow(`
+		SELECT payload FROM events
+		WHERE node_id = ? AND kind = ?
+		ORDER BY seq DESC LIMIT 1`, nodeID, EventNodeBrief).Scan(&payload)
+	if errors.Is(err, sql.ErrNoRows) {
+		return NodeBrief{}, false, nil
+	}
+	if err != nil {
+		return NodeBrief{}, false, fmt.Errorf("read node brief: %w", err)
+	}
+	var brief NodeBrief
+	if err := json.Unmarshal([]byte(payload), &brief); err != nil {
+		return NodeBrief{}, false, fmt.Errorf("read node brief: %w", err)
+	}
+	return brief, true, nil
+}

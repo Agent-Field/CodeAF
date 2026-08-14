@@ -79,7 +79,7 @@ func TestQuestionRegistrationDescriptionSchemaAndFilters(t *testing.T) {
 	coder := definitionNames(registry.DefinitionsFor(FilterInput{
 		ProviderID: "openrouter", ModelID: "anthropic/claude-opus-4-6", AgentName: "coder",
 	}))
-	if want := []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch"}; !reflect.DeepEqual(coder, want) {
+	if want := []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"}; !reflect.DeepEqual(coder, want) {
 		t.Fatalf("coder definitions = %v, want %v", coder, want)
 	}
 	reviewer := definitionNames(registry.DefinitionsFor(FilterInput{

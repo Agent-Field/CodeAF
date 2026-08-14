@@ -68,6 +68,45 @@ func (d Done) Empty() bool {
 	return len(d.Produces) == 0 && len(d.Conditions) == 0
 }
 
+// Sentence renders the criterion as the one sufficiency statement a reader
+// holding only the result can test: the produces line and every condition,
+// in one line. It is the form that is journaled as a first-class event per
+// node (see internal/store/planjournal.go), so a run's stopping condition is
+// falsifiable from its own artifacts rather than only as a field inside the
+// plan blob. Empty when the criterion says nothing, which is legal everywhere.
+func (d Done) Sentence() string {
+	if d.Empty() {
+		return ""
+	}
+	var out strings.Builder
+	if len(d.Produces) > 0 {
+		out.WriteString("Produces: ")
+		out.WriteString(strings.Join(d.Produces, "; "))
+	}
+	for _, condition := range d.Conditions {
+		check := strings.TrimSpace(condition.Check)
+		if check == "" {
+			continue
+		}
+		if out.Len() > 0 {
+			out.WriteString(" | ")
+		}
+		kind := strings.TrimSpace(condition.Kind)
+		if kind != CheckRun && kind != CheckRead {
+			kind = CheckRead
+		}
+		out.WriteString("(")
+		out.WriteString(kind)
+		out.WriteString(") ")
+		out.WriteString(check)
+		if expect := strings.TrimSpace(condition.Expect); expect != "" {
+			out.WriteString(" — ")
+			out.WriteString(expect)
+		}
+	}
+	return out.String()
+}
+
 // Spec is what a worker is handed: one object, authored once, carried forward.
 //
 // Instruction and Method are the two prose halves that already existed as

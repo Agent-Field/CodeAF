@@ -36,6 +36,53 @@ func outsidePath(relative string) bool {
 	return relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || filepath.IsAbs(relative)
 }
 
+// resolveMutationPath is the write-side choke point shared by edit, write,
+// and apply_patch. It resolves the path exactly like resolvePath and then,
+// for the worker (the coder agent), refuses any target inside the harness's
+// own .codeaf/ tree. That directory is engine state — the registered contract,
+// artifacts, audit verdicts, plan records — not part of the task, and a coder
+// leaf editing it (the FEATURE cell regressed this way) corrupts the run.
+//
+// The guard is agent-scoped, not blanket: the harness's own agents legitimately
+// write .codeaf/ through these same tools — the auditor writes its verdict to
+// .codeaf/auditor-verdict.json, the architect to .codeaf/plan/architecture.md.
+// Only the coder (the generalist worker) is refused; reads keep using
+// resolvePath and stay allowed, since the root-cut flow instructs reading
+// .codeaf/contract.json. call.Agent is populated from the leaf's message agent
+// (processor.go), so a coder leaf's tool call carries Agent == "coder".
+//
+// aforge-embed: D9 — see internal/swepro/EMBEDDING.md.
+func (r *Registry) resolveMutationPath(call steploop.ToolCall, path string) (string, error) {
+	resolved, err := r.resolvePath(path)
+	if err != nil {
+		return "", err
+	}
+	if err := r.rejectHarnessWrite(call, resolved); err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
+// rejectHarnessWrite refuses a coder's attempt to mutate the workspace's
+// top-level .codeaf/ machinery directory. Only that root .codeaf is harness
+// state; a nested .codeaf elsewhere in the tree is the user's own and is left
+// alone. The check is anchored on r.workDir, the same root resolvePath uses,
+// so a path the agent can reach is judged against the directory it lives in.
+func (r *Registry) rejectHarnessWrite(call steploop.ToolCall, resolved string) error {
+	if call.Agent != "coder" {
+		return nil
+	}
+	rel, err := filepath.Rel(r.workDir, resolved)
+	if err != nil {
+		return nil
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == ".codeaf" || strings.HasPrefix(rel, ".codeaf/") {
+		return fmt.Errorf("harness machinery; not part of the task: %s", filepath.ToSlash(resolved))
+	}
+	return nil
+}
+
 func (r *Registry) askExternalDirectory(
 	ctx context.Context,
 	call steploop.ToolCall,

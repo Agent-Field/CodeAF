@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -418,8 +417,9 @@ func WebSearchEnabled(providerID string, flags WebSearchFlags) bool {
 	return providerID == "codeaf" || flags.Exa || flags.Parallel
 }
 
-// FilterDefinitions ports registry.ts:339-393. It is separate from Registry
-// so plugin/custom definitions can pass through the same isolation seam.
+// FilterDefinitions applies the registry's provider, specialist-mode, and
+// model-family visibility rules. It is separate from Registry so plugin/custom
+// definitions can pass through the same isolation seam.
 func FilterDefinitions(
 	definitions []steploop.ToolDefinition,
 	input FilterInput,
@@ -436,9 +436,12 @@ func FilterDefinitions(
 			forbidden[id] = struct{}{}
 		}
 	}
-	usePatch := strings.Contains(input.ModelID, "gpt-") &&
-		!strings.Contains(input.ModelID, "oss") &&
-		!strings.Contains(input.ModelID, "gpt-4")
+	// aforge-embed: D9 — apply_patch is ungated. Upstream (registry.ts:339-393)
+	// gated apply_patch to gpt-family models via usePatch and hid edit/write for
+	// the same models. apply_patch is a harness-side unified-diff editor that
+	// needs no provider support, so the gate served only to deny non-gpt coders
+	// (notably deepseek) the multi-file edit tool. Every coder now gets edit,
+	// write, and apply_patch together and picks whichever fits the change.
 	out := make([]steploop.ToolDefinition, 0, len(definitions))
 	for _, item := range definitions {
 		id := item.Provider.Name
@@ -455,12 +458,6 @@ func FilterDefinitions(
 			}
 		}
 		if _, ok := forbidden[id]; ok {
-			continue
-		}
-		if id == "apply_patch" && !usePatch {
-			continue
-		}
-		if (id == "edit" || id == "write") && usePatch {
 			continue
 		}
 		out = append(out, item)

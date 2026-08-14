@@ -83,19 +83,22 @@ func (backend *capturingBackend) Run(_ context.Context, request turn) (turnResul
 }
 
 func TestRunLeafFiltersDefinitionsForActualModel(t *testing.T) {
-	// Validation contract 4: each backend request exposes only the edit strategy
-	// supported by the model used for that call.
+	// Validation contract 4 (revised by D9): the edit-strategy gate that once
+	// gave gpt-family models apply_patch and everyone else edit/write is gone, so
+	// every coder — deepseek included — gets edit, write, and apply_patch
+	// together. Two models are still exercised to assert the toolset is now
+	// model-independent.
 	tests := []struct {
 		modelID string
 		want    []string
 	}{
 		{
 			modelID: "deepseek/deepseek-v4-pro",
-			want:    []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch"},
+			want:    []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"},
 		},
 		{
 			modelID: "openai/gpt-6.1-codex",
-			want:    []string{"question", "bash", "read", "glob", "grep", "webfetch", "apply_patch"},
+			want:    []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"},
 		},
 	}
 	for _, test := range tests {
@@ -128,9 +131,12 @@ func TestRunLeafToolListMatchesAgentAndModelContract(t *testing.T) {
 		model string
 		want  []string
 	}{
-		{"coder", "deepseek/deepseek-v4-pro", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch"}},
-		{"root-orchestrator", "deepseek/deepseek-v4-pro", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "task", "webfetch", "plandb"}},
-		{"root-orchestrator", "openai/gpt-6.1-codex", []string{"question", "bash", "read", "glob", "grep", "task", "webfetch", "plandb", "apply_patch"}},
+		// aforge-embed: D9 — the model edit-strategy gate is gone; the coder and
+		// root-orchestrator both get edit, write, and apply_patch regardless of
+		// model. The rows still pin agent-based filtering: coder drops task/plandb.
+		{"coder", "deepseek/deepseek-v4-pro", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"}},
+		{"root-orchestrator", "deepseek/deepseek-v4-pro", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "task", "webfetch", "plandb", "apply_patch"}},
+		{"root-orchestrator", "openai/gpt-6.1-codex", []string{"question", "bash", "read", "glob", "grep", "edit", "write", "task", "webfetch", "plandb", "apply_patch"}},
 	}
 	for _, test := range tests {
 		t.Run(test.agent+"/"+test.model, func(t *testing.T) {
@@ -211,13 +217,15 @@ func TestOpenRouterEndpoint(t *testing.T) {
 	}
 }
 
+// aforge-embed: D9 — apply_patch is no longer model-gated, so a deepseek coder
+// keeps it alongside edit; only the explicitly-disabled write drops out.
 func TestModelFilteringPreservesDisabledTools(t *testing.T) {
 	runtime := newRuntime(t.TempDir(), &capturingBackend{})
 	t.Cleanup(runtime.Close)
 	got := requestToolNames(runtime.definitionsFor(
 		"openrouter", "deepseek/deepseek-v4-pro", "coder", map[string]bool{"write": true},
 	))
-	want := []string{"question", "bash", "read", "glob", "grep", "edit", "webfetch"}
+	want := []string{"question", "bash", "read", "glob", "grep", "edit", "webfetch", "apply_patch"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("tools = %v, want %v", got, want)
 	}

@@ -234,7 +234,12 @@ func (c *cappedOutput) keepBytes(b []byte) {
 // so nothing has been lost and no file is needed; at that moment the ring is
 // flushed to the file and every later byte goes straight through.
 func (c *cappedOutput) tee(b []byte) {
-	if c.open == nil || c.teeFailed || c.finished {
+	// partial means the spill file filled and was closed: the head it holds is
+	// the half the context does not have, and opening a fresh file now would
+	// capture a middle chunk under a name the notice calls "First N bytes" —
+	// while burning a spill name per later chunk and pointing the notice at
+	// the last, empty, one. Once stopped, the first file stays the answer.
+	if c.open == nil || c.teeFailed || c.finished || c.partial {
 		return
 	}
 	if c.file == nil {
