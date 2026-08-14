@@ -889,6 +889,20 @@ func sized(request []ai.Option, tokens int) []ai.Option {
 // now — see Judgment.Unjudged and unjudged below — because fail-open and silent
 // are two different designs and only one of them was ever chosen.
 func JudgeDeliverable(ctx context.Context, settings config.Config, client *pool.Client, graph *store.Store, node store.Node, deliverable, method string, evidence Evidence, workerModel string, options ...Option) Judgment {
+	// The one fact a judge should never be paid to discover is settled before a
+	// model round is bought: a file the plan named as a deliverable that is
+	// missing or empty on disk. It is checked from the structured criterion
+	// alone — never inferred from prose — so it fires only when the plan
+	// itself named files, and a missing one is a gate failure naming the absent
+	// files verbatim. The judgment is the same shape a judged gap takes, so the
+	// repair flow the gate already owns runs on it unchanged; the model judge
+	// is skipped for that round, because its cost buys nothing when the absence
+	// is a fact about the filesystem. When the criterion named no files, or
+	// every named file is present and non-empty, this returns ok=false and the
+	// path is byte-identical to before it existed.
+	if mechanical, missing := MissingProduces(evidence.Done, evidence.Artifacts); missing {
+		return mechanical
+	}
 	ask := node.Provenance.Intent
 	budget := newBounds(options).budget(DeliverablePrompt)
 	// The standing half of the gate comes first and the job in front of it last,

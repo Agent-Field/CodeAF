@@ -76,6 +76,16 @@ oversized.`
 // says so out loud; empty is reserved for the verdict nobody made.
 const LinearSubharness = "linear"
 
+// BareSubharness names the cheap whole-taker for one-sitting work. It is
+// written here for the same reason LinearSubharness is — the package that
+// registers subharnesses imports this one, so the name is repeated here
+// rather than imported. Bare renders the brief alone: no contract block, no
+// dependency inputs, four tools. That envelope is what makes it the decline
+// target for a specialist named on atomic work (one sitting pays no pipeline)
+// and the default for a standalone atomic work node (the generalist's input
+// rendering is wasted on a node with nothing to render).
+const BareSubharness = "bare"
+
 // Subharness is one specialist offered to the sizing pass: a different way of
 // working with a capacity of its own, not a smaller agent. Registration is what
 // puts it in front of the sizing model — one nobody registered is one the
@@ -202,6 +212,26 @@ func GeneralistSubharness(name string) bool {
 // specialist or with the generalist. Only the empty string means no verdict,
 // and only then may a reader fill the answer in from elsewhere.
 func SubharnessChosen(name string) bool { return strings.TrimSpace(name) != "" }
+
+// bareNamed reports whether a verdict names the cheap whole-taker. It mirrors
+// GeneralistSubharness in shape — a name predicate, not a registration check —
+// so the three-tier routing can tell the two specialists apart by what they are
+// for rather than by the order they were registered.
+func bareNamed(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), BareSubharness)
+}
+
+// bareOrLinear is the decline target when a specialist is turned away from
+// atomic work, and the default for a standalone atomic work node: bare when it
+// is registered, the generalist otherwise. The additive law — a subharness
+// nobody registered cannot be chosen — is what keeps a process without bare
+// on the baseline it has always run.
+func bareOrLinear() string {
+	if KnownSubharness(BareSubharness) {
+		return BareSubharness
+	}
+	return LinearSubharness
+}
 
 // ForgetSubharnesses restores the registry to its linear-only state. Tests own
 // it: registration is process-global by design, and a test that adds a
@@ -526,46 +556,70 @@ func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 			}
 			node.Parts = shortLabels(verdict.Parts)
 			switch {
-			// A named subharness is the other half of the verdict: this node is
-			// atomic for it, so the size judgment made against the baseline
-			// ruler no longer applies and there is nothing left to split. This
-			// is the inversion the whole section exists for — one specialist
-			// leaf instead of eight generalist ones.
-			//
-			// The inversion has a floor. A specialist runs a pipeline — its own
-			// planning, contracts, verification — a fixed cost paid per node
-			// whatever the node holds, so naming one only pays when the node
-			// was too big for the baseline ruler. When the verdict sizes the
-			// node atomic for the generalist AND names a specialist, the same
-			// verdict has already said one plain agent can take it whole, and
-			// the generalist is the cheaper whole-taker: the assignment falls
-			// to the baseline. Borderline and oversized are exactly the cases
-			// the specialist is for, and those stand. This is the mechanical
-			// form of the fixed-cost clause in the menu: the prompt asks, and
-			// here is where the asking is enforced.
-			case KnownSubharness(verdict.Subharness) && Size(verdict.Size) != SizeAtomic:
+			// A non-bare specialist — the pipeline worker — named for work too big
+			// for one sitting keeps the node. The pipeline earns its fixed cost only
+			// on non-atomic work; once the specialist claims the whole, the size
+			// judgment made against the baseline ruler no longer applies and there is
+			// nothing left to split. This is the inversion the subharness section
+			// exists for — one specialist leaf instead of eight generalist ones.
+			case KnownSubharness(verdict.Subharness) && !bareNamed(verdict.Subharness) && Size(verdict.Size) != SizeAtomic:
 				node.Subharness = strings.TrimSpace(verdict.Subharness)
 				node.Size = SizeAtomic
 				node.Parts = nil
-			case KnownSubharness(verdict.Subharness):
+			// The same specialist named for atomic work is declined: one sitting pays
+			// no pipeline, and the cheap whole-taker runs it instead. The decline
+			// target is bare when it is registered and the generalist otherwise — the
+			// additive law, which keeps a process without bare on the baseline it has
+			// always run.
+			case KnownSubharness(verdict.Subharness) && !bareNamed(verdict.Subharness):
+				node.Subharness = bareOrLinear()
+				node.Size = SizeAtomic
+				node.Parts = nil
+			// Bare named for atomic work is correctly named — it is the cheap
+			// whole-taker for one-sitting work.
+			case KnownSubharness(verdict.Subharness) && bareNamed(verdict.Subharness) && Size(verdict.Size) == SizeAtomic:
+				node.Subharness = BareSubharness
+				node.Size = SizeAtomic
+				node.Parts = nil
+			// Bare named for non-atomic work is declined to the generalist: bare's
+			// envelope — the brief alone, no contract or inputs — cannot hold it,
+			// and the generalist middle can.
+			case KnownSubharness(verdict.Subharness) && bareNamed(verdict.Subharness):
 				node.Subharness = LinearSubharness
-			// The generalist, chosen. It changes neither the size nor the
-			// parts — the node was judged against the baseline ruler and that
-			// judgment stands — but it is written down, because a node that was
+			// The generalist, chosen by name. The default for one-sitting work is
+			// bare — it renders the brief alone — so an atomic work node with no
+			// dependency inputs routes there. A node fed by earlier work must keep
+			// the generalist: the scheduler turns each Needs entry into a task input
+			// (schedule.taskFor), and bare renders the brief alone, so the results of
+			// that earlier work would never reach the leaf. Borderline and oversized
+			// work is the generalist's own territory, and stays with it exactly as
+			// before. The name is written down regardless, because a node that was
 			// asked and answered "the generalist" must not later be handed a
 			// specialist by anyone filling in a blank.
 			case GeneralistSubharness(verdict.Subharness):
-				node.Subharness = LinearSubharness
+				if Size(verdict.Size) == SizeAtomic && node.Kind == KindWork && len(node.Needs) == 0 {
+					node.Subharness = bareOrLinear()
+				} else {
+					node.Subharness = LinearSubharness
+				}
 			}
 		}
 	}
 	// A node the model skipped is treated as atomic. Defaulting the unknown
 	// case toward not expanding is the safe direction: an unnecessary split
 	// wastes calls and invites the runaway, while an unsplit node still gets
-	// done, only more slowly.
+	// done, only more slowly. The same three-tier default applies: a standalone
+	// work node (no Needs) is bare's territory — bare renders the brief alone, so
+	// a node fed by earlier work (Needs) keeps the generalist, whose input
+	// rendering is what carries those results into the leaf.
 	for index := range graph.Nodes {
-		if graph.Nodes[index].Kind == KindWork && graph.Nodes[index].Size == SizeUnknown {
-			graph.Nodes[index].Size = SizeAtomic
+		node := &graph.Nodes[index]
+		if node.Kind != KindWork || node.Size != SizeUnknown {
+			continue
+		}
+		node.Size = SizeAtomic
+		if len(node.Needs) == 0 {
+			node.Subharness = bareOrLinear()
 		}
 	}
 	return usage, joinErrors(failures)

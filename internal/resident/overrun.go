@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	executor "github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
@@ -141,10 +142,17 @@ func ReplanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 // default worker and is what every caller passed before this existed, so the
 // splice is unchanged for a build with nothing to choose between.
 //
-// The choice is deliberately not inherited from the exhausted node. A worker
-// that ran out of resources on a piece of work has said nothing about who
-// should finish it, and the graph's answer to a question nobody asked is the
-// baseline — which is what "degradation, never failure" means at a splice.
+// The choice is not inherited from the exhausted node verbatim — a worker that
+// ran out of resources on a piece of work has said nothing about who should
+// finish it — but it is never repeated either. An exhaustion is evidence the
+// sitting was bigger than the envelope, and re-running the same envelope is
+// paying to learn the same lesson twice. So the continuation escalates one
+// rung up the generalist ladder (bare → linear) and keeps the generalist at
+// its ceiling (linear), while a specialist the judge recognised is never
+// downgraded and the frozen engine is left to its own continuation
+// semantics. See escalateContinuation. The baseline for a worker nobody
+// chose remains the baseline — which is what "degradation, never failure"
+// means at a splice.
 func ReplanOverrunOn(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, worker string, planRemainder OverrunPlanFunc) (int, string, error) {
 	return ReplanOverrunAs(ctx, graph, node, partial, gap, artifacts, dailyBudgetUSD, worker, Growth{Reason: GrowOverrun}, planRemainder)
 }
@@ -161,11 +169,72 @@ func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, p
 	return spliced, sink, err
 }
 
+// escalateContinuation decides the subharness a continuation node runs on,
+// from the envelope the dead leaf ran on (dead) and the worker the caller
+// judged the remainder belongs to (judged). It is the continuation half of
+// the routing decision: the initial plan's sizing pass chose the dead leaf's
+// envelope; here, the exhaustion of that envelope is the evidence the next
+// decision is made from.
+//
+// An exhaustion is evidence the sitting was bigger than the envelope, and
+// re-running the same envelope is paying to learn the same lesson twice. So
+// the continuation escalates one rung up the generalist ladder — bare to
+// linear — instead of repeating the envelope that just ran out. linear is the
+// generalist ceiling: it is the largest single-agent envelope, so an
+// exhaustion there has no higher generalist rung to climb to, and repeating it
+// is correct rather than a reflex. A specialist the judge recognised is never
+// downgraded by the escalation — the clock exhausting a generalist says
+// nothing about whether the work was the judge's to route to a specialist.
+//
+// The frozen engine has its own continuation semantics — it resumes from
+// its own checkpoints rather than splicing a fresh node — so exhausting it is
+// not evidence the envelope was too small: the caller's choice stands and the
+// ladder does not touch it. A dead leaf nobody sized promised no envelope, so
+// its continuation keeps whatever the caller judged (or the baseline when
+// nothing was), preserving the splice's "degradation, never failure" default.
+func escalateContinuation(dead, judged string) string {
+	dead = strings.TrimSpace(dead)
+	judged = strings.TrimSpace(judged)
+	// The frozen engine first: its exhaustion is its own business, and the
+	// caller's choice — judged or empty — is returned unchanged.
+	if strings.EqualFold(dead, executor.SWESubharness) {
+		return judged
+	}
+	// A specialist the judge recognised is the top of the ladder; escalation
+	// only ever climbs, never downgrades it.
+	if strings.EqualFold(judged, executor.SWESubharness) {
+		return executor.SWESubharness
+	}
+	// bare is the smallest envelope. Escalate it to the generalist rather than
+	// repeat it: the bare sitting just proved the work was bigger than bare,
+	// and a second bare leaf would pay to learn the same lesson twice.
+	if strings.EqualFold(dead, executor.BareSubharness) {
+		return executor.LinearSubharness
+	}
+	// linear is the generalist ceiling — the largest single-agent envelope. An
+	// exhaustion there keeps the generalist, named, because there is no higher
+	// rung to climb to.
+	if executor.GeneralistSubharness(dead) {
+		return executor.LinearSubharness
+	}
+	// A dead leaf nobody sized promised no envelope, so the caller's choice
+	// stands unchanged — the continuation inherits whatever was judged, or the
+	// baseline when nothing was.
+	return judged
+}
+
 // replanOverrun reports capped=true when a governor refused the splice: the
 // repair is abandoned for good, unlike the rail's zero-splice pause, which is
 // waiting for consent. Deferred resumption needs the difference — a capped
 // repair must resolve rather than wait forever.
 func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, partial, gap string, artifacts []string, dailyBudgetUSD float64, prefix, worker string, growth Growth, planRemainder OverrunPlanFunc) (int, string, bool, error) {
+	// The continuation escalates one rung up the ladder from the envelope that
+	// just exhausted, instead of repeating it. This is decided here — at the
+	// splice, where the continuation node's subharness is journaled onto the
+	// subtree's provenance — so it flows to the deferred record at the rail and
+	// re-applies idempotently on resume. The dead leaf's envelope is on its node
+	// record; the caller's judgement rides the worker parameter.
+	worker = escalateContinuation(node.Subharness, worker)
 	var err error
 	if prefix == "" {
 		prefix, err = nextOverrunPrefix(graph, node.ID)
