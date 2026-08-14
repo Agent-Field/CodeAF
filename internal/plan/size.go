@@ -531,10 +531,24 @@ func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 			// ruler no longer applies and there is nothing left to split. This
 			// is the inversion the whole section exists for — one specialist
 			// leaf instead of eight generalist ones.
-			case KnownSubharness(verdict.Subharness):
+			//
+			// The inversion has a floor. A specialist runs a pipeline — its own
+			// planning, contracts, verification — a fixed cost paid per node
+			// whatever the node holds, so naming one only pays when the node
+			// was too big for the baseline ruler. When the verdict sizes the
+			// node atomic for the generalist AND names a specialist, the same
+			// verdict has already said one plain agent can take it whole, and
+			// the generalist is the cheaper whole-taker: the assignment falls
+			// to the baseline. Borderline and oversized are exactly the cases
+			// the specialist is for, and those stand. This is the mechanical
+			// form of the fixed-cost clause in the menu: the prompt asks, and
+			// here is where the asking is enforced.
+			case KnownSubharness(verdict.Subharness) && Size(verdict.Size) != SizeAtomic:
 				node.Subharness = strings.TrimSpace(verdict.Subharness)
 				node.Size = SizeAtomic
 				node.Parts = nil
+			case KnownSubharness(verdict.Subharness):
+				node.Subharness = LinearSubharness
 			// The generalist, chosen. It changes neither the size nor the
 			// parts — the node was judged against the baseline ruler and that
 			// judgment stands — but it is written down, because a node that was
