@@ -556,48 +556,66 @@ func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 			}
 			node.Parts = shortLabels(verdict.Parts)
 			switch {
-			// A non-bare specialist — the pipeline worker — named for work too big
-			// for one sitting keeps the node. The pipeline earns its fixed cost only
-			// on non-atomic work; once the specialist claims the whole, the size
-			// judgment made against the baseline ruler no longer applies and there is
-			// nothing left to split. This is the inversion the subharness section
-			// exists for — one specialist leaf instead of eight generalist ones.
-			case KnownSubharness(verdict.Subharness) && !bareNamed(verdict.Subharness) && Size(verdict.Size) != SizeAtomic:
+			// A non-bare specialist — the pipeline worker — named for work that is
+			// clearly too big for one sitting keeps the node. The pipeline earns
+			// its fixed cost only on confident size; once the specialist claims
+			// the whole, the size judgment made against the baseline ruler no
+			// longer applies and there is nothing left to split. This is the
+			// inversion the subharness section exists for — one specialist leaf
+			// instead of eight generalist ones.
+			case KnownSubharness(verdict.Subharness) && !bareNamed(verdict.Subharness) && Size(verdict.Size) == SizeOversized:
 				node.Subharness = strings.TrimSpace(verdict.Subharness)
 				node.Size = SizeAtomic
 				node.Parts = nil
-			// The same specialist named for atomic work is declined: one sitting pays
-			// no pipeline, and the cheap whole-taker runs it instead. The decline
-			// target is bare when it is registered and the generalist otherwise — the
-			// additive law, which keeps a process without bare on the baseline it has
-			// always run.
+			// The same specialist named for atomic or borderline work is
+			// declined to the cheap whole-taker. Atomic is one sitting by
+			// definition, and borderline is literally the verdict of uncertainty
+			// — "not obvious that breaking it up would help" — and uncertainty
+			// resolves cheap-first: the leaf that proves bigger than its
+			// envelope escalates on evidence (see resident's continuation
+			// escalation), which is a cheaper way to learn the sitting was
+			// misjudged than paying the pipeline's fixed cost up front.
+			// Measured: a bug fix the ruler called borderline ran bare at a
+			// fifth of the pipeline's cost with identical quality. The decline
+			// target is bare when it is registered and the generalist
+			// otherwise — the additive law, which keeps a process without bare
+			// on the baseline it has always run. The borderline node's own size
+			// and parts stand: the envelope changes, the split question does
+			// not.
 			case KnownSubharness(verdict.Subharness) && !bareNamed(verdict.Subharness):
 				node.Subharness = bareOrLinear()
-				node.Size = SizeAtomic
-				node.Parts = nil
-			// Bare named for atomic work is correctly named — it is the cheap
-			// whole-taker for one-sitting work.
-			case KnownSubharness(verdict.Subharness) && bareNamed(verdict.Subharness) && Size(verdict.Size) == SizeAtomic:
+				if Size(verdict.Size) == SizeAtomic {
+					node.Size = SizeAtomic
+					node.Parts = nil
+				}
+			// Bare named for atomic or borderline work is correctly named — it
+			// is the cheap whole-taker for one-sitting work, and borderline is
+			// the same uncertainty resolving cheap-first.
+			case KnownSubharness(verdict.Subharness) && bareNamed(verdict.Subharness) && Size(verdict.Size) != SizeOversized:
 				node.Subharness = BareSubharness
-				node.Size = SizeAtomic
-				node.Parts = nil
-			// Bare named for non-atomic work is declined to the generalist: bare's
-			// envelope — the brief alone, no contract or inputs — cannot hold it,
-			// and the generalist middle can.
+				if Size(verdict.Size) == SizeAtomic {
+					node.Size = SizeAtomic
+					node.Parts = nil
+				}
+			// Bare named for oversized work is declined to the generalist:
+			// bare's envelope — the brief alone, no contract or inputs — cannot
+			// hold it, and the generalist middle can.
 			case KnownSubharness(verdict.Subharness) && bareNamed(verdict.Subharness):
 				node.Subharness = LinearSubharness
 			// The generalist, chosen by name. The default for one-sitting work is
-			// bare — it renders the brief alone — so an atomic work node with no
-			// dependency inputs routes there. A node fed by earlier work must keep
-			// the generalist: the scheduler turns each Needs entry into a task input
-			// (schedule.taskFor), and bare renders the brief alone, so the results of
-			// that earlier work would never reach the leaf. Borderline and oversized
-			// work is the generalist's own territory, and stays with it exactly as
-			// before. The name is written down regardless, because a node that was
-			// asked and answered "the generalist" must not later be handed a
+			// bare — it renders the brief alone — so an atomic or borderline work
+			// node with no dependency inputs routes there: atomic is one sitting,
+			// and borderline is the same uncertainty resolving cheap-first with
+			// escalation as the backstop. A node fed by earlier work must keep
+			// the generalist: the scheduler turns each Needs entry into a task
+			// input (schedule.taskFor), and bare renders the brief alone, so the
+			// results of that earlier work would never reach the leaf. Oversized
+			// work is the generalist's own territory, and stays with it exactly
+			// as before. The name is written down regardless, because a node that
+			// was asked and answered "the generalist" must not later be handed a
 			// specialist by anyone filling in a blank.
 			case GeneralistSubharness(verdict.Subharness):
-				if Size(verdict.Size) == SizeAtomic && node.Kind == KindWork && len(node.Needs) == 0 {
+				if Size(verdict.Size) != SizeOversized && node.Kind == KindWork && len(node.Needs) == 0 {
 					node.Subharness = bareOrLinear()
 				} else {
 					node.Subharness = LinearSubharness
