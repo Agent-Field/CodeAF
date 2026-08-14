@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 )
 
 // grepMaxLineLength mirrors pi's truncate.js:GREP_MAX_LINE_LENGTH.
@@ -110,7 +112,7 @@ func newGrepTool(cwd string) Tool {
 			// Collect stderr.
 			var stderrStr strings.Builder
 			if stderrPipe != nil {
-				go func() {
+				guard.Go("exec/bare grep stderr", func() {
 					buf := make([]byte, 4096)
 					for {
 						n, err := stderrPipe.Read(buf)
@@ -121,7 +123,7 @@ func newGrepTool(cwd string) Tool {
 							break
 						}
 					}
-				}()
+				})
 			}
 
 			// Parse rg --json output: collect match events.

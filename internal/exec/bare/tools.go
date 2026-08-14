@@ -596,26 +596,43 @@ var (
 func withFileMutationQueue(filePath string, fn func() (string, bool, error)) (string, bool, error) {
 	key := mutationQueueKey(filePath)
 
+	ch := mutationQueueFor(key)
+
+	ch <- struct{}{}
+	defer func() {
+		<-ch
+		releaseMutationQueue(key, ch)
+	}()
+
+	return fn()
+}
+
+// mutationQueueFor hands back the queue for one file, making it on first use.
+//
+// It is its own function so the map's lock is released by a defer directly
+// under the acquisition: a panic between the two — a map grown while another
+// goroutine reads it, anything — would otherwise leave every later writer to
+// any file blocked on a mutex nobody holds.
+func mutationQueueFor(key string) chan struct{} {
 	mutationMu.Lock()
+	defer mutationMu.Unlock()
 	ch, ok := mutationQueues[key]
 	if !ok {
 		ch = make(chan struct{}, 1)
 		mutationQueues[key] = ch
 	}
-	mutationMu.Unlock()
+	return ch
+}
 
-	ch <- struct{}{}
-	defer func() {
-		<-ch
-		mutationMu.Lock()
-		// Clean up if this was the last waiter.
-		if len(ch) == 0 {
-			delete(mutationQueues, key)
-		}
-		mutationMu.Unlock()
-	}()
-
-	return fn()
+// releaseMutationQueue forgets a queue nobody is waiting on. The channel is
+// passed back in rather than looked up again because the map may already hold a
+// different one for this key, and deleting that would strand its waiters.
+func releaseMutationQueue(key string, ch chan struct{}) {
+	mutationMu.Lock()
+	defer mutationMu.Unlock()
+	if len(ch) == 0 && mutationQueues[key] == ch {
+		delete(mutationQueues, key)
+	}
 }
 
 // mutationQueueKey mirrors pi's getMutationQueueKey: resolve the path, then

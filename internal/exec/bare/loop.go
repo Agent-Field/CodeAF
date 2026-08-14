@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -230,7 +231,12 @@ func (l *loopState) executeTools(ctx context.Context, calls []ai.ToolCall) []too
 	for i, call := range calls {
 		wg.Add(1)
 		go func(idx int, c ai.ToolCall) {
+			// wg.Done outermost, so a faulted tool still releases the batch:
+			// guard.Recover turns the panic into a logged fault, and the slot
+			// this goroutine owns stays the zero result rather than hanging
+			// every sibling behind a Wait that never returns.
 			defer wg.Done()
+			defer guard.Recover("exec/bare tool " + c.Function.Name)
 			results[idx] = l.executeTool(ctx, c)
 		}(i, call)
 	}
