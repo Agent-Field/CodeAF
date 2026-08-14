@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/thread"
@@ -442,6 +443,35 @@ func (r *Reconciler) chosenSubharness(compiled Compiled) string {
 		return r.forcedSubharness
 	}
 	return strings.TrimSpace(compiled.Subharness)
+}
+
+// cheapFirstOnSubtree resolves the inheritance of the compiler's specialist
+// choice before the store's own fill does. A node that made no choice of its
+// own inherits the splice's worker at admission, and when that worker is a
+// specialist the inheritance is a pre-evidence guess: the compiler judged the
+// ask's SHAPE — "this is coding work" — before anything was sized, and the
+// ladder's rule is that envelope choices wait for evidence. So an unjudged
+// node of a specialist-named job starts on the cheap whole-taker (bare when
+// it is registered, the generalist otherwise), and the specialist's own entry
+// points move to the two places evidence exists: the sizing pass's oversized
+// verdict, and continuation escalation. The compiler's choice itself is
+// untouched — it rides the splice's provenance as the record of the shape
+// judgment, and the escalation ladder reads it back from there.
+func (r *Reconciler) cheapFirstOnSubtree(subtree store.Subtree, compiled Compiled) store.Subtree {
+	choice := strings.TrimSpace(compiled.Subharness)
+	if choice == "" || exec.GeneralistSubharness(choice) || !exec.KnownSubharness(choice) {
+		return subtree
+	}
+	target := exec.LinearSubharness
+	if exec.KnownSubharness(exec.BareSubharness) {
+		target = exec.BareSubharness
+	}
+	for index := range subtree.Nodes {
+		if strings.TrimSpace(subtree.Nodes[index].Subharness) == "" {
+			subtree.Nodes[index].Subharness = target
+		}
+	}
+	return subtree
 }
 
 // forceWorkerOnSubtree writes the forced worker onto every node as well as onto
@@ -1411,6 +1441,7 @@ func (r *Reconciler) splice(ctx context.Context, command store.Command) (command
 	subtree = anchorSubtreeWorkingDecisions(subtree, compiled.Assumptions)
 	subtree = r.wireContinuity(subtree, compiled.BuildsOn)
 	subtree = r.forceWorkerOnSubtree(subtree)
+	subtree = r.cheapFirstOnSubtree(subtree, compiled)
 	r.titleSubtree(ctx, &subtree, compiled)
 
 	planModel, runModel := r.splitModelSlots(compiled.WorkModel)
