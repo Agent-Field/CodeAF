@@ -34,6 +34,18 @@ func TestExecExitCode(t *testing.T) {
 	}
 }
 
+func TestExecDeadline(t *testing.T) {
+	if got := execDeadline(150_000, 0); got != 15*time.Minute {
+		t.Fatalf("default deadline = %s, want 15m", got)
+	}
+	if got := execDeadline(2_000_000, 0); got != 40*time.Minute {
+		t.Fatalf("scaled deadline = %s, want 40m", got)
+	}
+	if got := execDeadline(2_000_000, 75); got != 75*time.Second {
+		t.Fatalf("explicit deadline = %s, want 75s", got)
+	}
+}
+
 func TestBuildExecEnvelopeJSONShape(t *testing.T) {
 	outcome := &exec.Outcome{
 		Text: "answer",
