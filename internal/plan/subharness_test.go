@@ -122,11 +122,15 @@ func TestSizeApplyDeclinesSpecialistForAtomicNodes(t *testing.T) {
 	if got := graph.Node(1); got.Subharness != BareSubharness || got.Size != SizeAtomic {
 		t.Fatalf("atomic node = %+v, want bare at atomic", *got)
 	}
-	// Borderline and oversized: the specialist keeps the node, forced atomic.
-	for _, id := range []int{2, 3} {
-		if got := graph.Node(id); got.Subharness != "swe" || got.Size != SizeAtomic || len(got.Parts) != 0 {
-			t.Fatalf("node %d = %+v, want swe/atomic with no parts", id, *got)
-		}
+	// Borderline: the same decline — uncertainty resolves cheap-first, and the
+	// node's own size and parts stand because the envelope changed, not the
+	// split question.
+	if got := graph.Node(2); got.Subharness != BareSubharness || got.Size != SizeBorderline || len(got.Parts) != 0 {
+		t.Fatalf("borderline node = %+v, want bare at borderline with parts standing", *got)
+	}
+	// Oversized: the specialist keeps the node, forced atomic.
+	if got := graph.Node(3); got.Subharness != "swe" || got.Size != SizeAtomic || len(got.Parts) != 0 {
+		t.Fatalf("oversized node = %+v, want swe/atomic with no parts", *got)
 	}
 }
 
@@ -176,10 +180,12 @@ func TestGeneralistVerdictIsRecordedByName(t *testing.T) {
 	if node := graph.Node(2); node.Subharness != BareSubharness || node.Size != SizeAtomic {
 		t.Fatalf("node 2 = %+v, want bare named and atomic", *node)
 	}
-	// Node 3 was the generalist on borderline work — not one-sitting, so the
-	// generalist keeps it. The size stands and so do the parts.
-	if node := graph.Node(3); node.Subharness != LinearSubharness || node.Size != SizeBorderline {
-		t.Fatalf("node 3 = %+v, want the generalist named and borderline left alone", *node)
+	// Node 3 was the generalist on borderline work — the verdict of
+	// uncertainty, and uncertainty resolves cheap-first: bare takes it, and
+	// the borderline size stands because the envelope changed, not the split
+	// question.
+	if node := graph.Node(3); node.Subharness != BareSubharness || node.Size != SizeBorderline {
+		t.Fatalf("node 3 = %+v, want bare named and borderline left alone", *node)
 	}
 
 	// The two predicates answer different questions, and the difference is the
@@ -248,14 +254,14 @@ func TestSizeApplyRoutesByThreeTiers(t *testing.T) {
 		sub  string
 		size Size
 	}{
-		{1, "swe", SizeAtomic},                // swe keeps non-atomic, forced atomic
-		{2, BareSubharness, SizeAtomic},       // swe declined to bare
-		{3, BareSubharness, SizeAtomic},       // bare keeps atomic
-		{4, LinearSubharness, SizeOversized},  // bare declined to linear, size stands
-		{5, BareSubharness, SizeAtomic},       // generalist default → bare
-		{6, LinearSubharness, SizeAtomic},     // generalist + Needs → linear
-		{7, LinearSubharness, SizeBorderline}, // generalist borderline → linear
-		{8, "", SizeUnknown},                  // synthesis skipped, untouched
+		{1, "swe", SizeAtomic},               // swe keeps oversized, forced atomic
+		{2, BareSubharness, SizeAtomic},      // swe declined to bare
+		{3, BareSubharness, SizeAtomic},      // bare keeps atomic
+		{4, LinearSubharness, SizeOversized}, // bare declined to linear, size stands
+		{5, BareSubharness, SizeAtomic},      // generalist default → bare
+		{6, LinearSubharness, SizeAtomic},    // generalist + Needs → linear
+		{7, BareSubharness, SizeBorderline},  // generalist borderline → bare (uncertainty resolves cheap-first)
+		{8, "", SizeUnknown},                 // synthesis skipped, untouched
 	} {
 		got := graph.Node(want.id)
 		if got.Subharness != want.sub || got.Size != want.size {
