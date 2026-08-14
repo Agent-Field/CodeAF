@@ -94,6 +94,38 @@ func TestSizeApplyHonorsAndDegradesSubharnessVerdicts(t *testing.T) {
 	}
 }
 
+// A specialist named for a node the baseline ruler already sized atomic is
+// declined: the specialist's pipeline is a fixed cost the node's size does
+// not repay, and the generalist takes the node whole instead. The verdict's
+// own size judgment is what decides it — the same answer, read against the
+// baseline ruler.
+func TestSizeApplyDeclinesSpecialistForAtomicNodes(t *testing.T) {
+	defer ForgetSubharnesses()
+	UseSubharness(Subharness{Name: "swe", Purpose: "coding"}, "ruler")
+
+	graph := &Graph{Nodes: []Node{
+		{ID: 1, Kind: KindWork, Stage: 1},
+		{ID: 2, Kind: KindWork, Stage: 1},
+		{ID: 3, Kind: KindWork, Stage: 1},
+	}, NextID: 4}
+	_, err := sizeApply(graph, []sizeResult{{verdicts: []sizeVerdict{
+		{Node: 1, Size: "atomic", Subharness: "swe"},
+		{Node: 2, Size: "borderline", Subharness: "swe"},
+		{Node: 3, Size: "oversized", Subharness: "swe", Parts: []string{"one", "two"}},
+	}}})
+	if err != nil {
+		t.Fatalf("sizeApply: %v", err)
+	}
+	if got := graph.Node(1); got.Subharness != LinearSubharness || got.Size != SizeAtomic {
+		t.Fatalf("atomic node = %+v, want the generalist at atomic", *got)
+	}
+	for _, id := range []int{2, 3} {
+		if got := graph.Node(id); got.Subharness != "swe" || got.Size != SizeAtomic || len(got.Parts) != 0 {
+			t.Fatalf("node %d = %+v, want swe/atomic with no parts", id, *got)
+		}
+	}
+}
+
 // The generalist is a verdict, not a silence. The model answers "no
 // specialist" by returning the empty string, and while that answer was stored
 // as the empty string the graph also uses for "nobody judged this node", every
