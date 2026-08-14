@@ -192,7 +192,7 @@ func ReplanOverrunAs(ctx context.Context, graph *store.Store, node store.Node, p
 // ladder does not touch it. A dead leaf nobody sized promised no envelope, so
 // its continuation keeps whatever the caller judged (or the baseline when
 // nothing was), preserving the splice's "degradation, never failure" default.
-func escalateContinuation(dead, judged string) string {
+func escalateContinuation(dead, judged, provenance string) string {
 	dead = strings.TrimSpace(dead)
 	judged = strings.TrimSpace(judged)
 	// The frozen engine first: its exhaustion is its own business, and the
@@ -211,10 +211,21 @@ func escalateContinuation(dead, judged string) string {
 	if strings.EqualFold(dead, executor.BareSubharness) {
 		return executor.LinearSubharness
 	}
-	// linear is the generalist ceiling — the largest single-agent envelope. An
-	// exhaustion there keeps the generalist, named, because there is no higher
+	// linear is ordinarily the generalist ceiling — the largest single-agent
+	// envelope. There is one rung above it, and only when the job's own
+	// provenance names it: the compiler judged the ask's shape at admission
+	// ("this is specialist work") and two exhausted single-agent envelopes are
+	// the size evidence that shape judgment was waiting for. A linear
+	// exhaustion on such a job climbs to the provenance's specialist; on any
+	// other job the generalist is kept, named, because there is no higher
 	// rung to climb to.
 	if executor.GeneralistSubharness(dead) {
+		if specialist := strings.TrimSpace(provenance); specialist != "" &&
+			!executor.GeneralistSubharness(specialist) &&
+			!strings.EqualFold(specialist, executor.BareSubharness) &&
+			executor.KnownSubharness(specialist) {
+			return specialist
+		}
 		return executor.LinearSubharness
 	}
 	// A dead leaf nobody sized promised no envelope, so the caller's choice
@@ -234,7 +245,7 @@ func replanOverrun(ctx context.Context, graph *store.Store, node store.Node, par
 	// subtree's provenance — so it flows to the deferred record at the rail and
 	// re-applies idempotently on resume. The dead leaf's envelope is on its node
 	// record; the caller's judgement rides the worker parameter.
-	worker = escalateContinuation(node.Subharness, worker)
+	worker = escalateContinuation(node.Subharness, worker, node.Provenance.Subharness)
 	var err error
 	if prefix == "" {
 		prefix, err = nextOverrunPrefix(graph, node.ID)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -134,5 +135,75 @@ func TestASweExhaustionIsLeftToTheFrozenEngine(t *testing.T) {
 	if continued.Subharness != "swe" {
 		t.Fatalf("a swe exhaustion the judge named swe continued on %q, want swe (frozen)",
 			continued.Subharness)
+	}
+}
+
+// A linear exhaustion on a job the compiler named for a specialist climbs the
+// third rung: the shape judgment was made at admission, and two exhausted
+// single-agent envelopes are the size evidence it was waiting for. The
+// provenance is the only place that judgment survives — the leaf's own record
+// says linear after the first escalation — so the ladder reads it there.
+func TestALinearExhaustionClimbsToTheProvenancesSpecialist(t *testing.T) {
+	defer exec.ForgetSubharnesses()
+	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
+	graph, err := store.Open(filepath.Join(t.TempDir(), "graph.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { graph.Close() })
+	if err := graph.Splice(store.RootID, store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "the whole job"},
+		{ID: "job-a", Parent: "job", Brief: "the part that exhausted", Subharness: "linear"},
+	}}, store.Provenance{Origin: store.OriginUser, SessionID: "s1", Intent: "test", Subharness: "swe"}); err != nil {
+		t.Fatal(err)
+	}
+	claim, ok, err := graph.Claim("job-a", "w1")
+	if err != nil || !ok {
+		t.Fatalf("claim: %v %v", ok, err)
+	}
+	if err := graph.Start(claim); err != nil {
+		t.Fatal(err)
+	}
+	node, _, _ := graph.Node("job-a")
+
+	spliced, sink, err := ReplanOverrun(context.Background(), graph, node,
+		"the partial result", "", nil, 0, twoNodeRemainder)
+	if err != nil || spliced != 2 {
+		t.Fatalf("spliced=%d err=%v", spliced, err)
+	}
+	continued, _, _ := graph.Node(sink)
+	if continued.Subharness != "swe" {
+		t.Fatalf("a linear exhaustion on a swe-shaped job continued on %q, want swe (the third rung)",
+			continued.Subharness)
+	}
+}
+
+// The cheap-first inheritance: a node that made no choice of its own on a job
+// the compiler named for a specialist starts on the cheap whole-taker, and
+// the compiler's choice survives untouched in the provenance for the third
+// rung to read. A node with its own verdict is never rewritten.
+func TestCheapFirstOnSubtree(t *testing.T) {
+	defer exec.ForgetSubharnesses()
+	exec.RegisterSubharness(exec.SubharnessInfo{Name: "swe", Purpose: "software engineering taken whole"})
+	exec.RegisterSubharness(exec.SubharnessInfo{Name: "bare", Purpose: "one agent, one sitting, minimal loop"})
+	r := &Reconciler{}
+
+	specialistJob := store.Subtree{Nodes: []store.NodeSpec{
+		{ID: "job", Brief: "the whole job"},
+		{ID: "job-a", Parent: "job", Brief: "unjudged"},
+		{ID: "job-b", Parent: "job", Brief: "judged", Subharness: "swe"},
+	}}
+	out := r.cheapFirstOnSubtree(specialistJob, Compiled{Subharness: "swe"})
+	if out.Nodes[0].Subharness != "bare" || out.Nodes[1].Subharness != "bare" {
+		t.Fatalf("unjudged nodes = %q, %q, want bare", out.Nodes[0].Subharness, out.Nodes[1].Subharness)
+	}
+	if out.Nodes[2].Subharness != "swe" {
+		t.Fatalf("judged node = %q, want its own verdict kept", out.Nodes[2].Subharness)
+	}
+
+	generalistJob := store.Subtree{Nodes: []store.NodeSpec{{ID: "job", Brief: "the whole job"}}}
+	out = r.cheapFirstOnSubtree(generalistJob, Compiled{Subharness: "linear"})
+	if out.Nodes[0].Subharness != "" {
+		t.Fatalf("generalist-compiled node = %q, want the inheritance left alone", out.Nodes[0].Subharness)
 	}
 }
