@@ -13,9 +13,10 @@ import (
 // countingPlanner answers every pass and records which ones were reached, so a
 // test can assert what a build did NOT buy.
 type countingPlanner struct {
-	mutex  sync.Mutex
-	stages string
-	passes []string
+	mutex     sync.Mutex
+	stages    string
+	sizeReply string
+	passes    []string
 }
 
 func (c *countingPlanner) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
@@ -42,6 +43,9 @@ func (c *countingPlanner) CompleteWithMessages(_ context.Context, messages []ai.
 		return textResponse(`{"bindings":[],"duplicates":[]}`), nil
 	case sizePromptWith(Anchors()):
 		c.passes = append(c.passes, "size")
+		if c.sizeReply != "" {
+			return textResponse(c.sizeReply), nil
+		}
 		return textResponse(`{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"atomic","split_into":[]}]}`), nil
 	case auditPrompt:
 		c.passes = append(c.passes, "audit")
@@ -95,11 +99,18 @@ func TestAnUngatedRemainderStopsAtOneWorker(t *testing.T) {
 
 // The shortcut is a shortcut, not a ceiling. A remainder the model judges
 // genuinely staged still gets the whole pipeline, because that judgement is
-// the only thing the shortcut is keyed on.
+// the only thing the shortcut is keyed on. Whether the stages then survive is
+// the pipeline's own evidence question: sized atomic end to end, a stage
+// chain is one sitting and collapses; anything heavier and the stages stand.
 func TestAGatedRemainderStillGetsTheWholePipeline(t *testing.T) {
-	client := &countingPlanner{stages: `{"stages":[
+	// The ruler finds real weight in the second stage: the graph keeps the
+	// shape the spine drew.
+	client := &countingPlanner{
+		stages: `{"stages":[
 		{"title":"Gather","summary":"Collect the numbers."},
-		{"title":"Write","summary":"Write them up."}]}`}
+		{"title":"Write","summary":"Write them up."}]}`,
+		sizeReply: `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"borderline","split_into":[]}]}`,
+	}
 	graph, err := Build(context.Background(), client, ungatedRemainder, Options{
 		SpineSamples: 1, NodeBudget: 12, Briefs: false, Ensemble: EnsembleNever, Undivided: true,
 	})
@@ -107,12 +118,30 @@ func TestAGatedRemainderStillGetsTheWholePipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(graph.Nodes) < 2 {
-		t.Fatalf("a two-stage remainder collapsed to %d nodes", len(graph.Nodes))
+		t.Fatalf("a two-stage remainder with weight in it collapsed to %d nodes", len(graph.Nodes))
 	}
 	for _, required := range []string{"fanout", "bind", "size"} {
 		if !client.reached(required) {
 			t.Fatalf("a staged remainder skipped the %s pass: %v", required, client.passes)
 		}
+	}
+
+	// Every link measured atomic: the same remainder is one sitting, and the
+	// pipeline says so from its own readings.
+	atomic := &countingPlanner{stages: `{"stages":[
+		{"title":"Gather","summary":"Collect the numbers."},
+		{"title":"Write","summary":"Write them up."}]}`}
+	folded, err := Build(context.Background(), atomic, ungatedRemainder, Options{
+		SpineSamples: 1, NodeBudget: 12, Briefs: false, Ensemble: EnsembleNever, Undivided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(folded.Nodes) != 1 {
+		t.Fatalf("an all-atomic chain kept %d nodes, want 1", len(folded.Nodes))
+	}
+	if !atomic.reached("size") {
+		t.Fatal("the collapse happened without the sizing pass's evidence")
 	}
 }
 
