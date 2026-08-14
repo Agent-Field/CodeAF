@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/exec"
+	barepkg "github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
 	"github.com/Agent-Field/aforge-v2/internal/profile"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -41,6 +42,7 @@ import (
 // a line in leafExecutors, and nothing else.
 func installSubharnesses() {
 	exec.RegisterSubharness(sweInfo())
+	exec.RegisterSubharness(bareInfo())
 }
 
 // leafBuild is everything a worker needs to be constructed for one leaf. It is
@@ -238,6 +240,16 @@ var leafExecutors = map[string]func(leafBuild) exec.Executor{
 			build.settings.APIKey, build.settings.BaseURL, build.deadline).
 			WithMaxCost(sweMaxCost(os.Getenv)).
 			WithAttribution(config.AttributionAt(build.settings.ProfileDir))
+	},
+	// The bare worker takes the same workspace, model, key, and clock the
+	// coding pipeline takes, because it opens its own provider client from
+	// them. It is the cheapest whole-taker: the same four tools, a lighter
+	// prompt, no aforge contract or cache key. The model is resolved through
+	// the same engineModelID path so the name a second process would look up
+	// is the one the provider actually serves.
+	barepkg.BareSubharness: func(build leafBuild) exec.Executor {
+		return barepkg.New(build.workspace, engineModelID(build.models, build.model),
+			build.settings.APIKey, build.settings.BaseURL, build.deadline)
 	},
 }
 
