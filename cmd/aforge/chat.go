@@ -4156,6 +4156,7 @@ func planSubtree(settings config.Config, planClient, workClient *liveClient, pla
 			BuildDepth: 1,
 			NodeBudget: settings.NodeBudget,
 			Briefs:     true,
+			Journal:    briefJournal(history, prefix),
 			Progress:   progress,
 		})
 		if err != nil {
@@ -4214,6 +4215,29 @@ func journalScaleGate(history *store.Store, prefix string, compiled resident.Com
 		Parts:     len(trimmedParts(compiled.Parts)),
 	}); err != nil {
 		log.Printf("note: could not journal the shape of %s: %v", prefix, err)
+	}
+}
+
+// briefJournal wires the brief pass's per-node events to a job's durable home.
+// It is the seam between the planner — which knows the plan node id and the
+// rendered brief but not the store id a node was minted under — and the store,
+// which journals under that id. The id law is resident.PlanStoreIDs: the bare
+// prefix for the deliverable sink, "<prefix>-n<id>" otherwise. A nil history
+// (a surface with no store) returns nil and leaves the brief exactly as
+// durable as it was. Best-effort, like RecordPlanGraph: a failed write is a
+// note in the log and never costs the plan.
+func briefJournal(history *store.Store, prefix string) plan.BriefJournal {
+	if history == nil {
+		return nil
+	}
+	var idFn func(int) string
+	return func(graph *plan.Graph, nodeID int, brief store.NodeBrief) {
+		if idFn == nil {
+			idFn = resident.PlanStoreIDs(graph, prefix, nil)
+		}
+		if err := history.RecordNodeBrief(idFn(nodeID), brief); err != nil {
+			log.Printf("note: could not journal the brief for %s: %v", idFn(nodeID), err)
+		}
 	}
 }
 
@@ -4385,6 +4409,7 @@ func replanRemainder(settings config.Config, planClient, workClient *liveClient,
 			MaxDepth:   0,
 			NodeBudget: min(settings.NodeBudget, replanNodeBudget),
 			Briefs:     true,
+			Journal:    briefJournal(history, prefix),
 			Ensemble:   plan.EnsembleNever,
 			// A remainder that the spine finds nothing gated in is one fresh
 			// worker's assignment, and buying a seven-pass planning bundle to

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -190,6 +191,15 @@ func decodeBrief(text string) (string, Done) {
 	return instruction, NormalizeDone(reply.Done)
 }
 
+// BriefJournal writes one node's rendered brief as a first-class, queryable
+// event, when the build has a durable home to journal to. The plan package
+// knows the plan node id and the rendered brief; it does not know the store id
+// the node was minted under (that spelling is the caller's — see
+// resident.PlanStoreIDs), so the callback receives the graph and the plan node
+// id and the caller forms the store id. It is best-effort for the same reason
+// RecordPlanGraph is: losing it costs an audit and never the plan.
+type BriefJournal func(graph *Graph, nodeID int, brief store.NodeBrief)
+
 // briefWriter writes leaf instructions in the background.
 //
 // Briefs used to run as a final pass over the finished graph, which put one
@@ -208,6 +218,12 @@ type briefWriter struct {
 	client   Completer
 	enabled  bool
 	progress Progress
+
+	// journal, when set, writes one node_briefed event per briefed node as
+	// apply lands its brief. Nil is the build that has no store to journal to
+	// — the one-shot `aforge plan` command, the batch `Briefs` form — and
+	// leaves the brief exactly as durable as it was before this hook existed.
+	journal BriefJournal
 
 	// sink is the deliverable owner, which is written for even though it is not
 	// KindWork. It is a single id rather than a predicate because every other
@@ -231,8 +247,8 @@ type briefWriter struct {
 	reporting   bool
 }
 
-func newBriefWriter(ctx context.Context, client Completer, enabled bool, progress Progress) *briefWriter {
-	return &briefWriter{ctx: ctx, client: client, enabled: enabled, progress: progress, results: map[int]briefReply{}}
+func newBriefWriter(ctx context.Context, client Completer, enabled bool, progress Progress, journal BriefJournal) *briefWriter {
+	return &briefWriter{ctx: ctx, client: client, enabled: enabled, progress: progress, journal: journal, results: map[int]briefReply{}}
 }
 
 // launch starts one node's brief. Everything it needs is passed by value —
@@ -316,6 +332,18 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 			node.Spec.Instruction = written.Instruction
 			node.Spec.Done = written.Done
 			node.Spec.Sources = node.Sources
+			// Journal the rendered brief as a first-class event per node, so a
+			// run's sufficiency sentence is queryable from its own artifacts
+			// rather than only as a field inside the plan blob. The caller forms
+			// the store id; this is a no-op when no journal was wired in.
+			if w.journal != nil {
+				w.journal(graph, id, store.NodeBrief{
+					Node:       id,
+					Brief:      written.Instruction,
+					Criterion:  written.Done.Sentence(),
+					Subharness: node.Subharness,
+				})
+			}
 		}
 	}
 	return w.usage, joinErrors(w.errs)
@@ -329,7 +357,7 @@ func Briefs(ctx context.Context, client Completer, graph *Graph, callbacks ...Pr
 	if len(callbacks) > 0 {
 		callback = serialProgress(callbacks[0])
 	}
-	writer := newBriefWriter(ctx, client, true, callback)
+	writer := newBriefWriter(ctx, client, true, callback, nil)
 	writer.sink = graph.deliverableSink()
 	shared := graph.context() + "\nThe full plan:\n" + graph.briefCatalog()
 	owner, label := graph.deliverableOwner()

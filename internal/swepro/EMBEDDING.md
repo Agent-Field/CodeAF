@@ -363,3 +363,43 @@ Now that this is owned code, that fifteen is a to-do rather than a fact of
 life: as the copy is domesticated, the environment-dependent tests can be
 fixed and the exclusion narrowed, until `internal/swepro` is simply part of
 `make test` like everything else.
+
+### D9 — `internal/swepro/internal/tool`: `apply_patch` is ungated, and the coder is fenced out of the `.codeaf/` tree
+
+*Wave 4, the bench-cost wave.* Two tool-layer fixes that each cost the
+vs-pi cells a measured run.
+
+**`apply_patch` is no longer model-gated.** Upstream `registry.ts:339-393`
+gated the multi-file `apply_patch` tool to gpt-family models (`usePatch`:
+`gpt-` and not `oss` and not `gpt-4`) and, for those same models, hid
+single-file `edit`/`write`. The benchmark runs `deepseek/deepseek-v4-flash`,
+so every coder leaf was limited to single-file edits while the pi harness
+edited many files at once. `apply_patch` is a harness-side unified-diff
+editor that needs no provider support, so the gate served only to deny
+non-gpt coders the multi-file tool. `FilterDefinitions` now offers `edit`,
+`write`, and `apply_patch` to every coder regardless of model; the `usePatch`
+branch and the `strings` import are gone.
+
+**The coder is fenced out of the `.codeaf/` machinery tree.** The FEATURE
+cell regressed because a coder leaf read and then EDITED
+`.codeaf/contract.json` — the harness's registered acceptance contract —
+corrupting the run. `resolveMutationPath`, the single choke point that
+`write`, `edit`, and `apply_patch` (per-hunk path and move target) all flow
+through, now refuses any coder write whose resolved path lands in the
+workspace's top-level `.codeaf/` directory: `harness machinery; not part of
+the task`. Reads keep using `resolvePath` and stay allowed — the root-cut
+flow instructs reading `.codeaf/contract.json`.
+
+The guard is agent-scoped, not blanket. The harness's own agents legitimately
+write `.codeaf/` through these same tools — the auditor writes its verdict to
+`.codeaf/auditor-verdict.json`, the architect to `.codeaf/plan/architecture.md`
+— so a blanket block would break the audit pipeline (and did, on the first
+pass). Only the `coder` worker is refused; `call.Agent` is populated from the
+leaf's message agent, so a coder leaf's tool call carries `Agent == "coder"`.
+The engine's own writes to `.codeaf/contract.json` are Go code in
+`internal/session/contract` and never pass through the tool path, so they are
+unaffected either way.
+
+*Cherry-pick note:* upstream's `FilterDefinitions` still has the `usePatch`
+gate, and its `resolvePath` has no `.codeaf/` write guard. A harvest touching
+`registry.ts:339-393` or the edit/write/apply_patch path resolution must

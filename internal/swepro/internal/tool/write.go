@@ -30,7 +30,7 @@ func (r *Registry) executeWrite(ctx context.Context, call steploop.ToolCall) (st
 		return steploop.ToolResult{}, err
 	}
 
-	resolved, err := r.resolvePath(input.FilePath)
+	resolved, err := r.resolveMutationPath(call, input.FilePath)
 	if err != nil {
 		return steploop.ToolResult{}, err
 	}

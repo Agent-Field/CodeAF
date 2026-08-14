@@ -11,32 +11,34 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
 )
 
+// aforge-embed: D9 — this diverges from upstream registry.ts:339-393, which
+// gated apply_patch to gpt-family models and hid edit/write for them. Here
+// every coder gets edit, write, and apply_patch together regardless of model,
+// so the benchmark's deepseek leaves are no longer limited to single-file
+// edits. See internal/swepro/EMBEDDING.md (D9).
 func TestRegistryModelFilteringParity(t *testing.T) {
 	registry := New(t.TempDir())
-	nonGPT := definitionNames(registry.DefinitionsFor(FilterInput{
-		ProviderID: "openrouter",
-		ModelID:    "anthropic/claude-opus-4-6",
-		AgentName:  "coder",
-	}))
-	if want := []string{"bash", "read", "glob", "grep", "edit", "write", "webfetch"}; !reflect.DeepEqual(nonGPT, want) {
-		t.Fatalf("non-GPT = %v, want %v", nonGPT, want)
-	}
-	gpt := definitionNames(registry.DefinitionsFor(FilterInput{
-		ProviderID: "openrouter",
-		ModelID:    "openai/gpt-5.4",
-		AgentName:  "coder",
-	}))
-	if want := []string{"bash", "read", "glob", "grep", "webfetch", "apply_patch"}; !reflect.DeepEqual(gpt, want) {
-		t.Fatalf("GPT = %v, want %v", gpt, want)
-	}
-	for _, modelID := range []string{"openai/gpt-oss-120b", "openai/gpt-4.1"} {
+	// Every model family — non-gpt, gpt, the gpt variants upstream excluded,
+	// and the benchmark's deepseek — gets the same coder toolset, including
+	// both single-file (edit/write) and multi-file (apply_patch) editors.
+	want := []string{"bash", "read", "glob", "grep", "edit", "write", "webfetch", "apply_patch"}
+	for _, modelID := range []string{
+		"anthropic/claude-opus-4-6",
+		"openai/gpt-5.4",
+		"openai/gpt-oss-120b",
+		"openai/gpt-4.1",
+		"deepseek/deepseek-v4-flash",
+	} {
 		names := definitionNames(registry.DefinitionsFor(FilterInput{
 			ProviderID: "openrouter",
 			ModelID:    modelID,
 			AgentName:  "coder",
 		}))
-		if !containsName(names, "edit") || containsName(names, "apply_patch") {
-			t.Fatalf("%s names = %v", modelID, names)
+		if !reflect.DeepEqual(names, want) {
+			t.Fatalf("%s names = %v, want %v", modelID, names, want)
+		}
+		if !containsName(names, "apply_patch") {
+			t.Fatalf("%s missing apply_patch: %v", modelID, names)
 		}
 	}
 }

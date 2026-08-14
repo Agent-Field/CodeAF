@@ -119,18 +119,23 @@ func TestRuntimeMergeRecoveryRunsRawToolLoopWithSelectedLanguage(t *testing.T) {
 	}
 }
 
-func TestRawRecoveryBypassesNormalGPTToolFiltering(t *testing.T) {
-	tools := []orclient.Tool{{Name: "git_leaf"}, {Name: "write"}, {Name: "report"}}
+// aforge-embed: D9 — the gpt-family edit-strategy gate is gone, so write is no
+// longer dropped for gpt-5. The bypass contract is now exercised against
+// websearch, which FilterDefinitions still drops for an openrouter caller
+// with no search flags: bypass keeps it, normal filtering removes it.
+func TestRawRecoveryBypassesNormalToolFiltering(t *testing.T) {
+	tools := []orclient.Tool{{Name: "git_leaf"}, {Name: "write"}, {Name: "report"}, {Name: "websearch"}}
 	client := codeafStreamClient{
 		model: orclient.Model{ProviderID: "openrouter", ID: "openai/gpt-5"},
 		agent: "merge-recovery", bypassToolFilter: true,
 	}
 	if got := client.visibleTools(tools); !reflect.DeepEqual(got, tools) {
-		t.Fatalf("raw recovery tools = %#v, want %#v", got, tools)
+		t.Fatalf("raw recovery tools = %#v", got)
 	}
 	client.bypassToolFilter = false
-	if got := client.visibleTools(tools); len(got) != 2 || got[0].Name != "git_leaf" || got[1].Name != "report" {
-		t.Fatalf("normal GPT-filtered tools = %#v", got)
+	if got := client.visibleTools(tools); len(got) != 3 ||
+		got[0].Name != "git_leaf" || got[1].Name != "write" || got[2].Name != "report" {
+		t.Fatalf("normal filtered tools = %#v", got)
 	}
 }
 

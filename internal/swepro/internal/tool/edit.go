@@ -62,7 +62,7 @@ func (r *Registry) executeEdit(ctx context.Context, call steploop.ToolCall) (ste
 		return steploop.ToolResult{}, err
 	}
 
-	resolved, err := r.resolvePath(input.FilePath)
+	resolved, err := r.resolveMutationPath(call, input.FilePath)
 	if err != nil {
 		return steploop.ToolResult{}, err
 	}

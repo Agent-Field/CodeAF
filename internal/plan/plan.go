@@ -363,6 +363,15 @@ type Options struct {
 	// we know is the moment worth telling someone. The node is passed by value:
 	// the graph is still being appended to, and a pointer into it can go stale.
 	OnReady func(node Node, elapsed time.Duration)
+
+	// Journal, when set, writes one node_briefed event per briefed node as the
+	// brief pass lands — the rendered instruction, the sufficiency sentence
+	// (Spec.Done) and the subharness — so a run's stopping condition is
+	// queryable from its own artifacts rather than only as a field inside the
+	// plan blob. The caller forms the store id; see BriefJournal. Nil leaves
+	// briefs exactly as durable as they were before this existed, which is the
+	// one-shot `aforge plan` path and every caller with no store to journal to.
+	Journal BriefJournal
 }
 
 // buildLevels is how many expansion levels this build runs. It never exceeds
@@ -561,7 +570,7 @@ func Build(ctx context.Context, client Completer, goal string, options Options) 
 	// final. Announcing them here rather than at the end is most of the win:
 	// they are also the nodes most likely to have no dependencies, which makes
 	// them exactly the ones something could start on immediately.
-	briefs := newBriefWriter(ctx, client, options.Briefs, progress)
+	briefs := newBriefWriter(ctx, client, options.Briefs, progress, options.Journal)
 	settled := map[int]bool{}
 	pending := map[int]bool{}
 	for _, id := range selectForExpansion(graph, options) {
