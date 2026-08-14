@@ -99,6 +99,15 @@ doable by an agent that knows nothing about the others. Give 1 to 5 parts, and
 return a single part when the stage is genuinely one piece of work — that is a
 correct answer, not a failure to decompose.
 
+Every part costs a worker, and a worker is not free: each one pays its own
+orientation, setup and delivery before it produces anything, whatever the size
+of the unit it was handed. Weigh the split against that fixed cost. Units one
+agent could finish in a single short sitting — a few small files, a handful of
+short pieces, one pass over material that fits in one context — do not earn
+their own workers: batch them into one part, or leave the stage whole. Split
+only when the parts are each substantial enough that doing them at the same
+time repays several workers' fixed costs in the time it saves.
+
 When the goal names one final deliverable — a file, a report, a document — no
 part of this stage produces it. The parts produce the material it is made of;
 producing it is one job with one owner, and that owner is the plan's last node
