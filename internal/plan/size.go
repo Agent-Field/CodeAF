@@ -368,7 +368,17 @@ func subharnessSection(specialists []Subharness) string {
 		"subharness's ruler. Naming it says the node is atomic FOR IT and must not be\n" +
 		"split, so return an empty split_into with it. Leave subharness empty for mixed\n" +
 		"work, for work whose essence is something else, and whenever you are in doubt\n" +
-		"— that is the answer for most nodes, and it is never wrong, only slower.")
+		"— that is the answer for most nodes, and it is never wrong, only slower.\n" +
+		"\n" +
+		"A specialist runs a pipeline, not a single agent: its own planning, contracts\n" +
+		"and verification stand between the node and the work, and that machinery is a\n" +
+		"fixed cost paid per node whatever the node's size. Weigh it the way you weighed\n" +
+		"splitting. A node that is small for any worker — one file's change, a short\n" +
+		"answer, a single sitting's reading — is cheapest with the generalist even when\n" +
+		"the specialist's purpose matches exactly, because the pipeline's fixed cost\n" +
+		"would dwarf the work. Name the specialist when the node is big enough that the\n" +
+		"pipeline's machinery repays its cost: work that would otherwise be split, or\n" +
+		"that needs the specialist's own checks to be trusted.")
 	return section.String()
 }
 

@@ -44,7 +44,12 @@ at least one:
 1. Parallelism that would otherwise be serialized: the earlier stage and the
    later stage are genuinely independent workers, and the only thing keeping
    the later one from starting is that it needs the earlier one's output.
-   Without the gate they would race; the gate makes the race a handoff.
+   Without the gate they would race; the gate makes the race a handoff. The
+   parallelism must be worth its price: every worker pays a fixed cost of
+   orientation and setup before it produces anything, so work whose parts are
+   each smaller than that fixed cost is cheaper inside one worker, not spread
+   across several. Parallel units that one agent could finish in a single
+   sitting are not a reason for stages.
 2. Worker isolation: the later stage needs a different workspace, harness, or
    set of skills than the earlier one — a setup change that cannot happen
    inside one agent's turn loop.
