@@ -165,8 +165,11 @@ func TestGeneralistVerdictIsRecordedByName(t *testing.T) {
 	if node := graph.Node(1); node.Subharness != LinearSubharness || node.Size != SizeAtomic {
 		t.Fatalf("node 1 = %+v, want the generalist named and atomic", *node)
 	}
-	if node := graph.Node(2); node.Subharness != "swe" || node.Size != SizeAtomic {
-		t.Fatalf("node 2 = %+v, want swe/atomic", *node)
+	// Node 2 was named for a specialist while sized atomic under the baseline
+	// ruler — the specialist's pipeline is a fixed cost an atomic node never
+	// repays, so the generalist takes it whole.
+	if node := graph.Node(2); node.Subharness != LinearSubharness || node.Size != SizeAtomic {
+		t.Fatalf("node 2 = %+v, want the generalist named and atomic", *node)
 	}
 	if node := graph.Node(3); node.Subharness != LinearSubharness || node.Size != SizeBorderline {
 		t.Fatalf("node 3 = %+v, want the generalist named and borderline left alone", *node)
