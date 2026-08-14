@@ -887,3 +887,219 @@ func TestSpillLeavesReadableFile(t *testing.T) {
 		t.Errorf("the spilled file could not be read back: %s", read.Content)
 	}
 }
+
+// encodeForPrefix is the wire-byte view the provider's prefix cache actually
+// compares: a message that agrees in Go but encodes differently is a cache miss,
+// and one that disagrees in Go never agrees on the wire. Reused from
+// prefixcache_test.go's encodedMessages so the two disciplines share one truth.
+func encodeForPrefix(t *testing.T, messages []ai.Message) []string {
+	return encodedMessages(t, messages)
+}
+
+// TestDecayKeepsThePrefixStableExceptAtBudgetForcedRewrites is the property the
+// prefix cache rests on across a run that actually overflows: turn N's whole
+// transcript must reappear unchanged at the head of turn N+1's, except on the
+// turn a budget-forced rewrite retired something. And a rewrite must happen at
+// most once per boundary crossing — one batch, then quiet turns — so the cached
+// prefix is not invalidated on every turn.
+//
+// This is the multi-turn generalisation of the byte-identical-prefix freeze in
+// prefixcache_test.go, which only exercises the no-overflow path. A leaf that
+// never crosses its window has a trivially stable prefix; the property that
+// matters is that crossing the window costs ONE invalidation, not one per turn.
+func TestDecayKeepsThePrefixStableExceptAtBudgetForcedRewrites(t *testing.T) {
+	const (
+		// A result a third of the window sits under half the budget, so a single
+		// result fits inside the headroom the low-water floor reserves: a batch
+		// buys at least one quiet turn, and the rewrite is once per crossing.
+		budget = observationBudget
+		result = 8 << 10
+		turns  = 30
+	)
+	leaf := newSteadyLeaf()
+	type snapshot struct {
+		encoded []string
+		rewrote bool
+		wasOver bool
+	}
+	history := make([]snapshot, 0, turns)
+	for range turns {
+		rewrote, wasOver := leaf.turn(t, result, budget)
+		history = append(history, snapshot{
+			encoded: encodeForPrefix(t, leaf.messages), rewrote: rewrote, wasOver: wasOver,
+		})
+	}
+
+	// (1) Prefix stability except at a rewrite. Turn N's encoded messages are a
+	// strict prefix of turn N+1's, unless turn N+1 retired something — the one
+	// documented exception. Any other change is a mid-run rewrite the cache
+	// cannot see coming.
+	for turn := 1; turn < len(history); turn++ {
+		prev, curr := history[turn-1].encoded, history[turn].encoded
+		if history[turn].rewrote {
+			continue
+		}
+		if len(curr) < len(prev) {
+			t.Fatalf("turn %d shrank the transcript without a rewrite", turn)
+		}
+		for i := range prev {
+			if prev[i] != curr[i] {
+				t.Fatalf("turn %d changed message %d without a rewrite — the prefix broke\n"+
+					"was:  %s\nnow:  %s", turn, i, prev[i], curr[i])
+			}
+		}
+	}
+
+	// (2) At most one rewrite per boundary crossing. No two consecutive
+	// rewrites: each batch must buy at least one quiet (prefix-stable) turn
+	// before the next fire, and every rewrite must have been forced by the
+	// window crossing the budget — never a rewrite on a turn that was already
+	// under.
+	consecutive := 0
+	fired := 0
+	for turn := range len(history) {
+		if history[turn].rewrote {
+			fired++
+			if !history[turn].wasOver {
+				t.Fatalf("turn %d rewrote history while under budget — a rewrite must be budget-forced", turn)
+			}
+			consecutive++
+			if consecutive > 1 {
+				t.Fatalf("turn %d rewrote history %d turns running; a batch must buy a quiet turn between fires", turn, consecutive)
+			}
+		} else {
+			consecutive = 0
+		}
+	}
+	if fired == 0 {
+		t.Fatal("decay never fired; the run did not exercise the overflow path")
+	}
+}
+
+// TestDecayMayRewriteEveryTurnWhenTheBudgetForcesIt is the other half of the
+// rule: when a single result is larger than the headroom, the window genuinely
+// cannot hold two of them, and the budget forces a rewrite every turn. That is
+// the documented exception — not a prefix bug — and it is asserted here so the
+// stability test above is never weakened to hide it.
+func TestDecayMayRewriteEveryTurnWhenTheBudgetForcesIt(t *testing.T) {
+	const (
+		budget = observationBudget
+		// Two thirds of the window: larger than the half-budget headroom the
+		// low-water floor leaves, so two results cannot coexist and the pass
+		// retires the just-aged one on every turn.
+		result = 16 << 10
+		turns  = 12
+	)
+	leaf := newSteadyLeaf()
+	rewrites, forced := 0, 0
+	for range turns {
+		rewrote, wasOver := leaf.turn(t, result, budget)
+		if rewrote {
+			rewrites++
+			if wasOver {
+				forced++
+			}
+		}
+	}
+	if rewrites == 0 {
+		t.Fatal("a result larger than the headroom never forced a rewrite")
+	}
+	// Every rewrite was budget-forced: the window was over before the pass ran.
+	if forced != rewrites {
+		t.Fatalf("only %d of %d rewrites were budget-forced", forced, rewrites)
+	}
+	// And the budget genuinely cannot hold two such results, so this is the
+	// acceptable every-turn shape rather than a hysteresis failure.
+	if 2*result <= budget {
+		t.Fatalf("result %d fits twice in budget %d — this case is not actually budget-forced", result, budget)
+	}
+}
+
+// TestFoldKeepsThePrefixStableExceptAtBudgetForcedRewrites is the fold pass's
+// half of the prefix-stability contract. A leaf whose own prose — not its tool
+// output — is what fills the window drives the transcript over the body budget,
+// and fold retires the aged reasoning to pointers. Like decay, it must never
+// touch a message except on a turn the budget genuinely forced it, and every
+// surviving message before a fold point must stay byte-identical to the turn
+// before.
+func TestFoldKeepsThePrefixStableExceptAtBudgetForcedRewrites(t *testing.T) {
+	space := workspace(t)
+	tools := NewToolbox(space, "7", nil)
+	fade := newDecayer(map[string]string{}, tools.decaySpill)
+	const (
+		budget        = 16 << 10
+		assistantSize = 8 << 10
+		toolSize      = 64
+		turns         = 9
+	)
+	messages := []ai.Message{{Role: "user", Content: text("do the work")}}
+	type snapshot struct {
+		encoded []string
+		rewrote bool
+		wasOver bool
+	}
+	history := make([]snapshot, 0, turns)
+	previous := map[int]string{}
+	for range turns {
+		id := fmt.Sprintf("f%d", len(messages))
+		call := ai.ToolCall{ID: id, Type: "function",
+			Function: ai.ToolCallFunction{Name: "sh", Arguments: `{"cmd":"ls"}`}}
+		fade.labels[id] = callLabel(call)
+		messages = append(messages,
+			ai.Message{Role: "assistant",
+				Content:   text("turn " + id + ": " + strings.Repeat("r", assistantSize)),
+				ToolCalls: []ai.ToolCall{call}},
+			ai.Message{Role: "tool", ToolCallID: id, Content: text(strings.Repeat("o", toolSize))},
+		)
+		fade.observe(toolSize)
+		fade.decay(messages, budget)
+		wasOver := liveTranscriptBytes(messages) > budget
+		folded := fade.fold(messages, budget)
+		rewrote := false
+		for index, before := range previous {
+			if contentOf(messages[index]) != before {
+				rewrote = true
+				break
+			}
+		}
+		for index := range messages {
+			previous[index] = contentOf(messages[index])
+		}
+		history = append(history, snapshot{
+			encoded: encodeForPrefix(t, messages), rewrote: rewrote || folded > 0, wasOver: wasOver,
+		})
+	}
+
+	// (1) Prefix stability except at a rewrite: turn N's wire bytes reappear at
+	// the head of turn N+1's unless fold retired something this turn.
+	for turn := 1; turn < len(history); turn++ {
+		prev, curr := history[turn-1].encoded, history[turn].encoded
+		if history[turn].rewrote {
+			continue
+		}
+		if len(curr) < len(prev) {
+			t.Fatalf("turn %d shrank the transcript without a fold", turn)
+		}
+		for i := range prev {
+			if prev[i] != curr[i] {
+				t.Fatalf("turn %d changed message %d without a fold — the prefix broke\n"+
+					"was:  %s\nnow:  %s", turn, i, prev[i], curr[i])
+			}
+		}
+	}
+
+	// (2) Every fold is budget-forced: the transcript was over the body budget
+	// before the pass ran, never a rewrite on a turn that already fit.
+	folded := 0
+	for turn := range len(history) {
+		if history[turn].rewrote {
+			folded++
+			if !history[turn].wasOver {
+				t.Fatalf("turn %d folded while the transcript was under budget — a fold must be budget-forced", turn)
+			}
+		}
+	}
+	if folded == 0 {
+		t.Fatal("fold never fired; the run did not exercise the overflow path")
+	}
+}

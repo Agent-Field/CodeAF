@@ -377,7 +377,7 @@ func TestOverrunGoalCarriesTheOriginalCriterion(t *testing.T) {
 	}
 	node := store.Node{ID: "task-2", Brief: "write the module the request named", Spec: EncodeSpec(spec)}
 
-	goal := OverrunGoal(node, "half of it exists", nil, "")
+	goal := OverrunGoal(node, "half of it exists", nil, "", "")
 	for _, want := range []string{
 		SpecUnchangedNotice,
 		"the named module file",
@@ -392,10 +392,10 @@ func TestOverrunGoalCarriesTheOriginalCriterion(t *testing.T) {
 
 	// And a node with no criterion phrases the goal exactly as it always did.
 	bare := store.Node{ID: "task-2", Brief: "write the module the request named"}
-	if before, after := OverrunGoal(bare, "half of it exists", nil, ""), OverrunGoal(bare, "half of it exists", nil, ""); before != after {
+	if before, after := OverrunGoal(bare, "half of it exists", nil, "", ""), OverrunGoal(bare, "half of it exists", nil, "", ""); before != after {
 		t.Fatal("the goal is not deterministic")
 	}
-	if strings.Contains(OverrunGoal(bare, "half of it exists", nil, ""), SpecUnchangedNotice) {
+	if strings.Contains(OverrunGoal(bare, "half of it exists", nil, "", ""), SpecUnchangedNotice) {
 		t.Fatal("a criterion notice appeared for a node that has no criterion")
 	}
 }

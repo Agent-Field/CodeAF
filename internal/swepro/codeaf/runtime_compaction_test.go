@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -501,21 +502,27 @@ func TestOpenRouterLeafFourthOverflowFails(t *testing.T) {
 func TestOpenRouterEngineHasNoUnconditionalSixtyFourTurnCap(t *testing.T) {
 	// Round-2 turn-limit contract: TS has no unconditional engine cap; action,
 	// loop, cost, and agent step budgets own termination. A valid 65-tool-turn
-	// sequence must therefore reach its natural terminal response.
+	// sequence must therefore reach its natural terminal response. The turns
+	// are distinct calls with distinct results — the pattern of a leaf that is
+	// genuinely working — so the no-progress guard's repeat, stagnant, and
+	// floor signals all stay quiet; what this test pins is that nothing else
+	// stops a long productive run either.
 	replies := make([]string, 0, 66)
 	for index := 0; index < 65; index++ {
-		replies = append(replies, toolCallReply("bash", `{"command":"true"}`))
+		replies = append(replies, toolCallReply("bash", fmt.Sprintf(`{"command":"true # step %d"}`, index)))
 	}
 	replies = append(replies, chatReply("natural stop", 10))
 	transport := &scriptedRoundTripper{replies: replies}
 	backend := &openRouterBackend{apiKey: "test", client: &http.Client{Transport: transport}}
+	step := 0
 	result, err := backend.Run(context.Background(), turn{
 		Agent: "coder", ModelID: "vendor/model", Workspace: t.TempDir(), Prompt: "keep going",
 		Tools: []steploop.ToolDefinition{{Provider: orclient.Tool{
 			Type: "function", Name: "bash", InputSchema: json.RawMessage(`{"type":"object"}`),
 		}}},
 		Execute: func(context.Context, steploop.ToolCall) (steploop.ToolResult, error) {
-			return steploop.ToolResult{Output: "ok"}, nil
+			step++
+			return steploop.ToolResult{Output: fmt.Sprintf("ok %d", step)}, nil
 		},
 	})
 	if err != nil || result.Text != "natural stop" || len(transport.requests) != 66 {

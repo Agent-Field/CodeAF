@@ -23,6 +23,11 @@ type DeferredOverrun struct {
 	// that resumed on a different worker than the one it was planned for would
 	// be a decision quietly unmade by a budget question.
 	Subharness string `json:"subharness,omitempty"`
+	// State is the dead leaf's structured findings, carried across the rail
+	// for the same reason everything else here is: the continuation needs it
+	// to resume rather than restart, and a repair that resumed without it
+	// would re-read everything the dead leaf already diagnosed.
+	State string `json:"state,omitempty"`
 }
 
 type overrunResumed struct {

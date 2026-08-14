@@ -118,6 +118,31 @@ func (r *Registry) executeRead(ctx context.Context, call steploop.ToolCall) (ste
 		loadedPaths = append(loadedPaths, item.Filepath)
 	}
 
+	// aforge-embed: D11 — diff-aware repeat-read detection. A re-read of an
+	// unchanged file with the same offset/limit is answered with a one-line
+	// notice instead of the full content, making the repeat cost-visible.
+	// A file that has changed since the last read is always allowed.
+	//
+	// The check is skipped when nested instructions were resolved for this
+	// read: instruction claims may have been cleared since the last read,
+	// making a re-read legitimate even though the file itself is unchanged.
+	// The notice only fires for a pure content read — one with no
+	// instructions to reload — because that is the case where a repeat
+	// genuinely wastes tokens.
+	if len(loaded) == 0 {
+		if notice, repeated := r.readHistory.checkRepeatRead(resolved, offset, limit); repeated {
+			return steploop.ToolResult{
+				Title:  title,
+				Output: notice,
+				Metadata: rawMetadata(readMetadata{
+					Preview:   notice,
+					Truncated: false,
+					Loaded:    loadedPaths,
+				}),
+			}, nil
+		}
+	}
+
 	sample, err := readSample(resolved, info.Size(), sampleBytes)
 	if err != nil {
 		return steploop.ToolResult{}, err

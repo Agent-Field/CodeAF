@@ -46,6 +46,14 @@ const (
 	ContinuationPartialHeader = "What the previous agent produced before stopping (its partial result arrives as a dependency input; build on it):"
 	// ContinuationFilesHeader introduces the files already on disk.
 	ContinuationFilesHeader = "Files already produced, to reuse rather than recreate:"
+	// ContinuationStateHeader introduces the dead leaf's structured findings:
+	// the files it touched, the checks it ran, and the last calls it made. It
+	// is general for any task — derived from the leaf's own outcome, not from
+	// any domain-specific record — so a continuation resumes from what the dead
+	// leaf actually did instead of re-reading everything it already diagnosed.
+	// Empty when the leaf left no structured record, which is the ordinary
+	// case for a generalist that produced only prose.
+	ContinuationStateHeader = "What the previous agent actually did — files it touched, checks it ran, and its last calls. Resume from here; do not re-discover what this already found."
 )
 
 // BankSharedLead introduces the shared progress lines inside the partial block.
@@ -76,14 +84,21 @@ type Bank struct {
 	Shared []string
 	// Artifacts are absolute paths to files that are still on disk.
 	Artifacts []string
+	// State is the dead leaf's structured findings: files it touched, edits it
+	// made, checks it ran and what they found, and the last calls it made.
+	// Derived from the leaf's own outcome by LeafState, general for any task.
+	// Empty when the leaf left no structured record, which is the ordinary
+	// case for a generalist that produced only prose — and an empty state is
+	// simply left out of the composition.
+	State string
 }
 
 // Empty reports that there is nothing to hand on, in which case no caller should
 // compose anything: an input announcing an earlier attempt that produced nothing
 // is a sentence that costs tokens and teaches the model that the work has
-// already been tried and failed.
 func (b Bank) Empty() bool {
-	return strings.TrimSpace(b.Partial) == "" && len(b.trimmedShared()) == 0 && len(b.Artifacts) == 0
+	return strings.TrimSpace(b.Partial) == "" && strings.TrimSpace(b.State) == "" &&
+		len(b.trimmedShared()) == 0 && len(b.Artifacts) == 0
 }
 
 // Continuation is the bank composed under the continuation headers — the same
@@ -102,6 +117,14 @@ func (b Bank) Continuation() string {
 		body.WriteString(ContinuationFilesHeader)
 		body.WriteString("\n")
 		body.WriteString(strings.Join(b.Artifacts, "\n"))
+	}
+	if state := strings.TrimSpace(b.State); state != "" {
+		if body.Len() > 0 {
+			body.WriteString("\n\n")
+		}
+		body.WriteString(ContinuationStateHeader)
+		body.WriteString("\n")
+		body.WriteString(state)
 	}
 	return body.String()
 }
@@ -316,4 +339,46 @@ func MayReclassify(outcome *executor.Outcome, err error) bool {
 		return outcome.Verdict.Escalates()
 	}
 	return err != nil
+}
+
+// LeafState derives what a dead leaf's worker actually did — the files it
+// touched, the checks it ran, and the last calls it made — from the leaf's
+// own outcome. It is general for any task: a worker that owns a verifier
+// contributed its structured account (files changed, checks run), and every
+// worker contributes the bounded tail of what it did. The principle: a
+// continuation that knows what the dead leaf already found resumes from
+// there instead of re-reading everything it already diagnosed, which is
+// how a one-line fix that exhausted 150k tokens spawned a continuation
+// that spent 137k fresh tokens re-discovering the same diagnosis.
+//
+// Empty when the leaf left no structured record — no account and no tool
+// calls worth reporting — which is the ordinary case for a generalist that
+// produced only prose. An empty state is simply left out of every
+// composition that uses it.
+func LeafState(outcome *executor.Outcome) string {
+	if outcome == nil {
+		return ""
+	}
+	var parts []string
+	// The structured account: files changed with sizes, checks run with
+	// verdicts. Only a worker that photographs its own change set and runs
+	// its own verifier fills this in; for every other leaf it is nil.
+	if outcome.Account != nil {
+		if report := strings.TrimSpace(outcome.Account.Report()); report != "" {
+			parts = append(parts, report)
+		}
+	}
+	// The bounded tail of what the worker did, in order. Every worker
+	// contributes this — it is the flight recorder's own record of the last
+	// calls, clipped to keep one pasted file from filling a judge's context.
+	if len(outcome.Ran) > 0 {
+		var lines strings.Builder
+		lines.WriteString("Last calls the worker made, in order:")
+		for _, call := range outcome.Ran {
+			lines.WriteString("\n  ")
+			lines.WriteString(call)
+		}
+		parts = append(parts, lines.String())
+	}
+	return strings.Join(parts, "\n\n")
 }

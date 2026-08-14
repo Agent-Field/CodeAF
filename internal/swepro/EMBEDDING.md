@@ -403,3 +403,94 @@ unaffected either way.
 *Cherry-pick note:* upstream's `FilterDefinitions` still has the `usePatch`
 gate, and its `resolvePath` has no `.codeaf/` write guard. A harvest touching
 `registry.ts:339-393` or the edit/write/apply_patch path resolution must
+re-apply both.
+
+### D10 — `internal/swepro/orientation`: a shared repo orientation digest, and the grep tool was already present
+
+*Wave 5, the orientation-cost wave.* Two structural changes that each cut the
+measured gap between aforge and the pi harness: the pi harness orients in
+zero turns because its first prompt carries the repo structure, and it
+searches code rather than reading files serially (measured: 51 reads on a
+14-file repo where pi needed 8 calls total).
+
+**Orientation digest.** A new aforge-owned package at
+`internal/swepro/orientation` (NOT under `internal/swepro/internal/`, so Go's
+internal rule lets both `internal/exec` and `internal/swepro/codeaf` import
+it) builds a bounded Markdown digest of the workspace: directory tree
+(bounded to 300 entries, BFS so entry points appear before leaves), code-file
+declaration/signature outlines (NOT bodies — `func`/`type`/`const`/`var` for
+Go, `export`/`function`/`class`/`interface`/`const` for JS/TS, `def`/`class`
+for Python, etc.), test-file names, and the failing-test summary from the
+pre-run baseline. The whole digest is bounded to 8000 bytes and degrades
+gracefully: huge repos fall back to top-level tree + README head. The result
+is cached per workspace path + failing-test key (a `sync.Map`) so repeated
+calls return byte-identical output and the provider prefix cache stays intact.
+
+**Injection points.** The linear worker (`internal/exec/linear.go`) prepends
+the digest to the brief just before "Your work:", omitting it when
+`briefIsWhole` says the directory holds nothing to discover. The swe coder
+gets it two ways: `buildRootCutPrompt` in `pipeline.go` appends it alongside
+the existing factsheet (carrying the baseline's failing tests), and
+`composeTurnSystem` in `engine_backend.go` adds it to the system prompt for
+coder agents. The root-orchestrator gets its digest through the root-cut
+prompt path; non-coder agents get none.
+
+**Grep tool.** The swe coder's tool belt already included `grep`
+(`internal/swepro/internal/tool/grep.go`, vendored from swe-pro-go) — it runs
+`rg --json --hidden --glob=!.git/*` and returns matches grouped by file with
+`file:line: text` format, sorted by modification time, capped at 100 matches.
+`FilterDefinitions` already offers it to every agent including coders (the
+D9 gate removal kept it in the list). The existing tests
+(`TestRunLeafToolListMatchesAgentAndModelContract`,
+`TestRunLeafFiltersDefinitionsForActualModel`) pin `grep` in the coder's
+belt. No new tool was needed; this entry records the audit.
+
+*Cherry-pick note:* the orientation package is aforge-owned with no upstream
+counterpart. A harvest has nothing to re-apply here. The `aforge-embed: D10`
+markers in `pipeline.go:buildRootCutPrompt` and
+`engine_backend.go:composeTurnSystem` mark the injection seams; a harvest
+that touches either function must preserve the digest injection.
+
+### D11 — `internal/swepro/internal/engine/steploop` + `internal/swepro/internal/tool`: no-progress guard and diff-aware repeat-read detection
+
+*Wave 5, the no-progress wave.* Two structural mechanisms that each address a
+measured tail-risk pathology: one coder replicate spent 1.3M tokens and 184
+seconds with no forward progress, re-reading unchanged files and repeating
+the same tool calls.
+
+**No-progress guard (`steploop/noprogress.go` + `loop.go`).** The swe coder's
+step loop had no progress signal — its only convergence bound was `MaxSteps`
+(agent.steps), a hard ceiling rather than a progress indicator. A new
+`stepGuard` tracks three general signals after each step: (1) repeated
+identical tool calls (same tool + same input + same output, 4 consecutive
+times); (2) a stagnant window (6 consecutive steps with no write tool and no
+new tool output); (3) a step floor (60 steps, well above the measured
+longest honest leaf of 25). On any signal, the guard injects a conclude-now
+directive (one chance, with a `landingTurns`-sized grace period) and then
+terminates the loop with the partial result. The guard observes completed
+`ToolPart`s from the persisted parts, so it works through the existing
+message-store seam without new tool-side hooks. The thresholds are deliberately
+generous — this is a tail-risk bound, not a budget — and err on the side of
+firing late.
+
+**Diff-aware repeat-read detection (`tool/read_history.go` + `read.go` +
+`registry.go`).** The `read` tool now tracks file-path + offset + limit →
+(mtime, size) fingerprints per session. A re-read of an unchanged file with
+the same range is answered with a one-line notice instead of the full
+content, making the repeat cost-visible to the model. A file that has changed
+since the last read is always allowed (the diff-aware allowance). The check
+is skipped when nested instructions were resolved for the read, because
+instruction-claim clearing makes a re-read legitimate even though the file
+itself is unchanged. The `readHistoryState` is a pointer field on `Registry`,
+shared across `forContext` clones, matching the `testMemo`/`guardInFlight`
+pattern.
+
+The same no-progress guard exists in aforge's own linear loop
+(`internal/exec/noprogress.go`), with the same signals and thresholds, so
+both turn loops are bounded consistently.
+
+*Cherry-pick note:* upstream's step loop has no progress guard and its `read`
+tool has no read-history tracking. A harvest touching `loop.go`'s `Run`
+method or `read.go`'s `executeRead` must re-apply the `aforge-embed: D11`
+markers. The `stepGuard` and `readHistoryState` types are aforge-owned with no
+upstream counterpart.

@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/store"
+	"github.com/Agent-Field/aforge-v2/internal/swepro/orientation"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -628,6 +629,14 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 	// leaf that has already been judged worth continuing, which is the cost this
 	// mechanism exists to avoid rather than to add. See straggler.go.
 	overrunAsked := false
+	// The no-progress guard catches a leaf that is spending turns without
+	// advancing: repeating the same tool call, going many turns without
+	// writing anything or learning anything new, or simply running past any
+	// honest leaf's measured need. It fires into a conclude directive — the
+	// same landing shape the budget and deadline reserves take — so the
+	// workspace is left consistent and the partial goes out whole. See
+	// noprogress.go for the signals and thresholds.
+	progress := newProgressGuard()
 
 	// The observation window is sized from what the model can hold in one
 	// request, and from nothing else.
@@ -880,6 +889,12 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// A turn may carry several calls. They are independent by definition —
 		// the model asked for them together — so running them concurrently is a
 		// free wall-clock win, and the results go back in the order requested.
+		// The no-progress guard needs to know whether the turn wrote
+		// anything to disk. The artifact registry is the one place every
+		// write tool and every sh-produced file converges, so a count
+		// before and after is the cheapest honest mutation signal.
+		artifactsBefore := len(l.workspace.Artifacts(task.leafKey()))
+
 		results := make([]Result, len(calls))
 		var group sync.WaitGroup
 		for index, call := range calls {
@@ -1077,6 +1092,29 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 					"verification pass at the end — work you have not done yet will not happen. " +
 					"Stop exploring; nothing you have already confirmed needs another look.")})
 		}
+
+		// The no-progress guard, checked AFTER the legitimate bounds. A leaf
+		// that exhausted its budget, hit the pressure ceiling, was handed back
+		// by the straggler, or is already landing must not be stopped for "no
+		// progress" — those are the reasons the leaf stopped, and misattributing
+		// them would teach the ruler nothing. The guard fires only when no
+		// legitimate bound has spoken: the leaf had money and turns left and was
+		// not advancing.
+		if landing == 0 {
+			artifactsAfter := len(l.workspace.Artifacts(task.leafKey()))
+			switch progress.observe(calls, results, artifactsBefore, artifactsAfter) {
+			case progressConclude:
+				progress.markConcluded()
+				trace.note(progress.noProgressReason() + " — conclude directive injected")
+				messages = append(messages, ai.Message{Role: "user", Content: text(noProgressConcludeDirective)})
+			case progressTerminate:
+				outcome.Stop = StopNoProgress
+				outcome.Exhausted = StopNoProgress
+				outcome.Text = strings.TrimSpace(lastAssistantText(messages))
+				trace.note(progress.noProgressReason() + " — leaf terminated")
+				return l.land(ctx, task, outcome, started), nil
+			}
+		}
 	}
 
 	// The cap is a backstop, not a budget. A leaf sized for one agent should
@@ -1169,6 +1207,11 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 		// this kind takes here. Reading it any other way would leave the one
 		// leaf that most needed to teach the ruler something teaching it
 		// nothing — and the ruler is rewritten from precisely this evidence.
+	case StopNoProgress:
+		// The leaf had money and turns left and was not advancing. Graded
+		// as a budget stop — the same finding the ruler recalibrates from —
+		// because the mechanism is a tail-risk bound on a runaway, not a
+		// judgment that the work was wrong.
 		return provider.VerdictBudgetStop
 	case StopError, StopDeadline:
 		return provider.VerdictProviderFailure
@@ -1178,7 +1221,7 @@ func verdictFor(outcome *Outcome) provider.Verdict {
 	// work was not finished when the order came, and that is precisely what a
 	// rating measures. Only the budget grades: a deadline is a fact about the
 	// clock rather than about ability, exactly as the StopDeadline arm above.
-	if outcome.Exhausted == StopBudget || outcome.Exhausted == StopOverrun {
+	if outcome.Exhausted == StopBudget || outcome.Exhausted == StopOverrun || outcome.Exhausted == StopNoProgress {
 		return provider.VerdictBudgetStop
 	}
 	if strings.TrimSpace(outcome.Text) == "" {
@@ -1294,6 +1337,17 @@ func (l *Linear) brief(task Task) string {
 		block.WriteString("This is the whole of what exists for this job: everything above is in your hands, " +
 			"and there is nothing in the working directory to discover before you produce. " +
 			"Begin on the work itself.\n\n")
+	}
+	// The orientation digest carries the repo's directory tree and code
+	// declarations so the leaf's first turn is spent on the work, not on
+	// listing files and reading headers. It is assembled once (cached per
+	// workspace) and omitted when the brief already says the directory holds
+	// nothing to discover — see briefIsWhole — so the two never contradict.
+	if l.workspace != nil && !l.briefIsWhole(task) {
+		if digest := strings.TrimSpace(orientation.BuildDigest(l.workspace.Root(), nil)); digest != "" {
+			block.WriteString(digest)
+			block.WriteString("\n\n")
+		}
 	}
 	block.WriteString("Your work:\n")
 	block.WriteString(task.Brief)

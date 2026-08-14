@@ -37,6 +37,9 @@ func (l *Loop) Run(ctx context.Context, opts RunOptions) (msgmodel.Assistant, er
 		models = StaticModelResolver{}
 	}
 
+	// aforge-embed: D11 — the no-progress guard catches a coder leaf that is
+	// spending steps without advancing. See noprogress.go.
+	guard := newStepGuard()
 	step := 0
 loop:
 	for {
@@ -207,6 +210,22 @@ loop:
 		}
 		if processErr != nil {
 			return msgmodel.Assistant{}, processErr
+		}
+		// aforge-embed: D11 — the no-progress guard. After each step, observe
+		// the completed tool calls and check for the three signals. A first
+		// trigger injects the conclude directive (one chance); a second
+		// trigger breaks the loop with the partial result.
+		if guardParts, guardErr := assistantParts(ctx, l.Store, opts.SessionID, assistant.ID); guardErr == nil {
+			switch guard.observe(guardParts) {
+			case stepConclude:
+				guard.markConcluded()
+				if model, modelErr := lastModel(ctx, opts, msgs); modelErr == nil && model != nil {
+					agent := scan.LastUser.Agent
+					_ = l.persistSyntheticUser(ctx, opts.SessionID, agent, *model, stepConcludeDirective)
+				}
+			case stepTerminate:
+				break loop
+			}
 		}
 		if outcome == ResultStop {
 			break
