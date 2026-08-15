@@ -804,6 +804,9 @@ var glossField = map[string]string{
 	// jobs says what it is doing in its action word — list, output, kill —
 	// which is the whole of what a person needs to read beside the name.
 	"jobs": "action",
+	// A task proposal is its title: the one-line name of the work is what the
+	// person is being asked about, and the row should say it.
+	"propose_task": "title",
 	// The two web hands read as what they went looking for: the sentence that
 	// was searched, the page that was opened. Not the count, and not the
 	// scheme — a person watching wants to know what their agent is reading.

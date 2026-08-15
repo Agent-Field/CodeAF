@@ -146,10 +146,16 @@ var settingReaders = map[string]string{
 	// The guardian row is read by the v3 door and becomes session.Config.Guardian.
 	// It names the accessor rather than the field, because the door is the only
 	// caller and the accessor is what it touches.
-	KeyGuardian:      "GuardianEnabledAt",
-	KeyTierLowModel:  "TierKey",
-	KeyTierHighModel: "TierKey",
-	KeyModelRoles:    "PinKey",
+	KeyGuardian: "GuardianEnabledAt",
+	KeyMouse:    "MouseEnabledAt",
+	// The task countdown names the field it becomes on the far side —
+	// session.Config's TaskAutoApproveSeconds, which task.go reads when it puts
+	// a deadline on a proposal — for the reason the spend rail names its own:
+	// the door resolves the row and the session is what touches the value.
+	KeyTaskAutoApprove: "TaskAutoApproveSeconds",
+	KeyTierLowModel:    "TierKey",
+	KeyTierHighModel:   "TierKey",
+	KeyModelRoles:      "PinKey",
 	// The three web-search rows are read by the v3 door, which turns them into
 	// the [search.Options] it resolves the session's pair from
 	// (cmd/aforge/chatv3.go's v3SearchOptions). Each names its own reader

@@ -631,6 +631,97 @@ watch with one note — a watch spinning on a broken command is the loop
 detector's cousin, and the honest answer to repetition carrying no
 information is to say so once and stop.
 
+## Decision 19 — Native tasks: work leaves the conversation as a graph node
+
+**The destination is a DAG, and what ships is one node of it.** A complex task
+decomposes into nodes with dependency edges; an executor runs the READY
+FRONTIER — every node whose dependencies are done — in parallel; a finished
+node's report becomes part of its dependents' briefs. `propose_task`
+(`internal/session/task.go`) is how the first node is born, and every mechanic
+under it is the graph's own: the proposal is a node, the countdown is how a
+node is admitted, the worktree is how a node is isolated, the report is what a
+node hands the work after it. There is no "depth", no "nesting" and no level
+counter anywhere in the slice — one level today is simply a belt without
+`propose_task` on it, and decomposition, when it lands, is **edges added to
+this same executor**, not a second machine. `depends_on` is on the wire and
+honoured by the scheduler from day one; the model just has no sibling to name
+yet.
+
+**The brief is the node's whole world.** A node never reads the conversation:
+it gets a title, a summary, a self-contained brief, and an observable
+acceptance condition, and it is submitted as `brief + "\n\nAcceptance: …"` to
+a child agent in this same package — same loop, same hands, same prompt. The
+brief is assembled **when the node starts, not when it was proposed** (JIT):
+its own text, then `What the work before you learned` and its prerequisites'
+reports, which did not exist at proposal time. That is the whole reason
+assembly lives in the executor rather than in the tool.
+
+**The proposal IS the consent, and it has a clock.** The call blocks and emits
+`EventTaskProposal` with a deadline; four things end it — approve, redirect
+(approval plus the person's words appended to the brief as *"The person
+redirecting this task says: …"*), decline (a plain tool RESULT, never an
+error, which the model reads as grooming feedback), or **the clock, which
+approves**. Silence is a yes because the countdown is a window to redirect
+work the model has already groomed, not a gate the work waits behind: a
+surface that draws no answer box still works, and every task starts after five
+seconds. The countdown is `task.autoapprove_seconds` (default 5, 0 = wait for
+an answer). **A headless run never waits**: with nobody subscribed, the
+deadline approves whatever the setting says, 0 included — consent.go's law for
+a question with no reader.
+
+**A worktree is a branch of the tree, and merging is how work bubbles up.**
+Each node runs in `git worktree add` on `task/<slug>-<shortid>` off the
+person's current HEAD, under `<repo>/.aforge-v3/tasks/<id>/`, so its
+half-finished sweep is never what the person's build compiles. On success the
+node's work is committed on its branch and merged into the person's — clean
+means the worktree and branch are removed (`merged`), a conflict means
+`merge --abort` and the **branch and worktree are kept** and named in the
+report (`conflicted`). The merge is attempted whatever the person's tree looks
+like: a dirty checkout is the normal state of somebody working, and nothing a
+node wrote is ever thrown away. A workspace that is not a repository (or has
+no commit to branch from) runs **in place** and says so — pretending to
+isolate is worse than not isolating.
+
+**A node is a job, and it never asks anybody anything.** It comes from the same
+registry as `bash background: true` and `watch` (kind `task`): one id space,
+one log, one `jobs list` row, one `jobs kill` — which cancels it, keeps its
+branch, and marks the merge `aborted` — and one death at `Close`. Its approval
+posture is composed from `internal/approval`'s own pieces: allow everything,
+with the critical table still a floor, and a decision that would have asked a
+person is refused in the node's words (*refused in a task: … — nobody to ask*).
+Its belt is the conversation's minus two: no `propose_task` (nobody to show a
+proposal to) and no `watch` (no conversation for the news to arrive in).
+**Two nodes run at once**; a third runnable node queues on the frontier rather
+than erroring the tool, because queuing is what a graph does. Every node is
+bounded at 30 minutes, its spend folds into the session's auxiliary usage, its
+journal is a real session file under `~/.aforge/v3/tasks/<session>/`, and its
+completion reaches the model on the **steering lane** (Decision 12) while
+`EventTaskUpdate` reaches the surface — during a turn on the turn's stream,
+and always on `Agent.TaskUpdates()`, because a node's most important event
+lands minutes after the turn that proposed it ended.
+
+**What v1 defers, deliberately:** the decomposition tool that writes edges (the
+graph and its frontier are already here to receive them), and the question lane
+— a node that needs to ask something today finishes with what it has and says
+so in its report, rather than blocking on a person who is having a different
+conversation.
+
+## Decision 20 — The document ladder's local rung: `read` grows a sense
+
+**A PDF is a file, so `read` reads it.** The local rung is in-binary text
+extraction (`internal/pdfx`, over `github.com/AOShei/go-fast-pdf` — pure Go,
+zero dependencies, MIT, compiled into the static binary, so the rung works on a
+machine where nobody ran `apt-get`), and it is wired in by WRAPPING pi's `read`
+(`internal/session/tools_pdf.go`, exactly as `backgroundBash` wraps pi's `bash`)
+rather than by adding an `extract_pdf` tool — a belt with two hands for one
+intention makes the model choose, and what it chooses is a Python script for a
+library that is not installed. A scanned PDF is reported as itself — "no text
+layer (N pages, images only)", not an empty read — so it falls through to the
+ladder's OCR and vision rungs instead of looking like a broken file. The engine
+is one swappable file by ladder design: `pdfx.Extract(path) (string, error)` is
+the entire contract, and a better pure-Go extractor lands as an edit to it with
+nothing above it moving.
+
 ## Milestones
 
 | milestone | lands | acceptance |

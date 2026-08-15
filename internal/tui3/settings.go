@@ -134,6 +134,14 @@ var settingUI = map[string]settingMeta{
 		about: "asks a small model first whether a call is plainly safe, so you " +
 			"are only asked about the rest.",
 	},
+	// The countdown sits under the gate rows for the same reason the guardian
+	// does: it is not a fourth approval mode but the OTHER clock in the room —
+	// how long a proposed task waits for you before it starts on its own.
+	config.KeyTaskAutoApprove: {
+		tab: tabSession, label: "task countdown", widget: widgetText,
+		about: "seconds a proposed task waits for you before it starts. " +
+			"0 waits for your answer instead.",
+	},
 	// THE TWO TIER ROWS ARE MODEL CHOICES AND ARE ANSWERED AS ONE. They were a
 	// text box for four waves, which meant the only way to name the cheap model
 	// was to type its id from memory — in a panel that already knows every id,
@@ -286,6 +294,10 @@ var settingUI = map[string]settingMeta{
 	// picker has to be able to ask more than one question: the models on offer
 	// here are the ones that can SEE ([seesImages]), which is a different list
 	// from the one every other slot draws.
+	config.KeyMouse: {
+		tab: tabDisplay, label: "mouse", widget: widgetCycle,
+		about: "on gives hover and click; off gives the terminal's own text selection back.",
+	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",

@@ -376,6 +376,33 @@ type Config struct {
 	SearchProvider search.Provider
 	SearchFetcher  search.Fetcher
 
+	// TaskAutoApproveSeconds is how long a task proposal waits before the clock
+	// approves it (task.go, config.KeyTaskAutoApprove). 0 IS A CLOCK THAT IS
+	// OFF — the proposal waits for [Agent.ResolveTask] and nothing else — which
+	// is only a sentence a WATCHED session can honour: with nobody subscribed
+	// to the events (AskConsent false, or no turn hub), the deadline approves
+	// whatever this says, because a headless run has no one to wait for.
+	//
+	// It is seconds rather than a Duration because it is one settings row read
+	// straight off the sheet, and a surface counting it down draws the same
+	// number the person typed.
+	TaskAutoApproveSeconds int
+
+	// InTask marks this agent as ONE TASK NODE'S RUNNER (task_run.go) rather
+	// than the conversation. It changes exactly two things, and both are
+	// consequences of the same fact — there is nobody to talk to:
+	//
+	//   - the belt leaves off propose_task and watch (tools.go): a node does
+	//     the work it was briefed with, and a watch's news has no conversation
+	//     to arrive in.
+	//   - a call the policy would ask about is REFUSED in the node's own words
+	//     (consent.go) instead of hanging or borrowing the session's wording
+	//     about a resolver that was never going to be attached.
+	//
+	// It is false for every conversation, and no surface sets it: the executor
+	// sets it on the config it builds for a node and nowhere else.
+	InTask bool
+
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
 	// journaled usage, so the rail is exact rather than an estimate, and a turn
@@ -481,6 +508,28 @@ type Agent struct {
 	// agent's life only. It is never persisted — a session-scoped answer that
 	// outlived the session would be a settings change nobody made.
 	consentMemo map[string]bool
+
+	// tasks is the work this conversation has handed off: the graph of nodes,
+	// their dependency edges, and the frontier executor that runs them
+	// (task_run.go). It is nil until the first proposal is admitted — most
+	// conversations never groom one — and is built under mu by [Agent.graph].
+	//
+	// Like jobs it holds its own lock and its nodes outlive the turn that
+	// proposed them. Nothing here is ever read with mu held: the graph's own
+	// lock is taken by goroutines that finish minutes later, and a session lock
+	// held across one of those is the lock Interrupt could not take.
+	tasks *TaskGraph
+	// taskAnswers is the proposals a person owes an answer to, keyed by the id
+	// the EventTaskProposal carried. It is consent's pending-id machinery for a
+	// question with a CLOCK: the wait ends on an answer, on the deadline, or
+	// with the turn (task.go). The ids are the GRAPH's — a proposal is a node
+	// that has not been admitted yet, not a second numbering.
+	taskAnswers map[uint64]chan TaskAnswer
+	// taskWatchers are the standing subscriptions to task updates
+	// ([Agent.TaskUpdates]). They are not the turn's hub and do not close with
+	// it: a node's most important event lands minutes after the turn that
+	// proposed it ended, when there is no hub to send it to.
+	taskWatchers []*eventStream
 
 	// title is the session's name and titleTried marks the one attempt at
 	// generating it (title.go). A resumed session loads its name from the

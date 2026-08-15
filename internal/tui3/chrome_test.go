@@ -125,8 +125,10 @@ func TestTheSettingsPanelOpensOnBothDoorsAndClosesOnEsc(t *testing.T) {
 	if !a.sheet.open {
 		t.Fatal("/settings did not open the settings panel")
 	}
-	// It is fullscreen: the input line and the status line are not under it.
-	if strings.Contains(plain(frame(a)), statusHints) {
+	// It is fullscreen: the input line and the HUD are not under it. The
+	// legend's microcopy is the tell — it is on every ordinary frame and on no
+	// panel row.
+	if strings.Contains(plain(frame(a)), microcopy) {
 		t.Fatal("the panel is drawn over a frame that is still showing its status line")
 	}
 	if !sheetHas(a, "ask before running") {
@@ -702,8 +704,13 @@ func TestTheWelcomeAnimationRunsOnce(t *testing.T) {
 	if frame(a) != settled {
 		t.Fatal("the settled box is still moving")
 	}
-	if a.Init() != nil {
-		t.Fatal("a settled box asked for the clock again")
+	// Init still asks the repository what branch the legend should say
+	// (render.go), and that is the ONLY thing a settled surface asks for: no
+	// frame clock, which is what an idle wakeup would be.
+	for _, produced := range runCmd(a.Init()) {
+		if _, clock := produced.(frameMsg); clock {
+			t.Fatal("a settled box asked for the clock again")
+		}
 	}
 }
 

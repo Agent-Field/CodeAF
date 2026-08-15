@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -70,6 +71,17 @@ const (
 	entryAssistant
 	entryTool
 	entryDivider
+	// entryCompact is ONE compaction pass, from the moment it starts to the
+	// moment it stops — a row with a clock rather than a mark left behind.
+	//
+	// It is a kind of its own rather than a divider written twice because a
+	// compaction is the one thing this surface waits on that is neither the
+	// model speaking nor a tool running: a paid summarizer call that can hold a
+	// turn for ten seconds while the screen says nothing. It opens as a spinning
+	// line ("compacting ~84k tokens · 6s") and SETTLES IN PLACE into the rule the
+	// divider always drew, so the finished conversation reads exactly as it did
+	// before this wave and the running one stops being a silence.
+	entryCompact
 	entryNote
 	// entryThinking is one turn's reasoning (thinking.go): streamed while it
 	// arrives, collapsed to a single row the moment the turn says anything else.
@@ -183,6 +195,19 @@ type (
 	// frameMsg is the paint clock: it promotes whatever streamed since the
 	// last one into a frame, and steps the animations.
 	frameMsg struct{}
+	// gitMsg is what the workspace's repository answered (see [gitHead]). It is
+	// a message rather than a call because `git status` on a large tree is tens
+	// of milliseconds and the model loop is not a place to wait.
+	gitMsg struct {
+		branch string
+		dirty  bool
+		ok     bool
+	}
+	// hudFadeMsg is a BOUNDED catch-up tick: the two wakeups a settled turn
+	// schedules so its fresh numbers can go quiet on time (render.go's fade).
+	// There is deliberately no idle ticker behind it — a surface with nothing
+	// happening on it wakes twice and then stops.
+	hudFadeMsg struct{}
 )
 
 type app struct {
@@ -239,6 +264,78 @@ type app struct {
 	inputTokens int
 	cacheRead   int
 	cacheWrite  int
+	// cacheSaved is what those reads have been WORTH, in dollars, summed over
+	// every turn that had a published price pair to compute it from (see
+	// [app.cacheNote], which is the one place it grows). It is what turns the
+	// warm share from a statistic into a fact about the bill: the percentage is
+	// the hit RATE, this is what the rate MEANT.
+	//
+	// It is deliberately NOT derivable from the totals beside it. The price is a
+	// property of the model that was answering at the time, and a session that
+	// switched models halfway cannot be re-priced afterwards from one number —
+	// so it is accumulated per turn, at the moment the price is known.
+	cacheSaved float64
+
+	// outputTokens is what the session has WRITTEN, and it is held apart from
+	// [app.tokens] (which is input+output) for one reason: the burn rate. Tokens
+	// per second is a claim about generation, and a figure with the prompt in it
+	// would climb by twenty thousand the moment a large file was read.
+	outputTokens int
+	// turnBegan is when the turn now running started, and turnOutStart what
+	// [app.outputTokens] read at that moment. The pair is the burn segment's
+	// whole arithmetic: what this turn has written, over how long it has been
+	// writing. Both are cleared when the turn settles — a rate quoted over a
+	// finished turn is a rate nobody is watching.
+	turnBegan    time.Time
+	turnOutStart int
+	// ctxRing is the last [ctxRingSize] TURN-END context readings, oldest first.
+	// It is the sparkline's data and the compaction ETA's, and it is sampled at
+	// turn end rather than on the frame clock because that is the only moment
+	// the figure means the same thing twice: mid-turn it climbs with every tool
+	// result and falls back when the batch resolves.
+	ctxRing []int
+	// ringTurn is the turn the last reading was taken for — see
+	// [app.sampleContext] for why a turn can end more than once.
+	ringTurn int
+
+	// branch is the git branch the workspace is on and branchDirty whether it
+	// has uncommitted work — the right half of the input's legend (render.go).
+	// Empty branch means "no answer", which is what a directory that is not a
+	// repository, a git that is not installed and a probe that timed out all
+	// look like from here.
+	branch      string
+	branchDirty bool
+	// gitProbe is the seam onto that answer, so a test can pin a branch without
+	// a repository and the surface can be driven with no git at all. Nil is
+	// [gitHead].
+	gitProbe func(dir string) (string, bool, bool)
+	// home is what "~" abbreviates in the legend's path, read once at boot.
+	home string
+	// approval is the tool gate's blanket posture — "prompt", "allow", "deny" —
+	// as the profile last said. It is on this surface for exactly one reason:
+	// "allow" means nothing will ever be asked, and that is the one posture a
+	// person must not be able to forget they are in (render.go's YOLO segment).
+	approval string
+	// mouse is whether the surface reports the mouse at all (config's ui.mouse
+	// row): on buys hover and click, off hands every drag back to the
+	// terminal, whose native selection is the more fundamental act. Read where
+	// approval is read — boot and each turn end.
+	mouse bool
+
+	// The HUD's per-segment change clocks (render.go's [app.freshen]). segText
+	// is what each segment last read and segAt when it last CHANGED, which is
+	// the whole of the age fade: paint follows recency.
+	segText [segCount]string
+	segAt   [segCount]time.Time
+
+	// hud is the cached answer to the two questions the telemetry asks of the
+	// whole conversation — how much background work is alive, and what the
+	// session has written — and hudStale says the entries have moved since it
+	// was computed. Both walks read every tool call's arguments, which is a JSON
+	// parse per row: at thirty frames a second, on a session with four hundred
+	// rows, that is the status line costing more than the conversation.
+	hud      hudStats
+	hudStale bool
 
 	// stream is the channel being pumped and gen its generation. gen is
 	// bumped by every Submit so that a late event from an abandoned stream can
@@ -402,6 +499,16 @@ func newApp(ctx context.Context, opts Options) *app {
 		focused: true,
 	}
 	a.copy.mark = -1
+	a.gitProbe = gitHead
+	if home, err := os.UserHomeDir(); err == nil {
+		a.home = home
+	}
+	// The gate's posture is read at boot and re-read at every turn end
+	// ([app.settle]): a person who opens the settings panel and turns the asking
+	// off sees the YOLO segment appear one turn later, which is soon enough for
+	// a fact that only ever changes by hand.
+	a.approval = readApproval(a.profileDir)
+	a.mouse = config.MouseEnabledAt(a.profileDir)
 	if a.linear {
 		// The linear tier is a palette question as well as an app one: the two
 		// paints that mean motion and pointer stop, and the rail drops to the
@@ -415,6 +522,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		// next turn (session's title.go re-names nothing).
 		a.title = strings.TrimSpace(a.agent.Title())
 	}
+	a.hudStale = true
 	// The conversation that already happened is drawn BEFORE the surface says
 	// anything of its own, so the notices below land where a person's eye
 	// already is: at the bottom, next to the box.
@@ -451,10 +559,13 @@ var _ tea.Model = (*app)(nil)
 // something to animate. That is the welcome box's arrival and nothing else: an
 // idle surface with no box is a surface with no wakeups at all.
 func (a *app) Init() tea.Cmd {
+	// The repository is asked ONCE here and then only at turn ends. A branch is
+	// a fact that changes when a person changes it, and a person who checks out
+	// a branch mid-turn is between two turns by the time it matters.
 	if a.welcome.animating() {
-		return a.wake()
+		return tea.Batch(a.wake(), a.probeGit())
 	}
-	return nil
+	return a.probeGit()
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -584,10 +695,25 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.stream = nil
-		a.settle()
 		// The turn is over, so a message that was waiting for it starts now
 		// (followup.go). Nil when nothing is queued.
-		return a, a.startFollow()
+		return a, tea.Batch(a.settle(), a.startFollow())
+
+	case gitMsg:
+		if msg.ok {
+			a.branch, a.branchDirty = msg.branch, msg.dirty
+		} else {
+			a.branch, a.branchDirty = "", false
+		}
+		a.touch()
+		return a, nil
+
+	case hudFadeMsg:
+		// One of the two catch-up ticks: nothing changed, but a number that was
+		// news four seconds ago has stopped being news, and the frame has to be
+		// drawn again to say so.
+		a.touch()
+		return a, nil
 
 	case followMsg:
 		return a, a.queueFollow(msg)
@@ -660,8 +786,7 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 	a.chipsSettled(msg.err)
 	if msg.err != nil {
 		a.note("submit failed: " + msg.err.Error())
-		a.settle()
-		return nil
+		return a.settle()
 	}
 	if msg.ch == nil || a.stream != nil {
 		return nil
@@ -670,6 +795,7 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 	a.stream = msg.ch
 	a.state = stateWorking
 	a.lastDelta = time.Now()
+	a.startClock()
 	return tea.Batch(waitEvent(msg.ch, a.gen), a.wake())
 }
 
@@ -685,6 +811,14 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	// carried out to the batch below rather than returned early, because the
 	// stream still has to be waited on afterwards.
 	var after tea.Cmd
+	// THE BURN WINDOW OPENS ON THE FIRST EVENT of any turn that did not open one
+	// itself. A turn starts in three places — a submit, an attached message, a
+	// queued follow-up — and only the first of them runs through [app.submit];
+	// the other two are a turn like any other and owe the person the same clock.
+	// [app.startClock] keeps whichever window is already open.
+	if a.state == stateWorking {
+		a.startClock()
+	}
 	// THE COLLAPSE RULE (thinking.go): the first thing a turn says that is not
 	// reasoning ends the reasoning block. EventThinking is exempt because it is
 	// the marker that OPENED the run — collapsing on it would close the block
@@ -728,11 +862,36 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	case session.EventToolFailed:
 		a.closeTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
 
-	case session.EventCompacted:
+	case session.EventCompacting:
+		// THE PASS IS NOW VISIBLE WHILE IT RUNS. The session sends this the
+		// moment the cut is made and before the summarizer is called, and that
+		// call is the slowest thing on this surface that draws nothing: a turn
+		// that stops for eight seconds with no spinner, no text and no tool row
+		// is indistinguishable from a hang.
 		a.closeLive()
 		a.entries = append(a.entries, entry{
-			kind: entryDivider, text: firstNonEmpty(ev.Hint, "compacted"), turn: a.turn,
+			kind:  entryCompact,
+			text:  firstNonEmpty(ev.Hint, "compacting"),
+			turn:  a.turn,
+			began: a.now(),
 		})
+		a.follow()
+		a.touch()
+
+	case session.EventCompacted:
+		// ALWAYS the other half of the pair, success or failure — a failed pass
+		// says so in its hint and settles the same row, because a row left
+		// spinning over a turn that moved on is the defect the pair exists to
+		// close.
+		a.closeLive()
+		a.settleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+		// AND RE-READ THE METER HERE. The pass just changed what the
+		// conversation weighs by an order of magnitude, and the status line's
+		// only other reader is the end of the turn — which is a long way off
+		// when compaction fires mid-batch. A meter that keeps showing 168k for
+		// another two minutes of tool calls is a meter reporting a conversation
+		// that no longer exists.
+		a.measureContext()
 		a.follow()
 		a.touch()
 
@@ -755,8 +914,7 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.changedNote()
 		a.cacheNote(ev.Usage)
 		a.take(ev.Usage)
-		a.settle()
-		after = a.notifyDone()
+		after = tea.Batch(a.settle(), a.notifyDone())
 
 	case session.EventError:
 		a.note("error: " + errText(ev.Err))
@@ -764,7 +922,7 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// reads are as real as a completed turn's.
 		a.cacheNote(ev.Usage)
 		a.take(ev.Usage)
-		a.settle()
+		after = a.settle()
 	}
 	if a.stream == nil {
 		return after
@@ -780,7 +938,12 @@ func (a *app) event(ev session.Event) tea.Cmd {
 // state word goes back to idle unless the person interrupted it — an interrupt
 // is a fact about the turn that ended and stays on screen until the next one
 // starts. The reply it was writing becomes markdown here.
-func (a *app) settle() {
+//
+// It returns the two commands a settled turn owes the HUD: the repository probe
+// (a turn may have committed, branched or dirtied the tree) and the BOUNDED
+// fade ticks. Both are the whole of this surface's idle wakeup budget — two
+// timers per turn, and nothing at all while nothing is happening.
+func (a *app) settle() tea.Cmd {
 	a.closeLive()
 	// A turn that streamed nothing but reasoning still ends with a block, and a
 	// block left open would keep a finished thought expanded over the next turn.
@@ -794,8 +957,44 @@ func (a *app) settle() {
 	}
 	a.refreshUsage()
 	a.measureContext()
+	// THE RING IS SAMPLED HERE AND NOWHERE ELSE: one reading per turn, taken at
+	// the only moment the figure is comparable with the reading before it.
+	a.sampleContext()
+	a.turnBegan, a.turnOutStart = time.Time{}, 0
+	a.approval = readApproval(a.profileDir)
+	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.follow()
 	a.touch()
+	return tea.Batch(a.probeGit(), fadeTicks())
+}
+
+// fadeTicks are the two catch-up wakeups a settled turn schedules: one where
+// the fresh tier ends and one where the warm tier does. They are tea.Ticks and
+// not a ticker on purpose — see [hudFadeMsg].
+func fadeTicks() tea.Cmd {
+	return tea.Batch(
+		tea.Tick(hudFresh, func(time.Time) tea.Msg { return hudFadeMsg{} }),
+		tea.Tick(hudWarm, func(time.Time) tea.Msg { return hudFadeMsg{} }),
+	)
+}
+
+// sampleContext appends this turn's context reading to the ring, keeping the
+// last [ctxRingSize]. A reading identical to the one before it is still kept: a
+// flat run is exactly what the ETA estimator needs to see to say nothing.
+//
+// ONE READING PER TURN, and the turn counter is what enforces it: a turn ends
+// TWICE on this surface — the session's own EventTurnDone, and then the stream
+// closing behind it — and a ring that took both would report half the growth
+// per turn and forecast a compaction that is twice as far away as it is.
+func (a *app) sampleContext() {
+	if a.ctxTokens <= 0 || a.ringTurn == a.turn {
+		return
+	}
+	a.ringTurn = a.turn
+	a.ctxRing = append(a.ctxRing, a.ctxTokens)
+	if len(a.ctxRing) > ctxRingSize {
+		a.ctxRing = a.ctxRing[len(a.ctxRing)-ctxRingSize:]
+	}
 }
 
 // closeLive ends the assistant block being streamed into. A block nobody is
@@ -825,6 +1024,9 @@ func (a *app) take(u session.Usage) {
 	}
 	if n := u.Input + u.Output; n > a.tokens {
 		a.tokens = n
+	}
+	if u.Output > a.outputTokens {
+		a.outputTokens = u.Output
 	}
 	if u.Input > a.inputTokens {
 		a.inputTokens = u.Input
@@ -952,6 +1154,10 @@ func (a *app) closeTool(ev session.Event, status toolState, why string) {
 		if status == toolFailed {
 			e.open = true
 		}
+		// A CALL THAT CLOSED IS THE ONLY THING THAT MOVES THE AMBIENT COUNTS OR
+		// THE SESSION DELTA: both are sums over finished calls, so this is the
+		// one place their cache has to be dropped (see [app.hudStats]).
+		a.hudStale = true
 		a.follow()
 		a.touch()
 		return
@@ -967,6 +1173,36 @@ func (a *app) closeTool(ev session.Event, status toolState, why string) {
 		a.follow()
 		a.touch()
 	}
+}
+
+// settleCompaction stops the compaction row's clock: the LAST one still running
+// takes the finished hint and the end time, and turns into the rule.
+//
+// Last rather than first, which is what [app.closeTool] does and for the
+// opposite reason: tool calls overlap and resolve in any order, while a session
+// compacts one pass at a time (session holds a compacting flag across it), so
+// the only unfinished row there can be is the newest one — and walking backwards
+// finds it without reading the whole conversation.
+//
+// A settle with NO row to settle is not an error and is not dropped: a resumed
+// session replays a transcript that already contains passes nobody watched, and
+// an older session predates the start event entirely. Those get a row born
+// finished — the divider they always drew, with no duration claimed, because a
+// pass this surface did not see the start of has no honest elapsed time.
+func (a *app) settleCompaction(text string) {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.kind != entryCompact || !e.ended.IsZero() {
+			continue
+		}
+		e.text, e.ended = text, a.now()
+		e.stale = true
+		return
+	}
+	now := a.now()
+	a.entries = append(a.entries, entry{
+		kind: entryCompact, text: text, turn: a.turn, began: now, ended: now,
+	})
 }
 
 // note appends a surface-side line — a slash command's answer, an error, the
@@ -1004,12 +1240,25 @@ func (a *app) submit(text string) tea.Cmd {
 	a.entries = append(a.entries, entry{kind: entryUser, text: text, turn: a.turn})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
+	a.startClock()
 	a.follow()
 	a.touch()
 	return tea.Batch(func() tea.Msg {
 		ch, err := agent.Submit(ctx, text)
 		return submittedMsg{ch: ch, err: err}
 	}, a.wake())
+}
+
+// startClock opens the burn window: this turn's start, and the output total it
+// started from. A turn that is already running keeps the clock it has —
+// steering a turn mid-flight (a plain enter) is not a second turn, and
+// restarting the window there would report the rate of the last four seconds as
+// the rate of the turn.
+func (a *app) startClock() {
+	if !a.turnBegan.IsZero() {
+		return
+	}
+	a.turnBegan, a.turnOutStart = a.now(), a.outputTokens
 }
 
 // now is the time, from the seam rather than from the package: see [app.clock].
@@ -1428,9 +1677,17 @@ const accentAtThresholdPercent = 80
 // added here is reset in both places rather than in whichever one was edited.
 func (a *app) resetMeters() {
 	a.cost = 0
-	a.tokens, a.inputTokens = 0, 0
+	a.tokens, a.inputTokens, a.outputTokens = 0, 0, 0
 	a.cacheRead, a.cacheWrite = 0, 0
+	a.cacheSaved = 0
 	a.ctxTokens = 0
+	// The HUD's own state is a fact about one conversation too: a sparkline
+	// carried across /new would be a graph of somebody else's context, and an
+	// ambient count would be claiming jobs that died with the agent.
+	a.ctxRing, a.ringTurn = nil, 0
+	a.turnBegan, a.turnOutStart = time.Time{}, 0
+	a.hud, a.hudStale = hudStats{}, true
+	a.segText, a.segAt = [segCount]string{}, [segCount]time.Time{}
 }
 
 // measureContext asks the agent what the conversation now weighs. It is called
@@ -1470,16 +1727,49 @@ func (a *app) ctxPercent() (int, bool) {
 	return (a.ctxTokens*200/a.ctxWindow + 1) / 2, true
 }
 
-// ctxCrowded says the conversation is close enough to compaction that the meter
-// should stop being furniture. False whenever the window is unknown: a surface
-// that does not know the threshold must not guess that one has been crossed.
-func (a *app) ctxCrowded() bool {
+// ctxHeat is the meter's THREE-RUNG RAMP, and every rung is measured against
+// the compaction threshold rather than against the window (see
+// [accentAtThresholdPercent] for why):
+//
+//	ctxCalm  dim       nothing is approaching
+//	ctxNear  accent    past 80% of the threshold — compaction is coming
+//	ctxDue   pal.bad   past the threshold ITSELF — it is due or overdue, and the
+//	                   next turn will pay for a summarizer call
+//
+// The third rung exists because the second one used to be the end of the ramp:
+// a conversation at 81% of the threshold and one 40k past it were painted
+// identically, and the second is the only one where the person can still act —
+// finish the thought, /new, split the work — before a pass takes the middle of
+// the conversation away.
+//
+// Every rung is ctxCalm whenever the window is unknown: a surface that does not
+// know the threshold must not guess that one has been crossed.
+type ctxHeat int
+
+const (
+	ctxCalm ctxHeat = iota
+	ctxNear
+	ctxDue
+)
+
+func (a *app) ctxHeat() ctxHeat {
 	threshold := session.CompactThreshold(a.ctxWindow)
 	if threshold <= 0 || a.ctxTokens <= 0 {
-		return false
+		return ctxCalm
 	}
-	return a.ctxTokens*100 >= threshold*accentAtThresholdPercent
+	switch {
+	case a.ctxTokens >= threshold:
+		return ctxDue
+	case a.ctxTokens*100 >= threshold*accentAtThresholdPercent:
+		return ctxNear
+	}
+	return ctxCalm
 }
+
+// ctxCrowded says the conversation is close enough to compaction that the meter
+// should stop being furniture — the bottom of the ramp, kept as the one-bit
+// question the rest of the surface asks.
+func (a *app) ctxCrowded() bool { return a.ctxHeat() >= ctxNear }
 
 // priceFor is what this surface knows a model's tokens cost, from the same list
 // the picker draws (models.go's three rungs). The bool is false when nobody has
@@ -1517,6 +1807,11 @@ func (a *app) cacheNote(u session.Usage) {
 	line := "⟲ " + tokenWord(u.CacheRead) + " cached"
 	if model, known := a.priceFor(a.model); known {
 		if saved := float64(u.CacheRead) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
+			// The same figure, twice: once for this turn, and once into the
+			// session's running total behind the status line's warm share. It is
+			// summed HERE — under the same price guard — so the total can never
+			// contain a turn the note itself could not price.
+			a.cacheSaved += saved
 			line += " · saved " + savedWord(saved)
 		}
 	}
@@ -1627,6 +1922,184 @@ func changedWord(stats []fileStat) string {
 		parts = append(parts, "+"+itoa(rest)+" more")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// ── WHAT IS ALIVE, AND WHAT WAS WRITTEN ─────────────────────────────────────
+//
+// hudStats is the pair of sums the right cluster reports about the whole
+// conversation: how much background work this session started and has not
+// watched stop, and what it has written to disk across every turn.
+type hudStats struct {
+	// jobs and watches are ALIVE, by the only definition this surface can hold
+	// honestly: it saw them start and it has not seen them killed.
+	//
+	// The session owns the real job table (internal/session's jobs.go) and does
+	// not publish it, so this is read off the transcript the surface already
+	// drew — a `bash` call that succeeded with background:true is a job, a
+	// `watch` call that succeeded is a watch, and a `jobs` call with action
+	// "kill" takes one of them away. The id is matched where the output gave one
+	// ("job 3 started"), because a batch that starts three jobs and kills the
+	// second must not decrement the first.
+	//
+	// WHAT IT CAN GET WRONG, said out loud: a job that exited on its own is
+	// still counted, because nothing on the wire says so. That is the honest
+	// direction to be wrong in — the count is "what you started", and a person
+	// who sees "1 job" and finds it finished has lost nothing, where a count
+	// that silently dropped a live server would have.
+	jobs, watches int
+	// adds and dels are the session's diffstat, summed from the same arguments
+	// the tool rows' own stats are derived from (toolstat.go), so the Σ segment
+	// and the per-turn "what changed" lines can never disagree.
+	adds, dels int
+}
+
+// hudStats answers both, from the cache when the calls have not moved.
+func (a *app) hudStats() hudStats {
+	if !a.hudStale {
+		return a.hud
+	}
+	a.hud, a.hudStale = a.computeStats(), false
+	return a.hud
+}
+
+func (a *app) computeStats() hudStats {
+	var out hudStats
+	// live holds the ids of the background jobs this surface watched start, so a
+	// kill can take away the one it names rather than the newest.
+	var live []string
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind != entryTool || e.status != toolOK {
+			continue
+		}
+		fields := argsOf(e.detail.Args)
+		switch e.tool {
+		case "edit":
+			adds, dels := editStat(e.detail.Args)
+			out.adds, out.dels = out.adds+adds, out.dels+dels
+		case "write":
+			out.adds += lineCount(argString(fields, "content"))
+		case "bash":
+			if argString(fields, "background") != "true" {
+				continue
+			}
+			out.jobs++
+			live = append(live, jobID(e.detail.Output))
+		case "watch":
+			out.watches++
+		case "jobs":
+			if argString(fields, "action") != "kill" {
+				continue
+			}
+			id := argString(fields, "id")
+			if at := indexOf(live, id); id != "" && at >= 0 {
+				live = append(live[:at], live[at+1:]...)
+				out.jobs--
+				continue
+			}
+			// An id this surface never saw start is a watch's — watches are
+			// jobs too (kind watch) and their start line publishes no id — and
+			// failing that it is a job from before we were looking.
+			if out.watches > 0 {
+				out.watches--
+				continue
+			}
+			if out.jobs > 0 {
+				out.jobs--
+			}
+		}
+	}
+	return out
+}
+
+// jobID reads the id out of a background bash call's own answer, which session
+// spells "job 3 started; log at …". Empty when it said something else.
+func jobID(output string) string {
+	fields := strings.Fields(strings.TrimSpace(output))
+	if len(fields) < 2 || fields[0] != "job" {
+		return ""
+	}
+	return strings.TrimSuffix(fields[1], ";")
+}
+
+func indexOf(values []string, want string) int {
+	for i, value := range values {
+		if value == want {
+			return i
+		}
+	}
+	return -1
+}
+
+// ── THE REPOSITORY ──────────────────────────────────────────────────────────
+
+// gitTimeout is how long the legend will wait for a repository to answer.
+//
+// It is short because the answer is FURNITURE: a branch name in a border is
+// worth a quarter of a second of a background goroutine and not one frame of
+// the surface. A tree so large that `git status` cannot answer in that time
+// draws no branch, which is exactly what a directory that is not a repository
+// draws — and neither of them makes the person wait.
+const gitTimeout = 400 * time.Millisecond
+
+// probeGit asks the workspace what it is, off the model loop.
+func (a *app) probeGit() tea.Cmd {
+	dir, probe := a.workspace, a.gitProbe
+	if dir == "" || probe == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		branch, dirty, ok := probe(dir)
+		return gitMsg{branch: branch, dirty: dirty, ok: ok}
+	}
+}
+
+// gitHead is the default probe: the branch, and whether the tree is dirty.
+//
+// Two commands rather than one because they answer two questions and only the
+// first one is cheap. A detached HEAD answers "HEAD", which is reported as it
+// is — it is the truth about where the work is going, and inventing a short sha
+// here would be this surface deciding what a repository means.
+//
+// `--no-optional-locks` is the one flag that matters: `git status` normally
+// refreshes the index, which takes a write lock, and a status bar must never be
+// the reason a person's own `git commit` in the next pane blocks.
+func gitHead(dir string) (string, bool, bool) {
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return "", false, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+	run := func(args ...string) (string, bool) {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = dir
+		out, err := cmd.Output()
+		if err != nil {
+			return "", false
+		}
+		return strings.TrimSpace(string(out)), true
+	}
+	branch, ok := run("rev-parse", "--abbrev-ref", "HEAD")
+	if !ok || branch == "" {
+		return "", false, false
+	}
+	// An unreadable status is reported as CLEAN rather than dirty: the star is a
+	// claim, and a claim this surface could not check is one it should not make.
+	status, _ := run("--no-optional-locks", "status", "--porcelain", "--untracked-files=no")
+	return branch, status != "", true
+}
+
+// readApproval is the gate's posture, or "" where there is no profile to ask.
+//
+// The empty answer is deliberately not [config.DefaultToolApprovalMode]: a
+// surface booted without a profile (every test, and any embedding that wires
+// its own policy) has not been told the gate is open, and the YOLO segment's
+// whole law is that it appears only when somebody said so.
+func readApproval(profileDir string) string {
+	if strings.TrimSpace(profileDir) == "" {
+		return ""
+	}
+	return config.ToolApprovalModeAt(profileDir)
 }
 
 func errText(err error) string {
