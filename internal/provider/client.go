@@ -346,20 +346,40 @@ func (c *Client) completeWithMessagesStreaming(
 				content.WriteString(choice.Delta.Content)
 				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content, Session: session})
 			}
-			// Reasoning is announced once per run of it rather than per token:
-			// the surface only ever draws that thought is happening, and the
-			// text itself is not ours to show.
-			if !thinking && choice.Delta.thinking() {
-				thinking = true
-				observer(StreamEvent{Kind: StreamThinking, Session: session})
+			// The run of reasoning is announced ONCE — that boundary is what a
+			// surface drawing "thinking…" needs — and the text of it follows per
+			// delta as StreamReasoning, for a surface that shows the thought.
+			// Neither is accumulated into the response: reasoning is not part of
+			// the answer, and a later step must not re-send it as if it were.
+			if choice.Delta.thinking() {
+				if !thinking {
+					thinking = true
+					observer(StreamEvent{Kind: StreamThinking, Session: session})
+				}
+				if text := choice.Delta.reasoning(); text != "" {
+					observer(StreamEvent{Kind: StreamReasoning, Delta: text, Session: session})
+				}
 			}
 			for _, fragment := range choice.Delta.ToolCalls {
-				tools.add(fragment)
+				// One call finishing is worth saying before the whole message
+				// does, so a consumer can start on it. The marshal is per
+				// completed call rather than per token, which is the budget this
+				// loop has for work.
+				if ready, complete := tools.add(fragment); complete {
+					observeToolCallReady(observer, session, ready)
+				}
 			}
 			if choice.FinishReason != nil {
 				finishReason = *choice.FinishReason
 			}
 		}
+	}
+	// The last call has no successor to close it, so the clean end of the stream
+	// does. This runs only past the decode loop's error returns: a stream that
+	// died mid-call announces nothing, because the fragment it stopped on may be
+	// half an instruction.
+	for _, ready := range tools.flush() {
+		observeToolCallReady(observer, session, ready)
 	}
 	message := ai.Message{
 		Role:      "assistant",
@@ -370,6 +390,21 @@ func (c *Client) completeWithMessagesStreaming(
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, nil
+}
+
+// observeToolCallReady announces one whole tool call. The call rides as JSON
+// because the consumer is code: a gloss would be a second, lossier vocabulary
+// for something the wire already spells exactly once.
+//
+// A call that will not marshal is dropped rather than announced empty. Nothing
+// is lost by that — the response's own ToolCalls() carries it a moment later,
+// and this event promises only earliness, never delivery.
+func observeToolCallReady(observer StreamObserver, session string, call ai.ToolCall) {
+	payload, err := json.Marshal(call)
+	if err != nil {
+		return
+	}
+	observer(StreamEvent{Kind: StreamToolCallReady, Delta: string(payload), Session: session})
 }
 
 // StreamComplete performs one streaming completion over a single user prompt.

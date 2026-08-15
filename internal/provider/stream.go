@@ -33,6 +33,35 @@ const (
 	StreamToolBegin
 	StreamToolEnd
 	StreamToolFailed
+	// StreamReasoning carries one chunk of the model's reasoning TEXT in Delta.
+	//
+	// It is the companion of StreamThinking and not its replacement: thinking
+	// says a run of reasoning has begun and is raised once, this is raised per
+	// delta and carries the words. Both are emitted, in that order, because a
+	// surface that only draws "thinking…" must keep working unchanged and a
+	// surface that wants the text must not have to infer where the run started.
+	//
+	// The wire spells it two ways — OpenRouter's "reasoning" and the
+	// "reasoning_content" the DeepSeek-family endpoints send — and sse.go reads
+	// both into one field, so what leaves here is one vocabulary regardless.
+	StreamReasoning
+	// StreamToolCallReady says ONE tool call has finished streaming, before the
+	// response it belongs to has. Delta is that call JSON-marshaled — an
+	// ai.ToolCall object, id and function and all, not a gloss — because the
+	// consumer is code deciding whether to start work, not a person reading a
+	// line.
+	//
+	// It is raised when the stream opens a LATER call (the one before it can
+	// receive no more fragments) and, for whatever is still open, once the
+	// stream ends cleanly. A call is only announced when its name is known and
+	// its arguments parse as JSON: a fragment boundary misread would otherwise
+	// hand a consumer a truncated instruction, and "not yet" is always a safe
+	// answer here — the response's own ToolCalls() remains the authority.
+	//
+	// NOTHING IS PROMISED ABOUT WHO RUNS IT. This is an early sighting, not a
+	// dispatch: see the safety law in session/loop.go for which calls may act on
+	// one and which must wait for the response.
+	StreamToolCallReady
 )
 
 // StreamEvent carries provider text as it arrives. Delta is populated only

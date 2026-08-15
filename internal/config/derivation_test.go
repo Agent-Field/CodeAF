@@ -127,6 +127,19 @@ var settingReaders = map[string]string{
 	KeyLinearMode:     "LinearModeAt",
 	KeyRailState:      "RailStateAt",
 	KeyNerdFont:       "NerdFontChosenAt",
+	KeyHistoryEnabled: "HistoryEnabledAt",
+	KeyDraftPersist:   "DraftPersistAt",
+	// The v3 session's rows name what READS the value on the far side, which
+	// for these six is not a function in this package: the two approval rows
+	// become the policy hung off session.Config.ApprovalPolicy, the ceiling is
+	// session.Config.SpendRailUSD, and the tier and role rows are looked up by
+	// internal/roles through the key spellings it owns.
+	KeyToolApprovalMode: "ApprovalPolicy",
+	KeyToolApprovals:    "ApprovalPolicy",
+	KeySpendRail:        "SpendRailUSD",
+	KeyTierLowModel:     "TierKey",
+	KeyTierHighModel:    "TierKey",
+	KeyModelRoles:       "PinKey",
 	// The context law's knobs are read live by ctxbudget on every call — the
 	// environment name is the reader, as with tenure; Load seeds the
 	// persisted half through ctxbudget.Configure.

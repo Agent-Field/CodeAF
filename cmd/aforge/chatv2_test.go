@@ -120,6 +120,16 @@ func TestHeadStreamKindMapsEveryBoundaryAndAdmitsTheRest(t *testing.T) {
 	if _, known := headStreamKind(provider.StreamEventKind(99)); known {
 		t.Fatal("a boundary this build has never heard of was mapped anyway")
 	}
+	// The boundaries the streaming-intelligence work added are, from this
+	// window's point of view, exactly that case: reasoning TEXT and a tool call
+	// finishing early are for the session surface, and the head has no row for
+	// either. They must be REFUSED here rather than land on ordinal zero, which
+	// would wipe the live region on every reasoning token.
+	for _, kind := range []provider.StreamEventKind{provider.StreamReasoning, provider.StreamToolCallReady} {
+		if got, known := headStreamKind(kind); known {
+			t.Fatalf("headStreamKind(%v) = %v known — a boundary this window cannot draw was mapped anyway", kind, got)
+		}
+	}
 }
 
 // AND THE ACTIVITY CROSSES THE BRIDGE WITH ITS WORDS INTACT. The gloss rides in

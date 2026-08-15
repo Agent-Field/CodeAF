@@ -1,0 +1,502 @@
+package session
+
+// Background-job tests. Nothing here starts a real long-lived process: the
+// longest-lived thing is a `sleep` that exists only to be killed, and every
+// wait is a polled condition with a deadline rather than a fixed pause — a
+// sleep long enough to be reliable on a loaded machine is a sleep that makes
+// the suite slow on every other one.
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+)
+
+// ── harness ─────────────────────────────────────────────────────────────────
+
+// jobsAgent builds an agent with no scripted provider steps: these tests drive
+// the belt directly, because the point under test is the tool and the registry,
+// not the loop that calls them.
+func jobsAgent(t *testing.T) (*Agent, string) {
+	t.Helper()
+	return newTestAgent(t, &scriptedCompleter{}, nil)
+}
+
+func beltTool(t *testing.T, agent *Agent, name string) bare.Tool {
+	t.Helper()
+	for _, tool := range agent.tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	t.Fatalf("belt has no %q tool", name)
+	return bare.Tool{}
+}
+
+// runTool calls one belt tool and fails on a harness-level error, which no tool
+// in this slice is supposed to return.
+func runTool(t *testing.T, agent *Agent, name, arguments string) (string, bool) {
+	t.Helper()
+	tool := beltTool(t, agent, name)
+	text, isError, err := tool.Execute(context.Background(), json.RawMessage(arguments))
+	if err != nil {
+		t.Fatalf("%s returned a harness error: %v", name, err)
+	}
+	return text, isError
+}
+
+// waitFor polls a condition to a deadline. Every job assertion is about
+// something another goroutine will do shortly, and this is how the tests say
+// "shortly" without saying "in exactly 40ms".
+func waitFor(t *testing.T, what string, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+// steeringQueue copies the queue under the agent's own lock — the same lock the
+// loop drains it with, which is what makes these tests race-clean.
+func steeringQueue(agent *Agent) []string {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	return append([]string(nil), agent.steering...)
+}
+
+func steeringContains(agent *Agent, substring string) bool {
+	for _, line := range steeringQueue(agent) {
+		if strings.Contains(line, substring) {
+			return true
+		}
+	}
+	return false
+}
+
+// startJob runs one background bash call and returns the job's id.
+func startJob(t *testing.T, agent *Agent, command string) int {
+	t.Helper()
+	arguments, err := json.Marshal(map[string]any{"command": command, "background": true})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	text, isError := runTool(t, agent, "bash", string(arguments))
+	if isError {
+		t.Fatalf("background bash failed: %s", text)
+	}
+	var id int
+	if _, err := fmt.Sscanf(text, "job %d started", &id); err != nil {
+		t.Fatalf("background bash did not report a job id: %q", text)
+	}
+	return id
+}
+
+// tailLines splits an output result into its log lines, dropping the footer.
+func tailLines(t *testing.T, output string) []string {
+	t.Helper()
+	index := strings.LastIndex(output, "\n\n[job ")
+	if index < 0 {
+		t.Fatalf("output has no footer: %q", output)
+	}
+	body := output[:index]
+	if body == "" {
+		return nil
+	}
+	return strings.Split(body, "\n")
+}
+
+func waitExited(t *testing.T, agent *Agent, id int) {
+	t.Helper()
+	waitFor(t, fmt.Sprintf("job %d to exit", id), func() bool {
+		target := agent.jobs.find(id)
+		return target != nil && !target.running()
+	})
+}
+
+// ── the wire ────────────────────────────────────────────────────────────────
+
+// The wrapper must be pi's bash plus one argument — not a rewrite of it.
+func TestBackgroundBashSchemaExtendsBare(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	tool := beltTool(t, agent, "bash")
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	}
+	if err := json.Unmarshal(tool.Schema, &schema); err != nil {
+		t.Fatalf("bash schema does not parse: %v", err)
+	}
+	for _, property := range []string{"command", "timeout", "background"} {
+		if _, present := schema.Properties[property]; !present {
+			t.Fatalf("bash schema lost %q: %s", property, tool.Schema)
+		}
+	}
+	if len(schema.Required) != 1 || schema.Required[0] != "command" {
+		t.Fatalf("bash required changed: %v", schema.Required)
+	}
+	if !strings.Contains(tool.Description, "background:true") {
+		t.Fatal("bash description does not mention background")
+	}
+	// The whole belt must still be buildable on the wire, jobs included.
+	if _, err := toolDefinitions(agent.tools); err != nil {
+		t.Fatalf("belt with jobs does not build: %v", err)
+	}
+	if _, present := schemaProperties(t, beltTool(t, agent, "jobs").Schema)["action"]; !present {
+		t.Fatal("jobs schema has no action")
+	}
+}
+
+func schemaProperties(t *testing.T, schema json.RawMessage) map[string]json.RawMessage {
+	t.Helper()
+	var decoded struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &decoded); err != nil {
+		t.Fatalf("schema does not parse: %v", err)
+	}
+	return decoded.Properties
+}
+
+// Foreground bash is unchanged: it waits, and it returns the output.
+func TestForegroundBashUnchanged(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	text, isError := runTool(t, agent, "bash", `{"command":"echo foreground"}`)
+	if isError {
+		t.Fatalf("foreground bash failed: %s", text)
+	}
+	if !strings.Contains(text, "foreground") {
+		t.Fatalf("foreground bash did not return its output: %q", text)
+	}
+	if strings.Contains(text, "job ") {
+		t.Fatalf("foreground bash reported a job: %q", text)
+	}
+	// background:false is the same path, and the extra field must not confuse
+	// bare's parser.
+	text, isError = runTool(t, agent, "bash", `{"command":"echo plain","background":false}`)
+	if isError || !strings.Contains(text, "plain") {
+		t.Fatalf("background:false did not run in the foreground: %q", text)
+	}
+	if got := agent.jobs.list(); got != "No background jobs." {
+		t.Fatalf("foreground calls registered a job: %q", got)
+	}
+}
+
+// ── starting ────────────────────────────────────────────────────────────────
+
+// The call returns while the process is still running, with an id and a log
+// file that exists — the two things the model needs to follow up.
+func TestBackgroundBashReturnsImmediately(t *testing.T) {
+	agent, workspace := jobsAgent(t)
+
+	started := time.Now()
+	text, isError := runTool(t, agent, "bash", `{"command":"sleep 30","background":true}`)
+	elapsed := time.Since(started)
+	if isError {
+		t.Fatalf("background bash failed: %s", text)
+	}
+	if elapsed > 3*time.Second {
+		t.Fatalf("background bash waited %s for a 30s command", elapsed)
+	}
+
+	logPath := filepath.Join(workspace, ".aforge-v3", "jobs", "1.log")
+	if !strings.Contains(text, "job 1 started") || !strings.Contains(text, logPath) {
+		t.Fatalf("unexpected start line: %q (wanted job 1 and %s)", text, logPath)
+	}
+	if _, err := os.Stat(logPath); err != nil {
+		t.Fatalf("log file was not created: %v", err)
+	}
+	if !agent.jobs.find(1).running() {
+		t.Fatal("the sleeper is not running")
+	}
+	// The agent's Close (t.Cleanup) is what ends it.
+}
+
+// ── output ──────────────────────────────────────────────────────────────────
+
+// output returns the LAST n lines, and never more than the cap however large
+// the request.
+func TestJobsOutputTailAndCap(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	id := startJob(t, agent, "for i in $(seq 1 300); do echo line$i; done")
+	waitExited(t, agent, id)
+
+	text, isError := runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"output","id":%d,"tail":3}`, id))
+	if isError {
+		t.Fatalf("jobs output failed: %s", text)
+	}
+	if got := tailLines(t, text); len(got) != 3 || got[0] != "line298" || got[2] != "line300" {
+		t.Fatalf("tail 3 returned %v", got)
+	}
+
+	// The default is a screenful.
+	text, _ = runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"output","id":%d}`, id))
+	if got := tailLines(t, text); len(got) != jobsDefaultTail {
+		t.Fatalf("default tail returned %d lines, want %d", len(got), jobsDefaultTail)
+	}
+
+	// And the cap holds against a request for everything.
+	text, _ = runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"output","id":%d,"tail":5000}`, id))
+	got := tailLines(t, text)
+	if len(got) != jobsMaxTail {
+		t.Fatalf("tail 5000 returned %d lines, want the %d cap", len(got), jobsMaxTail)
+	}
+	if got[len(got)-1] != "line300" {
+		t.Fatalf("capped tail is not the END of the log: %q", got[len(got)-1])
+	}
+	// The footer points at the file, which is where the other 100 lines are.
+	if !strings.Contains(text, "full log:") {
+		t.Fatalf("output footer does not name the log: %q", text)
+	}
+}
+
+func TestJobsOutputUnknownJob(t *testing.T) {
+	agent, _ := jobsAgent(t)
+	text, isError := runTool(t, agent, "jobs", `{"action":"output","id":9}`)
+	if !isError || !strings.Contains(text, "No job 9") {
+		t.Fatalf("unknown job did not report as an error: %q", text)
+	}
+}
+
+// ── kill ────────────────────────────────────────────────────────────────────
+
+// An explicit kill ends the process, marks it killed, and — the guard — does
+// NOT put a completion note on the steering queue: the caller just did it.
+func TestJobsKillEndsSleeperWithoutSelfReport(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	id := startJob(t, agent, "sleep 30")
+	text, isError := runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"kill","id":%d}`, id))
+	if isError {
+		t.Fatalf("kill failed: %s", text)
+	}
+	if !strings.Contains(text, fmt.Sprintf("job %d killed", id)) {
+		t.Fatalf("unexpected kill line: %q", text)
+	}
+
+	killed := agent.jobs.find(id)
+	if killed.running() {
+		t.Fatal("the sleeper is still running after kill")
+	}
+	if state := killed.info().state; state != jobKilled {
+		t.Fatalf("state after kill is %v, want jobKilled", state)
+	}
+	if list := agent.jobs.list(); !strings.Contains(list, "killed") {
+		t.Fatalf("list does not show the kill: %q", list)
+	}
+
+	// The note would be written by the watcher, which has already run — done is
+	// closed by the time kill returns. A short settle covers the ordering
+	// anyway, then the queue must still be empty.
+	time.Sleep(50 * time.Millisecond)
+	if queued := steeringQueue(agent); len(queued) != 0 {
+		t.Fatalf("a killed job reported itself: %v", queued)
+	}
+
+	// Killing it twice is not an error the model should chase.
+	text, isError = runTool(t, agent, "jobs", fmt.Sprintf(`{"action":"kill","id":%d}`, id))
+	if !isError || !strings.Contains(text, "already killed") {
+		t.Fatalf("second kill said %q", text)
+	}
+}
+
+// ── completion ──────────────────────────────────────────────────────────────
+
+// A job that ends on its own lands its note on the steering queue — the loop's
+// own lane, asserted here directly rather than through a turn, because the
+// contract is "it is queued", and when the model reads it is the loop's law.
+func TestExitingJobLandsSteeringNote(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	id := startJob(t, agent, "echo build finished; exit 3")
+	waitFor(t, "the completion note", func() bool {
+		return steeringContains(agent, fmt.Sprintf("job %d exited 3", id))
+	})
+
+	queued := steeringQueue(agent)
+	if len(queued) != 1 {
+		t.Fatalf("want exactly one note, got %v", queued)
+	}
+	// The note quotes the last non-empty log line, which is the one thing a
+	// person (or a model) reads a completion for.
+	if !strings.HasSuffix(queued[0], ": build finished") {
+		t.Fatalf("note does not quote the last line: %q", queued[0])
+	}
+	if length := len(queued[0]); length > 160 {
+		t.Fatalf("note is %d bytes; it is a sentence, not the log", length)
+	}
+}
+
+// A silent job still reports: the exit code alone is the news.
+func TestSilentExitingJobReportsCodeOnly(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	id := startJob(t, agent, "false")
+	waitFor(t, "the completion note", func() bool {
+		return steeringContains(agent, fmt.Sprintf("job %d exited 1", id))
+	})
+	if queued := steeringQueue(agent); strings.Contains(queued[0], ":") {
+		t.Fatalf("a silent job quoted something: %q", queued[0])
+	}
+}
+
+// The note rides the SAME queue a person's steering does, so the two interleave
+// in arrival order and one drain takes both.
+func TestJobNoteSharesTheSteeringLane(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	agent.enqueueSteering("also check the linter")
+	id := startJob(t, agent, "echo done")
+	waitFor(t, "the completion note", func() bool {
+		return len(steeringQueue(agent)) == 2
+	})
+
+	queued := steeringQueue(agent)
+	if queued[0] != "also check the linter" {
+		t.Fatalf("the person's message moved: %v", queued)
+	}
+	if !strings.HasPrefix(queued[1], fmt.Sprintf("job %d exited 0", id)) {
+		t.Fatalf("the job note is not second: %v", queued)
+	}
+
+	// And a drain — the loop's step boundary — takes both into the transcript
+	// as user messages, in that order.
+	if drained := agent.drainSteering(); drained != 2 {
+		t.Fatalf("drain took %d messages, want 2", drained)
+	}
+	messages := agent.snapshot()
+	last := messages[len(messages)-1]
+	if last.Role != "user" || !strings.HasPrefix(last.Content[0].Text, fmt.Sprintf("job %d exited 0", id)) {
+		t.Fatalf("the note did not reach the transcript as a user message: %+v", last)
+	}
+}
+
+// ── list ────────────────────────────────────────────────────────────────────
+
+// list is the status view: running while it runs, exited(N) after, with the
+// command and an elapsed time on every row.
+func TestJobsListShowsStatusTransitions(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	sleeper := startJob(t, agent, "sleep 30")
+	text, isError := runTool(t, agent, "jobs", `{"action":"list"}`)
+	if isError {
+		t.Fatalf("list failed: %s", text)
+	}
+	if !strings.Contains(text, fmt.Sprintf("job %d · running", sleeper)) {
+		t.Fatalf("list does not show the sleeper running: %q", text)
+	}
+	if !strings.Contains(text, "sleep 30") {
+		t.Fatalf("list does not show the command: %q", text)
+	}
+
+	quick := startJob(t, agent, "exit 7")
+	waitExited(t, agent, quick)
+
+	text, _ = runTool(t, agent, "jobs", `{"action":"list"}`)
+	if !strings.Contains(text, fmt.Sprintf("job %d · exited(7)", quick)) {
+		t.Fatalf("list does not show the exit code: %q", text)
+	}
+	if !strings.Contains(text, fmt.Sprintf("job %d · running", sleeper)) {
+		t.Fatalf("the sleeper stopped being running: %q", text)
+	}
+	if lines := strings.Split(text, "\n"); len(lines) != 2 {
+		t.Fatalf("list rendered %d rows for 2 jobs: %q", len(lines), text)
+	}
+}
+
+func TestJobsUnknownAction(t *testing.T) {
+	agent, _ := jobsAgent(t)
+
+	text, isError := runTool(t, agent, "jobs", `{"action":"restart","id":1}`)
+	if !isError || !strings.Contains(text, "Unknown action") {
+		t.Fatalf("unknown action said %q", text)
+	}
+	text, isError = runTool(t, agent, "jobs", `{"action":"kill"}`)
+	if !isError || !strings.Contains(text, "id is required") {
+		t.Fatalf("kill without an id said %q", text)
+	}
+}
+
+// ── close ───────────────────────────────────────────────────────────────────
+
+// Close terminates what is still running, and does it before the session file
+// is closed — a job outlives turns, not the session.
+func TestCloseTerminatesRunningJobs(t *testing.T) {
+	// A session file, because the ordering under test is jobs-then-file: the
+	// kills must land while the journal is still open.
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = filepath.Join(t.TempDir(), "session.jsonl")
+	})
+
+	first := startJob(t, agent, "sleep 30")
+	second := startJob(t, agent, "sleep 30")
+
+	started := time.Now()
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	elapsed := time.Since(started)
+
+	for _, id := range []int{first, second} {
+		target := agent.jobs.find(id)
+		if target.running() {
+			t.Fatalf("job %d survived Close", id)
+		}
+		if state := target.info().state; state != jobKilled {
+			t.Fatalf("job %d is %v after Close, want jobKilled", id, state)
+		}
+	}
+	// One shared grace, not one per job: two sleepers must not cost four
+	// seconds. A SIGTERM'd `sleep` dies at once, so this is well under it.
+	if elapsed > jobShutdownGrace+closeGrace {
+		t.Fatalf("Close took %s for two sleepers", elapsed)
+	}
+	// And no kill of ours reported itself onto a queue nothing will drain.
+	if queued := steeringQueue(agent); len(queued) != 0 {
+		t.Fatalf("Close's kills self-reported: %v", queued)
+	}
+	// Close is idempotent, jobs and all.
+	if err := agent.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+}
+
+// ── the ring ────────────────────────────────────────────────────────────────
+
+// The ring keeps the TAIL and stays bounded: a job that prints a lot must not
+// be able to grow the session's memory without limit, and the lines it keeps
+// must be the most recent ones.
+func TestJobSinkRingIsBoundedToTheTail(t *testing.T) {
+	sink := &jobSink{}
+	for index := 0; index < 20000; index++ {
+		if _, err := sink.Write([]byte(fmt.Sprintf("line%d\n", index))); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+	sink.mu.Lock()
+	size := len(sink.ring)
+	sink.mu.Unlock()
+	if size > jobRingBytes*2 {
+		t.Fatalf("ring grew to %d bytes, cap is %d", size, jobRingBytes*2)
+	}
+	if last := sink.lastNonEmptyLine(); last != "line19999" {
+		t.Fatalf("ring lost the tail: %q", last)
+	}
+	if got := sink.tail(2); got != "line19998\nline19999" {
+		t.Fatalf("tail(2) = %q", got)
+	}
+}

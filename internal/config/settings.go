@@ -89,6 +89,27 @@ const (
 	KeyNerdFont       = "nerd_font"
 	KeyRailState      = "rail_state"
 
+	// The two rows the v3 chat surface keeps on disk BESIDE the conversation:
+	// what was typed, and what was half-typed. They are one pair of questions —
+	// "may aforge remember my own words between sessions" — and they are two
+	// rows rather than one because they answer it at different depths: history
+	// is every prompt ever submitted from this machine, the draft is the single
+	// unsent sentence in front of you right now, and a person who wants the
+	// second without the first (or the reverse) is not confused.
+	KeyHistoryEnabled = "history.enabled"
+	KeyDraftPersist   = "draft.persist"
+
+	// The v3 session's own keys. They are DOTTED where the older ones are
+	// snake_case because they name a path into a settings tree the file writer
+	// will eventually hold — tools.approval is a map, models.roles is a map —
+	// and the flat text rows below are the readable stand-in until it lands.
+	KeyToolApprovalMode = "tools.approvalMode"
+	KeyToolApprovals    = "tools.approval"
+	KeyTierLowModel     = "models.tiers.low"
+	KeyTierHighModel    = "models.tiers.high"
+	KeyModelRoles       = "models.roles"
+	KeySpendRail        = "session.spendRailUSD"
+
 	// The four context-law knobs. Fill is how much of a model's window any
 	// agent may use before compaction fires; the reserve is the room every
 	// call keeps for its answer and its reasoning; the working set caps what
@@ -120,6 +141,21 @@ const (
 	RailSlim = "slim"
 	// RailHidden is no rail at all.
 	RailHidden = "hidden"
+)
+
+// ToolApprovalModes are the three answers the tool gate can be set to, in the
+// order they widen: ask about everything, run everything, refuse everything.
+// They are internal/approval's own words — the registry must not invent a
+// fourth spelling for a decision that package already names.
+var ToolApprovalModes = []string{"prompt", "allow", "deny"}
+
+// The two tier names internal/roles resolves auxiliary calls under. They are
+// spelled here rather than imported for the reason [DocumentEngines] is: the
+// registry is a settings surface, and a settings key is a string on disk that
+// must not change spelling because a package renamed a constant.
+const (
+	ModelTierLow  = "low"
+	ModelTierHigh = "high"
 )
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
@@ -226,6 +262,30 @@ const (
 	// tints, same widths, asserted by a parity gate rather than hoped for — so
 	// a user whose font is not patched loses one keystroke and no layout.
 	DefaultNerdFont = true
+
+	// DefaultHistoryEnabled remembers what was typed, because a prompt is the
+	// most expensive sentence in the product to re-type and the up arrow is the
+	// cheapest way to get it back. The file is a recall list and nothing else —
+	// internal/history caps it and never sends it anywhere.
+	DefaultHistoryEnabled = true
+
+	// DefaultDraftPersist keeps the unsent sentence across a restart, for the
+	// reason a text field in any other application does: the draft is the
+	// PERSON's, not the session's, and losing it to a crash or a closed window
+	// is the surface throwing away the only thing on screen it did not write.
+	DefaultDraftPersist = true
+
+	// DefaultToolApprovalMode asks. It is the only defensible default for a
+	// gate: a fresh install that ran every tool the model asked for would be
+	// deciding, on the person's behalf, that nothing needs deciding. Widening
+	// it is one row; narrowing it after something ran is not possible.
+	DefaultToolApprovalMode = "prompt"
+
+	// DefaultSpendRailUSD is 0 — no per-session ceiling. The rail that is on by
+	// default is the DAILY one, because that is the number a person actually
+	// budgets; a session ceiling is for the sitting somebody wants to box in,
+	// and a default would box in every sitting at a number nobody chose.
+	DefaultSpendRailUSD = 0.0
 
 	// DefaultRailState opens the rail on a window that has never been told
 	// otherwise, and the reason is the one thing a hidden default cannot do:
@@ -506,6 +566,36 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeDollars(dir, KeyPracticeBudget, raw) },
 		},
 
+		// The two consent rows sit with spending because they answer the same
+		// question about a different currency: what may aforge do without
+		// stopping to ask you. The dollars are above; the actions are here.
+		Setting{
+			Key: KeyToolApprovalMode, Category: CategorySpending, Kind: SettingChoice,
+			Label: "ask before running", Choices: ToolApprovalModes,
+			Hint: "what happens when the model asks to run a tool: prompt asks you, allow runs it, " +
+				"deny refuses it. Dangerous shell commands are asked about whichever way this is set. " +
+				"A change lands on the next session.",
+			read:  func() string { return ToolApprovalModeAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyToolApprovalMode, raw, ToolApprovalModes) },
+		},
+		Setting{
+			Key: KeyToolApprovals, Category: CategorySpending, Kind: SettingText,
+			Label: "tool approvals", EmptyLabel: "none",
+			Hint: "exceptions to the answer above, one per tool: `read:allow, bash:prompt`. " +
+				"A tool not named here follows the setting above.",
+			read:  func() string { return ToolApprovalsAt(dir) },
+			write: func(raw string) error { return writeToolApprovals(dir, raw) },
+		},
+		Setting{
+			Key: KeySpendRail, Category: CategorySpending, Kind: SettingDollars,
+			Label: "session ceiling",
+			Hint: "what one conversation may spend before it stops starting new turns. " +
+				"0 removes the ceiling; the turn in flight always finishes. " +
+				"A change lands on the next session.",
+			read:  func() string { return formatDollars(SpendRailUSDAt(dir)) },
+			write: func(raw string) error { return writeDollars(dir, KeySpendRail, raw) },
+		},
+
 		Setting{
 			Key: KeyPracticeIdle, Category: CategoryPractice, Kind: SettingDuration,
 			Label: "quiet before practice", Env: "AFORGE_PRACTICE_IDLE",
@@ -519,6 +609,34 @@ func (s *Settings) build() []Setting {
 			Hint:  "how long you have to be away before aforge greets you with a summary. 0 always briefs.",
 			read:  func() string { return formatDuration(resolvedDuration(BriefAfterAt(dir))) },
 			write: func(raw string) error { return writeDuration(dir, KeyBriefAfter, raw) },
+		},
+		// The tiers are what a person actually configures for the small calls
+		// aforge makes on its own — the name it gives a session, the summary a
+		// compaction writes (internal/roles). Two rows, not one per feature: a
+		// new small call joins a tier and needs no row of its own.
+		Setting{
+			Key: KeyTierLowModel, Category: CategoryModels, Kind: SettingText,
+			Label: "small work", EmptyLabel: "follows the conversation",
+			Hint: "the cheap model for the short things aforge writes for itself — session names, " +
+				"labels. Leave it blank and they ride the model you are talking to.",
+			read:  func() string { return TierModelAt(dir, ModelTierLow) },
+			write: func(raw string) error { return writeText(dir, KeyTierLowModel, raw) },
+		},
+		Setting{
+			Key: KeyTierHighModel, Category: CategoryModels, Kind: SettingText,
+			Label: "careful work", EmptyLabel: "follows the conversation",
+			Hint: "the capable model for the small things that must not be wrong — the summary a " +
+				"compaction keeps, which is all that survives the cut.",
+			read:  func() string { return TierModelAt(dir, ModelTierHigh) },
+			write: func(raw string) error { return writeText(dir, KeyTierHighModel, raw) },
+		},
+		Setting{
+			Key: KeyModelRoles, Category: CategoryModels, Kind: SettingText,
+			Label: "pinned roles", EmptyLabel: "none",
+			Hint: "exceptions to the two rows above, one per role: `title:openai/gpt-5-mini`. " +
+				"A role not named here follows its tier.",
+			read:  func() string { return ModelRolesAt(dir) },
+			write: func(raw string) error { return writeModelRoles(dir, raw) },
 		},
 		Setting{
 			Key: KeyContextFill, Category: CategoryModels, Kind: SettingCount,
@@ -593,6 +711,23 @@ func (s *Settings) build() []Setting {
 				"ctrl+o walks the three; this is where the answer is remembered.",
 			read:  func() string { return RailStateAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyRailState, raw, RailStates) },
+		},
+		Setting{
+			Key: KeyHistoryEnabled, Category: CategoryInterface, Kind: SettingBool,
+			Label: "input history", Env: "AFORGE_HISTORY",
+			Hint: "remembers the messages you send, so the up arrow walks them back in a later " +
+				"session. Turn it off and nothing is written; what is already on disk stays. " +
+				"A change lands the next time aforge starts.",
+			read:  func() string { return formatBool(HistoryEnabledAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyHistoryEnabled, raw) },
+		},
+		Setting{
+			Key: KeyDraftPersist, Category: CategoryInterface, Kind: SettingBool,
+			Label: "keep drafts", Env: "AFORGE_DRAFT_PERSIST",
+			Hint: "keeps the half-typed message in the box across a restart, per directory. " +
+				"A change lands the next time aforge starts.",
+			read:  func() string { return formatBool(DraftPersistAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyDraftPersist, raw) },
 		},
 		Setting{
 			Key: KeyAttribution, Category: CategoryInterface, Kind: SettingBool,
@@ -895,6 +1030,38 @@ func LinearModeAt(profileDir string) bool {
 	return DefaultLinearMode
 }
 
+// HistoryEnabledAt resolves whether the v3 chat surface records what was typed
+// into ~/.aforge/v3/history.jsonl. It is shaped exactly like [LinearModeAt],
+// including the forgiveness: a malformed pin reads as the default rather than
+// refusing a launch over a recall list.
+func HistoryEnabledAt(profileDir string) bool {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_HISTORY")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultHistoryEnabled
+	}
+	if value, ok := persistedBool(profileDir, KeyHistoryEnabled); ok {
+		return value
+	}
+	return DefaultHistoryEnabled
+}
+
+// DraftPersistAt resolves whether the v3 chat surface keeps the unsent draft on
+// disk between sessions. Shaped exactly like [HistoryEnabledAt].
+func DraftPersistAt(profileDir string) bool {
+	if raw := strings.TrimSpace(os.Getenv("AFORGE_DRAFT_PERSIST")); raw != "" {
+		if value, err := parseBool(raw); err == nil {
+			return value
+		}
+		return DefaultDraftPersist
+	}
+	if value, ok := persistedBool(profileDir, KeyDraftPersist); ok {
+		return value
+	}
+	return DefaultDraftPersist
+}
+
 // RailStateAt resolves how much of the v2 right rail this window opens with.
 // It is shaped exactly like [LinearModeAt], including the forgiveness: a
 // spelling nobody recognises reads as the default rather than refusing a launch
@@ -1039,6 +1206,150 @@ func knownDocumentEngine(engine string) bool {
 		}
 	}
 	return false
+}
+
+// ── the v3 session's own rows ───────────────────────────────────────────────
+//
+// None of these six is pinned by an environment variable, and that is
+// deliberate rather than an omission. A tool gate that a stray export could
+// widen to "allow everything" is a gate with a bypass; a spend ceiling the
+// shell can lift is not a ceiling. They are answered in the sheet, where the
+// answer is written down and can be read back.
+
+// ToolApprovalModeAt resolves the blanket answer the tool gate starts from. An
+// unrecognised persisted value reads as the default, which is the strictest of
+// the three — a garbled setting must never be the one that opens the gate.
+func ToolApprovalModeAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyToolApprovalMode); ok {
+		if mode := strings.ToLower(strings.TrimSpace(value)); knownToolApprovalMode(mode) {
+			return mode
+		}
+	}
+	return DefaultToolApprovalMode
+}
+
+// ToolApprovalsAt resolves the per-tool exceptions as the person wrote them.
+// The text is the record; [ParseToolApprovals] is how a caller reads it.
+func ToolApprovalsAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyToolApprovals); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+// ParseToolApprovals reads `read:allow, bash:prompt` into the map
+// internal/approval's Load takes as its "tools" section.
+//
+// The flat text is a STAND-IN. The structured map — per-tool rules, and the
+// ordered bash pattern list beside them — lands with the settings file that can
+// hold a nested shape; until then a person needs some way to say "never ask me
+// about read", and one line they can read back beats a nested editor nobody has
+// written yet. The parse is strict about the action for the reason
+// approval.ParseAction is: a typo that was silently dropped would be a rule
+// somebody thinks is protecting them.
+func ParseToolApprovals(raw string) (map[string]string, error) {
+	pairs, err := parsePairs(raw, "tool")
+	if err != nil {
+		return nil, err
+	}
+	for tool, action := range pairs {
+		if !knownToolApprovalMode(action) {
+			return nil, fmt.Errorf("%s: %q is not allow, prompt or deny", tool, action)
+		}
+	}
+	return pairs, nil
+}
+
+// TierModelAt resolves the model one auxiliary tier runs on. Empty means the
+// tier follows the session's own model, which is internal/roles' floor.
+func TierModelAt(profileDir, tier string) string {
+	key := KeyTierLowModel
+	if tier == ModelTierHigh {
+		key = KeyTierHighModel
+	}
+	if value, ok := persistedString(profileDir, key); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+// ModelRolesAt resolves the per-role pins as the person wrote them.
+func ModelRolesAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyModelRoles); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+// ParseModelRoles reads `title:openai/gpt-5-mini` into role → model. The value
+// is split at the FIRST colon only, because a model slug can carry one of its
+// own (`…/model:free`).
+func ParseModelRoles(raw string) (map[string]string, error) {
+	return parsePairs(raw, "role")
+}
+
+// SpendRailUSDAt resolves one conversation's own ceiling. 0 is off.
+func SpendRailUSDAt(profileDir string) float64 {
+	if value, ok := persistedFloat(profileDir, KeySpendRail); ok && value >= 0 {
+		return value
+	}
+	return DefaultSpendRailUSD
+}
+
+func knownToolApprovalMode(mode string) bool {
+	for _, known := range ToolApprovalModes {
+		if known == mode {
+			return true
+		}
+	}
+	return false
+}
+
+// parsePairs reads `a:b, c:d` — comma, semicolon or newline separated — into a
+// map. Duplicate keys are an error rather than last-one-wins: two answers for
+// one name is a person who meant something and cannot be told which half was
+// obeyed.
+func parsePairs(raw, subject string) (map[string]string, error) {
+	pairs := map[string]string{}
+	for _, item := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n'
+	}) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		name, value, found := strings.Cut(item, ":")
+		name = strings.TrimSpace(name)
+		value = strings.TrimSpace(value)
+		if !found || name == "" || value == "" {
+			return nil, fmt.Errorf("write one %s per entry, like `%s:value` — %q is not a pair", subject, subject, item)
+		}
+		if _, repeated := pairs[name]; repeated {
+			return nil, fmt.Errorf("%s %q is named twice", subject, name)
+		}
+		pairs[name] = value
+	}
+	return pairs, nil
+}
+
+// writeToolApprovals validates the pairs, then keeps the person's own text.
+// Storing the text rather than the parsed map is what lets the row read back
+// exactly as it was typed; the map is derived on every read anyway.
+func writeToolApprovals(profileDir, raw string) error {
+	if _, err := ParseToolApprovals(raw); err != nil {
+		return err
+	}
+	return writeText(profileDir, KeyToolApprovals, raw)
+}
+
+// writeModelRoles is [writeToolApprovals] for the role pins. The model name is
+// not validated against the catalog: a person configuring a model they have not
+// pulled yet is early, not wrong, and the call that uses it will say so.
+func writeModelRoles(profileDir, raw string) error {
+	if _, err := ParseModelRoles(raw); err != nil {
+		return err
+	}
+	return writeText(profileDir, KeyModelRoles, raw)
 }
 
 // Writers. Each validates in plain language, then persists atomically through
