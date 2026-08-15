@@ -8,7 +8,9 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -695,6 +697,322 @@ func TestLinearModeRendersPlain(t *testing.T) {
 	// And the thinking window's gradient collapses to the tier it fades within.
 	if a.pal.fade("x", 0) != a.pal.dim("x") {
 		t.Fatalf("the linear window drew a gradient: %q", a.pal.fade("x", 0))
+	}
+}
+
+// ── 9. SETTINGS FIDELITY: EVERY MODEL ROW IS A MODEL CHOICE ─────────────────
+//
+// Three rows asked "which model" with a text box: the two tiers and the vision
+// slot. A text box is the wrong widget for a question this panel can already
+// answer — it makes a person type an id from memory in front of a catalog that
+// knows every one of them — and the fix is the widget, not a fourth list.
+
+// modalityCatalog is one row of every shape the modality law has to separate:
+// a chat model that can also see, a transcription model (text OUT, sound IN —
+// the family the output-only rule let through), a chat model that reads text
+// and nothing else, a drawing model that captions, and three silent rows whose
+// only witness is their name.
+var modalityCatalog = []Model{
+	{
+		ID: "anthropic/claude-sonnet-4.5", ContextLength: 200_000,
+		PromptPrice: 3e-6, CompletionPrice: 1.5e-5, ArenaElo: 1300,
+		Output: []string{"text"}, Input: []string{"text", "image"},
+	},
+	{ID: "openai/whisper-large-v3", Output: []string{"text"}, Input: []string{"audio"}},
+	{ID: "vendor/blind-chat", ContextLength: 32_000, Output: []string{"text"}, Input: []string{"text"}},
+	{
+		ID: "google/gemini-3.1-flash-image",
+		Output: []string{"image", "text"}, Input: []string{"text", "image"},
+	},
+	{ID: "moonshotai/kimi-k3", ContextLength: 256_000},
+	{ID: "openai/gpt-4o-transcribe-audio"},
+	{ID: "vendor/text-embedding-3"},
+}
+
+// THE TIER ROWS AND THE VISION ROW OPEN THE PICKER, and enter writes the id
+// through the registry — the same road every other slot takes.
+func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.models = func() []Model { return modalityCatalog }
+	a.openSettings()
+
+	// The two tiers sit on the Session tab, where the panel opens.
+	for _, row := range []string{config.KeyTierLowModel, config.KeyTierHighModel} {
+		cursorTo(t, a, row)
+		if got := a.sheet.items[a.sheet.cursor].meta.widget; got != widgetSelect {
+			t.Fatalf("%s is answered by widget %v, want the picker", row, got)
+		}
+		drive(t, a, key("enter"))
+		if a.sheet.sel == nil {
+			t.Fatalf("%s did not open a picker", row)
+		}
+		// It is THE picker: the rows carry what /model's rows carry.
+		if !strings.Contains(plain(frame(a)), "200k · $3/$15 per M · elo 1300") {
+			t.Fatalf("%s opened a plainer list:\n%s", row, plain(frame(a)))
+		}
+		drive(t, a, key("esc"))
+	}
+
+	// And the choice lands in the profile, not just on the screen.
+	cursorTo(t, a, config.KeyTierLowModel)
+	drive(t, a, key("enter"))
+	for _, r := range "blind" {
+		drive(t, a, key(string(r)))
+	}
+	drive(t, a, key("enter"))
+	if got := config.TierModelAt(dir, config.ModelTierLow); got != "vendor/blind-chat" {
+		t.Fatalf("the small-work row reads %q after the picker chose", got)
+	}
+
+	// The vision row is a picker too, over on Providers.
+	for i := 0; i < 4; i++ {
+		drive(t, a, key("right"))
+	}
+	cursorTo(t, a, config.KeyVisionModel)
+	drive(t, a, key("enter"))
+	if a.sheet.sel == nil {
+		t.Fatal("the looking row did not open a picker")
+	}
+}
+
+// EACH SLOT'S PICKER ANSWERS THAT SLOT'S QUESTION. The conversation rows offer
+// models you can talk to; the looking row offers models that can SEE, which is
+// a different list drawn by the same component through one predicate.
+func TestEachSlotFiltersTheModelsByWhatItNeeds(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.models = func() []Model { return modalityCatalog }
+	a.openSettings()
+
+	cursorTo(t, a, config.KeyTierHighModel)
+	drive(t, a, key("enter"))
+	chat := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
+	if got := pickedIDs(a.sheet.sel); strings.Join(got, ",") != strings.Join(chat, ",") {
+		t.Fatalf("a tier row offers %v, want the models you can talk to %v", got, chat)
+	}
+	drive(t, a, key("esc"))
+
+	for i := 0; i < 4; i++ {
+		drive(t, a, key("right"))
+	}
+	cursorTo(t, a, config.KeyVisionModel)
+	drive(t, a, key("enter"))
+	// Sonnet publishes an image input; blind-chat publishes an input list
+	// WITHOUT one and is gone; the silent row falls through, because silence on
+	// this side is a cache written before the field travelled and not a refusal.
+	vision := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3"}
+	if got := pickedIDs(a.sheet.sel); strings.Join(got, ",") != strings.Join(vision, ",") {
+		t.Fatalf("the looking row offers %v, want the models that see %v", got, vision)
+	}
+	if a.sheet.sel.keep == nil {
+		t.Fatal("the slot opened its picker without a question")
+	}
+}
+
+// The two predicates as a table: what a row PUBLISHES decides, on each side
+// separately, and only a silent side is read by the name.
+func TestTheModalityPredicates(t *testing.T) {
+	for _, c := range []struct {
+		model      Model
+		chat, sees bool
+	}{
+		// Published, both sides.
+		{Model{ID: "anthropic/claude-sonnet-4.5", Output: []string{"text"}, Input: []string{"text", "image"}}, true, true},
+		{Model{ID: "vendor/blind-chat", Output: []string{"text"}, Input: []string{"text"}}, true, false},
+		// The transcription family: text out, sound in. The output law alone
+		// kept it, which is the defect this side closes.
+		{Model{ID: "openai/whisper-large-v3", Output: []string{"text"}, Input: []string{"audio"}}, false, false},
+		{Model{ID: "google/gemini-3.1-flash-image", Output: []string{"image", "text"}, Input: []string{"text", "image"}}, false, true},
+		// A PUBLISHED LIST BEATS THE NAME on both sides: a model called "audio"
+		// that says it reads and writes text is a chat model.
+		{Model{ID: "vendor/audio-critic", Output: []string{"text"}, Input: []string{"text"}}, true, false},
+		// Silence, read by the id — the wider vocabulary, since a silent row has
+		// no other witness left.
+		{Model{ID: "moonshotai/kimi-k3"}, true, true},
+		{Model{ID: "openai/gpt-4o-transcribe-audio"}, false, true},
+		{Model{ID: "vendor/text-embedding-3"}, false, true},
+		{Model{ID: "elevenlabs/voice-v3"}, false, true},
+		{Model{ID: "openai/whisper-1"}, false, true},
+		{Model{ID: "google/lyria-3-preview"}, false, true},
+		{Model{ID: "vendor/music-gen"}, false, true},
+		{Model{ID: "bytedance/seedance-video-pro"}, false, true},
+		{Model{ID: "vendor/rerank-2"}, false, true},
+		{Model{ID: "openai/omni-moderation-latest"}, false, true},
+		{Model{ID: "google/imagen-4"}, false, true},
+		{Model{ID: "openai/gpt-4o-mini-tts"}, false, true},
+		{Model{ID: "openai/sora-2"}, false, true},
+		{Model{ID: "google/veo-3"}, false, true},
+		{Model{ID: "openai/dalle-3"}, false, true},
+		// The marks are WHOLE WORDS of the id and never substrings, so a chat
+		// model whose name merely carries the letters survives.
+		{Model{ID: "vendor/videographer-8b"}, true, true},
+		{Model{ID: "vendor/audiophile"}, true, true},
+	} {
+		if got := chatModel(c.model); got != c.chat {
+			t.Fatalf("chatModel(%q, in=%v out=%v) = %v, want %v",
+				c.model.ID, c.model.Input, c.model.Output, got, c.chat)
+		}
+		if got := seesImages(c.model); got != c.sees {
+			t.Fatalf("seesImages(%q, in=%v) = %v, want %v",
+				c.model.ID, c.model.Input, got, c.sees)
+		}
+	}
+}
+
+// /model is a slot like any other and passes the same chat predicate, so a
+// transcription model is no more offered there than in the panel.
+func TestTheModelOverlayAsksTheChatQuestion(t *testing.T) {
+	a := pickerApp(t, &fakeAgent{model: "vendor/blind-chat"}, modalityCatalog)
+	typeLine(t, a, "/model")
+	want := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
+	if got := pickerIDs(a); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("/model offers %v, want %v", got, want)
+	}
+}
+
+// ── 10. THE WHOLE-ROW HIGHLIGHT ─────────────────────────────────────────────
+
+// THE SELECTED ROW IS ONE BAND, LEAD TO NOTE, ACROSS THE WHOLE LINE — and the
+// note is inside it rather than dim underneath it.
+func TestTheSelectedOverlayRowIsOneBandAcrossTheLine(t *testing.T) {
+	pal := newPalette(tokens.ANSI256, false)
+	const width = 48
+	const note = "128k · elo 1200"
+	band := "\x1b[48;5;" + itoa(int(hueBand.idx)) + "m"
+
+	line := overlayRow("openai/gpt-4.1-mini", note, true, false, false, width, pal)
+	if !strings.HasPrefix(line, band) || !strings.HasSuffix(line, "\x1b[49m") {
+		t.Fatalf("the selected row is not one band:\n%q", line)
+	}
+	// The whole line: the band is opened once, closed once, and everything the
+	// row says is between them.
+	inside := strings.TrimSuffix(strings.TrimPrefix(line, band), "\x1b[49m")
+	if strings.Contains(inside, "\x1b[49m") {
+		t.Fatalf("the band is broken up mid-row:\n%q", line)
+	}
+	if !strings.Contains(inside, pal.ink(note)) {
+		t.Fatalf("the note is not painted inside the band:\n%q", line)
+	}
+	if strings.Contains(line, pal.dim(note)) {
+		t.Fatalf("the note stayed dim inside the band:\n%q", line)
+	}
+	if got := ansi.StringWidth(plain(line)); got != width {
+		t.Fatalf("the band is %d cells wide, want the whole %d", got, width)
+	}
+
+	// HOVER IS THE SUBTLER ONE, and it is a different colour: a pointer crossing
+	// a list must never read as the cursor moving.
+	hovered := overlayRow("openai/gpt-4.1-mini", note, false, false, true, width, pal)
+	hover := "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m"
+	if !strings.HasPrefix(hovered, hover) || strings.Contains(hovered, band) {
+		t.Fatalf("the hovered row wears the selection band:\n%q", hovered)
+	}
+	if hueHover.idx == hueBand.idx {
+		t.Fatal("the hover and the selection resolve to one colour")
+	}
+	// A row that is both takes the selection: the cursor outranks the pointer.
+	both := overlayRow("openai/gpt-4.1-mini", note, true, false, true, width, pal)
+	if !strings.HasPrefix(both, band) {
+		t.Fatalf("the pointer painted over the cursor:\n%q", both)
+	}
+	// The model in use keeps its accent inside the band.
+	marked := overlayRow("openai/gpt-4.1-mini", note, true, true, false, width, pal)
+	if !strings.Contains(marked, pal.accent("openai/gpt-4.1-mini")) {
+		t.Fatalf("the marked row lost its accent to the band:\n%q", marked)
+	}
+}
+
+// ── 11. THE COUNT-UP CLOCK ──────────────────────────────────────────────────
+
+// A RUNNING CALL SAYS HOW LONG IT HAS BEEN RUNNING, and stops saying it the
+// moment it is done.
+func TestARunningCallCountsUpAndStopsWhenItFinishes(t *testing.T) {
+	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
+		{Kind: session.EventToolBegin, Tool: "bash", Hint: "bash", Args: `{"command":"go test ./..."}`},
+	}}}
+	a := newTestApp(agent)
+	base := time.Now()
+	a.clock = func() time.Time { return base }
+	typeLine(t, a, "run the tests")
+
+	at := firstTool(t, a)
+	if a.entries[at].began != base {
+		t.Fatalf("the call's clock started at %v, want the begin event's own moment", a.entries[at].began)
+	}
+	// Under a second there is nothing worth saying.
+	if got := a.countUp(&a.entries[at]); got != "" {
+		t.Fatalf("a call that just began drew %q", got)
+	}
+
+	// Sixty-five seconds later, on the frame clock that was already turning the
+	// spinner — no ticker of its own.
+	a.clock = func() time.Time { return base.Add(65 * time.Second) }
+	a.touch()
+	line := toolLineOf(t, a)
+	if !strings.Contains(line, "1m 5s") {
+		t.Fatalf("a call 65s old does not say so: %q", line)
+	}
+	// The spinner is still there beside it: the clock joined the row, it did not
+	// take the spinner's place.
+	if !strings.ContainsAny(line, "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏") {
+		t.Fatalf("the count-up displaced the spinner: %q", line)
+	}
+	// And the open row says it in words.
+	body := strings.Join(openFirst(t, a), "\n")
+	if !strings.Contains(body, "running · 1m 5s") {
+		t.Fatalf("the open call does not carry the clock:\n%s", body)
+	}
+
+	// A TURN THAT ENDED WITH THE CALL UNRESOLVED stops the clock as well — the
+	// same rule that freezes the spinner there. A number still climbing on an
+	// abandoned call is the surface claiming work it cannot see is alive.
+	a.state = stateInterrupted
+	if got := a.countUp(&a.entries[at]); got != "" {
+		t.Fatalf("an abandoned call is still counting: %q", got)
+	}
+	a.state = stateWorking
+
+	// IT STOPS AT COMPLETION. The finished row has its own figure, said the
+	// finished way, and only one of the two is ever on a line.
+	a.entries[at].status = toolOK
+	a.entries[at].ended = base.Add(65 * time.Second)
+	a.touch()
+	if got := a.countUp(&a.entries[at]); got != "" {
+		t.Fatalf("a finished call is still counting: %q", got)
+	}
+	done := toolLineOf(t, a)
+	if strings.Contains(done, "1m 5s") || !strings.Contains(done, "1m05s") {
+		t.Fatalf("the finished line is not the finished figure: %q", done)
+	}
+}
+
+// The scale, spelled the way a person says a duration out loud.
+func TestCountUpWordSpellsEveryScale(t *testing.T) {
+	for _, c := range []struct {
+		took time.Duration
+		want string
+	}{
+		{0, ""},
+		{999 * time.Millisecond, ""},
+		{time.Second, "1s"},
+		{12 * time.Second, "12s"},
+		{59 * time.Second, "59s"},
+		{64 * time.Second, "1m 4s"},
+		{65 * time.Second, "1m 5s"},
+		{750 * time.Second, "12m 30s"},
+		{59*time.Minute + 59*time.Second, "59m 59s"},
+		{2*time.Hour + 5*time.Minute, "2h 5m"},
+	} {
+		if got := countUpWord(c.took); got != c.want {
+			t.Fatalf("countUpWord(%v) = %q, want %q", c.took, got, c.want)
+		}
+	}
+
+	// A queued call has no clock: nothing has started, so there is nothing to
+	// count — the same reason it draws no spinner.
+	a := newTestApp(&fakeAgent{model: "m"})
+	waiting := entry{status: toolQueued, began: time.Now().Add(-time.Minute)}
+	if got := a.countUp(&waiting); got != "" {
+		t.Fatalf("a queued call counted %q", got)
 	}
 }
 

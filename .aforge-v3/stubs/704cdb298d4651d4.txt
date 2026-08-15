@@ -1,0 +1,92 @@
+        m = X.shape[0]
+        b = [None] * (self.n + 1)
+        b[self.n] = np.zeros((m, 1))
+        for i in range(self.n - 1, -1, -1):
+            lc = self.logcores[i]  # (d, l, r)
+            xi = X[:, i]
+            sel = lc[xi]  # (m, l, r)
+            # b_i[k, l] = logsumexp_r (sel[k,l,r] + b_{i+1}[k,r])
+            v = sel + b[i + 1][:, None, :]  # (m, l, r)
+            b[i] = _logsumexp(v, axis=2)
+        log_ptilde = b[0][:, 0]
+        return b, log_ptilde
+
+    # -- probability -------------------------------------------------------
+    def _log_proba(self, x: np.ndarray) -> float:
+        """log p(x) for a single configuration."""
+        f, log_ptilde = self._forward(x[None, :])
+        return float(log_ptilde[0] - self._log_partition())
+
+    def log_likelihood(self, X: np.ndarray) -> float:
+        f, log_ptilde = self._forward(X)
+        return float(np.mean(log_ptilde - self._log_partition()))
+
+    # -- gradient ----------------------------------------------------------
+    def _gradient(self, X: np.ndarray) -> list[np.ndarray]:
+        """Exact gradient of average log-likelihood wrt each log-core.
+
+        Returns list of (d, l, r) arrays, one per site.
+        """
+        m = X.shape[0]
+        ls = self._left_logsum()
+        rs = self._right_logsum()
+        logZ = float(ls[-1][0])
+        f, log_ptilde = self._forward(X)
+        b, _ = self._backward(X)
+
+        grads = [np.zeros_like(lc) for lc in self.logcores]
+
+        for i in range(self.n):
+            lc = self.logcores[i]  # (d, l, r)
+            d, l, r = lc.shape
+            xi = X[:, i]  # (m,)
+
+            # ---- model marginal: P_model(a,l,r) ----
+            # exp(ls_i[l] + lc[a,l,r] + rs_{i+1}[r] - logZ)
+            log_model = (ls[i][None, :, None] + lc
+                         + rs[i + 1][None, None, :] - logZ)  # (d,l,r)
+            model = np.exp(log_model)
+
+            # ---- data term: posterior q_k(l,r) for samples with x_i=a ----
+            data = np.zeros_like(lc)
+            for a in range(d):
+                mask = (xi == a)
+                if not mask.any():
+                    continue
+                # q_k[l,r] = exp(f_i[k,l] + lc[a,l,r] + b_{i+1}[k,r] - log_ptilde_k)
+                logq = (f[i][mask][:, :, None] + lc[a][None, :, :]
+                        + b[i + 1][mask][:, None, :]
+                        - log_ptilde[mask][:, None, None])  # (n_a, l, r)
+                data[a] = np.exp(logq).sum(axis=0)
+
+            grads[i] = data / m - model
+
+        return grads
+
+    # -- learning ----------------------------------------------------------
+    def fit(self, X: np.ndarray, epochs: int = 100, lr: float = 0.5,
+            verbose: bool = True) -> "PositiveMPS":
+        """Exact maximum-likelihood gradient ascent on log-cores."""
+        X = np.asarray(X, dtype=np.int64)
+        assert X.shape[1] == self.n
+        for e in range(epochs):
+            grads = self._gradient(X)
+            for i in range(self.n):
+                self.logcores[i] = self.logcores[i] + lr * grads[i]
+                # keep weights bounded below (positivity) and tame the scale
+                self.logcores[i] = np.clip(self.logcores[i], self.eps_log, 0.0)
+
+            if verbose and (e % 10 == 0 or e == epochs - 1):
+                ll = self.log_likelihood(X)
+                print(f"  epoch {e:3d}: avg log-lik = {ll:.4f}")
+        return self
+
+    # -- sampling ----------------------------------------------------------
+    def sample(self, m: int = 1, seed: int | None = None) -> np.ndarray:
+        """Exact ancestral sampling via the Born rule."""
+        rng = np.random.default_rng(seed)
+        rs = self._right_logsum()
+        out = np.zeros((m, self.n), dtype=np.int64)
+        f = np.zeros((m, 1))  # forward mass for sampled prefix
+
+[51 more lines in file. Use offset=210 to continue.]

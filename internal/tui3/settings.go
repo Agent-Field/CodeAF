@@ -134,13 +134,19 @@ var settingUI = map[string]settingMeta{
 		about: "asks a small model first whether a call is plainly safe, so you " +
 			"are only asked about the rest.",
 	},
+	// THE TWO TIER ROWS ARE MODEL CHOICES AND ARE ANSWERED AS ONE. They were a
+	// text box for four waves, which meant the only way to name the cheap model
+	// was to type its id from memory — in a panel that already knows every id,
+	// what each one holds, what it costs and how it scores. A row that asks
+	// "which model" and offers a blank line is asking a person to be the
+	// catalog.
 	config.KeyTierLowModel: {
-		tab: tabSession, label: "small work", widget: widgetText,
+		tab: tabSession, label: "small work", widget: widgetSelect,
 		about: "the cheap model for the short things aforge writes for itself — " +
 			"session names, labels.",
 	},
 	config.KeyTierHighModel: {
-		tab: tabSession, label: "careful work", widget: widgetText,
+		tab: tabSession, label: "careful work", widget: widgetSelect,
 		about: "the capable model for the small things that must not be wrong — " +
 			"the summary a compaction keeps.",
 	},
@@ -276,8 +282,12 @@ var settingUI = map[string]settingMeta{
 	// The model slots themselves are added by [init] from [config.ModelSlots],
 	// so a sixth role or a sixth modality reaches this panel without anybody
 	// editing this file — the same contract internal/config's own sheet keeps.
+	// The looking row is a model choice too, and it is the row that proves the
+	// picker has to be able to ask more than one question: the models on offer
+	// here are the ones that can SEE ([seesImages]), which is a different list
+	// from the one every other slot draws.
 	config.KeyVisionModel: {
-		tab: tabProviders, label: "looking", widget: widgetText,
+		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",
 	},
 	config.KeyDocumentEngine: {
@@ -389,7 +399,24 @@ type sheetEdit struct {
 type sheetSelect struct {
 	key   string
 	label string
-	pick  picker
+	// keep is the QUESTION THIS ROW ASKS of a model (models.go's [modelFilter]),
+	// chosen from the key by [filterFor]. It is held rather than applied and
+	// forgotten because it is the row's own meaning: "looking" is not a slot
+	// that happens to have been opened over a shorter list, it is a slot that
+	// only models which can see may answer.
+	keep modelFilter
+	pick picker
+}
+
+// filterFor is the WHOLE map from a settings row to the question its picker
+// asks, and it is deliberately one function: a second slot with a modality of
+// its own is one case here, and a slot nobody thought about gets the general
+// chat law rather than the whole catalog.
+func filterFor(key string) modelFilter {
+	if key == config.KeyVisionModel {
+		return seesImages
+	}
+	return chatModel
 }
 
 // choice is the id under the cursor. It answers a STRING and not a [Model]
@@ -742,8 +769,11 @@ func (a *app) activate() {
 		// than changes. A row holding its empty label ("follows the
 		// conversation") matches no id and the cursor stays at the top, which is
 		// the honest reading of "this slot has not been set".
-		sel := &sheetSelect{key: item.row.Key, label: item.meta.label}
-		sel.pick.start(a.modelList(), item.row.Value())
+		sel := &sheetSelect{
+			key: item.row.Key, label: item.meta.label,
+			keep: filterFor(item.row.Key),
+		}
+		sel.pick.startFor(a.modelList(), item.row.Value(), sel.keep)
 		s.sel = sel
 
 	default:

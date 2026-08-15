@@ -574,6 +574,63 @@ so resume is exact.
 | **V3-2** omp comfort | settings panel; model picker per role; project-local config; session switcher/welcome; compaction polish | settings/model flows match omp muscle memory; crash mid-session loses nothing journaled |
 | **V3-3** cutover | delete `internal/tui`, `internal/tui2`, `internal/head`, the chatv2 gate; `aforge chat` = v3 | the repo has exactly one chat; tasker packages diff-free |
 
+## Decision 17 — One picker, a question per slot, and the two things a row says
+
+**Every model row is a model choice, and the picker asks that row's own
+question.** The two tier rows and the vision row were text boxes — a person
+typing an id from memory in front of a catalog that knows every one of them —
+so all three now open the same filterable picker `/model` opens, and which
+models it offers comes from ONE predicate (`modelFilter`) chosen from the row
+key (`filterFor`) rather than from a list assembled at each call site: the chat
+law is text out **and** text in (the input side is what keeps the transcription
+family out — whisper answers in text and takes sound), the looking row asks for
+models that publish an image input, and a row that publishes nothing on a side
+is read by its id against a name vocabulary that a published modality list
+always overrides.
+
+**The selected row is one band and the running row carries a clock.** Selection
+used to bold the label and leave the tail — the window, the price, the arena
+score — dim grey on the one row a person was comparing them on; it now paints
+the whole line, lead to note, at the terminal's full width, in a background one
+step louder than hover's so the pointer never reads as the cursor. And a
+running tool line trails its own age beside the spinner (`⠿ running · 1m 5s`,
+compact: `12s`, `1m 4s`, `2h 5m`), which stops at completion where the
+finished-call figure takes over. Nothing new ticks for it — the frame clock
+that already turns the spinner redraws it, so the count-up costs no wakeup.
+
+## Decision 18 — The event-driven watch: the harness polls so the context does not
+
+**Watching is a primitive, not a habit.** Re-running `tail -50 app.log` every
+turn spends a round trip and fifty lines to learn two — Claude Code and omp
+offer background tasks and polling, and polling is what fills a transcript
+with near-identical chunks. So the `watch` tool hands the timer to the
+harness: it runs the command every N seconds (default 10, floored at 2,
+capped at an hour, each tick bounded by `min(every, 60s)` so a hung run
+cannot stall the loop) and speaks *only when there is news*. `on: change`
+diffs against the previous tick and delivers the new lines — the
+suffix/prefix overlap, so a scrolling `tail` yields the two lines that
+arrived, not the fifty in the window; `on: match` delivers only the new lines
+a regex selects; `on: always` delivers the last ten every tick, for a number
+that is meant to be watched climbing; `until` ends the watch on the first
+line matching it and delivers that line as the final note. **The first tick
+is a silent baseline** (except `always`): there is no "new" without a
+"before", and a baseline delivered as news is the chunk this tool exists to
+stop sending. Notes cap at 40 lines + `… N more`.
+
+**A watch is a job, and its note rides the steering lane.** It comes from the
+same registry as `bash background: true` — one id space, one log file on
+disk, one `jobs` list (kind `watch`, with its name, terms and tick count),
+one `jobs kill`, one death at `Close` — because everything around a watch is
+what a job already is; only the middle differs, which is a `jobKind` and a
+stop function, not a second machine. Delivery reuses Decision 12's mechanism
+verbatim: `enqueueSteering`, drained at the next step boundary as plain user
+text. No push, no new event, no surface change. Two governors keep a timer
+from burning a session down: **three watches at once** (the fourth is a tool
+error naming the limit), and **three consecutive identical failures** end the
+watch with one note — a watch spinning on a broken command is the loop
+detector's cousin, and the honest answer to repetition carrying no
+information is to say so once and stop.
+
 ## Milestones
 
 | milestone | lands | acceptance |

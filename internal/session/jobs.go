@@ -76,6 +76,22 @@ const (
 	jobKilled
 )
 
+// jobKind is what KIND of background work a job is: one process that was
+// started and will end (bash background:true), or a watch — a command re-run on
+// a timer, reporting only when there is news (tools_watch.go).
+//
+// The kinds share this registry rather than living in two of them because
+// everything AROUND them is the same: one id space, one log file per job, one
+// list to read, one kill to end it, one shutdown at Close. What differs is only
+// what runs in the middle, which is why the difference is a field and a stop
+// function rather than a second machine.
+type jobKind int
+
+const (
+	jobKindBash jobKind = iota
+	jobKindWatch
+)
+
 // job is one background command.
 //
 // The mutex guards the mutable status fields only. It is deliberately NOT the
@@ -85,12 +101,22 @@ const (
 type job struct {
 	id      int
 	command string
+	kind    jobKind
+	// label and detail are a watch's short name and its terms ("every 10s on
+	// change"), empty for a bash job. They are set once at start and read
+	// without the lock.
+	label   string
+	detail  string
 	started time.Time
 	logPath string
 	cmd     *exec.Cmd
 	sink    *jobSink
-	// done is closed once the process has been reaped and the status fields
-	// are final. It is how a killer waits without polling.
+	// stop ends a watch's timer loop. It is nil for a bash job, whose end is a
+	// signal to a process group instead. See [job.signal].
+	stop func()
+	// done is closed once the job is final — the process reaped, or the watch
+	// loop returned — and the status fields are settled. It is how a killer
+	// waits without polling.
 	done chan struct{}
 
 	mu    sync.Mutex
@@ -98,6 +124,8 @@ type job struct {
 	// exitCode is meaningful only in jobExited.
 	exitCode int
 	ended    time.Time
+	// ticks counts a watch's completed runs of its command.
+	ticks int
 	// killRequested marks a kill this session ASKED for — jobs.kill, or Close.
 	// Such a job does not report its own death: the caller already knows, and
 	// a note saying so would be the agent telling itself what it just did.
@@ -109,8 +137,12 @@ type job struct {
 type jobInfo struct {
 	id      int
 	command string
+	kind    jobKind
+	label   string
+	detail  string
 	state   jobState
 	code    int
+	ticks   int
 	elapsed time.Duration
 }
 
@@ -121,7 +153,25 @@ func (j *job) info() jobInfo {
 	if j.state != jobRunning {
 		elapsed = j.ended.Sub(j.started)
 	}
-	return jobInfo{id: j.id, command: j.command, state: j.state, code: j.exitCode, elapsed: elapsed}
+	return jobInfo{
+		id: j.id, command: j.command, kind: j.kind, label: j.label, detail: j.detail,
+		state: j.state, code: j.exitCode, ticks: j.ticks, elapsed: elapsed,
+	}
+}
+
+// countTick records one completed run of a watch's command and reports which
+// run it was — the tick number a note can name.
+func (j *job) countTick() int {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.ticks++
+	return j.ticks
+}
+
+func (j *job) tickCount() int {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.ticks
 }
 
 func (j *job) running() bool {
@@ -144,6 +194,51 @@ func (j *job) requestKill() bool {
 	return true
 }
 
+// settle makes a job final: the log is closed, the status fields stop moving,
+// and done is released. It reports whether the death was REQUESTED, which is
+// the one thing the caller needs to decide whether to say anything about it.
+//
+// It is called exactly once per job, by the single goroutine that owns the
+// job's middle — the reaper for a process, the timer loop for a watch — which
+// is what makes the close of done safe without a second flag guarding it.
+func (j *job) settle(code int) bool {
+	// The log file closes before the status is final, so a reader that sees a
+	// finished job sees a complete file.
+	j.sink.close()
+
+	j.mu.Lock()
+	requested := j.killRequested
+	j.ended = time.Now()
+	if requested {
+		j.state = jobKilled
+	} else {
+		j.state = jobExited
+		j.exitCode = code
+	}
+	j.mu.Unlock()
+
+	// Signalled before any note: a killer waiting on done must not wait behind
+	// a steering append it does not care about.
+	close(j.done)
+	return requested
+}
+
+// signal is how a kill reaches a job, whichever kind it is: a process group
+// gets the signal, a watch gets its loop cancelled and settles itself on the
+// way out.
+//
+// A watch ignores the DIFFERENCE between SIGTERM and SIGKILL on purpose. There
+// is no process of its own to be polite to — the tick command, if one is
+// running, is killed by its context — so the first cancel is already the whole
+// of what the second one would ask for.
+func (j *job) signal(sig syscall.Signal) {
+	if j.stop != nil {
+		j.stop()
+		return
+	}
+	signalGroup(j.cmd, sig)
+}
+
 // ── the registry ────────────────────────────────────────────────────────────
 
 // jobRegistry is the session's background work. It lives for the session, not
@@ -159,21 +254,20 @@ type jobRegistry struct {
 	mu   sync.Mutex
 	seq  int
 	jobs []*job
+	// watches is the number of watch slots CLAIMED, not the number of watch
+	// jobs in the slice. Counting the slice would leave a window between the
+	// limit check and the append in which two concurrent starts both pass, and
+	// tool calls in one batch run concurrently.
+	watches int
 }
 
 func newJobRegistry(workspace string, notify func(string)) *jobRegistry {
 	return &jobRegistry{workspace: workspace, notify: notify}
 }
 
-// start launches one command in the background and returns as soon as the
-// process exists.
-//
-// The context of the tool call is deliberately NOT passed to the process: a
-// turn's context is cancelled when the turn ends, and a background job whose
-// whole purpose is to outlive the turn would be killed by the very act of
-// answering the person. The job's lifetime is the session's, and Close is the
-// only thing that ends it early.
-func (r *jobRegistry) start(command string) (*job, error) {
+// newJob makes the shell every job shares — an id, a log file on disk, a sink
+// over it — without deciding what will run in the middle.
+func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 	directory := filepath.Join(r.workspace, filepath.FromSlash(jobsDirName))
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)
@@ -189,6 +283,42 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not open the job log: %w", err)
 	}
+	return &job{
+		id:      id,
+		command: command,
+		kind:    kind,
+		started: time.Now(),
+		logPath: logPath,
+		// One sink for both streams, as bare's bash does: stdout and stderr
+		// interleave in arrival order, which is the order a person reading the
+		// log expects them in.
+		sink: &jobSink{file: logFile},
+		done: make(chan struct{}),
+	}, nil
+}
+
+// add puts a job in the registry. It is called once the job is actually
+// running — a list between the id reservation and this append shows one fewer
+// job, which is the honest answer for work that does not exist yet.
+func (r *jobRegistry) add(started *job) {
+	r.mu.Lock()
+	r.jobs = append(r.jobs, started)
+	r.mu.Unlock()
+}
+
+// start launches one command in the background and returns as soon as the
+// process exists.
+//
+// The context of the tool call is deliberately NOT passed to the process: a
+// turn's context is cancelled when the turn ends, and a background job whose
+// whole purpose is to outlive the turn would be killed by the very act of
+// answering the person. The job's lifetime is the session's, and Close is the
+// only thing that ends it early.
+func (r *jobRegistry) start(command string) (*job, error) {
+	started, err := r.newJob(command, jobKindBash)
+	if err != nil {
+		return nil, err
+	}
 
 	shell, shellArgs := jobShell()
 	process := exec.Command(shell, append(shellArgs, command)...)
@@ -198,62 +328,25 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// kill reaches the whole tree. A dev server that forks a compiler must not
 	// survive the kill of its parent.
 	process.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-
-	// One sink for both streams, as bare's bash does: stdout and stderr
-	// interleave in arrival order, which is the order a person reading the log
-	// expects them in.
-	sink := &jobSink{file: logFile}
-	process.Stdout = sink
-	process.Stderr = sink
+	process.Stdout = started.sink
+	process.Stderr = started.sink
 
 	if err := process.Start(); err != nil {
-		_ = logFile.Close()
+		started.sink.close()
 		return nil, fmt.Errorf("could not start the command: %w", err)
 	}
+	started.cmd = process
+	r.add(started)
 
-	started := &job{
-		id:      id,
-		command: command,
-		started: time.Now(),
-		logPath: logPath,
-		cmd:     process,
-		sink:    sink,
-		done:    make(chan struct{}),
-	}
-	// The job joins the registry once it is actually running — a list between
-	// the id reservation and this append shows one fewer job, which is the
-	// honest answer for a process that does not exist yet.
-	r.mu.Lock()
-	r.jobs = append(r.jobs, started)
-	r.mu.Unlock()
-
-	go r.watch(started)
+	go r.reap(started)
 	return started, nil
 }
 
-// watch reaps one job and, unless the death was asked for, drops a note on the
-// steering queue.
-func (r *jobRegistry) watch(watched *job) {
-	waitErr := watched.cmd.Wait()
-	code := waitExitCode(waitErr)
-	// The log file closes before the status is final, so a reader that sees
-	// "exited" sees a complete file.
-	watched.sink.close()
-
-	watched.mu.Lock()
-	requested := watched.killRequested
-	watched.ended = time.Now()
-	if requested {
-		watched.state = jobKilled
-	} else {
-		watched.state = jobExited
-		watched.exitCode = code
-	}
-	watched.mu.Unlock()
-
-	// Signalled before the note: a killer waiting on done must not wait behind
-	// a steering append it does not care about.
-	close(watched.done)
+// reap waits on one process and, unless the death was asked for, drops a note
+// on the steering queue.
+func (r *jobRegistry) reap(watched *job) {
+	code := waitExitCode(watched.cmd.Wait())
+	requested := watched.settle(code)
 
 	if requested || r.notify == nil {
 		return
@@ -294,13 +387,18 @@ func (r *jobRegistry) kill(id int) (string, bool) {
 		info := target.info()
 		return fmt.Sprintf("Job %d already %s.", id, statusText(info)), true
 	}
-	signalGroup(target.cmd, syscall.SIGTERM)
+	target.signal(syscall.SIGTERM)
 	if !waitDone(target.done, jobTermGrace) {
-		signalGroup(target.cmd, syscall.SIGKILL)
+		target.signal(syscall.SIGKILL)
 		// The second wait is bounded too: a process wedged in an
 		// uninterruptible sleep is not something a tool call can fix, and
 		// hanging the turn on it would be worse than reporting the SIGKILL.
 		waitDone(target.done, jobTermGrace)
+	}
+	// A watch is stopped, not killed: there was no process of its own to end,
+	// and "stopped" is the word its list row and its notes already use.
+	if target.kind == jobKindWatch {
+		return fmt.Sprintf("watch %s (job %d) stopped", target.label, id), false
 	}
 	return fmt.Sprintf("job %d killed", id), false
 }
@@ -323,7 +421,7 @@ func (r *jobRegistry) shutdown(grace time.Duration) {
 		return
 	}
 	for _, target := range claimed {
-		signalGroup(target.cmd, syscall.SIGTERM)
+		target.signal(syscall.SIGTERM)
 	}
 	deadline := time.Now().Add(grace)
 	for _, target := range claimed {
@@ -337,7 +435,7 @@ func (r *jobRegistry) shutdown(grace time.Duration) {
 	// reap it on its own, and Close owes the person a prompt, not a funeral.
 	for _, target := range claimed {
 		if target.running() {
-			signalGroup(target.cmd, syscall.SIGKILL)
+			target.signal(syscall.SIGKILL)
 		}
 	}
 }
@@ -347,6 +445,12 @@ func (r *jobRegistry) shutdown(grace time.Duration) {
 func statusText(info jobInfo) string {
 	switch info.state {
 	case jobExited:
+		// A watch has no exit code of its own to report — it ends because its
+		// `until` matched, or because its command kept failing, and both of
+		// those arrived as a note. "stopped" is the whole status.
+		if info.kind == jobKindWatch {
+			return "stopped"
+		}
 		return fmt.Sprintf("exited(%d)", info.code)
 	case jobKilled:
 		return "killed"
@@ -375,6 +479,16 @@ func (r *jobRegistry) list() string {
 			rendered.WriteString("\n")
 		}
 		info := listed.info()
+		// A watch's row leads with its KIND and its name, because those are what
+		// the model will use next: "watch app" is the thing it started, and the
+		// terms after it ("every 10s on change") are the answer to "why haven't I
+		// heard anything" without a second call.
+		if info.kind == jobKindWatch {
+			fmt.Fprintf(&rendered, "job %d · watch %s · %s · %s · %d ticks · %s · %s",
+				info.id, info.label, statusText(info), formatElapsed(info.elapsed),
+				info.ticks, info.detail, clip(firstLine(info.command), hintLimit))
+			continue
+		}
 		fmt.Fprintf(&rendered, "job %d · %s · %s · %s",
 			info.id, statusText(info), formatElapsed(info.elapsed),
 			clip(firstLine(info.command), hintLimit))

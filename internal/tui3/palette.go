@@ -57,6 +57,17 @@ type picker struct {
 	filter editor
 }
 
+// startFor opens the picker over the rows ONE SLOT can take: the list, narrowed
+// by that slot's own question (models.go's [modelFilter]), with current marked.
+//
+// It is the single door every slot comes through — /model and the conversation
+// rows pass [chatModel], the "looking" row passes [seesImages] — so the answer
+// to "which models does this slot offer" is one predicate named at the call
+// site rather than a list assembled there.
+func (p *picker) startFor(models []Model, current string, keep modelFilter) {
+	p.start(keepModels(models, keep), current)
+}
+
 // start opens the picker over models with current marked.
 func (p *picker) start(models []Model, current string) {
 	*p = picker{open: true, all: models, current: current}
@@ -241,12 +252,25 @@ func listTop(cursor, top, count, height int) int {
 // nothing else so far — is accent wherever it sits in the list. The row under
 // the cursor is ink and bold, so it stays the brightest thing on a monochrome
 // terminal too. Everything else is dim, because a list of six hundred names
-// that all shout is a list nobody can read down. The note trails on the right,
-// dim, and the label gives way before it does: a truncated name is still
+// that all shout is a list nobody can read down. The note trails on the right
+// and the label gives way before it does: a truncated name is still
 // recognizable, and "164k" cut in half is a wrong number.
+//
+// THE SELECTED ROW IS A BAND, AND THE WHOLE LINE IS IN IT. Selection used to be
+// a bold label and nothing else, which left the cursor row reading as half a
+// row: the lead was accent, the name was bright, and the tail that carries the
+// window, the price and the arena score stayed dim grey — the three facts a
+// person is actually comparing, greyed out on the one row they were comparing
+// them ON. So the emphasis now spans the line, lead to note, padded to the full
+// width, and the note joins it in ink rather than staying behind in dim.
+//
 // Hover is the fourth thing a row can be and it is not a tier: it is the
 // background under whichever of the three the row already was, plus a brighter
 // lead — the pointer saying "this one", not the list saying "this matters".
+// The two backgrounds are deliberately different weights ([palette.band] versus
+// [palette.hover]): a pointer crossing a list must never look like the cursor
+// moving, so hover stays one step off the terminal's own black and selection is
+// the stronger band above it.
 func overlayRow(label, note string, selected, marked, hovered bool, width int, pal palette) string {
 	lead := "  "
 	switch {
@@ -279,9 +303,19 @@ func overlayRow(label, note string, selected, marked, hovered bool, width int, p
 		if gap < 1 {
 			gap = 1
 		}
-		line += strings.Repeat(" ", gap) + pal.dim(note)
+		// THE NOTE IS INSIDE THE BAND, so it is painted as part of it: dim ink
+		// on the selection background is grey on grey, and the tail is the half
+		// of the row a person is reading when they stop on it.
+		tail := pal.dim(note)
+		if selected {
+			tail = pal.ink(note)
+		}
+		line += strings.Repeat(" ", gap) + tail
 	}
-	if hovered {
+	switch {
+	case selected:
+		return pal.band(line, width)
+	case hovered:
 		return pal.hover(line, width)
 	}
 	return line
@@ -424,9 +458,12 @@ const pickerHint = "filter · ↑↓ · ctrl+t effort · enter switch · esc can
 
 // ── the app's side of the overlay ───────────────────────────────────────────
 
-// openPicker is /model with no argument.
+// openPicker is /model with no argument. It names the chat law out loud rather
+// than leaning on the list having been filtered already: /model is a slot like
+// any other, and every slot says which models may answer it (settings.go's
+// [filterFor]).
 func (a *app) openPicker() {
-	a.pick.start(a.modelList(), a.model)
+	a.pick.startFor(a.modelList(), a.model, chatModel)
 	a.touch()
 }
 

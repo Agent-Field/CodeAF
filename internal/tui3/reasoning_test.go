@@ -93,14 +93,28 @@ func TestTheRowsTailIsDimAndTheIDIsNot(t *testing.T) {
 		t.Fatalf("filtered to %d rows, want the one", len(rows))
 	}
 	// The tail is painted separately from the label: the row's ink is the id,
-	// and everything after it is the dim note. Colour is asserted here because
+	// and everything after it is the note. Colour is asserted here because
 	// colour is the subject.
+	//
+	// UNDER THE CURSOR THE NOTE IS INK, not dim, and that is the whole-row
+	// highlight (palette.go's [overlayRow]): the selected row is one emphasised
+	// band from lead to note, and a dim tail inside it would be grey on grey —
+	// the three facts a person is comparing, greyed out on the one row they are
+	// comparing them on. Off the cursor the tail is dim, which is asserted below.
 	id, note := "anthropic/claude-sonnet-4.5", "1M · $3/$15 per M · elo 1243"
-	if !strings.Contains(rows[0], a.pal.dim(note)) {
-		t.Fatalf("the tail has to be dim:\n%q", rows[0])
+	if !strings.Contains(rows[0], a.pal.ink(note)) {
+		t.Fatalf("the selected row's tail is not inside the band:\n%q", rows[0])
 	}
 	if strings.Contains(rows[0], a.pal.dim(id)) {
 		t.Fatalf("the id under the cursor must not be dim:\n%q", rows[0])
+	}
+
+	// A row the cursor is not on keeps the dim tail: that contrast is what makes
+	// the band read as a selection rather than as the list's ordinary paint.
+	drive(t, a, key("ctrl+u"))
+	rows = a.pick.rows(a.width, len(a.pick.hits), a.pal, -1, a.reasoningFor)
+	if !strings.Contains(rows[1], a.pal.dim("128k · $0.08/$0.15 per M")) {
+		t.Fatalf("an unselected row's tail has to be dim:\n%q", rows[1])
 	}
 }
 

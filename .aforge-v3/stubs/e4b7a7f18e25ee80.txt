@@ -1,0 +1,42 @@
+        for octave in range(self.octaves):
+            freq = 2 ** (octave - self.octaves // 2)
+            for a in range(self.angles):
+                theta = a * np.pi / self.angles
+                ker = _gabor_kernel(11, freq, theta, 2.0)
+                # weight by how aligned the kernel is with local structure
+                align = np.abs(np.cos(ang - theta))
+                resp = _convolve(colored, ker)
+                tex += align * resp * freq ** 2  # 1/f amplitude per octave
+        tex = tex / (tex.std() + 1e-9)
+        # modulate texture by shape's local energy: feathers where edges are
+        mod = 1.0 + strength * (energy / (energy.max() + 1e-9))
+        return shape + tex * mod * 0.35
+
+
+def make_bird_mask(h: int = 128, w: int = 160) -> tuple[np.ndarray, np.ndarray]:
+    """A parametric bird silhouette as a boolean mask + boundary labels.
+
+    Returns (mask, boundary): mask is True inside the bird; boundary
+    carries prescribed field values (head bright, wing dark, beak dark,
+    eye bright, background dark).  The interior seeds make the harmonic
+    field vary smoothly across the body instead of being flat.
+    """
+    ys, xs = np.mgrid[0:h, 0:w]
+    # body: a tilted ellipse
+    cx, cy = w * 0.50, h * 0.58
+    a, b = w * 0.30, h * 0.24
+    theta = 0.10
+    xr = (xs - cx) * np.cos(theta) + (ys - cy) * np.sin(theta)
+    yr = -(xs - cx) * np.sin(theta) + (ys - cy) * np.cos(theta)
+    body = (xr / a) ** 2 + (yr / b) ** 2 <= 1.0
+
+    # head: a circle at the front-top
+    hx, hy, hr = w * 0.80, h * 0.30, h * 0.14
+    head = (xs - hx) ** 2 + (ys - hy) ** 2 <= hr ** 2
+
+    # beak: a wedge pointing right
+    bx, by = w * 0.90, h * 0.29
+    beak = (xs >= bx) & (ys >= by - h * 0.025) & (ys <= by + h * 0.05)
+
+
+[47 more lines in file. Use offset=170 to continue.]
