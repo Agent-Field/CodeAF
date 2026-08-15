@@ -62,6 +62,12 @@ const (
 	EventTurnDone
 	// EventError ends the turn abnormally; Err says why.
 	EventError
+	// EventCompacting says a compaction pass has started — the cut is made
+	// and the summarizer is running, which is seconds a surface should show
+	// as work, not silence. Hint sizes the pass ("compacting ~84k tokens").
+	// EventCompacted always follows it, success or failure: on failure the
+	// pass changed nothing and the turn keeps going.
+	EventCompacting
 	// EventCompacted marks a compaction pass; Hint summarizes
 	// ("compacted from ~84k tokens, kept last ~20k").
 	EventCompacted
@@ -91,6 +97,28 @@ const (
 	// at most once per session — after the first completed turn, when the
 	// session had no name yet.
 	EventTitleChanged
+	// EventToolAnnounced says one tool call has finished ARRIVING — the model
+	// has sent the whole instruction — while the response it rides on is still
+	// streaming. It carries the same Tool, Hint and Args EventToolBegin will,
+	// and no Output: nothing has run.
+	//
+	// EventTaskProposal asks the person whether one groomed piece of work may
+	// become a task node (task.go). It carries the proposal in Task: title,
+	// the two-or-three-line summary, the full brief, and the auto-approve
+	// deadline.
+	//
+	// It is a QUESTION with a CLOCK, not a report: the propose_task call is
+	// blocked until [Agent.ResolveTask] answers it or the deadline passes, and
+	// the deadline passing means APPROVED — the surface is the person's chance
+	// to redirect, never a gate the work waits on forever. A surface with no
+	// answer box for this kind still works: the countdown approves.
+	EventTaskProposal
+	// EventTaskUpdate reports one task node's progress (task.go): Task carries
+	// the state (running, done, failed), the elapsed time, and on completion
+	// the report, the changed files, and the merge outcome. It is a report,
+	// never a question; the first update (running) arrives as the proposal
+	// resolves.
+	EventTaskUpdate
 	// EventToolAnnounced says one tool call has finished ARRIVING — the model
 	// has sent the whole instruction — while the response it rides on is still
 	// streaming. It carries the same Tool, Hint and Args EventToolBegin will,
@@ -161,6 +189,11 @@ type Event struct {
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind.
 	ID uint64
+
+	// Task carries one EventTaskProposal or EventTaskUpdate's payload
+	// (task_contract.go). It is nil on every other kind, and the ID inside it
+	// is the token a surface hands back to [Agent.ResolveTask].
+	Task *TaskNotice
 
 	// Rule is the approval policy's own phrasing of why a call is being asked
 	// about — `bash pattern "rm -rf *"`, `tool "edit"`, `default`. It is set on
