@@ -1,0 +1,17 @@
+# Distribution image for embedding the AForge CLI in AgentField products.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /src
+COPY go.mod go.sum ./
+COPY internal/tui/charmbubbles ./internal/tui/charmbubbles
+RUN go mod download
+COPY . ./
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/aforge ./cmd/aforge
+
+FROM scratch
+COPY --from=builder /out/aforge /aforge
+ENTRYPOINT ["/aforge"]
