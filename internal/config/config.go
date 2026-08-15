@@ -37,8 +37,11 @@ const (
 	// values (HTTP-Referer and X-Title). They mirror the agentfield SDK's
 	// attribution defaults so every AgentField product reports usage under
 	// the same app on the OpenRouter dashboard.
-	DefaultSiteURL  = "https://agentfield.ai"
+	DefaultSiteURL  = "https://agentfield.ai/"
 	DefaultSiteName = "AgentField AI"
+	// Preserve the names exposed by master before the chat-v2 rollout.
+	OpenRouterAppURL  = DefaultSiteURL
+	OpenRouterAppName = DefaultSiteName
 
 	// DefaultDocumentEngine walks the deliberate local -> free -> rail-gated
 	// OCR ladder. The other accepted values pin one rung and never fall through.
