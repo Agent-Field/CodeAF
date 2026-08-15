@@ -432,8 +432,14 @@ func TestTheCDPrefixIsDimAndTheCommandIsInk(t *testing.T) {
 	if !strings.Contains(line, a.pal.dim("cd internal/session && ")) {
 		t.Fatalf("the cd prefix is not dim: %q", line)
 	}
-	if !strings.Contains(line, a.pal.ink("go test ./...")) {
-		t.Fatalf("the command is not ink: %q", line)
+	// The substance after the prefix is no longer ONE ink run: the shell lexer
+	// paints it in its own tiers (shellx.go), and the hierarchy this test is
+	// about is unchanged — the prefix recedes whole, the work does not.
+	if !strings.Contains(line, a.pal.shell("go test ./...")) {
+		t.Fatalf("the command is not highlighted: %q", line)
+	}
+	if !strings.Contains(line, a.pal.accent("go")) {
+		t.Fatalf("the command's verb is not the accent: %q", line)
 	}
 
 	// Conservative: only that shape. A cd with no `&&`, and a chain that does
@@ -683,14 +689,20 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 	})
 	a.width, a.height = 90, 20
 	a.pal = newPalette(tokens.ANSI256, false)
+	// This conversation is empty, so the welcome box is up (welcome.go) and it
+	// names the model on purpose. It is not what this test is about, and the
+	// "nothing above the conversation says this" check below is about the top
+	// bar that used to be there — so the box is dismissed the way a keystroke
+	// would dismiss it.
+	a.dismissWelcome()
 	a.title = "porting the parser"
 	a.cost = 0.14
-	a.ctxBytes = 4000
+	a.ctxTokens = 1000
 	a.touch()
 
 	lines := strings.Split(plain(frame(a)), "\n")
 	last := lines[len(lines)-1]
-	for _, want := range []string{"porting the parser", "openai/gpt-4.1-mini", "$0.14", "10% ctx", "idle", "/help · ctrl+o"} {
+	for _, want := range []string{"porting the parser", "openai/gpt-4.1-mini", "$0.14", "1k/10k · 10%", "idle", "/help · ctrl+o"} {
 		if !strings.Contains(last, want) {
 			t.Fatalf("the status line is missing %q:\n%q", want, last)
 		}

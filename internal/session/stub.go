@@ -1,0 +1,183 @@
+package session
+
+// Tool-output stubs: the old, heavy results in the LIVE context are replaced by
+// a line saying how big they were and where the bytes are.
+//
+// The problem is specific and it is not compaction's. A session reads a 200KB
+// file on its first turn and re-sends those 200KB on every request of every turn
+// afterwards, for hours, to answer questions that have nothing to do with it.
+// Compaction eventually summarizes the whole prefix away — lossily, and only
+// once the window is nearly full. This is the cheaper move made much earlier:
+// the result the model has already used is turned into a pointer to itself.
+//
+// ── STUB, DON'T DELETE ──
+//
+// The full bytes are written to .aforge-v3/stubs/<hash>.txt in the workspace
+// BEFORE the message is replaced, and the stub line names that path. A model
+// told where the bytes live can read them back with the tool it already has, so
+// a stub costs a call when the old output turns out to matter and costs nothing
+// the rest of the time. Deleting the text instead would be the one version of
+// this that loses work.
+//
+// ── THE JOURNAL IS NEVER STUBBED ──
+//
+// Only a.messages — the live context — is rewritten. The session file keeps the
+// result it recorded, whole, because the journal is the RECORD: it is what a
+// resume replays, what a person reads back tomorrow, and what a surface expands
+// a tool row from. A record that quietly shrank the day after it was written
+// would be a different kind of file than the one this session promises.
+//
+// ── AND THE ESTIMATE FOLLOWS FOR FREE ──
+//
+// messageBytes (loop.go) counts the text that is actually in the transcript, so
+// a stubbed result weighs its stub line the moment it is replaced. The
+// compaction estimate, the threshold check and the surface's context meter all
+// read that same figure — nothing here has to tell them anything, and the
+// pressure that would have fired a compaction pass is simply gone.
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+)
+
+const (
+	// stubKeepTurns is how many turns of results stay verbatim. Four is "what
+	// the model is working on now": the file it just read, the build it just
+	// ran, the error it is chasing, and one more for the thing before that.
+	stubKeepTurns = 4
+
+	// stubMinBytes is the floor. Below it a stub line is not much smaller than
+	// the result it replaces, and replacing a short result would cost a read to
+	// recover something the model could simply have kept.
+	stubMinBytes = 1500
+
+	// stubDirName is where the bytes go, under the workspace for the reason the
+	// job logs are (jobs.go): the read tool reaches it with a relative path, and
+	// a person can find it after the session is over.
+	stubDirName = ".aforge-v3/stubs"
+
+	// stubMarker opens every stub line and is how an already-stubbed message is
+	// recognized, so a second pass never stubs a stub.
+	stubMarker = "[output stubbed"
+)
+
+// stubOldOutputs replaces the heavy tool results of older turns with pointers to
+// their own bytes. It is called at the end of a COMPLETED turn, before the
+// compaction check, so the check sees the transcript as it will actually be
+// sent.
+//
+// A turn that was interrupted or that failed is left alone, and nothing is lost
+// by that: the pass is idempotent and the next completed turn catches up. The
+// reason is the moment rather than the mechanism — an interrupted turn is one
+// the person is about to read, rewind or retry, and rewriting their context
+// underneath them on the way out is work done at the one moment nobody asked for
+// any.
+//
+// Everything it cannot do, it declines silently and completely: a session with
+// no workspace, a directory it cannot write, a result it cannot file. A stub
+// whose bytes did not reach disk is never written, because the one thing this
+// must never do is turn a result into a path to nothing.
+//
+// The whole pass runs under a.mu, including the file writes. It is a lock held
+// across I/O, which this package otherwise refuses to do — the exception is
+// deliberate and bounded: the alternative is to release the lock between reading
+// the messages and replacing them, and a compaction pass entering that window
+// rebuilds the slice, so the indices would then name different messages. The
+// writes are a few hundred kilobytes to a local file at the quietest moment of
+// the turn, after the model has answered and before the next question exists.
+func (a *Agent) stubOldOutputs() {
+	workspace := strings.TrimSpace(a.config.Workspace)
+	if workspace == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	cut := stubCut(a.messages)
+	// index 0 is the system message and is not a tool result; starting at 1 says
+	// so out loud rather than relying on the role check below.
+	for index := 1; index < cut; index++ {
+		message := a.messages[index]
+		if message.Role != "tool" {
+			continue
+		}
+		text := messageContentText(message)
+		if len(text) <= stubMinBytes || strings.HasPrefix(strings.TrimSpace(text), stubMarker) {
+			continue
+		}
+		path, err := writeStub(workspace, text)
+		if err != nil {
+			continue
+		}
+		// A NEW content slice, never a write into the old one: a request already
+		// in flight holds a shallow copy of this message (see [Agent.snapshot]),
+		// and mutating the parts underneath it would edit a request the provider
+		// is reading.
+		a.messages[index] = ai.Message{
+			Role:       message.Role,
+			ToolCallID: message.ToolCallID,
+			Content:    []ai.ContentPart{{Type: "text", Text: stubLine(len(text), path)}},
+		}
+	}
+}
+
+// stubCut is the index the last [stubKeepTurns] turns start at: everything
+// before it is old enough to stub, everything from it on is the recent work.
+//
+// A turn starts at a user message, so the boundary is the Nth user message from
+// the end. Zero — do nothing — is the answer for a conversation that has not had
+// that many turns yet.
+//
+// The count is of USER MESSAGES rather than of turns proper, which means a
+// steering line or a nudge note (looped.go) counts as a turn boundary. That errs
+// toward keeping MORE verbatim, which is the harmless direction: the worst case
+// is a heavy result that stays in context a turn or two longer than it had to.
+func stubCut(messages []ai.Message) int {
+	turns := 0
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index].Role != "user" {
+			continue
+		}
+		turns++
+		if turns == stubKeepTurns {
+			return index
+		}
+	}
+	return 0
+}
+
+// writeStub files one result's bytes and returns the path to name in the stub,
+// relative to the workspace so the read tool can open it as the model sees it.
+//
+// The name is the content's own digest, which makes the write idempotent: the
+// same result stubbed twice — a re-read of the same file, a resumed session
+// stubbing again — is one file on disk, and a file that is already there is left
+// exactly as it is rather than rewritten.
+func writeStub(workspace, text string) (string, error) {
+	digest := sha256.Sum256([]byte(text))
+	relative := filepath.Join(stubDirName, hex.EncodeToString(digest[:8])+".txt")
+	full := filepath.Join(workspace, relative)
+	if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+		return "", err
+	}
+	if info, err := os.Stat(full); err == nil && info.Size() == int64(len(text)) {
+		return filepath.ToSlash(relative), nil
+	}
+	if err := os.WriteFile(full, []byte(text), 0o600); err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(relative), nil
+}
+
+// stubLine is what the model reads in place of the result. The byte count is
+// explicit for the reason [capOutput]'s is: a model deciding whether to read the
+// file back needs to know whether it is missing a paragraph or a megabyte.
+func stubLine(size int, path string) string {
+	return fmt.Sprintf("%s — %d bytes · full output: %s]", stubMarker, size, path)
+}

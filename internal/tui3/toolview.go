@@ -89,9 +89,9 @@ func (a *app) clusterRows(out []row, from, to, width int) []row {
 	start := from
 	if to-from > toolWindow && !a.unfolded[turn] {
 		start = to - toolWindow
-		fold := a.pal.dim(glyphTool + foldWord(start-from))
+		fold := a.pal.dim(a.pal.toolGlyph() + foldWord(start-from))
 		if a.hoveringFold(turn) {
-			fold = a.pal.accent(glyphTool) + a.pal.dim(foldWord(start-from))
+			fold = a.pal.accent(a.pal.toolGlyph()) + a.pal.dim(foldWord(start-from))
 		}
 		out = append(out, row{text: fold, entry: -1, hit: hitFold, turn: turn})
 	}
@@ -117,7 +117,11 @@ func foldWord(n int) string {
 // the line it hangs under: one lifts the cap, the other closes the call.
 func (a *app) toolRows(i int, last bool, width int) []row {
 	e := &a.entries[i]
-	out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hitTool}}
+	hit := hitTool
+	if replayInert(e) {
+		hit = hitNone
+	}
+	out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hit}}
 	stem := a.pal.railCont()
 	room := width - ansi.StringWidth(stem)
 
@@ -268,25 +272,40 @@ func plainMark(mark, elapsed string) string {
 func (a *app) mark(e *entry) string {
 	switch e.status {
 	case toolFailed:
-		return a.pal.bad(glyphBad)
+		return a.pal.bad(a.pal.badGlyph())
 	case toolOK:
 		return ""
 	case toolQueued:
 		// ASKED FOR, NOT STARTED. An empty circle, dim: the row exists because
 		// the model has finished asking, and a spinner here would be the surface
 		// animating work that has not begun.
-		return a.pal.dim(glyphQueued)
+		return a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII))
 	case toolConsent:
-		return a.pal.askBold(glyphAsk)
+		return a.pal.askBold(glyphAsk) // "?" is already the ASCII of itself
 	default:
 		if a.state != stateWorking {
 			// The turn ended with this call unresolved — interrupted, or the
 			// stream closed without a close event. A spinner frozen mid-turn
 			// would claim the call is still alive.
-			return a.pal.dim(glyphIdle)
+			return a.pal.dim(a.linearMark(glyphIdle, glyphIdleASCII))
+		}
+		// THE ONE ANIMATION ON A TOOL LINE, and linear mode's whole objection to
+		// it: a spinner is a claim made thirty times a second, and a surface being
+		// read aloud hears that claim thirty times a second. A still `*` makes the
+		// same claim once.
+		if a.linear {
+			return a.pal.muted(glyphRunASCII)
 		}
 		return a.pal.muted(tokens.Spinner(a.paints / spinnerStep))
 	}
+}
+
+// linearMark picks between a glyph and its ASCII stand-in (styles.go).
+func (a *app) linearMark(glyph, ascii string) string {
+	if a.linear {
+		return ascii
+	}
+	return glyph
 }
 
 // elapsedFloor is how long a call has to have taken to be worth a number.
@@ -368,10 +387,20 @@ func (a *app) paintTarget(e *entry, target string) string {
 	}
 	switch e.tool {
 	case "bash":
+		// THE GLOSS IS HIGHLIGHTED TOO (shellx.go). One line, clipped exactly as
+		// it was before — the highlighting is applied to the FITTED text, after
+		// every width in this function has been measured, because a width
+		// measured through an escape sequence is a width measured wrong.
+		//
+		// The cd prefix keeps its own rule ahead of the lexer, and the two do not
+		// disagree: the lexer would paint `cd` as a command and `/tmp` as a path,
+		// which is true, and the parameter hierarchy says that whole clause is
+		// CONTEXT rather than substance. Context recedes; the work is what the
+		// eye should land on.
 		if context, command, found := cutCDPrefix(target); found {
-			return a.pal.dim(context) + a.pal.ink(command)
+			return a.pal.dim(context) + a.pal.shell(command)
 		}
-		return a.pal.ink(target)
+		return a.pal.shell(target)
 
 	case "grep", "find":
 		// The pattern leads and the place follows it. Accent rather than ink
@@ -493,7 +522,16 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		if head, body, more := a.previewBody(e, width); head != "" {
 			return append([]string{head}, body...), more
 		}
-		return []string{a.pal.dim(liveWord(e) + ellipsisFrames[(a.paints/pulseStep)%len(ellipsisFrames)])}, 0
+		// A COMMAND IS READABLE BEFORE IT FINISHES, and a running one is when a
+		// person most wants to read it — that is what they opened the row for. It
+		// is drawn here rather than in [app.previewBody] on purpose: this branch
+		// answers a row somebody CLICKED, and the preview answers a row nobody
+		// did, where a command that unfolded itself under every bash call would
+		// be the surface taking the screen.
+		if command := a.commandRows(e, width); len(command) > 0 {
+			return append(command, a.pal.dim(liveWord(e)+a.pulse())), 0
+		}
+		return []string{a.pal.dim(liveWord(e) + a.pulse())}, 0
 	}
 
 	switch e.tool {
@@ -505,7 +543,28 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 	case "read":
 		return a.cap(e, a.plainRows(resultText(e.detail.Output), width), readWindow)
 	case "bash":
-		return a.cap(e, a.bashRows(e, width), bashWindow)
+		// THE COMMAND IS NOT CAPPED, AND THE OUTPUT IS.
+		//
+		// A person clicks a bash row to read the command — that is the one thing
+		// on the line that was clipped — so the command is shown whole, every
+		// line of it, above the cap rather than inside it. Capping it would mean
+		// a forty-line script whose tail was hidden behind a "… N more lines"
+		// foot that a click would then answer with forty lines of OUTPUT.
+		//
+		// The window still governs the output, which is the part that can be a
+		// megabyte, and the "… N more" foot still lifts it.
+		head, said := a.commandRows(e, width), a.bashRows(e, width)
+		if len(head) == 0 {
+			return a.cap(e, said, bashWindow)
+		}
+		if len(said) == 0 {
+			// A command that printed nothing has already said everything it has to
+			// say; the em dash [app.cap] draws for an empty expansion would be the
+			// surface answering a command with a shrug.
+			return head, 0
+		}
+		body, more := a.cap(e, said, bashWindow)
+		return append(head, body...), more
 	case "grep", "find", "ls":
 		return a.cap(e, a.plainRows(resultText(e.detail.Output), width), listWindow)
 	}
@@ -568,6 +627,22 @@ func (a *app) diffRows(e *entry, width int) []string {
 		}
 	}
 	return out
+}
+
+// commandRows is the command itself, whole and highlighted, at the head of an
+// open bash expansion (shellx.go). It reads the ARGUMENTS rather than the line's
+// own target, because the target has already been through [fit] and the whole
+// promise of this block is that nothing was cut.
+//
+// It answers nothing for a call whose payload never arrived — a begin with no
+// args, which is what a provider that does not stream tool calls sends — and
+// then the expansion is the output alone, exactly as it was.
+func (a *app) commandRows(e *entry, width int) []string {
+	command := argString(argsOf(e.detail.Args), "command")
+	if strings.TrimSpace(command) == "" {
+		return nil
+	}
+	return shellRows(a.pal, command, width)
 }
 
 // bashRows is a command's output, with its exit line kept at the foot when

@@ -24,12 +24,18 @@ import (
 // the person can read beats state only the model can see, and work big enough
 // to decompose belongs to the workforce, not to a session-local list.
 //
-// Four entries are the session's own rather than bare's: bash is WRAPPED (not
+// The rest are the session's own rather than bare's: bash is WRAPPED (not
 // replaced) so it can start a background job, jobs is added beside it to look
-// at what was started, and note and forget carry the session's durable memory
-// (memory.go) when there is a file to keep it in. bare is untouched — a
-// subharness leaf gets pi's bash exactly as before, and the session gets pi's
-// bash plus one argument.
+// at what was started, note and forget carry the session's durable memory
+// (memory.go) when there is a file to keep it in, and web_search and web_fetch
+// reach outside the machine (tools_search.go) when a back end was wired, and
+// generate_image paints (tools_image.go) when an image model was. bare
+// is untouched — a subharness leaf gets pi's bash exactly as before, and the
+// session gets pi's bash plus one argument.
+//
+// The last three groups are CONDITIONAL, and each says why at its own source: a
+// belt is what the model has been promised, so a tool with nothing behind it is
+// left off rather than added and made to refuse.
 func (a *Agent) belt() []bare.Tool {
 	tools := bare.AllTools(a.config.Workspace)
 	for index, tool := range tools {
@@ -38,7 +44,9 @@ func (a *Agent) belt() []bare.Tool {
 		}
 	}
 	tools = append(tools, a.jobsTool())
-	return append(tools, a.memoryTools()...)
+	tools = append(tools, a.memoryTools()...)
+	tools = append(tools, a.searchTools()...)
+	return append(tools, a.imageTools()...)
 }
 
 // ── bash, wrapped ───────────────────────────────────────────────────────────

@@ -28,10 +28,13 @@
 //	palette.go  the model picker, and the overlay grammar all three lists share
 //	commands.go the command list: what "/" opens
 //	files.go    the file completion: what "@" opens
+//	attach.go   the attachment tray: pictures on their way into a message
 //	recall.go   the up arrow: input history, and the draft it holds for you
 //	draft.go    the unsent sentence, kept per directory between sessions
 //	replay.go   a resumed session, drawn
 //	models.go   where the model list comes from, and never from the network
+//	settings.go the settings panel: tabs over internal/config's own registry
+//	welcome.go  the box an empty session opens with, and the sessions in it
 package tui3
 
 import (
@@ -40,6 +43,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -50,6 +54,12 @@ type Agent interface {
 	// Submit runs one turn and streams its events. Submitting while a turn is
 	// in flight steers that turn rather than starting a second one.
 	Submit(ctx context.Context, text string) (<-chan session.Event, error)
+	// SubmitImage is Submit with pictures: one user message carrying the text
+	// and the images, and then a normal turn. It refuses — with an error and no
+	// stream — when the model in use cannot see (session.Config.SupportsImages,
+	// wired in cmd/aforge) or when the images are too large, which is why the
+	// surface keeps the attachment tray until this has answered (attach.go).
+	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
 	// Interrupt cancels the in-flight turn, keeping its partial reply.
 	Interrupt()
 	// Compact runs a compaction pass now.
@@ -64,6 +74,19 @@ type Agent interface {
 	// compaction fires against the right window after a switch. Zero and
 	// negative mean "nobody knows", and the session keeps what it had.
 	SetContextWindow(tokens int)
+	// ReasoningFor is how hard one model is asked to think — "", "low",
+	// "medium" or "high" — for any model id, not only the one in use.
+	//
+	// The pair is per-model rather than per-session because the picker sets a
+	// level on the row under the cursor, which is usually not the model running:
+	// dialling a model up and then deciding not to switch to it is a normal thing
+	// to do in a list, and the level is waiting when the switch finally happens.
+	// The session holds the map, so it survives the overlay closing and /new
+	// starts empty (internal/session's agent.go).
+	ReasoningFor(model string) string
+	// SetReasoningFor sets it. An empty level is off, which is "send nothing
+	// and let the model use its own default".
+	SetReasoningFor(model, level string)
 	// FollowUp queues a message to be asked AFTER the current turn ends and
 	// returns the channel that turn will stream on. It is ctrl+q, and it is the
 	// other half of steering: a plain Enter mid-turn lands INSIDE the running
@@ -81,6 +104,16 @@ type Agent interface {
 	Title() string
 	// Usage is the session's running total.
 	Usage() session.Usage
+	// ContextTokens is what the conversation weighs right now, in tokens: the
+	// provider's own count of the last request when there has been one, and an
+	// estimate of the transcript when it has grown since.
+	//
+	// It replaced a byte count this surface took over the display transcript,
+	// which could only see words anybody said. The system prompt, the tool
+	// schemas, every tool result and every call's arguments were invisible to
+	// it — the majority of a working session's context — so the meter read a
+	// few percent on a conversation the session was about to compact.
+	ContextTokens() int
 	// Transcript is the conversation so far, oldest first, shaped for display.
 	// The surface reads it twice: once at construction, to draw a resumed
 	// session instead of opening on an empty screen, and once per settled turn,
@@ -138,6 +171,45 @@ type Options struct {
 	// a question with a spinner. Nil, or an empty answer, falls through to
 	// ~/.aforge/v3/models.json and then to [BuiltinModels] (see models.go).
 	Models func() []Model
+
+	// ProfileDir is the profile the settings panel reads and writes — the same
+	// directory internal/config resolves every other row out of. Empty is the
+	// default profile (~/.aforge), which is what the door passes when it has
+	// not been told otherwise.
+	ProfileDir string
+
+	// Settings is the registry the panel edits, for a door that can wire the
+	// live seams the registry asks for (the model slots, the divider, today's
+	// spend). Nil builds one here over [Options.ProfileDir] with the two seams
+	// this surface can answer honestly — see settings.go.
+	Settings *config.Settings
+
+	// RecentSessions answers the welcome box's right column: this directory's
+	// last conversations, most recent first. It is called ONCE, as the surface
+	// opens, and only when the conversation is empty — a box that is about to
+	// be dismissed by the first keystroke must not cost a directory walk on
+	// every session. Nil draws "no recent sessions".
+	RecentSessions func() []Session
+
+	// Resume opens one of them, by transcript path, and hands back the agent
+	// for it. The surface closes the agent it was holding first. Nil makes the
+	// welcome box's rows report that resuming is unavailable rather than
+	// silently doing nothing.
+	Resume func(file string) (Agent, error)
+
+	// Linear is the SCREEN-READER TIER: one column, no animation, no hover,
+	// ASCII markers instead of the pastel glyph set. Everything the surface says
+	// it still says — the difference is that it says all of it in words and
+	// characters a reader can announce, and nothing on the screen changes unless
+	// something actually happened.
+	//
+	// THE SEAM: there is no cmd flag for this yet. The door (cmd/aforge) owns
+	// flags and this package owns rendering, so the field lands first and the
+	// `--linear` that sets it lands with the door's next wave — one line there,
+	// nothing here. A settings row is the other candidate and is the wrong one:
+	// this is a property of the SESSION a person is opening (piping to a reader,
+	// running under a braille display), not of the profile they keep.
+	Linear bool
 
 	// Input and Output exist so the surface can be booted without a terminal.
 	Input  io.Reader

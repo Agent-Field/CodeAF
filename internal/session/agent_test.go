@@ -18,6 +18,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -646,9 +647,7 @@ func TestConcurrentSteeringSubmitsAllStream(t *testing.T) {
 
 	// Both texts are queued as steering; the turn ended before a second step,
 	// so they wait in the transcript for the next one.
-	agent.mu.Lock()
-	pending := append([]string(nil), agent.steering...)
-	agent.mu.Unlock()
+	pending := steeringQueue(agent)
 	transcript := strings.Join(pending, "|")
 	agent.mu.Lock()
 	for _, message := range agent.messages {
@@ -912,7 +911,7 @@ func TestRetryDoesNotConcatenatePartialAttempts(t *testing.T) {
 		}
 	}()
 
-	if _, err := agent.completeWithRetry(ctx, "test/model", partial, &warmBatch{}); err == nil {
+	if _, err := agent.completeWithRetry(ctx, "test/model", provider.EffortNone, partial, &warmBatch{}); err == nil {
 		t.Fatal("completeWithRetry returned no error after the cancel")
 	}
 	if got := partial.take(); got != "second attempt" {
@@ -1973,5 +1972,630 @@ func TestACallIsAnnouncedOnlyOnce(t *testing.T) {
 	}
 	if announcements != 1 {
 		t.Fatalf("the call was announced %d times, want 1", announcements)
+	}
+}
+
+// ── the web hands ───────────────────────────────────────────────────────────
+
+// scriptedSearch is a back end with no network: it records what it was asked
+// and answers what the test told it to.
+type scriptedSearch struct {
+	mu      sync.Mutex
+	queries []string
+	limits  []int
+	results []search.Result
+	err     error
+}
+
+func (*scriptedSearch) Name() string { return "scripted" }
+
+func (s *scriptedSearch) Search(_ context.Context, query string, limit int) ([]search.Result, error) {
+	s.mu.Lock()
+	s.queries = append(s.queries, query)
+	s.limits = append(s.limits, limit)
+	s.mu.Unlock()
+	return s.results, s.err
+}
+
+func (s *scriptedSearch) asked() (string, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.queries) == 0 {
+		return "", 0
+	}
+	return s.queries[len(s.queries)-1], s.limits[len(s.limits)-1]
+}
+
+type scriptedFetch struct {
+	mu   sync.Mutex
+	urls []string
+	text string
+	err  error
+}
+
+func (*scriptedFetch) Name() string { return "scripted-fetch" }
+
+func (f *scriptedFetch) Fetch(_ context.Context, url string) (string, error) {
+	f.mu.Lock()
+	f.urls = append(f.urls, url)
+	f.mu.Unlock()
+	return f.text, f.err
+}
+
+func (f *scriptedFetch) fetched() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.urls...)
+}
+
+func beltNames(a *Agent) []string {
+	out := make([]string, len(a.tools))
+	for i, tool := range a.tools {
+		out[i] = tool.Name
+	}
+	return out
+}
+
+func hasTool(a *Agent, name string) bool {
+	for _, tool := range a.tools {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// A model must never be told about a hand it does not have: with no pair wired
+// the two web tools are absent from the belt and from the wire, and with a pair
+// they are both there.
+func TestTheWebToolsAreOnTheBeltOnlyWhenABackEndIs(t *testing.T) {
+	unwired, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if hasTool(unwired, "web_search") || hasTool(unwired, "web_fetch") {
+		t.Fatalf("an unwired session carries the web tools: %v", beltNames(unwired))
+	}
+	for _, definition := range unwired.definitions {
+		if strings.HasPrefix(definition.Function.Name, "web_") {
+			t.Fatalf("the wire carries %q with nothing behind it", definition.Function.Name)
+		}
+	}
+
+	wired, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SearchProvider = &scriptedSearch{}
+		c.SearchFetcher = &scriptedFetch{}
+	})
+	if !hasTool(wired, "web_search") || !hasTool(wired, "web_fetch") {
+		t.Fatalf("a wired session is missing the web tools: %v", beltNames(wired))
+	}
+
+	// The halves resolve independently (search.Resolve returns two), so a
+	// binary that can fetch but not search gets exactly the one tool it can
+	// honour rather than both or neither.
+	half, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SearchFetcher = &scriptedFetch{}
+	})
+	if hasTool(half, "web_search") || !hasTool(half, "web_fetch") {
+		t.Fatalf("a fetch-only session's belt = %v", beltNames(half))
+	}
+}
+
+// The whole round through a real turn: the model calls web_search, the back end
+// answers, the rendered results land in the transcript as the tool result, and
+// the model reads them.
+func TestWebSearchRunsThroughATurnAndItsResultsReachTheTranscript(t *testing.T) {
+	backEnd := &scriptedSearch{results: []search.Result{
+		{Title: "Go 1.24 release notes", URL: "https://go.dev/doc/go1.24", Snippet: "what changed"},
+		{Title: "Go 1.23 release notes", URL: "https://go.dev/doc/go1.23", Snippet: "what changed before"},
+	}}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "web_search", `{"query":"go 1.24 release notes","count":2}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("Go 1.24 is out."), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(c *Config) { c.SearchProvider = backEnd })
+
+	collected := collect(t, mustSubmit(t, agent, "what is new in go?"))
+
+	if query, limit := backEnd.asked(); query != "go 1.24 release notes" || limit != 2 {
+		t.Fatalf("the back end was asked %q/%d, want the model's query and count", query, limit)
+	}
+	if got, want := transcriptRoles(agent), []string{"system", "user", "assistant", "tool", "assistant"}; !equalStrings(got, want) {
+		t.Fatalf("transcript roles = %v, want %v", got, want)
+	}
+	agent.mu.Lock()
+	result := messageText(agent.messages[3])
+	agent.mu.Unlock()
+	if !strings.Contains(result, "https://go.dev/doc/go1.24") || !strings.Contains(result, "2 results") {
+		t.Fatalf("the tool result is not the rendered list: %q", result)
+	}
+
+	var begin *Event
+	for i := range collected {
+		switch collected[i].Kind {
+		case EventToolBegin:
+			begin = &collected[i]
+		case EventToolFailed:
+			t.Fatalf("the search failed: %s", collected[i].Hint)
+		}
+	}
+	// What the person watching reads is the sentence that was searched.
+	if begin == nil || begin.Tool != "web_search" || begin.Hint != "web_search go 1.24 release notes" {
+		t.Fatalf("tool begin = %+v, want the query as its gloss", begin)
+	}
+}
+
+// A fetch runs the same way, and a back end that fails does so as a TOOL error
+// the model can read — never as a failed turn.
+func TestWebFetchReturnsThePageAndAFailureStaysInsideTheToolResult(t *testing.T) {
+	fetcher := &scriptedFetch{text: "  # Go 1.24\n\nIt is out.  "}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "web_fetch", `{"url":"https://go.dev/doc/go1.24"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("read it"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(c *Config) { c.SearchFetcher = fetcher })
+
+	collect(t, mustSubmit(t, agent, "read the release notes"))
+	if got := fetcher.fetched(); len(got) != 1 || got[0] != "https://go.dev/doc/go1.24" {
+		t.Fatalf("the fetcher saw %v, want the model's url", got)
+	}
+	agent.mu.Lock()
+	result := messageText(agent.messages[3])
+	agent.mu.Unlock()
+	if result != "# Go 1.24\n\nIt is out." {
+		t.Fatalf("the tool result = %q, want the trimmed page", result)
+	}
+
+	// The failure path, straight at the tool: an unreachable back end is
+	// something the model works around, not something that ends the turn.
+	broken, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) {
+		c.SearchProvider = &scriptedSearch{err: errors.New("dial tcp: no route to host")}
+		c.SearchFetcher = &scriptedFetch{err: errors.New("404 not found")}
+	})
+	for _, call := range []struct {
+		tool string
+		args string
+		want string
+	}{
+		{"web_search", `{"query":"anything"}`, "no route to host"},
+		{"web_fetch", `{"url":"https://example.com"}`, "404 not found"},
+		{"web_search", `{"query":"   "}`, "query is required"},
+		{"web_fetch", `{"url":""}`, "url is required"},
+		{"web_search", `{"query":`, "Invalid arguments"},
+	} {
+		tool := beltTool(t, broken, call.tool)
+		text, isError, err := tool.Execute(context.Background(), json.RawMessage(call.args))
+		if err != nil {
+			t.Fatalf("%s returned a Go error: %v", call.tool, err)
+		}
+		if !isError {
+			t.Fatalf("%s(%s) was not reported as an error result: %q", call.tool, call.args, text)
+		}
+		if !strings.Contains(text, call.want) {
+			t.Fatalf("%s(%s) = %q, want it to carry %q", call.tool, call.args, text, call.want)
+		}
+	}
+}
+
+// The count the model may ask for is bounded at both ends, silently: a call
+// that did the sensible thing beats a round trip spent arguing about a number.
+func TestTheSearchCountIsClampedRatherThanRefused(t *testing.T) {
+	backEnd := &scriptedSearch{}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SearchProvider = backEnd })
+	tool := beltTool(t, agent, "web_search")
+
+	for _, call := range []struct {
+		args string
+		want int
+	}{
+		{`{"query":"q"}`, searchDefaultCount},
+		{`{"query":"q","count":0}`, searchDefaultCount},
+		{`{"query":"q","count":-3}`, searchDefaultCount},
+		{`{"query":"q","count":3}`, 3},
+		{`{"query":"q","count":1000}`, searchMaxCount},
+	} {
+		if _, isError, err := tool.Execute(context.Background(), json.RawMessage(call.args)); err != nil || isError {
+			t.Fatalf("%s failed: %v", call.args, err)
+		}
+		if _, limit := backEnd.asked(); limit != call.want {
+			t.Fatalf("%s asked for %d results, want %d", call.args, limit, call.want)
+		}
+	}
+}
+
+// The two web rows of the gloss map: what a person reads while their agent is
+// off the machine is what it went looking for.
+func TestTheWebGlossesAreTheQueryAndTheURL(t *testing.T) {
+	for _, want := range []struct {
+		call ai.ToolCall
+		text string
+	}{
+		{ai.ToolCall{Function: ai.ToolCallFunction{
+			Name: "web_search", Arguments: `{"query":"how to vendor a go module","count":5}`,
+		}}, "web_search how to vendor a go module"},
+		{ai.ToolCall{Function: ai.ToolCallFunction{
+			Name: "web_fetch", Arguments: `{"url":"https://go.dev/ref/mod"}`,
+		}}, "web_fetch https://go.dev/ref/mod"},
+	} {
+		if got := gloss(want.call); got != want.text {
+			t.Fatalf("gloss = %q, want %q", got, want.text)
+		}
+	}
+}
+
+// ── the numbers: context, cache affinity, cache accounting ──────────────────
+
+// THE METER READS WHAT THE MODEL CARRIES, NOT WHAT THE PEOPLE SAID.
+//
+// The surface used to size its context meter from the display transcript's
+// bytes, which is the words in the conversation and nothing else. A working
+// session's context is mostly the other things: the system prompt, the tool
+// schemas, and above all the tool RESULTS — a file read is thirty times the
+// weight of the sentence that asked for it. This is the test that the exposed
+// figure sees them.
+func TestContextTokensCountsToolOutputAndTheSystemPrompt(t *testing.T) {
+	workspace := t.TempDir()
+	big := strings.Repeat(strings.Repeat("x", 39)+"\n", 200) // 8000 bytes
+	if err := os.WriteFile(filepath.Join(workspace, "big.txt"), []byte(big), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	system := strings.Repeat("S", 4000)
+
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "read", `{"path":"big.txt"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = workspace
+		config.System = system
+	})
+
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	events, err := agent.Submit(ctx, "hi")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	// What anybody SAID in this conversation is "hi" and "done" — nine bytes,
+	// two tokens, and the whole of what a transcript-counting meter could see.
+	// What the model is carrying is the 4000-byte system prompt and the
+	// 8000-byte file: 3000 tokens before anything else is counted.
+	got := agent.ContextTokens()
+	if got < 3000 {
+		t.Fatalf("ContextTokens = %d, want at least the 3000 tokens of system prompt "+
+			"and tool output alone — the tool result is invisible to it", got)
+	}
+}
+
+// The provider's own figure is the floor, and the content is what speaks for
+// everything appended since the last response.
+func TestContextTokensPrefersTheProviderFigureUntilTheContentPassesIt(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			response := textResponse("ok")
+			response.Usage = &ai.Usage{PromptTokens: 40_000, CompletionTokens: 100, TotalTokens: 40_100}
+			return response, nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	events, err := agent.Submit(ctx, "hi")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	// The transcript is three short messages; the provider says 40,100 tokens,
+	// which is the honest number for the request it actually served.
+	if got := agent.ContextTokens(); got != 40_100 {
+		t.Fatalf("ContextTokens = %d, want the provider's 40100", got)
+	}
+
+	// Now append more than that in content. The provider's figure describes a
+	// request that no longer exists, and the estimate has to take over — this is
+	// the 300KB tool result that would otherwise sit invisible until the next
+	// response corrected the figure.
+	agent.record(textMessage("user", strings.Repeat("y", 400_000)))
+	if got := agent.ContextTokens(); got < 100_000 {
+		t.Fatalf("ContextTokens = %d, want the content estimate (~140k) once it "+
+			"passed the provider's stale figure", got)
+	}
+}
+
+// AN IMAGE IS NOT FREE AND IT IS NOT ITS OWN BASE64 EITHER.
+//
+// Counting nothing made a conversation of screenshots read as a few hundred
+// tokens right up to the provider's overflow error. Counting the data URL would
+// charge a photograph two megabytes and compact the turn after it was pasted.
+func TestTheContextCountsImagePartsAtAFlatRate(t *testing.T) {
+	words := ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: "look"}}}
+	small := ai.Message{Role: "user", Content: []ai.ContentPart{
+		{Type: "text", Text: "look"},
+		{Type: "image_url", ImageURL: &ai.ImageURLData{URL: "data:image/png;base64,iVBOR"}},
+	}}
+	huge := ai.Message{Role: "user", Content: []ai.ContentPart{
+		{Type: "text", Text: "look"},
+		{Type: "image_url", ImageURL: &ai.ImageURLData{
+			URL: "data:image/png;base64," + strings.Repeat("A", 2<<20),
+		}},
+	}}
+
+	want := imagePartTokens * bytesPerToken
+	if got := messageBytes(small) - messageBytes(words); got != want {
+		t.Fatalf("an image weighed %d bytes of estimate, want the flat %d", got, want)
+	}
+	// A 2MB picture and a 27-byte one cost the same, which is the point of a
+	// flat rate: what the model is billed has nothing to do with the file size.
+	if messageBytes(huge) != messageBytes(small) {
+		t.Fatalf("the estimate followed the payload: %d vs %d",
+			messageBytes(huge), messageBytes(small))
+	}
+	// And it is visible to the estimator, not just to this arithmetic.
+	if messageBytes(small) <= messageBytes(words) {
+		t.Fatal("an image part is invisible to the context estimate")
+	}
+}
+
+// A SESSION IS A LINEAGE, AND IT SAYS SO ON EVERY REQUEST.
+//
+// internal/exec/bare deliberately sends no prompt-cache key: a leaf runs once
+// and its prefix is never asked for again. A session re-sends its whole
+// transcript on every step of every turn and picks it up again tomorrow, so it
+// pins one router instance and keeps the prefix warm. This reads the key off the
+// wire body, so a regression anywhere in the chain — agent, wrapper, context,
+// encode — fails here rather than in a bill.
+func TestTheSessionStampsItsCacheKeyOnTheWire(t *testing.T) {
+	var mu sync.Mutex
+	var keys []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body struct {
+			PromptCacheKey string `json:"prompt_cache_key"`
+		}
+		_ = json.Unmarshal(raw, &body)
+		mu.Lock()
+		keys = append(keys, body.PromptCacheKey)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"id":"x","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"}}]}`+"\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	file := filepath.Join(t.TempDir(), "session.jsonl")
+	config := Config{
+		Workspace:   t.TempDir(),
+		Model:       "vendor/model",
+		APIKey:      "test",
+		BaseURL:     server.URL,
+		SessionFile: file,
+	}
+
+	turn := func(agent *Agent, text string) {
+		t.Helper()
+		ctx, cancel := deadline(10 * time.Second)
+		defer cancel()
+		events, err := agent.Submit(ctx, text)
+		if err != nil {
+			t.Fatalf("Submit: %v", err)
+		}
+		for event := range events {
+			if event.Kind == EventError {
+				t.Fatalf("turn errored: %v", event.Err)
+			}
+		}
+	}
+
+	first, err := New(config)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	turn(first, "one")
+	// A model swap must NOT split the lineage: the transcript is the same
+	// transcript, and the key names the conversation rather than the model.
+	first.SetModel("vendor/other")
+	turn(first, "two")
+	if err := first.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Tomorrow. Same file, new process — and it has to rejoin the prefix it
+	// paid to write, which is the whole reason the key is the session id and
+	// not something the process invented.
+	resumed, err := New(config)
+	if err != nil {
+		t.Fatalf("New (resume): %v", err)
+	}
+	turn(resumed, "three")
+	if err := resumed.Close(); err != nil {
+		t.Fatalf("Close (resume): %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	// Three turns and the auxiliary calls the session made of its own accord —
+	// the name it gave itself (title.go). Those ride the lineage too, which is
+	// what asserting on every key rather than on the three turns' proves.
+	if len(keys) < 3 {
+		t.Fatalf("the server saw %d requests, want at least the 3 turns", len(keys))
+	}
+	if keys[0] == "" {
+		t.Fatal("no prompt_cache_key on the wire; the session sent bare's no-key posture")
+	}
+	if !strings.HasPrefix(keys[0], "aforge-") {
+		t.Fatalf("prompt_cache_key = %q, want the aforge- lineage shape", keys[0])
+	}
+	for index, key := range keys {
+		if key != keys[0] {
+			t.Fatalf("request %d rode key %q, want the session's one lineage %q",
+				index, key, keys[0])
+		}
+	}
+}
+
+// Two sessions are two lineages, or the router is being asked to serve two
+// unrelated growing transcripts off one instance's cache — which is the exact
+// failure WithLeafCacheKey exists to prevent (provider/hints.go).
+func TestTwoSessionsAreTwoLineages(t *testing.T) {
+	first, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = filepath.Join(t.TempDir(), "a.jsonl")
+	})
+	second, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.SessionFile = filepath.Join(t.TempDir(), "b.jsonl")
+	})
+	if first.cacheKey == "" || second.cacheKey == "" {
+		t.Fatal("a session with a file has no cache lineage")
+	}
+	if first.cacheKey == second.cacheKey {
+		t.Fatalf("two sessions share one lineage: %q", first.cacheKey)
+	}
+
+	// And a conversation with no file still has ONE key of its own, rather than
+	// falling in with every other memory-only session.
+	memory, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if memory.cacheKey == "" {
+		t.Fatal("a memory-only session sent no key at all")
+	}
+	if memory.cacheKey == first.cacheKey {
+		t.Fatal("a memory-only session joined a file-backed session's lineage")
+	}
+}
+
+// The cache figures are accounted per turn AND per session, in both dialects
+// the endpoints speak them in.
+func TestCacheTokensAccumulatePerTurnAndPerSession(t *testing.T) {
+	// Step 1 speaks Anthropic-native, step 2 the OpenAI nesting. ai.Usage
+	// reconciles the two spellings; this asserts the loop reads them through it
+	// rather than reaching for one field.
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			response := toolResponse("call-1", "ls", `{"path":"."}`)
+			response.Usage = &ai.Usage{
+				PromptTokens: 1000, CompletionTokens: 20,
+				CacheReadInputTokens: 800, CacheCreationInputTokens: 200,
+			}
+			return response, nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			response := textResponse("done")
+			response.Usage = &ai.Usage{
+				PromptTokens: 1200, CompletionTokens: 30,
+				PromptTokensDetails: &ai.PromptTokensDetails{CachedTokens: 1000},
+			}
+			return response, nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	events, err := agent.Submit(ctx, "hi")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+
+	var turn Usage
+	for _, event := range collect(t, events) {
+		if event.Kind == EventTurnDone {
+			turn = event.Usage
+		}
+	}
+	if turn.CacheRead != 1800 || turn.CacheWrite != 200 {
+		t.Fatalf("the turn read %d and wrote %d, want 1800 and 200",
+			turn.CacheRead, turn.CacheWrite)
+	}
+	session := agent.Usage()
+	if session.CacheRead != 1800 || session.CacheWrite != 200 {
+		t.Fatalf("the session read %d and wrote %d, want 1800 and 200",
+			session.CacheRead, session.CacheWrite)
+	}
+	// Nothing said and nothing counted is the one honest zero.
+	quiet, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if usage := quiet.Usage(); usage.CacheRead != 0 || usage.CacheWrite != 0 {
+		t.Fatalf("a session that has not run reported cache traffic: %+v", usage)
+	}
+}
+
+// THE TWO DIALECTS DISAGREE ABOUT A FACT, NOT A NAME. OpenAI-style endpoints
+// count cached tokens INSIDE prompt_tokens; Anthropic-native ones count them
+// BESIDE input_tokens. Nothing on the wire says which, so the shape does.
+func TestCachedShareReconcilesBothProviderDialects(t *testing.T) {
+	// OpenAI: 800 of the 1000 prompt tokens were cached. 80%, not 44%.
+	share, ok := Usage{Input: 1000, CacheRead: 800}.CachedShare()
+	if !ok || share < 0.799 || share > 0.801 {
+		t.Fatalf("subset dialect: share = %v (ok=%v), want 0.8", share, ok)
+	}
+	// Anthropic: 200 fresh input tokens beside 800 read from cache. 80%, not
+	// 400%.
+	share, ok = Usage{Input: 200, CacheRead: 800}.CachedShare()
+	if !ok || share < 0.799 || share > 0.801 {
+		t.Fatalf("disjoint dialect: share = %v (ok=%v), want 0.8", share, ok)
+	}
+	// No cache reads is absence, and absence is not "0% cached".
+	if _, ok := (Usage{Input: 1000}).CachedShare(); ok {
+		t.Fatal("a session with no cache accounting reported a share")
+	}
+}
+
+// THE SSE USAGE CHUNK HAS TO CARRY THE CACHE FIELDS, or every number above it
+// is arithmetic on zero. This stands up a streaming endpoint that answers the
+// way OpenRouter does with usage.include set, and reads the figures back off
+// the agent — the whole path: SSE decode, chunk usage, response usage, loop.
+func TestTheStreamedUsageChunkCarriesTheCacheFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, `data: {"id":"x","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"}}]}`+"\n\n")
+		// The final chunk: no choices, usage only, exactly as the providers
+		// send it. Both spellings ride together here because rows in the wild
+		// carry either.
+		io.WriteString(w, `data: {"id":"x","choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":20,`+
+			`"total_tokens":1020,"prompt_tokens_details":{"cached_tokens":768},`+
+			`"cache_creation_input_tokens":232,"cost":0.0021}}`+"\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	agent, err := New(Config{
+		Workspace: t.TempDir(),
+		Model:     "vendor/model",
+		APIKey:    "test",
+		BaseURL:   server.URL,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer agent.Close()
+
+	ctx, cancel := deadline(10 * time.Second)
+	defer cancel()
+	events, err := agent.Submit(ctx, "hi")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	usage := agent.Usage()
+	if usage.CacheRead != 768 {
+		t.Fatalf("CacheRead = %d, want the 768 the stream reported", usage.CacheRead)
+	}
+	if usage.CacheWrite != 232 {
+		t.Fatalf("CacheWrite = %d, want the 232 the stream reported", usage.CacheWrite)
+	}
+	if usage.Input != 1000 {
+		t.Fatalf("Input = %d, want 1000", usage.Input)
 	}
 }

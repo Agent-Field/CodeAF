@@ -76,6 +76,27 @@ type Model struct {
 	// it costs. A surface reads this before it reads the two prices, and
 	// renders absence rather than "$0.00" (design-law-v2 §16 EMPTINESS).
 	PriceUnknown bool `json:"price_unknown,omitempty"`
+	// CacheReadPrice is what a token served off the provider's warm prefix
+	// costs, per token — OpenRouter's `pricing.input_cache_read`. 246 of 413
+	// rows published one on 2026-08-15; it is typically a tenth of PromptPrice,
+	// and the difference between the two is the whole of what a prompt cache is
+	// worth to a session that re-sends its transcript every step.
+	//
+	// Zero is "the provider did not say", exactly as with the other prices, and
+	// a surface must render absence rather than a saving of the full prompt
+	// price — a cache read is never free.
+	CacheReadPrice float64 `json:"cache_read_price,omitempty"`
+	// ArenaElo is the best Elo the row publishes across Design Arena's boards —
+	// OpenRouter's `benchmarks.design_arena`, a LIST of
+	// {arena, category, elo, win_rate, rank} objects, 155 of 413 rows non-empty
+	// on 2026-08-15.
+	//
+	// The list is reduced to its MAXIMUM rather than averaged, and the choice is
+	// about what the number is for: a row shows one figure, the boards are
+	// different tasks rather than repeated measurements of one, and a model that
+	// tops the webapps board and sits mid-table on 3d has a real strength an
+	// average would report as mediocrity. Zero means nobody published one.
+	ArenaElo float64 `json:"arena_elo,omitempty"`
 	// IntelligenceIndex is the one published score in the catalog, carried
 	// verbatim and never computed here.
 	//
@@ -642,6 +663,7 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 		prompt, promptOK := parsePrice(item.Pricing.Prompt)
 		completion, completionOK := parsePrice(item.Pricing.Completion)
 		request, _ := parsePrice(item.Pricing.Request)
+		cacheRead, _ := parsePrice(item.Pricing.InputCacheRead)
 		models = append(models, Model{
 			ID: strings.TrimSpace(item.ID), CanonicalSlug: strings.TrimSpace(item.CanonicalSlug),
 			AliasTarget:       strings.TrimSpace(item.AliasTarget.Slug),
@@ -650,7 +672,9 @@ func fetch(ctx context.Context, options Options) ([]Model, error) {
 			PromptPrice:       prompt,
 			CompletionPrice:   completion,
 			RequestPrice:      request,
+			CacheReadPrice:    cacheRead,
 			PriceUnknown:      !promptOK || !completionOK,
+			ArenaElo:          arenaElo(item.Benchmarks),
 			IntelligenceIndex: intelligenceIndex(item.Benchmarks),
 			InputModalities:   cleanLowerList(item.Architecture.Input),
 			OutputModalities:  cleanLowerList(item.Architecture.Output),
@@ -695,6 +719,11 @@ type modelWire struct {
 		Prompt     string `json:"prompt"`
 		Completion string `json:"completion"`
 		Request    string `json:"request"`
+		// InputCacheRead is the warm-prefix read price. The write prices
+		// (input_cache_write, input_cache_write_1h) are published beside it and
+		// deliberately not kept: nothing on screen explains them, and a session
+		// pays a write once for a prefix it then reads on every step.
+		InputCacheRead string `json:"input_cache_read"`
 	} `json:"pricing"`
 	SupportedParameters []string `json:"supported_parameters"`
 	// Benchmarks stays raw so its shape cannot break the row around it. It
@@ -725,6 +754,36 @@ func intelligenceIndex(raw json.RawMessage) float64 {
 		return score
 	}
 	return 0
+}
+
+// arenaElo digs the best published Design Arena Elo out of a raw benchmarks
+// block, and answers zero for every shape it does not recognize.
+//
+// It decodes into its own struct rather than sharing [intelligenceIndex]'s
+// because the two fields have opposite shapes and the same block held both on
+// 2026-08-11: `design_arena: []` beside `artificial_analysis: {…}`. A list where
+// an object was expected — or the reverse next quarter — must cost this one
+// number and never the four hundred models around it, which is why nothing here
+// is allowed to fail loudly.
+func arenaElo(raw json.RawMessage) float64 {
+	if len(raw) == 0 {
+		return 0
+	}
+	var block struct {
+		DesignArena []struct {
+			Elo float64 `json:"elo"`
+		} `json:"design_arena"`
+	}
+	if json.Unmarshal(raw, &block) != nil {
+		return 0
+	}
+	best := 0.0
+	for _, board := range block.DesignArena {
+		if board.Elo > best {
+			best = board.Elo
+		}
+	}
+	return best
 }
 
 type statusError struct{ status string }

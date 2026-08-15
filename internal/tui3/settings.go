@@ -1,0 +1,1239 @@
+package tui3
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/config"
+)
+
+// THE SETTINGS PANEL: /settings, or ctrl+, — the one fullscreen thing this
+// surface draws.
+//
+// It is omp's INTERACTIONS sheet over aforge's own registry, and the whole of
+// what this file adds to that registry is a UI SKIN: which tab a row belongs
+// under, what it is called there, the one line it says about itself, and which
+// widget answers it. NOT ONE SETTING IS DECLARED HERE. Every row comes from
+// [config.Settings] — the same rows the v2 sheet renders, written through the
+// same writers — because a second place to declare a knob is a second place for
+// a knob to disagree with itself.
+//
+// Four rules hold the design together:
+//
+//   - THE MAP IS TOTAL over the registry. A row nobody placed would be a row
+//     nobody could reach, so chrome_test.go fails the build when a registry key
+//     has no [settingMeta]. A new setting lands as one registry row plus one
+//     line in [settingUI], which is the same trade omp makes.
+//   - The panel is MODAL and fullscreen, and it is the only thing on this
+//     surface that is. A settings sheet is not something you read the
+//     conversation past, and the alternative — a bottom-anchored list of
+//     twenty-eight rows — would have taken the frame anyway while pretending
+//     not to.
+//   - Every write goes through [config.Setting.Apply], which validates in plain
+//     language and persists to the GLOBAL profile. The project layer
+//     (<workspace>/.openaf/config.json) is deliberately not writable from here:
+//     it is a file a repository commits, and a panel that edited it would be
+//     this surface committing to somebody's repository on their behalf.
+//   - A refusal is SHOWN, never swallowed. A pinned row, a seam the door did
+//     not wire, a number outside its band — each answers in the registry's own
+//     words on the foot line.
+//
+// The two-space indent, the dim values and the single accent are styles.go's
+// palette and nothing new: the panel is a list, and this surface already knows
+// what a list looks like (palette.go's overlayRow draws every row here).
+
+// The tabs, in the order docs/CHAT-V3.md Decision 6 names them.
+const (
+	// tabSession is this conversation: what it may run, what it may spend, and
+	// which models answer the small calls it makes for itself.
+	tabSession = "Session"
+	// tabContext is what a model carries — the context law, whole.
+	tabContext = "Context"
+	// tabWorkspace is what aforge may do and spend while it works for you.
+	tabWorkspace = "Workspace"
+	// tabDisplay is how the surface draws itself and what it remembers of your
+	// typing.
+	tabDisplay = "Display"
+	// tabProviders is which model answers what.
+	tabProviders = "Providers"
+)
+
+var settingTabs = []string{tabSession, tabContext, tabWorkspace, tabDisplay, tabProviders}
+
+// settingWidget is how a row is ANSWERED, which is not quite how it reads.
+// The registry's [config.SettingKind] says what a value is; this says what the
+// keyboard does to it.
+type settingWidget uint8
+
+const (
+	// widgetText opens the one-line submenu: enter saves, empty clears, esc
+	// cancels. It is the default because most rows are a word or a number.
+	widgetText settingWidget = iota
+	// widgetToggle flips in place on enter or space. Booleans only.
+	widgetToggle
+	// widgetCycle walks a short enum in place, in the registry's own order.
+	widgetCycle
+	// widgetSelect opens THE MODEL PICKER — the same component /model opens
+	// (palette.go), filter box, ranking, and rows carrying window, price and
+	// arena score. A slot row is a model choice, and a model choice is a thing
+	// this surface already knows how to ask; a second, plainer list would be a
+	// worse way to answer the same question in the same product.
+	widgetSelect
+)
+
+// settingMeta is the UI half of a registry row: where it is shown, what it is
+// called there, the one line under it, and the widget that answers it.
+//
+// label and about may be empty, and then the registry's own Label and the first
+// sentence of its Hint are used. That is not laziness — the registry's words are
+// already the product's words (internal/config, rule 14), and repeating them
+// here would be a second copy to keep in step. The overrides exist for the rows
+// whose registry hint is three sentences long: a panel row gets ONE line.
+// Masking is deliberately NOT one of these fields. A credential row masks
+// itself — [config.Setting] carries Secret and its reader already hands back
+// dots and a tail — so this panel never sees the key at all, which is the only
+// arrangement in which it cannot leak one. What the flag buys HERE is the edit
+// box: it opens on the row's displayed value (the mask), and the registry's
+// writer treats an unchanged mask as "no change", so enter on a row somebody
+// only looked at does not overwrite their key with a row of bullets.
+type settingMeta struct {
+	tab    string
+	label  string
+	about  string
+	widget settingWidget
+}
+
+// settingUI is the skin: registry key → where it lives and how it is answered.
+//
+// The tabs are a reading of the rows and not of the categories: internal/config
+// groups by what a row IS (models, spending, practice, interface); a person
+// opening this panel is looking for what a row is ABOUT. "session ceiling" is a
+// dollar figure and it lives under Session, because the question it answers is
+// "what may THIS conversation do".
+var settingUI = map[string]settingMeta{
+	// ── Session ─────────────────────────────────────────────────────────────
+	config.KeyToolApprovalMode: {
+		tab: tabSession, label: "ask before running", widget: widgetCycle,
+		about: "what happens when the model asks to run a tool. Dangerous shell " +
+			"commands are asked about whichever way this is set.",
+	},
+	config.KeyToolApprovals: {
+		tab: tabSession, label: "tool exceptions", widget: widgetText,
+		about: "exceptions to the answer above, one per tool: read:allow, bash:prompt.",
+	},
+	// It sits directly under the two rows it modifies, because that is what it
+	// is: not a fourth approval mode but a filter in front of the one above —
+	// it can only spare you a question, never answer one those rows refuse.
+	config.KeyGuardian: {
+		tab: tabSession, label: "guardian", widget: widgetCycle,
+		about: "asks a small model first whether a call is plainly safe, so you " +
+			"are only asked about the rest.",
+	},
+	config.KeyTierLowModel: {
+		tab: tabSession, label: "small work", widget: widgetText,
+		about: "the cheap model for the short things aforge writes for itself — " +
+			"session names, labels.",
+	},
+	config.KeyTierHighModel: {
+		tab: tabSession, label: "careful work", widget: widgetText,
+		about: "the capable model for the small things that must not be wrong — " +
+			"the summary a compaction keeps.",
+	},
+	config.KeyModelRoles: {
+		tab: tabSession, label: "pinned roles", widget: widgetText,
+		about: "exceptions to the two rows above, one per role: title:openai/gpt-5-mini.",
+	},
+	config.KeySpendRail: {
+		tab: tabSession, label: "session ceiling", widget: widgetText,
+		about: "what one conversation may spend before it stops starting turns. " +
+			"0 removes the ceiling; the turn in flight always finishes.",
+	},
+
+	// ── Context ─────────────────────────────────────────────────────────────
+	//
+	// The four rows of the context law, which is where compaction is actually
+	// configured: fill decides WHEN a conversation is compacted, and the other
+	// three decide what a call carries when it is.
+	config.KeyContextFill: {
+		tab: tabContext, label: "compact at", widget: widgetText,
+		about: "how much of the model's window aforge fills before it compacts, " +
+			"as a percent. The rest stays as thinking and answer room.",
+	},
+	config.KeyCompletionReserve: {
+		tab: tabContext, label: "answer room", widget: widgetText,
+		about: "tokens every call keeps free for its answer and its reasoning.",
+	},
+	config.KeyWorkingSet: {
+		tab: tabContext, label: "working set", widget: widgetText,
+		about: "the most material kept quoted in front of a worker at once, " +
+			"however large the model's window is.",
+	},
+	// THE UNIT IS A MULTIPLE AND THE PANEL SAYS SO. The row reads 250 by
+	// default, and one line of "as a percent" over that number reads as a
+	// percentage OF something — of a window, of a budget — which makes 250 look
+	// like a mistake or like tokens mislabelled. It is neither: the registry's
+	// figure is cumulative re-sends of the whole context expressed in hundredths,
+	// so 100 is once and 250 is two and a half times over, and it is floored at
+	// 100 rather than capped at 100 (internal/config's writeContextReuse: below
+	// one whole context it is a refusal, not a governor). The label carries the
+	// worked example, because the number a person sees is 250 and the sentence
+	// under it has one job — making that number mean something.
+	config.KeyContextReuse: {
+		tab: tabContext, label: "context reuse", widget: widgetText,
+		about: "how many times over one piece of work may re-send its whole " +
+			"context before aforge tells it to land: 100 is once, 250 is two and " +
+			"a half times. At least 100.",
+	},
+	// Search is a context row for the reason the four above it are: it decides
+	// what a model can put IN its context that it did not already have.
+	config.KeySearchProvider: {
+		tab: tabContext, label: "searching", widget: widgetCycle,
+		about: "where a web search goes. auto uses the best back end your keys " +
+			"reach and falls back to one that needs none.",
+	},
+	config.KeyExaKey: {
+		tab: tabContext, label: "exa key", widget: widgetText,
+		about: "an exa.ai key, which buys better results and page fetches than " +
+			"the free back end. Optional.",
+	},
+	config.KeyJinaKey: {
+		tab: tabContext, label: "jina key", widget: widgetText,
+		about: "a jina.ai key. It buys nothing but headroom: page fetches already " +
+			"work unauthenticated.",
+	},
+
+	// ── Workspace ───────────────────────────────────────────────────────────
+	//
+	// What aforge may spend and do while it works for you, and what it does with
+	// its own time when you are not here.
+	config.KeyDailyBudget: {
+		tab: tabWorkspace, label: "daily budget", widget: widgetText,
+		about: "what aforge may spend on your work in a day. 0 removes the rail.",
+	},
+	config.KeyPlanConsent: {
+		tab: tabWorkspace, label: "ask before spending", widget: widgetText,
+		about: "above this estimate a planned job quotes its price and waits for " +
+			"your go-ahead. 0 never asks.",
+	},
+	config.KeyPracticeBudget: {
+		tab: tabWorkspace, label: "practice budget", widget: widgetText,
+		about: "the slice of the day reserved for aforge practicing on itself.",
+	},
+	config.KeyPracticeIdle: {
+		tab: tabWorkspace, label: "quiet before practice", widget: widgetText,
+		about: "how long the room stays quiet before aforge starts practicing.",
+	},
+	config.KeyBriefAfter: {
+		tab: tabWorkspace, label: "arrival brief after", widget: widgetText,
+		about: "how long you have to be away before aforge greets you with a " +
+			"summary. 0 always briefs.",
+	},
+	config.KeyTenureAfter: {
+		tab: tabWorkspace, label: "tenure after", widget: widgetText,
+		about: "how many clean firings a standing charter needs before it earns tenure.",
+	},
+	config.KeyAttribution: {
+		tab: tabWorkspace, label: "attribution", widget: widgetToggle,
+		about: "signs the commits and PRs aforge writes for you — one trailer, " +
+			"one footer line.",
+	},
+
+	// ── Display ─────────────────────────────────────────────────────────────
+	config.KeyHistoryEnabled: {
+		tab: tabDisplay, label: "input history", widget: widgetToggle,
+		about: "remembers the messages you send, so the up arrow walks them back " +
+			"in a later session.",
+	},
+	config.KeyDraftPersist: {
+		tab: tabDisplay, label: "keep drafts", widget: widgetToggle,
+		about: "keeps the half-typed message in the box across a restart, per directory.",
+	},
+	config.KeyNerdFont: {
+		tab: tabDisplay, label: "nerd font", widget: widgetToggle,
+		about: "draws the chrome with Nerd Font icons. Turn it off if icons show as boxes.",
+	},
+	config.KeyLinearMode: {
+		tab: tabDisplay, label: "linear mode", widget: widgetToggle,
+		about: "single column, no motion, no spinners — the accessible rendering.",
+	},
+	config.KeyRailState: {
+		tab: tabDisplay, label: "sidebar", widget: widgetCycle,
+		about: "how much of the right rail stands beside the chat: the full " +
+			"column, a one-column handle, or nothing.",
+	},
+	config.KeySplitPct: {
+		tab: tabDisplay, label: "chat width", widget: widgetText,
+		about: "the chat pane's share of the frame while the task rail is open.",
+	},
+
+	// ── Providers ───────────────────────────────────────────────────────────
+	//
+	// The model slots themselves are added by [init] from [config.ModelSlots],
+	// so a sixth role or a sixth modality reaches this panel without anybody
+	// editing this file — the same contract internal/config's own sheet keeps.
+	config.KeyVisionModel: {
+		tab: tabProviders, label: "looking", widget: widgetText,
+		about: "the model that looks at images. Blank picks one that can see.",
+	},
+	config.KeyDocumentEngine: {
+		tab: tabProviders, label: "reading", widget: widgetCycle,
+		about: "which rung reads your documents. auto walks local, then free, then paid OCR.",
+	},
+}
+
+func init() {
+	for _, slot := range config.ModelSlots() {
+		settingUI[config.ModelSettingKey(slot.Slot)] = settingMeta{
+			tab: tabProviders, label: slot.Label, widget: widgetSelect,
+		}
+	}
+}
+
+// settingMetaFor is the skin for one row, with the registry's own words filled
+// in where the map left them out.
+func settingMetaFor(row config.Setting) (settingMeta, bool) {
+	meta, ok := settingUI[row.Key]
+	if !ok {
+		return settingMeta{}, false
+	}
+	if meta.label == "" {
+		meta.label = row.Label
+	}
+	if meta.about == "" {
+		meta.about = firstSentence(row.Hint)
+	}
+	return meta, true
+}
+
+// firstSentence is the registry hint cut to one line. A hint is written as
+// prose for a sheet with room; a panel row has one line and takes the sentence
+// that carries the meaning.
+func firstSentence(hint string) string {
+	hint = strings.TrimSpace(hint)
+	if at := strings.IndexByte(hint, '.'); at > 0 {
+		return hint[:at+1]
+	}
+	return hint
+}
+
+// sheetRows is how many list rows the panel wants at most. It is a ceiling and
+// not a promise: the panel is fullscreen, so what it actually draws is whatever
+// the terminal has after the head and the foot.
+const sheetRows = 16
+
+// sheetItem is one line of the list: a row, or — while a search is on — the
+// faint tab heading a group of them sits under.
+type sheetItem struct {
+	head string
+	row  config.Setting
+	meta settingMeta
+}
+
+func (i sheetItem) heading() bool { return i.head != "" }
+
+// sheet is the panel's whole state. The zero value is closed and costs the
+// frame nothing.
+type sheet struct {
+	open bool
+	tab  int
+
+	registry *config.Settings
+	rows     []config.Setting
+	// defaults is every row's reading on a profile nobody has touched, so a row
+	// that differs from it can be marked. See [settingDefaults].
+	defaults map[string]string
+
+	// items is the current list — one tab's rows, or every tab's matches under
+	// their headings while a search is on. cursor indexes it and skips headings.
+	items  []sheetItem
+	cursor int
+	top    int
+
+	// query is the type-to-search box. It filters across ALL tabs; the tab bar
+	// follows the first match so that leaving the search leaves you where the
+	// thing you found lives.
+	query editor
+
+	// edit is the text submenu and sel the select submenu. At most one is open,
+	// and while one is, it owns the keyboard.
+	edit *sheetEdit
+	sel  *sheetSelect
+
+	// msg is the last refusal, in the registry's own words.
+	msg string
+}
+
+// sheetEdit is the one-line text submenu.
+type sheetEdit struct {
+	key    string
+	label  string
+	secret bool
+	box    editor
+}
+
+// sheetSelect is a model slot being answered: which registry row is being
+// written, what it is called on the panel, and THE PICKER ITSELF — the same
+// [picker] /model opens, not a copy of it.
+//
+// It was a list of id strings with a substring filter over it, which is to say
+// a second, worse picker: no ranking, and rows that said nothing about the
+// models they named. A person choosing which model does the careful work is
+// asking the same three questions they ask in /model — how much does it hold,
+// what does it cost, is it any good — and the answer is one component with two
+// entry points.
+type sheetSelect struct {
+	key   string
+	label string
+	pick  picker
+}
+
+// choice is the id under the cursor. It answers a STRING and not a [Model]
+// because that is what the registry writer takes: a slot row holds an id.
+func (s *sheetSelect) choice() (string, bool) {
+	model, ok := s.pick.choice()
+	return model.ID, ok
+}
+
+// ── opening, and the registry behind it ─────────────────────────────────────
+
+// pristineProfile is a profile directory that does not exist, and is never
+// created. [config] answers a missing config.json with an empty map, so a
+// registry built over it reads every row's built-in default — which is exactly
+// the comparison the changed-mark needs, without this package having to know
+// what any default IS or where the file lives.
+var pristineProfile = filepath.Join(os.TempDir(), "openaf-settings-defaults-do-not-create")
+
+// settingDefaults is every row as a profile nobody has touched reads it.
+func settingDefaults() map[string]string {
+	registry := config.NewSettings(config.SettingsOptions{ProfileDir: pristineProfile})
+	rows := registry.Rows()
+	out := make(map[string]string, len(rows))
+	for _, row := range rows {
+		out[row.Key] = row.Value()
+	}
+	return out
+}
+
+// registry is the settings this panel edits: the one the door handed over, or
+// one built here over the profile directory it named.
+//
+// The two live seams it wires are the two this surface can honestly answer. The
+// conversation model is the model in the status line, and setting it is the
+// same road /model takes ([app.switchModel]) — one door, one effect. Every
+// other slot belongs to a session this surface did not open, and it says so
+// rather than writing a preference nothing in this process would read.
+func (a *app) registry() *config.Settings {
+	if a.settings != nil {
+		return a.settings
+	}
+	a.settings = config.NewSettings(config.SettingsOptions{
+		ProfileDir: a.profileDir,
+		ModelValue: func(slot string) string {
+			if slot == talkSlot {
+				return a.model
+			}
+			return ""
+		},
+		SetModel: func(slot, slug string) error {
+			if slot != talkSlot {
+				return fmt.Errorf("that model is chosen where its session is opened")
+			}
+			a.switchModel(slug, 0)
+			return nil
+		},
+		Applied: func(string) { a.touch() },
+	})
+	return a.settings
+}
+
+// talkSlot is the model slot this surface is: the conversation.
+const talkSlot = "talk"
+
+// openSettings is /settings and ctrl+,.
+func (a *app) openSettings() {
+	a.sheet = sheet{
+		open:     true,
+		registry: a.registry(),
+		defaults: settingDefaults(),
+	}
+	a.sheet.rows = a.sheet.registry.Rows()
+	a.sheet.build()
+	a.touch()
+}
+
+func (a *app) closeSettings() {
+	a.sheet = sheet{}
+	a.touch()
+}
+
+func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) != "" }
+
+// build rebuilds the item list from the tab and the query.
+//
+// With no query it is one tab's rows in registry order. With one it is every
+// tab's matches, each group under its own faint heading, and THE TAB FOLLOWS
+// THE FIRST MATCH: a person who typed three letters and found the thing has
+// already been told which tab it lives on, so backing the search out leaves
+// them there instead of back where they started.
+func (s *sheet) build() {
+	s.items = s.items[:0]
+	query := strings.ToLower(strings.TrimSpace(s.query.String()))
+	if query == "" {
+		for _, row := range s.rows {
+			meta, ok := settingMetaFor(row)
+			if !ok || meta.tab != settingTabs[s.tab] {
+				continue
+			}
+			s.items = append(s.items, sheetItem{row: row, meta: meta})
+		}
+		s.cursor = s.clampCursor(s.cursor)
+		return
+	}
+	first := -1
+	for tab, title := range settingTabs {
+		start := len(s.items)
+		for _, row := range s.rows {
+			meta, ok := settingMetaFor(row)
+			if !ok || meta.tab != title || !settingMatches(row, meta, query) {
+				continue
+			}
+			if len(s.items) == start {
+				s.items = append(s.items, sheetItem{head: title})
+			}
+			s.items = append(s.items, sheetItem{row: row, meta: meta})
+		}
+		if len(s.items) > start && first < 0 {
+			first, s.tab = start+1, tab
+		}
+	}
+	if first >= 0 {
+		s.cursor = first
+	} else {
+		s.cursor = 0
+	}
+	s.top = 0
+}
+
+// settingMatches is the search: the label, the key and the one-line description,
+// case-folded, substring. The KEY is in it deliberately — a person who knows
+// the registry knows "spendRail" and should not have to guess what it is called
+// in the product's words.
+func settingMatches(row config.Setting, meta settingMeta, query string) bool {
+	for _, field := range []string{meta.label, row.Key, meta.about, row.Label} {
+		if strings.Contains(strings.ToLower(field), query) {
+			return true
+		}
+	}
+	return false
+}
+
+// clampCursor keeps the cursor on a row and never on a heading.
+func (s *sheet) clampCursor(at int) int {
+	if len(s.items) == 0 {
+		return 0
+	}
+	if at < 0 {
+		at = 0
+	}
+	if at >= len(s.items) {
+		at = len(s.items) - 1
+	}
+	if !s.items[at].heading() {
+		return at
+	}
+	for i := at; i < len(s.items); i++ {
+		if !s.items[i].heading() {
+			return i
+		}
+	}
+	for i := at; i >= 0; i-- {
+		if !s.items[i].heading() {
+			return i
+		}
+	}
+	return at
+}
+
+// move walks the list by rows, stepping over the headings rather than landing
+// on them: a heading is a label, and a cursor on a label is a cursor on nothing
+// enter could do.
+func (s *sheet) move(delta int) {
+	if len(s.items) == 0 {
+		return
+	}
+	step := 1
+	if delta < 0 {
+		step = -1
+	}
+	at := s.cursor
+	for n := 0; n < abs(delta); n++ {
+		next := at
+		for {
+			next += step
+			if next < 0 || next >= len(s.items) {
+				next = at
+				break
+			}
+			if !s.items[next].heading() {
+				break
+			}
+		}
+		at = next
+	}
+	s.cursor = at
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// current is the row under the cursor.
+func (s *sheet) current() (sheetItem, bool) {
+	if s.cursor < 0 || s.cursor >= len(s.items) || s.items[s.cursor].heading() {
+		return sheetItem{}, false
+	}
+	return s.items[s.cursor], true
+}
+
+// changed reports whether this row differs from a untouched profile's reading.
+//
+// Two kinds are skipped and the reason is the same for both: their reading
+// comes from a LIVE SEAM rather than from the file — the model slots answer
+// from the running session, the divider from the surface's own preference — so
+// the pristine registry, which has no seams, would report every one of them as
+// changed. A mark that is on for rows nobody touched is not a mark.
+func (s *sheet) changed(item sheetItem) bool {
+	switch item.row.Kind {
+	case config.SettingModel, config.SettingPercent:
+		return false
+	}
+	was, known := s.defaults[item.row.Key]
+	return known && was != item.row.Value()
+}
+
+// ── the keyboard ────────────────────────────────────────────────────────────
+
+// sheetKey routes one keypress while the panel is up. It reports whether it
+// took the key; only ctrl+c is read before it (input.go), because leaving is
+// never modal.
+func (a *app) sheetKey(msg tea.KeyPressMsg) bool {
+	if !a.sheet.open {
+		return false
+	}
+	s := &a.sheet
+	defer a.touch()
+	switch {
+	case s.edit != nil:
+		a.sheetEditKey(msg)
+		return true
+	case s.sel != nil:
+		a.sheetSelectKey(msg)
+		return true
+	}
+
+	switch msg.String() {
+	case "esc":
+		// esc backs out one layer at a time: the search first, the panel after.
+		// A key that closed the whole sheet from inside a search would throw
+		// away the only thing on screen the person typed.
+		if s.searching() {
+			s.query.reset()
+			s.build()
+			return true
+		}
+		a.closeSettings()
+		return true
+
+	case "left", "shift+tab":
+		s.tabBy(-1)
+	case "right", "tab":
+		s.tabBy(1)
+
+	case "up", "ctrl+p":
+		s.move(-1)
+	case "down", "ctrl+n":
+		s.move(1)
+	case "pgup":
+		s.move(-sheetRows)
+	case "pgdown":
+		s.move(sheetRows)
+	case "home":
+		s.cursor = s.clampCursor(0)
+	case "end":
+		s.cursor = s.clampCursor(len(s.items) - 1)
+
+	case "enter", " ", "space":
+		a.activate()
+
+	case "backspace":
+		s.query.deleteBackward()
+		s.build()
+	case "ctrl+u":
+		s.query.reset()
+		s.build()
+	case "ctrl+w":
+		s.query.deleteWord()
+		s.build()
+
+	default:
+		if text := msg.Key().Text; text != "" && text != " " {
+			s.query.insert(text)
+			s.build()
+		}
+	}
+	return true
+}
+
+// tabBy switches tabs, clamping rather than wrapping — the same rule every list
+// on this surface walks by (palette.go). A search is dropped by it: the tabs
+// and the search are two ways of asking the same question, and answering both
+// at once would show a tab's name over rows from five of them.
+func (s *sheet) tabBy(delta int) {
+	if s.searching() {
+		s.query.reset()
+	}
+	s.tab = moveCursor(s.tab, delta, len(settingTabs))
+	s.cursor, s.top, s.msg = 0, 0, ""
+	s.build()
+}
+
+// activate is enter on a row: flip it, cycle it, or open the submenu that
+// answers it.
+func (a *app) activate() {
+	s := &a.sheet
+	item, ok := s.current()
+	if !ok {
+		return
+	}
+	s.msg = ""
+	switch item.meta.widget {
+	case widgetToggle:
+		next := "on"
+		if item.row.Value() == "on" {
+			next = "off"
+		}
+		a.applySetting(item, next)
+
+	case widgetCycle:
+		choices := item.row.Choices
+		if len(choices) == 0 {
+			return
+		}
+		at := 0
+		for i, choice := range choices {
+			if choice == item.row.Value() {
+				at = (i + 1) % len(choices)
+				break
+			}
+		}
+		a.applySetting(item, choices[at])
+
+	case widgetSelect:
+		// The picker opens ON the id the row currently holds, the way /model
+		// opens on the model in use: enter with nothing typed confirms rather
+		// than changes. A row holding its empty label ("follows the
+		// conversation") matches no id and the cursor stays at the top, which is
+		// the honest reading of "this slot has not been set".
+		sel := &sheetSelect{key: item.row.Key, label: item.meta.label}
+		sel.pick.start(a.modelList(), item.row.Value())
+		s.sel = sel
+
+	default:
+		value := item.row.Value()
+		if value == item.row.EmptyLabel {
+			// The empty label is what the row SAYS when it holds nothing
+			// ("none", "follows the conversation"). Putting that word in the box
+			// would offer the person a value to edit that they never set.
+			value = ""
+		}
+		box := editor{}
+		box.setText(value)
+		s.edit = &sheetEdit{
+			key: item.row.Key, label: item.meta.label,
+			secret: item.row.Secret, box: box,
+		}
+	}
+}
+
+// applySetting writes one row and keeps whatever the registry said about it.
+func (a *app) applySetting(item sheetItem, raw string) {
+	if err := item.row.Apply(raw); err != nil {
+		a.sheet.msg = err.Error()
+		return
+	}
+	a.sheet.msg = ""
+	a.sheet.rows = a.sheet.registry.Rows()
+	a.sheet.build()
+}
+
+// sheetEditKey drives the text submenu. enter saves, an empty box clears the
+// row, esc leaves it exactly as it was.
+func (a *app) sheetEditKey(msg tea.KeyPressMsg) {
+	s := &a.sheet
+	edit := s.edit
+	switch msg.String() {
+	case "esc":
+		s.edit = nil
+	case "enter":
+		row, ok := s.registry.Row(edit.key)
+		s.edit = nil
+		if !ok {
+			return
+		}
+		meta, _ := settingMetaFor(row)
+		a.applySetting(sheetItem{row: row, meta: meta}, edit.box.String())
+	case "backspace":
+		edit.box.deleteBackward()
+	case "delete":
+		edit.box.deleteForward()
+	case "ctrl+u":
+		edit.box.killToStart()
+	case "ctrl+w":
+		edit.box.deleteWord()
+	case "left", "ctrl+b":
+		edit.box.left()
+	case "right", "ctrl+f":
+		edit.box.right()
+	case "home", "ctrl+a":
+		edit.box.home()
+	case "end", "ctrl+e":
+		edit.box.end()
+	default:
+		if text := msg.Key().Text; text != "" {
+			edit.box.insert(text)
+		}
+	}
+}
+
+// sheetSelectKey drives the model picker while a slot row owns it. Only the two
+// keys that MEAN something different here are handled: esc leaves the row as it
+// was, and enter writes the chosen id through the registry rather than switching
+// the conversation. Everything else — the walk, the scroll, the filter — is
+// [picker.navigate], the same code /model runs.
+func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
+	s := &a.sheet
+	sel := s.sel
+	switch msg.String() {
+	case "esc":
+		s.sel = nil
+	case "enter":
+		chosen, ok := sel.choice()
+		row, found := s.registry.Row(sel.key)
+		s.sel = nil
+		if !ok || !found {
+			return
+		}
+		meta, _ := settingMetaFor(row)
+		a.applySetting(sheetItem{row: row, meta: meta}, chosen)
+	default:
+		sel.pick.navigate(msg)
+	}
+}
+
+// ── the pointer ─────────────────────────────────────────────────────────────
+
+// sheetHitKind is what one screen row of the panel answers to a click.
+type sheetHitKind uint8
+
+const (
+	sheetHitNone sheetHitKind = iota
+	sheetHitTabs
+	sheetHitRow
+	// sheetHitOption is one row of the select submenu; index is its position in
+	// that submenu's own hits.
+	sheetHitOption
+)
+
+type sheetHit struct {
+	kind  sheetHitKind
+	index int
+}
+
+// sheetPress is a click inside the panel: a tab word switches tabs, a row
+// selects and answers, anything else does nothing.
+func (a *app) sheetPress(x, y int) {
+	width, height := a.size()
+	_, hits, _, _ := a.sheetFrame(width, height)
+	if y < 0 || y >= len(hits) {
+		return
+	}
+	switch hit := hits[y]; hit.kind {
+	case sheetHitTabs:
+		if tab, ok := tabAtColumn(x); ok {
+			if a.sheet.searching() {
+				a.sheet.query.reset()
+			}
+			a.sheet.tab = tab
+			a.sheet.cursor, a.sheet.top, a.sheet.msg = 0, 0, ""
+			a.sheet.build()
+			a.touch()
+		}
+	case sheetHitRow:
+		// A click selects, and a click on the row already selected answers it.
+		// One press cannot do both: a toggle that flipped the moment a pointer
+		// touched it would change a setting the person was only reading.
+		if a.sheet.cursor != hit.index {
+			a.sheet.cursor = hit.index
+			a.touch()
+			return
+		}
+		a.activate()
+		a.touch()
+
+	case sheetHitOption:
+		if a.sheet.sel == nil {
+			return
+		}
+		if a.sheet.sel.pick.cursor != hit.index {
+			a.sheet.sel.pick.cursor = hit.index
+			a.touch()
+			return
+		}
+		a.sheetSelectKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+		a.touch()
+	}
+}
+
+// sheetHover records which row the pointer is over, repainting only when the
+// answer changed (hover.go's rule, applied to the panel).
+func (a *app) sheetHover(y int) {
+	width, height := a.size()
+	_, hits, _, _ := a.sheetFrame(width, height)
+	next := hoverAt{}
+	if y >= 0 && y < len(hits) && hits[y].kind == sheetHitRow {
+		next = hoverAt{kind: hoverSheet, index: hits[y].index}
+	}
+	if next == a.hot {
+		return
+	}
+	a.hot = next
+	a.touch()
+}
+
+// ── the frame ───────────────────────────────────────────────────────────────
+
+// sheetFrame is the whole screen while the panel is open: exactly height rows,
+// what each of them answers to the pointer, and where the caret sits.
+//
+// It is ONE function for the reason [app.chrome] is: the frame draws these rows
+// and the pointer resolves against them, and two answers to "where is the tab
+// bar" is how a click lands on the wrong tab.
+func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
+	s := &a.sheet
+	pal := a.pal
+	lines := make([]string, 0, height)
+	hits := make([]sheetHit, 0, height)
+	add := func(text string, hit sheetHit) {
+		lines = append(lines, text)
+		hits = append(hits, hit)
+	}
+	caretX, caretY := 0, 0
+
+	add(sheetTitle(width, s, pal), sheetHit{})
+	add("", sheetHit{})
+	add(sheetTabBar(width, s.tab, pal), sheetHit{kind: sheetHitTabs})
+	add(pal.dim(rule(width)), sheetHit{})
+	add("", sheetHit{})
+
+	// The foot is three rows and it is spoken for before the list is: a rule, a
+	// line for what the panel has to say, and the keys.
+	const foot = 3
+	room := height - len(lines) - foot
+	if room < 1 {
+		room = 1
+	}
+
+	if s.sel != nil {
+		body, at := s.selectLines(width, room, pal, a.reasoningFor)
+		for i, line := range body {
+			hit := sheetHit{}
+			if at[i] >= 0 {
+				hit = sheetHit{kind: sheetHitOption, index: at[i]}
+			}
+			add(line, hit)
+		}
+	} else {
+		body, owner := s.listLines(width, pal, a.hoveredSheetRow())
+		at := s.cursorLine(owner)
+		s.top = listTop(at, s.top, len(body), room)
+		for i := 0; i < room; i++ {
+			index := s.top + i
+			if index >= len(body) {
+				add("", sheetHit{})
+				continue
+			}
+			hit := sheetHit{}
+			if owner[index] >= 0 {
+				hit = sheetHit{kind: sheetHitRow, index: owner[index]}
+			}
+			add(body[index], hit)
+		}
+	}
+
+	add(pal.dim(rule(width)), sheetHit{})
+	switch {
+	case s.edit != nil:
+		box, column := s.editLine(width, pal)
+		caretX, caretY = column, len(lines)
+		add(box, sheetHit{})
+	case s.sel != nil:
+		box, column := s.filterLine(width, pal)
+		caretX, caretY = column, len(lines)
+		add(box, sheetHit{})
+	case s.msg != "":
+		add(" "+pal.bad(fit(s.msg, width-2)), sheetHit{})
+	default:
+		add(" "+pal.dim(fit(s.footNote(), width-2)), sheetHit{})
+	}
+	add(" "+pal.dim(fit(s.keysLine(), width-2)), sheetHit{})
+
+	// A terminal too short for the whole panel keeps its head and its foot:
+	// what this is, and how to leave.
+	if len(lines) > height {
+		lines = append(lines[:1], lines[len(lines)-(height-1):]...)
+		hits = append(hits[:1], hits[len(hits)-(height-1):]...)
+		caretY = height - 2
+	}
+	return lines, hits, caretX, caretY
+}
+
+func rule(width int) string {
+	if width < 1 {
+		return ""
+	}
+	return strings.Repeat("─", width)
+}
+
+// sheetTitle is the head: what this is on the left, how to leave on the right,
+// and — while a search is on — what was typed, because a filtered list with no
+// visible query is a list that lost rows for no reason a reader can see.
+func sheetTitle(width int, s *sheet, pal palette) string {
+	left := " " + pal.bold(pal.ink("settings"))
+	plainLeft := " settings"
+	if query := strings.TrimSpace(s.query.String()); query != "" {
+		left += pal.dim("  search · " + query)
+		plainLeft += "  search · " + query
+	}
+	right := "esc close"
+	gap := width - ansi.StringWidth(plainLeft) - len(right) - 1
+	if gap < 1 {
+		return fit(left, width)
+	}
+	return left + strings.Repeat(" ", gap) + pal.dim(right)
+}
+
+// tabSpan is where one tab's word sits on the bar, so the render and the click
+// agree about it.
+type tabSpan struct{ from, to int }
+
+const tabGap = 3
+
+func tabSpans() []tabSpan {
+	spans := make([]tabSpan, 0, len(settingTabs))
+	at := 1
+	for _, title := range settingTabs {
+		spans = append(spans, tabSpan{from: at, to: at + len(title)})
+		at += len(title) + tabGap
+	}
+	return spans
+}
+
+func tabAtColumn(x int) (int, bool) {
+	for i, span := range tabSpans() {
+		if x >= span.from && x < span.to {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// sheetTabBar is the one place this panel spends the accent: the tab you are
+// on. Everything else on the bar is dim, which is what makes the one word read
+// as a position rather than as a menu of five shouting words.
+func sheetTabBar(width, active int, pal palette) string {
+	line, plain := "", ""
+	for i, title := range settingTabs {
+		if i > 0 {
+			line += strings.Repeat(" ", tabGap)
+			plain += strings.Repeat(" ", tabGap)
+		} else {
+			line += " "
+			plain += " "
+		}
+		if i == active {
+			line += pal.bold(pal.accent(title))
+		} else {
+			line += pal.dim(title)
+		}
+		plain += title
+	}
+	if ansi.StringWidth(plain) > width {
+		return fit(line, width)
+	}
+	return line
+}
+
+// listLines is the rows, plus the ONE description this panel ever shows: the
+// selected row's. omp shows a line under every row; this surface does not,
+// because twenty-eight rows each carrying a sentence is a wall, and the
+// sentence a person needs is the one about the row they are on.
+//
+// It returns the item each line belongs to (-1 for a heading or a gap), which
+// is what the pointer resolves against.
+func (s *sheet) listLines(width int, pal palette, hover int) ([]string, []int) {
+	lines := make([]string, 0, len(s.items)+8)
+	owner := make([]int, 0, len(s.items)+8)
+	put := func(text string, at int) {
+		lines = append(lines, text)
+		owner = append(owner, at)
+	}
+	if len(s.items) == 0 {
+		put(pal.dim("  nothing matches"), -1)
+		return lines, owner
+	}
+	for i, item := range s.items {
+		if item.heading() {
+			if len(lines) > 0 {
+				put("", -1)
+			}
+			put(pal.dim("  "+item.head), -1)
+			continue
+		}
+		put(s.rowLine(item, i == s.cursor, i == hover, width, pal), i)
+		if i != s.cursor {
+			continue
+		}
+		about := item.meta.about
+		for n, line := range wrap(about, width-6) {
+			if n >= 2 {
+				break
+			}
+			put("    "+pal.dim(line), i)
+		}
+	}
+	return lines, owner
+}
+
+// cursorLine is the display row the cursor's item starts on.
+func (s *sheet) cursorLine(owner []int) int {
+	for i, at := range owner {
+		if at == s.cursor {
+			return i
+		}
+	}
+	return 0
+}
+
+// changedMark is the one cell that says "you chose this". A glyph and not a
+// colour, because the accent is already spent on the tab and the palette's own
+// rule is that a distinction drawn in colour is drawn in text too (styles.go).
+const changedMark = "•"
+
+func (s *sheet) rowLine(item sheetItem, selected, hovered bool, width int, pal palette) string {
+	value := item.row.Value()
+	if value == "" {
+		value = "—"
+	}
+	if s.changed(item) {
+		mark := changedMark
+		if pal.ascii {
+			mark = "*"
+		}
+		value = mark + " " + value
+	}
+	if name, pinned := item.row.PinnedBy(); pinned {
+		value += "  set by " + name
+	}
+	return overlayRow(item.meta.label, value, selected, false, hovered, width, pal)
+}
+
+// selectLines draws the model picker in the list's place — LITERALLY the picker's
+// own rows ([picker.rows]), so a slot row offers the window, the price and the
+// arena score the /model overlay offers, and the row in use is marked the same
+// way. It returns each line's position in the picker's hits, or -1, so the
+// pointer reaches it too.
+//
+// level is [app.reasoningFor], threaded through for the same reason the overlay
+// threads it: the effort a model has been dialled to lives on the agent, and a
+// list is not a thing that holds a session.
+func (s *sheet) selectLines(width, room int, pal palette, level func(string) string) ([]string, []int) {
+	sel := s.sel
+	rows := sel.pick.rows(width, room, pal, -1, level)
+	out := make([]string, 0, room)
+	owner := make([]int, 0, room)
+	for i, line := range rows {
+		out = append(out, line)
+		if len(sel.pick.hits) == 0 {
+			owner = append(owner, -1)
+			continue
+		}
+		owner = append(owner, sel.pick.top+i)
+	}
+	for len(out) < room {
+		out = append(out, "")
+		owner = append(owner, -1)
+	}
+	return out, owner
+}
+
+// editLine is the text submenu's box, and the column its caret sits in.
+func (s *sheet) editLine(width int, pal palette) (string, int) {
+	edit := s.edit
+	shown := edit.box.String()
+	if edit.secret {
+		shown = strings.Repeat("•", len([]rune(shown)))
+		if pal.ascii {
+			shown = strings.Repeat("*", len([]rune(shown)))
+		}
+	}
+	lead := " " + edit.label + " "
+	line := " " + pal.dim(edit.label) + " " + pal.accent(prompt) + pal.ink(fit(shown, width-len(lead)-3))
+	return line, ansi.StringWidth(lead+prompt) + ansi.StringWidth(shown)
+}
+
+// filterLine is the picker's filter box, drawn where the panel's foot line is.
+func (s *sheet) filterLine(width int, pal palette) (string, int) {
+	text := s.sel.pick.filter.String()
+	lead := " " + s.sel.label + " "
+	line := " " + pal.dim(s.sel.label) + " " + pal.accent(prompt) + pal.ink(fit(text, width-len(lead)-3))
+	return line, ansi.StringWidth(lead+prompt) + ansi.StringWidth(text)
+}
+
+// footNote is what the panel says when it has nothing to complain about: where
+// the writes land. It is one sentence and it is the truth people most often
+// want from a settings panel they share between machines.
+func (s *sheet) footNote() string {
+	if item, ok := s.current(); ok {
+		if name, pinned := item.row.PinnedBy(); pinned {
+			return "held by " + name + " — unset it to change this here"
+		}
+	}
+	return "saved to your profile · a project's own .openaf/config.json is a hand edit"
+}
+
+func (s *sheet) keysLine() string {
+	switch {
+	case s.edit != nil:
+		return "enter save · empty clears · esc cancel"
+	case s.sel != nil:
+		return "↑↓ move · enter choose · esc cancel · type to filter"
+	default:
+		return "↑↓ move · ←→ tabs · enter change · type to search · esc close"
+	}
+}
+
+// hoveredSheetRow is the item the pointer is over, or -1.
+func (a *app) hoveredSheetRow() int {
+	if a.hot.kind == hoverSheet {
+		return a.hot.index
+	}
+	return -1
+}

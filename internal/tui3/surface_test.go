@@ -593,38 +593,43 @@ func TestNoDraftFileIsWrittenWhenTheSurfaceWasGivenNone(t *testing.T) {
 
 // ── 8. the context meter ────────────────────────────────────────────────────
 
-func TestTheContextMeterIsTheTranscriptOverFourOverTheWindow(t *testing.T) {
-	agent := &fakeAgent{model: "m", past: []session.DisplayEntry{
-		{Role: "user", Text: strings.Repeat("x", 4000)},
+// THE METER IS THE AGENT'S FIGURE, NOT THE SURFACE'S GUESS. It used to be the
+// display transcript's bytes over four, which could only see words somebody
+// said: the system prompt, the tool schemas and every tool result were invisible
+// to it, and a working session read a few percent all afternoon.
+func TestTheContextMeterIsTheAgentsTokensOverTheWindow(t *testing.T) {
+	agent := &fakeAgent{model: "m", weight: 1000, past: []session.DisplayEntry{
+		// A short transcript with a heavy context: the words a person can see
+		// are a fraction of what the model is carrying, which is the whole
+		// reason the surface stopped counting them.
+		{Role: "user", Text: "hi"},
 	}}
 	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab", ContextWindow: 10000})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 
-	// 4000 bytes ÷ 4 = 1000 tokens of a 10k window.
+	// 1000 tokens of a 10k window, whatever the transcript weighs.
 	pct, ok := a.ctxPercent()
 	if !ok || pct != 10 {
 		t.Fatalf("the meter says %d%% (ok=%v), want 10%%", pct, ok)
 	}
-	if !strings.Contains(plain(frame(a)), "10% ctx") {
-		t.Fatalf("the status line is missing the meter:\n%s", plain(frame(a)))
+	if got := plain(frame(a)); !strings.Contains(got, "1k/10k · 10%") {
+		t.Fatalf("the status line is missing the meter:\n%s", got)
 	}
 
 	// A window nobody knows draws no meter at all.
-	bare := newApp(t.Context(), Options{Agent: &fakeAgent{model: "nobody/knows"}, Workspace: "/tmp/lab"})
+	bare := newApp(t.Context(), Options{Agent: &fakeAgent{model: "nobody/knows", weight: 1000}, Workspace: "/tmp/lab"})
 	bare.width, bare.height = 60, 20
 	if _, ok := bare.ctxPercent(); ok {
 		t.Fatal("a percentage of an unknown window is a number that means nothing")
 	}
-	if strings.Contains(plain(frame(bare)), "% ctx") {
+	if strings.Contains(plain(frame(bare)), "1k/") {
 		t.Fatalf("the meter was drawn without a window:\n%s", plain(frame(bare)))
 	}
 }
 
 func TestSwitchingModelsMovesTheMeterWithTheWindow(t *testing.T) {
-	agent := &fakeAgent{model: "small/model", past: []session.DisplayEntry{
-		{Role: "user", Text: strings.Repeat("x", 40000)},
-	}}
+	agent := &fakeAgent{model: "small/model", weight: 10000}
 	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab", ContextWindow: 100000})
 	a.width, a.height = 60, 20
 

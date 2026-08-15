@@ -136,6 +136,20 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal("denied by approval rule: " + decision.Rule + " (remembered for this session)"), false
 	}
 
+	// THE GUARDIAN (guardian.go), if the person turned it on: a small model is
+	// asked whether this specific call is plainly safe before anybody is
+	// bothered. It can only turn this prompt into an allow — every other answer,
+	// every error and every interrupt falls through to the lines below unchanged.
+	//
+	// It sits ABOVE the no-watcher check on purpose. A headless run with the
+	// guardian explicitly on gets the guardian's answer instead of the automatic
+	// refusal, which is the whole point of having said so in advance; with it off
+	// — the default — this line does nothing and a headless run refuses exactly as
+	// it always did.
+	if a.guardianAllows(ctx, hub, call, decision) {
+		return toolResult{}, true
+	}
+
 	// Nobody is watching. Denying is the only honest answer: blocking would
 	// hang a headless run forever on a question with no reader, and allowing
 	// would make "prompt" mean "allow" wherever the surface is not a terminal.

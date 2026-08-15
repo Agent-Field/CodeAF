@@ -349,8 +349,10 @@ func TestTheThinkingBlockStreamsCollapsesAndExpands(t *testing.T) {
 	a.touch()
 
 	got = plain(frame(a))
-	if !strings.Contains(got, "⠿ thought for 6s · ctrl+e") {
-		t.Fatalf("the collapsed row is wrong:\n%s", got)
+	// The size rides the collapsed row beside the span (thinking.go).
+	want := "⠿ thought for 6s · " + thoughtCount(&a.entries[at]) + " · ctrl+e"
+	if !strings.Contains(got, want) {
+		t.Fatalf("the collapsed row is wrong, want %q:\n%s", want, got)
 	}
 	if strings.Contains(got, "probably under internal/") {
 		t.Fatalf("the collapsed block is still showing its words:\n%s", got)

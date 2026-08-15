@@ -157,6 +157,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 	// [warmBatch] for the law that decides what may start early at all.
 	warm := &warmBatch{}
 
+	// watch is this turn's loop detector (looped.go). It belongs to the turn and
+	// is built here rather than held on the Agent for the reason the warm batch
+	// is: the window is a fact about ONE turn's work, and a detector that
+	// remembered yesterday's repetitions would nudge a model for a call it is
+	// making for the first time today.
+	watch := newLoopWatch()
+
 	// toolCtx is the turn's context WITHOUT the observer installed below. An
 	// early tool must run under the turn's cancellation and nothing else; giving
 	// it a context pointed back at the stream it was started from would be a
@@ -189,7 +196,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 	// turn in flight finishes on the model it started on, and reading a.model
 	// per step broke it: a swap between two steps would send one model the
 	// transcript another model was mid-way through writing.
+	//
+	// The reasoning level is latched WITH it, in the same breath and for the
+	// same reason — and it is latched for THIS model, so a swap mid-turn cannot
+	// leave the turn sending one model's level with another model's name.
 	model := a.Model()
+	a.mu.Lock()
+	effort := a.reasoningLocked(model)
+	a.mu.Unlock()
 
 	// overflowCompacted bounds the compact-and-retry answer to a context
 	// overflow at one pass per turn. A second overflow after a successful
@@ -213,7 +227,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 		// result or an assistant answer, both legal places for a user message.
 		a.drainSteering()
 
-		response, err := a.completeWithRetry(ctx, model, partial, warm)
+		response, err := a.completeWithRetry(ctx, model, effort, partial, warm)
 		if err != nil {
 			// Interrupt (or the caller's own deadline). Whatever was streamed
 			// before the cut is real work the person watched arrive, so it
@@ -255,6 +269,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 			// than at the top of the next iteration is what keeps an interrupt
 			// arriving during the tool batch from recording it a second time.
 			partial.reset()
+			// The stubbing pass runs BEFORE the compaction check, and the order
+			// is the whole economy of it (stub.go): a transcript whose old heavy
+			// results have just become one-line pointers may no longer be over
+			// the threshold at all, so the check that follows is made against
+			// what the next request will actually weigh.
+			a.stubOldOutputs()
 			a.maybeCompact(ctx, hub)
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started)})
 			// The name comes after the turn is done and before the hub closes:
@@ -279,6 +299,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 				Content:    []ai.ContentPart{{Type: "text", Text: results[index].text}},
 			})
 		}
+
+		// The step boundary is where a turn is told it is going in circles
+		// (looped.go): the batch is recorded, the next request has not been
+		// assembled, and a note dropped here rides into it exactly as a person's
+		// steering does.
+		a.nudgeIfLooping(ctx, hub, watch, calls, results)
 
 		a.maybeCompact(ctx, hub)
 	}
@@ -341,7 +367,25 @@ func (a *Agent) sealTurn(turn Usage, started time.Time) Usage {
 // exactly the same messages (pi's _prepareRetry pop is a no-op in this shape —
 // see internal/exec/bare/loop.go). The model is the turn's, latched once by
 // runTurn.
-func (a *Agent) completeWithRetry(ctx context.Context, model string, partial *partialBuffer, warm *warmBatch) (*ai.Response, error) {
+//
+// The reasoning level is stamped HERE, on the request path and nowhere else, so
+// it reaches every step and every retry of the turn and reaches nothing else:
+// the compaction summary and the title call are the session's own errands, not
+// the person's question, and a level they asked for their conversation to be
+// thought about would be an odd thing to spend on naming it.
+//
+// The stamp is [provider.WithConfiguredReasoningEffort] — the OPERATOR-explicit
+// setter — because this level is exactly that: a person turned a knob. The other
+// setter, WithReasoningEffort, is for harness defaults, and the adapter drops
+// those unless a catalog can vouch for the model (provider's requestedEffort).
+// This session's client is built without that catalog seam, so a harness-default
+// stamp here would be dropped every time and the knob would do nothing. Nothing
+// is stamped when no level is set: an unstamped context is the one shape that
+// leaves the request byte-for-byte what it was.
+func (a *Agent) completeWithRetry(ctx context.Context, model string, effort provider.Effort, partial *partialBuffer, warm *warmBatch) (*ai.Response, error) {
+	if effort != provider.EffortNone {
+		ctx = provider.WithConfiguredReasoningEffort(ctx, effort)
+	}
 	var lastErr error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		// Each attempt streams the reply from the beginning, so the buffer
@@ -760,6 +804,11 @@ var glossField = map[string]string{
 	// jobs says what it is doing in its action word — list, output, kill —
 	// which is the whole of what a person needs to read beside the name.
 	"jobs": "action",
+	// The two web hands read as what they went looking for: the sentence that
+	// was searched, the page that was opened. Not the count, and not the
+	// scheme — a person watching wants to know what their agent is reading.
+	"web_search": "query",
+	"web_fetch":  "url",
 }
 
 // gloss renders one call as a person-readable line: the tool name and the one
@@ -857,6 +906,13 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response) {
 	usage := response.Usage
 	turn.Input += usage.PromptTokens
 	turn.Output += usage.CompletionTokens
+	// The cache figures are the provider's own, in whichever dialect it speaks
+	// them (ai.Usage reconciles the two spellings). They are recorded on the
+	// turn AND on the session because they answer two different questions: what
+	// this exchange cost against what it would have, and how warm the lineage
+	// has been all day.
+	turn.CacheRead += usage.CacheReadTokens()
+	turn.CacheWrite += usage.CacheCreationTokens()
 	if usage.Cost != nil {
 		turn.CostUSD += *usage.Cost
 	}
@@ -869,6 +925,8 @@ func (a *Agent) addUsage(turn *Usage, response *ai.Response) {
 	a.mu.Lock()
 	a.usage.Input += usage.PromptTokens
 	a.usage.Output += usage.CompletionTokens
+	a.usage.CacheRead += usage.CacheReadTokens()
+	a.usage.CacheWrite += usage.CacheCreationTokens()
 	a.usage.Turns++
 	if usage.Cost != nil {
 		a.usage.CostUSD += *usage.Cost
@@ -926,12 +984,27 @@ func (a *Agent) window() int {
 }
 
 func (a *Agent) compactThreshold() int {
-	window := a.window()
+	return CompactThreshold(a.window())
+}
+
+// CompactThreshold is the law itself, exported because a surface has to be able
+// to say how close a conversation is to being compacted — and a surface that
+// re-derived the formula from the same two constants would be a second copy of
+// it, free to drift the moment either one moves (internal/tui3 reads this for
+// the status meter's accent).
+//
+// Zero and negative windows answer zero: a threshold against an unknown window
+// is a number that means nothing, and a caller must have an answer for that
+// rather than treat it as a tiny model.
+func CompactThreshold(window int) int {
+	if window <= 0 {
+		return 0
+	}
 	reserve := window * compactReservePercent / 100
 	if reserve < compactReserveFloorTokens {
 		reserve = compactReserveFloorTokens
 	}
-	// Invariant: compactThreshold() > keepRecentTokens(). The 16k floor is
+	// Invariant: CompactThreshold() > keepRecentTokens(). The 16k floor is
 	// bigger than a small window, and below ~21.8k it drove the threshold under
 	// the verbatim tail — every step over threshold, every pass finding nothing
 	// but the tail to summarize, forever. Half the window is the clamp because
@@ -1098,10 +1171,35 @@ func (a *Agent) estimateTokensLocked() int {
 	return estimate
 }
 
+// imagePartTokens is what one image content part is charged in the content
+// estimate: A FLAT 1,000 TOKENS, whatever the picture.
+//
+// Neither of the two obvious alternatives is usable. Counting the part's own
+// bytes counts the base64 data URL, which is megabytes for a photograph and has
+// nothing to do with what the model is billed — it would trip compaction on the
+// turn after a screenshot was pasted. Counting nothing is what this did before,
+// and an image is then invisible to the meter and to the threshold: a
+// conversation of ten screenshots reads as a few hundred tokens right up to the
+// provider's overflow error.
+//
+// 1,000 is the middle of the range the vision endpoints actually charge — a
+// tile-based model bills roughly 250 tokens for a thumbnail and 1,500 for a
+// full-screen capture — and the figure is only ever compared against a threshold
+// with 16k of slack, so being twice wrong about one image moves when compaction
+// fires and never whether a request fits. It is expressed in bytes here because
+// messageBytes is a byte count that its callers divide by [bytesPerToken].
+const imagePartTokens = 1000
+
 func messageBytes(message ai.Message) int {
 	total := len(message.Role)
 	for _, part := range message.Content {
 		total += len(part.Text)
+		// Every non-text part is a picture today (image.go is the only thing
+		// that builds one), and the check is on the payload rather than on
+		// part.Type so a part that arrives spelled differently is still counted.
+		if part.ImageURL != nil {
+			total += imagePartTokens * bytesPerToken
+		}
 	}
 	for _, call := range message.ToolCalls {
 		total += len(call.Function.Name) + len(call.Function.Arguments)
@@ -1205,6 +1303,11 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response) {
 	defer a.mu.Unlock()
 	a.usage.Input += usage.PromptTokens
 	a.usage.Output += usage.CompletionTokens
+	// The cache figures follow the tokens they belong to. An auxiliary call is
+	// paid for out of the same pocket, so leaving them out would make the
+	// session's cached share a fraction of only part of its input.
+	a.usage.CacheRead += usage.CacheReadTokens()
+	a.usage.CacheWrite += usage.CacheCreationTokens()
 	if usage.Cost != nil {
 		a.usage.CostUSD += *usage.Cost
 	}

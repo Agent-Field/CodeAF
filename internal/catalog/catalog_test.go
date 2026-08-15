@@ -182,3 +182,63 @@ func TestParametersSurviveTheCache(t *testing.T) {
 		t.Fatalf("cached row = %t known %t, want the fetched answer", supported, known)
 	}
 }
+
+// The two figures a session's economics need, in the shapes the live catalog
+// published them in on 2026-08-15: `pricing.input_cache_read` beside the prompt
+// price, and `benchmarks.design_arena` as a LIST of boards.
+const cachePricePayload = `{"data":[
+  {"id":"warm/model","name":"Warm","architecture":{"input_modalities":["text"],"output_modalities":["text"]},
+   "pricing":{"prompt":"0.00001","completion":"0.00005","input_cache_read":"0.000001","input_cache_write":"0.0000125"},
+   "benchmarks":{"design_arena":[{"arena":"agents","category":"fullstack","elo":1290},{"arena":"models","category":"3d","elo":1346}],
+                 "artificial_analysis":{"intelligence_index":56}}},
+  {"id":"cold/model","name":"Cold","architecture":{"input_modalities":["text"],"output_modalities":["text"]},
+   "pricing":{"prompt":"0.000002","completion":"0.000004"},
+   "benchmarks":{"design_arena":[],"artificial_analysis":{"intelligence_index":40}}},
+  {"id":"router/model","name":"Router","architecture":{"input_modalities":["text"],"output_modalities":["text"]},
+   "pricing":{"prompt":"-1","completion":"-1"}}
+]}`
+
+// WHAT A CACHE READ COSTS IS THE WHOLE OF WHAT A CACHE IS WORTH. A session
+// re-sends its transcript on every step, so the gap between the prompt price and
+// the cache-read price is the only number that says what the prefix saved — and
+// nothing could ask until the catalog kept it.
+func TestTheCatalogCarriesTheCacheReadPriceAndTheArenaElo(t *testing.T) {
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(),
+		HTTPClient: catalogClient(t, http.StatusOK, cachePricePayload, nil),
+	})
+
+	warm, ok := c.Model("warm/model")
+	if !ok {
+		t.Fatal("warm/model is missing from the catalog")
+	}
+	if warm.CacheReadPrice != 0.000001 {
+		t.Fatalf("CacheReadPrice = %v, want 0.000001", warm.CacheReadPrice)
+	}
+	// A tenth of the prompt price: the nine-tenths between them is the saving.
+	if warm.PromptPrice != 0.00001 {
+		t.Fatalf("PromptPrice = %v, want 0.00001", warm.PromptPrice)
+	}
+	// The boards are different tasks rather than repeated measurements of one,
+	// so the row carries the BEST of them and never their average.
+	if warm.ArenaElo != 1346 {
+		t.Fatalf("ArenaElo = %v, want the best board's 1346", warm.ArenaElo)
+	}
+	// The block that held a list beside an object still yields its other score.
+	if warm.IntelligenceIndex != 56 {
+		t.Fatalf("IntelligenceIndex = %v, want 56", warm.IntelligenceIndex)
+	}
+
+	// A row that published neither: zero is absence, and a surface renders it as
+	// absence rather than as a free cache and an Elo of nothing.
+	cold, _ := c.Model("cold/model")
+	if cold.CacheReadPrice != 0 || cold.ArenaElo != 0 {
+		t.Fatalf("cold/model invented figures: cache %v elo %v", cold.CacheReadPrice, cold.ArenaElo)
+	}
+
+	// And OpenRouter's "-1" is still "nobody knows what this costs".
+	router, _ := c.Model("router/model")
+	if !router.PriceUnknown {
+		t.Fatal("a router's unknown pricing was read as a number")
+	}
+}

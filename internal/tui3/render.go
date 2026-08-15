@@ -2,8 +2,11 @@ package tui3
 
 import (
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // The render core is two passes and one cache.
@@ -141,8 +144,12 @@ func (a *app) layout(width int) []row {
 	return out
 }
 
-// isHot reports whether the pointer is on this row.
+// isHot reports whether the pointer is on this row. The linear tier has no
+// pointer at all (Options.Linear), so it has no hot row.
 func (a *app) isHot(r row) bool {
+	if a.linear {
+		return false
+	}
 	switch a.hot.kind {
 	case hoverEntry:
 		return r.entry >= 0 && r.entry == a.hot.entry
@@ -195,17 +202,29 @@ func (a *app) entryRows(i, width int) []string {
 func (a *app) renderEntry(i int, e *entry, width int) []string {
 	switch e.kind {
 	case entryUser:
-		// The person's own words: the glyph, then the text in bold, and every
-		// continuation line aligned under the TEXT rather than under the
-		// glyph. The glyph marks the turn; the column belongs to the sentence.
+		// THE PERSON'S OWN WORDS, IN THE PERSON'S OWN HUE — the glyph and the
+		// whole body in the accent, and every continuation line aligned under
+		// the TEXT rather than under the glyph. The glyph marks the turn; the
+		// column belongs to the sentence.
+		//
+		// The body was bold ink until this wave, and bold was the wrong marker
+		// for one reason: MARKDOWN OWNS WEIGHT. An assistant answer with a bold
+		// lead-in renders exactly like a person's message, and the two things a
+		// reader must never confuse were separated by an attribute either of
+		// them could wear. Hue is the one channel identity can hold alone —
+		// nothing the model writes is ever painted in the accent — so identity
+		// takes hue and markdown keeps weight, and neither can impersonate the
+		// other. On a sixteen-colour terminal the accent degrades to bold
+		// (styles.go's tier table), which is the old rendering and the right
+		// one there: with no hue at all, weight is the only marker left.
 		body := wrap(e.text, width-2)
 		out := make([]string, 0, len(body))
 		for i, line := range body {
 			lead := "  "
 			if i == 0 {
-				lead = a.pal.accent(glyphYou)
+				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			out = append(out, lead+a.pal.bold(a.pal.ink(line)))
+			out = append(out, lead+a.pal.accent(line))
 		}
 		return out
 
@@ -253,6 +272,37 @@ func (a *app) assistantRows(e *entry, width int) []string {
 	return trimBlanks(out)
 }
 
+// stillWorking is how long a turn has to be silent before the indicator says
+// so out loud.
+//
+// THE DEFECT THIS FIXES: the session's loop retries a failed request silently,
+// with a backoff — a rate limit, a 529, a connection reset — and it says nothing
+// to the surface while it does, because a retry that succeeds is not news. From
+// the outside that is indistinguishable from a hang: three dots, pulsing, for
+// forty seconds. The dots are the only thing on screen and they claim exactly
+// as much at second one as at second forty.
+//
+// Ten seconds is chosen against the thing being waited on rather than against a
+// person's patience: a first token from a large model on a cold cache can take
+// six or seven, so below ten this would fire on ordinary turns and mean nothing.
+// Past it, silence is either a retry or a very long tool-free think, and "still
+// working" is true of both — which is why it says that and not "retrying". The
+// surface does not know that it is retrying. It knows the stream has said
+// nothing for ten seconds, and that is exactly what it claims.
+const stillWorking = 10 * time.Second
+
+// stillWorkingWord is the suffix.
+const stillWorkingWord = " · still working"
+
+// pulse is the ellipsis frame — or the still one, in the linear tier, where an
+// animation is a word repeated forever.
+func (a *app) pulse() string {
+	if a.linear {
+		return ellipsisFrames[len(ellipsisFrames)-1]
+	}
+	return ellipsisFrames[(a.paints/pulseStep)%len(ellipsisFrames)]
+}
+
 // ellipsis is the sign of life while a turn runs and nothing else on screen is
 // moving. It is suppressed while text is actively streaming, and suppressed
 // while any call is spinning: the text and the spinner each already answer "is
@@ -264,7 +314,20 @@ func (a *app) ellipsis() (string, bool) {
 	if a.live >= 0 && a.live < len(a.entries) && a.entries[a.live].text != "" && !a.quiet() {
 		return "", false
 	}
-	return a.pal.accent("  " + ellipsisFrames[(a.paints/pulseStep)%len(ellipsisFrames)]), true
+	line := a.pal.accent("  " + a.pulse())
+	if a.silentFor() >= stillWorking {
+		line += a.pal.dim(stillWorkingWord)
+	}
+	return line, true
+}
+
+// silentFor is how long the stream has said nothing. Zero when nothing has ever
+// arrived, which is a turn that has not started rather than one that has stopped.
+func (a *app) silentFor() time.Duration {
+	if a.lastDelta.IsZero() {
+		return 0
+	}
+	return time.Since(a.lastDelta)
 }
 
 // divider is the compaction mark: a rule with the fact in it, because a
@@ -295,13 +358,21 @@ func (a *app) divider(hint string, width int) string {
 //	idle         dim      nothing is happening
 //	interrupted  soft red the last turn was stopped by hand
 //
-// The word "aforge" used to open this line and does not any more: a person who
-// has opened aforge knows they are in aforge, and the row was one segment
-// shorter than the facts it had to hold. The workspace went the same way — the
-// session's own name for the conversation says more about which window this is
-// than its directory's base name does, and the directory is what the shell
-// prompt behind it already says. The name falls back to the place when the
-// session has not named itself yet (title.go), so the segment is never empty.
+// The line OPENS WITH THE PRODUCT'S NAME, and the name is "openaf" — the one
+// word this surface calls itself, wherever it speaks (styles.go's [product]).
+// It was dropped for a wave on the argument that a person who has opened the
+// thing knows what they have opened, and that argument was right about the
+// reader and wrong about the screenshot: this line is what a terminal
+// photograph, a bug report and a shared pane carry, and a status bar that names
+// everything except the program is the one fact none of them can recover. It is
+// also the first segment to go when the frame is narrow — see below — so it
+// costs a wide terminal nine cells and a narrow one nothing.
+//
+// The workspace is still gone from it: the session's own name for the
+// conversation says more about which window this is than its directory's base
+// name does, and the directory is what the shell prompt behind it already says.
+// The name falls back to the place when the session has not named itself yet
+// (title.go), so the segment is never empty.
 //
 // The hints ride the right end. They were a row of their own until this wave;
 // two keys is not a row.
@@ -313,9 +384,27 @@ func (a *app) status(width int) string {
 	if name == "" {
 		name = a.place
 	}
-	parts := []string{name, a.model, dollars(a.cost)}
-	if pct, ok := a.ctxPercent(); ok {
-		parts = append(parts, itoa(pct)+"% ctx")
+	word, painted := a.stateWord()
+
+	parts := []string{product, name, a.model, dollars(a.cost)}
+	// The context segment is the one part of the line that can be painted
+	// without being the state word, so it is assembled and painted separately
+	// and spliced back in below.
+	context, crowded := a.contextSegment()
+	if context != "" {
+		parts = append(parts, context)
+	}
+	if warm := a.warmSegment(); warm != "" {
+		parts = append(parts, warm)
+	}
+	// The product name is the FIRST thing dropped on a narrow frame — before
+	// the hints, and long before the cost. It is the segment a reader least
+	// needs and a screenshot most does, and those are two different frames.
+	// The +3 is the two cells the hints are held off by plus the one that makes
+	// the gap below non-zero: the two tests have to agree, or the name survives
+	// by exactly the width that costs the hints.
+	if statusWidth(parts, word)+ansi.StringWidth(statusHints)+3 > width {
+		parts = parts[1:]
 	}
 
 	plain := strings.Join(parts, " · ")
@@ -324,9 +413,16 @@ func (a *app) status(width int) string {
 		if i > 0 {
 			line += sep
 		}
+		// Everything is dim except a context segment that has got close to
+		// compaction. It is painted in place rather than moved to the end
+		// because WHERE it is is how a person finds it; the colour is only how
+		// they notice it.
+		if crowded && part == context {
+			line += a.pal.accent(part)
+			continue
+		}
 		line += a.pal.dim(part)
 	}
-	word, painted := a.stateWord()
 	plain += " · " + word
 	line += sep + painted
 
@@ -343,6 +439,61 @@ func (a *app) status(width int) string {
 	return line
 }
 
+// contextSegment is what the conversation is CARRYING, and it reports whether
+// that has got close enough to compaction to be painted.
+//
+//	12.4k/128k · 10%      the ordinary reading
+//	842/128k              under one percent: the figure without a percentage
+//	                      (empty)  nobody has said what the window is
+//
+// It leads with the tokens rather than the percentage because the two answer
+// different questions and only one of them is answerable without the other. "How
+// much am I carrying" is a fact about the conversation; "how much of the window
+// is that" is a fact about the model, and it changes under a person's feet when
+// they switch models without a single word being added. Both are on the line, in
+// that order.
+//
+// The percentage is dropped entirely below 1% rather than shown as "0%" or "1%".
+// A meter that reads 1% for the first twenty turns of a session is not a meter —
+// it is what the byte-counting estimator this replaced actually did, and the
+// figure it parked at was the only thing anybody ever read off it.
+func (a *app) contextSegment() (string, bool) {
+	if a.ctxTokens <= 0 || a.ctxWindow <= 0 {
+		return "", false
+	}
+	segment := tokenWord(a.ctxTokens) + "/" + tokenWord(a.ctxWindow)
+	if pct, ok := a.ctxPercent(); ok && pct >= 1 {
+		segment += " · " + itoa(pct) + "%"
+	}
+	return segment, a.ctxCrowded()
+}
+
+// warmSegment is the session's cached share of everything it has sent — "⟲ 62%"
+// — and empty until there is one.
+//
+// It is a share rather than a count because a count of cached tokens says
+// nothing on its own: 40k cached is excellent against 50k sent and a rounding
+// error against 4M. The glyph is the same one the per-turn savings note opens
+// with, so the running total and the line that explains one turn of it are
+// visibly the same subject.
+//
+// Rounding is toward the honest side: 0% is shown when the share is real but
+// tiny, because "there is a cache and it is barely hitting" is a different fact
+// from the empty segment's "there is no cache accounting here at all".
+func (a *app) warmSegment() string {
+	share, ok := session.Usage{Input: a.inputTokens, CacheRead: a.cacheRead}.CachedShare()
+	if !ok {
+		return ""
+	}
+	return "⟲ " + itoa(int(share*100)) + "%"
+}
+
+// statusWidth is what the line's own facts measure, unpainted — the segments
+// and the state word that always follows them.
+func statusWidth(parts []string, word string) int {
+	return ansi.StringWidth(strings.Join(parts, " · ")) + 3 + ansi.StringWidth(word)
+}
+
 // stateWord is the last segment, plain and painted.
 //
 // A pending question OUTRANKS the run state, and says so in words as well as in
@@ -351,6 +502,16 @@ func (a *app) status(width int) string {
 // it is waiting for them. "your call" rather than "your answer" because it is
 // shorter and because it is what it is.
 func (a *app) stateWord() (string, string) {
+	// COPY OUTRANKS EVERYTHING, because it is the only state on this line that is
+	// about the KEYBOARD rather than about the turn. While the viewport is frozen
+	// the keys do something else entirely (copymode.go), and a status line that
+	// said "idle" would be describing the session correctly and the screen
+	// wrongly. The turn underneath keeps running; the row it would have claimed
+	// is back the moment esc is pressed.
+	if a.copy.on {
+		word := a.copyWord()
+		return word, a.pal.accent(word)
+	}
 	if a.asking() {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}

@@ -38,6 +38,13 @@ const (
 	hoverChoices
 	// hoverOverlay is one row of the open list; index is its row in that list.
 	hoverOverlay
+	// hoverSheet is one row of the settings panel; index is its item
+	// (settings.go). The panel is fullscreen, so while it is up this is the
+	// only kind the pointer can produce.
+	hoverSheet
+	// hoverWelcome is one recent-session row of the welcome box; index is its
+	// slot (welcome.go).
+	hoverWelcome
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -95,6 +102,10 @@ func (a *app) hoverTarget(y int) hoverAt {
 			return hoverAt{kind: hoverChoices}
 		case chromeOverlay:
 			return hoverAt{kind: hoverOverlay, index: mark.index}
+		case chromeWelcome:
+			if slot := a.welcomeSlotAt(mark.index); slot >= 0 {
+				return hoverAt{kind: hoverWelcome, index: slot}
+			}
 		}
 	}
 	return hoverAt{}

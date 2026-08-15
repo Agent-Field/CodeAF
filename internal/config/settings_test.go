@@ -519,3 +519,156 @@ func TestNerdFontDefaultsOnPersistsAndHonorsItsEnvironmentPin(t *testing.T) {
 		t.Errorf("an untouched profile reported a chooser: %q", source)
 	}
 }
+
+// ── the web-search rows ─────────────────────────────────────────────────────
+
+// The provider row is a choice with a working default: a person who has never
+// opened the sheet searches, and a value nobody can parse still searches.
+func TestSearchProviderDefaultsToAutoAndRefusesAPlugItDoesNotKnow(t *testing.T) {
+	dir := t.TempDir()
+	rows := registry(t, dir)
+	row, ok := rows.Row(KeySearchProvider)
+	if !ok {
+		t.Fatal("the search provider is not registered")
+	}
+	if row.Category != CategoryModels || row.Kind != SettingChoice || row.Label != "searching" {
+		t.Fatalf("search provider row = %+v", row)
+	}
+	if row.Value() != SearchProviderAuto || SearchProviderAt(dir) != SearchProviderAuto {
+		t.Fatalf("the search provider does not default to auto: %q", row.Value())
+	}
+	if _, pinned := row.PinnedBy(); pinned {
+		t.Fatal("the provider row is pinned by an environment variable; it is a preference, not a secret")
+	}
+
+	if err := row.Apply("exa"); err != nil {
+		t.Fatal(err)
+	}
+	if SearchProviderAt(dir) != "exa" {
+		t.Fatalf("the pin did not persist: %q", SearchProviderAt(dir))
+	}
+	reread, _ := registry(t, dir).Row(KeySearchProvider)
+	if reread.Value() != "exa" {
+		t.Fatalf("the reread row lost the persisted pin: %q", reread.Value())
+	}
+	if err := reread.Apply("kagi"); err == nil {
+		t.Fatal("the row accepted a plug this build does not have")
+	}
+	if SearchProviderAt(dir) != "exa" {
+		t.Fatalf("a refused edit still moved the row: %q", SearchProviderAt(dir))
+	}
+
+	// A value written by hand — an older build's plug, a typo — reads as auto
+	// rather than as an error. Search must not be takeable away by a stale row.
+	if err := writeProfileValue(dir, KeySearchProvider, "yahoo!"); err != nil {
+		t.Fatal(err)
+	}
+	if SearchProviderAt(dir) != SearchProviderAuto {
+		t.Fatalf("a stale pin did not fall back to auto: %q", SearchProviderAt(dir))
+	}
+}
+
+// Both credentials: optional, masked when they read, and pinned by the
+// vendors' own environment variables.
+func TestTheSearchKeysAreOptionalMaskedAndEnvironmentPinned(t *testing.T) {
+	for _, credential := range []struct {
+		key   string
+		env   string
+		label string
+		read  func(string) string
+	}{
+		{KeyExaKey, "EXA_API_KEY", "exa key", ExaKeyAt},
+		{KeyJinaKey, "JINA_API_KEY", "jina key", JinaKeyAt},
+	} {
+		t.Run(credential.key, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv(credential.env, "")
+			rows := registry(t, dir)
+			row, ok := rows.Row(credential.key)
+			if !ok {
+				t.Fatalf("%s is not registered", credential.label)
+			}
+			if row.Category != CategoryModels || row.Kind != SettingText || !row.Secret {
+				t.Fatalf("%s row = %+v, want a secret text row", credential.label, row)
+			}
+			if row.Label != credential.label {
+				t.Fatalf("row label = %q, want %q", row.Label, credential.label)
+			}
+
+			// Unset is a working configuration and reads as one: the empty
+			// label, never a row of bullets standing in for nothing.
+			if row.Value() != "not set" || credential.read(dir) != "" {
+				t.Fatalf("an unset key reads %q", row.Value())
+			}
+
+			if err := row.Apply("secret-key-abcdefgh1234"); err != nil {
+				t.Fatal(err)
+			}
+			if got := credential.read(dir); got != "secret-key-abcdefgh1234" {
+				t.Fatalf("the key did not persist whole: %q", got)
+			}
+			reread, _ := registry(t, dir).Row(credential.key)
+			masked := reread.Value()
+			if strings.Contains(masked, "secret-key") {
+				t.Fatalf("the row rendered the key: %q", masked)
+			}
+			if !strings.HasSuffix(masked, "1234") || !strings.HasPrefix(masked, "••••") {
+				t.Fatalf("the row did not mask to bullets plus a tail: %q", masked)
+			}
+
+			// The edit that must not destroy anything: open the row, save what
+			// it displayed, keep the key.
+			if err := reread.Apply(masked); err != nil {
+				t.Fatal(err)
+			}
+			if got := credential.read(dir); got != "secret-key-abcdefgh1234" {
+				t.Fatalf("saving the mask overwrote the key: %q", got)
+			}
+
+			// Clearing is still possible, and is the only thing that clears.
+			if err := reread.Apply(""); err != nil {
+				t.Fatal(err)
+			}
+			if got := credential.read(dir); got != "" {
+				t.Fatalf("an emptied row kept the key: %q", got)
+			}
+
+			// The vendor's variable wins, is named, and holds the row.
+			t.Setenv(credential.env, "from-the-shell-wxyz")
+			if got := credential.read(dir); got != "from-the-shell-wxyz" {
+				t.Fatalf("the environment did not win: %q", got)
+			}
+			pinned, _ := registry(t, dir).Row(credential.key)
+			name, isPinned := pinned.PinnedBy()
+			if !isPinned || name != credential.env {
+				t.Fatalf("%s did not report its pin: %q", credential.label, name)
+			}
+			if value := pinned.Value(); !strings.HasSuffix(value, "wxyz") || strings.Contains(value, "from-the-shell") {
+				t.Fatalf("the pinned row rendered unmasked: %q", value)
+			}
+			if err := pinned.Apply("another-key"); err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("a pinned key accepted an edit: %v", err)
+			}
+		})
+	}
+}
+
+// The mask shows enough to tell two keys apart and never enough to use, and it
+// never reports a length.
+func TestMaskCredentialHidesTheKeyAndItsLength(t *testing.T) {
+	short := maskCredential("sk-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	long := maskCredential("sk-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbcccc")
+	if len([]rune(short)) != len([]rune(long)) {
+		t.Fatalf("the mask leaks the key's length: %q vs %q", short, long)
+	}
+	if short == long {
+		t.Fatalf("two different keys mask identically: %q", short)
+	}
+	if maskCredential("") != "" {
+		t.Fatalf("an unset value masked to %q, want nothing", maskCredential(""))
+	}
+	// Too short to be a key: show none of it rather than most of it.
+	if got := maskCredential("abc"); strings.Contains(got, "abc") {
+		t.Fatalf("a short value was rendered: %q", got)
+	}
+}

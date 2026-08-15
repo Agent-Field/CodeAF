@@ -27,6 +27,8 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -107,6 +109,26 @@ const (
 	// this kind is unchanged — and a provider that never announces (a
 	// non-streaming endpoint) simply sends no event of this kind.
 	EventToolAnnounced
+	// EventGuardianAllowed says a call the policy would have ASKED about ran
+	// because the guardian model vouched for it (guardian.go). It carries the
+	// Tool, the call's gloss in Hint and Args, and the rule that would have
+	// prompted in Rule.
+	//
+	// It is an ANNOTATION, not a question and not a result: the row it belongs to
+	// is the ordinary tool row, and this is the dim line beside it saying who
+	// answered instead of the person. A surface that ignores this kind shows a
+	// call that simply ran, which is what it did — but a gate that answers on
+	// somebody's behalf and says nothing about it is a gate nobody can audit, so
+	// the event exists whether or not a given surface draws it.
+	EventGuardianAllowed
+	// EventNudge says the turn has been caught going in circles and has been
+	// nudged (looped.go): Tool is the call that repeated, Count is how many times.
+	// A surface renders it as "stuck? nudged · <tool> ×N".
+	//
+	// The nudge itself is a note in the transcript, not an error and not a
+	// refusal — the model keeps working, having been told what it has been doing.
+	// This event is only how a person gets to SEE that happen.
+	EventNudge
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -146,6 +168,12 @@ type Event struct {
 	// (internal/approval) so that every surface says the same sentence about the
 	// same rule instead of deriving one.
 	Rule string
+
+	// Count is how many times the thing this event is about has happened. It is
+	// set on EventNudge — the number of repetitions that earned the nudge — and
+	// zero everywhere else, which is why it is a plain int rather than a pointer:
+	// no other kind has a count, and "0" is not a count any kind reports.
+	Count int
 }
 
 // Usage is token and cost accounting for one turn or the session total.
@@ -155,6 +183,46 @@ type Usage struct {
 	CostUSD  float64
 	Duration time.Duration
 	Turns    int
+
+	// CacheRead and CacheWrite are the provider's prompt-cache accounting:
+	// tokens served from a warm prefix, and tokens written into one. Both are
+	// zero when the provider says nothing, which is a different fact from a
+	// cache that missed — but not one a surface can tell apart, so a surface
+	// shows nothing rather than "0% cached" (design-law-v2 §16 EMPTINESS).
+	//
+	// They are read off ai.Usage, which tolerates both spellings the endpoints
+	// use: Anthropic-native cache_read_input_tokens/cache_creation_input_tokens
+	// and OpenAI-style prompt_tokens_details.cached_tokens.
+	CacheRead  int
+	CacheWrite int
+}
+
+// CachedShare is the fraction of this session's INPUT that came off a warm
+// prefix, and false when there is nothing to divide.
+//
+// The denominator is where the two provider dialects have to be reconciled, and
+// they disagree about a fact rather than a name. OpenAI-style endpoints count
+// cached tokens INSIDE prompt_tokens — cached_tokens is a subset, so the total
+// is already Input. Anthropic-native ones count them BESIDE input_tokens —
+// disjoint, so the total is Input + CacheRead. Nothing on the wire says which
+// convention a given row used, so the shape does: cache reads that exceed the
+// input count cannot be a subset of it, and only then are the two added.
+//
+// Being wrong in the OpenAI direction would report every warm turn as ~50%
+// cached forever; being wrong in the Anthropic direction would report >100%.
+// The test for this is in agent_test.go, one case per dialect.
+func (u Usage) CachedShare() (float64, bool) {
+	if u.CacheRead <= 0 {
+		return 0, false
+	}
+	total := u.Input
+	if u.CacheRead > u.Input {
+		total = u.Input + u.CacheRead
+	}
+	if total <= 0 {
+		return 0, false
+	}
+	return float64(u.CacheRead) / float64(total), true
 }
 
 // Config builds one agent. The zero value is invalid: Workspace, Model,
@@ -213,11 +281,67 @@ type Config struct {
 	// on a question that will never reach a person.
 	AskConsent bool
 
+	// Guardian turns on the small model that answers a "prompt" decision before
+	// the person is asked at all (guardian.go). FALSE IS THE DEFAULT AND THE
+	// ONLY SAFE ONE: this is a gate that answers on somebody's behalf, and a
+	// caller that has not said so must never get one. Nothing about the gate
+	// changes when it is off — not one extra call, not one extra branch a person
+	// can observe.
+	Guardian bool
+
 	// RolesSource reads one auxiliary-model setting for internal/roles: the
 	// keys are roles.PinKey and roles.TierKey. Nil is a fresh install with no
 	// settings file, and every auxiliary call then rides the session's own
 	// model — roles.Resolve's floor, not a failure.
 	RolesSource func(key string) (string, bool)
+
+	// SupportsImages reports whether a model can read image content parts. It
+	// gates [Agent.SubmitImage] and NIL IS FALSE — the opposite of every other
+	// nil-is-permissive hook here, and deliberately so: a model that cannot see
+	// answers a message full of image parts with a 400 or, worse, with a
+	// confident description of nothing. "I don't know whether this model has
+	// vision" and "this model has vision" must not be spelled the same way, so a
+	// caller that holds no catalog gets a refusal it can read instead of a turn
+	// that fails on the wire.
+	//
+	// It is a function of the model rather than a bool because the model moves:
+	// /model swaps it mid-session (see [Agent.SetModel]), and the answer has to
+	// follow the model the next turn will actually ride.
+	SupportsImages func(model string) bool
+
+	// ImageGenModel and ImageGenClient are the image-generation pair the belt's
+	// generate_image tool calls through (tools_image.go): the model that paints,
+	// and the client that carries the request to it.
+	//
+	// They follow the SAME LAW as the search pair below — NIL CLIENT MEANS THE
+	// TOOL IS NOT ON THE BELT, not that it is on the belt and refuses — and for
+	// the same reason: a model told it can make pictures will keep planning
+	// around that capability long after the first refusal. An empty model with a
+	// live client is the same absence, unless the person pinned one in settings
+	// (roles.PinKey(roles.RoleImageGen), read through RolesSource).
+	//
+	// ImageGenerator is provider.MediaClient's own signature, so the wiring wave
+	// assigns the media client here with no adapter in between.
+	ImageGenModel  string
+	ImageGenClient ImageGenerator
+
+	// SearchProvider and SearchFetcher are the web-search pair the belt's
+	// web_search and web_fetch tools call through (tools_search.go). They are
+	// [search.Provider] and [search.Fetcher] rather than a resolved
+	// configuration because WHICH back end answers is not this package's
+	// question: internal/search owns the resolution law, the surface runs it
+	// against the person's settings, and what arrives here is the answer.
+	//
+	// NIL IS THE DEFAULT AND MEANS THE TOOL IS NOT ON THE BELT — not that it
+	// is on the belt and fails. A model told about a tool it cannot reach is
+	// strictly worse off than a model never told: it will spend a call, read a
+	// refusal, and often try again in different words, and the whole time it
+	// is planning around a capability that does not exist. The two are
+	// separate fields for the same reason [search.Resolve] returns two: a
+	// binary that can search but not fetch is a real configuration, and it
+	// should get exactly the one tool it can honour.
+	SearchProvider search.Provider
+	SearchFetcher  search.Fetcher
 
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
@@ -244,6 +368,12 @@ type Agent struct {
 	// schemas on the hot path.
 	definitions []ai.ToolDefinition
 	file        *sessionFile
+	// cacheKey is this session's prompt-cache lineage, stamped on every request
+	// by [sessionCompleter]. It is fixed at construction — derived from the
+	// session file's id, or from a fresh one when the conversation lives only in
+	// memory — and is never written after, so it needs no lock.
+	cacheKey string
+
 	// jobs is the background-command registry (jobs.go): the processes bash
 	// started with background:true, alive across turns until Close.
 	//
@@ -262,14 +392,21 @@ type Agent struct {
 	// only, never across a provider call or a tool execution: a turn that
 	// holds it while waiting on the network would deadlock Interrupt, which is
 	// the one call that must always be answerable.
-	mu       sync.Mutex
-	model    string
-	messages []ai.Message
-	usage    Usage
-	running  bool
-	cancel   context.CancelFunc
-	steering []string
-	closed   bool
+	mu    sync.Mutex
+	model string
+	// reasoning is how hard each model is asked to think, by model id, and it
+	// is a MAP rather than a field for the reason agent.go's block states: the
+	// level is a choice about a model, and a /model switch must not carry one
+	// model's answer onto another. Absent means "send nothing"; it holds no
+	// EffortNone entries. Nil until somebody sets a level, which is most
+	// sessions.
+	reasoning map[string]provider.Effort
+	messages  []ai.Message
+	usage     Usage
+	running   bool
+	cancel    context.CancelFunc
+	steering  []userMessage
+	closed    bool
 	// done is closed when the in-flight turn has recorded its last message,
 	// non-nil exactly while running. Close waits on it so a cancelled turn's
 	// tail reaches the journal before the file does.
