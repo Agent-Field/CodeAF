@@ -89,6 +89,24 @@ const (
 	// at most once per session — after the first completed turn, when the
 	// session had no name yet.
 	EventTitleChanged
+	// EventToolAnnounced says one tool call has finished ARRIVING — the model
+	// has sent the whole instruction — while the response it rides on is still
+	// streaming. It carries the same Tool, Hint and Args EventToolBegin will,
+	// and no Output: nothing has run.
+	//
+	// It is the difference between "asked for" and "started", and it exists
+	// because those two moments can be seconds apart. A mutating call is
+	// announced here and does not begin until the response completes and the
+	// batch starts (loop.go's safety law), so a surface that only had
+	// EventToolBegin had to choose between drawing nothing for that gap or
+	// drawing a spinner for work that had not started. Both are lies; this is
+	// the third option.
+	//
+	// EventToolBegin keeps its exact meaning: EXECUTION STARTED. Every call that
+	// is announced is also begun, in the same order, so a surface that ignores
+	// this kind is unchanged — and a provider that never announces (a
+	// non-streaming endpoint) simply sends no event of this kind.
+	EventToolAnnounced
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -167,6 +185,18 @@ type Config struct {
 	// conversation resumes after the latest compaction marker.
 	SessionFile string
 
+	// MemoryFile is the durable memory: one file of lines the model keeps with
+	// the note tool and drops with forget (memory.go), rendered into the system
+	// prompt as a <memory> block and re-read at the start of every turn. Empty
+	// is memory OFF — no file, and no note or forget on the belt.
+	//
+	// It is the caller's path rather than a path this package derives, for the
+	// reason SessionFile is: where a person's state lives is the surface's
+	// decision, and a package that picked ~/.aforge/v3/memory.md itself would
+	// write there from a test, a subharness leaf, and a second window of the
+	// same session alike.
+	MemoryFile string
+
 	// ApprovalPolicy decides whether a tool call runs, asks, or is refused
 	// (internal/approval, gated in consent.go). NIL ALLOWS EVERYTHING, which is
 	// the behavior every caller had before the gate existed: a headless --once
@@ -221,6 +251,12 @@ type Agent struct {
 	// session's, not a turn's, and the goroutines watching them must never
 	// contend for the lock Interrupt has to be able to take at any moment.
 	jobs *jobRegistry
+
+	// memory is the durable-notes file (memory.go), nil when Config.MemoryFile
+	// is empty. Like jobs it sits outside mu and holds its own lock: its writers
+	// are tool calls running in parallel inside a batch, and its one reader is
+	// the per-turn prompt refresh.
+	memory *memoryStore
 
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that

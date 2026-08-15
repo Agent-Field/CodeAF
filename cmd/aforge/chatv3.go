@@ -133,8 +133,24 @@ func runChatV3(args []string) error {
 	// now. Both are settings (internal/config), both are off by one row, and
 	// neither is ever waited for — a history file that cannot be opened costs
 	// the up arrow and nothing else.
+	//
+	// They read through the project layer like every other row: a repository
+	// that says "record nothing from this directory" is answering about ITS
+	// directory, which is the whole reason the layer is per-workspace. The
+	// broken-file error cannot actually arrive here — governance above read the
+	// same file and would have stopped the launch — and it is still returned
+	// rather than swallowed, because the only wrong thing to do with an
+	// unreadable settings file is carry on as though it said nothing.
+	keepHistory, err := config.ProjectBoolAt(workspace, settings.ProfileDir, config.KeyHistoryEnabled)
+	if err != nil {
+		return err
+	}
+	keepDraft, err := config.ProjectBoolAt(workspace, settings.ProfileDir, config.KeyDraftPersist)
+	if err != nil {
+		return err
+	}
 	var recall tui3.History
-	if config.HistoryEnabledAt(settings.ProfileDir) {
+	if keepHistory {
 		if dir, err := v3Dir(); err == nil {
 			store := history.New(filepath.Join(dir, "history.jsonl"))
 			defer func() { _ = store.Close() }()
@@ -142,7 +158,7 @@ func runChatV3(args []string) error {
 		}
 	}
 	draft := ""
-	if config.DraftPersistAt(settings.ProfileDir) {
+	if keepDraft {
 		if dir, err := v3Dir(); err == nil {
 			draft = tui3.DraftFile(dir, workspace)
 		}
@@ -221,18 +237,30 @@ func openV3Agent(cfg session.Config, workspace string) (*session.Agent, session.
 // silently ignored the line it could not read would be a gate that opens for
 // exactly the reason nobody would think to check: a typo in the file that was
 // meant to close it.
+//
+// THE PROJECT LAYER ENTERS HERE. cfg.Workspace is the directory this session
+// runs in, so <workspace>/.openaf/config.json is the repository's own answer to
+// these rows, and every read below resolves project → profile → default
+// (internal/config's projectconfig.go). A caller with no workspace — a test, a
+// door that has not resolved a directory — gets an empty layer rather than a
+// lookup in whatever directory the process happens to be sitting in.
 func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (session.Config, error) {
-	policy, err := v3Policy(profileDir, yolo)
+	workspace := strings.TrimSpace(cfg.Workspace)
+	policy, err := v3Policy(workspace, profileDir, yolo)
 	if err != nil {
 		return cfg, err
 	}
-	source, err := v3RolesSource(profileDir)
+	source, err := v3RolesSource(workspace, profileDir)
+	if err != nil {
+		return cfg, err
+	}
+	rail, err := config.ProjectFloatAt(workspace, profileDir, config.KeySpendRail)
 	if err != nil {
 		return cfg, err
 	}
 	cfg.ApprovalPolicy = policy
 	cfg.RolesSource = source
-	cfg.SpendRailUSD = config.SpendRailUSDAt(profileDir)
+	cfg.SpendRailUSD = rail
 	return cfg, nil
 }
 
@@ -245,13 +273,23 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 // --yolo replaces the DEFAULT and nothing else. A person who wrote
 // `bash:prompt` still gets asked about bash: the flag is "stop asking me about
 // the ordinary things", not "forget what I wrote down".
-func v3Policy(profileDir string, yolo bool) (*approval.Policy, error) {
-	mode := config.ToolApprovalModeAt(profileDir)
+func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error) {
+	mode, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovalMode)
+	if err != nil {
+		return nil, err
+	}
 	if yolo {
 		mode = string(approval.ActionAllow)
 	}
 	raw := map[string]any{"default": mode}
-	if text := config.ToolApprovalsAt(profileDir); text != "" {
+	text, err := config.ProjectStringAt(workspace, profileDir, config.KeyToolApprovals)
+	if err != nil {
+		return nil, err
+	}
+	// The repository's exceptions REPLACE the person's, whole (internal/config
+	// states the merge law): a rule set assembled from two files is a rule set
+	// neither file's reader could read back.
+	if text != "" {
 		tools, err := config.ParseToolApprovals(text)
 		if err != nil {
 			return nil, fmt.Errorf("settings row %q: %w", config.KeyToolApprovals, err)
@@ -286,12 +324,25 @@ func v3Policy(profileDir string, yolo bool) (*approval.Policy, error) {
 // that changed under a running session would make two calls in one conversation
 // answer to different settings, and the row itself says a change lands on the
 // next session.
-func v3RolesSource(profileDir string) (func(string) (string, bool), error) {
-	values := map[string]string{
-		roles.TierKey(roles.TierLow):  config.TierModelAt(profileDir, config.ModelTierLow),
-		roles.TierKey(roles.TierHigh): config.TierModelAt(profileDir, config.ModelTierHigh),
+func v3RolesSource(workspace, profileDir string) (func(string) (string, bool), error) {
+	low, err := config.ProjectStringAt(workspace, profileDir, config.KeyTierLowModel)
+	if err != nil {
+		return nil, err
 	}
-	if text := config.ModelRolesAt(profileDir); text != "" {
+	high, err := config.ProjectStringAt(workspace, profileDir, config.KeyTierHighModel)
+	if err != nil {
+		return nil, err
+	}
+	values := map[string]string{
+		roles.TierKey(roles.TierLow):  low,
+		roles.TierKey(roles.TierHigh): high,
+	}
+	text, err := config.ProjectStringAt(workspace, profileDir, config.KeyModelRoles)
+	if err != nil {
+		return nil, err
+	}
+	// The pins replace wholesale for the reason the approvals do, one line up.
+	if text != "" {
 		pins, err := config.ParseModelRoles(text)
 		if err != nil {
 			return nil, fmt.Errorf("settings row %q: %w", config.KeyModelRoles, err)

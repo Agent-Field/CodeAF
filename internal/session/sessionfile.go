@@ -71,6 +71,14 @@ type sessionEntry struct {
 	Summary      string `json:"summary,omitempty"`
 	TokensBefore int    `json:"tokensBefore,omitempty"`
 
+	// Dropped is how many messages a rewind removed (rewind.go). It is a COUNT
+	// rather than a cut position because the file is append-only and positions
+	// in it are not positions in the replayed transcript: a compaction marker
+	// earlier in the file collapses everything before it into one message. A
+	// count is applied to whatever the replay is holding when it reaches the
+	// line, which is exactly the list the rewind was taken against.
+	Dropped int `json:"dropped,omitempty"`
+
 	// Title is the session's name (title.go). It is its own line rather than a
 	// header field because the header is written ONCE, when the file is
 	// created, and the name is not known until the first turn has been
@@ -252,6 +260,19 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// name is not a message and survives the cut: a compacted session
 			// is the same session, still called what it was called.
 			messages = append(messages[:0], textMessage("user", compactionNote(entry.Summary)))
+		case "rewind":
+			// The turn this line took back. Everything after it in the file is
+			// ordinary conversation again — a rewind is followed by the person
+			// saying the thing better — so the replay drops N and keeps reading
+			// rather than stopping here.
+			if entry.Dropped <= 0 {
+				continue
+			}
+			if entry.Dropped >= len(messages) {
+				messages = messages[:0]
+				continue
+			}
+			messages = messages[:len(messages)-entry.Dropped]
 		case "title":
 			// LAST one wins. A name written twice is a name that was changed,
 			// and the file's order is the order it was changed in.
@@ -386,6 +407,19 @@ func (s *sessionFile) appendCompaction(summary string, tokensBefore int, kept []
 	for _, message := range kept {
 		s.appendMessage(message)
 	}
+}
+
+// appendRewind journals one rewind: the count of messages it removed from the
+// live transcript. Nothing in the file is rewritten — the dropped lines stay
+// where they are, and the marker is what a replay reads them against. That is
+// what keeps the journal a record of what happened rather than of what is
+// currently believed: a rewound turn really did run, and its tool calls really
+// did touch the workspace.
+func (s *sessionFile) appendRewind(dropped int) {
+	if dropped <= 0 {
+		return
+	}
+	s.writeLine(sessionEntry{Type: "rewind", Dropped: dropped, Timestamp: stamp()})
 }
 
 // appendTitle journals the session's name. It is one line, appended like any

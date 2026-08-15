@@ -177,6 +177,10 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 			// the thought in the transcript as something the assistant said.
 			hub.send(Event{Kind: EventReasoning, Text: event.Delta})
 		case provider.StreamToolCallReady:
+			// ANNOUNCE FIRST, then decide whether it may start. The order is the
+			// meaning: the person sees every call the moment the model finishes
+			// asking for it, and only the calls the law allows actually move.
+			warm.announce(hub, event.Delta)
 			warm.consider(toolCtx, a, hub, event.Delta)
 		}
 	})
@@ -434,9 +438,54 @@ var earlyTools = map[string]bool{
 // completes — so what a person watches and what the transcript records are
 // byte-for-byte what they were. The only difference is that a read may already
 // be finished by the time the batch starts.
+// It also remembers which calls have been ANNOUNCED (EventToolAnnounced), which
+// is not a warm start and lives here anyway for one reason: the reset boundary
+// is identical. A retry is a new response whose calls are its own, so both the
+// early results and the announcements of the dead attempt are thrown away
+// together, and a second bookkeeper with the same lifetime would be a second
+// thing to remember to reset.
 type warmBatch struct {
-	mu      sync.Mutex
-	started map[string]*warmCall
+	mu        sync.Mutex
+	started   map[string]*warmCall
+	announced map[string]bool
+}
+
+// announce emits EventToolAnnounced for one provider.StreamToolCallReady
+// payload — every call, whatever the early-start law then decides about it.
+//
+// A call is announced ONCE. The provider sends one ready event per call, so the
+// guard is belt and braces rather than a fix for something seen; the cost of
+// being wrong the other way is a row drawn twice, which is a row the person
+// cannot reconcile with the batch that follows.
+func (b *warmBatch) announce(hub *eventHub, payload string) {
+	if b == nil {
+		return
+	}
+	var call ai.ToolCall
+	if err := json.Unmarshal([]byte(payload), &call); err != nil {
+		return
+	}
+	if call.Function.Name == "" {
+		return
+	}
+	if call.ID != "" {
+		b.mu.Lock()
+		if b.announced == nil {
+			b.announced = make(map[string]bool, 2)
+		}
+		if b.announced[call.ID] {
+			b.mu.Unlock()
+			return
+		}
+		b.announced[call.ID] = true
+		b.mu.Unlock()
+	}
+	hub.send(Event{
+		Kind: EventToolAnnounced,
+		Tool: call.Function.Name,
+		Hint: gloss(call),
+		Args: argsText(call),
+	})
 }
 
 // warmCall is one early execution: the call it was started for, and a channel
@@ -519,7 +568,7 @@ func (b *warmBatch) reset() {
 		return
 	}
 	b.mu.Lock()
-	b.started = nil
+	b.started, b.announced = nil, nil
 	b.mu.Unlock()
 }
 

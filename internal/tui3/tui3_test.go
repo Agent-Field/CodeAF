@@ -963,7 +963,7 @@ func TestTheSurfaceBootsAndQuitsHeadlessly(t *testing.T) {
 	}()
 
 	deadline := time.Now().Add(10 * time.Second)
-	for !strings.Contains(out.String(), "aforge") {
+	for !strings.Contains(out.String(), agent.model) {
 		if time.Now().After(deadline) {
 			t.Fatalf("the surface never drew its status line:\n%q", out.String())
 		}

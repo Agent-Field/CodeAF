@@ -165,20 +165,21 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	if len(lines) != a.height {
 		t.Fatalf("the frame is %d rows, want %d", len(lines), a.height)
 	}
-	// The list is the tail of the frame and the filter box sits directly above
+	// The list sits at the foot of the frame with the filter box directly above
 	// it — that is what "bottom-anchored" means here, and it is where the caret
-	// has to be.
-	tail := lines[len(lines)-len(pickerCatalog):]
+	// has to be. The only thing below it is the status line, which is the last
+	// row of every frame as of the status-down wave (view.go).
+	tail := lines[len(lines)-1-len(pickerCatalog) : len(lines)-1]
 	for i, model := range pickerCatalog {
 		if !strings.Contains(tail[i], model.ID) {
 			t.Fatalf("row %d is %q, want %s", i, tail[i], model.ID)
 		}
 	}
-	box := lines[len(lines)-len(pickerCatalog)-1]
+	box := lines[len(lines)-len(pickerCatalog)-2]
 	if !strings.Contains(box, pickerHint) {
 		t.Fatalf("the filter box is %q, want the hint", box)
 	}
-	if caretY != a.height-1-len(pickerCatalog) || caretX != 2 {
+	if caretY != a.height-2-len(pickerCatalog) || caretX != len(inputPad)+2 {
 		t.Fatalf("the caret is at %d,%d — it belongs in the filter box", caretX, caretY)
 	}
 	// Windows are shown where they are known and nowhere else.
@@ -190,7 +191,7 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	}
 
 	// The model in use is accent, wherever the cursor happens to be.
-	rows := a.pick.rows(a.width, a.overlayHeight(), a.pal)
+	rows := a.pick.rows(a.width, a.overlayHeight(), a.pal, -1)
 	if !strings.Contains(rows[1], a.pal.accent("openai/gpt-4.1-mini")) {
 		t.Fatalf("the current model is not marked:\n%s", rows[1])
 	}

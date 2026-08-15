@@ -183,10 +183,16 @@ func listTop(cursor, top, count, height int) int {
 // that all shout is a list nobody can read down. The note trails on the right,
 // dim, and the label gives way before it does: a truncated name is still
 // recognizable, and "164k" cut in half is a wrong number.
-func overlayRow(label, note string, selected, marked bool, width int, pal palette) string {
+// Hover is the fourth thing a row can be and it is not a tier: it is the
+// background under whichever of the three the row already was, plus a brighter
+// lead — the pointer saying "this one", not the list saying "this matters".
+func overlayRow(label, note string, selected, marked, hovered bool, width int, pal palette) string {
 	lead := "  "
-	if selected {
+	switch {
+	case selected:
 		lead = pal.accent("› ")
+	case hovered:
+		lead = pal.accent("· ")
 	}
 	room := width - 2
 	if note != "" {
@@ -206,14 +212,18 @@ func overlayRow(label, note string, selected, marked bool, width int, pal palett
 	if selected {
 		painted = pal.bold(painted)
 	}
-	if note == "" {
-		return lead + painted
+	line := lead + painted
+	if note != "" {
+		gap := width - 2 - ansi.StringWidth(label) - ansi.StringWidth(note)
+		if gap < 1 {
+			gap = 1
+		}
+		line += strings.Repeat(" ", gap) + pal.dim(note)
 	}
-	gap := width - 2 - ansi.StringWidth(label) - ansi.StringWidth(note)
-	if gap < 1 {
-		gap = 1
+	if hovered {
+		return pal.hover(line, width)
 	}
-	return lead + painted + strings.Repeat(" ", gap) + pal.dim(note)
+	return line
 }
 
 // choice is the model under the cursor, and false when the filter matched
@@ -245,7 +255,7 @@ func (p *picker) height() int {
 // rows draws exactly n list rows. n comes from [app.overlayHeight], which is
 // this picker's own height clamped to what the terminal can give, so a short
 // window shows fewer rows rather than a frame that does not fit.
-func (p *picker) rows(width, n int, pal palette) []string {
+func (p *picker) rows(width, n int, pal palette, hover int) []string {
 	if n <= 0 {
 		return nil
 	}
@@ -255,7 +265,7 @@ func (p *picker) rows(width, n int, pal palette) []string {
 	p.follow(n)
 	out := make([]string, 0, n)
 	for at := p.top; at < len(p.hits) && len(out) < n; at++ {
-		out = append(out, p.row(p.all[p.hits[at]], at == p.cursor, width, pal))
+		out = append(out, p.row(p.all[p.hits[at]], at == p.cursor, len(out) == hover, width, pal))
 	}
 	return out
 }
@@ -263,9 +273,9 @@ func (p *picker) rows(width, n int, pal palette) []string {
 // row is one model: the cursor mark, the id, and the window on the right. The
 // model in use is the marked row — that is the mark, and it survives scrolling
 // past it.
-func (p *picker) row(model Model, selected bool, width int, pal palette) string {
+func (p *picker) row(model Model, selected, hovered bool, width int, pal palette) string {
 	return overlayRow(model.ID, contextWord(model.ContextLength),
-		selected, model.ID == p.current, width, pal)
+		selected, model.ID == p.current, hovered, width, pal)
 }
 
 // pickerHint is the placeholder in the empty filter box. It is the only place
@@ -415,8 +425,10 @@ func (a *app) overlayHeight() int {
 	_, height := a.size()
 	// The approval question and the follow-up count are spoken for before the
 	// list is: both sit between the conversation and the box, and a list that
-	// claimed their rows would push the status line off the top of the frame.
-	if room := height - 2 - (a.inputHeight() - 1) - a.consentHeight() - a.followHeight(); want > room {
+	// claimed their rows would push the status line off the frame. The two
+	// reserved rows are the status line and one row of conversation — a list
+	// that left neither would be a list that took the screen.
+	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.followHeight(); want > room {
 		want = room
 	}
 	if want < 0 {
@@ -428,13 +440,19 @@ func (a *app) overlayHeight() int {
 // overlayRows is the tail of the frame: the open list, drawn in exactly the
 // rows [app.overlayHeight] handed out.
 func (a *app) overlayRows(width, n int) []string {
+	// The pointer's row within whichever list is open, or -1. One number for all
+	// three, because there is only ever one list (hover.go).
+	hover := -1
+	if a.hot.kind == hoverOverlay {
+		hover = a.hot.index
+	}
 	switch {
 	case a.pick.open:
-		return a.pick.rows(width, n, a.pal)
+		return a.pick.rows(width, n, a.pal, hover)
 	case a.menu.open:
-		return a.menu.rows(width, n, a.pal)
+		return a.menu.rows(width, n, a.pal, hover)
 	case a.comp.open:
-		return a.comp.rows(width, n, a.pal)
+		return a.comp.rows(width, n, a.pal, hover)
 	}
 	return nil
 }

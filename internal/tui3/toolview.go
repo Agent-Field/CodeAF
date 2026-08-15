@@ -3,6 +3,7 @@ package tui3
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
@@ -29,11 +30,13 @@ import (
 //     cannot draw them gets `+-> ` and `| `, which are the same widths.
 //   - the NAME is chrome, so it is the muted accent. The TARGET — the path,
 //     the command, the pattern — is what the person is actually reading, so it
-//     is primary ink and never dimmed.
+//     leads: primary ink, and never dimmed as a whole. What QUALIFIES it — a
+//     `cd` prefix, a line range, the directory a pattern is searched in —
+//     recedes to dim within it (see the parameter hierarchy, below).
 //   - the STAT trails, dim, and is derived from the payload in toolstat.go.
-//   - the MARK: nothing at all on success, `✗` on failure, a spinner at the
-//     right edge while the call runs. NO SUCCESS GLYPH, EVER. A column of ✓ is
-//     a column that must be read to learn nothing; a quiet line is a success.
+//   - the MARK: the call's state at the line's right end, and its elapsed time
+//     once there is one. NO SUCCESS GLYPH, EVER. A column of ✓ is a column that
+//     must be read to learn nothing; a quiet line is a success.
 //
 // At most [toolWindow] calls stay on screen; the rest fold into one line that
 // says how many, and ctrl+o (or a click on that line) unfolds them. One call
@@ -52,6 +55,31 @@ type toolDetail struct {
 	Output string
 }
 
+// ── THE STATE MACHINE (this wave) ──
+//
+//	◌ edit internal/session/loop.go          queued: the model asked, nothing ran
+//	│ pending                                 …and here is the change it will make
+//	│ @@ -1,4 +1,4 @@
+//	│ -const argsLimit = 400
+//	│ +const argsLimit = 8192
+//	? bash rm -rf build                      waiting on YOU, the whole row violet
+//	⠋ bash go test ./…                       running: the spinner, and only here
+//	  read internal/session/loop.go   · 189 lines   0.4s   done, quietly
+//	✗ bash go build ./…             exit 1        1.2s   failed, already open
+//
+// The spinner used to cover all four of the first states, and that was the
+// defect: a mutating call spun while the RESPONSE was still streaming and
+// nothing had started, and a call parked on a consent question spun exactly
+// like one doing work. A spinner is a claim that something is turning, so it
+// now means that and nothing else — and the two states it used to cover got
+// the marks they always deserved: an empty circle for work not begun, and the
+// question hue for work waiting on a person.
+//
+// The elapsed time trails a finished call, dim, at the line's right end — the
+// column the spinner just vacated. It is the call's OWN duration (begin to end)
+// and not the turn's, and a call too fast to have one does not draw one: see
+// [elapsedWord].
+
 // clusterRows lays out one contiguous run of tool entries — a.entries[from:to],
 // all from one turn — and appends it to out. This is where the fold lives,
 // because folding is a property of the RUN and not of any call in it, and it is
@@ -61,12 +89,11 @@ func (a *app) clusterRows(out []row, from, to, width int) []row {
 	start := from
 	if to-from > toolWindow && !a.unfolded[turn] {
 		start = to - toolWindow
-		out = append(out, row{
-			text:  a.pal.dim(glyphTool + foldWord(start-from)),
-			entry: -1,
-			hit:   hitFold,
-			turn:  turn,
-		})
+		fold := a.pal.dim(glyphTool + foldWord(start-from))
+		if a.hoveringFold(turn) {
+			fold = a.pal.accent(glyphTool) + a.pal.dim(foldWord(start-from))
+		}
+		out = append(out, row{text: fold, entry: -1, hit: hitFold, turn: turn})
 	}
 	for i := start; i < to; i++ {
 		out = append(out, a.toolRows(i, i == to-1, width)...)
@@ -91,22 +118,46 @@ func foldWord(n int) string {
 func (a *app) toolRows(i int, last bool, width int) []row {
 	e := &a.entries[i]
 	out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hitTool}}
+	stem := a.pal.railCont()
+	room := width - ansi.StringWidth(stem)
+
+	// THE LIVE PREVIEW. A call that has not finished shows what it is about to
+	// do — the diff an edit will apply, the content a write will lay down — with
+	// no click and no waiting, because the moment that answer is worth anything
+	// is the moment BEFORE it happens. It is drawn from the arguments, which are
+	// the whole of what has arrived; nothing here waits for a result.
 	if !e.open {
+		head, body, more := a.previewBody(e, room)
+		if head == "" {
+			return out
+		}
+		out = append(out, row{text: a.pal.dim(stem) + head, entry: i, hit: hitTool})
+		for _, line := range body {
+			out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: hitTool})
+		}
+		if more > 0 {
+			out = append(out, a.moreRow(i, stem, more))
+		}
 		return out
 	}
-	stem := a.pal.railCont()
-	body, more := a.detailBody(e, width-ansi.StringWidth(a.pal.railCont()))
+
+	body, more := a.detailBody(e, room)
 	for _, line := range body {
 		out = append(out, row{text: a.pal.dim(stem) + line, entry: i, hit: hitTool})
 	}
 	if more > 0 {
-		out = append(out, row{
-			text:  a.pal.dim(stem + glyphMore + " " + strconv.Itoa(more) + " more lines"),
-			entry: i,
-			hit:   hitMore,
-		})
+		out = append(out, a.moreRow(i, stem, more))
 	}
 	return out
+}
+
+// moreRow is the clickable foot of anything this file capped.
+func (a *app) moreRow(i int, stem string, more int) row {
+	return row{
+		text:  a.pal.dim(stem + glyphMore + " " + strconv.Itoa(more) + " more lines"),
+		entry: i,
+		hit:   hitMore,
+	}
 }
 
 // toolLine is the line itself.
@@ -123,6 +174,10 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 		target = fallback
 	}
 	statPlain, statPainted := a.toolStat(e)
+	// The elapsed time rides the stat slot on its way to the right end. It is
+	// the last thing the row gives up when the terminal is narrow, because it is
+	// the only thing on the line that is not about WHAT the call did.
+	elapsed := elapsedWord(e)
 	// What the person answered when this call was asked about (consent.go). It
 	// rides the stat slot because it is the same kind of fact — dim, trailing,
 	// about the call rather than in it — and because a row that was approved
@@ -141,11 +196,15 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	railWidth := ansi.StringWidth(rail)
 	nameWidth := ansi.StringWidth(name)
 
-	// The right edge holds the spinner; the ✗ is appended to the text instead,
-	// so a failure reads as part of the sentence rather than as a column.
+	// The right edge holds the spinner, or the elapsed time that replaces it
+	// when the call is done; the ✗ is appended to the text instead, so a failure
+	// reads as part of the sentence rather than as a column.
 	reserve := 1
 	if e.status == toolFailed {
 		reserve = 2
+	}
+	if elapsed != "" {
+		reserve = ansi.StringWidth(elapsed) + 1
 	}
 	room := width - railWidth - nameWidth - reserve
 	if statWidth := ansi.StringWidth(statPlain) + 2; room-statWidth < 8 {
@@ -157,33 +216,51 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 
 	// A selected line takes the accent on its rail — no band, no marker
 	// column, nothing that changes the width. Selection is a brightness here,
-	// which is what a one-line row can carry honestly.
+	// which is what a one-line row can carry honestly, and hover is the same
+	// brightness for the same reason (hover.go). A call waiting on a person
+	// takes the question hue instead, over the whole row.
 	painted := a.pal.dim(rail)
-	if a.sel == i {
+	switch {
+	case e.status == toolConsent:
+		painted = a.pal.askBold(rail)
+	case a.sel == i, a.hoveringEntry(i):
 		painted = a.pal.accent(rail)
 	}
-	line := painted + a.pal.muted(name)
+	line := painted + a.paintName(e, name)
 	used := railWidth + nameWidth
 	if target != "" {
-		line += " " + a.pal.ink(target)
+		line += " " + a.paintTarget(e, target)
 		used += 1 + ansi.StringWidth(target)
 	}
 	if statPlain != "" {
 		line += "  " + statPainted
 		used += 2 + ansi.StringWidth(statPlain)
 	}
-	switch {
-	case e.status == toolFailed:
-		return line + " " + mark
-	case mark == "":
-		return line
-	default:
-		// The spinner sits at the line's right end and turns in place.
-		if pad := width - used - 1; pad > 0 {
-			line += strings.Repeat(" ", pad)
-		}
-		return line + mark
+	if e.status == toolFailed {
+		line += " " + mark
+		used += 2
+		mark = ""
 	}
+	if elapsed != "" {
+		mark = a.pal.dim(elapsed)
+	}
+	if mark == "" {
+		return line
+	}
+	// The spinner — or what replaced it — sits at the line's right end.
+	if pad := width - used - ansi.StringWidth(plainMark(mark, elapsed)); pad > 0 {
+		line += strings.Repeat(" ", pad)
+	}
+	return line + mark
+}
+
+// plainMark is the unpainted width of whatever ends the line: one cell for a
+// glyph, the whole word for an elapsed time.
+func plainMark(mark, elapsed string) string {
+	if elapsed != "" {
+		return elapsed
+	}
+	return " " // every glyph this file ends a line with is one cell
 }
 
 // mark is what the right of a tool line says about how the call is going —
@@ -194,6 +271,13 @@ func (a *app) mark(e *entry) string {
 		return a.pal.bad(glyphBad)
 	case toolOK:
 		return ""
+	case toolQueued:
+		// ASKED FOR, NOT STARTED. An empty circle, dim: the row exists because
+		// the model has finished asking, and a spinner here would be the surface
+		// animating work that has not begun.
+		return a.pal.dim(glyphQueued)
+	case toolConsent:
+		return a.pal.askBold(glyphAsk)
 	default:
 		if a.state != stateWorking {
 			// The turn ended with this call unresolved — interrupted, or the
@@ -204,6 +288,190 @@ func (a *app) mark(e *entry) string {
 		return a.pal.muted(tokens.Spinner(a.paints / spinnerStep))
 	}
 }
+
+// elapsedFloor is how long a call has to have taken to be worth a number.
+//
+// A read that returned in four milliseconds took no time a person can act on,
+// and "0.0s" trailing every row would be a column that has to be read to learn
+// nothing — the same law the missing success glyph is drawn from. The threshold
+// is the frame interval times three: below it the call was over before the
+// surface could have drawn it running.
+const elapsedFloor = 100 * time.Millisecond
+
+// elapsedWord is a finished call's own duration, or "" when there is none worth
+// saying. It is BEGIN to END: the time the tool ran, never the time its
+// announcement spent waiting for a response to finish streaming.
+func elapsedWord(e *entry) string {
+	if e.status.live() || e.began.IsZero() || e.ended.IsZero() {
+		return ""
+	}
+	took := e.ended.Sub(e.began)
+	switch {
+	case took < elapsedFloor:
+		return ""
+	case took < 10*time.Second:
+		// One decimal under ten seconds: the difference between 1.2s and 1.9s is
+		// the difference a person notices, and past ten seconds it is not.
+		return strconv.FormatFloat(took.Seconds(), 'f', 1, 64) + "s"
+	case took < time.Minute:
+		return itoa(int(took.Round(time.Second)/time.Second)) + "s"
+	default:
+		minutes := int(took / time.Minute)
+		seconds := int((took % time.Minute).Round(time.Second) / time.Second)
+		return itoa(minutes) + "m" + pad2(seconds) + "s"
+	}
+}
+
+func pad2(n int) string {
+	if n < 10 {
+		return "0" + itoa(n)
+	}
+	return itoa(n)
+}
+
+// ── THE PARAMETER HIERARCHY ─────────────────────────────────────────────────
+//
+// The target used to be one colour, and a target is not one thing:
+//
+//	bash   cd internal/session && go test ./...   the cd is context, the command
+//	                                              is the substance
+//	read   internal/session/loop.go 120-240       the path is the substance, the
+//	                                              range is a qualifier
+//	grep   argsLimit internal/session             the pattern is what is being
+//	                                              looked for, the path is where
+//
+// So each of them is painted in two tiers instead of one: what the call is
+// ABOUT stays primary ink (or, for a search, the accent — a pattern is a
+// question, not a place), and what merely qualifies it recedes to dim. The
+// parse is deliberately conservative and shape-based — only the `cd X && `
+// prefix, only a trailing range or flag after a space — because a target this
+// file guessed wrong about is a line that says the wrong thing is important.
+
+// paintName paints the tool's own name: chrome, so muted — unless the call is
+// waiting on a person, in which case the whole row is the question.
+func (a *app) paintName(e *entry, name string) string {
+	if e.status == toolConsent {
+		return a.pal.askBold(name)
+	}
+	return a.pal.muted(name)
+}
+
+// paintTarget paints the already-fitted target in its two tiers.
+//
+// It takes the FITTED text rather than the whole one so the split and the
+// truncation cannot disagree: a target cut at the width is still split by the
+// same rule, and a "cd …" prefix that was itself truncated simply stops being
+// recognized, which is the safe way round.
+func (a *app) paintTarget(e *entry, target string) string {
+	if e.status == toolConsent {
+		return a.pal.askBold(target)
+	}
+	switch e.tool {
+	case "bash":
+		if context, command, found := cutCDPrefix(target); found {
+			return a.pal.dim(context) + a.pal.ink(command)
+		}
+		return a.pal.ink(target)
+
+	case "grep", "find":
+		// The pattern leads and the place follows it. Accent rather than ink
+		// because a pattern is the one target on this surface that is not a
+		// thing that exists — it is what the call is looking for.
+		pattern, where, found := strings.Cut(target, " ")
+		if !found {
+			return a.pal.accent(target)
+		}
+		return a.pal.accent(pattern) + a.pal.dim(" "+where)
+
+	case "read", "edit", "write":
+		path, rest, found := strings.Cut(target, " ")
+		if !found {
+			return a.pal.ink(target)
+		}
+		return a.pal.ink(path) + a.pal.dim(" "+rest)
+	}
+	return a.pal.ink(target)
+}
+
+// cutCDPrefix splits the one bash shape worth splitting: a command that changes
+// directory before doing the thing it is about. Everything else — a pipeline, a
+// chain of two real commands, a cd with no `&&` — is left whole, because the
+// only prefix that is reliably CONTEXT rather than work is this one.
+func cutCDPrefix(command string) (context, rest string, found bool) {
+	if !strings.HasPrefix(command, "cd ") {
+		return "", command, false
+	}
+	at := strings.Index(command, " && ")
+	if at < 0 {
+		return "", command, false
+	}
+	cut := at + len(" && ")
+	return command[:cut], command[cut:], true
+}
+
+// ── THE LIVE PREVIEW ────────────────────────────────────────────────────────
+
+// previewWindow caps a preview. It is shorter than the expansion's own cap
+// (diffWindow) on purpose: this one is drawn without being asked for, under a
+// row nobody clicked, and a thirty-line diff that opened itself in the middle
+// of a conversation is a surface taking the screen. A person who wants the rest
+// clicks the foot, exactly as they would on an expansion.
+const previewWindow = 12
+
+// previewBody is what a call that has NOT finished shows under its row: the
+// header, the rows, and how many were dropped.
+//
+// It answers for the two mutating tools and no others, because they are the two
+// whose arguments contain the whole change — an edit's replacements, a write's
+// content. A bash command is already on its own line in full; a read has
+// nothing to preview but the path it is already showing.
+//
+// The header is the state in one word — `pending` while nothing has started,
+// `applying` once execution has — and it is the state that changes under it
+// rather than the rows: the diff a person read at `pending` is the same diff
+// that lands, and a preview that redrew itself on begin would ask them to read
+// it twice. It goes dim in the question hue while a call is waiting on an
+// answer, for the same reason the row above it does.
+func (a *app) previewBody(e *entry, width int) (head string, body []string, more int) {
+	if !e.status.live() || width < 8 {
+		return "", nil, 0
+	}
+	switch e.tool {
+	case "edit":
+		body = a.diffRows(e, width)
+	case "write":
+		body = a.plainRows(argString(argsOf(e.detail.Args), "content"), width)
+	default:
+		return "", nil, 0
+	}
+	if len(body) == 0 {
+		return "", nil, 0
+	}
+	if !e.full && len(body) > previewWindow {
+		more, body = len(body)-previewWindow, body[:previewWindow]
+	}
+	return a.previewHead(e), body, more
+}
+
+// previewHead is the one word above a preview.
+func (a *app) previewHead(e *entry) string {
+	switch e.status {
+	case toolConsent:
+		return a.pal.ask(previewPending)
+	case toolRunning:
+		return a.pal.dim(previewApplying)
+	default:
+		// Queued: nothing has started, and the header says exactly that in the
+		// hue this surface uses for things that are about to need a person.
+		return a.pal.ask(previewPending)
+	}
+}
+
+// The two words a preview's header can be.
+const (
+	previewPending  = "pending"
+	previewApplying = "applying"
+)
 
 // detailBody is what one open call shows, per tool (D11's table), already
 // painted and WITHOUT the rail — [app.toolRows] hangs the stem on. It returns
@@ -218,10 +486,14 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 	if width < 8 {
 		width = 8
 	}
-	if e.status == toolRunning {
-		// The one animated expansion: a call with nothing to show yet says so
-		// in the same breath the spinner is drawing.
-		return []string{a.pal.dim("running" + ellipsisFrames[(a.paints/pulseStep)%len(ellipsisFrames)])}, 0
+	if e.status.live() {
+		// An unfinished call shows what it CAN: the change it is about to make,
+		// where the arguments carry one, and otherwise the one animated line
+		// that says the obvious in the same breath the spinner is drawing.
+		if head, body, more := a.previewBody(e, width); head != "" {
+			return append([]string{head}, body...), more
+		}
+		return []string{a.pal.dim(liveWord(e) + ellipsisFrames[(a.paints/pulseStep)%len(ellipsisFrames)])}, 0
 	}
 
 	switch e.tool {
@@ -238,6 +510,18 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		return a.cap(e, a.plainRows(resultText(e.detail.Output), width), listWindow)
 	}
 	return a.cap(e, a.genericRows(e, width), listWindow)
+}
+
+// liveWord is what an unfinished call with nothing to preview says it is doing.
+func liveWord(e *entry) string {
+	switch e.status {
+	case toolQueued:
+		return "queued"
+	case toolConsent:
+		return "waiting for you"
+	default:
+		return "running"
+	}
 }
 
 // cap bounds one expansion. The window is the tool's own (D11's table), and a

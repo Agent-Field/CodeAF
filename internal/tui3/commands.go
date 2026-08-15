@@ -139,7 +139,7 @@ func (m *menu) height() int {
 	}
 }
 
-func (m *menu) rows(width, n int, pal palette) []string {
+func (m *menu) rows(width, n int, pal palette, hover int) []string {
 	if n <= 0 || len(m.hits) == 0 {
 		return nil
 	}
@@ -147,7 +147,7 @@ func (m *menu) rows(width, n int, pal palette) []string {
 	out := make([]string, 0, n)
 	for at := m.top; at < len(m.hits) && len(out) < n; at++ {
 		c := commands[m.hits[at]]
-		out = append(out, overlayRow(c.typed(), c.desc, at == m.cursor, false, width, pal))
+		out = append(out, overlayRow(c.typed(), c.desc, at == m.cursor, false, len(out) == hover, width, pal))
 	}
 	return out
 }
