@@ -124,6 +124,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// and where the prompt-cache key is stamped. Wrapping earlier would have to
 	// read the key through the agent, which is a pointer cycle to save a line.
 	agent.client = sessionCompleter{inner: client, cacheKey: agent.cacheKey}
+	// AND THE WORK IS RECOVERED LAST, once this agent can actually run one. A
+	// resumed journal may have a task graph beside it — nodes that landed, a node
+	// that was still running when the process died, nodes waiting on them — and
+	// recovery is load, reconcile with the disk, continue the frontier
+	// (task_store.go). A fresh session has no checkpoint and this is a stat.
+	agent.recoverTasks()
 	return agent, nil
 }
 
@@ -351,6 +357,12 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 		return nil, errors.New("session: agent is closed")
 	}
 	if a.running {
+		// A steering message means the person is here, so the idle pass stands
+		// down (memory_consolidate.go). Nothing can be armed while a turn is
+		// running — the arming happens at a turn's end — so this is a no-op
+		// today; it is written because the law is "anything the person says
+		// disarms it", not "a turn start disarms it".
+		a.disarmIdle()
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
 		// between an assistant's tool_calls and their results is a shape every
@@ -417,6 +429,11 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 // the caller takes its own subscription, and it is the returned channel.
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream) <-chan Event {
 	a.running = true
+	// A turn is the person being back, so the idle consolidation timer stands
+	// down before anything else happens (memory_consolidate.go). It is disarmed
+	// BEFORE the memory block is re-read below, so a turn cannot open on a file
+	// a pass is about to be armed against.
+	a.disarmIdle()
 	// The memory block is re-read here, at the start of every turn, so a note
 	// written by the last turn is in front of the model for this one and a
 	// person who edited the file by hand is obeyed without a restart
@@ -471,6 +488,15 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
+			} else {
+				// THE TURN HAS SETTLED, and nothing is queued behind it: this is
+				// the one moment a session is idle. Arm the consolidation
+				// countdown (memory_consolidate.go). Under the same lock as the
+				// drain, so a Submit cannot slip between the two and find a
+				// timer armed against a session that is working again — and in
+				// the else branch, because a follow-up starting is a session
+				// that was never idle at all.
+				a.armIdleLocked()
 			}
 			a.mu.Unlock()
 		}()
@@ -733,6 +759,10 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	a.closed = true
+	// Nothing dreams after the lights go out: a timer that fired after Close
+	// would consolidate against a journal that is already shut, and the
+	// process is leaving anyway (memory_consolidate.go).
+	a.disarmIdle()
 	file := a.file
 	cancel := a.cancel
 	done := a.done
@@ -855,6 +885,11 @@ func (a *Agent) enqueueSteering(text string) {
 	if a.closed {
 		return
 	}
+	// News arriving is the session being in use, even when the news is the
+	// session's own: the turn that drains this queue will read the memory file,
+	// and a consolidation pass firing into that moment would swap it underneath
+	// a turn that is about to start (memory_consolidate.go).
+	a.disarmIdle()
 	a.steering = append(a.steering, userText(text))
 }
 

@@ -29,10 +29,28 @@ package session
 // provider error and not a tool failure — the model is not being punished, it is
 // being told what it has been doing, which is the one fact it cannot see.
 //
-// ONE NUDGE PER SIGNATURE. A loop that continues after being named does not earn
-// a second identical note; a second, different loop in the same turn does. The
-// whole watch resets per turn, because a turn is where a person's attention
-// resets too.
+// ONE NUDGE PER SIGNATURE, AND THEN HYSTERESIS. A loop that continues
+// immediately after being named does not earn a second identical note; a second,
+// different loop in the same turn does. The whole watch resets per turn, because
+// a turn is where a person's attention resets too.
+//
+// ── THE HYSTERESIS LAW ──
+//
+// Forward progress is accepted IMMEDIATELY; backward movement needs REPEATED
+// evidence (PMCoder's phase hysteresis, https://arxiv.org/abs/2608.06811 — the
+// mechanism that stops a planner thrashing between phases on one noisy signal).
+// Here the two directions are:
+//
+//   - FORWARD is a successful call this turn has not already been nudged about.
+//     One of those kills the backward case outright: every streak resets, and a
+//     model that was three repetitions deep starts again from nothing. No
+//     confirmation, no decay, no half-credit — the evidence that the turn is
+//     working is the turn working.
+//   - BACKWARD is a signature that was already named repeating AGAIN. It takes
+//     [loopHysteresis] more of them to advance the ladder, not one. The
+//     asymmetry is the whole mechanism: the harness is quick to believe the turn
+//     is fine and slow to escalate against it, because escalating costs the
+//     person's attention and being wrong about progress costs nothing.
 //
 // ── AND THEN THE PERSON ──
 //
@@ -42,7 +60,8 @@ package session
 // third nudge is asked as a consent question in the existing lane (consent.go)
 // rather than written as a note. By then the person IS the better nudge: they
 // can see the loop, and they are the only party in the conversation with new
-// information.
+// information — and the question carries the one move that is not more words,
+// the revert (recovery.go).
 
 import (
 	"context"
@@ -70,6 +89,16 @@ const (
 	// instead. Two, because a third note would be the third time the same
 	// sentence failed to change anything.
 	loopNudgeCeiling = 2
+
+	// loopHysteresis is how many MORE repetitions of an already-named signature
+	// count as evidence before the ladder advances again.
+	//
+	// Two, not one. One would mean a nudged model gets a second nudge on its very
+	// next step — before the note it was just handed has even reached a request —
+	// and a ladder that climbs faster than its own advice can be read is a ladder
+	// measuring latency, not stuckness. Two says: the model saw the note, kept
+	// going, and did the same thing twice anyway.
+	loopHysteresis = 2
 )
 
 // nudge is one detected loop, ready to be said out loud.
@@ -102,8 +131,13 @@ type loopWatch struct {
 	recent []string
 	// errors counts each distinct error text seen this turn.
 	errors map[string]int
-	// named is every signature already nudged for, so nothing is said twice.
+	// named is every signature already nudged for, so nothing is said twice in a
+	// row for the same reason.
 	named map[string]bool
+	// streak is the backward evidence: how many times each ALREADY-NAMED
+	// signature has repeated since its last nudge. It is what
+	// [loopHysteresis] is counted against, and forward progress empties it.
+	streak map[string]int
 	// nudges is how many nudges this turn has produced.
 	nudges int
 }
@@ -112,6 +146,7 @@ func newLoopWatch() *loopWatch {
 	return &loopWatch{
 		errors: make(map[string]int, 4),
 		named:  make(map[string]bool, 2),
+		streak: make(map[string]int, 2),
 	}
 }
 
@@ -121,12 +156,22 @@ func newLoopWatch() *loopWatch {
 // AT MOST ONE NUDGE PER BATCH, even when both rules fire: two notes about the
 // same moment is the harness being noisy about its own cleverness, and the call
 // rule is the more specific of the two, so it wins.
+//
+// FORWARD EVIDENCE IS READ FIRST, before any rule is tested, so a batch that
+// both progressed and repeated cannot escalate. That ordering is the hysteresis
+// law's "immediately": a model that got something done this step is not a model
+// the harness interrupts this step, even if it also re-ran the thing it was
+// nudged about.
 func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, bool) {
 	if w == nil || len(calls) == 0 {
 		return nudge{}, false
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	if w.sawProgress(calls, results) {
+		clear(w.streak)
+	}
 
 	var found nudge
 	ok := false
@@ -136,8 +181,7 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 		if len(w.recent) > loopWindow {
 			w.recent = w.recent[len(w.recent)-loopWindow:]
 		}
-		if run := w.trailingRun(signature); run >= loopRepeats && !w.named[signature] && !ok {
-			w.named[signature] = true
+		if run := w.trailingRun(signature); run >= loopRepeats && !ok && w.speakAbout(signature) {
 			found, ok = nudge{call: call, tool: call.Function.Name, count: run}, true
 		}
 
@@ -146,8 +190,7 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 		}
 		failure := errorSignature(results[index].text)
 		w.errors[failure]++
-		if count := w.errors[failure]; count >= loopRepeats && !w.named[failure] && !ok {
-			w.named[failure] = true
+		if count := w.errors[failure]; count >= loopRepeats && !ok && w.speakAbout(failure) {
 			found, ok = nudge{call: call, tool: call.Function.Name, count: count, failing: true}, true
 		}
 	}
@@ -157,6 +200,47 @@ func (w *loopWatch) observe(calls []ai.ToolCall, results []toolResult) (nudge, b
 	w.nudges++
 	found.nth = w.nudges
 	return found, true
+}
+
+// speakAbout reports whether a signature that has just tipped a rule over is
+// worth saying something about, and books the consequence of the answer.
+//
+// The first time, always: the loop has a name nobody has said yet. After that it
+// is the hysteresis law — the signature has to come back [loopHysteresis] more
+// times before the ladder advances, and the streak resets on the escalation so
+// the next one costs the same evidence again rather than firing on every step
+// from here on.
+func (w *loopWatch) speakAbout(signature string) bool {
+	if !w.named[signature] {
+		w.named[signature] = true
+		return true
+	}
+	w.streak[signature]++
+	if w.streak[signature] < loopHysteresis {
+		return false
+	}
+	w.streak[signature] = 0
+	return true
+}
+
+// sawProgress reports whether this batch contains forward movement: a call that
+// SUCCEEDED and that this turn has not already been nudged about.
+//
+// A named signature repeating is not progress however well it went — the model
+// re-running a successful grep for the fourth time is the loop, not the way out
+// of it — and a failed call is not progress by definition. Everything else is:
+// the turn did something new and it worked.
+func (w *loopWatch) sawProgress(calls []ai.ToolCall, results []toolResult) bool {
+	for index, call := range calls {
+		if index >= len(results) || results[index].isError {
+			continue
+		}
+		if w.named[callSignature(call)] {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 // trailingRun is how many entries at the END of the window are this signature.
@@ -220,16 +304,16 @@ func loopRule(n nudge) string {
 // ── the turn's side ─────────────────────────────────────────────────────────
 
 // nudgeIfLooping folds one finished batch into the turn's watch and says
-// something if it tipped a rule over. It is called at the step boundary, after
-// the batch's results are in the transcript and before the next request is
-// assembled, which is the one moment a note can ride into the next request the
-// way a person's steering does.
+// something if it tipped a rule over. It is the loop detector's `post-feedback`
+// hook (hooks.go), so it runs at the step boundary, after the batch's results
+// are in the transcript and before the next request is assembled — the one
+// moment a note can ride into the next request the way a person's steering does.
 //
 // It NEVER fails the turn. Everything here — the note, the event, the question —
 // is an aside about work that is already recorded; a turn that could be ended by
 // its own loop detector would be a detector nobody could afford to trust.
-func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, watch *loopWatch, calls []ai.ToolCall, results []toolResult) {
-	looping, ok := watch.observe(calls, results)
+func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, calls []ai.ToolCall, results []toolResult) {
+	looping, ok := ep.watch.observe(calls, results)
 	if !ok {
 		return
 	}
@@ -245,37 +329,13 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, watch *loopWa
 	// Past the ceiling, in prompt mode, with somebody there to answer: the
 	// person is asked instead of the model being told again.
 	if looping.nth > loopNudgeCeiling && a.promptMode() && a.config.AskConsent && hub != nil {
-		a.askAboutLoop(ctx, hub, looping)
+		// The question, and the recovery move it carries, are recovery.go's: by
+		// this point the interesting decision is not "is this a loop" but "what do
+		// we do about the mess", and that is a different file's job.
+		a.askAboutLoop(ctx, hub, ep, looping)
 		return
 	}
 	a.enqueueSteering(nudgeNote(looping))
-}
-
-// askAboutLoop puts the loop to the person as an ordinary consent question, and
-// turns whichever answer comes back into a note the model reads.
-//
-// Both answers are notes rather than actions, and that is the point: this
-// machinery observes a turn, it does not drive one. "Keep going" is the person
-// vouching for an approach the model already has; "no" is the person saying the
-// approach is wrong, which the model can only act on if it is told. An interrupt
-// or a turn that ends while the question is open leaves nothing behind — the
-// same thing an unanswered consent request already does.
-func (a *Agent) askAboutLoop(ctx context.Context, hub *eventHub, looping nudge) {
-	allowed, err := a.ask(ctx, hub, looping.call, approval.Decision{
-		Action: approval.ActionPrompt,
-		Rule:   loopRule(looping),
-	})
-	if err != nil {
-		return
-	}
-	if allowed {
-		a.enqueueSteering("[stuck] I asked the person about this repetition and they said to carry on. " +
-			"Keep going, but say what you expect to be different this time.")
-		return
-	}
-	a.enqueueSteering("[stuck] I asked the person about this repetition and they said no. " +
-		"Stop repeating " + looping.tool + ": say what you have found, what is blocking you, " +
-		"and what you need from them.")
 }
 
 // promptMode reports whether this session's blanket answer is "ask me".

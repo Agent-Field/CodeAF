@@ -29,7 +29,9 @@ import (
 // beside it to look
 // at what was started and watch beside that to be TOLD instead of looking
 // (tools_jobs.go, tools_watch.go), note and forget carry the session's durable memory
-// (memory.go) when there is a file to keep it in, and web_search and web_fetch
+// (memory.go) when there is a file to keep it in, track, commit and recall hold
+// the working state a compaction must not lose (state.go — the same file's three
+// records, unconditional because every session compacts), and web_search and web_fetch
 // reach outside the machine (tools_search.go) when a back end was wired, and
 // generate_image paints (tools_image.go) when an image model was. bare
 // is untouched — a subharness leaf gets pi's bash exactly as before, and the
@@ -66,6 +68,7 @@ func (a *Agent) belt() []bare.Tool {
 	}
 	tools = append(tools, a.taskTools()...)
 	tools = append(tools, a.memoryTools()...)
+	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)
 	return append(tools, a.imageTools()...)
 }

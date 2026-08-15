@@ -27,10 +27,15 @@ import (
 // (the same line's right end), so the frame lost a whole row of chrome rather
 // than moving one.
 //
-// The rule above the input is the only line this surface draws, and it draws
-// one thing: where the conversation stops and where the person's own business
-// starts. There is still no border and no rail — the rail arrives with the
-// tasker; the borders are not coming at all.
+// The rule above the input is the only HORIZONTAL line this surface draws, and
+// it draws one thing: where the conversation stops and where the person's own
+// business starts. There are still no borders and there are not going to be.
+//
+// THE RAIL ARRIVED WITH THE TASKER, and it is the frame's one vertical seam:
+// thirty columns on the right, drawn only while there is a task to stand in
+// them and only on a frame wide enough to lend them (task.go's railFloor). It
+// takes its columns from the CONVERSATION and from nothing else — the status
+// row and the legend span the whole window, because they are about the window.
 //
 // A terminal too short for all of it gives up its breathing room first — the
 // rule and the blank above the draft — and its status line last: what is
@@ -115,14 +120,27 @@ func (a *app) frame() (string, int, int) {
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
 	chrome, _, caretX, caretRow := a.chrome(width)
-	body, pad := a.bodyRows(width, a.viewHeight())
+	// THE RAIL COSTS COLUMNS, AND IT COSTS THEM HERE. The conversation is laid
+	// out at [app.bodyWidth] — everything below this line, the wheel and the
+	// hit-testing included, resolves through the same number — and the chrome is
+	// drawn at the FULL width, because the status line and the legend are about
+	// the whole window rather than about the transcript (task.go).
+	view := a.viewHeight()
+	body, pad := a.bodyRows(a.bodyWidth(), view)
+	rail := a.railRows(view)
 
 	rows := make([]string, 0, height)
-	for i := 0; i < pad; i++ {
-		rows = append(rows, "")
+	railAt := func(i int) string {
+		if i < len(rail) {
+			return rail[i]
+		}
+		return ""
 	}
-	for _, r := range body {
-		rows = append(rows, r.text)
+	for i := 0; i < pad; i++ {
+		rows = append(rows, a.railJoin("", railAt(i)))
+	}
+	for i, r := range body {
+		rows = append(rows, a.railJoin(r.text, railAt(pad+i)))
 	}
 	rows = append(rows, chrome...)
 	// A frame taller than the terminal loses rows from the TOP: the chrome is
@@ -190,6 +208,11 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	}
 
 	input, caretX, caretRow := a.inputBlock(width - len(inputPad))
+	// THE BOX IS THE REDIRECT LANE while a proposal is open: the placeholder is
+	// applied to the block the input already rendered, because the hint slot
+	// inside it belongs to the picker's filter and the two are never up together
+	// (task.go).
+	input = a.redirectLane(input, width-len(inputPad))
 	caretRow += len(rows)
 	for _, line := range input {
 		add(inputPad+line, chromeRow{})
@@ -337,8 +360,7 @@ func (a *app) rowAt(y int) (row, bool) {
 	if top < 0 {
 		return row{}, false
 	}
-	width, _ := a.size()
-	body, pad := a.window(width, a.viewHeight())
+	body, pad := a.window(a.bodyWidth(), a.viewHeight())
 	at := y - top - pad
 	if at < 0 || at >= len(body) {
 		return row{}, false
@@ -392,7 +414,7 @@ func (a *app) offsetFor(total, height int) int {
 // off would mean a reader who scrolled up once never sees a new reply again.
 func (a *app) scroll(delta int) {
 	height := a.viewHeight()
-	total := len(a.visible(a.width))
+	total := len(a.visible(a.bodyWidth()))
 	bottom := total - height
 	if bottom < 0 {
 		bottom = 0
@@ -415,7 +437,7 @@ func (a *app) reveal(entry int) {
 	if height <= 0 {
 		return
 	}
-	rows := a.visible(a.width)
+	rows := a.visible(a.bodyWidth())
 	at := -1
 	for i, r := range rows {
 		if r.entry == entry {
@@ -437,7 +459,7 @@ func (a *app) reveal(entry int) {
 
 // clampScroll keeps the offset legal after a resize.
 func (a *app) clampScroll() {
-	a.offset = a.offsetFor(len(a.visible(a.width)), a.viewHeight())
+	a.offset = a.offsetFor(len(a.visible(a.bodyWidth())), a.viewHeight())
 }
 
 // follow is what every append calls: content grew, and a reader at the live

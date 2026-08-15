@@ -1602,7 +1602,7 @@ func TestAWarmResultIsRefusedWhenTheCallDisagrees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	warm.consider(context.Background(), agent, newEventHub(), string(payload))
+	warm.consider(context.Background(), agent, agent.newEpisode(), newEventHub(), string(payload))
 
 	// Same id, different arguments: the response won the disagreement.
 	changed := call
@@ -1632,7 +1632,7 @@ func TestConsiderRefusesEverythingOutsideTheLaw(t *testing.T) {
 		`{"id":"c2","function":{"name":"grep","arguments":"{}"}}`, // read-only, but not on this belt
 		`{"id":"","function":{"name":"read","arguments":"{}"}}`,   // no id to pair by
 	} {
-		warm.consider(context.Background(), agent, newEventHub(), payload)
+		warm.consider(context.Background(), agent, agent.newEpisode(), newEventHub(), payload)
 	}
 	warm.mu.Lock()
 	started := len(warm.started)

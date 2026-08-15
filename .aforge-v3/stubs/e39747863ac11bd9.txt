@@ -1,0 +1,47 @@
+===== all:%22DeepMind%22+AND+all:%22agent%22+AND+cat:cs.AI
+2026-08-06 ProDVI: Programmatic Dynamics Priors for Value Network Initialization | http://arxiv.org/abs/2608.06015v1
+2026-06-15 ARB4WM: An Adversarial Robustness Benchmark for World Models in Continuous Control | http://arxiv.org/abs/2606.16605v1
+2026-05-27 Real-rootedness of the Poincaré polynomials of $\overline{\mathcal M}_{0,n}$: an AI-assisted proof | http://arxiv.org/abs/2605.29151v2
+2026-05-21 MadEvolve: Evolutionary Optimization of Trading Systems with Large Language Models | http://arxiv.org/abs/2605.23007v1
+2026-03-29 SkyNet: Belief-Aware Planning for Partially-Observable Stochastic Games | http://arxiv.org/abs/2603.27751v1
+2026-03-10 Context Engineering: From Prompts to Corporate Multi-Agent Architecture | http://arxiv.org/abs/2603.09619v2
+2026-03-03 Next Embedding Prediction Makes World Models Stronger | http://arxiv.org/abs/2603.02765v1
+2026-02-24 Aletheia tackles FirstProof autonomously | http://arxiv.org/abs/2602.21201v3
+2026-02-23 Meta-Learning and Meta-Reinforcement Learning -- Tracing the Path towards DeepMind's Adaptive Agent | http://arxiv.org/abs/2602.19837v3
+2026-02-10 Towards Autonomous Mathematics Research | http://arxiv.org/abs/2602.10177v3
+2025-11-11 Test-driven Reinforcement Learning in Continuous Control | http://arxiv.org/abs/2511.07904v3
+2025-10-29 Off-policy Reinforcement Learning with Model-based Exploration Augmentation | http://arxiv.org/abs/2510.25529v1
+===== all:%22Anthropic%22+AND+cat:cs.AI
+2026-08-11 GitSkills: A Dataset of Agent Skills on GitHub | http://arxiv.org/abs/2608.10906v1
+2026-08-10 Stealing Reasoning Traces from Proprietary LLM APIs | http://arxiv.org/abs/2608.09867v1
+2026-08-09 Can Open-Weight Models Compete on Financial Text Comprehension? | http://arxiv.org/abs/2608.08634v1
+2026-08-07 Critical Acclaim Orientation in Large Language Models: Evidence from Film Preference Elicitation | http://arxiv.org/abs/2608.06955v1
+2026-08-04 How Closely Do LLM Reviews Align with Human Peer Review? | http://arxiv.org/abs/2608.03659v1
+2026-08-02 Context Compaction Theory | http://arxiv.org/abs/2608.01326v1
+2026-08-02 Fighting Fire with Fire: On the Feasibility of Protecting Exercises Against AI Cheating | http://arxiv.org/abs/2608.01112v1
+2026-07-29 Constitutional Midtraining: Content Presence Drives Alignment Gains | http://arxiv.org/abs/2607.26654v2
+2026-07-28 Cyber-Capable AI Agents: Vulnerabilities, Evaluation Containment, and Defensive Response | http://arxiv.org/abs/2607.25379v2
+2026-07-27 Authoring Agent Skills: A Software-Engineering Approach | http://arxiv.org/abs/2607.25032v1
+2026-07-25 Confidently Wrong: Exception Chain Collapse in Frontier LLM Rule Evaluation | http://arxiv.org/abs/2607.23386v1
+2026-07-24 Modeling Memory-Dependent Reliability of LLMs: A Hidden Markov Model | http://arxiv.org/abs/2607.22951v1
+===== all:%22OpenAI%22+AND+all:%22agent%22+AND+cat:cs.AI
+2026-08-12 Diagram-MMU: A Multi-Modal Benchmark for Scientific Diagrams | http://arxiv.org/abs/2608.12262v1
+2026-08-11 Social Chain of Thought: A Multi-Agent Architecture Grounded in Medical Differential Diagnosis Methodology | http://arxiv.org/abs/2608.11420v1
+2026-08-10 Stealing Reasoning Traces from Proprietary LLM APIs | http://arxiv.org/abs/2608.09867v1
+2026-08-07 Who Verifies the Benchmark? Decentralizing Trust in Large Language Model Evaluation | http://arxiv.org/abs/2608.07762v1
+2026-08-07 Blast Radius | http://arxiv.org/abs/2608.07440v2
+2026-08-07 NiyamAI - An Intent-Bound AI Agent with Cryptographically Verifiable Guardrails using Zero-Knowledge Proofs | http://arxiv.org/abs/2608.07167v1
+2026-08-07 LMM Modality Transfer: A Pre-requisite for Autonomous GIS Agents | http://arxiv.org/abs/2608.06948v1
+2026-08-06 ProDVI: Programmatic Dynamics Priors for Value Network Initialization | http://arxiv.org/abs/2608.06015v1
+2026-08-05 Weather- and Location-Aware Agentic Dining Recommendation: Leveraging LLM World Knowledge for Region-Sensitive Contextual Reasoning | http://arxiv.org/abs/2608.07593v1
+2026-08-04 SAT-Edge-Agent: Hardware-in-the-Loop Edge-Agent Orchestration for Onboard Satellite Intelligence | http://arxiv.org/abs/2608.03728v1
+2026-08-01 The Off-Support Barrier: Why Semantic Safety Constraints Are Not Learning-Problem Invariants, and What Follows for Prior Design, Containment, and Verification | http://arxiv.org/abs/2608.11243v1
+2026-07-29 When LLM Agents Negotiate: Private Information and Dynamic Bargaining in Supply Chains | http://arxiv.org/abs/2608.07538v1
+===== all:%22METR%22+AND+all:%22agent%22
+2026-07-31 CurveShift: Is Agent Progress Scalar? Separating Level from Shape | http://arxiv.org/abs/2608.00355v1
+2026-07-15 Evaluating Frontier AI Agents as Autonomous Clinical Security Auditors | http://arxiv.org/abs/2607.13411v1
+2026-05-22 Towards Networked One Search Agent Systems: Multilateration of WiFi Fine Time Measurement Responders Using GNSS References | http://arxiv.org/abs/2606.00075v1
+2025-11-30 City-Conditioned Memory for Multi-City Traffic and Mobility Forecasting | http://arxiv.org/abs/2512.00851v1
+2025-11-23 Forecasting AI Time Horizon Under Compute Slowdowns | http://arxiv.org/abs/2511.19492v1
+2025-05-26 Evaluating AI cyber capabilities with crowdsourced elicitation | http://arxiv.org/abs/2505.19915v2
+2025-02-18 AIDE: AI-Driven Exploration in the Space of Code | http://arxiv.org/abs/2502.13138v1

@@ -73,7 +73,7 @@ func (a *app) enterCopy() {
 	if a.copy.on {
 		return
 	}
-	width, _ := a.size()
+	width := a.bodyWidth()
 	height := a.viewHeight()
 	rows := a.visible(width)
 	if len(rows) == 0 {

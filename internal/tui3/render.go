@@ -34,6 +34,7 @@ const (
 	hitTool         // a tool call: click expands that call inline
 	hitFold         // the "N earlier tool calls" line: click expands the turn
 	hitMore         // the "… N more lines" foot of a capped expansion: click lifts the cap
+	hitTask         // a task proposal (task.go): click opens its brief
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -120,11 +121,20 @@ func (a *app) layout(width int) []row {
 		if len(rows) == 0 {
 			continue
 		}
-		if wasCluster || e.kind == entryUser {
+		if wasCluster || e.kind == entryUser || e.kind == entryTask {
+			// A PROPOSAL TAKES A BLANK OF ITS OWN. It is the one block on this
+			// surface that interrupts a reply to ask something, and a question
+			// wedged against the sentence above it reads as part of that sentence.
 			gap()
 		}
+		// The proposal is the only non-tool block a click acts on, so it is the
+		// only one that carries a hit (task.go).
+		hit := hitNone
+		if e.kind == entryTask {
+			hit = hitTask
+		}
 		for _, text := range rows {
-			out = append(out, row{text: text, entry: i})
+			out = append(out, row{text: text, entry: i, hit: hit})
 		}
 		wasCluster = false
 	}
@@ -192,6 +202,12 @@ func (a *app) entryRows(i, width int) []string {
 	if e.kind == entryCompact && e.ended.IsZero() {
 		return a.renderEntry(i, e, width)
 	}
+	// AN OPEN PROPOSAL IS NOT CACHED EITHER, and for the same reason: its
+	// countdown is a function of the frame (task.go). It rejoins the cache the
+	// moment it is answered, which is the moment the clock stops.
+	if e.kind == entryTask && e.card != nil && !e.card.settled() {
+		return a.renderEntry(i, e, width)
+	}
 	if e.built && e.width == width && !e.stale {
 		return e.rows
 	}
@@ -247,6 +263,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 
 	case entryCompact:
 		return []string{a.compactRow(e, width)}
+
+	case entryTask:
+		return a.taskCardRows(e.card, width)
 
 	case entryNote:
 		body := wrap(e.text, width-2)
@@ -1104,7 +1123,11 @@ func (a *app) stateWord() (string, string) {
 		word := a.copyWord()
 		return word, a.pal.accent(word)
 	}
-	if a.asking() {
+	// A PROPOSAL IS THE SAME MOMENT AS A CONSENT QUESTION from this line's point
+	// of view: the turn is technically working — the propose_task call is parked
+	// inside it — and what is true about it that a person can act on is that it
+	// is waiting for them (task.go).
+	if a.asking() || a.awaitingTask() {
 		return waitingWord, a.pal.askBold(waitingWord)
 	}
 	word := a.state.String()
@@ -1164,7 +1187,7 @@ func (a *app) legend(width int) string {
 	// is bottom-anchored and so is this border — the two of them framing the
 	// question is the surface pointing at it with both hands (consent.go).
 	paint := a.pal.dim
-	if a.asking() {
+	if a.asking() || a.awaitingTask() {
 		paint = a.pal.ask
 	}
 	// THE LADDER, in the order of what a person can recover elsewhere: the
@@ -1261,6 +1284,11 @@ func (a *app) legendRight(width int) string {
 // will act on.
 func (a *app) hintWord() string {
 	switch {
+	case a.awaitingTask():
+		// The proposal owns these keys while it is up, and it owns them ahead of
+		// the consent letters below: a card and a consent question cannot be open
+		// at once, and the keys a person needs are the ones on screen (task.go).
+		return taskProposalHint
 	case a.asking() || a.awaitingDecision():
 		return "a allow · t always · d deny"
 	case a.pick.open:

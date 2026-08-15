@@ -448,6 +448,18 @@ type Agent struct {
 	// the per-turn prompt refresh.
 	memory *memoryStore
 
+	// stateStore is the BPE working state (state.go): the beliefs and progress
+	// records that live OUTSIDE the transcript so a compaction cannot lose them.
+	// It is built on first use through [Agent.state] — the belt closes over the
+	// agent, so the tools reach a store that construction need not have made yet
+	// — and stateOnce is what makes that exactly one rehydration from disk.
+	//
+	// Like memory and jobs it sits outside mu and holds its own lock: its writers
+	// are tool calls running in parallel inside one batch, and its reader is a
+	// compaction pass that must not need the session lock to render a block.
+	stateOnce  sync.Once
+	stateStore *stateStore
+
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that
 	// holds it while waiting on the network would deadlock Interrupt, which is

@@ -58,7 +58,9 @@ const taskSchemaJSON = `{"type":"object","properties":{` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it: what will be done, and to what"},` +
 	`"brief":{"type":"string","description":"The task's WHOLE context, self-contained: the goal, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation"},` +
 	`"acceptance":{"type":"string","description":"The observable done-condition: the command that must pass, the behaviour that must hold, the output that must appear"},` +
-	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts. Its brief is given their reports when it begins"}` +
+	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts. Its brief is given their reports when it begins"},` +
+	`"max_steps":{"type":"number","description":"Optional. How many tool calls this work is worth before it is stopped as stuck (default 40). Raise it for a sweep across many files; lower it for something small that should not wander"},` +
+	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may change no file before it is stopped as stuck (default 6). Raise it when the work genuinely needs a lot of reading before its first edit"}` +
 	`},"required":["title","summary","brief","acceptance"],"additionalProperties":false}`
 
 // taskArguments is the wire form.
@@ -68,17 +70,27 @@ type taskArguments struct {
 	Brief      string   `json:"brief"`
 	Acceptance string   `json:"acceptance"`
 	DependsOn  []uint64 `json:"depends_on"`
+	MaxSteps   int      `json:"max_steps"`
+	NoProgress int      `json:"no_progress"`
 }
 
 // taskSpec is one node's settled instruction: what the person was shown, and
-// what the node will be given. It is built once, amended at most once (by a
-// redirect), and read without a lock by the goroutine that runs the node.
+// what the node will be given.
+//
+// IT IS BUILT ONCE AND AMENDED AT MOST ONCE — by a redirect, BEFORE admission
+// (see proposeTask below). After [TaskGraph.admit] takes it, brief and
+// acceptance are frozen for the node's whole life: that is the goal contract,
+// and the law and the reason for it are written out on [TaskNode].
 type taskSpec struct {
 	title      string
 	summary    string
 	brief      string
 	acceptance string
 	dependsOn  []uint64
+	// maxSteps and noProgress are the node's own thresholds, 0 when the model
+	// did not name one and the defaults apply (task_run.go).
+	maxSteps   int
+	noProgress int
 }
 
 // taskTools is the belt's task family — one tool, and only in a conversation.
@@ -136,6 +148,14 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		// APPENDED, never merged into the brief's prose. The person's words
 		// arrive last and in their own voice, so the node reads them as the
 		// correction they are rather than as one more paragraph the model wrote.
+		//
+		// AND IT HAPPENS HERE, BEFORE admit — this line is the last moment in
+		// the node's life at which its brief may change. Everything after
+		// admission reads a frozen spec, including the auditor that decides
+		// whether the work is done ([TaskNode]'s goal contract): a target that
+		// can move while the work runs is a target the work can always be made
+		// to hit. A correction that arrives later is a new proposal, which is
+		// the person exercising the same authority a second time.
 		spec.brief = strings.TrimRight(spec.brief, "\n") +
 			"\n\nThe person redirecting this task says: " + redirect
 	}
@@ -164,6 +184,24 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		brief:      strings.TrimSpace(parsed.Brief),
 		acceptance: strings.TrimSpace(parsed.Acceptance),
 		dependsOn:  parsed.DependsOn,
+		maxSteps:   parsed.MaxSteps,
+		noProgress: parsed.NoProgress,
+	}
+	// A NEGATIVE THRESHOLD IS A MISTAKE WORTH SAYING OUT LOUD, where an absent
+	// one is not: omitting the field means "use the default" and is the ordinary
+	// case, but a model that asked for -1 steps meant something it did not say,
+	// and silently running that node for forty would be the harness inventing an
+	// answer to a question the model got wrong.
+	for _, threshold := range []struct {
+		value int
+		field string
+	}{
+		{spec.maxSteps, "max_steps"},
+		{spec.noProgress, "no_progress"},
+	} {
+		if threshold.value < 0 {
+			return spec, "Invalid arguments: " + threshold.field + " cannot be negative"
+		}
 	}
 	for _, missing := range []struct {
 		value string

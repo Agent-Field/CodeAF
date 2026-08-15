@@ -86,6 +86,11 @@ const (
 	// entryThinking is one turn's reasoning (thinking.go): streamed while it
 	// arrives, collapsed to a single row the moment the turn says anything else.
 	entryThinking
+	// entryTask is ONE TASK PROPOSAL — the decision moment, drawn where it
+	// happened (task.go). It keeps its verdict afterwards, the way a consent
+	// row does, because "the model asked to go and do this and you said yes" is
+	// the only record of where a running node came from.
+	entryTask
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -169,6 +174,11 @@ type entry struct {
 	settled bool
 	mdCut   int
 
+	// card is the proposal this entry draws, for kind entryTask and for nothing
+	// else (task.go). It is a POINTER because the answer lane holds the same
+	// card: a row and the verdict on it must not be able to disagree.
+	card *taskCard
+
 	// The row cache. built distinguishes "no rows yet" from "renders to no
 	// rows", which an empty slice cannot.
 	rows  []string
@@ -203,6 +213,17 @@ type (
 		dirty  bool
 		ok     bool
 	}
+	// taskEventMsg is one event off the STANDING task subscription (task.go),
+	// which is a second stream and not the turn's: a node's "done" lands
+	// minutes after the turn that proposed it, when there is no stream left to
+	// land on. Its generation is the same device the turn stream's is — a lane
+	// belonging to an agent that has been replaced must not paint into the one
+	// that replaced it.
+	taskEventMsg struct {
+		gen int
+		ev  session.Event
+	}
+	taskLaneClosedMsg struct{ gen int }
 	// hudFadeMsg is a BOUNDED catch-up tick: the two wakeups a settled turn
 	// schedules so its fresh numbers can go quiet on time (render.go's fade).
 	// There is deliberately no idle ticker behind it — a surface with nothing
@@ -379,6 +400,18 @@ type app struct {
 	// follows are the messages typed with ctrl+q while a turn ran, each holding
 	// the stream the turn it starts will speak on (followup.go).
 	follows []queued
+
+	// THE TASK SIDE (task.go). task is the proposal that owns the answer lane,
+	// or nil; tasks and taskOrder are the rail's nodes, keyed by id and kept in
+	// admission order; taskSeen is the (id, state) de-dup, because an in-turn
+	// update arrives on both the turn's stream and the standing one; taskLane is
+	// that standing subscription and taskGen the generation it belongs to.
+	task      *taskCard
+	tasks     map[uint64]*taskNode
+	taskOrder []uint64
+	taskSeen  map[uint64]session.TaskState
+	taskLane  <-chan session.Event
+	taskGen   int
 	// think is the reasoning block currently streaming, or -1 (thinking.go).
 	think int
 
@@ -562,10 +595,14 @@ func (a *app) Init() tea.Cmd {
 	// The repository is asked ONCE here and then only at turn ends. A branch is
 	// a fact that changes when a person changes it, and a person who checks out
 	// a branch mid-turn is between two turns by the time it matters.
+	// THE STANDING TASK SUBSCRIPTION IS OPENED ONCE, HERE (task.go). It is not
+	// the turn's stream and it never closes with one: a node proposed in this
+	// turn reports minutes later, with no turn open, and the rail is the only
+	// thing on screen that knows it is still alive.
 	if a.welcome.animating() {
-		return tea.Batch(a.wake(), a.probeGit())
+		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks())
 	}
-	return a.probeGit()
+	return tea.Batch(a.probeGit(), a.watchTasks())
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -699,6 +736,21 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (followup.go). Nil when nothing is queued.
 		return a, tea.Batch(a.settle(), a.startFollow())
 
+	case taskEventMsg:
+		if msg.gen != a.taskGen {
+			return a, nil
+		}
+		return a, a.taskEvent(msg.ev)
+
+	case taskLaneClosedMsg:
+		// The agent this lane belonged to is gone. A lane from an agent that was
+		// replaced is already forgotten by its generation, so only the current
+		// one is dropped.
+		if msg.gen == a.taskGen {
+			a.taskLane = nil
+		}
+		return a, nil
+
 	case gitMsg:
 		if msg.ok {
 			a.branch, a.branchDirty = msg.branch, msg.dirty
@@ -746,7 +798,13 @@ func (a *app) paint() tea.Cmd {
 	// stops itself (welcome.go), which is what makes it one-shot rather than a
 	// loop with a condition somebody has to remember to write.
 	a.welcome.tick()
-	if a.state == stateWorking || a.welcome.animating() {
+	// The countdown on an open proposal runs down here, on the clock that is
+	// already turning — no ticker of its own (task.go).
+	a.tickTasks()
+	// AND THE CLOCK OUTLIVES THE TURN when a node does. A task runs for minutes
+	// with no stream open: its spinner, its count-up and the countdown above are
+	// the third reason this surface asks for a frame while the model is idle.
+	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() {
 		return frameTick()
 	}
 	a.painting = false
@@ -846,6 +904,18 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// blocked on a keyboard behind a fullscreen overlay.
 		a.closeSettings()
 		a.askConsent(ev)
+
+	case session.EventTaskProposal:
+		// A DECISION OUTRANKS A PANEL, for the reason a consent question does:
+		// the proposal takes the keyboard's answer lane, and a lane behind a
+		// fullscreen sheet is a turn blocked on keys nobody can reach.
+		a.closeSettings()
+		a.proposeTask(ev)
+
+	case session.EventTaskUpdate:
+		// The same event also arrives on the standing lane; [app.taskUpdate]'s
+		// (id, state) de-dup is what makes taking both harmless (task.go).
+		a.taskUpdate(ev)
 
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
@@ -952,6 +1022,10 @@ func (a *app) settle() tea.Cmd {
 	// released those calls; a prompt left on screen would be asking about work
 	// that is over (consent.go).
 	a.dropAsks()
+	// A proposal the engine is no longer holding stops asking, for the reason
+	// the questions above are dropped — except that this one is CHECKED rather
+	// than assumed, because the clock may have answered it (task.go).
+	a.syncTaskAsk()
 	if a.state == stateWorking {
 		a.state = stateIdle
 	}
@@ -1381,6 +1455,10 @@ func (a *app) press(y int) {
 		a.unfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
+	case hitTask:
+		// A click anywhere on a proposal opens its brief, for the reason a click
+		// anywhere on a thinking block opens that (task.go).
+		a.toggleCardAt(r.entry)
 	}
 }
 
@@ -1389,7 +1467,7 @@ func (a *app) press(y int) {
 // nobody can see is a cursor that has vanished. Walking off either end returns
 // false, and the key that asked falls through to scrolling.
 func (a *app) selectTool(delta int) bool {
-	rows := a.visible(a.width)
+	rows := a.visible(a.bodyWidth())
 	var calls []int
 	for _, r := range rows {
 		if r.hit == hitTool && (len(calls) == 0 || calls[len(calls)-1] != r.entry) {
@@ -1467,8 +1545,10 @@ func (a *app) slash(line string) tea.Cmd {
 		return func() tea.Msg { return compactedMsg{err: agent.Compact(ctx)} }
 
 	case "new":
-		a.renew()
-		return nil
+		// The command that replaces the agent is the one command here that
+		// returns work: the standing task lane belongs to the agent that handed
+		// it over, so the next conversation subscribes to its own (task.go).
+		return a.renew()
 
 	default:
 		a.note("unknown command: /" + name + " · try /help")
@@ -1480,10 +1560,12 @@ func (a *app) slash(line string) tea.Cmd {
 // The transcript is cleared because it belongs to the agent that just closed:
 // a fresh session file with the old conversation still on screen would be the
 // surface claiming context the model does not have.
-func (a *app) renew() {
+// It returns the one command the next conversation owes itself: its own
+// standing task subscription (task.go).
+func (a *app) renew() tea.Cmd {
 	if a.fresh == nil {
 		a.note("/new is unavailable here")
-		return
+		return nil
 	}
 	if a.state == stateWorking {
 		a.agent.Interrupt()
@@ -1494,7 +1576,7 @@ func (a *app) renew() {
 	agent, file, err := a.fresh()
 	if err != nil {
 		a.note("new session failed: " + err.Error())
-		return
+		return nil
 	}
 	a.agent, a.file = agent, file
 	a.entries = nil
@@ -1507,6 +1589,10 @@ func (a *app) renew() {
 	// A frozen viewport is a snapshot of a conversation that no longer exists
 	// (copymode.go), for the same reason the hover is dropped one line above.
 	a.copy = copyMode{mark: -1}
+	// The rail goes with the conversation: its nodes died with the agent that
+	// started them, and a row left standing would be presence claimed for work
+	// nobody is doing (task.go).
+	a.dropTasks()
 	a.stream = nil
 	a.gen++
 	a.state = stateIdle
@@ -1522,6 +1608,7 @@ func (a *app) renew() {
 	} else {
 		a.note("new session")
 	}
+	return a.watchTasks()
 }
 
 func (a *app) quit() tea.Cmd {

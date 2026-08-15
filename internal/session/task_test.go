@@ -17,11 +17,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -32,39 +34,62 @@ import (
 // message the conversation sends does.
 const taskBriefMark = "BRIEF-MARK"
 
-// routedCompleter scripts TWO agents against one provider: the conversation and
-// the node it proposes, which run concurrently and would otherwise race for the
-// next entry of a single list.
+// routedCompleter scripts THREE agents against one provider: the conversation,
+// the node it proposes, and the auditor that decides whether the node's work is
+// real. They run concurrently and would otherwise race for the next entry of a
+// single list.
+//
+// The lanes are told apart by what only that agent's context can contain: the
+// auditor by its system prompt, which is the audit contract and nothing else,
+// and the node by a mark riding in its brief. The auditor is checked FIRST
+// because its question quotes the node's own words back at it, and a claim
+// containing the mark would otherwise route an audit into the node's script.
 type routedCompleter struct {
 	mu     sync.Mutex
 	parent []step
 	child  []step
-	seen   struct{ parent, child int }
+	audit  []step
+	seen   struct{ parent, child, audit int }
 	// childRequests keeps what the node was actually asked, which is the only
 	// place the assembled brief can be observed from the outside.
 	childRequests [][]ai.Message
+	// auditRequests is the same for the auditor: the only place to see what a
+	// verdict was actually reached against.
+	auditRequests [][]ai.Message
 }
 
 func (c *routedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
-	child := false
-	for _, message := range messages {
-		if message.Role == "user" && strings.Contains(messageText(message), taskBriefMark) {
-			child = true
-			break
+	lane := "parent"
+	if len(messages) > 0 && messages[0].Role == "system" &&
+		strings.Contains(messageText(messages[0]), "You are an AUDITOR") {
+		lane = "audit"
+	} else {
+		for _, message := range messages {
+			if message.Role == "user" && strings.Contains(messageText(message), taskBriefMark) {
+				lane = "child"
+				break
+			}
 		}
 	}
 
 	c.mu.Lock()
 	var next step
-	if child {
-		snapshot := make([]ai.Message, len(messages))
-		copy(snapshot, messages)
+	snapshot := make([]ai.Message, len(messages))
+	copy(snapshot, messages)
+	switch lane {
+	case "audit":
+		c.auditRequests = append(c.auditRequests, snapshot)
+		if c.seen.audit < len(c.audit) {
+			next = c.audit[c.seen.audit]
+		}
+		c.seen.audit++
+	case "child":
 		c.childRequests = append(c.childRequests, snapshot)
 		if c.seen.child < len(c.child) {
 			next = c.child[c.seen.child]
 		}
 		c.seen.child++
-	} else {
+	default:
 		if c.seen.parent < len(c.parent) {
 			next = c.parent[c.seen.parent]
 		}
@@ -85,6 +110,47 @@ func (c *routedCompleter) childAsked() []ai.Message {
 		return nil
 	}
 	return c.childRequests[0]
+}
+
+func (c *routedCompleter) auditAsked() []ai.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.auditRequests) == 0 {
+		return nil
+	}
+	return c.auditRequests[0]
+}
+
+// verdict is the auditor's answer, scripted.
+func verdict(text string) step { return finalText(text) }
+
+// bashCall is one call to the auditor's (or a node's) bash.
+func bashCall(id, command string) step {
+	arguments, _ := json.Marshal(struct {
+		Command string `json:"command"`
+	}{Command: command})
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse(id, "bash", string(arguments)), nil
+	}
+}
+
+// verdictFromEvidence is the auditor doing its actual job: it reads what its
+// own last tool call returned and answers on THAT, so a test that asserts
+// VERIFIED is asserting the verification really passed rather than asserting a
+// scripted string.
+func verdictFromEvidence(marker, verified, refuted string) step {
+	return func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+		for index := len(messages) - 1; index >= 0; index-- {
+			if messages[index].Role != "tool" {
+				continue
+			}
+			if strings.Contains(messageText(messages[index]), marker) {
+				return textResponse(verified), nil
+			}
+			return textResponse(refuted), nil
+		}
+		return textResponse(refuted), nil
+	}
 }
 
 // proposeCall is the model asking for one task, with the mark in the brief.
@@ -587,6 +653,12 @@ func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 			},
 			finalText("Wrote hello.txt with the greeting.\nNothing else changed."),
 		},
+		// Nothing merges unverified any more (task_audit.go), so the audit is
+		// part of the end-to-end path: this one reads the diff and passes it.
+		audit: []step{
+			bashCall("call-diff", "git diff --cached"),
+			verdictFromEvidence("hello.txt", "VERIFIED — git diff --cached · hello.txt added", "REFUTED — no such change"),
+		},
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.Workspace = repo
@@ -712,6 +784,481 @@ func TestKilledTaskKeepsItsBranch(t *testing.T) {
 	}
 	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); !strings.Contains(branches, notice.Branch) {
 		t.Fatal("killing a task deleted its branch: the work is gone")
+	}
+}
+
+// ── the verified frontier ───────────────────────────────────────────────────
+//
+// The four tests below are the whole law: a node's done-state is NOT its own
+// last words. The auditor runs the repository's real verification in the node's
+// worktree, and only VERIFIED merges.
+
+// A REAL CHANGE, VERIFIED BY A REAL TEST RUN. The node writes a package and a
+// test for it; the auditor runs `go test ./...` through its own bash, sees it
+// pass, and its verdict — with the evidence — is what rides the report.
+func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go and its test"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			writeCall("call-test", "greet_test.go",
+				"package greet\n\nimport \"testing\"\n\nfunc TestGreet(t *testing.T) {\n\tif Greet() != \"hi\" {\n\t\tt.Fatal(\"no greeting\")\n\t}\n}\n"),
+			finalText("Wrote greet.go and greet_test.go."),
+		},
+		audit: []step{
+			bashCall("call-verify", "go test ./..."),
+			// The verdict is read off what the run actually printed, so a
+			// VERIFIED here means the test really passed.
+			verdictFromEvidence("ok  \t", "VERIFIED — go test ./... ok · 2 files", "REFUTED — go test ./... did not pass"),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+
+	events, err := agent.Submit(context.Background(), "add a greeting")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	node := graph.node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskDone {
+		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
+	}
+	if !strings.HasPrefix(notice.Report, "VERIFIED — go test ./... ok") {
+		t.Fatalf("the verdict does not lead the report: %q", notice.Report)
+	}
+	if !strings.Contains(notice.Report, "Wrote greet.go") {
+		t.Fatalf("the node's own words were lost from the report: %q", notice.Report)
+	}
+	if notice.Merge != mergeMerged {
+		t.Fatalf("verified work did not come home: merge = %q", notice.Merge)
+	}
+	if content := readFile(t, filepath.Join(repo, "greet.go")); !strings.Contains(content, "func Greet") {
+		t.Fatalf("the verified work is not on the person's branch: %q", content)
+	}
+
+	// The auditor was asked against the FROZEN acceptance, was told where to
+	// look, and was never handed the conversation.
+	asked := completer.auditAsked()
+	if len(asked) == 0 {
+		t.Fatal("no audit ever ran: the frontier advanced on a self-report")
+	}
+	question := messageText(asked[len(asked)-1])
+	if !strings.Contains(question, "ACCEPTANCE") || !strings.Contains(question, "the file is there") {
+		t.Fatalf("the auditor was not given the acceptance: %q", question)
+	}
+	if !strings.Contains(question, "git diff --cached") {
+		t.Fatalf("the auditor was not told how to see the change: %q", question)
+	}
+	for _, message := range asked {
+		if strings.Contains(messageText(message), "add a greeting") {
+			t.Fatal("the conversation leaked into the auditor's context")
+		}
+	}
+}
+
+// A HOLLOW NODE IS REFUTED. It says it is finished and it wrote nothing; the
+// auditor runs the same verification, watches it fail, and the node FAILS with
+// the auditor's evidence as its report — taking its dependents with it.
+func TestAuditRefutesANodeThatOnlyClaimsToBeDone(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	writeFile(t, filepath.Join(repo, "hollow_test.go"),
+		"package greet\n\nimport \"testing\"\n\nfunc TestHollow(t *testing.T) {\n\tt.Fatal(\"nothing was fixed\")\n}\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "failing")
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Fix the failing test", "make TestHollow pass"),
+			finalText("handed off"),
+		},
+		child: []step{
+			// No tools, no edits: the whole node is a confident sentence.
+			finalText("All done — the test passes now."),
+		},
+		audit: []step{
+			bashCall("call-verify", "go test ./..."),
+			verdictFromEvidence("FAIL", "REFUTED — go test ./... still fails: TestHollow", "VERIFIED — nothing failed"),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+
+	events, err := agent.Submit(context.Background(), "fix it")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskFailed {
+		t.Fatalf("a node that only claimed to be done is %q, want failed (report %q)", notice.State, notice.Report)
+	}
+	if !strings.HasPrefix(notice.Report, "REFUTED — ") {
+		t.Fatalf("report = %q, want the auditor's verdict", notice.Report)
+	}
+	if !strings.Contains(notice.Report, "TestHollow") {
+		t.Fatalf("report = %q, want the auditor's evidence", notice.Report)
+	}
+	if strings.Contains(notice.Report, "All done") {
+		t.Fatalf("the node's own claim survived its refutation: %q", notice.Report)
+	}
+	// NOTHING MERGED, and nothing was thrown away either: the branch is kept
+	// exactly as a killed node's is.
+	if notice.Merge != mergeAborted {
+		t.Fatalf("merge = %q, want aborted — refuted work must not land", notice.Merge)
+	}
+	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); !strings.Contains(branches, notice.Branch) {
+		t.Fatal("a refuted node's branch was deleted: the work is gone")
+	}
+
+	// And the cascade: a dependent of a refuted node cannot start, because the
+	// work it was going to build on does not hold.
+	dependent := graph.reserve()
+	graph.admit(dependent, taskSpec{
+		title: "build on it", brief: "b", acceptance: "a", dependsOn: []uint64{node.id},
+	})
+	waitDoneNode(t, graph.node(dependent))
+	if state := graph.node(dependent).stateNow(); state != TaskFailed {
+		t.Fatalf("the dependent of a refuted node is %q, want failed", state)
+	}
+}
+
+// THE BELT IS THE SAFETY ARGUMENT. An auditor has no hand that writes, and its
+// bash runs the repository's verification and refuses everything else —
+// including a destructive command, a command that runs the node's own code, and
+// a verification with a second command chained onto it.
+func TestAuditBeltIsReadOnly(t *testing.T) {
+	belt := auditBelt(t.TempDir(), auditCommands)
+
+	byName := map[string]bare.Tool{}
+	for _, tool := range belt {
+		byName[tool.Name] = tool
+	}
+	for _, name := range []string{"read", "grep", "find", "ls", "bash"} {
+		if _, ok := byName[name]; !ok {
+			t.Fatalf("the auditor cannot %q, so it cannot gather evidence", name)
+		}
+	}
+	for _, name := range []string{"edit", "write", "jobs", "propose_task"} {
+		if _, ok := byName[name]; ok {
+			t.Fatalf("the auditor carries %q: it can change what it is judging", name)
+		}
+	}
+
+	for _, refused := range []struct {
+		command string
+		why     string
+	}{
+		{"rm -rf .", "destructive"},
+		{"rm", "destructive"},
+		{"go generate ./...", "runs the code it is judging"},
+		{"go run ./cmd/thing", "runs the code it is judging"},
+		{"go test ./... && rm -rf /", "a second command chained onto a verification"},
+		{"go test ./... > /tmp/out", "a redirect"},
+		{"echo $(rm -rf .)", "a substitution"},
+		{"", "nothing at all"},
+	} {
+		arguments := json.RawMessage(`{"command":` + strconv.Quote(refused.command) + `}`)
+		text, isError, err := byName["bash"].Execute(context.Background(), arguments)
+		if err != nil {
+			t.Fatalf("%q: the refusal was an error, not a result: %v", refused.command, err)
+		}
+		if !isError || !strings.HasPrefix(text, "refused:") {
+			t.Fatalf("the auditor ran %q (%s): %q", refused.command, refused.why, text)
+		}
+	}
+
+	// And what it IS for is allowed, spelled how a model actually spells it.
+	for _, allowed := range []string{
+		"go test ./...", "go  test ./... -run TestX", "go build ./...", "go vet ./...",
+		"git diff --cached", "git status --porcelain", "git log --oneline -5",
+	} {
+		if refusal, ok := auditRefusal(allowed, auditCommands); !ok {
+			t.Fatalf("the auditor may not run %q: %s", allowed, refusal)
+		}
+	}
+	// A prefix is matched at a word boundary, not as a string prefix.
+	if _, ok := auditRefusal("go testify", auditCommands); ok {
+		t.Fatal("the allowlist matched a command that merely starts like one")
+	}
+}
+
+// A VERDICT NOBODY GAVE IS A REFUTATION. Everything that is not the word
+// VERIFIED leaves the work unmerged, because the frontier fails closed.
+func TestAuditVerdictFailsClosed(t *testing.T) {
+	for _, testCase := range []struct {
+		name     string
+		answer   string
+		verified bool
+		report   string
+	}{
+		{"the word and its evidence", "VERIFIED — go test ./... ok · 3 files", true, "VERIFIED — go test ./... ok · 3 files"},
+		{"the word on its own line", "VERIFIED\ngo build ./... ok", true, "VERIFIED — go build ./... ok"},
+		{"a refutation with evidence", "REFUTED — TestX still fails: want 3, got 0", false, "REFUTED — TestX still fails: want 3, got 0"},
+		{"an essay", "I looked at the diff and it seems VERIFIED to me.", false, "REFUTED — the auditor answered neither VERIFIED nor REFUTED"},
+		{"nothing at all", "", false, "REFUTED — the auditor answered neither VERIFIED nor REFUTED"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := parseAuditVerdict(testCase.answer)
+			if got.verified != testCase.verified {
+				t.Fatalf("verified = %v for %q", got.verified, testCase.answer)
+			}
+			if got.report() != testCase.report {
+				t.Fatalf("report = %q, want %q", got.report(), testCase.report)
+			}
+		})
+	}
+	// The evidence is bounded: a verdict is read off a card, not scrolled.
+	long := parseAuditVerdict("REFUTED — one\ntwo\nthree\nfour\nfive")
+	if lines := strings.Count(long.report(), "\n") + 1; lines > auditEvidenceLines {
+		t.Fatalf("the verdict carried %d lines:\n%s", lines, long.report())
+	}
+}
+
+// ── the named thresholds ────────────────────────────────────────────────────
+
+// A SPIN DIES BY NAME. A node that keeps calling a tool that changes nothing is
+// stopped at its no-progress threshold, and a node that never stops is stopped
+// at its step budget — and the report says which, rather than leaving the
+// person to read thirty minutes of nothing.
+func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
+	for _, testCase := range []struct {
+		name      string
+		arguments taskArguments
+		want      string
+	}{
+		{
+			name: "no progress",
+			arguments: taskArguments{
+				Title: "Grind", Summary: "s", Brief: "spin\n" + taskBriefMark,
+				Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+			},
+			want: "stopped: 3 steps without a change",
+		},
+		{
+			name: "the step budget",
+			arguments: taskArguments{
+				Title: "Grind", Summary: "s", Brief: "spin\n" + taskBriefMark,
+				Acceptance: "a", NoProgress: 50, MaxSteps: 2,
+			},
+			want: "stopped: 2 steps and no finish",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			arguments, _ := json.Marshal(testCase.arguments)
+
+			// The scripted child never edits and never stops: every step is one
+			// more look at a directory. Fifty entries is far past either
+			// threshold, so the test proves the threshold ends it rather than
+			// the script running out.
+			spin := make([]step, 50)
+			for index := range spin {
+				spin[index] = lsCall(fmt.Sprintf("call-%d", index))
+			}
+			completer := &routedCompleter{
+				parent: []step{
+					func(context.Context, []ai.Message) (*ai.Response, error) {
+						return toolResponse("call-task", "propose_task", string(arguments)), nil
+					},
+					finalText("handed off"),
+				},
+				child: spin,
+			}
+			agent, _ := newTestAgent(t, completer, func(config *Config) {
+				config.AskConsent = false
+				config.TaskAutoApproveSeconds = 0
+			})
+			graph := agent.graph()
+
+			events, err := agent.Submit(context.Background(), "grind")
+			if err != nil {
+				t.Fatalf("Submit: %v", err)
+			}
+			collect(t, events)
+
+			node := graph.node(1)
+			waitDoneNode(t, node)
+			notice := node.notice()
+			if notice.State != TaskFailed {
+				t.Fatalf("a spinning node is %q, want failed (report %q)", notice.State, notice.Report)
+			}
+			if !strings.Contains(notice.Report, testCase.want) {
+				t.Fatalf("report = %q, want it to name the threshold %q", notice.Report, testCase.want)
+			}
+		})
+	}
+}
+
+// The defaults apply when the model names nothing, and a threshold it did name
+// is the one that is used.
+func TestTaskThresholdsDefaultAndOverride(t *testing.T) {
+	graph := newTaskGraph()
+	graph.run = func(*TaskNode) {}
+
+	plain := graph.reserve()
+	graph.admit(plain, taskSpec{title: "t", brief: "b", acceptance: "a"})
+	if limits := graph.node(plain).limits(); limits.maxSteps != taskMaxSteps || limits.noProgress != taskNoProgress {
+		t.Fatalf("a node that named no threshold got %+v, want the defaults", limits)
+	}
+
+	own := graph.reserve()
+	graph.admit(own, taskSpec{title: "t", brief: "b", acceptance: "a", maxSteps: 120, noProgress: 20})
+	if limits := graph.node(own).limits(); limits.maxSteps != 120 || limits.noProgress != 20 {
+		t.Fatalf("a node that named its thresholds got %+v", limits)
+	}
+
+	// And a negative one is a mistake said out loud rather than a default
+	// quietly substituted.
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "t", Summary: "s", Brief: "b", Acceptance: "a", MaxSteps: -1,
+	})
+	if _, problem := parseTaskArguments(arguments); !strings.Contains(problem, "max_steps cannot be negative") {
+		t.Fatalf("a negative max_steps was accepted: %q", problem)
+	}
+}
+
+// ── the goal contract ───────────────────────────────────────────────────────
+
+// A REDIRECT AMENDS BEFORE ADMISSION, NEVER AFTER. The person's correction is
+// part of the node's brief from the first instant it exists; once admitted, the
+// brief and the acceptance are frozen — a later answer to the same proposal
+// changes nothing, and the auditor judges the SAME text the node was finished
+// against.
+func TestGoalContractFreezesAtAdmission(t *testing.T) {
+	completer := &routedCompleter{parent: []step{
+		proposeCall("Sweep the deprecated calls", "replace every call to Frobnicate"),
+		finalText("handed off"),
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = true
+		config.TaskAutoApproveSeconds = 0
+	})
+	ran := make(ranNodes, 2)
+	hold := make(chan struct{})
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		ran <- node
+		<-hold
+		node.finish("done", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+
+	events, err := agent.Submit(context.Background(), "sweep them")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	var proposed uint64
+	drainAnsweringTasks(t, events, func(event Event) {
+		if event.Kind == EventTaskProposal {
+			proposed = event.Task.ID
+			agent.ResolveTask(proposed, TaskAnswer{Approved: true, Redirect: "leave the tests alone"})
+		}
+	})
+
+	node := ran.await(t)
+	admittedBrief := node.assembledBrief()
+	if !strings.Contains(admittedBrief, "The person redirecting this task says: leave the tests alone") {
+		t.Fatalf("the redirect never reached the admitted brief: %q", admittedBrief)
+	}
+	admittedAcceptance := node.acceptance()
+
+	// A SECOND ANSWER, arriving while the node runs, moves nothing. There is no
+	// path from here to the running node's goal, which is the whole point: an
+	// acceptance that can move while the work runs is an acceptance the work can
+	// always be made to hit.
+	agent.ResolveTask(proposed, TaskAnswer{Approved: true, Redirect: "actually rewrite the tests too"})
+
+	if brief := node.assembledBrief(); brief != admittedBrief {
+		t.Fatalf("the brief moved after admission:\n%q\n%q", admittedBrief, brief)
+	}
+	if acceptance := node.acceptance(); acceptance != admittedAcceptance {
+		t.Fatalf("the acceptance moved after admission: %q -> %q", admittedAcceptance, acceptance)
+	}
+	if strings.Contains(node.instruction(), "rewrite the tests too") {
+		t.Fatal("a late redirect reached the running node's instruction")
+	}
+
+	// And the auditor reads that same frozen text — one acceptance, two
+	// readers, so the work cannot be finished against one and judged against
+	// another.
+	question := auditQuestion(node, taskTree{root: "/repo"}, nil, "it claims it is done")
+	if !strings.Contains(question, admittedAcceptance) {
+		t.Fatalf("the auditor was given a different acceptance:\n%s", question)
+	}
+	if strings.Contains(question, "rewrite the tests too") {
+		t.Fatal("the late redirect reached the auditor")
+	}
+	close(hold)
+	waitDoneNode(t, graph.node(proposed))
+}
+
+// ── go-module helpers ───────────────────────────────────────────────────────
+
+// newGoModuleRepo is a repository the auditor can actually verify: a module
+// with nothing in it, so `go test ./...` is a real command with a real answer.
+func newGoModuleRepo(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go is not on PATH")
+	}
+	// The build cache is PINNED to the machine's own before these tests move
+	// HOME (the node's journal needs a scratch home). Left to follow HOME, every
+	// `go test ./...` an auditor runs would rebuild the standard library into an
+	// empty directory, which is six seconds per test to prove nothing.
+	cache, err := exec.Command("go", "env", "GOCACHE").Output()
+	if err != nil {
+		t.Skipf("go env GOCACHE: %v", err)
+	}
+	t.Setenv("GOCACHE", strings.TrimSpace(string(cache)))
+
+	repo := newTestRepo(t)
+	writeFile(t, filepath.Join(repo, "go.mod"), "module taskaudit\n\ngo 1.25\n")
+	mustGit(t, repo, "add", "-A")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "module")
+	return repo
+}
+
+// writeCall is the node writing one file.
+func writeCall(id, path, content string) step {
+	arguments, _ := json.Marshal(struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}{Path: path, Content: content})
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse(id, "write", string(arguments)), nil
+	}
+}
+
+// lsCall is one step that succeeds and changes nothing — the shape of a spin.
+func lsCall(id string) step {
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse(id, "ls", `{"path":"."}`), nil
 	}
 }
 

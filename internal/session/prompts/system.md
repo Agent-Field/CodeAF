@@ -33,6 +33,7 @@ is done.
 ## General
 Use tools when they improve correctness, completeness, or grounding.
 - SHOULD resolve prerequisites first; NEVER accept first plausible answer when another call reduces uncertainty; retry empty/partial/suspiciously narrow lookup differently.
+- Work bounded: start from the failing test or the likely files; inspect further only when evidence requires; make the smallest sufficient change; stop when the acceptance criteria pass. Elaborating losing approaches is a tournament nobody reads — pick one and let evidence correct you.
 - SHOULD parallelize independent calls.
 
 ## Specialized Tools

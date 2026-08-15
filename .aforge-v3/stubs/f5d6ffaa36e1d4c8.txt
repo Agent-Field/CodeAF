@@ -1,0 +1,105 @@
+91568 /tmp/arxiv_detail.xml
+### OneDayAgent: Towards a Long-Horizon Harness for Autonomous Agents
+http://arxiv.org/abs/2608.05013v1
+  comment: Ongoing work
+
+### Skill-Use: Can LLMs Actually Use Skills in Agentic Harnesses?
+http://arxiv.org/abs/2608.04828v1
+
+### Agent Skills Can Be Harmful: An Empirical Study of Skill-Induced Failures in LLM Agents
+http://arxiv.org/abs/2608.11888v1
+
+### Training AI Scientists to Replicate Research
+http://arxiv.org/abs/2608.13331v1
+  comment: 47 pages, 12 figures
+
+### HarnessCompass: Guiding Automatic Harness Evolution toward Generalizable and Effective Agent Harnesses
+http://arxiv.org/abs/2608.01918v1
+
+### REDAgentBench: Executable Red Teaming and Faithful Measurement of LLM Agent Systems
+http://arxiv.org/abs/2608.10669v1
+  comment: 6 figures, 4 tables. Supplementary material included
+
+### VALG: An Agentic System for ML Theory Research
+http://arxiv.org/abs/2608.13060v1
+
+### DiG-bench: Discovery in Games
+http://arxiv.org/abs/2608.12593v1
+
+### Scaling Automatic Research Agents via World Models
+http://arxiv.org/abs/2608.12564v1
+
+### GABench: A Comprehensive Benchmark for Evaluating LLM Agents on Graph Analysis Tasks
+http://arxiv.org/abs/2608.01684v1
+
+### HarnessSafe: Evaluating Safety Across Persistent Carriers in Agent Harnesses
+http://arxiv.org/abs/2608.06984v1
+  comment: 21 pages, 3 figures. Preprint
+
+### DataSpace: Benchmarking Data Agents for Verifiable Analytics over Heterogeneous Workspaces
+http://arxiv.org/abs/2608.03451v1
+  comment: 8 pages of main text, 7 figures, with a supplementary appendix
+
+### Ouroboros: A Self-Developing Frontier Coding Agent with Reviewed Core Evolution
+http://arxiv.org/abs/2608.08311v2
+
+### The Scaffolding Matters More Than the Interface: A Controlled Comparison of MCP and CLI Tool Use Across Seven Agent Scaffoldings, Five Language Models, and One Software Task
+http://arxiv.org/abs/2608.08654v1
+  comment: 29 pages, 4 figures, 8 tables. Companion methodology paper: arXiv:2606.11869. Dataset and measurement harness (open source, GPL-3.0): https://doi.org/10.5281/zenodo.21851992
+
+### Beyond Final Scores: A Systematic Evaluation of Agents for Long-Horizon AI Research and Development
+http://arxiv.org/abs/2608.13417v1
+
+### One Frozen Simulator Is Not Enough: Simulator Collapse in Multi-Agent RL
+http://arxiv.org/abs/2608.12253v1
+  comment: 41 pages, 28 figures
+
+### Vero: Can AI Agents Build Formally Verified Software Repositories?
+http://arxiv.org/abs/2608.13522v1
+
+### Intern-S2-Preview: Scientific Agentic Foundation Model
+http://arxiv.org/abs/2608.13505v1
+  comment: 35 pages, 12 figures
+
+### LongHorizon-Harness: Advancing Long-Horizon Agents for Real-World Tasks
+http://arxiv.org/abs/2608.01964v1
+  comment: 29 pages
+
+### Harness-R1: Learning to Edit Executable Runtime Harnesses from Agent Failure Trajectories
+http://arxiv.org/abs/2608.02276v1
+
+### Argus: A General-Purpose Agentic Reasoning Runtime for Long-Horizon Tasks
+http://arxiv.org/abs/2608.05144v2
+
+### ToolHazard: Scaling Adversarial Environments for Security Evaluation and Alignment of LLM-based Agents
+http://arxiv.org/abs/2608.11878v1
+  comment: Work in Progress
+
+### Harness-IF: Evaluating Instruction Following Across Instruction Surfaces in Coding Agents
+http://arxiv.org/abs/2608.11727v1
+  comment: 26 pages, 7 figures, 8 tables
+
+### Practice Makes Unsafe: Skill Misevolution in Self-Improving LLM Agents
+http://arxiv.org/abs/2608.12851v1
+
+### EvoHarness-RL: Learning Self-Evolving Runtime Harness for Long-Horizon LLM Agents
+http://arxiv.org/abs/2608.05446v1
+  comment: Accepted to LLA@COLM 2026
+
+### Self-evolving network verifiers
+http://arxiv.org/abs/2608.11340v1
+  comment: 8 pages, 5 figures
+
+### HarnessOpt-Bench: Evaluating LLMs at Harness Optimization
+http://arxiv.org/abs/2608.06301v1
+
+### SHE: Trajectory-driven Safety Harness Evolution for LLM Agents
+http://arxiv.org/abs/2608.09885v1
+  comment: Project: https://github.com/RainbowQTT/SHE
+
+### SBCO: Self-Supervised, Verifier-Grounded Harness Optimization For Planning Agents
+http://arxiv.org/abs/2608.10157v1
+
+### Evo-Bench: Can Language Models Improve Agent Harness?
+http://arxiv.org/abs/2608.09096v2
+

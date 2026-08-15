@@ -1921,3 +1921,400 @@ func TestTheBranchArrivesAsAMessageAndCanGoAway(t *testing.T) {
 		t.Fatalf("a failed probe left a stale branch: %q", plain(a.legend(120)))
 	}
 }
+
+// ── THE TASK SURFACE: A DECISION, THEN A PRESENCE ───────────────────────────
+//
+// Every test below asserts the FACT the feature exists for — what a person
+// reads, what reaches the engine, what the frame charges for a rail — rather
+// than the shape of the code under it (task.go).
+
+// taskFake is a session with a tasker: it records what it was asked to resolve
+// and holds the standing update lane open. It embeds the scripted agent every
+// other test here runs against, because the task contract is a widening of that
+// session and not a different one.
+type taskFake struct {
+	*fakeAgent
+	answered []taskReply
+	updates  chan session.Event
+	pending  []uint64
+}
+
+type taskReply struct {
+	id     uint64
+	answer session.TaskAnswer
+}
+
+func (f *taskFake) ResolveTask(id uint64, answer session.TaskAnswer) {
+	f.answered = append(f.answered, taskReply{id: id, answer: answer})
+	// The engine forgets a proposal the moment it is answered, and
+	// [Agent.PendingTasks] is what the surface reads that through.
+	for i, waiting := range f.pending {
+		if waiting == id {
+			f.pending = append(f.pending[:i], f.pending[i+1:]...)
+			break
+		}
+	}
+}
+
+func (f *taskFake) TaskUpdates() <-chan session.Event { return f.updates }
+func (f *taskFake) PendingTasks() []uint64            { return f.pending }
+
+// taskApp is a surface with a tasker under it and a pinned clock over it: a
+// countdown cannot be tested by waiting four seconds.
+func taskApp(t *testing.T) (*app, *taskFake, func(time.Duration)) {
+	t.Helper()
+	agent := &taskFake{
+		fakeAgent: &fakeAgent{model: "deepseek/deepseek-v4-flash"},
+		updates:   make(chan session.Event, 8),
+	}
+	a := newTestApp(agent)
+	a.width, a.height = 200, 24
+	now := time.Date(2026, 8, 15, 9, 0, 0, 0, time.UTC)
+	a.clock = func() time.Time { return now }
+	return a, agent, func(d time.Duration) { now = now.Add(d) }
+}
+
+// proposal is one EventTaskProposal, as the engine sends it.
+func proposal(a *app, id uint64, countdown time.Duration) session.Event {
+	deadline := time.Time{}
+	if countdown > 0 {
+		deadline = a.now().Add(countdown)
+	}
+	return session.Event{
+		Kind: session.EventTaskProposal,
+		Tool: "propose_task",
+		Task: &session.TaskNotice{
+			ID:         id,
+			Title:      "Fix the nil-map crash",
+			Summary:    "The parser drops a key on an empty map. This adds the guard and the regression test.",
+			Brief:      "internal/parse/keys.go builds its map lazily and writes to it before it exists.",
+			Acceptance: "go test ./internal/parse passes with the new case",
+			Deadline:   deadline,
+		},
+	}
+}
+
+// update is one EventTaskUpdate for a node's life.
+func update(id uint64, title string, state session.TaskState, notice session.TaskNotice) session.Event {
+	notice.ID, notice.Title, notice.State = id, title, state
+	return session.Event{Kind: session.EventTaskUpdate, Tool: "propose_task", Task: &notice}
+}
+
+// taskText is the conversation as a reader sees it, laid out at the width the
+// transcript actually gets.
+func taskText(a *app) string {
+	var out []string
+	for _, r := range a.visible(a.bodyWidth()) {
+		out = append(out, plain(r.text))
+	}
+	return strings.Join(out, "\n")
+}
+
+// THE PROPOSAL IS A DECISION MOMENT, INLINE: the title and the summary are what
+// a person decides on, and the brief — the node's whole contract with its runner
+// — is behind the expansion every other detail on this surface is behind.
+func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+
+	text := taskText(a)
+	for _, want := range []string{"Fix the nil-map crash", "The parser drops a key", "auto-starts in 4s"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the proposal is missing %q:\n%s", want, text)
+		}
+	}
+	for _, hidden := range []string{"builds its map lazily", "go test ./internal/parse"} {
+		if strings.Contains(text, hidden) {
+			t.Fatalf("the collapsed proposal leaked %q:\n%s", hidden, text)
+		}
+	}
+	// IT IS A QUESTION, SO IT TAKES THE QUESTION HUE — the same violet the
+	// consent block spends and nothing else on this surface does.
+	painted := a.visible(a.bodyWidth())[0].text
+	if !strings.Contains(painted, sgr256(hueAsk)) {
+		t.Fatalf("the proposal is not painted in the question hue:\n%q", painted)
+	}
+	// And the surface says, everywhere it says anything, that it is waiting.
+	if word, _ := a.stateWord(); word != waitingWord {
+		t.Fatalf("the status word is %q while a proposal is open", word)
+	}
+	if hint := a.hintWord(); hint != taskProposalHint {
+		t.Fatalf("the hint slot says %q while a proposal is open", hint)
+	}
+
+	// The expansion is the tool rows' own mechanic: ctrl+e on an empty draft,
+	// and a click anywhere on the card.
+	drive(t, a, ctrlKey('e'))
+	text = taskText(a)
+	for _, want := range []string{"builds its map lazily", "done when: go test ./internal/parse"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the opened proposal is missing %q:\n%s", want, text)
+		}
+	}
+	clickHit(t, a, hitTask)
+	if strings.Contains(taskText(a), "builds its map lazily") {
+		t.Fatalf("a second click did not close the brief:\n%s", taskText(a))
+	}
+}
+
+// THE COUNTDOWN TICKS ON THE FRAME CLOCK — no ticker of its own — and at the
+// deadline the row stops asking: the engine's clock owns the answer, and a card
+// still counting down would be a question nobody can answer any more.
+func TestTheProposalCountdownTicksAndStopsAtTheDeadline(t *testing.T) {
+	a, agent, advance := taskApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+
+	if !strings.Contains(taskText(a), "auto-starts in 4s") {
+		t.Fatalf("the countdown did not open at 4s:\n%s", taskText(a))
+	}
+	advance(3200 * time.Millisecond)
+	drive(t, a, frameMsg{})
+	if !strings.Contains(taskText(a), "auto-starts in 1s") {
+		t.Fatalf("the countdown did not tick down:\n%s", taskText(a))
+	}
+	if !a.awaitingTask() {
+		t.Fatal("the proposal stopped asking before its deadline")
+	}
+	advance(time.Second)
+	drive(t, a, frameMsg{})
+	if a.awaitingTask() {
+		t.Fatalf("the proposal is still asking past its deadline:\n%s", taskText(a))
+	}
+	if !strings.Contains(taskText(a), taskClockWord) {
+		t.Fatalf("the settled row does not keep the clock's verdict:\n%s", taskText(a))
+	}
+	// The clock is the ENGINE's: the surface stops asking and answers nothing.
+	if len(agent.answered) != 0 {
+		t.Fatalf("the surface raced the engine's clock: %+v", agent.answered)
+	}
+}
+
+// THE INPUT BOX IS THE REDIRECT LANE. Typing is a correction that reaches the
+// engine as the person wrote it; a bare enter starts the work as briefed.
+func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
+	a, agent, _ := taskApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+
+	// The box says what it is for while the question is open.
+	block, _, _, _ := a.chrome(a.width)
+	if !strings.Contains(plain(strings.Join(block, "\n")), taskRedirectLane) {
+		t.Fatalf("the input box does not offer the redirect lane:\n%s", plain(strings.Join(block, "\n")))
+	}
+
+	a.input.setText("leave the tests alone")
+	drive(t, a, key("enter"))
+	if len(agent.answered) != 1 {
+		t.Fatalf("enter resolved %d proposals, want 1", len(agent.answered))
+	}
+	got := agent.answered[0]
+	if got.id != 7 || !got.answer.Approved || got.answer.Redirect != "leave the tests alone" {
+		t.Fatalf("the redirect reached the engine as %+v", got)
+	}
+	if !strings.Contains(taskText(a), taskRedirectWord) {
+		t.Fatalf("the settled row does not say it was redirected:\n%s", taskText(a))
+	}
+	// The sentence was about the question, so it does not stay in the box to be
+	// sent to the model by the next enter.
+	if a.input.String() != "" {
+		t.Fatalf("the draft kept the redirect: %q", a.input.String())
+	}
+	if len(agent.sent) != 0 {
+		t.Fatalf("the redirect was also sent to the model: %v", agent.sent)
+	}
+
+	// A bare enter is approval as briefed.
+	agent.pending = []uint64{8}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 8, 0)}, key("enter"))
+	last := agent.answered[len(agent.answered)-1]
+	if last.id != 8 || !last.answer.Approved || last.answer.Redirect != "" {
+		t.Fatalf("a bare enter reached the engine as %+v", last)
+	}
+	// A proposal with no clock draws no countdown: zero is a clock that is off.
+	if strings.Contains(taskText(a), "auto-starts in") {
+		t.Fatalf("a proposal with no deadline drew a countdown:\n%s", taskText(a))
+	}
+}
+
+// ESC DECLINES, and it declines the PROPOSAL rather than interrupting the turn:
+// while a question is up, the dismiss key is the answer "no".
+func TestEscDeclinesTheProposalRatherThanTheTurn(t *testing.T) {
+	a, agent, _ := taskApp(t)
+	agent.pending = []uint64{7}
+	a.state = stateWorking
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)}, key("esc"))
+
+	if len(agent.answered) != 1 || agent.answered[0].answer.Approved {
+		t.Fatalf("esc did not decline the proposal: %+v", agent.answered)
+	}
+	if agent.stops != 0 {
+		t.Fatal("esc interrupted the turn as well as declining the proposal")
+	}
+	if !strings.Contains(taskText(a), taskDeclinedWord) {
+		t.Fatalf("the declined row does not keep its verdict:\n%s", taskText(a))
+	}
+	if a.awaitingTask() {
+		t.Fatal("the proposal is still asking after it was declined")
+	}
+}
+
+// THE RAIL IS PRESENCE: it appears when a node is alive, says which state each
+// node is in, and disappears when the work has come home.
+func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
+	a, _, advance := taskApp(t)
+	if a.railShowing() {
+		t.Fatal("an empty session drew a rail")
+	}
+	if a.bodyWidth() != 200 {
+		t.Fatalf("an empty session charged %d columns for a rail", 200-a.bodyWidth())
+	}
+
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskRunning, session.TaskNotice{})})
+	if !a.railShowing() {
+		t.Fatal("a running node did not raise the rail")
+	}
+	advance(12 * time.Second)
+	rail := plain(strings.Join(a.railRows(10), "\n"))
+	if !strings.Contains(rail, "Fix the nil-map crash") || !strings.Contains(rail, "12s") {
+		t.Fatalf("the running node is not on the rail with its clock:\n%s", rail)
+	}
+
+	// A queued node is a hollow circle, a failure is the bad glyph, and a node
+	// whose branch did not come home keeps the branch name.
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: update(8, "Mix audio", session.TaskQueued, session.TaskNotice{})},
+		streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskFailed, session.TaskNotice{
+			Report: "the tests did not build", Merge: mergeWordAborted, Branch: "task/collect",
+		})},
+		streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{
+			Elapsed: 130 * time.Second, Merge: mergeWordConflicted, Branch: "task/fix-nil-map",
+		})},
+	)
+	// A BRANCH NAME IS NEVER ELLIPSIZED: the conflicted sentence wraps inside
+	// the rail rather than losing the one handle back to the work, so the
+	// assertion is on the two halves and not on one line.
+	rail = plain(strings.Join(a.railRows(12), "\n"))
+	for _, want := range []string{glyphQueued + " Mix audio", glyphBad + " Collect sources",
+		glyphDone + " Fix the nil-map crash", "conflicted ·", "task/fix-nil-map"} {
+		if !strings.Contains(rail, want) {
+			t.Fatalf("the rail is missing %q:\n%s", want, rail)
+		}
+	}
+
+	// A node whose branch CAME HOME has said everything it has to say in the
+	// transcript, so it leaves the rail the moment it lands — and with the last
+	// node gone, so does the rail.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Mix audio", session.TaskDone, session.TaskNotice{
+		Elapsed: 8 * time.Second, Merge: mergeWordMerged,
+	})})
+	if strings.Contains(plain(strings.Join(a.railRows(12), "\n")), "Mix audio") {
+		t.Fatal("a merged node stayed on the rail")
+	}
+	if !a.railShowing() {
+		t.Fatal("the rail left while two kept branches were still on it")
+	}
+	// The two kept branches are what remains, and dealing with them is the
+	// person's business — this test only owns the empty case, so it drops them
+	// the way /new does.
+	a.dropTasks()
+	if a.railShowing() {
+		t.Fatal("the rail stayed up with nothing on it")
+	}
+}
+
+// A NODE'S END IS HISTORY, so it lands in the transcript — once, however many
+// lanes carried it. The de-dup is (id, state), because an update raised inside a
+// turn arrives on the turn's stream AND on the standing subscription.
+func TestALandedNodeWritesOneNoteWhateverLaneCarriedIt(t *testing.T) {
+	a, agent, _ := taskApp(t)
+	done := update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{
+		Elapsed: 130 * time.Second, Merge: mergeWordMerged,
+	})
+	// The same event, on both lanes, exactly as internal/session emits it.
+	cmd := a.watchTasks()
+	agent.updates <- done
+	drive(t, a, append(runCmd(cmd), streamEventMsg{gen: a.gen, ev: done})...)
+
+	text := taskText(a)
+	want := "task Fix the nil-map crash done in 2m 10s · merged"
+	if strings.Count(text, want) != 1 {
+		t.Fatalf("the transcript holds %d copies of %q:\n%s", strings.Count(text, want), want, text)
+	}
+
+	// A failure says why, in the report's first line.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskFailed, session.TaskNotice{
+		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
+	})})
+	if !strings.Contains(taskText(a), "task Collect sources failed in 4s — the tests did not build") {
+		t.Fatalf("the failure note does not carry its reason:\n%s", taskText(a))
+	}
+}
+
+// THE RAIL IS TREE-READY. v1's graph has no edges, so nothing draws one — but a
+// node whose prerequisites are unmet says so in v1's own sentence, from the
+// DependsOn the row model already stores.
+func TestTheRailNamesWhatABlockedNodeWaitsOn(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskRunning, session.TaskNotice{})},
+		streamEventMsg{gen: a.gen, ev: update(2, "Mix audio", session.TaskQueued, session.TaskNotice{
+			DependsOn: []uint64{1},
+		})},
+	)
+	rail := plain(strings.Join(a.railRows(10), "\n"))
+	if !strings.Contains(rail, "waits: Collect sources") {
+		t.Fatalf("a blocked node does not say what it waits on:\n%s", rail)
+	}
+	// The prerequisite finishing takes the sentence away rather than leaving a
+	// node waiting on work that is over.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{
+		Merge: mergeWordMerged,
+	})})
+	if strings.Contains(plain(strings.Join(a.railRows(10), "\n")), "waits:") {
+		t.Fatalf("the wait outlived the work it waited on:\n%s", plain(strings.Join(a.railRows(10), "\n")))
+	}
+}
+
+// CHROME ACCOUNTING: the rail is charged against the CONVERSATION and against
+// nothing else. The frame keeps its exact size, the status line spans the whole
+// window, and below [railFloor] the conversation keeps every column it had.
+func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskRunning, session.TaskNotice{})})
+
+	for _, tc := range []struct {
+		width int
+		rail  bool
+	}{{200, true}, {120, true}, {119, false}, {100, false}} {
+		a.width = tc.width
+		a.touch()
+		if got := a.railShowing(); got != tc.rail {
+			t.Fatalf("at %d columns the rail is %v, want %v", tc.width, got, tc.rail)
+		}
+		want := tc.width
+		if tc.rail {
+			want -= railCols
+		}
+		if got := a.bodyWidth(); got != want {
+			t.Fatalf("at %d columns the conversation is %d wide, want %d", tc.width, got, want)
+		}
+		lines := strings.Split(plain(frame(a)), "\n")
+		if len(lines) != a.height {
+			t.Fatalf("at %d columns the frame is %d rows, want %d", tc.width, len(lines), a.height)
+		}
+		for i, line := range lines {
+			if w := ansi.StringWidth(line); w > tc.width {
+				t.Fatalf("at %d columns frame row %d is %d wide:\n%q", tc.width, i, w, line)
+			}
+		}
+		if tc.rail && !strings.Contains(lines[0], "Fix the nil-map crash") {
+			t.Fatalf("at %d columns the rail is not on the frame's first row:\n%q", tc.width, lines[0])
+		}
+		// The status row is the whole window's, so it is never under the rail.
+		status := lines[len(lines)-1]
+		if strings.Contains(status, "│") {
+			t.Fatalf("at %d columns the rail's seam reached the status row:\n%q", tc.width, status)
+		}
+	}
+}

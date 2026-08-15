@@ -47,6 +47,14 @@ const (
 	// RoleImageGen generates images — a different modality entirely; the chat
 	// model never substitutes.
 	RoleImageGen Role = "imagegen"
+	// RoleAuditor is the VERIFIED FRONTIER: the read-only judge that decides
+	// whether a piece of finished-looking work is actually finished, against
+	// hard evidence it gathered itself. It sits HIGH and it is the one role
+	// where the tier is not an economy question at all — a wrong verdict
+	// either lands broken work as done or throws good work away, and both are
+	// mistakes nobody downstream can see to correct. Registered from
+	// internal/session/task_audit.go, which owns the call.
+	RoleAuditor Role = "auditor"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers

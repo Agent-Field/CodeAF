@@ -30,6 +30,28 @@ package session
 // not a repository has no such isolation to offer, and the node runs in place
 // rather than pretending (Merge is "inplace", and the person is told).
 //
+// ── A NODE STOPS BY A NAMED THRESHOLD, NEVER BY WANDERING ──
+//
+// Three things end a node's work, and every one of them has a name the person
+// can read: its deadline, its step budget, and its no-progress count
+// (harness-research-notes.md §1 — Argus terminates on named thresholds rather
+// than on a reviewer's judgement, arXiv:2608.05144). A node that has taken
+// forty steps or has taken six in a row without changing a file is not working,
+// it is circling, and the difference between a harness that says "stopped: 6
+// steps without a change" and one that lets the thirty-minute deadline collect
+// it is half an hour of the person's money and a report that explains nothing.
+// Both thresholds are per-node overridable on the wire (task.go's max_steps and
+// no_progress) because the right budget for a one-file rename and for a sweep
+// across forty files is not the same number.
+//
+// ── AND IT IS NEVER THE NODE THAT SAYS IT IS DONE ──
+//
+// A finished run is a CLAIM. What turns it into TaskDone is an independent
+// read-only auditor with hard evidence (task_audit.go): VERIFIED merges,
+// REFUTED is a TaskFailed carrying the auditor's evidence, and the cascade
+// below fails its dependents with it. Nothing in this file writes TaskDone off
+// the child's own last words.
+//
 // ── WHY A NODE NEVER ASKS ──
 //
 // There is nobody to ask. Its approval posture is composed from the same
@@ -85,6 +107,20 @@ const (
 
 	// taskSlugLimit keeps a branch name readable in `git branch`.
 	taskSlugLimit = 32
+
+	// taskMaxSteps and taskNoProgress are the two named thresholds a node stops
+	// by, counted in the only unit this side of the wall can see: the child's
+	// finished tool calls.
+	//
+	// Forty steps is a build, a fix, and the reading around them. Six steps in a
+	// row that changed no file is the shape of a node that has stopped making
+	// progress and started looking for something to do — and it is a TIGHT
+	// default on purpose: it is the threshold that catches a spin in a minute
+	// rather than in thirty. A node with genuine reading to do before its first
+	// edit says so on the wire (no_progress), and that is the intended way to
+	// disagree with this number.
+	taskMaxSteps   = 40
+	taskNoProgress = 6
 )
 
 // The three merge outcomes, and the fourth that says a branch never came home.
@@ -105,6 +141,32 @@ const (
 // its own. A node is never touched alone — starting one reads its dependencies'
 // reports, finishing one unlocks its dependents — so a second lock would be a
 // lock ordering to get wrong for no gain.
+//
+// ── THE GOAL CONTRACT: spec IS FROZEN AT ADMISSION ──
+//
+// NOTHING IN THIS FILE WRITES spec.brief OR spec.acceptance AFTER admit. Not
+// the frontier, not the runner, not the auditor, not a redirect that arrives
+// late. The node's goal is settled the moment [TaskGraph.admit] takes it, and
+// every reader downstream — the instruction the child is given, the acceptance
+// the auditor judges against, the report a dependent inherits — reads THAT text
+// and no other.
+//
+// This is Argus's two-tier goal contract (harness-research-notes.md §1,
+// arXiv:2608.05144), and the two tiers are drawn exactly here: the semantic
+// tier moves freely BEFORE admission — the model grooms the brief, the person
+// redirects it and their words are appended (task.go) — and the precise
+// objective moves only with authority, which in this surface means a NEW
+// admission by the person. A redirect is not an edit to a running node; there
+// is no path to one, and there must not be. The reason is the auditor: a
+// frontier that verifies work against an acceptance which can move while the
+// work runs verifies nothing, because whoever holds the pen can always make the
+// work pass. What the person gets instead is honest — the running node lands
+// against what it was given, and the correction is a task of its own.
+//
+// The only fields below that change after admission are the node's LIFE (state,
+// started, cancel) and its LEAVINGS (brief, report, changed, branch, merge).
+// brief is assembled once at start (runFrontier's JIT assembly) from spec.brief
+// plus prerequisites' reports and is not the spec.
 type TaskNode struct {
 	graph     *TaskGraph
 	id        uint64
@@ -116,13 +178,29 @@ type TaskNode struct {
 	spec  taskSpec
 	brief string
 	state TaskState
-	// report, changed, branch and merge are the node's leavings, written by the
-	// goroutine that ran it and read by everybody else.
-	report  string
-	changed []string
-	branch  string
-	merge   string
-	started time.Time
+	// report, changed, branch, worktree and merge are the node's leavings,
+	// written by the goroutine that ran it and read by everybody else. worktree
+	// is where it worked, and it is kept for one reader only: a recovery that has
+	// to tell the person where an interrupted node's half-finished work is
+	// (task_store.go).
+	report   string
+	changed  []string
+	branch   string
+	worktree string
+	merge    string
+	started  time.Time
+	// elapsed is the node's age FROZEN at the moment it landed. While it runs it
+	// is zero and the age is measured from started; a node rehydrated from a
+	// checkpoint has no started to measure from and this is the age it had.
+	elapsed time.Duration
+	// noted says this node's completion note has been handed to the steering
+	// lane, and it is what stops a resumed session announcing finished work
+	// twice (task_store.go).
+	noted bool
+	// interrupted marks a node that was RUNNING when a session ended and whose
+	// interrupt a recovery has consumed. It is history, and it is written down so
+	// that exactly one recovery ever consumes it.
+	interrupted bool
 	// queuedSaid marks the one "queued" update this node ever sends. A node
 	// waiting behind the cap or behind an edge must show up on the surface —
 	// otherwise admitted work is invisible until it starts — but a frontier pass
@@ -156,6 +234,11 @@ type TaskGraph struct {
 	// It is how the world hears: the update event, and the note that reaches the
 	// model through the steering lane.
 	report func(*TaskNode)
+
+	// store is where the graph is written down after every transition, and nil
+	// for a graph with no journal behind it — a session with no file, and every
+	// scripted graph in the tests (task_store.go).
+	store *taskStore
 }
 
 func newTaskGraph() *TaskGraph {
@@ -171,6 +254,10 @@ func (a *Agent) graph() *TaskGraph {
 		graph := newTaskGraph()
 		graph.run = a.runTaskNode
 		graph.report = a.reportTaskNode
+		// The checkpoint is per-journal, so a session with no file gets a graph
+		// with no disk behind it rather than a session that refuses to run tasks
+		// (task_store.go).
+		graph.store = newTaskStore(taskCheckpointPath(a.config.SessionFile))
 		a.tasks = graph
 	}
 	return a.tasks
@@ -206,6 +293,10 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	g.order = append(g.order, id)
 	g.mu.Unlock()
 
+	// ADMISSION IS A TRANSITION, and it is checkpointed before the frontier turns
+	// rather than after: a process killed between these two lines still resumes
+	// with the node the person approved, queued.
+	g.checkpoint()
 	g.runFrontier()
 	return node.stateNow()
 }
@@ -252,6 +343,14 @@ func (g *TaskGraph) runFrontier() {
 		starting = append(starting, node)
 	}
 	g.mu.Unlock()
+
+	// The pass's transitions reach the disk BEFORE the runs they authorize start:
+	// a node that is running in this process must never be a node the checkpoint
+	// still calls queued, or a kill in that window would resume work that is
+	// already in a worktree.
+	if len(starting) > 0 || len(failing) > 0 {
+		g.checkpoint()
+	}
 
 	for _, node := range waiting {
 		g.announce(node)
@@ -320,12 +419,19 @@ func (g *TaskGraph) briefLocked(node *TaskNode) string {
 func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	g.mu.Lock()
 	node.state = state
+	if !node.started.IsZero() {
+		// The age stops here. A finished node's elapsed is a fact about how long
+		// the work took, and a checkpoint that recomputed it from `started` would
+		// have finished work ageing on disk.
+		node.elapsed = time.Since(node.started)
+	}
 	if g.running > 0 {
 		g.running--
 	}
 	g.mu.Unlock()
 	close(node.done)
 
+	g.checkpoint()
 	g.announce(node)
 	g.runFrontier()
 }
@@ -376,6 +482,47 @@ func (n *TaskNode) instruction() string {
 	return n.brief + "\n\nAcceptance: " + n.spec.acceptance
 }
 
+// acceptance is the frozen contract, read by the auditor. It is deliberately
+// the SAME field [TaskNode.instruction] hands the child: two readers of one
+// text, so there is no version of this where the work was finished against one
+// acceptance and judged against another.
+func (n *TaskNode) acceptance() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.spec.acceptance
+}
+
+// limits are the node's named thresholds, its own if it named them and the
+// defaults if it did not.
+func (n *TaskNode) limits() taskLimits {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return taskLimits{
+		maxSteps:   thresholdOr(n.spec.maxSteps, taskMaxSteps),
+		noProgress: thresholdOr(n.spec.noProgress, taskNoProgress),
+	}
+}
+
+// taskLimits is what stops a node short of its deadline. Both are counted in
+// the child's finished tool calls.
+type taskLimits struct {
+	// maxSteps is the whole budget: the node stops when it has taken this many.
+	maxSteps int
+	// noProgress is how many CONSECUTIVE steps may change no file. A successful
+	// edit or write resets it to zero.
+	noProgress int
+}
+
+// thresholdOr reads a wire value that may be absent. Zero and negative both
+// mean "the model did not choose", because a schema field the model omitted and
+// a field it filled with nonsense should not be two different behaviours.
+func thresholdOr(value, fallback int) int {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
 // setCancel hands the node the handle that ends its run.
 func (n *TaskNode) setCancel(cancel context.CancelFunc) {
 	n.graph.mu.Lock()
@@ -392,6 +539,35 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 	n.branch = branch
 	n.merge = merge
 	n.graph.mu.Unlock()
+	// THE VERDICT IS A TRANSITION TOO. The state change follows immediately, but
+	// what a person needs after a kill is the merge outcome and the branch name,
+	// and those are written here.
+	n.graph.checkpoint()
+}
+
+// setTree records where the node is working, the moment it has somewhere to
+// work. It is the one write that makes an interrupt recoverable: a node killed
+// mid-run has a branch and a directory on disk, and this is where the checkpoint
+// learns their names (task_store.go).
+func (n *TaskNode) setTree(tree taskTree) {
+	n.graph.mu.Lock()
+	n.worktree = tree.dir
+	n.branch = tree.branch
+	n.merge = tree.merge
+	n.graph.mu.Unlock()
+	n.graph.checkpoint()
+}
+
+// markNoted records that this node's completion note has been handed to the
+// steering lane, so no later life of this session says it again.
+func (n *TaskNode) markNoted() {
+	n.graph.mu.Lock()
+	already := n.noted
+	n.noted = true
+	n.graph.mu.Unlock()
+	if !already {
+		n.graph.checkpoint()
+	}
 }
 
 // notice copies the node out from under the lock, shaped for an
@@ -399,8 +575,10 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 func (n *TaskNode) notice() TaskNotice {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	elapsed := time.Duration(0)
-	if !n.started.IsZero() {
+	// A landed node's age is frozen, and a rehydrated one has only the age its
+	// checkpoint recorded; only a node that is still running is measured.
+	elapsed := n.elapsed
+	if elapsed == 0 && !n.started.IsZero() {
 		elapsed = time.Since(n.started)
 	}
 	changed := make([]string, len(n.changed))
@@ -435,6 +613,11 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.enqueueSteering(taskNote(notice))
+	// SAID ONCE, ACROSS LIVES. The checkpoint records that this node's completion
+	// has been announced, so a session resumed from it restores the node as
+	// history instead of telling the model that finished work has just landed
+	// (task_store.go).
+	node.markNoted()
 }
 
 // taskNote is what the model reads when a node lands: the outcome, the report,
@@ -552,6 +735,9 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
 		return TaskFailed
 	}
+	// Written down before a single tool call runs in it: from here on, a process
+	// that dies leaves a checkpoint that knows where this node's work is.
+	node.setTree(tree)
 	fmt.Fprintf(log, "task %d · %s\nworking in %s\n", node.id, node.title(), tree.dir)
 
 	child, err := a.newTaskAgent(tree.dir, node)
@@ -567,10 +753,18 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		a.foldTaskUsage(child)
 	}()
 
-	changed, runErr := runTaskChild(ctx, child, node.instruction(), tree.dir, log)
+	changed, stopped, runErr := runTaskChild(ctx, child, node.instruction(), tree.dir, node.limits(), log)
 	report := taskReport(child)
 
 	switch {
+	// The threshold comes FIRST because it is the most specific answer: it
+	// cancelled the child itself, so every check below would also be true, and
+	// each of them would say something less useful than the name of the
+	// threshold that fired.
+	case stopped != "":
+		fmt.Fprintf(log, "%s\n", stopped)
+		node.finish(withReport(stopped, report), changed, tree.branch, abortedMerge(tree))
+		return TaskFailed
 	case ctx.Err() == context.DeadlineExceeded:
 		node.finish(withReport("ran out of time", report), changed, tree.branch, abortedMerge(tree))
 		return TaskFailed
@@ -582,9 +776,27 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		return TaskFailed
 	}
 
+	// THE GATE. Everything above is the node's own account of itself; what
+	// follows is somebody else's (task_audit.go). Only a VERIFIED verdict
+	// reaches comeHome, so only verified work is ever merged onto the person's
+	// branch — and a refuted node keeps its branch exactly as a killed one does,
+	// because "not proven" is not "throw it away".
+	verdict := a.auditNode(ctx, node, tree, changed, report, log)
+	switch {
+	case ctx.Err() != nil:
+		node.finish(withReport("stopped while its work was being verified", report), changed, tree.branch, abortedMerge(tree))
+		return TaskFailed
+	case !verdict.verified:
+		node.finish(verdict.report(), changed, tree.branch, abortedMerge(tree))
+		return TaskFailed
+	}
+
 	merge, detail := tree.comeHome(node.title())
 	fmt.Fprintf(log, "merge: %s %s\n", merge, detail)
-	node.finish(withReport(report, detail), changed, tree.branch, merge)
+	// The verdict leads the report: the first thing a person reads off a
+	// finished card is the evidence it is finished, and the node's own words
+	// follow as the account they now are.
+	node.finish(withReport(verdict.report(), withReport(report, detail)), changed, tree.branch, merge)
 	return TaskDone
 }
 
@@ -615,38 +827,79 @@ func abortedMerge(tree taskTree) string {
 	return mergeAborted
 }
 
-// runTaskChild submits the brief and consumes the node's own events internally.
+// runTaskChild submits the brief, consumes the node's own events internally,
+// and enforces the two thresholds from the same stream.
 //
 // The events are NOT forwarded. A node's tool rows belong to its journal, not
 // to the conversation: a person watching a chat must not have forty of somebody
 // else's greps scroll past. What is kept is the one thing the person needs to
 // see afterwards — which files the node wrote — read off the edit and write
 // calls as they end.
-func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, log io.Writer) ([]string, error) {
-	events, err := child.Submit(ctx, instruction)
+//
+// THE STEP IS ONE FINISHED TOOL CALL, and it is the only unit available from
+// out here: the child's model round-trips are inside its own loop, and this
+// side of the wall sees the calls they produce. PROGRESS is narrower still — a
+// SUCCESSFUL edit or write, EventToolEnd and not EventToolFailed, because an
+// edit whose oldText did not match changed nothing and a node repeating it is
+// the exact spin the counter exists to catch.
+//
+// The cancel is this function's own, hung off the node's context, so tripping a
+// threshold ends the child the way `jobs kill` does — a cancelled turn, its
+// partial work kept, its branch intact — and the caller is told WHICH threshold
+// fired rather than being left to infer it from a context error that has three
+// possible causes.
+func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, limits taskLimits, log io.Writer) ([]string, string, error) {
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+
+	events, err := child.Submit(runCtx, instruction)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var (
 		changed []string
 		seen    = map[string]bool{}
 		failure error
+		stopped string
+		steps   int
+		idle    int
 	)
 	for event := range events {
 		switch event.Kind {
 		case EventToolBegin:
 			fmt.Fprintf(log, "· %s\n", event.Hint)
-		case EventToolEnd:
-			path, ok := changedPath(event, dir)
-			if ok && !seen[path] {
-				seen[path] = true
-				changed = append(changed, path)
+		case EventToolEnd, EventToolFailed:
+			steps++
+			path, wrote := changedPath(event, dir)
+			if wrote && event.Kind == EventToolEnd {
+				idle = 0
+				if !seen[path] {
+					seen[path] = true
+					changed = append(changed, path)
+				}
+			} else {
+				idle++
+			}
+			// Named once. The loop keeps draining after the cancel — the child
+			// is still finishing its batch and closing its stream — and a second
+			// threshold tripping on the way out must not rewrite the reason the
+			// node was stopped.
+			if stopped != "" {
+				continue
+			}
+			switch {
+			case steps >= limits.maxSteps:
+				stopped = fmt.Sprintf("stopped: %d steps and no finish", limits.maxSteps)
+				stop()
+			case idle >= limits.noProgress:
+				stopped = fmt.Sprintf("stopped: %d steps without a change", limits.noProgress)
+				stop()
 			}
 		case EventError:
 			failure = event.Err
 		}
 	}
-	return changed, failure
+	return changed, stopped, failure
 }
 
 // changedPath reads the file one edit or write touched, workspace-relative.
@@ -679,13 +932,21 @@ func changedPath(event Event, dir string) (string, bool) {
 // deltas because both paths — a streaming provider and a non-streaming one —
 // end with the same recorded message, and only one of them emits deltas.
 func taskReport(child *Agent) string {
+	return firstLines(lastSaid(child), taskReportLines)
+}
+
+// lastSaid is an agent's final assistant message, whole. It is what taskReport
+// clips and what the auditor's verdict is parsed out of (task_audit.go) — a
+// verdict is four lines and a report is three, and cutting before the parse
+// would be the harness deciding a verdict was too long to read.
+func lastSaid(child *Agent) string {
 	entries := child.Transcript()
 	for index := len(entries) - 1; index >= 0; index-- {
 		entry := entries[index]
 		if entry.Role != "assistant" || strings.TrimSpace(entry.Text) == "" {
 			continue
 		}
-		return firstLines(entry.Text, taskReportLines)
+		return entry.Text
 	}
 	return ""
 }
@@ -738,7 +999,7 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode) (*Agent, error) {
 	parent := a.config
 	model := a.model
 	client := unwrapCompleter(a.client)
-	journal := taskJournalPath(a.sessionID(), node.id)
+	journal := taskJournalPath(a.sessionID(), node.id, "")
 	a.mu.Unlock()
 
 	return newAgent(Config{
@@ -778,19 +1039,25 @@ func (a *Agent) sessionID() string {
 }
 
 // taskJournalPath is where a node's own transcript lives:
-// ~/.aforge/v3/tasks/<session>/<when>_<id>.jsonl.
+// ~/.aforge/v3/tasks/<session>/<when>_<id>.jsonl, and its audit beside it as
+// <when>_<id>-audit.jsonl.
 //
 // It is a REAL SESSION FILE — the node is an agent, and everything it did is
 // resumable and readable with the same tools — kept under the conversation that
 // asked for it, so "what did that task actually do" is one directory listing
 // away. A machine with no home directory gets an in-memory node instead of a
 // failed one: the journal is evidence, not a prerequisite.
-func taskJournalPath(session string, id uint64) string {
+//
+// The audit gets a file of its own rather than a section of the node's, because
+// it is a different agent with a different context: two transcripts written into
+// one journal would be the exact context mixing the audit exists to avoid, and a
+// person asking "what did the auditor actually run" wants a file to open.
+func taskJournalPath(session string, id uint64, suffix string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	name := fmt.Sprintf("%s_%d.jsonl", time.Now().Format("20060102-150405"), id)
+	name := fmt.Sprintf("%s_%d%s.jsonl", time.Now().Format("20060102-150405"), id, suffix)
 	return filepath.Join(home, ".aforge", "v3", "tasks", session, name)
 }
 
@@ -928,16 +1195,35 @@ func (t taskTree) comeHome(title string) (string, string) {
 // "nothing to commit" is not a failure — a node that only read is a node with
 // an empty branch, and an empty branch merges cleanly.
 func commitTaskWork(dir, title string) {
-	if _, err := git(dir, "add", "-A"); err != nil {
+	if !stageTaskWork(dir) {
 		return
 	}
-	// The harness's own droppings are not the node's work: a background job the
-	// node started wrote its log under the workspace (jobs.go), and a build log
-	// merged into the person's branch is noise they did not ask for.
-	_, _ = git(dir, "reset", "--quiet", "--", ".aforge-v3")
 	_, _ = git(dir,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"commit", "--no-verify", "-m", "task: "+clip(firstLine(title), 72))
+}
+
+// stageTaskWork puts everything the node wrote into the worktree's index, and
+// it is the step BOTH the audit and the commit need.
+//
+// The audit needs it because `git diff` shows tracked files only: a node whose
+// whole change was three new files has an empty diff and a full index, and an
+// auditor reading the empty one refutes good work for a reason that has nothing
+// to do with the work. `git diff --cached` in a staged tree shows all of it.
+// The commit needs it because git only moves what has been staged. Running it
+// twice is free — the second add finds nothing new — and running it once from
+// two places would be the audit and the merge disagreeing about what the node
+// wrote.
+//
+// The harness's own droppings are not the node's work: a background job the
+// node started wrote its log under the workspace (jobs.go), and a build log in
+// the diff — or merged into the person's branch — is noise they did not ask for.
+func stageTaskWork(dir string) bool {
+	if _, err := git(dir, "add", "-A"); err != nil {
+		return false
+	}
+	_, _ = git(dir, "reset", "--quiet", "--", ".aforge-v3")
+	return true
 }
 
 // repositoryRoot is the top of the repository a directory sits in.
