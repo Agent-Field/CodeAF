@@ -320,6 +320,30 @@ func (c *Catalog) rowsNow() *rows {
 	return c.warm.Load()
 }
 
+// ModelsNow is the whole model list for a caller that MUST NOT WAIT, and nil
+// while a lazily loaded catalog is still warming.
+//
+// Every other listing here resolves through [Catalog.rows], which on a cold
+// cache means a fifteen-second fetch — fine for `aforge models`, wrong for a
+// picker a person just opened. Nil is the honest answer for "nobody has the
+// facts yet": a surface that gets it falls back to whatever list it can read
+// off disk, and the next time the picker opens the warm catalog answers.
+//
+// The rows are cloned for the same reason [Catalog.Model] clones: the catalog
+// is immutable and shared, and a caller that sorted the returned slice's models
+// in place would be sorting everyone's.
+func (c *Catalog) ModelsNow() []Model {
+	resolved := c.rowsNow()
+	if resolved == nil {
+		return nil
+	}
+	models := make([]Model, 0, len(resolved.models))
+	for _, model := range resolved.models {
+		models = append(models, cloneModel(model))
+	}
+	return models
+}
+
 // ModelsWithInput returns a stable copy of models advertising modality.
 func (c *Catalog) ModelsWithInput(modality string) []Model {
 	return c.modelsWith("input", modality)

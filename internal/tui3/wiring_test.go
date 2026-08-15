@@ -1,0 +1,446 @@
+package tui3
+
+import (
+	"strings"
+	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+)
+
+// The wave-4 surface: the approval question, the session's name, ctrl+q, and
+// the model's own thinking.
+
+// ── the scripted agent's wave-4 methods ─────────────────────────────────────
+//
+// They live here rather than beside [fakeAgent] because they arrived with this
+// wave: the plain fake answers them the way a session with nothing to say does,
+// and [wiredAgent] below is the one that records.
+
+func (f *fakeAgent) FollowUp(string) (<-chan session.Event, error) {
+	return make(chan session.Event), nil
+}
+func (f *fakeAgent) ResolveConsent(uint64, bool)                               {}
+func (f *fakeAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
+func (f *fakeAgent) Title() string                                             { return "" }
+
+// wiredAgent records the three answers this wave sends back into the session:
+// a consent resolution, a queued message, and nothing else.
+type wiredAgent struct {
+	*fakeAgent
+	name      string
+	answers   []answered
+	asked     []string
+	follow    chan session.Event
+	followErr error
+}
+
+type answered struct {
+	id    uint64
+	allow bool
+	scope session.ConsentScope
+}
+
+func (w *wiredAgent) Title() string { return w.name }
+
+func (w *wiredAgent) ResolveConsent(id uint64, allow bool) {
+	w.ResolveConsentRemember(id, allow, session.ConsentOnce)
+}
+
+func (w *wiredAgent) ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope) {
+	w.answers = append(w.answers, answered{id: id, allow: allow, scope: scope})
+}
+
+func (w *wiredAgent) FollowUp(text string) (<-chan session.Event, error) {
+	w.asked = append(w.asked, text)
+	if w.followErr != nil {
+		return nil, w.followErr
+	}
+	w.follow = make(chan session.Event, 8)
+	return w.follow, nil
+}
+
+func wired(turns ...[]session.Event) (*wiredAgent, *app) {
+	agent := &wiredAgent{fakeAgent: &fakeAgent{model: "m", turns: turns}}
+	return agent, newTestApp(agent)
+}
+
+func consentEvent(id uint64, tool, hint, rule string) session.Event {
+	return session.Event{
+		Kind: session.EventConsentRequest, ID: id, Tool: tool, Hint: hint, Rule: rule,
+	}
+}
+
+// ── 1. the approval question ────────────────────────────────────────────────
+
+func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
+	agent, a := wired([]session.Event{
+		toolBegin("bash", "bash rm -rf build"),
+		consentEvent(7, "bash", "bash rm -rf build", `bash pattern "rm -rf *"`),
+	})
+	typeLine(t, a, "clean the tree")
+
+	got := plain(frame(a))
+	for _, want := range []string{
+		"rm -rf build",                   // the row the transcript already drew
+		"allow? [a] once",                // the offer
+		"[t] this tool always (session)", // and how far a yes goes
+		"[d] deny",
+		`bash pattern "rm -rf *"`, // the policy's own words for why
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the question is missing %q:\n%s", want, got)
+		}
+	}
+
+	// While it is up the draft is suspended: a key that is not an answer types
+	// nothing into a conversation that cannot move.
+	drive(t, a, key("x"))
+	if a.input.String() != "" {
+		t.Fatalf("a key reached the draft while a question was up: %q", a.input.String())
+	}
+
+	drive(t, a, key("a"))
+	if len(agent.answers) != 1 || agent.answers[0] != (answered{id: 7, allow: true, scope: session.ConsentOnce}) {
+		t.Fatalf("[a] resolved %+v", agent.answers)
+	}
+	if a.asking() {
+		t.Fatal("the question stayed up after it was answered")
+	}
+
+	// The row stays, annotated with what was decided.
+	got = plain(frame(a))
+	if !strings.Contains(got, "rm -rf build") || !strings.Contains(got, "allowed") {
+		t.Fatalf("the answered call lost its row or its annotation:\n%s", got)
+	}
+	if strings.Contains(got, "allow? [a]") {
+		t.Fatalf("the offer survived the answer:\n%s", got)
+	}
+}
+
+func TestDenyAndRememberTakeTheirOwnRoads(t *testing.T) {
+	// esc is deny: the dismiss key resolves to the safe answer, not to a trap.
+	agent, a := wired([]session.Event{
+		toolBegin("edit", "edit main.go"),
+		consentEvent(3, "edit", "edit main.go", `tool "edit"`),
+	})
+	typeLine(t, a, "fix it")
+	drive(t, a, key("esc"))
+	if len(agent.answers) != 1 || agent.answers[0].allow || agent.answers[0].scope != session.ConsentOnce {
+		t.Fatalf("esc resolved %+v, want a one-time deny", agent.answers)
+	}
+	if !strings.Contains(plain(frame(a)), "denied") {
+		t.Fatalf("the refused call is not annotated:\n%s", plain(frame(a)))
+	}
+
+	// [t] is the session-scoped yes, and it is the only key that widens anything.
+	agent, a = wired([]session.Event{
+		toolBegin("read", "read go.mod"),
+		consentEvent(11, "read", "read go.mod", `tool "read"`),
+	})
+	typeLine(t, a, "look at it")
+	drive(t, a, key("t"))
+	want := answered{id: 11, allow: true, scope: session.ConsentToolSession}
+	if len(agent.answers) != 1 || agent.answers[0] != want {
+		t.Fatalf("[t] resolved %+v, want %+v", agent.answers, want)
+	}
+}
+
+func TestQuestionsQueueOldestFirstAndSayHowManyAreBehind(t *testing.T) {
+	agent, a := wired([]session.Event{
+		toolBegin("bash", "bash make"),
+		toolBegin("bash", "bash git push"),
+		toolBegin("bash", "bash rm -rf ."),
+		consentEvent(1, "bash", "bash make", "default"),
+		consentEvent(2, "bash", "bash git push", "default"),
+		consentEvent(3, "bash", "bash rm -rf .", "default"),
+	})
+	typeLine(t, a, "do the three things")
+
+	if len(a.asks) != 3 {
+		t.Fatalf("%d questions are queued, want 3", len(a.asks))
+	}
+	if !strings.Contains(plain(frame(a)), "2 more") {
+		t.Fatalf("the block has to say what is behind it:\n%s", plain(frame(a)))
+	}
+
+	// Oldest first, and the count follows.
+	drive(t, a, key("a"))
+	if len(agent.answers) != 1 || agent.answers[0].id != 1 {
+		t.Fatalf("the queue answered %+v first", agent.answers)
+	}
+	if !strings.Contains(plain(frame(a)), "1 more") {
+		t.Fatalf("the count did not follow the answer:\n%s", plain(frame(a)))
+	}
+	drive(t, a, key("d"))
+	drive(t, a, key("a"))
+	if len(agent.answers) != 3 || agent.answers[1].id != 2 || agent.answers[2].id != 3 {
+		t.Fatalf("the queue resolved out of order: %+v", agent.answers)
+	}
+	if a.asking() || strings.Contains(plain(frame(a)), "allow?") {
+		t.Fatalf("the block survived an empty queue:\n%s", plain(frame(a)))
+	}
+	// Each call kept the decision that was made about it.
+	got := plain(frame(a))
+	if strings.Count(got, "allowed") != 2 || strings.Count(got, "denied") != 1 {
+		t.Fatalf("the annotations do not match the answers:\n%s", got)
+	}
+}
+
+// ── 2. the session's name ───────────────────────────────────────────────────
+
+func TestTheTitleReachesTheStatusLineLiveAndOnResume(t *testing.T) {
+	_, a := wired([]session.Event{{Kind: session.EventTitleChanged, Text: "porting the parser"}})
+	typeLine(t, a, "port it")
+
+	status := plain(a.status(a.width))
+	if !strings.Contains(status, "porting the parser") {
+		t.Fatalf("the status line is missing the title:\n%s", status)
+	}
+	if strings.Index(status, "porting the parser") > strings.Index(status, a.model) {
+		t.Fatalf("the title has to sit left of the model:\n%s", status)
+	}
+
+	// A resumed session is already named, and opens saying so.
+	named := &wiredAgent{fakeAgent: &fakeAgent{model: "m"}, name: "the tasker wave"}
+	resumed := newTestApp(named)
+	if !strings.Contains(plain(resumed.status(resumed.width)), "the tasker wave") {
+		t.Fatalf("a resumed session opened without its name:\n%s", plain(resumed.status(resumed.width)))
+	}
+}
+
+// ── 3. ctrl+q ───────────────────────────────────────────────────────────────
+
+func ctrlQ() tea.KeyPressMsg { return tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl} }
+
+func TestCtrlQQueuesAMessageForAfterTheTurnAndShowsTheCount(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working on it")})
+	typeLine(t, a, "the first thing")
+	if a.state != stateWorking {
+		t.Fatalf("state is %v, want working", a.state)
+	}
+
+	// Nothing typed is nothing queued.
+	drive(t, a, ctrlQ())
+	if len(agent.asked) != 0 {
+		t.Fatalf("an empty draft queued %q", agent.asked)
+	}
+
+	typeInto(t, a, "and then the tests")
+	drive(t, a, ctrlQ())
+	if len(agent.asked) != 1 || agent.asked[0] != "and then the tests" {
+		t.Fatalf("ctrl+q sent %q to FollowUp", agent.asked)
+	}
+	if a.input.String() != "" {
+		t.Fatalf("the box kept %q", a.input.String())
+	}
+	if !strings.Contains(plain(frame(a)), "after yield · 1") {
+		t.Fatalf("the count is not above the box:\n%s", plain(frame(a)))
+	}
+	// It is NOT in the transcript yet: it lands where it actually runs.
+	if strings.Contains(strings.Join(plainRows(a), "\n"), "and then the tests") {
+		t.Fatal("a queued message was drawn before its turn")
+	}
+
+	// The turn ends, and the queued message's own turn begins on the channel
+	// session handed back when it was queued — which is already carrying the
+	// turn's first word, exactly as a real one would be by the time it is read.
+	agent.follow <- text(session.EventTextDelta, "the tests pass")
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+	if len(a.follows) != 0 {
+		t.Fatalf("%d messages are still queued", len(a.follows))
+	}
+	if a.state != stateWorking {
+		t.Fatalf("the follow-up's turn did not start (state %v)", a.state)
+	}
+	body := strings.Join(plainRows(a), "\n")
+	if !strings.Contains(body, "› and then the tests") {
+		t.Fatalf("the follow-up's own message is not in the transcript:\n%s", body)
+	}
+	if strings.Contains(plain(frame(a)), "after yield") {
+		t.Fatalf("the count outlived the queue:\n%s", plain(frame(a)))
+	}
+
+	// And that channel is the live stream now. Deltas become rows on the frame
+	// clock, so the frame is asked for one.
+	drive(t, a, frameMsg{})
+	if !strings.Contains(strings.Join(plainRows(a), "\n"), "the tests pass") {
+		t.Fatalf("the follow-up's turn is not streaming:\n%s", strings.Join(plainRows(a), "\n"))
+	}
+}
+
+func TestAnInterruptDropsWhatWasQueued(t *testing.T) {
+	agent, a := wired([]session.Event{text(session.EventTextDelta, "working")})
+	typeLine(t, a, "go")
+	typeInto(t, a, "and after that")
+	drive(t, a, ctrlQ())
+	if len(a.follows) != 1 {
+		t.Fatalf("%d queued, want 1", len(a.follows))
+	}
+	_ = agent
+
+	drive(t, a, key("esc"))
+	if len(a.follows) != 0 {
+		t.Fatal("the interrupt kept the queue the session just dropped")
+	}
+	got := plain(frame(a))
+	if !strings.Contains(got, "1 queued message dropped") {
+		t.Fatalf("the surface dropped a message silently:\n%s", got)
+	}
+}
+
+// ── 4. the thinking block ───────────────────────────────────────────────────
+
+// thoughtAt is the index of the newest thinking block.
+func thoughtAt(t *testing.T, a *app) int {
+	t.Helper()
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if a.entries[i].kind == entryThinking {
+			return i
+		}
+	}
+	t.Fatal("there is no thinking block")
+	return -1
+}
+
+// clickEntry drives a left click on the first visible row of one entry.
+func clickEntry(t *testing.T, a *app, entry int) {
+	t.Helper()
+	body, pad := a.window(a.width, a.viewHeight())
+	for i, r := range body {
+		if r.entry == entry {
+			drive(t, a, tea.MouseClickMsg{Y: a.bodyTop() + pad + i, Button: tea.MouseLeft})
+			return
+		}
+	}
+	t.Fatalf("entry %d is not on screen:\n%s", entry, strings.Join(plainRows(a), "\n"))
+}
+
+func TestTheThinkingBlockStreamsCollapsesAndExpands(t *testing.T) {
+	_, a := wired([]session.Event{
+		text(session.EventReasoning, "the parser is probably under internal/, "),
+		text(session.EventReasoning, "so read that first"),
+	})
+	typeLine(t, a, "where is the parser?")
+
+	got := plain(frame(a))
+	if !strings.Contains(got, glyphThought) || !strings.Contains(got, "probably under internal/") {
+		t.Fatalf("the streaming block is not on screen:\n%s", got)
+	}
+
+	// The turn's first non-reasoning word collapses it.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "internal/parse/parse.go")})
+	at := -1
+	for i := range a.entries {
+		if a.entries[i].kind == entryThinking {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatal("the block is gone entirely")
+	}
+	// A label with a number in it needs a span to measure; the deltas above
+	// arrived in one millisecond.
+	a.entries[at].began = a.entries[at].ended.Add(-6 * time.Second)
+	a.entries[at].stale = true
+	a.touch()
+
+	got = plain(frame(a))
+	if !strings.Contains(got, "⠿ thought for 6s · ctrl+e") {
+		t.Fatalf("the collapsed row is wrong:\n%s", got)
+	}
+	if strings.Contains(got, "probably under internal/") {
+		t.Fatalf("the collapsed block is still showing its words:\n%s", got)
+	}
+	if !strings.Contains(got, "internal/parse/parse.go") {
+		t.Fatalf("the answer is missing:\n%s", got)
+	}
+
+	// ctrl+e opens it, and closes it again.
+	drive(t, a, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	if !strings.Contains(plain(frame(a)), "probably under internal/") {
+		t.Fatalf("ctrl+e did not expand the block:\n%s", plain(frame(a)))
+	}
+	drive(t, a, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	if strings.Contains(plain(frame(a)), "probably under internal/") {
+		t.Fatalf("ctrl+e did not close it again:\n%s", plain(frame(a)))
+	}
+
+	// With a sentence in the box ctrl+e is end-of-line, where the caret is.
+	typeInto(t, a, "next")
+	a.input.home()
+	drive(t, a, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	if a.input.cursor != len("next") {
+		t.Fatalf("ctrl+e with a draft moved the caret to %d", a.input.cursor)
+	}
+	if strings.Contains(plain(frame(a)), "probably under internal/") {
+		t.Fatal("ctrl+e with a draft opened the block as well")
+	}
+}
+
+func TestALongThoughtIsCappedAndAClickOpensIt(t *testing.T) {
+	lines := make([]string, 0, thoughtWindow+40)
+	for i := 0; i < thoughtWindow+40; i++ {
+		lines = append(lines, "step "+itoa(i))
+	}
+	_, a := wired([]session.Event{text(session.EventReasoning, strings.Join(lines, "\n"))})
+	typeLine(t, a, "think it through")
+	drive(t, a, streamEventMsg{gen: a.gen, ev: text(session.EventTextDelta, "done")})
+
+	// Collapsed to one row.
+	drawn := strings.Join(plainRows(a), "\n")
+	if strings.Contains(drawn, "step 3") {
+		t.Fatalf("the collapsed block is drawing its body:\n%s", drawn)
+	}
+
+	// A click anywhere on that row opens it, capped, saying by how much.
+	clickEntry(t, a, thoughtAt(t, a))
+	drawn = strings.Join(plainRows(a), "\n")
+	if !strings.Contains(drawn, "step 0") || strings.Contains(drawn, "step "+itoa(thoughtWindow+10)) {
+		t.Fatalf("the expansion is not capped at %d rows:\n%s", thoughtWindow, drawn)
+	}
+	if !strings.Contains(drawn, "… 40 more") {
+		t.Fatalf("the cap is not declared:\n%s", drawn)
+	}
+}
+
+func TestReasoningPersistsOnScreenAndIsNeverReplayed(t *testing.T) {
+	agent, a := wired([]session.Event{
+		text(session.EventReasoning, "weighing it up"),
+		text(session.EventTextDelta, "yes"),
+	})
+	typeLine(t, a, "well?")
+	agent.finish()
+	drive(t, a, streamClosedMsg{gen: a.gen})
+
+	thoughts := 0
+	for i := range a.entries {
+		if a.entries[i].kind == entryThinking {
+			thoughts++
+			if !a.entries[i].settled || a.entries[i].open {
+				t.Fatal("the block did not settle closed at the end of the turn")
+			}
+		}
+	}
+	if thoughts != 1 {
+		t.Fatalf("the turn left %d thinking blocks", thoughts)
+	}
+
+	// The session journals no reasoning, so a resumed surface over the same
+	// conversation has none to draw — and must not invent one.
+	agent.past = []session.DisplayEntry{
+		{Role: "user", Text: "well?"},
+		{Role: "assistant", Text: "yes"},
+	}
+	next := newTestApp(agent)
+	next.entries = nil
+	next.replay()
+	for i := range next.entries {
+		if next.entries[i].kind == entryThinking {
+			t.Fatal("replay drew a thinking block the session never recorded")
+		}
+	}
+}

@@ -1,0 +1,271 @@
+package tui3
+
+import (
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
+)
+
+// THE APPROVAL QUESTION.
+//
+// internal/session's consent.go decides that one tool call needs a person, and
+// then BLOCKS that call until somebody answers. This file is the person: the
+// question is drawn where every other question on this surface is drawn — a
+// bottom-anchored block in the palette idiom — and answered with one key.
+//
+//	╰─▶ bash rm -rf build
+//	allow? [a] once · [t] this tool always (session) · [d] deny
+//	bash pattern "rm -rf *"
+//	2 more
+//
+// Four decisions, and each of them is the reason the block looks like this:
+//
+//   - IT SHOWS THE ROW THAT IS ALREADY THERE. The question is about a call the
+//     transcript has already drawn (session sends the consent request AFTER the
+//     batch's EventToolBegin rows), so the block re-uses that row's own
+//     rendering rather than describing the call a second time in different
+//     words. Two renderings of one call is how a person ends up approving
+//     something other than what they read.
+//   - IT NAMES THE RULE, DIM. "Why am I being asked" is the policy's own
+//     sentence (internal/approval phrases it), and it is the difference between
+//     a prompt somebody reads and a prompt somebody dismisses.
+//   - IT SUSPENDS THE KEYBOARD. While a question is up the draft below is
+//     untouched and every key that is not an answer does nothing. A blocked
+//     tool call is the one moment on this surface where typing something else
+//     would be typing into a conversation that cannot move.
+//   - IT QUEUES. A batch can raise several questions at once; they are answered
+//     oldest first, and the count of the ones behind it is on screen, because a
+//     person who answers one question and gets another one must have been told
+//     it was coming.
+//
+// After an answer the ROW STAYS, annotated dim with what was decided. The
+// transcript is what happened, and "you were asked about this and said yes" is
+// part of what happened — one of the few things this surface records that the
+// session file never will (consent is events, never journal).
+
+// ask is one unanswered question.
+type ask struct {
+	id   uint64
+	tool string
+	hint string
+	rule string
+	// entry is the tool row the question is about. It is always a real index:
+	// a request whose row is missing gets one (see [app.askConsent]), because a
+	// question about a call nobody can see is a question nobody can answer.
+	entry int
+}
+
+// askConsent takes one session.EventConsentRequest.
+func (a *app) askConsent(ev session.Event) {
+	at := a.callAwaiting(ev.Tool)
+	if at < 0 {
+		// The row should already exist. When it does not — a surface that
+		// attached mid-batch, a tool whose begin was dropped — the call is drawn
+		// now rather than asked about invisibly.
+		a.closeLive()
+		a.entries = append(a.entries, entry{
+			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
+			status: toolRunning, detail: toolDetail{Args: ev.Args},
+		})
+		at = len(a.entries) - 1
+	}
+	// The typed lists follow the draft, and the draft is suspended for as long
+	// as the question is up: a list left open under a modal is a list answering
+	// keys nobody is pressing.
+	a.closeLists()
+	a.asks = append(a.asks, ask{id: ev.ID, tool: ev.Tool, hint: ev.Hint, rule: ev.Rule, entry: at})
+	a.follow()
+	a.touch()
+}
+
+// callAwaiting finds the oldest still-running row for a tool — the same rule
+// [app.closeTool] uses, and for the same reason: calls run in parallel and the
+// first one begun is the one a person watching the column expects to be asked
+// about first.
+//
+// A row another question is ALREADY about is skipped. One batch can raise three
+// bash questions at once, and every one of them would otherwise attach to the
+// first bash row on screen — three questions annotating one line and two calls
+// the person never saw asked about.
+func (a *app) callAwaiting(tool string) int {
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind != entryTool || e.status != toolRunning || e.tool != tool || e.decision != "" {
+			continue
+		}
+		if a.claimed(i) {
+			continue
+		}
+		return i
+	}
+	return -1
+}
+
+// claimed reports whether a queued question is already about this row.
+func (a *app) claimed(i int) bool {
+	for _, queued := range a.asks {
+		if queued.entry == i {
+			return true
+		}
+	}
+	return false
+}
+
+// answer resolves the question at the head of the queue.
+//
+// The scope goes to the session verbatim: [session.ConsentOnce] answers this
+// call, [session.ConsentToolSession] answers every later prompt for the same
+// tool for the rest of the agent's life — and no longer, which is why the key
+// says "(session)" out loud. Nothing here writes a setting.
+func (a *app) answer(allow bool, scope session.ConsentScope) {
+	if len(a.asks) == 0 {
+		return
+	}
+	head := a.asks[0]
+	a.asks = a.asks[1:]
+	if a.agent != nil {
+		// The narrow answer goes through the narrow method. They do the same
+		// thing — session's ResolveConsent is ResolveConsentRemember with
+		// ConsentOnce — and saying which one this is at the call site is how the
+		// scope stays a decision rather than a defaulted argument.
+		if scope == session.ConsentToolSession {
+			a.agent.ResolveConsentRemember(head.id, allow, scope)
+		} else {
+			a.agent.ResolveConsent(head.id, allow)
+		}
+	}
+	if head.entry >= 0 && head.entry < len(a.entries) {
+		e := &a.entries[head.entry]
+		e.decision = decisionWord(allow)
+		e.stale = true
+	}
+	a.touch()
+}
+
+// dropAsks forgets every unanswered question. It runs when the turn that raised
+// them ends: the session released those calls when its context died, so the
+// answers are late and the questions are about work that is over.
+func (a *app) dropAsks() {
+	if len(a.asks) == 0 {
+		return
+	}
+	a.asks = nil
+	a.touch()
+}
+
+func decisionWord(allow bool) string {
+	if allow {
+		return "allowed"
+	}
+	return "denied"
+}
+
+// asking reports whether a question owns the keyboard.
+func (a *app) asking() bool { return len(a.asks) > 0 }
+
+// consentKey routes one keypress while a question is up, and reports whether it
+// took it — which, apart from ctrl+c, is ALWAYS: the draft is suspended, so a
+// key that is not an answer is a key that does nothing rather than a key that
+// types into a conversation the model cannot read.
+//
+// esc denies. A modal that cannot be left by the dismiss key would be a trap,
+// and the safe reading of "get this off my screen" is no.
+func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.asking() {
+		return nil, false
+	}
+	switch msg.String() {
+	case "ctrl+c":
+		// Leaving is never modal — and mid-turn ctrl+c is the interrupt, which
+		// releases the blocked call the honest way.
+		return nil, false
+
+	case "a":
+		a.answer(true, session.ConsentOnce)
+	case "t":
+		a.answer(true, session.ConsentToolSession)
+	case "d", "esc":
+		a.answer(false, session.ConsentOnce)
+	}
+	return nil, true
+}
+
+// ── the block ───────────────────────────────────────────────────────────────
+
+// consentHeight is how many rows the question takes: the call, the offer, the
+// rule, and the count of the questions behind it when there are any.
+func (a *app) consentHeight() int {
+	if !a.asking() {
+		return 0
+	}
+	rows := 3
+	if a.asks[0].rule == "" {
+		rows--
+	}
+	if len(a.asks) > 1 {
+		rows++
+	}
+	return rows
+}
+
+// consentRows draws the block. It is laid out by [app.frame], directly above the
+// input, because that is where this surface puts everything it wants answered.
+func (a *app) consentRows(width int) []string {
+	if !a.asking() {
+		return nil
+	}
+	head := a.asks[0]
+	out := make([]string, 0, 4)
+	out = append(out, a.consentCall(head, width))
+	out = append(out, a.consentOffer(width))
+	if head.rule != "" {
+		out = append(out, a.pal.dim(fit("  "+head.rule, width)))
+	}
+	if more := len(a.asks) - 1; more > 0 {
+		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
+	}
+	return out
+}
+
+// consentCall is the tool row itself, drawn by the renderer that drew it in the
+// transcript. A call whose row has gone missing falls back to the one plain
+// sentence this tree says about a tool anywhere (ToolGloss).
+func (a *app) consentCall(head ask, width int) string {
+	if head.entry >= 0 && head.entry < len(a.entries) {
+		e := &a.entries[head.entry]
+		if e.kind == entryTool {
+			return a.toolLine(e, head.entry, true, width)
+		}
+	}
+	return a.pal.ink(fit("  "+ToolGloss(head.tool, head.hint), width))
+}
+
+// consentOffer is the three answers. The keys take the accent and the words
+// stay dim: the person is looking for which letter to press, and the sentence
+// around it is there to be recognized rather than read twice.
+//
+// A narrow terminal gets the short spelling rather than a truncated long one —
+// an offer with its last option cut off is an offer that hides an answer.
+func (a *app) consentOffer(width int) string {
+	long := []string{"allow? ", "[a]", " once · ", "[t]", " this tool always (session) · ", "[d]", " deny"}
+	short := []string{"allow? ", "[a]", " once · ", "[t]", " always · ", "[d]", " deny"}
+	parts := long
+	if ansi.StringWidth(strings.Join(long, "")) > width {
+		parts = short
+	}
+	var line string
+	for i, part := range parts {
+		if i%2 == 1 {
+			line += a.pal.accent(part)
+			continue
+		}
+		line += a.pal.dim(part)
+	}
+	if ansi.StringWidth(strings.Join(parts, "")) > width {
+		return a.pal.dim(fit(strings.Join(parts, ""), width))
+	}
+	return line
+}

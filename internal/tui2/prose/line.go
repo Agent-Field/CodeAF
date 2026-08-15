@@ -319,6 +319,17 @@ func cut(row []piece, n int) (head, tail []piece) {
 		}
 		want := n - used
 		left := ansi.Cut(pc.text, 0, want)
+		if left == "" && used == 0 {
+			// One cell left and a two-cell grapheme in front of it: nothing fits,
+			// and a cut that consumed nothing is a cut that never ends —
+			// [wrapper.commit] loops on the tail until the process dies. A cluster
+			// cannot be halved, so the row takes the whole of it and goes one cell
+			// over; [fit] is the ceiling and trims the row before it is drawn. This
+			// only ever fires when the head is empty, so the advance is real.
+			for over := want + 1; over <= want+2 && left == ""; over++ {
+				left = ansi.Cut(pc.text, 0, over)
+			}
+		}
 		if left != "" {
 			head = append(head, piece{text: left, st: pc.st})
 		}

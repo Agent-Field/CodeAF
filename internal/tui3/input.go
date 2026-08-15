@@ -1,0 +1,512 @@
+package tui3
+
+import (
+	"strings"
+	"unicode"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+)
+
+// prompt is the input line's mark. Two cells, and the only furniture below the
+// conversation: a box around the input would be a box the reader has to look
+// past on every frame.
+const prompt = "› "
+
+// draftRows is how many rows of a draft the box shows at once. Six is where a
+// paste stops being a message and starts being a document: past it the block
+// scrolls under the caret rather than eating the conversation it is about.
+const draftRows = 6
+
+// editor is the draft, and it holds newlines.
+//
+// It was a single line for one wave, on the argument that a conversation is
+// typed a sentence at a time. That is true of what people TYPE and false of
+// what they PASTE — a stack trace, a diff, a paragraph out of a file — and a
+// box that silently flattened a paste into one run-on line was answering the
+// commonest input on this surface by destroying it. So: alt+enter and ctrl+j
+// open a line, a bracketed paste arrives whole, and enter still submits. The
+// value is a rune slice with '\n' in it and nothing else is special about it.
+type editor struct {
+	value  []rune
+	cursor int
+}
+
+func (e *editor) String() string { return string(e.value) }
+
+func (e *editor) empty() bool { return len(strings.TrimSpace(string(e.value))) == 0 }
+
+func (e *editor) reset() { e.value, e.cursor = e.value[:0], 0 }
+
+// setText replaces the whole draft and parks the caret at its end. It is what
+// history recall and the command list write through.
+func (e *editor) setText(text string) {
+	e.value = append(e.value[:0], []rune(text)...)
+	e.cursor = len(e.value)
+}
+
+func (e *editor) insert(text string) {
+	runes := []rune(text)
+	e.value = append(e.value[:e.cursor], append(runes, e.value[e.cursor:]...)...)
+	e.cursor += len(runes)
+}
+
+func (e *editor) deleteBackward() {
+	if e.cursor == 0 {
+		return
+	}
+	e.value = append(e.value[:e.cursor-1], e.value[e.cursor:]...)
+	e.cursor--
+}
+
+func (e *editor) deleteForward() {
+	if e.cursor >= len(e.value) {
+		return
+	}
+	e.value = append(e.value[:e.cursor], e.value[e.cursor+1:]...)
+}
+
+// deleteWord is ctrl+w: back over any spaces, then back over the word.
+func (e *editor) deleteWord() {
+	at := e.cursor
+	for at > 0 && unicode.IsSpace(e.value[at-1]) {
+		at--
+	}
+	for at > 0 && !unicode.IsSpace(e.value[at-1]) {
+		at--
+	}
+	e.value = append(e.value[:at], e.value[e.cursor:]...)
+	e.cursor = at
+}
+
+// killToStart is ctrl+u, and it kills to the start of THIS line rather than of
+// the draft: on a one-line draft the two are the same, and on a six-line paste
+// only one of them is a gesture anybody wants.
+func (e *editor) killToStart() {
+	at := e.lineStart()
+	e.value = append(e.value[:at], e.value[e.cursor:]...)
+	e.cursor = at
+}
+
+func (e *editor) left() {
+	if e.cursor > 0 {
+		e.cursor--
+	}
+}
+
+func (e *editor) right() {
+	if e.cursor < len(e.value) {
+		e.cursor++
+	}
+}
+
+func (e *editor) home() { e.cursor = e.lineStart() }
+
+func (e *editor) end() { e.cursor = e.lineEnd() }
+
+// lineStart and lineEnd bound the LOGICAL line the caret is on — the run
+// between two newlines, not the soft-wrapped row the box happens to draw.
+func (e *editor) lineStart() int {
+	for at := e.cursor; at > 0; at-- {
+		if e.value[at-1] == '\n' {
+			return at
+		}
+	}
+	return 0
+}
+
+func (e *editor) lineEnd() int {
+	for at := e.cursor; at < len(e.value); at++ {
+		if e.value[at] == '\n' {
+			return at
+		}
+	}
+	return len(e.value)
+}
+
+// multiline reports whether the draft has more than one logical line.
+func (e *editor) multiline() bool {
+	for _, r := range e.value {
+		if r == '\n' {
+			return true
+		}
+	}
+	return false
+}
+
+// onFirstLine reports whether the caret is on the draft's first logical line.
+// It is the whole test for whether ↑ belongs to the draft or to history.
+func (e *editor) onFirstLine() bool { return e.lineStart() == 0 }
+
+func (e *editor) onLastLine() bool { return e.lineEnd() == len(e.value) }
+
+// up and down move the caret between logical lines, keeping the column.
+func (e *editor) up() {
+	start := e.lineStart()
+	if start == 0 {
+		return
+	}
+	column := e.cursor - start
+	previous := start - 1
+	for previous > 0 && e.value[previous-1] != '\n' {
+		previous--
+	}
+	if length := start - 1 - previous; column > length {
+		column = length
+	}
+	e.cursor = previous + column
+}
+
+func (e *editor) down() {
+	end := e.lineEnd()
+	if end >= len(e.value) {
+		return
+	}
+	column := e.cursor - e.lineStart()
+	next := end + 1
+	length := 0
+	for next+length < len(e.value) && e.value[next+length] != '\n' {
+		length++
+	}
+	if column > length {
+		column = length
+	}
+	e.cursor = next + column
+}
+
+// key routes one keypress. The order is the surface's law: the key that acts on
+// the SESSION (ctrl+c) is read before any key that acts on the draft, and the
+// two typed overlays are read before the editor, because while a list is up the
+// four keys that move and commit it are the list's.
+func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	// An approval question outranks even the model overlay: it is the one state
+	// where the SESSION is blocked on this keyboard — a tool call is parked
+	// mid-batch waiting for the answer — and everything else on this surface can
+	// wait for one keystroke. ctrl+c is the exception it makes for itself
+	// (consent.go).
+	if cmd, taken := a.consentKey(msg); taken {
+		return cmd
+	}
+
+	// The model overlay is modal: while it is up every key belongs to it and
+	// the draft below is suspended untouched. ctrl+c is the one exception, for
+	// the same reason it is read first below — leaving is never modal.
+	if a.pick.open && msg.String() != "ctrl+c" {
+		a.pickerKey(msg)
+		return nil
+	}
+
+	if msg.String() == "ctrl+c" {
+		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
+		// a person hitting it mid-turn is reaching for the model, not for the
+		// door, and every terminal habit in the world says that keystroke stops
+		// the RUNNING thing. Idle, there is nothing to stop and it leaves.
+		if a.state == stateWorking {
+			a.interrupt()
+			return nil
+		}
+		return a.quit()
+	}
+
+	// The typed overlays — the command list, the @ file completion — hang UNDER
+	// the draft rather than over it. They are not modal: the person keeps typing
+	// into the same box and the list follows what they type. Only the keys that
+	// move and commit a list are taken from the editor.
+	if cmd, taken := a.listKey(msg); taken {
+		return cmd
+	}
+
+	switch msg.String() {
+	case "esc":
+		// esc during a recall is the recall's: it puts the person's own draft
+		// back. A modal-ish state that could not be left by the dismiss key
+		// would be a trap, and the turn is still interruptible the moment the
+		// walk ends.
+		if a.recalling() {
+			a.recallCancel()
+			return nil
+		}
+		a.interrupt()
+		return nil
+
+	case "enter":
+		return a.enter()
+
+	case "alt+enter", "ctrl+j":
+		// Open a line. Two spellings because terminals disagree about which one
+		// they can even send: alt+enter is the one people reach for, ctrl+j is
+		// the one that survives every terminal that swallows it.
+		a.input.insert("\n")
+		return a.edited()
+
+	case "ctrl+q":
+		// The other way to say something to a working session: after the work,
+		// not into it (followup.go). Enter stays steering.
+		return a.followUp()
+
+	case "ctrl+o":
+		a.unfold(a.turn)
+		return nil
+
+	case "pgup":
+		a.scroll(-a.page())
+		return nil
+	case "pgdown":
+		a.scroll(a.page())
+		return nil
+
+	case "up":
+		// ↑ has four meanings and they are read in the order a person's hand
+		// means them: inside a multi-line draft it moves the caret; at the top
+		// of the draft it walks history; with nothing typed and calls on screen
+		// it selects one; and past all of those it scrolls.
+		if !a.input.onFirstLine() {
+			a.input.up()
+			a.touch()
+			return nil
+		}
+		if a.recallBack() {
+			return nil
+		}
+		if a.input.empty() && a.selectTool(-1) {
+			return nil
+		}
+		a.scroll(-1)
+		return nil
+
+	case "down":
+		if !a.input.onLastLine() {
+			a.input.down()
+			a.touch()
+			return nil
+		}
+		if a.recallForward() {
+			return nil
+		}
+		if a.input.empty() && a.selectTool(1) {
+			return nil
+		}
+		a.scroll(1)
+		return nil
+
+	case "backspace":
+		a.input.deleteBackward()
+		return a.edited()
+	case "delete":
+		a.input.deleteForward()
+		return a.edited()
+	case "ctrl+u":
+		a.input.killToStart()
+		return a.edited()
+	case "ctrl+w":
+		a.input.deleteWord()
+		return a.edited()
+	case "left", "ctrl+b":
+		a.input.left()
+		a.touch()
+		return nil
+	case "right", "ctrl+f":
+		a.input.right()
+		a.touch()
+		return nil
+	case "home", "ctrl+a":
+		a.input.home()
+		a.touch()
+		return nil
+	case "end", "ctrl+e":
+		// ctrl+e has two meanings and they are read the way ↑'s four are: with
+		// nothing typed it opens the model's thinking (thinking.go), and with a
+		// sentence in the box it is end-of-line, where the caret is what the hand
+		// meant. `end` is always end-of-line, so nothing is unreachable.
+		if msg.String() == "ctrl+e" && a.input.empty() && a.toggleLatestThought() {
+			return nil
+		}
+		a.input.end()
+		a.touch()
+		return nil
+	}
+
+	if text := msg.Key().Text; text != "" {
+		// A key event carrying a newline is a paste on a terminal that does not
+		// speak bracketed paste (or one whose paste arrived as keystrokes). It
+		// is inserted as typed — the newlines are the person's.
+		a.input.insert(text)
+		return a.edited()
+	}
+	return nil
+}
+
+// enter is the submit key, and it has one first meaning: send the draft.
+func (a *app) enter() tea.Cmd {
+	line := strings.TrimSpace(a.input.String())
+	// An empty draft with a call selected is a reader, not a typist: enter
+	// opens what ↑/↓ picked out. A draft of any length is a sentence, and a
+	// sentence wins.
+	if line == "" && a.sel >= 0 {
+		a.openTool(a.sel)
+		return nil
+	}
+	a.input.reset()
+	a.endRecall()
+	a.closeLists()
+	if line == "" {
+		return a.edited()
+	}
+	a.stick = true
+	// Everything the person pressed enter on is remembered, commands included:
+	// "/model anthropic/…" is exactly the kind of line nobody wants to type
+	// twice, and a recall list that held only the sentences would be a shell
+	// history that dropped the commands.
+	a.remember(line)
+	a.dropDraft()
+	if strings.HasPrefix(line, "/") {
+		return a.slash(line)
+	}
+	return a.submit(line)
+}
+
+// inputBlock renders the draft — or the picker's filter box in its place — and
+// says where the caret sits inside it.
+func (a *app) inputBlock(width int) ([]string, int, int) {
+	if a.pick.open {
+		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint)
+	}
+	// The box may not take the frame. Two rows are spoken for whatever happens
+	// — the status line and the blank under it — and what is left over, up to
+	// the ceiling, is the box's: a six-line paste into a four-line window shows
+	// two rows and scrolls, rather than pushing off the line that says where
+	// you are.
+	_, height := a.size()
+	rows := min(draftRows, height-2)
+	if rows < 1 {
+		rows = 1
+	}
+	return draftBlock(&a.input, a.pal, width, rows, "")
+}
+
+// inputHeight is how many rows the input block is taking. Every geometric
+// question below the conversation goes through it, so a draft that grew to six
+// rows takes those rows from the transcript and from nothing else.
+func (a *app) inputHeight() int {
+	width, _ := a.size()
+	rows, _, _ := a.inputBlock(width)
+	return len(rows)
+}
+
+// draftBlock lays one editor out as a block: the prompt on its first row, every
+// continuation aligned under the TEXT, soft-wrapped to the box's width, and at
+// most maxRows of it on screen. It returns the rows, the caret's column, and
+// the row the caret is on.
+//
+// A draft taller than maxRows scrolls INSIDE the box, keeping the caret in
+// view, and marks the rows above with the same ellipsis the rest of the surface
+// truncates with. Nothing about a long paste is allowed to move the
+// conversation: the box grows to six rows and stops.
+//
+// hint is the placeholder shown while the editor is empty, and the picker's
+// filter box is why it exists — the overlay explains itself in the box a person
+// is already looking at instead of spending a row on a legend.
+func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]string, int, int) {
+	room := width - ansi.StringWidth(prompt)
+	if room < 4 {
+		room = 4
+	}
+	if maxRows < 1 {
+		maxRows = 1
+	}
+	if len(e.value) == 0 && hint != "" {
+		return []string{pal.dim(prompt) + pal.dim(fit(hint, room))}, ansi.StringWidth(prompt), 0
+	}
+
+	segments := wrapRunes(e.value, room)
+	caretRow, caretColumn := caretAt(e, segments, room)
+
+	top := 0
+	if len(segments) > maxRows {
+		top = len(segments) - maxRows
+		if caretRow < top {
+			top = caretRow
+		}
+	}
+	end := min(top+maxRows, len(segments))
+
+	out := make([]string, 0, end-top)
+	for i := top; i < end; i++ {
+		lead := "  "
+		switch {
+		case i == 0:
+			lead = pal.dim(prompt)
+		case i == top:
+			// The block is scrolled: say so where the prompt would be, in the
+			// same two cells, so the rows do not shift under the caret.
+			lead = pal.dim(glyphMore + " ")
+		}
+		out = append(out, lead+pal.ink(string(e.value[segments[i].from:segments[i].to])))
+	}
+	return out, ansi.StringWidth(prompt) + caretColumn, caretRow - top
+}
+
+// segment is one soft-wrapped display row of the draft, as rune offsets into
+// the editor's value.
+type segment struct{ from, to int }
+
+// wrapRunes breaks the draft into display rows: its own newlines always break,
+// and a logical line longer than room breaks at the last space that fits, or
+// mid-word when there is no space to break at. An empty logical line still
+// produces a row — the caret has to be able to stand on it.
+func wrapRunes(value []rune, room int) []segment {
+	var out []segment
+	line := 0
+	flush := func(end int) {
+		for line < end {
+			if end-line <= room {
+				out = append(out, segment{from: line, to: end})
+				line = end
+				return
+			}
+			cut := line + room
+			for at := cut; at > line; at-- {
+				if value[at-1] == ' ' {
+					cut = at
+					break
+				}
+			}
+			out = append(out, segment{from: line, to: cut})
+			line = cut
+		}
+		out = append(out, segment{from: end, to: end})
+	}
+	for at := 0; at < len(value); at++ {
+		if value[at] == '\n' {
+			flush(at)
+			line = at + 1
+		}
+	}
+	flush(len(value))
+	if len(out) == 0 {
+		out = append(out, segment{})
+	}
+	return out
+}
+
+// caretAt resolves the caret's row and column within the wrapped rows. A caret
+// sitting exactly on a soft break belongs to the row that follows it, which is
+// where the next character it types will appear.
+func caretAt(e *editor, segments []segment, room int) (int, int) {
+	row := 0
+	for i, s := range segments {
+		if e.cursor >= s.from && e.cursor <= s.to {
+			row = i
+			if e.cursor == s.to && e.cursor-s.from >= room && i+1 < len(segments) {
+				continue
+			}
+			break
+		}
+	}
+	s := segments[row]
+	from := s.from
+	if e.cursor < from {
+		from = e.cursor
+	}
+	return row, ansi.StringWidth(string(e.value[from:e.cursor]))
+}

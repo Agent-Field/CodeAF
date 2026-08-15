@@ -81,12 +81,13 @@ func run() error {
 	// because none of them registers anything of its own.
 	installSubharnesses()
 	if len(os.Args) < 2 {
-		// No arguments opens the resident surface: the chat thread over the
-		// durable graph. The one-shot commands below are unchanged.
+		// No arguments opens the resident surface. On branch chat-v3 that
+		// surface IS v3 (docs/CHAT-V3.md, "Entry and cutover"); v2 stays
+		// reachable behind its flag until the V3-3 deletion.
 		if v2, rest := wantChatV2(nil, os.Getenv); v2 {
 			return runChatV2(rest)
 		}
-		return runChat(nil)
+		return runChatV3(nil)
 	}
 	switch os.Args[1] {
 	case "chat":
@@ -96,7 +97,10 @@ func run() error {
 		if v2, rest := wantChatV2(os.Args[2:], os.Getenv); v2 {
 			return runChatV2(rest)
 		}
-		return runChat(os.Args[2:])
+		// On branch chat-v3, `aforge chat` IS v3 (docs/CHAT-V3.md, "Entry and
+		// cutover"). runChat stays reachable through the no-argument path
+		// until v3 reaches parity in substance.
+		return runChatV3(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":

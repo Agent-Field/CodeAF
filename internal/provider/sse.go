@@ -144,8 +144,9 @@ func parseSSEMessage(message []byte) (payload []byte, delivered, done bool) {
 //
 // The fields below are the OpenAI streaming shape plus the two names reasoning
 // travels under — OpenRouter's "reasoning" and the "reasoning_content" the
-// DeepSeek-family endpoints send. Reasoning text is never accumulated and never
-// shown; that it is happening is the whole of what leaves this file.
+// DeepSeek-family endpoints send. Both are read into one vocabulary: the text
+// leaves as StreamReasoning deltas and is still never accumulated into the
+// response, because reasoning is not part of the answer a later step re-sends.
 type streamChunk struct {
 	ID      string         `json:"id"`
 	Object  string         `json:"object"`
@@ -174,6 +175,19 @@ func (d streamDelta) thinking() bool {
 	return d.Reasoning != "" || d.ReasoningContent != ""
 }
 
+// reasoning is the thought itself, under whichever of the two names this
+// endpoint spells it. An endpoint that somehow sent both is read as one run of
+// text in the order the fields are declared, which is the only order there is.
+func (d streamDelta) reasoning() string {
+	if d.ReasoningContent == "" {
+		return d.Reasoning
+	}
+	if d.Reasoning == "" {
+		return d.ReasoningContent
+	}
+	return d.Reasoning + d.ReasoningContent
+}
+
 // toolCallDelta is one fragment of one tool call. Index is a pointer because
 // its absence and its zero are different claims: an endpoint that omits it is
 // spelling out one call at a time, and reading that as "call 0" would fuse a
@@ -194,13 +208,25 @@ type toolFunctionDelta struct {
 // differ in what they repeat — some resend the id and the name on every
 // fragment, some send them once — so the rule is the same for every field: the
 // first non-empty value wins, and arguments always append.
+//
+// It also reports CALL BOUNDARIES as they pass, which is the whole basis of the
+// early sighting: see [toolCallAccumulator.complete].
 type toolCallAccumulator struct {
 	order []int
 	calls map[int]*ai.ToolCall
 	args  map[int]*strings.Builder
+	// reported is the set of indexes already handed back as complete, so a call
+	// is announced exactly once no matter how the boundaries fall.
+	reported map[int]bool
 }
 
-func (a *toolCallAccumulator) add(fragment toolCallDelta) {
+// add folds one fragment in and reports the call the fragment ENDED, if any: a
+// fragment that opens an index never seen before means the call that was open
+// until now can receive nothing more.
+//
+// The last call of a message has no such successor and is reported by
+// [toolCallAccumulator.flush] instead, at the clean end of the stream.
+func (a *toolCallAccumulator) add(fragment toolCallDelta) (ai.ToolCall, bool) {
 	index := 0
 	switch {
 	case fragment.Index != nil:
@@ -213,8 +239,17 @@ func (a *toolCallAccumulator) add(fragment toolCallDelta) {
 	}
 	if a.calls == nil {
 		a.calls, a.args = make(map[int]*ai.ToolCall, 2), make(map[int]*strings.Builder, 2)
+		a.reported = make(map[int]bool, 2)
 	}
 	call, known := a.calls[index]
+	var completed ai.ToolCall
+	ready := false
+	if !known && len(a.order) > 0 {
+		// A NEW index opens here, so the call that was open is whole. Only the
+		// open one is closed — an endpoint that jumped backwards would leave the
+		// others to flush, which is later but never wrong.
+		completed, ready = a.complete(a.order[len(a.order)-1])
+	}
 	if !known {
 		call = &ai.ToolCall{Type: "function"}
 		a.calls[index], a.args[index] = call, &strings.Builder{}
@@ -230,6 +265,55 @@ func (a *toolCallAccumulator) add(fragment toolCallDelta) {
 		call.Function.Name = fragment.Function.Name
 	}
 	a.args[index].WriteString(fragment.Function.Arguments)
+	return completed, ready
+}
+
+// complete returns one index's call as a whole instruction, and says whether it
+// is one worth announcing.
+//
+// IT IS DELIBERATELY CONSERVATIVE. A call with no name is not an instruction —
+// assembled() drops it for the same reason — and arguments that do not parse as
+// JSON are a boundary this decoder read wrongly, not something to act on. Both
+// answer "no", and the response's own assembly, which happens after the last
+// byte, remains the authority for what actually ran.
+func (a *toolCallAccumulator) complete(index int) (ai.ToolCall, bool) {
+	if a.reported[index] {
+		return ai.ToolCall{}, false
+	}
+	call, known := a.calls[index]
+	if !known || call.Function.Name == "" {
+		return ai.ToolCall{}, false
+	}
+	arguments := a.args[index].String()
+	if !wholeArguments(arguments) {
+		return ai.ToolCall{}, false
+	}
+	a.reported[index] = true
+	whole := *call
+	whole.Function.Arguments = arguments
+	return whole, true
+}
+
+// flush reports every call not yet announced, in the order the stream opened
+// them. It runs once, at the clean end of a message: ordinarily it returns the
+// single call that was still open, and after an out-of-order endpoint it returns
+// whatever add left behind.
+func (a *toolCallAccumulator) flush() []ai.ToolCall {
+	var ready []ai.ToolCall
+	for _, index := range a.order {
+		if call, ok := a.complete(index); ok {
+			ready = append(ready, call)
+		}
+	}
+	return ready
+}
+
+// wholeArguments reports whether an arguments string is a complete JSON value.
+// Empty counts: a no-argument tool is spelled that way by some endpoints, and
+// the belt reads it the same as "{}".
+func wholeArguments(arguments string) bool {
+	trimmed := strings.TrimSpace(arguments)
+	return trimmed == "" || json.Valid([]byte(trimmed))
 }
 
 // assembled returns the whole calls, in the order the stream opened them. A call
