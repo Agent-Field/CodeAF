@@ -288,6 +288,8 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	// it cannot say who answers.
 	cfg.Guardian = config.GuardianEnabledAt(profileDir)
 	cfg.TaskAutoApproveSeconds = config.TaskAutoApproveAt(profileDir)
+	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
+	cfg.MemoryConsolidation = config.MemoryConsolidationEnabledAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
 	return cfg, nil
 }

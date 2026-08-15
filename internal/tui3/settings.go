@@ -134,6 +134,16 @@ var settingUI = map[string]settingMeta{
 		about: "asks a small model first whether a call is plainly safe, so you " +
 			"are only asked about the rest.",
 	},
+	config.KeyTaskAudit: {
+		tab: tabSession, label: "task audit", widget: widgetCycle,
+		about: "an independent auditor checks each task's work before it merges. " +
+			"Off merges on the task's own word.",
+	},
+	config.KeyMemoryConsolidation: {
+		tab: tabSession, label: "memory consolidation", widget: widgetCycle,
+		about: "memory quietly tidies itself when the session sits idle. " +
+			"Off, it only ever grows.",
+	},
 	// The countdown sits under the gate rows for the same reason the guardian
 	// does: it is not a fourth approval mode but the OTHER clock in the room —
 	// how long a proposed task waits for you before it starts on its own.

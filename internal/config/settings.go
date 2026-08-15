@@ -121,8 +121,16 @@ const (
 	// starts, and selecting text to copy is the more fundamental act. On
 	// buys hover and click; off buys selection.
 	KeyMouse = "ui.mouse"
-	KeyModelRoles    = "models.roles"
-	KeySpendRail     = "session.spendRailUSD"
+	// KeyTaskAudit is whether an independent auditor verifies each task node
+	// before its work may merge (internal/session's task_audit.go). It sits
+	// beside the guardian because both spend a model on the person's behalf:
+	// the guardian to answer, the auditor to check.
+	KeyTaskAudit = "task.audit"
+	// KeyMemoryConsolidation is whether memory.md consolidates itself at
+	// idle (internal/session's memory_consolidate.go).
+	KeyMemoryConsolidation = "memory.consolidation"
+	KeyModelRoles          = "models.roles"
+	KeySpendRail           = "session.spendRailUSD"
 
 	// KeyTaskAutoApprove is the countdown a proposed task waits before it
 	// starts on its own (internal/session's task.go). It is named under `task.`
@@ -202,12 +210,42 @@ const (
 	MouseOn  = "on"
 )
 
-// MouseModes lists them, off first — which is also the default, because the
-// person who never asked for a mouse still expects to select text.
-var MouseModes = []string{MouseOff, MouseOn}
+// MouseModes lists them, on first — which is also the default: hover, click
+// and the wheel are the surface's own language. Text selection does not die
+// for it — Shift+drag bypasses app mouse reporting in virtually every
+// terminal (Option+drag in iTerm2), and ctrl+b copies from the keyboard —
+// but a person who wants the terminal's plain drag back turns the row off.
+var MouseModes = []string{MouseOn, MouseOff}
 
-// DefaultMouse is off: hover and click are opt-in, native selection is not.
-const DefaultMouse = MouseOff
+// DefaultMouse is on.
+const DefaultMouse = MouseOn
+
+const (
+	TaskAuditOff = "off"
+	TaskAuditOn  = "on"
+)
+
+// TaskAuditModes lists them, on first — which is also the default: a node
+// that verifies its own work is the whole point of the verified frontier,
+// and the audit's cost is the price of trusting what merges.
+var TaskAuditModes = []string{TaskAuditOn, TaskAuditOff}
+
+// DefaultTaskAudit is on.
+const DefaultTaskAudit = TaskAuditOn
+
+const (
+	MemoryConsolidationOff = "off"
+	MemoryConsolidationOn  = "on"
+)
+
+// MemoryConsolidationModes lists them, on first — the default: consolidation
+// runs only at idle, on a changed file, past twenty facts, ten minutes apart
+// — the gates already make it rare, and a memory that never consolidates
+// only ever grows.
+var MemoryConsolidationModes = []string{MemoryConsolidationOn, MemoryConsolidationOff}
+
+// DefaultMemoryConsolidation is on.
+const DefaultMemoryConsolidation = MemoryConsolidationOn
 
 // The two tier names internal/roles resolves auxiliary calls under. They are
 // spelled here rather than imported for the reason [DocumentEngines] is: the
@@ -745,11 +783,32 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyMouse, Category: CategoryInterface, Kind: SettingChoice,
 			Label: "mouse", Choices: MouseModes,
-			Hint: "on gives hover and click inside the chat; off gives the terminal's own " +
-				"text selection back. Off is the default: copy is the more fundamental act, " +
-				"and every key the mouse would save already exists.",
+			Hint: "on gives hover, click and wheel-scroll inside the chat. Text selection " +
+				"still works: hold Shift and drag (Option+drag in iTerm2), or press ctrl+b " +
+				"to copy from the keyboard. Turn off to give the terminal's plain drag back.",
 			read:  func() string { return MouseAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMouse, raw, MouseModes) },
+		},
+		Setting{
+			Key: KeyTaskAudit, Category: CategorySpending, Kind: SettingChoice,
+			Label: "task audit", Choices: TaskAuditModes,
+			Hint: "when on, every task node's work is checked by an independent read-only " +
+				"auditor — it runs the repo's own verification and reads the diff — before " +
+				"anything may merge into your branch. Off trusts the node's own report and " +
+				"merges unaudited. On is the default: the audit is what 'done' means, and it " +
+				"roughly doubles a small task's model cost.",
+			read:  func() string { return TaskAuditAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyTaskAudit, raw, TaskAuditModes) },
+		},
+		Setting{
+			Key: KeyMemoryConsolidation, Category: CategoryPractice, Kind: SettingChoice,
+			Label: "memory consolidation", Choices: MemoryConsolidationModes,
+			Hint: "when on, memory.md quietly consolidates itself when the session has been " +
+				"idle for thirty seconds: duplicates merge, superseded facts drop, times and " +
+				"versions are kept character-for-character. It runs only on a changed file, " +
+				"past twenty facts, ten minutes apart. On is the default; off, memory only grows.",
+			read:  func() string { return MemoryConsolidationAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyMemoryConsolidation, raw, MemoryConsolidationModes) },
 		},
 		// The countdown sits with the two consent rows and the guardian because
 		// it answers their question in the other currency: those say what
@@ -1548,6 +1607,37 @@ func MouseAt(profileDir string) string {
 // word/switch split [GuardianEnabledAt] documents.
 func MouseEnabledAt(profileDir string) bool {
 	return MouseAt(profileDir) == MouseOn
+}
+
+// TaskAuditAt resolves the audit row to its word, default on.
+func TaskAuditAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyTaskAudit); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return DefaultTaskAudit
+}
+
+// TaskAuditEnabledAt is [TaskAuditAt] as the bool the session's Config takes.
+func TaskAuditEnabledAt(profileDir string) bool {
+	return TaskAuditAt(profileDir) == TaskAuditOn
+}
+
+// MemoryConsolidationAt resolves the consolidation row to its word, default on.
+func MemoryConsolidationAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyMemoryConsolidation); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return DefaultMemoryConsolidation
+}
+
+// MemoryConsolidationEnabledAt is [MemoryConsolidationAt] as the bool the
+// session's Config takes.
+func MemoryConsolidationEnabledAt(profileDir string) bool {
+	return MemoryConsolidationAt(profileDir) == MemoryConsolidationOn
 }
 
 // ToolApprovalsAt resolves the per-tool exceptions as the person wrote them.
