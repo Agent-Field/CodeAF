@@ -38,6 +38,15 @@ const (
 	RoleTitle Role = "title"
 	// RoleCompaction summarizes a transcript that outgrew its window.
 	RoleCompaction Role = "compaction"
+	// RoleGuardian answers "is this specific tool call safe to run without
+	// asking the person?" — a cheap binary classification, so it sits low.
+	RoleGuardian Role = "guardian"
+	// RoleVision reads images for a chat model that cannot see them natively;
+	// it wants to be genuinely good at seeing, not cheap.
+	RoleVision Role = "vision"
+	// RoleImageGen generates images — a different modality entirely; the chat
+	// model never substitutes.
+	RoleImageGen Role = "imagegen"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers

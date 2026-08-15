@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"strings"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
@@ -93,7 +94,10 @@ func readDraft(path string) string {
 	if err != nil {
 		return ""
 	}
-	return string(raw)
+	// Drafts written before the paste fix may carry CR line endings; the
+	// editor's rows break on LF, so restore through the same door as paste.
+	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	return strings.ReplaceAll(text, "\r", "\n")
 }
 
 // writeDraft replaces the file, or removes it when the box is empty — an empty

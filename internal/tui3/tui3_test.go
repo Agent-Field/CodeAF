@@ -34,9 +34,14 @@ type fakeAgent struct {
 	closes  int
 	packs   int
 	failing error
-	// past is what a resumed session already holds — what [app.replay] draws
-	// and what the context meter weighs.
+	// past is what a resumed session already holds — what [app.replay] draws.
 	past []session.DisplayEntry
+	// weight is what the agent says the conversation weighs in tokens, which is
+	// what the context meter reads (the surface no longer measures it itself).
+	weight int
+	// levels is the reasoning strength held per model id, the session's own map
+	// as far as the surface can see it (internal/session's agent.go).
+	levels map[string]string
 }
 
 func (f *fakeAgent) Submit(ctx context.Context, text string) (<-chan session.Event, error) {
@@ -70,14 +75,26 @@ func (f *fakeAgent) finish() {
 	}
 }
 
-func (f *fakeAgent) Interrupt()                           { f.stops++ }
-func (f *fakeAgent) Compact(context.Context) error        { f.packs++; return nil }
-func (f *fakeAgent) Close() error                         { f.closes++; return nil }
-func (f *fakeAgent) Model() string                        { return f.model }
-func (f *fakeAgent) SetModel(model string)                { f.model = model }
-func (f *fakeAgent) SetContextWindow(tokens int)          { f.window = tokens }
+func (f *fakeAgent) Interrupt()                       { f.stops++ }
+func (f *fakeAgent) Compact(context.Context) error    { f.packs++; return nil }
+func (f *fakeAgent) Close() error                     { f.closes++; return nil }
+func (f *fakeAgent) Model() string                    { return f.model }
+func (f *fakeAgent) SetModel(model string)            { f.model = model }
+func (f *fakeAgent) SetContextWindow(tokens int)      { f.window = tokens }
+func (f *fakeAgent) ReasoningFor(model string) string { return f.levels[model] }
+func (f *fakeAgent) SetReasoningFor(model, level string) {
+	if f.levels == nil {
+		f.levels = map[string]string{}
+	}
+	if level == "" {
+		delete(f.levels, model)
+		return
+	}
+	f.levels[model] = level
+}
 func (f *fakeAgent) Usage() session.Usage                 { return f.usage }
 func (f *fakeAgent) Transcript() []session.DisplayEntry   { return f.past }
+func (f *fakeAgent) ContextTokens() int                   { return f.weight }
 func text(kind session.EventKind, s string) session.Event { return session.Event{Kind: kind, Text: s} }
 
 // drive runs messages through the app the way the program loop would: update,
@@ -148,6 +165,11 @@ func newTestApp(agent Agent) *app {
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.entries = nil // drop the opening hint so tests read their own entries
+	// The welcome box opens on an empty conversation, which every test here is
+	// (welcome.go). It has its own tests; the ones that predate it read the
+	// frame it used to have, so it is dismissed exactly as a first keystroke
+	// dismisses it.
+	a.welcome = welcome{spent: true}
 	a.touch()
 	return a
 }
@@ -167,6 +189,12 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyUp}
 	case "down":
 		return tea.KeyPressMsg{Code: tea.KeyDown}
+	case "left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "right":
+		return tea.KeyPressMsg{Code: tea.KeyRight}
+	case "ctrl+,":
+		return tea.KeyPressMsg{Code: ',', Mod: tea.ModCtrl}
 	case "ctrl+o":
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
 	case "ctrl+u":
@@ -605,8 +633,9 @@ func TestAClickOpensTheCallUnderIt(t *testing.T) {
 	}
 }
 
-// THE DISTINCTION. The person's words carry the glyph and bold; the model's
-// carry neither.
+// THE DISTINCTION. The person's words carry the glyph and the accent HUE; the
+// model's carry neither, and weight belongs to markdown on both sides
+// (render.go's entryUser, and thinking_test's hue tests).
 func TestUserAndAssistantReadDifferently(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "it parses the config file and writes it back out again"),
@@ -639,12 +668,20 @@ func TestUserAndAssistantReadDifferently(t *testing.T) {
 	if !strings.HasPrefix(plain(user[1].text), "  ") {
 		t.Fatalf("a continuation row is not aligned under the text: %q", plain(user[1].text))
 	}
+	accent := a.pal.accent("x")
+	accent = accent[:strings.Index(accent, "x")]
 	for i, r := range user {
-		if !strings.Contains(r.text, "\x1b[1m") {
-			t.Fatalf("user row %d is not bold: %q", i, r.text)
+		if !strings.Contains(r.text, accent) {
+			t.Fatalf("user row %d is not in the accent hue: %q", i, r.text)
+		}
+		if strings.Contains(r.text, "\x1b[1m") {
+			t.Fatalf("user row %d is bold: hue is the marker, not weight: %q", i, r.text)
 		}
 	}
 	for i, r := range assistant {
+		if strings.Contains(r.text, accent) {
+			t.Fatalf("assistant row %d wears the person's hue: %q", i, r.text)
+		}
 		if strings.Contains(r.text, "\x1b[1m") {
 			t.Fatalf("assistant row %d is bold: %q", i, r.text)
 		}
@@ -790,8 +827,14 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	}
 
 	typeLine(t, a, "/help")
-	if !strings.Contains(plain(frame(a)), "/model <slug>") {
-		t.Fatalf("help is missing:\n%s", plain(frame(a)))
+	// The table is asserted at its source and the note at the screen: the help
+	// block is taller than a twenty-row test frame, so which of its rows the
+	// bottom of the screen happens to show is a fact about the terminal.
+	if !strings.Contains(helpText(a.file), "/model <slug>") {
+		t.Fatalf("help is missing the command table:\n%s", helpText(a.file))
+	}
+	if !strings.Contains(plain(frame(a)), "/compact") {
+		t.Fatalf("help did not reach the screen:\n%s", plain(frame(a)))
 	}
 
 	if len(agent.sent) != 0 {

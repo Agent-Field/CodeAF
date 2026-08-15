@@ -328,6 +328,91 @@ v2 already proves sufficient; steering lands between executor turns, not
 mid-tool-call; the agent's un-journaled scratch (in-flight tool context) is
 rebuilt by refold after a crash, same as the head today.
 
+## Decision 16 — The guardian, the nudge, the stub, and the frames ladder
+
+**Auto-approval is a model's judgment, opted into.** A `Prompt` decision with
+`approval.guardian: on` first asks the guardian role (low tier) with the
+tool, args, and matched rule under a binary ALLOW/ASK contract; ALLOW
+executes with a dim note, ASK or any error falls through to the person
+unchanged. Off by default — a gate that answers for the person must be
+chosen, and the person's own rules always outrank it.
+
+**Stuck is detected, nudged, then escalated.** A sliding window of tool-call
+and error signatures: the same call ×3 or the same error ×3 injects one
+rethink note into the next request and raises `stuck? nudged` in the
+surface. The third repetition in prompt-mode escalates to the person
+through the consent lane — the person is the better nudge by then.
+
+**Tool output is stubbed, never deleted (omp's shake).** Results older than
+four turns and over 1500 bytes are replaced in the *live* transcript with a
+bounded stub naming the artifact path the full bytes were written to. The
+journal is never stubbed; the record stays whole.
+
+**Compaction is a ladder, SOTA-ordered** (researched, D9 amended): rung 1
+stub (deletion — best fidelity per cost, runs every turn); rung 2 *frames*
+(omp's snapcompact — the discarded prefix rasterized to PNG pages attached
+as image parts; full fidelity, no LLM call; now reachable via `x/image`
+since vision support exists), used when the model sees images; rung 3 the
+LLM summary (D9) for blind models and focus-text passes. LLMLingua-style
+token pruning is rejected: a local scoring model is a heavy dependency, and
+pruning inside code is where compression lies.
+
+**Images generate and see.** `generate_image` saves to a path, never bytes
+in context (registers only when an image model resolves; default
+`google/gemini-3.1-flash-image`). A blind chat model never refuses a
+picture: the `vision` role answers it one-shot, journaled with a
+`[vision: model]` note; refusal only when nothing resolves.
+
+## Decision 15 — Honest numbers, cache affinity, and the thinking window
+
+**The meter tells the truth.** The context meter reads the session's own
+estimate (provider-reported usage when known, full content estimate
+otherwise — tool outputs and the system prompt included), displayed as
+`12.4k/128k · 10%`, accent past 80% of the compaction threshold. A percent
+of an undercount is a number that means nothing.
+
+**The session is a cache lineage.** Every request stamps the session id as
+the prompt-cache-affinity key (bare sends none by design — a leaf is not a
+lineage; a session is). Cache reads/writes accumulate per turn and session;
+a turn with cache reads shows a dim `⟲ 9.8k cached · saved $0.0041`, the
+status line carries the session's cached share, and "saved" is computed from
+the model's real prompt/cache prices (withheld when pricing is unknown — a
+router's "-1" never reads as free).
+
+**Thinking is a window, not a wall.** Streaming reasoning shows only the
+last three lines on a true-color opacity gradient (oldest fading to
+background, newest at dim ink) with a live `⠿ thinking · N tok` counter;
+completion collapses to `⠿ thought for Ns · N tok · ctrl+e`.
+
+**Identity is hue; markdown is weight.** The user's text renders in the
+pastel accent for its whole body — an assistant answer full of bold can no
+longer read as the user. Bold-as-identity is retired.
+
+## Decision 13 — Search is a plug registry; the default costs nothing
+
+**Decision.** `internal/search` is an open registry of providers, not an Exa
+client. `Provider` (search) and `Fetcher` (page → clean text) are separate
+registries resolved independently. Auto resolution: a settings pin wins;
+else the first keyed plug that is available (Exa when `EXA_API_KEY` exists);
+else the zero-key default — DuckDuckGo's HTML endpoint for search (no key,
+scraping is the price of zero-config and the registry is the upgrade path)
+and Jina's `r.jina.ai` reader for fetches (free, 20 RPM, no key). Tavily or
+Firecrawl later is one file each: the registry, not the belt, is the
+extension point. The belt tools (`web_search`, `web_fetch`) register only
+when a provider pair resolves — a model told about a tool it cannot reach is
+worse than no tool.
+
+## Decision 14 — Images are context by reference, never by inline journal bytes
+
+**Decision.** The surface attaches images to a turn (`Agent.SubmitImage`):
+text + `image_url` parts on the user message, gated by the model's advertised
+input modalities (a model never receives parts it cannot read). The journal
+stores a *reference* — path, sha256, mime — never the bytes; replay re-reads
+the file when the hash matches and writes an honest placeholder when it does
+not. Snapcompact-style rasterized-context frames (omp's bitmap trick) remain
+a documented extension: the savings are real, the rasterizer dependency is
+not yet.
+
 ## Decision 12 — Streaming intelligence and background jobs
 
 **Reasoning is visible, then collapses.** The provider surfaces reasoning

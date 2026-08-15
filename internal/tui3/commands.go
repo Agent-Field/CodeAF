@@ -34,6 +34,8 @@ type command struct {
 var commands = []command{
 	{name: "model", desc: "pick a model from the list"},
 	{name: "model", args: "<slug>", desc: "switch the model"},
+	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
+	{name: "settings", desc: "open the settings panel · ctrl+,"},
 	{name: "new", desc: "close this session and start a fresh one"},
 	{name: "compact", desc: "summarize the conversation now"},
 	{name: "help", desc: "this list"},
@@ -186,16 +188,22 @@ func helpText(file string) string {
 			width = n
 		}
 	}
-	lines := make([]string, 0, len(commands)+4)
+	lines := make([]string, 0, len(commands)+6)
+	// The product names itself once, at the top of the one place it explains
+	// itself. Everywhere else on this surface it is simply the thing you are
+	// already in (styles.go's [product]).
+	lines = append(lines, product, "")
 	for _, c := range commands {
 		lines = append(lines, c.typed()+strings.Repeat(" ", width-len(c.typed())+2)+c.desc)
 	}
 	lines = append(lines,
-		"@path          complete a file from this directory",
+		"@path          complete a file · a picture attaches",
 		"alt+enter      open a line · enter sends",
 		"ctrl+o         expand this turn's tool calls · click one to open it",
+		"ctrl+b         copy mode · ↑↓ move · v marks · y yanks · esc leaves",
 		"ctrl+q         ask this after the current turn instead of into it",
 		"ctrl+e         open the model's thinking, when it showed any",
+		"ctrl+,         settings",
 	)
 	if file != "" {
 		lines = append(lines, "session · "+file)

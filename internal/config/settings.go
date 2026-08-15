@@ -105,10 +105,28 @@ const (
 	// and the flat text rows below are the readable stand-in until it lands.
 	KeyToolApprovalMode = "tools.approvalMode"
 	KeyToolApprovals    = "tools.approval"
-	KeyTierLowModel     = "models.tiers.low"
-	KeyTierHighModel    = "models.tiers.high"
-	KeyModelRoles       = "models.roles"
-	KeySpendRail        = "session.spendRailUSD"
+
+	// KeyGuardian turns on the small model that answers a tool prompt before you
+	// are asked (internal/session's guardian.go). It is named under `approval.`
+	// rather than beside the two `tools.` rows above because it is not a rule
+	// about tools at all: it is a statement about WHO ANSWERS — the person, or a
+	// model standing in for them — and grouping it with the rule rows would file
+	// it as one more exception in a list of exceptions.
+	KeyGuardian      = "approval.guardian"
+	KeyTierLowModel  = "models.tiers.low"
+	KeyTierHighModel = "models.tiers.high"
+	KeyModelRoles    = "models.roles"
+	KeySpendRail     = "session.spendRailUSD"
+
+	// The web-search rows. They are three rather than one because they answer
+	// three separable questions: WHERE a lookup goes, and the two credentials
+	// that change what "where" can mean. A person with no key still searches —
+	// internal/search's last rung takes none — so the keys are an upgrade and
+	// never a prerequisite, and none of the three has to be answered for the
+	// session to be able to look something up.
+	KeySearchProvider = "search.provider"
+	KeyExaKey         = "search.exaKey"
+	KeyJinaKey        = "search.jinaKey"
 
 	// The four context-law knobs. Fill is how much of a model's window any
 	// agent may use before compaction fires; the reserve is the room every
@@ -149,6 +167,19 @@ const (
 // fourth spelling for a decision that package already names.
 var ToolApprovalModes = []string{"prompt", "allow", "deny"}
 
+// The guardian row's two answers. It is a CHOICE and not a bool for the reason
+// every other two-word row here is one: "off/on" is what the sheet renders and
+// what the file holds, and a person reading their config.json back should find a
+// word they chose rather than a `true` they have to remember the question for.
+const (
+	GuardianOff = "off"
+	GuardianOn  = "on"
+)
+
+// GuardianModes lists them, off first — which is also the default, and the order
+// the row widens in.
+var GuardianModes = []string{GuardianOff, GuardianOn}
+
 // The two tier names internal/roles resolves auxiliary calls under. They are
 // spelled here rather than imported for the reason [DocumentEngines] is: the
 // registry is a settings surface, and a settings key is a string on disk that
@@ -160,6 +191,23 @@ const (
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
 var DocumentEngines = []string{"auto", "local", "free", "ocr"}
+
+// SearchProviderAuto is the row's default: no pin, and internal/search walks
+// its own ladder — the keyed plug when its key is present, the zero-key plug
+// otherwise. It is spelled here rather than as the empty string because a
+// choice row has to have a word for "I did not choose", and "" would render as
+// a blank cell nobody can tell from a broken read.
+const SearchProviderAuto = "auto"
+
+// SearchProviders are the answers the search row accepts.
+//
+// The names are STRINGS HERE and not [search.RegisteredSearch], for the reason
+// [DocumentEngines] is a literal: a settings value is a word on disk, and a
+// list derived from a registry would silently change what a person's saved
+// answer means the day a plug is renamed or one is added. The cost is that a
+// new plug needs a line here to be pinnable — which is the right cost, because
+// a plug nobody can name in the sheet is still reachable through auto.
+var SearchProviders = []string{SearchProviderAuto, "exa", "duckduckgo"}
 
 // OperatorEnvPins is the explicit allowlist of environment variables that are
 // plumbing rather than settings: endpoints, credentials, profile roots, and
@@ -281,11 +329,25 @@ const (
 	// it is one row; narrowing it after something ran is not possible.
 	DefaultToolApprovalMode = "prompt"
 
+	// DefaultGuardian is off, and it is the only defensible default for the same
+	// reason the row above asks: this one hands the answer to a model. A gate
+	// that answers on your behalf must be something you turned on, not something
+	// you failed to notice — so a fresh install makes no guardian call at all,
+	// and the person who wants fewer questions opts into one.
+	DefaultGuardian = GuardianOff
+
 	// DefaultSpendRailUSD is 0 — no per-session ceiling. The rail that is on by
 	// default is the DAILY one, because that is the number a person actually
 	// budgets; a session ceiling is for the sitting somebody wants to box in,
 	// and a default would box in every sitting at a number nobody chose.
 	DefaultSpendRailUSD = 0.0
+
+	// DefaultSearchProvider pins nothing. Auto is the only default that stays
+	// right as a person's keys change: the day they paste an Exa key the
+	// searches move to Exa without a second row being touched, and the day it
+	// expires they keep searching instead of getting an error from a plug they
+	// pinned six months ago and forgot.
+	DefaultSearchProvider = SearchProviderAuto
 
 	// DefaultRailState opens the rail on a window that has never been told
 	// otherwise, and the reason is the one thing a hidden default cannot do:
@@ -327,6 +389,20 @@ type Setting struct {
 
 	// EmptyLabel reads for a text row whose value is unset.
 	EmptyLabel string
+
+	// Secret marks a row whose value is a credential. Such a row READS MASKED
+	// — its own reader returns the mask, so every surface that renders a value
+	// renders the mask without having to know the row is special — and its
+	// writer treats the mask as "unchanged" (see writeCredential), so an editor
+	// that opens on the displayed value and is saved unedited cannot overwrite
+	// the key with a row of bullets.
+	//
+	// The flag is here rather than a [SettingKind] because a credential edits
+	// exactly like text: the difference is what it shows, not what it accepts,
+	// and a fourth kind would make every switch in every surface grow an arm
+	// that did the same thing SettingText already does. A surface that wants to
+	// suppress its own echo while typing reads this.
+	Secret bool
 
 	read    func() string
 	write   func(string) error
@@ -540,6 +616,38 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyDocumentEngine, raw, DocumentEngines) },
 		},
 
+		// Searching sits beside looking and reading because it is the third
+		// question of the same shape — which back end answers when aforge has
+		// to go outside the machine — and the two keys sit under it because a
+		// key is not a preference on its own: it is the thing that decides
+		// what the row above it can resolve to.
+		Setting{
+			Key: KeySearchProvider, Category: CategoryModels, Kind: SettingChoice,
+			Label: "searching", Choices: SearchProviders,
+			Hint: "where a web search goes. auto uses the best back end your keys reach and " +
+				"falls back to one that needs none, so search works with nothing set. " +
+				"A change lands on the next session.",
+			read:  func() string { return SearchProviderAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeySearchProvider, raw, SearchProviders) },
+		},
+		Setting{
+			Key: KeyExaKey, Category: CategoryModels, Kind: SettingText, Secret: true,
+			Label: "exa key", Env: "EXA_API_KEY", EmptyLabel: "not set",
+			Hint: "an exa.ai key, which buys better results and page fetches than the free " +
+				"back end. Optional — search works without it. A change lands on the next session.",
+			read:  func() string { return maskCredential(ExaKeyAt(dir)) },
+			write: func(raw string) error { return writeCredential(dir, KeyExaKey, raw, ExaKeyAt(dir)) },
+		},
+		Setting{
+			Key: KeyJinaKey, Category: CategoryModels, Kind: SettingText, Secret: true,
+			Label: "jina key", Env: "JINA_API_KEY", EmptyLabel: "not set",
+			Hint: "a jina.ai key. It buys nothing but headroom: page fetches already work " +
+				"unauthenticated and the key only raises the rate ceiling. " +
+				"A change lands on the next session.",
+			read:  func() string { return maskCredential(JinaKeyAt(dir)) },
+			write: func(raw string) error { return writeCredential(dir, KeyJinaKey, raw, JinaKeyAt(dir)) },
+		},
+
 		Setting{
 			Key: KeyDailyBudget, Category: CategorySpending, Kind: SettingDollars,
 			Label: "daily budget", Env: "AFORGE_DAILY_BUDGET",
@@ -585,6 +693,15 @@ func (s *Settings) build() []Setting {
 				"A tool not named here follows the setting above.",
 			read:  func() string { return ToolApprovalsAt(dir) },
 			write: func(raw string) error { return writeToolApprovals(dir, raw) },
+		},
+		Setting{
+			Key: KeyGuardian, Category: CategorySpending, Kind: SettingChoice,
+			Label: "guardian", Choices: GuardianModes,
+			Hint: "when on, a small model is asked first whether a call is plainly safe — " +
+				"read-only, inside this directory, reversible — and you are only asked about the rest. " +
+				"It can never approve something the rules above refuse. A change lands on the next session.",
+			read:  func() string { return GuardianAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyGuardian, raw, GuardianModes) },
 		},
 		Setting{
 			Key: KeySpendRail, Category: CategorySpending, Kind: SettingDollars,
@@ -1199,6 +1316,113 @@ func InstallPersistedEnv(profileDir string) {
 	}
 }
 
+// ── the web-search rows ─────────────────────────────────────────────────────
+//
+// The two key rows ARE environment-pinned, where the v3 rows below are not,
+// and the difference is what the variable can do. A pin on the tool gate would
+// be a bypass — a stray export widening what may run without asking. A pin on
+// a credential is the credential itself: EXA_API_KEY and JINA_API_KEY are the
+// vendors' own variable names, already exported in the shells of the people
+// who have keys, and a settings sheet that ignored them would make the same
+// person paste the same secret twice and then wonder which copy was live.
+//
+// They are the vendors' spellings rather than AFORGE_-prefixed ones for that
+// same reason: the value is not ours, and renaming somebody's key variable to
+// claim it would be the product asking the world to accommodate it.
+//
+// The provider row has NO pin. It is a preference and not a secret, and the
+// sheet is where a preference is answered so it can be read back.
+
+// SearchProviderAt resolves where a web search goes: the persisted row when it
+// names a provider this build accepts, otherwise auto. An unrecognised value
+// reads as auto rather than as an error, which is the direction a garbled
+// setting may be wrong in — auto still searches.
+func SearchProviderAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeySearchProvider); ok {
+		if provider := strings.ToLower(strings.TrimSpace(value)); knownSearchProvider(provider) {
+			return provider
+		}
+	}
+	return DefaultSearchProvider
+}
+
+// ExaKeyAt resolves the Exa credential: the environment first, then the sheet,
+// then empty — and empty is a working configuration, not a fault.
+func ExaKeyAt(profileDir string) string {
+	return credentialAt(profileDir, "EXA_API_KEY", KeyExaKey)
+}
+
+// JinaKeyAt resolves the Jina credential the same way.
+func JinaKeyAt(profileDir string) string {
+	return credentialAt(profileDir, "JINA_API_KEY", KeyJinaKey)
+}
+
+func credentialAt(profileDir, env, key string) string {
+	if raw := strings.TrimSpace(os.Getenv(env)); raw != "" {
+		return raw
+	}
+	if value, ok := persistedString(profileDir, key); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+func knownSearchProvider(provider string) bool {
+	for _, candidate := range SearchProviders {
+		if candidate == provider {
+			return true
+		}
+	}
+	return false
+}
+
+// maskCredentialBullets is how many bullets stand in for the head of a key. It
+// is a FIXED count and not the key's real length: a mask that grew with the
+// secret would leak its length, and a forty-character row of dots reads as
+// damage rather than as a value.
+const maskCredentialBullets = 8
+
+// maskCredentialTail is how much of the key survives the mask — enough to tell
+// two keys apart when a person is checking which one is loaded, and far too
+// little to be worth anything to somebody reading over their shoulder.
+const maskCredentialTail = 4
+
+// maskCredential is what a secret row reads as. An unset row masks to empty so
+// the row's EmptyLabel still speaks: "not set" and a row of bullets are
+// different facts and must not render the same.
+func maskCredential(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	bullets := strings.Repeat("•", maskCredentialBullets)
+	runes := []rune(value)
+	if len(runes) <= maskCredentialTail {
+		// A value this short is not a key — a typo, a paste that lost its
+		// tail. Show none of it rather than all of it.
+		return bullets
+	}
+	return bullets + string(runes[len(runes)-maskCredentialTail:])
+}
+
+// writeCredential persists a secret row, and treats the MASK as "unchanged".
+//
+// That guard is the whole reason this is not writeText. Every editor in the
+// tree opens on the value the row displays, which for a secret row is the
+// mask; a person who opens the row to look at it and presses enter would
+// otherwise replace their key with eight bullets and four characters of it —
+// an unrecoverable edit made by doing nothing.
+//
+// Empty still CLEARS. "I did not change it" is the mask; "" is a person
+// deleting the field, which is the only way to remove a key from the sheet.
+func writeCredential(profileDir, key, raw, current string) error {
+	value := strings.TrimSpace(raw)
+	if value != "" && value == maskCredential(current) {
+		return nil
+	}
+	return writeProfileValue(profileDir, key, value)
+}
+
 func knownDocumentEngine(engine string) bool {
 	for _, candidate := range DocumentEngines {
 		if candidate == engine {
@@ -1226,6 +1450,27 @@ func ToolApprovalModeAt(profileDir string) string {
 		}
 	}
 	return DefaultToolApprovalMode
+}
+
+// GuardianAt resolves whether a small model answers a tool prompt before the
+// person is asked. An unrecognised persisted value reads as the default, which
+// is off — a garbled setting must never be the one that appoints a stand-in.
+func GuardianAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyGuardian); ok {
+		if mode := strings.ToLower(strings.TrimSpace(value)); mode == GuardianOff || mode == GuardianOn {
+			return mode
+		}
+	}
+	return DefaultGuardian
+}
+
+// GuardianEnabledAt is [GuardianAt] as the bool internal/session's Config takes.
+// The two exist separately because the row's value is a WORD — that is what the
+// sheet renders and what the file holds — and the seam on the other side is a
+// switch; one function answering both would have to pick which of those it lies
+// about.
+func GuardianEnabledAt(profileDir string) bool {
+	return GuardianAt(profileDir) == GuardianOn
 }
 
 // ToolApprovalsAt resolves the per-tool exceptions as the person wrote them.

@@ -19,6 +19,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
@@ -35,13 +36,22 @@ func runChatV3(args []string) error {
 	file := flags.String("session", "", "session transcript to resume; empty resumes this directory's most recent")
 	noCompact := flags.Bool("no-compact", false, "never compact automatically")
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
+	reasoning := flags.String("reasoning", "", "how hard this session's model is asked to think: off, low, medium or high")
 	if err := flags.Parse(reorder(args, map[string]bool{
-		"model": true, "once": true, "session": true,
+		"model": true, "once": true, "session": true, "reasoning": true,
 	})); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf(`usage: aforge chat [--model slug] [--session path] [--once "text"] [--no-compact] [--yolo]`)
+		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--once "text"] [--no-compact] [--yolo]`)
+	}
+	// The level is validated HERE, before anything is opened, so a typo is a
+	// usage error and not a knob that silently did nothing for a whole session.
+	// It is a one-shot: ctrl+t in the picker overrides it from that moment on,
+	// and /new — a new agent — starts with no level at all.
+	level, ok := session.ParseReasoning(*reasoning)
+	if !ok {
+		return fmt.Errorf("--reasoning %q: use off, low, medium or high", *reasoning)
 	}
 
 	// The same resolution every other surface does: environment and the
@@ -87,6 +97,11 @@ func runChatV3(args []string) error {
 		// conservative default, and the warm-up below corrects it in place the
 		// moment the catalog resolves.
 		ContextWindow: v3Window(models, chosen),
+		// Whether the model in use can LOOK at a picture, from the catalog's
+		// published input modalities. It is a closure rather than a value
+		// because the answer is about the model the NEXT turn rides, and this
+		// session's model changes under /model (see [v3SeesImages]).
+		SupportsImages: v3SeesImages(models),
 	}
 
 	// What this session may do without asking, which model answers its
@@ -107,7 +122,7 @@ func runChatV3(args []string) error {
 		// neither of them is a gate that quietly opens because the terminal
 		// happens to be a pipe.
 		cfg.AskConsent = false
-		return runChatV3Once(cfg, text, resumed)
+		return runChatV3Once(cfg, text, level, resumed)
 	}
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
@@ -122,6 +137,10 @@ func runChatV3(args []string) error {
 		// it — /help, /new, the resumed line — has to name the new one.
 		transcript, resumed = cfg.SessionFile, false
 	}
+	// The boot override lands on the model this session starts on, which is the
+	// only model it can be about: --reasoning names a strength, not a model, and
+	// the level is kept per model from here on (internal/session's agent.go).
+	agent.SetReasoning(level)
 	// Close is the surface's to call — /quit and ctrl+c both go through it —
 	// but a Run that returns by any other road must still flush the file.
 	defer func() { _ = agent.Close() }()
@@ -228,10 +247,10 @@ func openV3Agent(cfg session.Config, workspace string) (*session.Agent, session.
 
 // ── governance: what a session may do, on whose models, for how much ────────
 //
-// Three settings rows and one flag reach internal/session here, and this is the
+// The settings rows and one flag reach internal/session here, and this is the
 // ONLY place they do. Each is a seam that already exists on the other side —
-// [approval.Policy], [roles.Source], the spend rail — so the mapping is a
-// translation and never a second policy.
+// [approval.Policy], [roles.Source], the spend rail, [search.Resolve]'s pair —
+// so the mapping is a translation and never a second policy.
 //
 // EVERY PARSE ERROR STOPS THE LAUNCH, with the row named. A tool gate that
 // silently ignored the line it could not read would be a gate that opens for
@@ -261,7 +280,57 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	cfg.ApprovalPolicy = policy
 	cfg.RolesSource = source
 	cfg.SpendRailUSD = rail
+	// The guardian (internal/session's guardian.go) reads PROFILE-ONLY, unlike
+	// the two rows above it, and the reason is the one that keeps the search keys
+	// out of the project layer too: a repository that could turn this on would be
+	// appointing a stand-in for a visitor who never agreed to have one. The rules
+	// a repository may state are still the rules — it can say what to ask about;
+	// it cannot say who answers.
+	cfg.Guardian = config.GuardianEnabledAt(profileDir)
+	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
 	return cfg, nil
+}
+
+// v3Search resolves the web-search pair this session's belt calls through: the
+// three settings rows in, [search.Resolve]'s answer out.
+//
+// IT RETURNS NO ERROR, and that is a statement about the layer rather than an
+// omission. Every rung of the resolution ladder ends in a plug that needs no
+// key (internal/search states this and tests it), so there is no configuration
+// — no key, a stale pin, a garbled row — that can leave a person unable to look
+// something up. A missing key is not a failure but a rung; a pin naming a plug
+// this build does not have falls through to auto rather than taking search
+// away. The only outcome this call cannot produce is a launch that fails
+// because of search, which is the correct set of outcomes for an accessory.
+//
+// A nil half is therefore not an error either. It is what a build whose
+// registry is empty answers, and internal/session reads it as "leave that tool
+// off the belt" — a model that is never told about a tool it cannot reach.
+//
+// THE ROWS DO NOT GO THROUGH THE PROJECT LAYER, unlike the governance rows
+// above, and the keys are why: a repository that could answer search.exaKey
+// could spend a visitor's Exa credit, and one that could answer search.provider
+// could redirect where a visitor's questions are sent by being cloned. Both are
+// the PERSON's rows in the sense internal/config's allowlist means it, so they
+// resolve profile-and-environment only.
+func v3Search(profileDir string) (search.Provider, search.Fetcher) {
+	return search.Resolve(v3SearchOptions(profileDir))
+}
+
+// v3SearchOptions is the mapping itself, split out so it can be read and tested
+// without a registry: the pin from the choice row (auto meaning no pin, which
+// internal/search spells as the empty string), and the two credentials from the
+// environment or the sheet.
+func v3SearchOptions(profileDir string) search.Options {
+	pin := config.SearchProviderAt(profileDir)
+	if pin == config.SearchProviderAuto {
+		pin = ""
+	}
+	return search.Options{
+		Provider: pin,
+		ExaKey:   config.ExaKeyAt(profileDir),
+		JinaKey:  config.JinaKeyAt(profileDir),
+	}
 }
 
 // v3Policy builds the tool gate from the two approval rows.
@@ -307,6 +376,9 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 		// these built-ins wholesale — their rules, their responsibility.
 		raw["tools"] = map[string]any{
 			"read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
+			// jobs list/output are reads on the person's own processes; kill
+			// inherits the blanket mode, which asks.
+			"jobs": "allow",
 		}
 	}
 	policy, err := approval.Load(raw)
@@ -385,8 +457,15 @@ type v3Catalog interface {
 	ModelsNow() []catalog.Model
 }
 
-// v3Models is the catalog as the v3 picker wants it: id and window, in the
-// catalog's own order, and only the models that can hold a conversation.
+// v3Models is the catalog as the v3 surface wants it: id, window, the three
+// per-token prices and the arena score, in the catalog's own order, and only the
+// models that can hold a conversation.
+//
+// The prices ride along because the surface has to price something the session
+// cannot: what a turn's prompt-cache reads saved, which is cached tokens times
+// the gap between the prompt price and the cache-read price (internal/tui3's
+// savings note). They come off the /models fetch that already happens, so
+// carrying them costs one more field per row in a file that is already written.
 //
 // Nil while the catalog is warming — which is not a failure but the picker's
 // cue to read ~/.aforge/v3/models.json and then its built-ins (internal/tui3
@@ -401,7 +480,31 @@ func v3Models(models v3Catalog) []tui3.Model {
 		if !v3AnswersText(row.OutputModalities) {
 			continue
 		}
-		out = append(out, tui3.Model{ID: row.ID, ContextLength: row.ContextLength})
+		model := tui3.Model{
+			ID:            row.ID,
+			ContextLength: row.ContextLength,
+			ArenaElo:      row.ArenaElo,
+			Output:        row.OutputModalities,
+			// The published answer to "may this call carry a reasoning knob",
+			// and the only thing that lets the picker offer ctrl+t on a row.
+			// Either spelling counts: a model that takes `reasoning` can be
+			// asked to think, and one that takes `reasoning_effort` can be told
+			// how hard — the surface offers levels on both and lets the adapter
+			// resolve what actually travels (catalog's ReasoningWord states the
+			// same three states in words).
+			Reasoning: row.Reasons() || row.ReasoningLevels(),
+		}
+		// PriceUnknown is OpenRouter's "-1", which it uses for its own routers:
+		// they charge whatever the model they pick charges, and nobody yet knows
+		// what that is. Passing the parsed numbers through anyway would tell the
+		// surface a router's prompt token is free and let it report a saving that
+		// is not a fact (catalog.Model.PriceUnknown).
+		if !row.PriceUnknown {
+			model.PromptPrice = row.PromptPrice
+			model.CompletionPrice = row.CompletionPrice
+			model.CacheReadPrice = row.CacheReadPrice
+		}
+		out = append(out, model)
 	}
 	if len(out) == 0 {
 		return nil
@@ -419,8 +522,62 @@ func v3AnswersText(outputs []string) bool {
 	if len(outputs) == 0 {
 		return true
 	}
+	// Text-out and NOTHING else: an image model that captions what it draws
+	// publishes ["image","text"], and letting it through puts a drawing model
+	// in a chat picker. The door's law is "a model you can talk to", and a
+	// published modality list is the only honest witness to it.
 	for _, modality := range outputs {
-		if strings.EqualFold(strings.TrimSpace(modality), "text") {
+		if !strings.EqualFold(strings.TrimSpace(modality), "text") {
+			return false
+		}
+	}
+	return true
+}
+
+// v3SeesImages is the vision gate: the closure internal/session asks before it
+// assembles a message with pictures in it (session.Config.SupportsImages, and
+// internal/tui3's attachment tray is what makes one askable).
+//
+// It answers from the catalog's published `architecture.input_modalities` and
+// from nothing else — no id patterns, no vendor guesses. A model that says it
+// reads images reads images; anything else is a "no" this door can defend.
+//
+// IT NEVER WAITS, for the reason every other question this file asks a catalog
+// never waits: the rows are read through [v3Catalog.ModelsNow], which is nil
+// while a lazily loaded catalog is still warming. That is why it is a closure
+// read per message rather than a value resolved at boot — a cold cache would
+// otherwise pin "cannot see" onto a session for its whole life, and the answer
+// is wanted at the moment somebody attaches a photo, which is minutes later.
+func v3SeesImages(models v3Catalog) func(string) bool {
+	return func(model string) bool {
+		if models == nil {
+			return false
+		}
+		model = strings.TrimSpace(model)
+		if model == "" {
+			return false
+		}
+		for _, row := range models.ModelsNow() {
+			if strings.EqualFold(strings.TrimSpace(row.ID), model) {
+				return v3ReadsImages(row.InputModalities)
+			}
+		}
+		return false
+	}
+}
+
+// v3ReadsImages is the modality test itself.
+//
+// SILENCE IS NO, which is the opposite of what [v3AnswersText] does with it and
+// deliberately so. There, a row that declares nothing is kept because the cost
+// of being wrong is a name missing from a picker. Here the cost of being wrong
+// is a message assembled with a base64 photo in it, sent to a model that cannot
+// read one, and answered with a provider error about a content part — so an
+// unknown modality is a refusal the person can act on ("switch to a model with
+// vision"), which is the honest thing to say when nobody has said otherwise.
+func v3ReadsImages(inputs []string) bool {
+	for _, modality := range inputs {
+		if strings.EqualFold(strings.TrimSpace(modality), "image") {
 			return true
 		}
 	}
@@ -480,7 +637,7 @@ func warmV3Models(models *catalog.Catalog, agent *session.Agent, started string)
 // terminal ownership. Everything the surface would draw as chrome goes to
 // stderr and only what the model said goes to stdout, so a probe can compare
 // stdout with the sentence it asked for.
-func runChatV3Once(cfg session.Config, text string, resumed bool) error {
+func runChatV3Once(cfg session.Config, text, level string, resumed bool) error {
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
@@ -488,6 +645,7 @@ func runChatV3Once(cfg session.Config, text string, resumed bool) error {
 	if err != nil {
 		return err
 	}
+	agent.SetReasoning(level)
 	if notice != "" {
 		fmt.Fprintln(os.Stderr, notice+": "+cfg.SessionFile)
 	}

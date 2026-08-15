@@ -188,6 +188,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// The settings panel is the fullscreen overlay, and it is modal for the same
+	// reason the picker is and one more: there is nothing else on the screen to
+	// send a key to (settings.go).
+	if a.sheet.open && msg.String() != "ctrl+c" {
+		a.sheetKey(msg)
+		return nil
+	}
+
 	// The model overlay is modal: while it is up every key belongs to it and
 	// the draft below is suspended untouched. ctrl+c is the one exception, for
 	// the same reason it is read first below — leaving is never modal.
@@ -206,6 +214,40 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		return a.quit()
+	}
+
+	// COPY MODE is modal, and it is modal one rung below ctrl+c for the same
+	// reason everything else here is: leaving is never modal. While it is up the
+	// surface is a reader, and a key that fell through to the draft would type
+	// into a box whose effect is off screen (copymode.go).
+	if cmd, taken := a.copyKey(msg); taken {
+		return cmd
+	}
+
+	// The welcome box reads two keys and gives every other one back (welcome.go):
+	// ↑/↓ walk the recent sessions, enter opens the one they picked, and
+	// anything else is the person starting work, which puts the box away for
+	// good before the key does whatever it always does.
+	if a.welcome.open {
+		if a.welcomeKey(msg.String()) {
+			return nil
+		}
+		a.dismissWelcome()
+	}
+
+	// tab is the path completion's key, and its only one: "/image " with tab
+	// after it offers this directory's files, and tab again takes the one under
+	// the cursor (files.go). It is read before the lists below because on this
+	// surface tab means nothing else at all.
+	if msg.String() == "tab" {
+		return a.completePath()
+	}
+	// And enter belongs to the LINE under that list, not to the list. A person
+	// who typed a path out in full would otherwise have it swapped for whatever
+	// the ranking put first, by the key they pressed to run the command.
+	if a.comp.open && a.comp.arg && msg.String() == "enter" {
+		a.comp.close()
+		return a.enter()
 	}
 
 	// The typed overlays — the command list, the @ file completion — hang UNDER
@@ -246,6 +288,21 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 
 	case "ctrl+o":
 		a.unfold(a.turn)
+		return nil
+
+	case "ctrl+b":
+		// FREEZE AND READ (copymode.go). ctrl+b used to be the emacs `left` here,
+		// alongside the arrow key that everybody actually presses, and it is spent
+		// on this instead: the alt screen took the terminal's own selection away,
+		// and getting text out of the conversation is a thing this surface could
+		// not do at all. ← is untouched.
+		a.enterCopy()
+		return nil
+
+	case "ctrl+,":
+		// The settings key every application on this machine already has. The
+		// slash is the other door onto the same panel (settings.go).
+		a.openSettings()
 		return nil
 
 	case "pgup":
@@ -290,6 +347,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 
 	case "backspace":
+		// With nothing typed, the thing behind the caret is the attachment tray:
+		// backspace takes the last picture off it (attach.go). It is the same
+		// gesture as deleting a character, applied to the only thing left to
+		// delete, so nothing new has to be learned to undo an attachment.
+		if len(a.input.value) == 0 && a.dropChip() {
+			return a.edited()
+		}
 		a.input.deleteBackward()
 		return a.edited()
 	case "delete":
@@ -301,7 +365,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+w":
 		a.input.deleteWord()
 		return a.edited()
-	case "left", "ctrl+b":
+	case "left":
 		a.input.left()
 		a.touch()
 		return nil
@@ -339,17 +403,21 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 // enter is the submit key, and it has one first meaning: send the draft.
 func (a *app) enter() tea.Cmd {
 	line := strings.TrimSpace(a.input.String())
+	// A FULL TRAY IS A MESSAGE. An empty box with a picture attached is not an
+	// empty message — "what is this?" is often the picture itself — so the two
+	// tests below both ask about the tray as well as about the words.
+	held := len(a.chips) > 0
 	// An empty draft with a call selected is a reader, not a typist: enter
 	// opens what ↑/↓ picked out. A draft of any length is a sentence, and a
 	// sentence wins.
-	if line == "" && a.sel >= 0 {
+	if line == "" && !held && a.sel >= 0 {
 		a.openTool(a.sel)
 		return nil
 	}
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
-	if line == "" {
+	if line == "" && !held {
 		return a.edited()
 	}
 	a.stick = true
@@ -357,12 +425,35 @@ func (a *app) enter() tea.Cmd {
 	// "/model anthropic/…" is exactly the kind of line nobody wants to type
 	// twice, and a recall list that held only the sentences would be a shell
 	// history that dropped the commands.
-	a.remember(line)
+	if line != "" {
+		a.remember(line)
+	}
 	a.dropDraft()
 	if strings.HasPrefix(line, "/") {
+		// A command with a tray full is still a command: /image adds a second
+		// picture rather than sending the first (attach.go).
 		return a.slash(line)
 	}
+	if held {
+		return a.submitImages(line)
+	}
 	return a.submit(line)
+}
+
+// completePath is tab: the file list over a command's path argument, opened if
+// it is not up and committed if it is (files.go).
+func (a *app) completePath() tea.Cmd {
+	if a.comp.open && a.comp.arg {
+		if _, ok := a.comp.choice(); ok {
+			a.completeFile()
+			return a.edited()
+		}
+	}
+	if !a.comp.openArg(&a.input) {
+		return nil
+	}
+	a.touch()
+	return a.loadFiles()
 }
 
 // inputBlock renders the draft — or the picker's filter box in its place — and
@@ -381,7 +472,17 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	if rows < 1 {
 		rows = 1
 	}
-	return draftBlock(&a.input, a.pal, width, rows, "")
+	block, caretX, caretRow := draftBlock(&a.input, a.pal, width, rows, "")
+	// THE TRAY IS PART OF THE BOX, not a fifth thing the frame has to know about
+	// (attach.go). It is one row above the draft, so it is one row of this
+	// block: every geometric question below the conversation already goes
+	// through here, and a strip drawn anywhere else would be a row the
+	// hit-testing and the height had to be told about separately.
+	if strip := a.chipStrip(width); strip != "" {
+		block = append([]string{strip}, block...)
+		caretRow++
+	}
+	return block, caretX, caretRow
 }
 
 // inputHeight is how many rows the input block is taking. Every geometric

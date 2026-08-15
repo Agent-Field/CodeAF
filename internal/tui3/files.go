@@ -21,6 +21,16 @@ import (
 // would be the surface deciding, on a person's behalf, to spend a hundred
 // thousand tokens they never asked to send — and it would do it silently, in a
 // box that shows one line of what it sent.
+//
+// A PICTURE IS THE ONE EXCEPTION, and it is not an exception to that rule but a
+// consequence of it: no tool on the belt turns a PNG into anything a model can
+// look at, so the path in the sentence would be a path nobody can resolve. An
+// image row is therefore tagged "img" and choosing it ATTACHES the file instead
+// of typing it — see attach.go, which owns everything that happens after.
+//
+// The same list answers a command's path argument ("/image shot.png"), opened
+// by tab rather than by "@" and committing the path as text, because there the
+// path IS what the line says.
 
 // The completion's three bounds. The walk is capped so that an @ typed inside a
 // home directory cannot become a filesystem crawl; the list shows a screenful;
@@ -49,6 +59,12 @@ type completion struct {
 	// at is the rune index of the '@' in the draft, and query what follows it.
 	at    int
 	query string
+	// arg says this completion was opened over a command's PATH ARGUMENT
+	// ([argPrefix]) rather than over an @token. Two things follow from it: the
+	// chosen path replaces the argument WHOLE, with no '@' kept in front of it,
+	// and an image is written into the line like any other file, because in
+	// "/image shot.png" the path is what the command takes.
+	arg bool
 	// done is the query this completion just INSERTED at at. It is what keeps
 	// the list from reopening on top of its own answer: the caret ends up
 	// inside a perfectly good @token, and a list that reappeared over it would
@@ -67,7 +83,32 @@ type completion struct {
 
 // sync opens, narrows or closes the completion from the draft and the caret. It
 // is called after every edit; there is no key for it, because the key is "@".
+//
+// A completion opened over a command's argument follows the same call — the
+// draft is still what it is about — but it answers to [argToken] instead, and
+// it stays open while the person types a path with spaces in it.
 func (c *completion) sync(e *editor) {
+	if at, query, ok := argToken(e.value, e.cursor); ok {
+		switch {
+		case query == "" && !(c.open && c.arg):
+			// Nothing typed after the command yet, and nobody asked: tab is what
+			// opens a list over an empty argument.
+			c.open = false
+		case c.arg && query == c.done:
+			// This list just INSERTED that path (the @ completion's own rule, and
+			// here it is what keeps enter from re-completing what enter completed
+			// instead of running the command).
+			c.open = false
+		default:
+			c.narrow(at, query, true)
+		}
+		return
+	}
+	if c.arg {
+		// The line stopped being "/image …": the argument list has nothing left
+		// to complete, and what follows is an ordinary draft.
+		c.open, c.arg = false, false
+	}
 	at, query, ok := atToken(e.value, e.cursor)
 	if !ok || len([]rune(query)) < completeMin {
 		c.open = false
@@ -77,15 +118,55 @@ func (c *completion) sync(e *editor) {
 		c.open = false
 		return
 	}
-	was := c.open && c.at == at
-	c.open, c.at, c.query = true, at, query
+	c.narrow(at, query, false)
+}
+
+// narrow is the half sync and [completion.openArg] share: point the list at a
+// token, re-rank it, and keep the cursor only if it is still walking the same
+// list.
+func (c *completion) narrow(at int, query string, arg bool) {
+	was := c.open && c.at == at && c.arg == arg
+	c.open, c.arg, c.at, c.query = true, arg, at, query
 	c.rank()
 	if !was {
 		c.cursor, c.top = 0, 0
 	}
 }
 
+// openArg is tab: open the list over a command's path argument even when
+// nothing has been typed after the command yet. It reports whether there was an
+// argument to open it over.
+func (c *completion) openArg(e *editor) bool {
+	at, query, ok := argToken(e.value, e.cursor)
+	if !ok {
+		return false
+	}
+	c.narrow(at, query, true)
+	return true
+}
+
 func (c *completion) close() { c.open = false }
+
+// argPrefix is the one command that takes a path (attach.go), spelled as it is
+// typed. A second one would make this a list; one is not a list.
+const argPrefix = "/image "
+
+// argToken finds the path argument the caret is standing in: everything after
+// "/image " up to the caret. A path may hold spaces, so the token runs to the
+// caret rather than back to the last one.
+func argToken(value []rune, cursor int) (int, string, bool) {
+	at := len([]rune(argPrefix))
+	if cursor < at || len(value) < at {
+		return 0, "", false
+	}
+	if !strings.EqualFold(string(value[:at]), argPrefix) {
+		return 0, "", false
+	}
+	if strings.ContainsRune(string(value[at:cursor]), '\n') {
+		return 0, "", false
+	}
+	return at, string(value[at:cursor]), true
+}
 
 // atToken finds the @-word the caret is standing in: the run back to a space,
 // a newline or the start of the draft, which must begin with '@'. An @ in the
@@ -236,7 +317,16 @@ func (c *completion) rows(width, n int, pal palette, hover int) []string {
 	c.follow(n)
 	out := make([]string, 0, n)
 	for at := c.top; at < len(c.hits) && len(out) < n; at++ {
-		out = append(out, overlayRow(c.all[c.hits[at]], "", at == c.cursor, false, len(out) == hover, width, pal))
+		path := c.all[c.hits[at]]
+		// The tag is the row saying what choosing it will DO. Everywhere else on
+		// this list enter types a path; on these rows it attaches a picture
+		// (attach.go), and a list where one row means something else without
+		// saying so is a list that surprises people.
+		note := ""
+		if !c.arg && isImagePath(path) {
+			note = "img"
+		}
+		out = append(out, overlayRow(path, note, at == c.cursor, false, len(out) == hover, width, pal))
 	}
 	return out
 }
@@ -258,6 +348,12 @@ func (a *app) loadFiles() tea.Cmd {
 
 // completeFile is enter on the list: the path replaces what was typed after the
 // '@', and the '@' itself stays. What is submitted is the text as typed.
+//
+// An image chosen from an @token is the one row that does something else: the
+// half-typed token comes OUT of the sentence and the file goes into the tray
+// (attach.go). The token is removed rather than left behind because the person
+// was never writing a path — they were reaching for a picture, and "@pho" is
+// what reaching for it looked like halfway.
 func (a *app) completeFile() {
 	path, ok := a.comp.choice()
 	if !ok {
@@ -265,10 +361,26 @@ func (a *app) completeFile() {
 		return
 	}
 	e := &a.input
-	head := append([]rune(nil), e.value[:a.comp.at+1]...)
+	if !a.comp.arg && isImagePath(path) {
+		head := append([]rune(nil), e.value[:a.comp.at]...)
+		tail := append([]rune(nil), e.value[e.cursor:]...)
+		e.value = append(head, tail...)
+		e.cursor = a.comp.at
+		a.attach(a.resolvePath(path))
+		a.comp.done = ""
+		a.comp.close()
+		a.touch()
+		return
+	}
+	// The '@' is kept and the argument list has none to keep.
+	keep := 1
+	if a.comp.arg {
+		keep = 0
+	}
+	head := append([]rune(nil), e.value[:a.comp.at+keep]...)
 	tail := append([]rune(nil), e.value[e.cursor:]...)
 	e.value = append(append(head, []rune(path)...), tail...)
-	e.cursor = a.comp.at + 1 + len([]rune(path))
+	e.cursor = a.comp.at + keep + len([]rune(path))
 	a.comp.done = path
 	a.comp.close()
 	a.touch()

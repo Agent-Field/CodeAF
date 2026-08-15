@@ -36,8 +36,10 @@ def test_exact_marginals_small():
     """For n=4, training modes must outrank random configurations."""
     n = 4
     X = np.array([[1, 1, 0, 0], [0, 0, 1, 1], [1, 0, 1, 0]], dtype=np.int64)
-    model = PositiveMPS(n, r=2)
-    model.fit(X, epochs=100, lr=0.2, verbose=False)
+    model = PositiveMPS(n, r=3)
+    ll0 = model.log_likelihood(X)
+    model.fit(X, epochs=200, lr=0.5, verbose=False)
+    assert model.log_likelihood(X) > ll0, "learning must raise log-lik"
 
     # all 16 configs, ordered by model probability
     configs = np.array(

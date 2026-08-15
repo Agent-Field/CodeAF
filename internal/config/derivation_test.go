@@ -143,9 +143,21 @@ var settingReaders = map[string]string{
 	KeyToolApprovalMode: "ApprovalPolicy",
 	KeyToolApprovals:    "ApprovalPolicy",
 	KeySpendRail:        "SpendRailUSD",
-	KeyTierLowModel:     "TierKey",
-	KeyTierHighModel:    "TierKey",
-	KeyModelRoles:       "PinKey",
+	// The guardian row is read by the v3 door and becomes session.Config.Guardian.
+	// It names the accessor rather than the field, because the door is the only
+	// caller and the accessor is what it touches.
+	KeyGuardian:      "GuardianEnabledAt",
+	KeyTierLowModel:  "TierKey",
+	KeyTierHighModel: "TierKey",
+	KeyModelRoles:    "PinKey",
+	// The three web-search rows are read by the v3 door, which turns them into
+	// the [search.Options] it resolves the session's pair from
+	// (cmd/aforge/chatv3.go's v3SearchOptions). Each names its own reader
+	// rather than the mapping they share, so a row that stops being read
+	// cannot be proven by its neighbours' call site.
+	KeySearchProvider: "SearchProviderAt",
+	KeyExaKey:         "ExaKeyAt",
+	KeyJinaKey:        "JinaKeyAt",
 	// The context law's knobs are read live by ctxbudget on every call — the
 	// environment name is the reader, as with tenure; Load seeds the
 	// persisted half through ctxbudget.Configure.

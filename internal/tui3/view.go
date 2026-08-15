@@ -55,6 +55,9 @@ const (
 	// chromeOverlay is one row of whichever list is open; index is its position
 	// in that list's own rows.
 	chromeOverlay
+	// chromeWelcome is one row of the welcome box; index is its position within
+	// the box, which [app.welcomeSlotAt] turns back into a recent session.
+	chromeWelcome
 )
 
 // chromeRow is one row of the frame below the conversation.
@@ -72,7 +75,12 @@ func (a *app) View() tea.View {
 	v := tea.NewView(frame)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeAllMotion
-	v.ReportFocus = false
+	// FOCUS REPORTING IS ON, and it buys exactly one thing: a turn that ends on
+	// a window nobody is looking at can say so (notify.go). It costs two escape
+	// sequences at startup and a message per alt-tab, and a terminal that does
+	// not speak it simply never sends one — which the notification treats as
+	// "focused", i.e. as silence.
+	v.ReportFocus = true
 	// Bracketed paste stays ON — a pasted stack trace arrives as one
 	// tea.PasteMsg with its newlines intact instead of as a stack of enters,
 	// each of which would submit. v2 enables it unless this says otherwise, and
@@ -89,8 +97,16 @@ func (a *app) View() tea.View {
 // frame is the whole screen and where the caret sits in it.
 func (a *app) frame() (string, int, int) {
 	width, height := a.size()
+	// The settings panel is the one thing on this surface that takes the whole
+	// frame, and it takes it WHOLE: no conversation above it, no input line
+	// under it, nothing of the frame below showing through at the edges
+	// (settings.go). A sheet drawn into a viewport is a sheet you read past.
+	if a.sheet.open {
+		lines, _, caretX, caretY := a.sheetFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
 	chrome, _, caretX, caretRow := a.chrome(width)
-	body, pad := a.window(width, a.viewHeight())
+	body, pad := a.bodyRows(width, a.viewHeight())
 
 	rows := make([]string, 0, height)
 	for i := 0; i < pad; i++ {
@@ -133,6 +149,13 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		marks = append(marks, mark)
 	}
 
+	// The welcome box sits ABOVE the rule, which is where it belongs: the rule
+	// is the seam between what happened and what you are about to say, and the
+	// box is about neither — it is what there is instead of a conversation
+	// (welcome.go).
+	for i, line := range a.welcomeRows(width) {
+		add(line, chromeRow{kind: chromeWelcome, index: i})
+	}
 	if roomy {
 		add(a.rule(width), chromeRow{})
 	}
@@ -162,9 +185,35 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.overlayRows(width, a.overlayHeight()) {
 		add(line, chromeRow{kind: chromeOverlay, index: i})
 	}
-	add(a.status(width), chromeRow{})
+	add(a.statusRow(width), chromeRow{})
 
 	return rows, marks, caretX + len(inputPad), caretRow
+}
+
+// statusRow is the status line with the reasoning level on the model segment:
+// "anthropic/claude-sonnet-4.5:high" where a level has been dialled, and the
+// bare model id — the line exactly as it was — where none has.
+//
+// The level belongs on that line because it is a fact about what the next
+// request will cost and how long it will take, and the model segment is where a
+// person already looks for both. It is spelled with a colon rather than a fourth
+// segment for the same reason it is spelled that way on the picker row: it is
+// not a thing beside the model, it is how this model is being run.
+//
+// The splice happens by LENDING the model field its suffixed form for the length
+// of one call. [app.status] reads a.model directly (render.go), the frame is
+// drawn on the model goroutine one row at a time, and the alternative is a
+// second copy of the status line's segment layout — width budget, narrow-frame
+// dropping and all — kept in step with the first by nothing but attention.
+func (a *app) statusRow(width int) string {
+	level := a.reasoningFor(a.model)
+	if level == "" || a.model == "" {
+		return a.status(width)
+	}
+	id := a.model
+	a.model = id + ":" + level
+	defer func() { a.model = id }()
+	return a.status(width)
 }
 
 // chromeAt resolves a screen row to the chrome row drawn on it. It is the
@@ -183,9 +232,10 @@ func (a *app) chromeAt(y int) (chromeRow, bool) {
 // chromeHeight is how many rows the frame spends below the conversation.
 func (a *app) chromeHeight() int {
 	_, height := a.size()
-	// status, the input block, and whatever the two optional blocks and the open
-	// list are holding.
-	n := 1 + a.inputHeight() + a.overlayHeight() + a.consentHeight() + a.followHeight()
+	// status, the input block, and whatever the two optional blocks, the open
+	// list and the welcome box are holding.
+	n := 1 + a.inputHeight() + a.overlayHeight() + a.consentHeight() + a.followHeight() +
+		a.welcomeHeight()
 	if height >= 6 {
 		n += 2 // the rule, and the blank above the draft
 	}
@@ -235,6 +285,22 @@ func (a *app) window(width, height int) ([]row, int) {
 		return visible, pad
 	}
 	return visible, 0
+}
+
+// bodyRows is what the frame draws above the chrome: the live conversation, or
+// the frozen snapshot while copy mode is up (copymode.go).
+//
+// It is the ONE place the two can be swapped, and the swap is deliberately not
+// in [app.window]: window is what the wheel, the click hit-testing and the
+// selection all resolve through, and every one of those questions is about the
+// LIVE conversation whatever is on screen. A frozen view answers "what is
+// drawn" and nothing else, which is why the pointer paths return early while it
+// is up rather than being redirected here.
+func (a *app) bodyRows(width, height int) ([]row, int) {
+	if a.copy.on {
+		return a.copyRows(width, height)
+	}
+	return a.window(width, height)
 }
 
 // bodyTop is the screen row the conversation starts on, or -1 when the frame is

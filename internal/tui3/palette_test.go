@@ -191,7 +191,7 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	}
 
 	// The model in use is accent, wherever the cursor happens to be.
-	rows := a.pick.rows(a.width, a.overlayHeight(), a.pal, -1)
+	rows := a.pick.rows(a.width, a.overlayHeight(), a.pal, -1, a.reasoningFor)
 	if !strings.Contains(rows[1], a.pal.accent("openai/gpt-4.1-mini")) {
 		t.Fatalf("the current model is not marked:\n%s", rows[1])
 	}

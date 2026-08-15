@@ -114,7 +114,223 @@ var (
 	hueBad    = mustHue("#D08770", heavy)
 	hueAsk    = mustHue("#C08FE8", heavy)
 	hueHover  = mustHue("#2E3440", flat)
+	// hueViolet is the SHELL OPERATOR's hue (shellx.go), and it is deliberately
+	// NOT the question hue above.
+	//
+	// The fifth colour's law is that seeing #C08FE8 means one thing — a person
+	// is being waited on — so a pipe in a command line may not wear it. This is
+	// a dimmer, greyer violet a whole tier below it: 97 rather than 140 in the
+	// 256 fallback, so the two never collapse into each other on the rung where
+	// hues get rounded. It is the one hue both ladders share, because it is
+	// mid-tone by construction and reads on a dark terminal and a white page
+	// alike.
+	hueViolet = mustHue("#8F6FA8", quiet)
 )
+
+// ── THE LIGHT LADDER ────────────────────────────────────────────────────────
+//
+// The table above is dark-terminal first and was, for four waves, the only
+// table there was. A person on a white terminal got soft pastels authored
+// against black: #D8DEE9 body ink on #FFFFFF is very nearly invisible, and the
+// dim tier below it is invisible outright.
+//
+// So there is a second ladder, authored the same way and against the same law —
+// nothing bright — but for a page rather than for a void. The moves are the
+// obvious ones and they are all the same move: what carried by being LIGHTER
+// than the background now carries by being DARKER than it.
+//
+//	role    dark      light     what changed
+//	ink     #D8DEE9   #3B4252   the body inverts: near-black on the page
+//	accent  #9DC3E6   #5E81AC   the pastel blue saturates; a pastel on white
+//	                            is a smudge
+//	muted   #7FA6C9   #8098B8   accent, one step back, on both ladders
+//	dim     #6B7280   #9AA3B2   the meta tier goes LIGHTER, not darker: it
+//	                            recedes toward the page
+//	add     #A3BE8C   #7BA23F   nord's green has no contrast on white
+//	del     #BF616A   #B55B64   already dark enough; barely moves
+//	bad     #D08770   #C57A3C   soft orange-red, one step down
+//	ask     #C08FE8   #6F3FA8   THE QUESTION HUE, inverted rather than dimmed:
+//	                            it has to lead on a page too
+//	hover   #2E3440   #E5E9F0   one step off the #ECEFF4 page, the way the dark
+//	                            hover is one step off black
+//	violet  #8F6FA8   #8F6FA8   the shared one (above)
+//
+// Every light index was checked against its neighbours the way #C08FE8 was:
+// no two roles in this ladder resolve to the same xterm-256 index, because the
+// 256 rung is where an unchecked pair silently becomes one colour. bundle_test
+// asserts it, and any future change here owes the same check.
+var (
+	lightInk    = mustHue("#3B4252", flat)
+	lightAccent = mustHue("#5E81AC", heavy)
+	lightMuted  = mustHue("#8098B8", flat)
+	lightDim    = mustHue("#9AA3B2", quiet)
+	lightAdd    = mustHue("#7BA23F", heavy)
+	lightDel    = mustHue("#B55B64", quiet)
+	lightBad    = mustHue("#C57A3C", heavy)
+	lightAsk    = mustHue("#6F3FA8", heavy)
+	lightHover  = mustHue("#E5E9F0", flat)
+)
+
+// ramp is one whole ladder: every role this surface paints, resolved once.
+//
+// The palette holds a ramp rather than reading the package vars directly, which
+// is the entire mechanism of the light theme — every p.ink(), p.dim() and
+// p.hover() call site in the package was already going through the palette, so
+// the second ladder cost the call sites nothing.
+type ramp struct {
+	ink, accent, muted, dim hue
+	add, del, bad, ask      hue
+	hover, violet           hue
+	fade                    [3]hue
+}
+
+var darkRamp = ramp{
+	ink: hueInk, accent: hueAccent, muted: hueMuted, dim: hueDim,
+	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk,
+	hover: hueHover, violet: hueViolet, fade: thoughtFade,
+}
+
+var lightRamp = ramp{
+	ink: lightInk, accent: lightAccent, muted: lightMuted, dim: lightDim,
+	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk,
+	hover: lightHover, violet: hueViolet, fade: lightFade,
+}
+
+// lightFade is the thinking window's gradient on a page. It fades toward WHITE
+// rather than toward black — the gradient's whole job is "this line is on its
+// way out", and on a light terminal the way out is up, not down.
+var lightFade = [3]hue{
+	liftOf(lightDim, fadeOldest),
+	liftOf(lightDim, fadeMiddle),
+	liftOf(lightDim, fadeNewest),
+}
+
+// liftOf is [fadeOf]'s mirror: one hue at pct opacity over WHITE.
+func liftOf(h hue, pct int) hue {
+	mix := func(c uint8) uint8 { return uint8((int(c)*pct + 255*(100-pct) + 50) / 100) }
+	r, g, b := mix(h.r), mix(h.g), mix(h.b)
+	return hue{r: r, g: g, b: b, idx: nearest256(r, g, b), tier: h.tier}
+}
+
+// ── THE THEME SEAM ──────────────────────────────────────────────────────────
+//
+// theme is which ladder a surface paints from.
+type theme uint8
+
+const (
+	// themeAuto asks the terminal, and falls back to dark. See [detectTheme].
+	themeAuto theme = iota
+	themeDark
+	themeLight
+)
+
+// themeFromRow turns a settings row's value into a theme. It is THE SEAM, and
+// it is a seam rather than a wire because the registry row does not exist yet:
+// internal/config owns the rows, this package owns the ladders, and the day the
+// row lands (a Display tab entry beside the nerd-font tier) it is one call —
+// `newThemedPalette(profile, ascii, themeFromRow(settings.Get("display.theme")))`
+// — and nothing else in this package moves.
+//
+// Anything unrecognized is auto, which is the honest answer to a row somebody
+// spelled wrong: ask the terminal rather than pin the wrong ladder.
+func themeFromRow(row string) theme {
+	switch strings.ToLower(strings.TrimSpace(row)) {
+	case "dark":
+		return themeDark
+	case "light":
+		return themeLight
+	default:
+		return themeAuto
+	}
+}
+
+// detectTheme is the auto answer: COLORFGBG, and nothing else.
+//
+// There is exactly one thing a terminal will tell you about its background
+// without being interrogated, and it is this variable — "15;0" is light-on-dark,
+// "0;15" is dark-on-light. The field that matters is the LAST one (some
+// terminals send three, with the cursor colour in the middle), read as an ANSI
+// index: 0-6 and 8 are the dark half of the sixteen, everything else is light.
+//
+// The other way to ask — OSC 11, a query and a reply parsed off the input
+// stream — is deliberately not done here. It is a round trip on a terminal that
+// may never answer, in a constructor that must not block, to decide a colour
+// that a person who cares can pin outright. Unset means dark, which is what
+// this surface has always assumed and what most terminals are.
+func detectTheme(env func(string) string) theme {
+	if env == nil {
+		return themeDark
+	}
+	value := strings.TrimSpace(env("COLORFGBG"))
+	if value == "" {
+		return themeDark
+	}
+	fields := strings.Split(value, ";")
+	background, err := strconv.Atoi(strings.TrimSpace(fields[len(fields)-1]))
+	if err != nil {
+		return themeDark
+	}
+	if background >= 0 && background <= 6 || background == 8 {
+		return themeDark
+	}
+	return themeLight
+}
+
+func rampFor(t theme, env func(string) string) ramp {
+	if t == themeAuto {
+		t = detectTheme(env)
+	}
+	if t == themeLight {
+		return lightRamp
+	}
+	return darkRamp
+}
+
+// ── THE THINKING WINDOW'S FADE ──────────────────────────────────────────────
+//
+// While a model reasons, the last three lines of its working are on screen and
+// nothing else (thinking.go). Three lines of identical dim text is a paragraph
+// that has to be READ to learn which end of it is new, so the window is painted
+// as an OPACITY GRADIENT instead: the oldest visible line furthest toward the
+// background, the newest at the dim tier it will keep when it settles.
+//
+// The stops are the dim ink at three opacities over black — a terminal will not
+// say what its background is, and every terminal this palette was authored for
+// is dark, so black is the honest anchor. Naming the opacities rather than the
+// colours is the point: change hueDim and the fade follows it, which is what
+// stops the gradient drifting off the tier it belongs to.
+//
+//	35%  #25282D  the oldest line — read already, on its way out
+//	60%  #40444D  the middle
+//	85%  #5B616D  the newest, one step under the settled block's own dim
+//
+// Below ANSI256 there is no hue to fade — the sixteen are the user's theme —
+// and the window falls back to the dim tier's weight, which is what the block
+// has always worn. NO_COLOR gets three plain lines: the newest is still last,
+// which is the fact the gradient was drawing.
+const (
+	fadeOldest = 35
+	fadeMiddle = 60
+	fadeNewest = 85
+)
+
+// thoughtFade is the ramp, oldest first. It is derived at init rather than
+// authored so that the hexes in the table above can be ASSERTED (thinking_test)
+// instead of maintained by hand.
+var thoughtFade = [3]hue{
+	fadeOf(hueDim, fadeOldest),
+	fadeOf(hueDim, fadeMiddle),
+	fadeOf(hueDim, fadeNewest),
+}
+
+// fadeOf is one hue at pct opacity over black, rounded rather than truncated:
+// truncation loses a whole value on two of the three stops and the ramp's job
+// is that its steps are even.
+func fadeOf(h hue, pct int) hue {
+	mix := func(c uint8) uint8 { return uint8((int(c)*pct + 50) / 100) }
+	r, g, b := mix(h.r), mix(h.g), mix(h.b)
+	return hue{r: r, g: g, b: b, idx: nearest256(r, g, b), tier: h.tier}
+}
 
 // mustHue parses an authored "#RRGGBB" and resolves its 256-colour neighbour.
 // It panics on a malformed literal, which is a compile-time mistake caught at
@@ -180,15 +396,34 @@ type palette struct {
 	// colour is the profile's business, and the two questions are independent
 	// (a truecolor terminal in a C locale is a real terminal).
 	ascii bool
+	// ramp is the ladder this palette paints from — dark, or light.
+	ramp ramp
+	// linear is the screen-reader tier (Options.Linear): no motion, no pointer.
+	// It gates the two paints that mean neither of those things to a reader —
+	// the thinking window's gradient and the hover background — because a
+	// gradient is an animation frozen in space and a hover is a pointer's
+	// shadow, and a surface being read aloud has neither.
+	linear bool
 }
 
 func newPalette(p tokens.Profile, ascii bool) palette {
-	return palette{profile: p, ascii: ascii}
+	return palette{profile: p, ascii: ascii, ramp: darkRamp}
+}
+
+// newThemedPalette is [newPalette] with the ladder said out loud. It is what
+// the settings row will call through [themeFromRow]; detection is the default
+// and pins are the exception, which is the same shape every other display
+// question on this surface has.
+func newThemedPalette(p tokens.Profile, ascii bool, t theme, env func(string) string) palette {
+	pal := newPalette(p, ascii)
+	pal.ramp = rampFor(t, env)
+	return pal
 }
 
 // detectPalette reads the terminal the way the rest of the tree does.
 func detectPalette() palette {
-	return newPalette(tokens.DetectProfile(os.Getenv), detectASCII(os.Getenv))
+	return newThemedPalette(
+		tokens.DetectProfile(os.Getenv), detectASCII(os.Getenv), themeAuto, os.Getenv)
 }
 
 // detectASCII decides whether this surface may draw box-drawing characters.
@@ -246,16 +481,63 @@ func (p palette) paint(s string, h hue) string {
 	}
 }
 
-func (p palette) ink(s string) string    { return p.paint(s, hueInk) }
-func (p palette) accent(s string) string { return p.paint(s, hueAccent) }
-func (p palette) muted(s string) string  { return p.paint(s, hueMuted) }
-func (p palette) dim(s string) string    { return p.paint(s, hueDim) }
-func (p palette) add(s string) string    { return p.paint(s, hueAdd) }
-func (p palette) del(s string) string    { return p.paint(s, hueDel) }
-func (p palette) bad(s string) string    { return p.paint(s, hueBad) }
+func (p palette) ink(s string) string    { return p.paint(s, p.ramp.ink) }
+func (p palette) accent(s string) string { return p.paint(s, p.ramp.accent) }
+func (p palette) muted(s string) string  { return p.paint(s, p.ramp.muted) }
+func (p palette) dim(s string) string    { return p.paint(s, p.ramp.dim) }
+func (p palette) add(s string) string    { return p.paint(s, p.ramp.add) }
+func (p palette) del(s string) string    { return p.paint(s, p.ramp.del) }
+func (p palette) bad(s string) string    { return p.paint(s, p.ramp.bad) }
+
+// violet is the shell operator's tier and nothing else on this surface — see
+// [hueViolet] for why it is not the question hue.
+func (p palette) violet(s string) string { return p.paint(s, p.ramp.violet) }
+
+// underline is the third bare attribute, and it has one job: a PATH inside a
+// highlighted command (shellx.go). A path is the one token in a command line
+// that names a thing you could go and open, and underline is how every terminal
+// on earth has said "this is a location" since before there were hyperlinks.
+//
+// "When the terminal allows" is the profile question and not the glyph one: a
+// terminal told to draw no SGR at all (NO_COLOR) is not underlined either, and
+// everything above that rung can do SGR 4 — it is in the original ECMA-48 set.
+func (p palette) underline(s string) string {
+	if p.profile == tokens.NoColor || s == "" {
+		return s
+	}
+	return "\x1b[4m" + s + "\x1b[24m"
+}
+
+// fade paints one line of the streaming thinking window: stop 0 is the oldest
+// and faintest, the last stop the newest. See [thoughtFade] for the ramp.
+//
+// The gradient is a COLOUR question and so it asks the profile and not the
+// glyph tier: a truecolor terminal in a C locale is still a truecolor terminal,
+// and the ascii flag has exactly one job in this file (box drawing). Where
+// there is no hue — the sixteen, and NO_COLOR — the whole window comes back at
+// the dim tier, unfaded, which is what it wore before this ramp existed.
+func (p palette) fade(s string, stop int) string {
+	switch p.profile {
+	case tokens.TrueColor, tokens.ANSI256:
+	default:
+		return p.dim(s)
+	}
+	// The linear tier takes the same answer the sixteen do: a gradient is an
+	// animation held still, and it says nothing to a reader.
+	if p.linear {
+		return p.dim(s)
+	}
+	if stop < 0 {
+		stop = 0
+	}
+	if stop >= len(p.ramp.fade) {
+		stop = len(p.ramp.fade) - 1
+	}
+	return p.paint(s, p.ramp.fade[stop])
+}
 
 // ask is the question hue: the consent block, and nothing else on this surface.
-func (p palette) ask(s string) string { return p.paint(s, hueAsk) }
+func (p palette) ask(s string) string { return p.paint(s, p.ramp.ask) }
 
 // askBold is what the question's own marker takes — the hue and the weight
 // together, so the row a person has to answer leads on a truecolor terminal and
@@ -272,18 +554,19 @@ func (p palette) askBold(s string) string { return p.bold(p.ask(s)) }
 // A terminal below ANSI256 gets the row back untouched: see the note at the top
 // of this file for why there is no weight-tier fallback here.
 func (p palette) hover(s string, width int) string {
-	if s == "" {
+	if s == "" || p.linear {
 		return s
 	}
 	if pad := width - ansi.StringWidth(s); pad > 0 {
 		s += strings.Repeat(" ", pad)
 	}
+	h := p.ramp.hover
 	switch p.profile {
 	case tokens.TrueColor:
-		return "\x1b[48;2;" + itoa(int(hueHover.r)) + ";" + itoa(int(hueHover.g)) + ";" +
-			itoa(int(hueHover.b)) + "m" + s + "\x1b[49m"
+		return "\x1b[48;2;" + itoa(int(h.r)) + ";" + itoa(int(h.g)) + ";" +
+			itoa(int(h.b)) + "m" + s + "\x1b[49m"
 	case tokens.ANSI256:
-		return "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m" + s + "\x1b[49m"
+		return "\x1b[48;5;" + itoa(int(h.idx)) + "m" + s + "\x1b[49m"
 	default:
 		return s
 	}
@@ -331,6 +614,12 @@ func (p palette) railCont() string {
 	return railCont
 }
 
+// product is what this surface calls itself, everywhere it speaks: the status
+// line, the welcome box's wordmark, /help. It is written down ONCE because a
+// product name spelled out at four call sites is a product name that gets
+// renamed at three of them.
+const product = "openaf"
+
 // The glyph vocabulary of this surface.
 //
 // There is NO success glyph, deliberately and permanently (D11): a quiet line
@@ -368,6 +657,58 @@ const (
 	glyphAdd = "+"
 	glyphDel = "−"
 )
+
+// ── THE LINEAR TIER (Options.Linear) ────────────────────────────────────────
+//
+// Linear mode is the SCREEN-READER tier, and it is one question: what does this
+// surface look like to somebody who is not looking at it? Three answers, and
+// all three are subtractions:
+//
+//	no animation   a spinner read aloud is a word repeated forever
+//	no hover       a pointer's shadow is nothing to a reader
+//	no glyphs      "╰─▶" is announced as three characters nobody named
+//
+// So every marker that carries meaning by SHAPE gets an ASCII stand-in that
+// carries it by NAME, and every marker that carries it by motion stops moving.
+// The colours stay: a screen reader ignores SGR, and a person using linear mode
+// on a terminal that has hues loses nothing by keeping them.
+//
+// The stand-ins are the obvious ones. `*` is running because it is what every
+// installer that ever printed a progress line used, and `o` is queued because
+// it is the empty circle spelled in one byte.
+const (
+	glyphYouASCII    = "> "
+	glyphToolASCII   = "-> "
+	glyphBadASCII    = "x"
+	glyphIdleASCII   = "."
+	glyphQueuedASCII = "o"
+	glyphRunASCII    = "*"
+)
+
+// youGlyph and toolGlyph are the two markers the transcript opens rows with.
+// Everything else on this surface is either inside a tool line (toolview.go
+// asks the palette for its own marks) or is a word.
+func (p palette) youGlyph() string {
+	if p.linear {
+		return glyphYouASCII
+	}
+	return glyphYou
+}
+
+func (p palette) toolGlyph() string {
+	if p.linear {
+		return glyphToolASCII
+	}
+	return glyphTool
+}
+
+// badGlyph is the one glyph a failure is allowed to spend.
+func (p palette) badGlyph() string {
+	if p.linear {
+		return glyphBadASCII
+	}
+	return glyphBad
+}
 
 // spinnerStep is how many frame ticks one braille frame lasts. The frame clock
 // runs at [frameInterval] (33ms) because that is the repaint ceiling, but the

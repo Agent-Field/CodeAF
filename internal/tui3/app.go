@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -217,12 +219,26 @@ type app struct {
 	cost   float64
 	tokens int
 	// ctxWindow is the model's context in tokens as this surface last set it,
-	// and ctxBytes what the conversation currently weighs. The pair is the
+	// and ctxTokens what the conversation currently weighs. The pair is the
 	// meter in the status line. The window is TRACKED rather than asked for
 	// because session exposes no getter — the surface is the one that tells the
 	// agent (see [app.switchModel]), so the surface is the one that knows.
 	ctxWindow int
-	ctxBytes  int
+	ctxTokens int
+	// inputTokens is the session's prompt-token total, and cacheRead/cacheWrite
+	// its prompt-cache totals. The first two together are the status line's warm
+	// share — the fraction of everything this session has sent that came off a
+	// cache — and they are held apart rather than as a ratio because the two
+	// provider dialects disagree about whether one contains the other
+	// (session.Usage.CachedShare owns that reconciliation).
+	//
+	// cacheWrite is not drawn. It is kept beside its pair because "is the cache
+	// working" is one question with two halves, and a surface holding only the
+	// half it currently draws is one that has to go back to the session to
+	// answer the obvious follow-up.
+	inputTokens int
+	cacheRead   int
+	cacheWrite  int
 
 	// stream is the channel being pumped and gen its generation. gen is
 	// bumped by every Submit so that a late event from an abandoned stream can
@@ -269,6 +285,12 @@ type app struct {
 	// think is the reasoning block currently streaming, or -1 (thinking.go).
 	think int
 
+	// chips are the pictures attached to the message being written, drawn as a
+	// tray above the box (attach.go). sent holds the ones a message in flight
+	// took, so a refusal can put them back where the person left them.
+	chips []chip
+	sent  []chip
+
 	// menu is the command list and comp the @ file completion — the two
 	// overlays that open by TYPING rather than by a key (commands.go,
 	// files.go). They are not modal: the draft under them keeps the keyboard.
@@ -289,6 +311,46 @@ type app struct {
 	// between, and it must never be waited for. Nil falls through to the cache
 	// and the built-ins (see [app.modelList]).
 	models func() []Model
+
+	// sheet is the settings panel (settings.go): the one FULLSCREEN thing this
+	// surface draws, and the only overlay that is modal for the pointer as well
+	// as for the keyboard. Closed, it costs the frame nothing.
+	sheet sheet
+	// profileDir is where the panel's writes land, and settings the registry it
+	// edits. The registry is built at the first /settings rather than at boot —
+	// it is a door onto a file, and a surface that may never be asked about
+	// settings should not open one.
+	profileDir string
+	settings   *config.Settings
+
+	// copy is the frozen viewport a person reads and yanks out of (copymode.go).
+	// Closed, it costs the frame nothing.
+	copy copyMode
+	// tmux says this surface is inside a multiplexer, so a clipboard write has
+	// to be wrapped in its passthrough (copymode.go). It is read once, from
+	// TERM, because a terminal does not change what it is mid-session.
+	tmux bool
+
+	// focused is whether the terminal window has the keyboard, and seenFocus
+	// whether it has ever told us (notify.go). The pair is what decides whether
+	// a finished turn is worth a notification: a person watching the screen does
+	// not need to be told what they are looking at.
+	focused   bool
+	seenFocus bool
+
+	// linear is the screen-reader tier (Options.Linear): one column, no
+	// animation, no hover, ASCII markers. It is read by the rendering branches
+	// that draw motion or shape, and by nothing else.
+	linear bool
+
+	// welcome is the box an empty session opens with (welcome.go). It is the
+	// only animation on this surface that is not a spinner, and it runs once.
+	welcome welcome
+	// recentSessions answers the box's right column, and resume opens one of
+	// them. Both are nil on a surface the door did not wire, and then the box
+	// says it has no sessions rather than pretending to have lost them.
+	recentSessions func() []Session
+	resume         func(file string) (Agent, error)
 }
 
 func newApp(ctx context.Context, opts Options) *app {
@@ -299,25 +361,43 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	a := &app{
-		ctx:       ctx,
-		agent:     opts.Agent,
-		fresh:     opts.Fresh,
-		workspace: place,
-		place:     filepath.Base(place),
-		file:      opts.SessionFile,
-		resumed:   opts.Resumed,
-		models:    opts.Models,
-		history:   opts.History,
-		draftFile: opts.DraftFile,
-		ctxWindow: opts.ContextWindow,
-		live:      -1,
-		sel:       -1,
-		think:     -1,
-		unfolded:  map[int]bool{},
-		stick:     true,
-		width:     80,
-		height:    24,
-		pal:       detectPalette(),
+		ctx:            ctx,
+		agent:          opts.Agent,
+		fresh:          opts.Fresh,
+		workspace:      place,
+		place:          filepath.Base(place),
+		file:           opts.SessionFile,
+		resumed:        opts.Resumed,
+		models:         opts.Models,
+		history:        opts.History,
+		draftFile:      opts.DraftFile,
+		ctxWindow:      opts.ContextWindow,
+		profileDir:     opts.ProfileDir,
+		settings:       opts.Settings,
+		recentSessions: opts.RecentSessions,
+		resume:         opts.Resume,
+		live:           -1,
+		sel:            -1,
+		think:          -1,
+		unfolded:       map[int]bool{},
+		stick:          true,
+		width:          80,
+		height:         24,
+		pal:            detectPalette(),
+		linear:         opts.Linear,
+		tmux:           tmuxTerm(os.Getenv),
+		// A terminal that has said nothing is assumed to HAVE the keyboard, which
+		// is the quiet assumption: the cost of getting it wrong is a notification
+		// nobody got, and the cost of the other default is a notification every
+		// turn on a screen somebody is watching (notify.go).
+		focused: true,
+	}
+	a.copy.mark = -1
+	if a.linear {
+		// The linear tier is a palette question as well as an app one: the two
+		// paints that mean motion and pointer stop, and the rail drops to the
+		// ASCII it already had a spelling for.
+		a.pal.linear, a.pal.ascii = true, true
 	}
 	if a.agent != nil {
 		a.model = a.agent.Model()
@@ -330,6 +410,16 @@ func newApp(ctx context.Context, opts Options) *app {
 	// anything of its own, so the notices below land where a person's eye
 	// already is: at the bottom, next to the box.
 	a.replay()
+	// The box is decided HERE, between the replay and the first thing the
+	// surface says of its own: "empty" has to mean "the conversation is empty",
+	// and every line below this one is the surface talking (welcome.go).
+	a.openWelcome()
+	if a.linear {
+		// The box still opens; it just opens FINISHED. Its arrival animation is
+		// the one piece of motion on this surface that is not a spinner, and
+		// linear mode's rule is the same for both.
+		a.welcome.step = welcomeFrames
+	}
 	a.measureContext()
 	if notice := strings.TrimSpace(opts.Notice); notice != "" {
 		a.note(notice)
@@ -348,7 +438,15 @@ func newApp(ctx context.Context, opts Options) *app {
 
 var _ tea.Model = (*app)(nil)
 
-func (a *app) Init() tea.Cmd { return nil }
+// Init starts the paint clock when — and only when — the first frame has
+// something to animate. That is the welcome box's arrival and nothing else: an
+// idle surface with no box is a surface with no wakeups at all.
+func (a *app) Init() tea.Cmd {
+	if a.welcome.animating() {
+		return a.wake()
+	}
+	return nil
+}
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -366,6 +464,16 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return a, a.key(msg)
 
+	case tea.FocusMsg:
+		// The terminal reports focus (View asks for it in view.go), so the
+		// notification has something honest to gate on — see notify.go.
+		a.focused, a.seenFocus = true, true
+		return a, nil
+
+	case tea.BlurMsg:
+		a.focused, a.seenFocus = false, true
+		return a, nil
+
 	case tea.PasteMsg:
 		// Bracketed paste, whole, in one message — the terminal told us where
 		// it started and where it ended, so the newlines inside it are text and
@@ -382,6 +490,29 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.saveDraft()
 
 	case tea.MouseWheelMsg:
+		// COPY MODE OWNS THE WHEEL while it is up, because the viewport it froze
+		// is the thing the wheel would otherwise move (copymode.go).
+		if a.copy.on {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.copyScroll(-3)
+			case tea.MouseWheelDown:
+				a.copyScroll(3)
+			}
+			return a, nil
+		}
+		// The settings panel is modal for the pointer too: it is the whole
+		// screen, so there is no conversation under it for a wheel to reach.
+		if a.sheet.open {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.sheet.move(-3)
+			case tea.MouseWheelDown:
+				a.sheet.move(3)
+			}
+			a.touch()
+			return a, nil
+		}
 		switch msg.Mouse().Button {
 		case tea.MouseWheelUp:
 			a.scroll(-3)
@@ -391,7 +522,23 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		if a.copy.on {
+			// A click in copy mode acts on nothing: the rows under the pointer are
+			// a FROZEN snapshot, and expanding a call in it would be expanding a
+			// row that is no longer where the conversation says it is.
+			return a, nil
+		}
 		if msg.Mouse().Button == tea.MouseLeft {
+			if a.sheet.open {
+				a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
+				return a, nil
+			}
+			// A chip is the one thing below the conversation a click can take
+			// off, and it is the one thing down there that needs the COLUMN as
+			// well as the row (attach.go).
+			if a.chipPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			a.press(msg.Mouse().Y)
 		}
 		return a, nil
@@ -400,6 +547,17 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Motion is the cheapest and commonest message this surface gets — a
 		// pointer crossing the window sends one per cell — so [app.setHover]
 		// repaints only when the row under it actually changed (hover.go).
+		//
+		// Two surfaces have no hover at all and drop it here rather than paying
+		// for a hit-test per cell: the frozen viewport (nothing under the pointer
+		// is actionable) and the linear tier (there is no pointer).
+		if a.copy.on || a.linear {
+			return a, nil
+		}
+		if a.sheet.open {
+			a.sheetHover(msg.Mouse().Y)
+			return a, nil
+		}
 		a.setHover(msg.Mouse().Y)
 		return a, nil
 
@@ -448,7 +606,12 @@ func (a *app) paint() tea.Cmd {
 		a.refreshUsage()
 	}
 	a.promoteMarkdown()
-	if a.state == stateWorking {
+	// The welcome box's one-shot animation is the second and last reason this
+	// clock runs while nothing is being asked of the model. It steps here and
+	// stops itself (welcome.go), which is what makes it one-shot rather than a
+	// loop with a condition somebody has to remember to write.
+	a.welcome.tick()
+	if a.state == stateWorking || a.welcome.animating() {
 		return frameTick()
 	}
 	a.painting = false
@@ -483,6 +646,9 @@ func (a *app) promoteMarkdown() {
 // The generation is assigned HERE and never at submit time, because a steering
 // submit must not invalidate the stream it is steering.
 func (a *app) adopt(msg submittedMsg) tea.Cmd {
+	// The attachment tray settles on the same answer: a refused message keeps
+	// its pictures, an accepted one has spent them (attach.go).
+	a.chipsSettled(msg.err)
 	if msg.err != nil {
 		a.note("submit failed: " + msg.err.Error())
 		a.settle()
@@ -504,6 +670,12 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 // the clock decides when a flood becomes a frame. Everything else is discrete
 // and paints at once — a tool beginning is a fact a person is waiting for.
 func (a *app) event(ev session.Event) tea.Cmd {
+	// after is what this event asks the program loop to DO, as opposed to what
+	// it asks the screen to say. Exactly one event produces one — a turn ending,
+	// which may ring a terminal nobody is looking at (notify.go) — and it is
+	// carried out to the batch below rather than returned early, because the
+	// stream still has to be waited on afterwards.
+	var after tea.Cmd
 	// THE COLLAPSE RULE (thinking.go): the first thing a turn says that is not
 	// reasoning ends the reasoning block. EventThinking is exempt because it is
 	// the marker that OPENED the run — collapsing on it would close the block
@@ -525,6 +697,11 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.lastDelta = time.Now()
 
 	case session.EventConsentRequest:
+		// A question outranks a panel. The consent block is drawn above the
+		// input, and the settings sheet is the whole screen, so a question that
+		// arrived while somebody was reading their settings would be a session
+		// blocked on a keyboard behind a fullscreen overlay.
+		a.closeSettings()
 		a.askConsent(ev)
 
 	case session.EventTitleChanged:
@@ -550,23 +727,44 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.follow()
 		a.touch()
 
+	case session.EventNudge:
+		// The loop caught itself repeating a call: a dim one-liner, never an
+		// interruption — the model is already being told, the person only
+		// needs to see that it was.
+		a.note(firstNonEmpty(ev.Hint, "stuck? nudged · "+ev.Tool))
+
+	case session.EventGuardianAllowed:
+		// The guardian answered for the person: quiet proof on the row's
+		// decision slot, the same place a person's answer would sit.
+		a.note("guardian allowed · " + ev.Tool)
+
 	case session.EventTurnDone:
+		// Both notes go in BEFORE the turn settles, so they land under the reply
+		// they are about rather than above whatever is said next. What was
+		// CHANGED comes first and what it COST second: the files are the work,
+		// and the money is the surface talking about itself.
+		a.changedNote()
+		a.cacheNote(ev.Usage)
 		a.take(ev.Usage)
 		a.settle()
+		after = a.notifyDone()
 
 	case session.EventError:
 		a.note("error: " + errText(ev.Err))
+		// A turn that failed still paid for the steps it took, and its cache
+		// reads are as real as a completed turn's.
+		a.cacheNote(ev.Usage)
 		a.take(ev.Usage)
 		a.settle()
 	}
 	if a.stream == nil {
-		return nil
+		return after
 	}
 	// The clock is normally already running (Submit started it), but a stream
 	// that outlives its turn's state would otherwise stream into a frame
 	// nobody built. Batch drops a nil cmd, so this costs nothing when the
 	// clock is up.
-	return tea.Batch(a.wake(), waitEvent(a.stream, a.gen))
+	return tea.Batch(after, a.wake(), waitEvent(a.stream, a.gen))
 }
 
 // settle ends a turn: the stream is done or abandoned, nothing is live, and the
@@ -608,12 +806,25 @@ func (a *app) refreshUsage() {
 	a.take(a.agent.Usage())
 }
 
+// take folds one usage report into the status line's figures. Every field takes
+// the LARGER of what it holds and what arrived, because a turn's usage and the
+// session's total both come through here and only the session's total is
+// monotonic — a per-turn event must never shrink a running total.
 func (a *app) take(u session.Usage) {
 	if u.CostUSD > a.cost {
 		a.cost = u.CostUSD
 	}
 	if n := u.Input + u.Output; n > a.tokens {
 		a.tokens = n
+	}
+	if u.Input > a.inputTokens {
+		a.inputTokens = u.Input
+	}
+	if u.CacheRead > a.cacheRead {
+		a.cacheRead = u.CacheRead
+	}
+	if u.CacheWrite > a.cacheWrite {
+		a.cacheWrite = u.CacheWrite
 	}
 }
 
@@ -851,7 +1062,7 @@ func (a *app) unfold(turn int) {
 // again, because "show me everything" was said about a block that is no longer
 // on screen.
 func (a *app) openTool(i int) {
-	if i < 0 || i >= len(a.entries) || a.entries[i].kind != entryTool {
+	if i < 0 || i >= len(a.entries) || a.entries[i].kind != entryTool || replayInert(&a.entries[i]) {
 		return
 	}
 	e := &a.entries[i]
@@ -875,6 +1086,17 @@ func (a *app) showAll(i int) {
 // press resolves a click to the row it landed on. A click that lands on
 // nothing does nothing: this surface has no empty-space gesture.
 func (a *app) press(y int) {
+	// The welcome box gets the click first, because while it is up it is the
+	// thing between the pointer and everything else: a recent session opens,
+	// and anywhere else is the person reaching past the box, which is what
+	// dismissal means (welcome.go).
+	if a.welcome.open {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeWelcome {
+			a.welcomePress(a.welcomeSlotAt(mark.index))
+			return
+		}
+		a.dismissWelcome()
+	}
 	r, ok := a.rowAt(y)
 	if !ok {
 		return
@@ -963,6 +1185,16 @@ func (a *app) slash(line string) tea.Cmd {
 		a.switchModel(rest, 0)
 		return nil
 
+	case "image":
+		// The other door onto the tray, for a picture that is not under this
+		// directory or not in the walk: a path, attached (attach.go).
+		a.attachPath(rest)
+		return nil
+
+	case "settings", "set", "config":
+		a.openSettings()
+		return nil
+
 	case "compact":
 		agent, ctx := a.agent, a.ctx
 		a.note("compacting…")
@@ -1006,10 +1238,13 @@ func (a *app) renew() {
 	a.turn = 0
 	a.unfolded = map[int]bool{}
 	a.dropHover()
+	// A frozen viewport is a snapshot of a conversation that no longer exists
+	// (copymode.go), for the same reason the hover is dropped one line above.
+	a.copy = copyMode{mark: -1}
 	a.stream = nil
 	a.gen++
 	a.state = stateIdle
-	a.cost, a.tokens, a.ctxBytes = 0, 0, 0
+	a.resetMeters()
 	a.model = agent.Model()
 	// The draft is NOT cleared: /new closes a conversation, and the sentence in
 	// the box is the person's next one (draft.go).
@@ -1059,6 +1294,12 @@ func (a *app) paste(text string) tea.Cmd {
 	if text == "" {
 		return nil
 	}
+	// Bracketed paste arrives with the SENDER's line endings, and tmux sends
+	// CR: an editor that breaks rows on LF alone would hold one "line" whose
+	// carriage returns paint each logical line over the last. Normalize once,
+	// at the door — CRLF first, then bare CR.
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
 	// The model overlay is modal for the keyboard, so it is modal for the
 	// clipboard: a paste while it is up is a filter somebody copied.
 	if a.pick.open {
@@ -1150,23 +1391,41 @@ func (a *app) closeLists() {
 
 // ── the context meter ───────────────────────────────────────────────────────
 
-// bytesPerToken is the estimator behind the meter: ~4 bytes to the token for
-// code and English prose. It is INTERIM — the honest figure is the provider's
-// own prompt-token count, which arrives with a turn's usage and not before it —
-// and it is the same figure internal/session sizes compaction with, so the
-// meter and the compaction it predicts cannot disagree with each other.
-const bytesPerToken = 4
+// accentAtThresholdPercent is when the meter stops being dim: at 80% of the
+// COMPACTION THRESHOLD, not of the window.
+//
+// The window is not the thing that happens to you. Compaction is — the summary
+// call, the paid-for pass, the tail that survives and the middle that does not —
+// and it fires well below the window (session.CompactThreshold). A meter that
+// waited for 80% of the window would go quiet through the whole approach and
+// then light up after the event it was warning about.
+const accentAtThresholdPercent = 80
+
+// resetMeters zeroes everything the status line counts. It is called wherever
+// the agent underneath this surface is REPLACED — /new, and opening a recent
+// session from the welcome box — because every one of these figures is a fact
+// about one conversation and carrying any of them into the next one would be a
+// bill for somebody else's work.
+//
+// It is a method rather than the tuple assignment it replaced so that a figure
+// added here is reset in both places rather than in whichever one was edited.
+func (a *app) resetMeters() {
+	a.cost = 0
+	a.tokens, a.inputTokens = 0, 0
+	a.cacheRead, a.cacheWrite = 0, 0
+	a.ctxTokens = 0
+}
 
 // measureContext asks the agent what the conversation now weighs. It is called
 // where the answer CHANGES — a turn ending, a session opening or being replaced
-// — and never on the frame clock: Transcript takes the session's lock and
-// copies the whole conversation, and doing that thirty times a second to move a
-// figure that changes once a turn is a lock taken for nothing.
+// — and never on the frame clock: the agent takes its own lock to answer, and
+// doing that thirty times a second to move a figure that changes once a turn is
+// a lock taken for nothing.
 func (a *app) measureContext() {
 	if a.agent == nil {
 		return
 	}
-	a.ctxBytes = contextBytes(a.agent.Transcript())
+	a.ctxTokens = a.agent.ContextTokens()
 	if a.ctxWindow <= 0 {
 		// The door may not have known the window at boot: a cold catalog
 		// resolves in the background AFTER this surface is already up, and it
@@ -1179,13 +1438,178 @@ func (a *app) measureContext() {
 }
 
 // ctxPercent is the meter: how much of the model's window the conversation is
-// estimated to be using. False when nobody has said what the window is, because
-// a percentage of an unknown is a number that means nothing.
+// using, to the NEAREST whole percent. False when nobody has said what the
+// window is, because a percentage of an unknown is a number that means nothing.
+//
+// Nearest rather than floored, which is what this did while it was a percentage
+// of a byte estimate. Flooring a figure that is already an estimate rounds the
+// same direction every time, and the direction it rounds is the reassuring one:
+// a conversation at 9.7% of its window reads as 9%, and one at 79.9% of the
+// threshold reads as under it.
 func (a *app) ctxPercent() (int, bool) {
-	if a.ctxWindow <= 0 || a.ctxBytes <= 0 {
+	if a.ctxWindow <= 0 || a.ctxTokens <= 0 {
 		return 0, false
 	}
-	return a.ctxBytes / bytesPerToken * 100 / a.ctxWindow, true
+	return (a.ctxTokens*200/a.ctxWindow + 1) / 2, true
+}
+
+// ctxCrowded says the conversation is close enough to compaction that the meter
+// should stop being furniture. False whenever the window is unknown: a surface
+// that does not know the threshold must not guess that one has been crossed.
+func (a *app) ctxCrowded() bool {
+	threshold := session.CompactThreshold(a.ctxWindow)
+	if threshold <= 0 || a.ctxTokens <= 0 {
+		return false
+	}
+	return a.ctxTokens*100 >= threshold*accentAtThresholdPercent
+}
+
+// priceFor is what this surface knows a model's tokens cost, from the same list
+// the picker draws (models.go's three rungs). The bool is false when nobody has
+// published a prompt price — an id off the built-ins, a cache written before the
+// prices were kept, one of OpenRouter's own routers — and a caller must then
+// show the tokens alone rather than a saving computed from zero.
+func (a *app) priceFor(id string) (Model, bool) {
+	id = strings.TrimSpace(id)
+	for _, model := range a.modelList() {
+		if strings.EqualFold(model.ID, id) && model.PromptPrice > 0 {
+			return model, true
+		}
+	}
+	return Model{}, false
+}
+
+// cacheNote is the per-turn savings line: what this turn read off a warm prefix
+// and what that was worth.
+//
+//	⟲ 9.8k cached · saved .0041
+//
+// It is written only when there were cache reads, so a session on a provider
+// that caches nothing — or a first turn, which can only write — says nothing at
+// all rather than reporting a zero every turn.
+//
+// The saving is cached tokens × (prompt price − cache-read price), which is the
+// honest figure: a cache read is CHEAPER, never free, and the difference is what
+// the cache actually bought. Without a published price pair the line degrades to
+// the token count, because "9.8k cached" is a true thing this surface knows and
+// "saved $0.0000" is not.
+func (a *app) cacheNote(u session.Usage) {
+	if u.CacheRead <= 0 {
+		return
+	}
+	line := "⟲ " + tokenWord(u.CacheRead) + " cached"
+	if model, known := a.priceFor(a.model); known {
+		if saved := float64(u.CacheRead) * (model.PromptPrice - model.CacheReadPrice); saved > 0 {
+			line += " · saved " + savedWord(saved)
+		}
+	}
+	a.note(line)
+}
+
+// ── WHAT CHANGED ────────────────────────────────────────────────────────────
+//
+// A turn that touched files ends with one dim line saying which:
+//
+//	· 2 files · loop.go +32 −2 · agent.go +18 −0
+//
+// It exists because of what a tool cluster looks like AFTER it has scrolled. A
+// turn that edits four files across nine calls draws nine rows, three of which
+// are visible by then, and the question a person actually has when the turn
+// stops — "so what did it change?" — is answered nowhere on the screen. The
+// individual +N −M stats are on rows that folded; the reply above says what the
+// model meant to do, which is not the same claim.
+//
+// It is derived from the SAME arguments the expansions are (toolstat.go), so
+// the figures cannot disagree with the diffs a click opens: an edit's stat is
+// its replacements diffed, a write's is the lines it laid down.
+//
+// What is excluded, and why: reads and bashes and searches. A read changes
+// nothing, and a bash MAY change everything but says so nowhere a surface can
+// see — a line that reported four files after a `make` that rewrote two hundred
+// would be a lie with a number in it. This line's claim is narrow on purpose:
+// these are the files this turn wrote THROUGH THE TOOLS THAT SAY WHAT THEY
+// WROTE.
+
+// changedFiles is how many files the line names before it stops naming them.
+// Four is the width a dim line can carry at eighty columns; past it the count
+// at the front is doing the work anyway.
+const changedFiles = 4
+
+// fileStat is one file's share of a turn.
+type fileStat struct {
+	path       string
+	adds, dels int
+}
+
+// changedNote appends the line, or nothing at all when the turn wrote nothing.
+func (a *app) changedNote() {
+	if stats := a.turnStats(a.turn); len(stats) > 0 {
+		a.note(changedWord(stats))
+	}
+}
+
+// turnStats gathers one turn's file writes, in the order they were first
+// touched — which is the order they happened, and the only order that does not
+// need a rule.
+//
+// A failed call is skipped: an edit that did not apply changed nothing, and a
+// line that counted it would be reporting a file that is on disk as its author
+// left it. A call still running is skipped for the same reason — though by the
+// time this runs the turn is over, so that is a belt on a done deal.
+func (a *app) turnStats(turn int) []fileStat {
+	var out []fileStat
+	at := map[string]int{}
+	add := func(path string, adds, dels int) {
+		if path == "" {
+			return
+		}
+		if i, seen := at[path]; seen {
+			out[i].adds += adds
+			out[i].dels += dels
+			return
+		}
+		at[path] = len(out)
+		out = append(out, fileStat{path: path, adds: adds, dels: dels})
+	}
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind != entryTool || e.turn != turn || e.status != toolOK {
+			continue
+		}
+		fields := argsOf(e.detail.Args)
+		switch e.tool {
+		case "edit":
+			adds, dels := editStat(e.detail.Args)
+			add(argString(fields, "path"), adds, dels)
+		case "write":
+			add(argString(fields, "path"), lineCount(argString(fields, "content")), 0)
+		}
+	}
+	return out
+}
+
+// changedWord spells the line. The files are named by their BASE names
+// (welcome.go's [baseName], which is the package's one answer to that question):
+// the directory is what the tool rows above already showed, and a line of full
+// paths at eighty columns is one file per line.
+func changedWord(stats []fileStat) string {
+	head := itoa(len(stats)) + " files"
+	if len(stats) == 1 {
+		head = "1 file"
+	}
+	parts := []string{head}
+	shown := stats
+	if len(shown) > changedFiles {
+		shown = shown[:changedFiles]
+	}
+	for _, s := range shown {
+		parts = append(parts, baseName(s.path)+" "+
+			glyphAdd+itoa(s.adds)+" "+glyphDel+itoa(s.dels))
+	}
+	if rest := len(stats) - len(shown); rest > 0 {
+		parts = append(parts, "+"+itoa(rest)+" more")
+	}
+	return strings.Join(parts, " · ")
 }
 
 func errText(err error) string {
@@ -1215,4 +1639,44 @@ func dollars(usd float64) string {
 	default:
 		return fmt.Sprintf("$%.2f", usd)
 	}
+}
+
+// savedWord formats what a cache read was worth, and it is deliberately NOT
+// [dollars]: the savings note is a dim aside, the amount beside it is a fraction
+// of a cent for most turns, and "$0.0041" spends three cells on a zero and a
+// point that carry nothing. The leading zero goes; the figure does not.
+//
+// Four places below a dollar and two above, because those are the two scales the
+// number actually lives at — a turn saves thousandths, a long session saves
+// dollars, and nothing useful sits between them.
+func savedWord(usd float64) string {
+	if usd >= 1 {
+		return fmt.Sprintf("$%.2f", usd)
+	}
+	return fmt.Sprintf("$%.4f", usd)
+}
+
+// tokenWord is a token count at a glance: "842", "12.4k", "1.2M". One
+// significant decimal and no more — the meter is read in passing, and a figure
+// that changes in its fourth digit every step is a figure nobody can read.
+//
+// The trailing ".0" is dropped so a round number is round: a 128k window is
+// "128k" and never "128.0k".
+func tokenWord(tokens int) string {
+	switch {
+	case tokens <= 0:
+		return "0"
+	case tokens < 1000:
+		return strconv.Itoa(tokens)
+	// 999_950 and not 1_000_000: one decimal rounds anything above it to
+	// "1000.0k", which is a figure with the wrong unit on it.
+	case tokens < 999_950:
+		return trimUnit(float64(tokens)/1000, "k")
+	default:
+		return trimUnit(float64(tokens)/1_000_000, "M")
+	}
+}
+
+func trimUnit(value float64, unit string) string {
+	return strings.TrimSuffix(strconv.FormatFloat(value, 'f', 1, 64), ".0") + unit
 }

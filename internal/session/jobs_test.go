@@ -72,7 +72,11 @@ func waitFor(t *testing.T, what string, condition func() bool) {
 func steeringQueue(agent *Agent) []string {
 	agent.mu.Lock()
 	defer agent.mu.Unlock()
-	return append([]string(nil), agent.steering...)
+	queued := make([]string, 0, len(agent.steering))
+	for _, message := range agent.steering {
+		queued = append(queued, message.text())
+	}
+	return queued
 }
 
 func steeringContains(agent *Agent, substring string) bool {

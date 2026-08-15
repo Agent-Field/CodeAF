@@ -3,7 +3,8 @@
 import numpy as np
 from PIL import Image
 
-from genimg.whittle import WhittleField, laplacian_bands, gaussian_pyramid
+from genimg.whittle import WhittleField
+from genimg.pyramid import gaussian_pyramid, laplacian_bands
 
 
 def make_checker(h: int, w: int, cell: int) -> np.ndarray:
@@ -32,8 +33,8 @@ def test_pyramid_shapes():
     # bands reconstruct the image
     rec = bands[-1]
     for k in range(2, -1, -1):
-        from genimg.whittle import _upsample
-        rec = _upsample(rec, bands[k].shape[0], bands[k].shape[1]) + bands[k]
+        from genimg.pyramid import upsample
+        rec = upsample(rec, bands[k].shape[0], bands[k].shape[1]) + bands[k]
     assert rec.shape == (64, 64)
     assert np.allclose(rec, img, atol=1e-9), "Laplacian pyramid must be invertible"
 

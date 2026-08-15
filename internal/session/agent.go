@@ -70,12 +70,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	agent := &Agent{
 		config: config,
-		// The client is wrapped so /compact can carry an extra instruction to
-		// the summarizer without every other call learning about it (see
-		// [Agent.CompactWithFocus]).
-		client: focusCompleter{inner: client},
 		system: system,
 		model:  config.Model,
+		// A memory-only session still has ONE lineage; it just has no name on
+		// disk to derive it from. The file-backed case overwrites this below
+		// with the header's id, which survives every resume.
+		cacheKey: sessionCacheKey(newSessionID()),
 	}
 	// Memory is built before the belt for the same reason the registry is: the
 	// belt carries note and forget only when there is a file to write, so the
@@ -106,12 +106,36 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// about the conversation in the file, and re-deriving it from the same
 		// opening exchange would pay for an answer we already have.
 		agent.title = file.Title()
+		// And it keeps its cache lineage for the same reason, which matters
+		// more: a session resumed tomorrow re-sends the transcript it built
+		// today, and a key that changed with the process would ask the router
+		// for a fresh replica and pay to write that whole prefix again.
+		if id := file.ID(); id != "" {
+			agent.cacheKey = sessionCacheKey(id)
+		}
 		// The system message is rendered fresh rather than replayed: the date
 		// and AGENTS.md in the footer are facts about now, not about the
 		// session that wrote the file.
 		agent.messages = append(agent.messages, restored...)
 	}
+	// The client is wrapped LAST, once the lineage is known: the wrapper is the
+	// one place every request this agent makes passes through, so it is where
+	// /compact's extra instruction is spliced in (see [Agent.CompactWithFocus])
+	// and where the prompt-cache key is stamped. Wrapping earlier would have to
+	// read the key through the agent, which is a pointer cycle to save a line.
+	agent.client = sessionCompleter{inner: client, cacheKey: agent.cacheKey}
 	return agent, nil
+}
+
+// sessionCacheKey names one session's prompt-cache lineage. It is derived
+// through [provider.RunCacheKey] so the key is the same shape every other
+// aforge lineage uses — an "aforge-" prefix an operator can recognize in a
+// router's logs — and so nothing about the session's own id reaches the wire.
+func sessionCacheKey(id string) string {
+	if strings.TrimSpace(id) == "" {
+		return ""
+	}
+	return provider.RunCacheKey("session/"+id, "")
 }
 
 // Usage returns the session's accumulated usage.
@@ -119,6 +143,25 @@ func (a *Agent) Usage() Usage {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.usage
+}
+
+// ContextTokens is what the conversation now weighs, in tokens: the same figure
+// the compaction threshold is checked against, under the same lock.
+//
+// It is THE honest number, and honest means two different things depending on
+// what has happened. When a response has come back, it is the provider's own
+// count of the request it just served — the system prompt, the tool schemas,
+// every tool result, the arguments of every call, all the bytes a surface
+// counting words cannot see. When the transcript has grown since (a 300KB file
+// read that has not been sent yet), the content estimate is larger and wins. See
+// [Agent.estimateTokensLocked] for why it is the max of the two.
+//
+// Zero is a session that has neither sent nor recorded anything, which is the
+// only case where "nothing" is true.
+func (a *Agent) ContextTokens() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.estimateTokensLocked()
 }
 
 // Model returns the model the next request will use.
@@ -140,6 +183,125 @@ func (a *Agent) SetModel(model string) {
 	a.mu.Lock()
 	a.model = model
 	a.mu.Unlock()
+}
+
+// ── reasoning strength ──────────────────────────────────────────────────────
+//
+// How hard the model is asked to think is a CHOICE ABOUT A MODEL, not about a
+// session, so it is kept per model id and not as one field. A person who dials
+// a reasoning model to high, switches to a cheap one for a quick question and
+// switches back finds the high still there: the second model never had a level,
+// and setting one on it would have been a decision nobody made.
+//
+// The levels are provider.Effort's, minus one. "off" here means SEND NOTHING —
+// no reasoning field on the wire, the model's own default — and NOT
+// provider.EffortOff, which sends {"reasoning":{"enabled":false}} to suppress
+// the thinking pass outright. The distinction matters at exactly this seam: a
+// person turning a knob back to off is saying "stop asking for extra thinking",
+// which is the model's default, while EffortOff is a harness economy that some
+// endpoints refuse with a 400 (provider's quirks.go). The harness may spend a
+// round-trip discovering that; a person changing their mind must not.
+
+// Reasoning is the level the model now in use will be asked for, "" when none
+// is set.
+func (a *Agent) Reasoning() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return string(a.reasoningLocked(a.model))
+}
+
+// ReasoningFor is the level held for one model id, whichever model is in use.
+// It is what a picker asks while drawing a row for a model nobody has switched
+// to yet.
+func (a *Agent) ReasoningFor(model string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return string(a.reasoningLocked(model))
+}
+
+// SetReasoning sets the level for the model now in use, for subsequent turns.
+// A turn in flight finishes on the level it started with, exactly as it
+// finishes on the model it started on: runTurn latches both once (loop.go), so
+// a change made while the agent is working lands at the next Submit.
+//
+// An unrecognized level is ignored rather than cleared. The two callers are a
+// picker that can only produce the four it draws and a flag the door has
+// already validated with [ParseReasoning]; between them, a value this does not
+// know is a bug upstream, and answering it by silently dropping a level the
+// person did set would hide it.
+func (a *Agent) SetReasoning(level string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.setReasoningLocked(a.model, level)
+}
+
+// SetReasoningFor sets the level for one model id without switching to it.
+func (a *Agent) SetReasoningFor(model, level string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.setReasoningLocked(model, level)
+}
+
+func (a *Agent) setReasoningLocked(model, level string) {
+	key := reasoningKey(model)
+	if key == "" {
+		return
+	}
+	effort, ok := parseReasoning(level)
+	if !ok {
+		return
+	}
+	// None is absence and is stored as absence: a map that held EffortNone
+	// entries would answer "this model has a level" for every model anybody
+	// ever cycled back to off.
+	if effort == provider.EffortNone {
+		delete(a.reasoning, key)
+		return
+	}
+	if a.reasoning == nil {
+		a.reasoning = make(map[string]provider.Effort, 2)
+	}
+	a.reasoning[key] = effort
+}
+
+func (a *Agent) reasoningLocked(model string) provider.Effort {
+	key := reasoningKey(model)
+	if key == "" {
+		return provider.EffortNone
+	}
+	return a.reasoning[key]
+}
+
+// reasoningKey folds a model id the way every other lookup on this surface
+// does — trimmed and case-insensitive — so a level set from a picker row is
+// found again by a /model <slug> typed in another case.
+func reasoningKey(model string) string {
+	return strings.ToLower(strings.TrimSpace(model))
+}
+
+// ParseReasoning normalizes one operator-supplied level and reports whether it
+// is one. It answers in the surface's own words rather than provider.Effort's
+// so a door can validate `--reasoning` without importing the adapter, and "off"
+// and "" both normalize to "" — see the block comment above for why off is
+// silence and not provider.EffortOff.
+func ParseReasoning(level string) (string, bool) {
+	effort, ok := parseReasoning(level)
+	return string(effort), ok
+}
+
+func parseReasoning(level string) (provider.Effort, bool) {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "", "off":
+		return provider.EffortNone, true
+	case string(provider.EffortLow):
+		return provider.EffortLow, true
+	case string(provider.EffortMedium):
+		return provider.EffortMedium, true
+	case string(provider.EffortHigh):
+		return provider.EffortHigh, true
+	default:
+		return provider.EffortNone, false
+	}
 }
 
 // SetContextWindow tells the agent how many tokens the model it is now running
@@ -194,7 +356,7 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 		// between an assistant's tool_calls and their results is a shape every
 		// provider rejects. The loop appends it at the next step boundary,
 		// where it is journaled like any other user message.
-		a.steering = append(a.steering, text)
+		a.steering = append(a.steering, userText(text))
 		// Subscribing under a.mu — not after releasing it — is what makes the
 		// returned channel live rather than a coin flip: the turn's goroutine
 		// clears running under this same lock BEFORE it closes the hub, so
@@ -210,10 +372,40 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 		a.mu.Unlock()
 		return refusedStream(err), nil
 	}
-	events := a.startTurnLocked(ctx, text, nil)
+	events := a.startTurnLocked(ctx, userText(text), nil)
 	a.mu.Unlock()
 	return events, nil
 }
+
+// userMessage is a person's message on its way into the transcript: the message
+// the model reads, and the durable references the JOURNAL writes in place of
+// the parts it must not hold.
+//
+// The two travel together because they are written together — recordUserLocked
+// appends the message and journals the line under one lock — and because the
+// live part cannot be recovered from later. A data URL is bytes with no
+// provenance: nothing in it says which file it came from or whether that file
+// still holds the same picture, which is exactly what the journal has to write
+// (see [journalPart]). Carrying the references beside the message is what keeps
+// a queued image message — steering, a follow-up — journalable at the moment it
+// finally lands, minutes after it was assembled.
+//
+// Everything the person types is one of these. A text-only message has no
+// references and journals exactly as it always did.
+type userMessage struct {
+	message ai.Message
+	refs    []journalPart
+}
+
+// userText is the ordinary case: a message that is only words.
+func userText(text string) userMessage {
+	return userMessage{message: textMessage("user", text)}
+}
+
+// text is the message's words — what a queued message says, with its parts left
+// out. It is what a reader of the queue wants: the pictures are not a line of
+// the conversation, and a data URL rendered into one would be unreadable.
+func (u userMessage) text() string { return messageContentText(u.message) }
 
 // startTurnLocked begins one turn on a transcript the caller has already
 // checked, with a.mu held. It is the ONE place a turn starts: Submit reaches it
@@ -223,7 +415,7 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 // watcher is a stream built before the turn existed — a queued follow-up's —
 // and is adopted onto the new hub before the loop can emit anything. Nil means
 // the caller takes its own subscription, and it is the returned channel.
-func (a *Agent) startTurnLocked(ctx context.Context, text string, watcher *eventStream) <-chan Event {
+func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream) <-chan Event {
 	a.running = true
 	// The memory block is re-read here, at the start of every turn, so a note
 	// written by the last turn is in front of the model for this one and a
@@ -238,7 +430,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, text string, watcher *event
 	// below, after the turn's last message is journaled.
 	done := make(chan struct{})
 	a.done = done
-	a.recordLocked(textMessage("user", text))
+	a.recordUserLocked(user)
 	var events <-chan Event
 	if watcher != nil {
 		hub.adopt(watcher)
@@ -278,7 +470,7 @@ func (a *Agent) startTurnLocked(ctx context.Context, text string, watcher *event
 				// a follow-up inheriting a cancelled one would end before it
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
-				a.startTurnLocked(context.Background(), next.text, next.stream)
+				a.startTurnLocked(context.Background(), next.message, next.stream)
 			}
 			a.mu.Unlock()
 		}()
@@ -327,21 +519,21 @@ func (a *Agent) FollowUp(text string) (<-chan Event, error) {
 	}
 	stream := newEventStream()
 	if a.running {
-		a.followups = append(a.followups, followUp{text: text, stream: stream})
+		a.followups = append(a.followups, followUp{message: userText(text), stream: stream})
 		return stream.out, nil
 	}
 	if err := a.railBlockLocked(); err != nil {
 		return refuseOn(stream, err), nil
 	}
-	return a.startTurnLocked(context.Background(), text, stream), nil
+	return a.startTurnLocked(context.Background(), userText(text), stream), nil
 }
 
 // followUp is one queued message and the stream its turn will speak on. The
 // stream exists from the moment the message is queued so the caller has
 // something to hold while it waits.
 type followUp struct {
-	text   string
-	stream *eventStream
+	message userMessage
+	stream  *eventStream
 }
 
 // nextFollowUpLocked takes the next queued message, if a turn may start for it.
@@ -454,21 +646,50 @@ func withCompactFocus(ctx context.Context, focus string) context.Context {
 	return context.WithValue(ctx, compactFocusKey{}, focus)
 }
 
-// focusCompleter is the Completer every request goes through, and it changes
-// exactly one of them: the summarization call made under a context carrying a
-// focus, whose system prompt gains a final "Additional focus:" line.
+// sessionCompleter is the Completer every request goes through, and it does two
+// things to them.
 //
+// ── THE FOCUS ──
+//
+// It changes exactly one request: the summarization call made under a context
+// carrying a focus, whose system prompt gains a final "Additional focus:" line.
 // It is a wrapper rather than an argument threaded down to the summarizer
 // because the compaction pass is a closed piece of machinery — threshold, cut,
 // summary, rebuild — and the focus is one sentence of prompt, not a change to
 // how any of that works. A turn's request never carries the key, so a turn is
 // byte-for-byte what it was.
-type focusCompleter struct{ inner Completer }
+//
+// ── THE CACHE LINEAGE, AND WHY IT DEVIATES FROM bare ──
+//
+// It stamps the session's prompt-cache key on every request. internal/exec/bare
+// sends NO key at all, and that is right for what bare is: a leaf is one task,
+// run once, whose prefix nothing will ever ask for again — a key there buys a
+// replica pin and pays for a cache write nobody reads.
+//
+// A SESSION IS A LINEAGE, and the arithmetic inverts. Its transcript is re-sent
+// whole on every step of every turn, grows all day, and is picked up again
+// tomorrow by [Agent] resuming the same file. Without a key each request is free
+// to land on whichever replica the router likes, so a warm prefix is a
+// coincidence; with one, every step of a days-long conversation asks for the
+// same instance and the growing head stays hot. The key is derived from the
+// SESSION ID rather than from the model, the task, or the process, because that
+// is the identity that survives a /model swap, a restart, and a resume — the
+// three things that would otherwise split one conversation into three lineages.
+//
+// The key is set once, at construction, so nothing at request time can split it.
+// An empty key is left off entirely rather than sent blank (provider.WithCacheKey
+// ignores it), which keeps a session with no identity unkeyed instead of sharing
+// one lineage with every other unkeyed session.
+type sessionCompleter struct {
+	inner    Completer
+	cacheKey string
+}
 
-func (f focusCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	if focus, ok := ctx.Value(compactFocusKey{}).(string); ok && focus != "" {
 		messages = withFocusAppended(messages, focus)
 	}
+	ctx = provider.WithCacheKey(ctx, f.cacheKey)
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
 }
 
@@ -560,6 +781,20 @@ func (a *Agent) recordLocked(message ai.Message) {
 	}
 }
 
+// recordUserLocked is recordLocked for a message the PERSON sent: the same
+// append, and a journal line that carries the message's durable references
+// beside its text.
+//
+// The split exists because only a person's message can hold a part the journal
+// must not write. Everything the model and the tools produce is text and goes
+// through recordLocked exactly as before.
+func (a *Agent) recordUserLocked(user userMessage) {
+	a.messages = append(a.messages, user.message)
+	if a.file != nil {
+		a.file.appendMessage(user.message, user.refs...)
+	}
+}
+
 func (a *Agent) record(message ai.Message) {
 	a.mu.Lock()
 	a.recordLocked(message)
@@ -592,8 +827,8 @@ func (a *Agent) drainSteering() int {
 func (a *Agent) drainSteeringLocked() int {
 	queued := a.steering
 	a.steering = nil
-	for _, text := range queued {
-		a.recordLocked(textMessage("user", text))
+	for _, message := range queued {
+		a.recordUserLocked(message)
 	}
 	return len(queued)
 }
@@ -620,7 +855,7 @@ func (a *Agent) enqueueSteering(text string) {
 	if a.closed {
 		return
 	}
-	a.steering = append(a.steering, text)
+	a.steering = append(a.steering, userText(text))
 }
 
 func textMessage(role, text string) ai.Message {
@@ -799,13 +1034,47 @@ func (s *eventStream) pump() {
 }
 
 // DisplayEntry is one journaled message shaped for surface replay: who spoke
-// and what they said, with tool calls flattened to their gloss. It carries no
-// tool RESULTS and no reasoning — replay shows the conversation, not the wire.
+// and what they said, with tool calls flattened to their gloss and carrying the
+// payload the journal kept for them. No reasoning — that is never recorded — and
+// nothing about the wire itself.
 type DisplayEntry struct {
 	Role string // "user" | "assistant" | "tool" | "note" (system-injected, e.g. compaction summary)
 	Text string
 	Tool string // set when the entry is one call in a batch
 	Hint string // the call's gloss, as the tool cluster rendered it
+
+	// Args and Output are a TOOL entry's payload, in exactly the two shapes a
+	// live surface already holds them in ([Event.Args] and [Event.Output]): the
+	// arguments the model sent, compacted onto one line and capped, and the text
+	// of the result that answered them, capped rune-safe for display.
+	//
+	// They are populated for a tool entry whenever the journal carries them,
+	// which is every session file this build writes — the arguments ride the
+	// assistant message's tool_calls and the result is the tool message keyed by
+	// the same id. Both are "" otherwise: for every entry that is not a call, for
+	// a call whose result never reached the file (a session killed mid-batch), and
+	// for a file written before either was journaled.
+	//
+	// EMPTY MEANS NO PAYLOAD, and a surface must read it that way rather than as
+	// an empty result: a replayed row with nothing behind it has nothing to
+	// expand, and offering an expansion that opens on a blank is the defect this
+	// field exists to end.
+	//
+	// CONTRACT, inherited from [Event.Output]: Output is FOR DISPLAY ONLY. It is a
+	// capped copy, never the result the model read.
+	Args   string
+	Output string
+
+	// ImageRefs are the paths of the pictures a person's message carried, in the
+	// order they sit in it — what the journal wrote where the bytes would have
+	// been (see [journalPart]). It is what lets a replayed message mark its
+	// attachments the way the live surface does, "[photo.png]", instead of
+	// showing the words alone as though nothing had been attached.
+	//
+	// Nil for every message that carried none, and for a session with no file:
+	// the paths are the JOURNAL's record, and a conversation that lives only in
+	// memory never wrote one.
+	ImageRefs []string
 }
 
 // Transcript returns the conversation so far as display entries, oldest
@@ -815,26 +1084,70 @@ type DisplayEntry struct {
 func (a *Agent) Transcript() []DisplayEntry {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return displayEntries(a.messages)
+	return shapeEntries(a.messages, a.file)
 }
 
-// displayEntries is the shaping itself, over any run of messages. Transcript
-// hands it the whole conversation; [Agent.Rewind] hands it the turn it just
-// dropped, so a surface un-draws exactly the rows this drew.
+// displayEntries is the shaping without a journal behind it: [Agent.Rewind]
+// hands it the turn it just dropped, so a surface un-draws exactly the rows it
+// drew. The dropped turn's rows are being REMOVED — nothing is about to expand
+// one — so the picture paths a file would have answered are not asked for.
 func displayEntries(messages []ai.Message) []DisplayEntry {
+	return shapeEntries(messages, nil)
+}
+
+// shapeEntries is the shaping itself, over any run of messages.
+//
+// The journal is consulted for ONE thing — the paths of a message's pictures,
+// which cannot be recovered from the message itself (a data URL is bytes with no
+// provenance) — and nil is a session that has no file to ask.
+//
+// Everything else comes from the messages, and the tool payload is the reason
+// the results are indexed first: a call's arguments ride the assistant message
+// that made it, and its result is a SEPARATE message further down, keyed by the
+// call's id. One pass to index, one pass to shape, so a batch of ten calls costs
+// one walk rather than ten.
+func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
+	results := toolResults(messages)
 	entries := make([]DisplayEntry, 0, len(messages))
 	for _, msg := range messages {
 		if msg.Role == "system" {
 			continue
 		}
-		entries = append(entries, DisplayEntry{Role: msg.Role, Text: messageContentText(msg)})
+		entries = append(entries, DisplayEntry{
+			Role:      msg.Role,
+			Text:      messageContentText(msg),
+			ImageRefs: journal.imageRefs(msg),
+		})
 		for _, call := range msg.ToolCalls {
 			entries = append(entries, DisplayEntry{
 				Role: "tool",
 				Tool: call.Function.Name,
 				Hint: gloss(call),
+				// The same two renderings a live row is drawn from (loop.go),
+				// applied to the same fields the journal kept: a replayed row and
+				// the row it replaces are the same row, or replay is a second
+				// rendering of one conversation.
+				Args:   argsText(call),
+				Output: capOutput(results[call.ID]),
 			})
 		}
 	}
 	return entries
+}
+
+// toolResults indexes a run of messages by the call each one answered. A result
+// with no id is skipped rather than kept under "": it is a message no call can
+// claim, and a call with no id would otherwise pick it up.
+func toolResults(messages []ai.Message) map[string]string {
+	var results map[string]string
+	for _, msg := range messages {
+		if msg.Role != "tool" || msg.ToolCallID == "" {
+			continue
+		}
+		if results == nil {
+			results = make(map[string]string, 8)
+		}
+		results[msg.ToolCallID] = messageContentText(msg)
+	}
+	return results
 }

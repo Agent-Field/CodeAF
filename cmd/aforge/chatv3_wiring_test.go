@@ -164,3 +164,88 @@ func TestYoloIsADefaultAndNotAnOverride(t *testing.T) {
 		t.Fatalf("the gate answered %s without --yolo", got)
 	}
 }
+
+// ── the web-search rows ─────────────────────────────────────────────────────
+
+// The mapping from three settings rows to one [search.Options]: auto means no
+// pin, a chosen plug is the pin, and a key comes from the shell or the sheet
+// with the shell winning.
+func TestTheSearchRowsBecomeSearchOptions(t *testing.T) {
+	t.Setenv("EXA_API_KEY", "")
+	t.Setenv("JINA_API_KEY", "")
+
+	empty := v3SearchOptions(t.TempDir())
+	if empty.Provider != "" || empty.ExaKey != "" || empty.JinaKey != "" {
+		t.Fatalf("an untouched profile produced %+v, want an empty auto configuration", empty)
+	}
+
+	dir := v3Profile(t, map[string]any{
+		"search.provider": "exa",
+		"search.exaKey":   "from-the-sheet",
+		"search.jinaKey":  "jina-from-the-sheet",
+	})
+	fromRows := v3SearchOptions(dir)
+	if fromRows.Provider != "exa" {
+		t.Fatalf("the pin did not reach the options: %q", fromRows.Provider)
+	}
+	if fromRows.ExaKey != "from-the-sheet" || fromRows.JinaKey != "jina-from-the-sheet" {
+		t.Fatalf("the keys did not reach the options: %+v", fromRows)
+	}
+
+	t.Setenv("EXA_API_KEY", "from-the-shell")
+	if got := v3SearchOptions(dir).ExaKey; got != "from-the-shell" {
+		t.Fatalf("the environment lost to the sheet: %q", got)
+	}
+
+	// An auto row is the ABSENCE of a pin, not the word: internal/search reads
+	// "auto" as a plug name and would find nothing registered under it.
+	auto := v3Profile(t, map[string]any{"search.provider": "auto"})
+	if got := v3SearchOptions(auto).Provider; got != "" {
+		t.Fatalf("auto reached search as %q, want no pin at all", got)
+	}
+}
+
+// And the pair itself reaches the session, resolved: a profile with no keys
+// still gets both hands, and a pin moves the one it names.
+func TestTheSearchPairReachesTheSessionConfig(t *testing.T) {
+	t.Setenv("EXA_API_KEY", "")
+	t.Setenv("JINA_API_KEY", "")
+
+	cfg, err := applyV3Governance(session.Config{}, t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("the rows did not load: %v", err)
+	}
+	if cfg.SearchProvider == nil || cfg.SearchFetcher == nil {
+		t.Fatal("a keyless profile got no search pair; the zero-key rung is the whole point")
+	}
+	if got := cfg.SearchProvider.Name(); got != "duckduckgo" {
+		t.Fatalf("a keyless profile searches through %q, want the zero-key plug", got)
+	}
+	if got := cfg.SearchFetcher.Name(); got != "jina" {
+		t.Fatalf("a keyless profile fetches through %q, want the zero-key plug", got)
+	}
+
+	t.Setenv("EXA_API_KEY", "a-key")
+	keyed, err := applyV3Governance(session.Config{}, t.TempDir(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := keyed.SearchProvider.Name(); got != "exa" {
+		t.Fatalf("a key in the shell did not upgrade the provider: %q", got)
+	}
+
+	// A pin beats the ladder, and the fetch half resolves on its own — pinning
+	// the search plug leaves the fetcher free.
+	pinned, err := applyV3Governance(session.Config{}, v3Profile(t, map[string]any{
+		"search.provider": "duckduckgo",
+	}), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pinned.SearchProvider.Name(); got != "duckduckgo" {
+		t.Fatalf("the pin lost to the key: %q", got)
+	}
+	if got := pinned.SearchFetcher.Name(); got != "exa-fetch" {
+		t.Fatalf("pinning the search half moved the fetch half to %q", got)
+	}
+}

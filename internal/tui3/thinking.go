@@ -12,16 +12,30 @@ import (
 // catching before it edits one — and it is worth showing DIFFERENTLY, because
 // it is not the answer:
 //
-//	⠿ the file is probably under internal/, and the caller…
-//	⠿ thought for 6s · ctrl+e          ← the moment the first word of the reply
-//	                                     (or the first tool call) arrives
+//	⠿ thinking · 148 tok                  ← the header, while it streams
+//	  the file is probably under internal/   35% — read already
+//	  and the caller in cmd/ passes it       60%
+//	  the path it was given, so start there  85% — the newest line
+//	⠿ thought for 6s · 148 tok · ctrl+e   ← the moment the first word of the
+//	                                         reply (or the first tool call) lands
 //
 // While the reasoning streams it is the lower tier of everything on screen —
 // dim, italic, behind its own marker — and it sits ABOVE the answer in progress
 // because that is the order it happened in. The moment the turn says anything
-// that is not reasoning, the block COLLAPSES to one row carrying the one fact
-// worth keeping at a glance: how long the model spent. ctrl+e, or a click, opens
-// it again.
+// that is not reasoning, the block COLLAPSES to one row carrying the two facts
+// worth keeping at a glance: how long the model spent, and how much it wrote.
+// ctrl+e, or a click, opens it again.
+//
+// ── WHY THREE LINES AND NOT ALL OF THEM ──
+//
+// The streaming block used to draw its whole text, which grew a wall: a model
+// that reasons for thirty seconds pushes the answer it is about to write off
+// the bottom of the screen, and a wall of dim italic that scrolls under the
+// reader's eye is not readable at any speed. Three lines is the READING
+// WINDOW — where the model is now, and the two steps it took to get there —
+// and the fade (styles.go's [thoughtFade]) is what says which end is new
+// without anybody having to work it out. The whole text is not lost: it is one
+// ctrl+e away the moment the block settles.
 //
 // ── DISPLAY-ONLY, AND WHAT THAT COSTS ──
 //
@@ -37,6 +51,10 @@ import (
 // short scroll; past it the block says how much it is holding back rather than
 // turning the transcript into a reasoning log.
 const thoughtWindow = 200
+
+// thoughtLive is the streaming window: the last three wrapped lines, and no
+// more, however long the model goes on for.
+const thoughtLive = 3
 
 // appendThought grows the turn's reasoning block, opening one on the first
 // delta.
@@ -112,7 +130,8 @@ func (a *app) toggleLatestThought() bool {
 // row saying so (hover.go).
 func (a *app) thoughtRows(e *entry, width int, hovered bool) []string {
 	if !e.settled {
-		return a.thoughtBody(e, width, glyphThought+" ")
+		head := a.pal.dim(fit(glyphThought+" thinking · "+thoughtCount(e), width))
+		return append([]string{head}, a.thoughtLiveRows(e, width)...)
 	}
 	head := a.pal.dim(fit(glyphThought+" "+thoughtLabel(e), width))
 	if hovered {
@@ -121,14 +140,50 @@ func (a *app) thoughtRows(e *entry, width int, hovered bool) []string {
 	if !e.open {
 		return []string{head}
 	}
-	return append([]string{head}, a.thoughtBody(e, width, "  ")...)
+	return append([]string{head}, a.thoughtBody(e, width)...)
 }
 
 // thoughtLabel is the collapsed row's sentence. It names the key that opens it,
 // for the reason the fold line does: something hidden without a way back is
-// something deleted.
+// something deleted. The size sits between the two so the row reads as one
+// sentence about the think and ends on the way back into it.
 func thoughtLabel(e *entry) string {
-	return "thought for " + itoa(thoughtSeconds(e)) + "s · ctrl+e"
+	return "thought for " + itoa(thoughtSeconds(e)) + "s · " + thoughtCount(e) + " · ctrl+e"
+}
+
+// thoughtCount is how much the model wrote, ESTIMATED at four bytes to the
+// token — the same rule of thumb every surface in this tree uses where the
+// provider does not report reasoning tokens separately, and most do not.
+//
+// It is derived from the accumulated text rather than counted per delta on the
+// way in, and that is not laziness: a provider that streams reasoning a word at
+// a time delivers chunks shorter than four bytes, and a counter that divided
+// each of them would report zero for the whole think.
+func thoughtCount(e *entry) string {
+	return itoa(len(e.text)/4) + " tok"
+}
+
+// thoughtLiveRows is THE WINDOW: the last [thoughtLive] wrapped lines of a
+// think in progress, oldest first, each painted one stop further along the fade.
+//
+// The newest line always takes the LAST stop, so a think that has only written
+// one line so far opens at the tier it will keep rather than starting faint and
+// brightening — the gradient says "this is where you are", not "this is how
+// much there is".
+func (a *app) thoughtLiveRows(e *entry, width int) []string {
+	body := trimBlanks(wrap(strings.TrimSpace(e.text), width-2))
+	if len(body) == 0 {
+		return nil
+	}
+	if len(body) > thoughtLive {
+		body = body[len(body)-thoughtLive:]
+	}
+	first := len(thoughtFade) - len(body)
+	out := make([]string, 0, len(body))
+	for i, line := range body {
+		out = append(out, a.pal.fade("  "+a.pal.italic(line), first+i))
+	}
+	return out
 }
 
 // thoughtSeconds is the time between the FIRST and the LAST reasoning delta —
@@ -141,9 +196,15 @@ func thoughtSeconds(e *entry) int {
 	return int(span.Round(time.Second) / time.Second)
 }
 
-// thoughtBody is the words: wrapped, dim, italic where the terminal can say so,
-// every row behind the same two-cell lead. It is capped, and it says by how much.
-func (a *app) thoughtBody(e *entry, width int, lead string) []string {
+// thoughtBody is the EXPANDED block: every word the model wrote, wrapped, dim,
+// italic where the terminal can say so, every row behind the same two-cell
+// lead. It is capped, and it says by how much.
+//
+// It is deliberately unfaded. The fade is a live cue about which line is the
+// newest, and in a block somebody opened on purpose there is no newest line —
+// there is a document, and a document that dims toward its own top is one that
+// has been made harder to read for a reason that no longer applies.
+func (a *app) thoughtBody(e *entry, width int) []string {
 	text := strings.TrimSpace(e.text)
 	if text == "" {
 		return nil
@@ -154,12 +215,8 @@ func (a *app) thoughtBody(e *entry, width int, lead string) []string {
 		more, body = len(body)-thoughtWindow, body[:thoughtWindow]
 	}
 	out := make([]string, 0, len(body)+1)
-	for i, line := range body {
-		mark := "  "
-		if i == 0 {
-			mark = lead
-		}
-		out = append(out, a.pal.dim(mark+a.pal.italic(line)))
+	for _, line := range body {
+		out = append(out, a.pal.dim("  "+a.pal.italic(line)))
 	}
 	if more > 0 {
 		out = append(out, a.pal.dim("  "+glyphMore+" "+itoa(more)+" more"))
