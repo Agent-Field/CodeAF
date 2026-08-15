@@ -114,6 +114,11 @@ var (
 	hueBad    = mustHue("#D08770", heavy)
 	hueAsk    = mustHue("#C08FE8", heavy)
 	hueHover  = mustHue("#2E3440", flat)
+	// hueBand is the SELECTED row's background, and it is the hover background's
+	// louder sibling: one more step off black, so the two read as two states of
+	// the same row rather than as one. The pointer is a guess about what you
+	// might do; the cursor is where you are, and it may say so more loudly.
+	hueBand = mustHue("#3B4252", flat)
 	// hueViolet is the SHELL OPERATOR's hue (shellx.go), and it is deliberately
 	// NOT the question hue above.
 	//
@@ -169,6 +174,9 @@ var (
 	lightBad    = mustHue("#C57A3C", heavy)
 	lightAsk    = mustHue("#6F3FA8", heavy)
 	lightHover  = mustHue("#E5E9F0", flat)
+	// The band is one step further off the page than the hover is, which is the
+	// same move the dark ladder makes in the other direction.
+	lightBand = mustHue("#D8DEE9", flat)
 )
 
 // ramp is one whole ladder: every role this surface paints, resolved once.
@@ -180,20 +188,20 @@ var (
 type ramp struct {
 	ink, accent, muted, dim hue
 	add, del, bad, ask      hue
-	hover, violet           hue
+	hover, band, violet     hue
 	fade                    [3]hue
 }
 
 var darkRamp = ramp{
 	ink: hueInk, accent: hueAccent, muted: hueMuted, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk,
-	hover: hueHover, violet: hueViolet, fade: thoughtFade,
+	hover: hueHover, band: hueBand, violet: hueViolet, fade: thoughtFade,
 }
 
 var lightRamp = ramp{
 	ink: lightInk, accent: lightAccent, muted: lightMuted, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk,
-	hover: lightHover, violet: hueViolet, fade: lightFade,
+	hover: lightHover, band: lightBand, violet: hueViolet, fade: lightFade,
 }
 
 // lightFade is the thinking window's gradient on a page. It fades toward WHITE
@@ -554,13 +562,36 @@ func (p palette) askBold(s string) string { return p.bold(p.ask(s)) }
 // A terminal below ANSI256 gets the row back untouched: see the note at the top
 // of this file for why there is no weight-tier fallback here.
 func (p palette) hover(s string, width int) string {
-	if s == "" || p.linear {
+	if p.linear {
+		return s
+	}
+	return p.background(s, width, p.ramp.hover)
+}
+
+// band paints the SELECTED row's background: the same mechanism as the hover
+// one step louder ([hueBand]).
+//
+// It is NOT gated on the linear tier the way the hover is, and the difference
+// is the whole reason those two are separate methods: a hover is a pointer's
+// shadow and there is no pointer to have one, while the cursor is a position in
+// a list that exists whoever is reading it. What linear mode drops is motion
+// and pointers, not the answer to "which row am I on".
+func (p palette) band(s string, width int) string {
+	return p.background(s, width, p.ramp.band)
+}
+
+// background is the one place this file draws a background: the row padded to
+// the full width, wrapped in the colour, closed with SGR 49. A terminal below
+// ANSI256 gets the row back untouched — there is no weight that means "this
+// row", and the callers each carry a text-side marker anyway (the lead glyph,
+// the bold label).
+func (p palette) background(s string, width int, h hue) string {
+	if s == "" {
 		return s
 	}
 	if pad := width - ansi.StringWidth(s); pad > 0 {
 		s += strings.Repeat(" ", pad)
 	}
-	h := p.ramp.hover
 	switch p.profile {
 	case tokens.TrueColor:
 		return "\x1b[48;2;" + itoa(int(h.r)) + ";" + itoa(int(h.g)) + ";" +

@@ -343,6 +343,15 @@ type app struct {
 	// that draw motion or shape, and by nothing else.
 	linear bool
 
+	// clock is where this surface reads the time, and nil is [time.Now].
+	//
+	// It exists for ONE fact that is now on screen: a running call's age
+	// (toolview.go's count-up), which is the first thing this surface draws that
+	// is a function of the wall clock rather than of what arrived. A test cannot
+	// wait a minute to see "1m 5s", and a render that slept to be tested would
+	// be a render tuned to a test.
+	clock func() time.Time
+
 	// welcome is the box an empty session opens with (welcome.go). It is the
 	// only animation on this surface that is not a spinner, and it runs once.
 	welcome welcome
@@ -872,7 +881,7 @@ func (a *app) beginTool(ev session.Event) {
 	if at := a.claimAnnounced(ev); at >= 0 {
 		e := &a.entries[at]
 		e.status = toolRunning
-		e.began = time.Now()
+		e.began = a.now()
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
 		e.text = firstNonEmpty(ev.Hint, e.text)
 		a.follow()
@@ -882,7 +891,7 @@ func (a *app) beginTool(ev session.Event) {
 	a.closeLive()
 	a.entries = append(a.entries, entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
-		status: toolRunning, began: time.Now(), detail: toolDetail{Args: ev.Args},
+		status: toolRunning, began: a.now(), detail: toolDetail{Args: ev.Args},
 	})
 	a.follow()
 	a.touch()
@@ -929,7 +938,7 @@ func (a *app) closeTool(ev session.Event, status toolState, why string) {
 			continue
 		}
 		e.status = status
-		e.ended = time.Now()
+		e.ended = a.now()
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
 		e.detail.Output = firstNonEmpty(ev.Output, why)
 		if why != "" && status == toolFailed {
@@ -1001,6 +1010,14 @@ func (a *app) submit(text string) tea.Cmd {
 		ch, err := agent.Submit(ctx, text)
 		return submittedMsg{ch: ch, err: err}
 	}, a.wake())
+}
+
+// now is the time, from the seam rather than from the package: see [app.clock].
+func (a *app) now() time.Time {
+	if a.clock != nil {
+		return a.clock()
+	}
+	return time.Now()
 }
 
 // touch says the rows no longer match the entries, and the next frame rebuilds

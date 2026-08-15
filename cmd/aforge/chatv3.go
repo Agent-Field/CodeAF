@@ -485,6 +485,14 @@ func v3Models(models v3Catalog) []tui3.Model {
 			ContextLength: row.ContextLength,
 			ArenaElo:      row.ArenaElo,
 			Output:        row.OutputModalities,
+			// What the model READS travels beside what it answers in, because
+			// the surface asks both questions and can only answer them from what
+			// it was handed: the chat law needs text IN (a transcription model
+			// answers in text and takes sound), and the vision slot needs image
+			// in. A row that arrived with only its output side would be filtered
+			// on half the facts and would look, from the picker, exactly like a
+			// row that had been checked.
+			Input: row.InputModalities,
 			// The published answer to "may this call carry a reasoning knob",
 			// and the only thing that lets the picker offer ctrl+t on a row.
 			// Either spelling counts: a model that takes `reasoning` can be

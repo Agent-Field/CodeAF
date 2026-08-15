@@ -1,0 +1,30 @@
+-rw-rw-r-- 1 santosh santosh  19913 Aug 14 17:49 /tmp/arg-test.png
+-rw-rw-r-- 1 santosh santosh 144220 Aug 13 17:40 /tmp/_byw_ckpt.png
+-rw-rw-r-- 1 santosh santosh   1531 Aug 15 01:46 /tmp/mps_12x12_r4.png
+-rw-rw-r-- 1 santosh santosh   2928 Aug 15 01:43 /tmp/mps_digit0_400ep.png
+-rw-rw-r-- 1 santosh santosh   3426 Aug 15 01:44 /tmp/mps_digit_0.png
+-rw-rw-r-- 1 santosh santosh   4239 Aug 15 01:51 /tmp/mps_digits_grid_4x.png
+-rw-rw-r-- 1 santosh santosh   2023 Aug 15 01:51 /tmp/mps_digits_grid.png
+-rw-rw-r-- 1 santosh santosh   1196 Aug 15 01:49 /tmp/mps_em_12x12_r8.png
+-rw-rw-r-- 1 santosh santosh   1134 Aug 15 01:50 /tmp/mps_em_fixed.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:27 /tmp/ok2.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:37 /tmp/ok.png
+-rw-rw-r-- 1 santosh santosh  50529 Aug 14 17:02 /tmp/pg_canto-03.png
+-rw-rw-r-- 1 santosh santosh  22426 Aug 14 17:02 /tmp/pg_title-01.png
+-rw-rw-r-- 1 santosh santosh  16930 Aug 14 17:37 /tmp/stable.png
+-rw------- 1 santosh santosh 161708 Aug 14 17:37 /tmp/tmp.TZ0lG7GOd2.png
+-rw------- 1 santosh santosh 126478 Aug 14 17:37 /tmp/tmp.x3AtUSCXRF.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:37 /tmp/v-1.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:37 /tmp/v-2.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:37 /tmp/v-3.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:37 /tmp/v-4.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:37 /tmp/v-5.png
+-rw-rw-r-- 1 santosh santosh   8490 Aug 15 01:32 /tmp/whittle_checker.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:29 /tmp/wt-basic-1.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:30 /tmp/wt-basic-2.png
+-rw-rw-r-- 1 santosh santosh  19288 Aug 14 17:30 /tmp/wt-basic-3.png
+--- ssh hosts ---
+# name    ssh-target                             lanes
+spark     santosh@spark                          gpu,cpu
+dumb      santoshkumarradha@santoshs--dumbledore cpu
+blackmac  santoshkumar@santoshs-macbook-pro      cpu

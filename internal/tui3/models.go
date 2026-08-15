@@ -81,6 +81,18 @@ type Model struct {
 	// cache written before this field existed. See [answersText] for what that
 	// silence costs.
 	Output []string `json:"output_modalities,omitempty"`
+
+	// Input is what the model READS, from the same place (architecture.
+	// input_modalities): "text", "image", "audio", "file". It is the other half
+	// of the question every slot on this surface asks — a slot is answered by a
+	// model that can take what it will be handed — and without it two whole
+	// families lie to the picker: a transcription model (audio in, text out)
+	// passes the output law with room to spare, and a model that CANNOT see is
+	// indistinguishable from one that can.
+	//
+	// Empty is "nobody said" here too, and the two sides read their silence
+	// separately: see [readsText] and [seesImages].
+	Input []string `json:"input_modalities,omitempty"`
 }
 
 // modelCacheName is the file under the aforge state root. It is v3's own list
@@ -187,6 +199,7 @@ func cleanModels(models []Model) []Model {
 			model.ContextLength = 0
 		}
 		model.Output = cleanModalities(model.Output)
+		model.Input = cleanModalities(model.Input)
 		cleaned = append(cleaned, model)
 	}
 	return cleaned
@@ -211,7 +224,7 @@ func cleanModalities(values []string) []string {
 	return out
 }
 
-// ── who belongs in a picker: TEXT OUT, AND NOTHING ELSE ─────────────────────
+// ── who belongs in a picker: TEXT OUT, AND TEXT IN ──────────────────────────
 //
 // A row in the model list is a model somebody is about to TALK TO. The catalog
 // carries hundreds of rows that are real models and answer in something else —
@@ -225,19 +238,82 @@ func cleanModalities(values []string) []string {
 // captions what it draws. It is a drawing model that also writes, not a model
 // you hold a conversation with, and the reading that keeps it is the reading
 // that keeps every drawing model on the market.
+//
+// AND THE RULE HAS A SECOND SIDE, because output alone cannot see the whole
+// question: a transcription model answers in text and nothing but text, and
+// takes SOUND. It is a chat row by the output law and a dead end in practice —
+// the first thing anybody sends it is a sentence it cannot read. So a chat row
+// must also take text in ([readsText]), and a slot that wants something else —
+// the "looking" row, which wants a model that reads PICTURES — asks its own
+// question through the same mechanism ([modelFilter]) rather than through a
+// second list.
+
+// ── THE PREDICATE: ONE MECHANISM, ONE QUESTION PER SLOT ─────────────────────
+//
+// A picker is opened to answer a SLOT, and a slot is a question about
+// modalities: the conversation asks for a model you can talk to, the "looking"
+// row asks for one that can see. Those are two questions and there is one
+// mechanism for them — a [modelFilter] handed to the picker at the moment it
+// opens ([picker.startFor]) — because the alternative is what this surface had
+// before: one hard-wired rule inside the list, and every other slot showing the
+// whole catalog and hoping.
+//
+// The filter is chosen from the ROW, in one place ([filterFor] in settings.go),
+// so a new slot is a new line there and never a new list here.
+
+// modelFilter is one slot's question, asked of one row.
+type modelFilter func(Model) bool
+
+// keepModels is the filter applied. It is the only place a list is narrowed.
+func keepModels(models []Model, keep modelFilter) []Model {
+	if keep == nil {
+		return models
+	}
+	out := make([]Model, 0, len(models))
+	for _, model := range models {
+		if keep(model) {
+			out = append(out, model)
+		}
+	}
+	return out
+}
 
 // chatModels is the list with everything you cannot talk to taken out. It is
 // applied to EVERY rung of the source order ([app.modelList]) — the door's
 // catalog, the disk cache and the built-ins alike — because the rule is about
 // what a row IS and not about where it came from.
-func chatModels(models []Model) []Model {
-	out := make([]Model, 0, len(models))
-	for _, model := range models {
-		if answersText(model) {
-			out = append(out, model)
+func chatModels(models []Model) []Model { return keepModels(models, chatModel) }
+
+// chatModel is THE GENERAL CHAT LAW, and it is two-sided: a model somebody can
+// hold a conversation with answers in text and reads text. The output side is
+// the older half ([answersText]); the input side ([readsText]) is what keeps a
+// transcription model out — whisper answers in text alone and would sail
+// through a rule that only looked at what comes back.
+func chatModel(model Model) bool { return answersText(model) && readsText(model) }
+
+// seesImages is the VISION slot's question: can this model look at a picture.
+//
+// SILENCE FALLS THROUGH, which is the opposite of what the door's own vision
+// gate does with it (cmd/aforge's v3ReadsImages, where the cost of guessing
+// wrong is a photo sent to a model that cannot read one). Here the cost is a
+// name missing from a list somebody is choosing from, and the rows that publish
+// nothing are the cache written before this field travelled — hiding all of
+// them would leave the row unanswerable. The row's own blank still means
+// "aforge picks one that can see", so nothing here has to guess for it.
+func seesImages(model Model) bool {
+	if len(model.Input) == 0 {
+		return true
+	}
+	return hasModality(model.Input, "image")
+}
+
+func hasModality(modalities []string, want string) bool {
+	for _, modality := range modalities {
+		if modality == want {
+			return true
 		}
 	}
-	return out
+	return false
 }
 
 // answersText is the rule for one row, in two rungs.
@@ -266,27 +342,74 @@ func answersText(model Model) bool {
 	return !generatorID(model.ID)
 }
 
+// readsText is the input side of the law, in the same two rungs.
+//
+// THE PUBLISHED ANSWER WINS AGAIN. A row that lists what it reads is taken at
+// its word: text has to be in it, or the model cannot be handed a sentence.
+// That one line is what excludes the transcription family — whisper publishes
+// ["audio"] in and ["text"] out, so it passes [answersText] and fails here,
+// which is exactly the shape of the defect: a picker full of models that answer
+// in text and cannot be spoken to.
+//
+// A row that says NOTHING is read by its id, against a WIDER vocabulary than
+// the output rung's ([sidecarMarks]): a silent row is a cache line written
+// before modalities travelled, and by then the only witness left is the name.
+func readsText(model Model) bool {
+	if len(model.Input) > 0 {
+		return hasModality(model.Input, "text")
+	}
+	return !sidecarID(model.ID)
+}
+
 // generationMarks are the id words that mean "this model makes a picture, a
-// voice or a film". They are matched as WHOLE HYPHEN-SEPARATED WORDS of the id,
-// never as substrings: "image" catches google/gemini-3.1-flash-image and
+// voice or a film" — the OUTPUT rung's vocabulary, and deliberately the narrow
+// one: it decides [answersText] alone, where a word that is as often an input
+// as an output would hide a chat model on the strength of its name.
+//
+// They are matched as WHOLE HYPHEN-SEPARATED WORDS of the id, never as
+// substrings: "image" catches google/gemini-3.1-flash-image and
 // openai/gpt-5-image-mini, and cannot catch a chat model whose name merely
-// contains the letters. The list is short on purpose — words like "audio" and
-// "video" are as often an INPUT a chat model reads as an output it produces,
-// and a name rule that hides a model somebody wanted is worse than one that
-// misses a model they can ignore.
+// contains the letters.
 var generationMarks = map[string]bool{
 	"image": true, "imagen": true, "images": true,
 	"tts": true, "dalle": true, "sora": true, "veo": true,
 }
 
+// sidecarMarks are the words the generation list leaves out, and they are the
+// families a CHAT list has no room for whichever direction they run in: speech
+// and music and film in either direction, and the three kinds of model that
+// answer with a vector or a verdict rather than with a sentence.
+//
+// They are read for the input side only ([readsText]), so the two rungs cannot
+// disagree with each other: "qwen3-audio-instruct" still ANSWERS in text — that
+// is a true fact about it and [answersText] keeps saying so — it is simply not
+// a row a person choosing a conversation should have to read past.
+var sidecarMarks = map[string]bool{
+	"audio": true, "voice": true, "whisper": true, "lyria": true,
+	"music": true, "video": true,
+	"embedding": true, "embeddings": true,
+	"moderation": true, "rerank": true, "reranker": true,
+}
+
 // generatorID reads the id for a generation family. See [generationMarks].
-func generatorID(id string) bool {
+func generatorID(id string) bool { return markedID(id, generationMarks) }
+
+// sidecarID reads it for anything that is not a conversation: the generation
+// families and [sidecarMarks] together, since a model that draws is no more a
+// chat row than one that transcribes.
+func sidecarID(id string) bool {
+	return markedID(id, generationMarks) || markedID(id, sidecarMarks)
+}
+
+// markedID reports whether any whole hyphen-separated word of the id's last
+// segment is in the table.
+func markedID(id string, marks map[string]bool) bool {
 	id = strings.ToLower(id)
 	if at := strings.LastIndexByte(id, '/'); at >= 0 {
 		id = id[at+1:]
 	}
 	for _, word := range strings.Split(id, "-") {
-		if generationMarks[word] {
+		if marks[word] {
 			return true
 		}
 	}

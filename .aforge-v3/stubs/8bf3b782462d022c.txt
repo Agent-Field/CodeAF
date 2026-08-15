@@ -1,0 +1,31 @@
+total 44124
+drwxrwxr-x 13 santosh santosh     4096 Aug 14 18:54 .
+drwxr-xr-x  7 santosh santosh     4096 Aug 14 12:31 ..
+-rwxrwxr-x  1 santosh santosh 44935431 Aug 14 18:54 aforge
+-rw-r--r--  1 santosh santosh     6689 Aug 15 01:11 asciigen.py
+drwxrwxr-x  2 santosh santosh     4096 Aug 13 20:54 audit-notes
+drwxrwxr-x  7 santosh santosh     4096 Aug 13 20:54 bench
+-rw-rw-r--  1 santosh santosh    22604 Aug 14 01:24 BENCHMARKS.md
+drwxr-xr-x  2 santosh santosh     4096 Aug 14 18:45 bin
+drwxrwxr-x  3 santosh santosh     4096 Aug 10 20:40 .claude
+drwxrwxr-x  3 santosh santosh     4096 Aug 13 22:27 cmd
+drwxrwxr-x  2 santosh santosh     4096 Aug 14 17:08 docs
+drwxrwxr-x  8 santosh santosh     4096 Aug 15 01:05 .git
+-rw-rw-r--  1 santosh santosh       49 Aug 10 15:42 .gitignore
+-rw-r--r--  1 santosh santosh     2475 Aug 13 20:54 go.mod
+-rw-r--r--  1 santosh santosh    11413 Aug 13 20:54 go.sum
+drwxrwxr-x 37 santosh santosh     4096 Aug 14 18:18 internal
+-rw-rw-r--  1 santosh santosh     1724 Aug 10 15:42 Makefile
+drwxrwxr-x  2 santosh santosh     4096 Aug 15 01:11 __pycache__
+drwxrwxr-x  3 santosh santosh     4096 Aug 14 17:45 .pytest_cache
+-rw-rw-r--  1 santosh santosh       33 Aug 14 17:02 qft-poem.aux
+-rw-rw-r--  1 santosh santosh    28651 Aug 14 17:02 qft-poem.log
+-rw-r--r--  1 santosh santosh     7259 Aug 14 16:57 qft-poem.md
+-rw-rw-r--  1 santosh santosh    74442 Aug 14 17:02 qft-poem.pdf
+-rw-r--r--  1 santosh santosh    11693 Aug 14 17:02 qft-poem.tex
+drwxrwxr-x  4 santosh santosh     4096 Aug 14 17:45 test
+---
+ M test/__pycache__/test_asciigen.cpython-312-pytest-7.4.4.pyc
+ M test/test_asciigen.py
+?? __pycache__/
+?? asciigen.py

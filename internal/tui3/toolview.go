@@ -1,6 +1,9 @@
 package tui3
 
 import (
+	"encoding/json"
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -182,6 +185,13 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	// the last thing the row gives up when the terminal is narrow, because it is
 	// the only thing on the line that is not about WHAT the call did.
 	elapsed := elapsedWord(e)
+	// THE COUNT-UP, which is the same figure one state earlier: while the call
+	// runs, its age sits BESIDE the spinner rather than in place of it. The two
+	// say different things and a row needs both — the spinner is the claim that
+	// something is turning, the clock is how long it has been turning, and a
+	// two-minute `go test` with only a spinner on it is indistinguishable from a
+	// two-second one.
+	counting := a.countUp(e)
 	// What the person answered when this call was asked about (consent.go). It
 	// rides the stat slot because it is the same kind of fact — dim, trailing,
 	// about the call rather than in it — and because a row that was approved
@@ -207,8 +217,12 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	if e.status == toolFailed {
 		reserve = 2
 	}
-	if elapsed != "" {
+	switch {
+	case elapsed != "":
 		reserve = ansi.StringWidth(elapsed) + 1
+	case counting != "":
+		// The clock, the space, and the spinner cell it stands beside.
+		reserve = ansi.StringWidth(counting) + 2
 	}
 	room := width - railWidth - nameWidth - reserve
 	if statWidth := ansi.StringWidth(statPlain) + 2; room-statWidth < 8 {
@@ -245,26 +259,24 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 		used += 2
 		mark = ""
 	}
-	if elapsed != "" {
-		mark = a.pal.dim(elapsed)
+	// tail is the unpainted width of whatever ends the line: one cell for a
+	// glyph, the whole word for an elapsed time, both for a call still counting.
+	tail := 1
+	switch {
+	case elapsed != "":
+		mark, tail = a.pal.dim(elapsed), ansi.StringWidth(elapsed)
+	case counting != "" && mark != "":
+		mark, tail = a.pal.dim(counting)+" "+mark, ansi.StringWidth(counting)+2
 	}
 	if mark == "" {
 		return line
 	}
-	// The spinner — or what replaced it — sits at the line's right end.
-	if pad := width - used - ansi.StringWidth(plainMark(mark, elapsed)); pad > 0 {
+	// The spinner — or what replaced it, or what now stands beside it — sits at
+	// the line's right end.
+	if pad := width - used - tail; pad > 0 {
 		line += strings.Repeat(" ", pad)
 	}
 	return line + mark
-}
-
-// plainMark is the unpainted width of whatever ends the line: one cell for a
-// glyph, the whole word for an elapsed time.
-func plainMark(mark, elapsed string) string {
-	if elapsed != "" {
-		return elapsed
-	}
-	return " " // every glyph this file ends a line with is one cell
 }
 
 // mark is what the right of a tool line says about how the call is going —
@@ -346,6 +358,96 @@ func pad2(n int) string {
 		return "0" + itoa(n)
 	}
 	return itoa(n)
+}
+
+// ── THE COUNT-UP ────────────────────────────────────────────────────────────
+//
+//	⠿ running · 12s        …and a second later, 13s
+//	⠿ running · 1m 4s
+//	⠿ running · 12m 30s
+//
+// A call that is running is a call somebody is WAITING ON, and the only honest
+// thing a surface can offer them is how long they have been waiting. The
+// spinner says the work is alive and says nothing else — it looks the same at
+// two seconds and at twenty minutes — so the row carries the figure beside it.
+//
+// It STOPS AT COMPLETION. A finished call has [elapsedWord], which is a
+// different figure said a different way (one decimal under ten seconds, because
+// a duration you can compare wants precision and a duration you are living
+// through wants readability), and only one of the two is ever on a row.
+//
+// NOTHING NEW TICKS FOR IT. The frame clock already redraws while a turn runs —
+// it is what turns the spinner (render.go's [app.paint]) — so the count-up is a
+// function of the time at paint and costs the surface no wakeup of its own.
+
+// countUpFloor is how old a call has to be before it says so. Under a second
+// there is no waiting to report, and "0s" under every call that has just begun
+// is a column that has to be read to learn nothing.
+const countUpFloor = time.Second
+
+// countUp is a RUNNING call's age, or "" for a call in any other state — the
+// clock belongs to running rows and to nothing else.
+//
+// A turn that ENDED with this call unresolved stops it too, and for the reason
+// the spinner stops there ([app.mark]): the surface no longer knows the call is
+// alive, and a number that kept climbing would be claiming it is. The row keeps
+// the dim dot it already had.
+func (a *app) countUp(e *entry) string {
+	if e.status != toolRunning || e.began.IsZero() || a.state != stateWorking {
+		return ""
+	}
+	word := countUpWord(a.now().Sub(e.began))
+	if word == "" {
+		return ""
+	}
+	// A bounded call counts against its bound: "12s / 120s" is the same age
+	// with the deadline it runs under, and the deadline is a fact the row
+	// already carries (the call's own args). Only bash has a timeout on the
+	// wire, so only bash counts down.
+	if limit := bashLimit(e); limit > 0 {
+		word += " / " + countUpWord(limit)
+	}
+	return word
+}
+
+// bashLimit is the timeout a bash call runs under: the model's own when it set
+// one, the session's default when it did not, the session's cap above that —
+// the same law internal/session's wrapper applies to the wire args, restated
+// here from the call's original args so the row agrees with the clock the
+// command actually dies on. Zero for any other tool: nothing else is bounded.
+func bashLimit(e *entry) time.Duration {
+	if e.tool != "bash" {
+		return 0
+	}
+	seconds := float64(session.DefaultBashTimeoutSeconds)
+	var args struct {
+		Timeout float64 `json:"timeout"`
+	}
+	if raw := strings.TrimSpace(e.detail.Args); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &args); err == nil && args.Timeout > 0 {
+			seconds = math.Min(args.Timeout, session.MaxBashTimeoutSeconds)
+		}
+	}
+	return time.Duration(seconds * float64(time.Second))
+}
+
+// countUpWord spells a duration the way a person says one out loud: seconds
+// under a minute, minutes and seconds under an hour, hours and minutes above
+// it. The parts are SPACED ("1m 5s", not "1m05s") because this figure is read
+// while it moves — it is the one number on the surface that changes under the
+// eye — and a padded run of digits reads as one number rather than as two.
+func countUpWord(d time.Duration) string {
+	if d < countUpFloor {
+		return ""
+	}
+	switch {
+	case d < time.Minute:
+		return itoa(int(d/time.Second)) + "s"
+	case d < time.Hour:
+		return itoa(int(d/time.Minute)) + "m " + itoa(int(d%time.Minute/time.Second)) + "s"
+	default:
+		return itoa(int(d/time.Hour)) + "h " + itoa(int(d%time.Hour/time.Minute)) + "m"
+	}
 }
 
 // ── THE PARAMETER HIERARCHY ─────────────────────────────────────────────────
@@ -529,9 +631,9 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		// did, where a command that unfolded itself under every bash call would
 		// be the surface taking the screen.
 		if command := a.commandRows(e, width); len(command) > 0 {
-			return append(command, a.pal.dim(liveWord(e)+a.pulse())), 0
+			return append(command, a.pal.dim(a.livePhrase(e))), 0
 		}
-		return []string{a.pal.dim(liveWord(e) + a.pulse())}, 0
+		return []string{a.pal.dim(a.livePhrase(e))}, 0
 	}
 
 	switch e.tool {
@@ -569,6 +671,21 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		return a.cap(e, a.plainRows(resultText(e.detail.Output), width), listWindow)
 	}
 	return a.cap(e, a.genericRows(e, width), listWindow)
+}
+
+// livePhrase is the line an open, unfinished call carries: what it is doing,
+// and — once it has been doing it for a second — for how long.
+//
+// The count-up REPLACES the pulse rather than trailing it. Both are the same
+// claim ("this is still alive") and the clock is the better one: it says the
+// thing the ellipsis only implies, and two animations on one line is one
+// animation too many. A call with no clock — queued, or waiting on a person —
+// keeps the pulse, because nothing has started to count.
+func (a *app) livePhrase(e *entry) string {
+	if clock := a.countUp(e); clock != "" {
+		return liveWord(e) + " · " + clock
+	}
+	return liveWord(e) + a.pulse()
 }
 
 // liveWord is what an unfinished call with nothing to preview says it is doing.
