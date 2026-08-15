@@ -320,7 +320,15 @@ type Config struct {
 	// caller that has not said so must never get one. Nothing about the gate
 	// changes when it is off — not one extra call, not one extra branch a person
 	// can observe.
-	Guardian bool
+	// TaskAudit gates the verified frontier (task_audit.go): when false, a
+	// finished node merges on its own report — faster and cheaper, and
+	// 'done' stops meaning 'proven'. The config row (task.audit) defaults on.
+	TaskAudit bool
+	// MemoryConsolidation gates the idle dreaming pass
+	// (memory_consolidate.go). The config row (memory.consolidation)
+	// defaults on.
+	MemoryConsolidation bool
+	Guardian            bool
 
 	// RolesSource reads one auxiliary-model setting for internal/roles: the
 	// keys are roles.PinKey and roles.TierKey. Nil is a fresh install with no

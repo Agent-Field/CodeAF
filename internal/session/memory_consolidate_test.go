@@ -454,6 +454,30 @@ func TestIdleTimerArmsAfterATurnAndFiresThePass(t *testing.T) {
 	}
 }
 
+// With the consolidation row off, a settled turn arms nothing — the row is
+// the whole pass's gate, not a preference the timer negotiates with.
+func TestConsolidationOffArmsNothing(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse("done"), nil },
+	}}
+	memory := filepath.Join(t.TempDir(), "memory.md")
+	if err := os.WriteFile(memory, []byte(strings.Join(growingMemory, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("write memory: %v", err)
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.MemoryFile = memory
+		config.AskConsent = true
+		config.MemoryConsolidation = false
+	})
+	clock := newFakeIdle()
+	agent.memory.idle.clock = clock.clock()
+
+	collect(t, mustSubmit(t, agent, "hello"))
+	if armed, _ := clock.counts(); armed != 0 {
+		t.Fatalf("the idle timer was armed %d times with consolidation off, want 0", armed)
+	}
+}
+
 // The person is back: the countdown stands down before the turn does anything.
 func TestNewTurnDisarmsTheIdleTimer(t *testing.T) {
 	completer := &scriptedCompleter{steps: []step{

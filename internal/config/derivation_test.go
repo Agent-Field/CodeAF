@@ -146,8 +146,10 @@ var settingReaders = map[string]string{
 	// The guardian row is read by the v3 door and becomes session.Config.Guardian.
 	// It names the accessor rather than the field, because the door is the only
 	// caller and the accessor is what it touches.
-	KeyGuardian: "GuardianEnabledAt",
-	KeyMouse:    "MouseEnabledAt",
+	KeyGuardian:            "GuardianEnabledAt",
+	KeyMouse:               "MouseEnabledAt",
+	KeyTaskAudit:           "TaskAuditEnabledAt",
+	KeyMemoryConsolidation: "MemoryConsolidationEnabledAt",
 	// The task countdown names the field it becomes on the far side —
 	// session.Config's TaskAutoApproveSeconds, which task.go reads when it puts
 	// a deadline on a proposal — for the reason the spend rail names its own:

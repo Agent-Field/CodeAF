@@ -796,6 +796,64 @@ func TestKilledTaskKeepsItsBranch(t *testing.T) {
 // A REAL CHANGE, VERIFIED BY A REAL TEST RUN. The node writes a package and a
 // test for it; the auditor runs `go test ./...` through its own bash, sees it
 // pass, and its verdict — with the evidence — is what rides the report.
+// With the audit row off the gate stands open BY the person's own choice: the
+// node merges on its own report, the report says unaudited in so many words,
+// and no auditor is ever constructed — the cost row means the cost is not
+// spent either.
+func TestAuditOffMergesUnaudited(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go and its test"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			writeCall("call-test", "greet_test.go",
+				"package greet\n\nimport \"testing\"\n\nfunc TestGreet(t *testing.T) {\n\tif Greet() != \"hi\" {\n\t\tt.Fatal(\"no greeting\")\n\t}\n}\n"),
+			finalText("Wrote greet.go and greet_test.go."),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+		config.TaskAudit = false
+	})
+	graph := agent.graph()
+
+	events, err := agent.Submit(context.Background(), "add a greeting")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collect(t, events)
+
+	node := graph.node(1)
+	if node == nil {
+		t.Fatal("no node was admitted")
+	}
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskDone {
+		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
+	}
+	if !strings.HasPrefix(notice.Report, "unaudited") {
+		t.Fatalf("an unaudited merge must say so first: %q", notice.Report)
+	}
+	if notice.Merge != mergeMerged {
+		t.Fatalf("the open gate still merges: merge = %q", notice.Merge)
+	}
+	if content := readFile(t, filepath.Join(repo, "greet.go")); !strings.Contains(content, "func Greet") {
+		t.Fatalf("the unaudited work is not on the person's branch: %q", content)
+	}
+	if asked := completer.auditAsked(); len(asked) != 0 {
+		t.Fatalf("the auditor was constructed %d times with the row off", len(asked))
+	}
+}
+
 func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
 	repo := newGoModuleRepo(t)
 	t.Setenv("HOME", t.TempDir())

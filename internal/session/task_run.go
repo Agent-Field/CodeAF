@@ -780,7 +780,15 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// follows is somebody else's (task_audit.go). Only a VERIFIED verdict
 	// reaches comeHome, so only verified work is ever merged onto the person's
 	// branch — and a refuted node keeps its branch exactly as a killed one does,
-	// because "not proven" is not "throw it away".
+	// because "not proven" is not "throw it away". With the audit row off the
+	// gate stands open and the node's own account merges — marked unaudited,
+	// because 'done' should never wear 'verified's clothes.
+	if !a.config.TaskAudit {
+		merge, detail := tree.comeHome(node.title())
+		fmt.Fprintf(log, "merge: %s %s (unaudited)\n", merge, detail)
+		node.finish(withReport("unaudited — task.audit is off", withReport(report, detail)), changed, tree.branch, merge)
+		return TaskDone
+	}
 	verdict := a.auditNode(ctx, node, tree, changed, report, log)
 	switch {
 	case ctx.Err() != nil:

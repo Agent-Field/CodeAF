@@ -160,7 +160,7 @@ type idleState struct {
 //     session that stays alive; arming a 30-second timer inside a program that
 //     ends in two is either a pass that never runs or a process that lingers.
 func (a *Agent) armIdleLocked() {
-	if a.memory == nil || a.closed || a.config.InTask || !a.config.AskConsent {
+	if a.memory == nil || a.closed || a.config.InTask || !a.config.AskConsent || !a.config.MemoryConsolidation {
 		return
 	}
 	store := a.memory
@@ -483,12 +483,12 @@ func identicalFacts(left, right []string) bool {
 // false negative is a date quietly rewritten, which is the failure this whole
 // mechanism exists to prevent — the asymmetry Sleeping Agent measured.
 var temporalPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\b\d{4}-\d{1,2}-\d{1,2}\b`),                              // 2026-08-15
-	regexp.MustCompile(`\b\d{1,2}/\d{1,2}/\d{2,4}\b`),                            // 15/08/2026
-	regexp.MustCompile(`\b\d{1,2}:\d{2}(?::\d{2})?\b`),                           // 14:30
-	regexp.MustCompile(`\bv?\d+\.\d+(?:\.\d+)*\b`),                               // v2.1, 1.20.3
-	regexp.MustCompile(`\b(?:19|20)\d{2}\b`),                                     // 1998, 2026
-	regexp.MustCompile(`(?i)\bQ[1-4]\b`),                                         // Q3
+	regexp.MustCompile(`\b\d{4}-\d{1,2}-\d{1,2}\b`),    // 2026-08-15
+	regexp.MustCompile(`\b\d{1,2}/\d{1,2}/\d{2,4}\b`),  // 15/08/2026
+	regexp.MustCompile(`\b\d{1,2}:\d{2}(?::\d{2})?\b`), // 14:30
+	regexp.MustCompile(`\bv?\d+\.\d+(?:\.\d+)*\b`),     // v2.1, 1.20.3
+	regexp.MustCompile(`\b(?:19|20)\d{2}\b`),           // 1998, 2026
+	regexp.MustCompile(`(?i)\bQ[1-4]\b`),               // Q3
 	regexp.MustCompile(`(?i)\b\d+\s*(?:sec|min|hr|second|minute|hour|day|week|fortnight|month|quarter|year|sprint)s?\b`),
 	regexp.MustCompile(`(?i)\b(?:mon|tues|wednes|thurs|fri|satur|sun)day\b`),
 	regexp.MustCompile(`(?i)\b(?:january|february|march|april|june|july|august|september|october|november|december)\b`),

@@ -130,6 +130,12 @@ func newTestAgent(t *testing.T, completer Completer, mutate func(*Config)) (*Age
 		// A fixed system prompt keeps every assertion about the transcript
 		// independent of today's date and the machine's arch.
 		System: "SYSTEM",
+		// The product defaults for the two spending rows are ON (task.audit,
+		// memory.consolidation — the config rows default on and the door
+		// wires them). A test that wants one off says so in mutate; a test
+		// that says nothing gets the product's own posture.
+		TaskAudit:           true,
+		MemoryConsolidation: true,
 	}
 	if mutate != nil {
 		mutate(&config)
