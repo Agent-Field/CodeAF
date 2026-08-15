@@ -1077,6 +1077,13 @@ func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
 	a.compacting = true
 	a.mu.Unlock()
 
+	if hub != nil {
+		hub.send(Event{
+			Kind: EventCompacting,
+			Hint: "compacting ~" + approxTokens(tokensBefore) + " tokens",
+		})
+	}
+
 	summary, err := a.summarize(ctx, discarded)
 
 	a.mu.Lock()
@@ -1085,6 +1092,12 @@ func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
 		a.mu.Unlock()
 		if err == nil {
 			err = errors.New("session: summarizer returned nothing")
+		}
+		// The start event promised an end: a failed pass settles its row too,
+		// saying nothing changed — silence would leave "compacting" spinning
+		// over a turn that has already moved on.
+		if hub != nil {
+			hub.send(Event{Kind: EventCompacted, Hint: "compaction failed · context unchanged"})
 		}
 		return false, err
 	}
