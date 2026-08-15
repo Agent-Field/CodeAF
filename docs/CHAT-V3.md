@@ -471,7 +471,7 @@ order, thinking suffix `model:high` in role values). Persistence through the
 existing registry + Prefs.
 
 **Layering**: built-in defaults ← `~/.aforge/config.json` (existing registry)
-← `<workspace>/.aforge/config.json` (new project-local layer, surface-side)
+← `<workspace>/.openaf/config.json` (new project-local layer, surface-side)
 ← flags/env.
 
 **Welcome/resume, omp-shaped**: on open, a two-column welcome — left logo +

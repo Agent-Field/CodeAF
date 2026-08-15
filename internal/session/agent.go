@@ -70,9 +70,18 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	agent := &Agent{
 		config: config,
-		client: client,
+		// The client is wrapped so /compact can carry an extra instruction to
+		// the summarizer without every other call learning about it (see
+		// [Agent.CompactWithFocus]).
+		client: focusCompleter{inner: client},
 		system: system,
 		model:  config.Model,
+	}
+	// Memory is built before the belt for the same reason the registry is: the
+	// belt carries note and forget only when there is a file to write, so the
+	// store has to exist before the tools are assembled (memory.go).
+	if strings.TrimSpace(config.MemoryFile) != "" {
+		agent.memory = newMemoryStore(config.MemoryFile)
 	}
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
@@ -85,6 +94,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	agent.definitions = definitions
 	agent.messages = []ai.Message{textMessage("system", system)}
+	agent.refreshSystemLocked()
 
 	if strings.TrimSpace(config.SessionFile) != "" {
 		file, restored, err := openSessionFile(config.SessionFile, config.Workspace, config.Model)
@@ -215,6 +225,11 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 // the caller takes its own subscription, and it is the returned channel.
 func (a *Agent) startTurnLocked(ctx context.Context, text string, watcher *eventStream) <-chan Event {
 	a.running = true
+	// The memory block is re-read here, at the start of every turn, so a note
+	// written by the last turn is in front of the model for this one and a
+	// person who edited the file by hand is obeyed without a restart
+	// (memory.go). It is one 4KiB read per turn, not per step.
+	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub
 	turnCtx, cancel := context.WithCancel(ctx)
@@ -406,8 +421,72 @@ func (a *Agent) Title() string {
 // Compact runs a compaction pass now (the surface's /compact). It is a no-op
 // when the transcript is smaller than the keep-recent floor.
 func (a *Agent) Compact(ctx context.Context) error {
-	_, err := a.compact(ctx, nil)
+	return a.CompactWithFocus(ctx, "")
+}
+
+// CompactWithFocus is Compact with one extra instruction for the summarizer:
+// what this person wants the summary to be careful about, in their words. It is
+// the surface's `/compact keep the API decisions and the failing test` — the
+// summary is lossy by construction, and this is where somebody who knows what
+// matters says which part must survive.
+//
+// The focus is appended to the summarization prompt as a final line rather than
+// replacing any of it: the section contract (loop.go) is what makes a summary
+// resumable, and a focus that could overwrite it would let one careless phrase
+// cost the next session its file paths. Empty focus is exactly Compact.
+func (a *Agent) CompactWithFocus(ctx context.Context, focus string) error {
+	_, err := a.compact(withCompactFocus(ctx, focus), nil)
 	return err
+}
+
+// compactFocusKey names the focus on the context. It travels on the context
+// rather than on the Agent because it belongs to ONE call: a field would have to
+// be set before the pass and cleared after it, and a second pass entering that
+// window — the automatic one, which nobody focused — would summarize under an
+// instruction the person gave to a different pass.
+type compactFocusKey struct{}
+
+func withCompactFocus(ctx context.Context, focus string) context.Context {
+	focus = strings.TrimSpace(focus)
+	if focus == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, compactFocusKey{}, focus)
+}
+
+// focusCompleter is the Completer every request goes through, and it changes
+// exactly one of them: the summarization call made under a context carrying a
+// focus, whose system prompt gains a final "Additional focus:" line.
+//
+// It is a wrapper rather than an argument threaded down to the summarizer
+// because the compaction pass is a closed piece of machinery — threshold, cut,
+// summary, rebuild — and the focus is one sentence of prompt, not a change to
+// how any of that works. A turn's request never carries the key, so a turn is
+// byte-for-byte what it was.
+type focusCompleter struct{ inner Completer }
+
+func (f focusCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	if focus, ok := ctx.Value(compactFocusKey{}).(string); ok && focus != "" {
+		messages = withFocusAppended(messages, focus)
+	}
+	return f.inner.CompleteWithMessages(ctx, messages, options...)
+}
+
+// withFocusAppended returns a copy of the request whose system message ends with
+// the focus line. The copy is deep enough to matter: the messages are the
+// agent's own, shared with the transcript, and appending in place would edit the
+// session's system prompt from inside one request.
+func withFocusAppended(messages []ai.Message, focus string) []ai.Message {
+	for index, message := range messages {
+		if message.Role != "system" {
+			continue
+		}
+		copied := make([]ai.Message, len(messages))
+		copy(copied, messages)
+		copied[index] = textMessage("system", messageContentText(message)+"\n\nAdditional focus: "+focus)
+		return copied
+	}
+	return messages
 }
 
 // Close ends the session: an in-flight turn is cancelled and waited for,
@@ -736,21 +815,19 @@ type DisplayEntry struct {
 func (a *Agent) Transcript() []DisplayEntry {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	entries := make([]DisplayEntry, 0, len(a.messages))
-	for _, msg := range a.messages {
+	return displayEntries(a.messages)
+}
+
+// displayEntries is the shaping itself, over any run of messages. Transcript
+// hands it the whole conversation; [Agent.Rewind] hands it the turn it just
+// dropped, so a surface un-draws exactly the rows this drew.
+func displayEntries(messages []ai.Message) []DisplayEntry {
+	entries := make([]DisplayEntry, 0, len(messages))
+	for _, msg := range messages {
 		if msg.Role == "system" {
 			continue
 		}
-		text := ""
-		for _, part := range msg.Content {
-			if part.Type == "text" {
-				if text != "" {
-					text += "\n"
-				}
-				text += part.Text
-			}
-		}
-		entries = append(entries, DisplayEntry{Role: msg.Role, Text: text})
+		entries = append(entries, DisplayEntry{Role: msg.Role, Text: messageContentText(msg)})
 		for _, call := range msg.ToolCalls {
 			entries = append(entries, DisplayEntry{
 				Role: "tool",

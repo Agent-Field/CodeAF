@@ -43,10 +43,10 @@ def test_error_missing_file():
 
 
 def test_unicode_ramp():
-    gen = AsciiGenerator(" .o0")
-    # white (1.0) -> index 0 -> blank ' '; black (0.0) -> last -> '0'
-    assert gen.render(_white(10, 10), 5)[0] == " " * 5
+    gen = AsciiGenerator("0o. ")
+    # dark (0.0) -> index 0 -> densest '0'; white (1.0) -> last -> ' '
     assert gen.render(_black(10, 10), 5)[0] == "0" * 5
+    assert gen.render(_white(10, 10), 5)[0] == " " * 5
 
 
 def test_width_shape():
@@ -63,15 +63,15 @@ def test_tiny_width_clamped():
 
 
 def test_invert_flips_character():
-    gen = AsciiGenerator(" @")
-    # white: normal -> ' ' (index 0), inverted -> '@' (index 1)
+    gen = AsciiGenerator("@ ")
+    # white: normal -> ' ' (last), inverted -> '@' (index 0)
     assert gen.render(_white(10, 10), 5)[0] == " " * 5
     assert gen.render(_white(10, 10), 5, invert=True)[0] == "@" * 5
 
 
 def test_reverse_flips_rows():
-    gen = AsciiGenerator(" @")
-    # Project onto 2 chars: white -> ' ' (idx 0), black -> '@' (idx 1)
+    gen = AsciiGenerator("@ ")
+    # black -> '@' (index 0), white -> ' ' (index 1)
     normal = gen.render(_black(20, 4), 8)
     assert normal[0] == "@" * 8
     assert normal[::-1] == normal  # uniform, so symmetric
@@ -79,7 +79,7 @@ def test_reverse_flips_rows():
 
 
 def test_custom_ramp():
-    gen = AsciiGenerator(" .X")
+    gen = AsciiGenerator("X. ")
     out = gen.render(_black(10, 10), 5)
     assert out[0] == "X" * 5
 
@@ -89,14 +89,14 @@ def test_vertical_lines_captured():
     h, w = 40, 40
     lum = np.ones((h, w))
     lum[:, 20:22] = 0.0  # 1-px dark column
-    out = AsciiGenerator(" .%").render(lum, 20)
+    out = AsciiGenerator("%. ").render(lum, 20)
     # Column 10 in a width-20 grid = the dark line's cell
     assert out[1][10] == "%"
 
 
 def test_mixed_cell_uses_dark_pixel():
     """Contrast-heavy cell -> mean drags to dark (thin-line preservation)."""
-    gen = AsciiGenerator(" .@")
+    gen = AsciiGenerator("@. ")
     block = np.array(
         [
             [1.0, 1.0, 1.0],
@@ -166,4 +166,5 @@ def test_cli_stdout_and_file(tmp_path):
     assert r.returncode == 0, r.stderr
     content = out.read_text()
     assert len(content.splitlines()) > 10
-    assert "@" in content and " " in content
+    # Dark (lines/axes) and light (background) characters both present.
+    assert "@" in content and "." in content

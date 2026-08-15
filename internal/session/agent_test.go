@@ -1871,3 +1871,107 @@ func TestFollowUpOnAnIdleAgentStartsImmediately(t *testing.T) {
 		t.Fatalf("requests = %d, want 1", completer.requests())
 	}
 }
+
+// ── the announcement ────────────────────────────────────────────────────────
+
+// indexOf is where a kind first appears for a tool, or -1.
+func indexOf(events []Event, kind EventKind, tool string) int {
+	for i, event := range events {
+		if event.Kind == kind && event.Tool == tool {
+			return i
+		}
+	}
+	return -1
+}
+
+// ASKED FOR IS NOT STARTED. A mutating call is announced while the response is
+// still streaming and does not begin until the batch runs it, so the two events
+// are ordered and both arrive. The gap between them is the whole reason
+// EventToolAnnounced exists — it is the interval a surface used to spin a
+// spinner through for work that had not started.
+func TestAnAnnouncedCallPrecedesItsBegin(t *testing.T) {
+	writeCall := ai.ToolCall{ID: "c-write", Type: "function",
+		Function: ai.ToolCallFunction{Name: "write", Arguments: `{"path":"out.txt","content":"x"}`}}
+	readCall := ai.ToolCall{ID: "c-read", Type: "function",
+		Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"note.txt"}`}}
+
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			emitReady(t, ctx, writeCall)
+			emitReady(t, ctx, readCall)
+			return callsResponse(writeCall, readCall), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}}
+	agent, workspace := newTestAgent(t, completer, nil)
+	if err := os.WriteFile(filepath.Join(workspace, "note.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	collected := collect(t, mustSubmit(t, agent, "write the file and read the note"))
+
+	for _, tool := range []string{"write", "read"} {
+		announced := indexOf(collected, EventToolAnnounced, tool)
+		began := indexOf(collected, EventToolBegin, tool)
+		if announced < 0 {
+			t.Fatalf("%s was never announced: %v", tool, kinds(collected))
+		}
+		if began < 0 {
+			t.Fatalf("%s never began: %v", tool, kinds(collected))
+		}
+		// The read is READ-ONLY, so it may already be running by the time its
+		// begin is emitted (the early-start law) — but the announcement still
+		// comes first, so one surface rule renders both.
+		if announced > began {
+			t.Fatalf("%s announced at %d, after its begin at %d", tool, announced, began)
+		}
+	}
+
+	// The announcement carries what the row is drawn from and nothing that has
+	// not happened: the gloss, the payload, no result.
+	at := indexOf(collected, EventToolAnnounced, "write")
+	if collected[at].Hint != "write out.txt" {
+		t.Fatalf("the announcement's hint is %q, want the gloss", collected[at].Hint)
+	}
+	if !strings.Contains(collected[at].Args, `"content":"x"`) {
+		t.Fatalf("the announcement lost the payload: %q", collected[at].Args)
+	}
+	if collected[at].Output != "" {
+		t.Fatalf("an announced call has an output: %q", collected[at].Output)
+	}
+}
+
+// One call, one announcement. A ready event delivered twice — a provider that
+// re-flushes, a retry inside one attempt — must not draw the row twice.
+func TestACallIsAnnouncedOnlyOnce(t *testing.T) {
+	call := ai.ToolCall{ID: "c-1", Type: "function",
+		Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"note.txt"}`}}
+
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			emitReady(t, ctx, call)
+			emitReady(t, ctx, call)
+			return callsResponse(call), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}}
+	agent, workspace := newTestAgent(t, completer, nil)
+	if err := os.WriteFile(filepath.Join(workspace, "note.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	collected := collect(t, mustSubmit(t, agent, "read the note"))
+	announcements := 0
+	for _, event := range collected {
+		if event.Kind == EventToolAnnounced {
+			announcements++
+		}
+	}
+	if announcements != 1 {
+		t.Fatalf("the call was announced %d times, want 1", announcements)
+	}
+}

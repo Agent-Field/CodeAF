@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -68,10 +69,15 @@ func (a *app) askConsent(ev session.Event) {
 		a.closeLive()
 		a.entries = append(a.entries, entry{
 			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
-			status: toolRunning, detail: toolDetail{Args: ev.Args},
+			status: toolConsent, detail: toolDetail{Args: ev.Args},
 		})
 		at = len(a.entries) - 1
 	}
+	// The row stops claiming to be working. Its spinner was the second half of
+	// the defect this wave fixes: a call parked on a question that nobody could
+	// see was a question turned exactly like a call doing work.
+	a.entries[at].status = toolConsent
+	a.entries[at].stale = true
 	// The typed lists follow the draft, and the draft is suspended for as long
 	// as the question is up: a list left open under a modal is a list answering
 	// keys nobody is pressing.
@@ -93,7 +99,7 @@ func (a *app) askConsent(ev session.Event) {
 func (a *app) callAwaiting(tool string) int {
 	for i := range a.entries {
 		e := &a.entries[i]
-		if e.kind != entryTool || e.status != toolRunning || e.tool != tool || e.decision != "" {
+		if e.kind != entryTool || !e.status.live() || e.tool != tool || e.decision != "" {
 			continue
 		}
 		if a.claimed(i) {
@@ -140,6 +146,15 @@ func (a *app) answer(allow bool, scope session.ConsentScope) {
 	if head.entry >= 0 && head.entry < len(a.entries) {
 		e := &a.entries[head.entry]
 		e.decision = decisionWord(allow)
+		// The question is over, and the row goes back to being a call: allowed,
+		// it runs and spins; denied, session hands the model a refusal and the
+		// close event that follows lands on the same row either way. Leaving it
+		// in the question state would leave a violet row on screen for a question
+		// nobody is being asked.
+		if e.status == toolConsent {
+			e.status = toolRunning
+			e.began = time.Now()
+		}
 		e.stale = true
 	}
 	a.touch()
@@ -194,6 +209,24 @@ func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 // ── the block ───────────────────────────────────────────────────────────────
+//
+// THE QUESTION IS THE ONE THING ON THIS SURFACE THAT SHOUTS.
+//
+// It used to be drawn in exactly the ink everything else is drawn in — a dim
+// sentence above the box, under a row whose spinner was still turning — and the
+// result was the defect this wave exists to fix: a person could not tell that
+// the agent had stopped and was waiting for them. Quiet is the right default
+// for a surface that reports; it is the wrong default for a surface that is
+// blocked on you.
+//
+// So the question takes the fifth colour (styles.go), and it takes it
+// everywhere at once: the call's row, its marker, the offer line, and the word
+// in the status line. Violet appears nowhere else on this surface, which is
+// what makes seeing it mean one thing.
+
+// consentOfferRow is where the offer sits inside the block. The frame needs it
+// to know which row the pointer can be over (view.go).
+const consentOfferRow = 1
 
 // consentHeight is how many rows the question takes: the call, the offer, the
 // rule, and the count of the questions behind it when there are any.
@@ -243,9 +276,11 @@ func (a *app) consentCall(head ask, width int) string {
 	return a.pal.ink(fit("  "+ToolGloss(head.tool, head.hint), width))
 }
 
-// consentOffer is the three answers. The keys take the accent and the words
-// stay dim: the person is looking for which letter to press, and the sentence
-// around it is there to be recognized rather than read twice.
+// consentOffer is the three answers, and the whole line is the question hue —
+// the keys bold within it, because the person is looking for which letter to
+// press and the sentence around it is there to be recognized rather than read
+// twice. It was dim until this wave, which made the one line on screen that
+// needs an answer look like the lines that do not.
 //
 // A narrow terminal gets the short spelling rather than a truncated long one —
 // an offer with its last option cut off is an offer that hides an answer.
@@ -256,16 +291,19 @@ func (a *app) consentOffer(width int) string {
 	if ansi.StringWidth(strings.Join(long, "")) > width {
 		parts = short
 	}
+	if ansi.StringWidth(strings.Join(parts, "")) > width {
+		return a.pal.ask(fit(strings.Join(parts, ""), width))
+	}
 	var line string
 	for i, part := range parts {
 		if i%2 == 1 {
-			line += a.pal.accent(part)
+			line += a.pal.askBold(part)
 			continue
 		}
-		line += a.pal.dim(part)
+		line += a.pal.ask(part)
 	}
-	if ansi.StringWidth(strings.Join(parts, "")) > width {
-		return a.pal.dim(fit(strings.Join(parts, ""), width))
+	if a.hoveringChoices() {
+		return a.pal.hover(line, width)
 	}
 	return line
 }

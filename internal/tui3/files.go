@@ -223,7 +223,7 @@ func (c *completion) height() int {
 	}
 }
 
-func (c *completion) rows(width, n int, pal palette) []string {
+func (c *completion) rows(width, n int, pal palette, hover int) []string {
 	if n <= 0 {
 		return nil
 	}
@@ -236,7 +236,7 @@ func (c *completion) rows(width, n int, pal palette) []string {
 	c.follow(n)
 	out := make([]string, 0, n)
 	for at := c.top; at < len(c.hits) && len(out) < n; at++ {
-		out = append(out, overlayRow(c.all[c.hits[at]], "", at == c.cursor, false, width, pal))
+		out = append(out, overlayRow(c.all[c.hits[at]], "", at == c.cursor, false, len(out) == hover, width, pal))
 	}
 	return out
 }

@@ -107,12 +107,17 @@ func (a *app) toggleLatestThought() bool {
 	return false
 }
 
-// thoughtRows draws one block in whichever of its three states it is in.
-func (a *app) thoughtRows(e *entry, width int) []string {
+// thoughtRows draws one block in whichever of its three states it is in. Under
+// the pointer the marker brightens — the block is clickable, and this is the
+// row saying so (hover.go).
+func (a *app) thoughtRows(e *entry, width int, hovered bool) []string {
 	if !e.settled {
 		return a.thoughtBody(e, width, glyphThought+" ")
 	}
 	head := a.pal.dim(fit(glyphThought+" "+thoughtLabel(e), width))
+	if hovered {
+		head = a.pal.accent(glyphThought) + a.pal.dim(fit(" "+thoughtLabel(e), width-1))
+	}
 	if !e.open {
 		return []string{head}
 	}

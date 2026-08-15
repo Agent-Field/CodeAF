@@ -221,8 +221,10 @@ func TestALongDraftScrollsInsideTheBoxAndLeavesTheChromeAlone(t *testing.T) {
 	if got := a.viewHeight(); got != tall-(draftRows-1) {
 		t.Fatalf("the conversation is %d rows, want %d", got, tall-(draftRows-1))
 	}
+	// The status line is the LAST row of the frame, and a six-line paste does
+	// not push it anywhere (view.go).
 	painted := strings.Split(plain(frame(a)), "\n")
-	if len(painted) != a.height || !strings.Contains(painted[0], "aforge") {
+	if len(painted) != a.height || !strings.Contains(painted[len(painted)-1], a.model) {
 		t.Fatalf("the frame lost its status line:\n%s", strings.Join(painted, "\n"))
 	}
 }

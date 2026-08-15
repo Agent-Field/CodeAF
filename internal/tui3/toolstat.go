@@ -124,10 +124,15 @@ func toolTarget(tool, args, hint string) string {
 // text (for the screen), because an edit's stat is two colours and a width
 // measured through escape sequences is a width measured wrong.
 //
-// A stat is only ever drawn for a FINISHED call. A running one has a spinner,
-// and a number that changes under a spinner is a number nobody can read.
+// A stat is only ever drawn for a FINISHED call. An unfinished one has a mark
+// of its own — the queue's circle, the question, the spinner — and a number
+// that changes under any of them is a number nobody can read. An edit's +N −M
+// is the one that is knowable early, and it is deliberately withheld: it is
+// the shape the PREVIEW collapses into when the change actually lands
+// (toolview.go), and a stat that appeared before the diff did would make the
+// preview a repetition instead of an answer.
 func (a *app) toolStat(e *entry) (plain, painted string) {
-	if e.status == toolRunning {
+	if e.status.live() {
 		return "", ""
 	}
 	switch e.tool {

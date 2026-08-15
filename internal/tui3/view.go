@@ -6,41 +6,67 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// The frame is five regions and four of them are one row:
+// THE FRAME, AS OF THE STATUS-DOWN WAVE.
 //
-//	status        aforge · title · model · place · cost · ctx · state
+//	conversation   everything that has happened, scrolled
+//	───────────    a thin dim rule: below it is your business
+//	(consent)      the approval question, when one is waiting
+//	(follow)       after yield · N, when something is queued
 //	(blank)
-//	conversation  everything that has happened, scrolled
-//	(blank)
-//	(consent)     the approval question, when one is waiting
-//	(follow)      after yield · N, when something is queued
-//	input         › the draft — one row, or up to six of a pasted block
-//	(overlay)     the open list, when one is open
+//	 › the draft   one row, or up to six of a pasted block
+//	(overlay)      the open list, when one is open
+//	status         title · model · $cost · N% ctx · state        /help · ctrl+o
 //
-// The two optional regions above the box are there for the same reason the box
-// is: they are about the sentence a person is holding. A question that blocks
-// the model and a message waiting for it to finish both belong next to where
-// the answer is typed, not somewhere in the scrollback.
+// The status bar used to be the FIRST row, and this wave moved it to the last.
+// The reason is where a person's eye already is: on this surface everything
+// that changes — the reply arriving, the calls running, the question being
+// asked, the sentence being typed — happens at the bottom, and a line about
+// what is happening was the one fact parked two feet away from all of it. A
+// status line at the bottom is read in the same glance as the box above it,
+// which is what makes it worth drawing at all. The footer hints went with it
+// (the same line's right end), so the frame lost a whole row of chrome rather
+// than moving one.
 //
-// The input is a BLOCK and not a line as of wave 2, which is why the frame
-// counts back from the bottom through it rather than assuming its height: the
-// rows a multi-line draft takes come out of the conversation, and out of
-// nothing else.
+// The rule above the input is the only line this surface draws, and it draws
+// one thing: where the conversation stops and where the person's own business
+// starts. There is still no border and no rail — the rail arrives with the
+// tasker; the borders are not coming at all.
 //
-// There is no rail and no border. The rail arrives with the tasker; the
-// borders are not coming at all (docs/CHAT-V3.md, and the design doctrine
-// behind it: a line drawn around text is a line the reader has to ignore).
-//
-// A terminal too short for all five gives up its breathing room first and its
-// status line last: where you are and what you are typing are the two facts a
-// one-inch window still has to carry.
-const chromeRows = 4
+// A terminal too short for all of it gives up its breathing room first — the
+// rule and the blank above the draft — and its status line last: what is
+// happening and what you are typing are the two facts a one-inch window still
+// has to carry.
+
+// inputPad is the one cell the draft block is inset by. It is what makes the
+// box read as an object below the rule rather than as one more line of the
+// transcript, and it is one cell because two would be a margin.
+const inputPad = " "
+
+// chromeKind says what one chrome row IS, for the pointer. The frame is the
+// only thing that knows where these rows land on screen, so it is the only
+// thing that answers the question — see [app.chrome].
+type chromeKind uint8
+
+const (
+	chromeNone chromeKind = iota
+	// chromeChoices is the consent block's offer line, which is interactive by
+	// keyboard and hoverable by pointer.
+	chromeChoices
+	// chromeOverlay is one row of whichever list is open; index is its position
+	// in that list's own rows.
+	chromeOverlay
+)
+
+// chromeRow is one row of the frame below the conversation.
+type chromeRow struct {
+	kind  chromeKind
+	index int
+}
 
 // View declares the frame and the terminal state it wants. Alt screen, because
 // the conversation scrolls under our own anchor; ALL motion, because a tool
-// line is a thing you click — cell motion would deliver the wheel and the
-// press, and this is the v2 spelling of the program option that used to be
-// tea.WithMouseAllMotion, so the cmd wiring stays a wiring.
+// line is a thing you click and now a thing you hover — cell motion would
+// deliver the wheel and the press and nothing in between.
 func (a *app) View() tea.View {
 	frame, caretX, caretY := a.frame()
 	v := tea.NewView(frame)
@@ -61,46 +87,118 @@ func (a *app) View() tea.View {
 }
 
 // frame is the whole screen and where the caret sits in it.
-//
-// The model overlay enters HERE and nowhere else: its filter box takes the
-// input line's place — one line at the bottom either way — and its list is
-// drawn under that, which is why the caret's row is returned rather than
-// assumed to be the last one.
 func (a *app) frame() (string, int, int) {
 	width, height := a.size()
-	input, caretX, caretRow := a.inputBlock(width)
-	overlay := a.overlayHeight()
+	chrome, _, caretX, caretRow := a.chrome(width)
 	body, pad := a.window(width, a.viewHeight())
 
 	rows := make([]string, 0, height)
-	switch {
-	case height >= 6:
-		rows = append(rows, a.status(width), "")
-	case height >= 2:
-		rows = append(rows, a.status(width))
-	}
 	for i := 0; i < pad; i++ {
 		rows = append(rows, "")
 	}
 	for _, r := range body {
 		rows = append(rows, r.text)
 	}
-	if height >= 6 {
-		rows = append(rows, "")
-	}
-	rows = append(rows, a.consentRows(width)...)
-	if line := a.followRow(width); line != "" {
-		rows = append(rows, line)
-	}
-	rows = append(rows, input...)
-	rows = append(rows, a.overlayRows(width, overlay)...)
+	rows = append(rows, chrome...)
+	// A frame taller than the terminal loses rows from the TOP: the chrome is
+	// the tail, and everything the caret's row is counted back through is in it.
 	if len(rows) > height {
 		rows = rows[len(rows)-height:]
 	}
-	// The list is the tail of the frame and the box sits directly above it, so
-	// the caret's row counts back from the bottom through both — true before
-	// the truncation above and after it.
-	return strings.Join(rows, "\n"), caretX, height - overlay - len(input) + caretRow
+	caretY := height - len(chrome) + caretRow
+	if caretY < 0 {
+		caretY = 0
+	}
+	if caretY >= height {
+		caretY = height - 1
+	}
+	return strings.Join(rows, "\n"), caretX, caretY
+}
+
+// chrome is everything below the conversation: the rows, what each row is for
+// the pointer, the caret's column and the caret's row within the block.
+//
+// It is ONE function because it is one geometry. The frame draws these rows,
+// [app.viewHeight] subtracts their count from the conversation, and
+// [app.chromeAt] resolves a pointer to one of them — three questions that must
+// never be able to disagree about where the input line is.
+func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
+	_, height := a.size()
+	roomy := height >= 6
+
+	rows := make([]string, 0, 8)
+	marks := make([]chromeRow, 0, 8)
+	add := func(text string, mark chromeRow) {
+		rows = append(rows, text)
+		marks = append(marks, mark)
+	}
+
+	if roomy {
+		add(a.rule(width), chromeRow{})
+	}
+	for i, line := range a.consentRows(width) {
+		// The offer is the second row of the block, and it is the only row of it
+		// a pointer can be over — the call above it is a transcript row that
+		// happens to be repeated here, and the rule and the count below it are
+		// statements.
+		mark := chromeRow{}
+		if i == consentOfferRow {
+			mark = chromeRow{kind: chromeChoices}
+		}
+		add(line, mark)
+	}
+	if line := a.followRow(width); line != "" {
+		add(line, chromeRow{})
+	}
+	if roomy {
+		add("", chromeRow{})
+	}
+
+	input, caretX, caretRow := a.inputBlock(width - len(inputPad))
+	caretRow += len(rows)
+	for _, line := range input {
+		add(inputPad+line, chromeRow{})
+	}
+	for i, line := range a.overlayRows(width, a.overlayHeight()) {
+		add(line, chromeRow{kind: chromeOverlay, index: i})
+	}
+	add(a.status(width), chromeRow{})
+
+	return rows, marks, caretX + len(inputPad), caretRow
+}
+
+// chromeAt resolves a screen row to the chrome row drawn on it. It is the
+// pointer's half of [app.chrome] and it asks the same function the frame does,
+// so a hover cannot land on a row the frame drew somewhere else.
+func (a *app) chromeAt(y int) (chromeRow, bool) {
+	width, height := a.size()
+	_, marks, _, _ := a.chrome(width)
+	at := y - (height - len(marks))
+	if at < 0 || at >= len(marks) {
+		return chromeRow{}, false
+	}
+	return marks[at], true
+}
+
+// chromeHeight is how many rows the frame spends below the conversation.
+func (a *app) chromeHeight() int {
+	_, height := a.size()
+	// status, the input block, and whatever the two optional blocks and the open
+	// list are holding.
+	n := 1 + a.inputHeight() + a.overlayHeight() + a.consentHeight() + a.followHeight()
+	if height >= 6 {
+		n += 2 // the rule, and the blank above the draft
+	}
+	return n
+}
+
+// rule is the one line this surface draws: the seam between what happened and
+// what you are about to say.
+func (a *app) rule(width int) string {
+	if width < 1 {
+		return ""
+	}
+	return a.pal.dim(strings.Repeat("─", width))
 }
 
 // size is the frame's working size: the terminal's, or the classic default
@@ -124,7 +222,7 @@ func (a *app) size() (int, int) {
 // draws, where the wheel lands, which row a click hit — so a row's position on
 // screen has exactly ONE definition. The padding is why a short conversation
 // sits next to the input, the way a terminal session grows upward, instead of
-// hanging under the status line.
+// hanging under the top of the screen.
 func (a *app) window(width, height int) ([]row, int) {
 	if height <= 0 {
 		return nil, 0
@@ -140,17 +238,14 @@ func (a *app) window(width, height int) ([]row, int) {
 }
 
 // bodyTop is the screen row the conversation starts on, or -1 when the frame is
-// too short to have one. It walks the same ladder [app.frame] does.
+// too short to have one. The conversation now opens the frame — the status bar
+// that used to sit above it moved to the bottom — so the answer is zero
+// wherever there is a conversation at all.
 func (a *app) bodyTop() int {
-	_, height := a.size()
-	switch {
-	case height >= 6:
-		return 2
-	case height >= 3:
-		return 1
-	default:
+	if a.viewHeight() <= 0 {
 		return -1
 	}
+	return 0
 }
 
 // rowAt resolves a screen line to the row drawn on it.
@@ -168,8 +263,8 @@ func (a *app) rowAt(y int) (row, bool) {
 	return body[at], true
 }
 
-// viewHeight is how many rows the conversation gets under the same ladder
-// frame walks down, minus whatever the model overlay is holding.
+// viewHeight is how many rows the conversation gets: everything the chrome did
+// not take.
 //
 // The subtraction belongs here rather than at the call sites because this is
 // the number every geometric question is answered from — what the frame draws,
@@ -178,27 +273,10 @@ func (a *app) rowAt(y int) (row, bool) {
 // from where they were drawn.
 func (a *app) viewHeight() int {
 	_, height := a.size()
-	var body int
-	switch {
-	case height >= 6:
-		body = height - chromeRows
-	case height >= 3:
-		body = height - 2
-	default:
-		return 0
+	if body := height - a.chromeHeight(); body > 0 {
+		return body
 	}
-	body -= a.overlayHeight()
-	// The approval question and the follow-up count are the same kind of claim
-	// on the frame as the overlay: rows that come out of the conversation, and
-	// out of nothing else.
-	body -= a.consentHeight() + a.followHeight()
-	// A draft that grew past one row takes those rows from the conversation and
-	// from nothing else: the status line and the box are what a one-inch window
-	// still has to carry, and a six-line paste must not push either off screen.
-	if body -= a.inputHeight() - 1; body < 0 {
-		return 0
-	}
-	return body
+	return 0
 }
 
 func (a *app) page() int {

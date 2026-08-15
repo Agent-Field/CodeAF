@@ -130,7 +130,26 @@ func (a *app) layout(width int) []row {
 		}
 		out = append(out, row{text: line, entry: -1})
 	}
+	// THE POINTER, LAST. Hover is a property of the screen and not of the
+	// conversation, so it is applied to finished rows in one pass here rather
+	// than threaded through six renderers (hover.go).
+	for i := range out {
+		if a.isHot(out[i]) {
+			out[i].text = a.hoverRow(out[i].text, width)
+		}
+	}
 	return out
+}
+
+// isHot reports whether the pointer is on this row.
+func (a *app) isHot(r row) bool {
+	switch a.hot.kind {
+	case hoverEntry:
+		return r.entry >= 0 && r.entry == a.hot.entry
+	case hoverFold:
+		return r.hit == hitFold && r.turn == a.hot.turn
+	}
+	return false
 }
 
 // opensTurn reports whether the entry at i is the first thing its turn drew.
@@ -161,14 +180,19 @@ func (a *app) entryRows(i, width int) []string {
 	if e.built && e.width == width && !e.stale {
 		return e.rows
 	}
-	e.rows = a.renderEntry(e, width)
+	e.rows = a.renderEntry(i, e, width)
 	e.width, e.built, e.stale = width, true, false
 	return e.rows
 }
 
 // renderEntry paints one block. Nothing here appends a blank row — see
 // [app.layout].
-func (a *app) renderEntry(e *entry, width int) []string {
+//
+// The index is carried in for one reason: hover is a fact about a POSITION in
+// the conversation, and the only block that draws its own hover state — the
+// thinking block, whose marker brightens — is also the only one whose rows are
+// cached (hover.go marks it stale in exchange).
+func (a *app) renderEntry(i int, e *entry, width int) []string {
 	switch e.kind {
 	case entryUser:
 		// The person's own words: the glyph, then the text in bold, and every
@@ -189,7 +213,7 @@ func (a *app) renderEntry(e *entry, width int) []string {
 		return a.assistantRows(e, width)
 
 	case entryThinking:
-		return a.thoughtRows(e, width)
+		return a.thoughtRows(e, width, a.hoveringEntry(i))
 
 	case entryDivider:
 		return []string{a.divider(e.text, width)}
@@ -256,40 +280,93 @@ func (a *app) divider(hint string, width int) string {
 	return a.pal.dim(strings.Repeat("─", left+2) + label + strings.Repeat("─", rest-left))
 }
 
-// status is the one line above everything: who we are, what model, where, what
-// it has cost, and what is happening right now.
+// THE STATUS LINE, and it is the LAST row of the frame.
+//
+//	porting the parser · openai/gpt-4.1-mini · $0.14 · 12% ctx · working
+//
+// Five segments, in the order a person asks for them: WHICH conversation this
+// is, WHAT is answering it, what it has SPENT, what it is CARRYING, and what it
+// is DOING. Everything is dim — the surface talking about itself is never the
+// subject — except the last segment, which is the only thing on the line that
+// changes without being asked and is therefore the only thing painted:
+//
+//	working      accent   the model has the turn
+//	waiting      violet   IT HAS THE TURN AND IT IS YOURS (consent.go)
+//	idle         dim      nothing is happening
+//	interrupted  soft red the last turn was stopped by hand
+//
+// The word "aforge" used to open this line and does not any more: a person who
+// has opened aforge knows they are in aforge, and the row was one segment
+// shorter than the facts it had to hold. The workspace went the same way — the
+// session's own name for the conversation says more about which window this is
+// than its directory's base name does, and the directory is what the shell
+// prompt behind it already says. The name falls back to the place when the
+// session has not named itself yet (title.go), so the segment is never empty.
+//
+// The hints ride the right end. They were a row of their own until this wave;
+// two keys is not a row.
+const statusHints = "/help · ctrl+o"
+
 func (a *app) status(width int) string {
-	state := a.state.String()
-	painted := a.pal.dim(state)
-	switch a.state {
-	case stateWorking:
-		painted = a.pal.accent(state)
-	case stateInterrupted:
-		painted = a.pal.bad(state)
-	}
 	sep := a.pal.dim(" · ")
-	line := a.pal.dim("aforge")
-	// The session's own name for this conversation, left of the model: it is
-	// the most specific thing on the line — which conversation this is, rather
-	// than what is answering it — and it is dim like everything else the surface
-	// says about itself. Absent until the session has named itself (title.go).
-	if a.title != "" {
-		line += sep + a.pal.dim(a.title)
+	name := a.title
+	if name == "" {
+		name = a.place
 	}
-	line += sep + a.pal.dim(a.model) + sep + a.pal.dim(a.place) + sep +
-		a.pal.dim(dollars(a.cost))
-	// The meter sits beside the cost because they are the same kind of fact —
-	// what this conversation has spent, and what it is carrying. Dim, like
-	// every other thing the surface says about itself.
+	parts := []string{name, a.model, dollars(a.cost)}
 	if pct, ok := a.ctxPercent(); ok {
-		line += sep + a.pal.dim(itoa(pct)+"% ctx")
+		parts = append(parts, itoa(pct)+"% ctx")
 	}
+
+	plain := strings.Join(parts, " · ")
+	line := ""
+	for i, part := range parts {
+		if i > 0 {
+			line += sep
+		}
+		line += a.pal.dim(part)
+	}
+	word, painted := a.stateWord()
+	plain += " · " + word
 	line += sep + painted
-	if ansi.StringWidth(line) > width {
+
+	// The hints are the first thing to go: they are a reminder, and a reminder
+	// that crowds out the cost is not one. They are dropped whole rather than
+	// truncated — "/help · ctr" is not a key anybody can press.
+	if gap := width - ansi.StringWidth(plain) - ansi.StringWidth(statusHints) - 2; gap >= 1 {
+		line += strings.Repeat(" ", gap) + a.pal.dim(statusHints)
+		plain += strings.Repeat(" ", gap) + statusHints
+	}
+	if ansi.StringWidth(plain) > width {
 		line = ansi.Truncate(line, width, "")
 	}
 	return line
 }
+
+// stateWord is the last segment, plain and painted.
+//
+// A pending question OUTRANKS the run state, and says so in words as well as in
+// colour: the turn is technically still working — the tool call is parked
+// inside the batch — but what is true about it that a person can act on is that
+// it is waiting for them. "your call" rather than "your answer" because it is
+// shorter and because it is what it is.
+func (a *app) stateWord() (string, string) {
+	if a.asking() {
+		return waitingWord, a.pal.askBold(waitingWord)
+	}
+	word := a.state.String()
+	switch a.state {
+	case stateWorking:
+		return word, a.pal.accent(word)
+	case stateInterrupted:
+		return word, a.pal.bad(word)
+	default:
+		return word, a.pal.dim(word)
+	}
+}
+
+// waitingWord is the state a person has to answer.
+const waitingWord = "waiting · your call"
 
 // wrap breaks a block of plain text to width, keeping its own newlines. The
 // text is unstyled at this point: styling after wrapping is what keeps every

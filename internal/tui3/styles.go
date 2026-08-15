@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
@@ -23,6 +25,8 @@ import (
 //	add     #A3BE8C   a diff's + lines, and a write's line count
 //	del     #BF616A   a diff's − lines
 //	bad     #D08770   the ✗ of a call that failed — soft orange-red, not fire
+//	ask     #C08FE8   THE QUESTION HUE, and nothing else (see below)
+//	hover   #2E3440   a background, not an ink: the row the pointer is over
 //
 // Why hex rather than internal/tui2/tokens (which this file used to delegate
 // to): tokens is the v2 identity ramp, tuned for a rail of coloured cards, and
@@ -46,9 +50,39 @@ import (
 //	NoColor    no SGR at all, weight included: a terminal told not to style is
 //	           not styled halfway
 //
-// Violet is absent on purpose. The identity wheel's violet is reserved for
-// question UX; a chat surface that spent it on decoration would leave the one
-// thing that needs a human indistinguishable from the thing that does not.
+// ── THE FIFTH COLOUR, AND WHY IT IS THE ONLY ONE ──
+//
+// Violet is the identity wheel's question hue, and D11 reserves it: it is spent
+// on the moment the agent is WAITING FOR A PERSON and on nothing else — the
+// consent question, its glyph, its choices, and the word in the status line.
+// Nothing decorative may take it, because its whole value is that seeing it
+// anywhere means exactly one thing.
+//
+// #C08FE8 rather than nord's own #B48EAD, which is the hue this table would
+// otherwise have borrowed: at that saturation nord's purple sits within a few
+// values of the body ink on a dark terminal, and the defect being fixed here is
+// a person who could not tell the surface was waiting for them. A question hue
+// that has to be looked for is not a question hue.
+//
+// It is also not the softer #C3A6E6 this wave first authored, and the reason is
+// the second rung of the ladder: #C3A6E6's nearest xterm-256 neighbour is 146,
+// WHICH IS THE ACCENT'S. On every 256-colour terminal the question would have
+// been painted the same colour as the person's own › glyph — the exact failure
+// this hue exists to prevent, arriving through the fallback nobody looked at.
+// #C08FE8 resolves to 140, which is a violet and is nothing else on this
+// surface. Any future change here owes the same check.
+//
+// Its sixteen-colour degradation is `heavy` (bold), which is the same answer
+// this table gives every hue that LEADS. The question is never carried by
+// colour alone: the glyph is a "?", the status line says "waiting · your call"
+// in words, and the choices name their keys.
+//
+// The hover background is the other addition, and it is a BACKGROUND — the
+// first this file has ever drawn. #2E3440 is one step up from a dark
+// terminal's own black: enough to say "the pointer is here", short of a band.
+// A sixteen-colour or NO_COLOR terminal gets no hover at all, which is honest:
+// there is no weight that means "under the pointer", and a bold row that moved
+// with the mouse would be noise.
 
 // tier16 is what a sixteen-colour terminal draws instead of a hue.
 type tier16 uint8
@@ -78,6 +112,8 @@ var (
 	hueAdd    = mustHue("#A3BE8C", heavy)
 	hueDel    = mustHue("#BF616A", quiet)
 	hueBad    = mustHue("#D08770", heavy)
+	hueAsk    = mustHue("#C08FE8", heavy)
+	hueHover  = mustHue("#2E3440", flat)
 )
 
 // mustHue parses an authored "#RRGGBB" and resolves its 256-colour neighbour.
@@ -218,6 +254,41 @@ func (p palette) add(s string) string    { return p.paint(s, hueAdd) }
 func (p palette) del(s string) string    { return p.paint(s, hueDel) }
 func (p palette) bad(s string) string    { return p.paint(s, hueBad) }
 
+// ask is the question hue: the consent block, and nothing else on this surface.
+func (p palette) ask(s string) string { return p.paint(s, hueAsk) }
+
+// askBold is what the question's own marker takes — the hue and the weight
+// together, so the row a person has to answer leads on a truecolor terminal and
+// on a sixteen-colour one alike.
+func (p palette) askBold(s string) string { return p.bold(p.ask(s)) }
+
+// hover paints one row's background: the pointer is on this row.
+//
+// The text arrives already painted, and that is fine — every foreground
+// sequence in this file closes with SGR 39, which resets the ink and leaves the
+// background alone. The row is padded to width first, because a highlight that
+// stops where the text stops reads as a smudge rather than as a row.
+//
+// A terminal below ANSI256 gets the row back untouched: see the note at the top
+// of this file for why there is no weight-tier fallback here.
+func (p palette) hover(s string, width int) string {
+	if s == "" {
+		return s
+	}
+	if pad := width - ansi.StringWidth(s); pad > 0 {
+		s += strings.Repeat(" ", pad)
+	}
+	switch p.profile {
+	case tokens.TrueColor:
+		return "\x1b[48;2;" + itoa(int(hueHover.r)) + ";" + itoa(int(hueHover.g)) + ";" +
+			itoa(int(hueHover.b)) + "m" + s + "\x1b[49m"
+	case tokens.ANSI256:
+		return "\x1b[48;5;" + itoa(int(hueHover.idx)) + "m" + s + "\x1b[49m"
+	default:
+		return s
+	}
+}
+
 // bold is the one attribute this file draws without a hue behind it: weight is
 // what carries the user/assistant distinction on a monochrome terminal.
 func (p palette) bold(s string) string {
@@ -282,6 +353,14 @@ const (
 	// glyphIdle marks a call that was still running when its turn ended. A
 	// frozen spinner would claim the call is alive; a dot claims nothing.
 	glyphIdle = "·"
+	// glyphQueued marks a call the model has asked for and nothing has started:
+	// an EMPTY circle, dim, deliberately not a spinner. A spinner is a claim
+	// that something is turning, and the whole point of this state is that
+	// nothing is.
+	glyphQueued = "◌"
+	// glyphAsk marks the call a person is being asked about. It is the only
+	// glyph on this surface that takes the question hue.
+	glyphAsk = "?"
 	// glyphAdd and glyphDel spell the diffstat. The minus is U+2212, which is
 	// the width of the plus; ASCII '-' is not, and a stat is a pair of numbers
 	// read side by side. The diff BODY keeps ASCII +/- — a diff is a diff, and

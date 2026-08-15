@@ -127,8 +127,14 @@ var settingReaders = map[string]string{
 	KeyLinearMode:     "LinearModeAt",
 	KeyRailState:      "RailStateAt",
 	KeyNerdFont:       "NerdFontChosenAt",
-	KeyHistoryEnabled: "HistoryEnabledAt",
-	KeyDraftPersist:   "DraftPersistAt",
+	// The two surface rows name their own KEY, because that is now what the
+	// far side touches: they resolve through the project layer
+	// (ProjectBoolAt), which takes the row by name and calls
+	// HistoryEnabledAt/DraftPersistAt itself as the profile rung. Naming the
+	// resolver instead would let both rows be proven by one call site, which
+	// is the one thing this table exists to prevent.
+	KeyHistoryEnabled: "KeyHistoryEnabled",
+	KeyDraftPersist:   "KeyDraftPersist",
 	// The v3 session's rows name what READS the value on the far side, which
 	// for these six is not a function in this package: the two approval rows
 	// become the policy hung off session.Config.ApprovalPolicy, the ceiling is

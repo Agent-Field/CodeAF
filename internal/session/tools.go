@@ -24,10 +24,12 @@ import (
 // the person can read beats state only the model can see, and work big enough
 // to decompose belongs to the workforce, not to a session-local list.
 //
-// Two entries are the session's own rather than bare's: bash is WRAPPED (not
-// replaced) so it can start a background job, and jobs is added beside it to
-// look at what was started. bare is untouched — a subharness leaf gets pi's
-// bash exactly as before, and the session gets pi's bash plus one argument.
+// Four entries are the session's own rather than bare's: bash is WRAPPED (not
+// replaced) so it can start a background job, jobs is added beside it to look
+// at what was started, and note and forget carry the session's durable memory
+// (memory.go) when there is a file to keep it in. bare is untouched — a
+// subharness leaf gets pi's bash exactly as before, and the session gets pi's
+// bash plus one argument.
 func (a *Agent) belt() []bare.Tool {
 	tools := bare.AllTools(a.config.Workspace)
 	for index, tool := range tools {
@@ -35,7 +37,8 @@ func (a *Agent) belt() []bare.Tool {
 			tools[index] = a.backgroundBash(tool)
 		}
 	}
-	return append(tools, a.jobsTool())
+	tools = append(tools, a.jobsTool())
+	return append(tools, a.memoryTools()...)
 }
 
 // ── bash, wrapped ───────────────────────────────────────────────────────────

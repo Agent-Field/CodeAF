@@ -60,12 +60,18 @@ func toolLineOf(t *testing.T, a *app) string {
 	return ""
 }
 
-// openFirst opens the first tool call and returns the surface's rows.
+// openFirst makes sure the first tool call is expanded and returns the
+// surface's rows. A FAILED call opens itself (app.go), so this asks for the
+// state rather than toggling it — a toggle would close the one row this helper
+// exists to read.
 func openFirst(t *testing.T, a *app) []string {
 	t.Helper()
 	for i := range a.entries {
 		if a.entries[i].kind == entryTool {
-			a.openTool(i)
+			if !a.entries[i].open {
+				a.openTool(i)
+			}
+			a.touch()
 			return plainRows(a)
 		}
 	}

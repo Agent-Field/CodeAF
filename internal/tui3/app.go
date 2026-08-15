@@ -74,14 +74,39 @@ const (
 	entryThinking
 )
 
-// toolState is the mark on a tool line.
+// toolState is where one call is in its life, and it is the whole of what the
+// left of a tool line says (toolview.go draws it):
+//
+//	◌  toolQueued    the model asked for it; NOTHING has started
+//	?  toolConsent   it is blocked on a person — the question hue, and the row
+//	                 with it
+//	⠋  toolRunning   it is executing: the braille spinner, and only here
+//	   toolOK        it finished, quietly, with its elapsed time
+//	✗  toolFailed    it failed, loudly, and its detail is already open
+//
+// The first two states are the fix for one defect: a mutating call sat spinning
+// while the RESPONSE streamed (nothing had started), and a call waiting for an
+// answer spun identically to one doing work. A spinner is a claim about
+// motion, so it is now spent on motion alone.
+//
+// The zero value is toolQueued and that is deliberate: an entry built from an
+// announcement carries no status field, and the only honest default for a call
+// nobody has said anything else about is "asked for".
 type toolState int
 
 const (
-	toolRunning toolState = iota
+	toolQueued toolState = iota
+	toolConsent
+	toolRunning
 	toolOK
 	toolFailed
 )
+
+// live reports whether a call has not resolved yet — queued, waiting on a
+// person, or executing. Every "find the row this event is about" walk asks
+// this rather than comparing against toolRunning, which was the whole test back
+// when running was the only unresolved state there was.
+func (s toolState) live() bool { return s == toolQueued || s == toolConsent || s == toolRunning }
 
 // entry is one block of the conversation, and its rendered rows.
 //
@@ -111,8 +136,17 @@ type entry struct {
 	// empty for every call the policy did not stop.
 	decision string
 
-	// Thinking fields (thinking.go): when the first and last reasoning delta of
-	// this block arrived. settled collapses the block and open expands it again.
+	// began and ended are the block's clock, and the two entry kinds that have
+	// one read it the same way — the moment the thing started and the moment it
+	// stopped:
+	//
+	//	entryThinking  the first and last reasoning delta (thinking.go)
+	//	entryTool      EXECUTION started (EventToolBegin) and ended, which is
+	//	               what the line's trailing "1.2s" measures. A call's
+	//	               announcement is deliberately not in it: the time a
+	//	               response spent streaming is not time the tool ran.
+	//
+	// settled collapses a thinking block and open expands it again.
 	began, ended time.Time
 
 	// Assistant fields. settled means the block is finished and renders
@@ -171,6 +205,8 @@ type app struct {
 	unfolded map[int]bool
 	// sel is the selected tool entry, or -1. ↑/↓ move it; enter opens it.
 	sel int
+	// hot is what the pointer is over (hover.go). The zero value is nothing.
+	hot hoverAt
 
 	state runState
 	model string
@@ -301,7 +337,11 @@ func newApp(ctx context.Context, opts Options) *app {
 	if a.resumed && a.file != "" {
 		a.note("resumed " + a.file)
 	}
-	a.note("/help for commands · esc or ctrl+c interrupts · ctrl+o expands tool calls")
+	// The opening line says the two keys the status line has no room for. The
+	// other two — /help and ctrl+o — moved to that line's right end this wave
+	// and are on screen permanently, so repeating them here would be the surface
+	// saying the same thing twice on the first frame of every session.
+	a.note("esc or ctrl+c interrupts")
 	a.restoreDraft()
 	return a
 }
@@ -354,6 +394,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft {
 			a.press(msg.Mouse().Y)
 		}
+		return a, nil
+
+	case tea.MouseMotionMsg:
+		// Motion is the cheapest and commonest message this surface gets — a
+		// pointer crossing the window sends one per cell — so [app.setHover]
+		// repaints only when the row under it actually changed (hover.go).
+		a.setHover(msg.Mouse().Y)
 		return a, nil
 
 	case submittedMsg:
@@ -483,14 +530,11 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
 
+	case session.EventToolAnnounced:
+		a.announceTool(ev)
+
 	case session.EventToolBegin:
-		a.closeLive()
-		a.entries = append(a.entries, entry{
-			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
-			status: toolRunning, detail: toolDetail{Args: ev.Args},
-		})
-		a.follow()
-		a.touch()
+		a.beginTool(ev)
 
 	case session.EventToolEnd:
 		a.closeTool(ev, toolOK, "")
@@ -590,6 +634,73 @@ func (a *app) appendText(text string) {
 	a.follow()
 }
 
+// announceTool draws the row for a call the model has finished asking for
+// (session.EventToolAnnounced). Nothing has started, so the row is queued: a
+// dim ◌, no spinner, and — for an edit or a write — the change it is ABOUT to
+// make, previewed underneath from the arguments (toolview.go).
+//
+// A row is only ever announced once, but a surface that attached mid-batch may
+// see a begin with no announcement and must not draw a second line for it, so
+// the pairing rule lives in [app.claimAnnounced] and both events use it.
+func (a *app) announceTool(ev session.Event) {
+	a.closeLive()
+	a.entries = append(a.entries, entry{
+		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
+		status: toolQueued, detail: toolDetail{Args: ev.Args},
+	})
+	a.follow()
+	a.touch()
+}
+
+// beginTool is EXECUTION STARTED. It adopts the row the announcement drew —
+// the same call, one line, which is the whole point of announcing it — and
+// starts that row's clock. A begin nobody announced draws its own row, which is
+// every provider that does not stream tool calls and every surface that
+// attached late.
+func (a *app) beginTool(ev session.Event) {
+	if at := a.claimAnnounced(ev); at >= 0 {
+		e := &a.entries[at]
+		e.status = toolRunning
+		e.began = time.Now()
+		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
+		e.text = firstNonEmpty(ev.Hint, e.text)
+		a.follow()
+		a.touch()
+		return
+	}
+	a.closeLive()
+	a.entries = append(a.entries, entry{
+		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
+		status: toolRunning, began: time.Now(), detail: toolDetail{Args: ev.Args},
+	})
+	a.follow()
+	a.touch()
+}
+
+// claimAnnounced finds the queued row this begin belongs to, or -1.
+//
+// The payload is matched FIRST and the tool name only after: a batch of three
+// edits to three files announces three rows, and pairing by name alone would
+// start the clock on whichever of them was drawn first. Identical arguments are
+// the one case where the two rules disagree and it does not matter — two calls
+// with the same name and the same payload are the same work, in either order.
+func (a *app) claimAnnounced(ev session.Event) int {
+	fallback := -1
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind != entryTool || e.status != toolQueued || e.tool != ev.Tool {
+			continue
+		}
+		if ev.Args != "" && e.detail.Args == ev.Args {
+			return i
+		}
+		if fallback < 0 {
+			fallback = i
+		}
+	}
+	return fallback
+}
+
 // closeTool marks the oldest still-running line for that tool. Oldest rather
 // than newest because tools run in parallel and finish in any order, and the
 // first one begun is the first one a person watching the column expects to
@@ -603,14 +714,23 @@ func (a *app) appendText(text string) {
 func (a *app) closeTool(ev session.Event, status toolState, why string) {
 	for i := range a.entries {
 		e := &a.entries[i]
-		if e.kind != entryTool || e.status != toolRunning || e.tool != ev.Tool {
+		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
 			continue
 		}
 		e.status = status
+		e.ended = time.Now()
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
 		e.detail.Output = firstNonEmpty(ev.Output, why)
 		if why != "" && status == toolFailed {
 			e.text = strings.TrimSpace(e.text + " — " + why)
+		}
+		// A FAILURE OPENS ITSELF. Everything else on this surface waits to be
+		// asked, because a quiet line is a success and success has nothing to
+		// read; a call that failed is the one row whose detail is the reason the
+		// person is looking at the screen, and making them click for it is
+		// making them click for the only thing that happened.
+		if status == toolFailed {
+			e.open = true
 		}
 		a.follow()
 		a.touch()
@@ -621,6 +741,7 @@ func (a *app) closeTool(ev session.Event, status toolState, why string) {
 	if status == toolFailed {
 		a.entries = append(a.entries, entry{
 			kind: entryTool, tool: ev.Tool, text: why, turn: a.turn, status: toolFailed,
+			open:   true,
 			detail: toolDetail{Args: ev.Args, Output: firstNonEmpty(ev.Output, why)},
 		})
 		a.follow()
@@ -688,11 +809,13 @@ func frameTick() tea.Cmd {
 	return tea.Tick(frameInterval, func(time.Time) tea.Msg { return frameMsg{} })
 }
 
-// running reports whether any call of the current turn is still spinning.
+// running reports whether any call of the current turn is still unresolved —
+// queued, asked about, or spinning. All three are something on screen for the
+// person to watch, which is the question the ellipsis is asking.
 func (a *app) running() bool {
 	for i := range a.entries {
 		e := &a.entries[i]
-		if e.kind == entryTool && e.status == toolRunning && e.turn == a.turn {
+		if e.kind == entryTool && e.status.live() && e.turn == a.turn {
 			return true
 		}
 	}
@@ -882,6 +1005,7 @@ func (a *app) renew() {
 	a.title = strings.TrimSpace(agent.Title())
 	a.turn = 0
 	a.unfolded = map[int]bool{}
+	a.dropHover()
 	a.stream = nil
 	a.gen++
 	a.state = stateIdle
