@@ -35,6 +35,7 @@ package session
 //     the first moment the model could act on it anyway.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -90,6 +91,15 @@ type jobKind int
 const (
 	jobKindBash jobKind = iota
 	jobKindWatch
+	// jobKindTask is one node of the task graph (task_run.go): a whole child
+	// agent working in its own worktree.
+	//
+	// It is in this registry for the reason a watch is — everything AROUND it is
+	// what a job already is: one id space, one log file, one row in the list,
+	// one kill, one death at Close. A node's kill is its context being cancelled
+	// rather than a signal to a process group, which is the same stop function a
+	// watch already has.
+	jobKindTask
 )
 
 // job is one background command.
@@ -342,6 +352,26 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	return started, nil
 }
 
+// startTask registers one task node as a job so `jobs list` shows it and
+// `jobs kill` ends it. The node's own goroutine runs it (task_run.go) and
+// settles the job when it lands.
+//
+// It does NOT report its own end on the steering lane. A node's completion note
+// carries the report, the changed files and the merge outcome, and it is sent
+// by the executor (see [Agent.reportTaskNode]); a second line here saying "job
+// 3 exited 0" would be the registry narrating what the node just explained.
+func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFunc) (*job, error) {
+	started, err := r.newJob(title, jobKindTask)
+	if err != nil {
+		return nil, err
+	}
+	started.label = fmt.Sprintf("task %d", id)
+	started.detail = title
+	started.stop = cancel
+	r.add(started)
+	return started, nil
+}
+
 // reap waits on one process and, unless the death was asked for, drops a note
 // on the steering queue.
 func (r *jobRegistry) reap(watched *job) {
@@ -400,6 +430,12 @@ func (r *jobRegistry) kill(id int) (string, bool) {
 	if target.kind == jobKindWatch {
 		return fmt.Sprintf("watch %s (job %d) stopped", target.label, id), false
 	}
+	// A task is STOPPED and its branch is KEPT. The words matter: nothing the
+	// node wrote is thrown away by ending it, and the completion note that
+	// follows names the branch the work is on.
+	if target.kind == jobKindTask {
+		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), false
+	}
 	return fmt.Sprintf("job %d killed", id), false
 }
 
@@ -451,6 +487,12 @@ func statusText(info jobInfo) string {
 		if info.kind == jobKindWatch {
 			return "stopped"
 		}
+		// Nor has a task: its outcome is a STATE (done, failed) that reached
+		// the model in its own note, and an exit code here would be a second,
+		// dumber account of the same ending.
+		if info.kind == jobKindTask {
+			return "finished"
+		}
 		return fmt.Sprintf("exited(%d)", info.code)
 	case jobKilled:
 		return "killed"
@@ -483,6 +525,15 @@ func (r *jobRegistry) list() string {
 		// the model will use next: "watch app" is the thing it started, and the
 		// terms after it ("every 10s on change") are the answer to "why haven't I
 		// heard anything" without a second call.
+		// A task's row leads with the node, because that is what the model asked
+		// for and what it will kill by: the id it was given back, the title it
+		// wrote, and how long the node has been working.
+		if info.kind == jobKindTask {
+			fmt.Fprintf(&rendered, "job %d · %s · %s · %s · %s",
+				info.id, info.label, statusText(info), formatElapsed(info.elapsed),
+				clip(firstLine(info.detail), hintLimit))
+			continue
+		}
 		if info.kind == jobKindWatch {
 			fmt.Fprintf(&rendered, "job %d · watch %s · %s · %s · %d ticks · %s · %s",
 				info.id, info.label, statusText(info), formatElapsed(info.elapsed),

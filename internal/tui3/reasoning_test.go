@@ -168,7 +168,9 @@ func TestTheLevelIsPerModelAndSurvivesASwitchAwayAndBack(t *testing.T) {
 	if agent.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("model is %q, want the sonnet row", agent.model)
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "anthropic/claude-sonnet-4.5:medium") {
+	// The status line carries the BASENAME and the level (render.go's HUD): the
+	// vendor is a routing address and it stays where the model is CHOSEN.
+	if got := plain(frame(a)); !strings.Contains(got, "claude-sonnet-4.5:medium") {
 		t.Fatalf("the status line has to carry <model>:<level>:\n%s", got)
 	}
 
@@ -184,7 +186,7 @@ func TestTheLevelIsPerModelAndSurvivesASwitchAwayAndBack(t *testing.T) {
 
 	// And back: the level was the sonnet's, and it is still the sonnet's.
 	typeLine(t, a, "/model anthropic/claude-sonnet-4.5")
-	if got := plain(frame(a)); !strings.Contains(got, "anthropic/claude-sonnet-4.5:medium") {
+	if got := plain(frame(a)); !strings.Contains(got, "claude-sonnet-4.5:medium") {
 		t.Fatalf("the level has to survive a switch away and back:\n%s", got)
 	}
 }

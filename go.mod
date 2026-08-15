@@ -1,10 +1,11 @@
 module github.com/Agent-Field/aforge-v2
 
-go 1.25.0
+go 1.25.4
 
 require (
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/lipgloss/v2 v2.0.5
+	github.com/AOShei/go-fast-pdf v0.1.1
 	github.com/Agent-Field/agentfield/sdk/go v0.0.0-20260801225427-e6587ade0886
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/charmbracelet/bubbles v1.0.0

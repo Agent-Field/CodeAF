@@ -287,6 +287,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	// a repository may state are still the rules — it can say what to ask about;
 	// it cannot say who answers.
 	cfg.Guardian = config.GuardianEnabledAt(profileDir)
+	cfg.TaskAutoApproveSeconds = config.TaskAutoApproveAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
 	return cfg, nil
 }

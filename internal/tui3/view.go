@@ -74,7 +74,16 @@ func (a *app) View() tea.View {
 	frame, caretX, caretY := a.frame()
 	v := tea.NewView(frame)
 	v.AltScreen = true
-	v.MouseMode = tea.MouseModeAllMotion
+	// THE MOUSE IS OPT-IN. Reporting it — at any motion level — makes the app
+	// the owner of every drag, and the terminal's native text selection is
+	// dead from that moment; in an alt-screen app there is no scrollback to
+	// fall back on. The setting (ui.mouse, default off) is the person's call
+	// between hover/click here and select-to-copy everywhere, and off is the
+	// default because copy is the more fundamental act: every key the mouse
+	// would save already exists, and no key replaces a dead selection.
+	if a.mouse {
+		v.MouseMode = tea.MouseModeAllMotion
+	}
 	// FOCUS REPORTING IS ON, and it buys exactly one thing: a turn that ends on
 	// a window nobody is looking at can say so (notify.go). It costs two escape
 	// sequences at startup and a message per alt-tab, and a terminal that does
@@ -157,7 +166,10 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		add(line, chromeRow{kind: chromeWelcome, index: i})
 	}
 	if roomy {
-		add(a.rule(width), chromeRow{})
+		// THE RULE IS A LEGEND NOW: the same one line, with where you are written
+		// into it (render.go). It degrades back to the plain rule on a frame with
+		// no room for a label.
+		add(a.legend(width), chromeRow{})
 	}
 	for i, line := range a.consentRows(width) {
 		// The offer is the second row of the block, and it is the only row of it
@@ -185,12 +197,16 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.overlayRows(width, a.overlayHeight()) {
 		add(line, chromeRow{kind: chromeOverlay, index: i})
 	}
-	add(a.statusRow(width), chromeRow{})
+	for _, line := range a.statusRow(width) {
+		add(line, chromeRow{})
+	}
 
 	return rows, marks, caretX + len(inputPad), caretRow
 }
 
-// statusRow is the status line with the reasoning level on the model segment:
+// statusRow is the HUD's status row — one row, or two on a narrow frame where
+// the telemetry stops sharing with the identity (render.go's [app.statusRows])
+// — with the reasoning level on the model segment:
 // "anthropic/claude-sonnet-4.5:high" where a level has been dialled, and the
 // bare model id — the line exactly as it was — where none has.
 //
@@ -205,15 +221,15 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 // drawn on the model goroutine one row at a time, and the alternative is a
 // second copy of the status line's segment layout — width budget, narrow-frame
 // dropping and all — kept in step with the first by nothing but attention.
-func (a *app) statusRow(width int) string {
+func (a *app) statusRow(width int) []string {
 	level := a.reasoningFor(a.model)
 	if level == "" || a.model == "" {
-		return a.status(width)
+		return a.statusRows(width)
 	}
 	id := a.model
 	a.model = id + ":" + level
 	defer func() { a.model = id }()
-	return a.status(width)
+	return a.statusRows(width)
 }
 
 // chromeAt resolves a screen row to the chrome row drawn on it. It is the
@@ -231,11 +247,12 @@ func (a *app) chromeAt(y int) (chromeRow, bool) {
 
 // chromeHeight is how many rows the frame spends below the conversation.
 func (a *app) chromeHeight() int {
-	_, height := a.size()
-	// status, the input block, and whatever the two optional blocks, the open
-	// list and the welcome box are holding.
-	n := 1 + a.inputHeight() + a.overlayHeight() + a.consentHeight() + a.followHeight() +
-		a.welcomeHeight()
+	width, height := a.size()
+	// The status (one row, or two when the telemetry wraps), the input block,
+	// and whatever the two optional blocks, the open list and the welcome box
+	// are holding.
+	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
+		a.followHeight() + a.welcomeHeight()
 	if height >= 6 {
 		n += 2 // the rule, and the blank above the draft
 	}

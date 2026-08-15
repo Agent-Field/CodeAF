@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // The render core is two passes and one cache.
@@ -184,6 +185,13 @@ func (a *app) opensTurn(i int) bool {
 // with a field.
 func (a *app) entryRows(i, width int) []string {
 	e := &a.entries[i]
+	// A RUNNING COMPACTION IS NOT CACHED, for the reason the tool lines are not:
+	// its spinner and its count-up are functions of the frame, so a cached row
+	// would be a still photograph of an animation. It rejoins the cache the
+	// moment it settles, which is the moment it stops moving.
+	if e.kind == entryCompact && e.ended.IsZero() {
+		return a.renderEntry(i, e, width)
+	}
 	if e.built && e.width == width && !e.stale {
 		return e.rows
 	}
@@ -236,6 +244,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 
 	case entryDivider:
 		return []string{a.divider(e.text, width)}
+
+	case entryCompact:
+		return []string{a.compactRow(e, width)}
 
 	case entryNote:
 		body := wrap(e.text, width-2)
@@ -343,100 +354,669 @@ func (a *app) divider(hint string, width int) string {
 	return a.pal.dim(strings.Repeat("─", left+2) + label + strings.Repeat("─", rest-left))
 }
 
-// THE STATUS LINE, and it is the LAST row of the frame.
+// compactRow draws one compaction pass, in the two shapes it has.
 //
-//	porting the parser · openai/gpt-4.1-mini · $0.14 · 12% ctx · working
+// RUNNING, it is the braille spinner, the session's own hint and the clock:
 //
-// Five segments, in the order a person asks for them: WHICH conversation this
-// is, WHAT is answering it, what it has SPENT, what it is CARRYING, and what it
-// is DOING. Everything is dim — the surface talking about itself is never the
-// subject — except the last segment, which is the only thing on the line that
-// changes without being asked and is therefore the only thing painted:
+//	⠙ compacting ~84k tokens · 6s
 //
-//	working      accent   the model has the turn
-//	waiting      violet   IT HAS THE TURN AND IT IS YOURS (consent.go)
-//	idle         dim      nothing is happening
-//	interrupted  soft red the last turn was stopped by hand
+// It borrows the spinner and the count-up from the tool lines rather than
+// inventing an animation, because a person who has learned that a spinner means
+// "this is executing right now" has learned it here too — and it turns on the
+// same [spinnerStep] grid, so two moving rows on one screen never beat against
+// each other. The hue is the DIM the divider wears: this is the surface talking
+// about its own housekeeping, and housekeeping is never the subject. (The ask
+// violet is not available to it — that hue means a person is being asked
+// something, and nobody is being asked anything here.)
 //
-// The line OPENS WITH THE PRODUCT'S NAME, and the name is "openaf" — the one
-// word this surface calls itself, wherever it speaks (styles.go's [product]).
-// It was dropped for a wave on the argument that a person who has opened the
-// thing knows what they have opened, and that argument was right about the
-// reader and wrong about the screenshot: this line is what a terminal
-// photograph, a bug report and a shared pane carry, and a status bar that names
-// everything except the program is the one fact none of them can recover. It is
-// also the first segment to go when the frame is narrow — see below — so it
-// costs a wide terminal nine cells and a narrow one nothing.
+// SETTLED, it is the rule it always was, with what it cost in time:
 //
-// The workspace is still gone from it: the session's own name for the
-// conversation says more about which window this is than its directory's base
-// name does, and the directory is what the shell prompt behind it already says.
-// The name falls back to the place when the session has not named itself yet
-// (title.go), so the segment is never empty.
+//	───── ⚭ compacted from ~84k tokens · took 6s ─────
 //
-// The hints ride the right end. They were a row of their own until this wave;
-// two keys is not a row.
-const statusHints = "/help · ctrl+o"
+// The duration is dropped under a second, by the same law the tool clock uses
+// ([countUpWord]'s floor): "took 0s" is a column read for nothing.
+func (a *app) compactRow(e *entry, width int) string {
+	if !e.ended.IsZero() {
+		label := e.text
+		if !e.began.IsZero() {
+			if word := countUpWord(e.ended.Sub(e.began)); word != "" {
+				label += " · took " + word
+			}
+		}
+		return a.divider(label, width)
+	}
+	// The linear tier's objection to a spinner is the one it makes on a tool
+	// line: a claim repeated thirty times a second is heard thirty times a
+	// second by a surface being read aloud. A still `*` makes it once.
+	mark := tokens.Spinner(a.paints / spinnerStep)
+	if a.linear {
+		mark = glyphRunASCII
+	}
+	line := mark + " " + e.text
+	if word := countUpWord(a.now().Sub(e.began)); word != "" {
+		line += " · " + word
+	}
+	return a.pal.dim(ansi.Truncate(line, width, glyphMore))
+}
 
+// ── THE BOTTOM HUD ──────────────────────────────────────────────────────────
+//
+// The bottom of this surface is TWO ROWS, and every element on them has exactly
+// one job:
+//
+//	─ ~/s/aforge-v2 · chat-v3-task* ──────────────── @ files · / commands ─
+//	porting the parser · gpt-4.1-mini    2 jobs · $0.14 · 12.4k/128k ▁▂▃▅ · ⠹ working · 4s
+//
+// LEFT IS IDENTITY — who you are talking to and where. RIGHT IS TELEMETRY AND
+// ALIVENESS — how much it has cost, how full it is, how fast it is going, and
+// whether it is going at all. Nothing crosses: a number never appears on the
+// left, and a name never appears on the right, so a person learns ONE place to
+// look for each question instead of scanning a line of alternating kinds.
+//
+// THE PAINT LAW: dim by default. Paint is spent on three things and nothing
+// else — ALIVENESS (the spinner and its clock), DECISIONS (a question waiting,
+// a context meter about to compact, a gate left open), and RECENCY (a number
+// that just moved, fading back to furniture over ten seconds). A surface where
+// everything is painted has told you nothing about what to look at.
+//
+// THE PRODUCT NAME IS GONE from this line. It was here for the screenshot —
+// a terminal photograph that names everything except the program — and the
+// legend above it now carries the workspace path, which identifies a pane far
+// better than a word that is the same in every one of them.
+//
+// The two rows are drawn by [app.legend] (the input's top border) and
+// [app.statusRows] (the status row, which becomes two rows on a narrow frame).
+
+const (
+	// hudWide is where the frame is comfortable: everything is on it,
+	// the session delta included.
+	hudWide = 120
+	// hudWrap is where the two clusters stop sharing a row. Below it the
+	// telemetry takes a row of its own rather than eating the identity's — the
+	// gap between the clusters is what separates them, and a gap of one cell is
+	// not a gap.
+	hudWrap = 100
+	// hudTight is the narrow floor: the legend keeps its path and loses its
+	// branch, the hints go, and the sparkline goes with them.
+	hudTight = 70
+)
+
+// ── AGE-FADED TELEMETRY: PAINT FOLLOWS RECENCY ──────────────────────────────
+//
+// A number that changed a second ago and a number that has not moved in ten
+// minutes are two different facts, and they were drawn identically. So every
+// telemetry segment carries the moment it last CHANGED, and it is painted from
+// that:
+//
+//	< 4s   ink     it just moved — this is the news on the line
+//	< 10s  muted   it moved recently
+//	else   dim     furniture, which is what a settled number is
+//
+// STALE NUMBERS STOP COMPETING. That is the whole point: at rest the entire
+// right cluster is one quiet grey, so the one segment that is moving is the
+// only thing on the line with any weight at all.
+//
+// A segment's FIRST appearance is not a change — there was nothing there to
+// have changed, and a line that opens entirely in ink is a line with no
+// hierarchy — so it starts at the bottom of the ramp and climbs only when it
+// moves again.
+//
+// The clock behind it costs nothing while nothing is happening: during a turn
+// the frame tick already runs at [frameInterval], and at turn settle exactly
+// TWO one-shot ticks are scheduled ([fadeTicks]) so the fresh tier can expire
+// on time. There is no idle ticker on this surface and there is not going to
+// be one.
+const (
+	hudFresh = 4 * time.Second
+	hudWarm  = 10 * time.Second
+)
+
+// ctxRingSize is how many turn-end context readings the sparkline holds, and
+// how many the ETA estimator averages over. Six is the width a sparkline can
+// carry without becoming a chart.
+const ctxRingSize = 6
+
+// hudSeg names one telemetry segment. The kind is what the fade clock is keyed
+// by — the segment's POSITION is not, because a segment that disappears must
+// not hand its age to the one that took its place.
+type hudSeg uint8
+
+const (
+	segAmbient hudSeg = iota
+	segDelta
+	segCost
+	segCtx
+	segCache
+	segBurn
+	segETA
+	segYolo
+	segState
+	segCount
+)
+
+// hudPart is one assembled segment: what it says, and which clock it is on.
+type hudPart struct {
+	kind hudSeg
+	text string
+}
+
+// status is the HUD's status row, or both of its rows joined, which is what a
+// caller that wants "the line" means. The frame draws the rows themselves —
+// see [app.statusRows].
 func (a *app) status(width int) string {
-	sep := a.pal.dim(" · ")
+	return strings.Join(a.statusRows(width), "\n")
+}
+
+// statusRows is the two-cluster row: identity left, telemetry right, and the
+// GAP BETWEEN THEM AS THE ONLY SEPARATOR. There is no pipe, no bracket and no
+// rule between the clusters — space is what the eye reads as "these are two
+// different subjects", and a glyph there would be furniture claiming to be
+// structure.
+//
+// Below [hudWrap] the clusters stop sharing a row and the telemetry takes one
+// of its own, still right-aligned. That is the only place this surface spends a
+// row on chrome, and it spends it exactly where the alternative is truncating
+// the numbers a person opened the terminal to read.
+func (a *app) statusRows(width int) []string {
+	if width < 1 {
+		return []string{""}
+	}
+	left, parts, wrapped := a.statusLayout(width)
+	right, plainRight := a.paintParts(parts)
+	if wrapped {
+		return []string{
+			fit(a.pal.dim(left), width),
+			rightAlign(right, plainRight, width),
+		}
+	}
+	gap := width - ansi.StringWidth(left) - ansi.StringWidth(plainRight)
+	if gap < 1 {
+		// Nothing fits, even emptied: the telemetry is the half that survives,
+		// because what is HAPPENING outranks what it is called.
+		return []string{fit(right, width)}
+	}
+	return []string{a.pal.dim(left) + strings.Repeat(" ", gap) + right}
+}
+
+// hudGap is the smallest barrier the two clusters will stand next to each
+// other across. Below it they are not two clusters, they are one line with a
+// number in the middle of it.
+const hudGap = 3
+
+// statusLayout decides the row's shape: the identity, the segments that
+// survived the frame's width, and whether the telemetry took a row of its own.
+//
+// THE NARROW LADDER, and it is one ladder because the frame, the chrome height
+// and the hit-testing all resolve through here:
+//
+//	≥ 120   everything, the session delta included
+//	≥ 100   the delta is gone; segments drop by [dropOrder] until it fits
+//	< 100   the telemetry may take a row of its own — and it takes one only
+//	        when the clusters would otherwise collide. A frame with a short
+//	        name and a quiet session fits on one row at sixty columns, and
+//	        spending a row of the conversation on a gap nobody needed is the
+//	        cost this law exists to avoid.
+func (a *app) statusLayout(width int) (string, []hudPart, bool) {
+	left := a.identity()
+	parts := a.telemetry(width)
+	// The change clocks are stamped from the ASSEMBLED segments, before any
+	// width pressure is applied: a number that moved has moved whether or not
+	// this frame had room to say so.
+	a.freshen(parts)
+
+	if room := width - ansi.StringWidth(left) - hudGap; hudWidth(parts) <= room {
+		return left, parts, false
+	}
+	if width < hudWrap {
+		for hudWidth(parts) > width && dropSegment(&parts) {
+		}
+		return left, parts, true
+	}
+	for hudWidth(parts) > width-ansi.StringWidth(left)-hudGap && dropSegment(&parts) {
+	}
+	return left, parts, false
+}
+
+// statusHeight is how many rows the HUD's status takes: the frame, the chrome
+// height and the pointer's hit-testing all have to agree about it (view.go).
+func (a *app) statusHeight(width int) int {
+	if width < 1 {
+		return 1
+	}
+	if _, _, wrapped := a.statusLayout(width); wrapped {
+		return 2
+	}
+	return 1
+}
+
+// identity is the left cluster: WHICH conversation, and WHAT is answering it.
+//
+//	porting the parser · gpt-4.1-mini:high
+//
+// The model is its BASENAME. "deepseek/deepseek-v4-flash" is a routing address
+// and its first half is the same for every model a person is choosing between —
+// nine cells that never vary, on the row where width is scarcest. The whole id
+// stays wherever it is being CHOSEN or RECORDED: the picker's rows, the /model
+// note, the session file. The reasoning rider is kept because it is not part of
+// the address — it is how this model is being run (view.go's [app.statusRow]).
+//
+// The name falls back to the workspace's base name until the session has named
+// itself (session's title.go), so the cluster is never empty.
+func (a *app) identity() string {
 	name := a.title
 	if name == "" {
 		name = a.place
 	}
-	word, painted := a.stateWord()
+	if model := modelBase(a.model); model != "" {
+		return name + " · " + model
+	}
+	return name
+}
 
-	parts := []string{product, name, a.model, dollars(a.cost)}
-	// The context segment is the one part of the line that can be painted
-	// without being the state word, so it is assembled and painted separately
-	// and spliced back in below.
-	context, crowded := a.contextSegment()
-	if context != "" {
-		parts = append(parts, context)
+// modelBase strips the vendor from a model id, and nothing else: everything
+// after the last slash, which leaves a bare id alone and keeps a ":level" rider
+// (the rider is appended after the id, and the slash is before it).
+func modelBase(id string) string {
+	if at := strings.LastIndexByte(id, '/'); at >= 0 {
+		return id[at+1:]
 	}
-	if warm := a.warmSegment(); warm != "" {
-		parts = append(parts, warm)
-	}
-	// The product name is the FIRST thing dropped on a narrow frame — before
-	// the hints, and long before the cost. It is the segment a reader least
-	// needs and a screenshot most does, and those are two different frames.
-	// The +3 is the two cells the hints are held off by plus the one that makes
-	// the gap below non-zero: the two tests have to agree, or the name survives
-	// by exactly the width that costs the hints.
-	if statusWidth(parts, word)+ansi.StringWidth(statusHints)+3 > width {
-		parts = parts[1:]
-	}
+	return id
+}
 
-	plain := strings.Join(parts, " · ")
-	line := ""
+// telemetry assembles the right cluster IN ORDER, and the order is the question
+// each segment answers about the run:
+//
+//	2 jobs · 1 watch     what is still alive out there
+//	Σ +128 −14           what this session has written
+//	$0.14                what it has cost
+//	12.4k/128k · 10% ▁▂▃ what it is carrying, and where that has been going
+//	⟲ saved $0.02 · 89%  what the cache gave back
+//	1.2k tok/s           how fast it is writing right now
+//	compaction in ~3     what is about to happen to it
+//	YOLO                 the gate is open (and nothing when it is not)
+//	⠹ working · 4s       what it is DOING — always last, because it is the one
+//	                     segment that is true of the whole line
+func (a *app) telemetry(width int) []hudPart {
+	var parts []hudPart
+	add := func(kind hudSeg, text string) {
+		if text != "" {
+			parts = append(parts, hudPart{kind: kind, text: text})
+		}
+	}
+	add(segAmbient, a.ambientSegment())
+	// THE DELTA IS THE LOWEST PRIORITY ON THE LINE and it says so twice: it is
+	// drawn only on a comfortable frame, and it is the first thing [dropSegment]
+	// takes when even that frame turns out to be full.
+	if width >= hudWide {
+		add(segDelta, a.deltaSegment())
+	}
+	add(segCost, dollars(a.cost))
+	if context, _ := a.contextSegment(); context != "" {
+		if spark := a.ctxSpark(); spark != "" && width >= hudTight {
+			context += " " + spark
+		}
+		add(segCtx, context)
+	}
+	add(segCache, a.warmSegment())
+	add(segBurn, a.burnSegment())
+	add(segETA, a.etaSegment())
+	add(segYolo, a.yoloSegment())
+	word, _ := a.stateSegment()
+	add(segState, word)
+	return parts
+}
+
+// dropOrder is what the line gives up, first to last, when it does not fit,
+// and it is ordered by how ACTIONABLE each segment is:
+//
+//	delta    what the session wrote — the only fact here about the past
+//	cache    an accounting nicety; the cost segment already carries the bill
+//	eta      a forecast, and the meter beside it is already painted the warning
+//	burn     nice to watch, but the clock on the state word says it is alive
+//	ambient  a server holding a port is a thing a person acts on
+//	cost     the bill
+//	ctx      what the conversation is carrying, which is the decision it forces
+//
+// The state word and the safety posture are not in this list at all: one is why
+// a person is looking at the line, and the other is why they should be.
+var dropOrder = []hudSeg{segDelta, segCache, segETA, segBurn, segAmbient, segCost, segCtx}
+
+// dropSegment removes the least important segment still present, and reports
+// whether it found one to remove.
+func dropSegment(parts *[]hudPart) bool {
+	for _, kind := range dropOrder {
+		for i, part := range *parts {
+			if part.kind == kind {
+				*parts = append((*parts)[:i], (*parts)[i+1:]...)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hudWidth is what a set of segments measures, joined, unpainted.
+func hudWidth(parts []hudPart) int {
+	if len(parts) == 0 {
+		return 0
+	}
+	width := 3 * (len(parts) - 1)
+	for _, part := range parts {
+		width += ansi.StringWidth(part.text)
+	}
+	return width
+}
+
+// paintParts joins the cluster, painted and plain. The plain string is what
+// every width decision above is made from: measuring a painted string is
+// measuring escape sequences.
+func (a *app) paintParts(parts []hudPart) (string, string) {
+	var painted, plain string
 	for i, part := range parts {
 		if i > 0 {
-			line += sep
+			painted += a.pal.dim(" · ")
+			plain += " · "
 		}
-		// Everything is dim except a context segment that has got close to
-		// compaction. It is painted in place rather than moved to the end
-		// because WHERE it is is how a person finds it; the colour is only how
-		// they notice it.
-		if crowded && part == context {
-			line += a.pal.accent(part)
+		painted += a.paintPart(part)
+		plain += part.text
+	}
+	return painted, plain
+}
+
+// paintPart is where the hue budget is spent, and the order of these branches
+// IS the priority of the three things paint is allowed to mean.
+func (a *app) paintPart(part hudPart) string {
+	switch part.kind {
+	case segState:
+		// ALIVENESS AND THE DECISION, both of which the state word owns.
+		_, painted := a.stateSegment()
+		return painted
+	case segYolo:
+		// The one segment that is loud because of what it MEANS rather than
+		// because of when it changed.
+		return a.pal.bad(part.text)
+	case segCtx:
+		// The meter's three-rung ramp outranks its age: a conversation about to
+		// compact is a decision a person can still act on, and "this number is
+		// four seconds old" is not.
+		switch a.ctxHeat() {
+		case ctxDue:
+			return a.pal.bad(part.text)
+		case ctxNear:
+			return a.pal.accent(part.text)
+		}
+	}
+	return a.fadeSeg(part.kind, part.text)
+}
+
+// freshen stamps the change clocks. A segment that vanished loses its clock
+// rather than keeping it: the next thing to appear under that kind is new, and
+// new is not the same as recently changed.
+func (a *app) freshen(parts []hudPart) {
+	var seen [segCount]bool
+	for _, part := range parts {
+		if part.kind >= segCount {
 			continue
 		}
-		line += a.pal.dim(part)
+		seen[part.kind] = true
+		if a.segText[part.kind] == part.text {
+			continue
+		}
+		if a.segText[part.kind] != "" {
+			a.segAt[part.kind] = a.now()
+		}
+		a.segText[part.kind] = part.text
 	}
-	plain += " · " + word
-	line += sep + painted
+	for kind := hudSeg(0); kind < segCount; kind++ {
+		if !seen[kind] {
+			a.segText[kind], a.segAt[kind] = "", time.Time{}
+		}
+	}
+}
 
-	// The hints are the first thing to go: they are a reminder, and a reminder
-	// that crowds out the cost is not one. They are dropped whole rather than
-	// truncated — "/help · ctr" is not a key anybody can press.
-	if gap := width - ansi.StringWidth(plain) - ansi.StringWidth(statusHints) - 2; gap >= 1 {
-		line += strings.Repeat(" ", gap) + a.pal.dim(statusHints)
-		plain += strings.Repeat(" ", gap) + statusHints
+// fadeSeg paints one segment at its age (see the ramp above).
+//
+// WHILE A PERSON IS BEING ASKED SOMETHING, the whole ramp collapses to dim. The
+// consent question owns the screen's attention for as long as it is up, and a
+// cost figure glowing beside it is a number competing with a decision.
+func (a *app) fadeSeg(kind hudSeg, text string) string {
+	if a.asking() || kind >= segCount {
+		return a.pal.dim(text)
 	}
-	if ansi.StringWidth(plain) > width {
-		line = ansi.Truncate(line, width, "")
+	at := a.segAt[kind]
+	if at.IsZero() {
+		return a.pal.dim(text)
 	}
-	return line
+	switch age := a.now().Sub(at); {
+	case age < hudFresh:
+		return a.pal.ink(text)
+	case age < hudWarm:
+		return a.pal.muted(text)
+	default:
+		return a.pal.dim(text)
+	}
+}
+
+// rightAlign pushes a painted cluster to the right edge of the frame.
+func rightAlign(painted, plain string, width int) string {
+	if gap := width - ansi.StringWidth(plain); gap > 0 {
+		return strings.Repeat(" ", gap) + painted
+	}
+	return fit(painted, width)
+}
+
+// ── THE TELEMETRY SEGMENTS ──────────────────────────────────────────────────
+
+// ambientSegment is what is still alive that nobody is watching:
+//
+//	2 jobs · 1 watch
+//
+// It exists because background work is the one thing on this surface that
+// happens OFF the transcript. A server started twenty turns ago is not on
+// screen, is not in the reply, and is still holding a port; a watch is still
+// firing into the conversation. Zero of both is the ordinary case and it draws
+// NOTHING — an ambient count that reads "0 jobs" is a permanent reminder of the
+// absence of a thing.
+func (a *app) ambientSegment() string {
+	stats := a.hudStats()
+	var parts []string
+	if stats.jobs > 0 {
+		parts = append(parts, itoa(stats.jobs)+plural(" job", stats.jobs))
+	}
+	if stats.watches > 0 {
+		parts = append(parts, itoa(stats.watches)+plural(" watch", stats.watches, "es"))
+	}
+	return strings.Join(parts, " · ")
+}
+
+// deltaSegment is what this SESSION has written, summed from the same tool
+// arguments the per-turn "what changed" line is derived from (app.go's
+// [app.computeStats]):
+//
+//	Σ +128 −14
+//
+// The per-turn line answers "what did that do"; this answers "what has this
+// conversation done", which is the question a person asks before they decide
+// whether to keep it. It is the first segment sacrificed to width because it is
+// the only one on the line that is about the PAST rather than about now.
+func (a *app) deltaSegment() string {
+	stats := a.hudStats()
+	if stats.adds == 0 && stats.dels == 0 {
+		return ""
+	}
+	return "Σ " + glyphAdd + itoa(stats.adds) + " " + glyphDel + itoa(stats.dels)
+}
+
+// sparkBars is the sparkline's alphabet, lowest first.
+const sparkBars = "▁▂▃▄▅▆▇"
+
+// ctxSpark is the last few turn-end context readings, as one glyph each:
+//
+//	12.4k/128k · 10% ▁▂▂▃▅▆
+//
+// It answers the question the number cannot: a conversation at 60% that has sat
+// at 60% for six turns and one that arrived there from 20% are the same figure
+// and completely different situations. The bars are measured against the
+// COMPACTION THRESHOLD rather than the window, for the reason the heat ramp is
+// ([accentAtThresholdPercent]): the threshold is the thing that actually
+// happens to you.
+//
+// Fewer than two readings draws nothing. One bar is not a trend, it is a bar.
+func (a *app) ctxSpark() string {
+	// A SPARKLINE IS SHAPE, and the two tiers that cannot read shape do not get
+	// one: a terminal that cannot be trusted with box drawing would render six
+	// replacement characters, and a surface being read aloud would announce
+	// them one by one. Both keep the number, which is the fact.
+	if a.pal.ascii || a.linear {
+		return ""
+	}
+	threshold := session.CompactThreshold(a.ctxWindow)
+	if threshold <= 0 || len(a.ctxRing) < 2 {
+		return ""
+	}
+	bars := []rune(sparkBars)
+	var out strings.Builder
+	for _, reading := range a.ctxRing {
+		at := reading * len(bars) / threshold
+		if at >= len(bars) {
+			at = len(bars) - 1
+		}
+		if at < 0 {
+			at = 0
+		}
+		out.WriteRune(bars[at])
+	}
+	return out.String()
+}
+
+// burnSegment is how fast the model is writing, right now:
+//
+//	1.2k tok/s
+//
+// It is output tokens over the wall time of THIS turn, and it exists because
+// "working" is a boolean and a person watching a long turn wants a rate. It is
+// drawn only while a turn is running — a rate over a finished turn is a fact
+// about the past wearing the clothes of a live one — and only after a second,
+// because a rate computed over 200ms is a rate computed over the first packet.
+func (a *app) burnSegment() string {
+	if a.state != stateWorking || a.turnBegan.IsZero() {
+		return ""
+	}
+	elapsed := a.now().Sub(a.turnBegan)
+	if elapsed < time.Second {
+		return ""
+	}
+	written := a.outputTokens - a.turnOutStart
+	if written <= 0 {
+		return ""
+	}
+	return tokenWord(int(float64(written)/elapsed.Seconds())) + " tok/s"
+}
+
+// etaSegment is the compaction forecast, and it only ever speaks when the
+// answer is SOON:
+//
+//	compaction in ~3 turns
+//
+// The estimate is the average growth over the turn-end ring, against what is
+// left before the threshold. It is deliberately silent in three cases: when the
+// conversation is not growing (a session of reads and replies can sit flat for
+// twenty turns, and "compaction in ~400 turns" is a number nobody will ever
+// use), when the answer is more than [etaHorizon] turns away, and when
+// compaction is already due — the meter is painted the bad hue by then, and a
+// forecast of a thing that is happening is not a forecast.
+func (a *app) etaSegment() string {
+	turns, ok := a.compactionETA()
+	if !ok {
+		return ""
+	}
+	return "compaction in ~" + itoa(turns) + plural(" turn", turns)
+}
+
+// etaHorizon is how far ahead the forecast is worth making.
+const etaHorizon = 5
+
+func (a *app) compactionETA() (int, bool) {
+	threshold := session.CompactThreshold(a.ctxWindow)
+	if threshold <= 0 || len(a.ctxRing) < 2 || a.ctxTokens <= 0 {
+		return 0, false
+	}
+	growth := (a.ctxRing[len(a.ctxRing)-1] - a.ctxRing[0]) / (len(a.ctxRing) - 1)
+	if growth <= 0 {
+		return 0, false
+	}
+	remaining := threshold - a.ctxTokens
+	if remaining <= 0 {
+		return 0, false
+	}
+	turns := (remaining + growth - 1) / growth
+	if turns > etaHorizon {
+		return 0, false
+	}
+	return turns, true
+}
+
+// ── NEGATIVE-SPACE SAFETY ───────────────────────────────────────────────────
+//
+// The approval posture is the one fact on this line that is drawn ONLY when it
+// is unsafe. In the default posture — the gate asks before it runs anything —
+// the segment does not exist, because a permanent "SAFE" badge is a badge
+// nobody reads and therefore a badge that says nothing on the day it changes.
+//
+// ABSENCE IS THE SAFE STATE, and its presence is the whole message: "allow"
+// means every tool call this session makes runs without asking, and a person
+// who has forgotten they turned that on must be reminded by the screen rather
+// than by the outcome.
+func (a *app) yoloSegment() string {
+	if a.approval == "allow" {
+		return "YOLO"
+	}
+	return ""
+}
+
+// stateSegment is the last segment: what this surface is DOING, plain and
+// painted.
+//
+//	idle                      dim       nothing is happening
+//	⠹ working · 1m 4s         accent    the model has the turn, and for how long
+//	waiting · your call       violet    IT HAS THE TURN AND IT IS YOURS
+//	interrupted               soft red  the last turn was stopped by hand
+//
+// THE CLOCK IS THE ALIVENESS. A spinner says "something is happening" and says
+// exactly as much at second one as at second ninety; the count-up is the only
+// thing on the line that answers "should I still be waiting for this?". It is
+// the tool rows' own count-up ([countUpWord]) and it turns on the tool rows'
+// own grid ([spinnerStep]), so nothing on this screen beats against anything
+// else.
+func (a *app) stateSegment() (string, string) {
+	word, painted := a.stateWord()
+	if a.state != stateWorking || a.asking() || a.copy.on {
+		return word, painted
+	}
+	mark := tokens.Spinner(a.paints / spinnerStep)
+	if a.linear {
+		// A spinner read aloud is a word repeated forever (styles.go's linear
+		// tier); the clock beside it is the fact it was standing in for.
+		mark = glyphRunASCII
+	}
+	plain, line := mark+" "+word, a.pal.accent(mark)+" "+painted
+	if clock := countUpWord(a.now().Sub(a.turnBegan)); clock != "" && !a.turnBegan.IsZero() {
+		plain += " · " + clock
+		line += a.pal.dim(" · ") + a.pal.accent(clock)
+	}
+	return plain, line
+}
+
+// plural spells a count's unit. The plural form is "s" unless a caller says
+// otherwise, which "watch" does.
+func plural(unit string, n int, form ...string) string {
+	if n == 1 {
+		return unit
+	}
+	if len(form) > 0 {
+		return unit + form[0]
+	}
+	return unit + "s"
 }
 
 // contextSegment is what the conversation is CARRYING, and it reports whether
@@ -468,8 +1048,21 @@ func (a *app) contextSegment() (string, bool) {
 	return segment, a.ctxCrowded()
 }
 
-// warmSegment is the session's cached share of everything it has sent — "⟲ 62%"
-// — and empty until there is one.
+// warmSegment is the session's cached share of everything it has sent, and what
+// that share was WORTH — and it is empty until there is one.
+//
+//	⟲ saved $0.02 · 89%    a priced session: the cash, then the hit rate
+//	⟲ 89%                  nobody published a price: the rate alone
+//
+// THE LAW IN ONE LINE: the percentage is the hit RATE, and the cash is what it
+// MEANT. "⟲ 89%" alone was a number nobody could act on — a person reading it
+// could not tell whether it was a good thing that had happened to them or a
+// statistic about a mechanism they never asked about. The dollars are the
+// answer, and they lead because money is the part a person recognizes on sight.
+//
+// The cash appears only when it is real (app.go's cacheSaved, which grows only
+// under a published price pair): a session on an unpriced model keeps exactly
+// the segment it had, rather than learning to say "saved $0.00".
 //
 // It is a share rather than a count because a count of cached tokens says
 // nothing on its own: 40k cached is excellent against 50k sent and a rounding
@@ -485,16 +1078,15 @@ func (a *app) warmSegment() string {
 	if !ok {
 		return ""
 	}
-	return "⟲ " + itoa(int(share*100)) + "%"
+	rate := itoa(int(share*100)) + "%"
+	if a.cacheSaved > 0 {
+		return "⟲ saved " + savedWord(a.cacheSaved) + " · " + rate
+	}
+	return "⟲ " + rate
 }
 
-// statusWidth is what the line's own facts measure, unpainted — the segments
-// and the state word that always follows them.
-func statusWidth(parts []string, word string) int {
-	return ansi.StringWidth(strings.Join(parts, " · ")) + 3 + ansi.StringWidth(word)
-}
-
-// stateWord is the last segment, plain and painted.
+// stateWord is the state itself, plain and painted — what [app.stateSegment]
+// wraps with the spinner and the clock.
 //
 // A pending question OUTRANKS the run state, and says so in words as well as in
 // colour: the turn is technically still working — the tool call is parked
@@ -528,6 +1120,223 @@ func (a *app) stateWord() (string, string) {
 
 // waitingWord is the state a person has to answer.
 const waitingWord = "waiting · your call"
+
+// ── THE LEGEND: THE INPUT'S TOP BORDER, WITH THE PLACE IN IT ────────────────
+//
+// The rule above the input was one unbroken line whose only job was to say
+// "below this is your business". It still says that, and it now carries the two
+// facts that belong to the BOX rather than to the conversation, in the shape a
+// form has used for fifty years — a fieldset legend, the label sitting in the
+// border itself:
+//
+//	─ ~/s/aforge-v2 · chat-v3-task* ──────────────── @ files · / commands ─
+//
+// LEFT IS WHERE YOU ARE. The path is fish-abbreviated: the home directory
+// becomes "~" and every parent is cut to its initial, because the parents are
+// how you got there and the last segment is where you are. The last segment is
+// NEVER abbreviated — a legend that says "~/s/a-v2" has spent its cells telling
+// you nothing. The branch follows it with a "*" when the tree is dirty, which
+// is the one bit of git state a person acts on without asking for more.
+//
+// RIGHT IS WHAT THIS BOX ANSWERS TO. Two affordances of the input line itself —
+// "@ files · / commands" — and they are here rather than in the status line for
+// the reason they exist at all: they are about the thing directly below them.
+// While a state has keys of its own the hints REPLACE them (see [app.hintWord]),
+// because the two are the same slot answering the same question, and a
+// cheatsheet beside a live prompt is a cheatsheet nobody reads.
+//
+// The narrow ladder drops in the order of what a person can recover elsewhere:
+// the microcopy first (the keys still work), then the branch (the shell prompt
+// behind this one says it), then the path abbreviates harder. The last thing
+// standing is the rule it always was.
+
+// microcopy is the input's own two affordances, and the legend's default right.
+const microcopy = "@ files · / commands"
+
+// legend draws that border. It replaces the plain rule at every width, and
+// degrades back into it when there is no room for anything else.
+func (a *app) legend(width int) string {
+	if width < 1 {
+		return ""
+	}
+	// THE ONE MOMENT THE LEGEND MAY SHOUT: while a person is being asked
+	// something, the place goes violet along with the state word. The question
+	// is bottom-anchored and so is this border — the two of them framing the
+	// question is the surface pointing at it with both hands (consent.go).
+	paint := a.pal.dim
+	if a.asking() {
+		paint = a.pal.ask
+	}
+	// THE LADDER, in the order of what a person can recover elsewhere: the
+	// microcopy first (the keys still work whether or not they are printed),
+	// then the branch (the shell prompt behind this pane says it), and only then
+	// is the path itself cut — one strength at a time, and never its last
+	// segment.
+	attempts := []struct {
+		left, right string
+	}{
+		{a.legendLeft(width, 0), a.legendRight(width)},
+		{a.legendLeft(width, 0), ""},
+		{a.legendPath(0), ""},
+		{a.legendPath(1), ""},
+		{a.legendPath(2), ""},
+	}
+	for _, attempt := range attempts {
+		if line, ok := a.legendLine(attempt.left, attempt.right, width, paint); ok {
+			return line
+		}
+	}
+	return a.rule(width)
+}
+
+// legendLine lays one attempt out, and reports whether it fitted. The label
+// sits one cell inside the border on each side, which is what makes it read as
+// a legend rather than as text that collided with a rule.
+func (a *app) legendLine(left, right string, width int, paint func(string) string) (string, bool) {
+	head := "─ " + left + " "
+	tail := ""
+	if right != "" {
+		tail = " " + right + " ─"
+	}
+	fill := width - ansi.StringWidth(head) - ansi.StringWidth(tail)
+	if left == "" || fill < 1 {
+		return "", false
+	}
+	line := a.pal.dim("─ ") + paint(left) + a.pal.dim(" "+strings.Repeat("─", fill))
+	if tail != "" {
+		line += a.pal.dim(" ") + a.pal.dim(right) + a.pal.dim(" ─")
+	}
+	return line, true
+}
+
+// legendLeft is the place: the path, and the branch when there is one and the
+// frame is not tight.
+func (a *app) legendLeft(width, hard int) string {
+	path := a.legendPath(hard)
+	if a.branch == "" || width < hudTight {
+		return path
+	}
+	branch := a.branch
+	if a.branchDirty {
+		branch += "*"
+	}
+	return path + " · " + branch
+}
+
+// legendPath is the workspace, abbreviated at one of three strengths.
+func (a *app) legendPath(hard int) string {
+	return shortPath(a.workspace, a.home, hard)
+}
+
+// legendRight is the hint slot: the state's own keys when it has any, the
+// input's two affordances when it does not, and nothing at all on a tight
+// frame — where the cells are worth more to the path than to a reminder.
+func (a *app) legendRight(width int) string {
+	if width < hudTight {
+		return ""
+	}
+	if hint := a.hintWord(); hint != "" {
+		return hint
+	}
+	return microcopy
+}
+
+// ── CONTEXTUAL KEY HINTS ────────────────────────────────────────────────────
+//
+// THE HINT SLOT IS STATE-DRIVEN, AND IDLE IT IS EMPTY. This surface used to
+// carry "/help · ctrl+o" permanently, which is the definition of a static
+// cheatsheet: two keys that were true in every state, drawn in the one place a
+// person looks when they do not know what to do, and therefore never read after
+// the first session.
+//
+// What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
+//
+//	a question is up      a allow · t always · d deny   (consent.go's own keys)
+//	the picker is open    enter switch · esc
+//	a turn is running     esc interrupt
+//	idle                  nothing
+//
+// The keys are quoted from the handlers rather than authored here — a hint that
+// disagrees with input.go is worse than no hint, because it is a hint somebody
+// will act on.
+func (a *app) hintWord() string {
+	switch {
+	case a.asking() || a.awaitingDecision():
+		return "a allow · t always · d deny"
+	case a.pick.open:
+		return "enter switch · esc"
+	case a.state == stateWorking:
+		return "esc interrupt"
+	}
+	return ""
+}
+
+// awaitingDecision reports whether a call is parked on a person. It is the same
+// hint as an open question because it is the same moment: the request may not
+// have reached this surface yet, and the row is already showing the "?".
+func (a *app) awaitingDecision() bool {
+	for i := range a.entries {
+		if a.entries[i].kind == entryTool && a.entries[i].status == toolConsent {
+			return true
+		}
+	}
+	return false
+}
+
+// ── THE PATH, FISH-STYLE ────────────────────────────────────────────────────
+//
+// shortPath abbreviates a directory the way fish's prompt does, at one of three
+// strengths:
+//
+//	hard 0   ~/s/aforge-v2     home to "~", every parent to its initial
+//	hard 1   …/aforge-v2       the parents dropped entirely
+//	hard 2   aforge-v2         the place, alone
+//
+// The LAST SEGMENT IS ALWAYS WHOLE, at every strength. It is the only part of
+// the path that answers the question the legend is for — which project is this
+// pane — and a rule that abbreviated it would be a rule that saved cells by
+// deleting the message. A leading dot is kept with the letter after it (".c"
+// for ".claude"), because a lone "." is not a name.
+func shortPath(dir, home string, hard int) string {
+	dir = strings.TrimRight(strings.TrimSpace(dir), "/")
+	if dir == "" {
+		return ""
+	}
+	if home = strings.TrimRight(home, "/"); home != "" {
+		if dir == home {
+			return "~"
+		}
+		if strings.HasPrefix(dir, home+"/") {
+			dir = "~" + strings.TrimPrefix(dir, home)
+		}
+	}
+	parts := strings.Split(dir, "/")
+	last := parts[len(parts)-1]
+	switch {
+	case hard >= 2 || len(parts) == 1:
+		return last
+	case hard == 1:
+		return glyphMore + "/" + last
+	}
+	for i, part := range parts[:len(parts)-1] {
+		parts[i] = initialOf(part)
+	}
+	return strings.Join(parts, "/")
+}
+
+// initialOf is one path segment, cut to what identifies it: its first rune, or
+// the first two when the first is a dot.
+func initialOf(segment string) string {
+	runes := []rune(segment)
+	switch {
+	case len(runes) == 0:
+		return ""
+	case runes[0] == '.' && len(runes) > 1:
+		return string(runes[:2])
+	default:
+		return string(runes[:1])
+	}
+}
 
 // wrap breaks a block of plain text to width, keeping its own newlines. The
 // text is unstyled at this point: styling after wrapping is what keeps every

@@ -702,10 +702,20 @@ func TestTheStatusLineIsTheLastRowAndCarriesEverySegment(t *testing.T) {
 
 	lines := strings.Split(plain(frame(a)), "\n")
 	last := lines[len(lines)-1]
-	for _, want := range []string{"porting the parser", "openai/gpt-4.1-mini", "$0.14", "1k/10k · 10%", "idle", "/help · ctrl+o"} {
+	// THE TWO CLUSTERS, on the one row a ninety-column frame keeps them on:
+	// identity left (the name and the model's BASENAME — the vendor is a routing
+	// address, and it stays in the picker), telemetry right, state word last.
+	// The product name is no longer on this line at all.
+	for _, want := range []string{"porting the parser", "gpt-4.1-mini", "$0.14", "1k/10k · 10%", "idle"} {
 		if !strings.Contains(last, want) {
 			t.Fatalf("the status line is missing %q:\n%q", want, last)
 		}
+	}
+	if strings.Contains(last, product) {
+		t.Fatalf("the product name is still on the status line: %q", last)
+	}
+	if strings.Contains(last, "openai/") {
+		t.Fatalf("the vendor prefix is still on the status line: %q", last)
 	}
 	// NO TOP BAR. Nothing above the conversation says any of this.
 	for _, line := range lines[:len(lines)-1] {
@@ -753,8 +763,10 @@ func TestTheInputAreaSitsUnderARuleWithItsOwnBreathingRoom(t *testing.T) {
 	if strings.TrimSpace(lines[draft-1]) != "" {
 		t.Fatalf("the row above the draft is not blank: %q", lines[draft-1])
 	}
-	if rule := lines[draft-2]; strings.Trim(rule, "─") != "" || rule == "" {
-		t.Fatalf("the row above that is not the rule: %q", rule)
+	// The rule above the box is the LEGEND now (render.go): the same one line,
+	// with where you are written into the border of it.
+	if rule := lines[draft-2]; !strings.HasPrefix(rule, "─ ") || !strings.Contains(rule, "───") {
+		t.Fatalf("the row above that is not the input's legend border: %q", rule)
 	}
 	if draft != len(lines)-2 {
 		t.Fatalf("the draft is %d rows from the bottom, want 1 (the status line)", len(lines)-1-draft)

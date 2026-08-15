@@ -115,8 +115,25 @@ const (
 	KeyGuardian      = "approval.guardian"
 	KeyTierLowModel  = "models.tiers.low"
 	KeyTierHighModel = "models.tiers.high"
+	// KeyMouse is whether the surface reports the mouse at all. Off is the
+	// default because an alt-screen app that reports the mouse OWNS every
+	// drag: the terminal's native text selection dies the moment reporting
+	// starts, and selecting text to copy is the more fundamental act. On
+	// buys hover and click; off buys selection.
+	KeyMouse = "ui.mouse"
 	KeyModelRoles    = "models.roles"
 	KeySpendRail     = "session.spendRailUSD"
+
+	// KeyTaskAutoApprove is the countdown a proposed task waits before it
+	// starts on its own (internal/session's task.go). It is named under `task.`
+	// rather than beside the approval rows for the reason the guardian row is
+	// named apart from them: this is not a rule about what may run, it is HOW
+	// LONG YOU GET to say something about work that is going to run either way.
+	//
+	// Seconds, not a duration string, because the number is small and read at a
+	// glance under a bar that is counting it down — "5" is the row, "5s" would
+	// be the row pretending to be a unit it never varies.
+	KeyTaskAutoApprove = "task.autoapprove_seconds"
 
 	// The web-search rows. They are three rather than one because they answer
 	// three separable questions: WHERE a lookup goes, and the two credentials
@@ -179,6 +196,18 @@ const (
 // GuardianModes lists them, off first — which is also the default, and the order
 // the row widens in.
 var GuardianModes = []string{GuardianOff, GuardianOn}
+
+const (
+	MouseOff = "off"
+	MouseOn  = "on"
+)
+
+// MouseModes lists them, off first — which is also the default, because the
+// person who never asked for a mouse still expects to select text.
+var MouseModes = []string{MouseOff, MouseOn}
+
+// DefaultMouse is off: hover and click are opt-in, native selection is not.
+const DefaultMouse = MouseOff
 
 // The two tier names internal/roles resolves auxiliary calls under. They are
 // spelled here rather than imported for the reason [DocumentEngines] is: the
@@ -341,6 +370,16 @@ const (
 	// budgets; a session ceiling is for the sitting somebody wants to box in,
 	// and a default would box in every sitting at a number nobody chose.
 	DefaultSpendRailUSD = 0.0
+
+	// DefaultTaskAutoApprove is five seconds, and the direction it is wrong in
+	// is the whole choice. A task proposal is not a permission question — the
+	// model has already groomed the work and the brief, and the countdown is
+	// the person's window to REDIRECT it or wave it off. A long countdown makes
+	// every task a keystroke the person owes; no countdown at all would make
+	// the surface a gate the work waits behind. Five seconds is long enough to
+	// read a title and a two-line summary and reach for a key, and short enough
+	// that ignoring it is a decision rather than a wait.
+	DefaultTaskAutoApprove = 5
 
 	// DefaultSearchProvider pins nothing. Auto is the only default that stays
 	// right as a person's keys change: the day they paste an Exa key the
@@ -702,6 +741,28 @@ func (s *Settings) build() []Setting {
 				"It can never approve something the rules above refuse. A change lands on the next session.",
 			read:  func() string { return GuardianAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyGuardian, raw, GuardianModes) },
+		},
+		Setting{
+			Key: KeyMouse, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "mouse", Choices: MouseModes,
+			Hint: "on gives hover and click inside the chat; off gives the terminal's own " +
+				"text selection back. Off is the default: copy is the more fundamental act, " +
+				"and every key the mouse would save already exists.",
+			read:  func() string { return MouseAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyMouse, raw, MouseModes) },
+		},
+		// The countdown sits with the two consent rows and the guardian because
+		// it answers their question in the other currency: those say what
+		// aforge may DO without asking, this says how long you get to say
+		// something about work it has already decided to hand off.
+		Setting{
+			Key: KeyTaskAutoApprove, Category: CategorySpending, Kind: SettingCount,
+			Label: "task countdown",
+			Hint: "how many seconds a proposed task waits for you before it starts on its own. " +
+				"The countdown is your window to redirect it or wave it off, not a gate — " +
+				"0 waits for your answer instead of starting. A change lands on the next session.",
+			read:  func() string { return strconv.Itoa(TaskAutoApproveAt(dir)) },
+			write: func(raw string) error { return writeProfileCount(dir, KeyTaskAutoApprove, raw) },
 		},
 		Setting{
 			Key: KeySpendRail, Category: CategorySpending, Kind: SettingDollars,
@@ -1473,6 +1534,22 @@ func GuardianEnabledAt(profileDir string) bool {
 	return GuardianAt(profileDir) == GuardianOn
 }
 
+// MouseAt resolves the mouse row to its word, default off.
+func MouseAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyMouse); ok {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return DefaultMouse
+}
+
+// MouseEnabledAt is [MouseAt] as the bool the surface's View takes — the same
+// word/switch split [GuardianEnabledAt] documents.
+func MouseEnabledAt(profileDir string) bool {
+	return MouseAt(profileDir) == MouseOn
+}
+
 // ToolApprovalsAt resolves the per-tool exceptions as the person wrote them.
 // The text is the record; [ParseToolApprovals] is how a caller reads it.
 func ToolApprovalsAt(profileDir string) string {
@@ -1531,6 +1608,30 @@ func ModelRolesAt(profileDir string) string {
 // own (`…/model:free`).
 func ParseModelRoles(raw string) (map[string]string, error) {
 	return parsePairs(raw, "role")
+}
+
+// TaskAutoApproveAt resolves the task countdown, in seconds. 0 is a clock that
+// is off: the proposal waits for an answer instead of starting itself.
+//
+// A persisted 0 is a VALUE and not an absence, which is why the reader tests
+// ok before it tests the number: a person who turned the clock off must not
+// find it back at five the next morning.
+func TaskAutoApproveAt(profileDir string) int {
+	if value, ok := persistedInt(profileDir, KeyTaskAutoApprove); ok && value >= 0 {
+		return value
+	}
+	return DefaultTaskAutoApprove
+}
+
+// writeProfileCount persists a whole-number row as itself. The context-law
+// writers have their own because each carries a band and hands the whole law
+// to ctxbudget; a plain count has neither.
+func writeProfileCount(profileDir, key, raw string) error {
+	value, err := parseCount(raw)
+	if err != nil {
+		return err
+	}
+	return writeProfileValue(profileDir, key, value)
 }
 
 // SpendRailUSDAt resolves one conversation's own ceiling. 0 is off.

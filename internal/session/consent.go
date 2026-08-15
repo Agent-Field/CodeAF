@@ -150,6 +150,16 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return toolResult{}, true
 	}
 
+	// INSIDE A TASK NODE the same law applies and the words are the node's own
+	// (task_run.go). A node's policy allows everything, so the only decisions
+	// that reach this line are approval's critical floor — the handful of shapes
+	// that destroy a disk or drop the machine — and the honest thing to tell a
+	// worker with no colleague in the room is that this one needed a person and
+	// there is not one.
+	if a.config.InTask {
+		return refusal("refused in a task: " + decision.Rule + " — nobody to ask"), false
+	}
+
 	// Nobody is watching. Denying is the only honest answer: blocking would
 	// hang a headless run forever on a question with no reader, and allowing
 	// would make "prompt" mean "allow" wherever the surface is not a terminal.
