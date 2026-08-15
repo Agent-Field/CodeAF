@@ -51,10 +51,24 @@ const (
 type memoryStore struct {
 	mu   sync.Mutex
 	path string
+
+	// idle is the offline consolidation pass's own state — the armed timer, the
+	// clock it is armed against, and what the last pass saw (memory_consolidate.go).
+	//
+	// It has a lock of its own rather than riding mu because the two guard
+	// different things at different moments: mu keeps a WRITE whole, and is held
+	// for the length of one file operation; idle.mu keeps the arming, the
+	// disarming and the once-per-interval bookkeeping consistent across a turn's
+	// end, a timer firing minutes later, and a Close arriving in the middle. A
+	// pass that held mu while waiting on a provider would be a note tool blocked
+	// on a consolidator.
+	idle idleState
 }
 
 func newMemoryStore(path string) *memoryStore {
-	return &memoryStore{path: path}
+	store := &memoryStore{path: path}
+	store.idle.clock = realIdleClock()
+	return store
 }
 
 // note appends one line and returns the line as it was stored.

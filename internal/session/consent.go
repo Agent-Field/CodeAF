@@ -66,6 +66,11 @@ const (
 type consentAnswer struct {
 	allow bool
 	scope ConsentScope
+	// choice is set only by [Agent.ResolveRecovery] (recovery.go), where the
+	// question has three answers and a bool has two. It is empty for every
+	// ordinary consent answer, and the escalation reads that emptiness as "a
+	// binary surface answered" rather than as a third option nobody picked.
+	choice RecoveryChoice
 }
 
 // ResolveConsent answers one EventConsentRequest. An id nobody is waiting on —
@@ -89,6 +94,14 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope ConsentScope
 	if scope != ConsentToolSession {
 		scope = ConsentOnce
 	}
+	a.deliverConsent(id, consentAnswer{allow: allow, scope: scope})
+}
+
+// deliverConsent hands one answer to whoever is waiting for it, and drops it if
+// nobody is. It is the one place an answer reaches a blocked call, so the
+// recovery lane (recovery.go) and the consent lane cannot drift on what "the
+// question was already abandoned" means.
+func (a *Agent) deliverConsent(id uint64, answer consentAnswer) {
 	a.mu.Lock()
 	answers, waiting := a.consent[id]
 	if waiting {
@@ -100,7 +113,7 @@ func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope ConsentScope
 	}
 	// The channel is buffered to one and read at most once, so this never
 	// blocks and never needs the lock held across it.
-	answers <- consentAnswer{allow: allow, scope: scope}
+	answers <- answer
 }
 
 // decide asks the policy about one call. The bool is false when there is no
@@ -177,18 +190,33 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 	return toolResult{}, true
 }
 
-// ask emits one request and waits for the answer or for the turn to end.
+// ask emits one request for a CALL and waits for the answer or for the turn to
+// end. A "don't ask me again" answer is remembered, because the question was
+// about a tool.
+func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) (bool, error) {
+	answer, err := a.askAnswer(ctx, hub, call, decision, true)
+	return answer.allow, err
+}
+
+// askAnswer emits one request and waits for the whole answer or for the turn to
+// end.
 //
 // The wait is on the TURN's context, which is what makes Interrupt work on a
 // pending question: the cancellation releases this select, the call refuses
 // with a result the batch can record, and the turn ends the way any
 // interrupted turn ends. Nothing here holds a.mu across the wait — the lock
 // Interrupt needs must never be held by something waiting on a person.
-func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) (bool, error) {
+//
+// memo says whether a ConsentToolSession answer may be remembered for the tool.
+// It is true for the gate, whose question IS about a tool, and false for the
+// stuck question (recovery.go), which borrows this lane to ask about a TURN —
+// and where "and stop asking me" would otherwise write a standing approval for
+// a tool nobody was asked to approve.
+func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision, memo bool) (consentAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
-		return false, errAgentClosed
+		return consentAnswer{}, errAgentClosed
 	}
 	a.consentSeq++
 	id := a.consentSeq
@@ -213,13 +241,13 @@ func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decisi
 
 	select {
 	case answer := <-answers:
-		if answer.scope == ConsentToolSession {
+		if memo && answer.scope == ConsentToolSession {
 			a.rememberConsent(call.Function.Name, answer.allow)
 		}
-		return answer.allow, nil
+		return answer, nil
 	case <-ctx.Done():
 		a.forgetConsent(id)
-		return false, ctx.Err()
+		return consentAnswer{}, ctx.Err()
 	}
 }
 

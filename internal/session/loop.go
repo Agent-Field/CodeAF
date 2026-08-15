@@ -157,12 +157,18 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 	// [warmBatch] for the law that decides what may start early at all.
 	warm := &warmBatch{}
 
-	// watch is this turn's loop detector (looped.go). It belongs to the turn and
+	// episode is this turn's CONTROL PLANE (hooks.go): the four named seams and
+	// the state their citizens keep — the loop detector's window (looped.go), the
+	// ledger of what this turn changed (recovery.go). It belongs to the turn and
 	// is built here rather than held on the Agent for the reason the warm batch
-	// is: the window is a fact about ONE turn's work, and a detector that
+	// is: both of those are facts about ONE turn's work, and a detector that
 	// remembered yesterday's repetitions would nudge a model for a call it is
 	// making for the first time today.
-	watch := newLoopWatch()
+	//
+	// This is `episode-init`, the first of the four hooks, and it is the only one
+	// called by name from this function; the other three are called at the three
+	// lines below that used to call a mechanism directly.
+	episode := a.newEpisode()
 
 	// toolCtx is the turn's context WITHOUT the observer installed below. An
 	// early tool must run under the turn's cancellation and nothing else; giving
@@ -188,7 +194,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 			// meaning: the person sees every call the moment the model finishes
 			// asking for it, and only the calls the law allows actually move.
 			warm.announce(hub, event.Delta)
-			warm.consider(toolCtx, a, hub, event.Delta)
+			warm.consider(toolCtx, a, episode, hub, event.Delta)
 		}
 	})
 
@@ -269,12 +275,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 			// than at the top of the next iteration is what keeps an interrupt
 			// arriving during the tool batch from recording it a second time.
 			partial.reset()
-			// The stubbing pass runs BEFORE the compaction check, and the order
-			// is the whole economy of it (stub.go): a transcript whose old heavy
-			// results have just become one-line pointers may no longer be over
-			// the threshold at all, so the check that follows is made against
-			// what the next request will actually weigh.
-			a.stubOldOutputs()
+			// `pre-decision` (hooks.go): the last chance to shape what the model
+			// will be sent next. Its one citizen today is the stubbing pass, which
+			// runs BEFORE the compaction check, and the order is the whole economy
+			// of it (stub.go): a transcript whose old heavy results have just
+			// become one-line pointers may no longer be over the threshold at all,
+			// so the check that follows is made against what the next request will
+			// actually weigh.
+			episode.preDecision(ctx)
 			a.maybeCompact(ctx, hub)
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started)})
 			// The name comes after the turn is done and before the hub closes:
@@ -287,7 +295,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 		a.record(ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls})
 		partial.reset()
 
-		results := a.runToolsWarm(ctx, calls, hub, warm)
+		results := a.runToolsWarm(ctx, episode, calls, hub, warm)
 
 		// Results append in the order the calls were issued, never in the
 		// order they finished: the pairing with tool_call_id is by id, but the
@@ -300,11 +308,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 			})
 		}
 
-		// The step boundary is where a turn is told it is going in circles
-		// (looped.go): the batch is recorded, the next request has not been
-		// assembled, and a note dropped here rides into it exactly as a person's
-		// steering does.
-		a.nudgeIfLooping(ctx, hub, watch, calls, results)
+		// `post-feedback` (hooks.go): the step boundary, where the turn's ledger
+		// reads what the batch changed and the detector says whether the turn is
+		// going in circles (recovery.go, looped.go). The batch is recorded, the
+		// next request has not been assembled, and a note dropped here rides into
+		// it exactly as a person's steering does.
+		episode.postFeedback(ctx, hub, calls, results)
 
 		a.maybeCompact(ctx, hub)
 	}
@@ -547,7 +556,7 @@ type warmCall struct {
 //
 // It is called from the provider's read loop, which must not work, so the parse
 // is one small unmarshal and the execution is somebody else's goroutine.
-func (b *warmBatch) consider(ctx context.Context, a *Agent, hub *eventHub, payload string) {
+func (b *warmBatch) consider(ctx context.Context, a *Agent, ep *episode, hub *eventHub, payload string) {
 	var call ai.ToolCall
 	if err := json.Unmarshal([]byte(payload), &call); err != nil {
 		return
@@ -599,7 +608,7 @@ func (b *warmBatch) consider(ctx context.Context, a *Agent, hub *eventHub, paylo
 	go func() {
 		defer close(warm.done)
 		defer guard.Recover("session early tool " + call.Function.Name)
-		warm.result = a.executeTool(ctx, hub, call)
+		warm.result = a.executeTool(ctx, ep, hub, call)
 	}()
 }
 
@@ -655,8 +664,14 @@ func (a *Agent) hasTool(name string) bool {
 // runTools executes one batch with nothing started early. It is the whole of
 // what this was before the streamed sighting existed, and the shape every
 // caller outside the turn uses.
+//
+// It builds a control plane of its own (hooks.go) rather than taking one,
+// because a batch run outside a turn is still a batch: the calls in it must
+// still pass the approval gate, and an episode is the only thing that carries
+// it. What that episode's per-turn state remembers dies with the call, which is
+// correct — there is no turn here to be stuck in.
 func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub) []toolResult {
-	return a.runToolsWarm(ctx, calls, hub, nil)
+	return a.runToolsWarm(ctx, a.newEpisode(), calls, hub, nil)
 }
 
 // runToolsWarm executes one batch concurrently and reports it in call order,
@@ -669,7 +684,7 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub
 // AN EARLY START CHANGES NEITHER: a call that is already running is waited for
 // here, in its slot, and its begin is emitted with the rest of the batch. The
 // person watches the same turn they always did.
-func (a *Agent) runToolsWarm(ctx context.Context, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
+func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
 	for _, call := range calls {
 		hub.send(Event{
 			Kind: EventToolBegin,
@@ -716,7 +731,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, calls []ai.ToolCall, hub *even
 			// returns.
 			defer wg.Done()
 			defer guard.Recover("session tool " + c.Function.Name)
-			results[idx] = a.executeTool(ctx, hub, c)
+			results[idx] = a.executeTool(ctx, ep, hub, c)
 		}(index, call)
 	}
 	wg.Wait()
@@ -752,9 +767,11 @@ func (a *Agent) runToolsWarm(ctx context.Context, calls []ai.ToolCall, hub *even
 
 // executeTool dispatches one call to the matching belt tool.
 //
-// ── THE APPROVAL CHOKEPOINT ──
+// ── THE PRE-ACTION CHOKEPOINT ──
 //
-// The consent gate (consent.go) is here, and here only. This is the one
+// The `pre-action` hook (hooks.go) is here, and here only — the consent gate
+// (consent.go) with the guardian inside it (guardian.go), and the ledger that
+// notes what a mutating call is about to change (recovery.go). This is the one
 // function every execution passes through: the batch runs its calls through it
 // (runToolsWarm), and so does the early start that begins a read while the
 // response is still streaming (warmBatch.consider). A gate wrapped around the
@@ -764,19 +781,26 @@ func (a *Agent) runToolsWarm(ctx context.Context, calls []ai.ToolCall, hub *even
 // path ungoverned, which is exactly the path that runs without the person
 // having seen the call yet.
 //
+// The episode is a required argument for the same reason: a new call site
+// cannot reach a tool without one, so it cannot reach a tool without the plane.
+//
 // It sits INSIDE the dispatch loop rather than above it, after the belt has
 // been found to carry the tool: a call for a tool that does not exist is
 // answered "Unknown tool", never asked about. A question about a tool nobody
 // has is a question with no right answer.
-func (a *Agent) executeTool(ctx context.Context, hub *eventHub, call ai.ToolCall) toolResult {
-	args := json.RawMessage(call.Function.Arguments)
+func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall) toolResult {
 	for _, tool := range a.tools {
 		if tool.Name != call.Function.Name {
 			continue
 		}
-		if refused, allowed := a.approve(ctx, hub, call); !allowed {
+		running, refused, allowed := ep.preAction(ctx, hub, call)
+		if !allowed {
 			return refused
 		}
+		// The arguments are read from what pre-action handed back — a canonicalizing
+		// citizen's rewrite is what runs — and the TOOL is the one dispatch already
+		// found, because the name is what got us here.
+		args := json.RawMessage(running.Function.Arguments)
 		text, isError, err := tool.Execute(ctx, args)
 		if err != nil {
 			// Harness-level failure: the model sees the Go error as the tool
@@ -1118,8 +1142,16 @@ func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
 	for len(kept) > 0 && kept[0].Role == "tool" {
 		kept = kept[1:]
 	}
-	rebuilt := make([]ai.Message, 0, 2+len(kept))
+	rebuilt := make([]ai.Message, 0, 3+len(kept))
 	rebuilt = append(rebuilt, a.messages[0], textMessage("user", compactionNote(summary)))
+	// Working state survives the pass VERBATIM, after the summary and before
+	// the kept tail: the summary compresses the trajectory, and the state
+	// block is what the trajectory must never have to be re-read for. It is
+	// injected here and never routed through the summarizer — retrieval must
+	// not re-ingest its own output (state.go's §4 law).
+	if block := a.StateBlock(); block != "" {
+		rebuilt = append(rebuilt, textMessage("user", block))
+	}
 	rebuilt = append(rebuilt, kept...)
 	a.messages = rebuilt
 	// The provider's context figure described the request that is now gone.

@@ -78,9 +78,9 @@ func transcriptNotes(a *Agent) []string {
 
 // ── the call rule ───────────────────────────────────────────────────────────
 
-// Three identical calls in a row earn one nudge, and the fourth and fifth earn
-// nothing: a loop is named once.
-func TestTheSameCallThreeTimesIsNudgedExactlyOnce(t *testing.T) {
+// Three identical calls in a row earn one nudge; the fourth earns nothing, and
+// the fifth — the second repetition since the nudge — earns the next rung.
+func TestTheSameCallIsNamedOnceThenNeedsRepeatedEvidence(t *testing.T) {
 	completer := &scriptedCompleter{steps: repeatedCalls("touch", `{"path":"a.md"}`, 5)}
 	agent := loopAgent(t, completer, countingTool("touch", make(chan string, 8), nil))
 
@@ -91,16 +91,21 @@ func TestTheSameCallThreeTimesIsNudgedExactlyOnce(t *testing.T) {
 	collected := collect(t, events)
 
 	fired := nudgeEvents(collected)
-	if len(fired) != 1 {
-		t.Fatalf("nudges: got %d, want 1 (%v)", len(fired), fired)
+	if len(fired) != 2 {
+		t.Fatalf("nudges: got %d, want 2 — one at the third call, one at the fifth (%v)", len(fired), fired)
 	}
 	if fired[0].Tool != "touch" || fired[0].Count != loopRepeats {
 		t.Fatalf("nudge: tool %q ×%d, want touch ×%d", fired[0].Tool, fired[0].Count, loopRepeats)
 	}
+	// The fourth call is the hysteresis: one repetition after a nudge is not
+	// enough evidence to say anything again.
+	if fired[1].Count != loopRepeats+loopHysteresis {
+		t.Fatalf("the second nudge fired at ×%d, want ×%d", fired[1].Count, loopRepeats+loopHysteresis)
+	}
 
 	notes := transcriptNotes(agent)
-	if len(notes) != 1 {
-		t.Fatalf("notes in the transcript: got %d, want 1 (%v)", len(notes), notes)
+	if len(notes) != 2 {
+		t.Fatalf("notes in the transcript: got %d, want 2 (%v)", len(notes), notes)
 	}
 	if !strings.Contains(notes[0], "repeated the same touch call 3 times") {
 		t.Fatalf("the note does not say what happened: %q", notes[0])
@@ -296,11 +301,10 @@ func TestWithoutPromptModeTheThirdNudgeIsStillANote(t *testing.T) {
 
 // ── the watch itself ────────────────────────────────────────────────────────
 
-func TestLoopWatchNamesEachSignatureOnce(t *testing.T) {
+func TestLoopWatchNamesASignatureThenClimbsOnRepeatedEvidence(t *testing.T) {
 	watch := newLoopWatch()
 	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"a"}`}}
-	other := ai.ToolCall{ID: "2", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"b"}`}}
-	ok := func(c ai.ToolCall) []toolResult { return []toolResult{{text: "fine"}} }
+	ok := func(ai.ToolCall) []toolResult { return []toolResult{{text: "fine"}} }
 
 	for attempt := 1; attempt <= 2; attempt++ {
 		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call)); fired {
@@ -311,18 +315,107 @@ func TestLoopWatchNamesEachSignatureOnce(t *testing.T) {
 	if !fired || looping.count != 3 || looping.nth != 1 {
 		t.Fatalf("third identical call: fired=%v count=%d nth=%d", fired, looping.count, looping.nth)
 	}
-	for attempt := 4; attempt <= 6; attempt++ {
-		if _, fired := watch.observe([]ai.ToolCall{call}, ok(call)); fired {
-			t.Fatalf("nudged twice for one signature (call %d)", attempt)
-		}
+
+	// SAME ONCE IS NOT ENOUGH. The model has been told; one more repetition is
+	// not yet evidence that the telling failed.
+	if _, fired := watch.observe([]ai.ToolCall{call}, ok(call)); fired {
+		t.Fatal("one repetition after a nudge escalated; the ladder needs repeated evidence")
 	}
-	// A different call is a different loop, and gets its own nudge.
+	// SAME TWICE MORE IS. And the streak resets with the escalation, so the next
+	// rung costs the same evidence again rather than firing every step.
+	second, fired := watch.observe([]ai.ToolCall{call}, ok(call))
+	if !fired || second.nth != 2 {
+		t.Fatalf("the second rung: fired=%v nth=%d, want true/2", fired, second.nth)
+	}
+	if _, fired := watch.observe([]ai.ToolCall{call}, ok(call)); fired {
+		t.Fatal("the ladder climbed on a single repetition after escalating")
+	}
+	third, fired := watch.observe([]ai.ToolCall{call}, ok(call))
+	if !fired || third.nth != 3 {
+		t.Fatalf("the third rung: fired=%v nth=%d, want true/3", fired, third.nth)
+	}
+}
+
+// A second, different loop in the same turn is its own signature and earns its
+// own first nudge — the hysteresis is per signature, not a turn-wide budget.
+func TestLoopWatchGivesADifferentLoopItsOwnNudge(t *testing.T) {
+	watch := newLoopWatch()
+	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"a"}`}}
+	other := ai.ToolCall{ID: "2", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"b"}`}}
+	ok := func(ai.ToolCall) []toolResult { return []toolResult{{text: "fine"}} }
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		watch.observe([]ai.ToolCall{call}, ok(call))
+	}
 	for attempt := 1; attempt <= 2; attempt++ {
-		watch.observe([]ai.ToolCall{other}, ok(other))
+		if _, fired := watch.observe([]ai.ToolCall{other}, ok(other)); fired {
+			t.Fatalf("nudged after %d calls of the second loop", attempt)
+		}
 	}
 	second, fired := watch.observe([]ai.ToolCall{other}, ok(other))
 	if !fired || second.nth != 2 {
 		t.Fatalf("second loop: fired=%v nth=%d, want true/2", fired, second.nth)
+	}
+}
+
+// ── the hysteresis law ──────────────────────────────────────────────────────
+
+// Forward progress kills the backward case immediately: a successful call the
+// turn has not been nudged about empties the streak, so the evidence for the
+// next rung has to be gathered again from nothing.
+//
+// The repeated ERROR rule is what this is tested through, because it is the one
+// that counts across a turn rather than along a consecutive tail: a different
+// call between two repeats already breaks the call rule's run, so only here can
+// progress and repetition be told apart.
+func TestForwardProgressResetsTheBackwardStreak(t *testing.T) {
+	watch := newLoopWatch()
+	failing := func(n int) ([]ai.ToolCall, []toolResult) {
+		call := ai.ToolCall{ID: fmt.Sprintf("f%d", n), Function: ai.ToolCallFunction{
+			Name: "build", Arguments: fmt.Sprintf(`{"target":%d}`, n)}}
+		return []ai.ToolCall{call}, []toolResult{{text: "undefined: Frobnicate", isError: true}}
+	}
+	observe := func(n int) (nudge, bool) { return watch.observe(failing(n)) }
+
+	observe(1)
+	observe(2)
+	if _, fired := observe(3); !fired {
+		t.Fatal("three identical failures did not nudge")
+	}
+	if _, fired := observe(4); fired {
+		t.Fatal("one repetition after a nudge escalated")
+	}
+
+	// A successful call the turn has not been nudged about: forward evidence.
+	progress := ai.ToolCall{ID: "ok", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"x"}`}}
+	watch.observe([]ai.ToolCall{progress}, []toolResult{{text: "the file"}})
+
+	if _, fired := observe(5); fired {
+		t.Fatal("the streak survived forward progress: the fifth failure escalated on one repetition")
+	}
+	if _, fired := observe(6); !fired {
+		t.Fatal("the streak never rebuilt: two repetitions after progress did not escalate")
+	}
+}
+
+// A batch that both repeated and got something done does not escalate. Forward
+// evidence is read first, so the two facts in one batch resolve toward the
+// model working rather than toward the harness interrupting.
+func TestABatchThatAlsoProgressedDoesNotEscalate(t *testing.T) {
+	watch := newLoopWatch()
+	call := ai.ToolCall{ID: "1", Function: ai.ToolCallFunction{Name: "touch", Arguments: `{"path":"a"}`}}
+	ok := []toolResult{{text: "fine"}}
+	for attempt := 1; attempt <= 3; attempt++ {
+		watch.observe([]ai.ToolCall{call}, ok)
+	}
+
+	progress := ai.ToolCall{ID: "2", Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"x"}`}}
+	both := []ai.ToolCall{call, progress}
+	results := []toolResult{{text: "fine"}, {text: "the file"}}
+	for attempt := 1; attempt <= 3; attempt++ {
+		if _, fired := watch.observe(both, results); fired {
+			t.Fatalf("a batch that also progressed escalated (batch %d)", attempt)
+		}
 	}
 }
 

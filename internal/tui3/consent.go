@@ -189,6 +189,14 @@ func (a *app) asking() bool { return len(a.asks) > 0 }
 // esc denies. A modal that cannot be left by the dismiss key would be a trap,
 // and the safe reading of "get this off my screen" is no.
 func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// A TASK PROPOSAL IS THE OTHER QUESTION on this surface, and it is read from
+	// the same hook because it is the same rung: a question the session is
+	// blocked on outranks every overlay below it (input.go's key order). It is
+	// deliberately NOT modal — the box under it is the redirect lane — so it
+	// takes three keys and hands everything else back (task.go).
+	if cmd, taken := a.taskKey(msg); taken {
+		return cmd, true
+	}
 	if !a.asking() {
 		return nil, false
 	}

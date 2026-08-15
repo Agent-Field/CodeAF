@@ -328,6 +328,64 @@ v2 already proves sufficient; steering lands between executor turns, not
 mid-tool-call; the agent's un-journaled scratch (in-flight tool context) is
 rebuilt by refold after a crash, same as the head today.
 
+## Decision 21 — The control plane: four named hooks, and recovery as a citizen
+
+**The turn has four seams, and they have Harness-R1's names**
+(https://arxiv.org/abs/2608.02276, `internal/session/hooks.go`):
+`episode-init` (starting state), `pre-decision` (shape the context before the
+model decides), `pre-action` (canonicalize or **veto** a proposed call before it
+hits the environment), `post-feedback` (read the observation, trigger recovery
+when the trajectory stalls). Nothing about the harness's behavior changed when
+they landed: the stub pass (D16) became the first `pre-decision` citizen, the
+approval gate with the guardian inside it became the first `pre-action` citizen,
+the loop detector became the first `post-feedback` citizen, and the loop window
+became `episode-init` state. What was bought is the FIFTH mechanism — every
+future guardrail, retrieval or recovery move plugs into one named place, with one
+ordering law and a test that reads it, instead of another line in the turn. The
+registry is built PER TURN (`Agent.newEpisode`), because two of its citizens hold
+state that must not outlive a turn, and the episode is a required argument of
+`executeTool`, so a new call site cannot reach a tool without passing the gate.
+
+**Revert-then-refix is the third rung of the stuck ladder** (PMCoder,
+https://arxiv.org/abs/2608.06811, `internal/session/recovery.go`). Words are the
+right first move and a poor third one: by the third repetition what stands
+between the model and a working approach is usually the half-finished edit it is
+reading back. So the escalation the person already gets (D16) now carries the
+move — *"stuck: write ×3 — revert the 2 files this turn touched and retry from
+clean?"* — with three answers: **revert+retry / keep going / stop**. Only the
+person can trigger it, never a timer, never a task node, never a headless run.
+A file the turn CREATED is deleted; a MODIFIED tracked file is restored with
+`git checkout --`; anything else — no repository, untracked, outside the
+workspace — is left alone and NAMED ("not under git — restore by hand"), because
+a model re-attempting on a base it wrongly believes is clean is worse than no
+recovery at all. The set of files comes from a ledger written by two hooks that
+straddle the execution: `pre-action` stats the target (the only moment anybody
+can know whether a write creates or modifies), `post-feedback` records the calls
+that actually succeeded. The person's choice, what moved and what did not are one
+steering note in the journal. The stuck question never writes a consent memo — it
+borrows the consent lane but is not a question about a tool.
+
+**Hysteresis is the law of the ladder** (PMCoder's phase hysteresis): forward
+progress is accepted immediately, backward movement needs repeated evidence. One
+successful call the turn has not been nudged about resets the streak outright; an
+already-named signature must repeat TWICE MORE before the ladder climbs, and the
+streak resets on each escalation. A batch that both repeated and got something
+done reads as progress. The asymmetry is deliberate — escalating costs the
+person's attention, and being wrong about progress costs nothing.
+
+## Decision 24 — The generalization gate
+
+Every harness edit — human, sliced, or one day automated — passes one
+admission test before it lands (HarnessCompass): reject anything that names a
+specific task instance, test function, or private symbol; what is admitted is
+a reusable decision criterion plus an applicability condition that holds on
+unseen work. And the two tracks never mix: capability edits are CODE (tools,
+middleware, task nodes), guidance edits are PROMPT (system.md, memory) —
+guidance encoded as executable logic has no reliable trigger, and capability
+hidden in prose has no enforcement. This is the user's standing no-hardcoding
+law made checkable, and it is the gate any future self-modification answers
+to.
+
 ## Decision 16 — The guardian, the nudge, the stub, and the frames ladder
 
 **Auto-approval is a model's judgment, opted into.** A `Prompt` decision with
@@ -700,6 +758,145 @@ completion reaches the model on the **steering lane** (Decision 12) while
 and always on `Agent.TaskUpdates()`, because a node's most important event
 lands minutes after the turn that proposed it ended.
 
+**THE FRONTIER IS VERIFIED: a node never marks itself done.** Before the
+auditor, a node's done-state was its own last words — the child stopped calling
+tools, wrote a confident sentence, and the graph wrote that down as `done`.
+Everything downstream (the merge onto the person's branch, the dependents'
+briefs, the note in the conversation) was built on an executor's self-assessment
+of forty steps it had spent reasoning about its own intentions. LongHorizon
+Harness names the fix in one line — task state is updated **only from
+independent audit evidence; executor self-reports never flip a record to
+completed** (`harness-research-notes.md` §1, arXiv:2608.01964) — and
+`internal/session/task_audit.go` is that line, made structural.
+
+When a run finishes, a **fresh auditor** is pointed at the node's worktree: a
+different agent, no shared context, no sight of the trajectory, on the HIGH tier
+(`roles.RoleAuditor` — the one role where the tier is not an economy question,
+because a wrong verdict either lands broken work or throws good work away). Its
+belt is **composed, not filtered**: `read`, `grep`, `find`, `ls`, and a `bash`
+that runs a configurable allowlist of verification — `go test`, `go build`, `go
+vet`, `git diff/log/status/show` — and refuses everything else, shell
+composition first (a prefix check alone would admit `go test ./... && rm -rf .`,
+so operators are rejected before the allowlist is consulted at all). There is no
+hand here that writes, because an auditor that could fix what it found would be
+an executor with a second name, and the first thing it would do is repair the
+thing it was sent to judge and then report success. The node's work is **staged**
+before the audit (`git add -A`, minus the harness's own droppings) so `git diff
+--cached` shows new files too, and the commit that follows a pass comes from the
+same index.
+
+The contract is two words, for the guardian's reason (Decision 16): a verdict
+with a middle answer has a middle answer nobody defined. `VERIFIED — <what I
+ran, what I saw>` or `REFUTED — …`, at most three lines of evidence, and the
+verdict **leads the node's Report** so the first thing a person reads off a
+finished card is the reason to believe it. Only VERIFIED reaches `comeHome`, so
+only verified work is ever merged. **REFUTED is `TaskFailed`** with the
+auditor's evidence as the report — the node's own claim does not survive its
+refutation — and the existing cascade fails its dependents with it, which is
+exactly right: work built on work that does not hold is work built on nothing.
+The branch is **kept** either way (`aborted`), as a killed node's is. Everything
+that is not the word VERIFIED refutes — an essay, an empty reply, an auditor
+that would not start, a five-minute timeout (`audit timed out`, spelled
+differently because "the auditor looked and says no" and "nobody ever answered"
+are the same state and very different news). **The frontier fails closed**, so
+the worst a broken auditor can do is leave good work on a branch with an
+explanation attached. The audit is a real session file of its own beside the
+node's (`<when>_<id>-audit.jsonl`) and its spend folds into the same auxiliary
+pocket the node's does.
+
+**A node stops by a NAMED THRESHOLD, never by wandering.** Argus terminates on
+named thresholds rather than on a reviewer's judgement (§1, arXiv:2608.05144),
+and a node now has three: its 30-minute deadline, a **step budget**
+(`max_steps`, default 40) and a **no-progress count** (`no_progress`, default 6
+consecutive steps that changed no file). A step is one finished tool call —
+the only unit visible from outside the child's loop — and *progress* is
+narrower still: a **successful** `edit` or `write`, because an edit whose
+`oldText` did not match changed nothing and repeating it is the exact spin the
+counter exists to catch. Tripping either cancels the child and the report names
+which (`stopped: 6 steps without a change`), instead of leaving half an hour of
+silence for the deadline to collect. Both are per-node on the wire, because the
+right budget for a one-file rename and for a sweep across forty files is not the
+same number; a negative one is a stated error rather than a silently substituted
+default. The no-progress default is deliberately tight — it catches a spin in a
+minute — and a node with real reading to do before its first edit is expected to
+say so with `no_progress`.
+
+**The goal contract has two tiers, and the line is admission.** Argus again:
+semantic clarifications move freely, the precise objective moves only with
+recorded authority. Here the semantic tier is everything *before* `admit` — the
+model grooms the brief, the person redirects and their words are appended in
+their own voice — and **after admission `spec.brief` and `spec.acceptance` are
+frozen for the node's life**. Nothing in `runFrontier` writes them; a late
+answer to the same proposal moves nothing; a correction is a NEW admission by
+the person, which is them exercising the same authority a second time. The
+reason is the auditor: a frontier that verifies work against an acceptance which
+can move while the work runs verifies nothing, because whoever holds the pen can
+always make the work pass. One acceptance, two readers — the instruction the
+child is finished against and the contract the auditor judges — so there is no
+version of this where the work was finished against one text and graded on
+another.
+
+**THE FRONTIER IS DURABLE: the graph is a checkpoint, and recovery is a pure
+function of it.** Until `internal/session/task_store.go` the graph lived in
+exactly one place — memory — so killing the app mid-run destroyed not the work
+but the *knowledge of it*: which nodes were admitted, what they were briefed
+with, which had already landed and what their reports said, and above all that a
+branch called `task/fix-the-reconciler-9c1a2f` is sitting in the repository with
+somebody's half-finished work on it and nothing left alive that knows why. The
+worktree survived; the record did not. The resume contract is
+`harness-research-notes.md` §7 (arXiv:2608.03836) in three rules, machine-checked
+against real frameworks and violated by several of them:
+
+- **Checkpoint after EVERY transition, not at exit.** A killed process never runs
+  its shutdown path, so a checkpoint that is only correct at exit is only correct
+  when nothing went wrong. Admitted, running, the working copy prepared, the
+  verdict in, done/failed — each writes `<journal>.tasks.json` (the per-journal
+  convention `state.go` established, because a graph belongs to ONE conversation
+  and the journal is what names one) through tmp + `rename`, so the file is
+  always a whole graph somebody wrote and never half of two. The *running* write
+  lands **before** the run it authorizes starts, and the worktree and branch are
+  written the moment the node has them — that record is the only thing that can
+  later tell a person where interrupted work went.
+- **Loading is schema-validated, and a violation drops the file WHOLE.** Version,
+  type tag, one record per node (id, title, brief, acceptance, `depends_on`,
+  state, report, changed, branch, worktree, merge, thresholds, elapsed), and the
+  edge rules that make it a graph: an edge to a node the file does not contain is
+  a brief that can never be assembled, and an edge pointing *forwards* is a cycle
+  the frontier would wait on forever, since ids are minted in admission order and
+  an edge can only point backwards. One log line, never fatal — `state.go`'s law,
+  for `state.go`'s reason: a bad byte in a bookkeeping file must not cost the
+  person their conversation.
+- **An interrupt is consumed by exactly one recovery.** A node that was RUNNING
+  when the process died is work nobody will finish and nobody will audit. It
+  comes back **failed** with a report that says so and *names what is on disk* —
+  `session ended mid-run; branch task/… kept, its worktree is at …` — after a
+  real check that the branch is still there, because promising work on a branch
+  the person has since deleted is worse than saying nothing. The checkpoint then
+  **records that the interrupt was consumed**, so the next resume reads plain
+  history rather than interrupting the same node twice.
+
+**Recovery is load, reconcile, continue — and there is no second scheduler.** At
+`newAgent`, a journal with a checkpoint beside it (same journal = resumed
+session) rehydrates: done and failed nodes return as history with their reports,
+leavings and frozen specs intact; the running node is interrupted as above;
+queued nodes return queued; the id counter carries on so a resumed session never
+mints an id some sentence in the transcript already means something else by. Then
+the ordinary `runFrontier` turns — a queued node whose prerequisites are done
+starts *now*, with those reports assembled into its brief (JIT, exactly as if
+nothing had died), and a queued node whose prerequisite was interrupted fails
+through the cascade that already existed.
+
+**A completion is announced exactly once, across lives.** A resumed done node
+must not re-notify: its note is already in the transcript the journal replays,
+and repeating it would tell the model that work it has read about has just
+happened. So the checkpoint records whether each node's completion note was ever
+handed to the steering lane, and recovery delivers a note only for the nodes that
+never got one — the interrupted node, and the rare node that landed in the
+instant before the process died — inside a **single journal note per recovered
+graph**: `recovered task graph: 2 done · 1 interrupted (branch task/… kept) · 1
+waiting`, with those owed notes under it in the shape `taskNote` always produces.
+One note, one grammar, and the person can see what survived.
+
 **What v1 defers, deliberately:** the decomposition tool that writes edges (the
 graph and its frontier are already here to receive them), and the question lane
 — a node that needs to ask something today finishes with what it has and says
@@ -721,6 +918,85 @@ ladder's OCR and vision rungs instead of looking like a broken file. The engine
 is one swappable file by ladder design: `pdfx.Extract(path) (string, error)` is
 the entire contract, and a better pure-Go extractor lands as an edit to it with
 nothing above it moving.
+
+## Decision 22 — BPE working state: what is true and what is open, outside the trajectory
+
+**The session had experience memory and no working state.** `note`/`forget`
+(Decision 2's memory file) carry standing facts across sessions; everything a
+turn learned about the work in front of it — which file matters, which subgoal
+is half-done, which command proves the build green — lived in exactly one
+place, the transcript. That is the one structure compaction destroys, so every
+pass had to **rediscover the plot from the summary it had just written**.
+
+The fix is the research's BPE abstraction (harness-research-notes.md §4,
+EvoHarness-RL): harness state is **Belief** (true in the workspace right now),
+**Progress** (a subgoal: open, blocked, done) and **Experience** — and
+Experience is already `note`/`forget`, so it is not duplicated. Beliefs and
+progress become **records held outside the transcript** (`internal/session/state.go`),
+written by three tools beside the existing two: `track(text, kind, evidence)`,
+`commit(id)` (progress → done, belief → stale), `recall()`.
+
+Two laws make it worth its cost. **Grounded in execution, not narration**
+(PMCoder, §4): `evidence` is required at every entrance and names what RAN —
+`bash: go test ./internal/session`, `read: go.mod` — so a record can be
+re-verified and a summarizer can never launder narration into fact through this
+store; a `track` with no evidence is a tool error, not a recorded guess.
+**Bookkeeping shares the turn's budget** (the BPE paper's own finding): each
+tool description says so in one line, because bookkeeping that is free is
+bookkeeping that is done compulsively.
+
+State is per-conversation and durable: `<journal>.state.json` beside the JSONL —
+per journal, not one file per session directory, because that directory holds
+every session this workspace ever had. A file that does not parse, carries
+another version, or holds a record without evidence is **dropped whole with one
+log line** — never fatal: a corrupt bookkeeping file must not cost anyone their
+conversation, and a half-loaded state is a state nobody wrote.
+
+The seam is `Agent.StateBlock()`: the records as one bracketed block —
+`[state] …` then `beliefs:`, `open:`, `done:`, newest first, capped at 40 lines
+with finished work squeezed first — which the compaction pass injects into the
+**rebuilt** transcript right after the summary note. The pass then hands the
+model two different things about the same conversation: a lossy narration of
+what happened, and a verbatim record of what is true and what is open, the
+second never having passed through the summarizer. **Trajectory compresses;
+state does not.** (The store, the tools and the block land here; the injection
+line in `compact()` is the wiring wave.)
+
+This is not the todo list Decision 11 refused, and the distinction stands: a
+todo list is a plan the person reads, and work big enough to decompose belongs
+to the workforce (Decision 19). These records are the model's own working state,
+sized for surviving a compaction, and no surface draws them.
+
+## Decision 23 — Dreaming: memory consolidates at idle, conservatively, times verbatim
+
+**A memory file only grows, so something has to prune it — and that something
+runs when nobody is talking.** `note` appends and `forget` removes on request,
+which means duplicates, superseded facts and contradictions accumulate until
+4KiB of them rides every request of every turn. The pass that fixes it is
+MindMemOS's *dreaming* (`harness-research-notes.md` §4): consolidate **at idle**,
+not at a capacity limit — 30 seconds after a turn settles, disarmed by a new
+turn, a steering note or `Close`, and never armed in a headless `--once` run or
+inside a task node, because a one-shot process is about to exit and dreaming is
+for a session that stays alive. The provider call holds **no agent lock**; the
+only locked moment is the swap, and the swap is a `rename`. A person who types
+while their memory is being consolidated waits for nothing.
+
+**Two laws make it safe to run unattended.** The consolidator may only MERGE
+near-duplicates (the merged line keeps the oldest date or attribution —
+provenance survives) and DROP what a later fact supersedes; a result longer than
+its input is refused outright, because "the model summarized my preferences into
+something I never said" is the one failure with no recovery. And **time is
+special-cased**, on Sleeping Agent's measurement that temporal expressions
+survive gist compression at ~3% against ~8% for entities — dates are what a
+summarizer drops first. So the prompt states that any fact containing a time
+expression (a date, a duration, a version number, "since Tuesday") is copied
+CHARACTER-FOR-CHARACTER and that two facts whose merge would reword a time are
+not merged, and a mechanical check refuses any result carrying a time the input
+never spelled that way. Guards: once per ten minutes, only when the file's hash
+changed, never under ~20 facts. Every refusal, every provider error, every
+timeout leaves `memory.md` byte-for-byte as it was; a pass that lands writes one
+journal line — `memory consolidated: 41 → 33 facts` — of an entry type no replay
+reads, so it is a record for the person and never context for the model.
 
 ## Milestones
 
