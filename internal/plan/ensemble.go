@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -208,10 +210,22 @@ func (p *Panel) normalize(goal string) {
 // decomposition. The spine is passed as evidence rather than as instruction:
 // how many gates the planner found in the goal is the cheapest available signal
 // about whether the work is one body of material or several.
-func DecidePanel(ctx context.Context, client Completer, goal string, stages []Stage) (*Panel, *ai.Usage, error) {
+//
+// The terrain is part of that evidence and not decoration. The question here is
+// whether the goal is one body of material judged several times or several
+// bodies split up, and what the workspace holds is the most direct answer
+// available to it: one document is a panel, forty are a division. An empty
+// terrain leaves the prompt byte for byte the one this pass has always sent.
+// The invoice is the third piece of evidence and the newest. This decision
+// spends parallelism one of two ways and both of them are bought in the same
+// currency, so what a leaf of this worker has actually cost — and what a merge
+// over N of them has actually cost — is exactly the fact the choice turns on.
+// It rides the tail of the same user message, behind the goal and the spine, for
+// the reason every invoice does: the system prompt above is a constant this
+// process never rewrites, and the prices move whenever a leaf lands.
+func DecidePanel(ctx context.Context, client Completer, goal, terrain string, asked []string, stages []Stage, invoice string) (*Panel, *ai.Usage, error) {
 	var evidence strings.Builder
-	evidence.WriteString("Goal:\n")
-	evidence.WriteString(strings.TrimSpace(goal))
+	evidence.WriteString(goalBlock(strings.TrimSpace(goal), terrain, asked))
 	if len(stages) > 0 {
 		evidence.WriteString("\n\nThe stages the planner drew for it:\n")
 		evidence.WriteString(spineBlock(stages))
@@ -219,18 +233,25 @@ func DecidePanel(ctx context.Context, client Completer, goal string, stages []St
 
 	messages := []ai.Message{
 		systemMessage(ensemblePrompt),
-		userMessage(evidence.String()),
+		userMessage(withInvoice(evidence.String(), invoice)),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(ensembleSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("ensemble: %w", err)
-	}
+	ctx = provider.WithCall(ctx, provider.ClassPlanEnsemble)
 	var panel Panel
-	if err := decodeJSON(response.Text(), &panel); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("ensemble: %w", err), response)
+	response, err := structured(ctx, client, messages, ensembleSchema, &panel)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("ensemble: %w", err)
 	}
 	panel.Mode = strings.ToLower(trim(panel.Mode))
 	panel.Reason = trim(panel.Reason)
+	// Mode is a two-value enum and anything else is read downstream as
+	// "decompose". That silent correction is the right thing for the plan and
+	// the wrong thing for the record: a third answer means the pass did not
+	// answer the question it was asked.
+	if panel.Mode != "decompose" && panel.Mode != "ensemble" {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return &panel, usageOf(response), nil
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return &panel, usageOf(response), nil
 }
 
@@ -245,13 +266,29 @@ func DecidePanel(ctx context.Context, client Completer, goal string, stages []St
 // The second half is the boundary that keeps a single deliverable owner. N
 // agents each writing the final report produces N reports and no answer; the
 // panelists produce findings, the synthesis produces the deliverable.
+//
+// The charge used to say that nothing left out would be recovered later, and
+// then met a standing instruction to keep the final message short — a straight
+// contradiction the panelist could only resolve by disobeying one of them.
+// Neither side was wrong about what it wanted: the panel is bought for
+// completeness, and a long message is re-billed on every turn of everything
+// downstream. What was missing was the resolution the leaf contract already
+// makes for ordinary work — the split runs between the answer and its working,
+// not between the answer and a pointer to it — so the charge now makes the same
+// split explicitly. The enumeration is complete in the file; the findings
+// themselves are in the message; the merge receives both.
 const panelistCharge = `Work only from the material itself and your own reading of it. Report everything
 you find, including anything that looks minor, borderline, or too obvious to be
-worth writing down — nothing you leave out will be recovered later, and being
-complete matters more here than being brief. Give the evidence for each finding:
-the file and line, the quote, the number, the step that reproduces it.
+worth writing down — being complete matters more here than being brief, and a
+finding you drop is gone for good.
 
-Deliver the findings themselves, as a plain list, each one standing on its own.
+Completeness is about the findings, not about where each one is written down.
+Write the full enumeration to a file, with the evidence for every finding — the
+file and line, the quote, the number, the step that reproduces it — and say in
+your reply where that file is. Your reply itself carries the findings: each one
+named plainly enough that someone reading only the reply knows what you found
+and how serious it is, with the evidence in the file behind it.
+
 Do not write %s, do not rank them down to a shortlist, and do not stop early
 because you have found enough.`
 
@@ -290,7 +327,12 @@ Say what you checked.
 
 Do not describe the passes, count them, attribute findings to them, or report
 that they agreed. The reader wants the merged result, in the form the goal asked
-for, as though one very thorough agent had produced it.`, panelists, deliverable, panelists)
+for, as though one very thorough agent had produced it.
+
+Write that merged result out in your own final message. An account of how you
+combined the passes is not it, and neither is a file path with a sentence saying
+the merged result is in there — the evidence and the long working belong in a
+file, and the merged result itself belongs in the message.`, panelists, deliverable, panelists)
 }
 
 // ensembleMergeContract is the working method for the merge, written here
@@ -444,7 +486,19 @@ func writePanelBriefs(ctx context.Context, client Completer, graph *Graph, panel
 		"This node produces its own result and hands it over.\n"
 	write := func(node Node, inputs []string, into *string) {
 		defer group.Done()
-		brief, callUsage, err := writeBrief(ctx, client, shared, node, inputs, deliverable)
+		// The guard lives in here rather than at the two spawns because this is
+		// where the completion contract is: Done in a defer, and a fault
+		// recorded as a failure that leaves its brief empty — the same state a
+		// failed call leaves, which the writes below already skip over.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				fault := guard.Note("plan/ensemble brief "+node.Title, recovered)
+				mutex.Lock()
+				defer mutex.Unlock()
+				failures = append(failures, fault)
+			}
+		}()
+		brief, _, callUsage, err := writeBrief(ctx, client, shared, node, inputs, deliverable)
 		mutex.Lock()
 		defer mutex.Unlock()
 		usage.Add(callUsage)
@@ -487,13 +541,15 @@ func writePanelBriefs(ctx context.Context, client Completer, graph *Graph, panel
 // and the stage count is the evidence the judgment call leans on. Its one cost
 // on the ordinary path is a single extra call round, which EnsembleNever buys
 // back for a caller that never wants a panel.
-func ensembleHook(ctx context.Context, client Completer, graph *Graph, options Options, report Progress, start time.Time) (*Graph, bool, error) {
+func ensembleHook(ctx context.Context, client Completer, graph *Graph, options Options, report Report, start time.Time) (*Graph, bool, error) {
+	progress := serialProgress(options.Progress)
 	if options.Ensemble == EnsembleNever {
 		return nil, false, nil
 	}
+	emitProgress(progress, "ensemble", "deciding whether independent passes beat splitting the work", "")
 	forced := options.Ensemble >= 2
 
-	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Stages)
+	panel, usage, err := DecidePanel(ctx, client, graph.Goal, graph.Terrain, graph.Asked, graph.Stages, graph.Invoice)
 	graph.Usage.Add(usage)
 	switch {
 	case err != nil && !forced:
@@ -511,6 +567,7 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 		report("ensemble", time.Since(start), "decompose: "+clipReason(panel.Reason, 40))
 		return nil, false, nil
 	}
+	emitProgress(progress, "ensemble", "drawing independent passes over the same material", "")
 
 	panelists := DefaultPanelists
 	if forced {
@@ -525,6 +582,14 @@ func ensembleHook(ctx context.Context, client Completer, graph *Graph, options O
 	if len(graph.Leaves()) > panelists {
 		detail = "setup + " + detail
 	}
+	emitProgress(progress, "ensemble", fmt.Sprintf("%d independent passes and a merge", panelists), "")
+	latest := ""
+	if leaves := graph.Leaves(); len(leaves) > 0 {
+		if node := graph.Node(leaves[len(leaves)-1]); node != nil {
+			latest = nodeProgressTitle(*node)
+		}
+	}
+	emitProgress(progress, "briefs", fmt.Sprintf("%d/%d", len(graph.Leaves()), len(graph.Leaves())), latest)
 	report("ensemble", time.Since(start), detail)
 
 	// The panelists — or the setup, when there is one — are dispatchable the

@@ -1,0 +1,403 @@
+package store
+
+import (
+	"errors"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestProbationProposalQueuesLinkedNeutralQuestionAtomically(t *testing.T) {
+	t.Run("commit", func(t *testing.T) {
+		graph := openTestStore(t, filepath.Join(t.TempDir(), "proposal-question.db"))
+		charter := mustTestCharter(t, "proposal-question", CharterActive, CharterRails{
+			PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 2,
+		})
+		if err := graph.CreateCharter(charter); err != nil {
+			t.Fatal(err)
+		}
+		wakeSeq := beginCheckedTestWake(t, graph, charter.ID)
+		if posted, err := graph.ProposeCharterFiring(charter.ID, wakeSeq, charter.Action.Template); err != nil || !posted {
+			t.Fatalf("proposal posted=%t err=%v", posted, err)
+		}
+
+		messages, err := graph.Messages("", 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var proposal Message
+		for _, message := range messages {
+			if message.NodeID == charter.ID && len(message.Options) == 4 {
+				proposal = message
+				break
+			}
+		}
+		if proposal.Seq == 0 || proposal.SessionID != "" || proposal.QuestionSeq == 0 {
+			t.Fatalf("proposal message = %+v", proposal)
+		}
+		questions, err := graph.PendingQuestions("live-session", 0)
+		if err != nil || len(questions) != 1 {
+			t.Fatalf("pending questions = %+v err=%v", questions, err)
+		}
+		question := questions[0]
+		if question.Seq != proposal.QuestionSeq || question.SessionID != "" ||
+			question.OriginCharterID != charter.ID || question.Urgency != QuestionNextNaturalMoment ||
+			question.Status != QuestionPending || len(question.Options) != 4 {
+			t.Fatalf("linked question = %+v", question)
+		}
+		before, err := graph.Events(0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if posted, err := graph.ProposeCharterFiring(charter.ID, wakeSeq, charter.Action.Template); err != nil || posted {
+			t.Fatalf("duplicate proposal posted=%t err=%v", posted, err)
+		}
+		after, err := graph.Events(0, 0)
+		if err != nil || len(after) != len(before) {
+			t.Fatalf("duplicate changed journal: before=%d after=%d err=%v", len(before), len(after), err)
+		}
+
+		if err := graph.Rebuild(); err != nil {
+			t.Fatal(err)
+		}
+		rebuilt, found, err := graph.AgentQuestionBySeq(question.Seq)
+		if err != nil || !found || rebuilt.Status != QuestionPending || rebuilt.OriginCharterID != charter.ID {
+			t.Fatalf("rebuilt question = %+v found=%t err=%v", rebuilt, found, err)
+		}
+		rebuiltMessages, err := graph.Messages("", 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		linked := false
+		for _, message := range rebuiltMessages {
+			linked = linked || message.Seq == proposal.Seq && message.QuestionSeq == question.Seq
+		}
+		if !linked {
+			t.Fatalf("rebuilt proposal lost question link: %+v", rebuiltMessages)
+		}
+	})
+
+	t.Run("rollback", func(t *testing.T) {
+		graph := openTestStore(t, filepath.Join(t.TempDir(), "proposal-rollback.db"))
+		charter := mustTestCharter(t, "proposal-rollback", CharterActive, CharterRails{
+			PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 2,
+		})
+		if err := graph.CreateCharter(charter); err != nil {
+			t.Fatal(err)
+		}
+		wakeSeq := beginCheckedTestWake(t, graph, charter.ID)
+		beforeProposal, err := graph.LatestEventSeq()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := graph.db.Exec(`CREATE TRIGGER fail_proposal_message
+			BEFORE INSERT ON messages WHEN NEW.node_id = 'proposal-rollback'
+			BEGIN SELECT RAISE(ABORT, 'injected proposal failure'); END`); err != nil {
+			t.Fatal(err)
+		}
+		if posted, err := graph.ProposeCharterFiring(charter.ID, wakeSeq, charter.Action.Template); err == nil || posted {
+			t.Fatalf("failed proposal posted=%t err=%v", posted, err)
+		}
+		questions, err := graph.PendingQuestions("live-session", 0)
+		if err != nil || len(questions) != 0 {
+			t.Fatalf("rolled-back questions = %+v err=%v", questions, err)
+		}
+		events, err := graph.Events(beforeProposal, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(events) != 0 {
+			t.Fatalf("partial proposal events survived rollback: %+v", events)
+		}
+	})
+}
+
+func TestCharterEarnsTenureOnlyFromJournaledApprovedGreenFirings(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "tenure.db"))
+	charter := mustTestCharter(t, "earned-tenure", CharterActive, CharterRails{
+		PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 5,
+	})
+	charter.Autonomy, charter.GreenFirings, charter.Demotions = CharterTenured, 9, 4
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+	stored := getTestCharter(t, graph, charter.ID)
+	if stored.Autonomy != CharterProbation || stored.GreenFirings != 0 || stored.Demotions != 0 {
+		t.Fatalf("new charter smuggled autonomy: %+v", stored)
+	}
+
+	first := completeApprovedFiring(t, graph, charter.ID, "tenure-green-1", 2)
+	stored = getTestCharter(t, graph, charter.ID)
+	if stored.Autonomy != CharterProbation || stored.GreenFirings != 1 {
+		t.Fatalf("first verified firing = autonomy %s greens %d", stored.Autonomy, stored.GreenFirings)
+	}
+	if changed, err := graph.RecordCharterFiringOutcome(first, 2); err != nil || changed {
+		t.Fatalf("duplicate review changed=%t err=%v", changed, err)
+	}
+
+	completeApprovedFiring(t, graph, charter.ID, "tenure-green-2", 2)
+	stored = getTestCharter(t, graph, charter.ID)
+	if stored.Autonomy != CharterTenured || stored.GreenFirings != 2 {
+		t.Fatalf("earned tenure = autonomy %s greens %d", stored.Autonomy, stored.GreenFirings)
+	}
+	messages, err := graph.Messages("charter-session", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !messagesContain(messages, "I'll handle this on my own now — say 'back to asking' to revert") {
+		t.Fatalf("promotion notice missing: %+v", messages)
+	}
+
+	before := stored
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	after := getTestCharter(t, graph, charter.ID)
+	if after.Autonomy != before.Autonomy || after.GreenFirings != before.GreenFirings || after.Demotions != before.Demotions {
+		t.Fatalf("rebuild lost ladder state: before=%+v after=%+v", before, after)
+	}
+}
+
+func TestProbationFireRequiresApprovedAdmission(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "probation-fire.db"))
+	charter := mustTestCharter(t, "probation-fire", CharterActive, CharterRails{
+		PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 2,
+	})
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+	wakeSeq := beginCheckedTestWake(t, graph, charter.ID)
+	_, err := graph.FireCharter(charter.ID, wakeSeq, Subtree{Nodes: []NodeSpec{{
+		ID: "unapproved-job", Brief: "must not run", Stage: 1,
+	}}}, Provenance{Origin: OriginTrigger, CharterID: charter.ID}, 0, time.Now())
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("ordinary probation fire err = %v, want ErrInvalid", err)
+	}
+	if _, found, err := graph.Node("unapproved-job"); err != nil || found {
+		t.Fatalf("unapproved work found=%t err=%v", found, err)
+	}
+	stored := getTestCharter(t, graph, charter.ID)
+	if !stored.WakePending || !stored.SentinelYes {
+		t.Fatalf("rejected admission consumed wake: %+v", stored)
+	}
+}
+
+func TestProbationDeclineResetsConsecutiveEvidenceWithoutPausing(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "probation-decline.db"))
+	charter := mustTestCharter(t, "probation-decline", CharterActive, CharterRails{
+		PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 3,
+	})
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+	completeApprovedFiring(t, graph, charter.ID, "decline-green-1", 3)
+	wakeSeq := beginCheckedTestWake(t, graph, charter.ID)
+	if err := graph.DeclineCharterFiring(charter.ID, wakeSeq, "user said not now", false); err != nil {
+		t.Fatal(err)
+	}
+	stored := getTestCharter(t, graph, charter.ID)
+	if stored.GreenFirings != 0 || stored.Status != CharterActive || stored.WakePending || stored.Autonomy != CharterProbation {
+		t.Fatalf("declined probation firing = %+v", stored)
+	}
+}
+
+func TestTenuredFailureClassesDemoteAndSecondDemotionPauses(t *testing.T) {
+	tests := []struct {
+		name       string
+		mutate     func(*testing.T, *Store, string)
+		wantReason string
+	}{
+		{name: "failed subtree", mutate: func(t *testing.T, graph *Store, jobID string) {
+			claim, won, err := graph.Claim(jobID, "worker")
+			if err != nil || !won {
+				t.Fatalf("claim won=%t err=%v", won, err)
+			}
+			if err := graph.Fail(claim, "worker crashed"); err != nil {
+				t.Fatal(err)
+			}
+		}, wantReason: "subtree failed"},
+		{name: "budget breach", mutate: func(t *testing.T, graph *Store, jobID string) {
+			if err := graph.RecordUsage(NodeUsage{NodeID: jobID, Cost: 0.25}); err != nil {
+				t.Fatal(err)
+			}
+		}, wantReason: "budget breached"},
+		{name: "output rejected", mutate: func(t *testing.T, graph *Store, jobID string) {
+			if err := graph.RecordDeliveryGate(jobID, DeliveryGate{Gap: "user rejected the result"}); err != nil {
+				t.Fatal(err)
+			}
+		}, wantReason: "output rejected"},
+		{name: "user cancelled", mutate: func(t *testing.T, graph *Store, jobID string) {
+			if err := graph.CancelPending(jobID, "cancelled by user"); err != nil {
+				t.Fatal(err)
+			}
+		}, wantReason: "cancelled by user"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			graph := openTestStore(t, filepath.Join(t.TempDir(), "demotion.db"))
+			charter := mustTestCharter(t, "demote-"+strings.ReplaceAll(test.name, " ", "-"), CharterActive, CharterRails{
+				PerFiringBudgetUSD: 0.10, MaxFiringsPerDay: 4,
+			})
+			if err := graph.CreateCharter(charter); err != nil {
+				t.Fatal(err)
+			}
+			if err := graph.PromoteCharter(charter.ID, "test fixture earned tenure", false); err != nil {
+				t.Fatal(err)
+			}
+			jobID := "failure-1"
+			fireTenuredTestJob(t, graph, charter.ID, jobID)
+			test.mutate(t, graph, jobID)
+			assessment, decided, err := graph.AssessCharterFiring(jobID)
+			if err != nil || !decided || assessment.Success || !strings.Contains(assessment.Reason, test.wantReason) {
+				t.Fatalf("assessment = %+v decided=%t err=%v", assessment, decided, err)
+			}
+			if changed, err := graph.RecordCharterFiringOutcome(assessment, 3); err != nil || !changed {
+				t.Fatalf("demotion review changed=%t err=%v", changed, err)
+			}
+			stored := getTestCharter(t, graph, charter.ID)
+			if stored.Autonomy != CharterProbation || stored.Status != CharterActive || stored.Demotions != 1 {
+				t.Fatalf("first demotion = %+v", stored)
+			}
+
+			if err := graph.PromoteCharter(charter.ID, "re-earned tenure after supervision", false); err != nil {
+				t.Fatal(err)
+			}
+			secondID := "failure-2"
+			fireTenuredTestJob(t, graph, charter.ID, secondID)
+			claim, won, err := graph.Claim(secondID, "worker")
+			if err != nil || !won {
+				t.Fatalf("second claim won=%t err=%v", won, err)
+			}
+			if err := graph.Fail(claim, "second verified failure"); err != nil {
+				t.Fatal(err)
+			}
+			second, decided, err := graph.AssessCharterFiring(secondID)
+			if err != nil || !decided {
+				t.Fatalf("second assessment = %+v decided=%t err=%v", second, decided, err)
+			}
+			if _, err := graph.RecordCharterFiringOutcome(second, 3); err != nil {
+				t.Fatal(err)
+			}
+			stored = getTestCharter(t, graph, charter.ID)
+			if stored.Autonomy != CharterProbation || stored.Status != CharterPaused || stored.Demotions != 2 {
+				t.Fatalf("second demotion = %+v", stored)
+			}
+		})
+	}
+}
+
+func completeApprovedFiring(t *testing.T, graph *Store, charterID, jobID string, tenureAfter int) CharterFiringAssessment {
+	t.Helper()
+	wakeSeq := beginCheckedTestWake(t, graph, charterID)
+	command, err := graph.RequestCommand(Command{SessionID: "charter-session", Kind: CommandCharterFire,
+		Target: charterID, Instruction: "wake:" + formatTenureWakeSeq(wakeSeq)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	disposition, err := graph.FireApprovedCharter(charterID, wakeSeq, Subtree{Nodes: []NodeSpec{{
+		ID: jobID, Brief: "verified charter work", Stage: 1,
+	}}}, Provenance{Origin: OriginTrigger, CharterID: charterID, Intent: "verified charter work"}, 0, time.Now())
+	if err != nil || disposition != FireAdmitted {
+		t.Fatalf("approved firing disposition=%s err=%v", disposition, err)
+	}
+	if err := graph.ResolveCommand(command.Seq, CommandApplied, "approved firing admitted"); err != nil {
+		t.Fatal(err)
+	}
+	claim, won, err := graph.Claim(jobID, "worker")
+	if err != nil || !won {
+		t.Fatalf("claim %s won=%t err=%v", jobID, won, err)
+	}
+	if err := graph.Complete(claim, "verified green"); err != nil {
+		t.Fatal(err)
+	}
+	assessment, decided, err := graph.AssessCharterFiring(jobID)
+	if err != nil || !decided || !assessment.Success {
+		t.Fatalf("assessment = %+v decided=%t err=%v", assessment, decided, err)
+	}
+	if changed, err := graph.RecordCharterFiringOutcome(assessment, tenureAfter); err != nil || !changed {
+		t.Fatalf("review changed=%t err=%v", changed, err)
+	}
+	return assessment
+}
+
+func formatTenureWakeSeq(seq int64) string { return strconv.FormatInt(seq, 10) }
+
+func fireTenuredTestJob(t *testing.T, graph *Store, charterID, jobID string) {
+	t.Helper()
+	wakeSeq := beginCheckedTestWake(t, graph, charterID)
+	disposition, err := graph.FireCharter(charterID, wakeSeq, Subtree{Nodes: []NodeSpec{{
+		ID: jobID, Brief: "autonomous charter work", Stage: 1,
+	}}}, Provenance{Origin: OriginTrigger, CharterID: charterID, Intent: "autonomous charter work"}, 0, time.Now())
+	if err != nil || disposition != FireAdmitted {
+		t.Fatalf("tenured firing disposition=%s err=%v", disposition, err)
+	}
+}
+
+func beginCheckedTestWake(t *testing.T, graph *Store, charterID string) int64 {
+	t.Helper()
+	charter := getTestCharter(t, graph, charterID)
+	at := time.Now()
+	wakeSeq, err := graph.BeginCharterWake(charterID, at, "test occurrence", CharterWatchState{
+		NextDue: at.Add(time.Hour), FileFingerprint: charter.FileFingerprint,
+		GraphCursor: charter.GraphCursor, GraphDay: charter.GraphDay, GraphTriggered: charter.GraphTriggered,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RecordSentinelCheck(charterID, SentinelCheck{WakeSeq: wakeSeq, Yes: true, Line: "condition met"}); err != nil {
+		t.Fatal(err)
+	}
+	return wakeSeq
+}
+
+func getTestCharter(t *testing.T, graph *Store, id string) Charter {
+	t.Helper()
+	charter, found, err := graph.Charter(id)
+	if err != nil || !found {
+		t.Fatalf("charter %s found=%t err=%v", id, found, err)
+	}
+	return charter
+}
+
+func messagesContain(messages []Message, body string) bool {
+	for _, message := range messages {
+		if message.Body == body {
+			return true
+		}
+	}
+	return false
+}
+
+// The reconciler re-derives charter outcomes twice a second, and assessing one
+// firing costs a node read, a walk up the parent chain and two unindexed
+// json_extract queries. Neither a folded firing nor one below the caller's
+// watermark can still be undecided, so neither should reach that price.
+func TestCharterFiredNodesDropsSettledFirings(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "fired-scan.db"))
+	charter := mustTestCharter(t, "fired-scan", CharterActive, CharterRails{
+		PerFiringBudgetUSD: 0.20, MaxFiringsPerDay: 3,
+	})
+	if err := graph.CreateCharter(charter); err != nil {
+		t.Fatal(err)
+	}
+	completeApprovedFiring(t, graph, charter.ID, "scan-1", 3)
+
+	fired, err := graph.CharterFiredNodes(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fired) != 1 || fired[0].ID != "scan-1" {
+		t.Fatalf("fired nodes = %+v", fired)
+	}
+	if above, err := graph.CharterFiredNodes(fired[0].CreatedSeq); err != nil || len(above) != 0 {
+		t.Fatalf("watermarked scan = %+v err=%v", above, err)
+	}
+	if err := graph.Fold("scan-1", "verified green", nil); err != nil {
+		t.Fatal(err)
+	}
+	if folded, err := graph.CharterFiredNodes(0); err != nil || len(folded) != 0 {
+		t.Fatalf("folded firing still scanned = %+v err=%v", folded, err)
+	}
+}

@@ -1,0 +1,31 @@
+W2 — one growth governor: the single chat.go anchor.
+
+The blueprint says W2 needs no chat.go anchor, and structurally it does not:
+every growth path already reaches growJob, the caps and the journal are live
+with no wiring at all, and the ApplyRevision hole is closed whether or not this
+patch lands. What this patch adds is the fourth check — the satisfaction gate —
+for the paths that cannot be handed a client through their own signature
+(ReplanOverrun's callers carry a plan function and a daily budget and nothing
+else). The revision sentinel already passes its own client directly and is
+gated without this.
+
+Concurrent agents own cmd/aforge/chat.go this campaign, so it is left here
+rather than applied. Rollback is deleting the line, or AFORGE_GROWTH_GATE=0.
+
+--- a/cmd/aforge/chat.go
++++ b/cmd/aforge/chat.go
+@@ -290,6 +290,13 @@
+ 	chatClient.WithUsageJournal(journalSpend)
+ 	taskClient.WithUsageJournal(journalSpend)
+ 	planClient.WithUsageJournal(journalSpend)
+ 	boostClients.WithUsageJournal(journalSpend)
++	// The positive stopping condition, installed once for every path that can
++	// grow a running job. It is asked last, after rounds, nodes and the daily
++	// rail have all passed, so on the common path it is never asked at all; the
++	// paths that ask it reach it through a package seam because they are
++	// reached through signatures that carry a plan function and a budget and
++	// have no client to give it. AFORGE_GROWTH_GATE=0 turns it off.
++	resident.SetGrowthSatisfier(resident.SatisfierFor(planClient))
+ 	// The standing watch is a host timer: installing it shells out to launchctl
+ 	// or systemctl and leaves something behind that outlives the process. A
+ 	// one-shot command may not do that to a machine, so headless never builds

@@ -134,7 +134,241 @@ pi and opencode both hit the 40-minute cap having produced no output at all.
 That is a total failure on this task shape rather than a slow result, and it is
 the largest gap in either benchmark.
 
-## 3. Caveats
+## 3. Model routing — single model against a routed panel
+
+A different question again: not how aforge compares to another harness, but
+whether sending every call to one model is leaving anything on the table. The
+protocol is in [`bench/ab-routing/DESIGN.md`](bench/ab-routing/DESIGN.md), the
+panel and its measurements in `bench/ab-routing/panel.json`, and the full write
+up in [`bench/ab-routing/BASELINE.md`](bench/ab-routing/BASELINE.md) and
+[`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). Arm A is today's
+shipped configuration with no environment overrides; arm B is the same harness
+with `AFORGE_MODELS` naming a five-model panel.
+
+Three tasks, run end to end through the CLI, n=3, every one graded by code with
+no LLM judge anywhere.
+
+| task | success | score median | $ mean | turns median |
+| ---- | ------- | ------------ | ------ | ------------ |
+| t1-logstore (build a segmented KV store) | 0 / 3 | 0.67 | $0.144 | 127 |
+| t2-synthesis (audit an 11-document corpus) | 3 / 3 | 1.00 | $0.073 | 47 |
+| t3-shiftplan (repair and refactor a package) | 0 / 3 | 0.71 | $0.075 | 79 |
+
+**3 of 9 overall, $0.88, 99 minutes.** Zero harness crashes; no cell rerun.
+
+Two results from the baseline are worth quoting outside that document.
+
+**The failures reproduce exactly.** All three t1 replicates failed the identical
+three tests and all three t3 replicates failed the same defect family. These are
+capability boundaries rather than unlucky draws, and all of them are about
+conforming to a stated contract rather than being internally consistent — the
+store reads a segment it wrote and not one the spec describes. Whatever only had
+to agree with itself was correct in every run.
+
+**Decomposition was never the problem.** On t2 the synthesis node measurably
+improved on its own ensemble members, removing contradictions they had invented.
+But the planner drew **5 nodes and 26 nodes for the same brief**, at 5.4x the
+cost, for the same perfect score — and on t3 the cheapest 3-node plan scored
+*higher* than the 8-node one. A large part of aforge's run-to-run cost variance
+is the plan it happens to draw, which is worth knowing before attributing a cost
+change to anything else.
+
+Two tasks needed hardening after arm A aced them, which is recorded round by
+round; t2 survived its hardening and stays in the suite as a regression control
+rather than a discriminator.
+
+### Arm B — the routed panel
+
+The router (`internal/router/`) over the five-model panel, same three tasks, same
+n=3, `AFORGE_MODELS` pointing at `bench/ab-routing/panel.json`.
+
+| task | A success | B success | A score | B score | A $ mean | B $ mean |
+| ---- | --------- | --------- | ------- | ------- | -------- | -------- |
+| t1-logstore | 0/3 | 0/3 | 0.667 | 0.667 | $0.144 | $0.038 |
+| t2-synthesis | **3/3** | **2/3** | 1.000 | 1.000 | $0.073 | $0.071 |
+| t3-shiftplan | 0/3 | 0/3 | 0.714 | 0.571 | $0.075 | $0.089 |
+| **overall** | **3/9** | **2/9** | 0.714 | 0.667 | $0.877 | $0.593 |
+
+**Routing did not help.** The only cell that moved got worse, the 23% cost
+saving sits inside the planner's own node-count variance, and
+`moonshotai/kimi-k2.6` — the model the panel exists for — **served zero calls**.
+Three of five panel members were never called at all.
+
+**The continual-learning check came back positive and harmful.** Against a
+fresh-ledger control, eight of eleven call classes reordered between run 1 and
+run 3 with a shared ledger and **zero** reordered without one, so the change is
+attributable to the ledger. What it learned was to drop its best model: the
+terminal rung went from kimi-k2.6 to qwen3-30b-a3b. On the same tasks, run 3
+scored 0.000 on t2 and t3 where the control's run 3 scored 1.000 and 0.857.
+
+The mechanism is worth recording here because it is a property of the harness
+rather than of the router. Of 108 settled `exec.leaf` verdicts, 103 were
+`unverified_success` — a finished leaf is not checked by anything, since the
+graders run after `aforge run` exits — so the leaf rating was fitted to the five
+that were graded, all of them budget stops from one task. `exec.leaf` is a single
+global class, so that lesson was applied to every leaf of every other task.
+
+Six router defects and their evidence are in
+[`bench/ab-routing/REPORT.md`](bench/ab-routing/REPORT.md). The recommendation
+after that arm was not to ship the router in that configuration.
+
+### Arm B2 — after the six defects were fixed
+
+The same suite plus a fourth task, against the fixed router. Full write-up in
+[`bench/ab-routing/REPORT-B2.md`](bench/ab-routing/REPORT-B2.md).
+
+| task | A success | B2 success | A scores | B2 scores |
+| ---- | --------- | ---------- | -------- | --------- |
+| t1-logstore | 0/3 | 0/3 | 0.667 x3 | 0.889, 0.667, 0.000 |
+| t2-synthesis | 3/3 | 2/3 | 1.000 x3 | 1.000, 0.875, 1.000 |
+| t3-shiftplan | 0/3 | **2/3** | 0.857, 0.571, 0.714 | 0.857, 1.000, 1.000 |
+| t4-pathmatch | 1/3 | **3/3** | 1.000, 0.929, 0.929 | 1.000 x3 |
+| **overall** | **4/12** | **7/12** | | |
+
+**Routing works now, on this suite, for +18% cost per cell** ($0.125 to $0.147).
+A fresh-ledger control sits at 5/12, so the gain is the routing rather than the
+ledger. Every panel member was exercised; `moonshotai/kimi-k2.6` was called 36
+times, all of them leaf escalations, all upward.
+
+**The collapse cannot be reproduced.** Replaying t2 against the preserved ledger
+that produced 0.000 in arm B now scores 1.000, twice. `aforge models` shows why:
+the poisoned rating still reads -0.98 and now carries "under the gate — ordering
+uses the prior until n=8".
+
+**Continual learning is inert rather than harmful.** The ledger reordered
+nothing across twelve cells: the gate that stops bad evidence driving the order
+also means eight graded observations never accumulate at this volume. Arm B's
+learning was measurable and harmful; B2's is neither, which is a strict
+improvement and is not the same as working.
+
+Two findings stand open. The escalation target accumulates no evidence about
+itself — every one of kimi's 36 attempts was an unverifiable leaf — so its
+position rests on an operator role hint alone. And t1 did not move: its leaves
+carry 2.2M prompt tokens and run out of budget, which a stronger model does not
+fix. That is an at-scale failure, not a capability one, and routing is the wrong
+instrument for it.
+
+## 4. The subharness grid — 2026-08-09
+
+The first measurement of the swe subharness (docs/SUBHARNESSES.md): the same
+four issues, three aforge shapes, every cell pinned to base `6c978ff` — the
+last commit with all four issues open, because the repository has since merged
+fixes for #23 and #21 and an unpinned clone passes the suite before any
+harness arrives. Suite baseline at the pin: 317 passing. The pi and opencode
+rows above are the recorded bar, per protocol; they were not re-run.
+
+Two iterations, because the first one measured the integration rather than
+the worker, and what it found is part of the record:
+
+**Iteration 1 (strict config)** — the engine's inner flash-tier auditor
+refused every finished change over clause-coverage matrices while build,
+tests, and lint were green; two runs died at a 30-minute watchdog with their
+suites already grown to 572 and 598 passing. Real work — 9 to 13 files
+committed per issue — landed as failures. Three knobs came out of it: the
+inner auditor yields to aforge's own delivery gate (mechanical verification
+stays on), the deadline floor is the hour the anchors promise, and the
+choice prior licenses swe for *discovered* work, not every coding issue.
+
+**Iteration 2 (shipping config):**
+
+| issue | linear | swe forced | select (full stack) | pi (recorded) | opencode (recorded) |
+| --- | --- | --- | --- | --- | --- |
+| #20 | 32s · $0.008 | 3m14s · $0.08 · pass | 4m35s · $0.15 | 3m0s | 1m02s |
+| #21 | 43s · $0.018 · 317 | 9m04s · $0.28 · **526** | 30m · $1.23 · **535** | 12m15s · 548 | 23m35s · 539 |
+| #22 | 2m07s · $0.027 · 317 | 5m46s · $0.21 · **543** | 36m · $1.29 · **564** | 10m56s · 580 | 40m DNF |
+| #23 | 1m37s · $0.009 | 2m57s · $0.11 · pass | 12m24s · $0.81 | 2m37s · 324 | 3m30s · 321 |
+
+Counts are tests passing after the run; every aforge cell finished with zero
+failures and its work committed (the engine commits, so `git status` reads
+clean — the change accounting is `git diff` against the pin).
+
+What the grid establishes:
+
+- **swe forced beats pi's recorded wall clock on every comparable row** and
+  completes the #22 that opencode could not, at self-reported cost between
+  eight and twenty-eight cents. On raw counts pi's recorded runs still lead
+  the two big issues (548/580 against 526/543) — count measures test-writing
+  volume as much as correctness, but it is the recorded table's metric and
+  the gap is real at this model tier with a single-model pool.
+- **The layered product improves the engine's work.** Select's #22 landed 564
+  against forced swe's 543: the delivery gate judged the engine's deliverable
+  and bought a revision that added twenty-one green tests. The stack paid for
+  it in wall and dollars — the gate's price is real too.
+- **Selection chose swe four of four**, including the two issues linear
+  settles for a cent. The boundary prior plus one session of measured
+  history does not yet route small issues away from the specialist; the
+  evidence records that should move it (audit-ceiling notes, cost under the
+  generalist's median) are on file and recalibration reads them.
+- **The drift control moved.** Today's linear is five to eight times faster
+  than its own recorded rows (43s against 5m56s on #21) and writes no tests
+  where the recorded run grew the suite — the harness got faster and
+  shallower over five days of development, which is exactly what the control
+  row exists to catch.
+
+Levers deliberately not pulled, for a future round: the engine's stock
+multi-tier model pools (pinned here to the one benchmark model for
+like-for-like), hard mode, and further boundary-learning iterations.
+
+## 6. The vs-pi cells and the wave campaign — 2026-08-13 (spark)
+
+A different benchmark from sections 1–4: three hand-authored cells (BUG: fix
+the failing suite; FEATURE: add a bulk discount with tests; REPORT: six
+fictional vendor briefs evaluated into report.md), three replicates each,
+`deepseek/deepseek-v4-flash`, all nine cells of an arm run CONCURRENTLY (the
+only serializer is the provider rate limit). pi is 0.82.1 pinned side-by-side.
+Costs are `normcost.py` (0423 price sheet) for aforge; pi is `picost.py`
+recomputed-at-list in parentheses. Quality: pytest for BUG/FEATURE
+(17 / 20 passes is the fixture bar), report.md presence and six-vendor
+coverage for REPORT.
+
+Same-day medians, 2026-08-13/14, in campaign order:
+
+| arm | bug | feat | report | total |
+|---|---|---|---|---|
+| pi 0.82.1 | 26s / $0.0019 (0.0028) | 48s / $0.0032 (0.0043) | 31s / $0.0012 (0.0017) | **105s / $0.0063** |
+| w4b baseline (= v3 + structural keepers) | 94s / $0.0187 | 89s / $0.0135 | 89s / $0.0111 | 272s / $0.0433 |
+| w5 guard+digest+continuation+spine | 67s / $0.0130 | 86s / $0.0123 | 146s / $0.0225 | 299s / $0.0478 |
+| w6 planner amortization prompts | 105s / $0.0141 | 102s / $0.0125 | 148s / $0.0134 | 355s / $0.0400 |
+| w7 atomic nodes decline specialists | 62s / $0.0130 | 92s / $0.0157 | 102s / $0.0148 | 256s / $0.0405 |
+| w8 + one-sitting chain collapse | 60s / $0.0118 | 92s / $0.0168 | 112s / $0.0148 | 264s / $0.0434 |
+
+What the campaign learned, in the order the evidence forced it:
+
+- **Advisory prompt text does not move a multi-turn coding model on this
+  workload.** Wave 4 injected the boring-cwd/tool-economy discipline verbatim
+  into every swe coder leaf and measured zero turn-count change (~26 turns
+  for a one-line fix, before and after). Reverted. Structural mechanisms are
+  the only ones that paid.
+- **The waves DID fix real defects** (each verified in isolation): the spill
+  tee reopened after filling and pointed "First N bytes" at the last, EMPTY,
+  file; a coder could write the harness's own `.codeaf/contract.json` (the v3
+  FEATURE regression); a leaf could spin 200 turns and burn its 150k budget
+  twice through stateless continuations (no-progress guard + continuation
+  state handover now land both); prefix-stability is now property-tested.
+- **The residual gap (6.3x cost, 1.9–3.4x wall) is architectural, not a
+  missing mechanism.** pi runs a minimal loop: 8–14 calls and ~13.5KB of
+  total tool output per cell. aforge pays a planning layer, per-node
+  orientation, and engine turns of ~7.7k tokens each. On one-sitting tasks
+  that envelope dominates; on the section-1 issues the same machinery is what
+  wins (section 4's grid). Routing cannot see it pre-execution: the sizing
+  pass judges a bug fix borderline under the baseline ruler because the fix's
+  size is unknowable before the work — "atomic" is only ever known in
+  retrospect.
+- **Found gate hole:** wave-8 report-r3 ended with exit 0 and no report.md —
+  the final leaf wrote `ranked-recommendation.md` instead. Nothing compares
+  the landed files against the brief's named deliverable. Tracked as the
+  first move of the next wave.
+- **Quality bar held everywhere else:** BUG 17/17 ×3, FEATURE 19–26 ×3,
+  REPORT six-vendor tables ×2, on every wave-5+ arm.
+
+Levers deliberately not pulled, for a future round: generalist-first with
+swe-escalation-on-overrun (the doctrine's calibrated answer to the sizing
+uncertainty above — needs escalation to carry the generalist's partial state
+into the specialist cheaply); observation slimming (pi's reads average ~1KB;
+the 2000-line read is the default the leaf reaches for); the engine's
+multi-tier model pools; hard mode.
+
+## 5. Caveats
 
 **pi and opencode cost figures are unreliable.** The starred figures in the #21
 table are account-level credit readings taken around the runs. The API key is

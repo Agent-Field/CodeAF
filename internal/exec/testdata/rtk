@@ -1,0 +1,43 @@
+#!/bin/sh
+# A stand-in for rtk, so the toolbox tests never need a network or a real
+# binary. It answers `rewrite` the way rtk v0.45 does — printing the rewritten
+# line and exiting 3 — and then actually runs what it was asked, compressing a
+# read the way the real one would.
+#
+# Every invocation appends a line to AFORGE_RTK_STUB_LOG, which is how the tests
+# see what was and was not asked of it.
+log="${AFORGE_RTK_STUB_LOG:-/dev/null}"
+
+case "$1" in
+    rewrite)
+        printf 'rewrite %s\n' "$2" >>"$log"
+        case "$2" in
+            "cat sample.txt")  printf 'rtk read sample.txt\n'; exit 3 ;;
+            "cat missing.txt") printf 'rtk read missing.txt\n'; exit 3 ;;
+            "cat cursed.txt")  printf 'rtk read cursed.txt\n'; exit 3 ;;
+            "go test ./...")   printf 'rtk go test ./...\n'; exit 3 ;;
+            *) exit 1 ;;
+        esac
+        ;;
+    read)
+        printf 'read %s\n' "$2" >>"$log"
+        # cursed.txt is the wrapping coming apart rather than the command
+        # failing: rtk's own phrasing, and the 127 that goes with it.
+        if [ "$2" = "cursed.txt" ]; then
+            printf '[rtk: No such file or directory (os error 2)]\n'
+            exit 127
+        fi
+        if [ ! -f "$2" ]; then
+            printf 'rtk could not read %s\n' "$2"
+            exit 1
+        fi
+        printf '%s: %s lines\n' "$2" "$(wc -l <"$2" | tr -d ' ')"
+        exit 0
+        ;;
+    go)
+        printf 'go %s\n' "$2" >>"$log"
+        printf 'FAIL 1 of 2\n'
+        exit 1
+        ;;
+esac
+exit 0

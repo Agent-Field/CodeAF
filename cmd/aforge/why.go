@@ -1,0 +1,108 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
+)
+
+func runWhy(args []string) error {
+	return runWhyTo(args, os.Stdout, time.Now())
+}
+
+func runWhyTo(args []string, output io.Writer, now time.Time) error {
+	flags := flag.NewFlagSet("why", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	database := flags.String("db", defaultChatDB(), "path to the durable graph database")
+	if err := flags.Parse(reorder(args, map[string]bool{"db": true})); err != nil {
+		return err
+	}
+	if flags.NArg() != 1 || flags.Arg(0) != "self" {
+		return fmt.Errorf("usage: aforge why self [--db path]")
+	}
+	path, err := expandHome(strings.TrimSpace(*database))
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("open receipts: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("open receipts: %s is not a regular database file", path)
+	}
+	graph, err := store.Open(path)
+	if err != nil {
+		return err
+	}
+	defer graph.Close()
+
+	local := now.In(time.Local)
+	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.Local)
+	receipts, err := graph.SelfReceipts(start)
+	if err != nil {
+		return err
+	}
+	table := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(table, "TRIED\tCOST\tLEARNED")
+	for _, receipt := range receipts {
+		fmt.Fprintf(table, "%s\t%s\t%s\n", oneLineReceipt(receipt.Origin),
+			formatReceiptDollars(receipt.Cost), receiptLearning(receipt))
+	}
+	if err := table.Flush(); err != nil {
+		return fmt.Errorf("write self receipts: %w", err)
+	}
+	return nil
+}
+
+func receiptLearning(receipt store.SelfReceipt) string {
+	parts := make([]string, 0, 3)
+	if len(receipt.FactIDs) > 0 {
+		parts = append(parts, "facts "+receiptIDs(receipt.FactIDs))
+	}
+	if len(receipt.SkillIDs) > 0 {
+		parts = append(parts, "skills "+receiptIDs(receipt.SkillIDs))
+	}
+	if receipt.SurpriseDelta != nil && *receipt.SurpriseDelta > 0 {
+		parts = append(parts, fmt.Sprintf("surprise down %.0f%%", 100**receipt.SurpriseDelta))
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "nothing")
+	}
+	if receipt.SurpriseDelta != nil && *receipt.SurpriseDelta < 0 {
+		parts = append(parts, fmt.Sprintf("surprise up %.0f%%", -100**receipt.SurpriseDelta))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func receiptIDs(ids []int64) string {
+	values := make([]string, 0, len(ids))
+	for _, id := range ids {
+		values = append(values, "#"+strconv.FormatInt(id, 10))
+	}
+	return strings.Join(values, ",")
+}
+
+func formatReceiptDollars(cost float64) string {
+	raw := strconv.FormatFloat(cost, 'f', 4, 64)
+	raw = strings.TrimRight(raw, "0")
+	if strings.HasSuffix(raw, ".") {
+		raw += "00"
+	} else if dot := strings.IndexByte(raw, '.'); dot < 0 {
+		raw += ".00"
+	} else if len(raw)-dot == 2 {
+		raw += "0"
+	}
+	return "$" + raw
+}
+
+func oneLineReceipt(value string) string {
+	return strings.Join(strings.Fields(value), " ")
+}

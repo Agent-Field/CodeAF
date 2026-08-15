@@ -45,6 +45,23 @@ type capture struct {
 	headers []http.Header
 }
 
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
+
+// handlerClient exercises the complete HTTP request/response boundary without
+// opening a listener. Besides working in network-denied sandboxes, it keeps
+// these wire-shape tests deterministic: no kernel socket is part of the test.
+func handlerClient(handler http.Handler) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		return recorder.Result(), nil
+	})}
+}
+
 func (c *capture) record(request *http.Request) {
 	payload, _ := io.ReadAll(request.Body)
 	var decoded map[string]any
@@ -68,15 +85,15 @@ func (c *capture) body(index int) map[string]any {
 func newTestClient(t *testing.T, config Config) (*Client, *capture) {
 	t.Helper()
 	recorded := &capture{}
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		recorded.record(request)
 		writer.Header().Set("Content-Type", "application/json")
 		_, _ = writer.Write([]byte(`{"model":"sim/model","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`))
-	}))
-	t.Cleanup(server.Close)
+	})
 
 	config.APIKey = "test-key"
-	config.BaseURL = server.URL
+	config.BaseURL = "http://provider.test"
+	config.HTTPClient = handlerClient(handler)
 	if config.Model == "" {
 		config.Model = "sim/model"
 	}
@@ -334,15 +351,14 @@ func TestAdapterRewritesMaxTokensOnlyForVouchedOpenAIFamilies(t *testing.T) {
 
 func TestAdapterStreamsWithTheSameEconomyFields(t *testing.T) {
 	recorded := &capture{}
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		recorded.record(request)
 		writer.Header().Set("Content-Type", "text/event-stream")
 		_, _ = writer.Write([]byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n"))
-	}))
-	defer server.Close()
+	})
 
 	client, err := NewClient(Config{
-		APIKey: "k", BaseURL: server.URL, Model: "sim/model",
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
 		SupportsParameter: func(string, string) (bool, bool) { return true, true },
 	})
 	if err != nil {
@@ -382,13 +398,12 @@ func TestAdapterStreamsWithTheSameEconomyFields(t *testing.T) {
 }
 
 func TestAdapterErrorsKeepTheStatusCodeTheHarnessClassifiesOn(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusTooManyRequests)
 		_, _ = writer.Write([]byte(`{"error":{"message":"rate limited"}}`))
-	}))
-	defer server.Close()
+	})
 
-	client, err := NewClient(Config{APIKey: "k", BaseURL: server.URL, Model: "sim/model"})
+	client, err := NewClient(Config{APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,5 +421,193 @@ func TestParseEffortRejectsUnknownValues(t *testing.T) {
 	}
 	if _, ok := ParseEffort("maximum"); ok {
 		t.Fatal("ParseEffort accepted a value that would 400")
+	}
+}
+
+func TestObservedMessageCompletionStreamsAndReturnsAccumulatedResponse(t *testing.T) {
+	recorded := &capture{}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		recorded.record(request)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte("data: {\"id\":\"one\",\"model\":\"sim/model\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"{\\\"reply\\\":\\\"hello\"}}]}\n\n"))
+		_, _ = writer.Write([]byte("data: {\"id\":\"one\",\"model\":\"sim/model\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" there\\\"}\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"))
+	})
+
+	client, err := NewClient(Config{
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []StreamEvent
+	ctx := WithStreamObserver(context.Background(), func(event StreamEvent) {
+		events = append(events, event)
+	})
+	response, err := client.CompleteWithMessages(ctx, userMessages("route this"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := response.Text(); got != `{"reply":"hello there"}` {
+		t.Fatalf("accumulated response = %q", got)
+	}
+	if len(events) != 4 {
+		t.Fatalf("stream events = %#v", events)
+	}
+	wantKinds := []StreamEventKind{StreamStarted, StreamDelta, StreamDelta, StreamFinished}
+	var deltas strings.Builder
+	for index, event := range events {
+		if event.Kind != wantKinds[index] {
+			t.Fatalf("event %d kind = %v, want %v", index, event.Kind, wantKinds[index])
+		}
+		if event.Kind == StreamDelta {
+			deltas.WriteString(event.Delta)
+		}
+	}
+	if deltas.String() != response.Text() {
+		t.Fatalf("observed deltas = %q, response = %q", deltas.String(), response.Text())
+	}
+	if stream, _ := recorded.body(0)["stream"].(bool); !stream {
+		t.Fatalf("observed completion did not use the streaming wire: %#v", recorded.body(0))
+	}
+}
+
+// The structural half of the streamed path: a tool call arrives in fragments
+// across several chunks, and until this was accumulated every streamed
+// completion returned zero tool calls — which made the head's control belt
+// spend a whole round trip that could not possibly succeed.
+func TestStreamedToolCallsAccumulateIntoTheResponse(t *testing.T) {
+	events := []string{
+		`{"id":"one","model":"sim/model","choices":[{"index":0,"delta":{"role":"assistant","reasoning":"the user is asking about live work"}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"reasoning":" so the board is the read"}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"board","arguments":""}}]}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"stat"}}]}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"us\":\"live\"}"}}]}}]}`,
+		`{"id":"one","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"id":"call_2","type":"function","function":{"name":"control","arguments":"{\"verb\":\"cancel\"}"}}]},"finish_reason":"tool_calls"}]}`,
+	}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		for _, event := range events {
+			_, _ = writer.Write([]byte("data: " + event + "\n\n"))
+		}
+		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	})
+
+	client, err := NewClient(Config{
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed []StreamEvent
+	ctx := WithStreamObserver(context.Background(), func(event StreamEvent) {
+		observed = append(observed, event)
+	})
+	response, err := client.CompleteWithMessages(ctx, userMessages("cancel the scans"),
+		ai.WithTools([]ai.ToolDefinition{{Type: "function"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !response.HasToolCalls() {
+		t.Fatalf("streamed response carried no tool calls: %#v", response.Choices)
+	}
+	calls := response.ToolCalls()
+	if len(calls) != 2 {
+		t.Fatalf("accumulated %d tool calls, want 2: %#v", len(calls), calls)
+	}
+	if calls[0].ID != "call_1" || calls[0].Function.Name != "board" ||
+		calls[0].Function.Arguments != `{"status":"live"}` {
+		t.Fatalf("first call reassembled as %#v", calls[0])
+	}
+	if calls[1].ID != "call_2" || calls[1].Function.Name != "control" ||
+		calls[1].Function.Arguments != `{"verb":"cancel"}` {
+		t.Fatalf("second call reassembled as %#v", calls[1])
+	}
+	if response.Choices[0].FinishReason != "tool_calls" {
+		t.Fatalf("finish reason = %q", response.Choices[0].FinishReason)
+	}
+
+	// Reasoning is announced once for the run of it and never carries its text.
+	thinking := 0
+	for _, event := range observed {
+		if event.Kind == StreamThinking {
+			thinking++
+			if event.Delta != "" {
+				t.Fatalf("a thinking event carried reasoning text: %q", event.Delta)
+			}
+		}
+		if event.Kind == StreamDelta {
+			t.Fatalf("a tool-call stream produced a text delta: %q", event.Delta)
+		}
+	}
+	if thinking != 1 {
+		t.Fatalf("thinking events = %d, want exactly one for the run", thinking)
+	}
+	if observed[0].Kind != StreamStarted || observed[len(observed)-1].Kind != StreamFinished {
+		t.Fatalf("stream boundaries = %#v", observed)
+	}
+}
+
+// Not every endpoint indexes its fragments. One that spells a call out without
+// an index must not have its arguments fused onto the previous call, and the
+// zero value of the missing field must not read as "call 0".
+func TestStreamedToolCallsWithoutAnIndexStayDistinct(t *testing.T) {
+	events := []string{
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"id":"a","function":{"name":"board","arguments":"{}"}}]}}]}`,
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"id":"b","function":{"name":"result"}}]}}]}`,
+		`{"choices":[{"index":0,"delta":{"tool_calls":[{"function":{"arguments":"{\"id\":\"scans\"}"}}]},"finish_reason":"tool_calls"}]}`,
+	}
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		for _, event := range events {
+			_, _ = writer.Write([]byte("data: " + event + "\n\n"))
+		}
+		_, _ = writer.Write([]byte("data: [DONE]\n\n"))
+	})
+	client, err := NewClient(Config{
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	response, err := client.CompleteWithMessages(ctx, userMessages("what did the scans find"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := response.ToolCalls()
+	if len(calls) != 2 {
+		t.Fatalf("accumulated %d calls, want 2: %#v", len(calls), calls)
+	}
+	if calls[0].Function.Name != "board" || calls[0].Function.Arguments != "{}" {
+		t.Fatalf("first call = %#v", calls[0])
+	}
+	if calls[1].Function.Name != "result" || calls[1].Function.Arguments != `{"id":"scans"}` {
+		t.Fatalf("second call = %#v", calls[1])
+	}
+}
+
+// The unstreamed path is unchanged, and a streamed answer that is only text
+// still carries no tool calls at all — an empty slice would be a claim.
+func TestStreamedTextAnswerCarriesNoToolCalls(t *testing.T) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = writer.Write([]byte(`data: {"choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":"stop"}]}` + "\n\ndata: [DONE]\n\n"))
+	})
+	client, err := NewClient(Config{
+		APIKey: "k", BaseURL: "http://provider.test", Model: "sim/model", HTTPClient: handlerClient(handler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithStreamObserver(context.Background(), func(StreamEvent) {})
+	response, err := client.CompleteWithMessages(ctx, userMessages("hi"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.HasToolCalls() || response.ToolCalls() != nil {
+		t.Fatalf("a text answer claimed tool calls: %#v", response.ToolCalls())
+	}
+	if response.Text() != "hello" {
+		t.Fatalf("streamed text = %q", response.Text())
 	}
 }

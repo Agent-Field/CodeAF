@@ -1,0 +1,40 @@
+Writes the Lens Planner's outputs under `.review/plan/`:
+- `lenses.md` — the decision audit trail (which lenses chosen / dropped and why)
+- `investigator-prompts/<lens>.md` — the crafted brief for each chosen lens
+
+Used by the Lens Planner agent.
+
+Five operations:
+
+- `op: "init"` — create `lenses.md` with a header. Call once before recording
+  any decisions.
+
+- `op: "batch"` (PRIMARY) — apply ALL decisions in one shot.
+    Required: `decisions` — an array of entries, each shaped:
+      { lens: string, decision: 'chosen'|'dropped', rationale: string, brief?: string }
+    For chosen lenses, `brief` is the full markdown investigator brief
+    (scope + what to look for + hunt-units + recall bias + output contract).
+    For dropped lenses, `brief` is omitted.
+    The tool appends each decision to `lenses.md`, writes the brief for each
+    chosen lens to `.review/plan/investigator-prompts/<lens>.md`, and
+    enqueues a plandb investigator task for it — all atomically in one call.
+    Use this as the default path. It collapses 60+ sequential round-trips
+    into a single request and dramatically reduces lens-planning wall time.
+    If the tool errors (validation rejected something, no decisions provided,
+    etc.) fall back to the per-lens `decide` / `brief_init` / `brief_append`
+    workflow below.
+
+- `op: "decide"` (fallback) — record one lens decision (chosen or dropped).
+    Required: `lens`, `decision` (chosen|dropped), `rationale`.
+    For `chosen`, the lens's brief file MUST exist already (write it first
+    via brief_init/brief_append).
+
+- `op: "brief_init"` (fallback) — start the investigator brief for a chosen
+    lens. Required: `lens`, `scope_summary`.
+
+- `op: "brief_append"` (fallback) — append one labeled section to the
+    investigator brief. Required: `lens`, `heading`, `body`.
+
+Lens names must be lowercase kebab-case (or `emergent:<name>` for emergent
+lenses). The recommended vocabulary is listed in the agent prompt; the
+tool accepts any filesystem-safe name.

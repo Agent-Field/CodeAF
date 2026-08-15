@@ -1,0 +1,202 @@
+{"name":"ls/ls *","fn":"match","args_json":"[\"ls\",\"ls *\"]","out_json":"true"}
+{"name":"ls -la/ls *","fn":"match","args_json":"[\"ls -la\",\"ls *\"]","out_json":"true"}
+{"name":"lsx/ls *","fn":"match","args_json":"[\"lsx\",\"ls *\"]","out_json":"false"}
+{"name":"a/b/a\\b","fn":"match","args_json":"[\"a/b\",\"a\\\\b\"]","out_json":"true"}
+{"name":"abc/a?c","fn":"match","args_json":"[\"abc\",\"a?c\"]","out_json":"true"}
+{"name":"a🙂c/a?c","fn":"match","args_json":"[\"a🙂c\",\"a?c\"]","out_json":"false"}
+{"name":"a🙂c/a??c","fn":"match","args_json":"[\"a🙂c\",\"a??c\"]","out_json":"true"}
+{"name":"a\nb/a*b","fn":"match","args_json":"[\"a\\nb\",\"a*b\"]","out_json":"true"}
+{"name":"/","fn":"match","args_json":"[\"\",\"\"]","out_json":"true"}
+{"name":"/*","fn":"match","args_json":"[\"\",\"*\"]","out_json":"true"}
+{"name":"foo.ts/*.ts","fn":"match","args_json":"[\"foo.ts\",\"*.ts\"]","out_json":"true"}
+{"name":"x/.","fn":"match","args_json":"[\"x\",\".\"]","out_json":"false"}
+{"name":"./.","fn":"match","args_json":"[\".\",\".\"]","out_json":"true"}
+{"name":"[x]/[x]","fn":"match","args_json":"[\"[x]\",\"[x]\"]","out_json":"true"}
+{"name":"foo/bar/baz/foo*","fn":"match","args_json":"[\"foo/bar/baz\",\"foo*\"]","out_json":"true"}
+{"name":"git status/git *","fn":"match","args_json":"[\"git status\",\"git *\"]","out_json":"true"}
+{"name":"all-specific-last","fn":"all","args_json":"[\"git status\",{\"*\":1,\"git *\":2,\"git status\":3}]","out_json":"3"}
+{"name":"all-length-and-key","fn":"all","args_json":"[\"a\",{\"a\":\"a\",\"*\":\"star\",\"?\":\"question\"}]","out_json":"\"a\""}
+{"name":"all-none","fn":"all","args_json":"[\"x\",{\"a\":1,\"b\":2}]","out_json":"null"}
+{"name":"structured-subsequence","fn":"allStructured","args_json":"[{\"head\":\"git\",\"tail\":[\"-C\",\"x\",\"status\"]},{\"git status\":1}]","out_json":"1"}
+{"name":"structured-star-zero","fn":"allStructured","args_json":"[{\"head\":\"git\",\"tail\":[]},{\"git *\":1}]","out_json":"1"}
+{"name":"structured-no","fn":"allStructured","args_json":"[{\"head\":\"npm\",\"tail\":[\"test\"]},{\"git *\":1}]","out_json":"null"}
+{"name":"split-\"\"","fn":"bomSplit","args_json":"[\"\"]","out_json":"{\"bom\":false,\"text\":\"\"}"}
+{"name":"join-\"\"-false","fn":"bomJoin","args_json":"[\"\",false]","out_json":"\"\""}
+{"name":"join-\"\"-true","fn":"bomJoin","args_json":"[\"\",true]","out_json":"\"﻿\""}
+{"name":"split-\"abc\"","fn":"bomSplit","args_json":"[\"abc\"]","out_json":"{\"bom\":false,\"text\":\"abc\"}"}
+{"name":"join-\"abc\"-false","fn":"bomJoin","args_json":"[\"abc\",false]","out_json":"\"abc\""}
+{"name":"join-\"abc\"-true","fn":"bomJoin","args_json":"[\"abc\",true]","out_json":"\"﻿abc\""}
+{"name":"split-\"﻿abc\"","fn":"bomSplit","args_json":"[\"﻿abc\"]","out_json":"{\"bom\":true,\"text\":\"abc\"}"}
+{"name":"join-\"﻿abc\"-false","fn":"bomJoin","args_json":"[\"﻿abc\",false]","out_json":"\"abc\""}
+{"name":"join-\"﻿abc\"-true","fn":"bomJoin","args_json":"[\"﻿abc\",true]","out_json":"\"﻿abc\""}
+{"name":"split-\"﻿﻿x\"","fn":"bomSplit","args_json":"[\"﻿﻿x\"]","out_json":"{\"bom\":true,\"text\":\"﻿x\"}"}
+{"name":"join-\"﻿﻿x\"-false","fn":"bomJoin","args_json":"[\"﻿﻿x\",false]","out_json":"\"﻿x\""}
+{"name":"join-\"﻿﻿x\"-true","fn":"bomJoin","args_json":"[\"﻿﻿x\",true]","out_json":"\"﻿﻿x\""}
+{"name":"pdf-application/pdf","fn":"isPdfAttachment","args_json":"[\"application/pdf\"]","out_json":"true"}
+{"name":"media-application/pdf","fn":"isMedia","args_json":"[\"application/pdf\"]","out_json":"true"}
+{"name":"image-application/pdf","fn":"isImageAttachment","args_json":"[\"application/pdf\"]","out_json":"false"}
+{"name":"pdf-image/png","fn":"isPdfAttachment","args_json":"[\"image/png\"]","out_json":"false"}
+{"name":"media-image/png","fn":"isMedia","args_json":"[\"image/png\"]","out_json":"true"}
+{"name":"image-image/png","fn":"isImageAttachment","args_json":"[\"image/png\"]","out_json":"true"}
+{"name":"pdf-image/svg+xml","fn":"isPdfAttachment","args_json":"[\"image/svg+xml\"]","out_json":"false"}
+{"name":"media-image/svg+xml","fn":"isMedia","args_json":"[\"image/svg+xml\"]","out_json":"true"}
+{"name":"image-image/svg+xml","fn":"isImageAttachment","args_json":"[\"image/svg+xml\"]","out_json":"false"}
+{"name":"pdf-image/vnd.fastbidsheet","fn":"isPdfAttachment","args_json":"[\"image/vnd.fastbidsheet\"]","out_json":"false"}
+{"name":"media-image/vnd.fastbidsheet","fn":"isMedia","args_json":"[\"image/vnd.fastbidsheet\"]","out_json":"true"}
+{"name":"image-image/vnd.fastbidsheet","fn":"isImageAttachment","args_json":"[\"image/vnd.fastbidsheet\"]","out_json":"false"}
+{"name":"pdf-text/plain","fn":"isPdfAttachment","args_json":"[\"text/plain\"]","out_json":"false"}
+{"name":"media-text/plain","fn":"isMedia","args_json":"[\"text/plain\"]","out_json":"false"}
+{"name":"image-text/plain","fn":"isImageAttachment","args_json":"[\"text/plain\"]","out_json":"false"}
+{"name":"pdf-image/","fn":"isPdfAttachment","args_json":"[\"image/\"]","out_json":"false"}
+{"name":"media-image/","fn":"isMedia","args_json":"[\"image/\"]","out_json":"true"}
+{"name":"image-image/","fn":"isImageAttachment","args_json":"[\"image/\"]","out_json":"true"}
+{"name":"png","fn":"sniffAttachmentMime","args_json":"[[137,80,78,71,13,10,26,10],\"x\"]","out_json":"\"image/png\""}
+{"name":"jpeg","fn":"sniffAttachmentMime","args_json":"[[255,216,255,0],\"x\"]","out_json":"\"image/jpeg\""}
+{"name":"gif","fn":"sniffAttachmentMime","args_json":"[[71,73,70,56],\"x\"]","out_json":"\"image/gif\""}
+{"name":"bmp","fn":"sniffAttachmentMime","args_json":"[[66,77],\"x\"]","out_json":"\"image/bmp\""}
+{"name":"pdf","fn":"sniffAttachmentMime","args_json":"[[37,80,68,70,45],\"x\"]","out_json":"\"application/pdf\""}
+{"name":"webp","fn":"sniffAttachmentMime","args_json":"[[82,73,70,70,0,0,0,0,87,69,66,80],\"x\"]","out_json":"\"image/webp\""}
+{"name":"short-riff","fn":"sniffAttachmentMime","args_json":"[[82,73,70,70],\"fallback\"]","out_json":"\"fallback\""}
+{"name":"empty","fn":"sniffAttachmentMime","args_json":"[[],\"fallback\"]","out_json":"\"fallback\""}
+{"name":"data:,hello%20world","fn":"decodeDataUrl","args_json":"[\"data:,hello%20world\"]","out_json":"\"hello world\""}
+{"name":"data:text/plain;base64,aGVsbG8=","fn":"decodeDataUrl","args_json":"[\"data:text/plain;base64,aGVsbG8=\"]","out_json":"\"hello\""}
+{"name":"no-comma","fn":"decodeDataUrl","args_json":"[\"no-comma\"]","out_json":"\"\""}
+{"name":"data:text/plain,a%2Fb%3Fc","fn":"decodeDataUrl","args_json":"[\"data:text/plain,a%2Fb%3Fc\"]","out_json":"\"a/b?c\""}
+{"name":"data:;base64,8J+Zgg==","fn":"decodeDataUrl","args_json":"[\"data:;base64,8J+Zgg==\"]","out_json":"\"🙂\""}
+{"name":"x,","fn":"decodeDataUrl","args_json":"[\"x,\"]","out_json":"\"\""}
+{"name":"estimate-","fn":"estimate","args_json":"[\"\"]","out_json":"0"}
+{"name":"estimate-a","fn":"estimate","args_json":"[\"a\"]","out_json":"0"}
+{"name":"estimate-ab","fn":"estimate","args_json":"[\"ab\"]","out_json":"1"}
+{"name":"estimate-abc","fn":"estimate","args_json":"[\"abc\"]","out_json":"1"}
+{"name":"estimate-abcd","fn":"estimate","args_json":"[\"abcd\"]","out_json":"1"}
+{"name":"estimate-abcdef","fn":"estimate","args_json":"[\"abcdef\"]","out_json":"2"}
+{"name":"estimate-🙂","fn":"estimate","args_json":"[\"🙂\"]","out_json":"1"}
+{"name":"estimate-🙂🙂","fn":"estimate","args_json":"[\"🙂🙂\"]","out_json":"1"}
+{"name":"estimate-a🙂b","fn":"estimate","args_json":"[\"a🙂b\"]","out_json":"1"}
+{"name":"estimate-123456789","fn":"estimate","args_json":"[\"123456789\"]","out_json":"2"}
+{"name":"record-null","fn":"isRecord","args_json":"[null]","out_json":"false"}
+{"name":"record-false","fn":"isRecord","args_json":"[false]","out_json":"false"}
+{"name":"record-0","fn":"isRecord","args_json":"[0]","out_json":"false"}
+{"name":"record-\"\"","fn":"isRecord","args_json":"[\"\"]","out_json":"false"}
+{"name":"record-[]","fn":"isRecord","args_json":"[[]]","out_json":"false"}
+{"name":"record-{}","fn":"isRecord","args_json":"[{}]","out_json":"true"}
+{"name":"record-{\"a\":1}","fn":"isRecord","args_json":"[{\"a\":1}]","out_json":"true"}
+{"name":"record-[1]","fn":"isRecord","args_json":"[[1]]","out_json":"false"}
+{"name":"record-\"x\"","fn":"isRecord","args_json":"[\"x\"]","out_json":"false"}
+{"name":"repo-","fn":"parseRepositoryReference","args_json":"[\"\"]","out_json":"null"}
+{"name":"repo-owner/repo","fn":"parseRepositoryReference","args_json":"[\"owner/repo\"]","out_json":"{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"}"}
+{"name":"repo-github:owner/repo","fn":"parseRepositoryReference","args_json":"[\"github:owner/repo\"]","out_json":"{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"}"}
+{"name":"repo-github.com/owner/repo.git","fn":"parseRepositoryReference","args_json":"[\"github.com/owner/repo.git\"]","out_json":"{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"}"}
+{"name":"repo-git@github.com:owner/repo.git","fn":"parseRepositoryReference","args_json":"[\"git@github.com:owner/repo.git\"]","out_json":"{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"git@github.com:owner/repo.git\",\"label\":\"owner/repo\"}"}
+{"name":"repo-https://github.com/owner/repo.git","fn":"parseRepositoryReference","args_json":"[\"https://github.com/owner/repo.git\"]","out_json":"{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\",\"protocol\":\"https:\"}"}
+{"name":"repo-git+https://gitlab.com/group/repo.git#main","fn":"parseRepositoryReference","args_json":"[\"git+https://gitlab.com/group/repo.git#main\"]","out_json":"{\"host\":\"gitlab.com\",\"path\":\"group/repo\",\"segments\":[\"group\",\"repo\"],\"owner\":\"group\",\"repo\":\"repo\",\"remote\":\"https://gitlab.com/group/repo.git\",\"label\":\"gitlab.com/group/repo\",\"protocol\":\"https:\"}"}
+{"name":"repo-ssh://git@example.com/a/b.git","fn":"parseRepositoryReference","args_json":"[\"ssh://git@example.com/a/b.git\"]","out_json":"{\"host\":\"example.com\",\"path\":\"a/b\",\"segments\":[\"a\",\"b\"],\"owner\":\"a\",\"repo\":\"b\",\"remote\":\"ssh://git@example.com/a/b.git\",\"label\":\"example.com/a/b\",\"protocol\":\"ssh:\"}"}
+{"name":"repo-file:///tmp/my%20repo.git","fn":"parseRepositoryReference","args_json":"[\"file:///tmp/my%20repo.git\"]","out_json":"{\"host\":\"file\",\"path\":\"/tmp/my repo.git\",\"segments\":[\"tmp\",\"my repo.git\"],\"repo\":\"my repo\",\"remote\":\"file:///tmp/my%20repo.git\",\"label\":\"/tmp/my repo.git\",\"protocol\":\"file:\"}"}
+{"name":"repo-localhost/owner/repo","fn":"parseRepositoryReference","args_json":"[\"localhost/owner/repo\"]","out_json":"{\"host\":\"localhost\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://localhost/owner/repo.git\",\"label\":\"localhost/owner/repo\"}"}
+{"name":"repo-../bad","fn":"parseRepositoryReference","args_json":"[\"../bad\"]","out_json":"{\"host\":\"..\",\"path\":\"bad\",\"segments\":[\"bad\"],\"repo\":\"bad\",\"remote\":\"https://../bad.git\",\"label\":\"../bad\"}"}
+{"name":"repo-https://-bad/x","fn":"parseRepositoryReference","args_json":"[\"https://-bad/x\"]","out_json":"null"}
+{"name":"repo-owner/repo/extra","fn":"parseRepositoryReference","args_json":"[\"owner/repo/extra\"]","out_json":"null"}
+{"name":"repo- github:owner/repo/// ","fn":"parseRepositoryReference","args_json":"[\" github:owner/repo/// \"]","out_json":"{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"}"}
+{"name":"github-","fn":"parseGitHubRemote","args_json":"[\"\"]","out_json":"null"}
+{"name":"github-owner/repo","fn":"parseGitHubRemote","args_json":"[\"owner/repo\"]","out_json":"null"}
+{"name":"github-github:owner/repo","fn":"parseGitHubRemote","args_json":"[\"github:owner/repo\"]","out_json":"null"}
+{"name":"github-github.com/owner/repo.git","fn":"parseGitHubRemote","args_json":"[\"github.com/owner/repo.git\"]","out_json":"null"}
+{"name":"github-git@github.com:owner/repo.git","fn":"parseGitHubRemote","args_json":"[\"git@github.com:owner/repo.git\"]","out_json":"{\"owner\":\"owner\",\"repo\":\"repo\"}"}
+{"name":"github-https://github.com/owner/repo.git","fn":"parseGitHubRemote","args_json":"[\"https://github.com/owner/repo.git\"]","out_json":"{\"owner\":\"owner\",\"repo\":\"repo\"}"}
+{"name":"github-git+https://gitlab.com/group/repo.git#main","fn":"parseGitHubRemote","args_json":"[\"git+https://gitlab.com/group/repo.git#main\"]","out_json":"null"}
+{"name":"github-ssh://git@example.com/a/b.git","fn":"parseGitHubRemote","args_json":"[\"ssh://git@example.com/a/b.git\"]","out_json":"null"}
+{"name":"github-file:///tmp/my%20repo.git","fn":"parseGitHubRemote","args_json":"[\"file:///tmp/my%20repo.git\"]","out_json":"null"}
+{"name":"github-localhost/owner/repo","fn":"parseGitHubRemote","args_json":"[\"localhost/owner/repo\"]","out_json":"null"}
+{"name":"github-../bad","fn":"parseGitHubRemote","args_json":"[\"../bad\"]","out_json":"null"}
+{"name":"github-https://-bad/x","fn":"parseGitHubRemote","args_json":"[\"https://-bad/x\"]","out_json":"null"}
+{"name":"github-owner/repo/extra","fn":"parseGitHubRemote","args_json":"[\"owner/repo/extra\"]","out_json":"null"}
+{"name":"github- github:owner/repo/// ","fn":"parseGitHubRemote","args_json":"[\" github:owner/repo/// \"]","out_json":"null"}
+{"name":"same-owner/repo","fn":"sameRepositoryReference","args_json":"[{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"},{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"}]","out_json":"true"}
+{"name":"same-https://github.com/owner/repo","fn":"sameRepositoryReference","args_json":"[{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"},{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\",\"protocol\":\"https:\"}]","out_json":"true"}
+{"name":"same-other/repo","fn":"sameRepositoryReference","args_json":"[{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"},{\"host\":\"github.com\",\"path\":\"other/repo\",\"segments\":[\"other\",\"repo\"],\"owner\":\"other\",\"repo\":\"repo\",\"remote\":\"https://github.com/other/repo.git\",\"label\":\"other/repo\"}]","out_json":"false"}
+{"name":"same-owner/other","fn":"sameRepositoryReference","args_json":"[{\"host\":\"github.com\",\"path\":\"owner/repo\",\"segments\":[\"owner\",\"repo\"],\"owner\":\"owner\",\"repo\":\"repo\",\"remote\":\"https://github.com/owner/repo.git\",\"label\":\"owner/repo\"},{\"host\":\"github.com\",\"path\":\"owner/other\",\"segments\":[\"owner\",\"other\"],\"owner\":\"owner\",\"repo\":\"other\",\"remote\":\"https://github.com/owner/other.git\",\"label\":\"owner/other\"}]","out_json":"false"}
+{"name":"fs-normalize-","fn":"normalizePath","args_json":"[\"\"]","out_json":"\"\""}
+{"name":"fs-pattern-","fn":"normalizePathPattern","args_json":"[\"\"]","out_json":"\"\""}
+{"name":"fs-windows-","fn":"windowsPath","args_json":"[\"\"]","out_json":"\"\""}
+{"name":"fs-normalize-.","fn":"normalizePath","args_json":"[\".\"]","out_json":"\".\""}
+{"name":"fs-pattern-.","fn":"normalizePathPattern","args_json":"[\".\"]","out_json":"\".\""}
+{"name":"fs-windows-.","fn":"windowsPath","args_json":"[\".\"]","out_json":"\".\""}
+{"name":"fs-normalize-./a","fn":"normalizePath","args_json":"[\"./a\"]","out_json":"\"./a\""}
+{"name":"fs-pattern-./a","fn":"normalizePathPattern","args_json":"[\"./a\"]","out_json":"\"./a\""}
+{"name":"fs-windows-./a","fn":"windowsPath","args_json":"[\"./a\"]","out_json":"\"./a\""}
+{"name":"fs-normalize-/tmp/a","fn":"normalizePath","args_json":"[\"/tmp/a\"]","out_json":"\"/tmp/a\""}
+{"name":"fs-pattern-/tmp/a","fn":"normalizePathPattern","args_json":"[\"/tmp/a\"]","out_json":"\"/tmp/a\""}
+{"name":"fs-windows-/tmp/a","fn":"windowsPath","args_json":"[\"/tmp/a\"]","out_json":"\"/tmp/a\""}
+{"name":"fs-normalize-/mnt/c/x","fn":"normalizePath","args_json":"[\"/mnt/c/x\"]","out_json":"\"/mnt/c/x\""}
+{"name":"fs-pattern-/mnt/c/x","fn":"normalizePathPattern","args_json":"[\"/mnt/c/x\"]","out_json":"\"/mnt/c/x\""}
+{"name":"fs-windows-/mnt/c/x","fn":"windowsPath","args_json":"[\"/mnt/c/x\"]","out_json":"\"/mnt/c/x\""}
+{"name":"fs-normalize-*","fn":"normalizePath","args_json":"[\"*\"]","out_json":"\"*\""}
+{"name":"fs-pattern-*","fn":"normalizePathPattern","args_json":"[\"*\"]","out_json":"\"*\""}
+{"name":"fs-windows-*","fn":"windowsPath","args_json":"[\"*\"]","out_json":"\"*\""}
+{"name":"fs-overlap-/a-/a","fn":"overlaps","args_json":"[\"/a\",\"/a\"]","out_json":"true"}
+{"name":"fs-contains-/a-/a","fn":"contains","args_json":"[\"/a\",\"/a\"]","out_json":"true"}
+{"name":"fs-overlap-/a-/a/b","fn":"overlaps","args_json":"[\"/a\",\"/a/b\"]","out_json":"true"}
+{"name":"fs-contains-/a-/a/b","fn":"contains","args_json":"[\"/a\",\"/a/b\"]","out_json":"true"}
+{"name":"fs-overlap-/a-/b","fn":"overlaps","args_json":"[\"/a\",\"/b\"]","out_json":"false"}
+{"name":"fs-contains-/a-/b","fn":"contains","args_json":"[\"/a\",\"/b\"]","out_json":"false"}
+{"name":"fs-overlap-/a/b-/a","fn":"overlaps","args_json":"[\"/a/b\",\"/a\"]","out_json":"true"}
+{"name":"fs-contains-/a/b-/a","fn":"contains","args_json":"[\"/a/b\",\"/a\"]","out_json":"false"}
+{"name":"error-format-null","fn":"errorFormat","args_json":"[null]","out_json":"\"null\""}
+{"name":"error-message-null","fn":"errorMessage","args_json":"[null]","out_json":"\"null\""}
+{"name":"error-data-null","fn":"errorData","args_json":"[null]","out_json":"{\"type\":\"object\",\"message\":\"null\",\"formatted\":\"null\"}"}
+{"name":"error-format-true","fn":"errorFormat","args_json":"[true]","out_json":"\"true\""}
+{"name":"error-message-true","fn":"errorMessage","args_json":"[true]","out_json":"\"true\""}
+{"name":"error-data-true","fn":"errorData","args_json":"[true]","out_json":"{\"type\":\"boolean\",\"message\":\"true\",\"formatted\":\"true\"}"}
+{"name":"error-format-false","fn":"errorFormat","args_json":"[false]","out_json":"\"false\""}
+{"name":"error-message-false","fn":"errorMessage","args_json":"[false]","out_json":"\"false\""}
+{"name":"error-data-false","fn":"errorData","args_json":"[false]","out_json":"{\"type\":\"boolean\",\"message\":\"false\",\"formatted\":\"false\"}"}
+{"name":"error-format-0","fn":"errorFormat","args_json":"[0]","out_json":"\"0\""}
+{"name":"error-message-0","fn":"errorMessage","args_json":"[0]","out_json":"\"0\""}
+{"name":"error-data-0","fn":"errorData","args_json":"[0]","out_json":"{\"type\":\"number\",\"message\":\"0\",\"formatted\":\"0\"}"}
+{"name":"error-format-1","fn":"errorFormat","args_json":"[1]","out_json":"\"1\""}
+{"name":"error-message-1","fn":"errorMessage","args_json":"[1]","out_json":"\"1\""}
+{"name":"error-data-1","fn":"errorData","args_json":"[1]","out_json":"{\"type\":\"number\",\"message\":\"1\",\"formatted\":\"1\"}"}
+{"name":"error-format-\"\"","fn":"errorFormat","args_json":"[\"\"]","out_json":"\"\""}
+{"name":"error-message-\"\"","fn":"errorMessage","args_json":"[\"\"]","out_json":"\"unknown error\""}
+{"name":"error-data-\"\"","fn":"errorData","args_json":"[\"\"]","out_json":"{\"type\":\"string\",\"message\":\"unknown error\",\"formatted\":\"\"}"}
+{"name":"error-format-\"boom\"","fn":"errorFormat","args_json":"[\"boom\"]","out_json":"\"boom\""}
+{"name":"error-message-\"boom\"","fn":"errorMessage","args_json":"[\"boom\"]","out_json":"\"boom\""}
+{"name":"error-data-\"boom\"","fn":"errorData","args_json":"[\"boom\"]","out_json":"{\"type\":\"string\",\"message\":\"boom\",\"formatted\":\"boom\"}"}
+{"name":"error-format-{\"message\":\"nested\"}","fn":"errorFormat","args_json":"[{\"message\":\"nested\"}]","out_json":"\"{\\n  \\\"message\\\": \\\"nested\\\"\\n}\""}
+{"name":"error-message-{\"message\":\"nested\"}","fn":"errorMessage","args_json":"[{\"message\":\"nested\"}]","out_json":"\"nested\""}
+{"name":"error-data-{\"message\":\"nested\"}","fn":"errorData","args_json":"[{\"message\":\"nested\"}]","out_json":"{\"message\":\"nested\",\"type\":\"Object\",\"formatted\":\"{\\n  \\\"message\\\": \\\"nested\\\"\\n}\"}"}
+{"name":"error-format-{\"data\":{\"message\":\"deep\"}}","fn":"errorFormat","args_json":"[{\"data\":{\"message\":\"deep\"}}]","out_json":"\"{\\n  \\\"data\\\": {\\n    \\\"message\\\": \\\"deep\\\"\\n  }\\n}\""}
+{"name":"error-message-{\"data\":{\"message\":\"deep\"}}","fn":"errorMessage","args_json":"[{\"data\":{\"message\":\"deep\"}}]","out_json":"\"deep\""}
+{"name":"error-data-{\"data\":{\"message\":\"deep\"}}","fn":"errorData","args_json":"[{\"data\":{\"message\":\"deep\"}}]","out_json":"{\"data\":\"[object Object]\",\"message\":\"deep\",\"type\":\"Object\",\"formatted\":\"{\\n  \\\"data\\\": {\\n    \\\"message\\\": \\\"deep\\\"\\n  }\\n}\"}"}
+{"name":"error-format-{\"a\":1,\"b\":\"x\"}","fn":"errorFormat","args_json":"[{\"a\":1,\"b\":\"x\"}]","out_json":"\"{\\n  \\\"a\\\": 1,\\n  \\\"b\\\": \\\"x\\\"\\n}\""}
+{"name":"error-message-{\"a\":1,\"b\":\"x\"}","fn":"errorMessage","args_json":"[{\"a\":1,\"b\":\"x\"}]","out_json":"\"{\\n  \\\"a\\\": 1,\\n  \\\"b\\\": \\\"x\\\"\\n}\""}
+{"name":"error-data-{\"a\":1,\"b\":\"x\"}","fn":"errorData","args_json":"[{\"a\":1,\"b\":\"x\"}]","out_json":"{\"a\":1,\"b\":\"x\",\"message\":\"{\\n  \\\"a\\\": 1,\\n  \\\"b\\\": \\\"x\\\"\\n}\",\"type\":\"Object\",\"formatted\":\"{\\n  \\\"a\\\": 1,\\n  \\\"b\\\": \\\"x\\\"\\n}\"}"}
+{"name":"positive--1","fn":"positiveInt","args_json":"[-1]","out_json":"false"}
+{"name":"nonnegative--1","fn":"nonNegativeInt","args_json":"[-1]","out_json":"false"}
+{"name":"positive-0","fn":"positiveInt","args_json":"[0]","out_json":"false"}
+{"name":"nonnegative-0","fn":"nonNegativeInt","args_json":"[0]","out_json":"true"}
+{"name":"positive-1","fn":"positiveInt","args_json":"[1]","out_json":"true"}
+{"name":"nonnegative-1","fn":"nonNegativeInt","args_json":"[1]","out_json":"true"}
+{"name":"positive-1.5","fn":"positiveInt","args_json":"[1.5]","out_json":"false"}
+{"name":"nonnegative-1.5","fn":"nonNegativeInt","args_json":"[1.5]","out_json":"false"}
+{"name":"positive-2","fn":"positiveInt","args_json":"[2]","out_json":"true"}
+{"name":"nonnegative-2","fn":"nonNegativeInt","args_json":"[2]","out_json":"true"}
+{"name":"positive-NaN","fn":"positiveInt","args_json":"[\"NaN\"]","out_json":"false"}
+{"name":"nonnegative-NaN","fn":"nonNegativeInt","args_json":"[\"NaN\"]","out_json":"false"}
+{"name":"positive-Infinity","fn":"positiveInt","args_json":"[\"Infinity\"]","out_json":"false"}
+{"name":"nonnegative-Infinity","fn":"nonNegativeInt","args_json":"[\"Infinity\"]","out_json":"false"}
+{"name":"zod-{\"name\":\"a\",\"active\":true}","fn":"zod","args_json":"[{\"name\":\"a\",\"active\":true}]","out_json":"true"}
+{"name":"zodObject-{\"name\":\"a\",\"active\":true}","fn":"zodObject","args_json":"[{\"name\":\"a\",\"active\":true}]","out_json":"true"}
+{"name":"zod-{\"name\":\"a\"}","fn":"zod","args_json":"[{\"name\":\"a\"}]","out_json":"false"}
+{"name":"zodObject-{\"name\":\"a\"}","fn":"zodObject","args_json":"[{\"name\":\"a\"}]","out_json":"false"}
+{"name":"zod-{\"name\":1,\"active\":true}","fn":"zod","args_json":"[{\"name\":1,\"active\":true}]","out_json":"false"}
+{"name":"zodObject-{\"name\":1,\"active\":true}","fn":"zodObject","args_json":"[{\"name\":1,\"active\":true}]","out_json":"false"}
+{"name":"zod-null","fn":"zod","args_json":"[null]","out_json":"false"}
+{"name":"zodObject-null","fn":"zodObject","args_json":"[null]","out_json":"false"}
+{"name":"zod-{\"name\":\"a\",\"active\":false,\"extra\":true}","fn":"zod","args_json":"[{\"name\":\"a\",\"active\":false,\"extra\":true}]","out_json":"true"}
+{"name":"zodObject-{\"name\":\"a\",\"active\":false,\"extra\":true}","fn":"zodObject","args_json":"[{\"name\":\"a\",\"active\":false,\"extra\":true}]","out_json":"true"}
+{"name":"json-schema","fn":"toJsonSchema","args_json":"[]","out_json":"{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"active\":{\"type\":\"boolean\"}},\"required\":[\"name\",\"active\"]}"}
+{"name":"optional-absent","fn":"optionalOmitUndefined","args_json":"[{}]","out_json":"{}"}
+{"name":"optional-present","fn":"optionalOmitUndefined","args_json":"[{\"value\":\"x\"}]","out_json":"{\"value\":\"x\"}"}
+{"name":"with-statics","fn":"withStatics","args_json":"[\"x\"]","out_json":"\"x\""}
+{"name":"newtype","fn":"newtype","args_json":"[\"abc\"]","out_json":"\"abc\""}

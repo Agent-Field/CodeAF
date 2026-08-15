@@ -1,0 +1,20 @@
+  Here is the plan:
+
+  • read navctx.rs end to end
+  • write the failing test first
+
+  ```rust
+    let ctx = NavCtx::new();
+  ```
+
+  │ and a note about the plan
+  ▸ workspace/wisp/plan.md  1.6KB
+
+  Three things are running; navctx is the one that failed.
+  · 3 steps — looked at the work, searched, read the plan
+
+  aforge ‹ untitled room
+▍ › █ ask for anything · @ jobs · / commands
+
+
+  chat  work  notebook  threads ▾ ctrl+t  +                          ~/aforge-v2

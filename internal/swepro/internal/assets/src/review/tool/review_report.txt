@@ -1,0 +1,43 @@
+Writes the final review report. Used by the Synthesizer agent.
+
+Produces TWO outputs from one stream of structured calls:
+- `.review/report.md` — human-readable markdown
+- `.review/report.sarif` — SARIF v2.1.0, ingestable by GitHub Code Scanning,
+  VS Code, JetBrains, and any SAST pipeline.
+
+A sidecar `.review/report-buffer.jsonl` is used to collect structured
+entries; on `close` it's read and converted to SARIF. The .md and .sarif
+are guaranteed to never get out of sync — same source of truth.
+
+Five operations:
+
+- `op: "init"` — start the report.
+    Required: `recommendation` (BLOCK | REQUEST_CHANGES | APPROVE_WITH_NITS
+              | APPROVE),
+              `summary` (3-5 sentence prose summary),
+              `base` (git ref), `head` (git ref).
+    Writes the recommendation badge + summary at the top of report.md and
+    seeds report-buffer.jsonl with metadata.
+
+- `op: "finding"` — append a confirmed finding.
+    Required: `finding_id`, `lens`, `file`, `severity`, `confidence`,
+              `title`, `why`.
+    Optional: `line`, `repro`, `suggested_fix`.
+    Appends a structured section to report.md and a JSONL line to the
+    buffer.
+
+- `op: "inconclusive"` — append an inconclusive finding (lower priority).
+    Required: `finding_id`, `lens`, `file`, `title`, `why`.
+    Optional: `line`, `severity`, `confidence`.
+
+- `op: "coverage"` — write the coverage section.
+    Required: `dispatched_lenses` (array of lens names),
+              `dropped_lenses` (array of { lens, reason }),
+              `totals` ({ candidates, confirmed, refuted, inconclusive }).
+
+- `op: "close"` — finalize. Reads the buffer and emits report.sarif. Returns
+    a one-line summary. Required: nothing.
+
+Build the report incrementally — init once, then one `finding` call per
+confirmed finding, then `inconclusive` calls, then `coverage`, then `close`.
+Each call is small.

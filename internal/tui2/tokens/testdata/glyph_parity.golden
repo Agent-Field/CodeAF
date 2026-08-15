@@ -1,0 +1,82 @@
+# 12.7 F.7 — one sample line per surface, both tiers, widths asserted equal.
+# Rendered at NoColor so the shapes are the subject; TestTierWidthParity
+# measures the coloured bytes. Marks list the non-ASCII codepoints in order,
+# because a private-use character is invisible in a diff.
+
+--- card line 1 ---
+plain    "◐ navigate: read src/navigate.rs [?2] · 12s · $0.04"
+         width 51/51  marks U+25D0 U+00B7 U+00B7
+nerdfont "\uf042 navigate: read src/navigate.rs [\uf29c2] · 12s · $0.04"
+         width 51/51  marks U+F042 U+F29C U+00B7 U+00B7
+
+--- place line ---
+plain    "~/a/v2 · ⌂ /tmp/wisp-parity · ⋔ main · / src/navigate.rs"
+         width 56/56  marks U+00B7 U+2302 U+00B7 U+22D4 U+00B7
+nerdfont "~/a/v2 · \uf015 /tmp/wisp-parity · \ue0a0 main · \uf114 src/navigate.rs"
+         width 56/56  marks U+00B7 U+F015 U+00B7 U+E0A0 U+00B7 U+F114
+
+--- status line ---
+plain    "◇ K3 ▄ $8.65"
+         width 12/12  marks U+25C7 U+2584
+nerdfont "\uf2db K3 ▄ \uf1558.65"
+         width 12/12  marks U+F2DB U+2584 U+F155
+
+--- composer prompt (chat) ---
+plain    "› what changed in navigate.rs"
+         width 29/29  marks U+203A
+nerdfont "› what changed in navigate.rs"
+         width 29/29  marks U+203A
+
+--- composer prompt (steer) ---
+plain    "↦ keep the branch"
+         width 17/17  marks U+21A6
+nerdfont "↦ keep the branch"
+         width 17/17  marks U+21A6
+
+--- fold hint ---
+plain    "▸ 12 lines"
+         width 10/10  marks U+25B8
+nerdfont "▸ 12 lines"
+         width 10/10  marks U+25B8
+
+--- fold hint (expanded) ---
+plain    "▾"
+         width 1/1  marks U+25BE
+nerdfont "▾"
+         width 1/1  marks U+25BE
+
+--- cut row ---
+plain    "╌ cut off — output cap ─────────────────────"
+         width 44/44  marks U+254C U+2014 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500
+nerdfont "╌ cut off — output cap ─────────────────────"
+         width 44/44  marks U+254C U+2014 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500 U+2500
+
+--- step dots ---
+plain    "●●◐⚑○  3/5"
+         width 10/10  marks U+25CF U+25CF U+25D0 U+2691 U+25CB
+nerdfont "\uf111\uf111\uf042\uf024\uf10c  3/5"
+         width 10/10  marks U+F111 U+F111 U+F042 U+F024 U+F10C
+
+--- queue and boost ---
+plain    "▶▶▶ ⇡ boosted · —"
+         width 17/17  marks U+25B6 U+25B6 U+25B6 U+21E1 U+00B7 U+2014
+nerdfont "\uf0da\uf0da\uf0da \uf0e7 boosted · —"
+         width 17/17  marks U+F0DA U+F0DA U+F0DA U+F0E7 U+00B7 U+2014
+
+--- scope breadcrumb ---
+plain    "‹ tasks · ⋯"
+         width 11/11  marks U+2039 U+00B7 U+22EF
+nerdfont "‹ tasks · \uf141"
+         width 11/11  marks U+2039 U+00B7 U+F141
+
+--- prose and static overflow ---
+plain    "│ · a list item that ran out of column…  ▏ fmt.Println"
+         width 54/54  marks U+2502 U+00B7 U+2026 U+258F
+nerdfont "│ · a list item that ran out of column…  ▏ fmt.Println"
+         width 54/54  marks U+2502 U+00B7 U+2026 U+258F
+
+--- settle row ---
+plain    "✓ done · +42 · −7 · ✕ one check"
+         width 31/31  marks U+2713 U+00B7 U+00B7 U+2212 U+00B7 U+2715
+nerdfont "\uf00c done · +42 · −7 · \uf00d one check"
+         width 31/31  marks U+F00C U+00B7 U+00B7 U+2212 U+00B7 U+F00D

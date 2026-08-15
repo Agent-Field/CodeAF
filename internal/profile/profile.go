@@ -22,38 +22,159 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // Record is one executed leaf.
 type Record struct {
 	Title   string `json:"title"`
 	Summary string `json:"summary"`
-	Sources int    `json:"sources"`
-	Size    string `json:"size"`  // what the planner predicted
-	Turns   int    `json:"turns"` // what it actually took
-	Tokens  int    `json:"tokens"`
-	Stop    string `json:"stop"`
-	Done    bool   `json:"done"`
+	// Time is when this observation landed. Older profiles omit it; readers
+	// may use the profile file's modification time as a coarse fallback.
+	Time time.Time `json:"time,omitempty"`
+	// Sources is the touch-list: how many distinct things this leaf had to
+	// visit to finish. It is a size signal and it is NOT a fan-in — a node that
+	// names four datasets and waits on nobody has four sources and no inputs.
+	// Reading it as one is what priced reassembly at the price of an atomic.
+	Sources int `json:"sources"`
+	// SourcesKnown distinguishes an observed zero from old and direct records
+	// whose omitted source count decoded to zero.
+	SourcesKnown bool `json:"sources_known,omitempty"`
+	// FanIn is how many earlier results actually landed in this leaf: its
+	// settled dependency count, measured rather than inferred. It is the number
+	// a join is priced from, and it is a different question from Sources — the
+	// one the fan-out prompt has never been shown, because until this field
+	// existed nothing recorded it.
+	//
+	// Nil is "nobody counted", which every record written before this field
+	// existed is, and which the join price is required to skip: counting an
+	// unmeasured leaf as a zero-input one would price a join from leaves that
+	// never made one.
+	FanIn    *int    `json:"fan_in,omitempty"`
+	Size     string  `json:"size"`  // planner prediction, or direct when none was made
+	Turns    int     `json:"turns"` // what it actually took
+	Tokens   int     `json:"tokens"`
+	Stop     string  `json:"stop"`
+	Cost     float64 `json:"cost,omitempty"`
+	Promoted bool    `json:"promoted,omitempty"`
+
+	// ExpectedTurns and ExpectedTokens are the profile's own medians for this
+	// size before the record landed. Nil means the bucket had too little prior
+	// evidence to make an expectation; that is distinct from a zero residual.
+	ExpectedTurns  *int     `json:"expected_turns,omitempty"`
+	ExpectedTokens *int     `json:"expected_tokens,omitempty"`
+	Surprise       *float64 `json:"surprise,omitempty"`
+
+	// Calibration is what the worker said about its own fit for this task —
+	// exec.Outcome.Calibration, journaled. It is free text and it is only ever
+	// read by a model: the recalibration call renders it beside the turns and
+	// tokens, so the three anchor examples get rewritten from what the work felt
+	// like as well as from what it cost. Nil on every record the generalist has
+	// ever written, which is why every existing profile file and every existing
+	// recalibration prompt is byte-identical.
+	Calibration []string `json:"calibration,omitempty"`
+
+	// EscalatedFrom names the worker that tried this task first and could not
+	// finish it. It is one string rather than a chain because the boundary it
+	// measures has two sides and no more: "linear could not, this one could" is
+	// the entire fact, and it is the only direct evidence there is that the
+	// boundary between two rulers sits too high. Empty is the ordinary case —
+	// the task came here first, by choice, and nothing about a ruler follows.
+	EscalatedFrom string `json:"escalated_from,omitempty"`
+
+	// Verdict is how the leaf actually ended. It replaced a `done` flag that was
+	// the scheduler's StateDone carried across — true of a leaf that exhausted
+	// its budget mid-edit as much as of one that finished — and the flag was
+	// never read, because a ruler calibrated against it would have been
+	// calibrated against the budget rather than against the work.
+	Verdict provider.Verdict `json:"verdict,omitempty"`
 }
+
+// BucketDirect labels work dispatched without a planner size judgment. Keeping
+// it separate lets the compiler learn direct-job costs without teaching the
+// ruler that an unmeasured task was atomic.
+//
+// BucketWhole is the shape that had no name at all, and its absence was
+// expensive. An undivided goal, a single-leaf remainder and a node spliced in
+// after planning all run as one worker over the whole job and none of them was
+// ever sized, so each was journaled under the empty string — a bucket no reader
+// looks up, which is why the commonest shape in the product could never reach
+// the evidence floor and never acquired an expectation of its own. Worse, the
+// unlabelled rows were still the population the cheapest-leaf floor was taken
+// over, so a one-turn no-op's 7,215 tokens became the advertised price of
+// existing as a leaf. Labelled, the shape accrues its own row and the floor is
+// taken over shapes somebody named.
+const (
+	BucketDirect = "direct"
+	BucketReflex = "reflex"
+	BucketWhole  = "whole"
+)
+
+func (r Record) rulerEvidence() bool {
+	return r.Size != BucketDirect && r.Size != BucketReflex
+}
+
+// Labelled reports that somebody named this record's shape. An empty size is a
+// record written by a surface that did not say, and it is evidence about no
+// shape in particular — see BucketWhole for why there is now no reason to write
+// one.
+func (r Record) Labelled() bool { return strings.TrimSpace(r.Size) != "" }
+
+// HasSourceCount keeps nonzero counts from legacy profiles usable while
+// treating their indistinguishable zero value as unknown.
+func (r Record) HasSourceCount() bool {
+	return r.SourcesKnown || r.Sources != 0
+}
+
+// FanInCount is the measured inbound dependency count and whether anybody
+// measured it. A record from before fan-in was recorded answers false, and a
+// caller pricing a join has to skip it rather than read it as zero.
+func (r Record) FanInCount() (int, bool) {
+	if r.FanIn == nil {
+		return 0, false
+	}
+	return *r.FanIn, true
+}
+
+// FanInOf is the pointer a caller writes into a Record.
+func FanInOf(count int) *int { return &count }
 
 // Overran reports a task that could not finish inside its budget — the clearest
 // evidence that the ruler let too much into one node.
-func (r Record) Overran() bool { return r.Stop == "budget" || r.Stop == "turn-cap" }
+//
+// The verdict is the authority where there is one; the stop reason is read for
+// records written before verdicts existed, so an old profile still calibrates.
+func (r Record) Overran() bool {
+	switch r.Verdict {
+	case provider.VerdictBudgetStop, provider.VerdictTurnCap:
+		return true
+	case "":
+		return r.Stop == "budget" || r.Stop == "turn-cap"
+	default:
+		return false
+	}
+}
 
 // Profile is the accumulated experience of one model running one kind of work.
 //
-// Keyed by model and skill because capability is a property of the executor, not
-// of the project. When specialised sub-harnesses arrive — a reviewer, a coding
-// worker — each accumulates its own profile with no new machinery: a different
-// skill is simply a different file.
+// Keyed by model and subharness because capability is a property of the
+// executor, not of the project. Specialised workers — a reviewer, a coding
+// pipeline — each accumulate their own profile with no new machinery: a
+// different subharness is simply a different file.
 type Profile struct {
-	Model   string   `json:"model"`
-	Skill   string   `json:"skill"`
-	Anchors string   `json:"anchors,omitempty"` // empty means the built-in prior
-	Records []Record `json:"records"`
+	Model      string   `json:"model"`
+	Subharness string   `json:"subharness"`
+	Anchors    string   `json:"anchors,omitempty"` // empty means the built-in prior
+	Records    []Record `json:"records"`
 
-	path  string
-	mutex sync.Mutex
+	path string
+	// modifiedAt is the coarse timestamp available to features reading an old
+	// profile whose individual records predate Record.Time.
+	modifiedAt time.Time
+	mutex      sync.Mutex
 }
 
 // maxRecords bounds the file. Old measurements describe a ruler that has since
@@ -66,21 +187,85 @@ const maxRecords = 200
 // enough to tell a systematically wrong anchor from one unlucky task.
 const MinSamples = 8
 
-// Load reads the profile for a model and skill, returning an empty one when
+// maxSurprise keeps one pathological run from dominating a bucket's error
+// bar forever. Ten is still an honest 1000% miss while bounding bad telemetry.
+const maxSurprise = 10.0
+
+// decoded is one parse of one profile file, held against the identity the file
+// had when it was read.
+type decoded struct {
+	// model and subharness are held because the file names them too, and decoding
+	// lets the file's spelling win over the caller's arguments.
+	model      string
+	subharness string
+	anchors    string
+	records    []Record
+	modified   time.Time
+	size       int64
+}
+
+// decodes memoizes parses by path, because the same file is read far more often
+// than it is written: once on the launch path, again per planning call, and
+// again by each grounding view that reports what the ruler is made of. The file
+// runs to tens of kilobytes, and re-parsing it to answer the same question is
+// work nobody asked for.
+//
+// A remembered parse is trusted only while the file's modification time and
+// size both match what they were when it was taken, so a Save from this process
+// or an edit from another one is picked up on the next read.
+var decodes sync.Map // path -> decoded
+
+// Load reads the profile for a model and subharness, returning an empty one when
 // there is nothing recorded yet.
-func Load(dir, model, skill string) (*Profile, error) {
+//
+// The file is keyed on the model's IDENTITY rather than on its spelling (see
+// identity.go). With no resolver installed that is the free normalisation alone,
+// which slug already collapsed, so every existing profile file keeps its exact
+// name; with one installed, two spellings of one model open one history, and the
+// history written under the other spelling is adopted on the first miss.
+//
+// The result is always a fresh value owning its own records: callers Add to a
+// profile and Save it, so a remembered parse must never become shared mutable
+// state.
+func Load(dir, model, subharness string) (*Profile, error) {
 	if strings.TrimSpace(dir) == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		dir = filepath.Join(home, ".aforge")
+		dir = home.Dir()
 	}
-	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(model), slug(skill)))
-	profile := &Profile{Model: model, Skill: skill, path: path}
+	resolved := Identity(model)
+	path := filepath.Join(dir, fmt.Sprintf("profile-%s-%s.json", slug(resolved), slug(subharness)))
+	profile := &Profile{Model: model, Subharness: subharness, path: path}
+
+	before, statErr := os.Stat(path)
+	if errors.Is(statErr, os.ErrNotExist) {
+		decodes.Delete(path)
+		// No file under this identity yet — so this is the moment, and the only
+		// moment, at which evidence written under another spelling of the same
+		// model can be taken in without any risk of double-counting it.
+		found := adopt(dir, resolved, subharness, path)
+		profile.Records, profile.Anchors = found.records, found.anchors
+		return profile, nil
+	}
+	if statErr == nil {
+		if remembered, ok := decodes.Load(path); ok {
+			if hit := remembered.(decoded); hit.size == before.Size() && hit.modified.Equal(before.ModTime()) {
+				profile.Model = hit.model
+				profile.Subharness = hit.subharness
+				profile.Anchors = hit.anchors
+				profile.Records = append([]Record(nil), hit.records...)
+				profile.modifiedAt = hit.modified.UTC()
+				return profile, nil
+			}
+		}
+	}
 
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
+		// The file went away between the stat and the read. Same answer as the
+		// miss above, including the adoption: a race must not be the one path
+		// that silently starts a model's history over.
+		decodes.Delete(path)
+		found := adopt(dir, resolved, subharness, path)
+		profile.Records, profile.Anchors = found.records, found.anchors
 		return profile, nil
 	}
 	if err != nil {
@@ -89,26 +274,97 @@ func Load(dir, model, skill string) (*Profile, error) {
 	if err := json.Unmarshal(data, profile); err != nil {
 		// A corrupt profile is not worth failing a run over; it is a cache of
 		// observations, and the built-in prior is a safe place to restart from.
-		return &Profile{Model: model, Skill: skill, path: path}, nil
+		decodes.Delete(path)
+		return &Profile{Model: model, Subharness: subharness, path: path}, nil
 	}
 	profile.path = path
+	after, err := os.Stat(path)
+	if err != nil {
+		return profile, nil
+	}
+	profile.modifiedAt = after.ModTime().UTC()
+	// Only remember a parse of a file that did not move under the read.
+	if statErr == nil && after.Size() == before.Size() && after.ModTime().Equal(before.ModTime()) {
+		decodes.Store(path, decoded{
+			model:      profile.Model,
+			subharness: profile.Subharness,
+			anchors:    profile.Anchors,
+			records:    append([]Record(nil), profile.Records...),
+			modified:   after.ModTime(),
+			size:       after.Size(),
+		})
+	}
 	return profile, nil
 }
 
-// Add appends measurements.
-func (p *Profile) Add(records ...Record) {
+// Add appends measurements and returns the records as they were journaled.
+// Each expectation is taken before its record enters the profile, so a leaf
+// can never make its own prediction look better.
+func (p *Profile) Add(records ...Record) []Record {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+	added := make([]Record, 0, len(records))
 	for _, record := range records {
 		if strings.TrimSpace(record.Title) == "" {
 			continue
 		}
+		if record.Time.IsZero() {
+			record.Time = time.Now().UTC()
+		}
+		record.ExpectedTurns = nil
+		record.ExpectedTokens = nil
+		record.Surprise = nil
+		if expectedTurns, expectedTokens, ok := p.expectation(record.Size); ok {
+			record.ExpectedTurns = intPointer(expectedTurns)
+			record.ExpectedTokens = intPointer(expectedTokens)
+			surprise := (normalizedResidual(record.Turns, expectedTurns) +
+				normalizedResidual(record.Tokens, expectedTokens)) / 2
+			if surprise > maxSurprise {
+				surprise = maxSurprise
+			}
+			record.Surprise = floatPointer(surprise)
+		}
 		p.Records = append(p.Records, record)
+		added = append(added, record)
 	}
 	if len(p.Records) > maxRecords {
 		p.Records = p.Records[len(p.Records)-maxRecords:]
 	}
+	return added
 }
+
+// expectation returns the median turns and tokens for one size bucket. The
+// same evidence floor that protects ruler changes protects predictions: below
+// it, surprise is unknown rather than deceptively recorded as zero.
+func (p *Profile) expectation(size string) (int, int, bool) {
+	turns := make([]int, 0, len(p.Records))
+	tokens := make([]int, 0, len(p.Records))
+	for _, record := range p.Records {
+		if record.Size != size {
+			continue
+		}
+		turns = append(turns, record.Turns)
+		tokens = append(tokens, record.Tokens)
+	}
+	if len(turns) < MinSamples {
+		return 0, 0, false
+	}
+	sort.Ints(turns)
+	sort.Ints(tokens)
+	return turns[len(turns)/2], tokens[len(tokens)/2], true
+}
+
+func normalizedResidual(actual, expected int) float64 {
+	difference := actual - expected
+	if difference < 0 {
+		difference = -difference
+	}
+	return float64(difference) / float64(max(expected, 1))
+}
+
+func intPointer(value int) *int { return &value }
+
+func floatPointer(value float64) *float64 { return &value }
 
 // Save writes the profile back.
 func (p *Profile) Save() error {
@@ -124,7 +380,27 @@ func (p *Profile) Save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(p.path, data, 0o644)
+	if err := os.WriteFile(p.path, data, 0o644); err != nil {
+		return err
+	}
+	if info, err := os.Stat(p.path); err == nil {
+		p.modifiedAt = info.ModTime().UTC()
+	} else {
+		p.modifiedAt = time.Now().UTC()
+	}
+	return nil
+}
+
+// RecordsSnapshot returns a stable copy of the measurements and the profile
+// file's last modification time. Derived views use the latter only for legacy
+// records written before per-record timestamps existed.
+func (p *Profile) RecordsSnapshot() ([]Record, time.Time) {
+	if p == nil {
+		return nil, time.Time{}
+	}
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	return append([]Record(nil), p.Records...), p.modifiedAt
 }
 
 // Spread is what the profile knows, and it deliberately reports range rather
@@ -139,22 +415,72 @@ type Spread struct {
 	MedianKb int
 }
 
+// ReflexStats is the measured boundary between work that finishes as one
+// quick action and work that promotes into the compiled path.
+type ReflexStats struct {
+	Samples      int
+	Successes    int
+	Promotions   int
+	MedianTurns  int
+	MedianTokens int
+	AverageCost  float64
+}
+
+// MeasureReflex summarises reflex records without admitting them as planner
+// ruler evidence. An unverified completion still counts here: this statistic
+// asks whether the micro-leaf finished, not whether it should rate a model.
+func (p *Profile) MeasureReflex() ReflexStats {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	var stats ReflexStats
+	var turns, tokens []int
+	var cost float64
+	for _, record := range p.Records {
+		if record.Size != BucketReflex {
+			continue
+		}
+		stats.Samples++
+		turns = append(turns, record.Turns)
+		tokens = append(tokens, record.Tokens)
+		cost += record.Cost
+		if record.Promoted {
+			stats.Promotions++
+		} else if record.Verdict == provider.VerdictVerifiedSuccess ||
+			record.Verdict == provider.VerdictUnverifiedSuccess {
+			stats.Successes++
+		}
+	}
+	if stats.Samples == 0 {
+		return stats
+	}
+	sort.Ints(turns)
+	sort.Ints(tokens)
+	stats.MedianTurns = turns[len(turns)/2]
+	stats.MedianTokens = tokens[len(tokens)/2]
+	stats.AverageCost = cost / float64(stats.Samples)
+	return stats
+}
+
 // Measure summarises the recorded work.
 func (p *Profile) Measure() Spread {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	if len(p.Records) == 0 {
-		return Spread{}
-	}
 	turns := make([]int, 0, len(p.Records))
 	tokens := make([]int, 0, len(p.Records))
-	spread := Spread{Samples: len(p.Records)}
+	var spread Spread
 	for _, record := range p.Records {
+		if !record.rulerEvidence() {
+			continue
+		}
 		turns = append(turns, record.Turns)
 		tokens = append(tokens, record.Tokens)
+		spread.Samples++
 		if record.Overran() {
 			spread.Overran++
 		}
+	}
+	if spread.Samples == 0 {
+		return Spread{}
 	}
 	sort.Ints(turns)
 	sort.Ints(tokens)
@@ -206,7 +532,12 @@ func (p *Profile) NeedsRecalibration() (bool, string) {
 func (p *Profile) Evidence(each int) (small, middle, large []Record) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	sorted := append([]Record(nil), p.Records...)
+	sorted := make([]Record, 0, len(p.Records))
+	for _, record := range p.Records {
+		if record.rulerEvidence() {
+			sorted = append(sorted, record)
+		}
+	}
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Turns < sorted[j].Turns })
 	if len(sorted) == 0 {
 		return nil, nil, nil
@@ -221,6 +552,39 @@ func (p *Profile) Evidence(each int) (small, middle, large []Record) {
 	from := max(0, centre-each/2)
 	to := min(len(sorted), from+each)
 	return small, sorted[from:to], large
+}
+
+// Boundary reports whether this record says anything about where the edge of
+// this worker's capacity is: a note the worker wrote about its own fit, or the
+// fact that another worker tried the task first and could not finish it.
+func (r Record) Boundary() bool {
+	return len(r.Calibration) > 0 || strings.TrimSpace(r.EscalatedFrom) != ""
+}
+
+// BoundaryEvidence is the newest handful of records that say something about
+// where this worker's edge is.
+//
+// It is a separate pick from Evidence rather than a fourth band inside it
+// because the two answer different questions. Evidence samples the observed
+// range — cheapest, middle, overran — and a note about fit is not a point on
+// that range: a run that finished in four turns because the job was trivial for
+// this worker sits in the same band as one that finished in four turns because
+// the worker is fast, and only one of them is evidence that the boundary is in
+// the wrong place. Newest first, because a boundary that has already moved once
+// is described by what happened after it moved.
+func (p *Profile) BoundaryEvidence(limit int) []Record {
+	if p == nil || limit <= 0 {
+		return nil
+	}
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	picked := make([]Record, 0, limit)
+	for index := len(p.Records) - 1; index >= 0 && len(picked) < limit; index-- {
+		if p.Records[index].Boundary() {
+			picked = append(picked, p.Records[index])
+		}
+	}
+	return picked
 }
 
 var nonWord = regexp.MustCompile(`[^a-zA-Z0-9]+`)

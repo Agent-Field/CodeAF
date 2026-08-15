@@ -1,0 +1,30 @@
+{"name":"event-valid","fn":"schema","args_json":"[\"event\",\"evt_x\"]","out_json":"true"}
+{"name":"event-bare-prefix","fn":"schema","args_json":"[\"event\",\"evt\"]","out_json":"true"}
+{"name":"event-invalid","fn":"schema","args_json":"[\"event\",\"event_x\"]","out_json":"false"}
+{"name":"question-valid","fn":"schema","args_json":"[\"question\",\"que_1\"]","out_json":"true"}
+{"name":"question-invalid","fn":"schema","args_json":"[\"question\",\"\"]","out_json":"false"}
+{"name":"tool-prefix-is-tool","fn":"schema","args_json":"[\"tool\",\"tool_\"]","out_json":"true"}
+{"name":"part-valid","fn":"schema","args_json":"[\"part\",\"prt_123\"]","out_json":"true"}
+{"name":"workspace-valid","fn":"schema","args_json":"[\"workspace\",\"wrk\"]","out_json":"true"}
+{"name":"workspace-wrong-prefix","fn":"schema","args_json":"[\"workspace\",\"ws_1\"]","out_json":"false"}
+{"name":"account-valid","fn":"schema","args_json":"[\"account\",\"act_1\"]","out_json":"true"}
+{"name":"permission-valid","fn":"schema","args_json":"[\"permission\",\"per_1\"]","out_json":"true"}
+{"name":"epoch","fn":"create","args_json":"[\"evt\",\"ascending\",0]","out_json":"\"evt_000000000001tQt4zg60JOO3g6\""}
+{"name":"one","fn":"create","args_json":"[\"evt\",\"ascending\",1]","out_json":"\"evt_000000001001tDXhlRGq6q3kp9\""}
+{"name":"same-ms-counter-2","fn":"create","args_json":"[\"evt\",\"ascending\",1]","out_json":"\"evt_000000001002GjsBP00kboW5wZ\""}
+{"name":"modern","fn":"create","args_json":"[\"msg\",\"ascending\",1750000000123]","out_json":"\"msg_77420dc7b001XtNkZbLvl2Rt2Y\""}
+{"name":"descending-epoch","fn":"create","args_json":"[\"evt\",\"descending\",0]","out_json":"\"evt_fffffffffffe1lhojibUqkNuu0\""}
+{"name":"descending-modern","fn":"create","args_json":"[\"ses\",\"descending\",1750000000123]","out_json":"\"ses_88bdf2384ffeaHXOo41AADHYY7\""}
+{"name":"negative","fn":"create","args_json":"[\"raw\",\"ascending\",-1]","out_json":"\"raw_fffffffff001ljHK7K55qKLz2D\""}
+{"name":"unknown-direction-falls-ascending","fn":"create","args_json":"[\"raw\",\"sideways\",10]","out_json":"\"raw_00000000a0010r0tIhg2VsWxKJ\""}
+{"name":"timestamp-0","fn":"timestamp","args_json":"[\"evt_000000000001EFSOSue8d4SBGH\"]","out_json":"0"}
+{"name":"timestamp-1","fn":"timestamp","args_json":"[\"evt_0000000010010Gq6hS5Q0wJomn\"]","out_json":"1"}
+{"name":"timestamp-123456789","fn":"timestamp","args_json":"[\"evt_0075bcd150012NI1lcUzK2oTIZ\"]","out_json":"123456789"}
+{"name":"timestamp-1750000000123","fn":"timestamp","args_json":"[\"evt_77420dc7b001xOoOrO78NctG44\"]","out_json":"32013081723"}
+{"name":"ascending-given","fn":"ascending","args_json":"[\"event\",\"evt_custom\"]","out_json":"\"evt_custom\""}
+{"name":"descending-given","fn":"descending","args_json":"[\"session\",\"ses_custom\"]","out_json":"\"ses_custom\""}
+{"name":"ascending-empty-generates","fn":"ascending","args_json":"[\"message\",\"\"]","out_json":"\"msg_3185c5000001yyXs4naeVOLI6N\""}
+{"name":"ascending-bare-prefix-given","fn":"ascending","args_json":"[\"event\",\"evt\"]","out_json":"\"evt\""}
+{"name":"descending-prefix-only-given","fn":"descending","args_json":"[\"session\",\"ses\"]","out_json":"\"ses\""}
+{"name":"ascending-rejects","fn":"ascending","args_json":"[\"event\",\"msg_wrong\"]","out_json":"{\"error\":\"Error: ID msg_wrong does not start with evt\"}"}
+{"name":"descending-rejects","fn":"descending","args_json":"[\"session\",\"evt_wrong\"]","out_json":"{\"error\":\"Error: ID evt_wrong does not start with ses\"}"}

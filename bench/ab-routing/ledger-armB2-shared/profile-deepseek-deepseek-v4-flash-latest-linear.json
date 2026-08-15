@@ -1,0 +1,646 @@
+{
+  "model": "~deepseek/deepseek-v4-flash-latest",
+  "skill": "linear",
+  "records": [
+    {
+      "title": "Format tests",
+      "summary": "Verify exact on-disk frame and payload byte layout.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 21,
+      "tokens": 376513,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "API tests",
+      "summary": "Exercise put/get/delete/scan/live_keys/segments/close semantics.",
+      "sources": 6,
+      "size": "atomic",
+      "turns": 18,
+      "tokens": 307898,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Durability tests",
+      "summary": "Test reopen persistence, crash recovery, torn-tail truncation.",
+      "sources": 8,
+      "size": "atomic",
+      "turns": 16,
+      "tokens": 242594,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Compaction tests",
+      "summary": "Verify compaction merges, removes tombstones, reclaims bytes.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 25,
+      "tokens": 422385,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "record-io",
+      "summary": "Implement record framing, encode/decode, CRC, and errors.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 11,
+      "tokens": 75402,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "segment-manager",
+      "summary": "Implement segment file naming, append, roll, and truncate.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 27282,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "index-builder",
+      "summary": "Implement in-memory key index from segment records.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 23,
+      "tokens": 373701,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "recovery-logic",
+      "summary": "Implement manifest fallback, segment discovery, and torn-tail truncation.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 16,
+      "tokens": 257374,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "store-api",
+      "summary": "Implement LogStore public API, compaction, and wiring.",
+      "sources": 6,
+      "size": "atomic",
+      "turns": 2,
+      "tokens": 8932,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Assemble corpus and workspace",
+      "summary": "Ensure all eleven corpus documents are present in corpus/ and that the workspace root is writable. No other preparation is needed; the material is already at hand.",
+      "sources": 0,
+      "size": "atomic",
+      "turns": 4,
+      "tokens": 145129,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit: read all eleven documents and produce the complete seven-field findings.json plus REPORT.md 1",
+      "summary": "Independently read every document in corpus/ (all eleven files, including RULES.md and every ADR), resolve the ADR chain and RULES.md precedence, and compute all seven findings exactly as specified: services_on_deprecated_queue, total_incident_minutes, most_impacted_service, monthly_cost_usd_cents, unowned_services, superseded_docs, and contradictions. Then write REPORT.md with prose findings, doc NN citations, and contradiction explanations. Do not share notes with other passes; each pass produces its own complete findings.json and REPORT.md.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 14,
+      "tokens": 185656,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit: read all eleven documents and produce the complete seven-field findings.json plus REPORT.md 2",
+      "summary": "Independently read every document in corpus/ (all eleven files, including RULES.md and every ADR), resolve the ADR chain and RULES.md precedence, and compute all seven findings exactly as specified: services_on_deprecated_queue, total_incident_minutes, most_impacted_service, monthly_cost_usd_cents, unowned_services, superseded_docs, and contradictions. Then write REPORT.md with prose findings, doc NN citations, and contradiction explanations. Do not share notes with other passes; each pass produces its own complete findings.json and REPORT.md.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 8,
+      "tokens": 99823,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit: read all eleven documents and produce the complete seven-field findings.json plus REPORT.md 3",
+      "summary": "Independently read every document in corpus/ (all eleven files, including RULES.md and every ADR), resolve the ADR chain and RULES.md precedence, and compute all seven findings exactly as specified: services_on_deprecated_queue, total_incident_minutes, most_impacted_service, monthly_cost_usd_cents, unowned_services, superseded_docs, and contradictions. Then write REPORT.md with prose findings, doc NN citations, and contradiction explanations. Do not share notes with other passes; each pass produces its own complete findings.json and REPORT.md.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 11,
+      "tokens": 119512,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "core-audit",
+      "summary": "Audit assignment and payroll modules against their docstrings.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 54923,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "model-audit",
+      "summary": "Audit shift and worker models against their docstrings.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 12,
+      "tokens": 128903,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "util-audit",
+      "summary": "Audit utility and scheduling modules against their docstrings.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 15,
+      "tokens": 107384,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "fix-assignment",
+      "summary": "Fix shift assignment defects: boundary, state, caching, exactness.",
+      "sources": 6,
+      "size": "oversized",
+      "turns": 17,
+      "tokens": 182718,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "payroll-core",
+      "summary": "Fix payroll arithmetic exactness and boundary defects.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 12,
+      "tokens": 102830,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "error-handling",
+      "summary": "Fix payroll error handling that turns failures into quiet success.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 18,
+      "tokens": 191267,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "scheduler-fix",
+      "summary": "Fix availability and blocking defects in scheduler.py.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 21,
+      "tokens": 288399,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "assignment-fix",
+      "summary": "Fix skill filtering and booking-skip logic in assignment.py.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 19,
+      "tokens": 213125,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "exports-update",
+      "summary": "Update __init__.py exports without breaking existing API.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 9,
+      "tokens": 53240,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "utils-cache",
+      "summary": "Fix caching and state leaks in shiftplan/utils.py.",
+      "sources": 6,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 23921,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "utils-errors",
+      "summary": "Fix error handling that turns failures into quiet successes.",
+      "sources": 6,
+      "size": "atomic",
+      "turns": 12,
+      "tokens": 91907,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Parse-pattern",
+      "summary": "Parse pattern string into internal representation or None.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 19,
+      "tokens": 447947,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Match-path",
+      "summary": "Match parsed pattern against a path string.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 15,
+      "tokens": 152500,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "select-logic",
+      "summary": "Implement select() ordering, dedup, exclusion, no-match rule.",
+      "sources": 7,
+      "size": "borderline",
+      "turns": 13,
+      "tokens": 308625,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "matches-bridge",
+      "summary": "Use compiled patterns and matches() from stage 1.",
+      "sources": 1,
+      "size": "atomic",
+      "turns": 21,
+      "tokens": 227573,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Core store",
+      "summary": "Implement LogStore API, segments, index, recovery, compaction.",
+      "sources": 9,
+      "size": "oversized",
+      "turns": 22,
+      "tokens": 256723,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Extract facts",
+      "summary": "Extract every fact needed for the seven findings from all corpus documents.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 6,
+      "tokens": 74918,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Resolve and compute",
+      "summary": "Resolve all conflicts and compute the seven exact answers.",
+      "sources": 12,
+      "size": "oversized",
+      "turns": 3,
+      "tokens": 22748,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "write-json",
+      "summary": "Write findings.json from the computed answers.",
+      "sources": 2,
+      "size": "atomic",
+      "turns": 3,
+      "tokens": 12281,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "write-report",
+      "summary": "Write REPORT.md from the computed answers.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 4,
+      "tokens": 21911,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Prepare workspace for independent audit",
+      "summary": "Ensure the repository is checked out and clean, run the shipped test suite once to capture the starting state, and confirm the package imports. This preparation is identical for every pass and does not involve judging the code.",
+      "sources": 0,
+      "size": "atomic",
+      "turns": 14,
+      "tokens": 130420,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full audit and repair of shiftplan 1",
+      "summary": "Read every module in shiftplan and its shipped tests. For each module, treat the docstring as the specification and the code as suspect wherever they disagree. Find every defect: wrong boundary semantics, state leaking between calls, caching that answers an unasked question, arithmetic that loses exactness, and error handling that turns failure into quiet success. Also find the refactor requirements: pluggable ranking strategy with Strategy and GreedyCheapest, assign_shifts signature change, and public API additions. Produce a complete, independent list of defects and the exact code changes to fix them, without consulting any other pass.",
+      "sources": 8,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3209,
+      "stop": "deadline",
+      "verdict": "provider_failure"
+    },
+    {
+      "title": "Full audit and repair of shiftplan 2",
+      "summary": "Read every module in shiftplan and its shipped tests. For each module, treat the docstring as the specification and the code as suspect wherever they disagree. Find every defect: wrong boundary semantics, state leaking between calls, caching that answers an unasked question, arithmetic that loses exactness, and error handling that turns failure into quiet success. Also find the refactor requirements: pluggable ranking strategy with Strategy and GreedyCheapest, assign_shifts signature change, and public API additions. Produce a complete, independent list of defects and the exact code changes to fix them, without consulting any other pass.",
+      "sources": 8,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3431,
+      "stop": "deadline",
+      "verdict": "provider_failure"
+    },
+    {
+      "title": "Full audit and repair of shiftplan 3",
+      "summary": "Read every module in shiftplan and its shipped tests. For each module, treat the docstring as the specification and the code as suspect wherever they disagree. Find every defect: wrong boundary semantics, state leaking between calls, caching that answers an unasked question, arithmetic that loses exactness, and error handling that turns failure into quiet success. Also find the refactor requirements: pluggable ranking strategy with Strategy and GreedyCheapest, assign_shifts signature change, and public API additions. Produce a complete, independent list of defects and the exact code changes to fix them, without consulting any other pass.",
+      "sources": 8,
+      "size": "atomic",
+      "turns": 1,
+      "tokens": 3308,
+      "stop": "deadline",
+      "verdict": "provider_failure"
+    },
+    {
+      "title": "Checkout and baseline",
+      "summary": "Ensure the workspace is clean and the package imports, then run python3 -m pytest tests/ -q once to capture the starting failures. No further preparation is needed; the material is already on disk.",
+      "sources": 0,
+      "size": "atomic",
+      "turns": 5,
+      "tokens": 20039,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Independent full audit and repair of the shiftplan package 1",
+      "summary": "Read every module in shiftplan and its shipped tests. For each module, treat the docstring as the specification and identify every place where the code disagrees with it, plus any defect not visible from the shipped tests: wrong boundary semantics, state leaking between calls, caching returning answers for unasked questions, arithmetic losing exactness, and error handling that turns failure into quiet success. Fix all defects found. Then perform the refactor: add shiftplan/strategy.py with abstract Strategy and GreedyCheapest, change assign_shifts to the required signature, and update __init__ exports. Do not modify tests/test_visible.py. Leave the repaired package on disk.",
+      "sources": 7,
+      "size": "atomic",
+      "turns": 22,
+      "tokens": 376576,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Independent full audit and repair of the shiftplan package 2",
+      "summary": "Read every module in shiftplan and its shipped tests. For each module, treat the docstring as the specification and identify every place where the code disagrees with it, plus any defect not visible from the shipped tests: wrong boundary semantics, state leaking between calls, caching returning answers for unasked questions, arithmetic losing exactness, and error handling that turns failure into quiet success. Fix all defects found. Then perform the refactor: add shiftplan/strategy.py with abstract Strategy and GreedyCheapest, change assign_shifts to the required signature, and update __init__ exports. Do not modify tests/test_visible.py. Leave the repaired package on disk.",
+      "sources": 7,
+      "size": "atomic",
+      "turns": 23,
+      "tokens": 408027,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Independent full audit and repair of the shiftplan package 3",
+      "summary": "Read every module in shiftplan and its shipped tests. For each module, treat the docstring as the specification and identify every place where the code disagrees with it, plus any defect not visible from the shipped tests: wrong boundary semantics, state leaking between calls, caching returning answers for unasked questions, arithmetic losing exactness, and error handling that turns failure into quiet success. Fix all defects found. Then perform the refactor: add shiftplan/strategy.py with abstract Strategy and GreedyCheapest, change assign_shifts to the required signature, and update __init__ exports. Do not modify tests/test_visible.py. Leave the repaired package on disk.",
+      "sources": 7,
+      "size": "atomic",
+      "turns": 17,
+      "tokens": 177802,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Pattern parser",
+      "summary": "Parse and compile all pattern syntax into an internal form",
+      "sources": 1,
+      "size": "borderline",
+      "turns": 10,
+      "tokens": 73334,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Path matcher",
+      "summary": "Match compiled patterns against paths, handling all wildcard rules",
+      "sources": 2,
+      "size": "oversized",
+      "turns": 24,
+      "tokens": 377686,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "record-codec",
+      "summary": "Encode/decode record frames with CRC and flags.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 26,
+      "tokens": 396152,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "segment-io",
+      "summary": "Read, validate, truncate, and append segment files.",
+      "sources": 7,
+      "size": "atomic",
+      "turns": 21,
+      "tokens": 409371,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "manifest-dir",
+      "summary": "Read, validate, and write manifest; discover segments.",
+      "sources": 6,
+      "size": "atomic",
+      "turns": 23,
+      "tokens": 362648,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "index-logic",
+      "summary": "Build in-memory index; implement get, put, delete, scan.",
+      "sources": 9,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 37572,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "roll-compact",
+      "summary": "Roll segments on size; merge all into one on compact.",
+      "sources": 6,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 25965,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit pass 1",
+      "summary": "Read all eleven documents in corpus/ plus RULES.md, apply the ADR chain and RULES.md authority rules, and independently compute all seven findings: services_on_deprecated_queue, total_incident_minutes, most_impacted_service, monthly_cost_usd_cents, unowned_services, superseded_docs, and contradictions. Produce a complete set of findings as if it were the only pass.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 108385,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit pass 2",
+      "summary": "Read all eleven documents in corpus/ plus RULES.md, apply the ADR chain and RULES.md authority rules, and independently compute all seven findings: services_on_deprecated_queue, total_incident_minutes, most_impacted_service, monthly_cost_usd_cents, unowned_services, superseded_docs, and contradictions. Produce a complete set of findings as if it were the only pass.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 7,
+      "tokens": 104078,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Full corpus audit pass 3",
+      "summary": "Read all eleven documents in corpus/ plus RULES.md, apply the ADR chain and RULES.md authority rules, and independently compute all seven findings: services_on_deprecated_queue, total_incident_minutes, most_impacted_service, monthly_cost_usd_cents, unowned_services, superseded_docs, and contradictions. Produce a complete set of findings as if it were the only pass.",
+      "sources": 12,
+      "size": "atomic",
+      "turns": 8,
+      "tokens": 117325,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "core-audit",
+      "summary": "Audit core modules against their docstrings for defects.",
+      "sources": 9,
+      "size": "atomic",
+      "turns": 9,
+      "tokens": 58670,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "tests-audit",
+      "summary": "Audit shipped tests for gaps and failure patterns.",
+      "sources": 7,
+      "size": "atomic",
+      "turns": 23,
+      "tokens": 290069,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Fix assignment",
+      "summary": "Repair assign_shifts boundary, state, and availability defects.",
+      "sources": 4,
+      "size": "oversized",
+      "turns": 14,
+      "tokens": 172690,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Fix payroll",
+      "summary": "Repair payroll arithmetic, caching, and error-handling defects.",
+      "sources": 5,
+      "size": "oversized",
+      "turns": 15,
+      "tokens": 148980,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "scheduler-fix",
+      "summary": "Repair scheduler state-leak and boundary defects per docstring.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 24,
+      "tokens": 350526,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "assignment-fix",
+      "summary": "Repair assignment boundary defects and state leaks per docstring.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 26,
+      "tokens": 389583,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "utils-boundary",
+      "summary": "Repair boundary and error-handling defects in shiftplan/utils.py.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 24,
+      "tokens": 415126,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "worker-boundary",
+      "summary": "Repair boundary and error-handling defects in shiftplan/worker.py.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 9,
+      "tokens": 65303,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "shift-boundary",
+      "summary": "Repair boundary and error-handling defects in shiftplan/shift.py.",
+      "sources": 3,
+      "size": "atomic",
+      "turns": 13,
+      "tokens": 126981,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Parser",
+      "summary": "Parse pattern strings into an AST or token list.",
+      "sources": 5,
+      "size": "atomic",
+      "turns": 22,
+      "tokens": 257385,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Matcher",
+      "summary": "Match compiled patterns against paths, including ** and anchoring.",
+      "sources": 5,
+      "size": "borderline",
+      "turns": 21,
+      "tokens": 340694,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Public_API",
+      "summary": "Implement compile_pattern, matches, PatternError, and package exports.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 24,
+      "tokens": 372530,
+      "stop": "done",
+      "verdict": "unverified_success"
+    },
+    {
+      "title": "Selection_Logic",
+      "summary": "Implement select with ordering, dedup, and include/exclude rules.",
+      "sources": 4,
+      "size": "atomic",
+      "turns": 12,
+      "tokens": 157943,
+      "stop": "done",
+      "verdict": "unverified_success"
+    }
+  ]
+}

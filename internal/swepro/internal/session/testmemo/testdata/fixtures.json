@@ -1,0 +1,75 @@
+{"name":"empty","fn":"isTestCommand","args_json":"[\"\"]","out_json":"false"}
+{"name":"vitest","fn":"isTestCommand","args_json":"[\"vitest\"]","out_json":"true"}
+{"name":"jest","fn":"isTestCommand","args_json":"[\"npx jest --runInBand\"]","out_json":"true"}
+{"name":"bun-test","fn":"isTestCommand","args_json":"[\"bun test\"]","out_json":"true"}
+{"name":"pytest","fn":"isTestCommand","args_json":"[\"python -m pytest\"]","out_json":"true"}
+{"name":"cargo-test","fn":"isTestCommand","args_json":"[\"cargo test --workspace\"]","out_json":"true"}
+{"name":"go-test","fn":"isTestCommand","args_json":"[\"go test ./...\"]","out_json":"true"}
+{"name":"case-insensitive","fn":"isTestCommand","args_json":"[\"GO TEST ./...\"]","out_json":"true"}
+{"name":"prefix-boundary","fn":"isTestCommand","args_json":"[\"xgo test ./...\"]","out_json":"false"}
+{"name":"suffix-boundary","fn":"isTestCommand","args_json":"[\"go testing\"]","out_json":"false"}
+{"name":"hyphen-boundary","fn":"isTestCommand","args_json":"[\"pre-go test\"]","out_json":"true"}
+{"name":"underscore-blocks-boundary","fn":"isTestCommand","args_json":"[\"pre_go test\"]","out_json":"false"}
+{"name":"path-before","fn":"isTestCommand","args_json":"[\"/usr/bin/pytest -q\"]","out_json":"true"}
+{"name":"literal-space-required","fn":"isTestCommand","args_json":"[\"bun\\ttest\"]","out_json":"false"}
+{"name":"double-space-not-match","fn":"isTestCommand","args_json":"[\"go  test\"]","out_json":"false"}
+{"name":"newlines-around","fn":"isTestCommand","args_json":"[\"\\npytest\\n\"]","out_json":"true"}
+{"name":"vitest-substring-blocked","fn":"isTestCommand","args_json":"[\"vitesting\"]","out_json":"false"}
+{"name":"jest-dot","fn":"isTestCommand","args_json":"[\"jest.config.js\"]","out_json":"true"}
+{"name":"cargo-shell-chain","fn":"isTestCommand","args_json":"[\"fmt && cargo test\"]","out_json":"true"}
+{"name":"unicode-long-s-no-fold","fn":"isTestCommand","args_json":"[\"go teſt\"]","out_json":"false"}
+{"name":"unicode-adjacent-word","fn":"isTestCommand","args_json":"[\"égo testé\"]","out_json":"true"}
+{"name":"status-prose","fn":"isTestCommand","args_json":"[\"please run go test before finishing\"]","out_json":"true"}
+{"name":"empty","fn":"latestTestCommandPassed","args_json":"[[]]","out_json":"null"}
+{"name":"no-parts","fn":"latestTestCommandPassed","args_json":"[[{}]]","out_json":"null"}
+{"name":"non-tool-part","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"text\",\"state\":{\"input\":\"go test\",\"exitCode\":0}}]}]]","out_json":"null"}
+{"name":"non-test-tool","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"git status\",\"metadata\":{\"exitCode\":0}}}]}]]","out_json":"null"}
+{"name":"string-input-exitCode","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test ./...\",\"metadata\":{\"exitCode\":0}}}]}]]","out_json":"true"}
+{"name":"object-input-exit-code","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":{\"command\":\"pytest -q\"},\"metadata\":{\"exit_code\":1}}}]}]]","out_json":"false"}
+{"name":"part-input-fallback","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"input\":\"cargo test\",\"exitCode\":0}]}]]","out_json":"true"}
+{"name":"args-fallback","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"args\":{\"command\":\"jest\"},\"exit_code\":2}]}]]","out_json":"false"}
+{"name":"arguments-fallback","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"arguments\":{\"command\":\"vitest\"},\"exitCode\":0}]}]]","out_json":"true"}
+{"name":"input-empty-blocks-fallback","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"input\":\"\",\"args\":{\"command\":\"go test\"},\"exitCode\":0}]}]]","out_json":"null"}
+{"name":"latest-wins","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test ./...\",\"metadata\":{\"exitCode\":1}}},{\"type\":\"tool\",\"state\":{\"input\":\"pytest\",\"metadata\":{\"exitCode\":0}}}]}]]","out_json":"true"}
+{"name":"later-unresolved-does-not-clear","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test ./...\",\"metadata\":{\"exitCode\":0}}},{\"type\":\"tool\",\"state\":{\"input\":\"pytest\",\"output\":\"running\"}}]}]]","out_json":"true"}
+{"name":"output-exit","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":\"process exited 0\"}}]}]]","out_json":"true"}
+{"name":"output-code-failure","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":\"code: 17\"}}]}]]","out_json":"false"}
+{"name":"output-status-negative","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":\"STATUS=-2\"}}]}]]","out_json":"false"}
+{"name":"metadata-output","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"metadata\":{\"output\":\"exit = 0\"}}}]}]]","out_json":"true"}
+{"name":"error-output","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"error\":\"command exit 1\"}}]}]]","out_json":"false"}
+{"name":"output-precedes-metadata","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":\"no code\",\"metadata\":{\"output\":\"exit 0\"}}}]}]]","out_json":"null"}
+{"name":"nonnumeric-exitCode-blocks-exit-code","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"metadata\":{\"exitCode\":\"bad\",\"exit_code\":0},\"output\":\"none\"}}]}]]","out_json":"null"}
+{"name":"numeric-part-exit-after-metadata-missing","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"exitCode\":0}}]}]]","out_json":"true"}
+{"name":"output-number-string-coercion","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":0}}]}]]","out_json":"null"}
+{"name":"output-array-string-coercion","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":[\"status\",0]}}]}]]","out_json":"null"}
+{"name":"output-object-string-coercion","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":{\"status\":0}}}]}]]","out_json":"null"}
+{"name":"zero-with-leading-zeros","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":\"code -000\"}}]}]]","out_json":"true"}
+{"name":"word-boundary-rejects-codeword","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"go test\",\"output\":\"codeword 0\"}}]}]]","out_json":"null"}
+{"name":"multiple-messages","fn":"latestTestCommandPassed","args_json":"[[{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"pytest\",\"metadata\":{\"exitCode\":0}}}]},{\"parts\":[{\"type\":\"tool\",\"state\":{\"input\":\"cargo test\",\"metadata\":{\"exitCode\":3}}}]}]]","out_json":"false"}
+{"name":"empty","fn":"normalizeTestCommand","args_json":"[\"\"]","out_json":"\"\""}
+{"name":"trim","fn":"normalizeTestCommand","args_json":"[\"  go test ./...  \"]","out_json":"\"go test ./...\""}
+{"name":"tabs-newlines","fn":"normalizeTestCommand","args_json":"[\"\\tgo\\t test\\n./...\\r\\n\"]","out_json":"\"go test ./...\""}
+{"name":"nbsp-bom","fn":"normalizeTestCommand","args_json":"[\"﻿go test﻿\"]","out_json":"\"go test\""}
+{"name":"wide-spaces","fn":"normalizeTestCommand","args_json":"[\"go  test　./...\"]","out_json":"\"go test ./...\""}
+{"name":"internal-multiple","fn":"normalizeTestCommand","args_json":"[\"bun    test   --watch\"]","out_json":"\"bun test --watch\""}
+{"name":"already-normal","fn":"normalizeTestCommand","args_json":"[\"pytest -q\"]","out_json":"\"pytest -q\""}
+{"name":"unicode-content","fn":"normalizeTestCommand","args_json":"[\"go test café 😀\"]","out_json":"\"go test café 😀\""}
+{"name":"vertical-tab-form-feed","fn":"normalizeTestCommand","args_json":"[\"\\u000bgo\\f test\\u000b\"]","out_json":"\"go test\""}
+{"name":"empty","fn":"buildTestMemoKey","args_json":"[{\"command\":\"\",\"headSha\":\"\",\"statusPorcelain\":\"\"}]","out_json":"\"\\u0000\\u0000e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\""}
+{"name":"basic","fn":"buildTestMemoKey","args_json":"[{\"command\":\" go  test ./... \",\"headSha\":\" abc123\\n\",\"statusPorcelain\":\" M file.go\\n\"}]","out_json":"\"go test ./...\\u0000abc123\\u00002e4a2bca21445a1118ee9e6e3b4d46572101db6f9028198adef76fae5a5a0172\""}
+{"name":"same-status","fn":"buildTestMemoKey","args_json":"[{\"command\":\"pytest\",\"headSha\":\"HEAD\",\"statusPorcelain\":\"\"}]","out_json":"\"pytest\\u0000HEAD\\u0000e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\""}
+{"name":"unicode-status","fn":"buildTestMemoKey","args_json":"[{\"command\":\"bun test\",\"headSha\":\"é😀\",\"statusPorcelain\":\"?? café.txt\\n\"}]","out_json":"\"bun test\\u0000é😀\\u00003884d7f722392937b0926d356ec2947e8a674c97177b3f8b088d2986748bccbb\""}
+{"name":"nul-fields","fn":"buildTestMemoKey","args_json":"[{\"command\":\"go test\\u0000x\",\"headSha\":\"h\\u0000s\",\"statusPorcelain\":\"\\u0000\"}]","out_json":"\"go test\\u0000x\\u0000h\\u0000s\\u00006e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d\""}
+{"name":"whitespace-command","fn":"buildTestMemoKey","args_json":"[{\"command\":\"\\tGO\\nTEST\\t\",\"headSha\":\"﻿sha　\",\"statusPorcelain\":\"clean\"}]","out_json":"\"GO TEST\\u0000sha\\u00003b066804f6d1d077173cfe4d06002e6a61e6f21c2b2e648417962115f1afcd8e\""}
+{"name":"empty-default","fn":"testCommandMemo","args_json":"[\"default\",[]]","out_json":"{\"events\":[],\"size\":0}"}
+{"name":"set-get","fn":"testCommandMemo","args_json":"[\"default\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"}},{\"op\":\"get\",\"key\":\"a\"}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":1},{\"op\":\"get\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"},\"size\":1}],\"size\":1}"}
+{"name":"missing-get","fn":"testCommandMemo","args_json":"[\"default\",[{\"op\":\"get\",\"key\":\"missing\"}]]","out_json":"{\"events\":[{\"op\":\"get\",\"value\":null,\"size\":0}],\"size\":0}"}
+{"name":"overwrite-value","fn":"testCommandMemo","args_json":"[\"default\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"old-out\",\"stderr\":\"old-err\"}},{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":1,\"stdout\":\"new-out\",\"stderr\":\"new-err\"}},{\"op\":\"get\",\"key\":\"a\"}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":1},{\"op\":\"set\",\"size\":1},{\"op\":\"get\",\"value\":{\"code\":1,\"stdout\":\"new-out\",\"stderr\":\"new-err\"},\"size\":1}],\"size\":1}"}
+{"name":"cap-one-evicts-oldest","fn":"testCommandMemo","args_json":"[\"one\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"}},{\"op\":\"set\",\"key\":\"b\",\"value\":{\"code\":0,\"stdout\":\"b-out\",\"stderr\":\"b-err\"}},{\"op\":\"get\",\"key\":\"a\"},{\"op\":\"get\",\"key\":\"b\"}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":1},{\"op\":\"set\",\"size\":1},{\"op\":\"get\",\"value\":null,\"size\":1},{\"op\":\"get\",\"value\":{\"code\":0,\"stdout\":\"b-out\",\"stderr\":\"b-err\"},\"size\":1}],\"size\":1}"}
+{"name":"get-does-not-refresh","fn":"testCommandMemo","args_json":"[\"one\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"}},{\"op\":\"get\",\"key\":\"a\"},{\"op\":\"set\",\"key\":\"b\",\"value\":{\"code\":0,\"stdout\":\"b-out\",\"stderr\":\"b-err\"}},{\"op\":\"get\",\"key\":\"a\"}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":1},{\"op\":\"get\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"},\"size\":1},{\"op\":\"set\",\"size\":1},{\"op\":\"get\",\"value\":null,\"size\":1}],\"size\":1}"}
+{"name":"overwrite-moves-to-newest","fn":"testCommandMemo","args_json":"[\"fractional\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"}},{\"op\":\"set\",\"key\":\"b\",\"value\":{\"code\":0,\"stdout\":\"b-out\",\"stderr\":\"b-err\"}},{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":1,\"stdout\":\"a2-out\",\"stderr\":\"a2-err\"}},{\"op\":\"set\",\"key\":\"c\",\"value\":{\"code\":0,\"stdout\":\"c-out\",\"stderr\":\"c-err\"}},{\"op\":\"get\",\"key\":\"a\"},{\"op\":\"get\",\"key\":\"b\"}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":1},{\"op\":\"set\",\"size\":1},{\"op\":\"set\",\"size\":1},{\"op\":\"set\",\"size\":1},{\"op\":\"get\",\"value\":null,\"size\":1},{\"op\":\"get\",\"value\":null,\"size\":1}],\"size\":1}"}
+{"name":"zero-cap","fn":"testCommandMemo","args_json":"[\"zero\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"}},{\"op\":\"get\",\"key\":\"a\"}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":0},{\"op\":\"get\",\"value\":null,\"size\":0}],\"size\":0}"}
+{"name":"negative-cap","fn":"testCommandMemo","args_json":"[\"negative\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"}},{\"op\":\"get\",\"key\":\"a\"}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":0},{\"op\":\"get\",\"value\":null,\"size\":0}],\"size\":0}"}
+{"name":"nan-cap-unbounded","fn":"testCommandMemo","args_json":"[\"nan\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"}},{\"op\":\"set\",\"key\":\"b\",\"value\":{\"code\":0,\"stdout\":\"b-out\",\"stderr\":\"b-err\"}},{\"op\":\"set\",\"key\":\"c\",\"value\":{\"code\":0,\"stdout\":\"c-out\",\"stderr\":\"c-err\"}}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":1},{\"op\":\"set\",\"size\":2},{\"op\":\"set\",\"size\":3}],\"size\":3}"}
+{"name":"infinity-cap-unbounded","fn":"testCommandMemo","args_json":"[\"infinity\",[{\"op\":\"set\",\"key\":\"a\",\"value\":{\"code\":0,\"stdout\":\"a-out\",\"stderr\":\"a-err\"}},{\"op\":\"set\",\"key\":\"b\",\"value\":{\"code\":0,\"stdout\":\"b-out\",\"stderr\":\"b-err\"}}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":1},{\"op\":\"set\",\"size\":2}],\"size\":2}"}
+{"name":"nul-and-unicode-keys","fn":"testCommandMemo","args_json":"[\"one\",[{\"op\":\"set\",\"key\":\"a\\u0000😀\",\"value\":{\"code\":0,\"stdout\":\"unicode-out\",\"stderr\":\"unicode-err\"}},{\"op\":\"get\",\"key\":\"a\\u0000😀\"}]]","out_json":"{\"events\":[{\"op\":\"set\",\"size\":1},{\"op\":\"get\",\"value\":{\"code\":0,\"stdout\":\"unicode-out\",\"stderr\":\"unicode-err\"},\"size\":1}],\"size\":1}"}

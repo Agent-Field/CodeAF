@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -51,6 +53,59 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 
 func call(id, name, arguments string) ai.ToolCall {
 	return ai.ToolCall{ID: id, Type: "function", Function: ai.ToolCallFunction{Name: name, Arguments: arguments}}
+}
+
+func TestTaskImageInputAndViewImageReachTheNextModelTurn(t *testing.T) {
+	space := workspace(t)
+	path := filepath.Join(space.Root(), "input.png")
+	if err := os.WriteFile(path, []byte("pixels"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{{
+		call("view", "view_image", `{"path":"input.png"}`),
+	}}}
+	media := &MediaTools{
+		Provider: &fakeMediaProvider{}, Catalog: fakeModalities{"vision/model:input:image": true},
+		WorkingModel: "vision/model",
+	}
+	linear := NewLinear(client, space, nil, 10, 1_000_000, time.Minute).WithMedia(media)
+	if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "inspect", ImagePaths: []string{path}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.seen) < 2 {
+		t.Fatalf("model calls = %d", len(client.seen))
+	}
+	countImages := func(messages []ai.Message) int {
+		count := 0
+		for _, message := range messages {
+			for _, part := range message.Content {
+				if part.Type == "image_url" && part.ImageURL != nil {
+					count++
+				}
+			}
+		}
+		return count
+	}
+	if countImages(client.seen[0]) != 1 {
+		t.Fatalf("initial task turn images = %d", countImages(client.seen[0]))
+	}
+	if countImages(client.seen[1]) != 2 {
+		t.Fatalf("next turn images = %d, want initial + view_image follow-up", countImages(client.seen[1]))
+	}
+}
+
+func TestLinearObservesCooperativeCancelAtTurnBoundary(t *testing.T) {
+	client := &scriptedCompleter{}
+	linear := NewLinear(client, workspace(t), nil, 10, 1_000_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{
+		NodeID: 1, Brief: "work", Control: func() ControlAction { return ControlCancel },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Stop != StopCancelled || len(client.seen) != 0 {
+		t.Fatalf("outcome=%+v model calls=%d", outcome, len(client.seen))
+	}
 }
 
 func TestCallFailureRetriesAndCompletes(t *testing.T) {
@@ -106,11 +161,63 @@ func TestDeadlineExhaustionLandsWithTranscriptOutcome(t *testing.T) {
 	}
 }
 
-// TestRepeatedReadAfterEditSeesTheNewContent guards the cache invalidation
-// rule. The dedup cache once memoised results forever, so a read repeated
-// after an edit served the pre-edit file presented as current — an answer that
-// is confidently wrong, in the one workflow (modify, then re-check) where the
-// model most needs the truth.
+// The same material, fetched twice, is carried once.
+//
+// Measured over 332 leaf turns, 12.5% of every observation byte the loop paid
+// for was material it had already been shown — 27 duplicate fetches, none of
+// which the old call-keyed memo caught, because any successful sh emptied it
+// and sh is in 87% of turns. Keying on the bytes catches all of them: the call
+// still runs, and only the second copy of its answer is replaced by a line
+// saying where the first one is.
+func TestTheSameOutputFetchedTwiceIsCarriedOnce(t *testing.T) {
+	space := workspace(t)
+	body := strings.Repeat("the quick brown fox\n", 200)
+	if err := os.WriteFile(filepath.Join(space.Root(), "notes.txt"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	read := `{"cmd":"cat notes.txt"}`
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c1", "sh", read)},
+		{call("c2", "sh", `{"cmd":"echo thinking"}`)},
+		{call("c3", "sh", read)},
+	}}
+	linear := NewLinear(client, space, nil, 10, 1_000_000, time.Minute)
+	if _, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "read the notes"}); err != nil {
+		t.Fatal(err)
+	}
+
+	final := client.seen[len(client.seen)-1]
+	var results []string
+	for _, message := range final {
+		if message.Role == "tool" {
+			results = append(results, message.Content[0].Text)
+		}
+	}
+	if len(results) != 3 {
+		t.Fatalf("the transcript carries %d tool results, want three", len(results))
+	}
+	if !strings.Contains(results[0], "quick brown fox") {
+		t.Fatalf("the first read was not carried in full: %q", results[0])
+	}
+	if strings.Contains(results[2], "quick brown fox") {
+		t.Fatalf("the repeated read was carried a second time: %d bytes", len(results[2]))
+	}
+	if !strings.Contains(results[2], "turn 1") {
+		t.Fatalf("the repeated read does not point at the first copy: %q", results[2])
+	}
+	if len(results[2]) >= len(results[0])/8 {
+		t.Fatalf("the pointer is %d bytes against a %d-byte first copy", len(results[2]), len(results[0]))
+	}
+}
+
+// TestRepeatedReadAfterEditSeesTheNewContent guards the correctness half, and
+// it is the reason the old memo had to go rather than be tuned. That memo
+// answered a repeated call from the previous result without running it, so a
+// read repeated after an edit served the pre-edit file presented as current —
+// confidently wrong, in the one workflow (modify, then re-check) where the
+// model most needs the truth. Content addressing cannot make that mistake: the
+// call runs, and bytes that differ are simply different bytes.
 func TestRepeatedReadAfterEditSeesTheNewContent(t *testing.T) {
 	space := workspace(t)
 	if err := os.WriteFile(filepath.Join(space.Root(), "f.txt"), []byte("alpha"), 0o644); err != nil {
@@ -144,8 +251,8 @@ func TestRepeatedReadAfterEditSeesTheNewContent(t *testing.T) {
 	if !strings.Contains(lastTool, "beta") {
 		t.Fatalf("repeated read returned %q, want the post-edit content", lastTool)
 	}
-	if strings.Contains(lastTool, "identical call already made") {
-		t.Fatalf("repeated read was served from the cache after a mutation: %q", lastTool)
+	if strings.Contains(lastTool, "identical to the result of") {
+		t.Fatalf("a read whose answer had changed was replaced by a pointer: %q", lastTool)
 	}
 }
 
@@ -206,5 +313,261 @@ func TestBudgetExhaustionLandsInsteadOfGuillotining(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(space.Root(), fmt.Sprintf("out-%d.txt", index))); err != nil {
 			t.Fatalf("turn %d's emitted write was discarded: %v", index, err)
 		}
+	}
+}
+
+func TestReflexExecutorPromotesWithUsefulPartial(t *testing.T) {
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{{
+		call("promote-1", "promote", `{"partial":"found two coupled migrations and preserved the schema notes"}`),
+	}}}
+	linear := NewLinear(client, workspace(t), nil, 4, 18_750, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{
+		NodeID: 9, Brief: "Make the tiny schema change", Reflex: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !outcome.Promote || outcome.Stop != StopPromote ||
+		outcome.Text != "found two coupled migrations and preserved the schema notes" {
+		t.Fatalf("promotion outcome = %+v", outcome)
+	}
+	if outcome.Turns != 1 || outcome.Verdict != provider.VerdictUnverifiedSuccess {
+		t.Fatalf("promotion turns/verdict = %d/%s", outcome.Turns, outcome.Verdict)
+	}
+	if len(client.seen) != 1 || len(client.seen[0]) == 0 ||
+		!strings.Contains(client.seen[0][0].Content[0].Text, "This assignment is a reflex") {
+		t.Fatalf("reflex contract did not reach executor: %+v", client.seen)
+	}
+}
+
+// The leaf's contract and the delivery gate must not pull in opposite
+// directions. The worker is told to keep its final message short and put the
+// long version in a file — which is precisely the pressure that produced a
+// pointer where an answer belonged — so the paragraph has to name the split it
+// means: the answer against its working, never the answer against a pointer to
+// the answer.
+func TestTheFinalMessageContractSplitsAnswerFromWorkingNotFromPointer(t *testing.T) {
+	for _, required := range []string{
+		"is the deliverable itself",
+		"never end with a statement that the work is done",
+		"The split is between the answer\nand its working, never between the answer and a pointer to the answer",
+	} {
+		if !strings.Contains(systemPrompt, required) {
+			t.Fatalf("the leaf contract no longer resolves the pointer pressure: %q missing", required)
+		}
+	}
+}
+
+// A thing was built, every part of it was exercised in a harness, and the leaf
+// reported that everything was verified — while the person who opened it could
+// not do the one thing they had asked for. Three sentences stand between the
+// harness and that report: the user's first use is settled before building, the
+// check is the whole path rather than the parts, and "verified" is a word that
+// costs an actual run. The fourth keeps the honest exit open, because a law
+// with no honest exit is a law that teaches the lie.
+func TestTheLeafMustEarnTheWordVerified(t *testing.T) {
+	for name, required := range map[string]string{
+		"the user's first use is settled before building": "settle before you build what their first\nreal use looks like",
+		"proportional to the ask":                         "a one-shot\nartefact needs no ceremony beyond being right",
+		"the check is the whole path":                     "exercising the whole of it the way its eventual user would reach it,\nnot part by part",
+		"verified is protected":                           "Verified is a word you earn by running the finished thing the way it will be\nused",
+		"no inference across the join":                    "never reason from working pieces\nto a working result",
+		"the honest gap is the way out":                   "name the part that is unverified and\nhand over the one short check that settles it",
+	} {
+		if !strings.Contains(systemPrompt, required) {
+			t.Errorf("the leaf contract no longer states %s: %q missing", name, required)
+		}
+	}
+	// Generic by construction: the craft is about the shape of the claim, never
+	// about a kind of thing being built.
+	for _, forbidden := range []string{"browser", "GUI", "web app", "headless"} {
+		if strings.Contains(strings.ToLower(systemPrompt), strings.ToLower(forbidden)) {
+			t.Errorf("the leaf contract grew a domain specific: %q", forbidden)
+		}
+	}
+}
+
+// The landing the budget orders is the case that matters, and it is the one the
+// loop used to record as an ordinary finish.
+//
+// Exhaustion grants a reserve and tells the leaf to land; the leaf complies —
+// that is what the instruction is for — and the next turn calls no tools, which
+// is StopDone by every honest reading. Reading only Stop, the whole continuation
+// subsystem was therefore dead on its designed path: a truncated partial posted
+// as a finished deliverable, no re-decomposition ever ran, and the router's
+// ledger recorded a success. Exhausted is what the two readings needed to be
+// told apart.
+func TestABudgetLandingThatCompliesStillReportsWhatRanOut(t *testing.T) {
+	space := workspace(t)
+	// One tool call, then nothing. Turn 0 spends the whole (one-token) budget
+	// and is granted the reserve; turn 1 is the compliant final message.
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{{
+		call("c0", "write", `{"path":"partial.md","text":"half of it"}`),
+	}}}
+	linear := NewLinear(client, space, nil, 50, 1, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 3, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Stop != StopDone {
+		t.Fatalf("stop = %s, want done — the leaf did comply with the landing order", outcome.Stop)
+	}
+	if outcome.Exhausted != StopBudget {
+		t.Fatalf("exhausted = %q, want budget — nothing else records that the leaf was still working", outcome.Exhausted)
+	}
+	if !outcome.Overran() {
+		t.Fatal("Overran() is false, so re-decomposition never runs for a leaf that ran out of budget")
+	}
+	if outcome.Verdict != provider.VerdictBudgetStop {
+		t.Fatalf("verdict = %s, want a budget stop so the leaf can escalate", outcome.Verdict)
+	}
+	if !outcome.Verdict.Escalates() {
+		t.Fatal("a budget-blown leaf graded as a success; nothing will retry it on a stronger model")
+	}
+}
+
+// A leaf that finishes inside its budget must be unchanged by all of the above:
+// nothing ran out, so nothing is recorded, and the ending grades as it always
+// did. This is the guard on the other side of the same fix — assigning the stop
+// reason directly would have made every successful landing an escalating
+// failure.
+func TestAnOrdinaryFinishRecordsNothingExhausted(t *testing.T) {
+	client := &scriptedCompleter{}
+	linear := NewLinear(client, workspace(t), nil, 50, 150_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 4, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Stop != StopDone || outcome.Exhausted != "" || outcome.Overran() {
+		t.Fatalf("outcome = stop %s, exhausted %q, overran %t", outcome.Stop, outcome.Exhausted, outcome.Overran())
+	}
+	if outcome.Verdict != provider.VerdictUnverifiedSuccess {
+		t.Fatalf("verdict = %s, want the unchanged unverified success", outcome.Verdict)
+	}
+}
+
+// An escalation that repeats the task verbatim buys a stronger model and pays
+// it to rediscover what the first attempt already found — including the files
+// sitting in the workspace it is about to write again.
+func TestAnEscalatedAttemptIsShownWhatTheFirstOneProduced(t *testing.T) {
+	graph := &plan.Graph{Goal: "ship it", Nodes: []plan.Node{{
+		ID: 1, Stage: 1, Kind: plan.KindWork, Title: "Investigate", Brief: "look into it",
+		State: plan.StatePending, Verdict: provider.VerdictBudgetStop,
+		Result: "the v2 endpoints are all 410 Gone", Artifacts: []string{"01-investigate.md"},
+	}}}
+	scheduler := &Scheduler{}
+	task := scheduler.taskFor(graph, &graph.Nodes[0])
+	if len(task.Inputs) != 1 {
+		t.Fatalf("inputs = %+v, want the previous attempt carried into the retry", task.Inputs)
+	}
+	previous := task.Inputs[0]
+	if !strings.Contains(previous.Result, "410 Gone") {
+		t.Fatalf("the retry was not shown what the first attempt found: %q", previous.Result)
+	}
+	if len(previous.Artifacts) != 1 || previous.Artifacts[0] != "01-investigate.md" {
+		t.Fatalf("the retry was not shown the file already written: %+v", previous.Artifacts)
+	}
+	if strings.TrimSpace(previous.Title) == "" {
+		t.Fatal("the previous attempt arrived untitled, under a header saying it is work already done")
+	}
+}
+
+// Inputs arrive under a header calling them work the leaf already has and must
+// not gather again. Untitled they rendered as `=== from "" ===`, so a standing
+// notebook lesson reading "check X before Y" arrived as an anonymous claim that
+// X had been checked — and the artifact pointer, which is what makes the
+// 300-word cap survivable, never fired at all on the resident path because the
+// artifact list was never populated.
+func TestTheBriefNamesEachInputAndRoutesToItsFiles(t *testing.T) {
+	client := &scriptedCompleter{}
+	linear := NewLinear(client, workspace(t), nil, 4, 150_000, time.Minute)
+	if _, err := linear.Run(context.Background(), Task{
+		NodeID: 5, Goal: "merge the findings", Brief: "merge them",
+		Contract: "read every result in full before writing",
+		Inputs: []Input{
+			{Title: "your notebook", Result: "check the changelog before the source"},
+			{Title: "task-1-n2", Result: "four defects, worst first",
+				Artifacts: []string{"/workspace/job/findings.md"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.seen) == 0 {
+		t.Fatal("no call was made")
+	}
+	first := client.seen[0]
+	system, user := first[0].Content[0].Text, first[1].Content[0].Text
+	if strings.Contains(user, `=== from "" ===`) {
+		t.Fatalf("an input arrived unattributed:\n%s", user)
+	}
+	for _, want := range []string{`=== from "your notebook" ===`, `=== from "task-1-n2" ===`,
+		"/workspace/job/findings.md"} {
+		if !strings.Contains(user, want) {
+			t.Fatalf("brief is missing %q:\n%s", want, user)
+		}
+	}
+	// The working method leads the brief, and is nowhere in the system message.
+	//
+	// It used to be appended to the system message, on the theory that it
+	// belonged beside the harness's invariants in the frozen prefix. That got
+	// the economics backwards: a contract written for THIS node made the system
+	// message per-node, so four leaves of one job — launched at once, same
+	// model, same invariants — agreed on nothing and each wrote the shared
+	// prefix cold. The prefix is worth more than the placement, and the head of
+	// the brief still reaches the model ahead of the assignment.
+	if strings.Contains(system, "read every result in full before writing") {
+		t.Fatalf("a per-node working method is back in the shared system message:\n%s", system)
+	}
+	if !strings.HasPrefix(user, "How this particular kind of job is done well:\nread every result in full before writing") {
+		t.Fatalf("the brief does not lead with the working method:\n%s", user)
+	}
+}
+
+// The gate above this package used to judge a final message with nothing to
+// check it against. A count of tool calls settles nothing; what a reader of a
+// finished job needs is whether the check the deliverable claims appears
+// anywhere in the run. The record is the tail of what actually ran, it names a
+// failed call as failed, and it is bounded — a leaf that ran for an hour must
+// not hand its whole history to whoever asks.
+func TestTheRunRecordsWhatItActuallyRan(t *testing.T) {
+	client := &scriptedCompleter{turns: [][]ai.ToolCall{
+		{call("c1", "write", `{"path":"result.txt","text":"the answer"}`)},
+		{call("c2", "sh", `{"command":"cat missing.txt"}`)},
+	}}
+	linear := NewLinear(client, workspace(t), nil, 10, 1_000_000, time.Minute)
+	outcome, err := linear.Run(context.Background(), Task{NodeID: 1, Brief: "work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outcome.Ran) != 2 {
+		t.Fatalf("run record = %v, want both calls", outcome.Ran)
+	}
+	if !strings.HasPrefix(outcome.Ran[0], `write {"path":"result.txt"`) {
+		t.Errorf("the write is not recorded as itself: %q", outcome.Ran[0])
+	}
+	if !strings.Contains(outcome.Ran[1], `cat missing.txt`) {
+		t.Errorf("the command is not recorded: %q", outcome.Ran[1])
+	}
+	if !strings.HasSuffix(outcome.Ran[1], "→ error") {
+		t.Errorf("a call that failed is recorded as though it worked: %q", outcome.Ran[1])
+	}
+}
+
+func TestTheRunRecordIsATailAndNotATranscript(t *testing.T) {
+	var outcome Outcome
+	for index := 0; index < ranLimit*3; index++ {
+		outcome.record(call("c", "sh", fmt.Sprintf(`{"command":"step %d"}`, index)), false)
+	}
+	if len(outcome.Ran) != ranLimit {
+		t.Fatalf("run record kept %d calls, want the last %d", len(outcome.Ran), ranLimit)
+	}
+	if !strings.Contains(outcome.Ran[len(outcome.Ran)-1], fmt.Sprintf("step %d", ranLimit*3-1)) {
+		t.Errorf("the record dropped the newest call: %q", outcome.Ran[len(outcome.Ran)-1])
+	}
+	// A pasted file in one argument must not carry the whole file into a
+	// judge's context.
+	outcome.record(call("c", "write", `{"path":"big.txt","text":"`+strings.Repeat("x", 4000)+`"}`), false)
+	if got := len(outcome.Ran[len(outcome.Ran)-1]); got > ranArgumentBytes+64 {
+		t.Errorf("one recorded call is %d bytes, want it clipped near %d", got, ranArgumentBytes)
 	}
 }

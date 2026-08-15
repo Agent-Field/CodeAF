@@ -2,10 +2,14 @@ package plan
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -22,6 +26,10 @@ import (
 // interesting middle of the problem, which is how a wide graph collapses back
 // into duplicated work.
 //
+// Its second paragraph is workerPremise, shared verbatim with the working
+// method: both passes are writing for the same machine, and the one place that
+// fact was restated rather than shared is the one place it was wrong.
+//
 // The third is narrower and was the most expensive. The goal reaches every
 // agent, so a goal naming a deliverable reads to all of them as an instruction
 // to produce it — five nodes once wrote the same REVIEW.md over the top of each
@@ -29,14 +37,16 @@ import (
 // non-owner is told in words that its result is handed over instead.
 const briefPrompt = `You write the instruction that one agent receives.
 
-That agent works alone, in order, with tools. It sees only what you write — not
-the wider goal, not the plan, not the other agents' work — and it cannot ask
-anyone anything. Whatever you leave out is simply missing.
+` + workerPremise + `
+
+It sees only what you write — not the wider goal, not the plan, not the other
+agents' work. Whatever you leave out is simply missing.
 
 Write directly to it:
 - Give it the context it needs to make sense of the job on its own.
 - State exactly what it is responsible for delivering.
-- Say what finished looks like, and where to stop.
+- Say what finished looks like in the terms of whoever will use the result —
+  what they do with it, what they must see — and where to stop.
 - Where other agents are delivering something adjacent, say which results are
   theirs, so this one does not redo them.
 
@@ -66,6 +76,130 @@ already have. Do not tell it to go and find them.
 No preamble, no headings, no meta-commentary, no mention of "the plan", "your
 task", or "this node". 90-160 words of plain instruction.`
 
+// criterionBlock is the second half of the same call.
+//
+// A stopping condition is the one fact nothing in the system carried. Rounds
+// were bounded by counting them, results were judged against prose that had to
+// be re-read to be understood, and a retry had nothing to inherit — so what a
+// re-aimed node was judged against was whatever its replacement's author
+// happened to write down. A criterion is the object that survives that.
+//
+// It rides this call rather than buying one. The instruction writer has already
+// read the goal, the node and its inputs; asking it for the criterion in the
+// same breath costs completion tokens and no prompt tokens at all, and asking
+// anything else would mean paying twice to read the same thing.
+//
+// The last paragraph is the one that earns its place. A model told to state a
+// criterion will state a generous one, and every condition it invents becomes a
+// requirement the person never made — the same failure the working method's
+// prompt already writes against, in the same words, because it is the same
+// failure.
+const criterionBlock = `
+Alongside the instruction, state the criterion by which this work will be judged
+finished. It is a positive statement of what must be true once the work has
+landed — not a list of steps, and not the instruction said again.
+
+Give it as a small set of independent conditions. Each one must be settleable by
+someone who has the result in front of them and did not do the work. A condition
+that can be settled by running something says the exact thing to run and what
+its outcome must be. A condition that can only be settled by reading says what
+must be present and what would make it absent.
+
+Name the things the result must produce, by the names they will carry, so that a
+reader holding only this criterion could tell whether they exist.
+
+Write no condition the request did not ask for. A criterion that demands more
+than the person asked is a criterion that cannot be met, and every condition you
+invent becomes a requirement nobody made.
+
+Answer with one bare JSON object and nothing else — no code fence around it and
+no sentence before or after it — carrying the instruction and the criterion:
+{"instruction": "<the instruction>", "done": {"produces": ["<name>"],
+"conditions": [{"kind": "run"|"read", "check": "<what to run or look for>",
+"expect": "<what its outcome must be>"}]}}`
+
+// briefWithCriterion is the prompt as sent when the criterion is on. The
+// instruction half is byte-identical to what it has always been, so the shared
+// prefix every brief call in a build hits is untouched and the criterion costs
+// nothing but its own completion.
+const briefWithCriterion = briefPrompt + "\n" + criterionBlock
+
+// briefSchema is closed on purpose. An open schema is what lets a criterion
+// grow fields nobody reads, and the condition list is capped again in code
+// (NormalizeDone) because a schema cannot say "few".
+var briefSchema = json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "instruction": { "type": "string" },
+    "done": {
+      "type": "object",
+      "properties": {
+        "produces": { "type": "array", "items": { "type": "string" } },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind":   { "type": "string", "enum": ["run", "read"] },
+              "check":  { "type": "string" },
+              "expect": { "type": "string" }
+            },
+            "required": ["kind", "check", "expect"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["produces", "conditions"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["instruction", "done"],
+  "additionalProperties": false
+}`)
+
+// briefReply is the decoded answer. done is optional in every direction that
+// matters: absent, empty, or malformed all yield today's brief unchanged.
+type briefReply struct {
+	Instruction string `json:"instruction"`
+	Done        Done   `json:"done"`
+}
+
+// decodeBrief reads what came back, and tolerates a model that ignored the
+// schema entirely.
+//
+// A router that falls back to a provider without structured output answers in
+// prose, and prose is a perfectly good instruction — it is exactly what this
+// call returned before the criterion existed. So a decode failure is not a
+// failure: it is the old answer, with no criterion, which is legal everywhere.
+func decodeBrief(text string) (string, Done) {
+	body := trim(text)
+	if body == "" {
+		return "", Done{}
+	}
+	var reply briefReply
+	if err := decodeJSON(body, &reply); err != nil {
+		return body, Done{}
+	}
+	instruction := trim(reply.Instruction)
+	if instruction == "" {
+		// Valid JSON with nothing in the field it required. The text itself is
+		// not an instruction either — handing a worker a JSON object as its
+		// brief is worse than handing it nothing — so this is the empty answer
+		// the caller already knows how to report.
+		return "", Done{}
+	}
+	return instruction, NormalizeDone(reply.Done)
+}
+
+// BriefJournal writes one node's rendered brief as a first-class, queryable
+// event, when the build has a durable home to journal to. The plan package
+// knows the plan node id and the rendered brief; it does not know the store id
+// the node was minted under (that spelling is the caller's — see
+// resident.PlanStoreIDs), so the callback receives the graph and the plan node
+// id and the caller forms the store id. It is best-effort for the same reason
+// RecordPlanGraph is: losing it costs an audit and never the plan.
+type BriefJournal func(graph *Graph, nodeID int, brief store.NodeBrief)
+
 // briefWriter writes leaf instructions in the background.
 //
 // Briefs used to run as a final pass over the finished graph, which put one
@@ -80,51 +214,136 @@ task", or "this node". 90-160 words of plain instruction.`
 // while expansion is still appending to it, which is the exact aliasing hazard
 // that already cost us a duplicated subtree.
 type briefWriter struct {
-	ctx     context.Context
-	client  Completer
-	enabled bool
+	ctx      context.Context
+	client   Completer
+	enabled  bool
+	progress Progress
 
-	group   sync.WaitGroup
-	mutex   sync.Mutex
-	results map[int]string
-	usage   Usage
-	errs    []error
+	// journal, when set, writes one node_briefed event per briefed node as
+	// apply lands its brief. Nil is the build that has no store to journal to
+	// — the one-shot `aforge plan` command, the batch `Briefs` form — and
+	// leaves the brief exactly as durable as it was before this hook existed.
+	journal BriefJournal
+
+	// sink is the deliverable owner, which is written for even though it is not
+	// KindWork. It is a single id rather than a predicate because every other
+	// non-work node in a graph is an expanded container — structure nobody runs —
+	// and launching a brief for those would buy a call per container.
+	sink int
+
+	group     sync.WaitGroup
+	mutex     sync.Mutex
+	results   map[int]briefReply
+	usage     Usage
+	errs      []error
+	launched  int
+	completed int
+	// completions holds titles in actual completion order until the final leaf
+	// total is known. apply replays them with honest counts instead of dropping
+	// fast background work from the materializing plan.
+	completions []string
+	base        int
+	total       int
+	reporting   bool
 }
 
-func newBriefWriter(ctx context.Context, client Completer, enabled bool) *briefWriter {
-	return &briefWriter{ctx: ctx, client: client, enabled: enabled, results: map[int]string{}}
+func newBriefWriter(ctx context.Context, client Completer, enabled bool, progress Progress, journal BriefJournal) *briefWriter {
+	return &briefWriter{ctx: ctx, client: client, enabled: enabled, progress: progress, journal: journal, results: map[int]briefReply{}}
 }
 
 // launch starts one node's brief. Everything it needs is passed by value —
 // including the ownership line, which is read off the graph by the caller — so
 // the goroutine never reads the graph while the graph is being modified.
 func (w *briefWriter) launch(shared string, node Node, inputs []string, deliverable string) {
-	if !w.enabled || node.Kind != KindWork {
+	if !w.enabled || (node.Kind != KindWork && node.ID != w.sink) {
 		return
 	}
+	w.mutex.Lock()
+	w.launched++
+	w.mutex.Unlock()
 	w.group.Add(1)
 	go func() {
 		defer w.group.Done()
-		brief, usage, err := writeBrief(w.ctx, w.client, shared, node, inputs, deliverable)
+		// apply waits on this group and reads what it left behind, so a fault
+		// has to record itself the way a failed call does: an error in errs and
+		// no brief for the node, which leaves the leaf to the generic loop.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				fault := guard.Note(fmt.Sprintf("plan/brief node %d", node.ID), recovered)
+				w.mutex.Lock()
+				defer w.mutex.Unlock()
+				w.errs = append(w.errs, fault)
+				w.completed++
+			}
+		}()
+		brief, done, usage, err := writeBrief(w.ctx, w.client, shared, node, inputs, deliverable)
 		w.mutex.Lock()
 		defer w.mutex.Unlock()
 		w.usage.Add(usage)
 		if err != nil {
 			w.errs = append(w.errs, err)
-			return
+		} else {
+			w.results[node.ID] = briefReply{Instruction: brief, Done: done}
 		}
-		w.results[node.ID] = brief
+		w.completed++
+		if w.reporting && w.progress != nil {
+			latest := ""
+			if err == nil {
+				latest = nodeProgressTitle(node)
+			}
+			emitProgress(w.progress, "briefs", fmt.Sprintf("%d/%d", w.base+w.completed, w.total), latest)
+		} else {
+			latest := ""
+			if err == nil {
+				latest = nodeProgressTitle(node)
+			}
+			w.completions = append(w.completions, latest)
+		}
 	}()
 }
 
 // apply waits for every brief and writes them in.
 func (w *briefWriter) apply(graph *Graph) (Usage, error) {
+	if w.enabled {
+		w.mutex.Lock()
+		w.reporting = true
+		w.total = len(graph.writtenLeaves())
+		w.base = w.total - w.launched
+		if w.progress != nil {
+			if len(w.completions) == 0 {
+				emitProgress(w.progress, "briefs", fmt.Sprintf("%d/%d", w.base, w.total), "")
+			}
+			for index, latest := range w.completions {
+				emitProgress(w.progress, "briefs", fmt.Sprintf("%d/%d", w.base+index+1, w.total), latest)
+			}
+		}
+		w.completions = nil
+		w.mutex.Unlock()
+	}
 	w.group.Wait()
 	w.mutex.Lock()
 	defer w.mutex.Unlock()
-	for id, brief := range w.results {
+	for id, written := range w.results {
 		if node := graph.Node(id); node != nil {
-			node.Brief = brief
+			// Dual-write. Brief is what every reader still reads; the spec is
+			// written beside it so the object exists to be carried forward, and
+			// so the swap that makes it the read is one line per reader.
+			node.Brief = written.Instruction
+			node.Spec.Instruction = written.Instruction
+			node.Spec.Done = written.Done
+			node.Spec.Sources = node.Sources
+			// Journal the rendered brief as a first-class event per node, so a
+			// run's sufficiency sentence is queryable from its own artifacts
+			// rather than only as a field inside the plan blob. The caller forms
+			// the store id; this is a no-op when no journal was wired in.
+			if w.journal != nil {
+				w.journal(graph, id, store.NodeBrief{
+					Node:       id,
+					Brief:      written.Instruction,
+					Criterion:  written.Done.Sentence(),
+					Subharness: node.Subharness,
+				})
+			}
 		}
 	}
 	return w.usage, joinErrors(w.errs)
@@ -133,10 +352,16 @@ func (w *briefWriter) apply(graph *Graph) (Usage, error) {
 // Briefs writes an instruction for every leaf that lacks one, all at once. The
 // planner writes briefs in the background as nodes settle; this is the batch
 // form, for a graph that was planned without them and is about to be executed.
-func Briefs(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
-	writer := newBriefWriter(ctx, client, true)
+func Briefs(ctx context.Context, client Completer, graph *Graph, callbacks ...Progress) (Usage, error) {
+	var callback Progress
+	if len(callbacks) > 0 {
+		callback = serialProgress(callbacks[0])
+	}
+	writer := newBriefWriter(ctx, client, true, callback, nil)
+	writer.sink = graph.deliverableSink()
 	shared := graph.context() + "\nThe full plan:\n" + graph.briefCatalog()
-	for _, id := range graph.Leaves() {
+	owner, label := graph.deliverableOwner()
+	for _, id := range graph.writtenLeaves() {
 		node := graph.Node(id)
 		if node == nil || strings.TrimSpace(node.Brief) != "" {
 			continue
@@ -147,7 +372,7 @@ func Briefs(ctx context.Context, client Completer, graph *Graph) (Usage, error) 
 				inputs = append(inputs, fmt.Sprintf("%q (%s)", source.Title, source.Summary))
 			}
 		}
-		writer.launch(shared, *node, inputs, graph.deliverableLine(node.ID))
+		writer.launch(shared, *node, inputs, deliverableLineFor(owner, label, node.ID, graph.FileShaped))
 	}
 	return writer.apply(graph)
 }
@@ -158,16 +383,45 @@ func Briefs(ctx context.Context, client Completer, graph *Graph) (Usage, error) 
 // names the deliverable and reads as an instruction to build it.
 func (g *Graph) deliverableLine(nodeID int) string {
 	owner, label := g.deliverableOwner()
+	return deliverableLineFor(owner, label, nodeID, g.FileShaped)
+}
+
+// deliverableLineFor is that line written from an ownership answer that has
+// already been worked out. Working it out means finding the sinks, which walks
+// every node's needs, and the answer is one fact about the whole graph rather
+// than a fact about the node — so a caller writing a line for every node in a
+// round resolves it once and spends the walk once instead of per node.
+//
+// fileShaped is the delivery law's carve-out (see delivery.go). False is what a
+// caller that has not made the judgment passes, and it renders the line this
+// pass has always rendered, byte for byte.
+func deliverableLineFor(owner int, label string, nodeID int, fileShaped bool) string {
 	if owner == nodeID {
+		// Owning it and handing it over are two different facts, and only the
+		// first used to be stated. An agent told it owns the deliverable and
+		// nothing more can own it into a file and reply with the path, which
+		// reads as ownership and delivers nothing — so the instruction is told
+		// to say where the finished thing has to appear.
+		//
+		// Unless the ask itself named the file, in which case saying where it is
+		// IS the delivery, and the law that applies is the other half of
+		// DeliveryLaw rather than a weaker version of this one.
+		if fileShaped {
+			return "This node owns the final deliverable the goal asks for: it is the only " +
+				"one that produces it, and the other results arrive here as inputs. Hold the instruction " +
+				"you write to this:\n\n" + DeliverToNamedFile + "\n"
+		}
 		return "This node owns the final deliverable the goal asks for: it is the only " +
-			"one that produces it, and the other results arrive here as inputs.\n"
+			"one that produces it, and the other results arrive here as inputs. Tell it to put that " +
+			"finished deliverable in its own reply, written out in full, rather than describing it or " +
+			"saying where it can be found.\n"
 	}
 	return fmt.Sprintf("The final deliverable the goal asks for — whatever single file, report or "+
 		"document it names — is produced by %s, not here. This node produces its own result "+
 		"and hands it over.\n", label)
 }
 
-func writeBrief(ctx context.Context, client Completer, shared string, node Node, inputs []string, deliverable string) (string, *ai.Usage, error) {
+func writeBrief(ctx context.Context, client Completer, shared string, node Node, inputs []string, deliverable string) (string, Done, *ai.Usage, error) {
 	var target strings.Builder
 	fmt.Fprintf(&target, "Write the instruction for node %d, %q: %s\n", node.ID, node.Title, node.Summary)
 	if len(node.Sources) > 0 {
@@ -180,20 +434,40 @@ func writeBrief(ctx context.Context, client Completer, shared string, node Node,
 		target.WriteString("It receives no input from other work — it starts from nothing but your instruction.\n")
 	}
 
+	system := briefPrompt
+	var options []ai.Option
+	if Criterion {
+		system = briefWithCriterion
+		options = append(options, ai.WithSchema(briefSchema))
+	}
 	messages := []ai.Message{
-		systemMessage(briefPrompt),
+		systemMessage(system),
 		userMessage(shared),
 		userMessage(target.String()),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages)
+	ctx = provider.WithCall(ctx, provider.ClassPlanBrief)
+	response, err := client.CompleteWithMessages(ctx, messages, options...)
 	if err != nil {
-		return "", nil, fmt.Errorf("brief %q: %w", node.Title, err)
+		provider.Report(ctx, provider.VerdictProviderFailure)
+		return "", Done{}, nil, fmt.Errorf("brief %q: %w", node.Title, err)
 	}
-	brief := trim(response.Text())
+	brief, done := decodeBrief(response.Text())
+	if !Criterion {
+		brief, done = trim(response.Text()), Done{}
+	}
 	if brief == "" {
-		return "", usageOf(response), annotate(fmt.Errorf("brief %q: empty response", node.Title), response)
+		// Nothing at all came back. On a reasoning model the usual cause is the
+		// whole budget going to private deliberation, which is a different fact
+		// about the model than a badly written instruction and is worth naming.
+		provider.Report(ctx, provider.VerdictEmptyResponse)
+		return "", Done{}, usageOf(response), annotate(fmt.Errorf("brief %q: empty response", node.Title), response)
 	}
-	return brief, usageOf(response), nil
+	// A brief is prose. There is no schema to check it against and nothing cheap
+	// that can say whether it is a good instruction, so this is exactly the case
+	// the unverified verdict exists for: output that worked, evidence that does
+	// not move a rating.
+	provider.Report(ctx, provider.VerdictUnverifiedSuccess)
+	return brief, done, usageOf(response), nil
 }
 
 // briefCatalog lists every node by title only. Titles are enough to hold a

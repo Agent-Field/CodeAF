@@ -1,0 +1,184 @@
+package catalog
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return fn(request) }
+
+func catalogClient(t *testing.T, status int, body string, inspect func(*http.Request)) *http.Client {
+	t.Helper()
+	return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if inspect != nil {
+			inspect(request)
+		}
+		return &http.Response{
+			StatusCode: status,
+			Status:     http.StatusText(status),
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})}
+}
+
+const catalogPayload = `{"data":[
+  {"id":"vision/model","name":"Vision","architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"}},
+  {"id":"paint/model","architecture":{"input_modalities":["text"],"output_modalities":["image"]},"pricing":{"request":"0.05"}},
+  {"id":"voice/model","architecture":{"input_modalities":["text"],"output_modalities":["audio"]}},
+  {"id":"song/model","architecture":{"input_modalities":["text"],"output_modalities":["music"]}},
+  {"id":"motion/model","architecture":{"input_modalities":["text","image"],"output_modalities":["video"]},"pricing":{"request":"0.25"}},
+  {"id":"stt/model","architecture":{"input_modalities":["audio"],"output_modalities":["transcription"]}}
+]}`
+
+func TestLoadFetchesParsesCachesAndQueriesModalities(t *testing.T) {
+	dir := t.TempDir()
+	var calls atomic.Int32
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", APIKey: "secret", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusOK, catalogPayload, func(request *http.Request) {
+			calls.Add(1)
+			if request.URL.Path != "/api/v1/models" || request.URL.Query().Get("output_modalities") != "all" ||
+				request.Header.Get("Authorization") != "Bearer secret" {
+				t.Errorf("request = %s?%s auth %q", request.URL.Path, request.URL.RawQuery, request.Header.Get("Authorization"))
+			}
+		}),
+	})
+	if calls.Load() != 1 {
+		t.Fatalf("fetches = %d, want one", calls.Load())
+	}
+	if got := c.ModelsWithOutput("image"); len(got) != 1 || got[0].ID != "paint/model" {
+		t.Fatalf("image models = %+v", got)
+	}
+	if !c.Supports("~vision/model", "input", "image") || c.Supports("paint/model", "input", "image") {
+		t.Fatal("input-image support query was wrong")
+	}
+	if got := c.ModelsWithOutput("speech"); len(got) != 1 || got[0].ID != "voice/model" {
+		t.Fatalf("speech models = %+v", got)
+	}
+	if got := c.ModelsWithOutput("music"); len(got) != 2 || got[0].ID != "voice/model" || got[1].ID != "song/model" {
+		t.Fatalf("music models = %+v", got)
+	}
+	if got := c.ModelsWithOutput("video"); len(got) != 1 || got[0].ID != "motion/model" {
+		t.Fatalf("video models = %+v", got)
+	}
+	if model, ok := c.Model("~motion/model"); !ok || model.RequestPrice != 0.25 {
+		t.Fatalf("video row = %+v, found %t", model, ok)
+	}
+	if got := c.ModelsWithOutput("transcription"); len(got) != 1 || got[0].ID != "stt/model" {
+		t.Fatalf("transcription models = %+v", got)
+	}
+
+	// A fresh cache must avoid the transport entirely.
+	offline := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("fresh cache performed a fetch")
+		return nil, errors.New("offline")
+	})}
+	fromCache := Load(context.Background(), Options{BaseURL: "https://openrouter.example/api/v1", Dir: dir, HTTPClient: offline})
+	if !fromCache.Supports("vision/model", "input", "image") {
+		t.Fatal("fresh cache lost modalities")
+	}
+}
+
+func TestStaleCacheWinsOverOfflineAndEmptyUsesDefaults(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	if err := writeCache(cachePath(dir), cache{FetchedAt: old, Models: []Model{{
+		ID: "stale/image", OutputModalities: []string{"image"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	offline := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("offline")
+	})}
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir, HTTPClient: offline,
+		Now: func() time.Time { return old.Add(48 * time.Hour) },
+	})
+	if got := c.ModelsWithOutput("image"); len(got) != 1 || got[0].ID != "stale/image" {
+		t.Fatalf("stale fallback = %+v", got)
+	}
+
+	empty := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(), HTTPClient: offline,
+	})
+	if len(empty.ModelsWithOutput("image")) == 0 || len(empty.ModelsWithOutput("speech")) == 0 {
+		t.Fatal("hardcoded offline defaults were not available")
+	}
+}
+
+// reasoningPayload is three rows of the live listing's shape, reduced to the
+// distinction that matters: what each model says it will accept.
+const reasoningPayload = `{"data":[
+  {"id":"dial/model","name":"Dial","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["max_tokens","reasoning","include_reasoning","reasoning_effort"]},
+  {"id":"thinks/model","name":"Thinks","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["max_tokens","reasoning","include_reasoning"]},
+  {"id":"plain/model","name":"Plain","architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["max_tokens","temperature"]}
+]}`
+
+func TestCatalogCarriesWhichKnobsAModelAccepts(t *testing.T) {
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(),
+		HTTPClient: catalogClient(t, http.StatusOK, reasoningPayload, nil),
+	})
+	// The adapter's question, and the one that decides whether a knob travels.
+	if supported, known := c.SupportsParameter("thinks/model", "reasoning"); !supported || !known {
+		t.Fatalf("thinks/model reasoning = %t known %t, want both", supported, known)
+	}
+	if supported, known := c.SupportsParameter("plain/model", "reasoning"); supported || !known {
+		t.Fatalf("plain/model reasoning = %t known %t, want a known no", supported, known)
+	}
+	// Unknown is its own answer and must never read as a no: a model nobody has
+	// heard of is where an operator's explicit setting still gets through.
+	if _, known := c.SupportsParameter("absent/model", "reasoning"); known {
+		t.Fatal("a model the catalog never saw must answer unknown")
+	}
+
+	// The surfaces' question, in the words all three of them show.
+	dial, _ := c.Model("dial/model")
+	thinks, _ := c.Model("thinks/model")
+	plain, _ := c.Model("plain/model")
+	if word := ReasoningWord(dial, false); word != "reasoning · effort" {
+		t.Fatalf("dial word = %q", word)
+	}
+	if word := ReasoningWord(thinks, false); word != "reasoning" {
+		t.Fatalf("thinks word = %q", word)
+	}
+	if word := ReasoningWord(plain, false); word != "" {
+		t.Fatalf("plain word = %q, want silence", word)
+	}
+	// The state nobody publishes: learned from a refusal, passed in by the
+	// caller, and it outranks the published level — a model that will not stop
+	// thinking is not a model whose thinking can be dialled down.
+	if word := ReasoningWord(dial, true); word != "reasoning · always on" {
+		t.Fatalf("learned word = %q", word)
+	}
+}
+
+func TestParametersSurviveTheCache(t *testing.T) {
+	dir := t.TempDir()
+	first := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusOK, reasoningPayload, nil),
+	})
+	if _, known := first.SupportsParameter("dial/model", "reasoning_effort"); !known {
+		t.Fatal("the fetch did not keep the parameter list")
+	}
+	// A second process reads the file the first one wrote and must know the
+	// same things; a cache that dropped them would send the knob blind again.
+	second := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: dir,
+		HTTPClient: catalogClient(t, http.StatusInternalServerError, "", nil),
+	})
+	if supported, known := second.SupportsParameter("dial/model", "reasoning_effort"); !supported || !known {
+		t.Fatalf("cached row = %t known %t, want the fetched answer", supported, known)
+	}
+}

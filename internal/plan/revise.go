@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -24,6 +25,19 @@ import (
 // here. A started node's output may already be another node's input, so the
 // past cannot be edited; a correction to finished work is new work appended
 // after it, never a rewrite of it.
+//
+// It carries checkingRule for a reason found the expensive way. The rule was
+// written into the two prompts that build a plan and into neither of the two
+// that grow one, and this is the pass that grows one mid-run: told a result was
+// disappointing, it would add a node to look at what another node produced, that
+// node would report a gap, and the gap would come back here. That is the shape
+// of the 27-round spiral the governors could only bound by counting. A cap stops
+// a loop; the doctrine stops it being started.
+//
+// The paragraph about what a new node may be restates the worker premise in its
+// own words on purpose — see workerPremise for the shared fact. Here it is a
+// bound on the size of an edit rather than a description of the executor, and
+// the sentence that follows it is the whole point of the sentence before it.
 const revisePrompt = `You maintain a task graph while it is being executed.
 
 ` + agentPremise + `
@@ -45,6 +59,8 @@ a new node to something one agent finishes in a single pass and hand off as one
 result. If what is needed is genuinely larger than that, add it as two or three
 nodes that can run at the same time rather than one that cannot.
 
+` + checkingRule + `
+
 Your default is no change. Return an empty operation list unless a specific
 result contradicts a specific assumption in a specific unstarted node. If you
 cannot name all three, there is nothing to do here, and saying so is the right
@@ -53,6 +69,12 @@ answer.
 Do not restructure work that is merely imperfect. Do not add nodes because more
 detail would be nice. Do not reorder for tidiness. Every edit you make risks
 invalidating work already in flight.
+
+When a node was CANCELLED by the user, that is a decision and not a problem. Do
+not add a node that redoes it, finishes it, resumes it, or checks what it left
+behind — the user is spending nothing more on that work, and adding it back is
+overruling them. The only legitimate edit is to the steps that were relying on
+it: rewire, retitle or remove them as the loss of that input requires.
 
 When you do act, use the fewest operations possible:
 - add     a new node, with its inputs, when new work is genuinely required
@@ -105,28 +127,48 @@ type Operation struct {
 // will legally accept.
 func Revise(ctx context.Context, client Completer, graph *Graph, event string) ([]Operation, Usage, error) {
 	var usage Usage
+	// The sentinel is asked to find where a result contradicts a specific
+	// assumption in a specific unstarted node, and it was the only plan pass in
+	// the system that never saw the assumptions. Every other pass gets
+	// graph.context() — what is settled for this goal, what the work itself has
+	// to decide, what evidence the goal warrants — and it is exactly the list a
+	// contradiction has to be found against. It leads with the goal already, so
+	// nothing is lost by replacing the bare goal line with it.
 	messages := []ai.Message{
 		systemMessage(revisePrompt),
-		userMessage("Goal:\n" + graph.Goal + "\n\nThe plan as it stands:\n" + graph.stateBlock()),
+		userMessage(graph.context() + "\nThe plan as it stands:\n" + graph.stateBlock()),
 		userMessage("What has happened:\n" + event),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(reviseSchema))
+	ctx = provider.WithCall(ctx, provider.ClassPlanRevise)
+	var decoded struct {
+		Operations []Operation `json:"operations"`
+	}
+	response, err := structured(ctx, client, messages, reviseSchema, &decoded)
 	usage.Add(usageOf(response))
 	if err != nil {
 		return nil, usage, fmt.Errorf("revise: %w", err)
 	}
-	var decoded struct {
-		Operations []Operation `json:"operations"`
-	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usage, annotate(fmt.Errorf("revise: %w", err), response)
-	}
 
 	applied := make([]Operation, 0, len(decoded.Operations))
+	refused := 0
 	for _, operation := range decoded.Operations {
-		applied = append(applied, apply(graph, operation))
+		result := apply(graph, operation)
+		if result.Refused != "" {
+			refused++
+		}
+		applied = append(applied, result)
 	}
 	graph.Prune()
+	// Refusals are the graph's own rules rejecting an edit — editing frozen
+	// work, naming a node that is not there, closing a cycle. They are recorded
+	// rather than swallowed for exactly this reason: a pass whose every
+	// operation was refused produced a legal document describing an illegal
+	// plan, which is a semantic failure and nothing else can see it.
+	if refused > 0 && refused == len(applied) {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return applied, usage, nil
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return applied, usage, nil
 }
 
@@ -134,6 +176,12 @@ func Revise(ctx context.Context, client Completer, graph *Graph, event string) (
 // recorded rather than silently swallowed: a sentinel that keeps trying to edit
 // locked work is telling us something about the prompt, and we only find out if
 // the refusals are visible.
+// A refusal names the REASON and never the subject. The one reader of these
+// strings puts them in front of a person (internal/resident/revise.go composes
+// the receipt note), and it is the reader that knows which step is meant and
+// what the person calls it. A refusal that named its own subject produced
+// "retitle task-8-n4: node 4 is running" — the id and the machine's word for a
+// step, both in the room, in a line the person did not ask for.
 func apply(graph *Graph, operation Operation) Operation {
 	refuse := func(reason string) Operation {
 		operation.Refused = reason
@@ -163,10 +211,10 @@ func apply(graph *Graph, operation Operation) Operation {
 	case "rewire":
 		node := graph.Node(operation.Node)
 		if node == nil {
-			return refuse(fmt.Sprintf("node %d does not exist", operation.Node))
+			return refuse("it is no longer in the plan")
 		}
 		if node.State.Frozen() {
-			return refuse(fmt.Sprintf("node %d is %s", operation.Node, node.State))
+			return refuse(fmt.Sprintf("it is already %s", node.State))
 		}
 		previous := node.Needs
 		node.Needs = nil
@@ -181,10 +229,10 @@ func apply(graph *Graph, operation Operation) Operation {
 	case "retitle":
 		node := graph.Node(operation.Node)
 		if node == nil {
-			return refuse(fmt.Sprintf("node %d does not exist", operation.Node))
+			return refuse("it is no longer in the plan")
 		}
 		if node.State.Frozen() {
-			return refuse(fmt.Sprintf("node %d is %s", operation.Node, node.State))
+			return refuse(fmt.Sprintf("it is already %s", node.State))
 		}
 		if title := trim(operation.Title); title != "" {
 			node.Title = title

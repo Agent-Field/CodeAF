@@ -1,0 +1,20 @@
+
+  Here is the plan:
+
+  • read navctx.rs end to end
+  • write the failing test first
+
+  ```rust
+    let ctx = NavCtx::new();
+  ```
+
+  │ and a note about the plan
+  ▸ workspace/wisp/plan.md  1.6KB
+
+  Reading navctx.rs now
+● replying · interrupt esc
+  aforge ‹ untitled room
+▍ ⠋  keep typing — messages queue
+
+
+  chat  work  notebook  threads ▾ ctrl+t  +  interrupt esc           ~/aforge-v2
