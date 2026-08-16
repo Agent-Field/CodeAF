@@ -174,6 +174,18 @@ const (
 	// be the row pretending to be a unit it never varies.
 	KeyTaskAutoApprove = "task.autoapprove_seconds"
 
+	// KeyTaskModel is the model a task runs on when the conversation does not
+	// name one for it (internal/session's taskmodel.go). It is named under
+	// `task.` beside the countdown rather than among the `models.` rows because
+	// it is not a rule about how a call is made: it is WHOSE HANDS the work that
+	// leaves this conversation ends up in, which is the same subject the
+	// countdown and the audit rows are about.
+	//
+	// Blank is the conversation's own model, which is what every task ran on
+	// before the row existed: a node is the same worker doing the same job
+	// somewhere quieter.
+	KeyTaskModel = "task.model"
+
 	// The web-search rows. They are three rather than one because they answer
 	// three separable questions: WHERE a lookup goes, and the two credentials
 	// that change what "where" can mean. A person with no key still searches —
@@ -950,6 +962,22 @@ func (s *Settings) build() []Setting {
 				"0 waits for your answer instead of starting. A change lands on the next session.",
 			read:  func() string { return strconv.Itoa(TaskAutoApproveAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyTaskAutoApprove, raw) },
+		},
+		// Which model the work that LEAVES a conversation runs on. It sits with
+		// the countdown and the audit rather than among the model rows for the
+		// reason those two are here: all three are about the work you hand off —
+		// how long you get to redirect it, who checks it, and whose hands it is
+		// in — and none of them is a rule about how this conversation's own calls
+		// are made.
+		Setting{
+			Key: KeyTaskModel, Category: CategorySpending, Kind: SettingText,
+			Label: "task model", EmptyLabel: "follows the conversation",
+			Hint: "the model a task runs on when you have not asked for another one — " +
+				"`anthropic/claude-opus-5`. Leave it blank and a task rides the model you " +
+				"are talking to. You can still say which model a particular piece of work " +
+				"should go to, and the proposal names the one it will start on.",
+			read:  func() string { return TaskModelAt(dir) },
+			write: func(raw string) error { return writeText(dir, KeyTaskModel, raw) },
 		},
 		Setting{
 			Key: KeySpendRail, Category: CategorySpending, Kind: SettingDollars,
@@ -1922,6 +1950,17 @@ func TaskAutoApproveAt(profileDir string) int {
 		return value
 	}
 	return DefaultTaskAutoApprove
+}
+
+// TaskModelAt resolves the model tasks run on, as the person wrote it. Empty
+// is the ordinary answer and means "the conversation's own": the row is an
+// override, and whether the name in it exists is a question only the catalog
+// can answer (internal/session resolves it against one).
+func TaskModelAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyTaskModel); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
 }
 
 // ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock

@@ -59,6 +59,7 @@ const taskSchemaJSON = `{"type":"object","properties":{` +
 	`"brief":{"type":"string","description":"The task's WHOLE context, self-contained: the goal, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation"},` +
 	`"acceptance":{"type":"string","description":"The observable done-condition: the command that must pass, the behaviour that must hold, the output that must appear"},` +
 	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts. Its brief is given their reports when it begins"},` +
+	`"model":{"type":"string","description":"Optional. The model this work runs on, as a catalog id (\"anthropic/claude-opus-5\") or the part of one that names it (\"opus-5\"). Set it ONLY when the person asked for a particular model or class of model for this work; leave it out and the task runs on the configured one. A name that fits more than one model is shown to the person to settle"},` +
 	`"max_steps":{"type":"number","description":"Optional. How many tool calls this work is worth before it is stopped as stuck (default 40). Raise it for a sweep across many files; lower it for something small that should not wander"},` +
 	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may change no file before it is stopped as stuck (default 6). Raise it when the work genuinely needs a lot of reading before its first edit"}` +
 	`},"required":["title","summary","brief","acceptance"],"additionalProperties":false}`
@@ -70,6 +71,7 @@ type taskArguments struct {
 	Brief      string   `json:"brief"`
 	Acceptance string   `json:"acceptance"`
 	DependsOn  []uint64 `json:"depends_on"`
+	Model      string   `json:"model"`
 	MaxSteps   int      `json:"max_steps"`
 	NoProgress int      `json:"no_progress"`
 }
@@ -87,6 +89,18 @@ type taskSpec struct {
 	brief      string
 	acceptance string
 	dependsOn  []uint64
+	// modelWord is the `model` argument as the model wrote it — a word, not an
+	// id — and it lives only until [Agent.resolveTaskModel] has answered for it
+	// (taskmodel.go). model is that answer: the id this node will actually run
+	// on, settled before admission and frozen with the rest of the spec.
+	//
+	// modelOptions is the shortlist a word that fits more than one model raises.
+	// It is on the proposal the person is shown and is empty by the time the node
+	// is admitted: [settleTaskModel] closes it with their answer, or with the
+	// closest match when the clock does.
+	modelWord    string
+	model        string
+	modelOptions []string
 	// maxSteps and noProgress are the node's own thresholds, 0 when the model
 	// did not name one and the defaults apply (task_run.go).
 	maxSteps   int
@@ -125,6 +139,16 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	if problem != "" {
 		return problem, true, nil
 	}
+	// WHICH HANDS THE WORK LEAVES ON, settled before anybody is asked anything
+	// (taskmodel.go). A word that names no model this install has is a refusal
+	// the model can act on — it names the nearest ids — and one that names
+	// several is not refused at all: the shortlist rides on the proposal, and the
+	// person settles it in the same breath as the work.
+	choice := a.resolveTaskModel(spec.modelWord)
+	if choice.problem != "" {
+		return choice.problem, true, nil
+	}
+	spec.model, spec.modelOptions = choice.model, choice.options
 
 	graph := a.graph()
 	id := graph.reserve()
@@ -159,12 +183,29 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 		spec.brief = strings.TrimRight(spec.brief, "\n") +
 			"\n\nThe person redirecting this task says: " + redirect
 	}
+	// THE SHORTLIST IS CLOSED HERE, in the same breath the brief is: a node is
+	// admitted with one model and never a set of them. An answer that named one
+	// of the options takes it; an answer that named nothing — including the
+	// clock's silence — takes the closest match, which is the one the proposal
+	// showed (taskmodel.go).
+	if len(spec.modelOptions) > 0 {
+		spec.model, spec.modelOptions = settleTaskModel(spec.modelOptions, answer.Model), nil
+	}
 
 	state := graph.admit(id, spec)
-	if state == TaskQueued {
-		return fmt.Sprintf("task %d queued: %s\nIt starts when the work it waits on has finished and a slot is free. Keep working — its report arrives here.", id, spec.title), false, nil
+	// THE MODEL IS NAMED BACK ONLY WHEN IT WAS ASKED FOR. A word resolves to an
+	// id and a shortlist is settled by somebody else, so the one thing the model
+	// cannot know after this call is what its own argument came to; a task that
+	// named no model has nothing to be told, and a receipt reciting the default
+	// every time would be a line nobody reads.
+	on := ""
+	if spec.modelWord != "" && spec.model != "" {
+		on = " on " + spec.model
 	}
-	return fmt.Sprintf("task %d started: %s\nIt works from the brief alone, in its own copy of the repository. Keep working — do not wait for it; its report arrives here when it lands.", id, spec.title), false, nil
+	if state == TaskQueued {
+		return fmt.Sprintf("task %d queued%s: %s\nIt starts when the work it waits on has finished and a slot is free. Keep working — its report arrives here.", id, on, spec.title), false, nil
+	}
+	return fmt.Sprintf("task %d started%s: %s\nIt works from the brief alone, in its own copy of the repository. Keep working — do not wait for it; its report arrives here when it lands.", id, on, spec.title), false, nil
 }
 
 // parseTaskArguments reads one call and says, in plain words, what is missing.
@@ -184,6 +225,7 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		brief:      strings.TrimSpace(parsed.Brief),
 		acceptance: strings.TrimSpace(parsed.Acceptance),
 		dependsOn:  parsed.DependsOn,
+		modelWord:  strings.TrimSpace(parsed.Model),
 		maxSteps:   parsed.MaxSteps,
 		noProgress: parsed.NoProgress,
 	}
@@ -295,6 +337,12 @@ func (a *Agent) askTask(ctx context.Context, id uint64, spec taskSpec) (TaskAnsw
 				Acceptance: spec.acceptance,
 				DependsOn:  spec.dependsOn,
 				Deadline:   deadline,
+				// What it will run on, and — when one word fit more than one model
+				// — what it could run on instead. A surface draws the first as a
+				// fact and offers the second as a choice; both are settled by the
+				// answer this select is waiting for.
+				Model:        firstTaskModel(spec.modelOptions, spec.model),
+				ModelOptions: append([]string(nil), spec.modelOptions...),
 			},
 		})
 	}

@@ -47,6 +47,13 @@ const (
 	// line, so which of them was pressed is a question about x (app.go's
 	// [app.choicePress], the same shape the rail's click has).
 	hitChoice
+	// hitModel is the proposal's MODELS row, on the rare card that has one:
+	// one word fitted several models, so the card offers them (task.go). It is a
+	// hit of its own rather than another hitChoice because the two rows answer
+	// different questions with the same gesture — one settles which model, the
+	// other settles whether the work goes at all — and [app.choicePress] must not
+	// resolve a press on one against the other's columns.
+	hitModel
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -265,8 +272,13 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		}
 		for n, text := range rows {
 			at := hit
-			if e.kind == entryTask && e.card != nil && !e.card.settled() && n == e.card.choiceRow {
-				at = hitChoice
+			if e.kind == entryTask && e.card != nil && !e.card.settled() {
+				switch n {
+				case e.card.choiceRow:
+					at = hitChoice
+				case e.card.modelRow:
+					at = hitModel
+				}
 			}
 			out = append(out, row{text: text, entry: i, hit: at})
 		}

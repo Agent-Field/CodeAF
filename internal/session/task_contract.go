@@ -75,6 +75,14 @@ type TaskNotice struct {
 	// is off and only an answer resolves the proposal.
 	Deadline time.Time
 
+	// ModelOptions is the shortlist a `model` argument raised that fits more
+	// than one model this install has (taskmodel.go). It is empty for every
+	// ordinary proposal — one word, one model, nothing to ask — and when it is
+	// set, Model is its leading member: the closest match, what the card shows,
+	// and what the clock settles on if nobody picks. A surface offers these for
+	// the person to confirm and hands the chosen one back on [TaskAnswer].
+	ModelOptions []string
+
 	// ── update fields (EventTaskUpdate) ─────────────────────────────────
 
 	// State is queued, running, done or failed.
@@ -93,6 +101,12 @@ type TaskNotice struct {
 	// kept), "inplace" (a non-git workspace ran in the person's tree), or ""
 	// while running.
 	Merge string
+	// Model is the model this node runs on: the one the proposal named, the
+	// configured task model, or the conversation's own (taskmodel.go). It is on
+	// the proposal AND on every update, because it is a fact about the work that
+	// outlives the question — a card that lands twenty minutes later still says
+	// whose hands did it.
+	Model string
 	// CostUSD is what this node's own agent has spent, live while it runs and
 	// frozen once it lands. Zero means nobody published a price — an unpriced
 	// model, or a node that has not started — and it is NOT the same claim as
@@ -104,7 +118,13 @@ type TaskNotice struct {
 // Redirect starts the node as briefed; a non-empty Redirect APPENDS the
 // person's words to the brief as a correction and starts it; !Approved is a
 // denial, and the model reads the (optional) reason as its grooming feedback.
+// Model settles a proposal's ModelOptions, and it is read ONLY when the
+// proposal carried some: it is the person choosing between models the harness
+// itself could not choose between, not a surface renaming the model on work it
+// was shown. An empty Model — and one naming anything outside the shortlist —
+// leaves the leading option in place, which is what the card was showing.
 type TaskAnswer struct {
 	Approved bool
 	Redirect string
+	Model    string
 }

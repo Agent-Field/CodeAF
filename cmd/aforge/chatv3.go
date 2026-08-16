@@ -147,6 +147,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// gate: the question is about the model the failing turn was ON, which
 		// /model moves.
 		NearestModels: v3NearestModels(models),
+		// The models a task may be handed to, asked at the moment a proposal
+		// names one and never at boot — the picker's own bargain (see Models
+		// below), because both questions are about a catalog that may still be
+		// warming and neither of them may wait for it.
+		TaskModels: v3TaskModels(models),
 	}
 
 	// What this session may do without asking, which model answers its
@@ -362,6 +367,11 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	// it cannot say who answers.
 	cfg.Guardian = config.GuardianEnabledAt(profileDir)
 	cfg.TaskAutoApproveSeconds = config.TaskAutoApproveAt(profileDir)
+	// Which model the work that leaves this conversation runs on, PROFILE-ONLY
+	// for the reason the fallback chain above is: a repository that could answer
+	// this could send a visitor's work — and their credit — to a model they never
+	// picked, by being cloned.
+	cfg.TaskModel = config.TaskModelAt(profileDir)
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
 	cfg.MemoryConsolidation = config.MemoryConsolidationEnabledAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
@@ -599,6 +609,31 @@ func v3Models(models v3Catalog) []tui3.Model {
 		return nil
 	}
 	return out
+}
+
+// v3TaskModels is the list a task's `model` argument is resolved against
+// (session.Config.TaskModels): the ids of every model this install can hold a
+// conversation with, which is exactly the set the picker offers — a node is an
+// agent with the same belt, so a model it could not talk through is not a model
+// work can be handed to.
+//
+// It NEVER WAITS, and nil while the catalog is warming is the honest answer:
+// internal/session reads that as "nobody can say" and takes the named model as
+// written rather than refusing an id it has no list to check.
+func v3TaskModels(models v3Catalog) func() []string {
+	return func() []string {
+		rows := v3Models(models)
+		if len(rows) == 0 {
+			return nil
+		}
+		ids := make([]string, 0, len(rows))
+		for _, row := range rows {
+			if id := strings.TrimSpace(row.ID); id != "" {
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	}
 }
 
 // v3AnswersText keeps the models a chat surface can actually talk to. The
