@@ -478,16 +478,29 @@ func (a *app) openPicker() {
 // the door's catalog publishes them, the cache is a file the door wrote before
 // this rule existed — and a rule enforced at two of three places is a rule with
 // a way round it.
-func (a *app) modelList() []Model {
+func (a *app) modelList() []Model { return a.modelsFor(chatModel) }
+
+// modelsFor is that same source order, asked ONE SLOT'S question instead of the
+// chat law's ([modelFilter], models.go).
+//
+// The filter is applied INSIDE the ladder rather than to whatever it returned,
+// and that is the whole reason this exists as a function. A slot filtering
+// [app.modelList]'s answer is filtering a list from which its own rows have
+// already been removed — which is what the media slots were doing, and why the
+// drawing row offered a picker that could not contain a drawing model. It also
+// keeps the rung rule honest for every slot: a catalog that carries no speech
+// model at all falls through to the cache, exactly as a catalog with no chat
+// model falls through for /model.
+func (a *app) modelsFor(keep modelFilter) []Model {
 	if a.models != nil {
-		if list := chatModels(a.models()); len(list) > 0 {
+		if list := keepModels(a.models(), keep); len(list) > 0 {
 			return list
 		}
 	}
-	if list := chatModels(CachedModels()); len(list) > 0 {
+	if list := keepModels(CachedModels(), keep); len(list) > 0 {
 		return list
 	}
-	return chatModels(BuiltinModels())
+	return keepModels(BuiltinModels(), keep)
 }
 
 // windowFor is the context length this surface knows for a model id, or zero.

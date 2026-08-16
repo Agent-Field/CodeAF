@@ -278,8 +278,11 @@ func keepModels(models []Model, keep modelFilter) []Model {
 	return out
 }
 
-// chatModels is the list with everything you cannot talk to taken out. It is
-// applied to EVERY rung of the source order ([app.modelList]) — the door's
+// chatModels is the list with everything you cannot talk to taken out — the
+// general chat law, named, for a caller that has a list rather than a slot.
+//
+// The list a slot actually draws is resolved by [app.modelsFor], which applies
+// that slot's own predicate to EVERY rung of the source order — the door's
 // catalog, the disk cache and the built-ins alike — because the rule is about
 // what a row IS and not about where it came from.
 func chatModels(models []Model) []Model { return keepModels(models, chatModel) }
@@ -315,6 +318,90 @@ func hasModality(modalities []string, want string) bool {
 	}
 	return false
 }
+
+// ── THE MEDIA SLOTS: WHAT A ROW MAKES ───────────────────────────────────────
+//
+// The Providers tab has five slots that are not conversations — drawing,
+// speaking, composing, filming, and the one that HEARS you — and every one of
+// them was opened over the chat list. That is not a narrow list, it is an EMPTY
+// one by construction: [chatModel] keeps exactly the rows these slots cannot
+// use and drops exactly the rows they need. A person opening "drawing" was
+// offered six hundred models, none of which draws.
+//
+// So each slot asks its own question, and the questions are the ones
+// [config.ModelCandidates] already answers for the rest of the product: image
+// out, speech out, music out, video out. The voice slot is the one reading that
+// differs, and only in its witness — the catalog publishes a "transcription"
+// output modality and OpenRouter's rows do not, so here the same slot is read as
+// SOUND IN AND WORDS BACK, which is the same model either way.
+//
+// THE SILENCE RUNG RUNS THE OTHER WAY HERE, and that is the whole difference
+// from [answersText]. A chat row that publishes nothing is KEPT — a cache
+// written before modalities travelled is full of chat models and hiding them
+// all would empty the picker. A media row that publishes nothing is DROPPED
+// unless its name says what it makes, because the same silence over the same
+// cache would fill a drawing picker with chat models, which is the defect this
+// closes rather than a milder version of it. The cost is a silent drawing model
+// nobody named — krea-2-medium-turbo says nothing about itself and is not in
+// the marks — and that is the honest direction to be wrong in: a name missing
+// from a list somebody can still type into, rather than a list that answers the
+// wrong question.
+
+// makesModality is the media law for one row: what it PUBLISHES if it published
+// anything, and otherwise what its name says.
+func makesModality(model Model, want string, marks map[string]bool) bool {
+	if len(model.Output) > 0 {
+		return hasModality(model.Output, want)
+	}
+	return markedID(model.ID, marks)
+}
+
+// drawsImages is the "drawing" slot's question.
+func drawsImages(model Model) bool { return makesModality(model, "image", imageMarks) }
+
+// speaksAloud is the "speaking" slot's question.
+func speaksAloud(model Model) bool { return makesModality(model, "speech", speechMarks) }
+
+// composesMusic is the "composing" slot's question.
+//
+// internal/config drops the recognizable TTS rows from this slot because the
+// catalog files speech under music; the marks below are narrow enough that a
+// silent TTS row cannot reach it, and a row that PUBLISHED "music" is taken at
+// its word the way every other row on this surface is.
+func composesMusic(model Model) bool { return makesModality(model, "music", musicMarks) }
+
+// filmsVideo is the "filming" slot's question.
+func filmsVideo(model Model) bool { return makesModality(model, "video", videoMarks) }
+
+// hearsSpeech is the "voice" slot's question, and it is the only media slot
+// asked on the INPUT side: the row is not a model that makes a sound, it is the
+// one that hears you make one. Sound in, words back — a model that takes audio
+// and answers in audio is a speaker, not an ear, so the output law is asked too.
+func hearsSpeech(model Model) bool {
+	if !answersText(model) {
+		return false
+	}
+	if len(model.Input) > 0 {
+		return hasModality(model.Input, "audio")
+	}
+	return markedID(model.ID, voiceMarks)
+}
+
+// The per-family id vocabularies, read only when a row published nothing.
+//
+// They are separate tables from [generationMarks] because they answer a
+// different question: that one asks "is this NOT a conversation", which is
+// deliberately the narrow reading, and these ask "is this EXACTLY this family",
+// which has to name the family's own products. Every mark is a whole
+// hyphen-separated word of the id ([markedID]), so a chat model that merely
+// carries the letters is never caught.
+var (
+	imageMarks  = map[string]bool{"image": true, "imagen": true, "images": true, "dalle": true, "flux": true, "sdxl": true}
+	speechMarks = map[string]bool{"tts": true, "speech": true, "kokoro": true}
+	musicMarks  = map[string]bool{"music": true, "lyria": true, "suno": true}
+	videoMarks  = map[string]bool{"video": true, "sora": true, "veo": true, "seedance": true}
+	voiceMarks  = map[string]bool{"asr": true, "stt": true, "whisper": true, "transcribe": true, "transcription": true}
+)
 
 // answersText is the rule for one row, in two rungs.
 //
