@@ -347,10 +347,10 @@ func (a *app) pilotEvent(msg taskPilotMsg) tea.Cmd {
 			// toolQueued), and it matters here for the same reason: a clock that
 			// started at the announcement would be measuring how long a response
 			// took to stream.
-			node.tool, node.toolBegan = roomCallWord(msg.ev.Tool, msg.ev.Args, msg.ev.Hint), time.Time{}
+			node.tool, node.toolBegan = taskCallWord(msg.ev.Tool, msg.ev.Args, msg.ev.Hint), time.Time{}
 			a.touch()
 		case session.EventToolBegin:
-			node.tool, node.toolBegan = roomCallWord(msg.ev.Tool, msg.ev.Args, msg.ev.Hint), a.now()
+			node.tool, node.toolBegan = taskCallWord(msg.ev.Tool, msg.ev.Args, msg.ev.Hint), a.now()
 			a.touch()
 		case session.EventToolEnd, session.EventToolFailed:
 			node.tool, node.toolBegan = "", time.Time{}
@@ -358,6 +358,24 @@ func (a *app) pilotEvent(msg taskPilotMsg) tea.Cmd {
 		}
 	}
 	return tea.Batch(waitPilot(pilot.lane, pilot.gen, pilot.id), a.wake())
+}
+
+// taskCallWord is one call in the ONE LINE a 24-cell rail row has for it: the
+// tool's name with the verb said once, and the payload's own target ahead of the
+// session's gloss.
+//
+// It is composed from the same two renderers the conversation's tool line is
+// built from (toolview.go's [toolWords], toolstat.go's [toolTarget]) rather than
+// being a rendering of its own — which is the law room.go states in its header
+// after giving up a one-line renderer of exactly this shape. The rail cannot use
+// the tool LINE itself: that block is two cells of rail, a right-aligned stat
+// and an expansion, and this column has room for none of them.
+func taskCallWord(tool, args, hint string) string {
+	name, _ := toolWords(tool, hint)
+	if target := toolTarget(tool, args, hint); target != "" {
+		return name + " " + target
+	}
+	return name
 }
 
 // landPilot forgets one node's watcher. The lane closes itself when the node

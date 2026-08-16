@@ -2986,6 +2986,24 @@ func clickRail(t *testing.T, a *app, node int) {
 	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: at, Button: tea.MouseLeft})
 }
 
+// openRoomCall clicks the page's row carrying this text, the way a person opens
+// a call in the conversation, and reports whether there was one to click.
+func openRoomCall(t *testing.T, a *app, want string) bool {
+	t.Helper()
+	rows := a.roomRows(a.bodyWidth())
+	_, pad := a.roomWindow(a.bodyWidth(), a.viewHeight())
+	top := a.bodyTop()
+	offset := a.roomOffsetFor(len(rows), a.viewHeight())
+	for i := offset; i < len(rows); i++ {
+		if rows[i].hit != hitTool || !strings.Contains(plain(rows[i].text), want) {
+			continue
+		}
+		drive(t, a, tea.MouseClickMsg{X: 0, Y: top + pad + i - offset, Button: tea.MouseLeft})
+		return true
+	}
+	return false
+}
+
 // THE CONTRACT THE ENGINE LANDED. It is asserted at runtime rather than as a
 // compile-time `var _` on purpose: the room's doors are an ASSERTION on this
 // surface (room.go), so a build whose engine has no rooms in it must still
@@ -3013,15 +3031,21 @@ func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
 	}
 	page := roomText(a)
 	for _, want := range []string{"Fix the nil-map crash", "I will read the parser first.",
-		"· read internal/parse/keys.go"} {
+		"read internal/parse/keys.go"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the replayed journal is missing %q:\n%s", want, page)
 		}
 	}
-	// A ROOM ROW IS A READING: the call is one dim line, and the payload it
-	// returned is not in here at all.
+	// A CALL IS A CALL, on a page as in the conversation: the result is behind
+	// it rather than on it, and the row says so by answering the pointer.
 	if strings.Contains(page, "byte for byte") {
-		t.Fatalf("the room replayed a tool RESULT:\n%s", page)
+		t.Fatalf("a collapsed call showed its result:\n%s", page)
+	}
+	if !openRoomCall(t, a, "read internal/parse/keys.go") {
+		t.Fatalf("the replayed call does not expand:\n%s", page)
+	}
+	if !strings.Contains(roomText(a), "byte for byte") {
+		t.Fatalf("the expansion opened on nothing:\n%s", roomText(a))
 	}
 	// The body region IS the room — the conversation is not under it — and the
 	// rail is still beside it, because the rail is how you leave one room for
@@ -3031,7 +3055,10 @@ func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
 	for _, r := range body {
 		drawn = append(drawn, plain(r.text))
 	}
-	if !containsRow(drawn, "· read internal/parse/keys.go") {
+	// The call is drawn by the CONVERSATION's tool line — rail glyph, name,
+	// target and the stat at the far end — which is the whole of the parity this
+	// slice is for: the page is not a second renderer.
+	if !containsRow(drawn, "read internal/parse/keys.go") {
 		t.Fatalf("the room is not what the body draws:\n%s", strings.Join(drawn, "\n"))
 	}
 	if !strings.Contains(plain(frame(a)), "Fix the nil-map") {
@@ -3060,16 +3087,16 @@ func TestTheRoomsLiveLaneAppendsAndCoalesces(t *testing.T) {
 	if !strings.Contains(page, "Looking at the loader.") {
 		t.Fatalf("the deltas did not coalesce into one block:\n%s", page)
 	}
-	if n := strings.Count(page, "· read etc/load.go"); n != 1 {
+	if n := strings.Count(page, "read etc/load.go"); n != 1 {
 		t.Fatalf("one call drew %d lines, want 1:\n%s", n, page)
 	}
-	// A DIFFERENT call is a different line — the collapse is per call, not per
-	// tool name, or a batch of four reads would read as one.
-	lane <- session.Event{Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"etc/other.go"}`}
+	// A DIFFERENT call is a different line — the begin is adopted by the row its
+	// own announcement drew, not by whichever row shares its tool name, or a
+	// batch of four reads would read as one.
 	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
 		Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"etc/other.go"}`,
 	}})
-	if !strings.Contains(roomText(a), "· read etc/other.go") {
+	if !strings.Contains(roomText(a), "read etc/other.go") {
 		t.Fatalf("a second call did not draw its own line:\n%s", roomText(a))
 	}
 }
@@ -3187,6 +3214,88 @@ func TestAFinishedNodesRoomShowsItsFootAndRefusesInput(t *testing.T) {
 	// told it went nowhere.
 	if a.input.String() != "try the other directory" {
 		t.Fatalf("the refused line was cleared from the box: %q", a.input.String())
+	}
+}
+
+// VIEWER PARITY: a node's page is drawn by the conversation's own renderers, so
+// everything the conversation shows about a message it shows about a node's
+// message — the pictures that came with it included (attach.go's chipMarkers,
+// replay.go's replayUserLine, which this is the third reader of).
+func TestARoomsMessagesKeepTheirPictures(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.journal = roomJournal(t,
+		`{"type":"message","role":"user","content":"what is wrong with this",`+
+			`"parts":[{"type":"image","path":"/tmp/lab/chart.png","sha256":"abc"}]}`,
+	)
+	clickRail(t, a, 0)
+
+	page := roomText(a)
+	if !strings.Contains(page, "[chart.png]") {
+		t.Fatalf("a page dropped the message's picture:\n%s", page)
+	}
+	if strings.Contains(page, "/tmp/lab/chart.png") {
+		t.Fatalf("a page drew the whole path instead of the name:\n%s", page)
+	}
+}
+
+// AND THE REASONING. A node reasons the way the model in the conversation does,
+// and the block behaves the same: a live window while it streams, one collapsed
+// row carrying the two facts once anything else happens, and ctrl+e to open it.
+func TestARoomDrawsAndCollapsesTheNodesThinking(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	for _, text := range []string{"the loader is the ", "wrong place to look"} {
+		drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+			Kind: session.EventReasoning, Text: text,
+		}})
+	}
+	if page := roomText(a); !strings.Contains(page, "thinking") ||
+		!strings.Contains(page, "wrong place to look") {
+		t.Fatalf("the node's reasoning is not on its page:\n%s", page)
+	}
+	// The first thing that is not reasoning collapses it.
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventTextDelta, Text: "I will read the parser instead.",
+	}})
+	page := roomText(a)
+	if !strings.Contains(page, "thought for") {
+		t.Fatalf("the reasoning block did not collapse:\n%s", page)
+	}
+	if strings.Contains(page, "wrong place to look") {
+		t.Fatalf("a collapsed block kept its body:\n%s", page)
+	}
+	// ctrl+e opens the PAGE's block, not the conversation's.
+	drive(t, a, key("ctrl+e"))
+	if !strings.Contains(roomText(a), "wrong place to look") {
+		t.Fatalf("ctrl+e did not open the page's thinking:\n%s", roomText(a))
+	}
+}
+
+// A PAGE FOLDS ITS OWN CLUSTERS, from its own map and its own turns: ctrl+o in a
+// room is about the rows in the room.
+func TestARoomFoldsItsOwnToolCluster(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	for _, path := range []string{"a.go", "b.go", "c.go", "d.go"} {
+		drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+			Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"` + path + `"}`,
+		}})
+	}
+	page := roomText(a)
+	if !strings.Contains(page, "earlier tool call") {
+		t.Fatalf("four calls on a page did not fold:\n%s", page)
+	}
+	if strings.Contains(page, "read a.go") {
+		t.Fatalf("the folded call is still drawn:\n%s", page)
+	}
+	drive(t, a, key("ctrl+o"))
+	if !strings.Contains(roomText(a), "read a.go") {
+		t.Fatalf("ctrl+o did not unfold the page:\n%s", roomText(a))
+	}
+	if len(a.unfolded) != 0 {
+		t.Fatalf("the page folded the CONVERSATION's turn: %v", a.unfolded)
 	}
 }
 

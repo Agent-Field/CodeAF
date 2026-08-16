@@ -65,6 +65,48 @@ type row struct {
 // two it followed.
 const toolWindow = 3
 
+// deck is ONE LIST OF BLOCKS BEING LAID OUT, and the fold state that belongs to
+// it. There are two of them on this surface and there is not going to be a
+// third: the conversation ([app.conversation]) and a task's page, which is the
+// same list built from a node's journal and its live lane (room.go).
+//
+// It exists because a room MUST render exactly like the conversation, and the
+// only way to guarantee that is for both to go through one renderer. A room
+// that drew its own lines was a second rendering of the same four kinds of
+// block, and it diverged the way a second rendering always does: no pictures on
+// a person's message, no reasoning, no expansion on a call, no markdown on an
+// answer. Everything below takes the deck rather than reaching for [app.entries]
+// so that a gap between the two cannot be reintroduced by a renderer that
+// forgot which list it was drawing.
+//
+// The entries are a SLICE and the fold map is a POINTER, which is what makes a
+// deck a view rather than a copy: [app.entryRows] writes each entry's row cache
+// through it, and [app.unfold] writes the map.
+type deck struct {
+	entries  []entry
+	unfolded map[int]bool
+}
+
+// conversation is the deck the transcript draws.
+func (a *app) conversation() deck {
+	return deck{entries: a.entries, unfolded: a.unfolded}
+}
+
+// bodyDeck is the deck the BODY REGION is drawing right now — the room's page
+// while one is open, the conversation otherwise (view.go's [app.bodyRows] makes
+// the same choice about the frame).
+//
+// Every gesture that names a row by index resolves through here: a click, the
+// hover, the fold key, the thinking key. An index is only meaningful against the
+// list it was taken from, and the list a person is pointing at is the one on
+// screen.
+func (a *app) bodyDeck() deck {
+	if a.room != nil {
+		return a.room.deck()
+	}
+	return a.conversation()
+}
+
 // visible returns the row list, rebuilding it only when something changed.
 //
 // The dirty flag is the whole of the repaint discipline. A streamed delta
@@ -99,7 +141,29 @@ func (a *app) visible(width int) []row {
 // block asks once, before it draws. Nothing is ever emitted at the top of the
 // transcript.
 func (a *app) layout(width int) []row {
-	out := make([]row, 0, len(a.entries)+8)
+	out, closed := a.deckRows(a.conversation(), width)
+	if line, ok := a.ellipsis(); ok {
+		if closed && len(out) > 0 {
+			out = append(out, row{entry: -1})
+		}
+		out = append(out, row{text: line, entry: -1})
+	}
+	// THE POINTER, LAST. Hover is a property of the screen and not of the
+	// conversation, so it is applied to finished rows in one pass here rather
+	// than threaded through six renderers (hover.go).
+	a.hoverPass(out, width)
+	return out
+}
+
+// deckRows is the pass itself, over whichever list is being drawn. It reports
+// whether the LAST block it laid out closed something — a cluster, a proposal,
+// a landed note — which is what a caller needs to decide the gap before a foot
+// of its own: the conversation's ellipsis above, and the room's finished line
+// (room.go). A foot wedged against the block above it is the same defect the
+// four rules exist to prevent.
+func (a *app) deckRows(d deck, width int) ([]row, bool) {
+	es := d.entries
+	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
 	// lands (task.go). Together they are the whole of the state this pass
@@ -110,22 +174,22 @@ func (a *app) layout(width int) []row {
 			out = append(out, row{entry: -1})
 		}
 	}
-	for i := 0; i < len(a.entries); i++ {
-		e := &a.entries[i]
+	for i := 0; i < len(es); i++ {
+		e := &es[i]
 
 		// A run of tool entries from one turn is a cluster, and a cluster is
 		// laid out as a unit: it is the thing that folds.
 		if e.kind == entryTool {
 			end := i + 1
-			for end < len(a.entries) &&
-				a.entries[end].kind == entryTool &&
-				a.entries[end].turn == e.turn {
+			for end < len(es) &&
+				es[end].kind == entryTool &&
+				es[end].turn == e.turn {
 				end++
 			}
-			if wasBlock || (!wasCluster && !a.opensTurn(i)) {
+			if wasBlock || (!wasCluster && !opensTurn(es, i)) {
 				gap()
 			}
-			out = a.clusterRows(out, i, end, width)
+			out = a.clusterRows(d, out, i, end, width)
 			wasCluster, wasBlock = true, false
 			i = end - 1
 			continue
@@ -133,20 +197,23 @@ func (a *app) layout(width int) []row {
 
 		// A run of landed tasks is a BATCH, and a batch is laid out as a unit for
 		// the reason a cluster is: whether it rolls up into one object is a
-		// property of the run and not of any card in it (taskdone.go).
+		// property of the run and not of any card in it (taskdone.go). It reads
+		// the DECK's entries, like every other block in this pass: a room is a
+		// list of its own, and an index is only meaningful against the list it
+		// was taken from.
 		if e.kind == entryDone {
 			end := i + 1
-			for end < len(a.entries) && a.entries[end].kind == entryDone {
+			for end < len(es) && es[end].kind == entryDone {
 				end++
 			}
 			gap()
-			out = a.doneCluster(out, i, end, width)
+			out = a.doneCluster(d, out, i, end, width)
 			wasCluster, wasBlock = false, true
 			i = end - 1
 			continue
 		}
 
-		rows := a.entryRows(i, width)
+		rows := a.entryRows(d, i, width)
 		if len(rows) == 0 {
 			continue
 		}
@@ -177,21 +244,17 @@ func (a *app) layout(width int) []row {
 		wasCluster = false
 		wasBlock = e.kind == entryTask
 	}
-	if line, ok := a.ellipsis(); ok {
-		if wasCluster || wasBlock {
-			gap()
-		}
-		out = append(out, row{text: line, entry: -1})
-	}
-	// THE POINTER, LAST. Hover is a property of the screen and not of the
-	// conversation, so it is applied to finished rows in one pass here rather
-	// than threaded through six renderers (hover.go).
+	return out, wasCluster || wasBlock
+}
+
+// hoverPass paints the row under the pointer, and it is the last thing done to
+// any row list on this surface — the conversation's and the room's alike.
+func (a *app) hoverPass(out []row, width int) {
 	for i := range out {
 		if a.isHot(out[i]) {
 			out[i].text = a.hoverRow(out[i].text, width)
 		}
 	}
-	return out
 }
 
 // isHot reports whether the pointer is on this row. The linear tier has no
@@ -212,12 +275,12 @@ func (a *app) isHot(r row) bool {
 // opensTurn reports whether the entry at i is the first thing its turn drew.
 // A cluster that opens a turn follows the person's own message and takes no
 // blank of its own — the user message already brought one.
-func (a *app) opensTurn(i int) bool {
+func opensTurn(es []entry, i int) bool {
 	for at := i - 1; at >= 0; at-- {
-		if a.entries[at].turn != a.entries[i].turn {
+		if es[at].turn != es[i].turn {
 			return true
 		}
-		if a.entries[at].kind != entryUser {
+		if es[at].kind != entryUser {
 			return false
 		}
 	}
@@ -232,8 +295,8 @@ func (a *app) opensTurn(i int) bool {
 // plus a bounded expansion, and a cache with an animation in it is a cache that
 // has to be invalidated thirty times a second, which is not a cache but a bug
 // with a field.
-func (a *app) entryRows(i, width int) []string {
-	e := &a.entries[i]
+func (a *app) entryRows(d deck, i, width int) []string {
+	e := &d.entries[i]
 	// A RUNNING COMPACTION IS NOT CACHED, for the reason the tool lines are not:
 	// its spinner and its count-up are functions of the frame, so a cached row
 	// would be a still photograph of an animation. It rejoins the cache the

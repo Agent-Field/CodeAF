@@ -75,6 +75,13 @@ func (a *app) setHover(y int) {
 		a.markStale(next.entry)
 	}
 	a.hot = next
+	// A page's rows are cached as a LIST rather than per entry (room.go), so the
+	// entry-level staleness above cannot reach them: the room is dropped whole,
+	// which is what makes a rail brighten under the pointer on a node that has
+	// finished and stopped asking for frames.
+	if a.room != nil {
+		a.room.dirty = true
+	}
 	a.touch()
 }
 
@@ -88,8 +95,8 @@ func (a *app) hoverTarget(y int) hoverAt {
 			return hoverAt{kind: hoverFold, turn: r.turn}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone:
 			return hoverAt{kind: hoverEntry, entry: r.entry}
-		case r.entry >= 0 && r.entry < len(a.entries) &&
-			a.entries[r.entry].kind == entryThinking:
+		case r.entry >= 0 && r.entry < len(a.bodyDeck().entries) &&
+			a.bodyDeck().entries[r.entry].kind == entryThinking:
 			// A thinking block is clickable over its whole height (thinking.go
 			// says why), so it is hoverable over its whole height too.
 			return hoverAt{kind: hoverEntry, entry: r.entry}
@@ -111,10 +118,13 @@ func (a *app) hoverTarget(y int) hoverAt {
 	return hoverAt{}
 }
 
-// markStale drops one entry's cached rows.
+// markStale drops one entry's cached rows, in whichever list is on screen: the
+// pointer is over the BODY REGION, and while a room is open the body region is
+// that node's page (render.go's [app.bodyDeck]).
 func (a *app) markStale(i int) {
-	if i >= 0 && i < len(a.entries) {
-		a.entries[i].stale = true
+	es := a.bodyDeck().entries
+	if i >= 0 && i < len(es) {
+		es[i].stale = true
 	}
 }
 

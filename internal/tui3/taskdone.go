@@ -192,16 +192,16 @@ func (a *app) openDone(i int) bool {
 // out. It is [app.clusterRows]'s shape for the same reason that function has
 // it: whether a batch rolls up is a property of the RUN and not of any card in
 // it.
-func (a *app) doneCluster(out []row, from, to, width int) []row {
+func (a *app) doneCluster(d deck, out []row, from, to, width int) []row {
 	if to-from > doneRollupFloor {
-		return a.rollupRows(out, from, to, width)
+		return a.rollupRows(d, out, from, to, width)
 	}
 	for i := from; i < to; i++ {
-		card := a.entries[i].done
+		card := d.entries[i].done
 		if card == nil {
 			continue
 		}
-		for _, text := range a.doneRows(card, width, a.sel == i) {
+		for _, text := range a.doneRows(card, width, a.selected(i)) {
 			out = append(out, row{text: text, entry: i, hit: hitDone})
 		}
 	}
@@ -429,22 +429,22 @@ func capField(lines []string) []string {
 // Each compact row keeps its own entry, so a click expands THAT card in place
 // and the rollup stays a rollup. The header carries the run's first card, which
 // is the only entry a header could honestly point at.
-func (a *app) rollupRows(out []row, from, to, width int) []row {
-	out = append(out, row{text: a.rollupHead(from, to, width), entry: from, hit: hitDone})
+func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
+	out = append(out, row{text: a.rollupHead(d, from, to, width), entry: from, hit: hitDone})
 	last := -1
 	for i := from; i < to; i++ {
-		card := a.entries[i].done
+		card := d.entries[i].done
 		if card == nil {
 			continue
 		}
 		last = i
-		out = append(out, row{text: a.rollupRow(card, width, a.sel == i), entry: i, hit: hitDone})
+		out = append(out, row{text: a.rollupRow(card, width, a.selected(i)), entry: i, hit: hitDone})
 		for _, text := range a.doneDetail(card, width-2) {
 			out = append(out, row{text: "  " + text, entry: i, hit: hitDone})
 		}
 	}
 	if last >= 0 {
-		if card := a.entries[last].done; card != nil && !card.open {
+		if card := d.entries[last].done; card != nil && !card.open {
 			if line := a.doneUnder(card, width-2); line != "" {
 				out = append(out, row{text: "  " + line, entry: last, hit: hitDone})
 			}
@@ -459,11 +459,11 @@ func (a *app) rollupRows(out []row, from, to, width int) []row {
 // a header that added four four-minute tasks into sixteen minutes would be
 // reporting a wait nobody had. It is the first spawn to the last landing, which
 // is the thing the person actually lived through.
-func (a *app) rollupHead(from, to, width int) string {
+func (a *app) rollupHead(d deck, from, to, width int) string {
 	count, failed := 0, false
 	var first, last time.Time
 	for i := from; i < to; i++ {
-		card := a.entries[i].done
+		card := d.entries[i].done
 		if card == nil {
 			continue
 		}
