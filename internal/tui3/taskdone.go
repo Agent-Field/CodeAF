@@ -53,6 +53,12 @@ type taskDone struct {
 	// title and subtitle are the identity (taskident.go), frozen at landing.
 	title, subtitle string
 	failed          bool
+	// unverified is the third settled state (session's TaskUnverified), and it
+	// is a FIELD OF ITS OWN rather than a value of failed: the run finished, no
+	// finding was made against it, and a card that folded it into the failure
+	// bool would be this surface reporting a verdict nobody gave. A card is
+	// never both — failed stays false here.
+	unverified bool
 	// span is the node's own age at its final state, and spawned/landed are the
 	// two ends of it in wall-clock — kept because "how long" and "when" are
 	// different questions and the second one is what a person matches against
@@ -79,6 +85,10 @@ const (
 	doneWord      = "done"
 	doneFailWord  = "failed"
 	doneOutputKey = "ctrl+o output"
+	// The word for a landing nobody could judge is the rail's own
+	// ([taskUnverifiedWord]): one vocabulary for one state, so a person who read
+	// "unverified" on the column does not have to learn a second name for it in
+	// the transcript.
 	doneSpawnWord = "spawned "
 	// doneFileSuffix and doneFilesSuffix are the changed-file count. Singular
 	// and plural are both spelled because "1 files" is the surface being sloppy
@@ -121,6 +131,7 @@ func (a *app) landedCard(node *taskNode) {
 		title:      title,
 		subtitle:   taskSubtitleOf(title, node.assignment),
 		failed:     node.state == session.TaskFailed,
+		unverified: node.state == session.TaskUnverified,
 		span:       node.elapsed,
 		spawned:    node.spawnedAt(),
 		landed:     a.now(),
@@ -143,6 +154,15 @@ func (a *app) landedCard(node *taskNode) {
 	// that ran out, and nothing here rewrites it.
 	if card.failed && card.outcome == "" {
 		card.outcome = taskStoppedWord
+	}
+	// AND THE SAME FOR A LANDING NOBODY COULD JUDGE. The outcome line here is
+	// the auditor's own text — session leads an unverified node's report with
+	// what was said instead of a verdict — and it is kept verbatim for the
+	// reason the failure sentence is. The gloss stands in only for a node that
+	// arrived with no report at all, which would otherwise be a card that says
+	// "unverified" and then nothing about why.
+	if card.unverified && card.outcome == "" {
+		card.outcome = taskUnverifiedGloss
 	}
 	// A card lands in the middle of whatever the model was saying, exactly as a
 	// note did: the streaming block is closed first so the card is a block of its
@@ -237,15 +257,21 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 //
 //	✓ ◆ Fix nil-map crash · done 4m12s · 3 files (+42 −7)
 //	✗ ▲ Mix audio · failed 2m03s · stopped — branch kept · task/mix
+//	? ● Port the parser · unverified 6m40s · 2 files · branch kept · task/parser
 //
 // The state mark is the rail's own (task.go's [app.railGlyph] draws the same
-// two), the identity is the one cell that never changes, and everything after
+// three), the identity is the one cell that never changes, and everything after
 // the title is dim: the title is what the row is about and the rest is what
 // became of it.
 func (a *app) doneHead(card *taskDone, width int, sel bool) string {
 	mark := a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
-	if card.failed {
+	switch {
+	case card.failed:
 		mark = a.pal.bad(a.pal.badGlyph())
+	case card.unverified:
+		// THE RAIL'S OWN THIRD MARK (task.go's [glyphUnverified]): the question
+		// this card is, in the hue that says it is not a failure.
+		mark = a.pal.warn(glyphUnverified)
 	}
 	lead := mark + " " + a.taskMarkSel(card.ident, sel) + " "
 	tail := a.doneTail(card)
@@ -277,8 +303,11 @@ const doneTitleFloor = 8
 // back to work that is not on screen.
 func (a *app) doneTail(card *taskDone) string {
 	verb := doneWord
-	if card.failed {
+	switch {
+	case card.failed:
 		verb = doneFailWord
+	case card.unverified:
+		verb = taskUnverifiedWord
 	}
 	tail := " · " + verb
 	if word := taskSpanWord(card.span); card.span > 0 {
@@ -291,7 +320,14 @@ func (a *app) doneTail(card *taskDone) string {
 	case mergeWordConflicted:
 		tail += " · " + mergeWordConflicted + " · " + card.branch
 	case mergeWordAborted:
-		tail += " · " + taskStoppedKept + " · " + card.branch
+		// AN UNVERIFIED NODE DID NOT STOP. It ran to the end and its branch was
+		// kept because nothing merges on an answer nobody gave, so it takes the
+		// half of the sentence that is true of it (task.go's [taskBranchKept]).
+		kept := taskStoppedKept
+		if card.unverified {
+			kept = taskBranchKept
+		}
+		tail += " · " + kept + " · " + card.branch
 	case mergeWordMerged, mergeWordInPlace:
 		tail += " · " + card.merge
 	}
@@ -471,7 +507,7 @@ func (a *app) rollupRows(d deck, out []row, from, to, width int) []row {
 // reporting a wait nobody had. It is the first spawn to the last landing, which
 // is the thing the person actually lived through.
 func (a *app) rollupHead(d deck, from, to, width int) string {
-	count, failed := 0, false
+	count, failed, unverified := 0, false, false
 	var first, last time.Time
 	for i := from; i < to; i++ {
 		card := d.entries[i].done
@@ -480,6 +516,7 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 		}
 		count++
 		failed = failed || card.failed
+		unverified = unverified || card.unverified
 		if !card.spawned.IsZero() && (first.IsZero() || card.spawned.Before(first)) {
 			first = card.spawned
 		}
@@ -488,12 +525,19 @@ func (a *app) rollupHead(d deck, from, to, width int) string {
 		}
 	}
 	mark, word := a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII)), doneRollupWord
-	if failed {
+	switch {
+	case failed:
 		// A MIXED BATCH IS NOT A DONE BATCH. The header keeps the failure mark and
 		// stops saying "done", because the one thing a rollup must never do is
 		// report four successes when it is three and a failure; which of them
 		// failed is on its own row, in its own mark.
 		mark, word = a.pal.bad(a.pal.badGlyph()), doneRollupMix
+	case unverified:
+		// AND A BATCH WITH A QUESTION IN IT IS NOT A DONE BATCH EITHER, for the
+		// same reason and one step quieter: nothing failed, so the mark is the
+		// question rather than the cross, and the header stops claiming that
+		// everything under it came home.
+		mark, word = a.pal.warn(glyphUnverified), doneRollupMix
 	}
 	head := mark + " " + a.pal.ink(itoa(count)+word)
 	if !first.IsZero() && last.After(first) {
@@ -511,8 +555,15 @@ func (a *app) rollupRow(card *taskDone, width int, sel bool) string {
 	// on a row that succeeded: the header said that, and a column of them is a
 	// column read to learn nothing (the law toolview.go states).
 	lead, used := "  "+a.taskMarkSel(card.ident, sel)+" ", 4
-	if card.failed {
+	switch {
+	case card.failed:
 		lead += a.pal.bad(a.pal.badGlyph()) + " "
+		used += 2
+	case card.unverified:
+		// The one other state worth a cell inside a rollup: the header says the
+		// batch is home, and this row says which of them is not finished being
+		// decided.
+		lead += a.pal.warn(glyphUnverified) + " "
 		used += 2
 	}
 	tail := ""

@@ -866,7 +866,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
-	a.enqueueSteering(taskNote(notice))
+	a.enqueueSteering(taskNote(notice, taskURI(node.journalPath())))
 	// SAID ONCE, ACROSS LIVES. The checkpoint records that this node's completion
 	// has been announced, so a session resumed from it restores the node as
 	// history instead of telling the model that finished work has just landed
@@ -875,9 +875,29 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 }
 
 // taskNote is what the model reads when a node lands: the outcome, the report,
-// and the two facts it cannot infer — what changed, and whether the work came
-// home.
-func taskNote(notice TaskNotice) string {
+// and the three facts it cannot infer — what changed, whether the work came
+// home, and where the whole story is.
+//
+// THE VERB IS THE STATE'S OWN WORD, and each one is chosen against the thing it
+// must not be mistaken for. The model is about to tell a person what happened,
+// in its own sentence, and every wrong word here is a wrong word there:
+//
+//	finished          the gate let it through — and the report says on WHOSE
+//	                  word (a VERIFIED verdict, a person accepting it, or
+//	                  "unaudited" with the audit row off), which is why this
+//	                  line does not say "verified" over a verdict it cannot
+//	                  see from here (task_audit.go)
+//	failed            somebody looked and made a finding
+//	could not be      nobody could look, or nobody would say — which is not
+//	verified          the same news and does not cascade
+//
+// THE TRANSCRIPT URI RIDES THE FIRST LINE, when the node has a journal to point
+// at. It is the same handle the `tasks` tool hands out for a node somebody wants
+// to read for themselves (task_index.go's TranscriptURI), and it is here so the
+// model can hand it over — or read it — without first going looking for the
+// row. Empty for a node whose journal this session no longer knows, and then
+// the line simply ends after the title.
+func taskNote(notice TaskNotice, transcript string) string {
 	var note strings.Builder
 	verb := "finished"
 	switch notice.State {
@@ -890,6 +910,9 @@ func taskNote(notice TaskNotice) string {
 		verb = "could not be verified"
 	}
 	fmt.Fprintf(&note, "task %d %s: %s", notice.ID, verb, notice.Title)
+	if transcript != "" {
+		note.WriteString(" · transcript " + transcript)
+	}
 	if notice.Report != "" {
 		note.WriteString("\n" + notice.Report)
 	}

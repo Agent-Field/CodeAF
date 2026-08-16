@@ -248,6 +248,15 @@ type (
 		ev  session.Event
 	}
 	taskLaneClosedMsg struct{ gen int }
+	// wokenMsg is one turn THE SESSION STARTED ON ITS OWN, arriving as the
+	// stream it will speak on (followup.go). It is the turn stream's shape and
+	// not the standing lane's: what comes off the wake lane is a channel, and
+	// the events are on it.
+	wokenMsg struct {
+		gen int
+		ch  <-chan session.Event
+	}
+	wakeLaneClosedMsg struct{ gen int }
 	// The THIRD lane on this surface (room.go): one node's own events, while a
 	// person is standing in its room. It is neither the turn's stream nor the
 	// standing task subscription — those carry what the CONVERSATION is doing and
@@ -503,8 +512,16 @@ type app struct {
 	pasted  []rune
 	pasteAt time.Time
 	// follows are the messages typed with ctrl+q while a turn ran, each holding
-	// the stream the turn it starts will speak on (followup.go).
+	// the stream the turn it starts will speak on — and the woken turns waiting
+	// on the same door, which are streams with no message at all (followup.go).
 	follows []queued
+	// wakeLane is the standing subscription to turns the session started ON ITS
+	// OWN, and wakeGen the generation it belongs to. It is a lane of STREAMS
+	// rather than of events (followup.go's wake lane), and its generation is the
+	// same device the turn stream's is: a lane from an agent that has been
+	// replaced must not start a turn in the one that replaced it.
+	wakeLane <-chan (<-chan session.Event)
+	wakeGen  int
 
 	// THE TASK SIDE (task.go). task is the proposal that owns the answer lane,
 	// or nil; tasks and taskOrder are the rail's nodes, keyed by id and kept in
@@ -764,10 +781,14 @@ func (a *app) Init() tea.Cmd {
 	// the turn's stream and it never closes with one: a node proposed in this
 	// turn reports minutes later, with no turn open, and the rail is the only
 	// thing on screen that knows it is still alive.
+	// THE WAKE LANE IS OPENED IN THE SAME BREATH (followup.go), and it is the
+	// other half of the same fact: the node's landing reaches the rail on the
+	// task lane, and what the session goes on to SAY about it reaches the
+	// transcript on this one.
 	if a.welcome.animating() {
-		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks())
+		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes())
 	}
-	return tea.Batch(a.probeGit(), a.watchTasks())
+	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes())
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1113,6 +1134,17 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if pilot := a.pilots[msg.id]; pilot != nil && pilot.gen == msg.gen {
 			a.landPilot(msg.id)
 			a.touch()
+		}
+		return a, nil
+
+	case wokenMsg:
+		return a, a.adoptWake(msg)
+
+	case wakeLaneClosedMsg:
+		// The agent this lane belonged to is gone, and the generation is what
+		// keeps a closed lane from forgetting the one that replaced it.
+		if msg.gen == a.wakeGen {
+			a.wakeLane = nil
 		}
 		return a, nil
 
@@ -2263,7 +2295,7 @@ func (a *app) renew() tea.Cmd {
 	} else {
 		a.note("new session")
 	}
-	return a.watchTasks()
+	return tea.Batch(a.watchTasks(), a.watchWakes())
 }
 
 func (a *app) quit() tea.Cmd {
