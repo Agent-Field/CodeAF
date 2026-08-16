@@ -64,6 +64,11 @@ type taskDone struct {
 	added, removed    int
 	branch, merge     string
 	brief, acceptance string
+	// model is whose hands did the work, frozen with the rest of it. It is
+	// inside the card rather than on its head for the reason the worktree is:
+	// the head is what happened, and this is a fact somebody opens the card to
+	// check.
+	model string
 	// open says the full context is showing, behind the same expand mechanic
 	// every other card on this surface is behind.
 	open bool
@@ -93,6 +98,7 @@ const (
 	doneAcceptLabel  = "done when · "
 	doneBriefLabel   = "brief · "
 	doneSpanLabel    = "ran · "
+	doneModelLabel   = "model · "
 )
 
 // doneWindow caps the two long fields inside an open card — the report and the
@@ -125,6 +131,7 @@ func (a *app) landedCard(node *taskNode) {
 		merge:      node.merge,
 		brief:      node.brief,
 		acceptance: node.acceptance,
+		model:      node.model,
 	}
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
@@ -349,18 +356,19 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 // said everything it has to say, and offering a key that opens nothing is worse
 // than offering none.
 func (a *app) doneHasDetail(card *taskDone) bool {
-	return card.report != "" || len(card.changed) > 0 ||
-		card.branch != "" || card.brief != "" || card.acceptance != ""
+	return card.report != "" || len(card.changed) > 0 || card.branch != "" ||
+		card.brief != "" || card.acceptance != "" || card.model != ""
 }
 
 // doneDetail is the full context, and it is the labelled block the proposal's
 // own expansion is (task.go): the facts first, because they are what a person
 // opened the card to check, then the two long fields.
 //
-// THE FACTS IT DOES NOT HAVE ARE ABSENT RATHER THAN EMPTY. The model a node ran
-// under, what it cost and which batch it belonged to are not on the wire —
-// session's TaskNotice carries none of them — so no row claims them. When they
-// arrive they belong here, beside the worktree, and nothing else has to move.
+// THE FACTS IT DOES NOT HAVE ARE ABSENT RATHER THAN EMPTY. What a node cost and
+// which batch it belonged to are still not on the wire, so no row claims them.
+// The model IS now (session's TaskNotice.Model) and it arrived exactly where
+// this comment said it would — beside the worktree, with nothing else moved —
+// and it is drawn only when the engine published one.
 func (a *app) doneDetail(card *taskDone, width int) []string {
 	if !card.open {
 		return nil
@@ -381,6 +389,9 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 			branch += " · " + card.merge
 		}
 		say(fit(doneBranchLabel+branch, room))
+	}
+	if card.model != "" {
+		say(fit(doneModelLabel+card.model, room))
 	}
 	if !card.spawned.IsZero() && !card.landed.IsZero() {
 		say(fit(doneSpanLabel+card.spawned.Format("15:04")+" → "+card.landed.Format("15:04"), room))

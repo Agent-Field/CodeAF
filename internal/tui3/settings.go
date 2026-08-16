@@ -162,6 +162,15 @@ var settingUI = map[string]settingMeta{
 		about: "seconds a proposed task waits for you before it starts. " +
 			"0 waits for your answer instead.",
 	},
+	// And beside it, the other thing that is true of every task you hand off:
+	// whose hands it goes into. It is answered by the PICKER, like the two tier
+	// rows below it and for the same reason — a row that asks "which model" and
+	// offers a blank line is asking a person to be the catalog.
+	config.KeyTaskModel: {
+		tab: tabSession, label: "task model", widget: widgetSelect,
+		about: "the model a task runs on when you have not asked for another. " +
+			"Blank runs it on the model you are talking to.",
+	},
 	// THE TWO TIER ROWS ARE MODEL CHOICES AND ARE ANSWERED AS ONE. They were a
 	// text box for four waves, which meant the only way to name the cheap model
 	// was to type its id from memory — in a panel that already knows every id,

@@ -175,9 +175,14 @@ var settingReaders = map[string]string{
 	// a deadline on a proposal — for the reason the spend rail names its own:
 	// the door resolves the row and the session is what touches the value.
 	KeyTaskAutoApprove: "TaskAutoApproveSeconds",
-	KeyTierLowModel:    "TierKey",
-	KeyTierHighModel:   "TierKey",
-	KeyModelRoles:      "PinKey",
+	// The task model is read by the v3 door and becomes session.Config.TaskModel,
+	// which a proposal that names no model of its own resolves through
+	// (internal/session's taskmodel.go). It names the accessor the door touches,
+	// as the guardian and the countdown rows do.
+	KeyTaskModel:     "TaskModelAt",
+	KeyTierLowModel:  "TierKey",
+	KeyTierHighModel: "TierKey",
+	KeyModelRoles:    "PinKey",
 	// The three web-search rows are read by the v3 door, which turns them into
 	// the [search.Options] it resolves the session's pair from
 	// (cmd/aforge/chatv3.go's v3SearchOptions). Each names its own reader

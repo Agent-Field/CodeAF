@@ -132,6 +132,11 @@ type taskRecord struct {
 	Worktree string   `json:"worktree,omitempty"`
 	Merge    string   `json:"merge,omitempty"`
 
+	// Model is the model this node was admitted to run on, and empty when it
+	// simply took the conversation's — including on every checkpoint written
+	// before a task could carry one, which resumes exactly as it always did.
+	Model string `json:"model,omitempty"`
+
 	// MaxSteps and NoProgress are the node's own thresholds, 0 when it named
 	// none and the defaults apply.
 	MaxSteps   int `json:"max_steps,omitempty"`
@@ -288,6 +293,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Branch:      n.branch,
 		Worktree:    n.worktree,
 		Merge:       n.merge,
+		Model:       n.spec.model,
 		MaxSteps:    n.spec.maxSteps,
 		NoProgress:  n.spec.noProgress,
 		ElapsedMS:   elapsed.Milliseconds(),
@@ -576,6 +582,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 			brief:      record.Brief,
 			acceptance: record.Acceptance,
 			dependsOn:  record.DependsOn,
+			model:      record.Model,
 			maxSteps:   record.MaxSteps,
 			noProgress: record.NoProgress,
 		},

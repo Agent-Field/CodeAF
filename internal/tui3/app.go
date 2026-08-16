@@ -1851,11 +1851,10 @@ func (a *app) press(y int) {
 		// the same gesture answering the same question about the same object one
 		// state later (taskdone.go).
 		a.toggleDoneAt(r.entry)
-	case hitChoice:
-		// The choices row was offered this click before the body and took it
-		// (see [app.choicePress]); reaching here means the pointer was in a
-		// column no option occupies, and empty space on this surface does
-		// nothing.
+	case hitChoice, hitModel:
+		// Both rows were offered this click before the body and took it (see
+		// [app.choicePress]); reaching here means the pointer was in a column no
+		// option occupies, and empty space on this surface does nothing.
 	}
 }
 
@@ -1905,13 +1904,27 @@ func (a *app) choicePress(x, y int) (tea.Cmd, bool) {
 		return nil, false
 	}
 	r, ok := a.rowAt(y)
-	if !ok || r.hit != hitChoice || r.entry < 0 || r.entry >= len(a.entries) {
+	if !ok || r.entry < 0 || r.entry >= len(a.entries) {
+		return nil, false
+	}
+	if r.hit != hitChoice && r.hit != hitModel {
 		return nil, false
 	}
 	card := a.entries[r.entry].card
 	// The open question is the only one that can be answered, and it is the one
 	// the lane holds: an older card still on screen has already settled.
 	if card == nil || card != a.task || card.settled() {
+		return nil, true
+	}
+	// Each row is resolved against ITS OWN spans: the models row settles which
+	// model, the choices row settles the question (task.go).
+	if r.hit == hitModel {
+		for _, span := range card.modelSpans {
+			if x >= span.from && x < span.to {
+				a.takeModel(span.at)
+				break
+			}
+		}
 		return nil, true
 	}
 	for _, span := range card.spans {
