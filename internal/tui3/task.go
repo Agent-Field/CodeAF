@@ -674,6 +674,23 @@ func (a *app) toggleCardAt(i int) {
 	a.touch()
 }
 
+// openCard is ctrl+o on a SELECTED proposal, and it reports whether it took the
+// key.
+//
+// THE BRIEF KEPT A KEY WHEN IT LOST THE CLICK. A press on a spawn card opens the
+// node's room now (app.go's [app.press]) — the question a person has about
+// running work is what it is doing — and the brief is still one fold away, on
+// the key this surface already means "show me the rest of this" by. It sits
+// beside the landed card's own ctrl+o (taskdone.go's [app.openDone]): same key,
+// same gesture, the same object one state apart.
+func (a *app) openCard(i int) bool {
+	if i < 0 || i >= len(a.entries) || a.entries[i].kind != entryTask || a.entries[i].card == nil {
+		return false
+	}
+	a.toggleCardAt(i)
+	return true
+}
+
 // markCardStale drops the cached rows of the entry that draws this card.
 func (a *app) markCardStale(card *taskCard) {
 	for i := range a.entries {
@@ -1299,6 +1316,49 @@ func (a *app) railShowing() bool {
 	return len(a.taskOrder) > 0
 }
 
+// railAvail reports whether there is a roster to raise at all, at ANY width.
+//
+// It is the width-free half of [app.railShowing], and the two are different
+// questions now: what the frame lends the roster is a question about columns,
+// and whether the session has any work to show is not. ctrl+t asks this one.
+func (a *app) railAvail() bool { return len(a.taskOrder) > 0 }
+
+// railFull reports whether the roster is drawn OVER the body rather than beside
+// it — the narrow frame's answer to the same key.
+//
+// THE COLUMN IS THE FIRST THING A NARROW FRAME GIVES UP and that left the work
+// with no door on it at all: under [railSlimFloor] there was no rail, so there
+// was no way into a running node except a card that had scrolled away. Squeezing
+// the column further was never the fix — a roster at twelve columns is a list of
+// first words — so under the breakpoint the same roster opens over the frame
+// instead: the same entries, the same folds, the same footer, the same keys, at
+// the width it actually has.
+//
+// It is the SAME STATE as the column's focus ([app.railHold]) and not a second
+// flag, because it is the same act: ctrl+t asks for the roster, and what the
+// frame does with the request is a question about its width. One state cannot
+// disagree with itself about whether the roster is up.
+func (a *app) railFull() bool {
+	if !a.railHold || !a.railAvail() {
+		return false
+	}
+	width, _ := a.size()
+	return railColsFor(width) == 0
+}
+
+// railStanding reports whether the roster is on the frame in either shape.
+func (a *app) railStanding() bool { return a.railShowing() || a.railFull() }
+
+// railRoom is the columns the roster's TEXT gets, seam excluded: its column's
+// width where it has one, the whole frame where it is drawn over the body.
+func (a *app) railRoom() int {
+	width, _ := a.size()
+	if a.railFull() {
+		return width - ansi.StringWidth(railSeam)
+	}
+	return railColsFor(width) - ansi.StringWidth(railSeam)
+}
+
 // railWidth is what the rail costs the conversation, in columns.
 func (a *app) railWidth() int {
 	if !a.railShowing() {
@@ -1371,11 +1431,10 @@ func (a *app) railLines(entries []railEntry, focus, width int) []railLine {
 // 300` pays for it on the frames they are looking at it, which are frames with
 // nothing animating on them (see [app.tasksAnimating]).
 func (a *app) railView(height int) ([]railLine, int) {
-	if height <= 0 || !a.railShowing() {
+	if height <= 0 || !a.railStanding() {
 		return nil, -1
 	}
-	width, _ := a.size()
-	room := railColsFor(width) - ansi.StringWidth(railSeam)
+	room := a.railRoom()
 	entries := a.railEntries()
 	focus := a.railFocusIndex(entries)
 
@@ -1428,9 +1487,18 @@ func (a *app) railRows(height int) []string {
 	if len(view) == 0 {
 		return nil
 	}
+	// THE SEAM IS A SEAM AND NOT A BORDER, so it is drawn only where there is
+	// something on the other side of it. Over the body there is nothing to the
+	// left of the roster, and a vertical rule down the left edge of a full-width
+	// list is exactly the border this surface does not draw — so those two cells
+	// go blank and keep their width, which is what the marker column is.
+	seam := a.pal.dim(railSeam)
+	if a.railFull() {
+		seam = strings.Repeat(" ", ansi.StringWidth(railSeam))
+	}
 	out := make([]string, len(view))
 	for i, line := range view {
-		lead := a.pal.dim(railSeam)
+		lead := seam
 		if focus >= 0 && line.head && line.entry == focus {
 			lead = a.pal.accent(a.linearMark(railMark, railMarkASCII))
 		}
@@ -1447,11 +1515,12 @@ func (a *app) railRows(height int) []string {
 // disagreed would open the room of the node above the one under the pointer.
 //
 // The roster's first row is the first row of the BODY REGION (view.go joins it
-// from index zero there), which the focus header a room pins above the body
-// moves down by its own height — so a screen row is a roster index minus
-// [app.headHeight] and not before.
+// from index zero there, and stacks it there whole when it is drawn over the
+// body), which the rows the frame pins above that region move down by their own
+// height — so a screen row is a roster index minus [app.topHeight] and not
+// before.
 func (a *app) railEntryAt(y int) (railEntry, bool) {
-	y -= a.headHeight()
+	y -= a.topHeight()
 	view, _ := a.railView(a.viewHeight())
 	if y < 0 || y >= len(view) || view[y].entry < 0 {
 		return railEntry{}, false
@@ -1554,8 +1623,13 @@ func (a *app) railFocusIndex(entries []railEntry) int {
 }
 
 // railTake gives the roster the keyboard, or hands it back.
+//
+// On a frame with no column it is also what RAISES the roster, over the body
+// ([app.railFull]): asking for the roster and asking for the keyboard are the
+// same request, and which of the two shapes answers it is the frame's business
+// and not the caller's.
 func (a *app) railTake(hold bool) {
-	if hold && !a.railShowing() {
+	if hold && !a.railAvail() {
 		return
 	}
 	a.railHold = hold
@@ -1589,7 +1663,11 @@ func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	if key == "ctrl+t" {
-		if !a.railHold && !a.railShowing() {
+		// ONE KEY AT EVERY WIDTH. With a column on the frame it hands the roster
+		// the keyboard; without one it raises the roster over the body, which is
+		// the same act with the same state behind it ([app.railFull]). Pressed
+		// again — or esc — it puts it away.
+		if !a.railHold && !a.railAvail() {
 			// Nothing to hold. The key falls through rather than being eaten
 			// silently, so a surface that grows another meaning for it later is
 			// not fighting a map that is not on screen.
@@ -2290,7 +2368,10 @@ func (a *app) tasksAnimating() bool {
 	if a.awaitingTask() && !a.task.deadline.IsZero() {
 		return true
 	}
-	if !a.railShowing() {
+	// The strip turns the same spinner on a frame too narrow for a column, and
+	// the roster over the body is the column by another shape — either one is a
+	// reason to keep the paint clock alive (taskstrip.go, [app.railFull]).
+	if !a.railStanding() && !a.stripShowing() {
 		return false
 	}
 	// A ROSTER FULL OF SETTLED WORK IS A STILL PICTURE. The column stands for the

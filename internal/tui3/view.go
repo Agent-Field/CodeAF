@@ -8,6 +8,8 @@ import (
 
 // THE FRAME, AS OF THE STATUS-DOWN WAVE.
 //
+//	(header)       the room's pinned line, while one is open
+//	(strip)        ⠙ Fix nil-map · ◆ Auth tests · +2, while work is running
 //	conversation   everything that has happened, scrolled
 //	───────────    a thin dim rule: below it is your business
 //	(consent)      the approval question, when one is waiting
@@ -36,6 +38,15 @@ import (
 // them and only on a frame wide enough to lend them (task.go's railFloor). It
 // takes its columns from the CONVERSATION and from nothing else — the status
 // row and the legend span the whole window, because they are about the window.
+//
+// THE TWO PINNED ROWS ABOVE IT ARE ABOUT THE WINDOW TOO, so they span it: the
+// room's focus header, and the task strip under it. Their combined height is
+// [app.topHeight], and it is subtracted from the conversation in the one place
+// every geometric question resolves through ([app.viewHeight]).
+//
+// A FRAME TOO NARROW FOR THE RAIL CAN STILL OPEN THE ROSTER, and there it opens
+// over the body instead of beside it (ctrl+t, task.go's [app.railFull]). The
+// strip is what makes that reachable without a key at all.
 //
 // A terminal too short for all of it gives up its breathing room first — the
 // rule and the blank above the draft — and its status line last: what is
@@ -131,19 +142,37 @@ func (a *app) frame() (string, int, int) {
 	// the transcript, so it is not one of the columns the rail borrows from
 	// (room.go).
 	head := a.roomHead(width)
+	// AND THE TASK STRIP IS THE ROW UNDER IT, for the same reason and at the same
+	// width: what is running is a fact about the SESSION, not about the
+	// transcript, and it is pinned because a door that scrolls away is a door
+	// only the person at the bottom of the page has (taskstrip.go).
+	strip := a.stripRow(width)
 	// THE RAIL COSTS COLUMNS, AND IT COSTS THEM HERE. The conversation is laid
 	// out at [app.bodyWidth] — everything below this line, the wheel and the
 	// hit-testing included, resolves through the same number — and the chrome is
 	// drawn at the FULL width, because the status line and the legend are about
 	// the whole window rather than about the transcript (task.go).
 	view := a.viewHeight()
-	body, pad := a.bodyRows(a.bodyWidth(), view)
-	rail := a.railRows(view)
 
 	rows := make([]string, 0, height)
 	if head != "" {
 		rows = append(rows, head)
 	}
+	if strip != "" {
+		rows = append(rows, strip)
+	}
+	// THE ROSTER TAKES THE BODY WHOLE on a frame with no columns to lend it: the
+	// same rows, the same folds, the same footer, laid out at the full width
+	// instead of squeezed into thirty columns that are not there (task.go's
+	// [app.railFull]). The conversation is not drawn under it — an overlay you
+	// read past is an overlay that made the page harder to read — and the chrome
+	// below stays, because the draft is still where this surface types.
+	if a.railFull() {
+		rows = append(rows, a.railRows(view)...)
+		return a.frameOut(rows, chrome, height, caretX, caretRow)
+	}
+	body, pad := a.bodyRows(a.bodyWidth(), view)
+	rail := a.railRows(view)
 	railAt := func(i int) string {
 		if i < len(rail) {
 			return rail[i]
@@ -156,6 +185,16 @@ func (a *app) frame() (string, int, int) {
 	for i, r := range body {
 		rows = append(rows, a.railJoin(r.text, railAt(pad+i)))
 	}
+	return a.frameOut(rows, chrome, height, caretX, caretRow)
+}
+
+// frameOut closes a frame: the chrome under whatever the body drew, cut to the
+// terminal, and the caret counted back through the chrome's own height.
+//
+// It is one function because the two body layouts — the conversation beside its
+// rail, and the roster over the whole of it — must end the same way. A second
+// copy of this arithmetic is a caret that lands on the right row in one of them.
+func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow int) (string, int, int) {
 	rows = append(rows, chrome...)
 	// A frame taller than the terminal loses rows from the TOP: the chrome is
 	// the tail, and everything the caret's row is counted back through is in it.
@@ -389,7 +428,7 @@ func (a *app) bodyTop() int {
 	if a.viewHeight() <= 0 {
 		return -1
 	}
-	return a.headHeight()
+	return a.topHeight()
 }
 
 // rowAt resolves a screen line to the row drawn on it.
@@ -403,6 +442,13 @@ func (a *app) bodyTop() int {
 func (a *app) rowAt(y int) (row, bool) {
 	top := a.bodyTop()
 	if top < 0 {
+		return row{}, false
+	}
+	// AND THE ROSTER ANSWERS FOR THE BODY WHILE IT IS OVER IT, which it does
+	// through its own hit-testing (task.go's [app.railEntryAt]). There is no row
+	// list under it to resolve to, so the pointer gets nothing here rather than a
+	// transcript row nobody can see.
+	if a.railFull() {
 		return row{}, false
 	}
 	if a.roomOpen() {
@@ -431,11 +477,21 @@ func (a *app) rowAt(y int) (row, bool) {
 // from where they were drawn.
 func (a *app) viewHeight() int {
 	_, height := a.size()
-	if body := height - a.chromeHeight() - a.headHeight(); body > 0 {
+	if body := height - a.chromeHeight() - a.topHeight(); body > 0 {
 		return body
 	}
 	return 0
 }
+
+// topHeight is everything the frame pins ABOVE the body region: the room's focus
+// header, and the task strip under it (taskstrip.go).
+//
+// It is one function for the reason [app.chrome] is one function: the frame
+// draws these rows, the conversation is shortened by their count, and a pointer
+// is resolved through them — three questions that must never be able to disagree
+// about where the body starts. Neither of the two may ask [app.viewHeight] back,
+// which is why both answer from the terminal's size alone.
+func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
 
 // headHeight is what the pinned focus header costs the body region: one row
 // while a room is open on a frame with the height to spare, and nothing

@@ -1371,8 +1371,19 @@ func (a *app) goHome() {
 // person reached with. The press moves the roster's cursor to what was pressed
 // but does NOT take the keyboard: clicks focus what was clicked, and the draft
 // is where this surface types.
+// OVER THE BODY IT IS THE OTHER WAY ROUND: the roster has the whole width, so
+// the question stops being about x and becomes about y — a press inside the body
+// region is the roster's, and the pinned rows above it (the header, the strip)
+// are not, because those are drawn by somebody else and answer for themselves
+// (view.go's [app.topHeight]).
 func (a *app) railPress(x, y int) (tea.Cmd, bool) {
-	if !a.railShowing() || x < a.bodyWidth() {
+	switch {
+	case a.railFull():
+		top := a.bodyTop()
+		if top < 0 || y < top || y >= top+a.viewHeight() {
+			return nil, false
+		}
+	case !a.railShowing() || x < a.bodyWidth():
 		return nil, false
 	}
 	if e, ok := a.railEntryAt(y); ok {
