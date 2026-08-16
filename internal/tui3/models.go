@@ -294,7 +294,8 @@ func chatModels(models []Model) []Model { return keepModels(models, chatModel) }
 // through a rule that only looked at what comes back.
 func chatModel(model Model) bool { return answersText(model) && readsText(model) }
 
-// seesImages is the VISION slot's question: can this model look at a picture.
+// seesImages is HALF the vision slot's question ([inspectsImages] is the whole
+// of it): can this model look at a picture.
 //
 // SILENCE FALLS THROUGH, which is the opposite of what the door's own vision
 // gate does with it (cmd/aforge's v3ReadsImages, where the cost of guessing
@@ -309,6 +310,19 @@ func seesImages(model Model) bool {
 	}
 	return hasModality(model.Input, "image")
 }
+
+// inspectsImages is what the VISION SLOT actually asks, and it is [seesImages]
+// AND [chatModel] because the slot is an inspection proxy: aforge hands it a
+// picture and reads back a sentence about one (config's ResolveVisionModel, and
+// the view_image tool behind it). Image input alone is half the question — it
+// keeps google/gemini-3.1-flash-image, which reads pictures and answers in
+// pictures, and it keeps every silent row the chat law already reads by name as
+// a transcriber or an embedder. Neither can answer "what is in this photo".
+//
+// The two halves stay separate predicates because they are separately true:
+// [seesImages] is the modality question on its own and is tested as one, and a
+// later slot that wants sight without speech asks it directly.
+func inspectsImages(model Model) bool { return seesImages(model) && chatModel(model) }
 
 func hasModality(modalities []string, want string) bool {
 	for _, modality := range modalities {
