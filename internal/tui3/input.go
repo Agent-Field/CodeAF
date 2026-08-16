@@ -287,6 +287,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.followUp()
 
 	case "ctrl+o":
+		// A SELECTED COMPLETION CARD OWNS THIS KEY, because that card is the one
+		// place on the surface that prints a key and says what it does with it —
+		// "ctrl+o output", on its own second row (taskdone.go). With nothing
+		// selected, which is every other moment, it is the tool cluster's fold it
+		// has always been.
+		if a.openDone(a.sel) {
+			return nil
+		}
 		a.unfold(a.turn)
 		return nil
 

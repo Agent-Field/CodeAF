@@ -86,7 +86,7 @@ func (a *app) hoverTarget(y int) hoverAt {
 		switch {
 		case r.hit == hitFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
-		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask:
+		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone:
 			return hoverAt{kind: hoverEntry, entry: r.entry}
 		case r.entry >= 0 && r.entry < len(a.entries) &&
 			a.entries[r.entry].kind == entryThinking:
