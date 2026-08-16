@@ -359,14 +359,16 @@ func (a *Agent) askAboutLoop(ctx context.Context, hub *eventHub, ep *episode, lo
 		choice = RecoveryContinue
 	}
 
+	// All three ride the AMBIENT lane (agent.go): they are instructions to the
+	// turn that is already running, not news anybody is waiting to hear about.
 	switch choice {
 	case RecoveryRevert:
-		a.enqueueSteering(a.revertNote(offer))
+		a.enqueueAmbientNote(a.revertNote(offer))
 	case RecoveryContinue:
-		a.enqueueSteering("[stuck] I asked the person about this repetition and they said to carry on. " +
+		a.enqueueAmbientNote("[stuck] I asked the person about this repetition and they said to carry on. " +
 			"Keep going, but say what you expect to be different this time.")
 	default:
-		a.enqueueSteering("[stuck] I asked the person about this repetition and they said no. " +
+		a.enqueueAmbientNote("[stuck] I asked the person about this repetition and they said no. " +
 			"Stop repeating " + looping.tool + ": say what you have found, what is blocking you, " +
 			"and what you need from them.")
 	}
