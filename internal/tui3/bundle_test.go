@@ -2663,7 +2663,10 @@ func clickRail(t *testing.T, a *app, row int) {
 	if !a.railShowing() {
 		t.Fatal("there is no rail to click")
 	}
-	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: row, Button: tea.MouseLeft})
+	// The rail's rows are the BODY REGION's rows, which the focus header a room
+	// pins above it moves down by one (room.go) — so the rail's first row is not
+	// always the frame's first row.
+	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: row + a.headHeight(), Button: tea.MouseLeft})
 }
 
 // THE CONTRACT THE ENGINE LANDED. It is asserted at runtime rather than as a
@@ -2763,7 +2766,7 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 
 	// The box says who it is talking to.
 	block, _, _, _ := a.chrome(a.width)
-	if !strings.Contains(plain(strings.Join(block, "\n")), "steer Fix the nil-map crash") {
+	if !strings.Contains(plain(strings.Join(block, "\n")), "Steer Fix the nil-map crash… (esc: main)") {
 		t.Fatalf("the box does not offer the steering lane:\n%s", plain(strings.Join(block, "\n")))
 	}
 
@@ -2878,7 +2881,9 @@ func TestTheFrameSaysAPersonIsInARoom(t *testing.T) {
 	clickRail(t, a, 0)
 
 	status := plain(a.status(a.width))
-	if !strings.Contains(status, "task · Fix the nil-map crash") {
+	// The chip is the node's mark and its title — no "task 7" ghost id, and no
+	// word standing in for the page's own name (room.go).
+	if !strings.Contains(status, "Fix the nil-map crash") {
 		t.Fatalf("the status line does not name the room:\n%s", status)
 	}
 	if !strings.Contains(status, "$0.42") {
@@ -2888,7 +2893,7 @@ func TestTheFrameSaysAPersonIsInARoom(t *testing.T) {
 		t.Fatalf("the legend does not say how to leave:\n%s", plain(a.legend(a.width)))
 	}
 	drive(t, a, key("esc"))
-	if strings.Contains(plain(a.status(a.width)), "task · Fix") {
+	if strings.Contains(plain(a.status(a.width)), "Fix the nil-map crash") {
 		t.Fatalf("the status line stayed in the room:\n%s", plain(a.status(a.width)))
 	}
 }
