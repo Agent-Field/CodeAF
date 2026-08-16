@@ -300,10 +300,13 @@ var settingUI = map[string]settingMeta{
 	// The model slots themselves are added by [init] from [config.ModelSlots],
 	// so a sixth role or a sixth modality reaches this panel without anybody
 	// editing this file — the same contract internal/config's own sheet keeps.
-	// The looking row is a model choice too, and it is the row that proves the
-	// picker has to be able to ask more than one question: the models on offer
-	// here are the ones that can SEE ([seesImages]), which is a different list
-	// from the one every other slot draws.
+	//
+	// EVERY ONE OF THEM ASKS ITS OWN QUESTION ([filterFor]). Five of these rows
+	// are not conversations at all — drawing, speaking, composing, filming, and
+	// the one that hears you — and the looking row wants a model that can SEE.
+	// Answering all seven with the chat law, which is what this panel did, does
+	// not give a media slot a list that is merely too wide: it gives it the exact
+	// complement of the rows that could answer it.
 	config.KeyMouse: {
 		tab: tabDisplay, label: "mouse", widget: widgetCycle,
 		about: "on gives hover and click; off gives the terminal's own text selection back.",
@@ -443,9 +446,27 @@ type sheetSelect struct {
 // asks, and it is deliberately one function: a second slot with a modality of
 // its own is one case here, and a slot nobody thought about gets the general
 // chat law rather than the whole catalog.
+//
+// THE FIVE MEDIA SLOTS ARE THE REASON THIS IS A MAP AND NOT AN IF. Every one of
+// them was answered with [chatModel], which is not "a list that was too wide" —
+// it is the exact complement of the right list, so "drawing" offered a picker in
+// which no row could draw. The slot words are [config.ModelSlots]'s own
+// (modelslots.go's mediaSlotWords), and the predicates are models.go's; a sixth
+// modality is one line in each place and no new list anywhere.
 func filterFor(key string) modelFilter {
-	if key == config.KeyVisionModel {
+	switch key {
+	case config.KeyVisionModel:
 		return seesImages
+	case config.ModelSettingKey("image"):
+		return drawsImages
+	case config.ModelSettingKey("speech"):
+		return speaksAloud
+	case config.ModelSettingKey("music"):
+		return composesMusic
+	case config.ModelSettingKey("video"):
+		return filmsVideo
+	case config.ModelSettingKey("voice"):
+		return hearsSpeech
 	}
 	return chatModel
 }
@@ -483,8 +504,8 @@ func settingDefaults() map[string]string {
 // The two live seams it wires are the two this surface can honestly answer. The
 // conversation model is the model in the status line, and setting it is the
 // same road /model takes ([app.switchModel]) — one door, one effect. Every
-// other slot belongs to a session this surface did not open, and it says so
-// rather than writing a preference nothing in this process would read.
+// other slot is answered somewhere this process cannot reach, and it says WHERE
+// ([app.slotRefusal]) rather than writing a preference nothing here would read.
 func (a *app) registry() *config.Settings {
 	if a.settings != nil {
 		return a.settings
@@ -499,7 +520,7 @@ func (a *app) registry() *config.Settings {
 		},
 		SetModel: func(slot, slug string) error {
 			if slot != talkSlot {
-				return fmt.Errorf("that model is chosen where its session is opened")
+				return a.slotRefusal(slot)
 			}
 			a.switchModel(slug, 0)
 			return nil
@@ -511,6 +532,28 @@ func (a *app) registry() *config.Settings {
 
 // talkSlot is the model slot this surface is: the conversation.
 const talkSlot = "talk"
+
+// slotRefusal is what a slot this surface cannot write answers, and it NAMES
+// THE PLACE. The old sentence — "that model is chosen where its session is
+// opened" — is true of the role slots and simply wrong about the five media
+// ones: those are environment slots ([config.Setting.EnvDefault]), and a person
+// told to open a session to change the drawing model has been sent to a door
+// that does not exist. A refusal that cannot say where the value lives is a
+// refusal that leaves somebody stuck, which is the one thing the registry's
+// plain-language rule is for.
+func (a *app) slotRefusal(slot string) error {
+	// A ROLE belongs to a session and a MEDIA slot belongs to the environment,
+	// which is the split [config.ModelSlot] already draws: a capability slot
+	// carries no role. The environment variable is read off the registry row
+	// rather than repeated here, so the sentence cannot name a variable the
+	// registry has since renamed.
+	if media, ok := config.ModelSlotFor(slot); ok && media.Role == "" && a.settings != nil {
+		if row, found := a.settings.Row(config.ModelSettingKey(media.Slot)); found && row.EnvDefault != "" {
+			return fmt.Errorf("%s is set with %s", media.Label, row.EnvDefault)
+		}
+	}
+	return fmt.Errorf("that model is chosen where its session is opened")
+}
 
 // openSettings is /settings and ctrl+,.
 func (a *app) openSettings() {
@@ -804,7 +847,11 @@ func (a *app) activate() {
 			key: item.row.Key, label: item.meta.label,
 			keep: filterFor(item.row.Key),
 		}
-		sel.pick.startFor(a.modelList(), item.row.Value(), sel.keep)
+		// The list is resolved through the SLOT'S OWN question, not through the
+		// chat list narrowed afterwards ([app.modelsFor]). The predicate is
+		// handed to the picker as well because that is the door every slot comes
+		// through, and a second application of the same filter is a no-op.
+		sel.pick.startFor(a.modelsFor(sel.keep), item.row.Value(), sel.keep)
 		s.sel = sel
 
 	default:
