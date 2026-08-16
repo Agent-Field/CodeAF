@@ -11,6 +11,7 @@ import (
 //	(header)       the room's pinned line, while one is open
 //	(strip)        ⠙ Fix nil-map · ◆ Auth tests · +2, while work is running
 //	conversation   everything that has happened, scrolled
+//	(blank)                                              ↓ latest · ctrl+l
 //	───────────    a thin dim rule: below it is your business
 //	(consent)      the approval question, when one is waiting
 //	(follow)       after yield · N, when something is queued
@@ -18,6 +19,13 @@ import (
 //	 › the draft   one row, or up to six of a pasted block
 //	(overlay)      the open list, when one is open
 //	status         title · model · $cost · N% ctx · state        /help · ctrl+o
+//
+// THE TWO BLANK ROWS ARE ONE LADDER, not two decisions: [app.breathingRows] is
+// the resting gap this window can afford between the last thing said and the
+// box the next thing is typed into — two rows on a tall frame, one on the
+// everyday one, none on a short one — and the rows are spent top down, so the
+// row a narrow window keeps is the one nearest the draft. The jump chip rides
+// the FIRST of them (jumpchip.go), which is why the diagram draws it there.
 //
 // The status bar used to be the FIRST row, and this wave moved it to the last.
 // The reason is where a person's eye already is: on this surface everything
@@ -58,6 +66,24 @@ import (
 // transcript, and it is one cell because two would be a margin.
 const inputPad = " "
 
+// The two floors the frame's breathing room stands on.
+//
+// roomyFloor is the height below which this surface stops drawing whitespace
+// at all: the rule, the gap and the pinned header all go, and what is left is
+// the conversation, the box and the status line. It is the floor
+// [app.headHeight] and the task strip already stood on, written down once.
+//
+// airyFloor is where a SECOND gap row is affordable. The row costs a row of
+// conversation, so it is spent only where there is conversation to spend: at
+// sixteen the four resting rows of chrome and both gap rows still leave eleven
+// for the transcript, which is a reply's worth. Below it the gap steps back to
+// the one row it has always been, so no window that was comfortable yesterday
+// pays for this wave.
+const (
+	roomyFloor = 6
+	airyFloor  = 16
+)
+
 // chromeKind says what one chrome row IS, for the pointer. The frame is the
 // only thing that knows where these rows land on screen, so it is the only
 // thing that answers the question — see [app.chrome].
@@ -79,6 +105,10 @@ const (
 	// frame). It is hoverable by nothing and pressable in one place: the model
 	// segment, whose columns the render records (render.go's [app.identityParts]).
 	chromeStatus
+	// chromeJump is the gap row the jump-to-latest chip is floating on. The row
+	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
+	// it is a question about the column as well as the row (jumpchip.go).
+	chromeJump
 )
 
 // chromeRow is one row of the frame below the conversation.
@@ -249,8 +279,8 @@ func (a *app) frameOut(rows, chrome []string, height, caretX, caretRow int) (str
 // [app.chromeAt] resolves a pointer to one of them — three questions that must
 // never be able to disagree about where the input line is.
 func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
-	_, height := a.size()
-	roomy := height >= 6
+	gap := a.breathingRows()
+	roomy := gap > 0
 
 	rows := make([]string, 0, 8)
 	marks := make([]chromeRow, 0, 8)
@@ -259,6 +289,33 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		marks = append(marks, mark)
 	}
 
+	// THE CHIP RIDES THE FIRST ROW OF THE GAP, which is the row nearest the
+	// conversation it is about: above the rule where the window is airy enough
+	// to have a row up there, and the old blank above the draft where it is not.
+	// It is drawn into a row that ALREADY EXISTS rather than onto the last line
+	// of the transcript, and that is the whole reason it composes: a conversation
+	// row is cached per entry (render.go's entryRows) and shortened by the rail's
+	// columns, so painting a chip into one would mean invalidating somebody's
+	// cache every time the pointer moved and right-aligning to a width that
+	// changes when a task starts. A gap row is built fresh every frame, spans the
+	// whole window, and carries a mark the pointer already knows how to resolve.
+	chip := a.jumpChip(width)
+	jumped := false
+	// addGap spends one row of the ladder, and hands it to the chip if the chip
+	// has not been placed yet.
+	addGap := func() {
+		if chip != "" && !jumped {
+			jumped = true
+			add(chip, chromeRow{kind: chromeJump})
+			return
+		}
+		add("", chromeRow{})
+	}
+	// The rows above the rule are the SECOND helping of breathing room, so there
+	// is one of them or none (see [app.breathingRows]).
+	for i := 1; i < gap; i++ {
+		addGap()
+	}
 	// The welcome box sits ABOVE the rule, which is where it belongs: the rule
 	// is the seam between what happened and what you are about to say, and the
 	// box is about neither — it is what there is instead of a conversation
@@ -292,7 +349,7 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		add(line, chromeRow{})
 	}
 	if roomy {
-		add("", chromeRow{})
+		addGap()
 	}
 
 	input, caretX, caretRow := a.inputBlock(width - len(inputPad))
@@ -364,7 +421,7 @@ func (a *app) chromeAt(y int) (chromeRow, bool) {
 
 // chromeHeight is how many rows the frame spends below the conversation.
 func (a *app) chromeHeight() int {
-	width, height := a.size()
+	width, _ := a.size()
 	// The status (one row, or two when the telemetry wraps — and always two at
 	// the phone tier, where it is a deck rather than a row: [app.statusHeight]
 	// answers that one from the tier alone, so this count never has to run a
@@ -373,10 +430,32 @@ func (a *app) chromeHeight() int {
 	// holding.
 	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
 		a.guardHeight() + a.followHeight() + a.welcomeHeight()
-	if height >= 6 {
-		n += 2 // the rule, and the blank above the draft
+	if gap := a.breathingRows(); gap > 0 {
+		n += gap + 1 // the breathing room, and the rule standing in it
 	}
 	return n
+}
+
+// breathingRows is the resting gap between the conversation and the box, in
+// rows. It is the ONE ladder both halves of the frame read — [app.chrome] spends
+// these rows and [app.chromeHeight] charges the conversation for them — because
+// a gap the layout drew and the geometry did not count is a caret one row below
+// where the terminal puts its cursor.
+//
+// THE LADDER STEPS DOWN, NEVER UP. Two rows is the resting state of a window
+// with the height to lend them; the everyday window keeps the single blank above
+// the draft it has always had; and below [roomyFloor] the surface stops drawing
+// whitespace altogether, along with the rule, the pinned header and the strip.
+// A short window never pays for the wave that made a tall one roomier.
+func (a *app) breathingRows() int {
+	_, height := a.size()
+	switch {
+	case height >= airyFloor:
+		return 2
+	case height >= roomyFloor:
+		return 1
+	}
+	return 0
 }
 
 // rule is the one line this surface draws: the seam between what happened and
@@ -531,11 +610,10 @@ func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
 // through, rather than at the frame — a header the frame drew and the scrolling
 // did not know about would put the room's last row under the input box.
 func (a *app) headHeight() int {
-	_, height := a.size()
 	// The same floor the rule and the blank above the draft stand on: a terminal
 	// too short for breathing room is too short for a header, and what is
 	// happening is still on the status line.
-	if a.room == nil || height < 6 {
+	if a.room == nil || a.breathingRows() == 0 {
 		return 0
 	}
 	return 1

@@ -351,6 +351,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.scroll(a.page())
 		return nil
 
+	case jumpKey:
+		// BACK TO THE LIVE EDGE IN ONE KEY, from anywhere in the transcript and
+		// with anything in the box (jumpchip.go). It is bound here, in the plain
+		// switch, rather than beside a chord that means something else with an
+		// empty draft: every other route to the bottom of the conversation is
+		// spoken for the moment there is a sentence to move a caret through, and a
+		// chip that prints a key has to be able to promise the key does this.
+		a.toLatest()
+		return nil
+
 	case "up":
 		// ↑ has four meanings and they are read in the order a person's hand
 		// means them: inside a multi-line draft it moves the caret; at the top
@@ -594,6 +604,10 @@ func (a *app) inputHeight() int {
 // truncates with. Nothing about a long paste is allowed to move the
 // conversation: the box grows to six rows and stops.
 //
+// The window is TOP-ANCHORED — the first line of the draft is the first row of
+// the block until the caret walks past the cap — and the law is stated at the
+// arithmetic below.
+//
 // hint is the placeholder shown while the editor is empty, and the picker's
 // filter box is why it exists — the overlay explains itself in the box a person
 // is already looking at instead of spending a row on a legend.
@@ -612,12 +626,22 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]stri
 	segments := wrapRunes(e.value, room)
 	caretRow, caretColumn := caretAt(e, segments, room)
 
+	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the
+	// draft is the first row of the box — prompt and all — and a second line
+	// appears UNDER it, which is what every text field a person has ever typed
+	// into does and what this one did not: the window used to be pinned to the
+	// BOTTOM of the draft the moment it outgrew the cap, so a long paste showed
+	// its tail and the "›" was the first thing to go.
+	//
+	// Scrolling starts only when the caret leaves the cap, and it follows the
+	// caret by exactly as much as it must. The offset is DERIVED from the caret
+	// rather than remembered, which is what makes it agree with itself: the
+	// caret's row is returned to [app.View] as the terminal's cursor position
+	// (view.go), and a stored top would be one frame's answer applied to another
+	// frame's draft.
 	top := 0
-	if len(segments) > maxRows {
-		top = len(segments) - maxRows
-		if caretRow < top {
-			top = caretRow
-		}
+	if caretRow >= maxRows {
+		top = caretRow - maxRows + 1
 	}
 	end := min(top+maxRows, len(segments))
 
