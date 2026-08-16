@@ -106,7 +106,10 @@ func (a *app) hoverTarget(y int) hoverAt {
 	if mark, ok := a.chromeAt(y); ok {
 		switch mark.kind {
 		case chromeChoices:
-			return hoverAt{kind: hoverChoices}
+			// The index is the row WITHIN the block, which the one-line offer
+			// never needed and the phone sheet does: its answers are a row each
+			// (consent.go's [app.hoveringChoice]).
+			return hoverAt{kind: hoverChoices, index: mark.index}
 		case chromeOverlay:
 			return hoverAt{kind: hoverOverlay, index: mark.index}
 		case chromeWelcome:
