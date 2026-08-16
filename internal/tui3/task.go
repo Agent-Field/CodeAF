@@ -117,26 +117,12 @@ type taskNode struct {
 	report, branch, merge string
 }
 
-// resident reports whether this node still belongs on the rail.
-//
-// Alive is obvious. A FINISHED NODE STAYS ONLY WHILE ITS WORK IS SOMEWHERE
-// ELSE: session keeps the branch of a node that conflicted or was stopped
-// (task_run.go's mergeConflicted and mergeAborted), and a kept branch is work
-// that is finished and not delivered — the one outcome a person still has to do
-// something about. Everything else has already said all it has to say in the
-// transcript note, and a row that never left would turn a presence list into a
-// log.
-func (n *taskNode) resident() bool {
-	switch n.state {
-	case session.TaskQueued, session.TaskRunning:
-		return true
-	}
-	switch n.merge {
-	case mergeWordConflicted, mergeWordAborted:
-		return true
-	}
-	return false
-}
+// A NODE NEVER LEAVES THE ROSTER. It used to: a finished node whose branch had
+// come home dropped off the rail, because the rail was a presence list and a row
+// that never left would have turned it into a log. The column is the session's
+// record of its own work now, and what it does with a settled node instead is
+// GROUP it — see task.go's roster section, and [app.railGroupOf] for the one
+// placement that is not simply the engine's state read out.
 
 // The merge words session publishes (task_run.go's mergeMerged and friends),
 // restated here because the surface reads them and internal/session exports
@@ -861,7 +847,42 @@ func countdownWord(d time.Duration) string {
 	return itoa(seconds/60) + "m " + itoa(seconds%60) + "s"
 }
 
-// ── the rail ────────────────────────────────────────────────────────────────
+// ── the roster ──────────────────────────────────────────────────────────────
+//
+// THE RAIL WAS A PRESENCE LIST AND IT IS NOW A ROSTER, because the two stop
+// being the same thing somewhere around the fortieth node. A presence list holds
+// what is alive and forgets everything else, which is exactly right for a
+// session with three nodes in it and useless for a day's work: "where did that
+// task go" is the commonest question a person asks a column of work, and a
+// column that dropped every landed node had already thrown the answer away.
+//
+// So the column keeps EVERY node the session has admitted, and it survives
+// hundreds of them by four mechanisms and no new scroll machinery:
+//
+//   - ATTENTION FIRST. Five groups, in the order a person needs them — what is
+//     asking for a decision, what is running, what is waiting for a slot, what
+//     is parked behind other work, what is over — and newest first inside each,
+//     because the node you just started is the node you are watching. This is
+//     the one law the old rail stated and this file now overturns ("a list that
+//     reordered itself would move the row a person is watching"): at three rows
+//     admission order IS the shape, and at three hundred it is a haystack. The
+//     order is stable in the way that matters — a row moves when its STATE
+//     moves, which is the one event a person is watching for anyway.
+//   - THE TAIL IS FOLDED. `parked` and `done` open closed, one heading each with
+//     its population on it: a hundred and forty-eight settled nodes are a fact,
+//     not a hundred and forty-eight rows.
+//   - THE COLUMN IS A WINDOW. What shows is a slice of the line list around the
+//     focus, taken by [listTop] — the same function the model picker and the two
+//     typed lists scroll with, because a second scroller on this surface would be
+//     a second set of off-by-ones.
+//   - THE FOOTER SAYS THE WHOLE. What the window cannot show — the spend, the
+//     weight, the count of everything folded away — is one dim block at the
+//     bottom of the column.
+//
+// THE KEYBOARD IS ASKED FOR, NEVER TAKEN (ctrl+t, esc to give it back). The
+// draft is this surface's rest state and a map that stole keys from it would
+// make typing a thing you check before you do — see the marker law at
+// [app.railRows].
 
 const (
 	// railCols is the whole charge a full rail makes on the frame: the seam,
@@ -880,7 +901,183 @@ const (
 	// railSeam is the one line the rail draws, and it is the same line the
 	// legend draws below: a seam, not a border.
 	railSeam = "│ "
+	// railMark is the seam cell of the FOCUSED row — the same two columns, one
+	// glyph heavier. The focus is a marker rather than a band because this column
+	// is two cells from the conversation: a filled row here would be a block of
+	// colour beside a paragraph a person is reading.
+	railMark      = "▌ "
+	railMarkASCII = "> "
 )
+
+// The disclosure marks a group heading wears, and their ASCII stand-ins: closed
+// points at what it is hiding, open points down at what it showed.
+const (
+	glyphShut      = "▸"
+	glyphShutASCII = ">"
+	glyphOpen      = "▾"
+	glyphOpenASCII = "v"
+)
+
+// What a heading offers the keyboard, said on the heading itself and only when
+// it is focused (see [app.railHeading]).
+const (
+	railOpenHint = "enter/→ expand"
+	railFoldHint = "enter/← collapse"
+	// railHoldHint is what the legend's hint slot says while the roster has the
+	// keyboard (render.go's [app.hintWord]) — the same six keys [app.railKey]
+	// takes, quoted from the handler rather than authored twice.
+	railHoldHint = "↑↓ move · →← fold · enter open · esc"
+)
+
+// railGroup is what a node is DOING, which is the only thing the roster sorts
+// by. The order of these constants IS the order of the column.
+type railGroup uint8
+
+const (
+	// railAttention is work that is waiting on a PERSON: it failed, or it
+	// finished and its branch never came home. Both are the same sentence — this
+	// is not going anywhere until you look at it — and they lead the column
+	// because everything below them is a thing that is still moving by itself.
+	railAttention railGroup = iota
+	// railRunning is a child agent working in its worktree right now.
+	railRunning
+	// railIdle is admitted, unblocked, and not started: nothing is in its way
+	// except a slot.
+	railIdle
+	// railParked is admitted and BLOCKED — its prerequisites are unfinished, so
+	// nothing about it will change until other work does. That is what makes it
+	// the group that folds: a parked node is a promise, not a happening.
+	railParked
+	// railDone is over and delivered.
+	railDone
+	railGroupCount
+)
+
+// The word each group wears, in the roster's heading and in its footer alike.
+// One vocabulary: a person who reads "needs you" at the top must not have to
+// learn that the bottom calls the same thing "blocked".
+var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "parked", "done"}
+
+// railGroupOf places one node.
+//
+// A KEPT BRANCH IS ATTENTION, and it is the one placement that is not simply the
+// engine's state read out. session keeps the branch of a node that conflicted or
+// was stopped (task_run.go's mergeConflicted and mergeAborted), and a kept
+// branch is work that is finished and NOT DELIVERED — the one outcome on this
+// surface a person still has to do something about.
+func (a *app) railGroupOf(node *taskNode) railGroup {
+	switch node.state {
+	case session.TaskRunning:
+		return railRunning
+	case session.TaskFailed:
+		return railAttention
+	case session.TaskQueued:
+		if a.railWaits(node) != "" {
+			return railParked
+		}
+		return railIdle
+	}
+	switch node.merge {
+	case mergeWordConflicted, mergeWordAborted:
+		return railAttention
+	}
+	return railDone
+}
+
+// railShut reports whether a group is drawn as its heading alone.
+//
+// The default is the design and the map is the person's correction of it, which
+// is why this is not a plain bool per group: a group nobody has touched must
+// follow the default even after its population changes underneath it.
+func (a *app) railShut(g railGroup) bool {
+	if open, said := a.railOpen[g]; said {
+		return !open
+	}
+	return g == railParked || g == railDone
+}
+
+// railSetOpen folds a group open or closed.
+func (a *app) railSetOpen(g railGroup, open bool) {
+	if a.railOpen == nil {
+		a.railOpen = map[railGroup]bool{}
+	}
+	if a.railShut(g) == !open {
+		return
+	}
+	a.railOpen[g] = open
+	a.touch()
+}
+
+// railToggle is what enter on a heading does.
+func (a *app) railToggle(g railGroup) { a.railSetOpen(g, a.railShut(g)) }
+
+// railEntry is one navigable thing in the roster: a group's heading, or a node
+// under an open one.
+type railEntry struct {
+	group railGroup
+	// node is the node this row is about, or nil on a heading.
+	node *taskNode
+	// count is a heading's population, and it is carried on the entry rather
+	// than recounted at paint time so the heading and the footer cannot disagree
+	// about how many nodes are folded behind one line.
+	count int
+}
+
+// railSpot names an entry by IDENTITY rather than by index, and it is what the
+// focus is stored as.
+//
+// An index would be a cursor that jumps: a node landing moves it between groups,
+// a heading folding takes a hundred and forty-eight rows out from under it, and
+// both of those happen while nobody is touching the keyboard. A (group, id) pair
+// survives all of it, and when the thing it names is genuinely gone the fallback
+// is its heading — which is where its rows went.
+type railSpot struct {
+	group railGroup
+	// id is the node's, or zero for the group's heading.
+	id uint64
+}
+
+func railSpotOf(e railEntry) railSpot {
+	if e.node == nil {
+		return railSpot{group: e.group}
+	}
+	return railSpot{group: e.group, id: e.node.id}
+}
+
+// railMembers buckets every node this session has admitted, NEWEST FIRST inside
+// each group.
+func (a *app) railMembers() [railGroupCount][]*taskNode {
+	var out [railGroupCount][]*taskNode
+	for i := len(a.taskOrder) - 1; i >= 0; i-- {
+		node := a.tasks[a.taskOrder[i]]
+		if node == nil {
+			continue
+		}
+		g := a.railGroupOf(node)
+		out[g] = append(out[g], node)
+	}
+	return out
+}
+
+// railEntries is the roster's row model: every non-empty group's heading, and
+// the nodes of the groups that are open.
+func (a *app) railEntries() []railEntry {
+	members := a.railMembers()
+	out := make([]railEntry, 0, len(a.taskOrder)+int(railGroupCount))
+	for g := railGroup(0); g < railGroupCount; g++ {
+		if len(members[g]) == 0 {
+			continue
+		}
+		out = append(out, railEntry{group: g, count: len(members[g])})
+		if a.railShut(g) {
+			continue
+		}
+		for _, node := range members[g] {
+			out = append(out, railEntry{group: g, node: node, count: len(members[g])})
+		}
+	}
+	return out
+}
 
 // railColsFor is how wide the rail is at a frame width: full from railFloor,
 // slim down to railSlimFloor, gone under that.
@@ -894,13 +1091,18 @@ func railColsFor(width int) int {
 	return 0
 }
 
-// railShowing reports whether the frame has a rail on it right now.
+// railShowing reports whether the frame has a roster on it right now.
+//
+// ONE NODE RAISES IT AND NOTHING PUTS IT AWAY but /new. The old rail left when
+// the last live node landed, which was honest about presence and wrong about a
+// roster: the column is now the session's record of its own work, and a record
+// that vanished the moment the work finished would be a record of nothing.
 func (a *app) railShowing() bool {
 	width, _ := a.size()
 	if railColsFor(width) == 0 {
 		return false
 	}
-	return len(a.railNodes()) > 0
+	return len(a.taskOrder) > 0
 }
 
 // railWidth is what the rail costs the conversation, in columns.
@@ -924,94 +1126,531 @@ func (a *app) bodyWidth() int {
 	return width
 }
 
-// railNodes is what the rail draws, in ADMISSION ORDER — the order the nodes
-// were proposed in, which is the order the person met them in.
-//
-// It is not sorted by state. A list that reordered itself as work finished
-// would move the row a person is watching out from under their eye, and the
-// glyph already says which is which.
-func (a *app) railNodes() []*taskNode {
-	out := make([]*taskNode, 0, len(a.taskOrder))
-	for _, id := range a.taskOrder {
-		if node := a.tasks[id]; node != nil && node.resident() {
-			out = append(out, node)
+// railLine is one drawn line of the roster and what it belongs to. It is the
+// column's [row] (render.go): the frame draws the text, the pointer hit-tests
+// the entry, and the focus marker lands on the head — one mapping from geometry
+// to the roster, because two would be a click that opened the node above the one
+// under the pointer.
+type railLine struct {
+	text string
+	// entry indexes [app.railEntries], or -1 for the padding and the footer.
+	entry int
+	// head says this is the entry's FIRST line, which is the one a marker goes
+	// on: a two-line node with two markers would read as two nodes.
+	head bool
+}
+
+// railLines renders every entry, in order. It is the unwindowed list, and the
+// window is taken out of it by [app.railView].
+func (a *app) railLines(entries []railEntry, focus, width int) []railLine {
+	out := make([]railLine, 0, len(entries)+len(entries)/2)
+	for i := range entries {
+		e := entries[i]
+		if e.node == nil {
+			out = append(out, railLine{text: a.railHeading(e, i == focus, width), entry: i, head: true})
+			continue
+		}
+		for j, text := range a.railNodeRows(e.node, width) {
+			out = append(out, railLine{text: text, entry: i, head: j == 0})
 		}
 	}
 	return out
 }
 
-// railRows draws the rail to exactly height rows, or nil when there is none.
-// The nodes sit at the TOP of the column: the conversation grows upward from
-// the input and the rail does not, because a presence list is read from the
-// first row down.
-func (a *app) railRows(height int) []string {
+// railView is the whole column at a height: the window over the entries, the
+// padding under it, and the footer at the bottom of it — exactly height lines.
+//
+// EVERY GEOMETRIC QUESTION ABOUT THE ROSTER GOES THROUGH HERE, the way every
+// question about the conversation goes through [app.window]: the frame draws
+// this, the pointer resolves through this, and the focus scrolls this. The
+// window offset is written back as it is resolved, which is the same bargain
+// [app.visible] makes with its row cache — the alternative is a scroll position
+// recomputed in three places that agree until they do not.
+//
+// It reports the focused entry's index alongside the lines so its two callers do
+// not each rebuild the entry list to ask the same question.
+//
+// WHAT IT COSTS IS BOUNDED BY WHAT IS OPEN, not by the session's length: every
+// visible entry is rendered to measure the list, and the two groups that grow
+// without limit are the two that open folded. The live groups are bounded by
+// what the executor can actually run at once — and a person who expands `done
+// 300` pays for it on the frames they are looking at it, which are frames with
+// nothing animating on them (see [app.tasksAnimating]).
+func (a *app) railView(height int) ([]railLine, int) {
 	if height <= 0 || !a.railShowing() {
-		return nil
+		return nil, -1
 	}
 	width, _ := a.size()
 	room := railColsFor(width) - ansi.StringWidth(railSeam)
-	var body []string
-	for _, node := range a.railNodes() {
-		body = append(body, a.railNodeRows(node, room)...)
-		if len(body) >= height {
-			break
+	entries := a.railEntries()
+	focus := a.railFocusIndex(entries)
+
+	foot := a.railFootRows(room, height)
+	body := height - len(foot)
+	if body < 1 {
+		body, foot = height, nil
+	}
+	lines := a.railLines(entries, focus, room)
+
+	// The cursor the window follows is the focused entry's first line, and the
+	// offset itself when nothing is focused: a roster nobody is navigating stays
+	// where it was rather than snapping back to the top under a landing node.
+	cursor := a.railTop
+	if focus >= 0 {
+		for i, line := range lines {
+			if line.entry == focus && line.head {
+				cursor = i
+				break
+			}
 		}
 	}
-	out := make([]string, height)
-	for i := range out {
-		text := ""
-		if i < len(body) {
-			text = body[i]
+	a.railTop = listTop(cursor, a.railTop, len(lines), body)
+
+	out := make([]railLine, 0, height)
+	for i := a.railTop; i < len(lines) && len(out) < body; i++ {
+		out = append(out, lines[i])
+	}
+	for len(out) < body {
+		out = append(out, railLine{entry: -1})
+	}
+	for _, text := range foot {
+		out = append(out, railLine{text: text, entry: -1})
+	}
+	return out, focus
+}
+
+// railRows draws the roster to exactly height rows, or nil when there is none.
+//
+// The rows sit at the TOP of the column: the conversation grows upward from the
+// input and the roster does not, because a list is read from its first row down.
+//
+// THE SEAM CARRIES THE FOCUS. Every line opens with the same two cells, and on
+// the focused row those two cells are a heavier glyph in the accent — a marker
+// rather than a band, because this column is two cells from a paragraph somebody
+// is reading. It is drawn only while the roster HOLDS the keyboard: a cursor on
+// a map that keys do not reach is a cursor that lies about what enter will do.
+func (a *app) railRows(height int) []string {
+	view, focus := a.railView(height)
+	if len(view) == 0 {
+		return nil
+	}
+	out := make([]string, len(view))
+	for i, line := range view {
+		lead := a.pal.dim(railSeam)
+		if focus >= 0 && line.head && line.entry == focus {
+			lead = a.pal.accent(a.linearMark(railMark, railMarkASCII))
 		}
-		out[i] = a.pal.dim(railSeam) + text
+		out[i] = lead + line.text
 	}
 	return out
 }
 
-// railNodeAt is the rail's hit-testing: which node is drawn on this screen row,
-// or nil.
+// railEntryAt is the roster's hit-testing: which entry is drawn on this screen
+// row, and whether there is one at all.
 //
-// It walks the SAME sequence [app.railRows] draws — the same nodes, the same
-// per-node row counts, at the same column width — because a rail whose layout
-// and whose clicks disagreed would open the room of the node above the one under
-// the pointer. The rail's first row is the frame's first row (view.go joins it
-// from index zero), so a rail index and a screen row are the same number.
+// The roster's first row is the frame's first row (view.go joins it from index
+// zero), so a roster index and a screen row are the same number.
+func (a *app) railEntryAt(y int) (railEntry, bool) {
+	view, _ := a.railView(a.viewHeight())
+	if y < 0 || y >= len(view) || view[y].entry < 0 {
+		return railEntry{}, false
+	}
+	entries := a.railEntries()
+	if at := view[y].entry; at < len(entries) {
+		return entries[at], true
+	}
+	return railEntry{}, false
+}
+
+// railNodeAt is which NODE is drawn on this screen row, or nil — a heading is a
+// row about rows, and it opens nothing.
 func (a *app) railNodeAt(y int) *taskNode {
-	if y < 0 || y >= a.viewHeight() || !a.railShowing() {
+	e, ok := a.railEntryAt(y)
+	if !ok {
 		return nil
 	}
-	width, _ := a.size()
-	room := railColsFor(width) - ansi.StringWidth(railSeam)
-	at := 0
-	for _, node := range a.railNodes() {
-		next := at + len(a.railNodeRows(node, room))
-		if y >= at && y < next {
-			return node
-		}
-		at = next
-	}
-	return nil
+	return e.node
 }
 
-// railNodeRows is one node: its line, and the one fact under it that its line
-// has no room for.
+// railHeading is one group's line: the disclosure mark, the group's word, its
+// population, and — on the focused heading, when the column has room for it —
+// what the keyboard would do to it.
 //
-//	⠙ Fix the nil-map crash
-//	  12s
-//	✓ Collect sources
-//	  merged
-//	◌ Mix audio
-//	  waits: Collect sources
-func (a *app) railNodeRows(node *taskNode, width int) []string {
-	out := []string{a.railGlyph(node) + " " + a.railTitle(node, width-2)}
-	for _, line := range a.railUnder(node, width-2) {
-		out = append(out, "  "+line)
+//	▾ running 3
+//	▸ parked 148 — enter/→ expand
+//
+// The hint rides the FOCUSED heading only. Six of them down one column would be
+// a legend printed once per group, and the person who needs it is the person
+// whose cursor is already on the row.
+func (a *app) railHeading(e railEntry, focus bool, width int) string {
+	mark, hint := a.linearMark(glyphOpen, glyphOpenASCII), railFoldHint
+	if a.railShut(e.group) {
+		mark, hint = a.linearMark(glyphShut, glyphShutASCII), railOpenHint
+	}
+	line := mark + " " + railGroupWords[e.group] + " " + itoa(e.count)
+	if !focus {
+		return a.pal.dim(fit(line, width))
+	}
+	if ansi.StringWidth(line)+ansi.StringWidth(hint)+3 <= width {
+		line += " — " + hint
+	}
+	return a.pal.bold(a.pal.accent(fit(line, width)))
+}
+
+// ── the focus, and the keyboard it answers to ───────────────────────────────
+
+// railFocusAt finds the entry a spot names, or -1.
+func railFocusAt(entries []railEntry, spot railSpot) int {
+	for i, e := range entries {
+		if e.group != spot.group {
+			continue
+		}
+		switch {
+		case e.node == nil && spot.id == 0:
+			return i
+		case e.node != nil && e.node.id == spot.id:
+			return i
+		}
+	}
+	return -1
+}
+
+// railFocusIndex is where the cursor is in the current entry list, or -1 when
+// the roster does not have the keyboard.
+func (a *app) railFocusIndex(entries []railEntry) int {
+	if !a.railHold || len(entries) == 0 {
+		return -1
+	}
+	if at := railFocusAt(entries, a.railWhere); at >= 0 {
+		return at
+	}
+	// THE CURSOR FOLLOWS THE WORK, not the group. A node that lands moves out
+	// from under a person who was watching it — that is the moment they were
+	// watching FOR — so the row is looked for wherever it went before anything
+	// else is tried.
+	if a.railWhere.id != 0 {
+		for i, e := range entries {
+			if e.node != nil && e.node.id == a.railWhere.id {
+				return i
+			}
+		}
+		// It went somewhere folded. Its new heading is where its row is, which is
+		// the honest place to stand.
+		if node := a.tasks[a.railWhere.id]; node != nil {
+			if at := railFocusAt(entries, railSpot{group: a.railGroupOf(node)}); at >= 0 {
+				return at
+			}
+		}
+	}
+	// The group itself emptied out from under the cursor. Its heading is gone
+	// with it, so the top of the column is all that is left — and a roster that
+	// dropped to row zero for any lesser reason would be moving a person's place
+	// for them.
+	if at := railFocusAt(entries, railSpot{group: a.railWhere.group}); at >= 0 {
+		return at
+	}
+	return 0
+}
+
+// railTake gives the roster the keyboard, or hands it back.
+func (a *app) railTake(hold bool) {
+	if hold && !a.railShowing() {
+		return
+	}
+	a.railHold = hold
+	if hold {
+		if entries := a.railEntries(); railFocusAt(entries, a.railWhere) < 0 && len(entries) > 0 {
+			a.railWhere = railSpotOf(entries[0])
+		}
+	}
+	a.touch()
+}
+
+// railKey is the roster's claim on the keyboard, and it is a claim it can only
+// make ONCE IT HAS BEEN GIVEN ONE (ctrl+t on, esc off).
+//
+// The draft is this surface's rest state — a person types at it without looking
+// — so a map that answered ↑ whenever it happened to be on screen would make
+// every keystroke a question about which zone has the focus. Held, it takes six
+// keys and gives everything else back: the letters still reach the box, so a
+// person who starts typing is typing, not navigating.
+//
+// The guard is the same precedence law input.go states, restated rather than
+// relied on because those keys are that file's: the door, the question the
+// SESSION is blocked on, the three modal overlays and the two typed lists all
+// outrank a map of work.
+func (a *app) railKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	key := msg.String()
+	switch {
+	case key == "ctrl+c", a.asking(), a.awaitingTask(),
+		a.sheet.open, a.pick.open, a.copy.on, a.welcome.open,
+		a.menu.open, a.comp.open:
+		return nil, false
+	}
+	if key == "ctrl+t" {
+		if !a.railHold && !a.railShowing() {
+			// Nothing to hold. The key falls through rather than being eaten
+			// silently, so a surface that grows another meaning for it later is
+			// not fighting a map that is not on screen.
+			return nil, false
+		}
+		a.railTake(!a.railHold)
+		return nil, true
+	}
+	if !a.railHold {
+		return nil, false
+	}
+	switch key {
+	case "esc":
+		// esc is the dismiss key everywhere on this surface, and what it dismisses
+		// here is the focus itself — back to the box, which is where the keyboard
+		// lives when nobody has asked for it.
+		a.railTake(false)
+		return nil, true
+	case "up":
+		a.railMove(-1)
+		return nil, true
+	case "down":
+		a.railMove(1)
+		return nil, true
+	case "right":
+		a.railFold(true)
+		return nil, true
+	case "left":
+		a.railFold(false)
+		return nil, true
+	case "enter":
+		return a.railEnter(), true
+	}
+	return nil, false
+}
+
+// railMove walks the entry list, headings included.
+//
+// A HEADING IS NAVIGABLE AND ACTIVATES NOTHING. It is the row that folds its
+// group, so a cursor that skipped it would put the fold behind a key nobody
+// could aim — and it opens no room, because a heading is a fact about the rows
+// under it and not a piece of work. The walk clamps at both ends, the way every
+// other list on this surface does ([moveCursor]).
+func (a *app) railMove(delta int) {
+	entries := a.railEntries()
+	at := a.railFocusIndex(entries)
+	if at < 0 {
+		return
+	}
+	a.railWhere = railSpotOf(entries[moveCursor(at, delta, len(entries))])
+	a.touch()
+}
+
+// railFold is →/←: open the focused row's group, or close it.
+//
+// FROM A NODE, ← CLOSES THE GROUP THE NODE IS IN and leaves the cursor on the
+// heading. That is where the row just went, and a cursor left pointing into a
+// hundred and forty-eight rows nobody can see would be a position that means
+// nothing.
+func (a *app) railFold(open bool) {
+	entries := a.railEntries()
+	at := a.railFocusIndex(entries)
+	if at < 0 {
+		return
+	}
+	e := entries[at]
+	if !open {
+		a.railWhere = railSpot{group: e.group}
+	}
+	a.railSetOpen(e.group, open)
+}
+
+// railEnter is the one activating key: a heading folds, a node opens its room.
+func (a *app) railEnter() tea.Cmd {
+	entries := a.railEntries()
+	at := a.railFocusIndex(entries)
+	if at < 0 {
+		return nil
+	}
+	e := entries[at]
+	if e.node == nil {
+		a.railToggle(e.group)
+		return nil
+	}
+	a.openRoomFor(e.node.id, e.node.title)
+	return a.takeRoomPump()
+}
+
+// ── the footer ──────────────────────────────────────────────────────────────
+
+// railFootOrder is the order the footer counts the groups in, and it is not the
+// column's order: the column leads with what is asking for a decision because
+// that is where the eye starts, and the footer leads with what is HAPPENING
+// because a total is read as a state of the session.
+var railFootOrder = [railGroupCount]railGroup{railRunning, railAttention, railIdle, railParked, railDone}
+
+// railFootMax is how many lines the footer may spend. Three is the whole
+// aggregate at the full width; a fourth would be the column reporting on itself.
+const railFootMax = 3
+
+// railFootRows is the aggregate: what the window cannot show, said once at the
+// bottom of the column.
+//
+//	Σ $1.42 · 312k tok
+//	3 running · 1 needs you
+//	148 parked · 12 done
+//
+// THE MONEY IS THE SESSION'S, AND THAT IS THE HONEST SUM. Per-node spend is not
+// on the seam and cannot be: internal/session folds a finished node's usage into
+// the session's own auxiliary total the moment its child closes (task_run.go's
+// foldTaskUsage), so the figure beside the Σ ALREADY CONTAINS every node in this
+// column, plus the conversation that proposed them. It is therefore drawn as the
+// whole and never per row — a per-row share is the one number this surface would
+// have to invent — and the Σ is what says so.
+//
+// The two figures are drawn only when they are not zero. A session that has been
+// told nothing about what it spent says nothing, rather than reporting $0.00
+// beside a hundred and forty-eight nodes.
+func (a *app) railFootRows(width, height int) []string {
+	if width < 8 || height < 4 {
+		return nil
+	}
+	var segs []string
+	if a.cost > 0 {
+		segs = append(segs, dollars(a.cost))
+	}
+	if a.tokens > 0 {
+		segs = append(segs, tokenWord(a.tokens)+" tok")
+	}
+	members := a.railMembers()
+	for _, g := range railFootOrder {
+		if n := len(members[g]); n > 0 {
+			segs = append(segs, itoa(n)+" "+railGroupWords[g])
+		}
+	}
+	if len(segs) == 0 {
+		return nil
+	}
+	// The footer never takes more than a third of the column: a roster that is
+	// mostly its own summary has stopped being a roster.
+	rooms := min(railFootMax, height/3)
+	lines := railPack(segs, width, rooms, railSigma)
+	out := make([]string, 0, len(lines)+1)
+	// ONE BLANK ABOVE IT, when the column can lend one — whitespace is how this
+	// surface separates blocks, and a rule across a two-cell column would be a
+	// border on a seam.
+	if len(lines)+1 < height {
+		out = append(out, "")
+	}
+	for _, line := range lines {
+		out = append(out, a.pal.dim(line))
 	}
 	return out
 }
 
-func (a *app) railTitle(node *taskNode, width int) string {
-	title := fit(node.title, width)
+// railSigma opens the footer's first line, and it is the whole of what makes the
+// figures behind it readable: this is the sum of everything, including what the
+// column folded away.
+const railSigma = "Σ "
+
+// railPack folds the footer's segments into at most rooms lines of at most width
+// cells, joined by this surface's own separator.
+//
+// A segment that will not fit is DROPPED and the fold is said out loud with the
+// ellipsis this surface truncates everything with: a footer that silently stops
+// counting is a footer that claims the session is smaller than it is.
+func railPack(segs []string, width, rooms int, lead string) []string {
+	if rooms < 1 || width < 1 {
+		return nil
+	}
+	out := make([]string, 0, rooms)
+	line := lead
+	for _, seg := range segs {
+		add := seg
+		if line != lead {
+			add = " · " + seg
+		}
+		if ansi.StringWidth(line)+ansi.StringWidth(add) <= width {
+			line += add
+			continue
+		}
+		// THE FIRST SEGMENT KEEPS THE Σ whatever the width: a column too narrow
+		// for "Σ $1.42" is a column that has to choose, and the sign is what says
+		// the figure is a total rather than a row's.
+		if line == lead {
+			line = fit(lead+seg, width)
+			continue
+		}
+		out = append(out, line)
+		if len(out) == rooms {
+			out[rooms-1] = fit(out[rooms-1]+" "+glyphMore, width)
+			return out
+		}
+		line = fit(seg, width)
+	}
+	// The loop returns the moment the last line is spoken for, so what reaches
+	// here is a line with room left in the block.
+	if line != lead {
+		out = append(out, line)
+	}
+	return out
+}
+
+// railNodeRows is one node: WHAT IT IS on the first line, and what is true of it
+// on the second.
+//
+//	⠙ Fix the nil-map crash  #7
+//	  12s
+//	✓ Collect sources        #9
+//	  merged
+//	◌ Mix audio             #11
+//	  waits: Collect sources
+//
+// THE NAME LEADS AND THE HANDLE TRAILS. The glyph and the title are what a person
+// reads down this column — the state, and the words they themselves approved —
+// and the id is what identifies the node to the MACHINE: it is the number the
+// engine says in its own sentences ("task 7 finished", session's task_run.go),
+// the thing to type when you go looking for the branch, and the least interesting
+// fact on the row. So it is dim, it is at the far end, and the title is measured
+// against what is left rather than the other way round: a column that led with
+// its ids would read like a process table.
+//
+// THE SEAM CARRIES NO AGENT TYPE because the seam has none — internal/session's
+// TaskNotice names a node's work and never its worker. When it grows one it joins
+// the id in exactly this slot, in exactly this hue.
+func (a *app) railNodeRows(node *taskNode, width int) []string {
+	title, room := node.title, width-2
+	meta := railMetaWord(node)
+	// A column too narrow to carry both spends what it has on the name. The
+	// handle is a convenience; the title is the row.
+	if room-ansi.StringWidth(meta)-1 >= railTitleFloor {
+		room -= ansi.StringWidth(meta) + 1
+	} else {
+		meta = ""
+	}
+	title = fit(title, room)
+	line := a.railGlyph(node) + " " + a.railTitle(node, title)
+	if meta != "" {
+		if pad := room - ansi.StringWidth(title) + 1; pad > 0 {
+			line += strings.Repeat(" ", pad)
+		}
+		line += a.pal.dim(meta)
+	}
+	out := []string{line}
+	for _, under := range a.railUnder(node, width-2) {
+		out = append(out, "  "+under)
+	}
+	return out
+}
+
+// railTitleFloor is how little room a title may be left with before the id gives
+// up its cells. Twelve is about two words — under that the row has stopped
+// naming the work.
+const railTitleFloor = 12
+
+// railMetaWord is the node's handle: the id the engine calls it by.
+func railMetaWord(node *taskNode) string { return "#" + itoa(int(node.id)) }
+
+// railTitle paints an already-fitted title. The cut happens at the call site
+// because that is where the id's cells are measured out of it ([app.railNodeRows]):
+// a title fitted here and trimmed there would be a row measured twice.
+func (a *app) railTitle(node *taskNode, title string) string {
 	if node.state == session.TaskRunning {
 		return a.pal.ink(title)
 	}
@@ -1317,8 +1956,13 @@ func (a *app) tasksAnimating() bool {
 	if !a.railShowing() {
 		return false
 	}
-	for _, node := range a.railNodes() {
-		if node.state == session.TaskRunning {
+	// A ROSTER FULL OF SETTLED WORK IS A STILL PICTURE. The column stands for the
+	// whole session now, so "is anything on it moving" is a question about the
+	// running nodes and not about the list's length — otherwise a session that
+	// finished its work an hour ago would still be repainting a spinner-less
+	// column thirty times a second.
+	for _, node := range a.tasks {
+		if node != nil && node.state == session.TaskRunning {
 			return true
 		}
 	}
@@ -1338,6 +1982,13 @@ func (a *app) dropTasks() {
 	a.taskOrder = nil
 	a.taskSeen = nil
 	a.taskLane = nil
+	// THE ROSTER GOES WITH ITS NODES, the keyboard included. A column that kept
+	// its folds and its cursor into the next conversation would be a map of work
+	// that no longer exists, holding keys the draft is waiting for.
+	a.railOpen = nil
+	a.railTop = 0
+	a.railWhere = railSpot{}
+	a.railHold = false
 }
 
 // redirectLane is the placeholder the input box wears while a proposal is open.
