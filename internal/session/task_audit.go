@@ -199,7 +199,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		// The audit is part of what the node cost, so it lands in the same
 		// pocket the node's own spend does (task_run.go's foldTaskUsage): the
 		// person asked for a task, not for a task and separately for a judge.
-		a.foldTaskUsage(auditor)
+		a.foldTaskUsage(node, auditor)
 	}()
 
 	// The deadline hangs off the NODE's context, so `jobs kill` ends a pending

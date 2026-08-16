@@ -49,13 +49,20 @@ import (
 // is what the model has been promised, so a tool with nothing behind it is left
 // off rather than added and made to refuse.
 //
-// A TASK NODE'S BELT IS THIS BELT MINUS TWO. propose_task comes off because
+// tasks (tools_tasks.go) is propose_task's other end: the project's whole task
+// history, searchable, so that work handed off weeks ago is still findable by
+// the model that has to build on it.
+//
+// A TASK NODE'S BELT IS THIS BELT MINUS THREE. propose_task comes off because
 // there is nobody in a node's world to show a proposal to — decomposition, when
 // it lands, is edges added to the graph by the conversation that owns it, not a
 // second proposal machine inside a worktree — and watch comes off because its
 // whole delivery mechanism is a note arriving in a conversation, and a node has
-// none. Everything else a node has is exactly what the conversation has, which
-// is the point: it is the same worker, working somewhere quieter.
+// none. tasks comes off for the contract's own reason: a node's brief is its
+// whole world, and a node reading the project's task history is a node reading
+// the conversation it was deliberately given none of. Everything else a node has
+// is exactly what the conversation has, which is the point: it is the same
+// worker, working somewhere quieter.
 func (a *Agent) belt() []bare.Tool {
 	tools := bare.AllTools(a.config.Workspace)
 	for index, tool := range tools {
@@ -68,7 +75,7 @@ func (a *Agent) belt() []bare.Tool {
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool())
 	if !a.config.InTask {
-		tools = append(tools, a.watchTool())
+		tools = append(tools, a.watchTool(), a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
 	tools = append(tools, a.memoryTools()...)

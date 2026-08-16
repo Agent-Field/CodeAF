@@ -434,6 +434,12 @@ func (a *app) enter() tea.Cmd {
 		// picture rather than sending the first (attach.go).
 		return a.slash(line)
 	}
+	// EVERY "@task" IN THE SENTENCE GROWS ITS FOOTNOTE HERE, and here is after
+	// the line has been remembered: what ↑ brings back is what the person typed,
+	// and what goes to the model — and into the transcript, so they are the same
+	// thing — is the sentence with its pointer blocks under it (taskmention.go).
+	// A line with no mentions in it comes back untouched.
+	line = a.expandTaskMentions(line)
 	if held {
 		return a.submitImages(line)
 	}

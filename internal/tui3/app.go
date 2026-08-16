@@ -683,6 +683,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.touch()
 		return a, nil
 
+	case tasksLoadedMsg:
+		return a, a.tasksLoaded(msg.rows)
+
 	case draftSaveMsg:
 		return a, a.saveDraft()
 
@@ -1873,11 +1876,11 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			}
 			return a.runMenu(), true
 		}
-		if _, ok := a.comp.choice(); !ok {
+		if !a.comp.picked() {
 			a.comp.close()
 			return nil, false
 		}
-		a.completeFile()
+		a.completeMention()
 		return a.edited(), true
 	}
 	return nil, false
@@ -1896,7 +1899,10 @@ func (a *app) syncLists() tea.Cmd {
 	was := a.comp.open
 	a.comp.sync(&a.input)
 	if a.comp.open && !was {
-		return a.loadFiles()
+		// Both halves of the list are asked for at the same moment, and neither
+		// waits for the other: the index is one small file and lands first, the
+		// walk lands when it lands (taskmention.go, files.go).
+		return tea.Batch(a.loadFiles(), a.loadTasks())
 	}
 	return nil
 }
