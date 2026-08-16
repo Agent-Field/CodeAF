@@ -150,6 +150,21 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.deckSheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
+	// And the phone's tool detail is the third, for the same reason at the
+	// other end of the width range: a call opened at tierPhone is a diff, a
+	// command or a log, and every one of those wants the lines the chrome would
+	// otherwise take (expand.go). It draws nothing when the call it named has
+	// gone, and the frame falls through to the conversation.
+	//
+	// It is NOT closed on the way out of the phone tier the way the status sheet
+	// above is: [app.expandShowing] derives the answer from the width every
+	// frame, so a terminal dragged wider expands the call inline and narrowing
+	// again brings the sheet back (expand.go).
+	if a.expandShowing() {
+		if lines, _, caretX, caretY := a.expandFrame(width, height); len(lines) > 0 {
+			return strings.Join(lines, "\n"), caretX, caretY
+		}
+	}
 	chrome, _, caretX, caretRow := a.chrome(width)
 	// THE FOCUS HEADER IS THE FRAME'S ONE PINNED ROW ABOVE the conversation, and
 	// it spans the WHOLE window for the reason the status row does: it is about

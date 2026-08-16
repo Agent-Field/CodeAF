@@ -204,6 +204,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// The phone's tool detail is the other fullscreen overlay, and it is modal
+	// at the same rung for the same two reasons: it is the whole screen, so
+	// there is nothing under it a key could mean anything to, and esc is how a
+	// person leaves it (expand.go). It is read AFTER the status sheet because
+	// the deck is raised over whatever the body was drawing, this one included.
+	if a.expandShowing() && msg.String() != "ctrl+c" {
+		a.expandKey(msg)
+		return nil
+	}
+
 	// The model overlay is modal: while it is up every key belongs to it and
 	// the draft below is suspended untouched. ctrl+c is the one exception, for
 	// the same reason it is read first below — leaving is never modal.

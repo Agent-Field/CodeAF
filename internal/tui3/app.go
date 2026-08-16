@@ -583,6 +583,12 @@ type app struct {
 	// under sixty columns the status row is a two-row deck, and this is where
 	// everything the deck could not hold is listed. Closed, it costs nothing.
 	deck deckSheet
+	// expand is the phone tier's tool detail (expand.go): the THIRD fullscreen
+	// thing this surface draws, and it is fullscreen for the settings panel's
+	// reason — a unified diff at forty-four columns needs every line the
+	// terminal has. Closed, it costs the frame nothing, and it is only ever
+	// opened at tierPhone.
+	expand expand
 	// profileDir is where the panel's writes land, and settings the registry it
 	// edits. The registry is built at the first /settings rather than at boot —
 	// it is a door onto a file, and a surface that may never be asked about
@@ -891,6 +897,18 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		}
+		// And the phone's tool detail is the same claim about the same kind of
+		// overlay: it is the whole screen, and the wheel is what reads a diff
+		// that does not fit on one (expand.go).
+		if a.expandShowing() {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.expandScroll(-3)
+			case tea.MouseWheelDown:
+				a.expandScroll(3)
+			}
+			return a, nil
+		}
 		// The roster over the body is the same claim one step earlier: while it
 		// is up the transcript is not on screen at all, and the roster's window
 		// follows its focus rather than an offset of its own (task.go's
@@ -941,6 +959,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// list is how a finger closes it (statusdeck.go).
 			if a.deckShowing() {
 				a.deckSheetPress(msg.Mouse().X, msg.Mouse().Y)
+				return a, nil
+			}
+			// The phone's tool detail takes every press on the frame while it
+			// is up, the ones that land on its padding included: a gap that
+			// fell through to the conversation underneath would be a tap that
+			// expanded a call nobody can see (expand.go).
+			if a.expandShowing() {
+				a.expandPress(msg.Mouse().Y)
 				return a, nil
 			}
 			// A chip is the one thing below the conversation a click can take
@@ -1004,6 +1030,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.deckShowing() {
 			a.deckSheetHover(msg.Mouse().Y)
+			return a, nil
+		}
+		// The phone's tool detail has no hover at all, by design: nothing on it
+		// is revealed by a pointer, because the tier it is drawn for does not
+		// have one (expand.go).
+		if a.expandShowing() {
 			return a, nil
 		}
 		a.setHover(msg.Mouse().Y)
@@ -1256,7 +1288,11 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// input, and the settings sheet is the whole screen, so a question that
 		// arrived while somebody was reading their settings would be a session
 		// blocked on a keyboard behind a fullscreen overlay.
+		// The phone's tool detail is the whole screen for the same reason and
+		// stands down for the same one (expand.go): a question the session is
+		// blocked on must not be behind a sheet somebody opened to read a diff.
 		a.closeSettings()
+		a.closeExpand()
 		a.askConsent(ev)
 
 	case session.EventTaskProposal:
@@ -1821,6 +1857,16 @@ func (a *app) openTool(i int) {
 	}
 	es := a.bodyDeck().entries
 	if i < 0 || i >= len(es) || es[i].kind != entryTool || replayInert(&es[i]) {
+		return
+	}
+	// AND AT tierPhone IT OPENS A SHEET INSTEAD OF AN EXPANSION (expand.go).
+	// The gesture is the same gesture and the intent is the same intent; what
+	// changes is that forty-four columns have no room to hang a diff under a
+	// row, so the answer takes the whole frame. The branch is here, in the one
+	// door both the click and enter go through, so the two cannot disagree
+	// about what "open this call" means.
+	if a.phoneFrame() {
+		a.openExpand(i)
 		return
 	}
 	e := &es[i]
