@@ -147,9 +147,9 @@ func TestADigitIsTextOnceTheRedirectLaneHasTheFocus(t *testing.T) {
 	}
 }
 
-// THE NODE KEEPS ITS MODEL AFTERWARDS: the rail says it where the column can
-// afford it, the room's header states it, and the landed card keeps it beside
-// the worktree.
+// THE NODE KEEPS ITS MODEL AFTERWARDS: the rail says it on the telemetry row
+// under the name, the room's header states it, and the landed card keeps it
+// beside the worktree.
 func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	a, _, advance := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: modelProposal(a, 7, 0, "openai/gpt-5", nil)})
@@ -161,23 +161,30 @@ func TestTheModelFollowsTheNodeOntoTheRailAndTheLandedCard(t *testing.T) {
 	if node == nil || node.model != "openai/gpt-5" {
 		t.Fatalf("the node did not keep its model: %+v", node)
 	}
-	// THE RAIL SPENDS THE CELLS ONLY WHEN THEY ARE CHEAP. A full column carries a
-	// short name beside the handle; the same column keeps the handle alone rather
-	// than cutting the title down for a long one, and a slim column keeps it
-	// whatever the name is. The title is the row — the model is a bonus.
+	// THE MODEL NEVER BUYS ITS CELLS FROM THE NAME. The first line is the two
+	// glyphs, the title and the handle — nothing else — and the model rides the
+	// telemetry row under it (task.go's [app.railTelemetry]), which is a row that
+	// gives up its own tail rather than the title's cells.
 	full := plain(strings.Join(a.railNodeRows(node, railCols), "\n"))
-	if !strings.Contains(full, "gpt-5 #7") {
-		t.Fatalf("the rail did not carry the model where it fits:\n%s", full)
+	head, under, _ := strings.Cut(full, "\n")
+	if strings.Contains(head, "gpt-5") || !strings.Contains(head, "#7") {
+		t.Fatalf("the model is on the title's line:\n%s", full)
 	}
+	if !strings.Contains(under, "gpt-5") {
+		t.Fatalf("the rail did not carry the model under the title:\n%s", full)
+	}
+	// A LONG NAME IS NOW THE SAME ROW. It used to cost the row its model, because
+	// the model was measured against the title; nothing is measured against the
+	// title any more.
 	node.model = "anthropic/claude-opus-4.8"
 	long := plain(strings.Join(a.railNodeRows(node, railCols), "\n"))
-	if strings.Contains(long, "claude-opus-4.8") || !strings.Contains(long, "#7") {
-		t.Fatalf("a long model took the title's cells:\n%s", long)
+	if !strings.Contains(long, "claude-opus-4.8") || !strings.Contains(long, "#7") {
+		t.Fatalf("a long model cost the row one of its two facts:\n%s", long)
 	}
 	node.model = "openai/gpt-5"
 	narrow := plain(strings.Join(a.railNodeRows(node, railSlimCols), "\n"))
-	if strings.Contains(narrow, "gpt-5") || !strings.Contains(narrow, "#7") {
-		t.Fatalf("a narrow rail spent its cells on the model:\n%s", narrow)
+	if !strings.Contains(narrow, "gpt-5") || !strings.Contains(narrow, "#7") {
+		t.Fatalf("a slim rail dropped the model with cells to spare:\n%s", narrow)
 	}
 
 	advance(2 * time.Minute)

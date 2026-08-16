@@ -2584,6 +2584,132 @@ func TestTheRailNamesWhatABlockedNodeWaitsOn(t *testing.T) {
 	}
 }
 
+// underWidth is the cells a node's under-block actually gets at a rail width:
+// the column less its seam ([app.railRoom]), less the two-cell indent every
+// under-row is drawn behind ([app.railNodeRows]). The telemetry tests measure
+// against it rather than against the column, because a test that asserted a row
+// at railCols would be asserting four cells the row never had.
+func underWidth(cols int) int { return cols - ansi.StringWidth(railSeam) - 2 }
+
+// THE TELEMETRY ROW IS WHAT A RUNNING NODE COSTS, said under its own name: its
+// age, its weight, its price and its worker — richest first, and given up from
+// the right until the row fits the column it is in.
+func TestARunningRowSaysItsAgeWeightPriceAndModel(t *testing.T) {
+	a, _, advance := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskRunning,
+		session.TaskNotice{Model: "openai/gpt-5", CostUSD: 0.31})})
+	node := a.tasks[7]
+	// The weight is the live-usage branch's field; this test is the rail's half
+	// of that contract and writes it the way an update will.
+	node.tokens = 9_900
+	advance(42 * time.Second)
+
+	// ONE RULE AT EVERY WIDTH: the full column carries all four segments, the
+	// slim one gives up the model, and a column narrower than either gives up the
+	// price and then the weight. The age is the segment that never goes.
+	for _, tc := range []struct {
+		width int
+		want  string
+	}{
+		{underWidth(railCols), "42s · 9.9k · $0.31 · gpt-5"},
+		{underWidth(railSlimCols), "42s · 9.9k · $0.31"},
+		{17, "42s · 9.9k"},
+		{9, "42s"},
+	} {
+		if got := plain(strings.Join(a.railUnder(node, tc.width), "\n")); got != tc.want {
+			t.Fatalf("at %d cells the telemetry row is %q, want %q", tc.width, got, tc.want)
+		}
+	}
+
+	// A LIVE CALL TAKES THE ROW ABOVE IT, and the two together are the whole of
+	// the under-block: what the node is doing this second, then what it has spent
+	// getting there.
+	node.tool, node.toolBegan = "bash go test ./...", a.now().Add(-24*time.Second)
+	rows := a.railUnder(node, underWidth(railCols))
+	if len(rows) != railUnderRows {
+		t.Fatalf("a working node drew %d under-rows, want %d:\n%q", len(rows), railUnderRows, rows)
+	}
+	if got := plain(rows[0]); got != "bash go test ./... · 24s" {
+		t.Fatalf("the call row is %q", got)
+	}
+	if got := plain(rows[1]); got != "42s · 9.9k · $0.31 · gpt-5" {
+		t.Fatalf("the telemetry row is %q under a live call", got)
+	}
+	node.tool, node.toolBegan = "", time.Time{}
+
+	// ABSENCE IS NOTHING, NEVER A ZERO. An engine that has published no usage
+	// leaves the two figures off the row rather than claiming the node has burned
+	// nothing and cost nothing.
+	node.tokens, node.cost = 0, 0
+	if got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n")); got != "42s · gpt-5" {
+		t.Fatalf("an unmeasured node draws %q, want no figures at all", got)
+	}
+	if strings.Contains(rosterText(a, 12), "$0.00") {
+		t.Fatalf("the roster priced a node nobody has priced:\n%s", rosterText(a, 12))
+	}
+	node.model = ""
+	if got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n")); got != "42s" {
+		t.Fatalf("a node nobody has said anything about draws %q, want its age alone", got)
+	}
+}
+
+// A NODE THAT CAME HOME CLEAN SAYS WHAT IT COST — and the rows that are waiting
+// on a PERSON say nothing but the thing they are waiting for.
+func TestTheRosterPricesAMergeAndLeavesTheActionableRowsAlone(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskRunning, session.TaskNotice{})},
+		streamEventMsg{gen: a.gen, ev: update(2, "Mix audio", session.TaskQueued, session.TaskNotice{
+			DependsOn: []uint64{1},
+		})},
+		streamEventMsg{gen: a.gen, ev: update(3, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{
+			Merge: mergeWordConflicted, Branch: "task/fix-nil-map", CostUSD: 0.42,
+		})},
+		streamEventMsg{gen: a.gen, ev: update(4, "Render titles", session.TaskFailed, session.TaskNotice{
+			Merge: mergeWordAborted, Branch: "task/render", CostUSD: 0.42,
+		})},
+		streamEventMsg{gen: a.gen, ev: update(5, "Port the parser", session.TaskUnverified, session.TaskNotice{
+			CostUSD: 0.42,
+		})},
+		streamEventMsg{gen: a.gen, ev: update(6, "Cut the trailer", session.TaskDone, session.TaskNotice{
+			Merge: mergeWordMerged, CostUSD: 0.42,
+		})},
+	)
+	width := underWidth(railCols)
+
+	// THE MERGE WORD ALWAYS SURVIVES, and the price rides behind it only where
+	// there is room for both.
+	if got := plain(strings.Join(a.railUnder(a.tasks[6], width), "\n")); got != mergeWordMerged+" · $0.42" {
+		t.Fatalf("a merged node says %q, want its price beside the word", got)
+	}
+	if got := plain(strings.Join(a.railUnder(a.tasks[6], 8), "\n")); got != mergeWordMerged {
+		t.Fatalf("a narrow column says %q, want the word alone", got)
+	}
+	a.tasks[6].cost = 0
+	if got := plain(strings.Join(a.railUnder(a.tasks[6], width), "\n")); got != mergeWordMerged {
+		t.Fatalf("an unpriced merge says %q, want the word alone", got)
+	}
+
+	// AND THE ROWS WITH A HANDLE ON THEM ARE UNCHANGED, to the byte. Each of
+	// these carries the one thing a person needs to act — a branch to check out, a
+	// node to wait for, a decision to make — and a price beside it would be a
+	// figure competing with it. They WRAP at this width (task.go's [railWrap]), so
+	// the assertion joins the block back up.
+	for _, tc := range []struct {
+		id   uint64
+		want string
+	}{
+		{2, "waits: Collect sources"},
+		{3, mergeWordConflicted + " · task/fix-nil-map"},
+		{4, taskStoppedKept + " · task/render"},
+		{5, taskUnverifiedWaits},
+	} {
+		if got := plain(strings.Join(a.railUnder(a.tasks[tc.id], width), " ")); got != tc.want {
+			t.Fatalf("node %d says %q, want %q", tc.id, got, tc.want)
+		}
+	}
+}
+
 // CHROME ACCOUNTING: the rail is charged against the CONVERSATION and against
 // nothing else. The frame keeps its exact size, the status line spans the whole
 // window, and below [railFloor] the conversation keeps every column it had.
