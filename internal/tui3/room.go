@@ -595,6 +595,15 @@ func runeStart(b byte) bool { return b&0xC0 != 0x80 }
 // agent's accounting, and nothing in a task can ask this keyboard a question
 // (its policy allows everything but the floor, and the floor refuses rather than
 // prompts), so there is no question in here to draw.
+//
+// THE SPEND IS NOT COUNTED HERE, AND THE OMISSION IS THE DESIGN. A node's turn
+// totals are folded by its PILOT (task.go's [app.pilotEvent]), which keeps flying
+// for as long as the node runs whether or not anybody is standing in its room —
+// [app.openRoom] opens a watch of its own beside it rather than taking the
+// pilot's over, because internal/session's door is a fan-out (task_room.go:
+// openRoom().join()) and hands each caller its own copy of every event. A fold
+// on this lane as well would therefore bill every turn twice for exactly as long
+// as a person had the page open.
 func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	room := a.room
 	if room == nil {
