@@ -4,3 +4,4 @@ bin/
 .claude/
 /aforge
 bench-results/
+.aforge-v3/tasks/
