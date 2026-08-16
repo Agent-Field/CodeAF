@@ -242,3 +242,45 @@ func TestTheCatalogCarriesTheCacheReadPriceAndTheArenaElo(t *testing.T) {
 		t.Fatal("a router's unknown pricing was read as a number")
 	}
 }
+
+// nearestPayload is a listing shaped like the one question [Catalog.NearestModels]
+// answers: which of these could take the conversation the failing model was
+// holding? Every distinction the ranking reads is present exactly once — a
+// vendor sibling, a stranger that scores closer, a model with no tools, one that
+// draws pictures, and one with a window a fraction of the size.
+const nearestPayload = `{"data":[
+  {"id":"vendor/big","name":"Big","context_length":200000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["tools"],"benchmarks":{"artificial_analysis":{"intelligence_index":60}}},
+  {"id":"vendor/sibling","name":"Sibling","context_length":200000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["tools"],"benchmarks":{"artificial_analysis":{"intelligence_index":40}}},
+  {"id":"other/closer","name":"Closer","context_length":200000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["tools"],"benchmarks":{"artificial_analysis":{"intelligence_index":59}}},
+  {"id":"other/no-tools","name":"NoTools","context_length":200000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["max_tokens"]},
+  {"id":"other/draws","name":"Draws","context_length":200000,"architecture":{"input_modalities":["text"],"output_modalities":["image","text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["tools"]},
+  {"id":"other/tiny","name":"Tiny","context_length":8000,"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["tools"]}
+]}`
+
+func TestNearestModelsKeepsTheOnesThatCouldActuallyTakeTheConversation(t *testing.T) {
+	c := Load(context.Background(), Options{
+		BaseURL: "https://openrouter.example/api/v1", Dir: t.TempDir(),
+		HTTPClient: catalogClient(t, http.StatusOK, nearestPayload, nil),
+	})
+	// Leaving vendor/big: its own vendor comes first, because one vendor's
+	// endpoints are the likeliest to accept the same request shape — and only
+	// then the stranger that scores nearest.
+	got := c.NearestModels("vendor/big", 3)
+	want := []string{"vendor/sibling", "other/closer"}
+	if len(got) != len(want) {
+		t.Fatalf("NearestModels = %v, want %v", got, want)
+	}
+	for index, id := range want {
+		if got[index] != id {
+			t.Fatalf("NearestModels = %v, want %v", got, want)
+		}
+	}
+	// A model the catalog never heard of has no neighbours to offer. Guessing
+	// one would be this package inventing a fact about a row it does not hold.
+	if got := c.NearestModels("absent/model", 3); got != nil {
+		t.Fatalf("NearestModels(absent) = %v, want nothing", got)
+	}
+	if got := c.NearestModels("vendor/big", 0); got != nil {
+		t.Fatalf("NearestModels(limit 0) = %v, want nothing", got)
+	}
+}

@@ -103,6 +103,18 @@ func runChatV3(args []string) error {
 		// because the answer is about the model the NEXT turn rides, and this
 		// session's model changes under /model (see [v3SeesImages]).
 		SupportsImages: v3SeesImages(models),
+		// The published answer to "may this call carry this knob", which the
+		// adapter asks before it lets an optional field travel. It was wired to
+		// nothing on this path, so a reasoning level set with ctrl+t or
+		// --reasoning went to every model blind — and on a router, a knob no
+		// endpoint publishes is not a 400 but a 404 with no endpoints left to
+		// serve the request (internal/provider's endpoints.go).
+		SupportsParameter: models.SupportsParameter,
+		// Where a conversation goes when nothing serving its model will take the
+		// request at all. Closures again, and for the same reason as the vision
+		// gate: the question is about the model the failing turn was ON, which
+		// /model moves.
+		NearestModels: v3NearestModels(models),
 	}
 
 	// What this session may do without asking, which model answers its
@@ -281,6 +293,12 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	cfg.ApprovalPolicy = policy
 	cfg.RolesSource = source
 	cfg.SpendRailUSD = rail
+	// The fallback chain reads PROFILE-ONLY, like the search keys below and
+	// unlike the three rows above it. A repository that could answer this could
+	// send a visitor's next turn — and their credit — to a model they never
+	// picked, by being cloned. Which models a person's questions may go to is
+	// theirs to say.
+	cfg.ModelFallbacks = config.ParseModelFallbacks(config.ModelFallbacksAt(profileDir))
 	// The guardian (internal/session's guardian.go) reads PROFILE-ONLY, unlike
 	// the two rows above it, and the reason is the one that keeps the search keys
 	// out of the project layer too: a repository that could turn this on would be
@@ -598,6 +616,24 @@ func v3ReadsImages(inputs []string) bool {
 		}
 	}
 	return false
+}
+
+// v3NearestModels is the last resort of the endpoint-refusal chain: when the
+// person has written no models.fallbacks row, where should a turn go that
+// nothing serving its model would accept?
+//
+// It answers from the catalog's own rows and only for a model the catalog knows
+// (internal/catalog's NearestModels states what "nearest" is checked against),
+// and it NEVER WAITS, for the reason [v3SeesImages] never does — this is asked
+// on the request path, by an adapter that has just been refused, with somebody
+// watching the turn. A cold catalog answers nil, and the chain then ends in a
+// diagnosis naming what to change rather than on a model nobody chose.
+//
+// TWO, and no more. The chain is bounded on its own side as well
+// (internal/provider's maxFallbackModels), and both bounds say the same thing:
+// past a couple of tries the honest move is to stop and let the person pick.
+func v3NearestModels(models *catalog.Catalog) func(string) []string {
+	return func(model string) []string { return models.NearestModels(model, 2) }
 }
 
 // v3Window fills session.Config.ContextWindow: how many tokens this session's
