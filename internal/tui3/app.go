@@ -427,6 +427,19 @@ type app struct {
 	taskSeen  map[uint64]session.TaskState
 	taskLane  <-chan session.Event
 	taskGen   int
+	// THE ROSTER'S OWN THREE FACTS (task.go's rail). railOpen holds the groups a
+	// person has folded AGAINST their default — nil is the design as shipped, and
+	// an absent key is a group that has never been touched, which is why this is a
+	// map and not a bitfield. railTop is the window's offset into the roster's
+	// line list, resolved by the same [listTop] every other list on this surface
+	// scrolls with. railWhere is the focused row, named by (group, id) rather than
+	// by index because work moves between groups while nobody is looking, and
+	// railHold says the roster has been GIVEN the keyboard (ctrl+t) — without it
+	// there is no cursor, and every key still belongs to the draft.
+	railOpen  map[railGroup]bool
+	railTop   int
+	railWhere railSpot
+	railHold  bool
 	// room is the node's page, when a person has walked into one (room.go), and
 	// roomGen the generation of the lane feeding it. Nil is the ordinary state:
 	// the body region is the conversation, and every geometric question about it
@@ -649,7 +662,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
-		// THE ROOM READS FIRST, and only ever while one is open (room.go). It has
+		// THE ROSTER READS FIRST, and only ever once it has been HANDED the
+		// keyboard (ctrl+t, task.go). Explicit focus outranks ambient place: a room
+		// is where a person is, the roster is what they just asked for, and esc
+		// gives the keyboard back to whichever of the two is underneath.
+		if cmd, taken := a.railKey(msg); taken {
+			return a, cmd
+		}
+		// THE ROOM READS NEXT, and only ever while one is open (room.go). It has
 		// to be read here rather than inside [app.key] because the two keys it
 		// takes — esc to leave, enter to steer — belong to input.go, and it
 		// restates that file's precedence law rather than jumping it: everything

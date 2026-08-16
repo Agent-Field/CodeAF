@@ -1405,6 +1405,13 @@ func (a *app) hintWord() string {
 		return taskProposalHint
 	case a.asking() || a.awaitingDecision():
 		return "a allow · t always · d deny"
+	case a.railHold:
+		// The roster has the keyboard (ctrl+t, task.go) — the one state on this
+		// surface where the arrows have left the box entirely. It ranks HERE, under
+		// every overlay and both questions, because that is exactly where
+		// [app.railKey]'s guard stands down; and above the running turn, because
+		// while it is held esc gives the keyboard back rather than interrupting.
+		return railHoldHint
 	case a.state == stateWorking:
 		return "esc interrupt"
 	}
