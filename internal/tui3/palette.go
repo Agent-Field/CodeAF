@@ -61,7 +61,7 @@ type picker struct {
 // by that slot's own question (models.go's [modelFilter]), with current marked.
 //
 // It is the single door every slot comes through — /model and the conversation
-// rows pass [chatModel], the "looking" row passes [seesImages] — so the answer
+// rows pass [chatModel], the "looking" row passes [inspectsImages] — so the answer
 // to "which models does this slot offer" is one predicate named at the call
 // site rather than a list assembled there.
 func (p *picker) startFor(models []Model, current string, keep modelFilter) {
