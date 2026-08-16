@@ -28,6 +28,8 @@
 //	palette.go  the model picker, and the overlay grammar all three lists share
 //	commands.go the command list: what "/" opens
 //	files.go    the file completion: what "@" opens
+//	taskmention.go the other half of "@": this project's tasks, and the pointer
+//	            block a chosen one becomes in the sentence
 //	attach.go   the attachment tray: pictures on their way into a message
 //	recall.go   the up arrow: input history, and the draft it holds for you
 //	draft.go    the unsent sentence, kept per directory between sessions
