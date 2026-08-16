@@ -1,17 +1,17 @@
 # Aforge as a resident agent — the finalized architecture
 
 This document settles the long-running architecture: one permanent graph, one
-resident daemon, everything else an attachment to it. It is written as a set of
-decisions, each with the alternative that was rejected and why. The current
-single-shot CLI (`aforge plan` / `aforge run`) remains a supported mode
-throughout — the daemon is an upgrade path, not a rewrite.
+lease-elected resident role, and any number of surfaces attached to it. It is
+written as a set of decisions, each with the alternative that was rejected and
+why. The current single-shot CLI (`aforge plan` / `aforge run`) remains a
+supported mode throughout.
 
 ## The one-sentence design
 
-A single, permanent, append-only task graph lives in `~/.aforge`, owned by one
-resident daemon; every terminal session, API caller, timer, or file-watch is
-just a way of splicing a new subtree onto that graph, and everything the agent
-has ever done remains addressable in it.
+A single, permanent, append-only task graph lives in `~/.aforge`; the file is
+the truth, no daemon owns it, and any process may hold the one resident role
+for that database while every terminal session, API caller, timer, or file
+watch remains an attachment to the same graph.
 
 ---
 
@@ -24,7 +24,7 @@ and per-run workspaces, and the database stores pointers and bounded digests.
 
 **Why not a custom binary format.** The instinct toward "binary or other clever
 databases" is right about the workload but wrong about the layer. The workload
-is: one writer (the daemon), many concurrent readers (attached terminals, the
+is: one elected mutation loop, many concurrent readers (attached terminals, the
 TUI, sub-agents querying history), atomic compare-and-swap claims, and
 queries shaped like "ready leaves under this subtree", "everything this session
 spawned", "folds from this workspace". That is exactly a WAL-mode SQLite
@@ -47,7 +47,7 @@ exactly this). The plandb API survives; its backing store becomes SQL.
 **Decision.** The primitive is an append-only `events` table: `(seq, ts,
 node_id, kind, payload)` — node spliced, claimed, turn completed, artifact
 written, tokens spent, node settled, subtree folded, trigger fired. The
-`nodes`/`edges` tables are a materialized view the daemon keeps current in the
+`nodes`/`edges` tables are a materialized view the resident keeps current in the
 same transaction. Any state can be rebuilt by replaying events; resume after a
 crash is "load view, continue", not "start over".
 
@@ -81,30 +81,30 @@ interprets the goal, and interpretation drifts. The one thing that must never
 be lost to compaction is what the user actually said. It is also the key for
 memory recall (Decision 6).
 
-## Decision 4 — One resident daemon; everything else attaches
+## Decision 4 — One resident role per database; everything else attaches
 
-**Decision.** `aforged` is the only writer to the store and the only scheduler.
-It listens on `~/.aforge/aforged.sock` (JSON-RPC over a unix socket; a
-loopback HTTP listener is an opt-in flag for webhook triggers). Clients are
-thin:
+**Decision.** The resident is a role, not an owning daemon. A process becomes
+resident by taking a non-blocking OS lock on `resident.lock` beside the
+database. The lock carries diagnostic identity only; SQLite events and views
+remain authoritative, and the kernel releases the role on process exit.
 
-- `aforge "do X"` — splice a goal under the spine, stream that subtree's
-  events until it settles (or `--detach` to fire-and-forget).
-- `aforge attach [subtree]` — live TUI over the event feed; many terminals may
-  attach to the same run simultaneously.
-- `aforge ask "…"` — answer from folds/memory without splicing work.
-- `aforge log / aforge why <node>` — provenance queries over events.
+An elected chat runs the head, reconciler, and workers. Other chat processes
+stay surface-only: they tail the WAL-backed thread and append user messages or
+command requests to its journal. `aforge wake` first probes the lease and
+starts a bounded full reconciliation pass only when the role is free.
 
-If no daemon is running, the same binary runs the scheduler **embedded**
-against the same store, one-shot, exactly as today. Same code path, single
-writer either way; the daemon is presence, not a different engine.
+**Why a role instead of a daemon.** The file is independently readable and
+writable under WAL, command requests are already durable mailboxes, and claim
+tokens already make worker ownership a compare-and-swap. Electing the mutation
+loop preserves one active scheduler per database without making availability
+depend on a privileged process or a second control plane.
 
 **Why a single scheduler thread is not the bottleneck.** Concurrency lives in
 the leaves (each leaf is its own goroutine running its own model loop) and in
 readers (WAL). The scheduler is a cheap event loop deciding readiness — plandb
 v1 already proved this shape at `-j 6`. What was actually missing was not more
-orchestrator threads but orchestrator *statelessness*: the daemon must be able
-to die, restart, and pick up mid-graph from the store. Multi-writer
+orchestrator threads but orchestrator *statelessness*: the resident holder may
+die, restart, and pick up mid-graph from the store. Multi-writer
 distribution (several hosts, one graph) is explicitly out of scope; if it ever
 matters, the sharding unit is the workspace, and the event log makes
 replication tractable. Do not build it now.
@@ -121,7 +121,7 @@ stranding the subtree.
 ## Decision 5 — Triggers are nodes the agent can plant
 
 **Decision.** A trigger is a first-class node (`kind: trigger`) owned by the
-daemon's trigger engine, carrying:
+resident trigger engine, carrying:
 
 - a **condition**: `cron:` schedule | `file:` fsnotify glob | `webhook:` path
   \+ shared secret | `graph:` predicate (node settled/failed, spend threshold)
@@ -159,6 +159,38 @@ siblings during the run and posterity after it — one mechanism, two ranges.
 The capability profiles from the calibration plan live in the same store, keyed
 by model and skill: capability memory and knowledge memory, same shelf.
 
+## Decision 7 — The conversation is a lens on the brain, not the brain
+
+**Decision.** There is one brain. A surface attaches to it and removes or adds
+nothing but the person. `aforge chat` is that brain with a head and a terminal;
+`aforge do` is the same construction with the conversation removed, and the
+seam between them is exactly one thing: where the task comes from.
+
+A chat ask travels through the head, which resolves what it points back into
+before it becomes a command. A headless task is **verbatim** — there is no
+conversation for it to point into, so it is referentially closed by definition
+and goes straight into the journal the head would have written to. From that
+command onward nothing downstream can tell which surface produced it, because
+it is literally the same code.
+
+**Why this and not a separate headless engine.** The alternative already exists
+and is instructive: `plan`/`run` compiles a graph to a file and executes what
+the file says. Everything this system learned about doing jobs happens *after*
+the plan is written — the contract for the kind of work in front of it, the
+gate that asks whether the person would accept this, the round a cited gap
+earns, the replan when a leaf runs out of room. A frozen graph cannot do any of
+it, so a second engine would either be a worse brain or a duplicate of this
+one. Keeping `plan`/`run` for reading and hand-editing plans, and making `do` a
+lens rather than an engine, is what stops the two from drifting.
+
+**What the lens must still answer for.** With nobody watching, the process
+itself has to say what a person would have seen: an exit code that separates
+*failed* from *hit the wall* from *never attempted*, a question surfaced as
+`blocked_on` rather than smuggled into the deliverable, and a periodic
+structural read on stderr so silence is diagnosable. Those are contracts, not
+conveniences — [HEADLESS.md](HEADLESS.md) is where they are written down and
+what every harness is programmed against.
+
 ## What this is not
 
 - **Not a message bus.** Nodes do not talk to each other; they read folds and
@@ -167,15 +199,18 @@ by model and skill: capability memory and knowledge memory, same shelf.
   model doesn't provide.
 - **Not a vector database.** Recall starts as FTS over digests keyed by intent
   and workspace. Add embeddings only when a measured recall failure demands it.
-- **Not distributed.** One host, one daemon, one writer. The event log keeps
-  the door open; nothing walks through it yet.
+- **Not distributed.** One host and one lease-elected resident per database.
+  The event log keeps the door open; nothing walks through it yet.
+- **Not two products.** The headless command is a lens on the same brain, not a
+  scripting-flavoured reimplementation of it. A feature that exists in chat and
+  not headless — or that behaves differently there — is a bug in the seam.
 
 ## Migration map
 
 | milestone | what lands | what it unlocks |
 |---|---|---|
 | M1 | `internal/store`: SQLite events + views behind the existing run; `aforge resume` | crash-proof runs, real accounting; the silent-death class of failure becomes impossible |
-| M2 | `aforged` + socket protocol + `attach`; spine + splice + fold | universal cross-session graph; many-terminal attach; history queries |
+| M2 | resident lease + visitor surfaces; spine + splice + fold | universal cross-session graph; many-terminal attach; history queries |
 | M3 | trigger engine + `plant_trigger` tool + rails | time/file/webhook/graph reactivity; the agent schedules itself |
 | M4 | ground-time recall + executor fold-query tool | the agent that remembers its territory |
 

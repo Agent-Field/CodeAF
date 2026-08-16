@@ -1,0 +1,30 @@
+                                                                                             ● aforge                 ›
+─ a fresh room ────────────────────────────────────────────────────────────────────────────    2 running, 1 queued
+                                                                                            ────────────────────────────
+  a conversation of its own, with no history behind it. it                                  threads
+  takes its name from the first exchange in it. you lose                                       the wisp parity push   2h
+  nothing by starting here — your preferences, standing                                        you are here
+  rules, the notebook and all the work live outside threads.                                   importer rewri… yesterday
+                                                                                               parked on the schema que…
+  start typing · the room is made and takes the draft                                       ▎  + new
+  open enter · arrive with nothing said                                                     work
+                                                                                             ◐ wisp-parity            ›
+                                                                                               reworking NavCtx after t…
+                                                                                               $8.65 · 1◐ 1○
+                                                                                             ├─ ◐ H2
+                                                                                             └─ ⚑ KeyCutter
+                                                                                                  waits: H2
+                                                                                             ✓ perf-audit
+                                                                                             ○ homes
+
+
+
+
+
+
+
+  aforge ‹ ▍the wisp parity push ‹ a fresh room                                         ◐ 1
+▍ ›
+
+
+  chat  work  notebook  threads ▾ ctrl+t  +                                                                  ~/aforge-v2

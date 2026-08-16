@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -59,23 +62,227 @@ oversized.`
 // but told what splitting costs and what not splitting costs, it optimises for
 // the thing we care about. This is the same lever that made the spine stop
 // inventing stages.
-// Anchors is the ruler in force. It is a variable rather than a constant so a
-// measured profile can replace the built-in prior: the anchors were always meant
-// to become real examples once an executor existed to produce them.
-var Anchors = sizeAnchors
+//
+// LinearSubharness names the baseline worker. It is written here rather than
+// imported because the ruler is a fact about a subharness, and the package that
+// registers subharnesses is the one that already imports this one; a constant
+// repeated in two packages is cheaper than a cycle.
+//
+// It is a name, and that is load-bearing. The generalist used to be spelled as
+// the empty string, which made "this node was judged and the answer is the
+// generalist" indistinguishable from "nobody judged this node" — and every
+// reader that fills an unanswered question in from somewhere else, admission's
+// inheritance above all, read the first as the second. A verdict that was made
+// says so out loud; empty is reserved for the verdict nobody made.
+const LinearSubharness = "linear"
 
-// UseAnchors installs a calibrated ruler. An empty string restores the prior,
-// which is the right fallback whenever a profile is missing or unreadable.
-func UseAnchors(anchors string) {
+// BareSubharness names the cheap whole-taker for one-sitting work. It is
+// written here for the same reason LinearSubharness is — the package that
+// registers subharnesses imports this one, so the name is repeated here
+// rather than imported. Bare renders the brief alone: no contract block, no
+// dependency inputs, four tools. That envelope is what makes it the decline
+// target for a specialist named on atomic work (one sitting pays no pipeline)
+// and the default for a standalone atomic work node (the generalist's input
+// rendering is wasted on a node with nothing to render).
+const BareSubharness = "bare"
+
+// Subharness is one specialist offered to the sizing pass: a different way of
+// working with a capacity of its own, not a smaller agent. Registration is what
+// puts it in front of the sizing model — one nobody registered is one the
+// planner cannot choose, which is exactly the additive rule.
+type Subharness struct {
+	Name    string
+	Purpose string
+}
+
+// The rulers in force, one per subharness. They are mutable because a measured
+// profile can replace a built-in prior, and guarded because chat can
+// recalibrate one subharness while a model change or another plan reads
+// another.
+//
+// Linear is seeded with the prior above and is always present: with nothing
+// else registered every read, every prompt and every schema below is exactly
+// what it was before subharnesses existed.
+var (
+	anchorMutex     sync.RWMutex
+	anchorPrior     = map[string]string{LinearSubharness: sizeAnchors}
+	anchorInForce   = map[string]string{LinearSubharness: sizeAnchors}
+	subharnessOrder []string
+	subharnessBy    = map[string]Subharness{}
+)
+
+// Anchors returns one stable snapshot of the linear ruler in force.
+func Anchors() string { return AnchorsFor(LinearSubharness) }
+
+// UseAnchors installs a calibrated linear ruler. An empty string restores the
+// prior, which is the right fallback whenever a profile is missing or
+// unreadable.
+func UseAnchors(anchors string) { UseAnchorsFor(LinearSubharness, anchors) }
+
+// AnchorsFor returns the ruler in force for one subharness. An empty name is
+// linear, as it is everywhere else; one nobody registered has no ruler at all,
+// and saying so with an empty string is more honest than handing back linear's
+// — the whole point of a second subharness is that it measures differently.
+func AnchorsFor(subharness string) string {
+	subharness = normalizeSubharness(subharness)
+	anchorMutex.RLock()
+	defer anchorMutex.RUnlock()
+	return anchorInForce[subharness]
+}
+
+// UseAnchorsFor installs a calibrated ruler for one subharness. An empty string
+// restores that subharness's own prior — the built-in three examples for
+// linear, whatever it shipped with for a specialist.
+func UseAnchorsFor(subharness, anchors string) {
+	subharness = normalizeSubharness(subharness)
+	anchorMutex.Lock()
+	defer anchorMutex.Unlock()
 	if strings.TrimSpace(anchors) == "" {
-		Anchors = sizeAnchors
+		anchors = anchorPrior[subharness]
+	}
+	anchorInForce[subharness] = anchors
+}
+
+// UseSubharness registers a specialist with the sizing pass: its purpose, so
+// the model can tell whether a node's essence matches it, and its prior
+// anchors, so the node can be placed against that subharness's own ruler rather
+// than linear's. Registering linear again only re-seats its prior.
+func UseSubharness(subharness Subharness, priorAnchors string) {
+	name := strings.TrimSpace(subharness.Name)
+	if name == "" {
 		return
 	}
-	Anchors = anchors
+	subharness.Name = name
+	anchorMutex.Lock()
+	defer anchorMutex.Unlock()
+	if _, known := subharnessBy[name]; !known && name != LinearSubharness {
+		subharnessOrder = append(subharnessOrder, name)
+		sort.Strings(subharnessOrder)
+	}
+	if name != LinearSubharness {
+		subharnessBy[name] = subharness
+	}
+	anchorPrior[name] = priorAnchors
+	if _, seated := anchorInForce[name]; !seated {
+		anchorInForce[name] = priorAnchors
+	}
+}
+
+// Subharnesses returns the registered specialists in a stable order. Linear is
+// never among them: it is the baseline every node already sits against, and a
+// menu with one entry is no menu.
+func Subharnesses() []Subharness {
+	anchorMutex.RLock()
+	defer anchorMutex.RUnlock()
+	list := make([]Subharness, 0, len(subharnessOrder))
+	for _, name := range subharnessOrder {
+		list = append(list, subharnessBy[name])
+	}
+	return list
+}
+
+// PurposeFor is what a registered specialist is for, in the words it registered
+// with. Linear, empty and anything nobody registered answer nothing at all —
+// which is the same "there is no specialist here" every other reader gets, and
+// what keeps a prompt that asks for it byte-identical in a process without one.
+func PurposeFor(subharness string) string {
+	anchorMutex.RLock()
+	defer anchorMutex.RUnlock()
+	return subharnessBy[strings.TrimSpace(subharness)].Purpose
+}
+
+// KnownSubharness reports whether a name reaches a registered specialist. Empty
+// and "linear" are the baseline rather than a specialist, so both answer no.
+func KnownSubharness(name string) bool {
+	anchorMutex.RLock()
+	defer anchorMutex.RUnlock()
+	_, ok := subharnessBy[strings.TrimSpace(name)]
+	return ok
+}
+
+// GeneralistSubharness reports whether a name is the generalist, named. It is
+// deliberately not the negation of KnownSubharness: that question is "is this a
+// registered specialist", and it answers no for both of the two different facts
+// this one separates — the generalist chosen, and nothing chosen at all.
+func GeneralistSubharness(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), LinearSubharness)
+}
+
+// SubharnessChosen reports whether anyone answered the question at all, with a
+// specialist or with the generalist. Only the empty string means no verdict,
+// and only then may a reader fill the answer in from elsewhere.
+func SubharnessChosen(name string) bool { return strings.TrimSpace(name) != "" }
+
+// bareNamed reports whether a verdict names the cheap whole-taker. It mirrors
+// GeneralistSubharness in shape — a name predicate, not a registration check —
+// so the three-tier routing can tell the two specialists apart by what they are
+// for rather than by the order they were registered.
+func bareNamed(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), BareSubharness)
+}
+
+// bareOrLinear is the decline target when a specialist is turned away from
+// atomic work, and the default for a standalone atomic work node: bare when it
+// is registered, the generalist otherwise. The additive law — a subharness
+// nobody registered cannot be chosen — is what keeps a process without bare
+// on the baseline it has always run.
+func bareOrLinear() string {
+	if KnownSubharness(BareSubharness) {
+		return BareSubharness
+	}
+	return LinearSubharness
+}
+
+// ForgetSubharnesses restores the registry to its linear-only state. Tests own
+// it: registration is process-global by design, and a test that adds a
+// specialist must be able to put the process back.
+func ForgetSubharnesses() {
+	anchorMutex.Lock()
+	defer anchorMutex.Unlock()
+	subharnessOrder = nil
+	subharnessBy = map[string]Subharness{}
+	anchorPrior = map[string]string{LinearSubharness: sizeAnchors}
+	anchorInForce = map[string]string{LinearSubharness: anchorInForce[LinearSubharness]}
+}
+
+func normalizeSubharness(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return LinearSubharness
+	}
+	return name
 }
 
 func sizePromptWith(anchors string) string {
-	return `You judge whether each node is the right size to hand to a single agent.
+	return sizePromptFor(anchors, Subharnesses())
+}
+
+// sizePromptFor is the sizing prompt as it has always been, plus one section
+// per registered specialist. With none registered the returned bytes are
+// exactly the bytes this prompt had before subharnesses existed — that is the
+// law, and there is a test that reads it byte for byte.
+//
+// Its second paragraph restates the worker premise in its own words, and keeps
+// them deliberately — workerPremise is the source of truth for the shared fact,
+// but this pass is the one that measures capacity, and capacity is precisely
+// what the shared fact leaves out. One tool at a time, one deliverable, and a
+// context that fills as it goes are the terms every judgment below is made in;
+// a prompt that said only "works alone, in order, with tools" would be asking
+// for a size against nothing.
+//
+// The burden section is the other half of the grain section, and the two are
+// written to be read together. Grain says follow the seams the material really
+// has; burden says a seam nobody can name is not a reason to cut. Left alone,
+// each fails in the direction the other guards: a pass told only to follow the
+// grain will invent one, and a pass told only to distrust splitting will refuse
+// enumerations that were already there. So the burden is stated as a proof
+// obligation on the joint objective — the wait, the cost, and the answer,
+// together — with exactly two things that discharge it, concurrency or a node
+// that cannot converge in one worker's budget. Neither is a fallback for the
+// other, and neither is thoroughness, which is what a model reaches for when it
+// wants to divide and has no reason to.
+func sizePromptFor(anchors string, specialists []Subharness) string {
+	prompt := `You judge whether each node is the right size to hand to a single agent.
 
 That agent works alone and in order: it thinks, uses one tool, sees the result,
 thinks again. It cannot do two things at once. It produces one deliverable and
@@ -91,15 +298,51 @@ Judge each node against those anchors:
 - oversized   — clearly toward TOO BIG. Splitting it would let real work happen
                 simultaneously that is currently stuck behind other work.
 
-Weigh both costs honestly. Splitting a node costs a round of planning and an
-extra result to reassemble, and buys nothing if the parts would just run one
-after another anyway. Leaving a node too big costs an agent grinding serially
-through work that had no reason to be sequential.
+Weigh both costs honestly. Splitting a node costs a round of planning, an extra
+result to reassemble, and whatever context each new piece must be given before
+it can start — a split whose pieces must each be told the whole subject is paid
+for twice and buys nothing if the pieces would just run one after another
+anyway. Leaving a node too big costs an agent grinding serially through work
+that had no reason to be sequential, and the person waits for the longest chain,
+never the total, so a piece that carries only its own share is cheap in context
+and repaid in waiting.
 
 Judge the nodes relative to each other as well as to the anchors — you are
 seeing all of them, and the largest few are what matter.
 
 Most nodes in a well-built plan are atomic. Say so when they are.
+
+The node stands whole until a split proves what it buys. That is the starting
+position at every level and it is the answer whenever the case for dividing is
+not actually made — not a last resort for when nothing better comes to mind.
+Whatever is bought has to be bought on all three of the things being spent at
+once: the time the person waits, what the work costs to run, and how good the
+answer comes back. A division that improves none of the three is a division that
+was made for its own sake.
+
+Two things and only two things discharge that burden. Either the pieces would
+genuinely run at the same time — none of them waiting on another, so the wait
+becomes the longest piece instead of the sum of all of them — or the node cannot
+be brought to an end inside what one worker can hold, so it would be stopped and
+resumed however anyone decides. A sequence discharges neither: pieces that run
+one after another land no sooner than the undivided node, and they add a
+briefing for each piece and a reassembly at the end that the undivided node
+never paid for.
+
+Each piece must also be sayable more precisely than the node itself. A piece
+carries a deliverable of its own and its own condition for being finished, and
+both can be written down without reference to the other pieces. If the only
+difference between a piece and the node is narrower wording, it is not a piece,
+it is the node said again; and two pieces that would finish on the same
+condition are one piece, with the second being that answer bought twice.
+
+Say the price out loud before accepting it: every piece re-pays whatever it must
+be told before it can start, every piece is one more result to reassemble, and
+every piece is one more thing to schedule and wait on. What clears that price is
+width that can be named — the units that stand apart, and which piece owns which
+— or a named reason the node cannot converge as one job. Thoroughness never
+clears it. Dividing work does not make it better, and a split made for the look
+of the thing is paid for in full by the person waiting.
 
 Also return split_into for every node:
 
@@ -112,8 +355,61 @@ Also return split_into for every node:
   nothing about the others, producing a result of its own. If the inside of the
   node is a sequence, or if you would only be restating it in smaller words,
   there are no pieces.
+- Where the node's own words, or the things it says it must touch, already
+  enumerate units that stand apart, the pieces are that enumeration: one unit
+  each, or an even batch of them each when the units are many. Do not halve an
+  enumerated set into two coarse pieces, and never name two pieces that would
+  each cover the whole set — each would do all of it, and one answer would be
+  paid for twice. Where the material enumerates nothing, there is no split to
+  read off it.
+- Name a piece only when it could be written down with a deliverable of its own
+  and its own way of telling that it is finished, distinguishable from the
+  node's and from every other piece's. If you would be handing the same finish
+  line to two of them, there are no pieces.
 - If you cannot name at least two, return an empty list. That is the answer that
   says to leave the node whole, and it is a common and correct one.`
+	if len(specialists) == 0 {
+		return prompt
+	}
+	return prompt + subharnessSection(specialists)
+}
+
+// subharnessSection puts the specialists beside the ruler the nodes were just
+// judged against. It is written as an inversion rather than an alternative: the
+// interesting case is the node that is oversized for one agent working alone
+// and is nevertheless one job for a subharness built for exactly that job, and
+// naming it is what stops the decomposition.
+func subharnessSection(specialists []Subharness) string {
+	var section strings.Builder
+	section.WriteString("\n\nSome nodes can be taken WHOLE by a specialist subharness. A specialist is not\n" +
+		"a smaller agent and not a better one: it is a different way of working, with a\n" +
+		"capacity of its own. A node that is oversized for one agent working alone may\n" +
+		"be exactly one job for one of these.\n")
+	for _, specialist := range specialists {
+		fmt.Fprintf(&section, "\n%s — %s\n", specialist.Name, strings.TrimSpace(specialist.Purpose))
+		if ruler := strings.TrimSpace(AnchorsFor(specialist.Name)); ruler != "" {
+			section.WriteString("\nIts ruler, which replaces the one above for this subharness only:\n\n")
+			section.WriteString(ruler)
+			section.WriteString("\n")
+		}
+	}
+	section.WriteString("\nAlso return subharness for every node. Name one only when that subharness's\n" +
+		"purpose is the essence of the node's own work AND the node sits inside that\n" +
+		"subharness's ruler. Naming it says the node is atomic FOR IT and must not be\n" +
+		"split, so return an empty split_into with it. Leave subharness empty for mixed\n" +
+		"work, for work whose essence is something else, and whenever you are in doubt\n" +
+		"— that is the answer for most nodes, and it is never wrong, only slower.\n" +
+		"\n" +
+		"A specialist runs a pipeline, not a single agent: its own planning, contracts\n" +
+		"and verification stand between the node and the work, and that machinery is a\n" +
+		"fixed cost paid per node whatever the node's size. Weigh it the way you weighed\n" +
+		"splitting. A node that is small for any worker — one file's change, a short\n" +
+		"answer, a single sitting's reading — is cheapest with the generalist even when\n" +
+		"the specialist's purpose matches exactly, because the pipeline's fixed cost\n" +
+		"would dwarf the work. Name the specialist when the node is big enough that the\n" +
+		"pipeline's machinery repays its cost: work that would otherwise be split, or\n" +
+		"that needs the specialist's own checks to be trusted.")
+	return section.String()
 }
 
 var sizeSchema = json.RawMessage(`{
@@ -137,10 +433,58 @@ var sizeSchema = json.RawMessage(`{
   "additionalProperties": false
 }`)
 
+// sizeSchemaFor extends the verdict with the subharness question when there is
+// one to ask. The enum carries the registered names and the empty string, so a
+// subharness the process does not have cannot be named at all — the degradation
+// is structural rather than a check downstream.
+func sizeSchemaFor(specialists []Subharness) json.RawMessage {
+	if len(specialists) == 0 {
+		return sizeSchema
+	}
+	names := make([]string, 0, len(specialists)+1)
+	names = append(names, "")
+	for _, specialist := range specialists {
+		names = append(names, specialist.Name)
+	}
+	enum, err := json.Marshal(names)
+	if err != nil {
+		return sizeSchema
+	}
+	return json.RawMessage(`{
+  "type": "object",
+  "properties": {
+    "sizes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node":  { "type": "integer" },
+          "size":  { "type": "string", "enum": ["atomic", "borderline", "oversized"] },
+          "split_into": { "type": "array", "items": { "type": "string" } },
+          "subharness": { "type": "string", "enum": ` + string(enum) + ` }
+        },
+        "required": ["node", "size", "split_into", "subharness"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["sizes"],
+  "additionalProperties": false
+}`)
+}
+
 type sizeVerdict struct {
 	Node  int      `json:"node"`
 	Size  string   `json:"size"`
 	Parts []string `json:"split_into"`
+	// Subharness is the specialist that can take this node whole. The model
+	// says the generalist by saying nothing, which is the overwhelmingly common
+	// answer; recordGeneralist gives that answer its name before it is applied,
+	// so the graph never carries an answered question as an empty one. A name
+	// that reaches no registered subharness becomes the generalist too, because
+	// a plan that asks for a worker we do not have should still get its work
+	// done.
+	Subharness string `json:"subharness,omitempty"`
 }
 
 // sizeResult is one stage's verdicts.
@@ -158,17 +502,16 @@ type sizeResult struct {
 // pass reads the same graph, so no write may happen until the builder runs
 // sizeApply serially.
 func SizeNodes(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
-	return sizeApply(graph, sizeGather(ctx, client, graph))
+	return sizeApply(graph, sizeGather(ctx, client, graph, graph.planBlock()))
 }
 
-// sizeGather renders the catalog and runs every stage's call. It never writes
-// to the graph.
-func sizeGather(ctx context.Context, client Completer, graph *Graph) []sizeResult {
+// sizeGather runs every stage's call against a catalog block the caller has
+// already rendered. It never writes to the graph.
+func sizeGather(ctx context.Context, client Completer, graph *Graph, shared string) []sizeResult {
 	stages := len(graph.Stages)
 	if stages == 0 {
 		stages = 1
 	}
-	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
 	results := make([]sizeResult, stages)
 	var group sync.WaitGroup
@@ -176,6 +519,14 @@ func sizeGather(ctx context.Context, client Completer, graph *Graph) []sizeResul
 		group.Add(1)
 		go func(stage int) {
 			defer group.Done()
+			// A faulted stage lands as a failed one, and sizeApply's default —
+			// unjudged work nodes are atomic — carries its nodes the rest of
+			// the way, exactly as it does for a stage the model skipped.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[stage-1] = sizeResult{err: guard.Note(fmt.Sprintf("plan/size stage %d", stage), recovered)}
+				}
+			}()
 			verdicts, usage, err := sizeStage(ctx, client, shared, graph, stage)
 			results[stage-1] = sizeResult{verdicts: verdicts, usage: usage, err: err}
 		}(stage)
@@ -204,18 +555,110 @@ func sizeApply(graph *Graph, results []sizeResult) (Usage, error) {
 				node.Size = Size(verdict.Size)
 			}
 			node.Parts = shortLabels(verdict.Parts)
+			switch {
+			// A non-bare specialist — the pipeline worker — named for work that is
+			// clearly too big for one sitting keeps the node. The pipeline earns
+			// its fixed cost only on confident size; once the specialist claims
+			// the whole, the size judgment made against the baseline ruler no
+			// longer applies and there is nothing left to split. This is the
+			// inversion the subharness section exists for — one specialist leaf
+			// instead of eight generalist ones.
+			case KnownSubharness(verdict.Subharness) && !bareNamed(verdict.Subharness) && Size(verdict.Size) == SizeOversized:
+				node.Subharness = strings.TrimSpace(verdict.Subharness)
+				node.Size = SizeAtomic
+				node.Parts = nil
+			// The same specialist named for atomic or borderline work is
+			// declined to the cheap whole-taker. Atomic is one sitting by
+			// definition, and borderline is literally the verdict of uncertainty
+			// — "not obvious that breaking it up would help" — and uncertainty
+			// resolves cheap-first: the leaf that proves bigger than its
+			// envelope escalates on evidence (see resident's continuation
+			// escalation), which is a cheaper way to learn the sitting was
+			// misjudged than paying the pipeline's fixed cost up front.
+			// Measured: a bug fix the ruler called borderline ran bare at a
+			// fifth of the pipeline's cost with identical quality. The decline
+			// target is bare when it is registered and the generalist
+			// otherwise — the additive law, which keeps a process without bare
+			// on the baseline it has always run. The borderline node's own size
+			// and parts stand: the envelope changes, the split question does
+			// not.
+			case KnownSubharness(verdict.Subharness) && !bareNamed(verdict.Subharness):
+				node.Subharness = bareOrLinear()
+				if Size(verdict.Size) == SizeAtomic {
+					node.Size = SizeAtomic
+					node.Parts = nil
+				}
+			// Bare named for atomic or borderline work is correctly named — it
+			// is the cheap whole-taker for one-sitting work, and borderline is
+			// the same uncertainty resolving cheap-first.
+			case KnownSubharness(verdict.Subharness) && bareNamed(verdict.Subharness) && Size(verdict.Size) != SizeOversized:
+				node.Subharness = BareSubharness
+				if Size(verdict.Size) == SizeAtomic {
+					node.Size = SizeAtomic
+					node.Parts = nil
+				}
+			// Bare named for oversized work is declined to the generalist:
+			// bare's envelope — the brief alone, no contract or inputs — cannot
+			// hold it, and the generalist middle can.
+			case KnownSubharness(verdict.Subharness) && bareNamed(verdict.Subharness):
+				node.Subharness = LinearSubharness
+			// The generalist, chosen by name. The default for one-sitting work is
+			// bare — it renders the brief alone — so an atomic or borderline work
+			// node with no dependency inputs routes there: atomic is one sitting,
+			// and borderline is the same uncertainty resolving cheap-first with
+			// escalation as the backstop. A node fed by earlier work must keep
+			// the generalist: the scheduler turns each Needs entry into a task
+			// input (schedule.taskFor), and bare renders the brief alone, so the
+			// results of that earlier work would never reach the leaf. Oversized
+			// work is the generalist's own territory, and stays with it exactly
+			// as before. The name is written down regardless, because a node that
+			// was asked and answered "the generalist" must not later be handed a
+			// specialist by anyone filling in a blank.
+			case GeneralistSubharness(verdict.Subharness):
+				if Size(verdict.Size) != SizeOversized && node.Kind == KindWork && len(node.Needs) == 0 {
+					node.Subharness = bareOrLinear()
+				} else {
+					node.Subharness = LinearSubharness
+				}
+			}
 		}
 	}
 	// A node the model skipped is treated as atomic. Defaulting the unknown
 	// case toward not expanding is the safe direction: an unnecessary split
 	// wastes calls and invites the runaway, while an unsplit node still gets
-	// done, only more slowly.
+	// done, only more slowly. The same three-tier default applies: a standalone
+	// work node (no Needs) is bare's territory — bare renders the brief alone, so
+	// a node fed by earlier work (Needs) keeps the generalist, whose input
+	// rendering is what carries those results into the leaf.
 	for index := range graph.Nodes {
-		if graph.Nodes[index].Kind == KindWork && graph.Nodes[index].Size == SizeUnknown {
-			graph.Nodes[index].Size = SizeAtomic
+		node := &graph.Nodes[index]
+		if node.Kind != KindWork || node.Size != SizeUnknown {
+			continue
+		}
+		node.Size = SizeAtomic
+		if len(node.Needs) == 0 {
+			node.Subharness = bareOrLinear()
 		}
 	}
 	return usage, joinErrors(failures)
+}
+
+// recordGeneralist writes the generalist's name onto every verdict that did not
+// reach a specialist. It is called only where the subharness question was
+// actually put to the model: a pass that never asked has no verdict to record,
+// and a graph judged by a process with no specialists in it keeps the empty
+// column it has always had.
+//
+// A name nobody registered lands here too. The plan asked for a worker this
+// process does not have, the generalist will do the work, and saying so is more
+// honest than leaving behind a blank that admission would fill with whatever
+// the job as a whole was spliced for.
+func recordGeneralist(verdicts []sizeVerdict) {
+	for index := range verdicts {
+		if !KnownSubharness(verdicts[index].Subharness) {
+			verdicts[index].Subharness = LinearSubharness
+		}
+	}
 }
 
 // shortLabels keeps only things that look like names. Asked for parts, a model
@@ -235,6 +678,7 @@ func shortLabels(values []string) []string {
 }
 
 func sizeStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) ([]sizeVerdict, *ai.Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanSize)
 	var targets strings.Builder
 	found := false
 	for _, node := range graph.Nodes {
@@ -250,20 +694,47 @@ func sizeStage(ctx context.Context, client Completer, shared string, graph *Grap
 	if !found {
 		return nil, nil, nil
 	}
+	specialists := Subharnesses()
+	// The prices go on the very last message and nowhere else. The system prompt
+	// above is the same bytes for every stage of every job on this machine and
+	// the catalog block is the same bytes for every stage of this one; an
+	// invoice spliced into either would rewrite a shared prefix every time a
+	// leaf finished, and cost every cache hit behind it for a table of six
+	// numbers. See invoice.go on cache shape.
 	messages := []ai.Message{
-		systemMessage(sizePromptWith(Anchors)),
+		systemMessage(sizePromptFor(Anchors(), specialists)),
 		userMessage(shared),
-		userMessage(fmt.Sprintf("Judge the size of each of these stage %d nodes:\n%s", stage, targets.String())),
-	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(sizeSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("size stage %d: %w", stage, err)
+		userMessage(withInvoice(
+			fmt.Sprintf("Judge the size of each of these stage %d nodes:\n%s", stage, targets.String()),
+			graph.Invoice)),
 	}
 	var decoded struct {
 		Sizes []sizeVerdict `json:"sizes"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("size stage %d: %w", stage, err), response)
+	response, err := structured(ctx, client, messages, sizeSchemaFor(specialists), &decoded)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("size stage %d: %w", stage, err)
 	}
+	// The question was asked, so every answer to it is a verdict — including
+	// the empty one, which is how the schema spells "the generalist". Naming it
+	// here, at the one place that knows the question was on the paper, is what
+	// keeps the rest of the system from mistaking an answer for a silence.
+	if len(specialists) > 0 {
+		recordGeneralist(decoded.Sizes)
+	}
+	// The pass was asked about a named set of nodes; an answer that judges none
+	// of them, or judges one that does not exist, did not do the job. Sizes
+	// themselves are opinions and are not checkable here.
+	if len(decoded.Sizes) == 0 {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return decoded.Sizes, usageOf(response), nil
+	}
+	for _, verdict := range decoded.Sizes {
+		if graph.Node(verdict.Node) == nil {
+			provider.Report(ctx, provider.VerdictSemanticFailure)
+			return decoded.Sizes, usageOf(response), nil
+		}
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return decoded.Sizes, usageOf(response), nil
 }

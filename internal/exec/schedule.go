@@ -4,9 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // Scheduler drives a graph to completion.
@@ -20,7 +25,9 @@ type Scheduler struct {
 	registry    *Registry
 	workspace   *Workspace
 	concurrency int
+	governor    *Governor
 	usage       Usage
+	usageMutex  sync.RWMutex
 
 	// Budget bounds the whole run's token spend, in prompt+completion tokens.
 	// Zero means unbounded — each leaf still has its own budget. When the
@@ -29,12 +36,27 @@ type Scheduler struct {
 	// nodes are marked, and Run reports the stop reason.
 	Budget int
 
+	// Escalations is how many times a failed leaf may be re-run on a stronger
+	// model. Zero — the default — is exactly today's behaviour: a leaf that
+	// fails, fails. It is only worth setting when there is somewhere stronger to
+	// go, so the caller sets it from the panel rather than the scheduler
+	// assuming one exists.
+	//
+	// Only verdicts that a better model could plausibly fix count: running out
+	// of budget, running out of turns, returning nothing at all. A provider
+	// failure is weather and a rate limit is not cured by spending more.
+	Escalations int
+
 	// NodeTimeout is the watchdog on a single node. The executor has its own
 	// deadline, so this only fires when an executor is wedged past every
 	// deadline it was given — a hung pipe, a stuck transport. The node is
 	// recorded as failed and abandoned rather than letting one stuck goroutine
 	// freeze the run silently and forever. Zero disables it.
 	NodeTimeout time.Duration
+
+	// BeforeLaunch applies process policy immediately before a leaf starts.
+	// Returning an error stops new launches while already-running leaves land.
+	BeforeLaunch func(context.Context) error
 
 	// OnEvent reports state changes as they happen. A run is long and mostly
 	// invisible; without this the only feedback is silence followed by a graph.
@@ -65,13 +87,38 @@ func NewScheduler(registry *Registry, workspace *Workspace, concurrency int) *Sc
 	if concurrency <= 0 {
 		concurrency = 8
 	}
-	return &Scheduler{registry: registry, workspace: workspace, concurrency: concurrency}
+	return &Scheduler{registry: registry, workspace: workspace, concurrency: concurrency,
+		governor: HostGovernor()}
+}
+
+// WithGovernor replaces the shared host gate. Production uses the process-wide
+// one so a headless run and a resident runner in the same process read the same
+// machine rather than each discovering its own number.
+func (s *Scheduler) WithGovernor(governor *Governor) *Scheduler {
+	s.governor = governor
+	return s
 }
 
 // Usage is the total cost of the run, summed as outcomes are applied. It is
-// accumulated on the scheduler's own goroutine along with everything else that
-// touches the graph, so no worker ever writes it.
-func (s *Scheduler) Usage() Usage { return s.usage }
+// written on the scheduler goroutine. Media spend gates may read it from a
+// worker immediately before generation, so the small value is copied under a
+// read lock.
+func (s *Scheduler) Usage() Usage {
+	s.usageMutex.RLock()
+	defer s.usageMutex.RUnlock()
+	return s.usage
+}
+
+func (s *Scheduler) spentTokens() int {
+	usage := s.Usage()
+	return usage.PromptTokens + usage.CompletionTokens
+}
+
+func (s *Scheduler) addUsage(usage Usage) {
+	s.usageMutex.Lock()
+	defer s.usageMutex.Unlock()
+	s.usage.merge(usage)
+}
 
 // Run executes every runnable node in the graph and records results onto it.
 //
@@ -86,12 +133,18 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 	// and exit, even after the scheduler has stopped listening for it — an
 	// abandoned worker blocked on an unbuffered send would leak forever.
 	done := make(chan completion, len(graph.Nodes))
-	// When a node started, keyed by id. Doubles as the in-flight set.
-	inFlight := map[int]time.Time{}
+	// When a node started, keyed by id. Doubles as the in-flight set and keeps
+	// the cancellation/teardown handles needed by watchdog abandonment.
+	inFlight := map[int]leafFlight{}
+	// How many times each node has already been given up on. It is also the
+	// attempt number the leaf runs under, which is how a router is told to climb
+	// without the scheduler knowing what it is climbing.
+	retries := map[int]int{}
 	// Why launching stopped. Once set, nothing new starts, in-flight work
 	// lands, and Run reports it — a run may stop early, but it must never
 	// stop silently.
 	var stop string
+	var stopCause error
 	lastProgress := time.Now()
 
 	ticker := time.NewTicker(s.tickEvery())
@@ -103,21 +156,53 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 		// become ready.
 		s.propagateBlocked(graph)
 
-		if stop == "" && s.Budget > 0 && s.usage.PromptTokens+s.usage.CompletionTokens >= s.Budget {
+		if stop == "" && s.Budget > 0 && s.spentTokens() >= s.Budget {
 			stop = fmt.Sprintf("global budget exhausted: %d of %d tokens spent",
-				s.usage.PromptTokens+s.usage.CompletionTokens, s.Budget)
+				s.spentTokens(), s.Budget)
 		}
 		if stop == "" {
 			for _, id := range s.ready(graph) {
 				if len(inFlight) >= s.concurrency {
 					break
 				}
+				// The host-load gate, which the concurrency ceiling cannot
+				// stand in for: workers are network-bound and park on sockets,
+				// but a leaf's shell can pin every core, and `--concurrency 8`
+				// on a machine already at 10.0 load makes eight leaves that all
+				// run slower rather than eight leaves that run. A refusal is
+				// not a hold — nothing in flight is delayed and nothing is
+				// cancelled; the loop simply stops launching and the next tick
+				// asks the machine again. With nothing in flight the governor
+				// always admits, so back-pressure can never leave the run
+				// doing nothing at all.
+				if !s.governor.Admit(len(inFlight)) {
+					break
+				}
+				if s.BeforeLaunch != nil {
+					if err := s.BeforeLaunch(ctx); err != nil {
+						stop, stopCause = err.Error(), err
+						break
+					}
+				}
 				node := graph.Node(id)
 				node.State = plan.StateRunning
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning, Elapsed: time.Since(started)})
 				task := s.taskFor(graph, node)
-				inFlight[id] = time.Now()
-				go s.work(ctx, id, task, done)
+				// Within-node progress on the surface that has no thread to
+				// post to: the run's own event stream, which is already how a
+				// headless run learns that anything is happening at all. A leaf
+				// that says nothing for forty minutes is indistinguishable from
+				// a wedged one, and the stall reporter below can only say which
+				// node it is still waiting on, never what that node is doing.
+				task.Progress = func(phase string, done, total int, latest string) {
+					s.emit(Event{NodeID: node.ID, Title: node.Title, State: plan.StateRunning,
+						Detail: progressDetail(phase, done, total, latest), Elapsed: time.Since(started)})
+				}
+				leafCtx, cancel := context.WithCancel(ctx)
+				control := &leafControl{}
+				task.control = control
+				inFlight[id] = leafFlight{started: time.Now(), cancel: cancel, control: control, timeout: s.timeoutFor(task)}
+				go s.work(leafCtx, id, task, retries[id], leafShape(node), done)
 			}
 		}
 
@@ -131,14 +216,21 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 			if stop == "" && ctx.Err() != nil {
 				stop = fmt.Sprintf("run context cancelled (%v)", ctx.Err())
 			}
-			return s.finish(graph, stop)
+			return s.finish(graph, stop, stopCause)
 		}
 
 		select {
 		case finished := <-done:
+			flight, active := inFlight[finished.nodeID]
+			if !active {
+				// A watchdog-abandoned executor may eventually return. Its late
+				// completion must not overwrite the recorded abandonment.
+				continue
+			}
+			flight.cancel()
 			delete(inFlight, finished.nodeID)
 			lastProgress = time.Now()
-			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started)
+			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started, retries)
 		case <-ctx.Done():
 			// The run context being cancelled — an interrupt, an operator
 			// deadline — is a stop, not a vanishing act. In-flight nodes hold
@@ -149,14 +241,19 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 				stop = fmt.Sprintf("run context cancelled (%v)", ctx.Err())
 			}
 			s.drain(graph, done, inFlight, started)
-			return s.finish(graph, stop)
+			return s.finish(graph, stop, stopCause)
 		case <-ticker.C:
 			now := time.Now()
-			for id, since := range inFlight {
-				if s.NodeTimeout > 0 && now.Sub(since) > s.NodeTimeout {
+			for id, flight := range inFlight {
+				if flight.timeout > 0 && now.Sub(flight.started) > flight.timeout {
 					node := graph.Node(id)
+					flight.cancel()
+					terminated := flight.control.terminate()
 					node.State = plan.StateFailed
-					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", s.NodeTimeout.Round(time.Second))
+					node.Failure = fmt.Sprintf("executor did not return within %s; abandoned", flight.timeout.Round(time.Second))
+					if terminated > 0 {
+						node.Failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
+					}
 					s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateFailed, Detail: node.Failure, Elapsed: time.Since(started)})
 					delete(inFlight, id)
 				}
@@ -166,10 +263,10 @@ func (s *Scheduler) Run(ctx context.Context, graph *plan.Graph) error {
 			// long, so a frozen log reads as waiting rather than as death.
 			if len(inFlight) > 0 && now.Sub(lastProgress) >= stallAfter {
 				lastProgress = now
-				for id, since := range inFlight {
+				for id, flight := range inFlight {
 					node := graph.Node(id)
 					s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateRunning,
-						Detail:  fmt.Sprintf("still in flight after %s — the run is waiting, not dead", now.Sub(since).Round(time.Second)),
+						Detail:  fmt.Sprintf("still in flight after %s — the run is waiting, not dead", now.Sub(flight.started).Round(time.Second)),
 						Elapsed: time.Since(started)})
 				}
 			}
@@ -184,36 +281,142 @@ type completion struct {
 	err     error
 }
 
+type leafFlight struct {
+	started time.Time
+	cancel  context.CancelFunc
+	control *leafControl
+	// timeout is this leaf's own watchdog, shaped to its worker. A flat
+	// NodeTimeout sized for the generalist abandoned a coding pipeline at
+	// seventeen minutes with a verification pass already in hand — and a leaf
+	// killed from outside lands no terminal event, so its spend vanishes with
+	// it. Zero disables, exactly as it does on the Scheduler field.
+	timeout time.Duration
+}
+
+// timeoutFor shapes the watchdog to the leaf's worker. The generalist keeps
+// NodeTimeout as configured; a specialist whose registered budget floor plus
+// the same landing pad exceeds it gets the larger figure, because a watchdog
+// below the worker's own deadline is not a backstop, it is the thing that
+// fires first.
+func (s *Scheduler) timeoutFor(task Task) time.Duration {
+	timeout := s.NodeTimeout
+	if timeout <= 0 {
+		return 0
+	}
+	name := strings.TrimSpace(task.Subharness)
+	if name == "" || name == LinearSubharness || !KnownSubharness(name) {
+		return timeout
+	}
+	if shaped := SubharnessFor(name).Deadline(0) + 2*time.Minute; shaped > timeout {
+		return shaped
+	}
+	return timeout
+}
+
 // work runs one node and always reports back, even when the executor panics —
 // a panic that unwinds a worker silently would strand the scheduler waiting on
 // a completion that can never come.
-func (s *Scheduler) work(ctx context.Context, id int, task Task, done chan<- completion) {
+func (s *Scheduler) work(ctx context.Context, id int, task Task, attempt int, shape string, done chan<- completion) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			done <- completion{nodeID: id, err: fmt.Errorf("executor panicked: %v", recovered)}
+			// The wording the scheduler already reports is kept; what is new is
+			// that the stack now reaches the log instead of nowhere.
+			_ = guard.Note("exec/scheduler leaf", recovered)
+			failure := fmt.Sprintf("executor panicked: %v", recovered)
+			if terminated := task.control.terminate(); terminated > 0 {
+				failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
+			}
+			done <- completion{nodeID: id, err: fmt.Errorf("%s", failure)}
 		}
 	}()
-	outcome, err := s.registry.For("linear").Run(ctx, task)
+	// One leaf is one routable unit, opened here rather than inside the loop.
+	// Every turn the executor takes belongs to this slot, so a router picks a
+	// model once and the whole transcript stays on it — a leaf that changed
+	// model mid-loop would rewrite its prefix cache every turn and splice two
+	// lineages into one conversation.
+	ctx = provider.WithCallShape(ctx, provider.ClassExecLeaf, attempt, shape)
+	// The node's own choice, honoured. Registry.For serves an unknown name with
+	// the generalist, so a graph that names a worker this process does not have
+	// still gets its work done.
+	outcome, err := s.registry.For(task.Subharness).Run(ctx, task)
 	done <- completion{nodeID: id, outcome: outcome, err: err}
 }
+
+// leafShape says which population of leaves this node belongs to, so that what a
+// router learns about one kind of leaf is not applied to every other kind.
+//
+// Three buckets, and the count is the design. Every leaf used to be one class,
+// and arm B measured what that costs: five leaves that exhausted their budget on
+// t1 — the one task whose leaves carry 2.2M prompt tokens — moved the single
+// global rating far enough to reroute t2's document reading and t3's small
+// repairs, where the demoted model had never once failed, and both collapsed
+// from working to zero. But the opposite mistake is just as easy: a key so fine
+// that no bucket ever accumulates enough graded outcomes to pass MinGraded is a
+// ledger that has learned nothing at all, expensively.
+//
+// So it splits on the two things the harness already knows about a node before
+// it runs, and nothing else. Kind separates the synthesis nodes the harness owns
+// — many long inputs, a roll-up rather than a job — from the work the plan asked
+// for. Size separates the rest along the axis the failures actually fell on:
+// oversized and borderline are the leaves one agent may not fit, which is what a
+// budget stop usually means, and atomic is the rest. Borderline sits with
+// oversized rather than with atomic because the risk it names is the same risk,
+// and because erring that way keeps a lesson learned on a doubtful leaf away
+// from the leaves nobody doubted.
+func leafShape(node *plan.Node) string {
+	// A specialist is its own population, and exactly one: what a router learns
+	// about a coding pipeline says nothing about a generalist leaf, and slicing
+	// a specialist further by size would be the fine-key mistake this comment
+	// warns about with a tenth of the traffic to survive it.
+	if KnownSubharness(node.Subharness) {
+		return node.Subharness
+	}
+	if node.Kind == plan.KindSynthesis {
+		return "synthesis"
+	}
+	switch node.Size {
+	case plan.SizeOversized, plan.SizeBorderline:
+		return "oversized"
+	default:
+		return "atomic"
+	}
+}
+
+// LeafShape exposes the scheduler's population key to resident execution. Both
+// surfaces must write observations into the same ledger cells or neither has
+// enough evidence to learn a useful ordering.
+func LeafShape(node *plan.Node) string { return leafShape(node) }
 
 // drain lets in-flight nodes land after the run has been told to stop. Their
 // contexts are already cancelled, so each executor's own landing procedure is
 // what runs here; the grace period only bounds a worker that is wedged past
 // even that.
-func (s *Scheduler) drain(graph *plan.Graph, done <-chan completion, inFlight map[int]time.Time, started time.Time) {
+func (s *Scheduler) drain(graph *plan.Graph, done <-chan completion, inFlight map[int]leafFlight, started time.Time) {
 	grace := time.NewTimer(drainGrace)
 	defer grace.Stop()
 	for len(inFlight) > 0 {
 		select {
 		case finished := <-done:
+			flight, active := inFlight[finished.nodeID]
+			if !active {
+				continue
+			}
+			flight.cancel()
 			delete(inFlight, finished.nodeID)
-			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started)
+			// No retries while draining: the run has already been told to stop,
+			// and putting a node back to pending here would leave it pending
+			// forever with nothing left to launch it.
+			s.apply(graph, finished.nodeID, finished.outcome, finished.err, started, nil)
 		case <-grace.C:
-			for id := range inFlight {
+			for id, flight := range inFlight {
 				node := graph.Node(id)
+				flight.cancel()
+				terminated := flight.control.terminate()
 				node.State = plan.StateFailed
 				node.Failure = fmt.Sprintf("in flight when the run stopped and did not land within %s", drainGrace)
+				if terminated > 0 {
+					node.Failure += fmt.Sprintf("; %d background jobs terminated at leaf end", terminated)
+				}
 				s.emit(Event{NodeID: id, Title: node.Title, State: plan.StateFailed, Detail: node.Failure, Elapsed: time.Since(started)})
 				delete(inFlight, id)
 			}
@@ -224,7 +427,7 @@ func (s *Scheduler) drain(graph *plan.Graph, done <-chan completion, inFlight ma
 // finish annotates whatever never ran and turns the stop reason into the run's
 // error. Every early return in Run funnels through here, so no path can end
 // the run without the graph saying what happened to each node.
-func (s *Scheduler) finish(graph *plan.Graph, stop string) error {
+func (s *Scheduler) finish(graph *plan.Graph, stop string, cause error) error {
 	if stop == "" {
 		return nil
 	}
@@ -234,6 +437,9 @@ func (s *Scheduler) finish(graph *plan.Graph, stop string) error {
 			node.State = plan.StateBlocked
 			node.Failure = "never started: " + stop
 		}
+	}
+	if cause != nil {
+		return fmt.Errorf("run stopped: %w", cause)
 	}
 	return fmt.Errorf("run stopped: %s", stop)
 }
@@ -306,46 +512,165 @@ func (s *Scheduler) taskFor(graph *plan.Graph, node *plan.Node) Task {
 		Goal:       graph.Goal,
 		Brief:      node.Brief,
 		Contract:   node.Contract,
+		Subharness: node.Subharness,
 		OutputHint: SuggestPath(node.ID, node.Title),
 	}
 	if strings.TrimSpace(task.Brief) == "" {
 		task.Brief = fallbackBrief(node)
 	}
+	// Sized for the worker that will read it, which is the executor this node
+	// was routed to and not the one that produced the material.
+	inputBudget := s.inputBudget(node.Subharness)
+	// One file is inlined once for one consumer, however many producers name it,
+	// exactly as the resident surface's own fan-in does it: two upstream nodes
+	// that both cite the shared spec must not hand the join two copies of it.
+	inlined := make(map[string]bool)
 	for _, need := range node.Needs {
 		source := graph.Node(need)
 		if source == nil {
 			continue
 		}
-		task.Inputs = append(task.Inputs, Input{
-			Title:     source.Title,
-			Summary:   source.Summary,
-			Result:    boundInput(source.Result, source.Artifacts),
-			Artifacts: source.Artifacts,
-		})
+		task.Inputs = append(task.Inputs, s.input(source.Title, source.Result, source.Artifacts, inputBudget, inlined))
+	}
+	// A node put back to pending for escalation still carries what its last
+	// attempt produced — the scheduler wrote it there and is about to overwrite
+	// it. Handing it back is the difference between buying a stronger model and
+	// buying a stronger model plus a second run of the work already done.
+	if previous := strings.TrimSpace(node.Result); previous != "" {
+		own := s.input("your own earlier attempt at this same task", previous, node.Artifacts, inputBudget, inlined)
+		own.Result = "An earlier attempt on a weaker model ended as " + string(node.Verdict) +
+			". What it had when it stopped:\n" + own.Result
+		task.Inputs = append(task.Inputs, own)
 	}
 	return task
 }
 
-// maxInputBytes bounds one upstream result as it is routed downstream.
+// input routes one producer's work into one consumer, and it is the headless
+// half of the same policy the resident surface has been running: the edge
+// carries the WORK, not an announcement of it.
+//
+// A leaf that answered by writing a file says so in one sentence — "the
+// evaluation is complete, the file is at 07-vendors.md" — and that sentence is
+// the honest final message for such a leaf. Handed on alone, under a header
+// promising the consumer already holds this work, it made the header false: the
+// consumer discovered it held a path and went and got the material. The resident
+// path fixed that by reading the files back into the digest (store.readProduct);
+// this path never did, so every headless fan-in leaf opened its inputs by hand
+// and was invited to by the brief, which had no way to say otherwise because
+// nothing here ever set Whole.
+//
+// Both halves are settled here from the same two structural facts: how much of
+// the producer's own text fit, and whether every file it left is now in the
+// block. Neither is a reading of what the text says.
+func (s *Scheduler) input(title, result string, artifacts []string, budget int, inlined map[string]bool) Input {
+	bounded := boundInput(result, artifacts, budget)
+	// What the producer's own message did not spend is what its files may. A
+	// message that already filled the budget buys no inlining, which is the
+	// correct answer rather than a shortfall: the consumer is over its share
+	// before a file is opened.
+	block, held := "", len(artifacts) == 0
+	if room := budget - len(bounded); room > 0 {
+		// Recorded artifact paths are workspace-relative; the reader here is this
+		// process rather than the leaf, whose cwd is the workspace. Locate is what
+		// knows both spellings of the root.
+		block, held = inlineProduct(s.workspace, artifacts, room, inlined)
+	}
+	return Input{
+		Title:     title,
+		Result:    bounded + block,
+		Artifacts: artifacts,
+		// True exactly when the block above IS the producer's material: its own
+		// text uncut, and every file it left read back whole.
+		Whole: len(bounded) == len(result) && held,
+	}
+}
+
+// inlineProduct reads a producer's files back into the consumer's block, through
+// the workspace so a recorded relative path resolves to the file it names.
+//
+// The reading itself is the store's (store.InlineProduct) rather than a second
+// copy of it: the structural refusals — not a regular file, reads as binary,
+// past the budget — are one judgment about what a consumer can be handed, and
+// two spellings of it would be two answers to one question. A nil workspace
+// reads the paths as given, which is what a caller holding absolute paths has.
+func inlineProduct(space *Workspace, artifacts []string, budget int, inlined map[string]bool) (string, bool) {
+	if len(artifacts) == 0 {
+		return "", true
+	}
+	located := make([]string, 0, len(artifacts))
+	found := true
+	for _, path := range artifacts {
+		if space == nil {
+			located = append(located, path)
+			continue
+		}
+		full, ok := space.Locate(path)
+		if !ok {
+			// A recorded path that is no longer on disk is not held, and saying
+			// so is the difference between a consumer that opens a file and a
+			// consumer that is told it need not.
+			found = false
+			continue
+		}
+		located = append(located, full)
+	}
+	block, whole := store.InlineProduct(located, budget, inlined)
+	return block, whole && found
+}
+
+// maxInputBytes bounds one upstream result as it is routed downstream, on a
+// machine that cannot say what the consumer holds.
 //
 // This is the roll-up half of the context problem and it multiplies worse than
 // the loop's own: an input sits in the opening prompt, so it is resent on every
 // turn the consumer takes. A node with five long inputs pays for all five, every
 // turn, before it has done anything. The full text is never lost — it is in the
 // artifact the producer wrote, one `sh` call away.
+//
+// Six kilobytes is that reasoning applied to the 32KB window an unrecognised
+// model gets, so it stays as the named fallback and becomes the numerator of a
+// share everywhere the window is known. See toolBudgets, which does the same
+// thing to the four bounds inside the leaf.
 const maxInputBytes = 6 << 10
 
-func boundInput(result string, artifacts []string) string {
-	if len(result) <= maxInputBytes {
+// inputBudget is how much of one upstream result the consuming leaf may carry.
+//
+// It asks the executor rather than the plan, because the window belongs to the
+// model the worker will actually run on and the registry is where that worker
+// is known. An executor with nothing to say — the SWE subharness, a test double,
+// a scheduler built without a registry — leaves the window unknown, and unknown
+// is the fallback rather than a guess.
+func (s *Scheduler) inputBudget(subharness string) int {
+	tokens := 0
+	if s.registry != nil {
+		if sized, ok := s.registry.For(subharness).(contextSized); ok {
+			tokens = sized.ContextLength()
+		}
+	}
+	return ctxbudget.For(tokens).WithFloor(observationFixedFloorTokens).
+		Share(maxInputBytes, toolBudgetReference, maxInputBytes)
+}
+
+// contextSized is an executor that knows how much its model holds. It is an
+// optional interface rather than a method on Executor because the answer is a
+// fact about a model, and a specialised worker that shells out to somebody
+// else's agent genuinely does not have one.
+type contextSized interface {
+	ContextLength() int
+}
+
+func boundInput(result string, artifacts []string, limit int) string {
+	if len(result) <= limit {
 		return result
 	}
 	pointer := "the file it wrote"
 	if len(artifacts) > 0 {
 		pointer = strings.Join(artifacts, ", ")
 	}
-	return result[:maxInputBytes] + fmt.Sprintf(
+	kept := wholeRunesHead(result[:limit])
+	return kept + fmt.Sprintf(
 		"\n\n... [truncated at %d of %d bytes — the complete version is in %s]",
-		maxInputBytes, len(result), pointer)
+		len(kept), len(result), pointer)
 }
 
 // fallbackBrief covers nodes the planner never wrote an instruction for.
@@ -364,7 +689,7 @@ func fallbackBrief(node *plan.Node) string {
 	return node.Summary
 }
 
-func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err error, started time.Time) {
+func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err error, started time.Time, retries map[int]int) {
 	node := graph.Node(nodeID)
 	if node == nil {
 		return
@@ -373,18 +698,37 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 	// has been decided; only the spend is real and must not be lost.
 	if node.State != plan.StateRunning {
 		if outcome != nil {
-			s.usage.merge(outcome.Usage)
+			s.addUsage(outcome.Usage)
 		}
 		return
 	}
 	if outcome != nil {
-		s.usage.merge(outcome.Usage)
+		s.addUsage(outcome.Usage)
 		node.Turns = outcome.Turns
 		node.Tokens = outcome.Usage.PromptTokens + outcome.Usage.CompletionTokens
 		node.Cost = outcome.Usage.Cost
 		node.Stop = string(outcome.Stop)
+		node.Verdict = outcome.Verdict
 		node.Artifacts = outcome.Artifacts
 		node.Result = outcome.Text
+		node.Checked = outcome.Account.Summary()
+	}
+	// A leaf that failed in a way a stronger model might fix is worth one more
+	// run. It is expressed by putting the node back to pending rather than by
+	// launching from here: the scheduler's own ready-and-launch path is the only
+	// place a node may start, and going through it keeps concurrency, budget and
+	// blocking checks applying to a retry exactly as they do to a first attempt.
+	//
+	// The spend already made is kept. It was really spent, and a retry that
+	// hid it would understate the run.
+	if s.Escalations > 0 && retries != nil && outcome != nil &&
+		retries[nodeID] < s.Escalations && outcome.Verdict.Escalates() {
+		retries[nodeID]++
+		node.State = plan.StatePending
+		s.emit(Event{NodeID: nodeID, Title: node.Title, State: plan.StatePending,
+			Detail:  fmt.Sprintf("%s — retrying on a stronger model", outcome.Verdict),
+			Elapsed: time.Since(started)})
+		return
 	}
 	if err != nil || outcome == nil || strings.TrimSpace(node.Result) == "" {
 		node.State = plan.StateFailed
@@ -397,14 +741,6 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 	}
 	node.State = plan.StateDone
 	detail := fmt.Sprintf("%d turns, %dk tok", outcome.Turns, node.Tokens/1000)
-	switch outcome.Stop {
-	case StopTurnCap:
-		detail += ", hit the iteration backstop — the leaf could not converge"
-	case StopBudget:
-		// Worth surfacing rather than burying: a leaf that exhausted its token
-		// budget is evidence the sizing anchors let too much into one node.
-		detail += ", exhausted its token budget — the leaf was too large"
-	}
 	if outcome.Decayed > 0 {
 		detail += fmt.Sprintf(", %d observations faded", outcome.Decayed)
 	}
@@ -412,6 +748,23 @@ func (s *Scheduler) apply(graph *plan.Graph, nodeID int, outcome *Outcome, err e
 		detail += ", wrote " + strings.Join(outcome.Artifacts, ", ")
 	}
 	s.emit(Event{NodeID: nodeID, Title: node.Title, State: plan.StateDone, Detail: detail, Elapsed: time.Since(started)})
+}
+
+// progressDetail renders one within-node step for a line of terminal output.
+// It is the same shape the chat surface's rows carry, said in one line, because
+// the two surfaces are reporting the same fact and a reader moving between them
+// should not have to learn it twice.
+func progressDetail(phase string, done, total int, latest string) string {
+	line := phase
+	if total > 0 {
+		line += fmt.Sprintf(" · %d of %d", done, total)
+	} else if done > 0 {
+		line += fmt.Sprintf(" · %d", done)
+	}
+	if latest = strings.TrimSpace(latest); latest != "" {
+		line += " · " + latest
+	}
+	return line
 }
 
 func (s *Scheduler) emit(event Event) {

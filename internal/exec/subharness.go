@@ -1,0 +1,285 @@
+package exec
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/plan"
+)
+
+// A subharness is an alternative way to turn the same Task into the same
+// Outcome. This file is everything the rest of the system needs to know about
+// one before it runs: what it is for, how much it can take, and how long it may
+// have. The executor that actually does the work is registered separately, on a
+// Registry, because a surface builds its workers with its own clients and
+// workspaces while this description is a fact about the process.
+//
+// The whole file is inert with only linear registered, and that is the law
+// rather than a convenience: MenuText returns nothing, the sizing prompt keeps
+// its pre-subharness bytes, and every lookup answers linear.
+
+// LinearSubharness is the baseline and the fallback. An empty name resolves to
+// it, but the two are not the same fact: empty is a question nobody answered,
+// and this name is the answer "the generalist" said out loud. GeneralistSubharness
+// is the predicate that keeps them apart.
+const LinearSubharness = plan.LinearSubharness
+
+// BareSubharness is the cheap whole-taker for one-sitting work. It is
+// repeated here for the same reason LinearSubharness is: the bare executor
+// lives in a sub-package that imports this one, so importing it back would
+// close a cycle. The string matches bare.BareSubharness exactly.
+const BareSubharness = "bare"
+
+// SubharnessInfo is one registration.
+//
+// Purpose and PriorAnchors are the two halves of teaching a model to choose:
+// the purpose says what the work has to be about, the anchors say how much of
+// it fits. Both are prompt text, and both are priors — measurement replaces the
+// anchors through the profile store, and the measured history is rendered
+// beside the purpose through the knowledge hook below.
+type SubharnessInfo struct {
+	Name    string
+	Purpose string
+	// PriorAnchors is the initial capacity ruler in the style of plan/size.go's
+	// three worked examples: comfortably atomic, borderline, oversized. It is
+	// the initial setting of this subharness's hardness and nothing more; the
+	// first eight measured leaves start replacing it.
+	PriorAnchors string
+
+	// DeadlineFloor and the scaling pair are the budget shape. A leaf's hang
+	// backstop is not a policy about patience, it is a claim about how long
+	// this kind of work legitimately takes, and the claim differs per worker: a
+	// linear leaf's fifteen minutes would kill a coding pipeline in its first
+	// merge. Zero values fall back to linear's shape, so a registration that
+	// says nothing about time is served rather than refused.
+	DeadlineFloor     time.Duration
+	DeadlineStep      time.Duration
+	DeadlinePerTokens int
+}
+
+// linearInfo is the shape the whole system ran on before there was a second
+// one: fifteen minutes floor, one minute per fifty thousand tokens above it
+// (cmd/aforge leafDeadline, and the headless runner it was copied from). Its
+// Purpose and PriorAnchors are deliberately empty — linear is the baseline
+// every node is already judged against, not an entry on a menu.
+var linearInfo = SubharnessInfo{
+	Name:              LinearSubharness,
+	DeadlineFloor:     15 * time.Minute,
+	DeadlineStep:      time.Minute,
+	DeadlinePerTokens: 50_000,
+}
+
+// Deadline is the budget shape applied to one leaf's token grant.
+func (s SubharnessInfo) Deadline(budgetTokens int) time.Duration {
+	floor, step, per := s.DeadlineFloor, s.DeadlineStep, s.DeadlinePerTokens
+	if floor <= 0 {
+		floor = linearInfo.DeadlineFloor
+	}
+	if step <= 0 || per <= 0 {
+		step, per = linearInfo.DeadlineStep, linearInfo.DeadlinePerTokens
+	}
+	if scaled := time.Duration(budgetTokens/per) * step; scaled > floor {
+		return scaled
+	}
+	return floor
+}
+
+var (
+	subharnessMutex sync.RWMutex
+	subharnessBy    = map[string]SubharnessInfo{LinearSubharness: linearInfo}
+	subharnessOrder []string
+	// measured is the hook onto self-knowledge: one line per subharness of what
+	// its leaves have actually cost. It lives here as a function rather than as
+	// data because the profile store belongs to the surface, and the menu must
+	// never be the reason a package imports one.
+	measured func(subharness string) string
+)
+
+// RegisterSubharness makes one available to the whole process: to the menu the
+// compiler chooses from, to the sizing pass's rulers, and to the budget shape a
+// leaf is granted. It is process-global for the same reason the anchors are —
+// one process is one set of workers — and it is deliberately the only door:
+// registering here is what puts a subharness in front of every model that could
+// choose it, so a new one is never half-installed.
+func RegisterSubharness(info SubharnessInfo) {
+	name := strings.TrimSpace(info.Name)
+	if name == "" || name == LinearSubharness {
+		return
+	}
+	info.Name = name
+	remember(info)
+	// The sizing pass reads its rulers out of plan, which cannot import this
+	// package. One registration, both readers.
+	plan.UseSubharness(plan.Subharness{Name: name, Purpose: info.Purpose}, info.PriorAnchors)
+}
+
+// remember is the guarded half of registration, split out so the lock it takes
+// is released by a defer under the line that took it.
+func remember(info SubharnessInfo) {
+	subharnessMutex.Lock()
+	defer subharnessMutex.Unlock()
+	if _, known := subharnessBy[info.Name]; !known {
+		subharnessOrder = append(subharnessOrder, info.Name)
+		sort.Strings(subharnessOrder)
+	}
+	subharnessBy[info.Name] = info
+}
+
+// Subharnesses returns the registered specialists in a stable order. Linear is
+// never among them: a menu with one entry is no menu.
+func Subharnesses() []SubharnessInfo {
+	subharnessMutex.RLock()
+	defer subharnessMutex.RUnlock()
+	list := make([]SubharnessInfo, 0, len(subharnessOrder))
+	for _, name := range subharnessOrder {
+		list = append(list, subharnessBy[name])
+	}
+	return list
+}
+
+// SubharnessFor resolves a name to what will actually run it. An unknown or
+// empty name is linear rather than an error — the same degradation Registry.For
+// promises, said one layer up so a budget shape can be read before dispatch.
+func SubharnessFor(name string) SubharnessInfo {
+	subharnessMutex.RLock()
+	defer subharnessMutex.RUnlock()
+	if info, ok := subharnessBy[strings.TrimSpace(name)]; ok {
+		return info
+	}
+	return linearInfo
+}
+
+// KnownSubharness reports whether a name reaches a registered specialist. It is
+// the validator every surface uses on a name that came from a model or a flag,
+// and it answers no for "linear" and for empty: those are the baseline, and
+// nothing needs to say so out loud.
+func KnownSubharness(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" || name == LinearSubharness {
+		return false
+	}
+	subharnessMutex.RLock()
+	defer subharnessMutex.RUnlock()
+	_, ok := subharnessBy[name]
+	return ok
+}
+
+// GeneralistSubharness reports whether a name is the generalist, named. It is
+// the other half of KnownSubharness rather than its negation: KnownSubharness
+// answers "is this a registered specialist", and answers no to both the
+// generalist and to nothing at all, which are two different things to every
+// reader that would otherwise fill a blank in from somewhere else.
+//
+// It is the registry's answer for the same reason KnownSubharness is: a surface
+// that spelled the comparison itself would be one rename away from being wrong.
+func GeneralistSubharness(name string) bool { return plan.GeneralistSubharness(name) }
+
+// SubharnessChosen reports whether a worker was chosen at all — a specialist or
+// the generalist. Only the empty string is no choice.
+func SubharnessChosen(name string) bool { return plan.SubharnessChosen(name) }
+
+// UseSubharnessKnowledge installs the measured-history hook the menu renders
+// under each purpose. Nil, and a hook that returns nothing, leave the menu
+// exactly as the registrations wrote it — which is what every process has
+// before its first specialist leaf has ever run.
+func UseSubharnessKnowledge(knowledge func(subharness string) string) {
+	subharnessMutex.Lock()
+	defer subharnessMutex.Unlock()
+	measured = knowledge
+}
+
+// knowledgeHook takes one stable reference to the hook. The hook itself reads
+// files, so it is called outside the lock: the menu is rendered on the compile
+// path and holding a process-wide lock across disk work is how a registry
+// becomes a bottleneck nobody can see.
+func knowledgeHook() func(string) string {
+	subharnessMutex.RLock()
+	defer subharnessMutex.RUnlock()
+	return measured
+}
+
+// MenuText is the choice context, and it is empty until there is a choice.
+//
+// It is built from the registrations rather than written anywhere, so adding a
+// subharness adds it to every prompt that chooses one; and it states the rule
+// in the same breath as the options, because a menu without a rule for reading
+// it is how a model talks itself into the interesting answer.
+func MenuText() string { return MenuTextExcept("") }
+
+// MenuTextExcept is the same menu with one worker struck off it, and it exists
+// for one situation: a job that has already been tried by that worker and
+// failed.
+//
+// Offering the failed worker its own job back is a rung that goes nowhere. Model
+// escalation earns its second attempt by changing something — a stronger model
+// on the same worker — while re-choosing the same specialist changes nothing at
+// all, and a menu that leaves the option on the table is a menu inviting a loop.
+// So the exclusion is structural rather than a sentence in the prompt: a model
+// cannot pick what it was never shown.
+//
+// With one specialist registered and that one excluded, the menu is empty and
+// every caller is back to the byte-identical baseline — which is the additive
+// law arriving at exactly the right answer without being asked.
+func MenuTextExcept(exclude string) string {
+	exclude = strings.TrimSpace(exclude)
+	specialists := make([]SubharnessInfo, 0, 2)
+	for _, info := range Subharnesses() {
+		if info.Name != exclude {
+			specialists = append(specialists, info)
+		}
+	}
+	if len(specialists) == 0 {
+		return ""
+	}
+	knowledge := knowledgeHook()
+
+	var menu strings.Builder
+	menu.WriteString("Subharnesses. A job is normally taken by the default worker: one agent, " +
+		"alone and in order, with tools. These specialists sit beside it, each a whole " +
+		"different way of doing one job:\n")
+	measuredAny := false
+	for _, info := range specialists {
+		fmt.Fprintf(&menu, "\n- %s — %s\n", info.Name, strings.TrimSpace(info.Purpose))
+		if knowledge == nil {
+			continue
+		}
+		if line := strings.TrimSpace(knowledge(info.Name)); line != "" {
+			fmt.Fprintf(&menu, "  measured here so far: %s\n", line)
+			measuredAny = true
+		}
+	}
+	// W6: the measured line was decoration nobody was told what to do with. The
+	// sentence below is the instruction for reading it, and it appears only when
+	// there is something to read — a rule about figures that were never printed
+	// is prompt the model pays for and cannot use, and its absence keeps the
+	// pre-evidence menu byte-identical to what it always was.
+	if measuredAny {
+		menu.WriteString("\nThe figures beside each worker are what work of this kind has really cost " +
+			"here. Read them as evidence about this machine, not as a target: prefer the " +
+			"worker whose purpose fits, and among workers that fit, prefer the one the " +
+			"evidence says finishes this kind of work.\n")
+	}
+	menu.WriteString("\nChoose a specialist subharness only when the job's essence matches its " +
+		"purpose. When in doubt, or for mixed or non-matching work, leave it unset " +
+		"(the default worker).")
+	return menu.String()
+}
+
+// ForgetSubharnesses restores the process to its linear-only state. Tests own
+// it: registration is global by design, and a test that adds one must be able
+// to put the process back for every test that asserts the baseline.
+func ForgetSubharnesses() {
+	forget()
+	plan.ForgetSubharnesses()
+}
+
+func forget() {
+	subharnessMutex.Lock()
+	defer subharnessMutex.Unlock()
+	subharnessOrder = nil
+	subharnessBy = map[string]SubharnessInfo{LinearSubharness: linearInfo}
+	measured = nil
+}

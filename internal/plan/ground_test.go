@@ -1,8 +1,11 @@
 package plan
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // TestGroundPromptSettlesTheEvidenceStandard pins the rule that stops "a short
@@ -28,12 +31,54 @@ func TestGroundPromptSettlesTheEvidenceStandard(t *testing.T) {
 	}
 }
 
+func TestGroundWithoutRecallKeepsPromptByteIdentical(t *testing.T) {
+	reply := func(_, _ string) string {
+		return `{"settled":[],"open":[],"evidence":"Read the requested material."}`
+	}
+	legacy := &stubClient{reply: reply}
+	optional := &stubClient{reply: reply}
+	if _, _, err := Ground(t.Context(), legacy, "  inspect the parser  "); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := GroundWith(t.Context(), optional, "  inspect the parser  ", "", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(legacy.prompts, optional.prompts) {
+		t.Fatalf("empty recall changed Ground prompt\nlegacy: %#v\nnew:    %#v", legacy.prompts, optional.prompts)
+	}
+	if got, want := optional.prompts[0], "Goal:\ninspect the parser"; got != want {
+		t.Fatalf("empty-recall prompt = %q, want %q", got, want)
+	}
+}
+
+func TestGroundWithRecallCarriesDigestAndPointers(t *testing.T) {
+	client := &stubClient{reply: func(_, _ string) string {
+		return `{"settled":[],"open":[],"evidence":"Run the focused check."}`
+	}}
+	recall := []store.RecallHit{{
+		NodeID: "old", Intent: "repair the parser", Digest: "The sentinel must stay explicit",
+		Pointers: []string{"/workspace/parser/notes.md"}, Age: "2d ago", Score: 4,
+	}}
+	if _, _, err := GroundWith(t.Context(), client, "repair it again", "", nil, recall); err != nil {
+		t.Fatal(err)
+	}
+	prompt := client.prompts[0]
+	for _, want := range []string{
+		"You have worked here before; here is what was learned and where the details live",
+		"The sentinel must stay explicit", "/workspace/parser/notes.md", "2d ago",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("recall prompt omitted %q:\n%s", want, prompt)
+		}
+	}
+}
+
 // TestGroundReturnsTheEvidenceStandard checks the wiring end to end: the reply
 // is parsed, and the standard lands in the frozen preamble that every later
 // planning call shares, alongside the scope it was settled with.
 func TestGroundReturnsTheEvidenceStandard(t *testing.T) {
 	client := &stubClient{reply: func(_, _ string) string {
-		return `{"settled":["The three databases are Qdrant, Weaviate and pgvector."],
+		return `{"settled":[{"variable":"The three databases","values":["Qdrant","Weaviate","pgvector"]}],
 		         "open":["Which of the three suits the workload best."],
 		         "evidence":"Read the projects' own documentation and cite it; run and measure nothing."}`
 	}}
@@ -64,15 +109,15 @@ func TestSubtreeInheritsTheEvidenceStandard(t *testing.T) {
 	client := &stubClient{reply: func(system, _ string) string {
 		if strings.Contains(system, "You list the parts of one stage") {
 			return `{"parts":[
-				{"title":"Qdrant","summary":"Profile Qdrant from its documentation","sources":["its docs"]},
-				{"title":"Weaviate","summary":"Profile Weaviate from its documentation","sources":["its docs"]}]}`
+				{"title":"Qdrant","summary":"Profile Qdrant from its documentation","sources":["Qdrant's docs"]},
+				{"title":"Weaviate","summary":"Profile Weaviate from its documentation","sources":["Weaviate's docs"]}]}`
 		}
 		return `{"sizes":[{"node":1,"size":"atomic","split_into":[]},{"node":2,"size":"atomic","split_into":[]}]}`
 	}}
 
 	graph := &Graph{
 		Goal:     "a short written report comparing three vector databases",
-		Settled:  []string{"The three databases are Qdrant, Weaviate and pgvector."},
+		Settled:  []Settlement{{Variable: "The three databases", Values: []string{"Qdrant", "Weaviate", "pgvector"}}},
 		Evidence: standard,
 		Stages:   []Stage{{Title: "Compare"}},
 		NextID:   1,

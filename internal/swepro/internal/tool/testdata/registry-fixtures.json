@@ -1,0 +1,4 @@
+{"name":"codeaf","fn":"webSearchEnabled","args_json":"[\"codeaf\",{\"exa\":false,\"parallel\":false}]","out_json":"true"}
+{"name":"disabled","fn":"webSearchEnabled","args_json":"[\"openrouter\",{\"exa\":false,\"parallel\":false}]","out_json":"false"}
+{"name":"exa","fn":"webSearchEnabled","args_json":"[\"openrouter\",{\"exa\":true,\"parallel\":false}]","out_json":"true"}
+{"name":"parallel","fn":"webSearchEnabled","args_json":"[\"openrouter\",{\"exa\":false,\"parallel\":true}]","out_json":"true"}

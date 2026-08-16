@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -42,9 +43,16 @@ type Config struct {
 type Client struct {
 	config Config
 	http   *http.Client
+	// stream is the same client with the total deadline removed. A streamed
+	// answer is bounded by silence, not by duration — see send.
+	stream *http.Client
 	// base is the pinned AgentField client, retained for the surfaces Aforge
 	// does not drive itself. It never sees a request the adapter has shaped.
 	base *ai.Client
+	// wait is the retry backoff, seamed exactly like the media client's video
+	// poll: production sleeps, tests record what would have been slept and
+	// return, so how long a retry waits is assertable without waiting.
+	wait func(context.Context, time.Duration) error
 }
 
 // NewClient builds the adapter. It performs no network request.
@@ -74,11 +82,12 @@ func NewClient(config Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	httpClient := config.HTTPClient
+	httpClient, streamClient := config.HTTPClient, config.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: config.Timeout}
+		httpClient = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
+		streamClient = &http.Client{Transport: streamTransport()}
 	}
-	return &Client{config: config, http: httpClient, base: base}, nil
+	return &Client{config: config, http: httpClient, stream: streamClient, base: base, wait: waitContext}, nil
 }
 
 // Model reports the adapter's default model slug.
@@ -103,6 +112,13 @@ func (c *Client) ExecuteToolCallLoop(
 	return c.base.ExecuteToolCallLoop(ctx, messages, tools, config, call, options...)
 }
 
+// maxResponseBytes bounds what one completion may be believed to be. A
+// completion is text and a cap this far above any real answer changes nothing
+// about a working provider; what it removes is the unbounded case, where a
+// misrouted endpoint streaming something else entirely is read into memory in
+// full before anyone looks at it.
+const maxResponseBytes = 64 << 20
+
 type callKnobs struct {
 	cacheKey string
 	effort   effortRequest
@@ -110,6 +126,91 @@ type callKnobs struct {
 
 func knobsFrom(ctx context.Context) callKnobs {
 	return callKnobs{cacheKey: CacheKeyFrom(ctx), effort: effortFrom(ctx)}
+}
+
+// modelFor names the model a request will actually run against: the one the
+// router pinned, or the adapter's own default when nothing pinned one.
+func (c *Client) modelFor(request *ai.Request) string {
+	if model := strings.TrimSpace(request.Model); model != "" {
+		return model
+	}
+	return c.config.Model
+}
+
+// sendShaped encodes the request and sends it, recovering once from the 400s
+// this adapter can answer by itself.
+//
+// There are two, and they are the same shape of mistake: a request-shape
+// decision made HERE, on a knob the catalog cannot vouch for. An endpoint that
+// reasons unconditionally refuses the disable the harness sends as a planning
+// economy; an endpoint fronting an Anthropic-family slug that does not in fact
+// carry a cache breakpoint refuses the marker. Both are repaired here because
+// anywhere else they are a failed node the operator has to reconfigure around —
+// which is what MiniMax M2.7 produced: every planning call 400ing on a default
+// the model was never able to honour.
+//
+// The retry costs nothing: a 400 generated no tokens, and the answer is
+// remembered so only the first call on a model pays for the discovery.
+func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	body, err := c.encodeRequest(request, knobs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+	response, err := c.send(ctx, request, body, stream)
+	if err != nil || response.StatusCode != http.StatusBadRequest {
+		return response, err
+	}
+	model := c.modelFor(request)
+	if !c.repairable(model, knobs) {
+		return response, nil
+	}
+	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+	if readErr != nil || !c.learn(model, knobs, peek) {
+		// Not ours to fix. The body is handed back whole — the caller still has
+		// to read the provider's own words to build the error it reports.
+		response.Body = rewound(peek, response.Body)
+		return response, nil
+	}
+	response.Body.Close()
+	body, err = c.encodeRequest(request, knobs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+	return c.send(ctx, request, body, stream)
+}
+
+// repairable reports whether this request carried a knob whose refusal this
+// adapter knows how to answer. It is asked before the error body is touched, so
+// a 400 that could not be ours costs no extra read.
+func (c *Client) repairable(model string, knobs callKnobs) bool {
+	return c.resolveEffort(model, knobs.effort) == EffortOff ||
+		c.dialectFor(model) == cacheDialectBreakpoints
+}
+
+// learn reads a refusal for the facts this adapter can remember and reports
+// whether the next encode will differ. Both memos are consulted rather than the
+// first match winning, because a single 400 can name both fields.
+func (c *Client) learn(model string, knobs callKnobs, payload []byte) bool {
+	learned := false
+	if c.resolveEffort(model, knobs.effort) == EffortOff && refusesDisabledReasoning(payload) {
+		noteReasoningMandatory(model)
+		learned = true
+	}
+	if c.dialectFor(model) == cacheDialectBreakpoints && refusesCacheControl(payload) {
+		noteCacheControlRefused(model)
+		learned = true
+	}
+	return learned
+}
+
+// rewound puts an already-read prefix back in front of a body, so peeking at a
+// response cannot shorten what the caller goes on to read. Close still closes
+// the underlying body, which is the half that owns a connection.
+func rewound(peek []byte, rest io.ReadCloser) io.ReadCloser {
+	return struct {
+		io.Reader
+		io.Closer
+	}{Reader: io.MultiReader(bytes.NewReader(peek), rest), Closer: rest}
 }
 
 func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Request, error) {
@@ -133,23 +234,23 @@ func (c *Client) newRequest(messages []ai.Message, options []ai.Option) (*ai.Req
 	return request, nil
 }
 
-// CompleteWithMessages performs one non-streaming completion.
+// CompleteWithMessages performs one completion. Interactive callers may attach
+// a stream observer while retaining the accumulated response contract.
 func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	if observer := streamObserverFrom(ctx); observer != nil {
+		return c.completeWithMessagesStreaming(ctx, observer, messages, options...)
+	}
 	request, err := c.newRequest(messages, options)
 	if err != nil {
 		return nil, err
 	}
-	body, err := c.encodeRequest(request, knobsFrom(ctx))
-	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-	httpResponse, err := c.send(ctx, request, body, false)
+	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), false)
 	if err != nil {
 		return nil, err
 	}
 	defer httpResponse.Body.Close()
 
-	payload, err := io.ReadAll(httpResponse.Body)
+	payload, err := io.ReadAll(io.LimitReader(httpResponse.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
@@ -163,6 +264,114 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	return &response, nil
 }
 
+// completeWithMessagesStreaming preserves the completion interface while
+// exposing each text delta to an interactive observer. The accumulated
+// response is the same shape callers already parse after the stream closes.
+func (c *Client) completeWithMessagesStreaming(
+	ctx context.Context,
+	observer StreamObserver,
+	messages []ai.Message,
+	options ...ai.Option,
+) (*ai.Response, error) {
+	request, err := c.newRequest(messages, append(append([]ai.Option(nil), options...), ai.WithStream()))
+	if err != nil {
+		return nil, err
+	}
+	request.Stream = true
+	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), true)
+	if err != nil {
+		return nil, err
+	}
+	defer httpResponse.Body.Close()
+	if httpResponse.StatusCode >= 400 {
+		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
+		return nil, apiError(httpResponse.StatusCode, payload)
+	}
+
+	// Read once per call rather than once per event: the session does not
+	// change mid-stream, and this loop already runs against the connection's
+	// idle watchdog (see the note below on why the observer stays trivial).
+	session := streamSessionFrom(ctx)
+	observer(StreamEvent{Kind: StreamStarted, Session: session})
+	finished := false
+	defer func() {
+		if !finished {
+			observer(StreamEvent{Kind: StreamFailed, Session: session})
+		}
+	}()
+
+	response := &ai.Response{Model: request.Model}
+	var content strings.Builder
+	var tools toolCallAccumulator
+	finishReason := ""
+	thinking := false
+	// The decoder is ours rather than the SDK's, and sse.go says why: the SDK's
+	// accumulation is quadratic in the length of a single message, which costs
+	// about a gigabyte of copying to deliver one four-megabyte reasoning block.
+	// It decodes the same framing to the same chunks — that equivalence is the
+	// whole of its test — so the only difference here is the copying.
+	//
+	// The loop below is deliberately trivial: the observer is called
+	// synchronously and in order, so it must not work. The one live observer
+	// (chat's head stream) does nothing but translate the event and hand it to
+	// a buffered channel with a ctx escape, which is the contract to keep —
+	// anything heavier would be paid per token, in the read loop, against the
+	// connection's idle watchdog.
+	decoder := newSSEDecoder(httpResponse.Body)
+	for {
+		chunk, decodeErr := decoder.DecodeChunk()
+		if decodeErr != nil {
+			if errors.Is(decodeErr, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("decode stream: %w", decodeErr)
+		}
+		if response.ID == "" {
+			response.ID = chunk.ID
+			response.Object = chunk.Object
+			response.Created = chunk.Created
+		}
+		if chunk.Model != "" {
+			response.Model = chunk.Model
+		}
+		if chunk.Usage != nil {
+			response.Usage = chunk.Usage
+		}
+		for _, choice := range chunk.Choices {
+			if choice.Index != 0 {
+				continue
+			}
+			if choice.Delta.Content != "" {
+				thinking = false
+				content.WriteString(choice.Delta.Content)
+				observer(StreamEvent{Kind: StreamDelta, Delta: choice.Delta.Content, Session: session})
+			}
+			// Reasoning is announced once per run of it rather than per token:
+			// the surface only ever draws that thought is happening, and the
+			// text itself is not ours to show.
+			if !thinking && choice.Delta.thinking() {
+				thinking = true
+				observer(StreamEvent{Kind: StreamThinking, Session: session})
+			}
+			for _, fragment := range choice.Delta.ToolCalls {
+				tools.add(fragment)
+			}
+			if choice.FinishReason != nil {
+				finishReason = *choice.FinishReason
+			}
+		}
+	}
+	message := ai.Message{
+		Role:      "assistant",
+		Content:   []ai.ContentPart{{Type: "text", Text: content.String()}},
+		ToolCalls: tools.assembled(),
+	}
+	response.Choices = []ai.Choice{{Index: 0, Message: message, FinishReason: finishReason}}
+	finished = true
+	observer(StreamEvent{Kind: StreamFinished, Session: session})
+	return response, nil
+}
+
 // StreamComplete performs one streaming completion over a single user prompt.
 // It mirrors the SDK's channel contract exactly so the harness's stream pump is
 // unchanged.
@@ -173,6 +382,16 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 	go func() {
 		defer close(chunks)
 		defer close(errs)
+		// The consumer is ranging over two channels it did not spawn. A fault
+		// here must reach it as an error, not as a dead process.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				select {
+				case errs <- guard.Note("provider/stream", recovered):
+				default:
+				}
+			}
+		}()
 
 		messages := []ai.Message{{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: prompt}}}}
 		request, err := c.newRequest(messages, append(append([]ai.Option(nil), options...), ai.WithStream()))
@@ -181,26 +400,21 @@ func (c *Client) StreamComplete(ctx context.Context, prompt string, options ...a
 			return
 		}
 		request.Stream = true
-		body, err := c.encodeRequest(request, knobsFrom(ctx))
-		if err != nil {
-			errs <- fmt.Errorf("marshal request: %w", err)
-			return
-		}
 		// Retrying happens entirely before the first byte of the stream is
 		// handed over, so a reconnect can never duplicate delivered chunks.
-		httpResponse, err := c.send(ctx, request, body, true)
+		httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), true)
 		if err != nil {
 			errs <- err
 			return
 		}
 		defer httpResponse.Body.Close()
 		if httpResponse.StatusCode >= 400 {
-			payload, _ := io.ReadAll(httpResponse.Body)
+			payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
 			errs <- apiError(httpResponse.StatusCode, payload)
 			return
 		}
 
-		decoder := ai.NewSSEDecoder(httpResponse.Body)
+		decoder := newSSEDecoder(httpResponse.Body)
 		for {
 			chunk, err := decoder.Decode()
 			if err != nil {
@@ -280,13 +494,74 @@ func adaptiveCompletionTimeout(maxTokens int, configuredFloor time.Duration) tim
 	return scaled
 }
 
-// apiError keeps the SDK's exact error phrasing. The harness's provider-error
-// taxonomy recovers a status code from that text, so changing the wording here
-// would silently disable rate-limit and transient-failure retries.
-func apiError(status int, payload []byte) error {
-	var decoded ai.ErrorResponse
-	if err := json.Unmarshal(payload, &decoded); err == nil && strings.TrimSpace(decoded.Error.Message) != "" {
-		return fmt.Errorf("API error (%d): %s", status, decoded.Error.Message)
+// APIError is one refusal from the model provider, with the two things about it
+// that are facts rather than prose: the status it came back under, and — when
+// the body decoded — the provider's own sentence about why.
+//
+// It exists because the only carrier those facts ever had was the formatted
+// string, and everything downstream that wanted to say something honest about a
+// failure had to go mining in it. A room row that reads "API error (404):
+// {"error":{"message":"No endpoints found ...\"sh\"..." is that mining not
+// happening: a JSON blob delivered to a person as an explanation. With the
+// message in a field, the sentence a reader gets is composed from parts rather
+// than cut out of transport.
+//
+// Error() is byte-for-byte what this used to return. That is deliberate and
+// load-bearing: the harness's provider-error taxonomy recovers a status code by
+// reading the text, so a rewording here would silently disable rate-limit and
+// transient-failure retries.
+type APIError struct {
+	// Status is the HTTP status the refusal arrived under.
+	Status int
+	// Message is the provider's own words, decoded out of the error body. Empty
+	// when the body did not decode, in which case Body carries it whole.
+	Message string
+	// Body is the undecoded payload, kept so nothing is lost when the provider
+	// answered with something this client does not know the shape of.
+	Body string
+}
+
+// Error keeps the SDK's exact error phrasing.
+func (e *APIError) Error() string {
+	if e == nil {
+		return ""
 	}
-	return fmt.Errorf("API error (%d): %s", status, string(payload))
+	if strings.TrimSpace(e.Message) != "" {
+		return fmt.Sprintf("API error (%d): %s", e.Status, e.Message)
+	}
+	return fmt.Sprintf("API error (%d): %s", e.Status, e.Body)
+}
+
+// errorBody is the shape a refusal arrives in, read for the one field anybody
+// downstream can use.
+//
+// It is declared here rather than reusing the SDK's ai.ErrorResponse, and that
+// is a fix rather than a preference: ai.ErrorDetail types `code` as a string,
+// OpenRouter sends it as a number, and json.Unmarshal fails the WHOLE object on
+// that one field. So every OpenRouter refusal — the routing 404s, which are the
+// ones a person most needs explained — fell through to the raw-payload arm and
+// arrived as a JSON blob with the readable sentence trapped inside it. Reading
+// only the field that is used, and leaving the rest as raw bytes, is what makes
+// the message reachable regardless of what a provider types its own codes as.
+type errorBody struct {
+	Error struct {
+		Message string          `json:"message"`
+		Code    json.RawMessage `json:"code,omitempty"`
+	} `json:"error"`
+	// Some providers put the sentence at the top level instead.
+	Message string `json:"message"`
+}
+
+// apiError decodes one refusal into its parts.
+func apiError(status int, payload []byte) error {
+	failure := &APIError{Status: status, Body: string(payload)}
+	var decoded errorBody
+	if err := json.Unmarshal(payload, &decoded); err == nil {
+		if message := strings.TrimSpace(decoded.Error.Message); message != "" {
+			failure.Message = message
+		} else {
+			failure.Message = strings.TrimSpace(decoded.Message)
+		}
+	}
+	return failure
 }

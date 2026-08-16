@@ -49,7 +49,7 @@ func (c *scriptClient) CompleteWithMessages(ctx context.Context, messages []ai.M
 		return textResponse(`{"settled":[],"open":[]}`), nil
 	case ensemblePrompt:
 		return textResponse(c.decision), nil
-	case briefPrompt:
+	case briefWithCriterion:
 		// The two briefs an ensemble asks for are told apart the same way the
 		// real writer would: by which node the target line names.
 		if strings.Contains(user, `"Checkout"`) {
@@ -228,7 +228,7 @@ func TestPanelistBriefsAreIndependent(t *testing.T) {
 
 	// One brief for the panel, not one per panelist. Writing them separately is
 	// how identical coverage silently becomes approximate coverage.
-	if got := client.calls(briefPrompt); got != 2 {
+	if got := client.calls(briefWithCriterion); got != 2 {
 		t.Errorf("brief calls = %d, want 2 (one shared panel brief, one setup)", got)
 	}
 	for index, panelist := range panelists {
@@ -246,7 +246,7 @@ func TestPanelistBriefsAreIndependent(t *testing.T) {
 	for _, panelist := range panelists[1:] {
 		others = append(others, panelist.Title)
 	}
-	for _, prompt := range client.prompts(briefPrompt) {
+	for _, prompt := range client.prompts(briefWithCriterion) {
 		for _, other := range others {
 			if strings.Contains(prompt, other) {
 				t.Errorf("the brief writer was shown %q — it can only carve a boundary it knows about:\n%s", other, prompt)
@@ -258,8 +258,14 @@ func TestPanelistBriefsAreIndependent(t *testing.T) {
 			t.Errorf("panelist brief references %q; panelists must not know about each other", other)
 		}
 	}
-	// The charge that makes a lone reader behave like a whole panel.
-	for _, phrase := range []string{"Report everything", "nothing you leave out will be recovered later"} {
+	// The charge that makes a lone reader behave like a whole panel — and the
+	// clause that keeps it from colliding with the leaf's own 300-word cap. The
+	// charge once said nothing left out would be recovered later, which the leaf
+	// contract flatly contradicts; both wanted the same thing, and the split
+	// between the answer and its working is where they agree.
+	for _, phrase := range []string{"Report everything", "a\nfinding you drop is gone for good",
+		"Completeness is about the findings, not about where each one is written down",
+		"Write the full enumeration to a file"} {
 		if !strings.Contains(panelists[0].Brief, phrase) {
 			t.Errorf("panelist brief is missing %q:\n%s", phrase, panelists[0].Brief)
 		}

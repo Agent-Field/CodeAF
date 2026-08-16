@@ -1,0 +1,33 @@
+#!/bin/sh
+# A stand-in for rtk, so the tests never need a network or a real binary.
+#
+# It answers `rewrite` from a table of what rtk v0.45 actually answers — with
+# the mutating and shell-shaped cases included, because those are the ones our
+# side has to refuse — and it exits 3 on the rewriting branch, which is what the
+# real binary does rather than the 0 its own --help promises.
+if [ "$1" != "rewrite" ]; then
+    exit 0
+fi
+shift
+case "$*" in
+    "git status")            printf 'rtk git status\n' ;;
+    "git log --oneline -5")  printf 'rtk git log --oneline -5\n' ;;
+    "git add .")             printf 'rtk git add .\n' ;;
+    "git pull")              printf 'rtk git pull\n' ;;
+    "git branch -d topic")   printf 'rtk git branch -d topic\n' ;;
+    "cat go.mod")            printf 'rtk read go.mod\n' ;;
+    "ls -la")                printf 'rtk ls -la\n' ;;
+    "sudo ls")               printf 'sudo rtk ls\n' ;;
+    "go test ./...")         printf 'rtk go test ./...\n' ;;
+    "pip install black")     printf 'rtk pip install black\n' ;;
+    "ps aux")                printf 'rtk ps aux\n' ;;
+    "echo x && cat go.mod")  printf 'echo x && rtk read go.mod\n' ;;
+    "git status | grep m")   printf 'git status | rtk grep m\n' ;;
+    "git status && go test") printf 'rtk git status && rtk go test\n' ;;
+    "go test && go vet")     printf 'rtk go test && rtk go vet\n' ;;
+    "cat rtk")               printf 'rtk read rtk\n' ;;
+    "nudged")                printf '[rtk] /!\\ No hook installed\n' ;;
+    "same")                  printf 'same\n' ;;
+    *)                       exit 1 ;;
+esac
+exit 3

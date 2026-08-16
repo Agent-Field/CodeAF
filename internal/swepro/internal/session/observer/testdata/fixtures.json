@@ -1,0 +1,15 @@
+{"name":"too-young","fn":"evaluateTriggers","args_json":"[{\"now\":599999,\"startedAt\":0,\"firings\":0,\"lastEvalAt\":0,\"artifactMtime\":null,\"artifactCheckAt\":0,\"recentToolTargets\":[]}]","out_json":"{\"kind\":\"none\"}"}
+{"name":"at-min-age-time","fn":"evaluateTriggers","args_json":"[{\"now\":600000,\"startedAt\":0,\"firings\":0,\"lastEvalAt\":0,\"artifactMtime\":null,\"artifactCheckAt\":0,\"recentToolTargets\":[]}]","out_json":"{\"kind\":\"time\",\"elapsedMs\":600000}"}
+{"name":"ceiling-wins","fn":"evaluateTriggers","args_json":"[{\"now\":0,\"startedAt\":0,\"firings\":3,\"lastEvalAt\":0,\"artifactMtime\":null,\"artifactCheckAt\":0,\"recentToolTargets\":[]}]","out_json":"{\"kind\":\"ceiling\"}"}
+{"name":"repeat-wins","fn":"evaluateTriggers","args_json":"[{\"now\":900000,\"startedAt\":0,\"firings\":0,\"lastEvalAt\":900000,\"artifactMtime\":0,\"artifactCheckAt\":900000,\"recentToolTargets\":[\"a\",\"b\",\"a\",\"a\",\"a\"]}]","out_json":"{\"kind\":\"repetition\",\"file\":\"a\",\"count\":4}"}
+{"name":"first-repeat-in-map-order","fn":"evaluateTriggers","args_json":"[{\"now\":900000,\"startedAt\":0,\"firings\":0,\"lastEvalAt\":900000,\"artifactMtime\":null,\"artifactCheckAt\":0,\"recentToolTargets\":[\"z\",\"a\",\"z\",\"a\",\"z\",\"a\",\"z\",\"a\"]}]","out_json":"{\"kind\":\"repetition\",\"file\":\"z\",\"count\":4}"}
+{"name":"empty-target-ignored","fn":"evaluateTriggers","args_json":"[{\"now\":900000,\"startedAt\":0,\"firings\":0,\"lastEvalAt\":900000,\"artifactMtime\":null,\"artifactCheckAt\":0,\"recentToolTargets\":[\"\",\"\",\"\",\"\"]}]","out_json":"{\"kind\":\"none\"}"}
+{"name":"write-stall-boundary","fn":"evaluateTriggers","args_json":"[{\"now\":900000,\"startedAt\":0,\"firings\":0,\"lastEvalAt\":900000,\"artifactMtime\":720000,\"artifactCheckAt\":900000,\"recentToolTargets\":[]}]","out_json":"{\"kind\":\"write-stall\",\"staleMs\":180000}"}
+{"name":"fresh-artifact-none","fn":"evaluateTriggers","args_json":"[{\"now\":900000,\"startedAt\":0,\"firings\":0,\"lastEvalAt\":850000,\"artifactMtime\":899999,\"artifactCheckAt\":900000,\"recentToolTargets\":[]}]","out_json":"{\"kind\":\"none\"}"}
+{"name":"time-cadence","fn":"evaluateTriggers","args_json":"[{\"now\":1000000,\"startedAt\":100000,\"firings\":1,\"lastEvalAt\":700000,\"artifactMtime\":null,\"artifactCheckAt\":0,\"recentToolTargets\":[]}]","out_json":"{\"kind\":\"time\",\"elapsedMs\":900000}"}
+{"name":"artifact-check-unused","fn":"evaluateTriggers","args_json":"[{\"now\":900000,\"startedAt\":0,\"firings\":0,\"lastEvalAt\":900000,\"artifactMtime\":0,\"artifactCheckAt\":899999,\"recentToolTargets\":[]}]","out_json":"{\"kind\":\"write-stall\",\"staleMs\":900000}"}
+{"name":"enabled-unset","fn":"isObserverEnabled","args_json":"[]","out_json":"false"}
+{"name":"enabled-one","fn":"isObserverEnabled","args_json":"[]","out_json":"true"}
+{"name":"enabled-true-upper","fn":"isObserverEnabled","args_json":"[]","out_json":"true"}
+{"name":"enabled-false","fn":"isObserverEnabled","args_json":"[]","out_json":"false"}
+{"name":"enabled-space","fn":"isObserverEnabled","args_json":"[]","out_json":"false"}

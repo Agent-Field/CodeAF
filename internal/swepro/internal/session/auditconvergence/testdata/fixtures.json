@@ -1,0 +1,230 @@
+{"name":"classify/ts/ambiguous-wrong-value","fn":"classifyBlockerSeverity","args_json":"[\"the function returns the wrong value\"]","out_json":"\"correctness\""}
+{"name":"classify/ts/ambiguous-something-off","fn":"classifyBlockerSeverity","args_json":"[\"something is off here\"]","out_json":"\"correctness\""}
+{"name":"classify/ts/empty-string","fn":"classifyBlockerSeverity","args_json":"[\"\"]","out_json":"\"correctness\""}
+{"name":"classify/ts/missing-requirement","fn":"classifyBlockerSeverity","args_json":"[\"missing requirement: pagination not implemented\"]","out_json":"\"correctness\""}
+{"name":"classify/ts/test-suite-fails","fn":"classifyBlockerSeverity","args_json":"[\"test suite fails with 3 errors\"]","out_json":"\"correctness\""}
+{"name":"classify/ts/hygiene-leftover-scratch","fn":"classifyBlockerSeverity","args_json":"[\"leftover scratch.py file in repo root\"]","out_json":"\"hygiene\""}
+{"name":"classify/ts/hygiene-remove-temporary-probe","fn":"classifyBlockerSeverity","args_json":"[\"remove the temporary probe added during debugging\"]","out_json":"\"hygiene\""}
+{"name":"classify/ts/hygiene-bak-left-in-place","fn":"classifyBlockerSeverity","args_json":"[\"config.bak left in place\"]","out_json":"\"hygiene\""}
+{"name":"classify/ts/hygiene-dead-code","fn":"classifyBlockerSeverity","args_json":"[\"dead code in the old handler\"]","out_json":"\"hygiene\""}
+{"name":"classify/ts/polish-naming","fn":"classifyBlockerSeverity","args_json":"[\"variable naming is inconsistent\"]","out_json":"\"polish\""}
+{"name":"classify/ts/polish-typo-docstring","fn":"classifyBlockerSeverity","args_json":"[\"typo in the docstring\"]","out_json":"\"polish\""}
+{"name":"classify/ts/polish-formatting-style","fn":"classifyBlockerSeverity","args_json":"[\"formatting/style nit in the header comment\"]","out_json":"\"polish\""}
+{"name":"classify/ts/hygiene-beats-polish","fn":"classifyBlockerSeverity","args_json":"[\"dead code with poor naming\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/dot-bak","fn":"classifyBlockerSeverity","args_json":"[\"found notes.bak here\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/dot-orig","fn":"classifyBlockerSeverity","args_json":"[\"merge left main.orig\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/dot-tmp","fn":"classifyBlockerSeverity","args_json":"[\"build.tmp exists\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/leftover-bare","fn":"classifyBlockerSeverity","args_json":"[\"leftover\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/scratch-bare","fn":"classifyBlockerSeverity","args_json":"[\"scratch\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/debug-file","fn":"classifyBlockerSeverity","args_json":"[\"a debug file remains\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/backup-file","fn":"classifyBlockerSeverity","args_json":"[\"a backup file remains\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/stray-file","fn":"classifyBlockerSeverity","args_json":"[\"stray file at root\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/dead-code","fn":"classifyBlockerSeverity","args_json":"[\"dead code\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/commented-out-hyphen","fn":"classifyBlockerSeverity","args_json":"[\"commented-out block\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/commented-out-space","fn":"classifyBlockerSeverity","args_json":"[\"commented out block\"]","out_json":"\"hygiene\""}
+{"name":"classify/hyg/left-in-place","fn":"classifyBlockerSeverity","args_json":"[\"left in place\"]","out_json":"\"hygiene\""}
+{"name":"classify/bnd/dot-bak-word-suffix","fn":"classifyBlockerSeverity","args_json":"[\"notes.bakery is fine\"]","out_json":"\"correctness\""}
+{"name":"classify/bnd/dot-bak-underscore","fn":"classifyBlockerSeverity","args_json":"[\"notes.bak_2\"]","out_json":"\"correctness\""}
+{"name":"classify/bnd/dot-bak-hyphen","fn":"classifyBlockerSeverity","args_json":"[\"notes.bak-2\"]","out_json":"\"hygiene\""}
+{"name":"classify/bnd/dot-orig-word-suffix","fn":"classifyBlockerSeverity","args_json":"[\"file.original layout\"]","out_json":"\"correctness\""}
+{"name":"classify/bnd/dot-tmp-word-suffix","fn":"classifyBlockerSeverity","args_json":"[\"x.tmpfile\"]","out_json":"\"correctness\""}
+{"name":"classify/bnd/dot-bak-eos","fn":"classifyBlockerSeverity","args_json":"[\"notes.bak\"]","out_json":"\"hygiene\""}
+{"name":"classify/bnd/dot-bak-dot","fn":"classifyBlockerSeverity","args_json":"[\"notes.bak.\"]","out_json":"\"hygiene\""}
+{"name":"classify/bnd/bak-no-dot","fn":"classifyBlockerSeverity","args_json":"[\"bak\"]","out_json":"\"correctness\""}
+{"name":"classify/bnd/leftover-substring","fn":"classifyBlockerSeverity","args_json":"[\"leftovers in the fridge\"]","out_json":"\"hygiene\""}
+{"name":"classify/bnd/scratch-substring","fn":"classifyBlockerSeverity","args_json":"[\"scratching an itch\"]","out_json":"\"hygiene\""}
+{"name":"classify/rem/remove-probe","fn":"classifyBlockerSeverity","args_json":"[\"remove the probe\"]","out_json":"\"hygiene\""}
+{"name":"classify/rem/remove-scratch","fn":"classifyBlockerSeverity","args_json":"[\"please remove the scratch directory\"]","out_json":"\"hygiene\""}
+{"name":"classify/rem/remove-debug","fn":"classifyBlockerSeverity","args_json":"[\"remove all debug hooks\"]","out_json":"\"hygiene\""}
+{"name":"classify/rem/removed-inflection","fn":"classifyBlockerSeverity","args_json":"[\"removed the temporary flag\"]","out_json":"\"correctness\""}
+{"name":"classify/rem/remove-dot-blocks","fn":"classifyBlockerSeverity","args_json":"[\"remove this. temporary flag stays\"]","out_json":"\"correctness\""}
+{"name":"classify/rem/remove-newline-blocks","fn":"classifyBlockerSeverity","args_json":"[\"remove this\\ntemporary flag stays\"]","out_json":"\"correctness\""}
+{"name":"classify/rem/remove-far-away","fn":"classifyBlockerSeverity","args_json":"[\"remove the very old and quite dusty temporary shim\"]","out_json":"\"hygiene\""}
+{"name":"classify/rem/remove-word-boundary-target","fn":"classifyBlockerSeverity","args_json":"[\"remove the temporaryish thing\"]","out_json":"\"correctness\""}
+{"name":"classify/rem/remove-empty-gap","fn":"classifyBlockerSeverity","args_json":"[\"remove\\btemporary\"]","out_json":"\"hygiene\""}
+{"name":"classify/rem/remove-then-probes","fn":"classifyBlockerSeverity","args_json":"[\"remove the probes\"]","out_json":"\"correctness\""}
+{"name":"classify/pol/naming","fn":"classifyBlockerSeverity","args_json":"[\"naming\"]","out_json":"\"polish\""}
+{"name":"classify/pol/typo","fn":"classifyBlockerSeverity","args_json":"[\"typo\"]","out_json":"\"polish\""}
+{"name":"classify/pol/comment","fn":"classifyBlockerSeverity","args_json":"[\"comment\"]","out_json":"\"polish\""}
+{"name":"classify/pol/docstring","fn":"classifyBlockerSeverity","args_json":"[\"docstring\"]","out_json":"\"polish\""}
+{"name":"classify/pol/style","fn":"classifyBlockerSeverity","args_json":"[\"style\"]","out_json":"\"polish\""}
+{"name":"classify/pol/formatting","fn":"classifyBlockerSeverity","args_json":"[\"formatting\"]","out_json":"\"polish\""}
+{"name":"classify/pol/wording","fn":"classifyBlockerSeverity","args_json":"[\"wording\"]","out_json":"\"polish\""}
+{"name":"classify/pol/rename","fn":"classifyBlockerSeverity","args_json":"[\"rename\"]","out_json":"\"polish\""}
+{"name":"classify/pol/whitespace","fn":"classifyBlockerSeverity","args_json":"[\"whitespace\"]","out_json":"\"polish\""}
+{"name":"classify/pol/naming-substring","fn":"classifyBlockerSeverity","args_json":"[\"renaming things\"]","out_json":"\"correctness\""}
+{"name":"classify/pol/comments-plural","fn":"classifyBlockerSeverity","args_json":"[\"comments everywhere\"]","out_json":"\"correctness\""}
+{"name":"classify/pol/styled","fn":"classifyBlockerSeverity","args_json":"[\"styled components\"]","out_json":"\"correctness\""}
+{"name":"classify/pol/typos-plural","fn":"classifyBlockerSeverity","args_json":"[\"typos everywhere\"]","out_json":"\"correctness\""}
+{"name":"classify/case/upper-leftover","fn":"classifyBlockerSeverity","args_json":"[\"LEFTOVER SCRATCH.BAK\"]","out_json":"\"hygiene\""}
+{"name":"classify/case/mixed-dead-code","fn":"classifyBlockerSeverity","args_json":"[\"DeAd CoDe\"]","out_json":"\"hygiene\""}
+{"name":"classify/case/upper-typo","fn":"classifyBlockerSeverity","args_json":"[\"TYPO in header\"]","out_json":"\"polish\""}
+{"name":"classify/case/upper-remove-probe","fn":"classifyBlockerSeverity","args_json":"[\"REMOVE THE PROBE\"]","out_json":"\"hygiene\""}
+{"name":"classify/uni/kelvin-bak","fn":"classifyBlockerSeverity","args_json":"[\"notes.baK\"]","out_json":"\"correctness\""}
+{"name":"classify/uni/longs-scratch","fn":"classifyBlockerSeverity","args_json":"[\"ſcratch\"]","out_json":"\"correctness\""}
+{"name":"classify/uni/longs-style","fn":"classifyBlockerSeverity","args_json":"[\"ſtyle\"]","out_json":"\"correctness\""}
+{"name":"classify/uni/dotless-i-orig","fn":"classifyBlockerSeverity","args_json":"[\"file.orıg\"]","out_json":"\"correctness\""}
+{"name":"classify/uni/turkish-dotted-I-typo","fn":"classifyBlockerSeverity","args_json":"[\"TYPO\"]","out_json":"\"polish\""}
+{"name":"classify/uni/turkish-dotted-I-typo2","fn":"classifyBlockerSeverity","args_json":"[\"TİPO\"]","out_json":"\"correctness\""}
+{"name":"classify/uni/fullwidth-typo","fn":"classifyBlockerSeverity","args_json":"[\"ｔypo\"]","out_json":"\"correctness\""}
+{"name":"classify/uni/nbsp-dead-code","fn":"classifyBlockerSeverity","args_json":"[\"dead code\"]","out_json":"\"correctness\""}
+{"name":"classify/uni/emoji-then-scratch","fn":"classifyBlockerSeverity","args_json":"[\"💩 scratch\"]","out_json":"\"hygiene\""}
+{"name":"classify/uni/combining-naming","fn":"classifyBlockerSeverity","args_json":"[\"naḿing\"]","out_json":"\"correctness\""}
+{"name":"classify/ws/tab-dead-code","fn":"classifyBlockerSeverity","args_json":"[\"dead\\tcode\"]","out_json":"\"correctness\""}
+{"name":"classify/ws/newline-in-detail","fn":"classifyBlockerSeverity","args_json":"[\"line one\\ndead code\"]","out_json":"\"hygiene\""}
+{"name":"classify/ws/crlf-typo","fn":"classifyBlockerSeverity","args_json":"[\"a\\r\\ntypo\\r\\nb\"]","out_json":"\"polish\""}
+{"name":"classify/ws/u2028-typo","fn":"classifyBlockerSeverity","args_json":"[\"a typo\"]","out_json":"\"polish\""}
+{"name":"classify/ws/only-whitespace","fn":"classifyBlockerSeverity","args_json":"[\"   \\t\\n  \"]","out_json":"\"correctness\""}
+{"name":"classify/ord/scratch-and-typo","fn":"classifyBlockerSeverity","args_json":"[\"typo in scratch.py\"]","out_json":"\"hygiene\""}
+{"name":"classify/ord/comment-and-leftover","fn":"classifyBlockerSeverity","args_json":"[\"leftover comment\"]","out_json":"\"hygiene\""}
+{"name":"classify/ord/commented-out-and-naming","fn":"classifyBlockerSeverity","args_json":"[\"commented-out naming helper\"]","out_json":"\"hygiene\""}
+{"name":"classify/adv/regex-metachars","fn":"classifyBlockerSeverity","args_json":"[\"^$.*+?()[]{}|\\\\\"]","out_json":"\"correctness\""}
+{"name":"classify/adv/long-remove-chain","fn":"classifyBlockerSeverity","args_json":"[\"remove x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x x debug\"]","out_json":"\"hygiene\""}
+{"name":"classify/adv/many-dots","fn":"classifyBlockerSeverity","args_json":"[\"....................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................\"]","out_json":"\"correctness\""}
+{"name":"classify/adv/json-ish","fn":"classifyBlockerSeverity","args_json":"[\"{\\\"detail\\\":\\\"typo\\\",\\\"severity\\\":\\\"polish\\\"}\"]","out_json":"\"polish\""}
+{"name":"classify/adv/null-byte","fn":"classifyBlockerSeverity","args_json":"[\"dead\\u0000code\"]","out_json":"\"correctness\""}
+{"name":"hygieneRe/\"\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"\"]","out_json":"false"}
+{"name":"polishRe/\"\"","fn":"POLISH_PATTERN.test","args_json":"[\"\"]","out_json":"false"}
+{"name":"hygieneRe/\"leftover\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"leftover\"]","out_json":"true"}
+{"name":"polishRe/\"leftover\"","fn":"POLISH_PATTERN.test","args_json":"[\"leftover\"]","out_json":"false"}
+{"name":"hygieneRe/\"LEFTOVER\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"LEFTOVER\"]","out_json":"true"}
+{"name":"polishRe/\"LEFTOVER\"","fn":"POLISH_PATTERN.test","args_json":"[\"LEFTOVER\"]","out_json":"false"}
+{"name":"hygieneRe/\"notes.bak\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"notes.bak\"]","out_json":"true"}
+{"name":"polishRe/\"notes.bak\"","fn":"POLISH_PATTERN.test","args_json":"[\"notes.bak\"]","out_json":"false"}
+{"name":"hygieneRe/\"notes.bakery\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"notes.bakery\"]","out_json":"false"}
+{"name":"polishRe/\"notes.bakery\"","fn":"POLISH_PATTERN.test","args_json":"[\"notes.bakery\"]","out_json":"false"}
+{"name":"hygieneRe/\"notes.baK\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"notes.baK\"]","out_json":"false"}
+{"name":"polishRe/\"notes.baK\"","fn":"POLISH_PATTERN.test","args_json":"[\"notes.baK\"]","out_json":"false"}
+{"name":"hygieneRe/\"ſcratch\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"ſcratch\"]","out_json":"false"}
+{"name":"polishRe/\"ſcratch\"","fn":"POLISH_PATTERN.test","args_json":"[\"ſcratch\"]","out_json":"false"}
+{"name":"hygieneRe/\"remove the temporary shim\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"remove the temporary shim\"]","out_json":"true"}
+{"name":"polishRe/\"remove the temporary shim\"","fn":"POLISH_PATTERN.test","args_json":"[\"remove the temporary shim\"]","out_json":"false"}
+{"name":"hygieneRe/\"remove this. temporary shim\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"remove this. temporary shim\"]","out_json":"false"}
+{"name":"polishRe/\"remove this. temporary shim\"","fn":"POLISH_PATTERN.test","args_json":"[\"remove this. temporary shim\"]","out_json":"false"}
+{"name":"hygieneRe/\"commented out\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"commented out\"]","out_json":"true"}
+{"name":"polishRe/\"commented out\"","fn":"POLISH_PATTERN.test","args_json":"[\"commented out\"]","out_json":"false"}
+{"name":"hygieneRe/\"commented-out\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"commented-out\"]","out_json":"true"}
+{"name":"polishRe/\"commented-out\"","fn":"POLISH_PATTERN.test","args_json":"[\"commented-out\"]","out_json":"false"}
+{"name":"hygieneRe/\"commented_out\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"commented_out\"]","out_json":"false"}
+{"name":"polishRe/\"commented_out\"","fn":"POLISH_PATTERN.test","args_json":"[\"commented_out\"]","out_json":"false"}
+{"name":"hygieneRe/\"left in place\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"left in place\"]","out_json":"true"}
+{"name":"polishRe/\"left in place\"","fn":"POLISH_PATTERN.test","args_json":"[\"left in place\"]","out_json":"false"}
+{"name":"hygieneRe/\"left  in place\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"left  in place\"]","out_json":"false"}
+{"name":"polishRe/\"left  in place\"","fn":"POLISH_PATTERN.test","args_json":"[\"left  in place\"]","out_json":"false"}
+{"name":"hygieneRe/\"naming\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"naming\"]","out_json":"false"}
+{"name":"polishRe/\"naming\"","fn":"POLISH_PATTERN.test","args_json":"[\"naming\"]","out_json":"true"}
+{"name":"hygieneRe/\"renaming\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"renaming\"]","out_json":"false"}
+{"name":"polishRe/\"renaming\"","fn":"POLISH_PATTERN.test","args_json":"[\"renaming\"]","out_json":"false"}
+{"name":"hygieneRe/\"\\bnaming\\b\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"\\bnaming\\b\"]","out_json":"false"}
+{"name":"polishRe/\"\\bnaming\\b\"","fn":"POLISH_PATTERN.test","args_json":"[\"\\bnaming\\b\"]","out_json":"true"}
+{"name":"hygieneRe/\"x-naming-y\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"x-naming-y\"]","out_json":"false"}
+{"name":"polishRe/\"x-naming-y\"","fn":"POLISH_PATTERN.test","args_json":"[\"x-naming-y\"]","out_json":"true"}
+{"name":"hygieneRe/\"x_naming_y\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"x_naming_y\"]","out_json":"false"}
+{"name":"polishRe/\"x_naming_y\"","fn":"POLISH_PATTERN.test","args_json":"[\"x_naming_y\"]","out_json":"false"}
+{"name":"hygieneRe/\"x.naming.y\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"x.naming.y\"]","out_json":"false"}
+{"name":"polishRe/\"x.naming.y\"","fn":"POLISH_PATTERN.test","args_json":"[\"x.naming.y\"]","out_json":"true"}
+{"name":"hygieneRe/\"x/naming/y\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"x/naming/y\"]","out_json":"false"}
+{"name":"polishRe/\"x/naming/y\"","fn":"POLISH_PATTERN.test","args_json":"[\"x/naming/y\"]","out_json":"true"}
+{"name":"hygieneRe/\"TYPO\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"TYPO\"]","out_json":"false"}
+{"name":"polishRe/\"TYPO\"","fn":"POLISH_PATTERN.test","args_json":"[\"TYPO\"]","out_json":"true"}
+{"name":"hygieneRe/\"TİPO\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"TİPO\"]","out_json":"false"}
+{"name":"polishRe/\"TİPO\"","fn":"POLISH_PATTERN.test","args_json":"[\"TİPO\"]","out_json":"false"}
+{"name":"hygieneRe/\"whitespace\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"whitespace\"]","out_json":"false"}
+{"name":"polishRe/\"whitespace\"","fn":"POLISH_PATTERN.test","args_json":"[\"whitespace\"]","out_json":"true"}
+{"name":"hygieneRe/\"white space\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"white space\"]","out_json":"false"}
+{"name":"polishRe/\"white space\"","fn":"POLISH_PATTERN.test","args_json":"[\"white space\"]","out_json":"false"}
+{"name":"hygieneRe/\"dead code with poor naming\"","fn":"HYGIENE_PATTERN.test","args_json":"[\"dead code with poor naming\"]","out_json":"true"}
+{"name":"polishRe/\"dead code with poor naming\"","fn":"POLISH_PATTERN.test","args_json":"[\"dead code with poor naming\"]","out_json":"true"}
+{"name":"hygieneRe/\" typo \"","fn":"HYGIENE_PATTERN.test","args_json":"[\" typo \"]","out_json":"false"}
+{"name":"polishRe/\" typo \"","fn":"POLISH_PATTERN.test","args_json":"[\" typo \"]","out_json":"true"}
+{"name":"hygieneRe/source","fn":"HYGIENE_PATTERN.source","args_json":"[]","out_json":"\"\\\\.bak\\\\b|\\\\.orig\\\\b|\\\\.tmp\\\\b|leftover|scratch|debug file|backup file|remove\\\\b[^.\\\\n]*\\\\b(temporary|probe|scratch|debug)\\\\b|stray file|dead code|commented[- ]out|left in place\""}
+{"name":"polishRe/source","fn":"POLISH_PATTERN.source","args_json":"[]","out_json":"\"\\\\bnaming\\\\b|\\\\btypo\\\\b|\\\\bcomment\\\\b|\\\\bdocstring\\\\b|\\\\bstyle\\\\b|\\\\bformatting\\\\b|\\\\bwording\\\\b|\\\\brename\\\\b|\\\\bwhitespace\\\\b\""}
+{"name":"effective/ts/explicit-correctness-wins","fn":"effectiveSeverity","args_json":"[{\"detail\":\"leftover scratch file\",\"severity\":\"correctness\"}]","out_json":"\"correctness\""}
+{"name":"effective/ts/explicit-polish-downgrade","fn":"effectiveSeverity","args_json":"[{\"detail\":\"adjust the header\",\"severity\":\"polish\"}]","out_json":"\"polish\""}
+{"name":"effective/ts/no-tag-correctness","fn":"effectiveSeverity","args_json":"[{\"detail\":\"returns the wrong value\"}]","out_json":"\"correctness\""}
+{"name":"effective/ts/no-tag-hygiene","fn":"effectiveSeverity","args_json":"[{\"detail\":\"leftover backup file config.bak\"}]","out_json":"\"hygiene\""}
+{"name":"effective/ts/malformed-tag-cosmetic","fn":"effectiveSeverity","args_json":"[{\"detail\":\"leftover scratch file\",\"severity\":\"cosmetic\"}]","out_json":"\"hygiene\""}
+{"name":"effective/ts/malformed-tag-empty","fn":"effectiveSeverity","args_json":"[{\"detail\":\"something odd\",\"severity\":\"\"}]","out_json":"\"correctness\""}
+{"name":"effective/tag/hygiene","fn":"effectiveSeverity","args_json":"[{\"detail\":\"typo everywhere\",\"severity\":\"hygiene\"}]","out_json":"\"hygiene\""}
+{"name":"effective/tag/polish","fn":"effectiveSeverity","args_json":"[{\"detail\":\"wrong output\",\"severity\":\"polish\"}]","out_json":"\"polish\""}
+{"name":"effective/tag/correctness","fn":"effectiveSeverity","args_json":"[{\"detail\":\"naming\",\"severity\":\"correctness\"}]","out_json":"\"correctness\""}
+{"name":"effective/bad/case-wrong","fn":"effectiveSeverity","args_json":"[{\"detail\":\"naming\",\"severity\":\"Correctness\"}]","out_json":"\"polish\""}
+{"name":"effective/bad/whitespace-padded","fn":"effectiveSeverity","args_json":"[{\"detail\":\"dead code\",\"severity\":\" hygiene \"}]","out_json":"\"hygiene\""}
+{"name":"effective/bad/unknown-word","fn":"effectiveSeverity","args_json":"[{\"detail\":\"plain text\",\"severity\":\"blocker\"}]","out_json":"\"correctness\""}
+{"name":"effective/struct/full","fn":"effectiveSeverity","args_json":"[{\"file\":\"src/a.ts\",\"line\":12,\"step\":3,\"detail\":\"typo\",\"severity\":\"polish\"}]","out_json":"\"polish\""}
+{"name":"effective/struct/no-severity","fn":"effectiveSeverity","args_json":"[{\"file\":\"src/a.ts\",\"line\":12,\"step\":3,\"detail\":\"typo\"}]","out_json":"\"polish\""}
+{"name":"effective/struct/empty-detail","fn":"effectiveSeverity","args_json":"[{\"detail\":\"\"}]","out_json":"\"correctness\""}
+{"name":"effective/struct/unicode-detail","fn":"effectiveSeverity","args_json":"[{\"detail\":\"スクラッチ scratch ファイル\"}]","out_json":"\"hygiene\""}
+{"name":"effective/null-blocker","fn":"effectiveSeverity","args_json":"[null]","out_json":"\"correctness\""}
+{"name":"partition/ts-mixed","fn":"partitionBlockers","args_json":"[[{\"detail\":\"wrong output for empty input\"},{\"detail\":\"leftover scratch.py\",\"severity\":\"hygiene\"},{\"detail\":\"typo in comment\",\"severity\":\"polish\"},{\"detail\":\"naming is inconsistent\"},{\"detail\":\"explicit correctness\",\"severity\":\"correctness\"}]]","out_json":"{\"correctness\":[{\"detail\":\"wrong output for empty input\"},{\"detail\":\"explicit correctness\",\"severity\":\"correctness\"}],\"hygiene\":[{\"detail\":\"leftover scratch.py\",\"severity\":\"hygiene\"}],\"polish\":[{\"detail\":\"typo in comment\",\"severity\":\"polish\"},{\"detail\":\"naming is inconsistent\"}]}"}
+{"name":"partition/ts-empty","fn":"partitionBlockers","args_json":"[[]]","out_json":"{\"correctness\":[],\"hygiene\":[],\"polish\":[]}"}
+{"name":"partition/null-input","fn":"partitionBlockers","args_json":"[null]","out_json":"{\"correctness\":[],\"hygiene\":[],\"polish\":[]}"}
+{"name":"partition/order-preserved","fn":"partitionBlockers","args_json":"[[{\"file\":\"a.ts\",\"line\":1,\"detail\":\"dead code\"},{\"file\":\"b.ts\",\"line\":2,\"detail\":\"typo\"},{\"file\":\"c.ts\",\"line\":3,\"detail\":\"off by one\"},{\"file\":\"a.ts\",\"line\":4,\"detail\":\"leftover naming\"},{\"file\":\"b.ts\",\"line\":5,\"step\":7,\"detail\":\"rename it\",\"severity\":\"correctness\"}]]","out_json":"{\"correctness\":[{\"file\":\"c.ts\",\"line\":3,\"detail\":\"off by one\"},{\"file\":\"b.ts\",\"line\":5,\"step\":7,\"detail\":\"rename it\",\"severity\":\"correctness\"}],\"hygiene\":[{\"file\":\"a.ts\",\"line\":1,\"detail\":\"dead code\"},{\"file\":\"a.ts\",\"line\":4,\"detail\":\"leftover naming\"}],\"polish\":[{\"file\":\"b.ts\",\"line\":2,\"detail\":\"typo\"}]}"}
+{"name":"partition/all-correctness","fn":"partitionBlockers","args_json":"[[{\"detail\":\"one\"},{\"detail\":\"two\"},{\"detail\":\"three\"}]]","out_json":"{\"correctness\":[{\"detail\":\"one\"},{\"detail\":\"two\"},{\"detail\":\"three\"}],\"hygiene\":[],\"polish\":[]}"}
+{"name":"partition/null-elements","fn":"partitionBlockers","args_json":"[[null,{\"detail\":\"typo\"},null]]","out_json":"{\"correctness\":[null,null],\"hygiene\":[],\"polish\":[{\"detail\":\"typo\"}]}"}
+{"name":"key/ts/file-line-detail","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":3,\"detail\":\"x\"}]","out_json":"\"a.ts:3:x\""}
+{"name":"key/ts/spaced-detail-only","fn":"blockerKey","args_json":"[{\"detail\":\"  spaced  \"}]","out_json":"\"::spaced\""}
+{"name":"key/all-absent","fn":"blockerKey","args_json":"[{\"detail\":\"\"}]","out_json":"\"::\""}
+{"name":"key/line-zero","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":0,\"detail\":\"x\"}]","out_json":"\"a.ts:0:x\""}
+{"name":"key/line-negative","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":-12,\"detail\":\"x\"}]","out_json":"\"a.ts:-12:x\""}
+{"name":"key/line-fractional","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":3.5,\"detail\":\"x\"}]","out_json":"\"a.ts:3.5:x\""}
+{"name":"key/line-huge","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1e+21,\"detail\":\"x\"}]","out_json":"\"a.ts:1e+21:x\""}
+{"name":"key/line-tiny","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1e-7,\"detail\":\"x\"}]","out_json":"\"a.ts:1e-7:x\""}
+{"name":"key/line-neg-zero","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":0,\"detail\":\"x\"}]","out_json":"\"a.ts:0:x\""}
+{"name":"key/file-empty-string","fn":"blockerKey","args_json":"[{\"file\":\"\",\"line\":9,\"detail\":\"x\"}]","out_json":"\":9:x\""}
+{"name":"key/file-with-colons","fn":"blockerKey","args_json":"[{\"file\":\"C:/a:b.ts\",\"line\":9,\"detail\":\"x\"}]","out_json":"\"C:/a:b.ts:9:x\""}
+{"name":"key/detail-tabs-newlines","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"detail\":\"\\t\\n  hello \\r\\n\"}]","out_json":"\"a.ts:1:hello\""}
+{"name":"key/detail-nbsp-edges","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"detail\":\" hi \"}]","out_json":"\"a.ts:1:hi\""}
+{"name":"key/detail-bom-edges","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"detail\":\"﻿hi﻿\"}]","out_json":"\"a.ts:1:hi\""}
+{"name":"key/detail-u2028-edges","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"detail\":\" hi \"}]","out_json":"\"a.ts:1:hi\""}
+{"name":"key/detail-ideographic-space","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"detail\":\"　hi　\"}]","out_json":"\"a.ts:1:hi\""}
+{"name":"key/detail-inner-space-kept","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"detail\":\" a  b \"}]","out_json":"\"a.ts:1:a  b\""}
+{"name":"key/detail-unicode","fn":"blockerKey","args_json":"[{\"file\":\"src/ünïcode.ts\",\"line\":42,\"detail\":\"  スクラッチ  \"}]","out_json":"\"src/ünïcode.ts:42:スクラッチ\""}
+{"name":"key/detail-emoji","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"detail\":\" 💩 \"}]","out_json":"\"a.ts:1:💩\""}
+{"name":"key/step-ignored","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"step\":99,\"detail\":\"x\"}]","out_json":"\"a.ts:1:x\""}
+{"name":"key/severity-ignored","fn":"blockerKey","args_json":"[{\"file\":\"a.ts\",\"line\":1,\"detail\":\"x\",\"severity\":\"polish\"}]","out_json":"\"a.ts:1:x\""}
+{"name":"key/null-blocker","fn":"blockerKey","args_json":"[null]","out_json":"\"::\""}
+{"name":"assess/ts/empty-history","fn":"assessConvergence","args_json":"[{\"cycles\":[],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"n/a: no audit cycle history yet\"}"}
+{"name":"assess/ts/correctness-present","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":2,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"k1\",\"k2\",\"k3\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"2 correctness blocker(s) present\"}"}
+{"name":"assess/ts/hygiene-first-time-cleanup","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":1,\"blockerKeys\":[\"h1\",\"p1\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 2 hygiene/polish blocker(s); batched cleanup pass 1/1\"}"}
+{"name":"assess/ts/cap-reached-accept","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"h1\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":1,\"blockerKeys\":[\"p2\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"accept\",\"reason\":\"diminishing returns: 1 residual non-correctness blocker(s) after 1 cleanup cycle(s) — accepted with notes\"}"}
+{"name":"assess/ts/higher-cap-still-cleanup","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"h1\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":1,\"blockerKeys\":[\"p2\"]}],\"maxCleanupCycles\":2}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1 hygiene/polish blocker(s); batched cleanup pass 2/2\"}"}
+{"name":"assess/ts/stagnant","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":1,\"blockerKeys\":[\"h1\",\"p1\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":1,\"blockerKeys\":[\"h1\",\"p1\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"stagnant: identical blocker set across the last two cycles\"}"}
+{"name":"assess/ts/stagnation-not-on-empty-keys","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"accept\",\"reason\":\"diminishing returns: 1 residual non-correctness blocker(s) after 1 cleanup cycle(s) — accepted with notes\"}"}
+{"name":"assess/ts/cap-zero-accept","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"h1\"]}],\"maxCleanupCycles\":0}]","out_json":"{\"action\":\"accept\",\"reason\":\"diminishing returns: 1 residual non-correctness blocker(s) after 0 cleanup cycle(s) — accepted with notes\"}"}
+{"name":"assess/ts/w11b-machine-override","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":19,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":5,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"b\"]}],\"maxCleanupCycles\":1,\"fixedPoint\":{\"treeUnchanged\":true,\"contractPassed\":true}}]","out_json":"{\"action\":\"accept\",\"reason\":\"machine-verified fixed point: fix cycle changed nothing on disk and the acceptance contract passes — residual blockers recorded as notes (further cycles cannot change the outcome)\",\"machineOverride\":true}"}
+{"name":"assess/ts/w11b-never-first-cycle","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":3,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1,\"fixedPoint\":{\"treeUnchanged\":true,\"contractPassed\":true}}]","out_json":"{\"action\":\"continue\",\"reason\":\"3 correctness blocker(s) present\"}"}
+{"name":"assess/ts/w11b-tree-changed","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":3,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":2,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"b\"]}],\"maxCleanupCycles\":1,\"fixedPoint\":{\"treeUnchanged\":false,\"contractPassed\":true}}]","out_json":"{\"action\":\"continue\",\"reason\":\"2 correctness blocker(s) present\"}"}
+{"name":"assess/ts/w11b-contract-failed","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":3,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":2,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"b\"]}],\"maxCleanupCycles\":1,\"fixedPoint\":{\"treeUnchanged\":true,\"contractPassed\":false}}]","out_json":"{\"action\":\"continue\",\"reason\":\"2 correctness blocker(s) present\"}"}
+{"name":"assess/ts/w11b-absent-fixedpoint-stagnant","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":2,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"x\",\"y\"]},{\"correctnessCount\":2,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"x\",\"y\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"stagnant: identical blocker set across the last two cycles\"}"}
+{"name":"assess/fp/both-false","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":1,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":1,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"b\"]}],\"maxCleanupCycles\":1,\"fixedPoint\":{\"treeUnchanged\":false,\"contractPassed\":false}}]","out_json":"{\"action\":\"continue\",\"reason\":\"1 correctness blocker(s) present\"}"}
+{"name":"assess/fp/beats-stagnation","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":1,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":1,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1,\"fixedPoint\":{\"treeUnchanged\":true,\"contractPassed\":true}}]","out_json":"{\"action\":\"accept\",\"reason\":\"machine-verified fixed point: fix cycle changed nothing on disk and the acceptance contract passes — residual blockers recorded as notes (further cycles cannot change the outcome)\",\"machineOverride\":true}"}
+{"name":"assess/fp/beats-cleanup","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":3,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":3,\"polishCount\":0,\"blockerKeys\":[\"b\"]}],\"maxCleanupCycles\":5,\"fixedPoint\":{\"treeUnchanged\":true,\"contractPassed\":true}}]","out_json":"{\"action\":\"accept\",\"reason\":\"machine-verified fixed point: fix cycle changed nothing on disk and the acceptance contract passes — residual blockers recorded as notes (further cycles cannot change the outcome)\",\"machineOverride\":true}"}
+{"name":"assess/fp/three-cycles","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":9,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":8,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"b\"]},{\"correctnessCount\":7,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"c\"]}],\"maxCleanupCycles\":1,\"fixedPoint\":{\"treeUnchanged\":true,\"contractPassed\":true}}]","out_json":"{\"action\":\"accept\",\"reason\":\"machine-verified fixed point: fix cycle changed nothing on disk and the acceptance contract passes — residual blockers recorded as notes (further cycles cannot change the outcome)\",\"machineOverride\":true}"}
+{"name":"assess/hist/null-cycles","fn":"assessConvergence","args_json":"[{\"cycles\":null,\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"n/a: no audit cycle history yet\"}"}
+{"name":"assess/hist/null-latest","fn":"assessConvergence","args_json":"[{\"cycles\":[null],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"n/a: no audit cycle history yet\"}"}
+{"name":"assess/hist/all-zero-latest","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"n/a: latest cycle has no blockers\"}"}
+{"name":"assess/hist/all-zero-latest-after-work","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":4,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"b\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"n/a: latest cycle has no blockers\"}"}
+{"name":"assess/stag/same-set-different-order","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\",\"b\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"b\",\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"stagnant: identical blocker set across the last two cycles\"}"}
+{"name":"assess/stag/duplicates-collapse","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\",\"a\",\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"stagnant: identical blocker set across the last two cycles\"}"}
+{"name":"assess/stag/superset-not-stagnant","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\",\"b\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"accept\",\"reason\":\"diminishing returns: 1 residual non-correctness blocker(s) after 1 cleanup cycle(s) — accepted with notes\"}"}
+{"name":"assess/stag/same-size-different-members","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":1,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\",\"b\"]},{\"correctnessCount\":1,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\",\"c\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"1 correctness blocker(s) present\"}"}
+{"name":"assess/stag/latest-empty-prev-nonempty","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"accept\",\"reason\":\"diminishing returns: 1 residual non-correctness blocker(s) after 1 cleanup cycle(s) — accepted with notes\"}"}
+{"name":"assess/stag/only-last-two-considered","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"z\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":9}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1 hygiene/polish blocker(s); batched cleanup pass 3/9\"}"}
+{"name":"assess/stag/unicode-keys","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a.ts:1:スクラッチ\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a.ts:1:スクラッチ\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"stagnant: identical blocker set across the last two cycles\"}"}
+{"name":"assess/cnt/two-prior-eligible-cap-2","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":1,\"blockerKeys\":[\"b\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":2,\"blockerKeys\":[\"c\"]}],\"maxCleanupCycles\":2}]","out_json":"{\"action\":\"accept\",\"reason\":\"diminishing returns: 2 residual non-correctness blocker(s) after 2 cleanup cycle(s) — accepted with notes\"}"}
+{"name":"assess/cnt/two-prior-eligible-cap-3","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":1,\"blockerKeys\":[\"b\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":2,\"blockerKeys\":[\"c\"]}],\"maxCleanupCycles\":3}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 2 hygiene/polish blocker(s); batched cleanup pass 3/3\"}"}
+{"name":"assess/cnt/correctness-cycles-not-eligible","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":5,\"hygieneCount\":2,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":3,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"b\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"c\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1 hygiene/polish blocker(s); batched cleanup pass 1/1\"}"}
+{"name":"assess/cnt/zero-blocker-cycles-not-eligible","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"b\"]},{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":1,\"blockerKeys\":[\"c\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1 hygiene/polish blocker(s); batched cleanup pass 1/1\"}"}
+{"name":"assess/cnt/negative-cap","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":-1}]","out_json":"{\"action\":\"accept\",\"reason\":\"diminishing returns: 1 residual non-correctness blocker(s) after 0 cleanup cycle(s) — accepted with notes\"}"}
+{"name":"assess/cnt/fractional-cap","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":0.5}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1 hygiene/polish blocker(s); batched cleanup pass 1/0.5\"}"}
+{"name":"assess/cnt/fractional-cap-1point5","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]},{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"b\"]}],\"maxCleanupCycles\":1.5}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1 hygiene/polish blocker(s); batched cleanup pass 2/1.5\"}"}
+{"name":"assess/cnt/huge-cap","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1e+21}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1 hygiene/polish blocker(s); batched cleanup pass 1/1e+21\"}"}
+{"name":"assess/cnt/default-cap-constant","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":1,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1 hygiene/polish blocker(s); batched cleanup pass 1/1\"}"}
+{"name":"assess/num/fractional-counts","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":0.1,\"polishCount\":0.2,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 0.30000000000000004 hygiene/polish blocker(s); batched cleanup pass 1/1\"}"}
+{"name":"assess/num/negative-correctness","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":-1,\"hygieneCount\":2,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 2 hygiene/polish blocker(s); batched cleanup pass 1/1\"}"}
+{"name":"assess/num/negative-noncorrectness-sum","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":3,\"polishCount\":-3,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"n/a: latest cycle has no blockers\"}"}
+{"name":"assess/num/huge-correctness","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":1e+21,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"1e+21 correctness blocker(s) present\"}"}
+{"name":"assess/num/tiny-noncorrectness","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":0,\"hygieneCount\":0,\"polishCount\":1e-7,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"cleanup\",\"reason\":\"0 correctness, 1e-7 hygiene/polish blocker(s); batched cleanup pass 1/1\"}"}
+{"name":"assess/num/correctness-fractional","fn":"assessConvergence","args_json":"[{\"cycles\":[{\"correctnessCount\":2.5,\"hygieneCount\":0,\"polishCount\":0,\"blockerKeys\":[\"a\"]}],\"maxCleanupCycles\":1}]","out_json":"{\"action\":\"continue\",\"reason\":\"2.5 correctness blocker(s) present\"}"}
+{"name":"const/AUDIT_CLEANUP_MAX_CYCLES_DEFAULT","fn":"AUDIT_CLEANUP_MAX_CYCLES_DEFAULT","args_json":"[]","out_json":"1"}

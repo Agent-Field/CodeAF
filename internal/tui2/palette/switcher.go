@@ -1,0 +1,535 @@
+package palette
+
+import (
+	"image"
+	"strconv"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/tui2"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/blocks"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+)
+
+// Switcher is the chats switcher (chat-simplify.md 5.2's J3, 5.3's `switcher`
+// row): the quiet overlay that lists the working conversations and moves the
+// window into one of them.
+//
+// It is the THIRD component built on this package's one list, for the reason
+// the doc gives for there being two: 5.22's discoverability holds by
+// construction only while every list in the product is the same list. What this
+// surface adds over [Palette] is what a THREAD is — a name, the line you left it
+// on, how long ago that was — and what it removes is everything a catalog of
+// everything carries. There is no drill, no settings group, no jobs read.
+//
+// The five laws of 5.1, as they land here:
+//
+//   - ONE ORNAMENT. A row draws `●` only where a delivery landed in that thread
+//     and nobody has read it. There is no count, no badge, and no second colour:
+//     the dot is present or it is not, which is the whole of what a person needs
+//     before they decide which conversation to open.
+//   - THE LIST IS A SWITCHER, NOT A MANAGER. Open, filter, enter. Nothing here
+//     renames, archives, tags or closes a thread, because a thread never closes —
+//     it goes quiet and sinks, which is what the caller's ordering already says.
+//   - NAMING IS THE SCRIBE'S JOB. A thread with no name yet says so in one word
+//     and never in an id (13.3.4). The `new thread` row asks for no name at all.
+//   - THE CURRENT THREAD IS LISTED. A switcher that cannot show you where you
+//     are is a switcher that can strand you (the same rule scope.go's roomRows
+//     keeps for the rail).
+//   - NOTHING MOVES. The list inherits this package's stillness: there is no
+//     clock here, no spinner, and linear mode changes paint alone — see
+//     [Switcher.SetThreads] for the numbering it turns on instead.
+type Switcher struct {
+	core
+
+	line lineBuf
+	buf  strings.Builder
+	out  []string
+
+	// bodyTop is how many chrome lines the last render drew above the list, so
+	// a click can be translated into a row.
+	bodyTop int
+
+	// threads is the last set installed, kept so a re-render after a selection
+	// does not ask the caller for the facts again.
+	threads []Thread
+}
+
+var (
+	_ tui2.Pane      = (*Switcher)(nil)
+	_ tui2.PaneKeys  = (*Switcher)(nil)
+	_ tui2.PaneMouse = (*Switcher)(nil)
+)
+
+// Thread is one working conversation as the switcher lists it.
+//
+// Every field arrives ALREADY RESOLVED, for the reason [Job]'s telemetry does:
+// a relative time is formatted against a clock, and a render that reads a clock
+// is a render whose output is not a pure function of its state. The wiring
+// formats once, at the moment the door opens.
+type Thread struct {
+	// ID is the session this row switches to. It is never drawn.
+	ID string
+	// Name is the scribe's name for this thread. Empty is a real state — the
+	// scribe names a thread from its first exchange — and renders as
+	// [UnnamedThread] rather than as an id.
+	Name string
+	// Tags are the subjects the scribe filed this thread under, and they are
+	// MATCHABLE RATHER THAN DRAWN.
+	//
+	// That is the whole design and it is 5.1's one-ornament law read straight:
+	// a strip of chips on every row would be a second column of colour on a
+	// surface whose entire budget is one dot, and it would be paid on every row
+	// to help the reader on one of them. So a tag is a way IN — a person who
+	// remembers a conversation was about billing types `billing` and the room
+	// surfaces even though nobody ever put that word in its name — and the only
+	// time one is drawn is the moment it is the reason a row is there at all
+	// (see [Switcher.threadRow]), because a match a reader cannot see is a list
+	// that looks broken.
+	Tags []string
+	// LeftAt is the line the conversation was left on, one line, already
+	// flattened by the caller or by [clean] here. Empty draws nothing at all:
+	// a thread with nothing said in it has no line to quote, and inventing one
+	// would be the surface speaking for the head.
+	LeftAt string
+	// When is how long ago this thread last moved, already formatted by
+	// internal/tui2/reltime ("2h", "yesterday", "aug 3"). Empty draws nothing.
+	When string
+	// Unseen says a delivery landed here that nobody has read. It is the ONE
+	// ornament (5.1 law 3) and it is a boolean rather than a count on purpose.
+	Unseen bool
+	// Current says this is the thread the window is already in.
+	Current bool
+}
+
+// UnnamedThread is what a thread the scribe has not named yet is called.
+//
+// NEVER "untitled" and never an id. A thread nobody has named is NEW, not
+// defective: the scribe names one from its FIRST EXCHANGE, so a nameless thread
+// is precisely a thread nobody has said anything in yet, and the honest word for
+// that is what it is doing rather than what it is missing.
+//
+// It is deliberately NOT [NewThreadWord]. The two would collide in the one place
+// it matters — the switcher lists both, one row apart — and a list where the
+// door and a row on it share a name is a list a reader has to disambiguate by
+// position.
+const UnnamedThread = "just started"
+
+// NewThreadWord is the affordance at the foot of the list. It starts a fresh
+// conversation immediately: there is no naming prompt, because naming is the
+// scribe's job and asking for one would make the only deliberate gesture in
+// this product something other than typing (5.1 law 2).
+const NewThreadWord = "new thread"
+
+// NewThreadKey is the accelerator that reaches the door from inside the
+// switcher.
+//
+// IT IS A CHORD AND NOT A BARE `n`, and the correction is worth stating because
+// 5.2 writes the key as "n". This surface's whole body is a search field: a bare
+// letter here is a letter, and a bare `n` that minted a conversation would mean
+// no reader could ever search for a thread whose name begins with one. The
+// alternative that was tried — bare `n` only on an empty filter — is the same
+// trap wearing a condition, because an empty filter is exactly the state a
+// reader is in when they start typing.
+//
+// IT IS NOT ctrl+n, AND THAT IS A COLLISION BEING PAID BACK. ctrl+n was this
+// constant's first value, and ctrl+n is also [core.navigate]'s "down" — the
+// emacs/readline spelling every list in this package answers, and the one the
+// palette and the model picker beside it both honour. Two meanings shipped on
+// one chord, and the switcher's own [Switcher.Key] resolved it in the WRONG
+// direction: it matched the mint before it offered the key to navigate, so
+// inside the one list in the product that has a door at the bottom, ctrl+n
+// stopped walking the list. A reader pressing it to move the cursor minted a
+// conversation instead.
+//
+// NAVIGATION WINS. It is the ecosystem-wide convention and it is the meaning a
+// reader brings from every other list on this surface; a door is a local
+// affordance and may not take a movement key away from the list it sits in.
+// [Switcher.Key] now offers every key to navigate FIRST and reads this constant
+// only afterwards, so the precedence is structural rather than a matter of
+// which case is written higher up — this constant can never shadow a movement
+// key again, whatever it is set to.
+//
+// ctrl+t is the replacement, and it is not arbitrary: it is the chord that
+// OPENED this list ([chat.threadsCtrl]), pressed again, and it is what "new
+// tab" is bound to in every browser a reader has ever used. Nothing is lost if
+// they never learn it. The door is the last row of the list and it never
+// filters away, so the keyboard reaches it in one arrow or one `end` and enter;
+// the chord is the accelerator for the reader who already knows it is there,
+// and the ROW is the affordance. The row teaches the chord, which is the whole
+// of what the accelerator column is for.
+const NewThreadKey = "ctrl+t"
+
+// leftAtLead opens the second column. It is a WORD and not a glyph because it
+// is the one piece of chrome on this surface that has to be read rather than
+// recognised: `left at:` says the line beside it is a quotation of the past,
+// which is the difference between a thread's last line and a thread's status.
+const leftAtLead = "left at: "
+
+// emptySwitcherText is what a window with no threads says. It is a real state —
+// a store opened for the first time — and it teaches the door out of it.
+const emptySwitcherText = "no threads yet — say something and this fills up"
+
+// noThreadMatchPrefix opens the over-filtered message, naming the query back so
+// the failure a reader needs to see is their own typo.
+const noThreadMatchPrefix = "no thread matching "
+
+// switcherLabel is the surface's own word, at the head of its search line.
+const switcherLabel = "threads"
+
+// NewSwitcher builds the thread switcher. It renders an empty, honest surface
+// until threads arrive.
+func NewSwitcher(opts Options) *Switcher {
+	s := &Switcher{core: core{opts: opts}}
+	s.list.setStyle(opts.Styler)
+	s.list.linear = opts.Linear
+	// The two groups on this sheet — the threads, and the one door that makes a
+	// new one — are separated by whitespace and by nothing else. A `threads`
+	// header over a surface whose own header already says `threads` would be
+	// §19's same-fact-twice at the top of a list four rows long.
+	s.list.noHeaders = true
+	s.list.emptyText = emptySwitcherText
+	return s
+}
+
+// SetThreads installs the list, newest-activity first as the caller ordered it.
+//
+// LINEAR MODE NUMBERS THE ROWS (10.1.5). The ordinal is part of the row's own
+// text rather than a column of its own, because a screen reader reads a line and
+// a column it cannot see is a column that does not exist. The numbers are
+// ORDINALS and not accelerators: a digit typed into this surface is filter text,
+// exactly as every other printable character is, and a key that meant one thing
+// in one rendering and another in the other would be the surface teaching two
+// products.
+func (s *Switcher) SetThreads(threads []Thread) {
+	s.threads = append(s.threads[:0], threads...)
+	s.list.rebuild(func(dst []row) []row { return s.buildThreadRows(dst) })
+	s.refreshEmptyText()
+	s.invalidate()
+}
+
+// Threads is the set currently on screen, for a caller that wants to assert
+// what it installed.
+func (s *Switcher) Threads() []Thread { return s.threads }
+
+// Reset clears the query and the cursor. The wiring calls it when the door
+// opens: a switcher that reopened still holding the last search is one whose
+// first keystroke edits a query the reader cannot see the origin of.
+func (s *Switcher) Reset() {
+	// Through [Switcher.setQuery] rather than the list's own, so the rows shed
+	// the tag hints the cleared query put on them. It is a no-op on an already
+	// empty query, which is why the cursor is put back afterwards regardless.
+	s.setQuery("")
+	s.list.cursor, s.list.top = 0, 0
+	s.refreshEmptyText()
+}
+
+// Query is the current filter text.
+func (s *Switcher) Query() string { return s.list.query }
+
+// Select puts the cursor on one thread by id, and reports whether it found it.
+//
+// It exists for the one door that opens this surface pointing somewhere: a task
+// page's `for: <thread>` attribution, where the reader has already said which
+// conversation they mean. Everywhere else the cursor opens at the top, which is
+// the newest thread and the one a switcher is usually opened to leave for.
+func (s *Switcher) Select(id string) bool {
+	if id == "" {
+		return false
+	}
+	for i := range s.list.hits {
+		if result, ok := s.list.rows[s.list.hits[i].idx].result.(SwitchThread); ok && result.ID == id {
+			s.list.cursor = i
+			s.invalidate()
+			return true
+		}
+	}
+	return false
+}
+
+// buildThreadRows turns the installed threads into the flat, section-ordered
+// row slice the list filters and renders. The append order IS the display
+// order, and [filter] depends on it.
+func (s *Switcher) buildThreadRows(dst []row) []row {
+	dst = dst[:0]
+	needle := s.list.needle
+	for i := range s.threads {
+		dst = append(dst, s.threadRow(&s.threads[i], i+1, needle))
+	}
+	// The door is last and it is its own section, so the blank line above it is
+	// the list's own group rhythm rather than a spacer somebody remembered to
+	// add. It is never filtered away by a typo either: a reader who searched for
+	// a thread that does not exist is precisely the reader who wants to start
+	// one.
+	dst = append(dst, newThreadRow())
+	return dst
+}
+
+// threadRow is one conversation: the ornament, the name, the line it was left
+// on, and how long ago that was.
+//
+// It is built against the CURRENT QUERY, which is the one thing on this surface
+// a row depends on beyond its thread. The reason is the tag match: a row that
+// survives only because of a subject nobody can see is a row a reader reads as
+// a bug in the filter, so that row — and only that row — spends its second
+// column saying which subject matched. A thread found by its name shows no tag
+// at all, because there is nothing mysterious about it.
+func (s *Switcher) threadRow(t *Thread, ordinal int, needle string) row {
+	name := clean(t.Name)
+	if name == "" {
+		name = UnnamedThread
+	}
+	if s.list.linear {
+		name = strconv.Itoa(ordinal) + ". " + name
+	}
+	desc := LeftAtLine(t.LeftAt)
+	if tag := tagHint(name, desc, t.Tags, needle); tag != "" {
+		desc = tagLead + tag
+	}
+	out := row{
+		sec:       sectionThreads,
+		verb:      name,
+		desc:      desc,
+		accel:     clean(t.When),
+		band:      tokens.Band,
+		result:    SwitchThread{ID: t.ID},
+		lowerTags: lowerTags(t.Tags),
+	}
+	if t.Unseen && !t.Current {
+		// The dot is CYAN and not amber. 5.16 spends amber on one thing only —
+		// a human is actually needed — and a delivery that landed is the
+		// opposite of a demand: it is news. A switcher that painted news amber
+		// would be spending the product's one alarm colour on good outcomes, and
+		// the reader would stop trusting it on the row where it matters.
+		out.glyph, out.glyphTok = tokens.GlyphStepDone, tokens.Cyan
+	}
+	out.lowerVerb = lower(out.verb)
+	out.lowerDesc = lower(out.desc)
+	return out
+}
+
+// lowerTags is a thread's subjects as one lower-case haystack for [filter].
+// One string rather than a slice because ranking runs over every row on every
+// keystroke and must not walk a nested loop to do it; the separator is a space
+// so a subsequence query cannot silently bridge two tags into a match neither
+// of them supports — it can, across the space, exactly as it can across the
+// words of a title, which is the same behaviour a reader already has.
+func lowerTags(tags []string) string {
+	if len(tags) == 0 {
+		return ""
+	}
+	return lower(clean(strings.Join(tags, " ")))
+}
+
+// tagHint is the tag to show on a row, or "" for the rows that need none.
+//
+// It answers one question: is this row here ONLY because of a subject? A row
+// whose name or left-at line already contains the query explains itself, and
+// drawing a tag beside it would be noise on every row of a search — 5.13 spends
+// no cells restating what the reader can already see. A row that matched on
+// nothing visible is the opposite case, and the first tag that matches is drawn
+// so the reader can see the filter working rather than guessing at it.
+func tagHint(name, desc string, tags []string, needle string) string {
+	if needle == "" || len(tags) == 0 {
+		return ""
+	}
+	if _, ok := score(lower(name), needle); ok {
+		return ""
+	}
+	if _, ok := score(lower(desc), needle); ok {
+		return ""
+	}
+	for _, tag := range tags {
+		tag = clean(tag)
+		if tag == "" {
+			continue
+		}
+		if _, ok := score(lower(tag), needle); ok {
+			return tag
+		}
+	}
+	return ""
+}
+
+// tagLead opens the second column when a subject is what put the row there. It
+// is a word for [leftAtLead]'s reason — the column is a quotation by default,
+// and a reader has to be told when it is not — and it is the SAME chrome tier,
+// because a hint about why a row matched must never outrank the row.
+const tagLead = "tagged: "
+
+// LeftAtLine is the second column: what was said last, quoted, or nothing at
+// all. A thread with no line yet draws NO lead word — `left at:` with nothing
+// after it would be chrome announcing an absence, which §16 spends no cells on.
+//
+// IT IS EXPORTED FOR THE OVERVIEW, which lists the same threads on a page and
+// must say the same thing about each of them. A page that respelled this would
+// be the product's one quotation grammar in two spellings, drifting on the
+// commit that changed either.
+func LeftAtLine(text string) string {
+	line := clean(text)
+	if line == "" {
+		return ""
+	}
+	return leftAtLead + line
+}
+
+// newThreadRow is the one affordance at the foot of the list.
+func newThreadRow() row {
+	out := row{
+		sec:    sectionNewThread,
+		verb:   NewThreadWord,
+		desc:   newThreadHint,
+		accel:  NewThreadKey,
+		band:   tokens.Band,
+		result: NewThread{},
+	}
+	out.lowerVerb = lower(out.verb)
+	out.lowerDesc = lower(out.desc)
+	return out
+}
+
+// newThreadHint is what the door promises, in the words of the decision behind
+// it: nothing is asked for, and the name arrives on its own.
+const newThreadHint = "start one now — it names itself after the first exchange"
+
+// refreshEmptyText keeps the empty-state sentence answering the right question:
+// a window with no threads and an over-filtered list are different facts and
+// must not share a line.
+func (s *Switcher) refreshEmptyText() {
+	if s.list.query == "" {
+		s.list.emptyText = emptySwitcherText
+		return
+	}
+	s.list.emptyText = noThreadMatchPrefix + s.list.query
+}
+
+// Render implements [tui2.Pane]: a search line, a blank, and the list.
+//
+// The blank is the first thing height pressure takes and the header is the
+// last, exactly as [Palette.Render] spends its rows: a list with no search line
+// is a list the reader cannot tell they are filtering.
+func (s *Switcher) Render(width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+	s.out = s.out[:0]
+	s.out = append(s.out, s.header(width))
+	if height >= 3 {
+		s.out = append(s.out, blankLine(&s.line, &s.buf, s.list.profile, s.list.focus, width, s.list.ground()))
+	}
+	s.bodyTop = len(s.out)
+	s.out = append(s.out, s.list.render(width, height-s.bodyTop)...)
+	if len(s.out) > height {
+		s.out = s.out[:height]
+	}
+	s.out = padSheet(s.out, &s.line, &s.buf, s.list.profile, s.list.focus, width, height, s.list.ground())
+	return strings.Join(s.out, "\n")
+}
+
+// header names the surface, carries the query, and ends with the count and the
+// way out — the palette's own line with one word changed, so a reader who has
+// used one of these surfaces has used all three.
+func (s *Switcher) header(width int) string {
+	l := &s.line
+	l.reset(width)
+	l.add(switcherLabel, tokens.TextTertiary)
+	l.add("  ", tokens.TextTertiary)
+	if s.list.query == "" {
+		l.add(searchPlaceholder, tokens.TextTertiary)
+	} else {
+		l.add(s.list.query, tokens.TextPrimary)
+	}
+	count := strconv.Itoa(s.list.count()) + "/" + strconv.Itoa(len(s.list.rows))
+	lead := count + " " + tokens.GlyphSeparator + " "
+	if start := width - blocks.Width(lead+escHint); start > l.w+1 {
+		l.padTo(start)
+		l.add(lead, tokens.TextTertiary)
+		addChip(l, closeChip)
+	} else {
+		addTail(l, width, count)
+	}
+	return l.emit(&s.buf, s.list.profile, s.list.focus, width, false, tokens.Band, s.list.ground())
+}
+
+// Key implements [tui2.PaneKeys].
+//
+// It is [Palette.Key] minus the drill and plus one binding, and the ordering is
+// the palette's for the palette's reason: the editing keys are checked first so
+// a query can never swallow esc or enter, and the default arm inserts only what
+// the terminal reported as printable text.
+//
+// MOVEMENT OUTRANKS THE DOOR, and the shape of this function is the guarantee
+// rather than a comment asking the next editor to be careful. [core.navigate] is
+// offered every key BEFORE [NewThreadKey] is read, so a mint accelerator can
+// never shadow a movement key again — whatever it is set to. It was set to
+// ctrl+n once, which is [core.navigate]'s own "down", and matching the mint
+// first meant the one list in the product with a door at the bottom was also
+// the one list where ctrl+n stopped walking the list and minted a conversation
+// instead. See [NewThreadKey] for the full accounting.
+func (s *Switcher) Key(msg tea.KeyPressMsg) tea.Cmd {
+	switch key := msg.String(); key {
+	case "esc":
+		return s.close()
+	case "enter":
+		return s.choose()
+	case "ctrl+u":
+		s.setQuery("")
+	case "ctrl+w":
+		s.setQuery(dropWord(s.list.query))
+	case "backspace":
+		s.setQuery(dropRune(s.list.query))
+	default:
+		if s.navigate(key) {
+			return nil
+		}
+		if key == NewThreadKey {
+			return s.mint()
+		}
+		if text := msg.Key().Text; text != "" {
+			s.setQuery(s.list.query + text)
+		}
+	}
+	return nil
+}
+
+// mint is the `new thread` row reached by its key rather than by the cursor.
+// It goes through the same [core.choose] path the row itself takes — one door,
+// two hands — so a key and a click cannot leave the surface in two states.
+func (s *Switcher) mint() tea.Cmd {
+	closed := s.close()
+	return tea.Batch(closed, s.emit(NewThread{}))
+}
+
+// Mouse implements [tui2.PaneMouse]. Every row is a button, the header is
+// chrome, and a wheel notch walks the selection — the shared vocabulary, with
+// nothing added.
+func (s *Switcher) Mouse(msg tea.MouseMsg, local image.Point) tea.Cmd {
+	return s.mouse(msg, local, s.bodyTop)
+}
+
+// setQuery installs the filter and REBUILDS the rows behind it.
+//
+// The rebuild is what the shared list does not do, and it is needed for exactly
+// one column: [Switcher.threadRow] draws the matching tag on a row that matched
+// on nothing else, and which row that is changes with every keystroke. The cost
+// is bounded by the surface — a switcher lists a dozen threads, and the work per
+// row is three subsequence scans over strings a few words long — and the columns
+// cannot dance, because a rebuild here changes only the description while the
+// widths [list.measure] took are the verb's and the accelerator's.
+//
+// The cursor returns to the top exactly as [list.setQuery] takes it there, and
+// for its reason: after a keystroke the best match is a different row, and
+// leaving the selection where it sat would mean enter opens whatever landed at
+// that index.
+func (s *Switcher) setQuery(q string) {
+	if q == s.list.query {
+		return
+	}
+	s.list.query = q
+	s.list.needle = lower(q)
+	s.list.rows = s.buildThreadRows(s.list.rows)
+	s.list.refilter()
+	s.refreshEmptyText()
+	s.invalidate()
+}

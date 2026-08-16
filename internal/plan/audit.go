@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -73,10 +76,15 @@ type auditCheck struct {
 // back the edges whose absence would strand a node. It returns how many it
 // recovered, which is the honest measure of how far bind undershot.
 func Audit(ctx context.Context, client Completer, graph *Graph) (int, Usage, error) {
+	return auditWith(ctx, client, graph, graph.planBlock())
+}
+
+// auditWith is Audit against a catalog block the caller has already rendered.
+// The caller owns the guarantee that the block still describes this graph.
+func auditWith(ctx context.Context, client Completer, graph *Graph, shared string) (int, Usage, error) {
 	if len(graph.Stages) < 2 {
 		return 0, Usage{}, nil
 	}
-	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
 	type result struct {
 		checks []auditCheck
@@ -89,6 +97,13 @@ func Audit(ctx context.Context, client Completer, graph *Graph) (int, Usage, err
 		group.Add(1)
 		go func(stage int) {
 			defer group.Done()
+			// The fault fills the stage's slot on the way out: an audit that
+			// faults recovers no edges, which is what a failed one already does.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[stage-1] = result{err: guard.Note(fmt.Sprintf("plan/audit stage %d", stage), recovered)}
+				}
+			}()
 			checks, usage, err := auditStage(ctx, client, shared, graph, stage)
 			results[stage-1] = result{checks: checks, usage: usage, err: err}
 		}(stage)
@@ -126,7 +141,8 @@ func Audit(ctx context.Context, client Completer, graph *Graph) (int, Usage, err
 }
 
 func auditStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) ([]auditCheck, *ai.Usage, error) {
-	var targets string
+	ctx = provider.WithCall(ctx, provider.ClassPlanAudit)
+	var targets strings.Builder
 	for _, node := range graph.Nodes {
 		if node.Stage != stage {
 			continue
@@ -135,22 +151,29 @@ func auditStage(ctx context.Context, client Completer, shared string, graph *Gra
 		if len(node.Needs) > 0 {
 			inputs = "the outputs of " + joinInts(node.Needs)
 		}
-		targets += fmt.Sprintf("%d. %s — %s\n   currently receives: %s\n", node.ID, node.Title, node.Summary, inputs)
+		fmt.Fprintf(&targets, "%d. %s — %s\n   currently receives: %s\n", node.ID, node.Title, node.Summary, inputs)
 	}
 	messages := []ai.Message{
 		systemMessage(auditPrompt),
 		userMessage(shared),
-		userMessage(fmt.Sprintf("Check each of these stage %d nodes:\n%s", stage, targets)),
-	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(auditSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("audit stage %d: %w", stage, err)
+		userMessage(fmt.Sprintf("Check each of these stage %d nodes:\n%s", stage, targets.String())),
 	}
 	var decoded struct {
 		Checks []auditCheck `json:"checks"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("audit stage %d: %w", stage, err), response)
+	response, err := structured(ctx, client, messages, auditSchema, &decoded)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("audit stage %d: %w", stage, err)
 	}
+	// Audit answers about specific nodes, so naming one that does not exist is
+	// the same tell as in bind: the model stopped reading the catalog. An audit
+	// that legitimately finds nothing missing returns an empty list and is right.
+	for _, check := range decoded.Checks {
+		if graph.Node(check.Node) == nil {
+			provider.Report(ctx, provider.VerdictSemanticFailure)
+			return decoded.Checks, usageOf(response), nil
+		}
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return decoded.Checks, usageOf(response), nil
 }

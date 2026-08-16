@@ -2,3 +2,5 @@ bin/
 .obs/
 *.log
 .claude/
+/aforge
+bench-results/

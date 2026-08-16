@@ -30,7 +30,7 @@ func renderGround(graph *plan.Graph) {
 		return
 	}
 	fmt.Printf("\n── settled ─────────────────────────────────────────────────────────\n")
-	for _, item := range graph.Settled {
+	for _, item := range plan.SettledLines(graph.Settled) {
 		fmt.Printf("  · %s\n", item)
 	}
 	for _, item := range graph.Open {

@@ -128,3 +128,48 @@ func RunCacheKey(task, model string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(task) + "\x00" + strings.TrimSpace(model)))
 	return "aforge-" + hex.EncodeToString(sum[:16])
 }
+
+// WithLeafCacheKey narrows the run's affinity to one leaf.
+//
+// A routing key is not a cache: it is the answer to "which replica should serve
+// this?", and a provider with an automatic prefix cache can only hit when the
+// same replica sees the same bytes twice. The run key gets the first half of
+// that right — every turn of every leaf of one run asks for one destination —
+// and the second half wrong, because the six leaves of a fan-out run
+// CONCURRENTLY with six different transcripts. They are then six growing,
+// unrelated prefixes competing for one replica's cache, which is what the
+// ledgers showed: cache reads quantized in 256-token steps, a third of the
+// re-sent dollars missing a cache that a stable prompt should have hit.
+//
+// Narrowing to the leaf splits those six lineages apart. What it gives up is the
+// shared head — the system message and the tool block, which every leaf of a run
+// really does share byte for byte — now written cold once per leaf instead of
+// once per run. That trade is not close: the head is a few thousand tokens
+// written once per leaf, and the tail it protects is the whole transcript
+// re-sent on every turn of that leaf. On Anthropic-family endpoints it is not
+// even a trade, because their cache is content-addressed and the explicit
+// breakpoint on the head is shared across leaves whatever the routing key says.
+//
+// The leaf key is derived FROM the run key rather than replacing it, so a run's
+// requests still share a namespace a provider or an operator can see, and a leaf
+// with no run key set stays unkeyed rather than inventing a lineage of its own.
+func WithLeafCacheKey(ctx context.Context, leaf string) context.Context {
+	run := CacheKeyFrom(ctx)
+	if run == "" || strings.TrimSpace(leaf) == "" {
+		return ctx
+	}
+	return WithCacheKey(ctx, LeafCacheKey(run, leaf))
+}
+
+// LeafCacheKey derives one leaf's affinity key from its run's. It is a pure
+// function of the two identities — no clock, no counter, no attempt number — so
+// every turn of one leaf produces the same key and a retried leaf rejoins the
+// prefix its first attempt warmed.
+func LeafCacheKey(run, leaf string) string {
+	run, leaf = strings.TrimSpace(run), strings.TrimSpace(leaf)
+	if run == "" || leaf == "" {
+		return run
+	}
+	sum := sha256.Sum256([]byte(run + "\x00" + leaf))
+	return run + "-" + hex.EncodeToString(sum[:6])
+}

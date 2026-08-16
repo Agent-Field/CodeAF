@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -32,19 +33,91 @@ func reasoningFor(effort Effort) *reasoningKnob {
 	}
 }
 
+// noteReasoningMandatory remembers that a model's endpoint refused to have its
+// reasoning turned off — see quirks.go for why the catalog cannot answer this
+// and why nothing here is a list of model names.
+//
+// The memo is process-wide rather than per-client because the fact belongs to
+// the model, and one model is served by several clients here: the panel builds
+// one adapter per rung and the config builds more for its own surfaces. What
+// one of them learns the rest should not have to relearn.
+func noteReasoningMandatory(model string) {
+	if quirks.note(model, time.Now().UTC()) {
+		// Off the request path: the call that discovered this is waiting to be
+		// re-sent, and it should not wait on a disk write to do it.
+		quirks.persist()
+	}
+}
+
+// ReasoningMandatory reports that this model's endpoint has refused to have its
+// reasoning turned off. It is learned rather than published — no catalog field
+// says it — so it is empty until some call has been told no, and then it stays
+// known across processes (see [LoadQuirks]). A surface should show exactly
+// that: a fact when there is one, and nothing when there is not.
+func ReasoningMandatory(model string) bool { return reasoningMandatory(model) }
+
+func reasoningMandatory(model string) bool { return quirks.knows(model) }
+
+// normalizeModel keys the memo on the model itself rather than on how it was
+// written. The leading "~" is Aforge's own routing marker, not part of the
+// slug, so "~minimax/minimax-m2.7" and "minimax/minimax-m2.7" are one model.
+func normalizeModel(model string) string {
+	return strings.ToLower(strings.TrimPrefix(strings.TrimSpace(model), "~"))
+}
+
+// refusesDisabledReasoning reads a 400 body for the one complaint this adapter
+// can repair by itself. It matches on the two halves together — the subject and
+// the refusal — so an unrelated 400 that merely mentions reasoning is left to
+// surface as the error it is.
+func refusesDisabledReasoning(payload []byte) bool {
+	text := strings.ToLower(string(payload))
+	if !strings.Contains(text, "reasoning") {
+		return false
+	}
+	for _, refusal := range []string{
+		"mandatory",
+		"cannot be disabled",
+		"can not be disabled",
+		"cannot be turned off",
+		"must be enabled",
+		"required for this endpoint",
+	} {
+		if strings.Contains(text, refusal) {
+			return true
+		}
+	}
+	return false
+}
+
 // wireRequest is the serialized body. It shadows the SDK's max_tokens so the
 // adapter, not the SDK, decides which output-limit field a given endpoint gets,
 // and adds the three fields the SDK's Request type has no home for.
 type wireRequest struct {
 	*requestAlias
 
+	// Messages and Tools shadow the SDK's own fields for one reason: a cache
+	// breakpoint has to be written INSIDE them, and neither ai.Message nor
+	// ai.ToolDefinition has a field for it. Serializing them here — element by
+	// element, through the SDK's own marshaller for everything unmarked — is how
+	// the adapter expresses a wire fact the pinned SDK type cannot hold, without
+	// forking the SDK or reshaping anything the harness above it sees.
+	//
+	// Both are populated on EVERY request, marked or not. Go resolves a shadowed
+	// JSON field at the type level, so an empty shadow would delete the embedded
+	// field rather than fall through to it; leaving them unset would send a
+	// request with no messages at all.
+	Messages []json.RawMessage `json:"messages"`
+	Tools    []json.RawMessage `json:"tools,omitempty"`
+
 	MaxTokens           *int `json:"max_tokens,omitempty"`
 	MaxCompletionTokens *int `json:"max_completion_tokens,omitempty"`
 
 	// PromptCacheKey is the request-body half of prompt-cache affinity. Paired
-	// with the session-affinity header it asks the router to keep one run on
+	// with the session-affinity header it asks the router to keep one lineage on
 	// one warm instance instead of scattering a byte-stable prefix across
-	// providers that each have to write the cache from cold.
+	// providers that each have to write the cache from cold. The lineage is the
+	// leaf rather than the run — see provider.WithLeafCacheKey for why a fan-out
+	// sharing one key is what made the prefix miss in the first place.
 	PromptCacheKey string `json:"prompt_cache_key,omitempty"`
 
 	// Reasoning is omitted entirely unless the model is known to accept it or
@@ -70,13 +143,25 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		scrubbed.Usage = &ai.RequestUsage{Include: true}
 	}
 
-	model := strings.TrimSpace(scrubbed.Model)
-	if model == "" {
-		model = c.config.Model
+	model := c.modelFor(&scrubbed)
+
+	// The dialect is resolved once per encode rather than cached on the client,
+	// because the model can be pinned per request by the router and the learned
+	// refusal below can change the answer mid-run.
+	dialect := c.dialectFor(model)
+	messages, err := encodeMessages(scrubbed.Messages, dialect)
+	if err != nil {
+		return nil, err
+	}
+	tools, err := encodeTools(scrubbed.Tools, dialect)
+	if err != nil {
+		return nil, err
 	}
 
 	wire := wireRequest{
 		requestAlias:   (*requestAlias)(&scrubbed),
+		Messages:       messages,
+		Tools:          tools,
 		PromptCacheKey: knobs.cacheKey,
 	}
 	wire.Reasoning = reasoningFor(c.resolveEffort(model, knobs.effort))
@@ -90,11 +175,24 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	return json.Marshal(wire)
 }
 
-// resolveEffort decides whether the knob may travel. The catalog is consulted
-// first because it is the only authority that can say "this model would reject
-// it"; when the catalog is cold or silent, only an explicit operator request
-// gets sent, so a default economy can never break a run on an unknown model.
+// resolveEffort decides whether the knob may travel, and in what shape.
 func (c *Client) resolveEffort(model string, requested effortRequest) Effort {
+	effort := c.requestedEffort(model, requested)
+	// A model that reasons unconditionally answers the disable with a 400, and
+	// no amount of operator intent changes that. Sending nothing is what the
+	// harness wanted anyway — the cheapest request the endpoint will accept —
+	// so the economy degrades to the model's own default instead of failing.
+	if effort == EffortOff && reasoningMandatory(model) {
+		return EffortNone
+	}
+	return effort
+}
+
+// requestedEffort applies the catalog gate. The catalog is consulted first
+// because it is the only authority that can say "this model would reject it";
+// when the catalog is cold or silent, only an explicit operator request gets
+// sent, so a default economy can never break a run on an unknown model.
+func (c *Client) requestedEffort(model string, requested effortRequest) Effort {
 	if requested.effort == EffortNone {
 		return EffortNone
 	}
@@ -244,18 +342,17 @@ func needsMaxCompletionTokens(model string) bool {
 var vouchedRewriteDomains = []string{"openai.com", "openai.azure.com", "openrouter.ai"}
 
 func isVouchedRewriteEndpoint(baseURL string) bool {
+	return hostIn(baseURL, vouchedRewriteDomains)
+}
+
+// hostOf reads the host out of a configured base URL, empty when there is not
+// one to read. Every endpoint-shape decision in this package is made on the host
+// rather than on the whole string, so that a path or a query cannot vouch for a
+// domain it merely mentions.
+func hostOf(baseURL string) string {
 	parsed, err := url.Parse(strings.TrimSpace(baseURL))
 	if err != nil {
-		return false
+		return ""
 	}
-	host := strings.ToLower(parsed.Hostname())
-	if host == "" {
-		return false
-	}
-	for _, domain := range vouchedRewriteDomains {
-		if host == domain || strings.HasSuffix(host, "."+domain) {
-			return true
-		}
-	}
-	return false
+	return strings.ToLower(parsed.Hostname())
 }

@@ -1,0 +1,2112 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+)
+
+// Facts are the notebook: durable things learned while working, as distinct
+// from any one job's result. Each fact is indexed by SCOPE — what it is
+// about — because a quirk of one file belongs to that file, a tool's
+// behaviour belongs to that tool, and a preference belongs to the user.
+// Scope match is the primary retrieval mechanism; a BM25 full-text index
+// (SQLite FTS5, no extra dependency) catches what scope cues miss. Both are
+// local queries: retrieval never waits on a model.
+
+// MaxFactBytes bounds one fact. A fact is one standalone line, not a report.
+const MaxFactBytes = 512
+
+// FactKind classifies what a notebook entry teaches.
+// AgeLabel renders how old a fact is, for retrieval surfaces: every reader
+// of a memory sees when it was written, because a claim's age is part of its
+// evidence — "the dev server has been up for days" means something different
+// noted yesterday versus noted last quarter.
+func AgeLabel(at, now time.Time) string {
+	if at.IsZero() {
+		return ""
+	}
+	age := now.Sub(at)
+	switch {
+	case age < time.Hour:
+		return "just now"
+	case age < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(age.Hours()))
+	case age < 14*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(age.Hours()/24))
+	case age < 60*24*time.Hour:
+		return fmt.Sprintf("%dw ago", int(age.Hours()/(24*7)))
+	default:
+		return fmt.Sprintf("%dmo ago", int(age.Hours()/(24*30)))
+	}
+}
+
+type FactKind string
+
+const (
+	// FactPreference is how the user wants things done.
+	FactPreference FactKind = "preference"
+	// FactQuirk is a scoped oddity of one file, repo, tool, or product.
+	FactQuirk FactKind = "quirk"
+	// FactLesson is a transferable mistake-turned-rule.
+	FactLesson FactKind = "lesson"
+	// FactPlain is an entity and its stable attributes.
+	FactPlain FactKind = "fact"
+	// FactUnsettled is a machine-readable pair of approaches whose evidence
+	// does not yet establish one standing rule.
+	FactUnsettled FactKind = "unsettled"
+	// FactSkill is an execution-verified procedure offered to future work.
+	FactSkill FactKind = "skill"
+	// FactPlaybook is one scoped strategy bullet earned from earlier work.
+	FactPlaybook FactKind = "playbook"
+	// FactQuestion is a durable knowledge gap. Unlike ordinary notebook facts,
+	// questions have their own open/practicing/resolved/retired lifecycle and
+	// never enter retrieval as standing knowledge.
+	FactQuestion FactKind = "question"
+	// FactTrait is a measured second-order user fact. Its scope is trait:<name>
+	// and its body is a structured TraitMeasurement payload.
+	FactTrait FactKind = "trait"
+)
+
+// UnsettledApproach is one side of a competing pair. Scope describes where
+// the approach worked; Evidence names the durable fact sequences behind it.
+type UnsettledApproach struct {
+	Approach string  `json:"approach"`
+	Scope    string  `json:"scope"`
+	Evidence []int64 `json:"evidence"`
+}
+
+// UnsettledTrial records that one trial ran without resolving the pair. A
+// conclusive trial replaces the pair with an ordinary fact instead.
+type UnsettledTrial struct {
+	NodeID  string `json:"node_id"`
+	Outcome string `json:"outcome"`
+}
+
+const TrialDidNotSettle = "ran, didn't settle"
+
+// UnsettledFactFlag is the deterministic compiler-context signal. The fact
+// number following it becomes Provenance.TrialOf when the compiler acts.
+const UnsettledFactFlag = "an unsettled pair applies here: fact #"
+
+// UnsettledPair is the structured payload of an unsettled fact. Approaches
+// must contain exactly two entries; Trials is append-only evidence carried
+// forward when an experiment cannot choose a winner.
+type UnsettledPair struct {
+	Approaches []UnsettledApproach `json:"approaches"`
+	Trials     []UnsettledTrial    `json:"trials,omitempty"`
+}
+
+// Validate rejects prose-only or ambiguous pairs before they enter the
+// journal. Evidence sequences are positive and deduplicated per approach.
+func (pair UnsettledPair) Validate() error {
+	if len(pair.Approaches) != 2 {
+		return fmt.Errorf("unsettled pair requires exactly two approaches")
+	}
+	for index, approach := range pair.Approaches {
+		if strings.TrimSpace(approach.Approach) == "" {
+			return fmt.Errorf("unsettled approach %d has no name", index+1)
+		}
+		if strings.TrimSpace(approach.Scope) == "" {
+			return fmt.Errorf("unsettled approach %d has no scope", index+1)
+		}
+		if len(approach.Evidence) == 0 {
+			return fmt.Errorf("unsettled approach %d has no evidence", index+1)
+		}
+		seen := make(map[int64]bool, len(approach.Evidence))
+		for _, seq := range approach.Evidence {
+			if seq <= 0 || seen[seq] {
+				return fmt.Errorf("unsettled approach %d has invalid evidence sequence %d", index+1, seq)
+			}
+			seen[seq] = true
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(pair.Approaches[0].Approach), strings.TrimSpace(pair.Approaches[1].Approach)) {
+		return fmt.Errorf("unsettled approaches must be distinct")
+	}
+	for index, trial := range pair.Trials {
+		if strings.TrimSpace(trial.NodeID) == "" || trial.Outcome != TrialDidNotSettle {
+			return fmt.Errorf("unsettled trial %d is invalid", index+1)
+		}
+	}
+	return nil
+}
+
+// WithInconclusiveTrial carries the pair forward with one new piece of
+// evidence. The returned value owns its slices and does not mutate pair.
+func (pair UnsettledPair) WithInconclusiveTrial(nodeID string) UnsettledPair {
+	cloned := UnsettledPair{
+		Approaches: make([]UnsettledApproach, len(pair.Approaches)),
+		Trials:     append([]UnsettledTrial(nil), pair.Trials...),
+	}
+	for index, approach := range pair.Approaches {
+		cloned.Approaches[index] = approach
+		cloned.Approaches[index].Evidence = append([]int64(nil), approach.Evidence...)
+	}
+	cloned.Trials = append(cloned.Trials, UnsettledTrial{
+		NodeID: strings.TrimSpace(nodeID), Outcome: TrialDidNotSettle,
+	})
+	return cloned
+}
+
+// FormatUnsettledPair is the readable projection indexed by FTS and handed
+// to models. The Unsettled field remains the authoritative representation.
+func FormatUnsettledPair(pair UnsettledPair) string {
+	if len(pair.Approaches) != 2 {
+		return "unsettled pair"
+	}
+	formatApproach := func(approach UnsettledApproach) string {
+		seqs := make([]string, 0, len(approach.Evidence))
+		for _, seq := range approach.Evidence {
+			seqs = append(seqs, fmt.Sprintf("#%d", seq))
+		}
+		return fmt.Sprintf("%s [%s; evidence %s]", strings.TrimSpace(approach.Approach),
+			strings.TrimSpace(approach.Scope), strings.Join(seqs, ", "))
+	}
+	body := formatApproach(pair.Approaches[0]) + " vs " + formatApproach(pair.Approaches[1]) + " — unsettled"
+	if count := len(pair.Trials); count > 0 {
+		word := "trials"
+		if count == 1 {
+			word = "trial"
+		}
+		body += fmt.Sprintf("; %d inconclusive %s (latest: %s)", count, word, pair.Trials[count-1].NodeID)
+	}
+	return bounded(body, MaxFactBytes)
+}
+
+// Fact statuses. Candidates, settled, and quarantined facts stay in the table
+// — the journal never forgets — but retrieval returns active facts only.
+const (
+	FactCandidate   = "candidate"
+	FactActive      = "active"
+	FactSuperseded  = "superseded"
+	FactQuarantined = "quarantined"
+
+	QuestionOpen       = "open"
+	QuestionPracticing = "practicing"
+	QuestionResolved   = "resolved"
+	QuestionRetired    = "retired"
+)
+
+// FactChangeOrigin names who changed a fact's retrieval status.
+type FactChangeOrigin string
+
+const (
+	FactOriginUser         FactChangeOrigin = "user"
+	FactOriginCLI          FactChangeOrigin = "cli"
+	FactOriginConsolidator FactChangeOrigin = "consolidator"
+	FactOriginSupersession FactChangeOrigin = "supersession"
+)
+
+// FactChannel records how a belief entered the notebook.
+type FactChannel string
+
+const (
+	FactChannelStated    FactChannel = "stated"
+	FactChannelInferred  FactChannel = "inferred"
+	FactChannelDistilled FactChannel = "distilled"
+	FactChannelTrial     FactChannel = "trial"
+)
+
+// FactWriter names the bounded write seams from which channels are derived.
+type FactWriter string
+
+const (
+	FactWriterOther     FactWriter = "other"
+	FactWriterHead      FactWriter = "head"
+	FactWriterDistiller FactWriter = "distiller"
+	FactWriterTrial     FactWriter = "trial"
+)
+
+// ChannelForWriter derives a fact's channel at its write boundary.
+func ChannelForWriter(writer FactWriter) FactChannel {
+	switch writer {
+	case FactWriterHead:
+		return FactChannelStated
+	case FactWriterDistiller:
+		return FactChannelDistilled
+	case FactWriterTrial:
+		return FactChannelTrial
+	default:
+		return FactChannelInferred
+	}
+}
+
+// Fact is one materialized notebook entry.
+type Fact struct {
+	Seq          int64
+	Time         time.Time
+	NodeID       string // the node whose work taught this
+	Scope        string // what it is about: user, env, tool:x, repo:/p, file:/p/f, domain:x
+	Kind         FactKind
+	Channel      FactChannel
+	Body         string
+	Status       string
+	StatusSeq    int64
+	EvidenceSeq  int64
+	StatusOrigin FactChangeOrigin
+
+	// Unsettled is present only when Kind is FactUnsettled. Body is its
+	// readable projection; this payload is what code branches on.
+	Unsettled *UnsettledPair
+
+	// Artifact points at a skill candidate's teaching directory, then at its
+	// installed directory after execution promotion. StatusNote records why a
+	// candidate or active skill was retired.
+	Artifact   string
+	StatusNote string
+
+	// Uses and LastUsed are retrieval telemetry for consolidation, not
+	// journaled truth: Rebuild resets them, deliberately, and so does the facts
+	// migration. Nothing ranks on them — a value the journal cannot rebuild may
+	// inform a human reading the table, never a retrieval deciding what a model
+	// sees. FactOutcomes answers "has this been useful" from the journal.
+	Uses     int
+	LastUsed time.Time
+	// Confidence is the current shrunk survival rate for Kind x Channel.
+	Confidence float64
+}
+
+const factsSchema = `
+CREATE TABLE IF NOT EXISTS facts (
+    seq       INTEGER PRIMARY KEY REFERENCES events(seq),
+    ts        TEXT NOT NULL,
+    node_id   TEXT NOT NULL,
+    scope     TEXT NOT NULL DEFAULT 'user',
+    kind      TEXT NOT NULL DEFAULT 'fact' CHECK (kind IN ('preference', 'quirk', 'lesson', 'fact', 'unsettled', 'skill', 'playbook', 'question', 'trait')),
+    channel   TEXT NOT NULL DEFAULT 'inferred' CHECK (channel IN ('stated', 'inferred', 'distilled', 'trial')),
+    body      TEXT NOT NULL,
+    unsettled JSON NOT NULL DEFAULT 'null' CHECK (json_valid(unsettled)),
+    status    TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('candidate', 'active', 'superseded', 'quarantined', 'open', 'practicing', 'resolved', 'retired')),
+    artifact  TEXT NOT NULL DEFAULT '',
+    status_note TEXT NOT NULL DEFAULT '',
+    status_seq INTEGER NOT NULL DEFAULT 0,
+    evidence_seq INTEGER NOT NULL DEFAULT 0,
+    status_origin TEXT NOT NULL DEFAULT '',
+    uses      INTEGER NOT NULL DEFAULT 0,
+    last_used TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS facts_scope ON facts (scope, status);
+-- Territory scoping asks for active facts by node, which the scope-leading
+-- index above cannot serve.
+CREATE INDEX IF NOT EXISTS facts_status_node ON facts (status, node_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(body, scope);
+
+CREATE TABLE IF NOT EXISTS question_practices (
+    start_seq          INTEGER PRIMARY KEY REFERENCES events(seq),
+    question_seq       INTEGER NOT NULL REFERENCES facts(seq),
+    job_id             TEXT NOT NULL UNIQUE,
+    baseline_surprise  REAL NOT NULL,
+    expected_tokens    INTEGER NOT NULL DEFAULT 0,
+    result_surprise    REAL,
+    reduced            INTEGER CHECK (reduced IS NULL OR reduced IN (0, 1)),
+    completion_seq     INTEGER REFERENCES events(seq),
+    reason             TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS question_practices_question
+    ON question_practices (question_seq, start_seq);
+`
+
+// factsIndexSchema covers columns that arrive by migration, so it is created
+// once migrateFactsSchema has settled the table's shape rather than beside the
+// table definition, where an older database would not yet have the columns.
+// The prompt-eligibility bar counts prior occurrences of the same body, case
+// folded; indexing the folded expression keeps that count off a full scan of
+// the notebook without changing what it compares.
+const factsIndexSchema = `
+CREATE INDEX IF NOT EXISTS facts_occurrence
+    ON facts (kind, channel, scope, lower(body), seq);
+`
+
+const scopeAliasesSchema = `
+CREATE TABLE IF NOT EXISTS scope_aliases (
+    from_scope TEXT PRIMARY KEY,
+    to_scope   TEXT NOT NULL,
+    event_seq  INTEGER NOT NULL REFERENCES events(seq),
+    CHECK (from_scope <> to_scope)
+);
+CREATE INDEX IF NOT EXISTS scope_aliases_to ON scope_aliases (to_scope);
+`
+
+type factPayload struct {
+	NodeID    string         `json:"node_id"`
+	Scope     string         `json:"scope,omitempty"`
+	Kind      FactKind       `json:"kind,omitempty"`
+	Channel   FactChannel    `json:"channel,omitempty"`
+	Body      string         `json:"body"`
+	Unsettled *UnsettledPair `json:"unsettled,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Artifact  string         `json:"artifact,omitempty"`
+}
+
+type factActivatedPayload struct {
+	FactSeq  int64  `json:"fact_seq"`
+	Artifact string `json:"artifact"`
+}
+
+type factSupersededPayload struct {
+	FactSeq int64  `json:"fact_seq"`
+	BySeq   int64  `json:"by_seq"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+type factInjectionPayload struct {
+	FactSeqs []int64 `json:"fact_seqs"`
+}
+
+type factStatusPayload struct {
+	FactSeq     int64            `json:"fact_seq"`
+	EvidenceSeq int64            `json:"evidence_seq,omitempty"`
+	Origin      FactChangeOrigin `json:"origin"`
+}
+
+type scopeAliasedPayload struct {
+	From string `json:"from_scope"`
+	To   string `json:"to_scope"`
+}
+
+// ScopeAlias is one old scope name and the canonical scope it now resolves
+// to. Seq is the journal event that introduced the direct alias.
+type ScopeAlias struct {
+	From string
+	To   string
+	Seq  int64
+}
+
+// AliasScope journals one taxonomy merge and re-shelves only active facts.
+// Retired and quarantined rows retain the scope they had as historical
+// evidence; retrieval and display resolve that name through the alias table.
+func (s *Store) AliasScope(from, to string) error {
+	from = normalizeScope(from)
+	to = normalizeScope(to)
+	if !compatibleGardenScopes(from, to) || from == to {
+		return fmt.Errorf("alias scope: %w: incompatible scopes %q and %q", ErrInvalid, from, to)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("alias scope: %w", err)
+	}
+	defer tx.Rollback()
+
+	payload := scopeAliasedPayload{From: from, To: to}
+	seq, _, err := appendEvent(tx, "", EventScopeAliased, payload)
+	if err != nil {
+		return fmt.Errorf("alias scope: %w", err)
+	}
+	if err := applyScopeAlias(tx, payload, seq); err != nil {
+		return fmt.Errorf("alias scope: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("alias scope: %w", err)
+	}
+	return nil
+}
+
+// ResolveScope follows aliases to the current shelf. A corrupt cycle is an
+// error rather than a partial answer; the visited-set guard also makes old or
+// manually edited databases safe to query.
+func (s *Store) ResolveScope(scope string) (string, error) {
+	resolved, err := resolveScope(s.db, scope)
+	if err != nil {
+		return "", fmt.Errorf("resolve scope: %w", err)
+	}
+	return resolved, nil
+}
+
+// ScopeAliases lists old names with their transitive canonical destination.
+func (s *Store) ScopeAliases() ([]ScopeAlias, error) {
+	rows, err := s.db.Query(`SELECT from_scope, event_seq FROM scope_aliases ORDER BY from_scope`)
+	if err != nil {
+		return nil, fmt.Errorf("list scope aliases: %w", err)
+	}
+	aliases := make([]ScopeAlias, 0)
+	for rows.Next() {
+		var alias ScopeAlias
+		if err := rows.Scan(&alias.From, &alias.Seq); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("list scope aliases: %w", err)
+		}
+		aliases = append(aliases, alias)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("list scope aliases: %w", err)
+	}
+	rows.Close()
+	for index := range aliases {
+		aliases[index].To, err = resolveScope(s.db, aliases[index].From)
+		if err != nil {
+			return nil, fmt.Errorf("list scope aliases: %w", err)
+		}
+	}
+	return aliases, nil
+}
+
+// RecordFact appends one learned fact. An identical active or quarantined fact
+// in the same scope is superseded rather than duplicated — write-time hygiene
+// is what keeps the notebook worth reading.
+func (s *Store) RecordFact(nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	return s.RecordFactFrom(FactWriterOther, nodeID, scope, kind, body)
+}
+
+// RecordFactFrom derives and persists the observation channel from writer.
+func (s *Store) RecordFactFrom(writer FactWriter, nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	if kind == FactUnsettled {
+		return Fact{}, fmt.Errorf("record fact: %w: unsettled fact requires a structured pair", ErrInvalid)
+	}
+	if kind == FactSkill {
+		return Fact{}, fmt.Errorf("record fact: %w: skills begin as candidates", ErrInvalid)
+	}
+	if kind == FactQuestion {
+		return Fact{}, fmt.Errorf("record fact: %w: questions require the question lifecycle", ErrInvalid)
+	}
+	if kind == FactTrait {
+		return Fact{}, fmt.Errorf("record fact: %w: traits require the measured trait lifecycle", ErrInvalid)
+	}
+	return s.recordFact(writer, nodeID, scope, kind, body, nil, 0, FactActive, "", true)
+}
+
+// RecordUnsettledFact appends one structured competing pair. Its Body is
+// derived from the pair so the searchable prose cannot disagree with code.
+func (s *Store) RecordUnsettledFact(nodeID, scope string, pair UnsettledPair) (Fact, error) {
+	return s.RecordUnsettledFactFrom(FactWriterOther, nodeID, scope, pair)
+}
+
+// RecordUnsettledFactFrom records a structured pair on writer's channel.
+func (s *Store) RecordUnsettledFactFrom(writer FactWriter, nodeID, scope string, pair UnsettledPair) (Fact, error) {
+	if err := pair.Validate(); err != nil {
+		return Fact{}, fmt.Errorf("record unsettled fact: %w: %v", ErrInvalid, err)
+	}
+	return s.recordFact(writer, nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, 0, FactActive, "", true)
+}
+
+// ReplaceFact records a new ordinary fact and supersedes factSeq in the same
+// transaction. A failed replacement leaves neither event behind.
+func (s *Store) ReplaceFact(factSeq int64, nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	return s.ReplaceFactFrom(FactWriterOther, factSeq, nodeID, scope, kind, body)
+}
+
+// ReplaceFactFrom records a replacement on writer's derived channel.
+func (s *Store) ReplaceFactFrom(writer FactWriter, factSeq int64, nodeID, scope string, kind FactKind, body string) (Fact, error) {
+	if factSeq <= 0 {
+		return Fact{}, fmt.Errorf("replace fact: %w: invalid replaced sequence %d", ErrInvalid, factSeq)
+	}
+	if kind == FactUnsettled {
+		return Fact{}, fmt.Errorf("replace fact: %w: unsettled fact requires a structured pair", ErrInvalid)
+	}
+	if kind == FactSkill {
+		return Fact{}, fmt.Errorf("replace fact: %w: skills begin as candidates", ErrInvalid)
+	}
+	if kind == FactQuestion {
+		return Fact{}, fmt.Errorf("replace fact: %w: questions require the question lifecycle", ErrInvalid)
+	}
+	if kind == FactTrait {
+		return Fact{}, fmt.Errorf("replace fact: %w: traits require the measured trait lifecycle", ErrInvalid)
+	}
+	return s.recordFact(writer, nodeID, scope, kind, body, nil, factSeq, FactActive, "", true)
+}
+
+// ReplaceUnsettledFactFrom carries a pair forward on writer's channel.
+func (s *Store) ReplaceUnsettledFactFrom(writer FactWriter, factSeq int64, nodeID, scope string, pair UnsettledPair) (Fact, error) {
+	if factSeq <= 0 {
+		return Fact{}, fmt.Errorf("replace unsettled fact: %w: invalid replaced sequence %d", ErrInvalid, factSeq)
+	}
+	if err := pair.Validate(); err != nil {
+		return Fact{}, fmt.Errorf("replace unsettled fact: %w: %v", ErrInvalid, err)
+	}
+	return s.recordFact(writer, nodeID, scope, FactUnsettled, FormatUnsettledPair(pair), &pair, factSeq, FactActive, "", true)
+}
+
+// RecordSkillCandidate journals a procedure the distiller found in one job.
+// It is intentionally absent from retrieval until a later execution event
+// activates it.
+func (s *Store) RecordSkillCandidate(nodeID, scope, body, artifact string) (Fact, error) {
+	return s.RecordSkillCandidateFrom(FactWriterOther, nodeID, scope, body, artifact)
+}
+
+// RecordSkillCandidateFrom records a candidate on writer's channel.
+func (s *Store) RecordSkillCandidateFrom(writer FactWriter, nodeID, scope, body, artifact string) (Fact, error) {
+	artifact = strings.TrimSpace(artifact)
+	if artifact == "" {
+		return Fact{}, fmt.Errorf("record skill candidate: %w: empty artifact", ErrInvalid)
+	}
+	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactCandidate, artifact, false)
+}
+
+// RewriteActiveSkillFrom rewrites an active skill on writer's channel.
+func (s *Store) RewriteActiveSkillFrom(writer FactWriter, nodeID, scope, body string, sourceSeq int64) (Fact, error) {
+	sources, err := s.factsWhere(`seq = ? AND kind = ? AND status = ?`,
+		sourceSeq, FactSkill, FactActive)
+	if err != nil {
+		return Fact{}, fmt.Errorf("rewrite active skill: %w", err)
+	}
+	if len(sources) != 1 || strings.TrimSpace(sources[0].Artifact) == "" {
+		return Fact{}, fmt.Errorf("rewrite active skill: %w: source %d is not active", ErrInvalid, sourceSeq)
+	}
+	return s.recordFact(writer, nodeID, scope, FactSkill, body, nil, 0, FactActive, sources[0].Artifact, true)
+}
+
+func (s *Store) recordFact(writer FactWriter, nodeID, scope string, kind FactKind, body string, unsettled *UnsettledPair, replaces int64, status, artifact string, deduplicate bool) (Fact, error) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return Fact{}, fmt.Errorf("record fact: %w: empty fact", ErrInvalid)
+	}
+	if len(body) > MaxFactBytes {
+		return Fact{}, fmt.Errorf("record fact: %w: fact is %d bytes (limit %d)", ErrInvalid, len(body), MaxFactBytes)
+	}
+	if kind == FactSkill && strings.ContainsAny(body, "\r\n") {
+		return Fact{}, fmt.Errorf("record skill: %w: doc must be one line", ErrInvalid)
+	}
+	scope = normalizeScope(scope)
+	if !validFactKind(kind) {
+		kind = FactPlain
+	}
+	if kind == FactPlaybook {
+		if strings.ContainsAny(body, "\r\n") {
+			return Fact{}, fmt.Errorf("record playbook: %w: bullet must be one line", ErrInvalid)
+		}
+		if !validPlaybookScope(scope) {
+			return Fact{}, fmt.Errorf("record playbook: %w: scope %q is not repo, tool, or domain", ErrInvalid, scope)
+		}
+	}
+	if kind == FactQuestion && strings.ContainsAny(body, "\r\n") {
+		return Fact{}, fmt.Errorf("record question: %w: gap must be one line", ErrInvalid)
+	}
+	if kind == FactUnsettled {
+		if unsettled == nil {
+			return Fact{}, fmt.Errorf("record fact: %w: unsettled fact requires a structured pair", ErrInvalid)
+		}
+	} else if unsettled != nil {
+		return Fact{}, fmt.Errorf("record fact: %w: only unsettled facts carry a pair", ErrInvalid)
+	}
+	if !validFactStatusForKind(kind, status) {
+		status = defaultFactStatus(kind)
+	}
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return Fact{}, fmt.Errorf("record fact: %w", err)
+	}
+	defer tx.Rollback()
+	resolvedScope, err := resolveScope(tx, scope)
+	if err != nil {
+		return Fact{}, fmt.Errorf("record fact: %w", err)
+	}
+	scope = resolvedScope
+
+	if nodeID != "" {
+		if err := requireNode(tx, nodeID); err != nil {
+			return Fact{}, fmt.Errorf("record fact: %w", err)
+		}
+	}
+	if unsettled != nil {
+		if err := requireUnsettledEvidence(tx, *unsettled); err != nil {
+			return Fact{}, fmt.Errorf("record fact: %w", err)
+		}
+	}
+
+	var duplicate int64
+	if deduplicate {
+		var duplicateStatus, duplicateOrigin string
+		err = tx.QueryRow(`
+			SELECT seq, status, status_origin FROM facts
+			WHERE scope = ? AND status IN (?, ?) AND lower(body) = lower(?)
+			ORDER BY status = ? DESC, seq DESC LIMIT 1`,
+			scope, FactActive, FactQuarantined, body, FactActive).Scan(
+			&duplicate, &duplicateStatus, &duplicateOrigin)
+		if err != nil && err != sql.ErrNoRows {
+			return Fact{}, fmt.Errorf("record fact: %w", err)
+		}
+		// A human veto and a consolidator's tidy-up used to be the same row.
+		// They are not: the distiller re-derives the same belief from the same
+		// world the day after the user says "forget that", dedup finds the
+		// quarantined row and supersedes it with a fresh active one, and the
+		// retraction ends up counted as evidence for the thing it retracted.
+		// Only the user's own voice may lift the user's own veto — everything
+		// else finds the retraction still standing and leaves it standing.
+		if duplicateStatus == FactQuarantined && duplicateOrigin == string(FactOriginUser) &&
+			writer != FactWriterHead {
+			retracted, found, err := factInTx(tx, duplicate)
+			if err != nil {
+				return Fact{}, fmt.Errorf("record fact: %w", err)
+			}
+			if found {
+				return retracted, ErrFactVetoed
+			}
+		}
+	}
+
+	channel := ChannelForWriter(writer)
+	payload := factPayload{NodeID: nodeID, Scope: scope, Kind: kind, Channel: channel, Body: body,
+		Unsettled: unsettled, Status: status, Artifact: artifact}
+	seq, at, err := appendEvent(tx, nodeID, EventFactLearned, payload)
+	if err != nil {
+		return Fact{}, fmt.Errorf("record fact: %w", err)
+	}
+	if err := applyFactView(tx, payload, seq, at); err != nil {
+		return Fact{}, fmt.Errorf("record fact: %w", err)
+	}
+	supersededSeqs := make([]int64, 0, 2)
+	if duplicate != 0 {
+		supersededSeqs = append(supersededSeqs, duplicate)
+	}
+	if replaces != 0 && replaces != duplicate {
+		supersededSeqs = append(supersededSeqs, replaces)
+	}
+	for _, supersededSeq := range supersededSeqs {
+		superseded := factSupersededPayload{FactSeq: supersededSeq, BySeq: seq}
+		supersessionSeq, _, err := appendEvent(tx, "", EventFactSuperseded, superseded)
+		if err != nil {
+			return Fact{}, fmt.Errorf("record fact: %w", err)
+		}
+		if err := applyFactSupersession(tx, superseded, supersessionSeq); err != nil {
+			return Fact{}, fmt.Errorf("record fact: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Fact{}, fmt.Errorf("record fact: %w", err)
+	}
+	return Fact{Seq: seq, Time: at, NodeID: nodeID, Scope: scope, Kind: kind, Channel: channel, Body: body,
+		Status: status, StatusSeq: seq, Unsettled: unsettled, Artifact: artifact}, nil
+}
+
+// ActivateSkill journals the only transition that makes a candidate
+// retrievable. The caller has already copied and executed the artifact check.
+func (s *Store) ActivateSkill(factSeq int64, artifact string) error {
+	artifact = strings.TrimSpace(artifact)
+	if artifact == "" {
+		return fmt.Errorf("activate skill: %w: empty artifact", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("activate skill: %w", err)
+	}
+	defer tx.Rollback()
+
+	payload := factActivatedPayload{FactSeq: factSeq, Artifact: artifact}
+	if _, _, err := appendEvent(tx, "", EventFactActivated, payload); err != nil {
+		return fmt.Errorf("activate skill: %w", err)
+	}
+	if err := applyFactActivation(tx, payload); err != nil {
+		return fmt.Errorf("activate skill: %w", err)
+	}
+	return tx.Commit()
+}
+
+// SupersedeFact retires one active or quarantined fact in favour of another,
+// journaled.
+// Consolidation uses it to rewrite a scope into fewer, better lines.
+func (s *Store) SupersedeFact(factSeq, bySeq int64) error {
+	return s.SupersedeFactWithReason(factSeq, bySeq, "")
+}
+
+// SupersedeFactWithReason records why a belief retired. Skill trial failures
+// use the reason as durable execution evidence even when there is no replacing
+// fact and bySeq is zero.
+func (s *Store) SupersedeFactWithReason(factSeq, bySeq int64, reason string) error {
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("supersede fact: %w", err)
+	}
+	defer tx.Rollback()
+
+	payload := factSupersededPayload{FactSeq: factSeq, BySeq: bySeq, Reason: strings.TrimSpace(reason)}
+	seq, _, err := appendEvent(tx, "", EventFactSuperseded, payload)
+	if err != nil {
+		return fmt.Errorf("supersede fact: %w", err)
+	}
+	if err := applyFactSupersession(tx, payload, seq); err != nil {
+		return fmt.Errorf("supersede fact: %w", err)
+	}
+	return tx.Commit()
+}
+
+// SkillFacts lists skills in one status, newest first. Empty status includes
+// candidates, active skills, and retired entries for reconciliation.
+func (s *Store) SkillFacts(status string, limit int) ([]Fact, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if status == "" {
+		return s.factsWhere(`kind = ? ORDER BY seq DESC LIMIT ?`, FactSkill, limit)
+	}
+	if !validFactStatus(status) {
+		return nil, fmt.Errorf("query skills: %w: invalid status %q", ErrInvalid, status)
+	}
+	return s.factsWhere(`kind = ? AND status = ? ORDER BY seq DESC LIMIT ?`, FactSkill, status, limit)
+}
+
+// RecordFactInjection attributes one bounded notebook batch to the node whose
+// context received it. Repeated calls are legal; outcome accounting counts a
+// fact's ride on a node once.
+func (s *Store) RecordFactInjection(nodeID string, factSeqs []int64) error {
+	nodeID = strings.TrimSpace(nodeID)
+	factSeqs = normalizedFactSeqs(factSeqs)
+	if nodeID == "" {
+		return fmt.Errorf("record fact injection: %w: empty node id", ErrInvalid)
+	}
+	if len(factSeqs) == 0 {
+		return nil
+	}
+
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("record fact injection: %w", err)
+	}
+	defer tx.Rollback()
+	if err := requireNode(tx, nodeID); err != nil {
+		return fmt.Errorf("record fact injection: %w", err)
+	}
+	for _, factSeq := range factSeqs {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM facts WHERE seq = ?`, factSeq).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("record fact injection: %w: fact %d not found", ErrNotFound, factSeq)
+			}
+			return fmt.Errorf("record fact injection: %w", err)
+		}
+	}
+	if _, _, err := appendEvent(tx, nodeID, EventFactInjected,
+		factInjectionPayload{FactSeqs: factSeqs}); err != nil {
+		return fmt.Errorf("record fact injection: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("record fact injection: %w", err)
+	}
+	return nil
+}
+
+// QuarantineFact removes one active fact from every retrieval path. The event
+// itself is the evidence when evidenceSeq is zero, as for a direct CLI veto.
+func (s *Store) QuarantineFact(factSeq, evidenceSeq int64, origin FactChangeOrigin) error {
+	if factSeq <= 0 || !validFactChangeOrigin(origin) {
+		return fmt.Errorf("quarantine fact: %w: invalid fact or origin", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("quarantine fact: %w", err)
+	}
+	defer tx.Rollback()
+	if evidenceSeq > 0 {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM events WHERE seq = ?`, evidenceSeq).Scan(&exists); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("quarantine fact: %w: evidence event %d not found", ErrNotFound, evidenceSeq)
+			}
+			return fmt.Errorf("quarantine fact: %w", err)
+		}
+	}
+	payload := factStatusPayload{FactSeq: factSeq, EvidenceSeq: evidenceSeq, Origin: origin}
+	seq, _, err := appendEvent(tx, "", EventFactQuarantined, payload)
+	if err != nil {
+		return fmt.Errorf("quarantine fact: %w", err)
+	}
+	if err := applyFactQuarantine(tx, payload, seq); err != nil {
+		return fmt.Errorf("quarantine fact: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("quarantine fact: %w", err)
+	}
+	return nil
+}
+
+// RestoreFact returns one quarantined fact to retrieval. Restoration is a new
+// journal event; the quarantine evidence remains intact in the earlier event.
+func (s *Store) RestoreFact(factSeq int64, origin FactChangeOrigin) error {
+	if factSeq <= 0 || !validFactChangeOrigin(origin) {
+		return fmt.Errorf("restore fact: %w: invalid fact or origin", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("restore fact: %w", err)
+	}
+	defer tx.Rollback()
+	payload := factStatusPayload{FactSeq: factSeq, Origin: origin}
+	seq, _, err := appendEvent(tx, "", EventFactRestored, payload)
+	if err != nil {
+		return fmt.Errorf("restore fact: %w", err)
+	}
+	if err := applyFactRestore(tx, payload, seq); err != nil {
+		return fmt.Errorf("restore fact: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("restore fact: %w", err)
+	}
+	return nil
+}
+
+// FactBySeq returns one notebook entry regardless of retrieval status.
+func (s *Store) FactBySeq(seq int64) (Fact, bool, error) {
+	facts, err := s.factsWhere(`seq = ?`, seq)
+	if err != nil {
+		return Fact{}, false, err
+	}
+	if len(facts) == 0 {
+		return Fact{}, false, nil
+	}
+	return facts[0], true, nil
+}
+
+// Facts lists notebook entries in journal order, including settled and
+// quarantined beliefs. A non-positive limit returns the complete notebook.
+func (s *Store) Facts(limit int) ([]Fact, error) {
+	if limit <= 0 {
+		return s.factsWhere(`1 = 1 ORDER BY seq DESC`)
+	}
+	return s.factsWhere(`1 = 1 ORDER BY seq DESC LIMIT ?`, limit)
+}
+
+// FactOutcome is the outcome co-occurrence attached to one notebook fact.
+// Bad counts distinct injected nodes that failed, hit a failed delivery gate,
+// or grew an overrun continuation. LatestBadSeq is evidence for quarantine.
+type FactOutcome struct {
+	FactSeq      int64
+	Rides        int
+	Bad          int
+	LatestBadSeq int64
+}
+
+// FactOutcomes joins journal-native injections to graph and gate outcomes.
+// The query deliberately assigns correlation, not causation; policy about how
+// much repeated evidence warrants quarantine belongs to consolidation.
+func (s *Store) FactOutcomes() (map[int64]FactOutcome, error) {
+	rows, err := s.db.Query(`
+		WITH injection_pairs AS (
+			SELECT DISTINCT injected.node_id AS node_id,
+			       CAST(fact.value AS INTEGER) AS fact_seq
+			FROM events AS injected, json_each(injected.payload, '$.fact_seqs') AS fact
+			WHERE injected.kind = ?
+		), latest_gates AS (
+			SELECT gate.node_id, gate.seq,
+			       CAST(json_extract(gate.payload, '$.pass') AS INTEGER) AS pass
+			FROM events AS gate
+			JOIN (
+				SELECT node_id, MAX(seq) AS seq
+				FROM events WHERE kind = ? GROUP BY node_id
+			) AS latest ON latest.seq = gate.seq
+		), failures AS (
+			SELECT node_id, MAX(seq) AS seq
+			FROM events WHERE kind = ? GROUP BY node_id
+		), overruns AS (
+			SELECT injected.node_id, MAX(continuation.created_seq) AS seq
+			FROM (SELECT DISTINCT node_id FROM injection_pairs) AS injected
+			JOIN nodes AS continuation
+			  ON instr(continuation.id, injected.node_id || '-x1') = 1
+			GROUP BY injected.node_id
+		), outcomes AS (
+			SELECT injected.fact_seq, injected.node_id,
+			       max(
+				CASE WHEN node.status = ? THEN COALESCE(failures.seq, 0) ELSE 0 END,
+				CASE WHEN latest_gates.pass = 0 THEN latest_gates.seq ELSE 0 END,
+				COALESCE(overruns.seq, 0)
+			       ) AS bad_seq
+			FROM injection_pairs AS injected
+			JOIN nodes AS node ON node.id = injected.node_id
+			LEFT JOIN latest_gates ON latest_gates.node_id = injected.node_id
+			LEFT JOIN failures ON failures.node_id = injected.node_id
+			LEFT JOIN overruns ON overruns.node_id = injected.node_id
+		)
+		SELECT fact_seq, COUNT(*) AS rides,
+		       SUM(CASE WHEN bad_seq > 0 THEN 1 ELSE 0 END) AS bad,
+		       MAX(bad_seq) AS latest_bad_seq
+		FROM outcomes GROUP BY fact_seq`,
+		EventFactInjected, EventDeliveryGate, EventNodeFailed, Failed)
+	if err != nil {
+		return nil, fmt.Errorf("fact outcomes: %w", err)
+	}
+	defer rows.Close()
+	outcomes := make(map[int64]FactOutcome)
+	for rows.Next() {
+		var outcome FactOutcome
+		if err := rows.Scan(&outcome.FactSeq, &outcome.Rides, &outcome.Bad,
+			&outcome.LatestBadSeq); err != nil {
+			return nil, fmt.Errorf("fact outcomes: %w", err)
+		}
+		outcomes[outcome.FactSeq] = outcome
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("fact outcomes: %w", err)
+	}
+	return outcomes, nil
+}
+
+// Taste is a lifecycle laid over ordinary preference facts, not a new kind of
+// thing: a rule the user keeps correcting toward, kept on a shelf of its own so
+// its identity survives every promotion and demotion. The shelf is the
+// identity — standing a rule up records a new active line over the same scope
+// and supersedes the old one, exactly as consolidation rewrites a belief — so
+// taste earned a lifecycle without a new table, event, or status.
+const (
+	// TasteScopePrefix keeps taste rules off the shelves ordinary cue retrieval
+	// walks, so a rule still under trial cannot reach a worker as settled fact.
+	TasteScopePrefix = "taste:"
+	// TasteRepeatCorrections is the birth bar: one correction is an instruction,
+	// two of the same shape are a pattern worth naming.
+	TasteRepeatCorrections = 2
+	// tasteSlugBytes bounds the shelf name derived from a rule's own words.
+	tasteSlugBytes = 64
+)
+
+// TasteScope names the shelf one rule owns: what it is about, then a slug of
+// the rule's own words, so the same rule always lands on the same shelf. An
+// unusable rule returns the empty string rather than a shelf nothing can find.
+func TasteScope(subject, body string) string {
+	slug := normalizeTraitName(body)
+	if len(slug) > tasteSlugBytes {
+		slug = slug[:tasteSlugBytes]
+		if cut := strings.LastIndexByte(slug, '-'); cut > 0 {
+			slug = slug[:cut]
+		}
+	}
+	slug = strings.Trim(slug, "-")
+	if slug == "" {
+		return ""
+	}
+	return TasteScopePrefix + normalizeScope(subject) + ":" + slug
+}
+
+// TasteSubject reverses TasteScope's subject half. The slug carries no colon,
+// so the last one separates a subject that may itself be scoped — repo:/p.
+func TasteSubject(scope string) (string, bool) {
+	scope = normalizeScope(scope)
+	if !strings.HasPrefix(scope, TasteScopePrefix) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(scope, TasteScopePrefix)
+	cut := strings.LastIndexByte(rest, ':')
+	if cut <= 0 || cut == len(rest)-1 {
+		return "", false
+	}
+	return rest[:cut], true
+}
+
+// TasteRules returns the current line on every taste shelf, newest first. An
+// empty status returns each shelf whatever its standing; a shelf's superseded
+// history stays in the journal and out of this answer.
+func (s *Store) TasteRules(status string) ([]Fact, error) {
+	if status != "" && status != FactCandidate && status != FactActive {
+		return nil, fmt.Errorf("query taste rules: %w: invalid status %q", ErrInvalid, status)
+	}
+	facts, err := s.factsWhere(`kind = ? AND scope LIKE ? AND status IN (?, ?) ORDER BY seq DESC`,
+		FactPreference, TasteScopePrefix+"%", FactCandidate, FactActive)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]bool, len(facts))
+	rules := make([]Fact, 0, len(facts))
+	for _, fact := range facts {
+		if seen[fact.Scope] {
+			continue
+		}
+		seen[fact.Scope] = true
+		if status != "" && fact.Status != status {
+			continue
+		}
+		rules = append(rules, fact)
+	}
+	return rules, nil
+}
+
+// RecordTasteCandidate opens one shelf with the correction that named it. A
+// shelf may be opened once; every later standing is a re-record over the same
+// scope, which is what makes the shelf the rule's durable identity.
+func (s *Store) RecordTasteCandidate(nodeID, subject, body string) (Fact, error) {
+	scope := TasteScope(subject, body)
+	if scope == "" {
+		return Fact{}, fmt.Errorf("record taste candidate: %w: rule has no words", ErrInvalid)
+	}
+	existing, err := s.factsWhere(`scope = ? LIMIT 1`, scope)
+	if err != nil {
+		return Fact{}, err
+	}
+	if len(existing) > 0 {
+		return Fact{}, fmt.Errorf("record taste candidate: %w: shelf %q is already open", ErrInvalid, scope)
+	}
+	return s.recordFact(FactWriterDistiller, nodeID, scope, FactPreference, body, nil, 0, FactCandidate, "", false)
+}
+
+// PromoteTasteRule stands one candidate up as a rule the gate is held to.
+func (s *Store) PromoteTasteRule(seq int64) (Fact, error) {
+	return s.restandTasteRule(seq, FactActive)
+}
+
+// DemoteTasteRule returns one active rule to candidacy after the user has said
+// twice that the delivery was right as it was.
+func (s *Store) DemoteTasteRule(seq int64) (Fact, error) {
+	return s.restandTasteRule(seq, FactCandidate)
+}
+
+func (s *Store) restandTasteRule(seq int64, status string) (Fact, error) {
+	facts, err := s.factsWhere(`seq = ?`, seq)
+	if err != nil {
+		return Fact{}, err
+	}
+	if len(facts) == 0 {
+		return Fact{}, fmt.Errorf("restand taste rule: %w: no fact at seq %d", ErrNotFound, seq)
+	}
+	rule := facts[0]
+	if _, ok := TasteSubject(rule.Scope); !ok || rule.Kind != FactPreference {
+		return Fact{}, fmt.Errorf("restand taste rule: %w: fact %d is not a taste rule", ErrInvalid, seq)
+	}
+	if rule.Status == status {
+		return Fact{}, fmt.Errorf("restand taste rule: %w: rule %d is already %s", ErrInvalid, seq, status)
+	}
+	if rule.Status != FactCandidate && rule.Status != FactActive {
+		return Fact{}, fmt.Errorf("restand taste rule: %w: rule %d is %s", ErrInvalid, seq, rule.Status)
+	}
+	return s.recordFact(FactWriterDistiller, rule.NodeID, rule.Scope, FactPreference, rule.Body,
+		nil, seq, status, "", false)
+}
+
+// NeighbouringCorrections ranks the corrections already in the notebook
+// against one of their own, best first, on the same FTS5/BM25 index every other
+// retrieval uses. It narrows, it does not decide: on a young notebook every
+// taste word is in most of the lines, BM25's idf collapses, and the ranking
+// carries no signal at all — so the caller still has to judge each neighbour.
+// Taste shelves are excluded, because a rule may not be evidence for itself.
+func (s *Store) NeighbouringCorrections(body string, excludeSeq, limit int64) ([]Fact, error) {
+	terms := ftsQueryFrom(body)
+	if terms == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 12
+	}
+	rows, err := s.db.Query(`
+		SELECT facts_fts.rowid
+		FROM facts_fts JOIN facts AS f ON f.seq = facts_fts.rowid
+		WHERE facts_fts MATCH ? AND f.status = ? AND f.kind = ?
+		  AND f.seq <> ? AND f.scope NOT LIKE ?
+		ORDER BY bm25(facts_fts) LIMIT ?`,
+		terms, FactActive, FactPreference, excludeSeq, TasteScopePrefix+"%", limit)
+	if err != nil {
+		// An FTS syntax error from a hostile body is a miss, not a failure.
+		return nil, nil
+	}
+	seqs := make([]int64, 0, limit)
+	for rows.Next() {
+		var seq int64
+		if err := rows.Scan(&seq); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("neighbouring corrections: %w", err)
+		}
+		seqs = append(seqs, seq)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("neighbouring corrections: %w", err)
+	}
+	rows.Close()
+	neighbours := make([]Fact, 0, len(seqs))
+	for _, seq := range seqs {
+		fact, found, err := s.FactBySeq(seq)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			neighbours = append(neighbours, fact)
+		}
+	}
+	return neighbours, nil
+}
+
+// RecordTasteCorrectionOnce files a free-text taste answer where corrections
+// already live: on the shelf's subject, as an ordinary preference line, which
+// is exactly what the aggregation pass reads. It is idempotent because the
+// answer is durable and the pass that reads it runs every tick — recording the
+// same sentence again would supersede its own copy forever, and a notebook that
+// churns is a notebook nobody can trust.
+//
+// recorded is false when the line is already on that shelf.
+func (s *Store) RecordTasteCorrectionOnce(nodeID, subject, body string) (Fact, bool, error) {
+	body = strings.TrimSpace(body)
+	subject = normalizeScope(subject)
+	if body == "" || subject == "" || strings.HasPrefix(subject, TasteScopePrefix) {
+		return Fact{}, false, fmt.Errorf("record taste correction: %w: subject and body are required", ErrInvalid)
+	}
+	existing, err := s.factsWhere(`scope = ? AND kind = ? AND status = ? AND lower(body) = lower(?) LIMIT 1`,
+		subject, FactPreference, FactActive, body)
+	if err != nil {
+		return Fact{}, false, fmt.Errorf("record taste correction: %w", err)
+	}
+	if len(existing) > 0 {
+		return existing[0], false, nil
+	}
+	// The stated channel, because that is what this is: the user's own sentence
+	// about what they wanted, typed rather than inferred from a delivery.
+	fact, err := s.RecordFactFrom(FactWriterHead, nodeID, subject, FactPreference, body)
+	if err != nil {
+		return Fact{}, false, err
+	}
+	return fact, true, nil
+}
+
+// CorrectionFacts lists the ordinary preference lines taste aggregates over —
+// what the distiller wrote down when the user corrected something — newest
+// first, with the taste shelves left out.
+func (s *Store) CorrectionFacts(limit int) ([]Fact, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	return s.factsWhere(`kind = ? AND status = ? AND scope NOT LIKE ? ORDER BY seq DESC LIMIT ?`,
+		FactPreference, FactActive, TasteScopePrefix+"%", limit)
+}
+
+// RetractedFacts lists what the user has explicitly thrown away, newest first.
+//
+// The derivation path's whole visible world is FactActive — searchFacts filters
+// on it in both arms and the quarantine also deletes the row from the FTS index
+// — so the one thing the distiller could never see was what the user had
+// refused, which is exactly the thing it needs in order not to write it down
+// again. The store now refuses to promote a human veto on its own (see
+// recordFact), and this is the other half: the lines a derivation prompt can be
+// shown as already-rejected, so the model has the evidence rather than the
+// system having a rule.
+func (s *Store) RetractedFacts(limit int) ([]Fact, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	return s.factsWhere(`status = ? AND status_origin = ? ORDER BY status_seq DESC LIMIT ?`,
+		FactQuarantined, FactOriginUser, limit)
+}
+
+func normalizedFactSeqs(seqs []int64) []int64 {
+	seen := make(map[int64]bool, len(seqs))
+	normalized := make([]int64, 0, len(seqs))
+	for _, seq := range seqs {
+		if seq <= 0 || seen[seq] {
+			continue
+		}
+		seen[seq] = true
+		normalized = append(normalized, seq)
+	}
+	return normalized
+}
+
+// FactQuery is one retrieval: ordered scope cues (most specific first) plus
+// optional free-text terms for the BM25 layer.
+type FactQuery struct {
+	// Cues are scope keys to match exactly, in priority order — the caller
+	// walks hierarchies (file → folder → repo) into this list.
+	Cues []string
+	// Terms feed FTS5/BM25 and may be empty.
+	Terms string
+	// Kind restricts retrieval to one fact kind. Empty includes every kind.
+	Kind FactKind
+	// PreferUseful orders proven matches first and newest matches next: a fact
+	// that has ridden into real work and come back without a failed gate
+	// outranks one that has not. Scope cue order remains the primary match
+	// signal when this is false.
+	PreferUseful bool
+	// MaxBytes bounds the returned scope-and-body bullet lines. Zero is
+	// unbounded; the small per-line allowance covers "- [scope] body\n".
+	MaxBytes int
+	Limit    int
+}
+
+// SearchFacts blends the two retrieval layers under reserved slots: the scope
+// cues get their share, relevance gets a share that nothing can eat, and the
+// leftovers go to whichever arm still has candidates. Returned facts have their
+// use telemetry bumped.
+func (s *Store) SearchFacts(query FactQuery) ([]Fact, error) {
+	return s.searchFacts(query, true)
+}
+
+// SearchFactsUncounted performs the same retrieval without changing use
+// telemetry. Notebook maintenance calls use it so the notebook cannot make
+// its own lines look useful merely by inspecting them.
+func (s *Store) SearchFactsUncounted(query FactQuery) ([]Fact, error) {
+	return s.searchFacts(query, false)
+}
+
+// relevanceReserveShare is the fraction of one retrieval that belongs to
+// relevance and that no scope cue may eat: one slot in every two.
+//
+// The two arms used to run in sequence. Every cue went first, each one allowed
+// the entire limit, and BM25 ran only "if len(results) < query.Limit" — so on
+// any notebook with more than a handful of user-scoped beliefs, the `user` cue
+// that ExtractCues appends to every single query filled the answer with the
+// newest lines and the relevance arm never executed at all. What the head and
+// every leaf read was a recency feed wearing a retrieval's name, and a belief
+// the message was actually about became unreachable the moment anything newer
+// happened to share a cue with it.
+//
+// Half is deliberately generous to relevance. Cues are the precise signal when
+// they are precise (file:, repo:, tool:) and pure noise when they degenerate to
+// ["user","env"] on prose, and the query itself cannot tell which case it is
+// in. Splitting the capacity means neither arm can silence the other, which is
+// the only property that was ever missing.
+const relevanceReserveShare = 2
+
+func (s *Store) searchFacts(query FactQuery, countUses bool) ([]Fact, error) {
+	if query.Limit <= 0 {
+		query.Limit = 12
+	}
+	if query.Kind != "" && !validFactKind(query.Kind) {
+		return nil, fmt.Errorf("search facts: %w: invalid kind %q", ErrInvalid, query.Kind)
+	}
+	// The ordering that matters is applied in Go, against journal-derived
+	// evidence, once the candidates are known. SQL orders by recency alone.
+	const order = "seq DESC"
+	// Candidates are drawn wider than the answer, because eligibility is judged
+	// per row and used to be judged AFTER the cut: a query for eight could come
+	// back with two while six perfectly good beliefs sat unread behind the
+	// LIMIT. The over-draw is that backfill. It costs nothing until it is used —
+	// admission is lazy, so a retrieval that fills on its first candidates never
+	// asks the eligibility question about the rest.
+	candidateDraw := query.Limit * 3
+	if candidateDraw < 24 {
+		candidateDraw = 24
+	}
+
+	// Channel survival is one projection of the whole journal. Every candidate
+	// asks it the same question, so this retrieval derives it at most once and
+	// only when there is something to weigh.
+	var credibility channelCredibility
+	credibilityLoaded := false
+	loadCredibility := func() (channelCredibility, error) {
+		if credibilityLoaded {
+			return credibility, nil
+		}
+		loaded, err := s.channelCredibility()
+		if err != nil {
+			return channelCredibility{}, err
+		}
+		credibility, credibilityLoaded = loaded, true
+		return credibility, nil
+	}
+
+	seen := make(map[int64]bool)
+	// admit is the one gate every candidate passes, whichever arm found it: seen
+	// once, eligible for a prompt, or it never becomes an answer. A rejected row
+	// still counts as seen so the other arm does not pay to reject it twice.
+	admit := func(fact Fact) (bool, error) {
+		if seen[fact.Seq] {
+			return false, nil
+		}
+		seen[fact.Seq] = true
+		loaded, err := loadCredibility()
+		if err != nil {
+			return false, err
+		}
+		return s.promptEligible(fact, loaded)
+	}
+
+	// One bucket per cue rather than one queue for all of them. The cue list is
+	// ordered most-specific-first, and the old loop let the first cue take the
+	// whole limit — so a brief carrying a file path never reached the `user`
+	// shelf, where a lesson the person had just stated in their own words was
+	// sitting. Round-robin gives specificity the first pick in every round and
+	// still guarantees every cue a seat.
+	buckets := make([][]Fact, 0, len(query.Cues))
+	for _, cue := range query.Cues {
+		resolved, err := resolveScope(s.db, cue)
+		if err != nil {
+			return nil, fmt.Errorf("search facts: %w", err)
+		}
+		where := `scope = ? AND status = ?`
+		args := []any{resolved, FactActive}
+		if query.Kind != "" {
+			where += ` AND kind = ?`
+			args = append(args, query.Kind)
+		}
+		where += ` ORDER BY ` + order + ` LIMIT ?`
+		args = append(args, candidateDraw)
+		facts, err := s.factsWhere(where, args...)
+		if err != nil {
+			return nil, err
+		}
+		if len(facts) > 0 {
+			buckets = append(buckets, facts)
+		}
+	}
+
+	var relevance []Fact
+	if terms := ftsQueryFrom(query.Terms); terms != "" {
+		kindClause := ""
+		args := []any{terms, FactActive}
+		if query.Kind != "" {
+			kindClause = " AND f.kind = ?"
+			args = append(args, query.Kind)
+		}
+		args = append(args, candidateDraw)
+		rows, err := s.db.Query(`
+			SELECT f.seq, f.ts, f.node_id, f.scope, f.kind, f.channel, f.body, f.unsettled, f.status, f.artifact, f.status_note,
+			       f.status_seq, f.evidence_seq, f.status_origin, f.uses, f.last_used
+			FROM facts_fts
+			JOIN facts AS f ON f.seq = facts_fts.rowid
+			WHERE facts_fts MATCH ? AND f.status = ?`+kindClause+`
+			ORDER BY bm25(facts_fts) LIMIT ?`, args...)
+		if err == nil {
+			facts, scanErr := scanFacts(rows)
+			if scanErr != nil {
+				return nil, scanErr
+			}
+			if loaded, credibilityErr := loadCredibility(); credibilityErr == nil {
+				applyCredibility(facts, loaded)
+			}
+			relevance = facts
+		}
+		// An FTS syntax error from hostile terms is a miss, not a failure.
+	}
+
+	cursors := make([]int, len(buckets))
+	ring := 0
+	drawCue := func() (Fact, bool, error) {
+		for tries := 0; len(buckets) > 0 && tries < len(buckets); {
+			if cursors[ring] >= len(buckets[ring]) {
+				ring = (ring + 1) % len(buckets)
+				tries++
+				continue
+			}
+			fact := buckets[ring][cursors[ring]]
+			cursors[ring]++
+			ring = (ring + 1) % len(buckets)
+			tries = 0
+			ok, err := admit(fact)
+			if err != nil {
+				return Fact{}, false, err
+			}
+			if ok {
+				return fact, true, nil
+			}
+		}
+		return Fact{}, false, nil
+	}
+	relevanceCursor := 0
+	drawRelevance := func() (Fact, bool, error) {
+		for relevanceCursor < len(relevance) {
+			fact := relevance[relevanceCursor]
+			relevanceCursor++
+			ok, err := admit(fact)
+			if err != nil {
+				return Fact{}, false, err
+			}
+			if ok {
+				return fact, true, nil
+			}
+		}
+		return Fact{}, false, nil
+	}
+
+	relevanceSlots := query.Limit / relevanceReserveShare
+	if len(relevance) > 0 && relevanceSlots < 1 {
+		relevanceSlots = 1
+	}
+	if len(relevance) == 0 {
+		relevanceSlots = 0
+	}
+	cueSlots := query.Limit - relevanceSlots
+
+	cueTaken := make([]Fact, 0, query.Limit)
+	relevanceTaken := make([]Fact, 0, query.Limit)
+	fill := func(draw func() (Fact, bool, error), into *[]Fact, upTo int) error {
+		for len(*into) < upTo {
+			fact, ok, err := draw()
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+			*into = append(*into, fact)
+		}
+		return nil
+	}
+	if err := fill(drawCue, &cueTaken, cueSlots); err != nil {
+		return nil, err
+	}
+	if err := fill(drawRelevance, &relevanceTaken, relevanceSlots); err != nil {
+		return nil, err
+	}
+	// Reserved, not wasted. An arm that could not fill its share hands the
+	// remainder back rather than shrinking the answer, so the reservation only
+	// ever costs the other arm slots it had a candidate for.
+	for pass := 0; pass < 2 && len(cueTaken)+len(relevanceTaken) < query.Limit; pass++ {
+		remaining := query.Limit - len(relevanceTaken)
+		if err := fill(drawCue, &cueTaken, remaining); err != nil {
+			return nil, err
+		}
+		remaining = query.Limit - len(cueTaken)
+		if err := fill(drawRelevance, &relevanceTaken, remaining); err != nil {
+			return nil, err
+		}
+	}
+	results := append(cueTaken, relevanceTaken...)
+
+	if query.PreferUseful && len(results) > 1 {
+		// Proven, not popular. This used to rank on facts.uses — a counter
+		// incremented by retrieval itself, outside the journal, with a bare
+		// UPDATE that no event could replay. That made a ranking input the one
+		// materialized value the journal could not rebuild (the facts migration
+		// drops the table and replays only fact-family events, so it silently
+		// reverted to newest-first in production), and it made the ranking a
+		// feedback loop: retrieved, therefore ranked higher, therefore retrieved.
+		//
+		// FactOutcomes is the same question asked of the journal, and it asks it
+		// better: Rides counts injections into real work, Bad counts the ones
+		// whose job then failed its delivery gate. uses and last_used stay
+		// exactly what their own comment always claimed — telemetry for
+		// consolidation, nothing ranks on them.
+		outcomes, err := s.FactOutcomes()
+		if err != nil {
+			return nil, err
+		}
+		proven := func(fact Fact) int {
+			outcome := outcomes[fact.Seq]
+			return outcome.Rides - outcome.Bad
+		}
+		sort.SliceStable(results, func(i, j int) bool {
+			left, right := proven(results[i]), proven(results[j])
+			if left != right {
+				return left > right
+			}
+			return results[i].Seq > results[j].Seq
+		})
+	}
+	// Eligibility is no longer a filter that runs here, after the cut. It runs
+	// inside admit, one candidate at a time, before a slot is spent — so a row
+	// the gate rejects costs the answer nothing instead of costing it a line.
+	if query.MaxBytes > 0 {
+		bounded := make([]Fact, 0, len(results))
+		used := 0
+		for _, fact := range results {
+			lineBytes := len(fact.Scope) + len(fact.Body) + len("- [] \n")
+			if used+lineBytes > query.MaxBytes {
+				continue
+			}
+			bounded = append(bounded, fact)
+			used += lineBytes
+		}
+		results = bounded
+	}
+
+	if countUses && len(results) > 0 {
+		ids := make([]any, 0, len(results)+1)
+		placeholders := make([]string, 0, len(results))
+		now := formatTime(time.Now())
+		ids = append(ids, now)
+		for _, fact := range results {
+			placeholders = append(placeholders, "?")
+			ids = append(ids, fact.Seq)
+		}
+		_, _ = s.db.Exec(`UPDATE facts SET uses = uses + 1, last_used = ? WHERE seq IN (`+
+			strings.Join(placeholders, ",")+`)`, ids...)
+	}
+	return results, nil
+}
+
+// ActiveFacts lists a scope's live entries, newest first — consolidation's
+// working set. An empty scope lists every active fact.
+func (s *Store) ActiveFacts(scope string, limit int) ([]Fact, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if scope == "" {
+		return s.factsWhere(`status = ? ORDER BY seq DESC LIMIT ?`, FactActive, limit)
+	}
+	resolved, err := resolveScope(s.db, scope)
+	if err != nil {
+		return nil, fmt.Errorf("query active facts: %w", err)
+	}
+	return s.factsWhere(`scope = ? AND status = ? ORDER BY seq DESC LIMIT ?`,
+		resolved, FactActive, limit)
+}
+
+// RecentFacts returns the newest active facts across all scopes.
+func (s *Store) RecentFacts(limit int) ([]Fact, error) {
+	return s.ActiveFacts("", limit)
+}
+
+// HasActiveFactKind reports whether one kind can change a retrieval surface.
+func (s *Store) HasActiveFactKind(kind FactKind) (bool, error) {
+	if !validFactKind(kind) {
+		return false, fmt.Errorf("check active facts: %w: invalid kind %q", ErrInvalid, kind)
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM facts WHERE kind = ? AND status = ?)`,
+		kind, FactActive).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check active facts: %w", err)
+	}
+	return exists != 0, nil
+}
+
+// Fact returns one notebook entry by its durable event sequence, including a
+// superseded entry needed to explain an already-fired trial.
+func (s *Store) Fact(seq int64) (Fact, bool, error) {
+	facts, err := s.factsWhere(`seq = ?`, seq)
+	if err != nil {
+		return Fact{}, false, err
+	}
+	if len(facts) == 0 {
+		return Fact{}, false, nil
+	}
+	return facts[0], true, nil
+}
+
+// factInTx reads one fact from inside the write it is about to affect. The
+// credibility projection is deliberately not applied: the caller is deciding
+// whether to write, not ranking anything for a prompt.
+func factInTx(tx *sql.Tx, seq int64) (Fact, bool, error) {
+	rows, err := tx.Query(`
+		SELECT seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_note,
+		       status_seq, evidence_seq, status_origin, uses, last_used
+		FROM facts WHERE seq = ?`, seq)
+	if err != nil {
+		return Fact{}, false, fmt.Errorf("query fact: %w", err)
+	}
+	facts, err := scanFacts(rows)
+	if err != nil || len(facts) == 0 {
+		return Fact{}, false, err
+	}
+	return facts[0], true, nil
+}
+
+func (s *Store) factsWhere(where string, args ...any) ([]Fact, error) {
+	rows, err := s.db.Query(`
+		SELECT seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_note,
+		       status_seq, evidence_seq, status_origin, uses, last_used
+		FROM facts WHERE `+where, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query facts: %w", err)
+	}
+	facts, err := scanFacts(rows)
+	if err == nil {
+		s.applyFactCredibility(facts)
+	}
+	return facts, err
+}
+
+func scanFacts(rows *sql.Rows) ([]Fact, error) {
+	defer rows.Close()
+	facts := make([]Fact, 0)
+	for rows.Next() {
+		var fact Fact
+		var timestamp, unsettled, lastUsed string
+		if err := rows.Scan(&fact.Seq, &timestamp, &fact.NodeID, &fact.Scope, &fact.Kind, &fact.Channel,
+			&fact.Body, &unsettled, &fact.Status, &fact.Artifact, &fact.StatusNote,
+			&fact.StatusSeq, &fact.EvidenceSeq, &fact.StatusOrigin, &fact.Uses, &lastUsed); err != nil {
+			return nil, fmt.Errorf("scan fact: %w", err)
+		}
+		at, err := parseTime(timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("scan fact time: %w", err)
+		}
+		fact.Time = at
+		if unsettled != "null" {
+			if err := json.Unmarshal([]byte(unsettled), &fact.Unsettled); err != nil {
+				return nil, fmt.Errorf("decode unsettled fact %d: %w", fact.Seq, err)
+			}
+		}
+		if lastUsed != "" {
+			if used, err := parseTime(lastUsed); err == nil {
+				fact.LastUsed = used
+			}
+		}
+		facts = append(facts, fact)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan facts: %w", err)
+	}
+	return facts, nil
+}
+
+func applyFactView(tx *sql.Tx, payload factPayload, seq int64, at time.Time) error {
+	scope := normalizeScope(payload.Scope)
+	kind := payload.Kind
+	if !validFactKind(kind) {
+		kind = FactPlain
+	}
+	if kind == FactPlaybook && !validPlaybookScope(scope) {
+		return fmt.Errorf("playbook fact %d has invalid scope %q", seq, scope)
+	}
+	if kind == FactUnsettled {
+		if payload.Unsettled == nil {
+			return fmt.Errorf("unsettled fact %d has no structured pair", seq)
+		}
+		if err := payload.Unsettled.Validate(); err != nil {
+			return fmt.Errorf("unsettled fact %d: %w", seq, err)
+		}
+		if err := requireUnsettledEvidence(tx, *payload.Unsettled); err != nil {
+			return fmt.Errorf("unsettled fact %d: %w", seq, err)
+		}
+	} else if payload.Unsettled != nil {
+		return fmt.Errorf("non-unsettled fact %d carries an unsettled pair", seq)
+	}
+	encoded, err := json.Marshal(payload.Unsettled)
+	if err != nil {
+		return err
+	}
+	status := payload.Status
+	if !validFactStatusForKind(kind, status) {
+		// fact_learned events predating skill candidacy have no status field.
+		status = defaultFactStatus(kind)
+	}
+	if status == FactActive || kind == FactQuestion && (status == QuestionOpen || status == QuestionPracticing) {
+		scope, err = resolveScope(tx, scope)
+		if err != nil {
+			return err
+		}
+	}
+
+	channel := payload.Channel
+	if !validFactChannel(channel) {
+		// Events from before channel attribution are best-effort inferred.
+		channel = FactChannelInferred
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO facts (seq, ts, node_id, scope, kind, channel, body, unsettled, status, artifact, status_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		seq, formatTime(at), payload.NodeID, scope, kind, channel, payload.Body, string(encoded), status, payload.Artifact, seq); err != nil {
+		return err
+	}
+	if status != FactActive {
+		return nil
+	}
+	_, err = tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
+		seq, payload.Body, scope)
+	return err
+}
+
+func requireUnsettledEvidence(tx *sql.Tx, pair UnsettledPair) error {
+	for _, approach := range pair.Approaches {
+		for _, evidenceSeq := range approach.Evidence {
+			var exists int
+			if err := tx.QueryRow(`SELECT COUNT(*) FROM facts WHERE seq = ?`, evidenceSeq).Scan(&exists); err != nil {
+				return fmt.Errorf("verify evidence #%d: %w", evidenceSeq, err)
+			}
+			if exists == 0 {
+				return fmt.Errorf("%w: evidence fact #%d does not exist", ErrInvalid, evidenceSeq)
+			}
+		}
+	}
+	return nil
+}
+
+func applyFactActivation(tx *sql.Tx, payload factActivatedPayload) error {
+	result, err := tx.Exec(`
+		UPDATE facts SET status = ?, artifact = ?, status_note = ''
+		WHERE seq = ? AND kind = ? AND status = ?`,
+		FactActive, payload.Artifact, payload.FactSeq, FactSkill, FactCandidate)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("activation targets missing or settled skill %d", payload.FactSeq)
+	}
+	var body, scope string
+	if err := tx.QueryRow(`SELECT body, scope FROM facts WHERE seq = ?`, payload.FactSeq).Scan(&body, &scope); err != nil {
+		return err
+	}
+	scope, err = resolveScope(tx, scope)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE facts SET scope = ? WHERE seq = ?`, scope, payload.FactSeq); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
+		payload.FactSeq, body, scope)
+	return err
+}
+func applyFactSupersession(tx *sql.Tx, payload factSupersededPayload, seq int64) error {
+	result, err := tx.Exec(`
+		UPDATE facts
+		SET status = ?, status_note = ?, status_seq = ?, evidence_seq = ?, status_origin = ?
+		WHERE seq = ? AND status <> ?`,
+		FactSuperseded, payload.Reason, seq, payload.BySeq, FactOriginSupersession,
+		payload.FactSeq, FactSuperseded)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("supersession targets missing or settled fact %d", payload.FactSeq)
+	}
+	_, err = tx.Exec(`DELETE FROM facts_fts WHERE rowid = ?`, payload.FactSeq)
+	return err
+}
+
+func applyFactQuarantine(tx *sql.Tx, payload factStatusPayload, seq int64) error {
+	evidenceSeq := payload.EvidenceSeq
+	if evidenceSeq == 0 {
+		evidenceSeq = seq
+	}
+	result, err := tx.Exec(`
+		UPDATE facts
+		SET status = ?, status_seq = ?, evidence_seq = ?, status_origin = ?
+		WHERE seq = ? AND status = ?`, FactQuarantined, seq, evidenceSeq,
+		payload.Origin, payload.FactSeq, FactActive)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("quarantine targets missing or inactive fact %d", payload.FactSeq)
+	}
+	_, err = tx.Exec(`DELETE FROM facts_fts WHERE rowid = ?`, payload.FactSeq)
+	return err
+}
+
+func applyFactRestore(tx *sql.Tx, payload factStatusPayload, seq int64) error {
+	var scope, body string
+	if err := tx.QueryRow(`SELECT scope, body FROM facts WHERE seq = ? AND status = ?`,
+		payload.FactSeq, FactQuarantined).Scan(&scope, &body); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("restore targets missing or unquarantined fact %d", payload.FactSeq)
+		}
+		return err
+	}
+	var err error
+	scope, err = resolveScope(tx, scope)
+	if err != nil {
+		return err
+	}
+	var duplicate int64
+	err = tx.QueryRow(`
+		SELECT seq FROM facts
+		WHERE seq != ? AND scope = ? AND status = ? AND lower(body) = lower(?)
+		LIMIT 1`, payload.FactSeq, scope, FactActive, body).Scan(&duplicate)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if duplicate != 0 {
+		return fmt.Errorf("restore would duplicate active fact %d", duplicate)
+	}
+	result, err := tx.Exec(`
+		UPDATE facts
+		SET scope = ?, status = ?, status_seq = ?, evidence_seq = 0, status_origin = ?
+		WHERE seq = ? AND status = ?`, scope, FactActive, seq, payload.Origin,
+		payload.FactSeq, FactQuarantined)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("restore targets missing or unquarantined fact %d", payload.FactSeq)
+	}
+	_, err = tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
+		payload.FactSeq, body, scope)
+	return err
+}
+
+func replayFactInjection(tx *sql.Tx, nodeID string, payload factInjectionPayload) error {
+	if err := requireNode(tx, nodeID); err != nil {
+		return err
+	}
+	seqs := normalizedFactSeqs(payload.FactSeqs)
+	if len(seqs) == 0 || len(seqs) != len(payload.FactSeqs) {
+		return fmt.Errorf("invalid fact injection payload")
+	}
+	for _, factSeq := range seqs {
+		var exists int
+		if err := tx.QueryRow(`SELECT 1 FROM facts WHERE seq = ?`, factSeq).Scan(&exists); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type scopeQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func resolveScope(queryer scopeQueryer, scope string) (string, error) {
+	current := normalizeScope(scope)
+	seen := make(map[string]bool)
+	for {
+		if seen[current] {
+			return "", fmt.Errorf("%w: scope alias cycle at %q", ErrInvalid, current)
+		}
+		seen[current] = true
+		var next string
+		err := queryer.QueryRow(`SELECT to_scope FROM scope_aliases WHERE from_scope = ?`, current).Scan(&next)
+		if err == sql.ErrNoRows {
+			return current, nil
+		}
+		if err != nil {
+			return "", err
+		}
+		current = normalizeScope(next)
+	}
+}
+
+func applyScopeAlias(tx *sql.Tx, payload scopeAliasedPayload, seq int64) error {
+	from := normalizeScope(payload.From)
+	to := normalizeScope(payload.To)
+	if !compatibleGardenScopes(from, to) || from == to {
+		return fmt.Errorf("%w: incompatible scopes %q and %q", ErrInvalid, from, to)
+	}
+	var exists int
+	err := tx.QueryRow(`SELECT 1 FROM scope_aliases WHERE from_scope = ?`, from).Scan(&exists)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if exists != 0 {
+		return fmt.Errorf("%w: scope %q is already an alias", ErrInvalid, from)
+	}
+	canonical, err := resolveScope(tx, to)
+	if err != nil {
+		return err
+	}
+	if canonical == from {
+		return fmt.Errorf("%w: alias %q to %q would create a cycle", ErrInvalid, from, to)
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO scope_aliases (from_scope, to_scope, event_seq)
+		VALUES (?, ?, ?)`, from, to, seq); err != nil {
+		return err
+	}
+
+	rows, err := tx.Query(`SELECT seq, body FROM facts WHERE scope = ? AND status = ?`, from, FactActive)
+	if err != nil {
+		return err
+	}
+	type activeFact struct {
+		seq  int64
+		body string
+	}
+	active := make([]activeFact, 0)
+	for rows.Next() {
+		var fact activeFact
+		if err := rows.Scan(&fact.seq, &fact.body); err != nil {
+			rows.Close()
+			return err
+		}
+		active = append(active, fact)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if _, err := tx.Exec(`UPDATE facts SET scope = ? WHERE scope = ? AND status = ?`,
+		canonical, from, FactActive); err != nil {
+		return err
+	}
+	for _, fact := range active {
+		if _, err := tx.Exec(`DELETE FROM facts_fts WHERE rowid = ?`, fact.seq); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO facts_fts (rowid, body, scope) VALUES (?, ?, ?)`,
+			fact.seq, fact.body, canonical); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func compatibleGardenScopes(first, second string) bool {
+	for _, prefix := range []string{"domain:", "repo:", "tool:"} {
+		if strings.HasPrefix(first, prefix) && strings.HasPrefix(second, prefix) &&
+			strings.TrimPrefix(first, prefix) != "" && strings.TrimPrefix(second, prefix) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// ftsQueryFrom turns free text into a safe FTS5 query: bare terms OR-ed, so
+// any hit ranks rather than all terms being required.
+func ftsQueryFrom(terms string) string {
+	fields := strings.FieldsFunc(strings.ToLower(terms), func(r rune) bool {
+		return !('a' <= r && r <= 'z' || '0' <= r && r <= '9')
+	})
+	kept := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if len(field) < 3 {
+			continue
+		}
+		kept = append(kept, `"`+field+`"`)
+		if len(kept) == 12 {
+			break
+		}
+	}
+	return strings.Join(kept, " OR ")
+}
+
+func normalizeScope(scope string) string {
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	if scope == "" {
+		return "user"
+	}
+	return scope
+}
+
+func validFactKind(kind FactKind) bool {
+	switch kind {
+	case FactPreference, FactQuirk, FactLesson, FactPlain, FactUnsettled, FactSkill, FactPlaybook, FactQuestion, FactTrait:
+		return true
+	}
+	return false
+}
+
+func validFactChannel(channel FactChannel) bool {
+	switch channel {
+	case FactChannelStated, FactChannelInferred, FactChannelDistilled, FactChannelTrial:
+		return true
+	default:
+		return false
+	}
+}
+
+func validPlaybookScope(scope string) bool {
+	for _, prefix := range []string{"repo:", "tool:", "domain:"} {
+		if strings.HasPrefix(scope, prefix) && strings.TrimSpace(strings.TrimPrefix(scope, prefix)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func validFactStatus(status string) bool {
+	switch status {
+	case FactCandidate, FactActive, FactSuperseded, FactQuarantined,
+		QuestionOpen, QuestionPracticing, QuestionResolved, QuestionRetired:
+		return true
+	}
+	return false
+}
+
+func validFactStatusForKind(kind FactKind, status string) bool {
+	if kind == FactQuestion {
+		return status == QuestionOpen || status == QuestionPracticing ||
+			status == QuestionResolved || status == QuestionRetired
+	}
+	return status == FactCandidate || status == FactActive ||
+		status == FactSuperseded || status == FactQuarantined
+}
+
+func defaultFactStatus(kind FactKind) string {
+	if kind == FactQuestion {
+		return QuestionOpen
+	}
+	return FactActive
+}
+
+func validFactChangeOrigin(origin FactChangeOrigin) bool {
+	switch origin {
+	case FactOriginUser, FactOriginCLI, FactOriginConsolidator, FactOriginSupersession:
+		return true
+	default:
+		return false
+	}
+}
+
+// migrateFactsSchema upgrades older facts tables in place: drop the
+// materialized view and index, recreate, and replay the journal's fact
+// events. The journal is the truth; the view is disposable.
+func migrateFactsSchema(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(facts)`)
+	if err != nil {
+		return err
+	}
+	hasScope, hasUnsettled, hasArtifact, hasStatusNote, hasChannel := false, false, false, false, false
+	hasStatusSeq, hasEvidenceSeq, hasStatusOrigin := false, false, false
+	for rows.Next() {
+		var cid int
+		var name, kind string
+		var notNull, pk int
+		var dflt any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		switch name {
+		case "scope":
+			hasScope = true
+		case "unsettled":
+			hasUnsettled = true
+		case "artifact":
+			hasArtifact = true
+		case "status_note":
+			hasStatusNote = true
+		case "status_seq":
+			hasStatusSeq = true
+		case "evidence_seq":
+			hasEvidenceSeq = true
+		case "status_origin":
+			hasStatusOrigin = true
+		case "channel":
+			hasChannel = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	var createSQL string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'facts'`).Scan(&createSQL); err != nil {
+		return err
+	}
+	if hasScope && hasUnsettled && hasArtifact && hasStatusNote &&
+		hasStatusSeq && hasEvidenceSeq && hasStatusOrigin && hasChannel &&
+		strings.Contains(createSQL, "'unsettled'") &&
+		strings.Contains(createSQL, "'skill'") && strings.Contains(createSQL, "'playbook'") &&
+		strings.Contains(createSQL, "'question'") && strings.Contains(createSQL, "'trait'") && strings.Contains(createSQL, "'practicing'") &&
+		strings.Contains(createSQL, "'candidate'") &&
+		strings.Contains(createSQL, "'quarantined'") {
+		_, err := db.Exec(factsIndexSchema)
+		return err
+	}
+
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS question_practices`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS facts`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS facts_fts`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(factsSchema); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM scope_aliases`); err != nil {
+		return err
+	}
+	events, err := readEvents(tx)
+	if err != nil {
+		return err
+	}
+	for _, event := range events {
+		switch event.Kind {
+		case EventFactLearned, EventFactActivated, EventFactSuperseded,
+			EventFactInjected, EventFactQuarantined, EventFactRestored,
+			EventScopeAliased, EventQuestionStatusChanged,
+			EventQuestionPracticeStarted, EventQuestionPracticeCompleted:
+		default:
+			continue
+		}
+		if err := replayEvent(tx, event); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(factsIndexSchema); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

@@ -1,0 +1,15 @@
+# Per-cell raw material: workspaces, logs, graphs, ledger snapshots. Large,
+# reproducible from the runner, and the parts worth keeping are already lifted
+# into results-arm*.jsonl.
+runs/
+
+# Refetched from the live catalog by anchor_battery.py --refresh; pinning a
+# stale copy in git is how a panel ends up justified against prices that moved.
+panel/catalog.json
+
+__pycache__/
+.pytest_cache/
+
+# Catalog caches the router writes beside each ledger: 170KB each, identical,
+# refetched on demand, and evidence about nothing the experiment measured.
+ledger-*/catalog.json

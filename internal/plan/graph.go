@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode/utf8"
+
+	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // State is what has happened to a node. It exists to make the graph editable
@@ -83,11 +87,36 @@ type Node struct {
 	// — a split nobody can describe concretely is a split that does not exist.
 	Parts []string `json:"parts,omitempty"`
 
+	// Undivided is why this node was left whole, written at the moment the
+	// refusal was made rather than inferred afterwards from the shape that
+	// resulted — the shape is the thing being explained. It follows the pattern
+	// the scale gate already set for the job-level reading (see
+	// store.RecordScaleGate): diagnosis, not control. Nothing reads it back to
+	// decide anything, and losing it costs an explanation and nothing else.
+	//
+	// It answers the question a finished graph otherwise cannot: a node that
+	// stayed a leaf because nobody could name two pieces and a node that stayed
+	// a leaf because the pieces would have run one after another look identical
+	// once the run is over, and the reading that separated them is a model's and
+	// does not repeat. Empty means no split was ever considered for this node.
+	Undivided string `json:"undivided,omitempty"`
+
 	Needs []int  `json:"needs"`
 	Size  Size   `json:"size,omitempty"`
 	State State  `json:"state"`
 	Kind  Kind   `json:"kind"`
 	Brief string `json:"brief,omitempty"`
+
+	// Subharness names the worker that takes this node whole. It is decided
+	// where size is decided — a node oversized for one agent working alone can
+	// be one job for a specialist — and it travels with the node from that
+	// judgment to the executor that runs it, through the file the graph is
+	// persisted to and through the splice that admits it to the store.
+	//
+	// "linear" is the generalist, chosen, and is what nearly every judged node
+	// carries. Empty is the different fact that nobody judged this node at all,
+	// and only that fact lets a reader downstream supply an answer of its own.
+	Subharness string `json:"subharness,omitempty"`
 
 	// Contract is the working method for this leaf: how an agent should work
 	// this particular kind of job, as distinct from the Brief, which says what
@@ -95,6 +124,18 @@ type Node struct {
 	// executor match a specialised harness on any given leaf without the
 	// harness itself changing.
 	Contract string `json:"contract,omitempty"`
+
+	// Spec is the same two facts as an object, plus the one nothing carried
+	// before: the criterion this node's work is judged finished against.
+	//
+	// Brief and Contract stay the source of truth for one release and Spec is
+	// written beside them — dual-write, single read — so rolling the wave back
+	// is a one-line swap at each reader rather than a migration. What the
+	// object buys is the retry path: a replacement node inherits Done verbatim
+	// instead of re-authoring a spec from failure context, which is how the
+	// module name, the filename and the acceptance check used to disappear the
+	// moment a leaf was re-aimed at a different worker.
+	Spec Spec `json:"spec,omitzero"`
 
 	// Result is what this node produced and is what its dependents receive. It
 	// is the deliverable itself rather than a report about it, so that routing
@@ -113,6 +154,47 @@ type Node struct {
 	Tokens int     `json:"tokens,omitempty"`
 	Cost   float64 `json:"cost,omitempty"`
 	Stop   string  `json:"stop,omitempty"`
+
+	// Verdict is how the leaf ended, as distinct from State. State answers "may
+	// its dependents run", and StateDone answers yes to a leaf that stopped
+	// halfway because it ran out of budget — correctly, since the dependents
+	// still need whatever it produced. Verdict answers the other question, the
+	// one nothing could ask before: was that a success. Anything that learns
+	// from a run reads this field and never State.
+	Verdict provider.Verdict `json:"verdict,omitempty"`
+
+	// FanIn is how many earlier results actually landed in this node, measured
+	// by whoever claimed it rather than counted off this document.
+	//
+	// Needs is the plan's intention and is very nearly the same number; this is
+	// what a surface with a live store observed instead, which differs where an
+	// edge was spliced in after planning or where a dependency settled without
+	// producing anything. Nil means nobody measured, and the reader falls back
+	// to len(Needs) — never to Sources, which is the touch-list and was the
+	// number the join price was mistakenly read off for as long as it existed.
+	FanIn *int `json:"fan_in,omitempty"`
+
+	// Calibration is what the worker said about its own fit for this node, and
+	// EscalatedFrom names the worker that tried it first and could not finish.
+	// Both are carried for one reader: the profile record this node becomes when
+	// the run lands, and through it the call that rewrites the ruler. Empty on
+	// every node the generalist takes first and finishes, which is nearly all of
+	// them and every one of them in a build with no specialist.
+	Calibration   []string `json:"calibration,omitempty"`
+	EscalatedFrom string   `json:"escalated_from,omitempty"`
+
+	// Checked is what this node's own worker ran to check itself, and what each
+	// one found — one clause, already composed by whoever observed it.
+	//
+	// It is here for exactly one reader: the pass that looks at a job's
+	// remainder and decides whether anything more is worth adding. A node that
+	// changed files and whose suite came back green is finished, and that fact
+	// existed only inside the worker — so the reviser, seeing a title and a
+	// state, kept proposing children to run the tests again and re-investigate
+	// what was already proved. Between 48% and 57% of a run's measured cost went
+	// there. This is not a rule telling the reviser what to conclude; it is the
+	// evidence it was reasoning without.
+	Checked string `json:"checked,omitempty"`
 
 	Failure string `json:"failure,omitempty"`
 }
@@ -133,12 +215,36 @@ const (
 type Graph struct {
 	Goal string `json:"goal"`
 
+	// Asked are the separable requests the person's own ask contained, in
+	// their own words, as the call that read the whole ask reported them.
+	//
+	// They are a reading of the ask and never a layout of the plan. There was
+	// once a second road out of that reading — two or more requests laid flat
+	// with an assembler behind them, no planner anywhere — and it was a worse
+	// planner with a hardcoded shape: the one judgment it could not make was
+	// whether one of the requests is written over what the others produce, and
+	// the layout it committed to had no way to say so. That is the question
+	// this package's passes exist to answer, so the reading is handed to them
+	// as evidence and the shape stays theirs.
+	//
+	// Fewer than two is the ordinary ask and renders nothing at all, which is
+	// the whole of the compatibility story: every prompt below sends the bytes
+	// it sent before this field existed. Persisted with the graph for the same
+	// reason the settled points are — a document revised later is revised
+	// against the premises it was built from.
+	Asked []string `json:"asked,omitempty"`
+
 	// Settled are the goal's free variables, bound once so that every parallel
 	// call works from the same premise. Open are the ones that cannot be bound
 	// in advance because they are the answer to the work — they exist to tell
 	// the binder what must become a real dependency rather than an assumption.
-	Settled []string `json:"settled,omitempty"`
-	Open    []string `json:"open,omitempty"`
+	//
+	// A settlement is the variable and the values together (see Settlement), so
+	// that "bound" is a slice length rather than a reading of a sentence. A graph
+	// written before that split decodes its strings into the same type and
+	// renders them unchanged.
+	Settled []Settlement `json:"settled,omitempty"`
+	Open    []string     `json:"open,omitempty"`
 
 	// Evidence is the standard of support the goal warrants — reading and
 	// citing, running and measuring, or building and demonstrating. It is
@@ -147,10 +253,107 @@ type Graph struct {
 	// report became a benchmarking project.
 	Evidence string `json:"evidence,omitempty"`
 
+	// FileShaped says the ask names its own deliverable — a file or document by
+	// name, or a change to material that already exists — which is the one case
+	// where filing the result is delivery rather than an evasion of it. It rides
+	// the graph because it is one fact about the goal and three passes need the
+	// same answer: the instruction the deliverable owner receives, the working
+	// method written for it, and anything later that judges what came back.
+	//
+	// False is the safe default and the shape almost every ask has, so a caller
+	// that has not made the judgment leaves every prompt exactly as it was.
+	//
+	// Intended wiring: the chat session sets Options.FileShaped on plan.Build, or
+	// graph.FileShaped before plan.Briefs/plan.Contracts, from the same judgment
+	// its delivery gate already makes about the request — the bit that decides
+	// whether a leaf is offered a workspace path at all (leafOutputHint). Nothing
+	// here matches a phrase against the goal.
+	FileShaped bool `json:"file_shaped,omitempty"`
+
+	// Continues says this plan is the remainder of work that already happened —
+	// a repair, an extension, a continuation — as opposed to a plan for work
+	// nobody has started.
+	//
+	// It is a separate fact from Records and not derivable from it, because the
+	// two questions it separates are the ones that were being collapsed. A plan
+	// that continues nothing has no record because there is nothing to have a
+	// record OF, and telling its method writer that no record was handed in
+	// would be answering a question nobody asked. A plan that continues work and
+	// still has no readable record is the case that goes wrong: its agents will
+	// be asked to state facts about work they cannot see, and the method they are
+	// held to has to say so out loud rather than leave them to improvise.
+	Continues bool `json:"continues,omitempty"`
+
+	// Records are the files the work this plan continues left behind, which the
+	// agents it plans can open and read: the text of a change, a measurement, a
+	// transcript. Empty is a plan that continues nothing, which is nearly every
+	// plan there is.
+	//
+	// It rides the graph because the pass that needs it is not the one that
+	// receives it. What a remainder can KNOW is settled four calls before any
+	// leaf runs, in the pass that writes each leaf's working method, and that
+	// pass had no way to tell "the agent will be handed the record and must read
+	// it" from "the agent will be handed nothing and must say so". Handed
+	// neither, it wrote methods that instructed inference — and one of them
+	// offered an illustrative root cause that the leaf then shipped verbatim as
+	// a real one, into a person's answer, past a gate holding only file names.
+	//
+	// It is a roster of what EXISTS, never an instruction about what to write
+	// with it. What the method pass makes of a roster, empty or full, is that
+	// pass's own business. See contract.go.
+	Records []string `json:"records,omitempty"`
+
+	// Terrain is the workspace this run stands on, drawn in code at build start
+	// and frozen. It is persisted with the graph for the same reason the settled
+	// points are: a graph read back off disk is revised against the premises it
+	// was built from, and a reviser that lost the picture would be judging what
+	// happened against a workspace it was told about but cannot see.
+	Terrain string `json:"terrain,omitempty"`
+
+	// ContextTokens is the window of the model that structures this job: the
+	// one that planned it, and the ones that later revise it and judge whether
+	// it is finished. Zero means unknown, which is the honest answer for a graph
+	// nobody told and never a claim that the model is small.
+	//
+	// It is persisted for the same reason Terrain is. The passes that read this
+	// document after the build — the revision sentinel, the growth gate — are
+	// reached through signatures that carry the document and nothing else, and a
+	// graph read back off disk that had lost the window would quietly go back to
+	// showing a 200k-token reviser 4 KiB of what has happened.
+	ContextTokens int `json:"context_tokens,omitempty"`
+
+	// Invoice is the measured price list rendered by the caller before the build
+	// starts, and it is what the three passes that judge division are given in
+	// place of guessing what a split costs. See invoice.go.
+	//
+	// It rides the graph rather than the options because expansion and the
+	// sizing pass inside it are reached through the document alone, and a
+	// sub-planner that lost the prices would be weighing a division against
+	// nothing — which is the state this whole block exists to end.
+	//
+	// Empty is a machine with nothing measured yet, and it is also the whole of
+	// the compatibility story: every prompt below renders exactly the bytes it
+	// rendered before invoices existed. It is deliberately NOT persisted: prices
+	// move every time a leaf lands, and a graph read back off disk a day later
+	// carrying yesterday's prices would be quoting a measurement as a fact when
+	// the measurement has since changed.
+	Invoice string `json:"-"`
+
 	Stages []Stage `json:"stages"`
 	Nodes  []Node  `json:"nodes"`
 	NextID int     `json:"next_id"`
 	Usage  Usage   `json:"usage"`
+}
+
+// Window is the graph's context window, asked safely of a graph that may not be
+// there. A caller reaching for a budget usually holds a *Graph that is nil on
+// every path where the job was never planned, and nil is the same answer as
+// unknown: use the fallback.
+func (g *Graph) Window() int {
+	if g == nil {
+		return 0
+	}
+	return g.ContextTokens
 }
 
 // Node returns the node with the given stable ID.
@@ -246,12 +449,47 @@ func (g *Graph) AddNeed(id, need int) error {
 	if contains(node.Needs, need) {
 		return nil
 	}
-	node.Needs = mergeNeeds(node.Needs, []int{need})
-	if g.hasCycle() {
-		node.Needs = without(node.Needs, need)
+	// Only the new edge can close a cycle, and it closes one exactly when the
+	// node being depended on can already reach the node depending on it. So the
+	// question is asked of those two nodes rather than of the whole graph: this
+	// runs a hundred and fifty times during a build, and each run was sweeping
+	// every node and allocating a fresh mark table to re-establish what it had
+	// established on the previous call. It rests on the graph being acyclic
+	// beforehand, which generation guarantees, every edit here preserves, and
+	// Load checks for anything that arrives from a file.
+	if g.reaches(need, id) {
 		return fmt.Errorf("edge %d → %d would create a cycle", need, id)
 	}
+	node.Needs = mergeNeeds(node.Needs, []int{need})
 	return nil
+}
+
+// reaches reports whether one node can arrive at another by following
+// dependencies. It walks only what is actually reachable from the start, which
+// in a plan is a handful of nodes rather than the graph.
+func (g *Graph) reaches(from, target int) bool {
+	seen := map[int]bool{}
+	var walk func(id int) bool
+	walk = func(id int) bool {
+		if id == target {
+			return true
+		}
+		if seen[id] {
+			return false
+		}
+		seen[id] = true
+		node := g.Node(id)
+		if node == nil {
+			return false
+		}
+		for _, need := range node.Needs {
+			if walk(need) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(from)
 }
 
 // setNeeds replaces a node's dependency list wholesale during generation.
@@ -289,9 +527,12 @@ func (g *Graph) setNeeds(id int, needs []int) {
 	}
 }
 
-// hasCycle is only needed on the revision path. Generation cannot produce a
-// cycle — edges may point only at earlier stages — but an edit can, so every
-// mutation that adds an edge is checked.
+// hasCycle answers the question of the whole graph, and it is the entry check
+// rather than the per-edge one. Generation cannot produce a cycle — edges may
+// point only at earlier stages — and AddNeed refuses any edit that would close
+// one, so the invariant holds for as long as a graph stays in memory. A graph
+// read back off disk has had none of that applied to it, so Load pays for one
+// full sweep to establish the premise the cheap per-edge check then relies on.
 func (g *Graph) hasCycle() bool {
 	const (
 		unvisited = 0
@@ -355,6 +596,41 @@ func (g *Graph) Leaves() []int {
 		}
 	}
 	return leaves
+}
+
+// deliverableSink names the node that holds the finished whole: the synthesis
+// the harness appends once nothing else gathers the plan.
+//
+// It is a leaf in every operational sense — it is dispatched like one, and what
+// it produces is the whole of what the person who asked will read — but its
+// kind keeps it out of Leaves(), so for a long time the one node in a plan whose
+// job is to BE the deliverable was the one node with no instruction and no
+// working method. Everything that judges a finished job judges this node.
+//
+// Zero means there is none to write for: a one-node plan is already its own
+// answer, and an unfinished graph has not gathered yet.
+func (g *Graph) deliverableSink() int {
+	sinks := g.Sinks()
+	if len(sinks) != 1 {
+		return 0
+	}
+	node := g.Node(sinks[0])
+	if node == nil || node.Kind != KindSynthesis {
+		return 0
+	}
+	return node.ID
+}
+
+// writtenLeaves are the nodes the instruction and working-method passes write
+// for: every work leaf, plus the deliverable owner when the plan has one. It is
+// the honest denominator for those passes too — counting Leaves() while writing
+// one more than that is how progress reads "6/5".
+func (g *Graph) writtenLeaves() []int {
+	ids := g.Leaves()
+	if sink := g.deliverableSink(); sink != 0 {
+		ids = append(ids, sink)
+	}
+	return ids
 }
 
 // Unresolved counts leaves that are still judged too big for one agent. They
@@ -763,11 +1039,25 @@ func (g *Graph) catalog() string {
 	return block.String()
 }
 
+// planBlock is the whole shared prefix of the passes that look at the entire
+// graph — bind, size and audit. It is one render because it is one string: the
+// three of them are deliberately given the identical premise, and rendering it
+// per pass spent the same bytes three times over for a block that is the same
+// every time. Whoever holds a render is responsible for knowing whether the
+// graph has moved underneath it; see the reuse in Build.
+func (g *Graph) planBlock() string {
+	return g.context() + "\nEvery node in the plan:\n" + g.catalog()
+}
+
 // stateBlock renders the graph for the reviser, which unlike every other call
 // has to know what has already happened and what it is therefore not allowed to
 // touch.
 func (g *Graph) stateBlock() string {
 	var block strings.Builder
+	// Read once, at the top, and spent down from there: the two numbers decide
+	// what the reviser is shown, so they must be the same two for every node of
+	// one render.
+	budget, perNode := g.stateResultBudget()
 	children := map[int][]int{}
 	for _, node := range g.Nodes {
 		if node.Parent != 0 {
@@ -796,8 +1086,121 @@ func (g *Graph) stateBlock() string {
 		fmt.Fprintf(&block, "  %d.%s %s — %s (%s, inputs: %s, %s)%s\n",
 			node.ID, strings.Repeat("  ", node.Depth), node.Title, node.Summary,
 			role, inputs, node.State, lock)
+		// What a settled node actually produced, which is the only thing a
+		// contradiction can be found in. Without it the sentinel was asked to
+		// judge whether a result contradicts an assumption while seeing neither:
+		// the plan as designed, and one node's title with a state beside it.
+		// Bounded per node and per block, because this is a structuring call
+		// whose whole value is that it is short — a plan with thirty landed
+		// leaves must not turn one revision into a full transcript replay.
+		if written := writeStateResult(&block, node, budget, perNode); written > 0 {
+			budget -= written
+		}
 	}
 	return block.String()
+}
+
+// stateResultBytes is what one settled node may contribute of its own result,
+// and stateResultsBytes is what all of them may contribute together. The first
+// keeps a single verbose leaf from crowding out its siblings; the second keeps
+// a large graph from crowding out the plan.
+//
+// They are the fallback pair now, not the pair: a graph that knows the window of
+// the model revising it sizes both from it. See stateResultBudget.
+const (
+	stateResultBytes  = 600
+	stateResultsBytes = 4 << 10
+)
+
+// stateResultsShare of statePromptShares is how much of the reviser's prompt the
+// landed results may take. The rest is the block they are hung on — one line per
+// node for the whole graph — plus the goal's context and the event being judged,
+// and the reviser's whole job is to read the second against the first.
+const (
+	stateResultsShare = 1
+	statePromptShares = 2
+
+	// stateFloorTokens is the reviser's turn before any of this: the revise
+	// prompt, the schema, the context block.
+	stateFloorTokens = 4 << 10
+
+	// stateNodeDivisor is how many nodes' worth of result the whole pot is cut
+	// into. It is what makes the per-node clip a share rather than a second
+	// absolute ceiling; the fallback pair already stood in roughly this ratio
+	// (4096/600 is under seven), so an unknown window keeps its old numbers.
+	stateNodeDivisor = 8
+)
+
+// stateResultBudget is what the reviser may be shown of what has happened: the
+// whole pot, and the most any single node may take of it.
+//
+// An unknown window returns exactly the pair this file carried before ctxbudget
+// existed, which is the whole of the rollback.
+func (g *Graph) stateResultBudget() (pot, perNode int) {
+	pot = ctxbudget.For(g.Window()).WithFloor(stateFloorTokens).
+		Share(stateResultsShare, statePromptShares, stateResultsBytes)
+	perNode = pot / stateNodeDivisor
+	if perNode < stateResultBytes {
+		perNode = stateResultBytes
+	}
+	return pot, perNode
+}
+
+// writeStateResult renders one settled node's outcome and reports what it
+// spent. A failure is rendered in preference to a result because a failure is
+// the sharper signal: it says the plan's next steps may have nothing to consume.
+func writeStateResult(block *strings.Builder, node Node, budget, perNode int) int {
+	if budget <= 0 {
+		return 0
+	}
+	body := strings.TrimSpace(node.Failure)
+	label := "failed"
+	if body == "" {
+		body = strings.TrimSpace(node.Result)
+		label = "produced"
+	}
+	checked := strings.TrimSpace(node.Checked)
+	if body == "" && len(node.Artifacts) == 0 && checked == "" {
+		return 0
+	}
+	room := budget
+	if room > perNode {
+		room = perNode
+	}
+	line := fmt.Sprintf("      %s: %s", label, firstParagraph(clipRunes(body, room)))
+	if len(node.Artifacts) > 0 {
+		line += "\n      files: " + strings.Join(node.Artifacts, ", ")
+	}
+	// What the node's own worker checked, on its own line, in the worker's
+	// words. It is the one thing here the reviser cannot infer from anything
+	// else it is shown: a result reads the same whether or not it was proved.
+	if checked != "" {
+		line += "\n      checked: " + firstParagraph(clipRunes(checked, perNode))
+	}
+	line += "\n"
+	block.WriteString(line)
+	return len(line)
+}
+
+// clipRunes cuts to a byte ceiling without splitting a character. Every
+// truncation in this tree backs off to a rune boundary; a mangled character
+// here would ride the sentinel's whole prompt.
+func clipRunes(body string, limit int) string {
+	if len(body) <= limit {
+		return body
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(body[cut]) {
+		cut--
+	}
+	return strings.TrimSpace(body[:cut]) + "…"
+}
+
+// firstParagraph keeps the render one node per block by folding newlines. The
+// state block's shape is one indented line per node, and a result that brings
+// its own line breaks would read as several unnumbered nodes.
+func firstParagraph(body string) string {
+	return strings.Join(strings.Fields(body), " ")
 }
 
 // MarshalJSON is provided through a plain method so a graph round-trips to disk
@@ -819,6 +1222,13 @@ func Load(data []byte) (*Graph, error) {
 	}
 	if len(graph.Nodes) == 0 {
 		return nil, errors.New("load graph: no nodes")
+	}
+	// Nothing that produced this file can be trusted to have been us. A cyclic
+	// graph is not merely wrong, it is unschedulable — every node in the loop
+	// waits forever on another one — and every pass downstream of here assumes
+	// it is acyclic, so it is refused at the door rather than diagnosed later.
+	if graph.hasCycle() {
+		return nil, errors.New("load graph: needs form a dependency cycle")
 	}
 	return &graph, nil
 }
