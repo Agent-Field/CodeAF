@@ -1460,7 +1460,12 @@ func (a *app) roomHeadWord(width int) string {
 		// true and nothing else is, which is exactly what gets said.
 		return fit(word, width)
 	}
-	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node)} {
+	// The model joins the three because it answers the same kind of question
+	// they do — what is true of this work right now — and it is dropped by the
+	// same rule when nobody published one. It goes last: the state and the clock
+	// change while you watch, and whose hands the work is in was settled before
+	// it started.
+	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node), strings.TrimSpace(node.model)} {
 		if part != "" {
 			word += " · " + part
 		}

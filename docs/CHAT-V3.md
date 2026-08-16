@@ -727,6 +727,29 @@ an answer). **A headless run never waits**: with nobody subscribed, the
 deadline approves whatever the setting says, 0 included — consent.go's law for
 a question with no reader.
 
+**The conversation may choose the hands.** A node inherits the model the
+conversation is on, because a node is the same worker doing the same job
+somewhere quieter — that is the default and it is almost always right. What the
+person can do is override it in words ("let opus handle this one", "something
+cheap for the sweep"), and `propose_task` carries an optional `model` for
+exactly that: the model that grooms the work is the one holding both halves of
+that sentence. The word is resolved against the models this install actually has
+(`internal/session/taskmodel.go`) — the whole id, the vendorless tail, then every
+token anywhere in it — and there are three answers and only one is an error. One
+match is the decision. **More than one is a question, not a guess**: the
+shortlist rides on the proposal the person is already being shown, the closest
+match is preselected, the digits pick between them, and the countdown keeps
+running, because an ambiguity the harness raised is not a reason for work to
+stop. Nothing at all is a refusal the model can act on — an ordinary tool result
+naming the nearest ids — and so is a word that fits half the catalog, because a
+shortlist of eleven is a list rather than a choice. A surface holding no catalog
+(`Config.TaskModels` nil) validates nothing and takes the word as written: that
+is "nobody can say", not "there are none". The default when nothing is named is
+`task.model`, and the conversation's own model when that row is blank; the
+proposal, the rail row where the column can afford it, the room header and the
+landed card all name what the work is running on, and the node's model is on its
+checkpoint so a resumed graph starts where it was sent.
+
 **A worktree is a branch of the tree, and merging is how work bubbles up.**
 Each node runs in `git worktree add` on `task/<slug>-<shortid>` off the
 person's current HEAD, under `<repo>/.aforge-v3/tasks/<id>/`, so its
