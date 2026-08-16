@@ -1103,6 +1103,15 @@ func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
 	} else {
 		body, owner := s.listLines(width, pal, a.hoveredSheetRow())
 		at := s.cursorLine(owner)
+		// THE CURSOR'S ROW IS SCROLLED IN WHOLE. At [tierPhone] it is two lines —
+		// the name and the value under it — and a window that pinned only the
+		// first would push the value off the bottom edge, leaving a selection
+		// band with one end cut off and the fact being changed off screen. The
+		// last line is pinned first and the first line second, so a row taller
+		// than the window still shows its name.
+		if last := s.cursorLastLine(owner, at, width); last != at {
+			s.top = listTop(last, s.top, len(body), room)
+		}
 		s.top = listTop(at, s.top, len(body), room)
 		for i := 0; i < room; i++ {
 			index := s.top + i
@@ -1247,7 +1256,9 @@ func (s *sheet) listLines(width int, pal palette, hover int) ([]string, []int) {
 			put(pal.dim("  "+item.head), -1)
 			continue
 		}
-		put(s.rowLine(item, i == s.cursor, i == hover, width, pal), i)
+		for _, line := range s.rowLines(item, i == s.cursor, i == hover, width, pal) {
+			put(line, i)
+		}
 		if i != s.cursor {
 			continue
 		}
@@ -1272,12 +1283,31 @@ func (s *sheet) cursorLine(owner []int) int {
 	return 0
 }
 
+// cursorLastLine is the display row the cursor's ROW ends on — the wrapped
+// value's line at [tierPhone], and the row itself everywhere else.
+//
+// It stops at the row and does not walk the whole item: the selected setting's
+// description follows it under the same owner, and pinning that into the window
+// would scroll the list by two rows the moment somebody moved the cursor.
+func (s *sheet) cursorLastLine(owner []int, at, width int) int {
+	if phoneList(width) && at+1 < len(owner) && owner[at+1] == s.cursor {
+		return at + 1
+	}
+	return at
+}
+
 // changedMark is the one cell that says "you chose this". A glyph and not a
 // colour, because the accent is already spent on the tab and the palette's own
 // rule is that a distinction drawn in colour is drawn in text too (styles.go).
 const changedMark = "•"
 
-func (s *sheet) rowLine(item sheetItem, selected, hovered bool, width int, pal palette) string {
+// rowLines is one setting: its name, and the value it is at. The two share a
+// line on any frame with room for both and split at [tierPhone], where a value
+// like "anthropic/claude-sonnet-4.5  set by AFORGE_MODEL" is the whole of what
+// the row is about and the first thing a narrow row used to cut (palette.go's
+// [overlayLines]). The pair stays ONE item to the pointer and to the cursor —
+// [sheet.listLines] hands both lines the same owner.
+func (s *sheet) rowLines(item sheetItem, selected, hovered bool, width int, pal palette) []string {
 	value := item.row.Value()
 	if value == "" {
 		value = "—"
@@ -1292,7 +1322,7 @@ func (s *sheet) rowLine(item sheetItem, selected, hovered bool, width int, pal p
 	if name, pinned := item.row.PinnedBy(); pinned {
 		value += "  set by " + name
 	}
-	return overlayRow(item.meta.label, value, selected, false, hovered, width, pal)
+	return overlayLines(item.meta.label, value, selected, false, hovered, width, pal)
 }
 
 // selectLines draws the model picker in the list's place — LITERALLY the picker's
@@ -1306,17 +1336,11 @@ func (s *sheet) rowLine(item sheetItem, selected, hovered bool, width int, pal p
 // list is not a thing that holds a session.
 func (s *sheet) selectLines(width, room int, pal palette, level func(string) string) ([]string, []int) {
 	sel := s.sel
-	rows := sel.pick.rows(width, room, pal, -1, level)
-	out := make([]string, 0, room)
-	owner := make([]int, 0, room)
-	for i, line := range rows {
-		out = append(out, line)
-		if len(sel.pick.hits) == 0 {
-			owner = append(owner, -1)
-			continue
-		}
-		owner = append(owner, sel.pick.top+i)
-	}
+	// The picker hands back the hit each LINE belongs to rather than a count to
+	// add to its top: a row at [tierPhone] is two lines, and "line i is hit
+	// top+i" would put every click one row further down the list than the one
+	// that was pressed (palette.go's [picker.rowsOwned]).
+	out, owner := sel.pick.rowsOwned(width, room, pal, -1, level)
 	for len(out) < room {
 		out = append(out, "")
 		owner = append(owner, -1)

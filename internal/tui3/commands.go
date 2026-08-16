@@ -136,28 +136,32 @@ func (m *menu) choice() (command, bool) {
 // NONE: the draft under it is a perfectly good "/nonsense" that enter will
 // answer, and an overlay saying "no match" over a line that is about to get a
 // better answer is two answers to one question.
-func (m *menu) height() int {
-	switch {
-	case !m.open:
+func (m *menu) height(width int) int {
+	if !m.open {
 		return 0
-	case len(m.hits) < menuRows:
-		return len(m.hits)
-	default:
-		return menuRows
 	}
+	// The ceiling is in LINES, so at [tierPhone] the list holds four commands
+	// with what they do written under them instead of eight rows that all say
+	// "/settings   open the settings pa…" (palette.go).
+	return overlayWindow(width, m.top, len(m.hits), menuRows, func(at int) string {
+		return commands[m.hits[at]].desc
+	})
 }
 
 func (m *menu) rows(width, n int, pal palette, hover int) []string {
 	if n <= 0 || len(m.hits) == 0 {
 		return nil
 	}
-	m.follow(n)
-	out := make([]string, 0, n)
-	for at := m.top; at < len(m.hits) && len(out) < n; at++ {
+	m.follow(overlayItems(n, width))
+	fill := newOverlayFill(width, n, pal, hover)
+	for at := m.top; at < len(m.hits) && fill.room(); at++ {
 		c := commands[m.hits[at]]
-		out = append(out, overlayRow(c.typed(), c.desc, at == m.cursor, false, len(out) == hover, width, pal))
+		if !fill.add(at, c.typed(), c.desc, at == m.cursor, false) {
+			break
+		}
 	}
-	return out
+	lines, _ := fill.done()
+	return lines
 }
 
 // runMenu is enter while the command list is up: the row under the cursor wins.

@@ -171,18 +171,20 @@ func (r *roster) choice() (Session, bool) {
 
 // height is how many list rows the overlay wants, not counting the filter box:
 // one for the "no session matches" line when the filter matched nothing, and
-// otherwise as many rows as there are sessions, up to the ceiling.
-func (r *roster) height() int {
+// otherwise as many rows as there are sessions, up to the ceiling — which is a
+// ceiling in LINES, so a phone shows fewer conversations with what happened in
+// them readable rather than ten rows of clipped sentence (palette.go).
+func (r *roster) height(width int) int {
 	switch {
 	case !r.open:
 		return 0
 	case len(r.hits) == 0:
 		return 1
-	case len(r.hits) < resumeRows:
-		return len(r.hits)
-	default:
-		return resumeRows
 	}
+	return overlayWindow(width, r.top, len(r.hits), resumeRows, func(at int) string {
+		session := r.all[r.hits[at]]
+		return sessionNote(session, width, humanName(session))
+	})
 }
 
 func (r *roster) rows(width, n int, pal palette, hover int) []string {
@@ -192,15 +194,17 @@ func (r *roster) rows(width, n int, pal palette, hover int) []string {
 	if len(r.hits) == 0 {
 		return []string{pal.dim("  no session matches")}
 	}
-	r.follow(n)
-	out := make([]string, 0, n)
-	for at := r.top; at < len(r.hits) && len(out) < n; at++ {
+	r.follow(overlayItems(n, width))
+	fill := newOverlayFill(width, n, pal, hover)
+	for at := r.top; at < len(r.hits) && fill.room(); at++ {
 		session := r.all[r.hits[at]]
 		name := humanName(session)
-		out = append(out, overlayRow(name, sessionNote(session, width, name),
-			at == r.cursor, session.File == r.current, len(out) == hover, width, pal))
+		if !fill.add(at, name, sessionNote(session, width, name), at == r.cursor, session.File == r.current) {
+			break
+		}
 	}
-	return out
+	lines, _ := fill.done()
+	return lines
 }
 
 // sessionNote is the dim tail of one row: what was last happening, then how
@@ -221,7 +225,16 @@ func sessionNote(session Session, width int, name string) string {
 	}
 	// What the row has left after the lead, the name, the gap before the note,
 	// and the age with its own separator.
+	//
+	// A WRAPPED ROW HAS THE WHOLE LINE, less its indent: at [tierPhone] the note
+	// sits under the name rather than beside it (palette.go's [overlayLines]),
+	// so the name costs it nothing and the description is what a phone has room
+	// for rather than the eight cells left over from a session called "Port the
+	// Resume Picker to tui3".
 	room := width - 2 - ansi.StringWidth(name) - 2
+	if phoneList(width) {
+		room = width - overlayIndent
+	}
 	if when != "" {
 		room -= ansi.StringWidth(when) + 3
 	}
