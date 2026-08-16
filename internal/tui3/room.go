@@ -2,9 +2,11 @@ package tui3
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -41,15 +43,25 @@ import (
 // The rail stays on screen for the same reason. The rail is how you leave one
 // room for another, so it cannot be a thing you have to come back out to reach.
 //
-// ── A ROOM ROW IS A READING ──
+// ── A ROOM IS THE CONVERSATION'S OWN RENDERER, POINTED AT A NODE ──
 //
-// The node's tool calls are drawn as ONE DIM LINE each ("· read config.go") and
-// they do not expand. The full tool view — the diff, the output, the capped
-// preview, the click target, the hover — is the conversation's machine for work
-// a person is supervising call by call, and a node is precisely the work they
-// delegated so they would not have to. What a person needs in here is the shape
-// of what is happening ("it is reading the wrong directory"), and the shape is
-// one line. Everything else is in the journal, which is a real session file.
+// A room used to draw its own lines: an assistant block was plain text, a tool
+// call was one dim line that did not expand, a person's message lost the
+// pictures it carried, and reasoning was dropped on the floor. That was a
+// SECOND RENDERING of the same four kinds of block, and it diverged the way a
+// second rendering always does — not by decision, but one gap at a time, as the
+// conversation grew a machine the page had never heard of.
+//
+// So the page is now built out of the SAME BLOCKS the conversation is made of
+// (app.go's [entry]) and drawn by the SAME renderers (render.go's [deck] and
+// [app.deckRows]). A node's call expands to its diff, its content, its output;
+// its answer renders as markdown when it settles; its reasoning collapses to
+// "thought for 6s · ctrl+e"; a person's steered message wears the person's hue.
+// Nothing in this file paints a block, because the moment it did there would be
+// two answers to "how does a tool call look" again.
+//
+// What a room still owns is what a room IS: which node, where the reader is in
+// it, and the two doors — steering in, esc out.
 //
 // ── THE DOORS ARE ASSERTED, NEVER REQUIRED ──
 //
@@ -84,51 +96,40 @@ func (a *app) roomDoors() (taskRoomAgent, bool) {
 
 // ── the room's state ────────────────────────────────────────────────────────
 
-// roomKind is what one line in a room IS. There are four and there is not going
-// to be a fifth: the person, the node, what the node did, and the surface saying
-// something about the room itself.
-type roomKind uint8
-
-const (
-	// roomSaid is the node's own words — the assistant block, coalesced.
-	roomSaid roomKind = iota
-	// roomAsked is the person's line, in the person's hue, under the person's
-	// glyph. It is the same law the main transcript's user block follows
-	// (render.go): identity takes hue, and nothing the model writes is ever
-	// painted in the accent.
-	roomAsked
-	// roomCalled is one tool call, one dim line.
-	roomCalled
-	// roomNoted is the surface talking inside the room — a refusal, an error.
-	roomNoted
-)
-
-// roomLine is one block of a node's transcript.
-type roomLine struct {
-	kind roomKind
-	text string
-	// call identifies the CALL a roomCalled line is about — its tool and its
-	// target, together. It is what makes a begin and its end one line rather
-	// than two: the second event replaces the first, and a different call
-	// starts a line of its own (see [app.roomCall]).
-	call string
-}
-
 // taskRoom is one node's page: what it has said, the lane carrying what it says
 // next, and where the reader is in it.
 type taskRoom struct {
 	id    uint64
 	title string
-	lines []roomLine
-	lane  <-chan session.Event
+	// entries is the page, in the conversation's own blocks (app.go's [entry]).
+	// It is the same list a transcript is, built from the node's journal and
+	// then grown by its lane, and it is drawn by the conversation's renderers
+	// through [taskRoom.deck].
+	entries []entry
+	// unfolded is the page's OWN fold state, keyed by the page's own turns. It is
+	// not the conversation's map for the reason the entries are not the
+	// conversation's list: a turn number means nothing outside the list it counts
+	// (render.go's [deck]).
+	unfolded map[int]bool
+	// turn counts the page's turns — the node's first instruction, then every
+	// line steered into it. It is what groups a tool cluster and what ctrl+o
+	// folds, exactly as [app.turn] is out in the conversation.
+	turn int
+	lane <-chan session.Event
 	// gen is the generation device the two other lanes on this surface use
 	// (app.go's stream, task.go's standing subscription): a room that was closed
 	// while its channel still had events in flight must not paint into the room
 	// that replaced it.
 	gen int
-	// live is the index of the node's growing block, or -1. Text deltas coalesce
-	// into it exactly as they do in the conversation.
-	live int
+	// live is the index of the node's growing assistant block, or -1, and think
+	// the index of its reasoning block, or -1. Both are [app.live] and
+	// [app.think] applied to this list, and the folders below are those two
+	// files' rules restated over it.
+	live  int
+	think int
+	// mdAt is the markdown promotion clock for the live block (app.go's
+	// [app.promoteMarkdown], which runs over this list too).
+	mdAt time.Time
 	// done says the lane closed — the node reached its final state — which is
 	// the one fact the room adds to what it is showing: a foot line, and a
 	// refusal for anything typed after it.
@@ -146,6 +147,13 @@ type taskRoom struct {
 	rows  []row
 	width int
 	dirty bool
+}
+
+// deck is the page as the renderers take it (render.go). It is a view over the
+// live fields rather than a copy: the row cache each entry carries is written
+// through it.
+func (r *taskRoom) deck() deck {
+	return deck{entries: r.entries, unfolded: r.unfolded}
 }
 
 // The words the room says of itself.
@@ -208,8 +216,16 @@ func (a *app) openRoom(id uint64, title string) {
 		title = "task " + itoa(int(id))
 	}
 	a.roomGen++
-	room := &taskRoom{id: id, title: title, gen: a.roomGen, live: -1, stick: true, dirty: true}
-	room.lines = readRoomJournal(doors.TaskJournal(id))
+	room := &taskRoom{
+		id: id, title: title, gen: a.roomGen,
+		unfolded: map[int]bool{},
+		live:     -1,
+		think:    -1,
+		mdAt:     a.now(),
+		stick:    true,
+		dirty:    true,
+	}
+	room.entries, room.turn = readRoomJournal(doors.TaskJournal(id), a.pal)
 	a.room = room
 	// THE NODE'S CLOCK STOPS BEING REPORTED WHILE YOU ARE IN HERE. The elapsed
 	// number on the rail exists to ask "should you go and look at this", and the
@@ -335,34 +351,123 @@ func (a *app) openRoomAt(i int) bool {
 // journal is a real session file, the package that writes it exposes its shape
 // only through an agent that has the file OPEN, and a room must be able to read
 // the transcript of a node whose agent belongs to somebody else. The fields
-// below are the four the room draws and nothing else — an unknown line kind, an
+// below are the ones a page draws and nothing else — an unknown line kind, an
 // unknown role and a field this build does not know are all skipped rather than
 // guessed at, which is what makes an older or a newer file readable.
 type journalLine struct {
-	Type      string        `json:"type"`
-	Role      string        `json:"role"`
-	Content   string        `json:"content"`
-	ToolCalls []journalCall `json:"toolCalls"`
+	Type       string        `json:"type"`
+	Role       string        `json:"role"`
+	Content    string        `json:"content"`
+	ToolCalls  []journalCall `json:"toolCalls"`
+	ToolCallID string        `json:"toolCallId"`
+	// Parts are the message's non-text content parts as the journal kept them —
+	// WHERE the bytes were, never the bytes (session's sessionfile.go). The path
+	// is the only field a page needs: a picture is drawn as its name here for the
+	// reason it is drawn as its name in the conversation (attach.go's
+	// [chipMarkers]).
+	Parts []journalPart `json:"parts"`
 }
 
 type journalCall struct {
+	ID       string `json:"id"`
 	Function struct {
 		Name      string `json:"name"`
 		Arguments string `json:"arguments"`
 	} `json:"function"`
 }
 
-// readRoomJournal turns a node's session file into room lines, oldest last.
+type journalPart struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+// readRoomJournal turns a node's session file into the page's blocks, oldest
+// last, and reports how many turns it counted.
+//
+// It is [app.replay] over a file instead of over an open agent (replay.go), and
+// it is deliberately the same shaping internal/session does for a resumed
+// conversation (agent.go's shapeEntries, which this mirrors): the results are
+// INDEXED FIRST and then the messages are walked, because a call's arguments
+// ride the assistant message that made it and its result is a separate message
+// keyed by the call's id. One pass to index, one to shape.
+//
+// TOOL RESULTS ARE KEPT, which is the whole of what makes a call on this page
+// expandable. They were skipped when a room row was one dim line — there was
+// nothing for a payload to open into — and skipping them now would leave a page
+// of rows that hover, click, and open onto nothing (replay.go's [replayInert]
+// says why that is the one thing a row must never do).
 //
 // A path that is empty, missing or unreadable is not an error and draws nothing:
 // the journal is EVIDENCE, not a prerequisite (internal/session says so where it
 // mints the path), and a room that refused to open because a file was not there
 // would be refusing to show the live work as well.
-//
-// Tool RESULTS are skipped. A tool message is the payload the node read, and a
-// room row is a reading — the line already says what was called and on what,
-// which is the shape a person came in here for.
-func readRoomJournal(path string) []roomLine {
+func readRoomJournal(path string, pal palette) ([]entry, int) {
+	lines := readJournalLines(path)
+	// The results, indexed by the call each one answered. A result with no id is
+	// skipped rather than kept under "", for the reason session's own index skips
+	// it: it is a message no call can claim.
+	results := make(map[string]string, 8)
+	for _, line := range lines {
+		if line.Role == "tool" && line.ToolCallID != "" {
+			results[line.ToolCallID] = line.Content
+		}
+	}
+
+	var out []entry
+	turn := 0
+	for _, line := range lines {
+		text := strings.TrimSpace(line.Content)
+		switch line.Role {
+		case "user":
+			// The pictures are part of what was said, so a message that was only a
+			// picture is still a message: the markers alone are the line
+			// (replay.go's [replayUserLine], whose rule this is).
+			said := journalUserText(text, line.Parts, pal)
+			if said == "" {
+				continue
+			}
+			// The turn counter moves with the person's messages, exactly as it does
+			// in the conversation: it is what groups a cluster and what ctrl+o folds.
+			// A node's first "message" is the instruction it was given, so a page
+			// opens on turn one the way a conversation does.
+			turn++
+			out = append(out, entry{kind: entryUser, text: said, turn: turn})
+
+		case "assistant":
+			if text != "" {
+				out = append(out, entry{
+					kind: entryAssistant, text: text, turn: turn, settled: true,
+				})
+			}
+			for _, call := range line.ToolCalls {
+				name := strings.TrimSpace(call.Function.Name)
+				if name == "" {
+					continue
+				}
+				out = append(out, entry{
+					kind: entryTool, tool: name, turn: turn, status: toolOK,
+					// UNPARSED, exactly as a replayed call carries it: everything the
+					// expansion shows is derived from these two at render time
+					// (toolview.go), so a call on a page and a call in the conversation
+					// go through one renderer and cannot disagree.
+					detail: toolDetail{
+						Args:   journalArgs(call.Function.Arguments),
+						Output: journalOutput(results[call.ID]),
+					},
+				})
+			}
+		}
+	}
+	if len(out) > roomTail {
+		out = out[len(out)-roomTail:]
+	}
+	return out, turn
+}
+
+// readJournalLines is the file, parsed. An unknown line kind, an unknown role
+// and a field this build does not know are all skipped rather than guessed at,
+// which is what makes an older or a newer file readable.
+func readJournalLines(path string) []journalLine {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
@@ -372,7 +477,7 @@ func readRoomJournal(path string) []roomLine {
 	}
 	defer file.Close()
 
-	var out []roomLine
+	var out []journalLine
 	scan := bufio.NewScanner(file)
 	// A journaled message can be a whole file's content, and the default token
 	// is 64k. The cap is what one line may weigh, not what the file may.
@@ -385,55 +490,139 @@ func readRoomJournal(path string) []roomLine {
 		if line.Type != "message" {
 			continue
 		}
-		switch line.Role {
-		case "user":
-			if text := strings.TrimSpace(line.Content); text != "" {
-				out = append(out, roomLine{kind: roomAsked, text: text})
-			}
-		case "assistant":
-			if text := strings.TrimSpace(line.Content); text != "" {
-				out = append(out, roomLine{kind: roomSaid, text: text})
-			}
-			for _, call := range line.ToolCalls {
-				name := strings.TrimSpace(call.Function.Name)
-				if name == "" {
-					continue
-				}
-				out = append(out, roomLine{
-					kind: roomCalled,
-					call: roomCallKey(name, call.Function.Arguments, ""),
-					text: roomCallWord(name, call.Function.Arguments, ""),
-				})
-			}
-		}
-	}
-	if len(out) > roomTail {
-		out = out[len(out)-roomTail:]
+		out = append(out, line)
 	}
 	return out
 }
+
+// journalUserText is one journaled message as the person sent it: their words,
+// and the names of the pictures that went with them. It is [replayUserLine]'s
+// rule applied to what a FILE kept rather than to what an open agent answered —
+// same markers, same separator — because a message drawn one way in the
+// conversation and another way on a page is two records of one thing.
+func journalUserText(text string, parts []journalPart, pal palette) string {
+	pictures := make([]chip, 0, len(parts))
+	for _, part := range parts {
+		if part.Type != journalPartImage {
+			continue
+		}
+		if path := strings.TrimSpace(part.Path); path != "" {
+			pictures = append(pictures, chip{path: path})
+		}
+	}
+	return userLine(text, pictures, pal)
+}
+
+// journalPartImage is the one non-text part a person's message can carry today,
+// spelled as session's journal spells it (sessionfile.go's journalPartImage).
+const journalPartImage = "image"
+
+// journalArgs and journalOutput are session's two display renderings, applied to
+// what the file kept (loop.go's argsText and capOutput). They are restated here
+// rather than imported because they are unexported there — and they are restated
+// EXACTLY, because the caps are what every width and every "… N more bytes" on
+// an expanded row is measured against.
+func journalArgs(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	var compacted bytes.Buffer
+	if err := json.Compact(&compacted, []byte(raw)); err == nil {
+		raw = compacted.String()
+	}
+	return clipBytes(raw, journalArgsLimit)
+}
+
+func journalOutput(text string) string {
+	if len(text) <= journalOutputLimit {
+		return text
+	}
+	cut := journalOutputLimit
+	for cut > 0 && !runeStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + "… (" + itoa(len(text)-cut) + " more bytes)"
+}
+
+// The two display caps, from internal/session's loop.go: 8k of arguments
+// (because an edit's diff is computed from them and a shorter cap produced the
+// wrong number) and 4k of result (a screen or two, which is what an expanded row
+// is for).
+const (
+	journalArgsLimit   = 8192
+	journalOutputLimit = 4000
+)
+
+// clipBytes cuts at a byte budget without splitting a rune.
+func clipBytes(text string, n int) string {
+	if len(text) <= n {
+		return text
+	}
+	cut := n - len("…")
+	for cut > 0 && !runeStart(text[cut]) {
+		cut--
+	}
+	return text[:cut] + "…"
+}
+
+func runeStart(b byte) bool { return b&0xC0 != 0x80 }
 
 // ── the live lane ───────────────────────────────────────────────────────────
 
 // roomEvent folds one of the child's events in and re-arms the pump.
 //
-// The set it draws is the set a person in here is watching for: what the node is
-// SAYING, what it is DOING, and what went wrong. A node's usage, its title, its
-// consent questions and its own compaction are the child agent's business —
-// nothing in a task can ask this keyboard a question (its policy allows
-// everything but the floor, and the floor refuses rather than prompts), so there
-// is no question in here to draw.
+// IT IS [app.event]'s SWITCH, over the page's list. The kinds it takes are the
+// kinds a node produces that a person in here is watching for — what it is
+// saying, what it is THINKING, what it is doing, what it cost itself in
+// compaction, and what went wrong. A node's usage and its title are the child
+// agent's accounting, and nothing in a task can ask this keyboard a question
+// (its policy allows everything but the floor, and the floor refuses rather than
+// prompts), so there is no question in here to draw.
 func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	room := a.room
 	if room == nil {
 		return nil
 	}
+	// THE COLLAPSE RULE, quoted from the conversation's pump (app.go's [app.event],
+	// thinking.go): the first thing a turn says that is not reasoning ends the
+	// reasoning block, and EventThinking is exempt because it is the marker that
+	// opened the run.
+	if ev.Kind != session.EventReasoning && ev.Kind != session.EventThinking {
+		a.roomCollapseThought()
+	}
 	switch ev.Kind {
 	case session.EventTextDelta:
 		a.roomSay(ev.Text)
-	case session.EventToolAnnounced, session.EventToolBegin,
-		session.EventToolEnd, session.EventToolFailed:
-		a.roomCall(ev)
+
+	case session.EventReasoning:
+		a.roomThink(ev.Text)
+
+	case session.EventToolAnnounced:
+		a.roomAnnounceTool(ev)
+
+	case session.EventToolBegin:
+		a.roomBeginTool(ev)
+
+	case session.EventToolEnd:
+		a.roomCloseTool(ev, toolOK, "")
+
+	case session.EventToolFailed:
+		a.roomCloseTool(ev, toolFailed, firstNonEmpty(ev.Hint, errText(ev.Err)))
+
+	case session.EventCompacting:
+		a.roomCloseLive()
+		a.roomAppend(entry{
+			kind:  entryCompact,
+			text:  firstNonEmpty(ev.Hint, "compacting"),
+			turn:  room.turn,
+			began: a.now(),
+		})
+
+	case session.EventCompacted:
+		a.roomCloseLive()
+		a.roomSettleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+
 	case session.EventError:
 		a.roomNote("error: " + errText(ev.Err))
 	}
@@ -441,64 +630,218 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	return tea.Batch(waitRoom(room.lane, room.gen), a.wake())
 }
 
-// roomSay grows the node's live block, opening one when the last thing in the
-// room was anything else. It is [app.appendText]'s pattern with the cache
-// bookkeeping and nothing else in it.
+// roomSay grows the node's live block, opening one when the last thing on the
+// page was anything else. It is [app.appendText] over the room's list.
 func (a *app) roomSay(text string) {
 	room := a.room
 	if text == "" || room == nil {
 		return
 	}
-	if room.live < 0 || room.live >= len(room.lines) || room.lines[room.live].kind != roomSaid {
-		room.lines = append(room.lines, roomLine{kind: roomSaid})
-		room.live = len(room.lines) - 1
+	if room.live < 0 || room.live >= len(room.entries) ||
+		room.entries[room.live].kind != entryAssistant {
+		room.entries = append(room.entries, entry{kind: entryAssistant, turn: room.turn})
+		room.live = len(room.entries) - 1
+		room.mdAt = a.now()
 	}
-	room.lines[room.live].text += text
+	e := &room.entries[room.live]
+	e.text += text
+	e.stale = true
 	a.roomTouched()
 }
 
-// roomCall draws one call, and REPLACES the line when the event is about the
-// call that line already holds.
-//
-// A call arrives up to three times — announced, begun, ended — and three lines
-// saying "read config.go" is a room that reports its own event plumbing. The
-// identity is the tool AND its target together rather than the tool alone: a
-// batch of four reads is four different calls, and collapsing them by name would
-// leave one line where four files were read.
-func (a *app) roomCall(ev session.Event) {
+// roomThink grows the node's reasoning block. It is [app.appendThought] over the
+// room's list, down to the rule that the reply in progress is closed first so
+// the block lands above the answer rather than splitting a paragraph that is
+// still being written (thinking.go).
+func (a *app) roomThink(text string) {
+	room := a.room
+	if text == "" || room == nil {
+		return
+	}
+	if room.think < 0 || room.think >= len(room.entries) ||
+		room.entries[room.think].kind != entryThinking {
+		a.roomCloseLive()
+		now := a.now()
+		room.entries = append(room.entries, entry{
+			kind: entryThinking, turn: room.turn, began: now, ended: now,
+		})
+		room.think = len(room.entries) - 1
+	}
+	e := &room.entries[room.think]
+	e.text += text
+	e.ended = a.now()
+	e.stale = true
+	a.roomTouched()
+}
+
+// roomCollapseThought settles the streaming reasoning block ([app.collapseThought]).
+func (a *app) roomCollapseThought() {
+	room := a.room
+	if room == nil || room.think < 0 {
+		return
+	}
+	if room.think < len(room.entries) && room.entries[room.think].kind == entryThinking {
+		e := &room.entries[room.think]
+		e.settled, e.stale = true, true
+	}
+	room.think = -1
+	a.roomTouched()
+}
+
+// roomCloseLive ends the assistant block being streamed into ([app.closeLive]).
+func (a *app) roomCloseLive() {
 	room := a.room
 	if room == nil {
 		return
 	}
-	line := roomLine{
-		kind: roomCalled,
-		call: roomCallKey(ev.Tool, ev.Args, ev.Hint),
-		text: roomCallWord(ev.Tool, ev.Args, ev.Hint),
+	if room.live >= 0 && room.live < len(room.entries) {
+		e := &room.entries[room.live]
+		e.settled, e.stale = true, true
 	}
-	if last := len(room.lines) - 1; last >= 0 &&
-		room.lines[last].kind == roomCalled && room.lines[last].call == line.call {
-		room.lines[last] = line
+	room.live = -1
+}
+
+// roomAnnounceTool draws the row for a call the node has finished asking for.
+// It is [app.announceTool] over the room's list, and it exists for the same
+// reason: the change an edit is ABOUT to make is previewed from the arguments,
+// and the moment that preview is worth anything is the moment before it happens.
+func (a *app) roomAnnounceTool(ev session.Event) {
+	room := a.room
+	if room == nil {
+		return
+	}
+	a.roomCloseLive()
+	a.roomAppend(entry{
+		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: room.turn,
+		status: toolQueued, detail: toolDetail{Args: ev.Args},
+	})
+}
+
+// roomBeginTool is EXECUTION STARTED, and it adopts the row the announcement
+// drew ([app.beginTool], whose pairing rule [roomClaimAnnounced] restates).
+func (a *app) roomBeginTool(ev session.Event) {
+	room := a.room
+	if room == nil {
+		return
+	}
+	if at := roomClaimAnnounced(room.entries, ev); at >= 0 {
+		e := &room.entries[at]
+		e.status = toolRunning
+		e.began = a.now()
+		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
+		e.text = firstNonEmpty(ev.Hint, e.text)
 		a.roomTouched()
 		return
 	}
-	a.roomAppend(line)
+	a.roomCloseLive()
+	a.roomAppend(entry{
+		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: room.turn,
+		status: toolRunning, began: a.now(), detail: toolDetail{Args: ev.Args},
+	})
 }
 
-// roomNote is the surface's own line inside the room.
+// roomClaimAnnounced finds the queued row this begin belongs to, or -1. The
+// payload is matched first and the name only after, for the reason
+// [app.claimAnnounced] states: a batch of three edits announces three rows, and
+// pairing by name alone would start the clock on whichever was drawn first.
+func roomClaimAnnounced(es []entry, ev session.Event) int {
+	fallback := -1
+	for i := range es {
+		e := &es[i]
+		if e.kind != entryTool || e.status != toolQueued || e.tool != ev.Tool {
+			continue
+		}
+		if ev.Args != "" && e.detail.Args == ev.Args {
+			return i
+		}
+		if fallback < 0 {
+			fallback = i
+		}
+	}
+	return fallback
+}
+
+// roomCloseTool resolves the oldest still-running line for that tool. It is
+// [app.closeTool] over the room's list, failure-opens-itself included: a call
+// that failed is the one row whose detail is the reason the person came in here.
+func (a *app) roomCloseTool(ev session.Event, status toolState, why string) {
+	room := a.room
+	if room == nil {
+		return
+	}
+	for i := range room.entries {
+		e := &room.entries[i]
+		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
+			continue
+		}
+		e.status = status
+		e.ended = a.now()
+		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
+		e.detail.Output = firstNonEmpty(ev.Output, why)
+		if why != "" && status == toolFailed {
+			e.text = strings.TrimSpace(e.text + " — " + why)
+		}
+		if status == toolFailed {
+			e.open = true
+		}
+		a.roomTouched()
+		return
+	}
+	// A close with no open line still deserves to be seen rather than silently
+	// dropped: the node said something happened.
+	if status == toolFailed {
+		a.roomAppend(entry{
+			kind: entryTool, tool: ev.Tool, text: why, turn: room.turn, status: toolFailed,
+			open:   true,
+			detail: toolDetail{Args: ev.Args, Output: firstNonEmpty(ev.Output, why)},
+		})
+	}
+}
+
+// roomSettleCompaction stops the newest compaction row's clock, or draws one
+// born finished when this page never saw the pass start ([app.settleCompaction]).
+func (a *app) roomSettleCompaction(text string) {
+	room := a.room
+	if room == nil {
+		return
+	}
+	for i := len(room.entries) - 1; i >= 0; i-- {
+		e := &room.entries[i]
+		if e.kind != entryCompact || !e.ended.IsZero() {
+			continue
+		}
+		e.text, e.ended = text, a.now()
+		e.stale = true
+		a.roomTouched()
+		return
+	}
+	now := a.now()
+	a.roomAppend(entry{
+		kind: entryCompact, text: text, turn: room.turn, began: now, ended: now,
+	})
+}
+
+// roomNote is the surface's own line inside the room. It is [app.note] over the
+// room's list, and it draws the same dim "· " block.
 func (a *app) roomNote(text string) {
+	room := a.room
+	if room == nil {
+		return
+	}
 	if text = strings.TrimSpace(text); text != "" {
-		a.roomAppend(roomLine{kind: roomNoted, text: text})
+		a.roomCloseLive()
+		a.roomAppend(entry{kind: entryNote, text: text, turn: room.turn})
 	}
 }
 
 // roomAppend adds one block and closes whatever was streaming: a block that
 // follows the node's words is the node having stopped saying them.
-func (a *app) roomAppend(line roomLine) {
+func (a *app) roomAppend(e entry) {
 	room := a.room
 	if room == nil {
 		return
 	}
-	room.lines = append(room.lines, line)
+	room.entries = append(room.entries, e)
 	room.live = -1
 	a.roomTouched()
 }
@@ -517,23 +860,10 @@ func (a *app) roomTouched() {
 	a.touch()
 }
 
-// roomCallKey is what makes two events one line: the tool, and the thing it is
-// pointed at.
-func roomCallKey(tool, args, hint string) string {
-	return strings.TrimSpace(tool) + "\x00" + toolTarget(tool, args, hint)
-}
-
-// roomCallWord is one call in one sentence, from the same two renderers the
-// conversation's tool line is built from (toolview.go, toolstat.go): the tool's
-// name with the verb said once, and the payload's own target ahead of the
-// session's gloss.
-func roomCallWord(tool, args, hint string) string {
-	name, _ := toolWords(tool, hint)
-	if target := toolTarget(tool, args, hint); target != "" {
-		return name + " " + target
-	}
-	return name
-}
+// The call's identity, its sentence and its rail all come from the same two
+// renderers the conversation's tool line comes from (toolview.go, toolstat.go).
+// This file used to hold a third, one-line rendering of a call; it is gone,
+// and its absence is the point (see this file's header).
 
 // ── steering ────────────────────────────────────────────────────────────────
 
@@ -575,7 +905,15 @@ func (a *app) steer() tea.Cmd {
 	a.input.reset()
 	a.endRecall()
 	a.closeLists()
-	a.roomAppend(roomLine{kind: roomAsked, text: line})
+	// A STEERED LINE OPENS A TURN, the way a person's message opens one in the
+	// conversation (attach.go's [app.submit] path, render.go's turn counter): it
+	// is what groups the calls that answer it into one cluster and what ctrl+o
+	// folds. The chips are not spent here — a room's box sends words, and the tray
+	// belongs to the conversation.
+	a.roomCollapseThought()
+	a.roomCloseLive()
+	room.turn++
+	a.roomAppend(entry{kind: entryUser, text: line, turn: room.turn})
 	return a.edited()
 }
 
@@ -715,15 +1053,19 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 
 // ── the room, drawn ─────────────────────────────────────────────────────────
 //
-//	› check the config under etc/
+//	› check the config under etc/  [screenshot.png]
+//	⠿ thought for 4s · 96 tok · ctrl+e
 //	  I'll look at the loader first.
-//	· read internal/config/load.go
-//	· grep etc/
+//
+//	├─▶ read internal/config/load.go        · 189 lines
+//	╰─▶ edit internal/config/load.go        +3 −1
 //	task finished — esc to return
 //
-// The spacing is the transcript's law in miniature: one blank between blocks,
-// and none between the lines of a run of calls, because a run of calls is one
-// thing (render.go's [app.layout] states the same rule for the same reason).
+// There is NO PAINTING IN THIS FUNCTION, and that is the whole of the parity
+// this file's header promises: the blocks are the conversation's blocks and the
+// pass is the conversation's pass (render.go's [app.deckRows]), so the spacing
+// law, the tool cluster, the fold, the markdown, the reasoning window, the
+// hover and the expansions are the same code and cannot drift into two shapes.
 
 // roomRows builds the room's row list, cached on its own content and width.
 func (a *app) roomRows(width int) []row {
@@ -734,78 +1076,22 @@ func (a *app) roomRows(width int) []row {
 	if room.rows != nil && room.width == width && !room.dirty {
 		return room.rows
 	}
-	out := make([]row, 0, len(room.lines)*2+2)
-	gap := func() {
-		if len(out) > 0 {
-			out = append(out, row{entry: -1})
-		}
-	}
-	wasCall := false
-	for i := range room.lines {
-		line := &room.lines[i]
-		painted := a.roomLineRows(line, width)
-		if len(painted) == 0 {
-			continue
-		}
-		if !(line.kind == roomCalled && wasCall) {
-			gap()
-		}
-		for _, text := range painted {
-			out = append(out, row{text: text, entry: -1})
-		}
-		wasCall = line.kind == roomCalled
-	}
+	out, closed := a.deckRows(room.deck(), width)
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person
-		// is already looking when they wonder why nothing is.
-		gap()
+		// is already looking when they wonder why nothing is. It takes the blank a
+		// closed block above it asks for, which is what [app.deckRows] reports —
+		// the same rule the conversation's ellipsis is drawn under.
+		if closed && len(out) > 0 {
+			out = append(out, row{entry: -1})
+		}
 		out = append(out, row{text: a.pal.dim(fit(roomFinishedWord, width)), entry: -1})
 	}
+	// THE POINTER, LAST, exactly as in the conversation (render.go's layout).
+	a.hoverPass(out, width)
 	room.rows, room.width, room.dirty = out, width, false
 	return out
-}
-
-// roomLineRows paints one block.
-func (a *app) roomLineRows(line *roomLine, width int) []string {
-	switch line.kind {
-	case roomAsked:
-		// The person's own words, in the person's own hue, with every
-		// continuation aligned under the TEXT: render.go's user block, exactly.
-		body := wrap(line.text, width-2)
-		out := make([]string, 0, len(body))
-		for i, text := range body {
-			lead := "  "
-			if i == 0 {
-				lead = a.pal.accent(a.pal.youGlyph())
-			}
-			out = append(out, lead+a.pal.accent(text))
-		}
-		return out
-
-	case roomCalled:
-		// ONE DIM LINE, and it does not expand. See this file's header for why a
-		// room does not rebuild the tool view.
-		return []string{a.pal.dim("· " + fit(line.text, width-2))}
-
-	case roomNoted:
-		out := make([]string, 0, 2)
-		for _, text := range wrap(line.text, width) {
-			out = append(out, a.pal.dim(text))
-		}
-		return out
-
-	default:
-		// The node's words are drawn PLAIN — wrapped, not rendered. Markdown is
-		// the conversation's shape for an answer somebody is reading; a room is a
-		// window onto work in progress, and a heading rule drawn across a
-		// half-finished sentence is furniture on a thing that is still moving.
-		out := make([]string, 0, 4)
-		for _, text := range wrap(line.text, width-2) {
-			out = append(out, "  "+a.pal.ink(text))
-		}
-		return out
-	}
 }
 
 // roomWindow is the room's visible slice and the padding above it. It is

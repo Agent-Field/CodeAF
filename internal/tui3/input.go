@@ -291,11 +291,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// place on the surface that prints a key and says what it does with it —
 		// "ctrl+o output", on its own second row (taskdone.go). With nothing
 		// selected, which is every other moment, it is the tool cluster's fold it
-		// has always been.
+		// has always been — of whichever list the body is drawing (render.go's
+		// [app.bodyDeck]).
 		if a.openDone(a.sel) {
 			return nil
 		}
-		a.unfold(a.turn)
+		a.unfold(a.bodyTurn())
 		return nil
 
 	case "ctrl+b":

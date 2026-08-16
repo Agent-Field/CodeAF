@@ -371,19 +371,24 @@ func (a *app) bodyTop() int {
 
 // rowAt resolves a screen line to the row drawn on it.
 //
-// A ROOM ANSWERS NOTHING HERE. While one is open the transcript's rows are not
-// on screen, and this is what both the click hit-testing and the hover resolve
-// through — so a pointer over a room would otherwise brighten and expand tool
-// calls from a conversation the person cannot see. The room's own rows are
-// deliberately not offered in their place: a room row is a reading, and it has
-// nothing to open (room.go).
+// A ROOM ANSWERS ITS OWN ROWS HERE. While one is open the transcript's rows are
+// not on screen — so a pointer answered from the transcript would brighten and
+// expand tool calls from a conversation the person cannot see — and the room's
+// rows are now the same rows, built by the same renderers from the same kind of
+// entry (room.go). A call on a node's page opens the way a call in the
+// conversation does, because it IS one.
 func (a *app) rowAt(y int) (row, bool) {
-	if a.roomOpen() {
-		return row{}, false
-	}
 	top := a.bodyTop()
 	if top < 0 {
 		return row{}, false
+	}
+	if a.roomOpen() {
+		body, pad := a.roomWindow(a.bodyWidth(), a.viewHeight())
+		at := y - top - pad
+		if at < 0 || at >= len(body) {
+			return row{}, false
+		}
+		return body[at], true
 	}
 	body, pad := a.window(a.bodyWidth(), a.viewHeight())
 	at := y - top - pad

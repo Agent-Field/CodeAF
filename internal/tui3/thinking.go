@@ -101,24 +101,32 @@ func (a *app) collapseThought() {
 	a.touch()
 }
 
-// toggleThought opens or closes one collapsed block.
+// toggleThought opens or closes one collapsed block, in whichever list is on
+// screen: a node reasons too, and a page that showed the working but would not
+// open it is a block with its own key printed on it and nothing behind the key
+// (render.go's [app.bodyDeck], room.go).
 func (a *app) toggleThought(i int) bool {
-	if i < 0 || i >= len(a.entries) || a.entries[i].kind != entryThinking {
+	es := a.bodyDeck().entries
+	if i < 0 || i >= len(es) || es[i].kind != entryThinking {
 		return false
 	}
-	e := &a.entries[i]
+	e := &es[i]
 	if !e.settled {
 		return false // it is streaming; there is nothing to expand yet
 	}
 	e.open, e.stale = !e.open, true
+	if a.room != nil {
+		a.room.dirty = true
+	}
 	a.touch()
 	return true
 }
 
 // toggleLatestThought is ctrl+e: the most recent block, opened or closed.
 func (a *app) toggleLatestThought() bool {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		if a.entries[i].kind == entryThinking {
+	es := a.bodyDeck().entries
+	for i := len(es) - 1; i >= 0; i-- {
+		if es[i].kind == entryThinking {
 			return a.toggleThought(i)
 		}
 	}

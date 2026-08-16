@@ -83,14 +83,18 @@ type toolDetail struct {
 // and not the turn's, and a call too fast to have one does not draw one: see
 // [elapsedWord].
 
-// clusterRows lays out one contiguous run of tool entries — a.entries[from:to],
+// clusterRows lays out one contiguous run of tool entries — d.entries[from:to],
 // all from one turn — and appends it to out. This is where the fold lives,
 // because folding is a property of the RUN and not of any call in it, and it is
 // where the elbow is chosen for the same reason.
-func (a *app) clusterRows(out []row, from, to, width int) []row {
-	turn := a.entries[from].turn
+//
+// The deck is carried in rather than read off the app because a task's page is
+// drawn by this function too, from its own list and its own fold state
+// (render.go's [deck], room.go): one cluster renderer, two lists.
+func (a *app) clusterRows(d deck, out []row, from, to, width int) []row {
+	turn := d.entries[from].turn
 	start := from
-	if to-from > toolWindow && !a.unfolded[turn] {
+	if to-from > toolWindow && !d.unfolded[turn] {
 		start = to - toolWindow
 		fold := a.pal.dim(a.pal.toolGlyph() + foldWord(start-from))
 		if a.hoveringFold(turn) {
@@ -99,7 +103,7 @@ func (a *app) clusterRows(out []row, from, to, width int) []row {
 		out = append(out, row{text: fold, entry: -1, hit: hitFold, turn: turn})
 	}
 	for i := start; i < to; i++ {
-		out = append(out, a.toolRows(i, i == to-1, width)...)
+		out = append(out, a.toolRows(d, i, i == to-1, width)...)
 	}
 	return out
 }
@@ -118,8 +122,8 @@ func foldWord(n int) string {
 // It returns rows rather than strings — unlike every other entry — because the
 // "… N more lines" foot of a capped expansion is a DIFFERENT click target from
 // the line it hangs under: one lifts the cap, the other closes the call.
-func (a *app) toolRows(i int, last bool, width int) []row {
-	e := &a.entries[i]
+func (a *app) toolRows(d deck, i int, last bool, width int) []row {
+	e := &d.entries[i]
 	hit := hitTool
 	if replayInert(e) {
 		hit = hitNone
@@ -242,7 +246,7 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	switch {
 	case e.status == toolConsent:
 		painted = a.pal.askBold(rail)
-	case a.sel == i, a.hoveringEntry(i):
+	case a.selected(i), a.hoveringEntry(i):
 		painted = a.pal.accent(rail)
 	}
 	line := painted + a.paintName(e, name)

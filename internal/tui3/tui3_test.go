@@ -200,6 +200,14 @@ func key(s string) tea.KeyPressMsg {
 	case "ctrl+u":
 		return tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
 	}
+	// EVERY OTHER ctrl CHORD, spelled the way the surface spells it. Without this
+	// an unlisted chord fell through to the zero key, which is a message no
+	// handler claims — so the test pressed nothing at all and asserted against
+	// what did not happen. A silent no-op is the one thing a key helper must not
+	// be able to do.
+	if chord, ok := strings.CutPrefix(s, "ctrl+"); ok && len([]rune(chord)) == 1 {
+		return tea.KeyPressMsg{Code: []rune(chord)[0], Mod: tea.ModCtrl}
+	}
 	return tea.KeyPressMsg{}
 }
 
@@ -779,7 +787,7 @@ func TestMarkdownArrivesOnSettle(t *testing.T) {
 	if a.entries[at].settled {
 		t.Fatal("a streaming reply is already settled")
 	}
-	if got, want := a.entryRows(at, a.width), trimBlanks(wrap(body, a.width)); !sameRows(got, want) {
+	if got, want := a.entryRows(a.conversation(), at, a.width), trimBlanks(wrap(body, a.width)); !sameRows(got, want) {
 		t.Fatalf("a streaming reply is not plain:\n%#v\n%#v", got, want)
 	}
 
@@ -787,7 +795,7 @@ func TestMarkdownArrivesOnSettle(t *testing.T) {
 	if !a.entries[at].settled {
 		t.Fatal("the reply did not settle")
 	}
-	if got, want := a.entryRows(at, a.width), trimBlanks(renderMarkdown(body, a.width)); !sameRows(got, want) {
+	if got, want := a.entryRows(a.conversation(), at, a.width), trimBlanks(renderMarkdown(body, a.width)); !sameRows(got, want) {
 		t.Fatalf("a settled reply is not rendered markdown:\n%#v\n%#v", got, want)
 	}
 }
