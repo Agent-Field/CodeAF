@@ -333,15 +333,10 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 	}
 	if authenticated {
 		request.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-		if c.config.SiteURL != "" {
-			request.Header.Set("HTTP-Referer", c.config.SiteURL)
-		}
-		if c.config.SiteName != "" {
-			request.Header.Set("X-OpenRouter-Title", c.config.SiteName)
-		}
-		if c.config.SiteCategories != "" {
-			request.Header.Set("X-OpenRouter-Categories", c.config.SiteCategories)
-		}
+		// Unconditional rather than gated on isOpenRouter: every endpoint this
+		// client speaks to is a router media endpoint, and an attribution header
+		// is inert anywhere it is not read.
+		applyAttribution(request.Header, c.config)
 	}
 	response, err := c.http.Do(request)
 	if err != nil {
