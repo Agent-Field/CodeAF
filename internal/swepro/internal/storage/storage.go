@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
-	"golang.org/x/sys/unix"
 )
 
 // NotFoundError is the model-visible storage miss from storage.ts:252-253.
@@ -114,14 +114,10 @@ func withFileLock(lockPath string, exclusive bool, fn func() error) error {
 		return err
 	}
 	defer file.Close()
-	operation := unix.LOCK_SH
-	if exclusive {
-		operation = unix.LOCK_EX
-	}
-	if err := unix.Flock(int(file.Fd()), operation); err != nil {
+	if err := filelock.Lock(file, exclusive, false); err != nil {
 		return err
 	}
-	defer unix.Flock(int(file.Fd()), unix.LOCK_UN)
+	defer filelock.Unlock(file)
 	return fn()
 }
 
@@ -165,7 +161,7 @@ func (s *Store) withResourceLocks(targets []string, fn func() error) error {
 			closeResourceLocks(files)
 			return err
 		}
-		if err := unix.Flock(int(file.Fd()), unix.LOCK_EX); err != nil {
+		if err := filelock.Lock(file, true, false); err != nil {
 			_ = file.Close()
 			closeResourceLocks(files)
 			return err
@@ -178,7 +174,7 @@ func (s *Store) withResourceLocks(targets []string, fn func() error) error {
 
 func closeResourceLocks(files []*os.File) {
 	for index := len(files) - 1; index >= 0; index-- {
-		_ = unix.Flock(int(files[index].Fd()), unix.LOCK_UN)
+		_ = filelock.Unlock(files[index])
 		_ = files[index].Close()
 	}
 }

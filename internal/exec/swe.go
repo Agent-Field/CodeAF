@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/enginestate"
 )
@@ -212,7 +212,7 @@ func (s *SWE) Run(ctx context.Context, task Task) (*Outcome, error) {
 	// the auto-resume supervisor re-execs this binary again, and a TERM to the
 	// leader alone would leave the grandchild running against a leaf nobody is
 	// waiting for any more.
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	processgroup.Configure(command)
 	stderr := &tailWriter{limit: sweStderrTail}
 	command.Stderr = &traceTee{trace: trace, prefix: "stderr: ", also: stderr}
 	pipe, err := command.StdoutPipe()
@@ -1240,13 +1240,13 @@ func (s *SWE) signalGroup(command *exec.Cmd, trace *tracer) *time.Timer {
 		return nil
 	}
 	pid := command.Process.Pid
-	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
-		_ = command.Process.Signal(syscall.SIGTERM)
+	if err := processgroup.Terminate(pid); err != nil {
+		_ = command.Process.Kill()
 	}
 	return time.AfterFunc(sweTerminateGrace, func() {
 		defer guard.Recover("exec/swe kill")
 		trace.note("engine: it did not stop when asked — killing the process group")
-		if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+		if err := processgroup.Kill(pid); err != nil {
 			_ = command.Process.Kill()
 		}
 	})

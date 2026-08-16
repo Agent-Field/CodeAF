@@ -13,8 +13,9 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/filelock"
 )
 
 const (
@@ -173,7 +174,7 @@ func AcquireResident(store, surface string) (release func() error, heldBy *Resid
 	if err != nil {
 		return nil, nil, fmt.Errorf("acquire resident: open lock: %w", err)
 	}
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := filelock.Lock(file, true, true); err != nil {
 		if !lockBusy(err) {
 			_ = file.Close()
 			return nil, nil, fmt.Errorf("acquire resident: lock: %w", err)
@@ -200,7 +201,7 @@ func AcquireResident(store, surface string) (release func() error, heldBy *Resid
 		resident.Surface = "unknown"
 	}
 	if err := writeResident(file, resident); err != nil {
-		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+		_ = filelock.Unlock(file)
 		_ = file.Close()
 		return nil, nil, fmt.Errorf("acquire resident: write holder: %w", err)
 	}
@@ -209,7 +210,7 @@ func AcquireResident(store, surface string) (release func() error, heldBy *Resid
 	var releaseErr error
 	release = func() error {
 		once.Do(func() {
-			unlockErr := syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+			unlockErr := filelock.Unlock(file)
 			closeErr := file.Close()
 			releaseErr = errors.Join(unlockErr, closeErr)
 		})
@@ -238,8 +239,8 @@ func ProbeResident(store string) (*Resident, error) {
 	}
 	defer file.Close()
 
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
-		if unlockErr := syscall.Flock(int(file.Fd()), syscall.LOCK_UN); unlockErr != nil {
+	if err := filelock.Lock(file, true, true); err == nil {
+		if unlockErr := filelock.Unlock(file); unlockErr != nil {
 			return nil, fmt.Errorf("probe resident: unlock probe: %w", unlockErr)
 		}
 		return nil, nil
@@ -309,8 +310,8 @@ func legacyHolder(dir string) *Resident {
 		return nil
 	}
 	defer file.Close()
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
-		_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+	if err := filelock.Lock(file, true, true); err == nil {
+		_ = filelock.Unlock(file)
 		return nil
 	} else if !lockBusy(err) {
 		return nil
@@ -335,7 +336,7 @@ func markStuck(holder *Resident, now time.Time) {
 }
 
 func lockBusy(err error) bool {
-	return errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)
+	return filelock.IsBusy(err)
 }
 
 // readSteadyResident reads the payload of a lock somebody else is holding, and
