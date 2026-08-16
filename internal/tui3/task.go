@@ -166,7 +166,22 @@ type taskNode struct {
 	// published it (session's TaskNotice.CostUSD). Zero means nobody published a
 	// price, which is not the same claim as "it cost nothing" — the focus header
 	// draws no figure for it rather than a $0.00 (room.go).
-	cost                  float64
+	cost float64
+	// liveCost is the same quantity as cost, counted the other way round: the
+	// sum of the turn totals the pilot lane has heard (session.EventTurnDone's
+	// Usage.CostUSD) while this node ran. It exists because the notice above
+	// arrives ONLY at a state change (session's task_run.go announces from
+	// setState and nowhere else), so between "running" and "done" the engine's
+	// figure is a number from eleven minutes ago, and a bill that stands still
+	// for eleven minutes is a bill nobody believes. Read it through [taskNode.spent].
+	liveCost float64
+	// tokens is what this node has burned, input plus output, summed over the
+	// turns the pilot has seen. Zero means NOBODY COUNTED — no notice carries a
+	// token figure, so a node this surface met after it landed has none and
+	// never will — and it is not the claim that a node thought for free: a
+	// surface draws nothing at all for it, the way it draws nothing for an
+	// unpublished price (session's task_contract.go on CostUSD).
+	tokens                int
 	report, branch, merge string
 	changed               []string
 	// tool is what the node is doing RIGHT NOW, one line, and toolBegan when it
@@ -190,6 +205,40 @@ func (n *taskNode) spawnedAt() time.Time {
 		return n.began
 	}
 	return n.met
+}
+
+// spent is what this node has cost, in dollars, from whichever of its two lanes
+// knows the most — the engine's published figure, or the pilot's running sum.
+// Zero means nobody has priced it, which is not "it was free", and a surface
+// that draws this draws nothing rather than a $0.00 it made up.
+//
+// THE TWO FIGURES ARE THE SAME MONEY AND ARE NEVER ADDED. session's spend()
+// answers a running node by asking its child agent for Usage().CostUSD — the
+// cumulative meter — and a turn's Usage.CostUSD is one step of that same meter,
+// so a surface that summed the notice and the turns would bill every turn twice.
+// They are RECONCILED: the larger of the two is the more recent reading of one
+// number, and taking the larger is also what makes this monotonic, because both
+// halves only ever grow.
+//
+// ONCE THE NODE LANDS THE NOTICE WINS OUTRIGHT. The landing figure is frozen
+// from the engine's own books (session's foldTaskUsage), and a surface holding a
+// larger guess after the work is over would be disputing the bill rather than
+// reporting it. The cost of that rule is the one case where this can read low: a
+// node that was already running when this surface attached has spend the pilot
+// never heard, so the row stays on the engine's older figure until the run's new
+// turns overtake it and the landing corrects it. Reading low for a minute is the
+// cheaper wrong — the alternative overstates what a person is being charged.
+func (n *taskNode) spent() float64 {
+	switch n.state {
+	case session.TaskDone, session.TaskFailed, session.TaskUnverified:
+		if n.cost > 0 {
+			return n.cost
+		}
+	}
+	if n.liveCost > n.cost {
+		return n.liveCost
+	}
+	return n.cost
 }
 
 // A NODE NEVER LEAVES THE ROSTER. It used to: a finished node whose branch had
@@ -334,9 +383,17 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 //
 // A pilot is the room's own door ([taskRoomAgent.WatchTask]) opened WITHOUT a
 // room: one watcher per running node, kept for exactly as long as the node
-// runs, folding two facts out of the stream and dropping everything else — what
-// the node is doing, and when it started doing it. That is what the rail's
-// elapsed clock is measured against (see [app.taskClock]).
+// runs, folding three facts out of the stream and dropping everything else —
+// what the node is doing, when it started doing it, and what the step it just
+// finished cost. That is what the rail's elapsed clock is measured against (see
+// [app.taskClock]) and what its tokens and its price are counted from (see
+// [taskNode.spent]).
+//
+// THE SPEND IS HERE BECAUSE THE STANDING LANE IS SILENT. A node's updates carry
+// a price and arrive only at a state change, so the rail's figure would be the
+// one the node started with for the whole of the run; the child's own turns end
+// several times a minute (session's task_run.go drives it through Submit after
+// Submit), and each of those says what it has cost so far.
 //
 // IT COSTS A MESSAGE PER EVENT AND A REPAINT PER TOOL CALL, and the second half
 // of that sentence is the design: a node's text deltas arrive here and are
@@ -406,6 +463,23 @@ func (a *app) pilotEvent(msg taskPilotMsg) tea.Cmd {
 		case session.EventToolEnd, session.EventToolFailed:
 			node.tool, node.toolBegan = "", time.Time{}
 			a.touch()
+		case session.EventTurnDone:
+			// ONE STEP'S ACCOUNTING, ADDED TO THE NODE'S. The child is driven
+			// through many Submits and this is the end of one of them, so the
+			// figures are a turn's own and the running totals are the sum of them
+			// ([taskNode.tokens], [taskNode.liveCost] — and read the reconciliation
+			// law on [taskNode.spent] before adding a second lane to either).
+			//
+			// A TURN THAT PRICED NOTHING IS NOT NEWS. An unpriced model and a
+			// provider that returned no usage both land here as zeroes, and adding
+			// zero to a total is a repaint of a frame that has not changed — which
+			// this lane, one message per event, cannot afford to spend.
+			used := msg.ev.Usage
+			if used.Input+used.Output > 0 || used.CostUSD > 0 {
+				node.tokens += used.Input + used.Output
+				node.liveCost += used.CostUSD
+				a.touch()
+			}
 		}
 	}
 	return tea.Batch(waitPilot(pilot.lane, pilot.gen, pilot.id), a.wake())
