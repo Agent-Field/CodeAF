@@ -403,9 +403,19 @@ const consentOfferRow = 1
 
 // consentHeight is how many rows the question takes: the call, the offer, the
 // rule, and the count of the questions behind it when there are any.
+//
+// The phone sheet's height is COUNTED rather than derived, because its command
+// region wraps: two questions about the same call are two different heights on
+// the same frame, and a block whose height and whose rows disagreed would put
+// the caret a row off the box. It is laid out at the frame's own width — the
+// width [app.chrome] is drawn at — so the count and the drawing are the same
+// arithmetic on the same number.
 func (a *app) consentHeight() int {
 	if !a.asking() {
 		return 0
+	}
+	if width, _ := a.size(); a.consentSheeted(width) {
+		return len(a.consentSheet(width))
 	}
 	rows := 3
 	if a.asks[0].rule == "" {
@@ -420,8 +430,14 @@ func (a *app) consentHeight() int {
 // consentRows draws the block. It is laid out by [app.frame], directly above the
 // input, because that is where this surface puts everything it wants answered.
 func (a *app) consentRows(width int) []string {
+	// The targets are rewritten by every layout and by nothing else: a stale
+	// span is a tap that answers about the previous question (see [app.askTaps]).
+	a.askTaps = nil
 	if !a.asking() {
 		return nil
+	}
+	if a.consentSheeted(width) {
+		return a.consentSheet(width)
 	}
 	head := a.asks[0]
 	out := make([]string, 0, 4)
@@ -434,6 +450,28 @@ func (a *app) consentRows(width int) []string {
 		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
 	}
 	return out
+}
+
+// consentMark is what the pointer is over on row i of the block, which is the
+// frame's half of the same geometry ([app.chrome]).
+//
+// ON A PHONE THE WHOLE SHEET ANSWERS TO THE POINTER, not just the row with the
+// answers on it. It is a sheet over the bottom of the screen, and the gap
+// between two bands falling through to a transcript row underneath is how a
+// thumb aimed at "deny" expands a tool call instead. Everywhere else the block
+// is a block, and the offer line is the one row of it that was ever pressable.
+func (a *app) consentMark(i, width int) chromeRow {
+	if a.consentSheeted(width) {
+		return chromeRow{kind: chromeChoices, index: i}
+	}
+	if i == consentOfferRow {
+		// The index is the row within the block at EVERY tier, which is the
+		// number [app.consentPress] resolves a target against. Here it is
+		// [consentOfferRow] by definition, and saying so is what keeps one
+		// meaning for one field.
+		return chromeRow{kind: chromeChoices, index: consentOfferRow}
+	}
+	return chromeRow{}
 }
 
 // consentCall is the tool row itself, drawn by the renderer that drew it in the
@@ -487,6 +525,7 @@ func (a *app) consentOffer(width int) string {
 	if ansi.StringWidth(line) > width {
 		return a.pal.ask(fit(line, width))
 	}
+	a.recordOfferTaps(parts)
 	// The clock takes what is left over, and takes nothing when there is not
 	// room for the whole of it.
 	clock := a.consentClock()
@@ -519,12 +558,329 @@ func (a *app) consentOffer(width int) string {
 // answers would be the loudest thing in a block whose whole job is to be read
 // once and answered.
 func (a *app) consentClock() string {
+	if word := a.consentClockWord(); word != "" {
+		return " · " + word
+	}
+	return ""
+}
+
+// consentClockWord is that countdown without the separator that joins it to a
+// line of words — "7s", or "paused", or nothing. The sheet spells it alone in a
+// corner, where a leading middot would be a middot with nothing on its left.
+func (a *app) consentClockWord() string {
 	left, running := a.askLeft()
 	if !running {
 		return ""
 	}
 	if a.askPaused {
-		return " · paused"
+		return "paused"
 	}
-	return " · " + countdownWord(left)
+	return countdownWord(left)
+}
+
+// ── the phone sheet ─────────────────────────────────────────────────────────
+//
+// UNDER SIXTY COLUMNS THE BLOCK BECOMES A BOTTOM SHEET.
+//
+// The block above is a line of words with three keys in it, and on a phone-sized
+// frame it is the wrong object twice over. It is too wide — the offer's own
+// narrow spelling exists because at that width the sentence stops fitting — and
+// it is untappable, because there is no keyboard on a phone and `[y]` is three
+// cells for a thumb that covers ten. So at [tierPhone] the same four facts are
+// laid out as a sheet over the bottom of the screen:
+//
+//	───── ? bash ─────────────
+//	 git commit -m "wave"
+//	 bash pattern "git *"
+//	──────────────────────────
+//	 [y] allow
+//	 [n] deny
+//	 [a] always, this tool
+//	 2 more                 8s
+//
+// Four decisions, and each is the phone's own:
+//
+//   - THE ANSWERS ARE BANDS, NOT COLUMNS. Three answers across forty-four
+//     columns is fourteen cells each before the gaps, and a phone tier reaches
+//     down to twenty columns where three columns is four cells each — a target
+//     that misses. A band is the WHOLE ROW, at every width this tier has, and it
+//     is the only shape that holds the floor everywhere.
+//   - THE CLOCK IS ON ITS OWN CORNER. It stays bottom-right where the sketch put
+//     it, but off the bands: a countdown drawn inside a full-width target is a
+//     word you cannot touch without answering, and the one answer nobody means
+//     to give is the one they were reaching past the clock for.
+//   - THE COMMAND GETS ROOM. The block above re-uses the call's transcript row,
+//     one line, cut to fit — and one line cut to fit at forty-four columns is an
+//     approval prompt with the interesting half of the command missing. Here it
+//     wraps, up to [consentSheetLines], and says so with an ellipsis when even
+//     that was not enough.
+//   - NOTHING NEW IS ASKED. Same three answers, same keys, same clock, same
+//     queue count, same policy sentence — the sheet is a LAYOUT and not a second
+//     question. esc still denies from the keyboard; its tap target is the deny
+//     band, because on this surface cancelling and denying are one act.
+
+const (
+	// consentSheetLines caps the command region. Six lines is about two hundred
+	// and fifty characters at this tier — longer than any command a person reads
+	// before deciding — and the cap is what keeps one pathological argument from
+	// pushing the answers off a short screen.
+	consentSheetLines = 6
+	// consentSheetFloor is the narrowest frame the sheet is drawn on. Under it a
+	// band cannot hold its own label, and the line of words the block has always
+	// drawn — which degrades by truncating rather than by breaking — is the
+	// better shape.
+	consentSheetFloor = 16
+	// consentBandPad is the one cell of margin every row of the sheet opens
+	// with. The bands are pressable edge to edge regardless: the margin is
+	// breathing room for the eye, not a gap for the thumb.
+	consentBandPad = " "
+)
+
+// consentSheeted reports whether the question is drawn as the phone sheet.
+func (a *app) consentSheeted(width int) bool {
+	return a.asking() && width >= consentSheetFloor && layoutTier(width) == tierPhone
+}
+
+// consentTap is one answer's columns on one row of the block. A press inside
+// [span.from, span.to) on that row is that answer, and nothing outside any span
+// answers anything (see [app.consentPress]).
+type consentTap struct {
+	span  hudSpan
+	row   int
+	allow bool
+	scope session.ConsentScope
+}
+
+// consentSheet draws the phone form and records where its answers landed.
+func (a *app) consentSheet(width int) []string {
+	head := a.asks[0]
+	name, command := a.consentWords(head)
+	out := make([]string, 0, consentSheetLines+6)
+	out = append(out, a.consentTitle(name, width))
+	out = append(out, a.consentCommand(command, width)...)
+	if head.rule != "" {
+		out = append(out, a.pal.dim(fit(consentBandPad+head.rule, width)))
+	}
+	out = append(out, a.pal.dim(strings.Repeat("─", width)))
+
+	taps := make([]consentTap, 0, 3)
+	band := func(key, word string, allow bool, scope session.ConsentScope) {
+		row := len(out)
+		out = append(out, a.consentBand(row, key, word, width))
+		taps = append(taps, consentTap{
+			span: hudSpan{from: 0, to: width}, row: row, allow: allow, scope: scope,
+		})
+	}
+	band(consentYes, "allow", true, session.ConsentOnce)
+	band(consentNo, "deny", false, session.ConsentOnce)
+	if head.memo {
+		// The same two spellings the offer line keeps, and for the same reason:
+		// the widening yes is the one answer whose name has to say how far it
+		// reaches, and a name cut off mid-reach says less than the short one.
+		word := "always, this tool"
+		if ansi.StringWidth(consentBandPad+"["+consentAlways+"] "+word) > width {
+			word = "always"
+		}
+		band(consentAlways, word, true, session.ConsentToolSession)
+	}
+	a.askTaps = taps
+	if foot := a.consentFoot(width); foot != "" {
+		out = append(out, foot)
+	}
+	return out
+}
+
+// consentWords is the call split in two: what the tool is, and what it was
+// asked to do. The block above draws them joined, by the renderer that drew the
+// transcript row (see [app.consentCall]); the sheet needs them apart, because
+// the tool names the sheet and the command fills it.
+//
+// It reads the ROW where there is one, on the same terms [app.toolLine] does —
+// the argument the row shows, falling back to the hint the gate sent — so the
+// sheet and the line above it cannot be describing different calls.
+func (a *app) consentWords(head ask) (string, string) {
+	name, command := toolWords(head.tool, head.hint)
+	if head.entry >= 0 && head.entry < len(a.entries) {
+		if e := &a.entries[head.entry]; e.kind == entryTool {
+			name, command = toolWords(e.tool, e.text)
+			if target := toolTarget(e.tool, e.detail.Args, e.text); target != "" {
+				command = target
+			}
+		}
+	}
+	if name == "" {
+		name = head.tool
+	}
+	return name, command
+}
+
+// consentTitle is the sheet's head: a rule with the tool's name written into
+// it, in the question hue. It is the same move the seam above the draft makes
+// (render.go's legend) — a line that was already there, carrying the one word
+// that says what this is.
+func (a *app) consentTitle(name string, width int) string {
+	label := " " + glyphAsk + " " + name + " "
+	lead := 3
+	if room := width - lead - 1; ansi.StringWidth(label) > room {
+		label = fit(label, room)
+	}
+	rest := width - lead - ansi.StringWidth(label)
+	if rest < 0 {
+		rest = 0
+	}
+	return a.pal.dim(strings.Repeat("─", lead)) +
+		a.pal.askBold(label) +
+		a.pal.dim(strings.Repeat("─", rest))
+}
+
+// consentCommand is the command region: what is actually about to run, wrapped
+// rather than cut, because the tail of a command is where the reason to say no
+// usually is.
+func (a *app) consentCommand(command string, width int) []string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		// A call with no argument — the tool's own name is the whole of it, and
+		// the title above already says it. A blank region would be a row spent
+		// saying nothing.
+		return nil
+	}
+	lines := wrap(command, width-len(consentBandPad))
+	if len(lines) > consentSheetLines {
+		lines = lines[:consentSheetLines]
+		last := lines[consentSheetLines-1]
+		lines[consentSheetLines-1] = fit(last+glyphMore, width-len(consentBandPad))
+	}
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, a.pal.ink(fit(consentBandPad+line, width)))
+	}
+	return out
+}
+
+// consentBand is one answer, drawn as a row: the key it also answers to, then
+// the word. Under the pointer it takes the background every pressable row on
+// this surface takes (hover.go) — which is an affordance for a mouse and a
+// no-op for a thumb, so the row says what it is in WORDS as well.
+func (a *app) consentBand(row int, key, word string, width int) string {
+	text := a.pal.ask(consentBandPad) + a.pal.askBold("["+key+"]") + a.pal.ask(" "+word)
+	if a.hoveringChoice(row) {
+		return a.pal.hover(text, width)
+	}
+	return text
+}
+
+// consentFoot is the sheet's bottom line: what is still queued behind this
+// question on the left, and the countdown on the right. Both are dim and
+// neither is a target — it is the row that reports, under the rows that act.
+func (a *app) consentFoot(width int) string {
+	var left string
+	if more := len(a.asks) - 1; more > 0 {
+		left = consentBandPad + itoa(more) + " more"
+	}
+	right := a.consentClockWord()
+	if left == "" && right == "" {
+		return ""
+	}
+	if right != "" {
+		right += consentBandPad
+	}
+	gap := width - ansi.StringWidth(left) - ansi.StringWidth(right)
+	if gap < 1 {
+		// No room for both: the clock goes, on the offer line's own rule — a
+		// countdown a person cannot see is still a countdown, and the queue
+		// count is the one of the two that says something about their next
+		// decision rather than about this one.
+		return a.pal.dim(fit(left, width))
+	}
+	return a.pal.dim(left + strings.Repeat(" ", gap) + right)
+}
+
+// hoveringChoice reports whether the pointer is on this row of the block. It is
+// [app.hoveringChoices] with the row asked as well, which is what the sheet
+// needs and the one-line offer never did.
+func (a *app) hoveringChoice(row int) bool {
+	return a.hot.kind == hoverChoices && a.hot.index == row
+}
+
+// ── the pointer ─────────────────────────────────────────────────────────────
+
+// recordOfferTaps writes the offer line's columns: every key chip on it, and
+// the word beside it, are one target.
+//
+// THE WORD IS PART OF THE TARGET and not decoration beside it. `[y]` is three
+// cells; `[y] yes` is seven, which is the difference between a target a person
+// hits and one they aim at. The separator that leads to the next answer is left
+// out of both — a press in the gap between two answers must not be able to
+// resolve as either.
+func (a *app) recordOfferTaps(parts []string) {
+	answer := func(chip string) (bool, session.ConsentScope, bool) {
+		switch chip {
+		case "[" + consentYes + "]":
+			return true, session.ConsentOnce, true
+		case "[" + consentAlways + "]":
+			return true, session.ConsentToolSession, true
+		case "[" + consentNo + "]", "[esc]":
+			return false, session.ConsentOnce, true
+		}
+		return false, session.ConsentOnce, false
+	}
+	taps := make([]consentTap, 0, 4)
+	at := 0
+	for i, part := range parts {
+		width := ansi.StringWidth(part)
+		allow, scope, ok := answer(part)
+		if !ok {
+			at += width
+			continue
+		}
+		to := at + width
+		if i+1 < len(parts) {
+			to += ansi.StringWidth(strings.TrimSuffix(parts[i+1], " · "))
+		}
+		taps = append(taps, consentTap{
+			span: hudSpan{from: at, to: to}, row: consentOfferRow, allow: allow, scope: scope,
+		})
+		at += width
+	}
+	a.askTaps = taps
+}
+
+// consentPress resolves a click on the question, and reports whether it took
+// it.
+//
+// THE BLOCK SWALLOWS EVERY PRESS IN IT, answer or no answer. It is the one
+// thing on screen the session is blocked on; a press that missed a band and
+// fell through to the transcript underneath would expand a tool call while the
+// person was trying to deny one — and on the sheet, which covers the bottom of
+// the screen, "underneath" is most of what they can see.
+//
+// AND A PRESS STOPS THE CLOCK, exactly as every key does ([app.consentKey] says
+// why): the countdown exists so an unattended session cannot park a call
+// forever, and a pointer inside the question is a person at the machine.
+func (a *app) consentPress(x, y int) bool {
+	if !a.asking() || a.copy.on || a.sheet.open {
+		return false
+	}
+	// THE ROW IS RESOLVED BEFORE THE COLUMN, and that order is load-bearing for
+	// the reason [app.statusPress] states: laying the chrome out is what writes
+	// the spans, and reading them first would be reading where the answers were
+	// drawn on the frame before this one.
+	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != chromeChoices {
+		return false
+	}
+	a.pauseAsk()
+	for _, tap := range a.askTaps {
+		if tap.row != mark.index || !tap.span.holds(x) {
+			continue
+		}
+		if tap.scope == session.ConsentToolSession && !a.asks[0].memo {
+			// The one answer that is refused when it would do nothing, refused
+			// here for the same reason the key is (see [ask.memo]).
+			return true
+		}
+		a.answer(tap.allow, tap.scope)
+		return true
+	}
+	return true
 }
