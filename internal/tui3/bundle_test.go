@@ -799,9 +799,14 @@ func TestEachSlotFiltersTheModelsByWhatItNeeds(t *testing.T) {
 	}
 	cursorTo(t, a, config.KeyVisionModel)
 	drive(t, a, key("enter"))
-	// Sonnet publishes an image input; blind-chat publishes an input list
-	// WITHOUT one and is gone; the silent row falls through, because silence on
-	// this side is a cache written before the field travelled and not a refusal.
+	// The slot is an inspection proxy — a picture in, a sentence back — so the
+	// row has to SEE and to ANSWER. Sonnet publishes an image input and text out;
+	// blind-chat publishes an input list WITHOUT a picture in it and is gone;
+	// gemini reads pictures and answers in pictures, so it is gone from here too,
+	// exactly as it is gone from the tier rows; the transcriber and the embedder
+	// are silent and read by their names, which say they do not talk. The silent
+	// row that no name marks falls through, because silence on this side is a
+	// cache written before the field travelled and not a refusal.
 	vision := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3"}
 	if got := pickedIDs(a.sheet.sel); strings.Join(got, ",") != strings.Join(vision, ",") {
 		t.Fatalf("the looking row offers %v, want the models that see %v", got, vision)
