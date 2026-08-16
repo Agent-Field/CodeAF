@@ -158,10 +158,17 @@ type taskRoom struct {
 	child    *Agent
 	closed   bool
 	watchers map[*eventStream]struct{}
+	// live is the recorder every published event also goes through
+	// (task_live.go): what the node is doing and the tail of what it has said,
+	// kept for the reader who was NOT subscribed while it happened — the model,
+	// asking after the fact. It is set once here and never reassigned, so it is
+	// read without this lock, and it OUTLIVES the close: a node that landed a
+	// second ago still answers with the last thing it was doing.
+	live *taskLive
 }
 
 func newTaskRoom() *taskRoom {
-	return &taskRoom{watchers: make(map[*eventStream]struct{}, 1)}
+	return &taskRoom{watchers: make(map[*eventStream]struct{}, 1), live: &taskLive{}}
 }
 
 // join returns a fresh channel carrying this node's events from now on. A room
@@ -218,10 +225,17 @@ func (r *taskRoom) speaker() *Agent {
 // a signal, never a wait, so every watcher sees the same events in the same
 // order and one arriving mid-fan-out lands cleanly before or after this event
 // rather than inside it.
+//
+// IT IS ALSO WHERE THE EVENT IS RECORDED (task_live.go). This is the one funnel
+// the child's whole narrative passes through, so it is the one place a
+// recording can be in the order the work happened; a second tap on the stream
+// would be a second ordering of the same events, disagreeing exactly under the
+// load that makes the question worth asking.
 func (r *taskRoom) publish(event Event) {
 	if r == nil {
 		return
 	}
+	r.live.record(event)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {

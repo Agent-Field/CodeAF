@@ -139,6 +139,16 @@ type TaskIndexEntry struct {
 	// is a real session file the read tool can open (task_run.go's
 	// taskJournalPath).
 	TranscriptURI string `json:"transcriptUri,omitempty"`
+	// Activity is what a RUNNING node is doing at the instant this row was
+	// built, in one line: the call in flight and how long it has been in flight,
+	// or the gap between calls with the step count beside it (task_live.go). It
+	// is empty on every landed row.
+	//
+	// IT IS NEVER WRITTEN TO THE FILE. The index is what work CAME TO, and a row
+	// on disk claiming a call in flight would be this project's record
+	// remembering a present that ended seconds after it was recorded — which is
+	// the one thing an append-only history must not do.
+	Activity string `json:"-"`
 }
 
 // Live reports whether this row is a node that is still going.
@@ -381,6 +391,14 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		SessionID:     session,
 		ArtifactURI:   taskArtifactURI(n.worktree, n.branch),
 		TranscriptURI: taskURI(n.journal),
+	}
+	// A LIVE ROW SAYS WHAT IS HAPPENING IN IT. The recorder is read here, under
+	// the graph's lock, because this is the one place a row is built and both
+	// readers of the index — the "@" drop-up and the `tasks` tool — must not
+	// each grow their own way of asking (see [Agent.TaskIndex]). The recorder
+	// takes only its own lock, so nothing waits on the graph for it.
+	if !n.state.settled() {
+		entry.Activity = n.room.recorder().activity()
 	}
 	if n.state == TaskDone || n.state == TaskFailed {
 		// A landed node's EndedAt is now minus nothing: the report hook runs at
