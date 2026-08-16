@@ -318,7 +318,7 @@ func TestAChangedSettingIsMarked(t *testing.T) {
 	if a.sheet.changed(item) {
 		t.Fatal("an untouched row is already marked")
 	}
-	line := plain(a.sheet.rowLine(item, true, false, a.width, a.pal))
+	line := plain(strings.Join(a.sheet.rowLines(item, true, false, a.width, a.pal), "\n"))
 	if strings.Contains(line, changedMark) {
 		t.Fatalf("an untouched row drew the mark: %q", line)
 	}
@@ -328,7 +328,7 @@ func TestAChangedSettingIsMarked(t *testing.T) {
 	if !a.sheet.changed(item) {
 		t.Fatal("a row written by hand is not marked as changed")
 	}
-	line = plain(a.sheet.rowLine(item, true, false, a.width, a.pal))
+	line = plain(strings.Join(a.sheet.rowLines(item, true, false, a.width, a.pal), "\n"))
 	if !strings.Contains(line, changedMark) {
 		t.Fatalf("the changed row is missing its mark: %q", line)
 	}
@@ -359,7 +359,7 @@ func TestACredentialRowRendersMasked(t *testing.T) {
 	}
 
 	item, _ := a.sheet.current()
-	line := plain(a.sheet.rowLine(item, true, false, a.width, a.pal))
+	line := plain(strings.Join(a.sheet.rowLines(item, true, false, a.width, a.pal), "\n"))
 	if strings.Contains(line, "0123456789") {
 		t.Fatalf("the credential is on screen in full: %q", line)
 	}

@@ -284,7 +284,16 @@ func TestANarrowRowKeepsTheAgeAndGivesUpTheDescription(t *testing.T) {
 		!strings.HasPrefix(note, "run the migration") {
 		t.Fatalf("a wide row reads %q", note)
 	}
-	if note := sessionNote(session, 34, name); note != "2h ago" {
+	// The width has to be spent by the NAME for the sentence to be squeezed out,
+	// and the frame has to be one where the two still share a line: under
+	// [tierPhone] the tail has a line of its own and the arithmetic is a
+	// different one (palette.go's [overlayLines]).
+	long := Session{
+		Title: "port the resume picker to the new surface",
+		Last:  "run the migration against the staging database",
+		At:    time.Now().Add(-2 * time.Hour),
+	}
+	if note := sessionNote(long, 60, humanName(long)); note != "2h ago" {
 		t.Fatalf("a narrow row reads %q, want the age alone", note)
 	}
 }

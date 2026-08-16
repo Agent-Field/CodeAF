@@ -286,24 +286,22 @@ const (
 	glyphMentionASCII = "#"
 )
 
-// taskRow draws one task, in the overlay's own grammar: a label the row's state
-// paints, and a dim note on the right that the label gives way to.
+// taskRowLabel is one task's half of a row, in the overlay's own grammar: the
+// state, the mention mark and the words. The dim note beside it — or under it on
+// a phone — is the AGE and nothing else ([taskNoteWord]): a row here is chosen
+// by recognition, the person already knows what the task was, so the one fact
+// worth the tail is which of the two similarly-named ones this is.
 //
 //	› ✓ ⧉ Fix the nil-map crash                                    3h
 //	  ▸ ⧉ Sweep the deprecated call sites                          4m
-//
-// The note is the AGE and nothing else. A row here is chosen by recognition —
-// the person already knows what the task was — so the one fact worth the right
-// margin is which of the two similarly-named ones this is, and that is when.
-func (c *completion) taskRow(entry session.TaskIndexEntry, line int, hovered bool, width int, pal palette) string {
+func taskRowLabel(entry session.TaskIndexEntry, ascii bool) string {
 	// Label is the title already cut to a row's width (session.taskLabel), and
 	// the uncut title stands in for a row written before that field existed.
 	words := entry.Label
 	if words == "" {
 		words = entry.Title
 	}
-	label := taskStatusGlyph(entry, pal.ascii) + " " + mentionMark(pal.ascii) + " " + words
-	return overlayRow(label, taskNoteWord(entry), line == c.selLine(), false, hovered, width, pal)
+	return taskStatusGlyph(entry, ascii) + " " + mentionMark(ascii) + " " + words
 }
 
 func mentionMark(ascii bool) string {

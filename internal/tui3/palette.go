@@ -272,13 +272,7 @@ func listTop(cursor, top, count, height int) int {
 // moving, so hover stays one step off the terminal's own black and selection is
 // the stronger band above it.
 func overlayRow(label, note string, selected, marked, hovered bool, width int, pal palette) string {
-	lead := "  "
-	switch {
-	case selected:
-		lead = pal.accent("› ")
-	case hovered:
-		lead = pal.accent("· ")
-	}
+	lead := overlayLead(selected, hovered, pal)
 	room := width - 2
 	if note != "" {
 		room -= ansi.StringWidth(note) + 1
@@ -321,6 +315,215 @@ func overlayRow(label, note string, selected, marked, hovered bool, width int, p
 	return line
 }
 
+// overlayLead is the two cells in front of every row: the cursor's mark, the
+// pointer's, or nothing. It is its own function because a wrapped row draws it
+// on the first line and pads to it on the second — the same two cells either
+// way, so the label starts in the same column on both.
+func overlayLead(selected, hovered bool, pal palette) string {
+	switch {
+	case selected:
+		return pal.accent("› ")
+	case hovered:
+		return pal.accent("· ")
+	}
+	return "  "
+}
+
+// ── the two-line row, at tierPhone ──────────────────────────────────────────
+//
+// A row is a label and a dim tail of facts, and on a wide frame they share one
+// line with the label giving way first ([overlayRow]). On a phone there is no
+// width to share: an id and "200k · $3/$15 per M · elo 1300" cannot both be on
+// a forty-four-cell line, and the row that came out of that arithmetic was a
+// truncated name beside a truncated number — the two halves of the row both
+// cut, neither readable.
+//
+//	› anthropic/claude-sonnet-4.5
+//	    200k · $3/$15 per M · elo 1300
+//
+// So at [tierPhone] the tail takes a line of its own, indented under the label
+// it belongs to. THE PAIR IS ONE ROW and everything downstream treats it as
+// one: the selection band spans both lines, the pointer over either line is
+// over the row, and the window never draws the first line of a pair whose
+// second would not fit (see [overlayFill]).
+//
+// A row with no tail — most of the file completion's paths — stays one line.
+// A blank second line under every path would spend half the screen saying
+// nothing.
+
+// overlayIndent is where a wrapped tail starts: the row's own two-cell lead,
+// plus two more so the tail reads as hanging under the label rather than as a
+// row of its own.
+const overlayIndent = 4
+
+// phoneList reports whether lists on a frame this wide wrap their tails.
+func phoneList(width int) bool { return layoutTier(width) == tierPhone }
+
+// overlayItemLines is how many SCREEN lines one row takes. It is the ONE
+// answer, asked by the fill that draws the rows and by the height that reserves
+// the frame's rows for them — two counts that must agree or the list is drawn
+// into a block of the wrong size.
+func overlayItemLines(width int, note string) int {
+	if note != "" && phoneList(width) {
+		return 2
+	}
+	return 1
+}
+
+// overlayLines is one row as the lines it takes: [overlayRow] everywhere, and
+// the label/tail pair at [tierPhone].
+func overlayLines(label, note string, selected, marked, hovered bool, width int, pal palette) []string {
+	if overlayItemLines(width, note) == 1 {
+		return []string{overlayRow(label, note, selected, marked, hovered, width, pal)}
+	}
+	head := overlayLead(selected, hovered, pal)
+	painted := fit(label, width-2)
+	switch {
+	case marked:
+		painted = pal.accent(painted)
+	case selected:
+		painted = pal.ink(painted)
+	default:
+		painted = pal.dim(painted)
+	}
+	if selected {
+		painted = pal.bold(painted)
+	}
+	head += painted
+
+	// The tail keeps the row's own ink rule: dim, and ink on the selected row,
+	// because dim grey on the selection band is grey on grey — and the tail is
+	// the half of the row a person stopped on the row to read.
+	tail := fit(note, width-overlayIndent)
+	if selected {
+		tail = pal.ink(tail)
+	} else {
+		tail = pal.dim(tail)
+	}
+	tail = strings.Repeat(" ", overlayIndent) + tail
+
+	switch {
+	case selected:
+		return []string{pal.band(head, width), pal.band(tail, width)}
+	case hovered:
+		return []string{pal.hover(head, width), pal.hover(tail, width)}
+	}
+	return []string{head, tail}
+}
+
+// overlayWindow is how many lines the rows from top take, stopping at the
+// ceiling the list was given. A row that would straddle the bottom edge is not
+// counted, because it is not drawn ([overlayFill.add]).
+//
+// note answers what row i's tail is — the only thing the count needs, since the
+// tail is what decides whether the row is one line or two.
+func overlayWindow(width, top, count, ceiling int, note func(int) string) int {
+	lines := 0
+	for at := top; at < count && lines < ceiling; at++ {
+		take := overlayItemLines(width, note(at))
+		if lines+take > ceiling {
+			break
+		}
+		lines += take
+	}
+	return lines
+}
+
+// overlayItems is the item-space window a list follows its cursor within, given
+// the SCREEN rows the frame handed it. At [tierPhone] a row can be two lines, so
+// half the rows is the count that cannot overflow — which is what makes the
+// cursor's row always fit whole inside the window it is scrolled into.
+func overlayItems(n, width int) int {
+	if phoneList(width) {
+		return n / 2
+	}
+	return n
+}
+
+// overlayFill accumulates one list's lines into exactly the n rows the frame
+// reserved for it. Every list on this surface draws through it, so the two-line
+// law, the pointer's row and the bottom edge are decided once.
+type overlayFill struct {
+	out   []string
+	owner []int
+	n     int
+	width int
+	pal   palette
+	// hover is the pointer's row within the block, in SCREEN lines — which is
+	// what the frame records (view.go's chromeOverlay) and not what the list
+	// counts in. A row is hovered when the pointer is on EITHER of its lines.
+	hover int
+}
+
+func newOverlayFill(width, n int, pal palette, hover int) *overlayFill {
+	return &overlayFill{out: make([]string, 0, n), owner: make([]int, 0, n), n: n, width: width, pal: pal, hover: hover}
+}
+
+// room reports whether another line will fit.
+func (f *overlayFill) room() bool { return len(f.out) < f.n }
+
+// add draws one row, and reports whether it fit. A two-line row with one line of
+// room left does NOT fit: half a row at the bottom of a list is a label whose
+// facts are on the next screen, and a selection band with one end cut off.
+//
+// at is what the row belongs to — the index a pointer resolves back to — or -1
+// for a line that answers to nothing.
+func (f *overlayFill) add(at int, label, note string, selected, marked bool) bool {
+	take, flat := overlayItemLines(f.width, note), false
+	if len(f.out)+take > f.n {
+		// EXCEPT ON A FRAME WITH ONE ROW TO GIVE. A list that answered a one-row
+		// window with a blank would be an overlay that opened onto nothing,
+		// which is worse than the truncation this whole surface is about: the
+		// pair is a way of READING a row, and no row at all is not a better one.
+		// So the first row of a window too short for a pair falls back to the
+		// one line every wider frame draws.
+		if len(f.out) > 0 || f.n < 1 {
+			return false
+		}
+		take, flat = 1, true
+	}
+	hovered := f.hover >= len(f.out) && f.hover < len(f.out)+take
+	lines := overlayLines(label, note, selected, marked, hovered, f.width, f.pal)
+	if flat {
+		lines = []string{overlayRow(label, note, selected, marked, hovered, f.width, f.pal)}
+	}
+	for _, line := range lines {
+		f.out = append(f.out, line)
+		f.owner = append(f.owner, at)
+	}
+	return true
+}
+
+// plain adds a line that is not a row — a section rule, a "nothing matches" —
+// already painted by its caller.
+func (f *overlayFill) plain(line string) bool {
+	if !f.room() {
+		return false
+	}
+	f.out = append(f.out, line)
+	f.owner = append(f.owner, -1)
+	return true
+}
+
+// done closes the block: blanks under the last row where the items ran out
+// before the frame's rows did.
+//
+// THE BLOCK IS EXACTLY THE HEIGHT IT WAS PROMISED. The frame subtracts that
+// height from the conversation before the list is drawn ([app.overlayHeight]),
+// and a list that came back a line short would leave the frame a line short of
+// the terminal. It can only happen at [tierPhone], where a row's height depends
+// on the row; everywhere else the count and the rows agree exactly, so nothing
+// is padded and the block is byte-for-byte the one this surface always drew.
+func (f *overlayFill) done() ([]string, []int) {
+	if phoneList(f.width) {
+		for len(f.out) < f.n {
+			f.out = append(f.out, "")
+			f.owner = append(f.owner, -1)
+		}
+	}
+	return f.out, f.owner
+}
+
 // choice is the model under the cursor, and false when the filter matched
 // nothing — enter on an empty list must change nothing at all.
 func (p *picker) choice() (Model, bool) {
@@ -334,17 +537,21 @@ func (p *picker) choice() (Model, bool) {
 // the box sits in the input line's place and costs the frame nothing. One row
 // is reserved for the "no model matches" line, because a filter that matches
 // nothing has to say so where the list was.
-func (p *picker) height() int {
+//
+// THE CEILING IS IN LINES AND NOT IN MODELS, which is what keeps the overlay
+// the same size on every frame: [pickerRows] rows of a phone are six models
+// with their facts under them rather than twelve models with their facts cut
+// off, and either way the list takes the same twelve rows from the screen.
+func (p *picker) height(width int) int {
 	switch {
 	case !p.open:
 		return 0
 	case len(p.hits) == 0:
 		return 1
-	case len(p.hits) < pickerRows:
-		return len(p.hits)
-	default:
-		return pickerRows
 	}
+	return overlayWindow(width, p.top, len(p.hits), pickerRows, func(at int) string {
+		return modelNote(p.all[p.hits[at]])
+	})
 }
 
 // rows draws exactly n list rows. n comes from [app.overlayHeight], which is
@@ -355,23 +562,35 @@ func (p *picker) height() int {
 // looked up here because the answer lives on the agent (see [app.reasoningFor])
 // and the picker is a list, not a thing that holds a session.
 func (p *picker) rows(width, n int, pal palette, hover int, level func(string) string) []string {
-	if n <= 0 {
-		return nil
-	}
-	if len(p.hits) == 0 {
-		return []string{pal.dim("  no model matches")}
-	}
-	p.follow(n)
-	out := make([]string, 0, n)
-	for at := p.top; at < len(p.hits) && len(out) < n; at++ {
-		model := p.all[p.hits[at]]
-		out = append(out, p.row(model, level(model.ID), at == p.cursor, len(out) == hover, width, pal))
-	}
-	return out
+	lines, _ := p.rowsOwned(width, n, pal, hover, level)
+	return lines
 }
 
-// row is one model: the cursor mark, the id with whatever level it has been
-// dialled to, and the dim tail of facts on the right (models.go's [modelNote] —
+// rowsOwned is [picker.rows] with the hit each LINE belongs to, or -1. The
+// settings panel puts this list inside its own frame and resolves clicks
+// against it (settings.go's [sheet.selectLines]), and "the hit is the line's
+// index from the top" stopped being true the moment a row could be two lines.
+func (p *picker) rowsOwned(width, n int, pal palette, hover int, level func(string) string) ([]string, []int) {
+	if n <= 0 {
+		return nil, nil
+	}
+	if len(p.hits) == 0 {
+		return []string{pal.dim("  no model matches")}, []int{-1}
+	}
+	p.follow(overlayItems(n, width))
+	fill := newOverlayFill(width, n, pal, hover)
+	for at := p.top; at < len(p.hits) && fill.room(); at++ {
+		model := p.all[p.hits[at]]
+		label, note := p.rowText(model, level(model.ID), width)
+		if !fill.add(at, label, note, at == p.cursor, model.ID == p.current) {
+			break
+		}
+	}
+	return fill.done()
+}
+
+// rowText is one model as the row's two halves: the id with whatever level it
+// has been dialled to, and the dim tail of facts (models.go's [modelNote] —
 // window, price, arena score). The model in use is the marked row — that is the
 // mark, and it survives scrolling past it.
 //
@@ -379,25 +598,28 @@ func (p *picker) rows(width, n int, pal palette, hover int, level func(string) s
 // on the row that is not a fact about the model: it is what THIS person asked
 // for, it reads the same here as it does in the status line ("<model>:<level>"),
 // and the tail stays what the catalog said.
-func (p *picker) row(model Model, level string, selected, hovered bool, width int, pal palette) string {
+func (p *picker) rowText(model Model, level string, width int) (string, string) {
 	note := modelNote(model)
-	label := model.ID
-	if level != "" {
-		// THE LEVEL SURVIVES THE TRUNCATION AND THE NAME GIVES WAY. The row's
-		// own law is that the label yields before the note does (see
-		// [overlayRow]), and inside the label the same rule applies once more:
-		// a clipped id is still recognizable, while a level clipped off the end
-		// is a knob that looks like it did nothing. So the id is fitted to what
-		// is left AFTER the suffix is reserved, using the same arithmetic the
-		// row does — the two cells of the lead, the note, and the gap before it.
-		suffix := ":" + level
-		room := width - 2 - ansi.StringWidth(suffix)
-		if note != "" {
-			room -= ansi.StringWidth(note) + 1
-		}
-		label = fit(model.ID, room) + suffix
+	if level == "" {
+		return model.ID, note
 	}
-	return overlayRow(label, note, selected, model.ID == p.current, hovered, width, pal)
+	// THE LEVEL SURVIVES THE TRUNCATION AND THE NAME GIVES WAY. The row's own
+	// law is that the label yields before the note does (see [overlayRow]), and
+	// inside the label the same rule applies once more: a clipped id is still
+	// recognizable, while a level clipped off the end is a knob that looks like
+	// it did nothing. So the id is fitted to what is left AFTER the suffix is
+	// reserved, using the same arithmetic the row does — the two cells of the
+	// lead, the note, and the gap before it.
+	//
+	// A WRAPPED ROW RESERVES NOTHING FOR THE NOTE, because the note is not on
+	// this line: the id gets the whole width at [tierPhone], which is the point
+	// of giving the tail a line of its own.
+	suffix := ":" + level
+	room := width - 2 - ansi.StringWidth(suffix)
+	if note != "" && !phoneList(width) {
+		room -= ansi.StringWidth(note) + 1
+	}
+	return fit(model.ID, room) + suffix, note
 }
 
 // ── reasoning strength, from the row it belongs to ──────────────────────────
@@ -641,20 +863,20 @@ func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func
 // Only one list is ever open — [app.closeLists] and the sync in [app.edited]
 // see to that — so this is a switch and not a sum.
 func (a *app) overlayHeight() int {
+	width, height := a.size()
 	var want int
 	switch {
 	case a.pick.open:
-		want = a.pick.height()
+		want = a.pick.height(width)
 	case a.roster.open:
-		want = a.roster.height()
+		want = a.roster.height(width)
 	case a.menu.open:
-		want = a.menu.height()
+		want = a.menu.height(width)
 	case a.comp.open:
-		want = a.comp.height()
+		want = a.comp.height(width)
 	default:
 		return 0
 	}
-	_, height := a.size()
 	// The approval question and the follow-up count are spoken for before the
 	// list is: both sit between the conversation and the box, and a list that
 	// claimed their rows would push the status line off the frame. The two
