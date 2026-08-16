@@ -23,6 +23,7 @@ One page that says where everything is. Start here.
 | [SERVICES.md](SERVICES.md) | Services — long-running processes the user meant to keep; promotion is consent |
 | [MULTIMODAL.md](MULTIMODAL.md) | Voice, images, documents, media generation — capability for the graph, presence for the chat |
 | [THREAD-UX.md](THREAD-UX.md) | The thread and the cards — one conversation, many living jobs |
+| [SUBHARNESS.md](SUBHARNESS.md) | Node harnesses — one task graph, many workers: ours, claude, codex |
 
 ## Two rules about these files
 
