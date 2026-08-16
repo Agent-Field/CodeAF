@@ -45,6 +45,11 @@ const (
 	// hoverWelcome is one recent-session row of the welcome box; index is its
 	// slot (welcome.go).
 	hoverWelcome
+	// hoverJump is the jump-to-latest chip floating in the frame's breathing gap
+	// (jumpchip.go). It is the one hover target on this surface that is narrower
+	// than the row it is drawn on, which is why [app.hoverTarget] is asked the
+	// COLUMN as well as the row.
+	hoverJump
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -63,8 +68,15 @@ type hoverAt struct {
 // lost the hover are marked stale by hand because their rows are CACHED
 // (render.go's entryRows): a thinking block that was drawn dim yesterday would
 // otherwise stay dim under the pointer.
-func (a *app) setHover(y int) {
-	next := a.hoverTarget(y)
+//
+// IT TAKES THE COLUMN NOW AS WELL AS THE ROW. Every target this file started
+// with was a whole row wide, and the jump chip is not: it is three words at the
+// right edge of a row that is otherwise empty, and a chip that brightened
+// because the pointer was forty columns away from it would be claiming to be
+// something you could press there (jumpchip.go). Every other kind ignores x, as
+// it always did.
+func (a *app) setHover(x, y int) {
+	next := a.hoverTarget(x, y)
 	if next == a.hot {
 		return
 	}
@@ -88,7 +100,7 @@ func (a *app) setHover(y int) {
 // hoverTarget resolves a screen row to what a click on it would act on. The
 // conversation is asked first and the chrome after it, in the order the frame
 // draws them.
-func (a *app) hoverTarget(y int) hoverAt {
+func (a *app) hoverTarget(x, y int) hoverAt {
 	if r, ok := a.rowAt(y); ok {
 		switch {
 		case r.hit == hitFold:
@@ -115,6 +127,12 @@ func (a *app) hoverTarget(y int) hoverAt {
 		case chromeWelcome:
 			if slot := a.welcomeSlotAt(mark.index); slot >= 0 {
 				return hoverAt{kind: hoverWelcome, index: slot}
+			}
+		case chromeJump:
+			// The row was laid out to answer, and laying it out is what wrote the
+			// span — the same order [app.jumpPress] and [app.statusPress] keep.
+			if a.jumpSpan.holds(x) {
+				return hoverAt{kind: hoverJump}
 			}
 		}
 	}
