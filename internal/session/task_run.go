@@ -196,9 +196,17 @@ type TaskNode struct {
 	// is zero and the age is measured from started; a node rehydrated from a
 	// checkpoint has no started to measure from and this is the age it had.
 	elapsed time.Duration
-	// cost is what this node's own agent spent, FROZEN where that spend is
-	// folded into the session's (see [TaskNode.spend]). While it runs it is zero
-	// and the figure is asked of the child directly.
+	// cost is what this node's agents have spent, in dollars, ACCUMULATED where
+	// each of them is closed ([Agent.foldTaskUsage]). While the node runs it is
+	// zero and the live figure is asked of the child directly (see
+	// [TaskNode.spend]); after it lands this is the frozen answer, because the
+	// node outlives its child and a surface asking a landed node what it cost
+	// has nobody else to ask.
+	//
+	// It is NOT in the checkpoint: a resumed graph is a graph whose child agents
+	// are gone, and a figure rehydrated from a file would be the only number on
+	// the task index nobody could point at a request for. It reaches the project
+	// index (task_index.go) and the node's own notice on the way past.
 	cost float64
 	// noted says this node's completion note has been handed to the steering
 	// lane, and it is what stops a resumed session announcing finished work
@@ -563,6 +571,26 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 	n.graph.checkpoint()
 }
 
+// addSpend charges one agent's cost to the node.
+//
+// It ADDS rather than sets, because a node is more than one agent: the worker,
+// and the auditor that judges it (task_audit.go). The person asked for a task,
+// not for a task and separately for a judge, so the node's figure is what the
+// whole node cost — which is the same pocket [Agent.foldTaskUsage] charges the
+// session from.
+//
+// Zero is left alone rather than written: a provider that reported no price is
+// not a node that was free, and a row saying "$0.00" would be this build stating
+// a figure nobody gave it.
+func (n *TaskNode) addSpend(cost float64) {
+	if n == nil || cost <= 0 {
+		return
+	}
+	n.graph.mu.Lock()
+	n.cost += cost
+	n.graph.mu.Unlock()
+}
+
 // setTree records where the node is working, the moment it has somewhere to
 // work. It is the one write that makes an interrupt recoverable: a node killed
 // mid-run has a branch and a directory on disk, and this is where the checkpoint
@@ -674,10 +702,10 @@ func (n *TaskNode) notice() TaskNotice {
 
 // spend is what this node has cost so far, in dollars.
 //
-// A RUNNING NODE IS ASKED ITS CHILD; a landed one reports the figure frozen when
-// its spend was folded into the session's ([Agent.foldTaskUsage]). The two are
-// the same number at two moments, and the freeze is what keeps it after the
-// child agent has been closed and the room emptied.
+// A RUNNING NODE IS ASKED ITS CHILD; a landed one reports the figure accumulated
+// as each of its agents was folded into the session's ([Agent.foldTaskUsage]).
+// The two are the same number at two moments, and the freeze is what keeps it
+// after the child agent has been closed and the room emptied.
 //
 // Zero means "nobody has published a price", which is what an unpriced model and
 // a node that has not started both look like from here — and a surface that
@@ -695,33 +723,28 @@ func (n *TaskNode) spend() float64 {
 	return frozen
 }
 
-// setCost freezes what the node's own agent cost. It is called once, where the
-// child's spend is folded into the session's.
-func (n *TaskNode) setCost(usd float64) {
-	if usd <= 0 {
-		return
-	}
-	n.graph.mu.Lock()
-	n.cost = usd
-	n.graph.mu.Unlock()
-}
-
 // ── the world hearing about a node ──────────────────────────────────────────
 
-// reportTaskNode is the graph's report hook: one event for a surface, and — on
-// a final state — one note for the model.
+// reportTaskNode is the graph's report hook: one event for a surface, a row in
+// the project's index, and — on a final state — one note for the model.
 //
 // The note rides the STEERING LANE, exactly as a background job's exit does
 // (jobs.go). A node's completion is news that arrives while the model is busy,
 // it must land at a step boundary rather than inside a tool batch, and from the
 // model's side it is a line somebody said. Giving it a second lane would be a
 // second ordering rule for the same kind of message.
+//
+// THE INDEX ROW IS WRITTEN HERE FOR THE SAME REASON THE NOTE IS: this is the
+// one place in the build where "this node has finished" is a fact rather than a
+// guess, and a row written anywhere else would be a second definition of landed
+// (task_index.go).
 func (a *Agent) reportTaskNode(node *TaskNode) {
 	notice := node.notice()
 	a.emitTaskUpdate(notice)
 	if notice.State == TaskRunning || notice.State == TaskQueued {
 		return
 	}
+	a.recordTaskIndex(node)
 	a.enqueueSteering(taskNote(notice))
 	// SAID ONCE, ACROSS LIVES. The checkpoint records that this node's completion
 	// has been announced, so a session resumed from it restores the node as
@@ -860,11 +883,10 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// The node's spend is the person's, so it is folded into the session's
 		// auxiliary usage — the pocket the title and the compaction summary come
 		// out of — rather than charged to whichever turn happened to propose it.
-		a.foldTaskUsage(child)
-		// And it is kept ON THE NODE as well, because the node outlives its
-		// child: a surface asking a landed node what it cost has nobody else to
-		// ask (see [TaskNode.spend]).
-		node.setCost(child.Usage().CostUSD)
+		// It is kept ON THE NODE as well, in the same call, because the node
+		// outlives its child: a surface asking a landed node what it cost has
+		// nobody else to ask (see [TaskNode.spend]).
+		a.foldTaskUsage(node, child)
 	}()
 
 	// THE ROOM OPENS HERE, because this is the first moment there is anybody in
@@ -1229,9 +1251,12 @@ func firstLines(text string, n int) string {
 	return strings.Join(kept, "\n")
 }
 
-// foldTaskUsage charges the node's spend to the session.
-func (a *Agent) foldTaskUsage(child *Agent) {
+// foldTaskUsage charges the node's spend to the session, and records it on the
+// node on the way past — this is the only moment anybody can ask a child agent
+// what it cost, because the line after this one closes it.
+func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 	used := child.Usage()
+	node.addSpend(used.CostUSD)
 	if used.Input == 0 && used.Output == 0 && used.CostUSD == 0 {
 		return
 	}

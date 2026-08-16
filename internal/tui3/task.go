@@ -263,15 +263,20 @@ func waitTask(ch <-chan session.Event, gen int) tea.Cmd {
 }
 
 // taskEvent folds one event from the standing lane in and re-arms the pump.
+//
+// AN UPDATE IS ALSO WHAT MAKES THE "@" LIST STALE. A node that has just started
+// belongs under "running" and a node that has just landed belongs in the project
+// index, and this is the one lane that knows either happened (taskmention.go).
 func (a *app) taskEvent(ev session.Event) tea.Cmd {
-	var extra tea.Cmd
+	var pilot, mentions tea.Cmd
 	switch ev.Kind {
 	case session.EventTaskProposal:
 		a.proposeTask(ev)
 	case session.EventTaskUpdate:
-		extra = a.taskUpdate(ev)
+		pilot = a.taskUpdate(ev)
+		mentions = a.refreshTasks()
 	}
-	return tea.Batch(waitTask(a.taskLane, a.taskGen), extra, a.wake())
+	return tea.Batch(waitTask(a.taskLane, a.taskGen), pilot, a.wake(), mentions)
 }
 
 // ── the pilot lanes ─────────────────────────────────────────────────────────
@@ -2326,6 +2331,11 @@ func (a *app) dropTasks() {
 	// that replaced them (see [taskPilot]).
 	a.pilots = nil
 	a.pilotGen++
+	// The "@" list's snapshot goes with them. The project's index survives — it
+	// is the directory's and not this conversation's — but the live rows merged
+	// into it are this conversation's, and the next "@" reads it again
+	// (taskmention.go).
+	a.dropTaskMentions()
 }
 
 // redirectLane is the placeholder the input box wears while a proposal is open.

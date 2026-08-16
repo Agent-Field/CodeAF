@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
 // THE @ COMPLETION: type @ and two characters, and the files under this
@@ -32,12 +34,27 @@ import (
 // by tab rather than by "@" and committing the path as text, because there the
 // path IS what the line says.
 
-// The completion's three bounds. The walk is capped so that an @ typed inside a
-// home directory cannot become a filesystem crawl; the list shows a screenful;
-// two characters is where the query stops matching everything.
+// THE @ ALSO OFFERS TASKS, AND THEY SIT ABOVE THE FILES. See taskmention.go
+// for the whole of that half — the index it reads, the sections it draws, and
+// the pointer block a chosen task becomes at submit. What is in THIS file is
+// only what the two halves share: one list, one cursor, one scroll.
+//
+// The reason they share a list rather than opening a second overlay is the
+// reason this surface has one overlay grammar at all (palette.go): "@" means
+// "something I want to point at", and a person reaching for it does not yet
+// know whether the thing they are reaching for is a file or a piece of work
+// somebody did last week. Two lists would make them decide before they can see
+// either.
+
+// The completion's four bounds. The walk is capped so that an @ typed inside a
+// home directory cannot become a filesystem crawl; the list shows a screenful,
+// and a screenful with tasks on it is allowed to be taller because the tasks
+// come with section rules that are not themselves choices; two characters is
+// where the query stops matching everything.
 const (
 	walkCap      = 10000
 	completeRows = 8
+	completeTall = 14
 	completeMin  = 2
 )
 
@@ -75,10 +92,46 @@ type completion struct {
 	loaded  bool
 	loading bool
 
-	hits   []int
-	score  []int
+	hits  []int
+	score []int
+
+	// tasks is the project's task index as this surface last read it, newest
+	// first, and the two flags beside it are the file walk's own (taskmention.go
+	// loads it the same way and for the same reason: an overlay that appeared a
+	// second after it was asked for reads as a glitch).
+	tasks       []session.TaskIndexEntry
+	tasksLoaded bool
+	tasksHeld   bool
+	// tasksStale says a node changed state while a read was already in flight,
+	// so the answer on its way back is one event out of date. It is what stops
+	// that answer from marking the snapshot fresh (taskmention.go).
+	tasksStale bool
+	// taskHits are the tasks this query matched, ranked, capped, and already in
+	// section order; taskSection is which section each of them is in, aligned
+	// with it (taskmention.go).
+	taskHits    []session.TaskIndexEntry
+	taskSection []int
+	// older is how many matching tasks fell outside the two named sections —
+	// the count the "older" rule carries when the cap left no room to draw them.
+	older int
+
+	// lines is what the overlay DRAWS, section rules included, and sel is the
+	// line each selectable row sits on, in cursor order. The split is what lets
+	// a list with headings in it keep one cursor that cannot land on a heading:
+	// cursor indexes sel, everything geometric indexes lines.
+	lines []compLine
+	sel   []int
+
 	cursor int
 	top    int
+}
+
+// compLine is one drawn row: a section rule, a task, or a file. Exactly one of
+// the three is set — header non-empty, or task >= 0, or file >= 0.
+type compLine struct {
+	header string
+	task   int
+	file   int
 }
 
 // sync opens, narrows or closes the completion from the draft and the caret. It
@@ -183,7 +236,8 @@ func atToken(value []rune, cursor int) (int, string, bool) {
 	return start, string(value[start+1 : cursor]), true
 }
 
-// rank scores every path against the query and keeps the ones that match.
+// rank scores every path and every task against the query, keeps what matched,
+// and lays the two out as one list.
 func (c *completion) rank() {
 	if cap(c.score) < len(c.all) {
 		c.score = make([]int, len(c.all))
@@ -202,8 +256,44 @@ func (c *completion) rank() {
 	if len(c.hits) > completeRows*4 {
 		c.hits = c.hits[:completeRows*4]
 	}
-	c.cursor = moveCursor(c.cursor, 0, len(c.hits))
-	c.follow(completeRows)
+	c.rankTasks()
+	c.layout()
+	c.cursor = moveCursor(c.cursor, 0, len(c.sel))
+	c.follow(c.rowsWanted())
+}
+
+// layout turns the two ranked lists into the rows the overlay draws: the task
+// sections, then the files under a rule of their own.
+//
+// The FILE RULE is drawn only when there are tasks above it. On a list that is
+// only files — every list this surface had before task mentions — a heading over
+// the one thing on screen would be a label saying what a person can already see.
+func (c *completion) layout() {
+	c.lines, c.sel = c.lines[:0], c.sel[:0]
+	if len(c.taskHits) > 0 {
+		c.lines = c.layoutTasks(c.lines)
+		if len(c.hits) > 0 {
+			c.lines = append(c.lines, compLine{header: compFilesRule, task: -1, file: -1})
+		}
+	}
+	for _, at := range c.hits {
+		c.lines = append(c.lines, compLine{task: -1, file: at})
+	}
+	for at, line := range c.lines {
+		if line.header == "" {
+			c.sel = append(c.sel, at)
+		}
+	}
+}
+
+// rowsWanted is how many rows this list would take if the frame let it: a
+// screenful, or the taller screenful a sectioned list needs to show both halves
+// of itself. [app.overlayHeight] is what actually decides, and it clamps.
+func (c *completion) rowsWanted() int {
+	if len(c.taskHits) > 0 {
+		return completeTall
+	}
+	return completeRows
 }
 
 // The three tiers of a match, in the order a person means them. They are spaced
@@ -272,35 +362,86 @@ func subsequence(text, needle string) (int, bool) {
 }
 
 func (c *completion) move(delta int) {
-	c.cursor = moveCursor(c.cursor, delta, len(c.hits))
-	c.follow(completeRows)
+	c.cursor = moveCursor(c.cursor, delta, len(c.sel))
+	c.follow(c.rowsWanted())
 }
 
-func (c *completion) follow(height int) { c.top = listTop(c.cursor, c.top, len(c.hits), height) }
+// follow scrolls in LINE space against a cursor that lives in selectable space,
+// and it pulls the section rule above the cursor into view with it. A rule is
+// what says which half of the list a row is in, and a cursor sitting on the
+// first task under a rule that has just scrolled off is a row whose meaning has
+// gone off the top of the screen.
+func (c *completion) follow(height int) {
+	at := c.selLine()
+	if at < 0 {
+		c.top = 0
+		return
+	}
+	c.top = listTop(at, c.top, len(c.lines), height)
+	if at > 0 && c.lines[at-1].header != "" && c.top == at {
+		c.top = at - 1
+	}
+}
 
-// choice is the path under the cursor.
+// selLine is the line the cursor is standing on, or -1.
+func (c *completion) selLine() int {
+	if c.cursor < 0 || c.cursor >= len(c.sel) {
+		return -1
+	}
+	return c.sel[c.cursor]
+}
+
+// picked reports whether the cursor is on a row that choosing does something
+// with. It is what enter asks before it commits: an empty list, or a list still
+// loading, is a list where enter is still the submit key.
+func (c *completion) picked() bool {
+	if !c.open {
+		return false
+	}
+	return c.selLine() >= 0
+}
+
+// choice is the path under the cursor, and only ever a PATH: a task row answers
+// false here and is picked up by [completion.taskChoice] instead. The split
+// keeps every caller that predates task mentions — the /image argument list
+// (input.go), the click — asking exactly the question it was asking before.
 func (c *completion) choice() (string, bool) {
-	if !c.open || c.cursor < 0 || c.cursor >= len(c.hits) {
+	at := c.selLine()
+	if at < 0 || c.lines[at].file < 0 {
 		return "", false
 	}
-	return c.all[c.hits[c.cursor]], true
+	return c.all[c.lines[at].file], true
+}
+
+// taskChoice is the task under the cursor.
+func (c *completion) taskChoice() (session.TaskIndexEntry, bool) {
+	at := c.selLine()
+	if at < 0 || c.lines[at].task < 0 {
+		return session.TaskIndexEntry{}, false
+	}
+	return c.taskHits[c.lines[at].task], true
 }
 
 // height is how many rows the list wants. A walk still running wants one, and
 // says so — an overlay that appeared silently a second after it was asked for
 // would read as a glitch.
+//
+// THE WAIT IS FOR THE FILES ONLY. The task index is one small file and it is
+// read in the same instant the walk is started; a list that held its whole self
+// back until a ten-thousand-file walk returned would be hiding the half that was
+// already there.
 func (c *completion) height() int {
 	switch {
 	case !c.open:
 		return 0
-	case !c.loaded:
+	case !c.loaded && len(c.lines) == 0:
 		return 1
-	case len(c.hits) == 0:
+	case len(c.lines) == 0:
 		return 1
-	case len(c.hits) < completeRows:
-		return len(c.hits)
+	case len(c.lines) < c.rowsWanted():
+		return len(c.lines)
 	default:
-		return completeRows
+		return c.rowsWanted()
 	}
 }
 
@@ -308,25 +449,33 @@ func (c *completion) rows(width, n int, pal palette, hover int) []string {
 	if n <= 0 {
 		return nil
 	}
-	if !c.loaded {
-		return []string{pal.dim("  looking…")}
-	}
-	if len(c.hits) == 0 {
+	if len(c.lines) == 0 {
+		if !c.loaded {
+			return []string{pal.dim("  looking…")}
+		}
 		return []string{pal.dim("  no file matches")}
 	}
 	c.follow(n)
 	out := make([]string, 0, n)
-	for at := c.top; at < len(c.hits) && len(out) < n; at++ {
-		path := c.all[c.hits[at]]
-		// The tag is the row saying what choosing it will DO. Everywhere else on
-		// this list enter types a path; on these rows it attaches a picture
-		// (attach.go), and a list where one row means something else without
-		// saying so is a list that surprises people.
-		note := ""
-		if !c.arg && isImagePath(path) {
-			note = "img"
+	for at := c.top; at < len(c.lines) && len(out) < n; at++ {
+		line := c.lines[at]
+		switch {
+		case line.header != "":
+			out = append(out, pal.dim("  "+fit(line.header, width-2)))
+		case line.task >= 0:
+			out = append(out, c.taskRow(c.taskHits[line.task], at, len(out) == hover, width, pal))
+		default:
+			path := c.all[line.file]
+			// The tag is the row saying what choosing it will DO. Everywhere else
+			// on this list enter types a path; on these rows it attaches a picture
+			// (attach.go), and a list where one row means something else without
+			// saying so is a list that surprises people.
+			note := ""
+			if !c.arg && isImagePath(path) {
+				note = "img"
+			}
+			out = append(out, overlayRow(path, note, at == c.selLine(), false, len(out) == hover, width, pal))
 		}
-		out = append(out, overlayRow(path, note, at == c.cursor, false, len(out) == hover, width, pal))
 	}
 	return out
 }
