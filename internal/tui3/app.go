@@ -515,9 +515,13 @@ type app struct {
 	// welcome is the box an empty session opens with (welcome.go). It is the
 	// only animation on this surface that is not a spinner, and it runs once.
 	welcome welcome
-	// recentSessions answers the box's right column, and resume opens one of
-	// them. Both are nil on a surface the door did not wire, and then the box
-	// says it has no sessions rather than pretending to have lost them.
+	// roster is the resume picker: the same conversations the box lists, opened
+	// on purpose and filterable (resume.go).
+	roster roster
+	// recentSessions answers the box's right column and the picker's rows, and
+	// resume opens one of them. Both are nil on a surface the door did not wire,
+	// and then the box says it has no sessions rather than pretending to have
+	// lost them.
 	recentSessions func() []Session
 	resume         func(file string) (Agent, error)
 }
@@ -613,6 +617,14 @@ func newApp(ctx context.Context, opts Options) *app {
 	// saying the same thing twice on the first frame of every session.
 	a.note("esc or ctrl+c interrupts")
 	a.restoreDraft()
+	// LAST, because it reads the surface it opens over: the picker marks the
+	// session this window is already in, and that is not known until the agent,
+	// the file and the replay above have settled. A door that asked for it on a
+	// machine with no conversations yet gets the empty state as a notice rather
+	// than a list with nothing in it (resume.go).
+	if opts.PickSession {
+		a.openResume()
+	}
 	return a
 }
 
@@ -1682,6 +1694,19 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "settings", "set", "config":
 		a.openSettings()
+		return nil
+
+	case "resume", "sessions":
+		// Two words for one list, the way /settings also answers to /set and
+		// /config: docs/CHAT-V3.md calls this the sessions picker and a person
+		// coming back to work calls it resuming, and neither of them should have
+		// to find out which word this build chose.
+		//
+		// No argument form on purpose. A session is named by a title a model
+		// wrote and lives in a file named after a timestamp; neither is a thing
+		// anybody types, so the only honest way to ask for one is to be shown
+		// them (resume.go).
+		a.openResume()
 		return nil
 
 	case "compact":
