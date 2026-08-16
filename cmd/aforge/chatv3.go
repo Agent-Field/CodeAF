@@ -91,6 +91,9 @@ func runChatV3(args []string) error {
 		Model:          chosen,
 		APIKey:         settings.APIKey,
 		BaseURL:        settings.BaseURL,
+		SiteURL:        settings.SiteURL,
+		SiteName:       settings.SiteName,
+		SiteCategories: settings.SiteCategories,
 		CompactEnabled: !*noCompact,
 		SessionFile:    transcript,
 		// The window the model this session STARTS on actually accepts, when
