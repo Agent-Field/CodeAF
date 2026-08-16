@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -35,6 +36,11 @@ const (
 	hitFold         // the "N earlier tool calls" line: click expands the turn
 	hitMore         // the "… N more lines" foot of a capped expansion: click lifts the cap
 	hitTask         // a task proposal (task.go): click opens its brief
+	// hitChoice is the proposal's choices row, and it is the one hit on this
+	// surface that needs the COLUMN as well as the row: three answers share one
+	// line, so which of them was pressed is a question about x (app.go's
+	// [app.choicePress], the same shape the rail's click has).
+	hitChoice
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -88,9 +94,11 @@ func (a *app) visible(width int) []row {
 // transcript.
 func (a *app) layout(width int) []row {
 	out := make([]row, 0, len(a.entries)+8)
-	// wasCluster says the block that just drew was a tool cluster, and is the
-	// whole of the state this pass carries.
-	wasCluster := false
+	// wasCluster says the block that just drew was a tool cluster, and wasBlock
+	// that it was a CLOSED block — a proposal, or the note a node writes when it
+	// lands (task.go). Together they are the whole of the state this pass
+	// carries.
+	wasCluster, wasBlock := false, false
 	gap := func() {
 		if len(out) > 0 {
 			out = append(out, row{entry: -1})
@@ -108,11 +116,11 @@ func (a *app) layout(width int) []row {
 				a.entries[end].turn == e.turn {
 				end++
 			}
-			if !wasCluster && !a.opensTurn(i) {
+			if wasBlock || (!wasCluster && !a.opensTurn(i)) {
 				gap()
 			}
 			out = a.clusterRows(out, i, end, width)
-			wasCluster = true
+			wasCluster, wasBlock = true, false
 			i = end - 1
 			continue
 		}
@@ -121,25 +129,35 @@ func (a *app) layout(width int) []row {
 		if len(rows) == 0 {
 			continue
 		}
-		if wasCluster || e.kind == entryUser || e.kind == entryTask {
+		if wasCluster || wasBlock || e.kind == entryUser || e.kind == entryTask {
 			// A PROPOSAL TAKES A BLANK OF ITS OWN. It is the one block on this
 			// surface that interrupts a reply to ask something, and a question
 			// wedged against the sentence above it reads as part of that sentence.
+			// AND ONE AFTER IT, which is what wasBlock buys: the block has a foot,
+			// and a paragraph that started on the row under it would be a paragraph
+			// inside the question.
 			gap()
 		}
 		// The proposal is the only non-tool block a click acts on, so it is the
-		// only one that carries a hit (task.go).
+		// only one that carries a hit (task.go) — and its choices row carries a
+		// different one, because that row answers the question rather than opening
+		// the brief.
 		hit := hitNone
 		if e.kind == entryTask {
 			hit = hitTask
 		}
-		for _, text := range rows {
-			out = append(out, row{text: text, entry: i, hit: hit})
+		for n, text := range rows {
+			at := hit
+			if e.kind == entryTask && e.card != nil && !e.card.settled() && n == e.card.choiceRow {
+				at = hitChoice
+			}
+			out = append(out, row{text: text, entry: i, hit: at})
 		}
 		wasCluster = false
+		wasBlock = e.kind == entryTask || (e.kind == entryNote && e.landed)
 	}
 	if line, ok := a.ellipsis(); ok {
-		if wasCluster {
+		if wasCluster || wasBlock {
 			gap()
 		}
 		out = append(out, row{text: line, entry: -1})
@@ -622,14 +640,67 @@ func (a *app) statusHeight(width int) int {
 // The name falls back to the workspace's base name until the session has named
 // itself (session's title.go), so the cluster is never empty.
 func (a *app) identity() string {
+	// A ROOM RENAMES THIS CLUSTER AND NOTHING ELSE ON THE LINE. The identity is
+	// WHERE YOU ARE, and while a room is open where you are is a task — but the
+	// telemetry beside it is still the session's, because a room is a view over
+	// one body region and not a second session (room.go). A status line that
+	// re-pointed the cost and the context meter at a node would be quoting
+	// figures nobody is measuring.
+	if a.roomOpen() {
+		return roomPlaceWord + " · " + a.room.title
+	}
 	name := a.title
 	if name == "" {
 		name = a.place
 	}
 	if model := modelBase(a.model); model != "" {
-		return name + " · " + model
+		return name + " · " + model + a.servedRider()
 	}
 	return name
+}
+
+// servedSighting is the HUD's window onto the adapter's velocity ledger. It is
+// a var so a test can state one sighting without a live endpoint; nothing else
+// ever reassigns it.
+var servedSighting = provider.LastServed
+
+// servedWindow is how long a sighting still describes the present. Past it the
+// rider goes quiet rather than keeping a rate from a conversation that has
+// since gone to sleep on the line.
+const servedWindow = 10 * time.Minute
+
+// servedRider is the other half of the model's name: WHO ACTUALLY ANSWERED, and
+// how fast they were writing.
+//
+//	deepseek-v4-flash · via deepinfra · 92 tok/s
+//
+// A model id is an address, not a machine. One id is fanned over many endpoints
+// that answer at very different speeds for the same price, and the adapter both
+// asks for the fastest of them and times what it got (internal/provider's
+// velocity.go). The id alone therefore names a decision the session did not
+// make — this is the part of it that is a fact.
+//
+// It is drawn only when the server's name is not already the model's own: an
+// endpoint that IS the vendor adds nothing to "deepseek-v4-flash", and a line
+// that reads "gpt-4.1 · via openai" is a cell of chrome per frame for a word
+// the reader already has.
+func (a *app) servedRider() string {
+	sighting, ok := servedSighting(a.model)
+	if !ok || sighting.Provider == "" {
+		return ""
+	}
+	if a.now().Sub(sighting.At) > servedWindow {
+		return ""
+	}
+	served := strings.ToLower(sighting.Provider)
+	if strings.Contains(strings.ToLower(a.model), served) {
+		return ""
+	}
+	rider := " · via " + served
+	if sighting.Rate > 0 {
+		rider += " · " + tokenWord(int(sighting.Rate)) + " tok/s"
+	}
+	return rider
 }
 
 // modelBase strips the vendor from a model id, and nothing else: everything
@@ -1235,6 +1306,12 @@ func (a *app) legendLine(left, right string, width int, paint func(string) strin
 // legendLeft is the place: the path, and the branch when there is one and the
 // frame is not tight.
 func (a *app) legendLeft(width, hard int) string {
+	// THE PLACE IS THE ROOM while one is open, and the branch goes with the path:
+	// neither is a fact about the page on screen, and the one thing a person in
+	// here needs from this slot is the key that gets them out (room.go).
+	if a.roomOpen() {
+		return roomLegendWord
+	}
 	path := a.legendPath(hard)
 	if a.branch == "" || width < hudTight {
 		return path
@@ -1395,6 +1472,51 @@ func fit(s string, width int) string {
 		return s
 	}
 	return ansi.Truncate(s, width, glyphMore)
+}
+
+// The meter's alphabet: what is left, and what has been spent. Both are from
+// the block family, so the bar reads as one object rather than as a row of
+// glyphs — and both have an ASCII stand-in, because a terminal that cannot draw
+// them would otherwise render a countdown as replacement characters.
+const (
+	meterFull       = "█"
+	meterSpent      = "░"
+	meterFullASCII  = "#"
+	meterSpentASCII = "-"
+)
+
+// progress draws a meter of exactly cells glyphs, of which frac is still full.
+//
+// IT IS A PROPORTION AND NEVER A COUNT: the caller passes what is LEFT, between
+// 0 and 1, and the bar says how much of the whole that is. The paint follows the
+// same split — the remainder in the question hue, the spent part dim — so what
+// is left is the part of the row that is lit.
+//
+// The last sliver survives rounding: any fraction above zero keeps one cell,
+// because an empty bar is the meter saying the thing has already happened, and
+// it must not say that a tenth of a second early.
+func (a *app) progress(frac float64, cells int) string {
+	if cells < 1 {
+		return ""
+	}
+	switch {
+	case frac < 0:
+		frac = 0
+	case frac > 1:
+		frac = 1
+	}
+	full, spent := meterFull, meterSpent
+	if a.pal.ascii {
+		full, spent = meterFullASCII, meterSpentASCII
+	}
+	left := int(frac*float64(cells) + 0.5)
+	if left > cells {
+		left = cells
+	}
+	if left == 0 && frac > 0 {
+		left = 1
+	}
+	return a.pal.ask(strings.Repeat(full, left)) + a.pal.dim(strings.Repeat(spent, cells-left))
 }
 
 // trimBlanks drops leading and trailing empty rows from a block. It is the

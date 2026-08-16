@@ -1,0 +1,9 @@
+=== LFM2.5-1.2B-Thinking card ===
+255 /tmp/lfm.md
+![LFM2.5-1.2B - Benchmarks-Light](https://cdn-uploads.huggingface.co/production/uploads/61b8e2ba285851687028d395/KfNudLXnOZxAhlLp_1QVo.png)
+### Benchmarks
+We compared LFM2.5-1.2B-Thinking with relevant sub-2B models on a diverse suite of benchmarks.
+| Model                      | GPQA Diamond      | MMLU-Pro          | IFEval            | IFBench           | Multi-IF          | GSM8K             | MATH-500          | AIME25            | BFCLv3            |
+GPQA, MMLU-Pro, IFBench, and AIME25 follow [ArtificialAnalysis's methodology](https://artificialanalysis.ai/methodology/intelligence-benchmarking). For IFEval and Multi-IF, we report the average score across strict and loose prompt and instruction accuracies. For BFCLv3, we report the final weighted average score with a custom Liquid handler to support our tool use template. 
+Based on the same methodology, we report the average score and standard deviation across five runs with `temperature=0.6` for thinking models. For instruct models, we report scores using greedy decoding.
+**LFM2.5-1.2B-Thinking excels at long-context inference.** For example, on AMD Ryzen™ NPUs with FastFlowLM, decoding throughput sustains ~52 tok/s at 16K context and ~46 tok/s even at the full 32K context, indicating robust long-context scalability. For more details on longer context benchmarks on AMD Ryzen™ NPUs with FastFlowLM, please review these [here](https://fastflowlm.com/docs/benchmarks/lfm2_results/).

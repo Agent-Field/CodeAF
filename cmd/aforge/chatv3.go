@@ -18,6 +18,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -291,6 +292,10 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
 	cfg.MemoryConsolidation = config.MemoryConsolidationEnabledAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
+	// How this session chooses among the endpoints serving its model. The word
+	// is validated by the row; the parse is total, so a word this build does not
+	// know falls back to the default rather than taking routing away.
+	cfg.Routing, _ = provider.ParseRoutingStrategy(config.RoutingAt(profileDir))
 	return cfg, nil
 }
 

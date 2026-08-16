@@ -25,7 +25,11 @@ import (
 // The rest are the session's own rather than bare's: bash is WRAPPED (not
 // replaced) so it can start a background job, read is WRAPPED so a PDF is a
 // file it can answer for rather than a file it returns as bytes (tools_pdf.go
-// — the tool grows a sense, the belt does not grow a tool), jobs is added
+// — the tool grows a sense, the belt does not grow a tool), read_document
+// stands BESIDE it as the rung that sentence names — the scanned page, the
+// photograph, the docx that read turns into bytes (tools_doc.go: a second hand
+// here and not a second sense, because this one costs money and the split is
+// where the bill is), jobs is added
 // beside it to look
 // at what was started and watch beside that to be TOLD instead of looking
 // (tools_jobs.go, tools_watch.go), note and forget carry the session's durable memory
@@ -62,7 +66,7 @@ func (a *Agent) belt() []bare.Tool {
 			tools[index] = a.pdfRead(tool)
 		}
 	}
-	tools = append(tools, a.jobsTool())
+	tools = append(tools, a.documentTool(), a.jobsTool())
 	if !a.config.InTask {
 		tools = append(tools, a.watchTool())
 	}

@@ -1,0 +1,91 @@
+=== Qwen org small models ===
+  Qwen/Qwen3.5-2B | 2026-02-28 | dl 3050161
+  Qwen/Qwen3.5-0.8B | 2026-02-28 | dl 2953099
+  Qwen/Qwen3.5-0.8B-Base | 2026-02-28 | dl 703868
+  Qwen/Qwen3.5-122B-A10B | 2026-02-24 | dl 2220760
+  Qwen/Qwen3.5-122B-A10B-FP8 | 2026-02-25 | dl 1683761
+  Qwen/Qwen3.5-122B-A10B-GPTQ-Int4 | 2026-03-03 | dl 605329
+  Qwen/SAE-Res-Qwen3.5-2B-Base-W32K-L0_50 | 2026-04-27 | dl 293
+  Qwen/Qwen3.5-2B-Base | 2026-02-28 | dl 1285241
+  Qwen/SAE-Res-Qwen3.5-2B-Base-W32K-L0_100 | 2026-04-27 | dl 233
+=== MiniCPM5-1B card ===
+---
+license: apache-2.0
+language:
+  - en
+  - zh
+library_name: transformers
+pipeline_tag: text-generation
+tags:
+  - minicpm
+  - minicpm5
+  - llama
+  - text-generation
+  - long-context
+  - tool-calling
+  - on-device
+  - edge-ai
+datasets:
+  - openbmb/Ultra-FineWeb
+  - openbmb/Ultra-FineWeb-L3
+  - openbmb/UltraData-Math
+  - openbmb/UltraData-SFT-2605
+---
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/OpenBMB/MiniCPM/main/assets/minicpm_logo.png" width="500em" />
+</div>
+
+<p align="center">
+<a href="https://arxiv.org/pdf/2506.07900" target="_blank">MiniCPM Tech Report</a> |
+<a href="https://github.com/OpenBMB/MiniCPM" target="_blank">GitHub Repo</a> |
+<a href="https://ultradata.openbmb.cn/" target="_blank">UltraData</a> |
+<a href="https://github.com/OpenBMB/MiniCPM-Desk-Pet" target="_blank">MiniCPM Desk Pet</a> |
+<a href="https://huggingface.co/spaces/openbmb/MiniCPM5-1B-Demo" target="_blank">Online Demo</a>
+</p>
+
+<p align="center">
+English |
+<a href="https://huggingface.co/openbmb/MiniCPM5-1B/blob/main/README-cn.md" target="_blank">中文</a>
+</p>
+
+## Highlights
+
+We are releasing **MiniCPM5-1B**, the first model in the **MiniCPM5** series. It is a dense 1B Transformer built for on-device, local deployment, and resource-constrained scenarios, reaching 1B-class open-source SOTA.
+
+🏆 **1B-class open-source SOTA**: compared with strong open-source models in the same size class, MiniCPM5-1B reaches SOTA within this comparison set. Its advantage is most visible in agentic tool use, code generation, and difficult reasoning.
+
+![MiniCPM5-1B capability comparison by domain](https://raw.githubusercontent.com/OpenBMB/MiniCPM/main/assets/minicpm5/public_leaderboard_radar_en.png)
+
+🧠 **Hybrid Reasoning**: built-in `<think>` chat template, switch via `enable_thinking`. The same checkpoint serves as both a fast assistant and a deliberate reasoner.
+
+🛠️ **Deployment / Fine-tuning Resources**: the MiniCPM GitHub repo provides single-page cookbooks and Agent Skills for major inference backends and fine-tuning frameworks.
+
+🐱 **Desktop Pet**: a local-LLM desktop pet driven by MiniCPM5-1B.
+
+## Model List
+
+Use this directory to choose the model format that matches your runtime:
+
+- **[MiniCPM5-1B](https://huggingface.co/openbmb/MiniCPM5-1B)** · [ModelScope](https://www.modelscope.cn/models/OpenBMB/MiniCPM5-1B) · BF16 final release (post-trained with RL + OPD) **👈 you are here**
+- **[MiniCPM5-1B-SFT](https://huggingface.co/openbmb/MiniCPM5-1B-SFT)** · [ModelScope](https://www.modelscope.cn/models/OpenBMB/MiniCPM5-1B-SFT) · BF16 SFT-only checkpoint (before RL / OPD)
+- **[MiniCPM5-1B-Base](https://huggingface.co/openbmb/MiniCPM5-1B-Base)** · [ModelScope](https://www.modelscope.cn/models/OpenBMB/MiniCPM5-1B-Base) · BF16 base checkpoint (pre-training only)
+- **[MiniCPM5-1B-GGUF](https://huggingface.co/openbmb/MiniCPM5-1B-GGUF)** · [ModelScope](https://www.modelscope.cn/models/OpenBMB/MiniCPM5-1B-GGUF) · GGUF for llama.cpp / Ollama / LM Studio
+- **[MiniCPM5-1B-MLX](https://huggingface.co/openbmb/MiniCPM5-1B-MLX)** · [ModelScope](https://www.modelscope.cn/models/OpenBMB/MiniCPM5-1B-MLX) · MLX / 4bit for Apple Silicon
+
+## Model Information
+
+MiniCPM5-1B has the following features:
+
+- **Type**: Causal Language Model
+- **Architecture**: Standard `LlamaForCausalLM`
+- **Number of Parameters**: 1,080,632,832
+- **Number of Non-Embedding Parameters**: 679,552,512
+- **Number of Layers**: 24
+- **Number of Attention Heads (GQA)**: 16 for Q and 2 for KV
+- **Context Length**: 131,072
+
+## Introduction
+
+MiniCPM5-1B is the first checkpoint in the MiniCPM5 series. It is designed for local assistants, coding agents, tool-use workflows, and reasoning scenarios where a compact model is preferred. The model keeps a small deployment footprint while providing native long-context support and both Think / No Think chat modes through the same checkpoint.
+

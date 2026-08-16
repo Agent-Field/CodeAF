@@ -178,6 +178,11 @@ type entry struct {
 	// else (task.go). It is a POINTER because the answer lane holds the same
 	// card: a row and the verdict on it must not be able to disagree.
 	card *taskCard
+	// landed marks the note a finished node writes (task.go's [app.landedNote]).
+	// It is the one note on this surface that CLOSES something, so the layout
+	// gives it the trailing blank the proposal's block gets — every other note is
+	// a remark inside the conversation and takes no gap at all.
+	landed bool
 
 	// The row cache. built distinguishes "no rows yet" from "renders to no
 	// rows", which an empty slice cannot.
@@ -224,6 +229,16 @@ type (
 		ev  session.Event
 	}
 	taskLaneClosedMsg struct{ gen int }
+	// The THIRD lane on this surface (room.go): one node's own events, while a
+	// person is standing in its room. It is neither the turn's stream nor the
+	// standing task subscription — those carry what the CONVERSATION is doing and
+	// what a node's life has come to; this carries what one node is doing right
+	// now, and it exists only for as long as somebody is watching.
+	roomEventMsg struct {
+		gen int
+		ev  session.Event
+	}
+	roomClosedMsg struct{ gen int }
 	// hudFadeMsg is a BOUNDED catch-up tick: the two wakeups a settled turn
 	// schedules so its fresh numbers can go quiet on time (render.go's fade).
 	// There is deliberately no idle ticker behind it — a surface with nothing
@@ -412,6 +427,21 @@ type app struct {
 	taskSeen  map[uint64]session.TaskState
 	taskLane  <-chan session.Event
 	taskGen   int
+	// room is the node's page, when a person has walked into one (room.go), and
+	// roomGen the generation of the lane feeding it. Nil is the ordinary state:
+	// the body region is the conversation, and every geometric question about it
+	// resolves through the transcript.
+	room    *taskRoom
+	roomGen int
+	// roomPump is the command a freshly opened room's lane needs, PARKED rather
+	// than returned.
+	//
+	// The reason is one call path this file cannot hand a command back through:
+	// enter on a selected proposal row runs input.go's [app.enter] into
+	// [app.openTool], which returns nothing at all. A door that worked when it
+	// was clicked and did nothing when it was pressed would be the worse of the
+	// two defects, so every door parks here and the program loop drains it.
+	roomPump tea.Cmd
 	// think is the reasoning block currently streaming, or -1 (thinking.go).
 	think int
 
@@ -619,7 +649,17 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
-		return a, a.key(msg)
+		// THE ROOM READS FIRST, and only ever while one is open (room.go). It has
+		// to be read here rather than inside [app.key] because the two keys it
+		// takes — esc to leave, enter to steer — belong to input.go, and it
+		// restates that file's precedence law rather than jumping it: everything
+		// that outranks the draft there outranks the room here.
+		if cmd, taken := a.roomKey(msg); taken {
+			return a, cmd
+		}
+		// A key can OPEN a room too — enter, on a selected proposal — down a path
+		// that returns no command, so whatever that door parked is drained here.
+		return a, tea.Batch(a.key(msg), a.takeRoomPump())
 
 	case tea.FocusMsg:
 		// The terminal reports focus (View asks for it in view.go), so the
@@ -670,6 +710,18 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.touch()
 			return a, nil
 		}
+		// The room is the body region while it is up, so the wheel is the room's:
+		// a wheel that moved the transcript under it would scroll a list that is
+		// not on screen (room.go).
+		if a.roomOpen() {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.roomScroll(-3)
+			case tea.MouseWheelDown:
+				a.roomScroll(3)
+			}
+			return a, nil
+		}
 		switch msg.Mouse().Button {
 		case tea.MouseWheelUp:
 			a.scroll(-3)
@@ -695,6 +747,21 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// well as the row (attach.go).
 			if a.chipPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
+			}
+			// THE RAIL IS THE OTHER COLUMN-AWARE TARGET, and it is read before
+			// the body for the same reason: the two are drawn side by side, so
+			// which one was pressed is a question about x (room.go). A rail row
+			// is a door into that node's room.
+			if cmd, took := a.railPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
+			// AND THE PROPOSAL'S CHOICES ROW IS THE THIRD, for the same reason
+			// again: three answers share one line, so which was pressed is a
+			// question about x (task.go). It is read before the body because a
+			// click on that row answers the question rather than opening the
+			// brief — which is what the rest of the card does with a press.
+			if cmd, took := a.choicePress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
 			}
 			a.press(msg.Mouse().Y)
 		}
@@ -741,6 +808,23 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		return a, a.taskEvent(msg.ev)
+
+	case roomEventMsg:
+		if a.room == nil || msg.gen != a.room.gen {
+			return a, nil
+		}
+		return a, a.roomEvent(msg.ev)
+
+	case roomClosedMsg:
+		// The node reached its final state, so the lane ended. The room stays
+		// open — a person reading what a task did is not finished reading because
+		// the task is finished doing — and says so at its foot (room.go).
+		if a.room == nil || msg.gen != a.room.gen {
+			return a, nil
+		}
+		a.room.done, a.room.lane = true, nil
+		a.roomTouched()
+		return a, a.wake()
 
 	case taskLaneClosedMsg:
 		// The agent this lane belonged to is gone. A lane from an agent that was
@@ -1401,7 +1485,16 @@ func (a *app) unfold(turn int) {
 // Closing it also drops a lifted cap: the next opening starts at the window
 // again, because "show me everything" was said about a block that is no longer
 // on screen.
+//
+// It is also the KEYBOARD DOOR INTO A ROOM, because it is the one thing enter
+// does with a selected row and a proposal is now selectable: a card whose node
+// has started opens that node's page instead of an expansion (room.go). The
+// branch is here rather than in [app.enter] so that "enter opens what ↑/↓
+// picked" stays one sentence with one implementation.
 func (a *app) openTool(i int) {
+	if a.openRoomAt(i) {
+		return
+	}
 	if i < 0 || i >= len(a.entries) || a.entries[i].kind != entryTool || replayInert(&a.entries[i]) {
 		return
 	}
@@ -1426,6 +1519,17 @@ func (a *app) showAll(i int) {
 // press resolves a click to the row it landed on. A click that lands on
 // nothing does nothing: this surface has no empty-space gesture.
 func (a *app) press(y int) {
+	// A CLICK IN THE BODY IS THE WAY OUT OF A ROOM. While one is open the region
+	// under this pointer is the node's page, not the conversation, and the
+	// gesture that returns to the conversation is pressing it (room.go). The rail
+	// was offered this click first and did not want it, so anything landing in
+	// the body region here is the person reaching back past the room.
+	if a.roomOpen() {
+		if top := a.bodyTop(); top >= 0 && y >= top && y < top+a.viewHeight() {
+			a.closeRoom()
+		}
+		return
+	}
 	// The welcome box gets the click first, because while it is up it is the
 	// thing between the pointer and everything else: a recent session opens,
 	// and anywhere else is the person reaching past the box, which is what
@@ -1459,7 +1563,41 @@ func (a *app) press(y int) {
 		// A click anywhere on a proposal opens its brief, for the reason a click
 		// anywhere on a thinking block opens that (task.go).
 		a.toggleCardAt(r.entry)
+	case hitChoice:
+		// The choices row was offered this click before the body and took it
+		// (see [app.choicePress]); reaching here means the pointer was in a
+		// column no option occupies, and empty space on this surface does
+		// nothing.
 	}
+}
+
+// choicePress resolves a click on a proposal's choices row to the option under
+// the pointer, and reports whether it took the click.
+//
+// A press anywhere on that ROW is the row's, whether or not it landed on an
+// option: the alternative is a click in the gap between two answers falling
+// through to the card and collapsing the brief, which would make the row a place
+// where missing costs you the thing you were reading.
+func (a *app) choicePress(x, y int) (tea.Cmd, bool) {
+	if a.roomOpen() || a.welcome.open {
+		return nil, false
+	}
+	r, ok := a.rowAt(y)
+	if !ok || r.hit != hitChoice || r.entry < 0 || r.entry >= len(a.entries) {
+		return nil, false
+	}
+	card := a.entries[r.entry].card
+	// The open question is the only one that can be answered, and it is the one
+	// the lane holds: an older card still on screen has already settled.
+	if card == nil || card != a.task || card.settled() {
+		return nil, true
+	}
+	for _, span := range card.spans {
+		if x >= span.from && x < span.to {
+			return a.takeChoice(span.at), true
+		}
+	}
+	return nil, true
 }
 
 // selectTool moves the selection through the tool calls that are actually on
@@ -1470,7 +1608,14 @@ func (a *app) selectTool(delta int) bool {
 	rows := a.visible(a.bodyWidth())
 	var calls []int
 	for _, r := range rows {
-		if r.hit == hitTool && (len(calls) == 0 || calls[len(calls)-1] != r.entry) {
+		// A PROPOSAL WALKS WITH THE CALLS. It is the other block on this surface
+		// that enter opens into something — a call opens its expansion, a settled
+		// proposal opens its node's room (room.go) — and a keyboard that could
+		// reach one and not the other would make the room a mouse-only place.
+		if r.hit != hitTool && r.hit != hitTask {
+			continue
+		}
+		if len(calls) == 0 || calls[len(calls)-1] != r.entry {
 			calls = append(calls, r.entry)
 		}
 	}
@@ -1658,6 +1803,25 @@ func (a *app) paste(text string) tea.Cmd {
 	if a.pick.open {
 		a.pick.filter.insert(strings.ReplaceAll(text, "\n", " "))
 		a.pick.rank()
+		a.touch()
+		return nil
+	}
+	// The settings sheet owns the clipboard while it is up, the same way it
+	// owns the keyboard: into the text row being answered first (an API key
+	// is the paste this path exists for), into the select row's filter next,
+	// into the search box otherwise. All three are one-line boxes — newlines
+	// flatten to spaces.
+	if a.sheet.open {
+		flat := strings.ReplaceAll(text, "\n", " ")
+		switch {
+		case a.sheet.edit != nil:
+			a.sheet.edit.box.insert(flat)
+		case a.sheet.sel != nil:
+			a.sheet.sel.pick.filter.insert(flat)
+			a.sheet.sel.pick.rank()
+		default:
+			a.sheet.query.insert(flat)
+		}
 		a.touch()
 		return nil
 	}

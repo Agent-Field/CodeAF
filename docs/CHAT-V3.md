@@ -897,11 +897,58 @@ graph**: `recovered task graph: 2 done · 1 interrupted (branch task/… kept) �
 waiting`, with those owed notes under it in the shape `taskNote` always produces.
 One note, one grammar, and the person can see what survived.
 
+**A NODE IS A PLACE, AND IT HAS THREE DOORS.** Everything above treats a node as
+work you hand off and stop thinking about, which is the right shape for delegated
+work and the wrong shape for the moment a person changes their mind: the node is
+running, they can see it going the wrong way, and the only thing they could do
+about it was kill it and propose the corrected task again.
+`internal/session/task_room.go` makes the node *enterable* — one running node,
+one page, three doors, no more:
+
+- **`WatchTask(id)` — the live stream.** The child agent's own events, as they
+  happen: its deltas, its tool calls beginning and ending, its errors.
+  `runTaskChild` already consumed that stream to count steps and read off changed
+  files; it now **publishes each event to the node's room first** and consumes it
+  after, so a watcher sees the child's narrative in the order it happened. The
+  room is opened by whoever arrives first — the runner attaching its child, or a
+  person entering a node that has not started yet — and it closes on the node's
+  **own `done` channel**, so every path to a final state empties it: the runner's
+  return, the frontier's cascade over a dependent whose prerequisite failed, a
+  recovery consuming an interrupt, and `Close` (which kills the node's job, and a
+  killed node lands). Subscribers are the same unbounded `eventStream` every
+  other fan-out here uses, for the same reason: the child's loop must never wait
+  on a surface that is redrawing, and must never drop a text delta.
+- **`SteerTask(id, text)` — the person's words into the child's loop**, on the
+  **steering lane** (Decision 12) — the same queue a background job's exit note
+  rides, drained at the child's next step boundary as plain user-role text. The
+  line goes in **undecorated**: a job's exit is framed because the model has to be
+  told what kind of news it is, and a person's line needs no frame, because from
+  the child's side it *is* what it looks like. Unknown id, a node that is not
+  running, a running node whose worker is not up yet, and an empty line are four
+  errors that each name which.
+- **`TaskJournal(id)` — the history**, the node's real session file under
+  `~/.aforge/v3/tasks/<session>/`, recorded on the node the moment its child is
+  built (the name carries a timestamp, so that is the only moment anybody can
+  learn it).
+
+**The live lane and the journal are two doors for the same reason the two update
+lanes are.** A watcher gets what happens **from now** — nothing is replayed,
+exactly as `eventHub.subscribe` replays nothing — because a stream that
+re-narrated half an hour of somebody else's greps before reaching the live edge
+would make "watch this node" mean "read this node's history slowly". A finished
+node therefore answers with a **channel that closes immediately**, not an error:
+the id is real, the work is over, and the history is a file. Steering is likewise
+**not a redirect**: nothing in this file writes `spec.brief` or
+`spec.acceptance`, which stay frozen at admission for the auditor's reason above.
+A line of talk to the worker ("the config lives under `etc/`, not `conf/`") is not
+the objective moving; if the objective itself was wrong, the answer is still a
+new proposal.
+
 **What v1 defers, deliberately:** the decomposition tool that writes edges (the
 graph and its frontier are already here to receive them), and the question lane
-— a node that needs to ask something today finishes with what it has and says
-so in its report, rather than blocking on a person who is having a different
-conversation.
+— the room's talk is one-way, so a node that needs to ask something today
+finishes with what it has and says so in its report, rather than blocking on a
+person who is having a different conversation.
 
 ## Decision 20 — The document ladder's local rung: `read` grows a sense
 
@@ -918,6 +965,48 @@ ladder's OCR and vision rungs instead of looking like a broken file. The engine
 is one swappable file by ladder design: `pdfx.Extract(path) (string, error)` is
 the entire contract, and a better pure-Go extractor lands as an edit to it with
 nothing above it moving.
+
+**And the rung above it is `read_document`, because a ladder is not a tool.**
+The local rung shipped saying the true thing about a scan — "no text layer; the
+`document_engine` ladder's OCR rungs can read it" — and a real person's scanned
+PDF then produced, in the field, `bash: pip install easyocr`. The sentence was
+honest and unactionable: `internal/provider` has carried `ParseDocument` (native
+file handling, `mistral-ocr`, `cloudflare-ai`) and `internal/exec` has driven it
+for the workforce all along, and NEITHER WAS REACHABLE FROM A CONVERSATION. So
+the rung becomes a hand (`internal/session/tools_doc.go`), and read's refusal now
+names it: *"use `read_document` (the OCR rung) or paste a page as an image."*
+
+**A second tool, not a second sense — the opposite of the local rung's choice,
+and the difference is who pays.** Growing `read` was right when the answer was
+local, instant and free: one hand, one habit, no decision. This answer costs
+money per page, and a model that cannot tell "read a file" from "spend two cents
+OCRing forty pages" will spend it on every source file it opens. **The split is
+where the bill is.** It is also ALWAYS ON THE BELT, inverting Decision 13's
+conditional law: `web_search` and `generate_image` are optional back ends a
+surface may never have wired, while the document rungs ride the session's own key
+and base URL — there is nothing to be conditional about, and a way out named in
+`read`'s own refusal must never resolve to nothing.
+
+**The rungs, and who is allowed to climb them.** `document_engine` (auto ·
+local · free · ocr, `config.DocumentEngineAt`) decides, in the same vocabulary
+`internal/exec` uses: `auto` walks NATIVE (the chat model's own file handling,
+paid as ordinary tokens) then `cloudflare-ai` then `mistral-ocr`; `local` is
+refused by name, because the local rung IS `read` and that is what already
+failed; an image has exactly one rung, since the paid parsers are file parsers
+and there is nothing cheaper than a model that can already see. Two guards keep
+the tool from being charged for what is free: a plain-text file is sent back
+("the plain read handles this"), and a PDF that turns out to HAVE a text layer is
+extracted in-binary before any rung is called. A thin answer — a page number
+where a page should be — escalates to the next rung, but a thin answer from the
+LAST rung is the answer, because a photographed receipt really does extract to
+four words and a refusal invented by a threshold is worse than a short truth.
+Every failure is a RESULT NAMING THE RUNG (`mistral-ocr: 402 insufficient
+credits`), never a Go error: the model can act on it, and the person reading the
+transcript learns which row of settings to change. The answer obeys pi's
+truncation law through the same `piReadLaw` the local rung uses — same 2000
+lines, same 50KB, same offset to continue — and the extraction is MEMOIZED per
+session by content digest, because paying a per-page OCR bill twice to show line
+three would be the one place this ladder robs somebody.
 
 ## Decision 22 — BPE working state: what is true and what is open, outside the trajectory
 
@@ -997,6 +1086,47 @@ changed, never under ~20 facts. Every refusal, every provider error, every
 timeout leaves `memory.md` byte-for-byte as it was; a pass that lands writes one
 journal line — `memory consolidated: 41 → 33 facts` — of an entry type no replay
 reads, so it is a record for the person and never context for the model.
+
+## Decision 25 — The session chases speed and checks that it got it
+
+**A model id is an address, not a machine.** One id is fanned over many
+endpoints that answer at very different speeds for the same price, so a session
+that only names its model is describing a decision it did not make. v3 both asks
+for the fastest endpoint and measures what it actually got.
+
+**The ask is one object on every request.** `provider: {sort, allow_fallbacks:
+true, require_parameters: true}` — the router picks the currently-fastest
+endpoint, fallbacks keep every preference advisory (a slow answer beats no
+answer), and `require_parameters` stops a request carrying the reasoning knob
+from landing on an endpoint that would silently drop it. The `routing` settings
+row is the only dial: `latency` (default) · `price` · `off`, and `off` is total
+— no preference object, and no measurement either, because a session that asked
+for no routing asked for no ledger.
+
+**The check is a ledger, and it names no vendor.** Every completion is timed —
+TTFT from the send to the first token (reasoning counts; it is the endpoint
+writing), the rate over the generation window alone — and the response says who
+served it. Per model, per served endpoint, in memory, no call, no spend:
+
+| what happened | what the next request carries |
+|---|---|
+| TTFT > 2s, or a sustained rate < 30 tok/s over ≥ 32 output tokens | a strike |
+| 2 strikes | the endpoint goes last in `provider.order`, behind every healthy one |
+| 3 strikes | `provider.ignore` for 5 minutes |
+| the cooldown expires | it comes back **on probation** — demoted and one strike short, so a still-slow endpoint is dropped by its very next answer |
+| a fast answer | one strike back; the ledger is a measurement, not a ratchet |
+
+Two rules keep it honest: an answer whose server did not identify itself is
+measured but earns no strike (a strike is a claim about an endpoint), and
+`order` is omitted entirely when no healthy lane is left — `order` names what to
+try *first*, so a list of nothing but demoted endpoints would pin the worst one
+known to the front.
+
+**And the HUD says who answered.** The model segment carries the served endpoint
+and its rate when they are not already the model's own name —
+`deepseek-v4-flash · via quicksilver · 92 tok/s` — and goes quiet when there is
+no fact to state: nothing measured, nobody named, or a sighting old enough that
+its rate describes a conversation that has since gone to sleep.
 
 ## Milestones
 

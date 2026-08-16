@@ -33,6 +33,13 @@ type Config struct {
 	// answer is reported by returning known=false, never by waiting.
 	SupportsParameter func(model, parameter string) (bool, bool)
 
+	// Routing says how this client asks the router to choose among the
+	// endpoints serving one model (velocity.go). NIL IS LATENCY — the default a
+	// person waiting on an answer would pick — so a caller that has never heard
+	// of the row still chases speed, and one that has hands down the resolved
+	// setting rather than a path to it.
+	Routing RoutingSource
+
 	// HTTPClient is optional and exists for deterministic tests.
 	HTTPClient *http.Client
 }
@@ -53,6 +60,13 @@ type Client struct {
 	// poll: production sleeps, tests record what would have been slept and
 	// return, so how long a retry waits is assertable without waiting.
 	wait func(context.Context, time.Duration) error
+	// velocity is what this process has measured about the endpoints serving
+	// its models (velocity.go). It is consulted by the encoder immediately
+	// before a send and written the moment an answer completes.
+	velocity *velocityLedger
+	// now is the clock those measurements are taken against, seamed like wait
+	// so a test can state a two-second first token without waiting two seconds.
+	now func() time.Time
 }
 
 // NewClient builds the adapter. It performs no network request.
@@ -87,7 +101,15 @@ func NewClient(config Config) (*Client, error) {
 		httpClient = &http.Client{Transport: SharedTransport(), Timeout: config.Timeout}
 		streamClient = &http.Client{Transport: streamTransport()}
 	}
-	return &Client{config: config, http: httpClient, stream: streamClient, base: base, wait: waitContext}, nil
+	return &Client{
+		config:   config,
+		http:     httpClient,
+		stream:   streamClient,
+		base:     base,
+		wait:     waitContext,
+		velocity: sharedVelocity,
+		now:      time.Now,
+	}, nil
 }
 
 // Model reports the adapter's default model slug.
@@ -244,6 +266,7 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	if err != nil {
 		return nil, err
 	}
+	began := c.clock()
 	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), false)
 	if err != nil {
 		return nil, err
@@ -261,7 +284,65 @@ func (c *Client) CompleteWithMessages(ctx context.Context, messages []ai.Message
 	if err := json.Unmarshal(payload, &response); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
+	// A non-streamed answer has no first token to wait for — the whole thing
+	// arrives at once — so it is rated and never judged on TTFT. Passing zero
+	// says "unmeasured" rather than "instant" (velocity.go).
+	c.noteVelocity(
+		c.modelFor(request),
+		servedProvider(payload),
+		0,
+		outputTokens(&response, ""),
+		c.clock().Sub(began),
+	)
 	return &response, nil
+}
+
+// clock is the client's time source, defaulting to the wall clock so a Client
+// assembled without one still measures.
+func (c *Client) clock() time.Time {
+	if c.now == nil {
+		return time.Now()
+	}
+	return c.now()
+}
+
+// servedProvider reads the endpoint the router says answered.
+//
+// It is decoded separately from ai.Response rather than added to it: the SDK's
+// response type is the OpenAI shape, `provider` is the router's own addition to
+// it, and a field this adapter reads for its own bookkeeping does not belong in
+// a type the whole harness passes around. A body without the field is not an
+// error — every non-router endpoint is one — it is simply a sighting with
+// nobody to attribute.
+func servedProvider(payload []byte) string {
+	var served struct {
+		Provider string `json:"provider"`
+	}
+	if err := json.Unmarshal(payload, &served); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(served.Provider)
+}
+
+// outputTokens is what an answer was worth, by the provider's own count when it
+// sent one and by the four-bytes-a-token approximation when it did not.
+//
+// The approximation is deliberately crude and only ever feeds the rate: it
+// decides whether an endpoint is above or below a threshold three times lower
+// than any healthy endpoint's real rate, and it is never billed, never shown as
+// a token count, and never folded into usage.
+func outputTokens(response *ai.Response, text string) int {
+	if response != nil && response.Usage != nil && response.Usage.CompletionTokens > 0 {
+		return response.Usage.CompletionTokens
+	}
+	if text == "" && response != nil {
+		for _, choice := range response.Choices {
+			for _, part := range choice.Message.Content {
+				text += part.Text
+			}
+		}
+	}
+	return len(text) / 4
 }
 
 // completeWithMessagesStreaming preserves the completion interface while
@@ -278,6 +359,7 @@ func (c *Client) completeWithMessagesStreaming(
 		return nil, err
 	}
 	request.Stream = true
+	began := c.clock()
 	httpResponse, err := c.sendShaped(ctx, request, knobsFrom(ctx), true)
 	if err != nil {
 		return nil, err
@@ -287,6 +369,12 @@ func (c *Client) completeWithMessagesStreaming(
 		payload, _ := io.ReadAll(io.LimitReader(httpResponse.Body, maxErrorPeek))
 		return nil, apiError(httpResponse.StatusCode, payload)
 	}
+	// THE ONLY PLACE TTFT IS REALLY OBSERVABLE. The two facts the ledger wants
+	// are separated by the stream itself: how long the endpoint took to say
+	// anything, and how fast it wrote once it had started. Timing them together
+	// would price a warm endpoint behind a long prompt as a slow one.
+	var served string
+	var firstToken time.Time
 
 	// Read once per call rather than once per event: the session does not
 	// change mid-stream, and this loop already runs against the connection's
@@ -334,12 +422,22 @@ func (c *Client) completeWithMessagesStreaming(
 		if chunk.Model != "" {
 			response.Model = chunk.Model
 		}
+		if chunk.Provider != "" {
+			served = chunk.Provider
+		}
 		if chunk.Usage != nil {
 			response.Usage = chunk.Usage
 		}
 		for _, choice := range chunk.Choices {
 			if choice.Index != 0 {
 				continue
+			}
+			// Reasoning counts as the first token. It is the endpoint writing —
+			// billed, streamed, and the thing the person is waiting through —
+			// and a reasoning model that thinks for a minute before its first
+			// word of answer is not an endpoint that took a minute to respond.
+			if firstToken.IsZero() && (choice.Delta.Content != "" || choice.Delta.thinking()) {
+				firstToken = c.clock()
 			}
 			if choice.Delta.Content != "" {
 				thinking = false
@@ -387,6 +485,23 @@ func (c *Client) completeWithMessagesStreaming(
 		ToolCalls: tools.assembled(),
 	}
 	response.Choices = []ai.Choice{{Index: 0, Message: message, FinishReason: finishReason}}
+	// The rate is measured over the GENERATION window — first token to last —
+	// and not over the call, so the wait to be served is charged to TTFT once
+	// rather than to both figures. A stream that never produced a token is
+	// still a sighting: its TTFT is the whole call, which is exactly the
+	// complaint a person has about it.
+	generation := c.clock()
+	if !firstToken.IsZero() {
+		c.noteVelocity(
+			c.modelFor(request),
+			served,
+			firstToken.Sub(began),
+			outputTokens(response, content.String()),
+			generation.Sub(firstToken),
+		)
+	} else {
+		c.noteVelocity(c.modelFor(request), served, generation.Sub(began), 0, 0)
+	}
 	finished = true
 	observer(StreamEvent{Kind: StreamFinished, Session: session})
 	return response, nil

@@ -1,0 +1,48 @@
+total 268
+drwxrwxr-x 12 santosh santosh  4096 Aug 15 19:45 .
+drwxr-xr-x  3 santosh santosh  4096 Aug 15 19:45 ..
+drwxrwxr-x  3 santosh santosh  4096 Aug 15 19:45 .aforge-v3
+-rw-rw-r--  1 santosh santosh  6689 Aug 15 19:45 asciigen.py
+drwxrwxr-x  2 santosh santosh  4096 Aug 15 19:45 audit-notes
+drwxrwxr-x  7 santosh santosh  4096 Aug 15 19:45 bench
+-rw-rw-r--  1 santosh santosh 22604 Aug 15 19:45 BENCHMARKS.md
+drwxrwxr-x  3 santosh santosh  4096 Aug 15 19:45 cmd
+drwxrwxr-x  2 santosh santosh  4096 Aug 15 19:45 data
+drwxrwxr-x  2 santosh santosh  4096 Aug 15 19:45 docs
+drwxrwxr-x  3 santosh santosh  4096 Aug 15 19:45 genimg
+-rw-rw-r--  1 santosh santosh    53 Aug 15 19:45 .git
+-rw-rw-r--  1 santosh santosh    49 Aug 15 19:45 .gitignore
+-rw-rw-r--  1 santosh santosh  2513 Aug 15 19:45 go.mod
+-rw-rw-r--  1 santosh santosh 11590 Aug 15 19:45 go.sum
+-rw-rw-r--  1 santosh santosh 21252 Aug 15 19:45 harness-research-notes.md
+-rw-rw-r--  1 santosh santosh 23386 Aug 15 19:45 harness-research-notes-set2.md
+drwxrwxr-x 39 santosh santosh  4096 Aug 15 19:45 internal
+-rw-rw-r--  1 santosh santosh  1724 Aug 15 19:45 Makefile
+drwxrwxr-x  2 santosh santosh  4096 Aug 15 19:45 __pycache__
+-rw-rw-r--  1 santosh santosh    33 Aug 15 19:45 qft-poem.aux
+-rw-rw-r--  1 santosh santosh  7259 Aug 15 19:45 qft-poem.md
+-rw-rw-r--  1 santosh santosh 74442 Aug 15 19:45 qft-poem.pdf
+-rw-rw-r--  1 santosh santosh 11693 Aug 15 19:45 qft-poem.tex
+drwxrwxr-x  4 santosh santosh  4096 Aug 15 19:45 test
+-rw-rw-r--  1 santosh santosh 11628 Aug 15 19:45 tightbinding.py
+---
+.aforge-v3/tasks/1/bench/e2e/README.md
+.aforge-v3/tasks/1/bench/e2e/fixtures/pipelines.sh
+.aforge-v3/tasks/1/bench/e2e/fixtures/promoprice.sh
+.aforge-v3/tasks/1/bench/e2e/fixtures/toolkit.sh
+.aforge-v3/tasks/1/bench/e2e/cells/bughunt/cell.sh
+.aforge-v3/tasks/1/bench/e2e/cells/fanin6/cell.sh
+.aforge-v3/tasks/1/bench/e2e/cells/dynamic/cell.sh
+.aforge-v3/tasks/1/bench/e2e/cells/bundle3/cell.sh
+.aforge-v3/tasks/1/bench/e2e/cells/compare3/cell.sh
+.aforge-v3/tasks/1/bench/e2e/cells/lookup/cell.sh
+.aforge-v3/tasks/1/bench/e2e/cells/feature/cell.sh
+.aforge-v3/tasks/1/bench/e2e/lib/compare.py
+.aforge-v3/tasks/1/bench/e2e/lib/assert.sh
+.aforge-v3/tasks/1/bench/e2e/lib/autopsy.sh
+.aforge-v3/tasks/1/bench/e2e/run.sh
+.aforge-v3/tasks/1/bench/README.md
+.aforge-v3/tasks/1/bench/probelab/selfcheck.py
+.aforge-v3/tasks/1/bench/probelab/plots/classifier_comparison.png
+.aforge-v3/tasks/1/bench/probelab/plots/breakeven.png
+.aforge-v3/tasks/1/bench/probelab/plots/reliability.png

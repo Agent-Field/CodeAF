@@ -1,0 +1,14 @@
+1. MiniCPM5-1B Benchmarks & Context (August 2026) — https://benchlm.ai/models/minicpm5-1b
+  2026-05-25T00:00:00.000Z
+  MiniCPM5-1B Benchmarks & Context (August 2026) | BenchLM.ai Model profile · OpenBMB # MiniCPM5-1B Current Released May 25, 2026 Open WeightReasoning131K context Released May 25, 2026 — see all recent releases MiniCPM5-1B scores 12.8 out of 100 and ranks #215 of 215. This profile shows 14 source-d
+2. openbmb/MiniCPM5-1B · Hugging Face — https://huggingface.co/openbmb/MiniCPM5-1B
+  openbmb/MiniCPM5-1B · Hugging Face English |中文 ## Highlights We are releasing MiniCPM5-1B, the first model in the MiniCPM5 series. It is a dense 1B Transformer built for on-device, local deployment, and resource-constrained scenarios, reaching 1B-class open-source SOTA. 🏆 1B-class open-sourc
+3. MiniCPM5-1B (Non-reasoning) Benchmark Scores & Evals | BenchmarkList — https://benchmarklist.com/models/minicpm5-1b/
+  MiniCPM5-1B (Non-reasoning) Benchmark Scores & Evals | BenchmarkList # MiniCPM5-1B (Non-reasoning) MI ## At a glance Developer OpenBMB Access Closed/API Experimental ECI 110.89 9 benchmark fit · Thin coverage Global SOTA rank Not ranked Thin estimate · 10 benchmarks required Evaluation 11 benchmar
+4. MiniCPM5-1B - Intelligence, Performance & Price Analysis — https://artificialanalysis.ai/models/minicpm5-1b
+  MiniCPM5-1B - Intelligence, Performance & Price Analysis K • Open weights model • Released May 2026 # MiniCPM5-1B (Reasoning) Intelligence, Performance & Price Analysis Compare #### Intelligence #3 / 44 12 Artificial Analysis Intelligence Index #### Speed N/A Output tokens per second #### Input
+5. MiniCPM5-1B (Non-reasoning) by OpenBMB · Sophon — https://sophon.at/models/minicpm5-1b-non-reasoning
+  2026-05-25T00:00:00.000Z
+  MiniCPM5-1B (Non-reasoning) by OpenBMB · Sophon Input Output Released25 May 2026 Cite BibTeXCopiedMarkdownCopiedPlain textCopied Notes Only stored in your browser. Attribution Benchmark scores AA Attribution policy → OverviewMentions1 Input $0 /1M tok Output $0 /1M tok Blended $0 #1/ 432/1M · 3:
+
+5 results

@@ -275,6 +275,13 @@ type Config struct {
 	// window − max(15% of window, 16384). Zero selects a conservative default.
 	ContextWindow int
 
+	// Routing is how this session asks the router to choose among the endpoints
+	// serving its model, and whether it times them at all (internal/provider's
+	// velocity.go). EMPTY IS LATENCY, the default the settings row carries, so a
+	// caller that says nothing still gets the fastest endpoint the router can
+	// find and still measures what it actually got.
+	Routing provider.RoutingStrategy
+
 	// CompactEnabled gates automatic compaction. Manual compaction via the
 	// surface's /compact is a surface concern and always available through
 	// Compact.
@@ -365,6 +372,20 @@ type Config struct {
 	// assigns the media client here with no adapter in between.
 	ImageGenModel  string
 	ImageGenClient ImageGenerator
+
+	// DocumentEngine is the rung read_document climbs to (tools_doc.go): the
+	// person's document_engine row, one of auto, local, free or ocr
+	// (config.DocumentEngines), resolved by the surface exactly as the search
+	// pair below is and handed over as the answer.
+	//
+	// EMPTY IS AUTO, not "off". Unlike the two pairs around it, this is a
+	// preference and not a back end: the rungs ride this session's own API key
+	// and base URL, so there is nothing a nil here could mean except "nobody
+	// chose", and config.DefaultDocumentEngine is what nobody-chose resolves to
+	// everywhere else in the binary. The tool is on the belt either way, because
+	// read's own scanned-PDF refusal names it by name and a named way out that
+	// resolves to nothing is worse than a rung that says why it cannot run.
+	DocumentEngine string
 
 	// SearchProvider and SearchFetcher are the web-search pair the belt's
 	// web_search and web_fetch tools call through (tools_search.go). They are
@@ -467,6 +488,13 @@ type Agent struct {
 	// compaction pass that must not need the session lock to render a block.
 	stateOnce  sync.Once
 	stateStore *stateStore
+
+	// docs is the OCR rung: the document parser read_document calls through and
+	// the per-document memo that makes paging a scan free (tools_doc.go). It is
+	// built on first use through [Agent.documentParser] for the reason
+	// stateStore is, and holds its own once and its own lock for the same
+	// reason: its callers are tool calls running in parallel inside one batch.
+	docs documentRung
 
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that

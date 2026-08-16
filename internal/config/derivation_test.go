@@ -146,8 +146,12 @@ var settingReaders = map[string]string{
 	// The guardian row is read by the v3 door and becomes session.Config.Guardian.
 	// It names the accessor rather than the field, because the door is the only
 	// caller and the accessor is what it touches.
-	KeyGuardian:            "GuardianEnabledAt",
-	KeyMouse:               "MouseEnabledAt",
+	KeyGuardian: "GuardianEnabledAt",
+	KeyMouse:    "MouseEnabledAt",
+	// The routing row is read by the v3 door and becomes session.Config.Routing,
+	// which the adapter turns into the preference object on every request
+	// (internal/provider's velocity.go). It names the accessor the door touches.
+	KeyRouting:             "RoutingAt",
 	KeyTaskAudit:           "TaskAuditEnabledAt",
 	KeyMemoryConsolidation: "MemoryConsolidationEnabledAt",
 	// The task countdown names the field it becomes on the far side —
