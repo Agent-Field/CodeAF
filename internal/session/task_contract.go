@@ -43,6 +43,42 @@ const (
 	// TaskFailed says the run ended without finishing — an error, a kill, or
 	// a merge the runner would not guess at. Report says which.
 	TaskFailed TaskState = "failed"
+	// TaskUnverified says the run finished and NOBODY COULD SAY whether the
+	// work holds: the auditor answered with neither verdict word, or the audit
+	// call itself never came back (task_audit.go). It is a settled state — the
+	// run is over, the slot is handed back, the branch is kept — and it is
+	// deliberately NOT TaskFailed.
+	//
+	// "The work is wrong" and "nobody could tell me whether the work is wrong"
+	// are different news with different consequences, and collapsing the second
+	// into the first is how a broken auditor fails good work and then fails
+	// everything downstream of it. So nothing CASCADES from here: a dependent of
+	// an unverified node stays queued rather than failing, because an unverified
+	// claim is not evidence and is also not a refutation. What moves it is a
+	// person — [Agent.ResolveUnverified], reachable from the `tasks` tool — accepting
+	// the work as done, asking for another audit, or refuting it themselves.
+	TaskUnverified TaskState = "unverified"
+)
+
+// TaskResolution is what a person decides about a node no auditor could judge.
+//
+// The three are the only three answers there are to "nobody could verify this":
+// say it holds, ask again, or say it does not. Each lands the node in one of
+// the states above — done, unverified again, failed — through the same settle
+// the gate itself uses, so a resolved node is indistinguishable afterwards from
+// one that reached that state on its own.
+type TaskResolution string
+
+const (
+	// TaskAccept takes the work as done on the person's word: the branch comes
+	// home exactly as a VERIFIED one would, and the dependents unblock.
+	TaskAccept TaskResolution = "accept"
+	// TaskReaudit sends a fresh auditor at the same working copy. The node stays
+	// unverified until that verdict lands.
+	TaskReaudit TaskResolution = "reaudit"
+	// TaskRefute is the person doing the auditor's job in the negative: the node
+	// fails, its branch is kept, and the cascade takes its dependents.
+	TaskRefute TaskResolution = "refute"
 )
 
 // TaskNotice is the flat payload of EventTaskProposal and EventTaskUpdate —
@@ -85,7 +121,7 @@ type TaskNotice struct {
 
 	// ── update fields (EventTaskUpdate) ─────────────────────────────────
 
-	// State is queued, running, done or failed.
+	// State is queued, running, done, failed or unverified.
 	State TaskState
 	// Elapsed is the node's age at this update.
 	Elapsed time.Duration

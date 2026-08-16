@@ -46,15 +46,34 @@ package session
 //
 // The same reason the guardian's contract is one word (guardian.go): a verdict
 // with a middle answer has a middle answer nobody has defined, and the first
-// thing a model does with an undefined answer is use it. Everything that is not
-// the word VERIFIED is REFUTED — a refusal, an essay, an empty reply, a
-// timeout. The frontier fails CLOSED, which for a verified frontier means the
-// worst a broken auditor can do is keep good work on a branch with an
-// explanation attached, and the branch is never thrown away.
+// thing a model does with an undefined answer is use it. So the auditor is
+// still asked for one of two words, and everything that is not VERIFIED leaves
+// the work unmerged: the frontier fails CLOSED, and the worst a broken auditor
+// can do is keep good work on a branch with an explanation attached.
+//
+// ── BUT A NON-ANSWER IS NOT A VERDICT ──
+//
+// Failing closed is about what MERGES. It is not a licence to write down a
+// finding nobody made. An auditor that answered with neither word, or that was
+// never asked at all because the provider errored, has told us exactly nothing
+// about the work — and recording that as REFUTED is the harness inventing
+// evidence and then cascading it through every dependent. That is a false
+// failure, and it was observed in the wild: a deep-research node landed as
+// "REFUTED — the auditor answered neither VERIFIED nor REFUTED".
+//
+// So a non-verdict is asked ONCE MORE — a fresh auditor, the same evidence
+// packet, which is the whole remedy for a truncated reply or a provider blip —
+// and if the second attempt is also not a verdict, the node lands UNVERIFIED
+// (task_contract.go). Unverified is settled and it is not failed: the branch is
+// kept, nothing merges, nothing cascades, and the dependents wait for the one
+// thing that can move them, which is a person deciding ([Agent.ResolveUnverified]).
+// A REAL REFUTED verdict is untouched by any of this — it is a finding, it
+// fails the node, and it takes the dependents with it, exactly as before.
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -87,17 +106,26 @@ const (
 	// auditCommandLimit keeps a refused command readable when it is handed back
 	// to the auditor as a refusal.
 	auditCommandLimit = 200
+
+	// auditSaidLines is how much of a NON-ANSWER is kept as the outcome text.
+	// Two lines: enough for a person to see what the auditor actually said —
+	// which is the whole basis on which they are being asked to decide — and
+	// not so much that a card carries an essay somebody wrote instead of a
+	// verdict. The rest is in the audit's own journal.
+	auditSaidLines = 2
 )
 
-// The three things a verdict can say. VERIFIED is the only one that merges.
+// The two things a verdict can say, and the word for an audit that said
+// neither. VERIFIED is the only one that merges.
 const (
 	auditVerified = "VERIFIED"
 	auditRefuted  = "REFUTED"
-	// auditTimedOut is REFUTED-lite, and it is spelled differently on purpose:
-	// "the auditor looked and says no" and "nobody ever answered" are the same
-	// state and very different news, and the person reading the card is the one
-	// who has to tell them apart.
-	auditTimedOut = "audit timed out"
+	// auditUnverified is NOT a third verdict — it is the absence of one, and it
+	// is spelled differently from REFUTED for the reason the whole fix exists:
+	// "the auditor looked and says no" and "nobody ever answered" are very
+	// different news, and the person reading the card is the one who has to
+	// tell them apart.
+	auditUnverified = "UNVERIFIED"
 )
 
 // auditCommands is the allowlist: the repository's own verification, and
@@ -138,10 +166,21 @@ REFUTED — what you ran, and what you saw
 VERIFIED means you ran something and it passed. REFUTED means it did not pass, or there was nothing there to have passed, or you could not check. When in doubt, REFUTE. Write nothing except the verdict and your evidence.`
 
 // auditVerdict is one audit's answer: the word, and what it is standing on.
+//
+// THERE ARE THREE OUTCOMES AND TWO BOOLS, and the split is the point. `answered`
+// says an auditor reached a verdict AT ALL — it looked at the work and said one
+// of the two words. `verified` says WHICH word, and it means nothing unless
+// answered is true (verified implies answered; the zero value is the safe one,
+// which is "nobody said anything"). The executor branches on both, in that
+// order, because the two answers it can get from a failed audit lead to
+// different states: unverified waits for a person, refuted fails the graph.
 type auditVerdict struct {
-	// verified is the only field the executor branches on, and it is true for
-	// exactly one word.
+	// verified is true for exactly one word.
 	verified bool
+	// answered is false for a NON-VERDICT: a reply with neither word in it, an
+	// empty reply, an audit that could not be started or asked, an audit that
+	// ran out of its own deadline. None of them is a finding about the work.
+	answered bool
 	word     string
 	evidence []string
 }
@@ -151,7 +190,9 @@ type auditVerdict struct {
 func (v auditVerdict) report() string {
 	word := v.word
 	if word == "" {
-		word = auditRefuted
+		// The zero value is a verdict nobody gave, and it says so rather than
+		// borrowing REFUTED's clothes.
+		word = auditUnverified
 	}
 	if len(v.evidence) == 0 {
 		return word
@@ -163,12 +204,37 @@ func (v auditVerdict) report() string {
 	return lead + "\n" + strings.Join(v.evidence[1:], "\n")
 }
 
-// refutedVerdict is the answer to everything that went wrong before a real
-// verdict could be reached: the auditor would not start, the turn failed, the
-// reply was not a verdict. Every one of them is a REFUSAL to call the work
-// done, because the frontier fails closed.
-func refutedVerdict(why string) auditVerdict {
-	return auditVerdict{word: auditRefuted, evidence: []string{why}}
+// noVerdict is the answer to everything that went wrong before a verdict could
+// be reached: the auditor would not start, the turn failed, the reply was not a
+// verdict. Every one of them is a REFUSAL to call the work done — nothing
+// merges on a non-answer — and NONE of them is a refutation of the work.
+//
+// It carries two things: WHY there is no verdict, which is the line a person
+// reads off the card, and WHAT THE AUDITOR ACTUALLY SAID, which is the evidence
+// they are being asked to decide on. An auditor that wrote three paragraphs of
+// analysis and forgot the word is not the same object as one that returned an
+// empty string, and the person resolving it needs to see which they have.
+func noVerdict(why, said string) auditVerdict {
+	verdict := auditVerdict{word: auditUnverified, evidence: []string{why}}
+	if said = firstLines(said, auditSaidLines); said != "" {
+		verdict.evidence = append(verdict.evidence, strings.Split(said, "\n")...)
+	}
+	return verdict
+}
+
+// twice re-tells a non-verdict as the SECOND one it is. A person reading "the
+// auditor could not be asked" wants to know whether that happened once or
+// whether the harness tried again and got the same nothing, because only the
+// second is worth their attention.
+func (v auditVerdict) twice() auditVerdict {
+	if len(v.evidence) == 0 {
+		return noVerdict("asked twice and got no verdict either time", "")
+	}
+	evidence := make([]string, len(v.evidence))
+	copy(evidence, v.evidence)
+	evidence[0] = "asked twice and got no verdict either time — " + evidence[0]
+	v.evidence = evidence
+	return v
 }
 
 // ── the audit ───────────────────────────────────────────────────────────────
@@ -176,9 +242,17 @@ func refutedVerdict(why string) auditVerdict {
 // auditNode is the whole gate: stage the work so the diff is complete, put a
 // fresh auditor in the node's worktree, and read its verdict.
 //
-// It never returns an error. Every way this can go wrong is a verdict — that is
+// It never returns an error. Every way this can go wrong is an ANSWER — that is
 // what "self-reports never flip a record to completed" means when the machinery
-// itself is what failed: an audit that could not happen is not a pass.
+// itself is what failed: an audit that could not happen is not a pass. What it
+// is also not is a refutation, so a non-verdict is asked once more before this
+// gives up on it.
+//
+// ONE RETRY, AND ONLY FOR A NON-VERDICT. A verdict is never re-rolled — asking
+// again until the answer changes is not verification, it is shopping — and the
+// retry is bounded at one because a second nothing is a broken auditor rather
+// than a blip, and a third call would only spend the person's money to write
+// down the same absence.
 func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditVerdict {
 	// STAGED, NOT COMMITTED. `git diff` in a worktree shows changes to tracked
 	// files only, so an auditor looking at a node whose whole work was three NEW
@@ -186,13 +260,44 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// reason. Staging puts every file — new ones included — where `git diff
 	// --cached` can see it, and comeHome commits from exactly the same index
 	// afterwards, so nothing is done twice and nothing is done differently.
+	//
+	// It is done ONCE, out here, so both attempts judge the same tree: a retry
+	// that re-staged would be a second evidence packet, and "the same question
+	// asked again" is the only thing a retry is allowed to be.
 	if tree.root != "" {
 		stageTaskWork(tree.dir)
 	}
 
+	verdict, again := a.auditOnce(ctx, node, tree, changed, claim, log)
+	switch {
+	case verdict.answered, !again:
+		return verdict
+	case ctx.Err() != nil:
+		// The NODE was killed, not the audit. There is nobody to ask again and
+		// nothing to ask about; the caller reads ctx itself and tells that story.
+		return verdict
+	}
+	fmt.Fprintf(log, "audit: no verdict — asking once more\n")
+	retried, _ := a.auditOnce(ctx, node, tree, changed, claim, log)
+	if retried.answered {
+		return retried
+	}
+	return retried.twice()
+}
+
+// auditOnce is one attempt: a fresh auditor in the node's worktree, one
+// question, one reading of what came back.
+//
+// The second return says whether ASKING AGAIN COULD HELP. A reply with no
+// verdict in it and a provider that errored are both worth one more call — the
+// first is a model that wandered, the second is a network — while an audit that
+// burned its whole deadline is not: the auditor already had every minute it was
+// going to get, and a second five minutes buys a second timeout while the node
+// holds its worktree.
+func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) (auditVerdict, bool) {
 	auditor, err := a.newAuditAgent(tree.dir, node)
 	if err != nil {
-		return refutedVerdict("the auditor could not start: " + err.Error())
+		return noVerdict("the auditor could not start: "+err.Error(), ""), true
 	}
 	defer func() {
 		_ = auditor.Close()
@@ -212,7 +317,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
 	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, changed, claim))
 	if err != nil {
-		return refutedVerdict("the auditor could not be asked: " + err.Error())
+		return noVerdict("the auditor could not be asked: "+err.Error(), ""), true
 	}
 	for event := range events {
 		if event.Kind == EventToolBegin {
@@ -220,19 +325,17 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		}
 	}
 
+	said := lastSaid(auditor)
 	// A node killed mid-audit is the caller's story to tell, not the auditor's;
 	// it reads ctx itself. What is this function's story is the audit that ran
 	// out of its own five minutes with the node still perfectly alive.
 	if auditCtx.Err() != nil && ctx.Err() == nil {
-		return auditVerdict{
-			word:     auditTimedOut,
-			evidence: []string{fmt.Sprintf("no verdict in %s, so nothing was accepted", auditDeadline)},
-		}
+		return noVerdict(fmt.Sprintf("no verdict in %s, so nothing was accepted", auditDeadline), said), false
 	}
 
-	verdict := parseAuditVerdict(lastSaid(auditor))
+	verdict := parseAuditVerdict(said)
 	fmt.Fprintf(log, "audit: %s\n", verdict.report())
-	return verdict
+	return verdict, true
 }
 
 // auditQuestion is what the auditor is asked: the frozen acceptance, the work's
@@ -275,7 +378,8 @@ func auditQuestion(node *TaskNode, tree taskTree, changed []string, claim string
 // It looks for the first line that BEGINS with a verdict word, the way
 // guardianSaysAllow reads one word: a model that has decided to be helpful in
 // prose and mentions the word VERIFIED inside a sentence has not answered a
-// binary contract, and an unanswered contract is a refutation.
+// binary contract. An unanswered contract is NOT a refutation, though — it is
+// nothing at all, and it says so, carrying whatever was said instead.
 func parseAuditVerdict(text string) auditVerdict {
 	for _, raw := range strings.Split(text, "\n") {
 		line := strings.Trim(strings.TrimSpace(raw), "`*\"'“”#> ")
@@ -292,11 +396,12 @@ func parseAuditVerdict(text string) auditVerdict {
 		}
 		return auditVerdict{
 			verified: word == auditVerified,
+			answered: true,
 			word:     word,
 			evidence: auditEvidence(evidence, text, raw),
 		}
 	}
-	return refutedVerdict("the auditor answered neither VERIFIED nor REFUTED")
+	return noVerdict("the auditor answered neither VERIFIED nor REFUTED", text)
 }
 
 // auditWord splits a verdict line into the word and whatever follows it, and
@@ -346,6 +451,185 @@ func auditEvidence(evidence []string, text, verdictLine string) []string {
 		evidence = evidence[:auditEvidenceLines]
 	}
 	return evidence
+}
+
+// ── when nobody could decide ────────────────────────────────────────────────
+
+// ResolveUnverified is the person's answer to a node no auditor could judge.
+//
+// It is NOT [Agent.ResolveTask], which answers a PROPOSAL — should this work
+// start — and the two are spelled apart on purpose: one is a decision about
+// work that has not happened, this is a decision about work that has.
+//
+// An unverified node is the one state in this graph that WAITS ON A HUMAN. It
+// is not stuck by accident and it is not going to resolve itself: the auditor
+// was asked twice and said nothing both times, so the only remaining source of
+// a verdict is somebody who can read the diff. Until they do, the branch sits
+// where it was kept and the dependents sit queued — which is the honest
+// position, because an unverified claim is not evidence, and failing them on
+// the strength of an audit that never happened is the exact defect this whole
+// path exists to remove.
+//
+// THE THREE ANSWERS GO THROUGH THE GATE'S OWN SETTLE. Accepting merges the
+// branch with [taskTree.comeHome], the same call a VERIFIED verdict makes;
+// refuting fails the node and lets the frontier cascade; re-auditing runs the
+// audit again and lands whatever it says. Nothing here is a second way to
+// finish a node — it is the same finish, reached by a different judge.
+//
+// It is exported because two callers need it: a surface with a person in front
+// of it, and the model through the `tasks` tool (tools_tasks.go).
+func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why string) error {
+	node := a.taskNode(id)
+	if node == nil {
+		return fmt.Errorf("no task %d in this session", id)
+	}
+	if state := node.stateNow(); state != TaskUnverified {
+		return fmt.Errorf("task %d is %s, and only an unverified task is waiting on somebody to decide", id, state)
+	}
+	why = strings.TrimSpace(why)
+	switch resolution {
+	case TaskAccept:
+		return a.acceptTask(node, why)
+	case TaskRefute:
+		return a.refuteTask(node, why)
+	case TaskReaudit:
+		return a.reauditTask(node)
+	}
+	return fmt.Errorf("%q is not a resolution: say %s, %s or %s", resolution, TaskAccept, TaskReaudit, TaskRefute)
+}
+
+// acceptTask takes the work as done on the person's word.
+//
+// THE BRANCH COMES HOME THE ORDINARY WAY. An accepted node is a node somebody
+// verified by hand, so it merges exactly as a VERIFIED one does and its
+// dependents unblock on the frontier pass the settle turns. What it does NOT do
+// is pretend an auditor said so: the report leads with who accepted it and on
+// what grounds, because a card that read "VERIFIED" over a verdict nobody gave
+// would be the same lie as the one this file was fixed to stop telling.
+func (a *Agent) acceptTask(node *TaskNode, why string) error {
+	tree, err := node.workingCopy(a.config.Workspace)
+	if err != nil {
+		return err
+	}
+	if node.beingAudited() {
+		return fmt.Errorf("task %d is being re-audited: wait for that verdict, or it will land on top of yours", node.id)
+	}
+	report, changed, _, _ := node.leavings()
+	merge, detail := tree.comeHome(node.title())
+	node.finish(withReport(acceptedLine(why), withReport(report, detail)), changed, tree.branch, merge)
+	node.graph.resettle(node, TaskDone)
+	return nil
+}
+
+// refuteTask is the person doing the auditor's job in the negative. The node's
+// previous report is KEPT under the refusal rather than replaced — unlike a real
+// REFUTED verdict, which drops the node's claim because the auditor's evidence
+// has already answered it. Here the auditor answered nothing, so what the node
+// said is still the only account of the work there is.
+func (a *Agent) refuteTask(node *TaskNode, why string) error {
+	if node.beingAudited() {
+		return fmt.Errorf("task %d is being re-audited: wait for that verdict, or it will land on top of yours", node.id)
+	}
+	report, changed, branch, merge := node.leavings()
+	node.finish(withReport(refutedLine(why), report), changed, branch, merge)
+	node.graph.resettle(node, TaskFailed)
+	return nil
+}
+
+// reauditTask sends a fresh auditor at the same working copy.
+//
+// IT RETURNS BEFORE THE VERDICT DOES, and that is the whole shape of it. An
+// audit is bounded at five minutes, and a tool call or a keypress that blocked
+// for five minutes would be a wedged surface — so the re-audit runs as its own
+// goroutine and the node stays UNVERIFIED, which is exactly what it is until
+// somebody answers. When the verdict lands it settles the node through
+// [Agent.landAudit], and the person and the model hear about it on the same
+// lane every other landing rides.
+//
+// IT IS A JOB, from the same registry the node's own run came from (jobs.go).
+// That is not decoration: a piece of work that outlives the call which asked
+// for it needs a row in `jobs list`, a `jobs kill`, a log somebody can read,
+// and — the one that matters here — a death at [Agent.Close]. A goroutine on
+// context.Background would keep auditing a session that has gone, and settle a
+// node into a checkpoint nobody is writing any more.
+func (a *Agent) reauditTask(node *TaskNode) error {
+	if !a.config.TaskAudit {
+		return errors.New("task.audit is off, so there is no auditor to ask — accept it or refute it")
+	}
+	tree, err := node.workingCopy(a.config.Workspace)
+	if err != nil {
+		return err
+	}
+	if !node.beginAudit() {
+		return fmt.Errorf("task %d is already being re-audited", node.id)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	listed, _ := a.jobs.startTask(node.id, "re-audit · "+node.title(), cancel)
+	_, changed, _, _ := node.leavings()
+	go func() {
+		defer cancel()
+		defer node.endAudit()
+		if listed != nil {
+			defer listed.settle(0)
+		}
+		// NO CLAIM IS PASSED. The first audit was given the node's own last
+		// words as the thing under audit; this one is given the acceptance and
+		// the diff, and nothing about the answer that was not an answer — a
+		// fresh auditor primed with "the last one could not decide" is a fresh
+		// auditor that has been told what to conclude.
+		verdict := a.auditNode(ctx, node, tree, changed, "", taskLog(listed))
+		if ctx.Err() != nil {
+			// KILLED IS NOT A VERDICT. The node is left exactly as it was —
+			// unverified, waiting on somebody — because a re-audit that was
+			// stopped is a re-audit that never happened.
+			return
+		}
+		a.landAudit(node, tree, verdict, changed)
+	}()
+	return nil
+}
+
+// landAudit settles a node on a verdict that arrived after it had already
+// landed. It reads the same three answers the gate reads (task_run.go's
+// workTaskNode), and reaches the same three states — the only difference is
+// that this one re-settles a node instead of completing a run.
+func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, changed []string) {
+	report, _, branch, merge := node.leavings()
+	switch {
+	case !verdict.answered:
+		// STILL NOBODY. The fresh non-answer REPLACES the stale one rather than
+		// stacking under it: two auditors failing to answer is one fact, and a
+		// report that grew a paragraph per attempt would be a card nobody can
+		// read by the third try. Every attempt is in its own audit journal.
+		node.finish(verdict.report(), changed, branch, merge)
+		node.graph.resettle(node, TaskUnverified)
+	case !verdict.verified:
+		node.finish(verdict.report(), changed, branch, abortedMerge(tree))
+		node.graph.resettle(node, TaskFailed)
+	default:
+		merged, detail := tree.comeHome(node.title())
+		node.finish(withReport(verdict.report(), withReport(report, detail)), changed, tree.branch, merged)
+		node.graph.resettle(node, TaskDone)
+	}
+}
+
+// acceptedLine and refutedLine are the first line of a resolved node's report —
+// which is also its row in the project's index (task_index.go's taskOutcome), so
+// each says WHO decided and, when they gave one, why.
+func acceptedLine(why string) string {
+	line := "ACCEPTED by the person — no auditor verdict was ever reached"
+	if why != "" {
+		line += ": " + clip(firstLine(why), taskReportLineLimit)
+	}
+	return line
+}
+
+func refutedLine(why string) string {
+	line := "REFUTED by the person — no auditor verdict was ever reached"
+	if why != "" {
+		line += ": " + clip(firstLine(why), taskReportLineLimit)
+	}
+	return line
 }
 
 // ── the auditor's agent ─────────────────────────────────────────────────────

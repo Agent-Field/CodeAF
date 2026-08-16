@@ -110,9 +110,9 @@ type TaskIndexEntry struct {
 	// the title as it was groomed, uncut, for the pointer block and the search.
 	Label string `json:"label"`
 	Title string `json:"title"`
-	// Status is the node's final state — "done", "failed" — or its live one
-	// ("running", "queued") on a row merged in from a graph that is still
-	// turning.
+	// Status is the node's final state — "done", "failed", "unverified" — or its
+	// live one ("running", "queued") on a row merged in from a graph that is
+	// still turning.
 	Status string `json:"status"`
 	// Outcome is the first sentence of the node's report: what it did, or what
 	// stopped it. Empty for work that has not landed.
@@ -400,11 +400,17 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 	if !n.state.settled() {
 		entry.Activity = n.room.recorder().activity()
 	}
-	if n.state == TaskDone || n.state == TaskFailed {
+	if n.state.settled() {
 		// A landed node's EndedAt is now minus nothing: the report hook runs at
 		// the transition. A row rebuilt later — the live merge over a graph that
 		// still holds finished nodes — keeps the file's row instead, which is
 		// where the original stamp is.
+		//
+		// An UNVERIFIED node is landed by this measure and by every other one in
+		// this file: its run is over, its cost is frozen, and the row it writes
+		// is the project's record that the work happened and nobody could judge
+		// it. A resolution later writes a second row, which is what an
+		// append-only history is for.
 		entry.EndedAt = time.Now()
 	}
 	return entry
