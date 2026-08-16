@@ -37,23 +37,56 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
-const tasksDescription = "Search this project's task history — every piece of work handed to propose_task, in this conversation and in every earlier one, plus whatever is running right now. Matches a query against titles, ids and outcomes; an empty query returns the most recent tasks. Each row carries the id, the outcome, what it cost and two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it — search first, then read the URI for the detail."
+const tasksDescription = "Search this project's task history, look at ONE task, or say something to a task that is still running. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
 
-const tasksSchemaJSON = `{"type":"object","properties":{"query":{"type":"string","description":"Words to match against task titles, ids and outcomes. Omit or leave empty for the most recent tasks."},"limit":{"type":"number","description":"How many rows to return (default: 10, maximum: 50)"}},"additionalProperties":false}`
+const tasksSchemaJSON = `{"type":"object","properties":{` +
+	`"query":{"type":"string","description":"Words to match against task titles, ids and outcomes. Omit or leave empty for the most recent tasks."},` +
+	`"limit":{"type":"number","description":"How many rows to return (default: 10, maximum: 50)"},` +
+	`"id":{"type":"string","description":"One task's id (\"7\") or its name (\"fix-the-nil-map-crash\"), to read that task alone instead of searching. A task that is still running answers with its live state."},` +
+	`"lines":{"type":"number","description":"How many recent lines of a running task's output to return with id (default: 40, maximum: 200)"},` +
+	`"say":{"type":"string","description":"A line to say to the RUNNING task named by id: a correction, or a fact it is missing. It arrives in its loop as the person's words would. Its brief and its acceptance do not change — if the objective itself was wrong, propose the work again instead."}` +
+	`},"additionalProperties":false}`
 
-// tasksTool is the window onto the project's task index (task_index.go). It is
-// the ONLY way the model reaches it, for [Agent.jobsTool]'s reason: one
-// vocabulary per kind of thing.
+// tasksArguments is the wire form. The id is RAW because a model that has just
+// read "7 · fix-the-nil-map-crash" will send either `"7"` or `7`, and both of
+// them mean task seven: a schema type is a request, not a guarantee, and
+// refusing the number would be this tool failing a call that named exactly what
+// it meant.
+type tasksArguments struct {
+	Query string          `json:"query"`
+	Limit int             `json:"limit"`
+	ID    json.RawMessage `json:"id"`
+	Lines int             `json:"lines"`
+	Say   string          `json:"say"`
+}
+
+// tasksTool is the window onto the project's task index (task_index.go) AND
+// onto the work that is running right now. It is the ONLY way the model reaches
+// either, for [Agent.jobsTool]'s reason: one vocabulary per kind of thing.
+//
+// ── THREE OPS, ONE NOUN ──
+//
+// The tool is shaped by what the model does with it, and what it does is a
+// sequence: PULL the state of work it handed off, DECIDE whether it is going
+// the right way, and STEER it if it is not. Those are one conversation about
+// one task, so they are one tool with one id — not a search tool, a read tool
+// and a steering tool, each with its own spelling of "which task".
+//
+//   - no id: the search, unchanged. The person referred to earlier work and
+//     pointed at nothing.
+//   - id: that one task. Running, and the answer is read off the GRAPH — the
+//     same live source the surface's rail draws (task_live.go) — never off the
+//     index file, which by construction holds only work that is over.
+//   - id and say: the person's door into a running node ([Agent.SteerTask]),
+//     opened for the model. It is the same door and the same law: talk to the
+//     worker, never a new target.
 func (a *Agent) tasksTool() bare.Tool {
 	return bare.Tool{
 		Name:        "tasks",
 		Description: tasksDescription,
 		Schema:      json.RawMessage(tasksSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-			var parsed struct {
-				Query string `json:"query"`
-				Limit int    `json:"limit"`
-			}
+			var parsed tasksArguments
 			// An absent argument object is a valid call — "what has been going
 			// on" takes no arguments — so only malformed bytes are an error.
 			if len(args) > 0 {
@@ -61,10 +94,168 @@ func (a *Agent) tasksTool() bare.Tool {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 			}
-			rows := SearchTaskIndex(a.TaskIndex(), parsed.Query, parsed.Limit)
-			return taskRowsText(rows, parsed.Query), false, nil
+			token := taskToken(parsed.ID)
+			if token == "" {
+				if strings.TrimSpace(parsed.Say) != "" {
+					return "Invalid arguments: say needs an id — it goes to one running task, not to a search", true, nil
+				}
+				rows := SearchTaskIndex(a.TaskIndex(), parsed.Query, parsed.Limit)
+				return taskRowsText(rows, parsed.Query), false, nil
+			}
+			return a.oneTask(token, parsed.Say, parsed.Lines)
 		},
 	}
+}
+
+// taskToken reads the id argument back as the handle a person or a model would
+// say: `7`, `"7"`, `"@fix-the-nil-map-crash"`, `"task 7"`. Everything it strips
+// is decoration around a name that was already right.
+func taskToken(raw json.RawMessage) string {
+	text := strings.TrimSpace(string(raw))
+	if text == "" || text == "null" {
+		return ""
+	}
+	if strings.HasPrefix(text, `"`) {
+		var quoted string
+		if err := json.Unmarshal(raw, &quoted); err == nil {
+			text = quoted
+		}
+	}
+	text = strings.TrimSpace(strings.ToLower(text))
+	text = strings.TrimPrefix(text, "@")
+	text = strings.TrimSpace(strings.TrimPrefix(text, "task "))
+	return strings.TrimSpace(text)
+}
+
+// oneTask is the id half of the tool: read that task, or say something to it.
+//
+// THE ROW COMES FROM THE INDEX AND THE PRESENT COMES FROM THE GRAPH, and the
+// join is here because they answer different halves of one question. The index
+// knows every task this project ever ran, including the ones from conversations
+// this process never saw; the graph knows what is happening inside the ones
+// running now, and knows nothing at all about last Tuesday's. A task from an
+// earlier conversation therefore reads as a row and says so, rather than being
+// reported as a task with nothing happening in it.
+func (a *Agent) oneTask(token, say string, lines int) (string, bool, error) {
+	rows := a.TaskIndex()
+	entry, found := LookupTask(rows, token)
+	if !found {
+		return fmt.Sprintf("No task %q in this project. Call tasks with no arguments to see the most recent ones.", token), true, nil
+	}
+	id, here := a.thisSessionTask(entry)
+	if say = strings.TrimSpace(say); say != "" {
+		if !here {
+			return fmt.Sprintf("Task %s ran in an earlier conversation, so there is nobody left to say it to. Propose the work again if it needs doing differently.", entry.ID), true, nil
+		}
+		if err := a.SteerTask(id, say); err != nil {
+			return capitalized(err.Error()) + ".", true, nil
+		}
+		return fmt.Sprintf("said to task %s: %s\nIt arrives in its loop as the person's own words. Its brief and its acceptance are unchanged — they were frozen when it started.", entry.ID, say), false, nil
+	}
+	if !here {
+		// Its row, and the truth about why there is no more: the graph that ran
+		// it died with the conversation that owned it, and its transcript is the
+		// whole of what is left.
+		if entry.Live() {
+			return taskRowText(entry) + "\nIt was running when the conversation that owns it ended, so this session cannot see it work. Its transcript is the whole of it.\n", false, nil
+		}
+		return taskRowText(entry), false, nil
+	}
+	live, state, ok := a.taskLiveRead(id, taskTailLines(lines))
+	if !ok {
+		return taskRowText(entry), false, nil
+	}
+	return taskLiveText(live, state), false, nil
+}
+
+// thisSessionTask resolves a row to a node of THIS session's graph. A row from
+// an earlier conversation, or one whose id this graph never held, is not one:
+// ids restart with every conversation (see [TaskIndexEntry.ID]), so the pair is
+// what identifies a node and matching on the number alone would read a live
+// task 7 as last month's task 7.
+func (a *Agent) thisSessionTask(entry TaskIndexEntry) (uint64, bool) {
+	a.mu.Lock()
+	session := a.sessionID()
+	a.mu.Unlock()
+	if entry.SessionID != session {
+		return 0, false
+	}
+	id, err := strconv.ParseUint(strings.TrimSpace(entry.ID), 10, 64)
+	if err != nil || a.taskNode(id) == nil {
+		return 0, false
+	}
+	return id, true
+}
+
+// taskTailLines bounds one live read's tail, clamping rather than refusing for
+// [parseWatchArguments]'s reason: a model asking for a thousand lines means "as
+// much as I can have", and the nearest legal answer is what it meant.
+func taskTailLines(asked int) int {
+	switch {
+	case asked <= 0:
+		return taskLiveDefaultTail
+	case asked > taskLiveMaxTail:
+		return taskLiveMaxTail
+	default:
+		return asked
+	}
+}
+
+// taskLiveText is one running task, in full: its row, then the tail of what it
+// has been doing, then the one thing the reader can do about it.
+//
+//	7 · fix-the-nil-map-crash · running · running for 4m 12s · 2 files · $0.31
+//	  Fix the nil-map crash in the reconciler
+//	  live: bash go test ./internal/reconciler/… · 12s
+//	  artifact file:///…/task-7 · transcript file:///…/20260816-101500_7.jsonl
+//
+//	its last 4 lines:
+//	· read internal/reconciler/state.go
+//	The map is written without the guard; I will add it and a test.
+//	· edit internal/reconciler/state.go
+//	· bash go test ./internal/reconciler/…
+//
+//	Steer it with tasks id 7 say "…". The whole story is in its transcript.
+//
+// THE TAIL IS NOT THE WORK. It is the last few lines of a node's narrative and
+// its calls — enough to tell working from circling — and the transcript URI in
+// the row above it is where the rest is. A tool that answered with everything a
+// node had done would put a session's worth of somebody else's greps into a
+// context window over the question "how is it going".
+func taskLiveText(entry TaskIndexEntry, state taskLiveState) string {
+	out := taskRowText(entry)
+	if entry.Status != string(TaskRunning) {
+		// Either it landed between the model deciding to ask and the read
+		// happening — the row carries the outcome and the URIs, which is the
+		// whole answer — or it has not started, and a node with no worker in it
+		// has nothing to quote and nobody to steer.
+		if entry.Status == string(TaskQueued) {
+			return out + "\nIt has not started: it is waiting on the work it depends on, or on a slot.\n"
+		}
+		return out
+	}
+	var rendered strings.Builder
+	rendered.WriteString(out)
+	if len(state.Lines) == 0 {
+		rendered.WriteString("\nIt has not said anything yet.\n")
+	} else {
+		fmt.Fprintf(&rendered, "\nits last %s:\n", countedLines(len(state.Lines)))
+		for _, line := range state.Lines {
+			rendered.WriteString(line + "\n")
+		}
+	}
+	fmt.Fprintf(&rendered, "\nSteer it with tasks id %s say \"…\". The whole story is in its transcript.\n", entry.ID)
+	return rendered.String()
+}
+
+// capitalized starts a sentence the way the rest of this tool's answers start.
+// The doors in task_room.go phrase their refusals for a caller, lower case; a
+// tool result is read as prose.
+func capitalized(text string) string {
+	if text == "" {
+		return text
+	}
+	return strings.ToUpper(text[:1]) + text[1:]
 }
 
 // taskRowsText is the answer, and it is written for a reader that has to decide
@@ -98,6 +289,9 @@ func taskRowsText(rows []TaskIndexEntry, query string) string {
 //	  Added the guard and the regression test; the parser suite passes.
 //	  artifact git:task/fix-the-nil-map-crash-9c1a2f · transcript file:///…/20260816-101500_7.jsonl
 //
+// A RUNNING ROW CARRIES ONE MORE LINE — what it is doing right now — and no
+// landed row ever does: see [TaskIndexEntry.Activity].
+//
 // Every clause that has nothing to say is DROPPED rather than written empty. A
 // row reading "· 0 files · · $0.00" is three facts this build does not have,
 // stated as though it did.
@@ -119,6 +313,14 @@ func taskRowText(entry TaskIndexEntry) string {
 	if entry.Outcome != "" {
 		out += "\n  " + entry.Outcome
 	}
+	// A RUNNING ROW SAYS WHAT IS HAPPENING IN IT, in the place a landed row says
+	// what came of it. "running for 4m" is equally true of a node calling a tool
+	// every second and of one stuck on the same `go test` since minute one, and
+	// a model deciding whether to leave work alone cannot tell those apart from
+	// a clock (task_live.go).
+	if entry.Activity != "" {
+		out += "\n  live: " + entry.Activity
+	}
 	var where []string
 	if entry.ArtifactURI != "" {
 		where = append(where, "artifact "+entry.ArtifactURI)
@@ -136,6 +338,12 @@ func taskRowText(entry TaskIndexEntry) string {
 // running for a while, a landed one ended a while ago.
 func taskWhenWord(entry TaskIndexEntry) string {
 	if entry.Live() {
+		// A QUEUED NODE HAS NO CLOCK YET. Its age is zero because it has not
+		// started, and "running" beside a status that says "queued" is the row
+		// contradicting itself in the space of four words.
+		if entry.Status == string(TaskQueued) {
+			return ""
+		}
 		if span := taskSpanWord(entry.Duration()); span != "" {
 			return "running for " + span
 		}

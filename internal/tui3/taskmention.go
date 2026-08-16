@@ -492,6 +492,13 @@ func taskPointerBlock(entry session.TaskIndexEntry) string {
 	if entry.FilesChanged > 0 {
 		facts = append(facts, "Files: "+itoa(entry.FilesChanged))
 	}
+	// A RUNNING TASK SAYS WHAT IT IS DOING, in the place a landed one says what
+	// came of it. The index fills this only for live rows and never writes it to
+	// disk (session.TaskIndexEntry.Activity); it is stale by however long the
+	// snapshot has sat, which is the same staleness the status beside it has.
+	if entry.Activity != "" {
+		facts = append(facts, "Live: "+entry.Activity)
+	}
 
 	var where []string
 	if entry.ArtifactURI != "" {
@@ -501,11 +508,13 @@ func taskPointerBlock(entry session.TaskIndexEntry) string {
 		where = append(where, "Transcript: "+entry.TranscriptURI)
 	}
 	if entry.Live() {
-		// The room is this build's steering door: the person walks into the node
-		// on the rail and types, and their words reach its loop
-		// (session.SteerTask, room.go). There is no command for it, so the block
-		// names the door rather than inventing a spelling for one.
-		where = append(where, "Steer: its room on the rail")
+		// TWO DOORS ON ONE RUNNING NODE, and the block is read by the model, so
+		// it names the model's first: `tasks id N say "…"` reaches the node's
+		// loop exactly as the person's own line does (session.SteerTask). The
+		// room on the rail is the other half of the same door — the person walks
+		// into the node and types — and it is named second because nobody
+		// reading this block can press it.
+		where = append(where, `Steer: tasks id `+entry.ID+` say "…", or its room on the rail`)
 	}
 
 	block := head
