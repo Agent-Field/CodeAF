@@ -246,12 +246,9 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		// The offer is the second row of the block, and it is the only row of it
 		// a pointer can be over — the call above it is a transcript row that
 		// happens to be repeated here, and the rule and the count below it are
-		// statements.
-		mark := chromeRow{}
-		if i == consentOfferRow {
-			mark = chromeRow{kind: chromeChoices}
-		}
-		add(line, mark)
+		// statements. The phone sheet answers to the pointer over its whole
+		// height, which is [app.consentMark]'s other half (consent.go).
+		add(line, a.consentMark(i, width))
 	}
 	// THE STEER GUARD SITS WHERE THE APPROVAL QUESTION SITS, because it is the
 	// same kind of thing: the surface holding words back until it is told where

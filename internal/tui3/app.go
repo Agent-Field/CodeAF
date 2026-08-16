@@ -478,6 +478,13 @@ type app struct {
 	askAt     time.Time
 	askWait   time.Duration
 	askPaused bool
+	// askTaps is where the question's answers were last drawn, in columns and
+	// in rows of the block — the same bargain [app.modelSpan] and the strip's
+	// chips make (taskstrip.go's [stripSpan]): the geometry is recorded at
+	// layout, because a hit-test that recomputed it would be measuring a block
+	// the frame has not drawn. It is what makes every answer a TAP as well as a
+	// key, which is the whole of the phone sheet (consent.go).
+	askTaps []consentTap
 	// leftTap is when ← was last pressed over an empty box, and it is the whole
 	// of the double-tap (room.go's [app.navBack]). One tap steps back a level;
 	// two inside [navDoubleTap] go home.
@@ -916,6 +923,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft {
 			if a.sheet.open {
 				a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
+				return a, nil
+			}
+			// THE APPROVAL QUESTION IS READ FIRST, which is the pointer's half of
+			// the keyboard's own order (input.go): a question the SESSION is
+			// blocked on outranks every surface below it. It claims the whole
+			// block and nothing else — a press on any other row falls straight
+			// through, exactly as it did before there were targets there.
+			if a.consentPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
 			// A chip is the one thing below the conversation a click can take
