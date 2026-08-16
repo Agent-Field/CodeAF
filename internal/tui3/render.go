@@ -688,6 +688,14 @@ func (a *app) statusRows(width int) []string {
 		a.modelSpan = hudSpan{}
 		return []string{""}
 	}
+	// AND AT PHONE WIDTH IT IS A DECK, deterministically two rows, because the
+	// ladder above has nothing left to give: at forty-four columns the identity
+	// alone is wider than the frame and every number would be dropped before the
+	// first segment is drawn. The deck keeps the two facts a phone can answer at
+	// a glance and moves the rest into a sheet one tap away (statusdeck.go).
+	if layoutTier(width) == tierPhone {
+		return a.statusDeck(width)
+	}
 	left, parts, wrapped := a.statusLayout(width)
 	right, plainRight := a.paintParts(parts)
 	// THE CLUSTER GOES ACCENT IN A ROOM, and it is the one condition under which
@@ -766,6 +774,14 @@ func (a *app) statusLayout(width int) (string, []hudPart, bool) {
 func (a *app) statusHeight(width int) int {
 	if width < 1 {
 		return 1
+	}
+	// THE PHONE TIER ANSWERS FROM THE TIER, without laying anything out. The
+	// wide row's second row is wrap-driven — it exists only when the clusters
+	// would collide — and the deck's is not: it is two rows at every phone-width
+	// frame, in every state, which is what lets this answer be a constant
+	// (statusdeck.go).
+	if layoutTier(width) == tierPhone {
+		return deckHeight
 	}
 	if _, _, wrapped := a.statusLayout(width); wrapped {
 		return 2
