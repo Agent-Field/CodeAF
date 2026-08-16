@@ -1,12 +1,15 @@
 name: Release binaries
 
 on:
+  pull_request:
+    branches:
+      - master
   push:
     branches:
       - master
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.sha }}
@@ -81,7 +84,10 @@ jobs:
           if-no-files-found: error
 
   release:
+    if: github.event_name == 'push'
     needs: build
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
