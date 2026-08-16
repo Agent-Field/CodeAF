@@ -926,10 +926,13 @@ func abortedMerge(tree taskTree) string {
 //
 // THE STEP IS ONE FINISHED TOOL CALL, and it is the only unit available from
 // out here: the child's model round-trips are inside its own loop, and this
-// side of the wall sees the calls they produce. PROGRESS is narrower still — a
-// SUCCESSFUL edit or write, EventToolEnd and not EventToolFailed, because an
-// edit whose oldText did not match changed nothing and a node repeating it is
-// the exact spin the counter exists to catch.
+// side of the wall sees the calls they produce. PROGRESS is either half of the
+// job — a SUCCESSFUL edit or write (EventToolEnd and not EventToolFailed,
+// because an edit whose oldText did not match changed nothing and a node
+// repeating it is the exact spin the counter exists to catch), or a step that
+// TAUGHT the node something it did not know ([taughtSomething]). What the
+// counter kills is the third thing: the same call again, changing nothing,
+// learning nothing.
 //
 // The cancel is this function's own, hung off the node's context, so tripping a
 // threshold ends the child the way `jobs kill` does — a cancelled turn, its
@@ -1001,32 +1004,82 @@ func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, li
 	return changed, stopped, failure
 }
 
-// taughtSomething reports whether one call advanced the node's KNOWLEDGE
-// rather than its diff: a read, grep, find, ls, web_search or web_fetch
-// aimed at a target it has not aimed at before (the same search retried is
-// not new information, and SUCCESS is not required — a new target that
-// failed still taught the node that it failed), or a bash that left new
-// dirt in the worktree. The seen map keys tool+target so re-reading one
-// file while reading another new one still counts exactly once.
+// knowledgeTools are the hands on a node's belt (tools.go's [Agent.belt]) that
+// return what the world is rather than change it. A call to one of them aimed
+// at a target the node has not aimed at before is PROGRESS, because the node
+// came back knowing something it did not know a step ago.
+//
+// It is the whole read-only half of the belt and not a shortlist, which is the
+// point: the counter used to name six of them, and every other look at the
+// world counted as a stall — so a node that read a scanned page, asked after
+// the build it started, or recalled its own working state was punished for
+// exploring. When a hand is added to belt(), it belongs here or it belongs to
+// the paragraph below, and one of the two is always true.
+//
+// What is deliberately ABSENT: edit and write (they are counted as the diff
+// they are, one branch up), note, forget, track and commit (a node writing its
+// own memory again is not learning anything), and generate_image (it produces,
+// it does not inform). bash is absent because it is BOTH, and is handled on its
+// own below.
+var knowledgeTools = map[string]bool{
+	"read":          true,
+	"read_document": true,
+	"ls":            true,
+	"grep":          true,
+	"find":          true,
+	"web_search":    true,
+	"web_fetch":     true,
+	"jobs":          true,
+	"recall":        true,
+}
+
+// taughtSomething reports whether one call advanced the node's KNOWLEDGE rather
+// than its diff: a knowledge tool aimed at a target it has not aimed at before
+// (the same search retried is not new information, and SUCCESS is not required
+// — a new target that failed still taught the node that it failed), or a bash
+// that left new dirt in the worktree or ran a command the node had not run. The
+// seen map keys tool+target so re-reading one file while reading another new one
+// still counts exactly once.
+//
+// The judgement is made on the CALL and never on the result: [Event.Output] is
+// a display copy, capped, and a counter that read it would be deciding a node's
+// life from bytes that were truncated for a person's screen.
 func taughtSomething(event Event, seen map[string]bool, dir string, lastDirt *string) bool {
 	if event.Tool == "bash" {
+		// BASH IS BOTH HANDS. `go build` writes, `go test ./...`, `git log` and
+		// `rg` do not, and the tool name says nothing about which one this was.
+		// So both are asked: new dirt in the worktree is the diff moving, and a
+		// command the node has never run is the world answering a question it
+		// has never asked. Only the same command again, changing nothing, is
+		// the spin — which is the same law every other tool here is read by,
+		// and it is what a workspace that is not a repository (worktreeDirt is
+		// "" forever) is now judged by instead of by nothing at all.
+		//
+		// The novelty is recorded first, and unconditionally: a command that
+		// dirtied the tree must not also be spendable as a fresh target the
+		// next time it is run.
+		fresh := freshTarget(event, seen)
 		dirt := worktreeDirt(dir)
 		if dirt != *lastDirt {
 			*lastDirt = dirt
 			return true
 		}
+		return fresh
+	}
+	if !knowledgeTools[event.Tool] {
 		return false
 	}
-	switch event.Tool {
-	case "read", "ls", "grep", "find", "web_search", "web_fetch":
-	default:
-		return false
-	}
-	// The WHOLE CALL is the target, not one field of it: paging one long
-	// file by offset is exploration, fetching one page twice is a spin, and
-	// only the args in full tell them apart. Display-capped args compare
-	// fine — two calls capped at the same mark are the same call as far as
-	// anyone can see.
+	return freshTarget(event, seen)
+}
+
+// freshTarget reports whether this call aimed somewhere the node has not aimed
+// before, and records it either way.
+//
+// The WHOLE CALL is the target, not one field of it: paging one long file by
+// offset is exploration, fetching one page twice is a spin, and only the args in
+// full tell them apart. Display-capped args compare fine — two calls capped at
+// the same mark are the same call as far as anyone can see.
+func freshTarget(event Event, seen map[string]bool) bool {
 	key := event.Tool + " " + strings.TrimSpace(event.Args)
 	if seen[key] {
 		return false
