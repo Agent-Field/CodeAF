@@ -137,7 +137,15 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	// no click and no waiting, because the moment that answer is worth anything
 	// is the moment BEFORE it happens. It is drawn from the arguments, which are
 	// the whole of what has arrived; nothing here waits for a result.
-	if !e.open {
+	//
+	// AT tierPhone THIS IS THE ONLY BLOCK A ROW EVER HANGS, open or not. The
+	// expansion goes over the whole frame instead (expand.go): forty-four
+	// columns cannot carry a rail, a stem and a unified diff at once, and a
+	// detail block squeezed into what is left is a thing a person scrolls PAST
+	// rather than reads. The preview stays at every tier because it is the
+	// change shown BEFORE it lands — the one block nobody asked for and
+	// everybody wants — and it is already bounded by [previewWindow].
+	if !e.open || layoutTier(width) == tierPhone {
 		head, body, more := a.previewBody(e, room)
 		if head == "" {
 			return out
@@ -179,6 +187,12 @@ func (a *app) moreRow(i int, stem string, more int) row {
 // goes first and the target is truncated last — the target is the substance,
 // and a stat nobody has room for is a number about a line nobody can read.
 func (a *app) toolLine(e *entry, i int, last bool, width int) string {
+	// THE PHONE HAS ITS OWN ROW, and it is a different sentence rather than this
+	// one squeezed (see [app.toolLinePhone]). Every other tier reaches this line
+	// unchanged, which is the whole contract of [layoutTier].
+	if layoutTier(width) == tierPhone {
+		return a.toolLinePhone(e, i, last, width)
+	}
 	name, fallback := toolWords(e.tool, e.text)
 	target := toolTarget(e.tool, e.detail.Args, e.text)
 	if target == "" {
@@ -282,6 +296,205 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 		line += strings.Repeat(" ", pad)
 	}
 	return line + mark
+}
+
+// ── THE PHONE ROW (tierPhone) ───────────────────────────────────────────────
+//
+//	├─▶ ◌ edit  loop.go                        the change is queued
+//	├─▶ ⠋ bash  go test ./…              12s    …and this one is turning
+//	├─▶   edit  loop.go       +12 −4     1.2s   done, and quiet about it
+//	╰─▶ ✗ bash  go build ./…  exit 1     1.2s   failed, and loud about it
+//
+// One line, never two, at forty-four columns. Three things had to move for that
+// and each of them is a decision:
+//
+//   - THE STATE GLYPH LEADS. On a wide frame the mark sits at the right end,
+//     where there is always room for it; on a phone the right end is exactly
+//     where the row runs out, and a state that competed with the target for the
+//     last cells would be a state that disappears on the rows that have the
+//     most to say. A fixed cell at the left is a COLUMN — the one thing a
+//     narrow screen reads well — and it costs the target two cells, flat.
+//     The machine behind it is unchanged: [app.mark], the same ◌ → ? → spinner
+//     → (nothing) / ✗ every other tier draws, and a success is still silent.
+//   - THE TARGET SHEDS ITS QUALIFIER AND KEEPS ITS TAIL ([phoneTarget]). The
+//     parameter hierarchy already said which half of a target is substance and
+//     which is context; at this width context is not dimmed, it is dropped, and
+//     a path collapses to the basename that distinguishes it.
+//   - THE CLOCK IS ONE FIGURE ([app.phoneClock]). A finished call's duration or
+//     a running one's age, never a bound stated beside an age — that is
+//     arithmetic, and arithmetic is the first thing forty-four columns give up.
+//
+// The rail stays. It costs four cells and it is what says these rows are one
+// object rather than four unrelated lines in a column of prose, which is worth
+// more on a narrow screen than on a wide one, not less.
+
+// phoneGutterWidth is the state column: the mark, and the space after it.
+const phoneGutterWidth = 2
+
+// phoneStatFloor is how many cells the target must keep before the row is
+// allowed to spend any on a stat. It is the wide row's own floor, restated so
+// the two tiers drop the same thing at the same moment.
+const phoneStatFloor = 8
+
+func (a *app) toolLinePhone(e *entry, i int, last bool, width int) string {
+	name, fallback := toolWords(e.tool, e.text)
+	target := toolTarget(e.tool, e.detail.Args, e.text)
+	if target == "" {
+		target = fallback
+	}
+	target = phoneTarget(e.tool, target)
+	statPlain, statPainted := a.toolStat(e)
+	// What the person answered when this call was asked about (consent.go). It
+	// REPLACES the stat here rather than trailing it behind a dot: both are
+	// facts about the call rather than in it, and this row has one slot.
+	if e.decision != "" {
+		statPlain, statPainted = e.decision, a.pal.dim(e.decision)
+	}
+	clockPlain, clockPainted := a.phoneClock(e)
+
+	rail := a.pal.rail(last)
+	railWidth := ansi.StringWidth(rail)
+	gutter, gutterWidth := a.phoneGutter(e)
+	nameWidth := ansi.StringWidth(name)
+
+	reserve := 0
+	if clockPlain != "" {
+		reserve = ansi.StringWidth(clockPlain) + 1
+	}
+	room := width - railWidth - gutterWidth - nameWidth - reserve
+	if statWidth := ansi.StringWidth(statPlain) + 2; statPlain == "" || room-statWidth < phoneStatFloor {
+		statPlain, statPainted = "", ""
+	} else {
+		room -= statWidth
+	}
+	target = fit(target, room-1)
+
+	// Selection and hover are a brightness on the rail, exactly as they are on
+	// the wide row: a phone has no columns to spend on a marker either.
+	painted := a.pal.dim(rail)
+	switch {
+	case e.status == toolConsent:
+		painted = a.pal.askBold(rail)
+	case a.selected(i), a.hoveringEntry(i):
+		painted = a.pal.accent(rail)
+	}
+	line := painted + gutter + a.paintName(e, name)
+	used := railWidth + gutterWidth + nameWidth
+	if target != "" {
+		line += " " + a.paintTarget(e, target)
+		used += 1 + ansi.StringWidth(target)
+	}
+	if statPlain != "" {
+		line += "  " + statPainted
+		used += 2 + ansi.StringWidth(statPlain)
+	}
+	if clockPlain == "" {
+		return line
+	}
+	// The clock rides the right end. A row with nothing left to give it still
+	// gets one space rather than none, because a duration run straight into a
+	// path reads as part of the path.
+	pad := width - used - ansi.StringWidth(clockPlain)
+	if pad < 1 {
+		pad = 1
+	}
+	return line + strings.Repeat(" ", pad) + clockPainted
+}
+
+// phoneGutter is the state cell and the space after it, painted, with the width
+// it actually took — measured rather than assumed, because [app.mark] is the
+// one thing on this row whose glyph the palette chooses.
+func (a *app) phoneGutter(e *entry) (string, int) {
+	mark := a.mark(e)
+	width := ansi.StringWidth(mark)
+	if width >= phoneGutterWidth {
+		return mark, width
+	}
+	return mark + strings.Repeat(" ", phoneGutterWidth-width), phoneGutterWidth
+}
+
+// phoneTarget is the target a forty-four column row can carry: its SUBSTANCE
+// alone, and — where the substance is a path — the tail of it.
+//
+// It is the parameter hierarchy taken one step further. On a wide row the
+// qualifier recedes to dim and stays on screen; here it is dropped, because a
+// dim `cd internal/session && ` at this width is fourteen cells of context in
+// front of a command with six left for it.
+func phoneTarget(tool, target string) string {
+	switch tool {
+	case "bash":
+		// The budgeted command fragment: the directory it runs in is context,
+		// and the row keeps the work. [fit] does the rest at the call site.
+		if _, command, found := cutCDPrefix(target); found {
+			return command
+		}
+		return target
+
+	case "grep", "find":
+		// The pattern is what the call is looking for; where it looked is the
+		// qualifier, and a qualifier is the first thing this tier gives up.
+		pattern, _, _ := strings.Cut(target, " ")
+		return pattern
+
+	case "read", "edit", "write", "ls":
+		// The path elided to its tail, and the line range after it dropped: at
+		// this width "120-240" is four files' worth of the name it qualifies.
+		path, _, _ := strings.Cut(target, " ")
+		return pathTail(path)
+	}
+	return target
+}
+
+// pathTail is a path's last segment — the part of it that is not shared with
+// every other path under the same roots. A path that is nothing but slashes is
+// handed back whole rather than emptied.
+//
+// It is NOT welcome.go's [baseName], which answers the same question about a
+// session file and answers it differently on purpose: an empty path there is a
+// session with no name and reads "session", and an empty target here is a call
+// with nothing to point at, which must draw nothing rather than a word.
+func pathTail(path string) string {
+	trimmed := strings.TrimRight(path, "/")
+	if trimmed == "" {
+		return path
+	}
+	if at := strings.LastIndex(trimmed, "/"); at >= 0 {
+		return trimmed[at+1:]
+	}
+	return trimmed
+}
+
+// phoneClock is the row's ONE figure of time, plain and painted: a finished
+// call's own duration, or a running one's age.
+//
+// It is the narrow answer to [app.countClock], and it differs from it in one
+// place — inside a bound's last window the remainder REPLACES the age instead
+// of trailing it. "1m 52s · 8s left" is thirteen cells of which four matter,
+// and the four that matter are the only ones on this row a person can act on.
+// The words and the thresholds are the wide tier's own ([leftWord],
+// [countUpWord], timeoutNear, timeoutEdge), so the two can never disagree about
+// what eight seconds looks like.
+func (a *app) phoneClock(e *entry) (plain, painted string) {
+	if word := elapsedWord(e); word != "" {
+		return word, a.pal.dim(word)
+	}
+	if e.status != toolRunning || e.began.IsZero() || a.state != stateWorking {
+		return "", ""
+	}
+	if limit := toolLimit(e); limit > 0 {
+		if left := limit - a.now().Sub(e.began); left <= timeoutNear {
+			word := leftWord(left)
+			if left <= timeoutEdge {
+				return word, a.pal.bad(word)
+			}
+			return word, a.pal.warn(word)
+		}
+	}
+	age := countUpWord(a.now().Sub(e.began))
+	if age == "" {
+		return "", ""
+	}
+	return age, a.pal.dim(age)
 }
 
 // mark is what the right of a tool line says about how the call is going —
