@@ -237,6 +237,9 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		Hint: gloss(call),
 		Args: argsText(call),
 		Rule: decision.Rule,
+		// And whether the memo is even available, so a surface can leave the
+		// "always" key off a question it would be dropped on (see Event.Memo).
+		Memo: memo,
 	})
 
 	select {

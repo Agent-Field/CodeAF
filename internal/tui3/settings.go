@@ -134,6 +134,16 @@ var settingUI = map[string]settingMeta{
 		about: "asks a small model first whether a call is plainly safe, so you " +
 			"are only asked about the rest.",
 	},
+	// And directly under those three, because it is the last thing that can
+	// happen to the question they raise: the clock that answers it when nobody
+	// does. It is a countdown toward NO — the row above can spare you a
+	// question, this one refuses on your behalf — which is why it sits here and
+	// not beside the task countdown it otherwise looks like.
+	config.KeyConsentTimeout: {
+		tab: tabSession, label: "approval countdown", widget: widgetText,
+		about: "seconds an approval question waits before it answers no for you. " +
+			"Any key stops the clock; 0 turns it off.",
+	},
 	config.KeyTaskAudit: {
 		tab: tabSession, label: "task audit", widget: widgetCycle,
 		about: "an independent auditor checks each task's work before it merges. " +

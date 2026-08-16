@@ -177,6 +177,16 @@ type entry struct {
 	// settled collapses a thinking block and open expands it again.
 	began, ended time.Time
 
+	// latched says THE PERSON decided this block's expansion, rather than the
+	// stream deciding it for them (thinking.go). It exists because a reasoning
+	// block is the one thing on this surface whose open/closed state is written
+	// by two authors: the reader, with ctrl+e or a click, and the turn, which
+	// collapses the block the moment it says anything that is not reasoning.
+	// Without the latch the second author always wins — a person opens a think
+	// mid-stream, the next delta settles the block, and their choice is gone —
+	// which is the defect this field exists to make impossible.
+	latched bool
+
 	// Assistant fields. settled means the block is finished and renders
 	// through renderMarkdown; mdCut is how many bytes of a still-streaming
 	// block have already been promoted to markdown.
@@ -451,6 +461,34 @@ type app struct {
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
 	asks []ask
+	// askAt is when the question at the head of that queue was RAISED, and it
+	// is the near end of the countdown drawn on the offer line (consent.go).
+	// askWait is how long that countdown runs — the setting, read at boot and
+	// re-read at every turn end — and zero is a clock that is off. askPaused
+	// says a key has been pressed since the question came up, which stops the
+	// clock for good: a person who has touched the keyboard is a person who is
+	// answering, and a prompt that expired under their hands would be the
+	// surface deciding something they were in the middle of deciding.
+	askAt     time.Time
+	askWait   time.Duration
+	askPaused bool
+	// leftTap is when ← was last pressed over an empty box, and it is the whole
+	// of the double-tap (room.go's [app.navBack]). One tap steps back a level;
+	// two inside [navDoubleTap] go home.
+	leftTap time.Time
+	// guard is the question raised by steering a node that is not listening, or
+	// nil (room.go). It holds the person's words while they say where those
+	// words should go.
+	guard *steerGuard
+
+	// THE PASTE BRACKET. pasting says the terminal has opened one and not yet
+	// closed it; pasted is what has arrived inside it; pasteAt is when the last
+	// thing did, which is the only defence against a bracket that never closes.
+	// See [app.paste] for what these three are for — it is the whole of the
+	// paste fix, and it is not the obvious mechanism.
+	pasting bool
+	pasted  []rune
+	pasteAt time.Time
 	// follows are the messages typed with ctrl+q while a turn ran, each holding
 	// the stream the turn it starts will speak on (followup.go).
 	follows []queued
@@ -631,6 +669,8 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.approval = readApproval(a.profileDir)
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
+	// And the approval countdown, on the same terms (consent.go).
+	a.askWait = a.consentWait()
 	if a.linear {
 		// The linear tier is a palette question as well as an app one: the two
 		// paints that mean motion and pointer stop, and the rail drops to the
@@ -708,24 +748,34 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
-		// THE ROSTER READS FIRST, and only ever once it has been HANDED the
+		// A KEY INSIDE AN OPEN PASTE BRACKET IS TEXT, and it is read here, before
+		// anything else, because the first key of a leaked paste is usually the
+		// one that would do the damage (see [app.pasteKey]). It can also hand the
+		// key BACK — an abandoned bracket — along with the command that spent
+		// what the bracket had collected, which is why that command is carried
+		// down every path below instead of being returned here.
+		flushed, taken := a.pasteKey(msg)
+		if taken {
+			return a, flushed
+		}
+		// THE ROSTER READS NEXT, and only ever once it has been HANDED the
 		// keyboard (ctrl+t, task.go). Explicit focus outranks ambient place: a room
 		// is where a person is, the roster is what they just asked for, and esc
 		// gives the keyboard back to whichever of the two is underneath.
-		if cmd, taken := a.railKey(msg); taken {
-			return a, cmd
+		if cmd, took := a.railKey(msg); took {
+			return a, tea.Batch(flushed, cmd)
 		}
 		// THE ROOM READS NEXT, and only ever while one is open (room.go). It has
 		// to be read here rather than inside [app.key] because the two keys it
 		// takes — esc to leave, enter to steer — belong to input.go, and it
 		// restates that file's precedence law rather than jumping it: everything
 		// that outranks the draft there outranks the room here.
-		if cmd, taken := a.roomKey(msg); taken {
-			return a, cmd
+		if cmd, took := a.roomKey(msg); took {
+			return a, tea.Batch(flushed, cmd)
 		}
 		// A key can OPEN a room too — enter, on a selected proposal — down a path
 		// that returns no command, so whatever that door parked is drained here.
-		return a, tea.Batch(a.key(msg), a.takeRoomPump())
+		return a, tea.Batch(flushed, a.key(msg), a.takeRoomPump())
 
 	case tea.FocusMsg:
 		// The terminal reports focus (View asks for it in view.go), so the
@@ -737,11 +787,37 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.focused, a.seenFocus = false, true
 		return a, nil
 
+	case tea.PasteStartMsg:
+		// The terminal said a paste is starting. Everything until the close is
+		// text, whatever shape it arrives in.
+		a.pasting, a.pasted, a.pasteAt = true, a.pasted[:0], a.now()
+		return a, nil
+
 	case tea.PasteMsg:
-		// Bracketed paste, whole, in one message — the terminal told us where
-		// it started and where it ended, so the newlines inside it are text and
-		// not a stack of enters. It goes in as typed; nothing here submits.
+		// Bracketed paste, whole, in one message — the parser coalesced the keys
+		// between the brackets for us, so the newlines inside it are text and not
+		// a stack of enters. Inside an open bracket it JOINS what the bracket has
+		// collected rather than landing on its own: the two forms can arrive in
+		// the same paste, and one insert per paste is the contract.
+		if a.pasting {
+			a.pasted = append(a.pasted, []rune(msg.Content)...)
+			a.pasteAt = a.now()
+			return a, nil
+		}
 		return a, a.paste(msg.Content)
+
+	case tea.PasteEndMsg:
+		// The bracket closes, and everything inside it goes in as ONE edit: one
+		// insert, one list sync, one debounce — the same door the coalesced form
+		// goes through, so a terminal that leaks keys and a terminal that does
+		// not produce the same draft.
+		if !a.pasting {
+			return a, nil
+		}
+		a.pasting = false
+		text := string(a.pasted)
+		a.pasted = a.pasted[:0]
+		return a, a.paste(text)
 
 	case filesLoadedMsg:
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
@@ -977,10 +1053,19 @@ func (a *app) paint() tea.Cmd {
 	// The countdown on an open proposal runs down here, on the clock that is
 	// already turning — no ticker of its own (task.go).
 	a.tickTasks()
+	// And the approval question's, on the same terms (consent.go). It is the one
+	// clock here that ANSWERS at expiry rather than stopping asking, because it
+	// is the one question the engine is blocked on.
+	a.tickAsk()
 	// AND THE CLOCK OUTLIVES THE TURN when a node does. A task runs for minutes
 	// with no stream open: its spinner, its count-up and the countdown above are
 	// the third reason this surface asks for a frame while the model is idle.
+	//
+	// A RUNNING COUNTDOWN IS THE FIFTH, and it is named separately from the turn
+	// even though a question can only be up mid-turn: the clock that draws it
+	// must not depend on a second fact staying true.
 	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
+		a.askAnimating() ||
 		// AND A ROOM ON A LIVE NODE IS THE FOURTH: the page is a transcript with a
 		// spinner turning on it, and the rail — which is what [app.tasksAnimating]
 		// reads — is not always on screen to say so (room.go).
@@ -1247,6 +1332,7 @@ func (a *app) settle() tea.Cmd {
 	a.approval = readApproval(a.profileDir)
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
+	a.askWait = a.consentWait()
 	a.follow()
 	a.touch()
 	return tea.Batch(a.probeGit(), fadeTicks())
@@ -2015,6 +2101,90 @@ func (a *app) interrupt() {
 	a.dropFollows()
 }
 
+// ── the paste bracket ───────────────────────────────────────────────────────
+//
+// THE BUG THIS FIXES, AND WHY IT WAS NOT THE OBVIOUS ONE.
+//
+// Bracketed paste is on (view.go) and the parser usually hands the whole paste
+// over as one tea.PasteMsg, which this surface has always handled. The comment
+// at the bottom of input.go's key router claimed the other case was covered too:
+//
+//	// A key event carrying a newline is a paste on a terminal that does not
+//	// speak bracketed paste (or one whose paste arrived as keystrokes). It
+//	// is inserted as typed — the newlines are the person's.
+//
+// That was FALSE, and it was false in the one direction that costs something. A
+// newline never reaches that line: it arrives as a key whose name is "enter",
+// and "enter" is matched twelve cases higher up, where it SUBMITS. So a paste
+// that arrived as keystrokes did not become a multi-line draft — it sent the
+// first line to the model, then the second, then the third. Ten lines of a stack
+// trace became ten turns. The fallback the comment described could not run,
+// because the key it was written for was taken before it.
+//
+// Keys leak between the brackets more often than the coalescing path suggests:
+// the parser gives up on its buffer and passes an event through when a sequence
+// inside a paste does not decode, and win32-input and the kitty protocol encode
+// the newlines in a paste as key events by construction.
+//
+// So the fix is not a better fallback. It is to trust the BRACKET rather than
+// the coalescing: PasteStartMsg opens it, everything until PasteEndMsg is text —
+// keys included, read before every other claim on the keyboard — and the close
+// spends the whole of it as one edit. Nothing between the brackets can submit,
+// interrupt, answer a question, or open an overlay, because nothing between the
+// brackets is a keystroke: it is a document somebody copied.
+
+// pasteGrace is how long an open bracket may go quiet before it is treated as
+// abandoned.
+//
+// It exists because the alternative is a dead keyboard. A terminal that sends
+// the open and then dies, a paste cut short by a disconnect, a multiplexer that
+// swallows the close — any of them would leave this surface reading every key as
+// text forever, which is the one failure worse than the one being fixed. Two
+// seconds is far longer than the gap between two keys of the same paste (they
+// arrive in one read) and far shorter than the gap between two keys a person
+// typed.
+const pasteGrace = 2 * time.Second
+
+// pasteKey takes one keypress that arrived inside an open bracket, and reports
+// whether it took it.
+//
+// ctrl+c is the exception it makes for itself, for the reason every modal on
+// this surface makes it: leaving is never modal, and a bracket that trapped the
+// door would be the abandoned-paste failure with no way out of it.
+func (a *app) pasteKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.pasting {
+		return nil, false
+	}
+	if msg.String() == "ctrl+c" {
+		return nil, false
+	}
+	// AN ABANDONED BRACKET IS NOT A BRACKET. Past the grace the close is assumed
+	// lost, what was collected is spent, and this key is handed back to be the
+	// keystroke it plainly is — with the flush's own command, which the caller
+	// batches rather than drops.
+	if !a.pasteAt.IsZero() && a.now().Sub(a.pasteAt) > pasteGrace {
+		a.pasting = false
+		text := string(a.pasted)
+		a.pasted = a.pasted[:0]
+		return a.paste(text), false
+	}
+	a.pasteAt = a.now()
+	switch msg.String() {
+	case "enter", "ctrl+j":
+		// The newline this whole mechanism exists for.
+		a.pasted = append(a.pasted, '\n')
+	case "tab":
+		a.pasted = append(a.pasted, '\t')
+	default:
+		// Everything else is text or it is nothing. A key with no text inside a
+		// paste is a control sequence the sender's terminal emitted and the
+		// receiver's could not name, and putting an unnamed control code into a
+		// person's draft is worse than dropping it.
+		a.pasted = append(a.pasted, []rune(msg.Key().Text)...)
+	}
+	return nil, true
+}
+
 // paste inserts pasted text into the draft. It is a method rather than an
 // inline insert because a paste is an edit like any other: the overlays follow
 // it, and the draft debounce is armed by it.
@@ -2022,6 +2192,19 @@ func (a *app) paste(text string) tea.Cmd {
 	if text == "" {
 		return nil
 	}
+	// COPY MODE IS A READER, and it is modal for the clipboard exactly as it is
+	// for the keyboard (copymode.go): the box a paste would land in is off
+	// screen behind a frozen viewport, so the text would go somewhere nobody can
+	// see it. The clipboard still holds it, which is the difference between
+	// declining a paste and losing one.
+	if a.copy.on {
+		return nil
+	}
+	// A PASTE IS SOMEBODY STARTING WORK, so it dismisses the welcome box on the
+	// same terms every other input does (welcome.go): everything puts the box
+	// away except the two keys that walk its list, and a paste is not one of
+	// them.
+	a.dismissWelcome()
 	// Bracketed paste arrives with the SENDER's line endings, and tmux sends
 	// CR: an editor that breaks rows on LF alone would hold one "line" whose
 	// carriage returns paint each logical line over the last. Normalize once,
@@ -2056,7 +2239,18 @@ func (a *app) paste(text string) tea.Cmd {
 		return nil
 	}
 	a.input.insert(text)
-	return a.edited()
+	cmd := a.edited()
+	// A QUESTION SUSPENDS THE LISTS, and it suspends them against the clipboard
+	// too. consent.go closes both the moment a question arrives, on the grounds
+	// that a list left open under a modal is a list answering keys nobody is
+	// pressing — and a pasted "/" or "@" would otherwise re-open one underneath
+	// a block whose keys the person is about to press. The text still lands: the
+	// draft is where it was going, and it is waiting when the question is
+	// answered.
+	if a.asking() {
+		a.closeLists()
+	}
+	return cmd
 }
 
 // ── the two typed overlays ──────────────────────────────────────────────────

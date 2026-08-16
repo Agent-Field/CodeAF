@@ -89,6 +89,13 @@ func (a *app) appendThought(text string) {
 // collapseThought closes the streaming block. It is called by the event pump for
 // the turn's first non-reasoning event, and again when the turn settles — a turn
 // that streamed nothing else still has to leave a closed block behind.
+//
+// IT DOES NOT CLOSE A BLOCK THE PERSON OPENED. That is the whole of the latch
+// (see [entry.latched]): the automatic collapse is this surface's opinion about
+// a block nobody has said anything about, and it stops being anybody's opinion
+// the moment somebody presses ctrl+e. A block opened mid-stream stays open
+// through the settle, through every later delta of the turn, and until the same
+// person closes it again.
 func (a *app) collapseThought() {
 	if a.think < 0 {
 		return
@@ -96,25 +103,37 @@ func (a *app) collapseThought() {
 	if a.think < len(a.entries) && a.entries[a.think].kind == entryThinking {
 		e := &a.entries[a.think]
 		e.settled, e.stale = true, true
+		if !e.latched {
+			e.open = false
+		}
 	}
 	a.think = -1
 	a.touch()
 }
 
-// toggleThought opens or closes one collapsed block, in whichever list is on
-// screen: a node reasons too, and a page that showed the working but would not
-// open it is a block with its own key printed on it and nothing behind the key
-// (render.go's [app.bodyDeck], room.go).
+// toggleThought opens or closes one block, streaming or settled, and LATCHES
+// what was chosen — in whichever list is on screen.
+//
+// It used to refuse while the block was streaming — "there is nothing to expand
+// yet" — and that was wrong twice over. There is something to expand: the whole
+// buffer is in [entry.text] and only the last three wrapped lines of it are on
+// screen, so the reasoning a person wants to read is precisely the part the
+// reveal window is holding back. And the moment they most want it is while it is
+// still going, because a model reasoning about the wrong file is worth catching
+// before it edits one — which is the argument the block's own header makes for
+// existing at all.
+//
+// A NODE REASONS TOO, so this reads the deck rather than the conversation: a
+// page that showed the working but would not open it is a block with its own key
+// printed on it and nothing behind the key (render.go's [app.bodyDeck],
+// room.go).
 func (a *app) toggleThought(i int) bool {
 	es := a.bodyDeck().entries
 	if i < 0 || i >= len(es) || es[i].kind != entryThinking {
 		return false
 	}
 	e := &es[i]
-	if !e.settled {
-		return false // it is streaming; there is nothing to expand yet
-	}
-	e.open, e.stale = !e.open, true
+	e.open, e.latched, e.stale = !e.open, true, true
 	if a.room != nil {
 		a.room.dirty = true
 	}
@@ -138,7 +157,24 @@ func (a *app) toggleLatestThought() bool {
 // row saying so (hover.go).
 func (a *app) thoughtRows(e *entry, width int, hovered bool) []string {
 	if !e.settled {
-		head := a.pal.dim(fit(glyphThought+" thinking · "+thoughtCount(e), width))
+		// The live header names the key too, for the reason the collapsed one
+		// does: a window that holds three of thirty lines back has hidden
+		// something, and something hidden without a way to it is something
+		// deleted.
+		label := " thinking · " + thoughtCount(e) + " · ctrl+e"
+		head := a.pal.dim(fit(glyphThought+label, width))
+		if hovered {
+			head = a.pal.accent(glyphThought) + a.pal.dim(fit(label, width-1))
+		}
+		// AN OPENED BLOCK RESOLVES FROM THE BUFFER, NOT FROM THE WINDOW. The
+		// three-line reveal is what this block shows a reader who has not asked;
+		// a reader who has asked gets every word the model has written so far,
+		// through the same renderer the settled block uses. Drawing the reveal
+		// slice here — a wider window, or a taller one — would be the surface
+		// answering "show me the thinking" with more of the same summary.
+		if e.open {
+			return append([]string{head}, a.thoughtBody(e, width)...)
+		}
 		return append([]string{head}, a.thoughtLiveRows(e, width)...)
 	}
 	head := a.pal.dim(fit(glyphThought+" "+thoughtLabel(e), width))

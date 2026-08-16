@@ -147,7 +147,12 @@ var settingReaders = map[string]string{
 	// It names the accessor rather than the field, because the door is the only
 	// caller and the accessor is what it touches.
 	KeyGuardian: "GuardianEnabledAt",
-	KeyMouse:    "MouseEnabledAt",
+	// The approval countdown is read by the chat surface itself, not by the
+	// door: the clock runs on the frame clock beside the question it is counting
+	// down (internal/tui3's consent.go), so what touches the value is this
+	// accessor and nothing downstream of it.
+	KeyConsentTimeout: "ConsentTimeoutAt",
+	KeyMouse:          "MouseEnabledAt",
 	// The timestamps row is read by the v3 surface itself — at boot and at every
 	// turn end, beside the mouse and the gate posture — and becomes what the
 	// transcript draws of the clock (internal/tui3's timestamps.go).
