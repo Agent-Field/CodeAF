@@ -211,6 +211,10 @@ func (a *app) openRoom(id uint64, title string) {
 	room := &taskRoom{id: id, title: title, gen: a.roomGen, live: -1, stick: true, dirty: true}
 	room.lines = readRoomJournal(doors.TaskJournal(id))
 	a.room = room
+	// THE NODE'S CLOCK STOPS BEING REPORTED WHILE YOU ARE IN HERE. The elapsed
+	// number on the rail exists to ask "should you go and look at this", and the
+	// person has just answered it (task.go's [app.taskNow] says the whole of it).
+	a.freezeNode(id)
 	// The selection and the pointer belong to the conversation, which is no
 	// longer the thing on screen: a highlight under a room is a highlight on a
 	// row nobody can see.
@@ -247,6 +251,9 @@ func (a *app) closeRoom() {
 		return
 	}
 	a.roomGen++
+	// The clock thaws where it was frozen, at the value it would have had all
+	// along: nothing was stopped, only unreported (task.go's [app.taskNow]).
+	a.thawNode(a.room.id)
 	a.room = nil
 	a.dropHover()
 	a.touch()
@@ -288,20 +295,36 @@ func (a *app) openRoomFor(id uint64, title string) {
 // A card whose node this surface has never seen an update for opens nothing: the
 // id is real, but the engine has not admitted it, and a room on a node that has
 // not started is a page with nothing on it and nothing coming.
+//
+// A LANDED CARD OPENS ONE TOO (taskdone.go). Its lane is already closed, so the
+// room is the node's journal and a foot saying the work is over — which is
+// exactly the thing a person pressing enter on "what did that task actually do"
+// is asking for. The card's own key (ctrl+o) opens the summary of it inline;
+// this opens the whole transcript. Two questions, two answers, one card.
 func (a *app) openRoomAt(i int) bool {
-	if i < 0 || i >= len(a.entries) || a.entries[i].kind != entryTask {
+	if i < 0 || i >= len(a.entries) {
 		return false
 	}
-	card := a.entries[i].card
-	if card == nil {
-		return false
+	switch e := &a.entries[i]; e.kind {
+	case entryTask:
+		card := e.card
+		if card == nil {
+			return false
+		}
+		node := a.tasks[card.id]
+		if node == nil {
+			return false
+		}
+		a.openRoomFor(node.id, firstNonEmpty(node.title, card.name))
+		return true
+	case entryDone:
+		if e.done == nil {
+			return false
+		}
+		a.openRoomFor(e.done.id, e.done.title)
+		return true
 	}
-	node := a.tasks[card.id]
-	if node == nil {
-		return false
-	}
-	a.openRoomFor(node.id, firstNonEmpty(node.title, card.title))
-	return true
+	return false
 }
 
 // ── the journal, replayed ───────────────────────────────────────────────────

@@ -140,6 +140,49 @@ var (
 	hueViolet = mustHue("#8F6FA8", quiet)
 )
 
+// ── THE IDENTITY RING ───────────────────────────────────────────────────────
+//
+// Six hues that mean NOTHING, and that is the whole of their design.
+//
+// Every other colour on this surface is a ROLE: violet is a question, amber is
+// a bound about to be reached, orange-red is a failure, and the law that makes
+// them readable is that seeing one tells you what kind of thing you are looking
+// at. The ring is the opposite kind of fact. A person running four tasks at
+// once needs to know WHICH ONE a row belongs to — the rail row, the note in the
+// transcript, the card that lands ten minutes later — and "which one" is not a
+// state, has no ordering, and must never be mistaken for one.
+//
+// So the ring is spent on EXACTLY ONE CELL: the task's own glyph, at the head
+// of a task row (taskident.go). No role ever paints that column, so a ring hue
+// cannot be read as a role — the confusion the role law exists to prevent is
+// impossible by construction rather than by choosing distant colours. The title
+// beside it keeps the ordinary ink, the clock keeps the dim, and a failure
+// keeps [hueBad], because those are facts about the work and the ring is a fact
+// about which work.
+//
+// The hues are mid-tone by construction, six steps around the wheel, and they
+// carry NO sixteen-colour tier: below the 256 rung the glyph alphabet carries
+// identity by itself, which is what it was chosen to be able to do.
+var taskRing = []hue{
+	mustHue("#8FBCBB", flat), // teal
+	mustHue("#81A1C1", flat), // steel
+	mustHue("#B48EAD", flat), // mauve
+	mustHue("#9CC49B", flat), // sage
+	mustHue("#E0A96D", flat), // amber
+	mustHue("#D08C9B", flat), // rose
+}
+
+// lightTaskRing is the same ring for a page: the same six angles, saturated and
+// darkened, by the move the whole light ladder makes.
+var lightTaskRing = []hue{
+	mustHue("#3E7C7B", flat),
+	mustHue("#4C6E92", flat),
+	mustHue("#7E5A79", flat),
+	mustHue("#4F7A4E", flat),
+	mustHue("#A06A2C", flat),
+	mustHue("#97505F", flat),
+}
+
 // ── THE LIGHT LADDER ────────────────────────────────────────────────────────
 //
 // The table above is dark-terminal first and was, for four waves, the only
@@ -202,18 +245,23 @@ type ramp struct {
 	warn                    hue
 	hover, band, violet     hue
 	fade                    [3]hue
+	// mark is the identity ring (above): not a role, and the only thing on the
+	// ladder that is a list rather than a colour.
+	mark []hue
 }
 
 var darkRamp = ramp{
 	ink: hueInk, accent: hueAccent, muted: hueMuted, dim: hueDim,
 	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
 	hover: hueHover, band: hueBand, violet: hueViolet, fade: thoughtFade,
+	mark: taskRing,
 }
 
 var lightRamp = ramp{
 	ink: lightInk, accent: lightAccent, muted: lightMuted, dim: lightDim,
 	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
 	hover: lightHover, band: lightBand, violet: hueViolet, fade: lightFade,
+	mark: lightTaskRing,
 }
 
 // lightFade is the thinking window's gradient on a page. It fades toward WHITE
@@ -517,6 +565,21 @@ func (p palette) warn(s string) string { return p.paint(s, p.ramp.warn) }
 // violet is the shell operator's tier and nothing else on this surface — see
 // [hueViolet] for why it is not the question hue.
 func (p palette) violet(s string) string { return p.paint(s, p.ramp.violet) }
+
+// markPaint paints one task's glyph in that task's own hue ([taskRing]). The
+// tint is an index off the id's hash and is wrapped here rather than at the
+// call sites, so a ring that grows or shrinks is one line in this file.
+func (p palette) markPaint(tint int, s string) string {
+	ring := p.ramp.mark
+	if len(ring) == 0 || s == "" {
+		return s
+	}
+	at := tint % len(ring)
+	if at < 0 {
+		at += len(ring)
+	}
+	return p.paint(s, ring[at])
+}
 
 // underline is the third bare attribute, and it has one job: a PATH inside a
 // highlighted command (shellx.go). A path is the one token in a command line

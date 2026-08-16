@@ -91,6 +91,15 @@ const (
 	// row does, because "the model asked to go and do this and you said yes" is
 	// the only record of where a running node came from.
 	entryTask
+	// entryDone is ONE TASK THAT CAME HOME (taskdone.go): the card that lands
+	// when a node reaches its final state, minutes after the turn that proposed
+	// it and usually with no turn open at all.
+	//
+	// It is a kind of its own rather than the note it used to be for the reason
+	// entryCompact is not a divider: a note is the surface muttering about its
+	// own housekeeping, and this is the only statement of an outcome a person
+	// delegated ten minutes of work to get.
+	entryDone
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -178,11 +187,11 @@ type entry struct {
 	// else (task.go). It is a POINTER because the answer lane holds the same
 	// card: a row and the verdict on it must not be able to disagree.
 	card *taskCard
-	// landed marks the note a finished node writes (task.go's [app.landedNote]).
-	// It is the one note on this surface that CLOSES something, so the layout
-	// gives it the trailing blank the proposal's block gets — every other note is
-	// a remark inside the conversation and takes no gap at all.
-	landed bool
+	// done is the card a landed node writes, for kind entryDone and for nothing
+	// else (taskdone.go). Like [entry.card] it is a POINTER, because the card
+	// carries the one piece of state a person can change about it — whether its
+	// full context is showing — and the row and that state must never disagree.
+	done *taskDone
 
 	// The row cache. built distinguishes "no rows yet" from "renders to no
 	// rows", which an empty slice cannot.
@@ -239,6 +248,20 @@ type (
 		ev  session.Event
 	}
 	roomClosedMsg struct{ gen int }
+	// The FOURTH lane, and the only one nobody asked for: one watcher per
+	// RUNNING node, held for as long as the node runs, so the rail can say what
+	// a node is doing and for how long without a person having to walk into its
+	// room to find out (task.go's [taskPilot]). Its generation is per-pilot,
+	// because pilots come and go with the nodes and the surface holds several.
+	taskPilotMsg struct {
+		gen int
+		id  uint64
+		ev  session.Event
+	}
+	taskPilotClosedMsg struct {
+		gen int
+		id  uint64
+	}
 	// hudFadeMsg is a BOUNDED catch-up tick: the two wakeups a settled turn
 	// schedules so its fresh numbers can go quiet on time (render.go's fade).
 	// There is deliberately no idle ticker behind it — a surface with nothing
@@ -427,6 +450,11 @@ type app struct {
 	taskSeen  map[uint64]session.TaskState
 	taskLane  <-chan session.Event
 	taskGen   int
+	// pilots are the watchers on the nodes that are running right now, keyed by
+	// id, and pilotGen the counter each one takes its generation from (task.go).
+	// Empty is the ordinary state: nothing is running, so nothing is watched.
+	pilots   map[uint64]*taskPilot
+	pilotGen int
 	// room is the node's page, when a person has walked into one (room.go), and
 	// roomGen the generation of the lane feeding it. Nil is the ordinary state:
 	// the body region is the conversation, and every geometric question about it
@@ -826,6 +854,20 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.roomTouched()
 		return a, a.wake()
 
+	case taskPilotMsg:
+		return a, a.pilotEvent(msg)
+
+	case taskPilotClosedMsg:
+		// The node reached its final state, so its lane ended. The update that
+		// said so has usually landed the pilot already ([app.landPilot]); this is
+		// the other order, and the generation is what keeps it from forgetting a
+		// watcher on a node that has since started again.
+		if pilot := a.pilots[msg.id]; pilot != nil && pilot.gen == msg.gen {
+			a.landPilot(msg.id)
+			a.touch()
+		}
+		return a, nil
+
 	case taskLaneClosedMsg:
 		// The agent this lane belonged to is gone. A lane from an agent that was
 		// replaced is already forgotten by its generation, so only the current
@@ -948,10 +990,11 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 // and paints at once — a tool beginning is a fact a person is waiting for.
 func (a *app) event(ev session.Event) tea.Cmd {
 	// after is what this event asks the program loop to DO, as opposed to what
-	// it asks the screen to say. Exactly one event produces one — a turn ending,
-	// which may ring a terminal nobody is looking at (notify.go) — and it is
-	// carried out to the batch below rather than returned early, because the
-	// stream still has to be waited on afterwards.
+	// it asks the screen to say. Two events produce one — a turn ending, which
+	// may ring a terminal nobody is looking at (notify.go), and a task node
+	// starting, which opens a watcher on it (task.go) — and both are carried out
+	// to the batch below rather than returned early, because the stream still
+	// has to be waited on afterwards.
 	var after tea.Cmd
 	// THE BURN WINDOW OPENS ON THE FIRST EVENT of any turn that did not open one
 	// itself. A turn starts in three places — a submit, an attached message, a
@@ -999,7 +1042,13 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	case session.EventTaskUpdate:
 		// The same event also arrives on the standing lane; [app.taskUpdate]'s
 		// (id, state) de-dup is what makes taking both harmless (task.go).
-		a.taskUpdate(ev)
+		//
+		// The command it hands back is the WATCHER on a node that has just started
+		// (task.go's [taskPilot]), and it is carried out through `after` because
+		// the de-dup means either lane can be the one that sees "running" first:
+		// a surface that armed the pilot only on the standing lane would leave
+		// every in-turn node unwatched.
+		after = a.taskUpdate(ev)
 
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
@@ -1563,6 +1612,11 @@ func (a *app) press(y int) {
 		// A click anywhere on a proposal opens its brief, for the reason a click
 		// anywhere on a thinking block opens that (task.go).
 		a.toggleCardAt(r.entry)
+	case hitDone:
+		// And a click anywhere on a landed card opens its full context, which is
+		// the same gesture answering the same question about the same object one
+		// state later (taskdone.go).
+		a.toggleDoneAt(r.entry)
 	case hitChoice:
 		// The choices row was offered this click before the body and took it
 		// (see [app.choicePress]); reaching here means the pointer was in a
@@ -1608,11 +1662,14 @@ func (a *app) selectTool(delta int) bool {
 	rows := a.visible(a.bodyWidth())
 	var calls []int
 	for _, r := range rows {
-		// A PROPOSAL WALKS WITH THE CALLS. It is the other block on this surface
-		// that enter opens into something — a call opens its expansion, a settled
-		// proposal opens its node's room (room.go) — and a keyboard that could
-		// reach one and not the other would make the room a mouse-only place.
-		if r.hit != hitTool && r.hit != hitTask {
+		// A PROPOSAL WALKS WITH THE CALLS, AND SO DOES A LANDED CARD. They are the
+		// other blocks on this surface that enter opens into something — a call
+		// opens its expansion, a proposal and a finished node open that node's room
+		// (room.go) — and a keyboard that could reach one and not the others would
+		// make the room a mouse-only place. The walk is also what gives ctrl+o
+		// something to act on: the key a card names is spent on the SELECTED card
+		// (taskdone.go's [app.openDone]).
+		if r.hit != hitTool && r.hit != hitTask && r.hit != hitDone {
 			continue
 		}
 		if len(calls) == 0 || calls[len(calls)-1] != r.entry {
@@ -1637,12 +1694,18 @@ func (a *app) selectTool(delta int) bool {
 	default:
 		at += delta
 	}
+	// The two entries that gain or lose the cursor are marked stale by hand, for
+	// the reason [app.setHover] marks its two: a block whose rows are CACHED —
+	// which a settled proposal's are (render.go) — would otherwise keep the
+	// selection it was drawn with when the cursor was on it.
+	a.markStale(a.sel)
 	if at < 0 || at >= len(calls) {
 		a.sel = -1
 		a.touch()
 		return false
 	}
 	a.sel = calls[at]
+	a.markStale(a.sel)
 	a.touch()
 	a.reveal(a.sel)
 	return true
