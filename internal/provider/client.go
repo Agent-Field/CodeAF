@@ -67,8 +67,11 @@ type Client struct {
 	// stream is the same client with the total deadline removed. A streamed
 	// answer is bounded by silence, not by duration — see send.
 	stream *http.Client
-	// base is the pinned AgentField client, retained for the surfaces Aforge
-	// does not drive itself. It never sees a request the adapter has shaped.
+	// base is the pinned AgentField client, retained for the one surface this
+	// adapter does not implement for itself: the tool-call loop against a plain
+	// OpenAI-compatible endpoint. It never sees an OpenRouter request and never
+	// sees a request the adapter has shaped — see ExecuteToolCallLoop for where
+	// that boundary is drawn and why it is where it is.
 	base *ai.Client
 	// wait is the retry backoff, seamed exactly like the media client's video
 	// poll: production sleeps, tests record what would have been slept and
@@ -134,9 +137,24 @@ func (c *Client) Model() string { return c.config.Model }
 // membrane — drives it rather than a provider-side loop.
 func (c *Client) OwnsToolLoop() bool { return true }
 
-// ExecuteToolCallLoop exists only to satisfy the harness's LoopClient
-// interface. Aforge always drives its own loop against this adapter, so the
-// delegation is a contract detail rather than a live path.
+// ExecuteToolCallLoop satisfies the harness's LoopClient interface. Aforge
+// ordinarily drives its own loop against this adapter, so this is a contract
+// detail rather than the live chat path — but it is a REACHABLE one, and where
+// it goes is the SDK boundary.
+//
+// ── THE SDK BOUNDARY ────────────────────────────────────────────────────────
+//
+// On OpenRouter nothing below this line is the SDK's. The loop runs over this
+// adapter's own transport (openrouter_client.go), which is the only way a
+// request can carry X-OpenRouter-Categories — the SDK's client has no field for
+// it — and the only way a refused belt reaches the endpoint-refusal ladder
+// instead of ending the turn on a 404.
+//
+// c.base is for everything else: an operator pointed at a plain OpenAI-
+// compatible endpoint, where the SDK's loop is a working implementation this
+// package has no reason to duplicate. It never sees an OpenRouter request, and
+// it never sees a request this adapter shaped. The SDK module itself is
+// read-only and is not edited to make any of this true.
 func (c *Client) ExecuteToolCallLoop(
 	ctx context.Context,
 	messages []ai.Message,
@@ -145,6 +163,9 @@ func (c *Client) ExecuteToolCallLoop(
 	call ai.CallFunc,
 	options ...ai.Option,
 ) (*ai.Response, *ai.ToolCallTrace, error) {
+	if c.isOpenRouter() {
+		return c.executeOwnToolCallLoop(ctx, messages, tools, config, call, options...)
+	}
 	return c.base.ExecuteToolCallLoop(ctx, messages, tools, config, call, options...)
 }
 
@@ -645,15 +666,7 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 		httpRequest.Header.Set("Accept", "text/event-stream")
 	}
 	if c.isOpenRouter() {
-		if c.config.SiteURL != "" {
-			httpRequest.Header.Set("HTTP-Referer", c.config.SiteURL)
-		}
-		if c.config.SiteName != "" {
-			httpRequest.Header.Set("X-OpenRouter-Title", c.config.SiteName)
-		}
-		if c.config.SiteCategories != "" {
-			httpRequest.Header.Set("X-OpenRouter-Categories", c.config.SiteCategories)
-		}
+		applyAttribution(httpRequest.Header, c.config)
 	}
 	// The header half of cache affinity. Routers that ignore the body field
 	// still honour a session header, and a router that honours neither is
