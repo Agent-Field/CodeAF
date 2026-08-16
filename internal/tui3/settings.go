@@ -479,7 +479,7 @@ type sheetSelect struct {
 func filterFor(key string) modelFilter {
 	switch key {
 	case config.KeyVisionModel:
-		return seesImages
+		return inspectsImages
 	case config.ModelSettingKey("image"):
 		return drawsImages
 	case config.ModelSettingKey("speech"):
