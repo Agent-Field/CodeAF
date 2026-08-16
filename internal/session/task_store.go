@@ -576,7 +576,7 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string) taskRecov
 	// and marked as handed over, so this is the only life of this session in
 	// which they are said.
 	for _, node := range unannounced {
-		recovery.notes = append(recovery.notes, taskNote(node.notice()))
+		recovery.notes = append(recovery.notes, taskNote(node.notice(), taskURI(node.journalPath())))
 		node.markNoted()
 	}
 	return recovery
