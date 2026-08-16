@@ -617,7 +617,7 @@ func TestThePaletteDegradesByProfile(t *testing.T) {
 // says they are, and a palette that resolved into them would be a palette the
 // terminal chose.
 func TestTheNearestIndexAvoidsTheThemeColours(t *testing.T) {
-	for _, h := range []hue{hueInk, hueAccent, hueMuted, hueDim, hueAdd, hueDel, hueBad} {
+	for _, h := range []hue{hueInk, hueAccent, hueMuted, hueDim, hueAdd, hueDel, hueBad, hueWarn} {
 		if h.idx < 16 {
 			t.Fatalf("hue #%02x%02x%02x resolved to index %d", h.r, h.g, h.b, h.idx)
 		}
