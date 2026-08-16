@@ -1205,6 +1205,54 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 	})
 }
 
+// READ-HEAVY EXPLORATION IS NOT A STALL, and the counter has to know the WHOLE
+// read-only belt to say so. A node that reads a scanned page, asks after the
+// build it started, recalls its own state, or runs a command that only inspects
+// is working; what the counter kills is the same call again, changing nothing.
+func TestTheProgressCounterReadsTheWholeReadOnlyBelt(t *testing.T) {
+	// Not a repository, deliberately: worktreeDirt answers "" forever here, so
+	// every bash below is judged by novelty alone — which is exactly the case
+	// that used to count every look at the world as a stall.
+	dir := t.TempDir()
+	seen := map[string]bool{}
+	var dirt string
+	step := func(tool, args string) bool {
+		return taughtSomething(Event{Kind: EventToolEnd, Tool: tool, Args: args}, seen, dir, &dirt)
+	}
+
+	for _, call := range []struct{ tool, args string }{
+		{"read", `{"path":"a.go"}`},
+		{"read_document", `{"path":"scan.pdf"}`},
+		{"grep", `{"pattern":"belt"}`},
+		{"ls", `{"path":"internal"}`},
+		{"find", `{"pattern":"*.go"}`},
+		{"web_search", `{"query":"argus"}`},
+		{"web_fetch", `{"url":"https://example.com"}`},
+		{"jobs", `{"id":1}`},
+		{"recall", `{}`},
+		{"bash", `{"command":"go test ./..."}`},
+		{"bash", `{"command":"git log -1"}`},
+	} {
+		if !step(call.tool, call.args) {
+			t.Fatalf("%s %s counted as a stall", call.tool, call.args)
+		}
+	}
+
+	// The spin is the SAME target again, and it is the spin for bash on exactly
+	// the terms it is for everything else.
+	if step("bash", `{"command":"go test ./..."}`) {
+		t.Fatal("the same command twice counted as progress")
+	}
+	if step("read", `{"path":"a.go"}`) {
+		t.Fatal("the same file twice counted as progress")
+	}
+	// A hand that only writes is counted as the diff it is, one branch up — it
+	// must not also be spendable here as a fresh target.
+	if step("edit", `{"path":"a.go"}`) || step("write", `{"path":"b.go"}`) {
+		t.Fatal("a mutation counted as knowledge")
+	}
+}
+
 // ── the named thresholds ────────────────────────────────────────────────────
 
 // A SPIN DIES BY NAME. A node that keeps calling a tool that changes nothing is

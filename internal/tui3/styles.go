@@ -113,7 +113,15 @@ var (
 	hueDel    = mustHue("#BF616A", quiet)
 	hueBad    = mustHue("#D08770", heavy)
 	hueAsk    = mustHue("#C08FE8", heavy)
-	hueHover  = mustHue("#2E3440", flat)
+	// hueWarn is the SIXTH colour, and it exists for one shape: a bound that is
+	// about to be reached. A deadline thirty seconds out is not a failure and
+	// must not wear the failure hue — the call may still land — but it is no
+	// longer a fact you can leave in the dim tier either, because it is the one
+	// thing on the row that is about to change what happens. Nord's yellow, one
+	// clear step from the orange-red of [hueBad] on the 256 rung so the two
+	// tiers of the same warning never collapse into one colour.
+	hueWarn  = mustHue("#EBCB8B", heavy)
+	hueHover = mustHue("#2E3440", flat)
 	// hueBand is the SELECTED row's background, and it is the hover background's
 	// louder sibling: one more step off black, so the two read as two states of
 	// the same row rather than as one. The pointer is a guess about what you
@@ -156,6 +164,8 @@ var (
 //	bad     #D08770   #C57A3C   soft orange-red, one step down
 //	ask     #C08FE8   #6F3FA8   THE QUESTION HUE, inverted rather than dimmed:
 //	                            it has to lead on a page too
+//	warn    #EBCB8B   #A6791F   a pale yellow is nothing on white; the page
+//	                            wants the same warning as dark amber
 //	hover   #2E3440   #E5E9F0   one step off the #ECEFF4 page, the way the dark
 //	                            hover is one step off black
 //	violet  #8F6FA8   #8F6FA8   the shared one (above)
@@ -173,6 +183,7 @@ var (
 	lightDel    = mustHue("#B55B64", quiet)
 	lightBad    = mustHue("#C57A3C", heavy)
 	lightAsk    = mustHue("#6F3FA8", heavy)
+	lightWarn   = mustHue("#A6791F", heavy)
 	lightHover  = mustHue("#E5E9F0", flat)
 	// The band is one step further off the page than the hover is, which is the
 	// same move the dark ladder makes in the other direction.
@@ -188,19 +199,20 @@ var (
 type ramp struct {
 	ink, accent, muted, dim hue
 	add, del, bad, ask      hue
+	warn                    hue
 	hover, band, violet     hue
 	fade                    [3]hue
 }
 
 var darkRamp = ramp{
 	ink: hueInk, accent: hueAccent, muted: hueMuted, dim: hueDim,
-	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk,
+	add: hueAdd, del: hueDel, bad: hueBad, ask: hueAsk, warn: hueWarn,
 	hover: hueHover, band: hueBand, violet: hueViolet, fade: thoughtFade,
 }
 
 var lightRamp = ramp{
 	ink: lightInk, accent: lightAccent, muted: lightMuted, dim: lightDim,
-	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk,
+	add: lightAdd, del: lightDel, bad: lightBad, ask: lightAsk, warn: lightWarn,
 	hover: lightHover, band: lightBand, violet: hueViolet, fade: lightFade,
 }
 
@@ -496,6 +508,11 @@ func (p palette) dim(s string) string    { return p.paint(s, p.ramp.dim) }
 func (p palette) add(s string) string    { return p.paint(s, p.ramp.add) }
 func (p palette) del(s string) string    { return p.paint(s, p.ramp.del) }
 func (p palette) bad(s string) string    { return p.paint(s, p.ramp.bad) }
+
+// warn is the tier below bad: something is about to go wrong rather than has
+// (styles.go's [hueWarn]). The only thing that wears it today is a timeout with
+// seconds left on it (toolview.go).
+func (p palette) warn(s string) string { return p.paint(s, p.ramp.warn) }
 
 // violet is the shell operator's tier and nothing else on this surface — see
 // [hueViolet] for why it is not the question hue.

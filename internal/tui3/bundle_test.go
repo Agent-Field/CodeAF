@@ -586,7 +586,7 @@ func TestTheLightLadderIsAuthoredAndDistinct(t *testing.T) {
 	for name, h := range map[string]hue{
 		"ink": lightInk, "accent": lightAccent, "muted": lightMuted, "dim": lightDim,
 		"add": lightAdd, "del": lightDel, "bad": lightBad, "ask": lightAsk,
-		"hover": lightHover, "violet": hueViolet,
+		"warn": lightWarn, "hover": lightHover, "violet": hueViolet,
 	} {
 		if other, clash := seen[h.idx]; clash {
 			t.Fatalf("%s and %s both resolve to xterm-256 %d", name, other, h.idx)
@@ -1015,6 +1015,72 @@ func TestCountUpWordSpellsEveryScale(t *testing.T) {
 	waiting := entry{status: toolQueued, began: time.Now().Add(-time.Minute)}
 	if got := a.countUp(&waiting); got != "" {
 		t.Fatalf("a queued call counted %q", got)
+	}
+}
+
+// A BOUNDED CALL COUNTS DOWN. Up to ten seconds out the row states the bound
+// beside the age; inside them it says what is left, and the remainder — and
+// only the remainder — takes the warning hue and then the failure one.
+func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.state = stateWorking
+	base := time.Now()
+
+	// A sixty-second bash, read at four moments of its life.
+	bounded := entry{
+		kind: entryTool, tool: "bash", status: toolRunning, began: base,
+		detail: toolDetail{Args: `{"command":"go test ./...","timeout":60}`},
+	}
+	for _, c := range []struct {
+		at      time.Duration
+		want    string
+		wantInk string
+		which   string
+	}{
+		{
+			at: 20 * time.Second, want: "20s / 1m 0s",
+			wantInk: a.pal.dim("20s / 1m 0s"), which: "the bound, stated in dim",
+		},
+		{
+			at: 51 * time.Second, want: "51s · 9s left",
+			wantInk: a.pal.dim("51s · ") + a.pal.warn("9s left"), which: "the warning",
+		},
+		{
+			at: 56 * time.Second, want: "56s · 4s left",
+			wantInk: a.pal.dim("56s · ") + a.pal.bad("4s left"), which: "the failure hue",
+		},
+		{
+			at: 61 * time.Second, want: "1m 1s · 0s left",
+			wantInk: a.pal.dim("1m 1s · ") + a.pal.bad("0s left"), which: "already overdue",
+		},
+	} {
+		a.clock = func() time.Time { return base.Add(c.at) }
+		got, painted := a.countClock(&bounded)
+		if got != c.want {
+			t.Fatalf("at %v the clock reads %q, want %q", c.at, got, c.want)
+		}
+		if painted != c.wantInk {
+			t.Fatalf("at %v the clock is not %s:\n got %q\nwant %q", c.at, c.which, painted, c.wantInk)
+		}
+	}
+
+	// NO TIMEOUT, NO CHROME: an unbounded tool carries its age and nothing else,
+	// because nothing is going to happen to it at any particular moment.
+	a.clock = func() time.Time { return base.Add(20 * time.Second) }
+	unbounded := entry{
+		kind: entryTool, tool: "read", status: toolRunning, began: base,
+		detail: toolDetail{Args: `{"path":"loop.go"}`},
+	}
+	if got, _ := a.countClock(&unbounded); got != "20s" {
+		t.Fatalf("an unbounded call drew a bound: %q", got)
+	}
+	// And neither does a background bash: it is a job, and no clock runs on it.
+	job := entry{
+		kind: entryTool, tool: "bash", status: toolRunning, began: base,
+		detail: toolDetail{Args: `{"command":"npm run dev","background":true}`},
+	}
+	if got, _ := a.countClock(&job); got != "20s" {
+		t.Fatalf("a background job counted down: %q", got)
 	}
 }
 

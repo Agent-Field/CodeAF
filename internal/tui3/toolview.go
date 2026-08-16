@@ -190,8 +190,9 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	// say different things and a row needs both — the spinner is the claim that
 	// something is turning, the clock is how long it has been turning, and a
 	// two-minute `go test` with only a spinner on it is indistinguishable from a
-	// two-second one.
-	counting := a.countUp(e)
+	// two-second one. It is measured plain and drawn painted, because the last
+	// seconds of a bounded call take a hue of their own (the countdown, below).
+	counting, countingInk := a.countClock(e)
 	// What the person answered when this call was asked about (consent.go). It
 	// rides the stat slot because it is the same kind of fact — dim, trailing,
 	// about the call rather than in it — and because a row that was approved
@@ -266,7 +267,7 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	case elapsed != "":
 		mark, tail = a.pal.dim(elapsed), ansi.StringWidth(elapsed)
 	case counting != "" && mark != "":
-		mark, tail = a.pal.dim(counting)+" "+mark, ansi.StringWidth(counting)+2
+		mark, tail = countingInk+" "+mark, ansi.StringWidth(counting)+2
 	}
 	if mark == "" {
 		return line
@@ -385,47 +386,131 @@ func pad2(n int) string {
 // is a column that has to be read to learn nothing.
 const countUpFloor = time.Second
 
-// countUp is a RUNNING call's age, or "" for a call in any other state — the
-// clock belongs to running rows and to nothing else.
+// ── THE COUNTDOWN ───────────────────────────────────────────────────────────
+//
+//	⠿ bash  go test ./...        1m 12s / 2m 0s     the bound, stated
+//	⠿ bash  go test ./...        1m 52s · 8s left   inside ten seconds, warned
+//	⠿ bash  go test ./...        1m 56s · 4s left   inside five, in the failure hue
+//
+// A bounded call is a call that is going to be KILLED at a time the surface
+// already knows, and the last ten seconds of it are the only ten seconds in
+// which a person can do anything about it — interrupt, or wait deliberately
+// rather than hopefully. Up to there the bound is a fact and reads like one, in
+// the same dim as the age beside it. Inside them the row stops stating the
+// bound and starts counting what is left of it, because "8s left" is the
+// sentence and "1m 52s / 2m 0s" is arithmetic the person has to do themselves.
+//
+// The colour is the escalation and it is two steps, not a gradient: warn while
+// the call can still land, [hueBad] under five seconds because by then it very
+// likely will not. Only the REMAINDER takes the hue — the age stays dim — so
+// the row grows exactly one loud token and nothing else moves.
+//
+// A call with no timeout gets NONE of this: no remainder, no bound, no colour.
+// Nothing is going to happen to it at any particular moment, and chrome that
+// implied otherwise would be the surface inventing a deadline.
+const (
+	// timeoutNear is when a bound stops being background and starts being the
+	// thing about the row. Ten seconds is about as long as a person will hold
+	// still for something they were told is nearly over.
+	timeoutNear = 10 * time.Second
+	// timeoutEdge is when it stops being a warning and becomes the outcome.
+	timeoutEdge = 5 * time.Second
+)
+
+// countUp is a RUNNING call's clock as PLAIN text — its age, and what the row
+// says about the bound it runs under. It is "" for a call in any other state:
+// the clock belongs to running rows and to nothing else.
 //
 // A turn that ENDED with this call unresolved stops it too, and for the reason
 // the spinner stops there ([app.mark]): the surface no longer knows the call is
 // alive, and a number that kept climbing would be claiming it is. The row keeps
 // the dim dot it already had.
+//
+// It is the width half of [app.countClock] — a width measured through escape
+// sequences is a width measured wrong (see [app.toolLine]).
 func (a *app) countUp(e *entry) string {
-	if e.status != toolRunning || e.began.IsZero() || a.state != stateWorking {
-		return ""
-	}
-	word := countUpWord(a.now().Sub(e.began))
-	if word == "" {
-		return ""
-	}
-	// A bounded call counts against its bound: "12s / 120s" is the same age
-	// with the deadline it runs under, and the deadline is a fact the row
-	// already carries (the call's own args). Only bash has a timeout on the
-	// wire, so only bash counts down.
-	if limit := bashLimit(e); limit > 0 {
-		word += " / " + countUpWord(limit)
-	}
-	return word
+	plain, _ := a.countClock(e)
+	return plain
 }
 
-// bashLimit is the timeout a bash call runs under: the model's own when it set
-// one, the session's default when it did not, the session's cap above that —
-// the same law internal/session's wrapper applies to the wire args, restated
-// here from the call's original args so the row agrees with the clock the
-// command actually dies on. Zero for any other tool: nothing else is bounded.
-func bashLimit(e *entry) time.Duration {
+// countClock is the clock in both forms: the plain text a row measures itself
+// by, and the painted text it draws. They are produced together because the
+// second is the first with at most one token tinted, and two functions deriving
+// that split separately is two chances for the width and the paint to disagree.
+func (a *app) countClock(e *entry) (plain, painted string) {
+	if e.status != toolRunning || e.began.IsZero() || a.state != stateWorking {
+		return "", ""
+	}
+	age := countUpWord(a.now().Sub(e.began))
+	limit := toolLimit(e)
+	if limit <= 0 {
+		// Unbounded: the age alone, or nothing at all in the first second.
+		return age, a.pal.dim(age)
+	}
+	left := limit - a.now().Sub(e.began)
+	if left > timeoutNear {
+		// The bound stated beside the age — arithmetic the person is not being
+		// asked to do yet, because there is nothing to do about it yet.
+		if age == "" {
+			return "", ""
+		}
+		word := age + " / " + countUpWord(limit)
+		return word, a.pal.dim(word)
+	}
+	// Inside the window the remainder is said outright, and it is said even in
+	// the first second of a call whose bound is that short: a five-second
+	// timeout is exactly the case a person most needs the number for.
+	remainder := leftWord(left)
+	tint := a.pal.warn
+	if left <= timeoutEdge {
+		tint = a.pal.bad
+	}
+	if age == "" {
+		return remainder, tint(remainder)
+	}
+	return age + " · " + remainder, a.pal.dim(age+" · ") + tint(remainder)
+}
+
+// leftWord is what is left of a bound, in whole seconds, rounded UP so that the
+// last second of a call still says "1s left" rather than counting to zero while
+// the command is still running. A bound already passed — the harness's own kill
+// is a moment behind the clock, and a machine under load can be further — says
+// "0s left" rather than a negative number.
+func leftWord(left time.Duration) string {
+	seconds := int(math.Ceil(left.Seconds()))
+	if seconds < 0 {
+		seconds = 0
+	}
+	return itoa(seconds) + "s left"
+}
+
+// toolLimit is the timeout the call runs under, or zero when nothing is going
+// to interrupt it.
+//
+// Only bash is bounded on the wire, and only a FOREGROUND bash: the session's
+// wrapper starts a background call as a job and returns, and a job runs until
+// it is done (internal/session's backgroundBash). The number is the model's own
+// when it set one, the session's default when it did not, the session's cap
+// above that — the same law internal/session's wrapper applies to the wire
+// args, restated here from the call's original args so the row agrees with the
+// clock the command actually dies on.
+func toolLimit(e *entry) time.Duration {
 	if e.tool != "bash" {
 		return 0
 	}
-	seconds := float64(session.DefaultBashTimeoutSeconds)
 	var args struct {
-		Timeout float64 `json:"timeout"`
+		Timeout    float64 `json:"timeout"`
+		Background bool    `json:"background"`
 	}
+	seconds := float64(session.DefaultBashTimeoutSeconds)
 	if raw := strings.TrimSpace(e.detail.Args); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &args); err == nil && args.Timeout > 0 {
-			seconds = math.Min(args.Timeout, session.MaxBashTimeoutSeconds)
+		if err := json.Unmarshal([]byte(raw), &args); err == nil {
+			if args.Background {
+				return 0
+			}
+			if args.Timeout > 0 {
+				seconds = math.Min(args.Timeout, session.MaxBashTimeoutSeconds)
+			}
 		}
 	}
 	return time.Duration(seconds * float64(time.Second))
@@ -631,9 +716,9 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		// did, where a command that unfolded itself under every bash call would
 		// be the surface taking the screen.
 		if command := a.commandRows(e, width); len(command) > 0 {
-			return append(command, a.pal.dim(a.livePhrase(e))), 0
+			return append(command, a.livePhrase(e)), 0
 		}
-		return []string{a.pal.dim(a.livePhrase(e))}, 0
+		return []string{a.livePhrase(e)}, 0
 	}
 
 	switch e.tool {
@@ -681,11 +766,14 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 // thing the ellipsis only implies, and two animations on one line is one
 // animation too many. A call with no clock — queued, or waiting on a person —
 // keeps the pulse, because nothing has started to count.
+//
+// It returns PAINTED text: the expansion's own dim wraps the words, and the
+// clock at the end of them carries whatever hue the countdown earned.
 func (a *app) livePhrase(e *entry) string {
-	if clock := a.countUp(e); clock != "" {
-		return liveWord(e) + " · " + clock
+	if _, clock := a.countClock(e); clock != "" {
+		return a.pal.dim(liveWord(e)+" · ") + clock
 	}
-	return liveWord(e) + a.pulse()
+	return a.pal.dim(liveWord(e) + a.pulse())
 }
 
 // liveWord is what an unfinished call with nothing to preview says it is doing.
