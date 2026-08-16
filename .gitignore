@@ -4,4 +4,7 @@ bin/
 .claude/
 /aforge
 bench-results/
-.aforge-v3/tasks/
+.aforge-v3/
+__pycache__/
+*.pyc
+*.aux
