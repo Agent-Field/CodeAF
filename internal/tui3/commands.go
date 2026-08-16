@@ -203,6 +203,7 @@ func helpText(file string) string {
 		"ctrl+b         copy mode · ↑↓ move · v marks · y yanks · esc leaves",
 		"ctrl+q         ask this after the current turn instead of into it",
 		"ctrl+e         open the model's thinking, when it showed any",
+		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
 		"ctrl+,         settings",
 	)
 	if file != "" {
