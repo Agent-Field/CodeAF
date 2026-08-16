@@ -214,6 +214,55 @@ func TestTasksToolReadsALandedNodeAsARow(t *testing.T) {
 	}
 }
 
+// THE RESOLVE VERB, from the model's side. A node nobody could verify is the
+// one kind of work the model can still settle: accept it on evidence it has
+// read, or refute it. Both go through the same door a person's surface uses
+// ([Agent.ResolveUnverified]), and both say what happened to the work waiting
+// on it.
+func TestTasksToolResolvesAnUnverifiedNode(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "Research the reconciler", brief: "b", acceptance: "a"})
+	waitDoneNode(t, graph.node(id))
+
+	// A resolution with no id is a resolution aimed at nothing.
+	if text, isError := runTool(t, agent, "tasks", `{"resolve":"accept"}`); !isError ||
+		!strings.Contains(text, "resolve needs an id") {
+		t.Fatalf("resolve without an id was not refused:\n%s", text)
+	}
+	// A word nobody defined is refused rather than guessed at.
+	if text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"resolve":"probably"}`, id)); !isError ||
+		!strings.Contains(text, "not a resolution") {
+		t.Fatalf("an undefined resolution was accepted:\n%s", text)
+	}
+
+	text, isError := runTool(t, agent, "tasks",
+		fmt.Sprintf(`{"id":%d,"resolve":"accept","say":"I read the diff: the tests are there and they pass"}`, id))
+	if isError {
+		t.Fatalf("accepting an unverified node failed:\n%s", text)
+	}
+	if !strings.Contains(text, "no auditor verdict") {
+		t.Fatalf("the answer hides that nobody verified it:\n%s", text)
+	}
+	if state := graph.node(id).stateNow(); state != TaskDone {
+		t.Fatalf("the accepted node is %q, want done", state)
+	}
+	// THE REASON IS THE RECORD. `say` is the person's words when it rides a
+	// resolution, and it is what the row will say this work came to.
+	if report := graph.node(id).notice().Report; !strings.Contains(report, "the tests are there and they pass") {
+		t.Fatalf("the reason was dropped from the report: %q", report)
+	}
+	// And a node that is not unverified cannot be resolved.
+	if text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"resolve":"refute"}`, id)); !isError ||
+		!strings.Contains(text, "only an unverified task") {
+		t.Fatalf("a done node was resolved a second time:\n%s", text)
+	}
+}
+
 // ── harness ─────────────────────────────────────────────────────────────────
 
 // runningStubbedNode admits one node whose runner never returns, so the graph

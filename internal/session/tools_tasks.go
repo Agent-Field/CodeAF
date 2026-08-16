@@ -37,14 +37,15 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
-const tasksDescription = "Search this project's task history, look at ONE task, or say something to a task that is still running. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
+const tasksDescription = "Search this project's task history, look at ONE task, say something to a task that is still running, or resolve one nobody could verify. Every piece of work handed to propose_task is here — this conversation's and every earlier one's, plus whatever is working right now. Without id it SEARCHES: a query is matched against titles, ids and outcomes, and an empty query returns the most recent tasks. With id it reads that ONE task, and for a task that is still running the answer is its LIVE state, read off the running work itself: what it is doing this second, how long it has been doing it, how many steps it has taken, what it has spent so far, and the last lines of what it has said and called. With id and say it puts your words into that running task's loop — a correction or a fact it is missing, in your own voice; its brief and its acceptance never change. With id and resolve it settles an UNVERIFIED task: one whose auditor never gave a verdict, which is neither done nor failed and whose dependents are waiting on somebody to decide. Every row carries two URIs: the artifact (the task's worktree or its branch) and the transcript (the task's own session journal, which the read tool opens). Use it when the person refers to earlier work without pointing at it, and when you want to know how work you handed off is actually going instead of waiting for its report."
 
 const tasksSchemaJSON = `{"type":"object","properties":{` +
 	`"query":{"type":"string","description":"Words to match against task titles, ids and outcomes. Omit or leave empty for the most recent tasks."},` +
 	`"limit":{"type":"number","description":"How many rows to return (default: 10, maximum: 50)"},` +
 	`"id":{"type":"string","description":"One task's id (\"7\") or its name (\"fix-the-nil-map-crash\"), to read that task alone instead of searching. A task that is still running answers with its live state."},` +
 	`"lines":{"type":"number","description":"How many recent lines of a running task's output to return with id (default: 40, maximum: 200)"},` +
-	`"say":{"type":"string","description":"A line to say to the RUNNING task named by id: a correction, or a fact it is missing. It arrives in its loop as the person's words would. Its brief and its acceptance do not change — if the objective itself was wrong, propose the work again instead."}` +
+	`"say":{"type":"string","description":"A line to say to the RUNNING task named by id: a correction, or a fact it is missing. It arrives in its loop as the person's words would. Its brief and its acceptance do not change — if the objective itself was wrong, propose the work again instead. With resolve, this is read as the REASON for the decision instead."},` +
+	`"resolve":{"type":"string","enum":["accept","reaudit","refute"],"description":"Settle the UNVERIFIED task named by id — one whose auditor gave no verdict. accept takes the work as done on your reading of it and merges its branch; reaudit sends a fresh auditor at the same working copy and leaves it unverified until that answers; refute fails it and its dependents. Only ask for accept or refute on evidence you actually have — read the diff or the transcript first — and prefer reaudit when the auditor simply never answered."}` +
 	`},"additionalProperties":false}`
 
 // tasksArguments is the wire form. The id is RAW because a model that has just
@@ -53,11 +54,12 @@ const tasksSchemaJSON = `{"type":"object","properties":{` +
 // refusing the number would be this tool failing a call that named exactly what
 // it meant.
 type tasksArguments struct {
-	Query string          `json:"query"`
-	Limit int             `json:"limit"`
-	ID    json.RawMessage `json:"id"`
-	Lines int             `json:"lines"`
-	Say   string          `json:"say"`
+	Query   string          `json:"query"`
+	Limit   int             `json:"limit"`
+	ID      json.RawMessage `json:"id"`
+	Lines   int             `json:"lines"`
+	Say     string          `json:"say"`
+	Resolve string          `json:"resolve"`
 }
 
 // tasksTool is the window onto the project's task index (task_index.go) AND
@@ -99,10 +101,13 @@ func (a *Agent) tasksTool() bare.Tool {
 				if strings.TrimSpace(parsed.Say) != "" {
 					return "Invalid arguments: say needs an id — it goes to one running task, not to a search", true, nil
 				}
+				if strings.TrimSpace(parsed.Resolve) != "" {
+					return "Invalid arguments: resolve needs an id — it settles one unverified task, not a search", true, nil
+				}
 				rows := SearchTaskIndex(a.TaskIndex(), parsed.Query, parsed.Limit)
 				return taskRowsText(rows, parsed.Query), false, nil
 			}
-			return a.oneTask(token, parsed.Say, parsed.Lines)
+			return a.oneTask(token, parsed)
 		},
 	}
 }
@@ -127,7 +132,8 @@ func taskToken(raw json.RawMessage) string {
 	return strings.TrimSpace(text)
 }
 
-// oneTask is the id half of the tool: read that task, or say something to it.
+// oneTask is the id half of the tool: read that task, say something to it, or
+// resolve it.
 //
 // THE ROW COMES FROM THE INDEX AND THE PRESENT COMES FROM THE GRAPH, and the
 // join is here because they answer different halves of one question. The index
@@ -136,14 +142,21 @@ func taskToken(raw json.RawMessage) string {
 // running now, and knows nothing at all about last Tuesday's. A task from an
 // earlier conversation therefore reads as a row and says so, rather than being
 // reported as a task with nothing happening in it.
-func (a *Agent) oneTask(token, say string, lines int) (string, bool, error) {
+//
+// RESOLVE IS READ BEFORE SAY, and they are not two ways of doing one thing: say
+// talks to a worker that is still there, resolve decides about work that is
+// over. A call carrying both means the second, and `say` is its reason.
+func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, error) {
 	rows := a.TaskIndex()
 	entry, found := LookupTask(rows, token)
 	if !found {
 		return fmt.Sprintf("No task %q in this project. Call tasks with no arguments to see the most recent ones.", token), true, nil
 	}
 	id, here := a.thisSessionTask(entry)
-	if say = strings.TrimSpace(say); say != "" {
+	if resolution := strings.TrimSpace(parsed.Resolve); resolution != "" {
+		return a.resolveOneTask(entry, id, here, TaskResolution(strings.ToLower(resolution)), parsed.Say)
+	}
+	if say := strings.TrimSpace(parsed.Say); say != "" {
 		if !here {
 			return fmt.Sprintf("Task %s ran in an earlier conversation, so there is nobody left to say it to. Propose the work again if it needs doing differently.", entry.ID), true, nil
 		}
@@ -161,11 +174,50 @@ func (a *Agent) oneTask(token, say string, lines int) (string, bool, error) {
 		}
 		return taskRowText(entry), false, nil
 	}
-	live, state, ok := a.taskLiveRead(id, taskTailLines(lines))
+	live, state, ok := a.taskLiveRead(id, taskTailLines(parsed.Lines))
 	if !ok {
 		return taskRowText(entry), false, nil
 	}
 	return taskLiveText(live, state), false, nil
+}
+
+// resolveOneTask is the resolve verb: the model settling a node whose auditor
+// never gave a verdict ([Agent.ResolveUnverified]).
+//
+// IT IS THIS SESSION'S GRAPH OR NOTHING, exactly as steering is. An unverified
+// node from a conversation that has ended is a row in the index and a branch in
+// the repository; there is no graph left to move it in, no dependents left
+// waiting on it, and telling the model it had settled something would be this
+// tool inventing an effect it did not have.
+func (a *Agent) resolveOneTask(entry TaskIndexEntry, id uint64, here bool, resolution TaskResolution, why string) (string, bool, error) {
+	if !here {
+		return fmt.Sprintf("Task %s ran in an earlier conversation, so there is no graph left to settle it in. Its work is at %s — read it, and propose what still needs doing.",
+			entry.ID, taskWhereWord(entry)), true, nil
+	}
+	if err := a.ResolveUnverified(id, resolution, why); err != nil {
+		return capitalized(err.Error()) + ".", true, nil
+	}
+	switch resolution {
+	case TaskAccept:
+		return fmt.Sprintf("accepted task %s as done on your reading of it, with no auditor verdict behind it. Its branch has come home and anything waiting on it can start.", entry.ID), false, nil
+	case TaskRefute:
+		return fmt.Sprintf("refuted task %s. It is failed, its branch is kept, and anything waiting on it fails with it.", entry.ID), false, nil
+	default:
+		return fmt.Sprintf("a fresh auditor is looking at task %s again. It stays unverified until that verdict lands, and you will hear the outcome the way every other task lands.", entry.ID), false, nil
+	}
+}
+
+// taskWhereWord names where a task's work is, for a reader who has just been
+// told this session cannot touch it: the artifact if the row has one, else the
+// transcript, else nothing worth pointing at.
+func taskWhereWord(entry TaskIndexEntry) string {
+	if entry.ArtifactURI != "" {
+		return entry.ArtifactURI
+	}
+	if entry.TranscriptURI != "" {
+		return entry.TranscriptURI
+	}
+	return "nowhere this session can point at"
 }
 
 // thisSessionTask resolves a row to a node of THIS session's graph. A row from
