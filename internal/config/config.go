@@ -33,12 +33,14 @@ const (
 	// DefaultBaseURL is OpenRouter's OpenAI-compatible endpoint.
 	DefaultBaseURL = "https://openrouter.ai/api/v1"
 
-	// DefaultSiteURL and DefaultSiteName are the OpenRouter app-attribution
-	// values (HTTP-Referer and X-Title). They mirror the agentfield SDK's
-	// attribution defaults so every AgentField product reports usage under
-	// the same app on the OpenRouter dashboard.
-	DefaultSiteURL  = "https://agentfield.ai"
-	DefaultSiteName = "AgentField AI"
+	// DefaultSiteURL, DefaultSiteName and DefaultSiteCategories are the
+	// OpenRouter app-attribution values (HTTP-Referer, X-OpenRouter-Title,
+	// X-OpenRouter-Categories). They mirror the agentfield SDK's attribution
+	// defaults exactly, so every AgentField product reports usage under the
+	// same app on the OpenRouter dashboard.
+	DefaultSiteURL        = "https://agentfield.ai"
+	DefaultSiteName       = "AgentField AI"
+	DefaultSiteCategories = "cli-agent,programming-app"
 
 	// DefaultDocumentEngine walks the deliberate local -> free -> rail-gated
 	// OCR ladder. The other accepted values pin one rung and never fall through.
@@ -145,6 +147,7 @@ type Config struct {
 	Timeout           time.Duration
 	SiteURL           string
 	SiteName          string
+	SiteCategories    string
 	Reasoning         provider.Effort
 	ExecReasoning     provider.Effort
 	SpineSamples      int
@@ -203,6 +206,7 @@ func Load() (Config, error) {
 		Timeout:           DefaultTimeout,
 		SiteURL:           firstNonEmpty(os.Getenv("AFORGE_SITE_URL"), os.Getenv("AGENTFIELD_OPENROUTER_SITE_URL"), os.Getenv("OR_SITE_URL"), DefaultSiteURL),
 		SiteName:          firstNonEmpty(os.Getenv("AFORGE_SITE_NAME"), os.Getenv("AGENTFIELD_OPENROUTER_APP_NAME"), os.Getenv("OR_APP_NAME"), DefaultSiteName),
+		SiteCategories:    firstNonEmpty(os.Getenv("AFORGE_SITE_CATEGORIES"), os.Getenv("AGENTFIELD_OPENROUTER_CATEGORIES"), os.Getenv("OR_CATEGORIES"), DefaultSiteCategories),
 		Reasoning:         DefaultReasoning,
 		ExecReasoning:     DefaultExecReasoning,
 		SpineSamples:      DefaultSpineSamples,
