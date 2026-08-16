@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -160,10 +161,9 @@ const (
 	roomLegendWord = "room · esc to return"
 	// roomFinishedWord is the foot under a node that has landed.
 	roomFinishedWord = "task finished — esc to return"
-	// roomFinishedRefusal is what a line typed at a landed node gets. It is a
-	// refusal rather than a silent drop because the person pressed enter and is
-	// owed an answer about where their sentence went.
-	roomFinishedRefusal = "the task has finished — nothing is listening"
+	// roomParkedWord opens the guard's line, after the node's title: what is
+	// wrong, in three words, before the three keys that answer it.
+	roomParkedWord = " is parked — "
 	// roomUnavailableWord is the degraded case: an agent under this surface with
 	// no room doors on it at all.
 	roomUnavailableWord = "room unavailable — this session has no task rooms"
@@ -248,6 +248,10 @@ func (a *app) closeRoom() {
 	}
 	a.roomGen++
 	a.room = nil
+	// The guard is a question about a line typed at THIS node. Leaving the room
+	// takes it down: the two answers it offers are both about a page that is no
+	// longer on screen, and the words are still in the box either way.
+	a.guard = nil
 	a.dropHover()
 	a.touch()
 }
@@ -522,10 +526,10 @@ func roomCallWord(tool, args, hint string) string {
 // exactly what it looks like: somebody talking. The engine wraps it in nothing
 // (internal/session's SteerTask), and neither does this.
 //
-// A node that has landed REFUSES rather than swallowing the line. The box is not
-// cleared in that case: the sentence is still the person's, and taking it away
-// after telling them it went nowhere would be the surface losing their words
-// twice.
+// A NODE THAT IS NOT LISTENING RAISES THE GUARD instead of swallowing the line
+// (see [steerGuard]). The box is not cleared in that case: the sentence is still
+// the person's, and taking it away after telling them it went nowhere would be
+// the surface losing their words twice.
 func (a *app) steer() tea.Cmd {
 	room := a.room
 	line := strings.TrimSpace(a.input.String())
@@ -533,7 +537,7 @@ func (a *app) steer() tea.Cmd {
 		return nil
 	}
 	if room.done {
-		a.roomNote(roomFinishedRefusal)
+		a.raiseGuard(line, "")
 		return nil
 	}
 	doors, ok := a.roomDoors()
@@ -545,8 +549,10 @@ func (a *app) steer() tea.Cmd {
 		// The engine's own sentence, kept: "task 3 is done, not running" and
 		// "task 3 has no worker to talk to yet" are different facts, and a
 		// surface that flattened them to "could not steer" would be throwing
-		// away the half that says what to do about it.
-		a.roomNote(err.Error())
+		// away the half that says what to do about it. It goes on the guard's
+		// second row rather than into the room, because it is the reason the
+		// question below is being asked.
+		a.raiseGuard(line, err.Error())
 		return nil
 	}
 	a.input.reset()
@@ -554,6 +560,174 @@ func (a *app) steer() tea.Cmd {
 	a.closeLists()
 	a.roomAppend(roomLine{kind: roomAsked, text: line})
 	return a.edited()
+}
+
+// ── the steer guard ─────────────────────────────────────────────────────────
+//
+// THE WORDS MUST NOT GO SOMEWHERE THE PERSON DID NOT SEND THEM.
+//
+// A room is the box talking to a node, and a node stops listening — it lands, it
+// fails, it is stopped, its worker is gone. Two things a surface can do at that
+// moment are wrong in the same way. It can drop the sentence, which loses work
+// somebody typed. Or it can quietly send it to the main conversation instead,
+// which is worse: the box says "steer <task>" right up until the enter, and a
+// message that went to the head model instead of the node is a message the
+// person believes a worker read. Neither is a decision this surface is entitled
+// to make, so it asks:
+//
+//	fix the parser is parked — [r] revive and send · [m] send to main · [esc] cancel
+//	task 4 is done, not running
+//
+// esc keeps the words in the box. r and m both spend them, and both say where.
+//
+// ── WHAT "REVIVE" MEANS, EXACTLY ──
+//
+// There is no engine door that restarts a finished node, and this file does not
+// pretend there is one. Nodes are created by the head model's own tool
+// (session's propose_task), which makes the head the only thing on this surface
+// that can put a worker back in a room — so revive is a message to the head that
+// NAMES the node and carries the person's words as the instruction for it. That
+// is the same authority a task always came from, asked the same way, and it is
+// the honest reading of the key: the words go to whoever can act on them, and
+// the person is told which one that is before they press it.
+
+// steerGuard is one raised question: the words, and why they could not go where
+// they were pointed.
+type steerGuard struct {
+	// title is the node's, as the rail and the room's own placeholder name it —
+	// the guard's line opens with it, because "is parked" about an unnamed task
+	// is a sentence about nothing.
+	title string
+	// text is the person's sentence, held here rather than taken out of the box
+	// — the box still shows it, and esc leaves it exactly where it was.
+	text string
+	// why is the engine's own sentence about the node, or empty when the room
+	// simply saw its lane close.
+	why string
+}
+
+// raiseGuard puts the question up. The room stays open underneath it: the page
+// is what the person was reading, and the question is about what to do with a
+// line they typed into it.
+func (a *app) raiseGuard(line, why string) {
+	if a.room == nil {
+		return
+	}
+	a.guard = &steerGuard{title: a.room.title, text: line, why: why}
+	// The typed lists follow the draft, and the draft is spoken for while the
+	// question is up: the same law the approval question states (consent.go).
+	a.closeLists()
+	a.touch()
+}
+
+// dropGuard takes the question down and leaves the draft alone.
+func (a *app) dropGuard() {
+	if a.guard == nil {
+		return
+	}
+	a.guard = nil
+	a.touch()
+}
+
+// guarding reports whether the steer guard owns the keyboard.
+func (a *app) guarding() bool { return a.guard != nil }
+
+// guardKey routes one keypress while the guard is up, and reports whether it
+// took it — which, apart from ctrl+c, is always: three keys answer, and every
+// other key does nothing rather than typing into a box whose enter is spoken
+// for.
+func (a *app) guardKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.guarding() {
+		return nil, false
+	}
+	switch msg.String() {
+	case "ctrl+c":
+		return nil, false
+	case "r":
+		return a.guardSend(true), true
+	case "m":
+		return a.guardSend(false), true
+	case "esc":
+		// The words stay in the box. esc here is not "leave the room" — the room
+		// is still open under the question — it is "I did not mean to send that
+		// yet", and the sentence is exactly where it was.
+		a.dropGuard()
+		return nil, true
+	}
+	return nil, true
+}
+
+// guardSend spends the sentence on the main conversation, and says so by LEAVING
+// THE ROOM: the box is talking to the head from this keystroke on, and a
+// placeholder still reading "steer <task>" over a message that went to the model
+// would be the lie this whole guard exists to prevent.
+func (a *app) guardSend(revive bool) tea.Cmd {
+	guard := a.guard
+	if guard == nil {
+		return nil
+	}
+	line := guard.text
+	if revive {
+		line = "The task \"" + guard.title + "\" is no longer running. " +
+			"Start it again with this instruction: " + guard.text
+	}
+	a.dropGuard()
+	a.closeRoom()
+	a.input.reset()
+	a.endRecall()
+	a.closeLists()
+	a.stick = true
+	// The person's own sentence is what goes in the recall list, not the
+	// wrapper this surface put around it: ↑ is for getting back what you typed.
+	a.remember(guard.text)
+	a.dropDraft()
+	return a.submit(line)
+}
+
+// ── the guard, drawn ────────────────────────────────────────────────────────
+
+// guardHeight is how many rows the question takes: the offer, and the engine's
+// reason under it when there is one.
+func (a *app) guardHeight() int {
+	if !a.guarding() {
+		return 0
+	}
+	if a.guard.why == "" {
+		return 1
+	}
+	return 2
+}
+
+// guardRows draws it, in the question hue the approval block wears and for the
+// same reason: this is the surface blocked on a keyboard, and the one thing on
+// screen that is blocked on you must not look like the things that are not.
+func (a *app) guardRows(width int) []string {
+	if !a.guarding() {
+		return nil
+	}
+	parts := []string{
+		a.guard.title + roomParkedWord, "[r]", " revive and send · ", "[m]",
+		" send to main · ", "[esc]", " cancel",
+	}
+	line := strings.Join(parts, "")
+	out := make([]string, 0, 2)
+	if ansi.StringWidth(line) > width {
+		out = append(out, a.pal.ask(fit(line, width)))
+	} else {
+		var painted string
+		for i, part := range parts {
+			if i%2 == 1 {
+				painted += a.pal.askBold(part)
+				continue
+			}
+			painted += a.pal.ask(part)
+		}
+		out = append(out, painted)
+	}
+	if a.guard.why != "" {
+		out = append(out, a.pal.dim(fit("  "+a.guard.why, width)))
+	}
+	return out
 }
 
 // ── the keyboard ────────────────────────────────────────────────────────────
@@ -576,6 +750,12 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.sheet.open, a.pick.open, a.copy.on, a.welcome.open,
 		a.menu.open, a.comp.open:
 		return nil, false
+	}
+	// THE GUARD IS READ BEFORE THE ROOM, and it is the same rung: it is a
+	// question raised by the room's own enter, so the keys it answers with have
+	// to outrank the key that raised it. Everything above still outranks both.
+	if cmd, taken := a.guardKey(msg); taken {
+		return cmd, true
 	}
 	switch msg.String() {
 	case "esc":
@@ -654,6 +834,137 @@ func (a *app) freezeRoom() {
 		on: true, rows: snapshot, text: stripped,
 		at: min(top+height-1, len(rows)-1), top: top, mark: -1,
 	}
+	a.touch()
+}
+
+// ── moving between the conversation and the work ────────────────────────────
+//
+// THE ARROWS ARE THE OTHER DOOR. The rail's click opens a room and esc leaves
+// it, which is a complete pair for a person with a mouse and an incomplete one
+// for everybody else: the keyboard could get OUT of a room and could only get
+// into one through a proposal row that had scrolled away hours ago.
+//
+// So, over an EMPTY box — the same tier the proposal's options are read at, and
+// for the same reason, that there is no caret to move:
+//
+//	→   forward, into the work: the next running node, or the first one
+//	←   back one level: out of the room, into the conversation
+//	←←  home: out of everything, at the live edge
+//
+// The tree is one level deep today. v1's graph has no edges (task.go says so
+// where the rail is built), so "back one level" and "home" land in the same
+// place from inside a room — and they are still two gestures rather than one,
+// because the day a node opens a node the ← that steps out of the child must not
+// also be the ← that abandons the parent. What changes when edges arrive is how
+// far apart the two answers are, not what either of them means.
+
+// navDoubleTap is how long the second ← has to arrive in. Six hundred
+// milliseconds is a deliberate double-tap and not a fast walk backwards: a
+// person stepping out of two levels at speed presses the key twice in about a
+// quarter of a second, which is the case this window is set wide enough to
+// catch and the reason it is not set wider.
+const navDoubleTap = 600 * time.Millisecond
+
+// navForward is → over an empty box: into the next running node's room.
+//
+// It walks the RAIL's order, which is the order the nodes are on screen, so the
+// key moves down the column a person is already looking at. From the
+// conversation it takes the first running node; from inside a room it takes the
+// one after this one and wraps at the end — and does nothing at all when the
+// wrap lands back where it started, because a door that shuts on the second
+// press of a key whose whole meaning is "forward" would be a door that answers
+// the gesture with its opposite.
+//
+// A session with nothing running does nothing, silently. The alternative is a
+// note in the transcript every time somebody taps an arrow key, which is a
+// permanent line in the record about a keystroke that meant nothing.
+func (a *app) navForward() tea.Cmd {
+	running := a.runningNodes()
+	if len(running) == 0 {
+		return nil
+	}
+	at := -1
+	if a.room != nil {
+		for i, node := range running {
+			if node.id == a.room.id {
+				at = i
+				break
+			}
+		}
+	}
+	next := running[(at+1)%len(running)]
+	if a.room != nil && a.room.id == next.id {
+		return nil
+	}
+	a.openRoom(next.id, next.title)
+	return a.takeRoomPump()
+}
+
+// runningNodes are the rail's nodes that have somebody in them, in the rail's
+// own order.
+//
+// A QUEUED NODE IS NOT ONE. It is on the rail — it is going to run — but it has
+// no worker yet, so its room is a page with nothing on it and nothing coming,
+// and steering it gets the engine's "no worker to talk to yet". A forward key
+// that landed there would be a key that mostly opens empty pages.
+func (a *app) runningNodes() []*taskNode {
+	nodes := a.railNodes()
+	out := make([]*taskNode, 0, len(nodes))
+	for _, node := range nodes {
+		if node.state == session.TaskRunning {
+			out = append(out, node)
+		}
+	}
+	return out
+}
+
+// navBack is ← over an empty box, and it is where the double-tap is resolved.
+func (a *app) navBack() {
+	now := a.now()
+	double := !a.leftTap.IsZero() && now.Sub(a.leftTap) <= navDoubleTap
+	a.leftTap = now
+	if double {
+		// The pair is spent. A third tap starts a new one rather than counting
+		// as the second of another, which is what keeps a held-down arrow from
+		// reading as three separate double-taps.
+		a.leftTap = time.Time{}
+		a.goHome()
+		return
+	}
+	a.stepBack()
+}
+
+// stepBack leaves one level: the room first, and the selection after it.
+//
+// The selection is a level. ↑/↓ over an empty box pick a tool call out of the
+// transcript (input.go), and a highlight left behind is a row that enter would
+// open — so a person walking backwards out of what they were reading gets the
+// highlight taken off before nothing happens at all.
+func (a *app) stepBack() {
+	if a.room != nil {
+		a.closeRoom()
+		return
+	}
+	if a.sel >= 0 {
+		a.sel = -1
+		a.touch()
+	}
+}
+
+// goHome is ←← and it is the one gesture that does not care where you are: the
+// conversation, no room over it, nothing selected in it, and at the live edge.
+//
+// It rejoins the BOTTOM, which is the one thing esc out of a room deliberately
+// does not do (room.go's header: the transcript is never touched while a room is
+// open, so leaving restores the scroll exactly). Home is the gesture for the
+// other intention — not "back to what I was reading" but "back to now".
+func (a *app) goHome() {
+	a.closeRoom()
+	if a.sel >= 0 {
+		a.sel = -1
+	}
+	a.stick = true
+	a.follow()
 	a.touch()
 }
 

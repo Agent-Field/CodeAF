@@ -147,7 +147,12 @@ var settingReaders = map[string]string{
 	// It names the accessor rather than the field, because the door is the only
 	// caller and the accessor is what it touches.
 	KeyGuardian: "GuardianEnabledAt",
-	KeyMouse:    "MouseEnabledAt",
+	// The approval countdown is read by the chat surface itself, not by the
+	// door: the clock runs on the frame clock beside the question it is counting
+	// down (internal/tui3's consent.go), so what touches the value is this
+	// accessor and nothing downstream of it.
+	KeyConsentTimeout: "ConsentTimeoutAt",
+	KeyMouse:          "MouseEnabledAt",
 	// The routing row is read by the v3 door and becomes session.Config.Routing,
 	// which the adapter turns into the preference object on every request
 	// (internal/provider's velocity.go). It names the accessor the door touches.

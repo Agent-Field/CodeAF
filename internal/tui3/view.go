@@ -200,6 +200,14 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		}
 		add(line, mark)
 	}
+	// THE STEER GUARD SITS WHERE THE APPROVAL QUESTION SITS, because it is the
+	// same kind of thing: the surface holding words back until it is told where
+	// to send them (room.go). The two can never be up together — a question the
+	// SESSION is blocked on suspends the box the guard is raised from — so they
+	// share the slot rather than stacking in it.
+	for _, line := range a.guardRows(width) {
+		add(line, chromeRow{})
+	}
 	if line := a.followRow(width); line != "" {
 		add(line, chromeRow{})
 	}
@@ -281,7 +289,7 @@ func (a *app) chromeHeight() int {
 	// and whatever the two optional blocks, the open list and the welcome box
 	// are holding.
 	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
-		a.followHeight() + a.welcomeHeight()
+		a.guardHeight() + a.followHeight() + a.welcomeHeight()
 	if height >= 6 {
 		n += 2 // the rule, and the blank above the draft
 	}
