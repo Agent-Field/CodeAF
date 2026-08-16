@@ -61,6 +61,25 @@ type taskCard struct {
 	name, sub string
 	ident     taskIdent
 	dependsOn []uint64
+	// model is the model this work will run on, and it is a FACT rather than a
+	// question: the engine resolved it before anybody was asked (session's
+	// taskmodel.go), and the card states it because a proposal that did not say
+	// whose hands the work is going into would be hiding the one thing about it
+	// nobody can find out afterwards.
+	//
+	// options is the exception: one word that fitted more than one model, which
+	// the engine will not choose between. Then the card OFFERS them — model is
+	// whichever is picked, and the leading one is what silence takes — and the
+	// chosen id travels back on the answer.
+	model   string
+	options []string
+	// pick is which of options has the keyboard, and modelRow/modelSpans are
+	// where that row landed and what each chip occupies, for the click. They are
+	// the choices row's own machinery ([app.taskCardRows]) for the same reason:
+	// one layout, one set of targets.
+	pick       int
+	modelRow   int
+	modelSpans []choiceSpan
 	// deadline is when silence becomes approval, or zero when the clock is off
 	// (session's TaskNotice.Deadline). A zero deadline draws no countdown: a
 	// number counting down to nothing is a promise the engine did not make.
@@ -127,6 +146,11 @@ type taskNode struct {
 	// ident is the glyph and the hue this node is followed by, keyed on the id
 	// and stable for its whole life (taskident.go).
 	ident taskIdent
+	// model is the model this node runs on, as the engine published it
+	// (session's TaskNotice.Model). Empty means nobody said — a scripted agent,
+	// an older engine — and every row that draws it draws nothing instead, the
+	// way the spend does.
+	model string
 	state session.TaskState
 	// dependsOn is the structural half of this file (see the header): stored
 	// always, drawn only when a prerequisite is unmet.
@@ -430,6 +454,8 @@ func (a *app) proposeTask(ev session.Event) {
 		sub:        taskSubtitleOf(name, firstNonEmpty(summary, brief)),
 		ident:      identFor(notice.ID),
 		dependsOn:  notice.DependsOn,
+		model:      strings.TrimSpace(notice.Model),
+		options:    notice.ModelOptions,
 		deadline:   notice.Deadline,
 		born:       a.now(),
 		// THE CARD OPENS ON "YES", because that is what the block is proposing and
@@ -438,6 +464,11 @@ func (a *app) proposeTask(ev session.Event) {
 		// same thing: silence is approval.
 		choice:    choiceYes,
 		choiceRow: -1,
+		// And on the CLOSEST model, which is the one the engine put first and the
+		// one the countdown will settle on. The models row is a correction, not a
+		// decision the work is waiting behind.
+		pick:     0,
+		modelRow: -1,
 	}
 	a.task = card
 	a.closeLive()
@@ -453,14 +484,17 @@ func (a *app) proposeTask(ev session.Event) {
 // The words a settled card keeps. They are sentences rather than states because
 // the row is read once, later, by somebody reconstructing what happened.
 const (
-	taskApprovedWord  = "approved"
-	taskRedirectWord  = "approved · you redirected it"
-	taskDeclinedWord  = "declined"
-	taskClockWord     = "approved · the clock"
-	taskExpiredWord   = "expired · the turn ended"
-	taskRedirectLane  = "redirect this task… (enter sends it, esc declines)"
-	taskProposalHint  = "y yes · r redirect · n no"
-	taskExpandHint    = "ctrl+e for the brief"
+	taskApprovedWord = "approved"
+	taskRedirectWord = "approved · you redirected it"
+	taskDeclinedWord = "declined"
+	taskClockWord    = "approved · the clock"
+	taskExpiredWord  = "expired · the turn ended"
+	taskRedirectLane = "redirect this task… (enter sends it, esc declines)"
+	taskProposalHint = "y yes · r redirect · n no"
+	taskExpandHint   = "ctrl+e for the brief"
+	// taskModelTag labels the one fact a proposal carries that nobody can find
+	// out afterwards: whose hands the work is going into.
+	taskModelTag      = "model "
 	taskAcceptanceTag = "done when: "
 	// taskWaitingWord is what stands where the meter would be on a proposal the
 	// engine is holding open indefinitely. A bar with no end to drain toward
@@ -562,7 +596,44 @@ func (a *app) taskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "n":
 		return a.takeChoice(choiceNo), true
 	}
+	// THE DIGITS BELONG TO THE MODELS ROW, on the one card that has one, and they
+	// are taken in the same tier as the three letters and under the same guard:
+	// a person writing "3 files should change" is writing, not choosing.
+	if at, ok := taskModelKey(msg.String()); ok && at < len(card.options) {
+		a.takeModel(at)
+		return nil, true
+	}
 	return nil, false
+}
+
+// taskModelKey reads a digit as one of the models on offer, zero-indexed. Only
+// the four the shortlist can hold are keys; anything else is not this row's.
+func taskModelKey(key string) (int, bool) {
+	switch key {
+	case "1":
+		return 0, true
+	case "2":
+		return 1, true
+	case "3":
+		return 2, true
+	case "4":
+		return 3, true
+	}
+	return 0, false
+}
+
+// takeModel moves the choice of model. It ANSWERS NOTHING: the question is
+// still whether the work goes at all, and picking the model it goes on is a
+// correction to the proposal rather than a verdict on it.
+func (a *app) takeModel(at int) {
+	card := a.task
+	if card == nil || card.settled() || at < 0 || at >= len(card.options) {
+		return
+	}
+	card.pick = at
+	card.model = card.options[at]
+	a.markCardStale(card)
+	a.touch()
 }
 
 // takeChoice acts on one option, whether a key, an arrow's enter or a click
@@ -637,9 +708,25 @@ func (a *app) answerTask(approve bool, redirect string) {
 	default:
 		card.verdict, card.answer = taskDeclinedWord, taskChoiceWords[choiceNo]
 	}
+	// A CARD THAT ASKED WHICH MODEL KEEPS THE ANSWER. The block collapses to its
+	// verdict line, and on this one card that line is the only place the choice
+	// the person just made is written down — everywhere else states the model the
+	// work RAN on, which is the same fact only until somebody wonders whether it
+	// was the one they picked.
+	if approve && len(card.options) > 1 && card.model != "" {
+		card.verdict += " · " + card.model
+	}
 	card.typing = false
 	if agent, ok := a.tasker(); ok {
-		agent.ResolveTask(card.id, session.TaskAnswer{Approved: approve, Redirect: redirect})
+		// The model travels with the answer only when there was a choice to make:
+		// on every ordinary proposal the engine already resolved it, and a surface
+		// naming it back would be answering a question nobody asked (session's
+		// TaskAnswer says the same in its own words).
+		chosen := ""
+		if len(card.options) > 1 {
+			chosen = card.model
+		}
+		agent.ResolveTask(card.id, session.TaskAnswer{Approved: approve, Redirect: redirect, Model: chosen})
 	}
 	a.input.reset()
 	a.endRecall()
@@ -795,6 +882,7 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	// first: a settled card has no options, and a stale span is a click that
 	// answers a question nobody is asking.
 	card.choiceRow, card.spans = -1, nil
+	card.modelRow, card.modelSpans = -1, nil
 	head := a.taskHead(card, width, sel)
 	if card.settled() {
 		return []string{head, a.taskFoot(card, width)}
@@ -825,12 +913,22 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 			}
 		}
 	}
+	// THE MODELS ROW ONLY EXISTS WHEN THERE IS A CHOICE. One word, one model is
+	// every ordinary proposal, and that model is said on the meta line below —
+	// where it costs no row at all.
+	if len(card.options) > 1 {
+		models, spans := a.taskModels(card, ansi.StringWidth(a.blockStem()), room)
+		if models != "" {
+			card.modelRow, card.modelSpans = len(out), spans
+			out = append(out, stem+models)
+		}
+	}
 	choices, spans := a.taskChoices(card, ansi.StringWidth(a.blockStem()), room)
 	card.choiceRow, card.spans = len(out), spans
 	out = append(out, stem+choices)
 	out = append(out, stem+a.taskMeter(card, room))
-	if !card.open && card.brief != "" {
-		out = append(out, stem+a.pal.dim(fit(taskExpandHint, room)))
+	if meta := a.taskMetaWord(card, room); meta != "" {
+		out = append(out, stem+a.pal.dim(meta))
 	}
 	return append(out, a.taskFoot(card, width))
 }
@@ -983,6 +1081,101 @@ func (a *app) taskChip(word string, focus bool) string {
 		return a.pal.askBold("[ " + word + " ]")
 	}
 	return a.pal.dim("[ ") + a.pal.askBold(word[:1]) + a.pal.ask(word[1:]) + a.pal.dim(" ]")
+}
+
+// taskMetaWord is the card's dim last line: WHO the work goes to, and the key
+// that opens what it is.
+//
+// The model leads because it is a fact about this proposal that nothing else on
+// screen will ever say again — the rail has 24 columns and the landed card is
+// twenty minutes away — where the expand hint is a key that is learned once and
+// then never read. A narrow frame cuts the hint and keeps the model.
+func (a *app) taskMetaWord(card *taskCard, width int) string {
+	var parts []string
+	if card.model != "" {
+		parts = append(parts, taskModelTag+card.model)
+	}
+	if !card.open && card.brief != "" {
+		parts = append(parts, taskExpandHint)
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return fit(strings.Join(parts, " · "), width)
+}
+
+// taskModels draws the row of models this work could run on, and reports what
+// each one occupies so a click can be resolved to the model under it.
+//
+// IT IS A CORRECTION, NOT A GATE. The card arrives with the closest match
+// already picked and the countdown already running, because the alternative is
+// work that stops for a question the person did not ask — one word fitting two
+// models is the harness's ambiguity, not theirs. What the row buys is the
+// thirty seconds in which the choice is free to change.
+//
+// An option that does not fit is DROPPED rather than truncated, which is the
+// rule [app.taskChoices] follows for the same reason: half a model id is a model
+// somebody picks by mistake.
+func (a *app) taskModels(card *taskCard, left, width int) (string, []choiceSpan) {
+	words := taskModelWords(card.options)
+	var line string
+	var spans []choiceSpan
+	at, end := left, left+width
+	for i, word := range words {
+		chip := "[ " + itoa(i+1) + " " + word + " ]"
+		gap := 0
+		if i > 0 {
+			gap = 2
+		}
+		if at+gap+ansi.StringWidth(chip) > end {
+			break
+		}
+		if gap > 0 {
+			line += strings.Repeat(" ", gap)
+			at += gap
+		}
+		line += a.taskModelChip(itoa(i+1), word, i == card.pick)
+		spans = append(spans, choiceSpan{from: at, to: at + ansi.StringWidth(chip), at: i})
+		at += ansi.StringWidth(chip)
+	}
+	if len(spans) < 2 {
+		// One chip is not a choice, and a row that offers one option is a row that
+		// asks a question it has already answered.
+		return "", nil
+	}
+	return line, spans
+}
+
+// taskModelChip is one model. The picked one takes the question hue and the
+// weight together, and the others spend the weight on the DIGIT that picks
+// them — the choices row's own trick, with a number where the initial would be:
+// two model ids from one vendor share every letter that could have been a key.
+func (a *app) taskModelChip(key, word string, focus bool) string {
+	if focus {
+		return a.pal.askBold("[ " + key + " " + word + " ]")
+	}
+	return a.pal.dim("[ ") + a.pal.askBold(key) + a.pal.ask(" "+word+" ]")
+}
+
+// taskModelWords is how the options are SPELLED on the row: the part after the
+// vendor, which is the part that differs, unless two vendors carry the same one
+// — in which case the vendor is the whole distinction and every chip keeps its
+// full id. The meta line under the row always names the picked model in full.
+func taskModelWords(options []string) []string {
+	tails := make([]string, 0, len(options))
+	seen := map[string]bool{}
+	for _, option := range options {
+		tail := option
+		if slash := strings.LastIndex(option, "/"); slash >= 0 {
+			tail = option[slash+1:]
+		}
+		if tail == "" || seen[strings.ToLower(tail)] {
+			return append([]string(nil), options...)
+		}
+		seen[strings.ToLower(tail)] = true
+		tails = append(tails, tail)
+	}
+	return tails
 }
 
 // taskMeter is THE COUNTDOWN, AS A COUNTDOWN.
@@ -1912,13 +2105,23 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 	// the title is measured against what they leave.
 	lead := a.railGlyph(node) + " " + a.taskMark(node.ident) + " "
 	title, room := node.title, width-ansi.StringWidth(lead)
-	meta := railMetaWord(node)
-	// A column too narrow to carry both spends what it has on the name. The
-	// handle is a convenience; the title is the row.
-	if room-ansi.StringWidth(meta)-1 >= railTitleFloor {
+	// THE MODEL RIDES THE META SLOT WHEN IT IS CHEAP AND NOT OTHERWISE. The
+	// handle is what the row is called and is never given up; the model is worth
+	// the cells only on a column wide enough to keep a name beside it, so the two
+	// candidates are tried richest first and the row takes the first that leaves
+	// a title worth reading.
+	meta := ""
+	for _, candidate := range []string{railMetaModelWord(node), railMetaWord(node)} {
+		if candidate == "" {
+			continue
+		}
+		if room-ansi.StringWidth(candidate)-1 >= railTitleFloor {
+			meta = candidate
+			break
+		}
+	}
+	if meta != "" {
 		room -= ansi.StringWidth(meta) + 1
-	} else {
-		meta = ""
 	}
 	title = fit(title, room)
 	line := lead + a.railTitle(node, title)
@@ -1942,6 +2145,21 @@ const railTitleFloor = 12
 
 // railMetaWord is the node's handle: the id the engine calls it by.
 func railMetaWord(node *taskNode) string { return "#" + itoa(int(node.id)) }
+
+// railMetaModelWord is the handle with the model beside it, for a column that
+// can afford both: the part of the id after the vendor, which is the part that
+// names the model rather than who sells it. Empty when nobody published one,
+// and then the row falls back to the handle alone.
+func railMetaModelWord(node *taskNode) string {
+	model := strings.TrimSpace(node.model)
+	if model == "" {
+		return ""
+	}
+	if slash := strings.LastIndex(model, "/"); slash >= 0 && slash+1 < len(model) {
+		model = model[slash+1:]
+	}
+	return model + " " + railMetaWord(node)
+}
 
 // railTitle paints an already-fitted title. The cut happens at the call site
 // because that is where the id's cells are measured out of it ([app.railNodeRows]):
@@ -2300,6 +2518,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if notice.Report != "" {
 		node.report = notice.Report
+	}
+	// The model is kept whenever an update carries one and never overwritten
+	// with an empty: it is a property of the work, settled at admission, and an
+	// update that says nothing about it is not an update that changed it.
+	if model := strings.TrimSpace(notice.Model); model != "" {
+		node.model = model
 	}
 	if len(notice.Changed) > 0 {
 		node.changed = notice.Changed

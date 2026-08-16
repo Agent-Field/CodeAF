@@ -483,6 +483,15 @@ func (n *TaskNode) stateNow() TaskState {
 	return n.state
 }
 
+// model is the id this node runs on, and "" for a node admitted before anybody
+// chose one — a checkpoint written by an older build, a scripted graph in a
+// test. Its caller reads that emptiness as "the conversation's own".
+func (n *TaskNode) model() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.spec.model
+}
+
 // assembledBrief is the brief the node is actually working from: its own, plus
 // its prerequisites' reports.
 func (n *TaskNode) assembledBrief() string {
@@ -696,6 +705,7 @@ func (n *TaskNode) notice() TaskNotice {
 		Changed:   changed,
 		Branch:    n.branch,
 		Merge:     n.merge,
+		Model:     n.spec.model,
 		CostUSD:   cost,
 	}
 }
@@ -1276,15 +1286,31 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 // loop, the same hands — a different workspace, a different journal, and a belt
 // with two tools left off (tools.go).
 //
-// It inherits the conversation's model, client, window and capabilities because
-// a node is the same worker doing the same job somewhere quieter. It inherits
-// neither the transcript nor the memory file: the brief is the node's whole
-// world by construction, and two agents appending to one memory file would be
-// two writers on a document neither can see the other editing.
+// It inherits the conversation's client, window and capabilities because a node
+// is the same worker doing the same job somewhere quieter. It inherits neither
+// the transcript nor the memory file: the brief is the node's whole world by
+// construction, and two agents appending to one memory file would be two writers
+// on a document neither can see the other editing.
+//
+// THE MODEL IS THE NODE'S OWN, and the conversation's only when the node has
+// none (taskmodel.go). It is read BEFORE this takes a.mu, because the spec lives
+// under the graph's lock and this package takes one lock at a time.
 func (a *Agent) newTaskAgent(dir string, node *TaskNode) (*Agent, error) {
+	model := node.model()
 	a.mu.Lock()
 	parent := a.config
-	model := a.model
+	if strings.TrimSpace(model) == "" {
+		model = a.model
+	}
+	window := parent.ContextWindow
+	if !strings.EqualFold(strings.TrimSpace(model), strings.TrimSpace(a.model)) {
+		// A WINDOW MEASURED FOR ANOTHER MODEL IS NOT A FACT ABOUT THIS ONE. The
+		// figure the surface handed down is the conversation model's, and a node
+		// running elsewhere gets zero — this package's own conservative default —
+		// rather than a number that could be four times the window it actually
+		// has. Compacting early costs a summary; overflowing costs the turn.
+		window = 0
+	}
 	client := unwrapCompleter(a.client)
 	journal := taskJournalPath(a.sessionID(), node.id, "")
 	a.mu.Unlock()
@@ -1299,7 +1325,7 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode) (*Agent, error) {
 		Model:          model,
 		APIKey:         parent.APIKey,
 		BaseURL:        parent.BaseURL,
-		ContextWindow:  parent.ContextWindow,
+		ContextWindow:  window,
 		CompactEnabled: parent.CompactEnabled,
 		SessionFile:    journal,
 		// ALLOW EVERYTHING EXCEPT THE FLOOR. approval's critical table still

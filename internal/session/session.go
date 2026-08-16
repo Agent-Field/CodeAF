@@ -463,6 +463,27 @@ type Config struct {
 	SearchProvider search.Provider
 	SearchFetcher  search.Fetcher
 
+	// TaskModel is the model a task runs on when its proposal names none — the
+	// person's task.model row. EMPTY IS THE CONVERSATION'S OWN MODEL, which is
+	// the behaviour every task had before this field existed: a node is the same
+	// worker doing the same job somewhere quieter, so the same model is the
+	// honest default. It is resolved through the same matcher a proposal's word
+	// is (taskmodel.go), so a row written "opus-5" reaches the same id.
+	TaskModel string
+
+	// TaskModels lists the models a task may be sent to — the surface's catalog,
+	// as ids. It is the seam a `model` argument is validated and resolved
+	// against, and it is a function for the reason SupportsImages is one: the
+	// list arrives from a lazily loaded catalog and is not the same list at boot
+	// as it is a minute later.
+	//
+	// NIL IS "NOBODY CAN SAY", not "there are none". A caller that hands over no
+	// list gets every named model taken as written and the provider's own error
+	// if it is wrong — exactly what every caller had before the argument existed
+	// — because a package with no catalog refusing a model id would be inventing
+	// a catalog to refuse from.
+	TaskModels func() []string
+
 	// TaskAutoApproveSeconds is how long a task proposal waits before the clock
 	// approves it (task.go, config.KeyTaskAutoApprove). 0 IS A CLOCK THAT IS
 	// OFF — the proposal waits for [Agent.ResolveTask] and nothing else — which
