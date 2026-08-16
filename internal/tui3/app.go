@@ -578,6 +578,11 @@ type app struct {
 	// surface draws, and the only overlay that is modal for the pointer as well
 	// as for the keyboard. Closed, it costs the frame nothing.
 	sheet sheet
+	// deck is the phone tier's status sheet (statusdeck.go): the SECOND
+	// fullscreen thing, and the only one that exists at one size class only —
+	// under sixty columns the status row is a two-row deck, and this is where
+	// everything the deck could not hold is listed. Closed, it costs nothing.
+	deck deckSheet
 	// profileDir is where the panel's writes land, and settings the registry it
 	// edits. The registry is built at the first /settings rather than at boot —
 	// it is a door onto a file, and a surface that may never be asked about
@@ -873,6 +878,19 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.touch()
 			return a, nil
 		}
+		// And the status sheet, which is the same claim about the same kind of
+		// surface (statusdeck.go). The wheel walks its cursor rather than an
+		// offset of its own: the list is short enough that a scroll and a
+		// selection are the same gesture.
+		if a.deckShowing() {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.deckMove(-3)
+			case tea.MouseWheelDown:
+				a.deckMove(3)
+			}
+			return a, nil
+		}
 		// The roster over the body is the same claim one step earlier: while it
 		// is up the transcript is not on screen at all, and the roster's window
 		// follows its focus rather than an offset of its own (task.go's
@@ -916,6 +934,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Mouse().Button == tea.MouseLeft {
 			if a.sheet.open {
 				a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
+				return a, nil
+			}
+			// The status sheet is modal for the pointer at the same rung and for
+			// the same reason: it is the whole screen, and a press outside its
+			// list is how a finger closes it (statusdeck.go).
+			if a.deckShowing() {
+				a.deckSheetPress(msg.Mouse().X, msg.Mouse().Y)
 				return a, nil
 			}
 			// A chip is the one thing below the conversation a click can take
@@ -975,6 +1000,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.sheet.open {
 			a.sheetHover(msg.Mouse().Y)
+			return a, nil
+		}
+		if a.deckShowing() {
+			a.deckSheetHover(msg.Mouse().Y)
 			return a, nil
 		}
 		a.setHover(msg.Mouse().Y)
@@ -1929,9 +1958,21 @@ func (a *app) statusPress(x, y int) bool {
 	// writes [app.modelSpan]. Reading the span first would be reading where the
 	// name was drawn on the frame before this one.
 	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != chromeStatus {
+		return false
+	}
+	// AT PHONE WIDTH THE ROW IS A DECK, and the deck answers for both of its rows
+	// rather than falling through: the model chip is on the second one, and every
+	// other cell of the two opens the sheet that carries what the deck could not
+	// (statusdeck.go). It is the one status layout where empty space is NOT
+	// nothing — a gap that fell through would land the press in the draft box
+	// directly above it.
+	if width, _ := a.size(); layoutTier(width) == tierPhone {
+		return a.deckPress(x, mark.index)
+	}
 	// Index zero is the identity's row in both status layouts — the shared row,
 	// and the first of the two when the telemetry wraps onto its own (render.go).
-	if !ok || mark.kind != chromeStatus || mark.index != 0 || !a.modelSpan.holds(x) {
+	if mark.index != 0 || !a.modelSpan.holds(x) {
 		return false
 	}
 	a.openPicker()

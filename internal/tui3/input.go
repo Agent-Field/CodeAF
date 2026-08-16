@@ -196,6 +196,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// And the phone tier's status sheet is modal at the same rung and for the
+	// same reason: it is the whole screen, so there is nothing under it to send a
+	// key to (statusdeck.go).
+	if a.deckShowing() && msg.String() != "ctrl+c" {
+		a.deckSheetKey(msg)
+		return nil
+	}
+
 	// The model overlay is modal: while it is up every key belongs to it and
 	// the draft below is suspended untouched. ctrl+c is the one exception, for
 	// the same reason it is read first below — leaving is never modal.

@@ -135,6 +135,21 @@ func (a *app) frame() (string, int, int) {
 		lines, _, caretX, caretY := a.sheetFrame(width, height)
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
+	// AND THE STATUS SHEET IS THE SECOND, on the phone tier only: the deck's two
+	// rows are what fits at forty-four columns, and the sheet is everything the
+	// status line can carry, one per line (statusdeck.go). It takes the frame
+	// whole for the reason the panel does — a sheet drawn into a viewport that
+	// narrow is a sheet you read past.
+	if a.deck.open && layoutTier(width) != tierPhone {
+		// A frame that grew out of the phone tier has its whole status row back,
+		// and a sheet standing in for a row that is on screen again is a sheet
+		// nobody asked for.
+		a.deck = deckSheet{}
+	}
+	if a.deck.open {
+		lines, _, caretX, caretY := a.deckSheetFrame(width, height)
+		return strings.Join(lines, "\n"), caretX, caretY
+	}
 	chrome, _, caretX, caretRow := a.chrome(width)
 	// THE FOCUS HEADER IS THE FRAME'S ONE PINNED ROW ABOVE the conversation, and
 	// it spans the WHOLE window for the reason the status row does: it is about
@@ -338,9 +353,12 @@ func (a *app) chromeAt(y int) (chromeRow, bool) {
 // chromeHeight is how many rows the frame spends below the conversation.
 func (a *app) chromeHeight() int {
 	width, height := a.size()
-	// The status (one row, or two when the telemetry wraps), the input block,
-	// and whatever the two optional blocks, the open list and the welcome box
-	// are holding.
+	// The status (one row, or two when the telemetry wraps — and always two at
+	// the phone tier, where it is a deck rather than a row: [app.statusHeight]
+	// answers that one from the tier alone, so this count never has to run a
+	// layout to learn how tall the bottom of the frame is), the input block, and
+	// whatever the two optional blocks, the open list and the welcome box are
+	// holding.
 	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
 		a.guardHeight() + a.followHeight() + a.welcomeHeight()
 	if height >= 6 {
