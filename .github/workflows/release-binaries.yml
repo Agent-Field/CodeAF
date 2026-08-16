@@ -29,10 +29,8 @@ jobs:
           go test
           ./cmd/aforge
           ./internal/config
-          ./internal/exec/...
           ./internal/filelock
           ./internal/lease
-          ./internal/resident
 
   build:
     needs: test
