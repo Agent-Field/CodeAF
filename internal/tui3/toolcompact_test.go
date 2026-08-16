@@ -18,9 +18,9 @@ import (
 // ONE compact row and its expansion is the WHOLE FRAME, and at every other tier
 // nothing whatsoever moved.
 
-// phoneWidth is the frame these tests are written against: a phone in a
-// terminal, the width the tier was drawn for.
-const phoneWidth = 44
+// The frame these tests are written against — a phone in a terminal, the width
+// the tier was drawn for — is [phoneWidth], declared once for the package in
+// palettephone_test.go.
 
 // toolAppAt is [toolApp] on a frame of a stated width. The width is set BEFORE
 // the turn runs so every row is built at it, the way a real session's is.
