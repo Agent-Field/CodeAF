@@ -945,10 +945,19 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyContextReuse, Category: CategoryModels, Kind: SettingCount,
 			Label: "context reuse", Env: "AFORGE_CONTEXT_REUSE_PCT",
+			// THE UNIT IS A MULTIPLE IN HUNDREDTHS, AND THE SENTENCE LEADS WITH
+			// THAT. "as a percent" over a row whose default reads 250 asks a
+			// reader to find the whole this is a percentage OF — a window, a
+			// budget — and there is no such whole: 100 is one context over, 250 is
+			// two and a half. The old wording is also why the floor reads as a
+			// mistake (writeContextReuse refuses below 100, where a percentage
+			// would clamp above it), so the worked example comes before anything
+			// else the row has to say.
 			Hint: "how many times over one piece of work may re-send its whole context before " +
-				"aforge tells it to land, as a percent — 250 is two and a half times. Every turn " +
-				"re-sends everything before it, so this is what stops a worker going round in " +
-				"circles at full price. A change lands on the next job.",
+				"aforge tells it to land, in hundredths — 100 is once, 250 is two and a half " +
+				"times, and 100 is the floor. Every turn re-sends everything before it, so this " +
+				"is what stops a worker going round in circles at full price. " +
+				"A change lands on the next job.",
 			read:  func() string { return strconv.Itoa(ContextReuseAt(dir)) },
 			write: func(raw string) error { return writeContextReuse(dir, raw) },
 		},

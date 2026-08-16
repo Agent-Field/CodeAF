@@ -1351,16 +1351,53 @@ func (a *app) legendRight(width int) string {
 //
 // What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
 //
-//	a question is up      a allow · t always · d deny   (consent.go's own keys)
 //	the picker is open    enter switch · esc
+//	copy mode is on       v select · y yank · esc
+//	the welcome box is up ↑↓ recent · enter open
+//	a path is completing  tab take · enter run · esc
+//	a list is open        ↑↓ · enter · esc
+//	a proposal is up      y yes · r redirect · n no    (task.go's own keys)
+//	a question is up      a allow · t always · d deny  (consent.go's own keys)
 //	a turn is running     esc interrupt
 //	idle                  nothing
 //
 // The keys are quoted from the handlers rather than authored here — a hint that
 // disagrees with input.go is worse than no hint, because it is a hint somebody
 // will act on.
+//
+// AND THE ORDER IS input.go's OWN ROUTING ORDER, top to bottom, because that is
+// the only thing that makes the slot true: what a key does is decided by which
+// handler reads it first, so a hint ranked any other way is a hint that names
+// the keys of a state the keyboard has already been taken away from. The picker
+// leads because it is read above ctrl+c ([app.key]); copy mode is the rung under
+// it; the typed lists come last of the modal ones, since they take only the four
+// keys that move and commit a list and give every other one back to the draft.
+//
+// COPY MODE IS THE ONE THIS SLOT WAS MOST WRONG ABOUT. While the viewport is
+// frozen every key on this surface means something else, and the slot was
+// drawing "@ files · / commands" — two affordances of a box the keyboard is not
+// currently pointed at. A hint naming keys that do nothing is the failure mode
+// this slot exists to prevent, and it was the default state of it.
 func (a *app) hintWord() string {
 	switch {
+	case a.pick.open:
+		return "enter switch · esc"
+	case a.copy.on:
+		return "v select · y yank · esc"
+	case a.welcome.open:
+		// The box reads two keys and hands back the rest (welcome.go), and the
+		// arrows only mean the list while the draft is empty — which is exactly
+		// when this hint is worth drawing.
+		if !a.input.empty() || len(a.welcome.recent) == 0 {
+			return ""
+		}
+		return "↑↓ recent · enter open"
+	case a.comp.open && a.comp.arg:
+		// A path completing under a command argument: tab takes the row, and
+		// enter belongs to the LINE rather than to the list (input.go).
+		return "tab take · enter run · esc"
+	case a.menu.open || a.comp.open:
+		return "↑↓ · enter · esc"
 	case a.awaitingTask():
 		// The proposal owns these keys while it is up, and it owns them ahead of
 		// the consent letters below: a card and a consent question cannot be open
@@ -1368,8 +1405,6 @@ func (a *app) hintWord() string {
 		return taskProposalHint
 	case a.asking() || a.awaitingDecision():
 		return "a allow · t always · d deny"
-	case a.pick.open:
-		return "enter switch · esc"
 	case a.state == stateWorking:
 		return "esc interrupt"
 	}
