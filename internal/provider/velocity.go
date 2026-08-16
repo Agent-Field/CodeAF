@@ -157,6 +157,26 @@ func (c *Client) providerPreferences(model string) *providerPrefs {
 	return prefs
 }
 
+// relaxedPreferences is the preference object with everything that can EXCLUDE
+// an endpoint taken out of it, leaving only what orders the ones that remain.
+//
+// It is the first rung of the endpoint-refusal ladder (endpoints.go), and it is
+// the one rung that costs the answer nothing: the model is asked the identical
+// question, of a wider set of machines. A preference object with nothing left in
+// it is dropped entirely rather than sent empty.
+func relaxedPreferences(prefs *providerPrefs) *providerPrefs {
+	if prefs == nil {
+		return nil
+	}
+	relaxed := *prefs
+	relaxed.RequireParameters = nil
+	relaxed.Ignore = nil
+	if relaxed.Sort == "" && len(relaxed.Order) == 0 && relaxed.AllowFallbacks == nil {
+		return nil
+	}
+	return &relaxed
+}
+
 // noteVelocity folds one timed answer into this client's ledger.
 //
 // It is the one gate between the completion paths and the ledger, and it holds

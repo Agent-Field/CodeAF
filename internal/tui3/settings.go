@@ -172,6 +172,15 @@ var settingUI = map[string]settingMeta{
 		tab: tabSession, label: "pinned roles", widget: widgetText,
 		about: "exceptions to the two rows above, one per role: title:openai/gpt-5-mini.",
 	},
+	// It is a TEXT box and not a select, unlike the two tier rows above it,
+	// because the answer is an ORDER rather than a choice: a picker that returns
+	// one id cannot express "this one, then that one", and a fallback list of one
+	// is most of what makes this row worth having.
+	config.KeyModelFallbacks: {
+		tab: tabSession, label: "fallback models", widget: widgetText,
+		about: "where a conversation goes when no endpoint will take the request: " +
+			"slugs, comma-separated, first tried first. Blank picks the nearest one.",
+	},
 	config.KeySpendRail: {
 		tab: tabSession, label: "session ceiling", widget: widgetText,
 		about: "what one conversation may spend before it stops starting turns. " +
