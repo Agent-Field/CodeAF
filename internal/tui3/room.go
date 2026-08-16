@@ -668,12 +668,24 @@ func (a *app) freezeRoom() {
 // no node is still the RAIL's — the alternative is a click in empty rail space
 // closing the room, which would make the column a person aims at to switch rooms
 // the column that throws them out.
+//
+// A HEADING IS THE OTHER TARGET, and it is the fold rather than a door: the
+// pointer gets the same two acts the keyboard has (task.go's [app.railKey]), so
+// a hundred and forty-eight parked nodes are one click away whichever hand a
+// person reached with. The press moves the roster's cursor to what was pressed
+// but does NOT take the keyboard: clicks focus what was clicked, and the draft
+// is where this surface types.
 func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if !a.railShowing() || x < a.bodyWidth() {
 		return nil, false
 	}
-	if node := a.railNodeAt(y); node != nil {
-		a.openRoomFor(node.id, node.title)
+	if e, ok := a.railEntryAt(y); ok {
+		a.railWhere = railSpotOf(e)
+		if e.node == nil {
+			a.railToggle(e.group)
+			return nil, true
+		}
+		a.openRoomFor(e.node.id, e.node.title)
 	}
 	return a.takeRoomPump(), true
 }
