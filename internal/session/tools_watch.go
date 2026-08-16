@@ -29,7 +29,7 @@ package session
 //     exists to stop sending.
 //
 //   - IT RIDES THE STEERING LANE. The note is appended by the same
-//     enqueueSteering a job's exit note uses (jobs.go), drained into the
+//     enqueueAmbientNote a job's exit note uses (jobs.go), drained into the
 //     transcript at the next step boundary, read as plain user text. No push, no
 //     new event, no change to any surface: news that arrives while the model is
 //     busy already has a lane, and a second one would be a second ordering rule

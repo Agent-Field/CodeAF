@@ -362,7 +362,7 @@ func TestSilentExitingJobReportsCodeOnly(t *testing.T) {
 func TestJobNoteSharesTheSteeringLane(t *testing.T) {
 	agent, _ := jobsAgent(t)
 
-	agent.enqueueSteering("also check the linter")
+	agent.enqueueAmbientNote("also check the linter")
 	id := startJob(t, agent, "echo done")
 	waitFor(t, "the completion note", func() bool {
 		return len(steeringQueue(agent)) == 2

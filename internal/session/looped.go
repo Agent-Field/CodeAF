@@ -335,7 +335,9 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 		a.askAboutLoop(ctx, hub, ep, looping)
 		return
 	}
-	a.enqueueSteering(nudgeNote(looping))
+	// The AMBIENT lane (agent.go): a nudge belongs to the turn it is about and
+	// nobody is waiting to be told about it, so it never starts one.
+	a.enqueueAmbientNote(nudgeNote(looping))
 }
 
 // promptMode reports whether this session's blanket answer is "ask me".

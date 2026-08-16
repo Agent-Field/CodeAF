@@ -497,7 +497,12 @@ func (a *Agent) recoverTasks() {
 	graph.checkpoint()
 
 	if note := recovery.note(); note != "" {
-		a.enqueueSteering(note)
+		// THE AMBIENT LANE, not the waking one (agent.go): this runs at
+		// construction, before anybody has said anything, and an account of what
+		// the last process left behind is context for the first turn rather than
+		// a reason to start one. A session that opened by talking to itself about
+		// yesterday's interrupt would be answering a question nobody asked.
+		a.enqueueAmbientNote(note)
 	}
 	// CONTINUE — the same frontier every other transition turns. A queued node
 	// whose prerequisites are done starts now; one whose prerequisite was
