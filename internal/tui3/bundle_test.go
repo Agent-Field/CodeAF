@@ -2612,14 +2612,20 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 			}
 		}
 		// The roster opens with its first group's heading and the node under it
-		// (task.go), so the node is on the frame's SECOND row. The slim rail fits
-		// the title to its column, so the assertion reads the prefix both widths
-		// keep.
-		if tc.rail && !strings.Contains(lines[0], railGroupWords[railRunning]) {
-			t.Fatalf("at %d columns the roster's first heading is not on row 0:\n%q", tc.width, lines[0])
+		// (task.go), and the whole column starts under the task strip, which is up
+		// because the node is running (taskstrip.go). The slim rail fits the title
+		// to its column, so the assertion reads the prefix both widths keep.
+		top := a.bodyTop()
+		if tc.rail && !strings.Contains(lines[top], railGroupWords[railRunning]) {
+			t.Fatalf("at %d columns the roster's first heading is not on row %d:\n%q", tc.width, top, lines[top])
 		}
-		if tc.rail && !strings.Contains(lines[1], "Fix the nil-map") {
-			t.Fatalf("at %d columns the running node is not under its heading:\n%q", tc.width, lines[1])
+		if tc.rail && !strings.Contains(lines[top+1], "Fix the nil-map") {
+			t.Fatalf("at %d columns the running node is not under its heading:\n%q", tc.width, lines[top+1])
+		}
+		// AND THE STRIP IS THE ROW ABOVE IT, at every one of these widths — the
+		// rail's breakpoint is not the strip's, which is the whole point of it.
+		if !strings.Contains(lines[0], "Fix the nil-map") {
+			t.Fatalf("at %d columns the task strip is not the frame's first row:\n%q", tc.width, lines[0])
 		}
 		// The status row is the whole window's, so it is never under the rail.
 		status := lines[len(lines)-1]
@@ -2768,7 +2774,7 @@ func TestTheRosterFoldsFromTheKeyboardAndThePointer(t *testing.T) {
 	// The pointer's half: a press on a folded heading opens it, and does not
 	// take the keyboard on its way past.
 	before := a.railShut(railDone)
-	for y := 0; y < a.viewHeight(); y++ {
+	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
 		if e, ok := a.railEntryAt(y); ok && e.node == nil && e.group == railDone {
 			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: y, Button: tea.MouseLeft})
 			break
@@ -2971,10 +2977,11 @@ func clickRail(t *testing.T, a *app, node int) {
 		t.Fatal("there is no rail to click")
 	}
 	// The scan walks SCREEN rows, which is what the click will name: the rail's
-	// rows are the BODY REGION's rows, and the focus header a room pins above it
-	// moves them down by its own height (room.go, view.go's [app.headHeight]) —
-	// so the rail's first row is not always the frame's first row.
-	head := a.headHeight()
+	// rows are the BODY REGION's rows, and the rows the frame pins above it — the
+	// room's focus header, the task strip — move them down by their own height
+	// (room.go, taskstrip.go, view.go's [app.topHeight]) — so the rail's first
+	// row is not always the frame's first row.
+	head := a.bodyTop()
 	seen, at := 0, -1
 	for y := head; y < head+a.viewHeight(); y++ {
 		row := a.railNodeAt(y)
