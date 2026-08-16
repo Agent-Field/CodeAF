@@ -625,6 +625,23 @@ type Agent struct {
 	// end and then starts one of its own.
 	followups []followUp
 
+	// wakeLanes are the standing subscriptions to turns the session started by
+	// itself ([Agent.Wakes]) — a task landing on an idle conversation, which is
+	// the one turn no Submit is holding a channel for. Each carries the woken
+	// turn's own event stream, handed over before the turn's first event.
+	//
+	// They are not the turn's hub and not taskWatchers: the hub belongs to one
+	// turn and does not exist yet when a wake is decided, and the task lane
+	// carries updates about work rather than a conversation. Nil for every
+	// surface that does not draw woken turns, which costs that surface nothing.
+	wakeLanes []chan (<-chan Event)
+
+	// opened says the session has been handed to whoever asked for it. It is
+	// false for the whole of New — including the task recovery that runs at the
+	// end of it — and true forever after, and the one thing it gates is the wake:
+	// a turn started before any surface exists is a turn nobody can read.
+	opened bool
+
 	// consent is the questions a person owes an answer to, keyed by the id the
 	// EventConsentRequest carried, and consentSeq is what names them. Both are
 	// ephemeral: a request lives exactly as long as the tool call blocked on it

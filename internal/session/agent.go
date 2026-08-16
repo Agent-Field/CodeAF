@@ -102,7 +102,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
-	agent.jobs = newJobRegistry(config.Workspace, agent.enqueueSteering)
+	// The registry gets the AMBIENT lane, not the waking one (see
+	// [Agent.enqueueSteering]): a dev server that dies at three in the morning is
+	// news the model reads at the next turn, not a reason to start one.
+	agent.jobs = newJobRegistry(config.Workspace, agent.enqueueAmbientNote)
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
@@ -146,6 +149,16 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// recovery is load, reconcile with the disk, continue the frontier
 	// (task_store.go). A fresh session has no checkpoint and this is a stat.
 	agent.recoverTasks()
+	// AND ONLY NOW MAY IT SPEAK UNPROMPTED. Recovery turns the frontier, and a
+	// cascade over the dependents of an interrupted node settles them right here,
+	// inside New — before the caller holds the agent, before any surface has
+	// subscribed to anything. A turn started at that moment would be answered
+	// into a room that does not exist yet: journaled, paid for, and never drawn.
+	// Everything recovery has to say is queued instead, and the first turn reads
+	// it (see [Agent.wakeLocked]).
+	agent.mu.Lock()
+	agent.opened = true
+	agent.mu.Unlock()
 	return agent, nil
 }
 
@@ -423,11 +436,34 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 type userMessage struct {
 	message ai.Message
 	refs    []journalPart
+
+	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
+	// (task_run.go's reportTaskNode). It is the difference between the two kinds
+	// of news this queue carries — see [Agent.enqueueSteering] — and it is read
+	// at exactly two moments: when the note is queued, and when the turn that
+	// was running drains what is left of the queue at its end. Both are places
+	// where "does anybody have to say something about this" is the question.
+	wake bool
 }
 
 // userText is the ordinary case: a message that is only words.
 func userText(text string) userMessage {
 	return userMessage{message: textMessage("user", text)}
+}
+
+// wakeNote is a line the SESSION authored that the model owes the person an
+// answer for. It is userText with the mark on it, and it is what makes a
+// finished task produce a sentence instead of a card nobody replies to.
+func wakeNote(text string) userMessage {
+	return userMessage{message: textMessage("user", text), wake: true}
+}
+
+// empty reports whether there is nothing here to record. It is the shape a
+// WOKEN turn opens with: the note it is about is on the steering queue and the
+// turn's first drain lands it, so there is no second message to write (see
+// [Agent.wakeLocked]).
+func (u userMessage) empty() bool {
+	return len(u.message.Content) == 0 && len(u.refs) == 0
 }
 
 // text is the message's words — what a queued message says, with its parts left
@@ -442,8 +478,16 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 //
 // watcher is a stream built before the turn existed — a queued follow-up's —
 // and is adopted onto the new hub before the loop can emit anything. Nil means
-// the caller takes its own subscription, and it is the returned channel.
-func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream) <-chan Event {
+// the caller takes its own subscription, and it is the returned channel. The
+// extra streams are adopted the same way and for the same reason a follow-up's
+// is: a turn NOBODY ASKED FOR has to hand its events to the standing wake
+// subscriptions ([Agent.Wakes]) before its first byte, or a surface would start
+// reading it half way through its own answer.
+//
+// An EMPTY user message records nothing. That is the woken turn's opening: what
+// it is about is already on the steering queue, and the loop's first drain
+// writes it (see [Agent.wakeLocked]).
+func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
 	a.running = true
 	// A turn is the person being back, so the idle consolidation timer stands
 	// down before anything else happens (memory_consolidate.go). It is disarmed
@@ -463,13 +507,18 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 	// below, after the turn's last message is journaled.
 	done := make(chan struct{})
 	a.done = done
-	a.recordUserLocked(user)
+	if !user.empty() {
+		a.recordUserLocked(user)
+	}
 	var events <-chan Event
 	if watcher != nil {
 		hub.adopt(watcher)
 		events = watcher.out
 	} else {
 		events = hub.subscribe()
+	}
+	for _, stream := range extra {
+		hub.adopt(stream)
 	}
 
 	go func() {
@@ -486,7 +535,13 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// clears running, so no Submit can slip between — is what keeps a
 			// leftover from landing AFTER the next Submit's message, answering
 			// a question the person asked before the one they just typed.
-			a.drainSteeringLocked()
+			//
+			// unanswered is the half of that drain nobody has replied to: a note
+			// the SESSION authored — a task landing — that arrived after this
+			// turn's last request went out, so the model never saw it. It is in
+			// the transcript now and nothing is going to speak about it, which is
+			// exactly the silence the wake below exists to end.
+			_, unanswered := a.drainSteeringLocked()
 			a.running = false
 			a.cancel = nil
 			a.hub = nil
@@ -504,6 +559,16 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// started. Interrupt and Close still reach it — both go through
 				// a.cancel, which this call replaces.
 				a.startTurnLocked(context.Background(), next.message, next.stream)
+			} else if completed && unanswered && a.wakeLocked() {
+				// A TASK LANDED IN THE LAST SECONDS OF THIS TURN. Its note is in
+				// the transcript, unread by any request, so the answer the person
+				// is owed needs one more turn — started here, with no new message,
+				// because the thing to answer is already recorded.
+				//
+				// It is gated on `completed` for the reason the follow-up drain is
+				// (see [Agent.nextFollowUpLocked]): a drain must never resurrect a
+				// turn somebody stopped. A person who interrupted gets the note in
+				// their transcript and silence, which is what they asked for.
 			} else {
 				// THE TURN HAS SETTLED, and nothing is queued behind it: this is
 				// the one moment a session is idle. Arm the consolidation
@@ -785,6 +850,12 @@ func (a *Agent) Close() error {
 	// Nothing queued will ever run now, and a caller holding one of those
 	// channels is owed the close rather than a wait that never ends.
 	a.dropFollowUpsLocked()
+	// And so is a surface waiting for the next woken turn: no more will come,
+	// and a lane left open is a pump waiting on a session that has left.
+	for _, lane := range a.wakeLanes {
+		close(lane)
+	}
+	a.wakeLanes = nil
 	a.mu.Unlock()
 
 	if cancel != nil {
@@ -865,22 +936,32 @@ func (a *Agent) snapshot() []ai.Message {
 func (a *Agent) drainSteering() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.drainSteeringLocked()
+	landed, _ := a.drainSteeringLocked()
+	return landed
 }
 
 // drainSteeringLocked is the drain itself, for callers already holding a.mu —
 // the turn's end, which must drain and clear running without a gap.
-func (a *Agent) drainSteeringLocked() int {
+//
+// It reports how many messages landed AND whether any of them was a wake note
+// (see [Agent.enqueueSteering]). The second answer only means anything to the
+// turn's end: a note drained at a step boundary is one the next request carries,
+// so the model answers it as part of the turn it is already in, while a note
+// drained after the last request is one nobody has said a word about.
+func (a *Agent) drainSteeringLocked() (int, bool) {
 	queued := a.steering
 	a.steering = nil
+	woke := false
 	for _, message := range queued {
 		a.recordUserLocked(message)
+		woke = woke || message.wake
 	}
-	return len(queued)
+	return len(queued), woke
 }
 
-// enqueueSteering puts one line the SESSION authored — a background job's
-// completion note (jobs.go) — onto the same queue the person's steering rides.
+// enqueueSteering puts one line the SESSION authored — a task node landing
+// (task_run.go) — onto the same queue the person's steering rides, AND WAKES
+// THE SESSION IF NOBODY IS WORKING.
 //
 // The lane is shared on purpose. Both are news that arrives while the model is
 // busy, both must land at a step boundary rather than inside a tool batch, and
@@ -889,13 +970,41 @@ func (a *Agent) drainSteeringLocked() int {
 // second way for a message to arrive at a moment the provider rejects — for a
 // message that is, from the model's side, exactly a line somebody typed.
 //
+// ── WHY IT WAKES, AND WHY THE OTHER LANE DOES NOT ──
+//
+// A queue alone was the whole defect. A person hands off a task, the work runs
+// for eleven minutes, it lands — and the note sat here until the person happened
+// to type something else, so what they got for their research was a card and
+// silence. The answer they asked for is a SENTENCE from the model ("the
+// comparison is at ~/oauth.md; the short version is…"), and a model that is never
+// asked never writes one. So a note that lands on an idle session starts a turn.
+//
+// [Agent.enqueueAmbientNote] is the same queue with that one difference removed,
+// and the split is a judgement about who is waiting. A task is work the person
+// asked for and is owed a report on. A background job exiting (jobs.go), a watch
+// with news (tools_watch.go), a resume's account of what an interrupt left behind
+// (task_store.go) are context for whatever is said next — real, worth carrying,
+// nobody standing there for it. A session that started a paid turn every time a
+// dev server died overnight would be answering questions nobody asked.
+//
 // A closed agent drops the note rather than queueing it: after Close nothing
 // drains, and the journal it would be written to is already shut.
 func (a *Agent) enqueueSteering(text string) {
-	text = strings.TrimSpace(text)
+	a.enqueueNote(wakeNote(text))
+}
+
+// enqueueAmbientNote is enqueueSteering for news nobody is waiting on: it
+// queues and never starts a turn. See the block above for which news is which.
+func (a *Agent) enqueueAmbientNote(text string) {
+	a.enqueueNote(userText(text))
+}
+
+func (a *Agent) enqueueNote(note userMessage) {
+	text := strings.TrimSpace(note.text())
 	if text == "" {
 		return
 	}
+	note.message = textMessage("user", text)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
@@ -906,8 +1015,110 @@ func (a *Agent) enqueueSteering(text string) {
 	// and a consolidation pass firing into that moment would swap it underneath
 	// a turn that is about to start (memory_consolidate.go).
 	a.disarmIdle()
-	a.steering = append(a.steering, userText(text))
+	a.steering = append(a.steering, note)
+	if note.wake {
+		// A turn already running is the coalescing case and needs nothing done:
+		// wakeLocked declines, and the note lands in that turn at its next step
+		// boundary exactly as a person's steering does.
+		a.wakeLocked()
+	}
 }
+
+// wakeLocked starts a turn for what is waiting on the steering queue, with a.mu
+// held, and reports whether one began.
+//
+// It records NOTHING. The turn opens on an empty message and the loop's first
+// act is to drain the queue (loop.go), which records and journals every note in
+// the order it arrived and does it before the first provider request. That is
+// what makes the coalescing free: two tasks landing in the same idle window
+// append two notes, the first sets running under this lock, and the second finds
+// a turn already going — ONE wake, one request, both outcomes in front of the
+// model. A timer would have bought the same behaviour and a window in which a
+// settle could be lost.
+//
+// ── WHAT DECLINES A WAKE ──
+//
+//   - a turn is already running: the note is steering, not a second turn.
+//   - the session is closed: nothing drains after Close.
+//   - InTask: this agent is one task node's runner (session.go's Config), whose
+//     turns belong to the runner that drives it. A node starting a turn of its
+//     own would be a second conversation inside a worktree.
+//   - the session is not open yet: recovery settles nodes inside New, and a turn
+//     started there speaks to nobody (see [newAgent]).
+//   - the spend rail: a turn that starts must be one the session can pay for,
+//     and this is the one turn nobody asked for. The note stays queued and is
+//     read by whatever the person says next.
+//
+// WHAT IT DOES NOT CHECK is that there is anything to answer, and it cannot:
+// its two callers know that in two different ways. The enqueue has just put a
+// note on the queue; the turn's end has just drained one INTO the transcript, so
+// the queue is empty and the thing to answer is the last message. A third caller
+// would have to establish the same fact before calling.
+func (a *Agent) wakeLocked() bool {
+	if a.running || a.closed || a.config.InTask || !a.opened {
+		return false
+	}
+	if err := a.railBlockLocked(); err != nil {
+		return false
+	}
+
+	// Every standing subscription gets this turn's stream BEFORE it starts, so a
+	// surface draws the answer from its first delta. A lane whose reader is that
+	// far behind is skipped rather than waited on: this call holds the lock
+	// Interrupt needs, and a wake is not worth a session that cannot be stopped.
+	watchers := make([]*eventStream, 0, len(a.wakeLanes))
+	for _, lane := range a.wakeLanes {
+		stream := newEventStream()
+		select {
+		case lane <- stream.out:
+			watchers = append(watchers, stream)
+		default:
+			stream.close()
+		}
+	}
+	// The turn's own subscription is drained and thrown away. A woken turn has no
+	// caller holding a channel — that is what makes it a wake — and an
+	// unread stream would park its pump goroutine on the first event forever.
+	sink := newEventStream()
+	go func() {
+		for range sink.out { //nolint:revive // draining is the point
+		}
+	}()
+	a.startTurnLocked(context.Background(), userMessage{}, sink, watchers...)
+	return true
+}
+
+// Wakes is the standing subscription to turns THE SESSION STARTED ON ITS OWN:
+// one channel per woken turn, handed over before that turn's first event, and
+// closed when it ends — the same shape [Agent.Submit] returns, because it is the
+// same thing.
+//
+// It exists because a wake has no caller. Every other turn is somebody asking
+// for something and reading the answer off the channel they were given; a turn
+// started by a task landing is the model speaking to a room nobody is holding a
+// microphone into, and without this the answer would reach the journal and never
+// the screen. A surface adopts each stream exactly as it adopts a follow-up's
+// (internal/tui3's followup.go): draw the turn, pump to close.
+//
+// The lane is buffered and NEVER BLOCKS the session: a subscriber that has
+// stopped reading misses wakes rather than freezing the agent that is trying to
+// tell it something. It closes with the session.
+func (a *Agent) Wakes() <-chan (<-chan Event) {
+	lane := make(chan (<-chan Event), wakeLaneDepth)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		close(lane)
+		return lane
+	}
+	a.wakeLanes = append(a.wakeLanes, lane)
+	return lane
+}
+
+// wakeLaneDepth is how many woken turns a subscriber may be behind on before it
+// starts missing them. Wakes are rare — one per idle window in which work
+// landed — so a handful is a surface that has stopped reading, not a busy one.
+const wakeLaneDepth = 8
 
 func textMessage(role, text string) ai.Message {
 	return ai.Message{Role: role, Content: []ai.ContentPart{{Type: "text", Text: text}}}
