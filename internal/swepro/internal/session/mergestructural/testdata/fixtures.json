@@ -1,0 +1,145 @@
+{"name":"compiled grammar list","fn":"WEAVE_SUPPORTED_LANGUAGES","args_json":"[]","out_json":"[\"bash\",\"c\",\"c_sharp\",\"cpp\",\"dart\",\"elixir\",\"embedded_template\",\"fortran\",\"go\",\"hcl\",\"java\",\"javascript\",\"kotlin\",\"nix\",\"ocaml\",\"ocaml_interface\",\"perl\",\"php\",\"python\",\"ruby\",\"rust\",\"scala\",\"svelte\",\"swift\",\"tsx\",\"typescript\",\"xml\",\"zig\"]"}
+{"name":"empty","fn":"weaveLanguageForPath","args_json":"[\"\"]","out_json":"null"}
+{"name":"empty","fn":"weaveSupportsPath","args_json":"[\"\"]","out_json":"false"}
+{"name":"plain basename","fn":"weaveLanguageForPath","args_json":"[\"Makefile\"]","out_json":"null"}
+{"name":"plain basename","fn":"weaveSupportsPath","args_json":"[\"Makefile\"]","out_json":"false"}
+{"name":"dotfile","fn":"weaveLanguageForPath","args_json":"[\".gitignore\"]","out_json":"null"}
+{"name":"dotfile","fn":"weaveSupportsPath","args_json":"[\".gitignore\"]","out_json":"false"}
+{"name":"dotfile with extension","fn":"weaveLanguageForPath","args_json":"[\".config.ts\"]","out_json":"\"typescript\""}
+{"name":"dotfile with extension","fn":"weaveSupportsPath","args_json":"[\".config.ts\"]","out_json":"true"}
+{"name":"trailing dot","fn":"weaveLanguageForPath","args_json":"[\"file.\"]","out_json":"null"}
+{"name":"trailing dot","fn":"weaveSupportsPath","args_json":"[\"file.\"]","out_json":"false"}
+{"name":"double extension","fn":"weaveLanguageForPath","args_json":"[\"archive.tar.ts\"]","out_json":"\"typescript\""}
+{"name":"double extension","fn":"weaveSupportsPath","args_json":"[\"archive.tar.ts\"]","out_json":"true"}
+{"name":"unsupported","fn":"weaveLanguageForPath","args_json":"[\"notes.txt\"]","out_json":"null"}
+{"name":"unsupported","fn":"weaveSupportsPath","args_json":"[\"notes.txt\"]","out_json":"false"}
+{"name":"uppercase","fn":"weaveLanguageForPath","args_json":"[\"SRC/ROUTE.TSX\"]","out_json":"\"tsx\""}
+{"name":"uppercase","fn":"weaveSupportsPath","args_json":"[\"SRC/ROUTE.TSX\"]","out_json":"true"}
+{"name":"mixed case","fn":"weaveLanguageForPath","args_json":"[\"src/Foo.MtS\"]","out_json":"\"typescript\""}
+{"name":"mixed case","fn":"weaveSupportsPath","args_json":"[\"src/Foo.MtS\"]","out_json":"true"}
+{"name":"unicode directory","fn":"weaveLanguageForPath","args_json":"[\"源/δelta/файл.py\"]","out_json":"\"python\""}
+{"name":"unicode directory","fn":"weaveSupportsPath","args_json":"[\"源/δelta/файл.py\"]","out_json":"true"}
+{"name":"unicode basename","fn":"weaveLanguageForPath","args_json":"[\"src/😀.go\"]","out_json":"\"go\""}
+{"name":"unicode basename","fn":"weaveSupportsPath","args_json":"[\"src/😀.go\"]","out_json":"true"}
+{"name":"spaces","fn":"weaveLanguageForPath","args_json":"[\"a b/c d.java\"]","out_json":"\"java\""}
+{"name":"spaces","fn":"weaveSupportsPath","args_json":"[\"a b/c d.java\"]","out_json":"true"}
+{"name":"line separator 2028","fn":"weaveLanguageForPath","args_json":"[\"odd dir/file.rs\"]","out_json":"\"rust\""}
+{"name":"line separator 2028","fn":"weaveSupportsPath","args_json":"[\"odd dir/file.rs\"]","out_json":"true"}
+{"name":"line separator 2029","fn":"weaveLanguageForPath","args_json":"[\"odd dir/file.rb\"]","out_json":"\"ruby\""}
+{"name":"line separator 2029","fn":"weaveSupportsPath","args_json":"[\"odd dir/file.rb\"]","out_json":"true"}
+{"name":"windows-looking path on posix","fn":"weaveLanguageForPath","args_json":"[\"src\\\\route.ts\"]","out_json":"\"typescript\""}
+{"name":"windows-looking path on posix","fn":"weaveSupportsPath","args_json":"[\"src\\\\route.ts\"]","out_json":"true"}
+{"name":"slash suffix","fn":"weaveLanguageForPath","args_json":"[\"src/file.ts/\"]","out_json":"\"typescript\""}
+{"name":"slash suffix","fn":"weaveSupportsPath","args_json":"[\"src/file.ts/\"]","out_json":"true"}
+{"name":"leading slash","fn":"weaveLanguageForPath","args_json":"[\"/src/file.jsx\"]","out_json":"\"javascript\""}
+{"name":"leading slash","fn":"weaveSupportsPath","args_json":"[\"/src/file.jsx\"]","out_json":"true"}
+{"name":"many dots","fn":"weaveLanguageForPath","args_json":"[\"a...b.CPP\"]","out_json":"\"cpp\""}
+{"name":"many dots","fn":"weaveSupportsPath","args_json":"[\"a...b.CPP\"]","out_json":"true"}
+{"name":"only dots","fn":"weaveLanguageForPath","args_json":"[\"...\"]","out_json":"null"}
+{"name":"only dots","fn":"weaveSupportsPath","args_json":"[\"...\"]","out_json":"false"}
+{"name":"nul before extension","fn":"weaveLanguageForPath","args_json":"[\"a\\u0000b.ts\"]","out_json":"\"typescript\""}
+{"name":"nul before extension","fn":"weaveSupportsPath","args_json":"[\"a\\u0000b.ts\"]","out_json":"true"}
+{"name":"combining mark","fn":"weaveLanguageForPath","args_json":"[\"é/näme.swift\"]","out_json":"\"swift\""}
+{"name":"combining mark","fn":"weaveSupportsPath","args_json":"[\"é/näme.swift\"]","out_json":"true"}
+{"name":"extension sh","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.sh\"]","out_json":"\"bash\""}
+{"name":"extension sh","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.sh\"]","out_json":"true"}
+{"name":"extension bash","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.bash\"]","out_json":"\"bash\""}
+{"name":"extension bash","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.bash\"]","out_json":"true"}
+{"name":"extension c","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.c\"]","out_json":"\"c\""}
+{"name":"extension c","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.c\"]","out_json":"true"}
+{"name":"extension h","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.h\"]","out_json":"\"c\""}
+{"name":"extension h","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.h\"]","out_json":"true"}
+{"name":"extension cs","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.cs\"]","out_json":"\"c_sharp\""}
+{"name":"extension cs","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.cs\"]","out_json":"true"}
+{"name":"extension cc","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.cc\"]","out_json":"\"cpp\""}
+{"name":"extension cc","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.cc\"]","out_json":"true"}
+{"name":"extension cpp","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.cpp\"]","out_json":"\"cpp\""}
+{"name":"extension cpp","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.cpp\"]","out_json":"true"}
+{"name":"extension cxx","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.cxx\"]","out_json":"\"cpp\""}
+{"name":"extension cxx","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.cxx\"]","out_json":"true"}
+{"name":"extension hpp","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.hpp\"]","out_json":"\"cpp\""}
+{"name":"extension hpp","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.hpp\"]","out_json":"true"}
+{"name":"extension hh","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.hh\"]","out_json":"\"cpp\""}
+{"name":"extension hh","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.hh\"]","out_json":"true"}
+{"name":"extension hxx","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.hxx\"]","out_json":"\"cpp\""}
+{"name":"extension hxx","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.hxx\"]","out_json":"true"}
+{"name":"extension dart","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.dart\"]","out_json":"\"dart\""}
+{"name":"extension dart","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.dart\"]","out_json":"true"}
+{"name":"extension ex","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.ex\"]","out_json":"\"elixir\""}
+{"name":"extension ex","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.ex\"]","out_json":"true"}
+{"name":"extension exs","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.exs\"]","out_json":"\"elixir\""}
+{"name":"extension exs","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.exs\"]","out_json":"true"}
+{"name":"extension erb","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.erb\"]","out_json":"\"embedded_template\""}
+{"name":"extension erb","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.erb\"]","out_json":"true"}
+{"name":"extension f","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.f\"]","out_json":"\"fortran\""}
+{"name":"extension f","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.f\"]","out_json":"true"}
+{"name":"extension for","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.for\"]","out_json":"\"fortran\""}
+{"name":"extension for","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.for\"]","out_json":"true"}
+{"name":"extension f90","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.f90\"]","out_json":"\"fortran\""}
+{"name":"extension f90","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.f90\"]","out_json":"true"}
+{"name":"extension f95","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.f95\"]","out_json":"\"fortran\""}
+{"name":"extension f95","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.f95\"]","out_json":"true"}
+{"name":"extension f03","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.f03\"]","out_json":"\"fortran\""}
+{"name":"extension f03","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.f03\"]","out_json":"true"}
+{"name":"extension go","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.go\"]","out_json":"\"go\""}
+{"name":"extension go","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.go\"]","out_json":"true"}
+{"name":"extension hcl","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.hcl\"]","out_json":"\"hcl\""}
+{"name":"extension hcl","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.hcl\"]","out_json":"true"}
+{"name":"extension tf","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.tf\"]","out_json":"\"hcl\""}
+{"name":"extension tf","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.tf\"]","out_json":"true"}
+{"name":"extension tfvars","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.tfvars\"]","out_json":"\"hcl\""}
+{"name":"extension tfvars","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.tfvars\"]","out_json":"true"}
+{"name":"extension java","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.java\"]","out_json":"\"java\""}
+{"name":"extension java","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.java\"]","out_json":"true"}
+{"name":"extension js","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.js\"]","out_json":"\"javascript\""}
+{"name":"extension js","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.js\"]","out_json":"true"}
+{"name":"extension mjs","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.mjs\"]","out_json":"\"javascript\""}
+{"name":"extension mjs","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.mjs\"]","out_json":"true"}
+{"name":"extension cjs","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.cjs\"]","out_json":"\"javascript\""}
+{"name":"extension cjs","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.cjs\"]","out_json":"true"}
+{"name":"extension jsx","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.jsx\"]","out_json":"\"javascript\""}
+{"name":"extension jsx","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.jsx\"]","out_json":"true"}
+{"name":"extension kt","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.kt\"]","out_json":"\"kotlin\""}
+{"name":"extension kt","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.kt\"]","out_json":"true"}
+{"name":"extension kts","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.kts\"]","out_json":"\"kotlin\""}
+{"name":"extension kts","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.kts\"]","out_json":"true"}
+{"name":"extension nix","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.nix\"]","out_json":"\"nix\""}
+{"name":"extension nix","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.nix\"]","out_json":"true"}
+{"name":"extension ml","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.ml\"]","out_json":"\"ocaml\""}
+{"name":"extension ml","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.ml\"]","out_json":"true"}
+{"name":"extension mli","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.mli\"]","out_json":"\"ocaml_interface\""}
+{"name":"extension mli","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.mli\"]","out_json":"true"}
+{"name":"extension pl","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.pl\"]","out_json":"\"perl\""}
+{"name":"extension pl","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.pl\"]","out_json":"true"}
+{"name":"extension pm","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.pm\"]","out_json":"\"perl\""}
+{"name":"extension pm","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.pm\"]","out_json":"true"}
+{"name":"extension php","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.php\"]","out_json":"\"php\""}
+{"name":"extension php","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.php\"]","out_json":"true"}
+{"name":"extension py","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.py\"]","out_json":"\"python\""}
+{"name":"extension py","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.py\"]","out_json":"true"}
+{"name":"extension pyi","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.pyi\"]","out_json":"\"python\""}
+{"name":"extension pyi","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.pyi\"]","out_json":"true"}
+{"name":"extension rb","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.rb\"]","out_json":"\"ruby\""}
+{"name":"extension rb","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.rb\"]","out_json":"true"}
+{"name":"extension rs","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.rs\"]","out_json":"\"rust\""}
+{"name":"extension rs","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.rs\"]","out_json":"true"}
+{"name":"extension scala","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.scala\"]","out_json":"\"scala\""}
+{"name":"extension scala","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.scala\"]","out_json":"true"}
+{"name":"extension sc","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.sc\"]","out_json":"\"scala\""}
+{"name":"extension sc","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.sc\"]","out_json":"true"}
+{"name":"extension svelte","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.svelte\"]","out_json":"\"svelte\""}
+{"name":"extension svelte","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.svelte\"]","out_json":"true"}
+{"name":"extension swift","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.swift\"]","out_json":"\"swift\""}
+{"name":"extension swift","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.swift\"]","out_json":"true"}
+{"name":"extension tsx","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.tsx\"]","out_json":"\"tsx\""}
+{"name":"extension tsx","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.tsx\"]","out_json":"true"}
+{"name":"extension ts","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.ts\"]","out_json":"\"typescript\""}
+{"name":"extension ts","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.ts\"]","out_json":"true"}
+{"name":"extension mts","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.mts\"]","out_json":"\"typescript\""}
+{"name":"extension mts","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.mts\"]","out_json":"true"}
+{"name":"extension cts","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.cts\"]","out_json":"\"typescript\""}
+{"name":"extension cts","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.cts\"]","out_json":"true"}
+{"name":"extension xml","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.xml\"]","out_json":"\"xml\""}
+{"name":"extension xml","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.xml\"]","out_json":"true"}
+{"name":"extension zig","fn":"weaveLanguageForPath","args_json":"[\"deep/nested/file.zig\"]","out_json":"\"zig\""}
+{"name":"extension zig","fn":"weaveSupportsPath","args_json":"[\"deep/nested/file.zig\"]","out_json":"true"}

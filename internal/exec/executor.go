@@ -14,7 +14,13 @@ package exec
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/plan"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // Input is one upstream result routed into a task.
@@ -23,23 +29,181 @@ import (
 // exactly the results of the nodes it declared and nothing else, so the edges
 // that were argued over during planning are the same edges that decide what an
 // agent can see.
+// Title names the producer. It is not decoration: the block these are rendered
+// into is headed "results from earlier work, which you already have and must
+// not gather again", and an untitled entry reads as an anonymous claim about
+// what has already been done.
+//
+// There was once a Summary field here as well, written by the scheduler and
+// read by nothing. It is gone rather than rendered: a field that describes an
+// input but never reaches the agent is a claim about what the agent knows that
+// is simply untrue.
 type Input struct {
 	Title     string
-	Summary   string
 	Result    string
 	Artifacts []string
+	// Whole says Result above is the producer's material and not an account of
+	// it: the files were read back and their text is in the block. It exists
+	// because the sentence under that block is an instruction either way, and
+	// the two instructions are opposites — "read them if you need the full
+	// detail" is an invitation to go and get what the leaf is already holding.
+	// False is the older and weaker claim, and is what every caller that does
+	// not set this keeps.
+	Whole bool
 }
 
 // Task is one leaf, ready to run.
 type Task struct {
-	NodeID     int
-	Title      string
-	Goal       string // the whole plan's goal, for orientation
-	Brief      string // the self-contained instruction: what the job is
-	Contract   string // the working method: how this kind of job is done well
-	Inputs     []Input
-	OutputHint string // suggested artifact path when the deliverable is a file
+	NodeID int
+	// NodeKey is the identity everything this leaf writes is filed under: its
+	// artifact bucket, its flight recorder, its spilled observations, its
+	// background job logs.
+	//
+	// It exists because NodeID is not always unique. A headless run's NodeID is
+	// its plan node's number, which is unique within the graph — that path sets
+	// nothing here and keeps the numeric spelling it has always written. The
+	// resident surface has no such number: it holds a store node, whose creation
+	// sequence belongs to the whole splice, so a four-part job handed four
+	// workers one bucket, one recorder and one set of spill names. Siblings run
+	// concurrently by construction, so that is not a naming inelegance — it is
+	// one worker's spilled observation overwritten by another's while a stub in
+	// its context still points at the file.
+	//
+	// Empty falls back to NodeID, which is what keeps every existing headless
+	// path byte-identical. See [Task.leafKey].
+	NodeKey string
+	// StoreNodeID is the durable provenance anchor used when a background job
+	// requests promotion. One-shot execution leaves it empty.
+	StoreNodeID string
+	Title       string
+	Goal        string // the whole plan's goal, for orientation
+	Brief       string // the self-contained instruction: what the job is
+	Contract    string // the working method: how this kind of job is done well
+	// Spec is the same job as the object the planner authored, carried whole.
+	// Brief and Contract above are two of its fields and remain what this
+	// executor reads; the object is here for the worker that can be handed a
+	// spec directly instead of prose reassembled at the boundary. An empty
+	// Spec renders to the empty string and changes nothing.
+	Spec   plan.Spec
+	Inputs []Input
+	// OutputHint is where a file goes if this work needs one. It is an
+	// address, never an instruction: what a leaf owes is its final message,
+	// and a path offered as though a document were expected is how a job came
+	// to leave 07-pr-482-code-review.md, 70-read-diff.md and 144-synthesis.md
+	// in a person's own directory.
+	OutputHint string
+	// Intermediate says this leaf's result is consumed by later work rather
+	// than read by the person who asked. Its handoff is its final message, so
+	// it is offered no deliverable path at all — OutputHint, when it carries
+	// anything, names the run's own scratch.
+	Intermediate bool
+	// ImagePaths are user-supplied inputs attached to the initial leaf turn.
+	ImagePaths []string
+	// DocumentPaths are user-supplied documents already staged in the
+	// workspace. The brief names them; this is the same fact in structural
+	// form, and it is what arms the document reader before turn 1 instead of
+	// making the leaf spend a turn asking for a tool it demonstrably needs.
+	DocumentPaths []string
+	// Reflex constrains the general loop to one obvious micro-action and gives
+	// it an explicit promotion verdict when the assignment is larger than it
+	// first appeared.
+	Reflex bool
+
+	// Fold says this leaf's material is entirely in Inputs above, whole, and
+	// that its job is to assemble it — so the loop runs it as a fold: one model
+	// call, and a second only if the first asked for a tool or produced nothing
+	// deliverable. See foldTurns.
+	//
+	// It is set by whatever assembled this task, from two structural facts it
+	// can check and this package cannot: that the plan gives this node nothing
+	// to go and find (plan.Folds), and that every dependency arrived pushed
+	// rather than clipped to a handle. The second is what makes the first safe —
+	// a node told to assemble material it was only handed a pointer to has to go
+	// and get it, whatever its plan says.
+	Fold bool
+
+	// Subharness names the worker this leaf was routed to. It is carried on the
+	// task rather than looked up again at dispatch because the choice was made
+	// once, upstream, and journaled: the scheduler's job is to honour it, not to
+	// re-decide it. Empty is the generalist, which is nearly every leaf.
+	Subharness string
+
+	// Steer, when set, is polled between turns for mid-flight guidance from
+	// the user. Each returned line lands in the transcript as a user message
+	// before the next model call, so a running worker can be redirected
+	// without being killed. Nil (the default, and the whole one-shot path)
+	// costs nothing.
+	Steer func() []string
+	// Share, when set, gives the worker a one-line channel to the rest of its
+	// job: a discovery about the material, a pitfall, a decision siblings must
+	// match. It is nil for a job with no siblings, so a single-worker errand
+	// never pays the schema for a channel with nobody on the other end.
+	Share func(line string) error
+	// Board is the reading side of Share: polled at the same between-turn
+	// boundary as Steer, it returns lines other workers on this job shared.
+	// They land in the transcript in their own voice, never the user's — a
+	// sibling's discovery is testimony, not instruction.
+	Board func() []string
+	// Control is polled at the same between-turn boundary as Steer. It is
+	// deliberately cooperative: a model/tool turn already in flight lands,
+	// then the claim owner releases through the store CAS path.
+	Control func() ControlAction
+
+	// Overrun is the straggler watch: the spend past which this leaf has stopped
+	// resembling anything this worker has been measured doing, and the judge to
+	// ask when it does. The threshold is derived by the caller from that
+	// worker's own profile spread (profile.Straggler), never chosen here, and
+	// nil — the value on every path that has no measurement, which is every path
+	// that existed before this — means the question is never asked and the loop
+	// runs precisely as it always has. See straggler.go.
+	Overrun *OverrunWatch
+
+	// Progress is within-node visibility: where the work has got to, said in a
+	// way that replaces the last thing it said rather than adding to it.
+	//
+	// It exists for the worker whose leaf is long and whose insides are not
+	// nodes. A linear leaf is a turn loop nobody watches and passes nil; a
+	// subharness that runs a pipeline for forty minutes would otherwise be a
+	// spinner, and the two honest alternatives to this — splicing its stages
+	// into the graph, or posting them as thread messages — are the two things
+	// docs/SUBHARNESSES.md forbids by name. phase is the coarse thing being
+	// done, done/total are a count when there is one, and latest is the short
+	// right-hand side. Nil-safe and ignored when nil, so no existing caller
+	// pays anything for it.
+	Progress func(phase string, done, total int, latest string)
+
+	// control is installed by the scheduler so its watchdog can tear down a
+	// Toolbox even when the executor goroutine itself is abandoned.
+	control *leafControl
 }
+
+// leafKey is the one place the answer to "who is this leaf, for naming
+// purposes?" is worked out, so no writer can pick a different one from a reader.
+func (t Task) leafKey() string {
+	if key := strings.TrimSpace(t.NodeKey); key != "" {
+		return key
+	}
+	return strconv.Itoa(t.NodeID)
+}
+
+// progress reports one step of within-node progress, and reports nothing at all
+// when the surface offered no channel. The nil check lives here rather than at
+// every call site because a worker that has to remember it will forget it once,
+// in the path that only runs when something has already gone wrong.
+func (t Task) progress(phase string, done, total int, latest string) {
+	if t.Progress == nil || strings.TrimSpace(phase) == "" {
+		return
+	}
+	t.Progress(phase, done, total, latest)
+}
+
+type ControlAction string
+
+const (
+	ControlNone   ControlAction = ""
+	ControlPause  ControlAction = "pause"
+	ControlCancel ControlAction = "cancel"
+)
 
 // Outcome is what came back.
 //
@@ -52,9 +216,144 @@ type Outcome struct {
 	Turns     int
 	ToolCalls int
 	Decayed   int // observations faded to stubs, a measure of how much context was reclaimed
-	Usage     Usage
-	Stop      StopReason
+	// Folded counts the leaf's own aged assistant turns retired to pointers. It
+	// is separate from Decayed because the two say different things about a run:
+	// decay means the work produced more raw material than fits, fold means the
+	// work produced more of its own prose than fits, and only the second is
+	// evidence that a leaf was talking to itself.
+	Folded int
+	// Steered counts the user's mid-flight lines this run actually read. It is
+	// the difference between a redirection delivered to a mailbox and one
+	// delivered to a mind, and it is zero on every leaf nobody steered.
+	Steered int
+	Usage   Usage
+	// PerTurn is Usage with its shape kept: one row per turn, summing to Usage
+	// exactly. See meter.go for why a summed row alone cannot answer the
+	// question anybody asks of it. Executors that do not meter turns leave it
+	// empty, which reads as "no shape recorded" rather than as a leaf with no
+	// turns.
+	PerTurn []TurnUsage
+	Stop    StopReason
+	// Exhausted is what ran out, when something did. It is separate from Stop
+	// because the two answer different questions and the common case makes them
+	// disagree: a leaf whose budget runs out is told to land, it lands, and it
+	// ends StopDone — truthfully, because it did stop asking for tools. Reading
+	// that as an ordinary finish was how the whole continuation subsystem came
+	// to be dead on its designed path, and how a truncated partial posted as a
+	// finished deliverable. Stop stays the honest answer to "how did the loop
+	// end"; Exhausted answers "was it still working when it was told to stop",
+	// which is what continuation and rating both actually need. Empty means
+	// nothing ran out.
+	Exhausted StopReason
 	Elapsed   time.Duration
+	// Mode names the shape the loop actually ran in, when it ran in one that is
+	// not the open loop. It is written so a benchmark can assert that a fold
+	// fired rather than inferring it from a turn count that any well-behaved
+	// leaf might also have produced. Empty is the ordinary loop.
+	Mode string
+	// Promote is the executor's explicit verdict that a reflex needs the normal
+	// compiled path. Text remains the useful partial discovered before stopping.
+	Promote bool
+	// ServiceRequests are live ownership leases requested through job.keep.
+	// The resident must adopt or stop every lease before settling the leaf.
+	ServiceRequests []ServiceRequest
+
+	// Verdict is the same ending seen from the other side. Stop is written for a
+	// person reading the run; Verdict is written for whatever learns from it, and
+	// the two part company in exactly the case that matters — a leaf that
+	// produced text and stopped because it was out of budget reads as "budget"
+	// and grades as a failure.
+	Verdict provider.Verdict
+
+	// Ran is the tail of what the leaf actually did: the last calls it made,
+	// in order, with the arguments clipped. ToolCalls already counted them and
+	// a count settles nothing — the question a reader of a finished job
+	// actually has is whether the check the deliverable claims to have run
+	// appears anywhere in the run. The trace file answers that too, but it is
+	// a file in the workspace holding every turn's prose; this is the same
+	// evidence in memory, bounded, and already beside the text it is used to
+	// check. It is a tail and not a transcript: absence in it is evidence, not
+	// proof, and whatever reads it must say so.
+	Ran []string
+
+	// Baseline is what was already broken before this work began: the checks
+	// that came back red, and were red in exactly the same places before the
+	// leaf touched the workspace.
+	//
+	// It exists because the delivery gate was reading a suite's absolute state
+	// as a verdict on the change, and a repository with one pre-existing red
+	// test therefore convicted every correct patch that passed through it — a
+	// measured, repeated way of throwing finished work away (audit-notes
+	// §14.4.1). A worker that can tell the difference owes the judge the
+	// difference in words, because the judge cannot rerun anything. Only a
+	// worker that actually photographs the repository before it starts fills
+	// this in; every other leaf leaves it empty, which reads as "no claim".
+	Baseline []string
+
+	// Account is the worker's structured account of the work itself: the files
+	// it changed, the checks it ran, and what each one found. See [Account] for
+	// why a leaf that reports only prose is expensive.
+	//
+	// It is a pointer and it is usually nil. Only a worker that can observe its
+	// own change set and run its own verifier has anything to put here; every
+	// other leaf leaves it unset, which reads as "no claim" — the same silence
+	// Baseline uses, and for the same reason.
+	Account *Account
+
+	// Calibration is what the worker noticed about its own fit for this job:
+	// free-text sentences, in the worker's own voice, about whether the work sat
+	// comfortably inside its envelope, under it, or at the top of it.
+	//
+	// It is deliberately prose rather than a number or an enum. The only reader
+	// is the recalibration call that rewrites a subharness's three anchor
+	// examples, and that reader is a model reading evidence — a "fit: 0.3" would
+	// have to be invented at one end and interpreted at the other, and both
+	// halves would be fiction. Nothing branches on it and nothing may; the
+	// generalist emits none of it, so every existing profile record and every
+	// existing prompt is exactly what it was.
+	//
+	// A worker writes these about ITSELF. "This sat under my envelope" is a fact
+	// this executor is uniquely placed to observe; "the other worker should have
+	// had it" is a judgement it is not, and the note says the first thing.
+	Calibration []string
+}
+
+// Calibrate appends one self-observation, ignoring the empty ones so a caller
+// can compose a note conditionally without guarding every call.
+func (o *Outcome) Calibrate(note string) {
+	if note = strings.TrimSpace(note); note != "" {
+		o.Calibration = append(o.Calibration, note)
+	}
+}
+
+// ranLimit and ranArgumentBytes bound the record. Forty calls is well past the
+// length of any single verification pass and small enough to hand to a judge
+// whole; the argument clip keeps a command recognisable without carrying a
+// pasted file into someone else's context.
+//
+// These two stay absolute where every other bound in this package became a
+// share of a window, and the exception is the reason rather than an oversight.
+// The record is not this leaf's memory — it is a fixed-size artifact handed to
+// SOMEBODY ELSE, a judge or a reconciler reading many nodes at once, and what
+// bounds it is that reader's budget rather than this worker's model. Sizing it
+// from the producer's window would let one long-context leaf eat the judge's
+// whole prompt, which is the failure a relative bound is supposed to prevent,
+// arriving from the other direction.
+const (
+	ranLimit         = 40
+	ranArgumentBytes = 200
+)
+
+// record appends one executed call to the bounded tail.
+func (o *Outcome) record(call ai.ToolCall, failed bool) {
+	line := strings.TrimSpace(call.Function.Name + " " + snip(strings.TrimSpace(call.Function.Arguments), ranArgumentBytes))
+	if failed {
+		line += "  → error"
+	}
+	o.Ran = append(o.Ran, line)
+	if len(o.Ran) > ranLimit {
+		o.Ran = o.Ran[len(o.Ran)-ranLimit:]
+	}
 }
 
 // StopReason says how the loop ended. It is recorded rather than inferred
@@ -63,12 +362,57 @@ type Outcome struct {
 type StopReason string
 
 const (
-	StopDone     StopReason = "done"     // the model stopped asking for tools
-	StopTurnCap  StopReason = "turn-cap" // ran out of iterations; a runaway backstop
-	StopBudget   StopReason = "budget"   // ran out of tokens; the leaf was too expensive
-	StopDeadline StopReason = "deadline" // ran out of wall clock
-	StopError    StopReason = "error"    // the provider failed in a way we could not absorb
+	StopDone      StopReason = "done"      // the model stopped asking for tools
+	StopTurnCap   StopReason = "turn-cap"  // ran out of iterations; a runaway backstop
+	StopBudget    StopReason = "budget"    // ran out of tokens; the leaf was too expensive
+	StopDeadline  StopReason = "deadline"  // ran out of wall clock
+	StopError     StopReason = "error"     // the provider failed in a way we could not absorb
+	StopPromote   StopReason = "promote"   // a reflex discovered that it is a job
+	StopPaused    StopReason = "paused"    // user hold observed between turns
+	StopCancelled StopReason = "cancelled" // user cancellation observed between turns
+
+	// StopEmpty is the runaway-reasoning circuit breaker: a turn that spent most
+	// of what the leaf had left and returned no visible text at all. It is
+	// separate from StopError because nothing failed — the call succeeded and
+	// was paid for in full — and separate from StopDone because nothing was
+	// produced.
+	StopEmpty StopReason = "empty"
+
+	// StopOverrun is the straggler handed back on measured evidence: this leaf
+	// ran far past what work of its kind has ever cost on this machine, a judge
+	// was shown the numbers and what it had produced, and the judge said the
+	// work should go somewhere else. It is separate from StopBudget because
+	// nothing ran out — the grant was still there and would have gone on being
+	// spent — and separate from StopError because nothing failed. See
+	// straggler.go.
+	StopOverrun StopReason = "overrun"
 )
+
+// Abandoned is the node watchdog's own ending: the executor was still inside a
+// worker that had already run past every limit it was given, and the runner
+// stopped waiting for it.
+//
+// It is a type rather than fmt.Errorf so that the fact it carries — the clock
+// ran out, nothing about the work refused — survives the trip to whoever decides
+// what happens next. A retry reading this by matching on the words "abandoned"
+// would be a second, private answer to a question the ending already answers,
+// and the first thing to go wrong with a second answer is that it disagrees.
+// The message is unchanged from the sentence this replaced.
+type Abandoned struct {
+	// After is the watchdog it outlived.
+	After time.Duration
+}
+
+func (a *Abandoned) Error() string {
+	if a == nil {
+		return ""
+	}
+	return fmt.Sprintf("executor did not return within %s; abandoned", a.After.Round(time.Second))
+}
+
+// Timeout satisfies the same interface net.Error uses, which is how a caller
+// asks "was this the clock?" without knowing which layer answered.
+func (a *Abandoned) Timeout() bool { return true }
 
 // Usage is the running cost of one task.
 type Usage struct {
@@ -93,33 +437,80 @@ func (u *Usage) merge(other Usage) {
 // leaves at once against a single executor, which is the entire point of having
 // built a graph.
 type Executor interface {
-	Skill() string
+	Subharness() string
 	Run(ctx context.Context, task Task) (*Outcome, error)
 }
 
-// Registry picks an executor by skill. Nodes carry no skill yet, so everything
-// resolves to the general loop; the lookup exists so that adding a specialised
-// worker later is a registration rather than a change to the scheduler.
+// Mutator is a worker whose product is a change to the workspace itself rather
+// than a message about it.
+//
+// It is a capability interface rather than a method on Executor because it is a
+// fact about a minority of workers and every reader of it is optional: a build
+// with only the generalist answers no to everything here and behaves exactly as
+// it did. The distinction it draws is the one that decides whether a second
+// attempt at a leaf is worth anything. A worker that produces prose can always
+// produce better prose by being run again; a worker that produces a diff, whose
+// diff has already landed and whose checks are already green, cannot — running
+// it again re-executes a whole pipeline against a tree where the work is
+// finished, which was measured at 23 model calls, zero edits and 80% of the
+// leaf's spend.
+//
+// It is deliberately not "is this the swe worker": nothing here names a
+// subharness, so a second mutating worker is a registration and not an edit to
+// the repair path.
+type Mutator interface {
+	// Mutates reports that this worker's deliverable is a change to the
+	// workspace. It is a property of the worker and never of one run.
+	Mutates() bool
+}
+
+// Mutates asks the question of any executor, including the ones that have never
+// heard of it. Nil and non-mutating both answer false.
+func Mutates(executor Executor) bool {
+	mutator, ok := executor.(Mutator)
+	return ok && mutator.Mutates()
+}
+
+// Registry picks an executor by subharness. Nearly every node carries none and
+// resolves to the general loop; the lookup is what makes adding a specialised
+// worker a registration rather than a change to the scheduler.
 type Registry struct {
 	executors map[string]Executor
 	fallback  Executor
 }
 
 func NewRegistry(fallback Executor) *Registry {
-	return &Registry{executors: map[string]Executor{fallback.Skill(): fallback}, fallback: fallback}
+	return &Registry{executors: map[string]Executor{fallback.Subharness(): fallback}, fallback: fallback}
 }
 
 // Register adds a specialised executor.
-func (r *Registry) Register(executor Executor) { r.executors[executor.Skill()] = executor }
+func (r *Registry) Register(executor Executor) { r.executors[executor.Subharness()] = executor }
 
-// For returns the executor for a skill, falling back to the general one. An
-// unknown skill is served rather than refused: a plan that asks for a worker we
-// do not have should still get its work done by the generalist.
-func (r *Registry) For(skill string) Executor {
-	if executor, ok := r.executors[skill]; ok {
+// For returns the executor for a subharness, falling back to the general one.
+// An unknown name is served rather than refused: a plan that asks for a worker
+// we do not have should still get its work done by the generalist.
+func (r *Registry) For(subharness string) Executor {
+	if executor, ok := r.executors[subharness]; ok {
 		return executor
 	}
 	return r.fallback
+}
+
+// Overran reports that the leaf still had work in hand when its resources ran
+// out — the condition the continuation subsystem exists for. It reads both
+// fields because a leaf can arrive here two ways: cut off outright (Stop), or
+// told to land and complying (Exhausted). Only the resource endings count; a
+// deadline is a fact about the clock rather than about work left undone, and a
+// user pause or cancel is a decision rather than an overrun.
+//
+// A judged hand-back counts. The straggler was still working when it was told
+// to land — that is the entire finding against it — so the question "is there
+// work left here" is exactly the question the continuation subsystem exists to
+// answer about it, and answering it is the "divide" arm of the judgement the
+// hand-back was made to reach.
+func (o *Outcome) Overran() bool {
+	return o.Stop == StopBudget || o.Stop == StopTurnCap || o.Stop == StopOverrun ||
+		o.Exhausted == StopBudget || o.Exhausted == StopOverrun
 }
 
 func (o *Outcome) String() string {

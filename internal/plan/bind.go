@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -147,16 +150,15 @@ type bindResult struct {
 // bindApply, which the builder runs serially — the sizing pass copies nodes
 // while binding is in flight, and interleaved writes were a data race.
 func Bind(ctx context.Context, client Completer, graph *Graph) (Usage, error) {
-	return bindApply(graph, bindGather(ctx, client, graph))
+	return bindApply(graph, bindGather(ctx, client, graph, graph.planBlock()))
 }
 
-// bindGather renders the catalog and runs every stage's call. It never writes
-// to the graph.
-func bindGather(ctx context.Context, client Completer, graph *Graph) []bindResult {
+// bindGather runs every stage's call against a catalog block the caller has
+// already rendered. It never writes to the graph.
+func bindGather(ctx context.Context, client Completer, graph *Graph, shared string) []bindResult {
 	if len(graph.Stages) == 0 || len(graph.Nodes) < 2 {
 		return nil
 	}
-	shared := graph.context() + "\nEvery node in the plan:\n" + graph.catalog()
 
 	results := make([]bindResult, len(graph.Stages))
 	var group sync.WaitGroup
@@ -167,6 +169,14 @@ func bindGather(ctx context.Context, client Completer, graph *Graph) []bindResul
 		group.Add(1)
 		go func(stage int) {
 			defer group.Done()
+			// asked stays true: the stage was called, and a fault is how that
+			// call ended. It reaches bindApply as a failure, which leaves the
+			// stage unbound rather than silently claiming it had no edges.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					results[stage-1] = bindResult{asked: true, err: guard.Note(fmt.Sprintf("plan/bind stage %d", stage), recovered)}
+				}
+			}()
 			reply, usage, err := bindStage(ctx, client, shared, graph, stage)
 			results[stage-1] = bindResult{asked: true, reply: reply, usage: usage, err: err}
 		}(stage)
@@ -226,24 +236,52 @@ func worthBinding(graph *Graph, stage int) bool {
 }
 
 func bindStage(ctx context.Context, client Completer, shared string, graph *Graph, stage int) (bindReply, *ai.Usage, error) {
-	var targets string
+	ctx = provider.WithCall(ctx, provider.ClassPlanBind)
+	var targets strings.Builder
 	for _, node := range graph.Nodes {
 		if node.Stage == stage {
-			targets += fmt.Sprintf("%d. %s — %s\n", node.ID, node.Title, node.Summary)
+			fmt.Fprintf(&targets, "%d. %s — %s\n", node.ID, node.Title, node.Summary)
 		}
 	}
 	messages := []ai.Message{
 		systemMessage(bindPrompt),
 		userMessage(shared),
-		userMessage(fmt.Sprintf("For each of these stage %d nodes, list what it must wait for:\n%s", stage, targets)),
-	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(bindSchema))
-	if err != nil {
-		return bindReply{}, nil, fmt.Errorf("bind stage %d: %w", stage, err)
+		userMessage(fmt.Sprintf("For each of these stage %d nodes, list what it must wait for:\n%s", stage, targets.String())),
 	}
 	var reply bindReply
-	if err := decodeJSON(response.Text(), &reply); err != nil {
-		return bindReply{}, usageOf(response), annotate(fmt.Errorf("bind stage %d: %w", stage, err), response)
+	response, err := structured(ctx, client, messages, bindSchema, &reply)
+	if err != nil {
+		return bindReply{}, usageOf(response), fmt.Errorf("bind stage %d: %w", stage, err)
 	}
+	// An id nobody has heard of is the bind pass's characteristic failure: the
+	// catalog is long, the answer is numbers, and a model that has lost track
+	// invents them. setNeeds drops those edges silently, which is right for the
+	// graph and wrong for the record — so the reply is checked here, where the
+	// difference between "this plan needs no edges" and "this model could not
+	// read the catalog" is still visible.
+	if bindNamesUnknownNodes(graph, reply) {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return reply, usageOf(response), nil
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return reply, usageOf(response), nil
+}
+
+func bindNamesUnknownNodes(graph *Graph, reply bindReply) bool {
+	for _, entry := range reply.Bindings {
+		if graph.Node(entry.Node) == nil {
+			return true
+		}
+		for _, need := range entry.Needs {
+			if graph.Node(need) == nil {
+				return true
+			}
+		}
+	}
+	for _, duplicate := range reply.Duplicates {
+		if graph.Node(duplicate.Node) == nil || graph.Node(duplicate.SameAs) == nil {
+			return true
+		}
+	}
+	return false
 }

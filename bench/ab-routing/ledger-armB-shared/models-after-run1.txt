@@ -1,0 +1,20 @@
+panel:
+  google/gemma-3-12b-it  (base)  $0.150/M out
+  ~deepseek/deepseek-v4-flash-latest  (mid)  $0.180/M out
+  qwen/qwen3-30b-a3b-instruct-2507  (base)  $0.193/M out
+  z-ai/glm-4.7-flash  (base)  $0.400/M out
+  moonshotai/kimi-k2.6  (top)  $2.480/M out
+
+resolved:
+  ~deepseek/deepseek-v4-flash-latest           → deepseek/deepseek-v4-flash-0731
+
+  class            model                                         rating p(pass)      n
+  plan.ensemble    deepseek/deepseek-v4-flash-0731                +0.30    0.57      1
+  plan.expand      deepseek/deepseek-v4-flash-0731                +0.53    0.63      2
+  plan.fanout      deepseek/deepseek-v4-flash-0731                +0.30    0.57      1
+  plan.ground      deepseek/deepseek-v4-flash-0731                +0.30    0.57      1
+  plan.size        deepseek/deepseek-v4-flash-0731                +0.30    0.57      1
+  plan.spine       deepseek/deepseek-v4-flash-0731                +0.71    0.67      3
+
+  rating is a Rasch ability in logits, comparable only within a class.
+  p(pass) is that rating against an average call of the class.

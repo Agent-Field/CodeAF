@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -30,8 +32,34 @@ const spinePrompt = `You break a goal into its ordered stages.
 ` + agentPremise + `
 
 A stage boundary is a hard gate: nothing in the next stage can begin until this
-stage's output exists. If two stages could run at the same time, they are one
-stage.
+stage's output exists. But a gate is not merely "B reads A's output" — a
+single agent reads its own files sequentially all the time, and that sequence
+lives inside one stage, not between two. A gate exists only when the work in
+the later stage would otherwise run at the same time as the earlier stage —
+the gate is what serialises work that would otherwise be concurrent. If the
+two could not run in parallel even without the gate, they are one stage.
+
+Three things and only three things make a real gate. Separate stages require
+at least one:
+1. Parallelism that would otherwise be serialized: the earlier stage and the
+   later stage are genuinely independent workers, and the only thing keeping
+   the later one from starting is that it needs the earlier one's output.
+   Without the gate they would race; the gate makes the race a handoff. The
+   parallelism must be worth its price: every worker pays a fixed cost of
+   orientation and setup before it produces anything, so work whose parts are
+   each smaller than that fixed cost is cheaper inside one worker, not spread
+   across several. Parallel units that one agent could finish in a single
+   sitting are not a reason for stages.
+2. Worker isolation: the later stage needs a different workspace, harness, or
+   set of skills than the earlier one — a setup change that cannot happen
+   inside one agent's turn loop.
+3. Context-window pressure: the work is too large for one worker to hold in
+   its context at once, and splitting it into stages keeps each worker's
+   context bounded.
+
+A single agent working through its own files in sequence meets none of these.
+The sequence is inside the worker, not between workers, and serialising it
+into stages adds barriers without buying any concurrency. That is one stage.
 
 Every stage you add makes the whole goal slower, because stages run one after
 another. Use the fewest that are genuinely gated: 1 to 4.
@@ -41,10 +69,31 @@ could be worked on at the same time, or when it is small enough that one agent
 finishes it in a single pass. That is a correct and common answer, not a
 failure to decompose.
 
+A goal that bundles several requests which do not feed each other is that
+single-stage case in disguise, and it is the one most often missed: the order
+they were listed in is the order they were spoken in, never a gate. Do not lay
+them out as stages — laying a bundle end to end makes every request wait for
+strangers. They are one stage, they divide into parts there, and they run at
+the same time. A stage exists where one of the three gates above fires, and
+nowhere else.
+
+One request among several is the exception, and missing it is the worse of the
+two mistakes: the request whose own job is to work over what the others produce
+— to assemble them, compare them, weigh them against each other, or write them
+up as a single thing. It cannot begin before they have finished, and the
+others are genuinely independent workers that would run at the same time
+without it. Put it in a stage of its own behind them; left beside them it
+starts against the very material it exists to consume, and produces that
+material itself rather than wait. That is the only reason requests spoken in
+one breath ever need a second stage.
+
+
 Do not add a final merge, synthesis, or summary stage. That is added
 automatically after you.
 
-` + titleRule
+` + titleRule + `
+
+` + proportionRule
 
 var spineSchema = json.RawMessage(`{
   "type": "object",
@@ -91,7 +140,24 @@ type SpineChoice struct {
 // cent. Selection is done in code rather than by a judge call precisely to keep
 // it that way: a judge would add a serial round to the one path that has no
 // other serial work to hide behind.
-func Spine(ctx context.Context, client Completer, goal string, samples int) (*SpineChoice, Usage, error) {
+//
+// The terrain is handed in beside the goal because the stage count is a
+// judgment about the work, and what is already on disk is half of that judgment:
+// a goal whose first stage is "gather the responses" is one stage shorter when
+// the responses are sitting in the workspace already. Like grounding, this runs
+// before there is a graph to read a preamble from, so it takes the snapshot
+// directly. Empty leaves the prompt exactly as it was.
+// The requests the ask was read as containing travel beside the terrain and for
+// the same reason. The stage count is a judgment about the work, and how the
+// person divided their own ask is part of that judgment: several requests that
+// do not feed each other are one stage, and one request written over what the
+// others produce is the second. Nothing here decides which; the block says what
+// was asked and the model reads it. Empty leaves the prompt exactly as it was.
+func Spine(ctx context.Context, client Completer, goal, terrain string, asked []string, samples int) (*SpineChoice, Usage, error) {
+	return spineWithProgress(ctx, client, goal, terrain, asked, samples, nil)
+}
+
+func spineWithProgress(ctx context.Context, client Completer, goal, terrain string, asked []string, samples int, progress Progress) (*SpineChoice, Usage, error) {
 	goal = strings.TrimSpace(goal)
 	if goal == "" {
 		return nil, Usage{}, errors.New("goal is required")
@@ -107,12 +173,40 @@ func Spine(ctx context.Context, client Completer, goal string, samples int) (*Sp
 	}
 	results := make([]result, samples)
 	var group sync.WaitGroup
+	var progressMutex sync.Mutex
+	completed := 0
 	for index := 0; index < samples; index++ {
 		group.Add(1)
 		go func(index int) {
 			defer group.Done()
-			stages, usage, err := spineOnce(ctx, client, goal)
+			// One faulted sample is one fewer candidate, which is the shape the
+			// selection below already handles: it chooses among what came back
+			// and reports the failures with the rest. A sample that already
+			// landed keeps its slot — the only thing after it is the progress
+			// tick, and a caller's callback must not cost a good spine.
+			landed := false
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					fault := guard.Note(fmt.Sprintf("plan/spine sample %d", index+1), recovered)
+					if !landed {
+						results[index] = result{err: fault}
+					}
+				}
+			}()
+			stages, usage, err := spineOnce(ctx, client, goal, terrain, asked)
 			results[index] = result{stages: stages, usage: usage, err: err}
+			landed = true
+			if progress != nil && samples > 1 {
+				// The unlock is deferred because emitProgress runs the caller's
+				// callback: a fault inside it would otherwise leave this mutex
+				// held and every other sample parked on it forever.
+				func() {
+					progressMutex.Lock()
+					defer progressMutex.Unlock()
+					completed++
+					emitProgress(progress, "spine", fmt.Sprintf("sample %d/%d", completed, samples), "")
+				}()
+			}
 		}(index)
 	}
 	group.Wait()
@@ -211,20 +305,18 @@ func vocabulary(stages []Stage) map[string]bool {
 	return words
 }
 
-func spineOnce(ctx context.Context, client Completer, goal string) ([]Stage, *ai.Usage, error) {
+func spineOnce(ctx context.Context, client Completer, goal, terrain string, asked []string) ([]Stage, *ai.Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanSpine)
 	messages := []ai.Message{
 		systemMessage(spinePrompt),
-		userMessage("Goal:\n" + goal),
-	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(spineSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("spine: %w", err)
+		userMessage(goalBlock(goal, terrain, asked)),
 	}
 	var decoded struct {
 		Stages []Stage `json:"stages"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("spine: %w", err), response)
+	response, err := structured(ctx, client, messages, spineSchema, &decoded)
+	if err != nil {
+		return nil, usageOf(response), fmt.Errorf("spine: %w", err)
 	}
 	stages := make([]Stage, 0, len(decoded.Stages))
 	for _, stage := range decoded.Stages {
@@ -236,8 +328,13 @@ func spineOnce(ctx context.Context, client Completer, goal string) ([]Stage, *ai
 		stages = append(stages, stage)
 	}
 	if len(stages) == 0 {
+		// Schema-valid and useless: the reply parsed, so nothing upstream of here
+		// could have caught it. This is the semantic half of verification and the
+		// only place it can be observed.
+		provider.Report(ctx, provider.VerdictSemanticFailure)
 		return nil, usageOf(response), annotate(errors.New("spine: no stages returned"), response)
 	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
 	return stages, usageOf(response), nil
 }
 

@@ -1,0 +1,8 @@
+[codeaf]·portfolio:·up·to·2·attempts,·mode=ladder·(cheapest-first·escalation),·luby·budgets·[1,1],·dir=<workspace>
+[codeaf]·portfolio:·attempt·a·launching·[cheap]·(CoW·clone·at·<workspace>.portfolio/a)
+[codeaf]·portfolio:·attempt·a·exited·code=0·in·1.5s
+[codeaf]·portfolio:·attempt·a·did·not·pass·(gate=fail,·blockers=1)·—·escalating·to·attempt·b
+[codeaf]·portfolio:·attempt·b·launching·[hard]·(CoW·clone·at·<workspace>.portfolio/b)
+[codeaf]·portfolio:·attempt·b·exited·code=0·in·2.5s
+[codeaf]·reconcile:·skipped·—·winner·dominates·on·coverage·—·no·loser·covers·a·clause·it·lacks
+[codeaf]·portfolio:·2·attempt(s)·launched;·at·least·one·PASSED

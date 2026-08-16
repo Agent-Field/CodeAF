@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -25,6 +27,16 @@ import (
 // "Find defects" as four dependency-free parts. Phases are not independent;
 // they are one node's internal shape, and the only correct answer for them is
 // to leave the procedure whole.
+//
+// The grain paragraph is the guard against the opposite failure, which is what
+// the width-2 incident was: a stage whose material already enumerated its units
+// was halved into two parts that were each handed the entire enumeration, so
+// both did the whole job, the person paid for it twice, and the wait was longer
+// than one agent's. Coarse halving is what a model reaches for when nothing
+// tells it where the seams are; the seams were already in the material. So the
+// rule is stated as a reading of the inputs rather than as a number — follow the
+// enumeration the material presents, and leave whole what it does not present
+// as standing apart.
 const fanoutPrompt = `You list the parts of one stage that all run at the same time.
 
 ` + agentPremise + `
@@ -62,10 +74,39 @@ writes down what the others would otherwise each have to rediscover, so five
 siblings do not each re-read the same material. Do not invent one where nothing
 shared is actually changed; most stages have no such part.
 
+Let the material set the width. Where the work to be done is already enumerated —
+the goal names the units, a finished dependency's result names them, the sources
+name them — that enumeration is the split, and the parts follow it: one unit
+each, or one batch of them each when the units outnumber the parts you are
+allowed below, batched evenly so no part carries the set. Do not replace an
+enumeration the material already made with a coarser
+one of your own, and never write two parts that would each cover the same set:
+both would do all of it, so the person pays for the whole job twice and waits
+longer than for one agent. Every part names the units it owns and no others,
+which is also what keeps its context small — each part is told about its own
+units and not the rest, so units taken many-wide cost close to what one agent's
+single pass over all of them would have cost, and the person waits for one
+unit's work instead of all of them in turn.
+
+The same reading is the counterweight, and it points the other way just as
+often: units the material does not present as standing apart are not made
+independent by being separated. Where finishing one piece needs what another
+piece would have found, or where the answer depends on holding the whole set
+together, the enumeration is not a split and the work stays whole.
+
 Default to fewer parts. Only split out a part when you can say what makes it
 doable by an agent that knows nothing about the others. Give 1 to 5 parts, and
 return a single part when the stage is genuinely one piece of work — that is a
 correct answer, not a failure to decompose.
+
+Every part costs a worker, and a worker is not free: each one pays its own
+orientation, setup and delivery before it produces anything, whatever the size
+of the unit it was handed. Weigh the split against that fixed cost. Units one
+agent could finish in a single short sitting — a few small files, a handful of
+short pieces, one pass over material that fits in one context — do not earn
+their own workers: batch them into one part, or leave the stage whole. Split
+only when the parts are each substantial enough that doing them at the same
+time repays several workers' fixed costs in the time it saves.
 
 When the goal names one final deliverable — a file, a report, a document — no
 part of this stage produces it. The parts produce the material it is made of;
@@ -84,7 +125,9 @@ whatever this particular work actually involves. Name them concretely: "each of
 the four venue websites", "the parser and its tests", not "research" or "the
 code". List every one, however many that is. Do not round the list down to look
 tidy: it is used to judge how big the part really is, and an honest long list is
-more useful than a short one.`
+more useful than a short one.
+
+` + proportionRule
 
 var fanoutSchema = json.RawMessage(`{
   "type": "object",
@@ -107,17 +150,35 @@ var fanoutSchema = json.RawMessage(`{
   "additionalProperties": false
 }`)
 
+// stageResult carries the stage's accounting as a plan Usage rather than one
+// response's, because a stage may now cost two calls: the acceptance check
+// below buys one free retry, and a slot that could only hold one response would
+// have billed the second to nobody.
 type stageResult struct {
 	nodes []Node
-	usage *ai.Usage
+	usage Usage
 	err   error
 }
 
-// FanOut expands every stage at once. Each call carries the same frozen prefix —
-// goal plus the whole spine — so the varying part is a single line, which is
-// both the cheapest shape to generate and the friendliest to a prefix cache.
+// FanOut expands every stage at once, with no enumeration in force. It is the
+// call a caller with no grounding to hand over makes.
 func FanOut(ctx context.Context, client Completer, premise string, stages []Stage) ([]Node, Usage, error) {
+	return FanOutWith(ctx, client, premise, stages, nil)
+}
+
+// FanOutWith expands every stage at once. Each call carries the same frozen
+// prefix — goal plus the whole spine — so the varying part is a single line,
+// which is both the cheapest shape to generate and the friendliest to a prefix
+// cache.
+//
+// The settlements travel with it because the acceptance check below is keyed on
+// them and on nothing else. A stage split under a bound enumeration owes one
+// unit per part; a stage split under none owes nothing of the kind, and the
+// check does not run. The list is read, never rendered — the premise already
+// carries the settled block, and re-rendering it here would move the prefix.
+func FanOutWith(ctx context.Context, client Completer, premise string, stages []Stage, settled []Settlement) ([]Node, Usage, error) {
 	shared := premise + "\nThe full stage sequence:\n" + spineBlock(stages)
+	enumerated := Enumerated(settled)
 
 	results := make([]stageResult, len(stages))
 	var group sync.WaitGroup
@@ -125,7 +186,23 @@ func FanOut(ctx context.Context, client Completer, premise string, stages []Stag
 		group.Add(1)
 		go func(index int, stage Stage) {
 			defer group.Done()
-			nodes, usage, err := fanOutStage(ctx, client, shared, index+1, stage)
+			// A faulting stage fills its own slot before Done runs, so the
+			// collector below reads a failed stage rather than an empty one and
+			// the other stages still land.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					// The call is still counted. A stage that faulted may have
+					// spent one anyway, and a plan that quietly dropped it from
+					// the accounting would understate itself — which is the same
+					// reason Usage.Add counts a response the provider was quiet
+					// about.
+					results[index] = stageResult{
+						usage: Usage{Calls: 1},
+						err:   guard.Note(fmt.Sprintf("plan/fanout stage %d", index+1), recovered),
+					}
+				}
+			}()
+			nodes, usage, err := fanOutStage(ctx, client, shared, index+1, stage, enumerated)
 			results[index] = stageResult{nodes: nodes, usage: usage, err: err}
 		}(index, stage)
 	}
@@ -135,7 +212,7 @@ func FanOut(ctx context.Context, client Completer, premise string, stages []Stag
 	var nodes []Node
 	var failures []error
 	for _, result := range results {
-		usage.Add(result.usage)
+		usage.merge(result.usage)
 		if result.err != nil {
 			failures = append(failures, result.err)
 			continue
@@ -145,24 +222,58 @@ func FanOut(ctx context.Context, client Completer, premise string, stages []Stag
 	return nodes, usage, joinErrors(failures)
 }
 
-func fanOutStage(ctx context.Context, client Completer, shared string, stage int, definition Stage) ([]Node, *ai.Usage, error) {
+func fanOutStage(ctx context.Context, client Completer, shared string, stage int, definition Stage, enumerated bool) ([]Node, Usage, error) {
+	ctx = provider.WithCall(ctx, provider.ClassPlanFanOut)
 	messages := []ai.Message{
 		systemMessage(fanoutPrompt),
 		userMessage(shared),
 		userMessage(fmt.Sprintf("List the simultaneous parts of stage %d, %q: %s", stage, definition.Title, definition.Summary)),
 	}
-	response, err := client.CompleteWithMessages(ctx, messages, ai.WithSchema(fanoutSchema))
-	if err != nil {
-		return nil, nil, fmt.Errorf("fan-out stage %d: %w", stage, err)
-	}
 	var decoded struct {
 		Parts []Node `json:"parts"`
 	}
-	if err := decodeJSON(response.Text(), &decoded); err != nil {
-		return nil, usageOf(response), annotate(fmt.Errorf("fan-out stage %d: %w", stage, err), response)
+	var usage Usage
+	response, err := structured(ctx, client, messages, fanoutSchema, &decoded)
+	usage.Add(usageOf(response))
+	if err != nil {
+		return nil, usage, fmt.Errorf("fan-out stage %d: %w", stage, err)
 	}
-	nodes := make([]Node, 0, len(decoded.Parts))
-	for _, node := range decoded.Parts {
+	nodes := fanOutNodes(stage, decoded.Parts)
+	if len(nodes) == 0 {
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return nil, usage, annotate(fmt.Errorf("fan-out stage %d: no parts returned", stage), response)
+	}
+	if refusal := worthSplitting(nodes, enumerated); refusal != "" {
+		// One free retry, on the same bytes, for the same reason the ground pass
+		// retries: a split that names no units is a miss rather than a position,
+		// and asking the same question twice is cheaper than running the parts.
+		var again struct {
+			Parts []Node `json:"parts"`
+		}
+		retry, retryErr := structured(ctx, client, messages, fanoutSchema, &again)
+		usage.Add(usageOf(retry))
+		if retryErr == nil {
+			if retried := fanOutNodes(stage, again.Parts); len(retried) > 0 && worthSplitting(retried, enumerated) == "" {
+				provider.Report(ctx, provider.VerdictVerifiedSuccess)
+				return retried, usage, nil
+			}
+		}
+		// Refused twice. The parts are collapsed back into the one stage they
+		// were always a restatement of, which is the answer the prompt itself
+		// calls correct — "return a single part when the stage is genuinely one
+		// piece of work". Running them instead is what produced six identical
+		// briefs, six workers and one job's worth of work done six times.
+		provider.Report(ctx, provider.VerdictSemanticFailure)
+		return []Node{wholeStage(stage, definition, nodes)}, usage, nil
+	}
+	provider.Report(ctx, provider.VerdictVerifiedSuccess)
+	return nodes, usage, nil
+}
+
+// fanOutNodes normalises one reply's parts into work nodes.
+func fanOutNodes(stage int, parts []Node) []Node {
+	nodes := make([]Node, 0, len(parts))
+	for _, node := range parts {
 		node.Stage = stage
 		node.Title = trim(node.Title)
 		node.Summary = trim(node.Summary)
@@ -174,10 +285,73 @@ func fanOutStage(ctx context.Context, client Completer, shared string, stage int
 		}
 		nodes = append(nodes, node)
 	}
-	if len(nodes) == 0 {
-		return nil, usageOf(response), annotate(fmt.Errorf("fan-out stage %d: no parts returned", stage), response)
+	return nodes
+}
+
+// worthSplitting is worthKeeping's shape at the other place work gets divided,
+// and it is here because the two checks were never wired to the same door. The
+// expansion path has refused splits that claim no difference since it existed;
+// the fan-out path — which produces most of the leaves in most plans — accepted
+// anything with a title, and a six-vendor stage came back as six parts that
+// named no vendor at all. Three of the six briefs then invented the same vendor.
+//
+// It is keyed on the enumeration and runs nowhere else. Where the material bound
+// a variable to several values, the prompt's own law is already exact — "Every
+// part names the units it owns and no others" — so a multi-part split owes a
+// reference per part, and two parts referencing the same unit are two parts
+// doing the same job. Where nothing was enumerated there is no reference to
+// check against and the check is silent, which is why an ordinary goal pays it
+// nothing.
+//
+// It names no unit itself, reads no text and calls no model: it is a predicate
+// over the source lists the schema already required.
+func worthSplitting(parts []Node, enumerated bool) string {
+	if !enumerated || len(parts) < 2 {
+		return ""
 	}
-	return nodes, usageOf(response), nil
+	seen := map[string]int{}
+	for index, part := range parts {
+		if len(part.Sources) == 0 {
+			return fmt.Sprintf("part %d names no unit it owns", index+1)
+		}
+		for _, source := range part.Sources {
+			key := squash(source)
+			if key == "" {
+				continue
+			}
+			if owner, taken := seen[key]; taken && owner != index {
+				return fmt.Sprintf("parts %d and %d both own %q", owner+1, index+1, source)
+			}
+			seen[key] = index
+		}
+	}
+	return ""
+}
+
+// wholeStage is the stage left whole: one part, the stage's own title and
+// summary, carrying every unit the refused split named between its parts. The
+// units are kept because they are the honest touch-list of the work either way,
+// and losing them would make the undivided node look smaller than it is.
+func wholeStage(stage int, definition Stage, refused []Node) Node {
+	sources := make([]string, 0)
+	seen := map[string]bool{}
+	for _, part := range refused {
+		for _, source := range part.Sources {
+			if key := squash(source); key != "" && !seen[key] {
+				seen[key] = true
+				sources = append(sources, source)
+			}
+		}
+	}
+	return Node{
+		Stage:     stage,
+		Title:     trim(definition.Title),
+		Summary:   trim(definition.Summary),
+		Sources:   sources,
+		State:     StatePending,
+		Kind:      KindWork,
+		Undivided: RefusalSameAnswer,
+	}
 }
 
 func spineBlock(stages []Stage) string {
@@ -188,9 +362,16 @@ func spineBlock(stages []Stage) string {
 	return block
 }
 
-// cleanStrings normalises the source list. An empty list is meaningful — it
-// says the node touches nothing external — so it is preserved rather than
-// treated as missing data.
+// cleanStrings normalises a string list, dropping the blanks.
+//
+// The empty result is preserved rather than reported, because this function
+// cannot tell the two things it would mean apart. For a long time the comment
+// here said an empty source list "says the node touches nothing external", and
+// that rationalisation was load-bearing: it is why six parts of an enumerated
+// stage, none of which named a single unit, were accepted as six independent
+// subjects. An empty list means either "nothing to touch" or "the reply named
+// nothing", and only a caller that knows whether a reference was owed can say
+// which — see worthSplitting, which is that caller.
 func cleanStrings(values []string) []string {
 	kept := make([]string, 0, len(values))
 	for _, value := range values {

@@ -1,0 +1,5 @@
+__pycache__/
+# The raw catalog is ~520 KB and is refetched by `build_panel.py --refresh`.
+# Everything the panel selection depended on is copied into panel.json, which
+# is committed, so the choice stays auditable without carrying the blob.
+data/catalog.json

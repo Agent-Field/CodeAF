@@ -1,0 +1,70 @@
+{
+  "entries": [
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "exec.leaf",
+      "rating": -0.982031909746548,
+      "count": 5,
+      "updated": "2026-08-05T23:11:50.142719Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.audit",
+      "rating": 1.3246587815990902,
+      "count": 12,
+      "updated": "2026-08-05T23:15:51.617743Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.bind",
+      "rating": 1.735043914543864,
+      "count": 17,
+      "updated": "2026-08-05T23:15:45.970402Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.ensemble",
+      "rating": 1.6159408965582374,
+      "count": 14,
+      "updated": "2026-08-06T01:40:19.777063Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.expand",
+      "rating": 2.311311885668817,
+      "count": 48,
+      "updated": "2026-08-05T23:15:59.192262Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.fanout",
+      "rating": 1.7597662386914452,
+      "count": 23,
+      "updated": "2026-08-05T23:15:44.718485Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.ground",
+      "rating": 1.6159408965582374,
+      "count": 14,
+      "updated": "2026-08-06T01:40:04.228277Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.size",
+      "rating": 1.888784813165029,
+      "count": 22,
+      "updated": "2026-08-05T23:15:47.140206Z"
+    },
+    {
+      "model": "deepseek/deepseek-v4-flash-0731",
+      "class": "plan.spine",
+      "rating": 2.244051970846797,
+      "count": 42,
+      "updated": "2026-08-06T01:40:09.19547Z"
+    }
+  ],
+  "aliases": {
+    "~deepseek/deepseek-v4-flash-latest": "deepseek/deepseek-v4-flash-0731"
+  }
+}
