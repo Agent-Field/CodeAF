@@ -1,11 +1,11 @@
 package tui3
 
 import (
-	"strings"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
