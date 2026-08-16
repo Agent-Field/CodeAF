@@ -19,14 +19,15 @@ import (
 // AgentField SDK client takes, plus the two resolvers that let the adapter
 // decide a request's economics without ever performing I/O on the hot path.
 type Config struct {
-	APIKey      string
-	BaseURL     string
-	Model       string
-	Temperature float64
-	MaxTokens   int
-	Timeout     time.Duration
-	SiteURL     string
-	SiteName    string
+	APIKey         string
+	BaseURL        string
+	Model          string
+	Temperature    float64
+	MaxTokens      int
+	Timeout        time.Duration
+	SiteURL        string
+	SiteName       string
+	SiteCategories string
 
 	// SupportsParameter answers "does this model accept this request field?"
 	// from data already in memory. It must not block or perform I/O; an unknown
