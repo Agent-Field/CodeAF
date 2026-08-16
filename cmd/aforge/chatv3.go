@@ -30,8 +30,25 @@ import (
 // residency and starts no runner — the tasker attaches later (docs/CHAT-V3.md
 // milestone V3-1), and until it does, pretending to boot it would only buy the
 // person a slower start and a rail full of nothing.
-func runChatV3(args []string) error {
-	flags := flag.NewFlagSet("chat", flag.ContinueOnError)
+func runChatV3(args []string) error { return openChatV3("chat", args, false) }
+
+// runResumeV3 is `aforge resume`: the same door, opened on the session picker.
+//
+// It is one word rather than a flag on chat because it is what a person is
+// doing when they type it — coming back to a conversation, not starting one —
+// and it takes chat's flags for the same reason: the session it opens is a chat
+// session, and a model or a reasoning level named on the way in is named about
+// that.
+//
+// IT DOES NOT RESUME ANYTHING BY ITSELF. The surface opens exactly as `aforge`
+// bare does, on this directory's most recent conversation, with the picker over
+// it — so esc lands where the person would have been anyway, and enter lands
+// where they asked to be. A launcher that opened on an empty session instead
+// would make "resume" the one command that can leave you with nothing.
+func runResumeV3(args []string) error { return openChatV3("resume", args, true) }
+
+func openChatV3(name string, args []string, pickSession bool) error {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	model := flags.String("model", "", "model slug for this session; beats the configured default")
 	once := flags.String("once", "", "run one message non-interactively, print the reply, and exit")
 	file := flags.String("session", "", "session transcript to resume; empty resumes this directory's most recent")
@@ -44,7 +61,19 @@ func runChatV3(args []string) error {
 		return err
 	}
 	if flags.NArg() != 0 {
+		// Resume's usage names no --once and no --session: it opens a list of
+		// the sessions there ARE, so naming one on the command line is the other
+		// door, and nobody is watching a headless one.
+		if pickSession {
+			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--no-compact] [--yolo]`)
+		}
 		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--once "text"] [--no-compact] [--yolo]`)
+	}
+	// A picker with nobody watching is not a picker. --once is the headless
+	// door, and the two are a contradiction rather than a combination, so it is
+	// said here — before a session file is opened — instead of being ignored.
+	if pickSession && strings.TrimSpace(*once) != "" {
+		return fmt.Errorf(`aforge resume opens the session picker; for one headless message use: aforge chat --once "text"`)
 	}
 	// The level is validated HERE, before anything is opened, so a typo is a
 	// usage error and not a knob that silently did nothing for a whole session.
@@ -203,6 +232,29 @@ func runChatV3(args []string) error {
 			}
 			return replacement, next, nil
 		},
+		// The conversations this directory has had, and the door back into one
+		// of them. They are the welcome box's right column and the /resume
+		// picker's rows; the walk happens on the keystroke that asks for it and
+		// never at boot.
+		RecentSessions: func() []tui3.Session { return v3RecentSessions(workspace) },
+		Resume: func(file string) (tui3.Agent, error) {
+			// The same config this session runs on, pointed at another
+			// transcript: the model, the gate, the roles and the rail are
+			// properties of the LAUNCH, and a conversation opened from the
+			// picker is the same launch (see Fresh, above, which differs only in
+			// which file it names).
+			earlier := cfg
+			earlier.SessionFile = file
+			agent, err := session.New(earlier)
+			if err != nil {
+				// Returned rather than wrapped in a surface that would carry a
+				// typed nil: a locked file's error names the file, and the
+				// surface prints exactly that.
+				return nil, err
+			}
+			return agent, nil
+		},
+		PickSession:   pickSession,
 		Workspace:     workspace,
 		SessionFile:   transcript,
 		Resumed:       resumed,
@@ -784,6 +836,44 @@ func newV3SessionFile(workspace string) (string, error) {
 	}
 	name := time.Now().Format("20060102-150405") + "_" + hex.EncodeToString(tail) + ".jsonl"
 	return filepath.Join(dir, name), nil
+}
+
+// v3RecentSessionSlots bounds one listing. Twenty is far more than the four the
+// welcome box draws and more than a person scrolls a picker past; what it is
+// really for is the ceiling on the work — twenty file scans, once, on the
+// keystroke that asks (internal/session's Recent bounds the reads too).
+const v3RecentSessionSlots = 20
+
+// v3RecentSessions is this directory's past conversations as the surface lists
+// them: the name each one gave itself, the last thing that happened in it, and
+// when.
+//
+// It reads the transcripts rather than opening them — no lock, no replay, no
+// agent — which is what lets it list the session the running window is holding
+// open, and lets a second window list the first one's conversation while it is
+// live (internal/session's peek.go).
+//
+// An unreadable directory is an empty list and not an error. This answers a
+// list a person may never look at; the one thing it must not do is stop a
+// launch, and "no recent sessions" is a true sentence about a machine whose
+// session directory cannot be read.
+func v3RecentSessions(workspace string) []tui3.Session {
+	dir, err := v3SessionDir(workspace)
+	if err != nil {
+		return nil
+	}
+	found := session.Recent(dir, v3RecentSessionSlots)
+	rows := make([]tui3.Session, 0, len(found))
+	for _, summary := range found {
+		rows = append(rows, tui3.Session{
+			Title:   summary.Title,
+			Opening: summary.Opening,
+			Last:    summary.Last,
+			File:    summary.File,
+			At:      summary.At,
+		})
+	}
+	return rows
 }
 
 // latestV3Session is the most recently written transcript in dir, or "".

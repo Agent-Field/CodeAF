@@ -1352,6 +1352,7 @@ func (a *app) legendRight(width int) string {
 // What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
 //
 //	the picker is open    enter switch · esc
+//	the sessions are up   enter open · esc
 //	copy mode is on       v select · y yank · esc
 //	the welcome box is up ↑↓ recent · enter open
 //	a path is completing  tab take · enter run · esc
@@ -1382,6 +1383,8 @@ func (a *app) hintWord() string {
 	switch {
 	case a.pick.open:
 		return "enter switch · esc"
+	case a.roster.open:
+		return "enter open · esc"
 	case a.copy.on:
 		return "v select · y yank · esc"
 	case a.welcome.open:
