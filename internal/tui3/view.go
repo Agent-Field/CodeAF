@@ -596,3 +596,32 @@ func (a *app) follow() {
 		a.offset = 0 // resolved from the bottom by offsetFor
 	}
 }
+
+// tier is the frame's size class. Every surface that has a compact variant of
+// itself reads this ONE function rather than comparing widths on its own — a
+// second breakpoint table would drift from this one within a release.
+type tier int
+
+const (
+	tierWide     tier = iota // 120+: the full frame, rail column and all
+	tierStandard             // 80–119: the everyday laptop frame
+	tierNarrow               // 60–79: split panes, the roster already overlays
+	tierPhone                // <60: a phone in a terminal — everything stacks
+)
+
+// layoutTier is the frame's size class from its width. The floors are the
+// ones the surfaces already negotiate around (railSlimFloor is where the
+// roster lost its column); phone is the floor a status row can no longer hold
+// what it is asked to carry.
+func layoutTier(width int) tier {
+	switch {
+	case width >= 120:
+		return tierWide
+	case width >= 80:
+		return tierStandard
+	case width >= 60:
+		return tierNarrow
+	default:
+		return tierPhone
+	}
+}
