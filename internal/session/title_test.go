@@ -73,6 +73,35 @@ func TestTitleLandsInTheFileAndOnTheStream(t *testing.T) {
 	}
 }
 
+// A NAME IS WORDS, even when the model answers with a filename. The instruction
+// asks for eight lowercase words and a model that has read a million
+// identifiers sometimes welds them together; the welding is undone once, here,
+// rather than at each of the places the name is drawn.
+func TestASluggedTitleIsMintedAsWords(t *testing.T) {
+	for _, row := range []struct{ said, want string }{
+		{"porting_the_parser", "porting the parser"},
+		{"fix-the-nil-map", "fix the nil map"},
+		// A name that is already words keeps every character it has, hyphens
+		// inside those words included: they are somebody's spelling, not a
+		// separator this function gets to reinterpret.
+		{"port-b failures", "port-b failures"},
+	} {
+		completer := &scriptedCompleter{steps: titleTurn("the parser is fine", row.said)}
+		agent, _ := titleAgent(t, completer, nil)
+		events := collect(t, mustSubmit(t, agent, "why is the tokenizer slow?"))
+		changed, ok := firstOfKind(events, EventTitleChanged)
+		if !ok {
+			t.Fatalf("no EventTitleChanged for %q; got %v", row.said, kinds(events))
+		}
+		if changed.Text != row.want {
+			t.Fatalf("a title answered as %q was minted %q, want %q", row.said, changed.Text, row.want)
+		}
+		if err := agent.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	}
+}
+
 // One name per session: the second turn does not pay for a second one, and a
 // resumed session keeps the name it already has.
 func TestTheSessionIsNamedOnlyOnce(t *testing.T) {

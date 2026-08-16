@@ -470,7 +470,10 @@ func (w *welcome) recentRows(pal palette, hover int) []string {
 
 func (w *welcome) recentRow(i int, pal palette, hovered bool) string {
 	session := w.recent[i]
-	name := strings.TrimSpace(session.Title)
+	// The name is read back as words when it arrived as one token (names.go).
+	// The row still OPENS the file it was read from — [app.welcomePress] resumes
+	// Session.File — so nothing that identifies the session is touched here.
+	name := humanName(session.Title)
 	if name == "" {
 		name = baseName(session.File)
 	}

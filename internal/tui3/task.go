@@ -137,7 +137,12 @@ type taskNode struct {
 	// a node that never reached running.
 	began, met time.Time
 	// elapsed is the node's final age, as the update that ended it reported.
-	elapsed               time.Duration
+	elapsed time.Duration
+	// cost is what this node's own agent has spent, as the engine last
+	// published it (session's TaskNotice.CostUSD). Zero means nobody published a
+	// price, which is not the same claim as "it cost nothing" — the focus header
+	// draws no figure for it rather than a $0.00 (room.go).
+	cost                  float64
 	report, branch, merge string
 	changed               []string
 	// tool is what the node is doing RIGHT NOW, one line, and toolBegan when it
@@ -1432,9 +1437,16 @@ func (a *app) railRows(height int) []string {
 // railEntryAt is the roster's hit-testing: which entry is drawn on this screen
 // row, and whether there is one at all.
 //
-// The roster's first row is the frame's first row (view.go joins it from index
-// zero), so a roster index and a screen row are the same number.
+// It reads the SAME line list [app.railRows] draws — the same groups, the same
+// folds, the same window — because a roster whose layout and whose clicks
+// disagreed would open the room of the node above the one under the pointer.
+//
+// The roster's first row is the first row of the BODY REGION (view.go joins it
+// from index zero there), which the focus header a room pins above the body
+// moves down by its own height — so a screen row is a roster index minus
+// [app.headHeight] and not before.
 func (a *app) railEntryAt(y int) (railEntry, bool) {
+	y -= a.headHeight()
 	view, _ := a.railView(a.viewHeight())
 	if y < 0 || y >= len(view) || view[y].entry < 0 {
 		return railEntry{}, false
@@ -2155,7 +2167,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		return nil
 	}
 	if last, seen := a.taskSeen[notice.ID]; seen && last == notice.State {
-		return nil
+		// THE DE-DUP HAS ONE EXCEPTION, and it is the node's SPEND. The pair
+		// above catches the same update arriving on both lanes — those two carry
+		// identical figures — but a node that has spent more since the last event
+		// is news, and the focus header is where it is read (room.go). Anything
+		// that is neither a new state nor a larger bill is the duplicate this
+		// guard exists for.
+		if node := a.tasks[notice.ID]; node == nil || notice.CostUSD <= node.cost {
+			return nil
+		}
 	}
 	if a.taskSeen == nil {
 		a.taskSeen = map[uint64]session.TaskState{}
@@ -2200,6 +2220,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if len(notice.Changed) > 0 {
 		node.changed = notice.Changed
+	}
+	// The spend is kept whenever the engine has one to publish, and never
+	// overwritten with a zero: a later update carrying no price would otherwise
+	// take a figure off the focus header that was true (room.go).
+	if notice.CostUSD > 0 {
+		node.cost = notice.CostUSD
 	}
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.

@@ -82,14 +82,20 @@ const toolWindow = 3
 // The entries are a SLICE and the fold map is a POINTER, which is what makes a
 // deck a view rather than a copy: [app.entryRows] writes each entry's row cache
 // through it, and [app.unfold] writes the map.
+// clock says whether this list carries THE SESSION'S CLOCK — the turn receipts
+// and the seam marks (timestamps.go). Only the conversation does. A room's
+// turns are its own numbering, and [app.stamps] is keyed by the session's, so a
+// page that ran the clock would draw the conversation's receipts against a
+// node's turns and report figures nobody measured.
 type deck struct {
 	entries  []entry
 	unfolded map[int]bool
+	clock    bool
 }
 
 // conversation is the deck the transcript draws.
 func (a *app) conversation() deck {
-	return deck{entries: a.entries, unfolded: a.unfolded}
+	return deck{entries: a.entries, unfolded: a.unfolded, clock: true}
 }
 
 // bodyDeck is the deck the BODY REGION is drawing right now — the room's page
@@ -174,8 +180,31 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			out = append(out, row{entry: -1})
 		}
 	}
+	// THE CLOCK'S OWN ROWS (timestamps.go) are laid out from here for the reason
+	// every blank on this surface is: they are spacing-bearing blocks, and a
+	// block that emitted its own gap would be a second spacing law. `walk` is the
+	// turn this pass is inside and the last moment it knows about — the two facts
+	// a receipt and a seam mark are drawn from. It runs over the CONVERSATION and
+	// over nothing else (see [deck.clock]).
+	walk := stampWalk{}
+	clock := func(i int) {
+		if !d.clock {
+			return
+		}
+		drew := false
+		out, drew = a.stampBlock(d, out, &walk, i, width, gap)
+		if drew {
+			wasCluster, wasBlock = false, false
+		}
+	}
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
+		if e.turn != walk.turn {
+			// The turn before this one is over: its receipt, and then the mark
+			// that says how long ago that was. Both are drawn HERE — at the seam
+			// between two turns — because that is where a person reads them.
+			clock(i)
+		}
 
 		// A run of tool entries from one turn is a cluster, and a cluster is
 		// laid out as a unit: it is the thing that folds.
@@ -244,6 +273,10 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		wasCluster = false
 		wasBlock = e.kind == entryTask
 	}
+	// THE LAST TURN'S RECEIPT, which has no next turn to be drawn at the seam
+	// with. A turn still running has no stamp yet, so this draws nothing until
+	// the moment it settles — which is exactly when the figures become true.
+	clock(-1)
 	return out, wasCluster || wasBlock
 }
 
@@ -640,23 +673,34 @@ func (a *app) status(width int) string {
 // the numbers a person opened the terminal to read.
 func (a *app) statusRows(width int) []string {
 	if width < 1 {
+		a.modelSpan = hudSpan{}
 		return []string{""}
 	}
 	left, parts, wrapped := a.statusLayout(width)
 	right, plainRight := a.paintParts(parts)
+	// THE CLUSTER GOES ACCENT IN A ROOM, and it is the one condition under which
+	// it is painted at all: the chip is a statement about which page the keyboard
+	// is pointed at, and it wears the accent at both ends of the frame — here and
+	// in the pinned header (room.go).
+	paint := a.pal.dim
+	if a.roomOpen() {
+		paint = a.pal.accent
+	}
 	if wrapped {
 		return []string{
-			fit(a.pal.dim(left), width),
+			fit(paint(left), width),
 			rightAlign(right, plainRight, width),
 		}
 	}
 	gap := width - ansi.StringWidth(left) - ansi.StringWidth(plainRight)
 	if gap < 1 {
 		// Nothing fits, even emptied: the telemetry is the half that survives,
-		// because what is HAPPENING outranks what it is called.
+		// because what is HAPPENING outranks what it is called. The identity is
+		// not drawn, so nothing on this row is pressable either.
+		a.modelSpan = hudSpan{}
 		return []string{fit(right, width)}
 	}
-	return []string{a.pal.dim(left) + strings.Repeat(" ", gap) + right}
+	return []string{paint(left) + strings.Repeat(" ", gap) + right}
 }
 
 // hudGap is the smallest barrier the two clusters will stand next to each
@@ -678,7 +722,14 @@ const hudGap = 3
 //	        spending a row of the conversation on a gap nobody needed is the
 //	        cost this law exists to avoid.
 func (a *app) statusLayout(width int) (string, []hudPart, bool) {
-	left := a.identity()
+	// THE MODEL'S COLUMNS ARE RECORDED WHERE THE ROW IS LAID OUT, which is what
+	// keeps the press and the paint in step: this function is what the frame, the
+	// chrome height and the hit-testing all resolve through, so a segment drawn
+	// here and a segment pressed there cannot be at two different offsets
+	// (app.go's [app.statusPress]). A cluster the width pressure then drops
+	// clears it again — see [app.statusRows].
+	left, span := a.identityParts()
+	a.modelSpan = span
 	parts := a.telemetry(width)
 	// The change clocks are stamped from the ASSEMBLED segments, before any
 	// width pressure is applied: a number that moved has moved whether or not
@@ -724,6 +775,20 @@ func (a *app) statusHeight(width int) int {
 // The name falls back to the workspace's base name until the session has named
 // itself (session's title.go), so the cluster is never empty.
 func (a *app) identity() string {
+	text, _ := a.identityParts()
+	return text
+}
+
+// identityParts is that cluster and the COLUMNS ITS MODEL SEGMENT OCCUPIES on
+// the row, because the model segment is a thing you can press: the whole point
+// of a name on screen is that it is where a person already looks when they want
+// to change it, and until this wave the only door was typing /model.
+//
+// The span is [from, to) in cells from the row's left edge, which is where this
+// cluster is drawn. An empty span (to == 0) means there is nothing to press —
+// a session with no model yet, or a room, whose cluster is the node's chip and
+// names no model at all.
+func (a *app) identityParts() (string, hudSpan) {
 	// A ROOM RENAMES THIS CLUSTER AND NOTHING ELSE ON THE LINE. The identity is
 	// WHERE YOU ARE, and while a room is open where you are is a task — but the
 	// telemetry beside it is still the session's, because a room is a view over
@@ -731,17 +796,36 @@ func (a *app) identity() string {
 	// re-pointed the cost and the context meter at a node would be quoting
 	// figures nobody is measuring.
 	if a.roomOpen() {
-		return roomPlaceWord + " · " + a.room.title
+		return a.roomChip(), hudSpan{}
 	}
-	name := a.title
+	name := a.sessionName()
 	if name == "" {
 		name = a.place
 	}
-	if model := modelBase(a.model); model != "" {
-		return name + " · " + model + a.servedRider()
+	model := modelBase(a.model)
+	if model == "" {
+		return name, hudSpan{}
 	}
-	return name
+	// The RIDER IS PART OF THE TARGET. "via deepinfra · 92 tok/s" is a fact
+	// about the model that is answering, so a person pressing it means the same
+	// thing they mean by pressing the id.
+	segment := model + a.servedRider()
+	from := ansi.StringWidth(name + " · ")
+	return name + " · " + segment, hudSpan{from: from, to: from + ansi.StringWidth(segment)}
 }
+
+// hudSpan is a pressable stretch of the status row: [from, to) cells on it.
+// It is the same shape a proposal's choices row carries for its three options
+// (task.go's [choiceSpan]) and it is written and read the same way — by the
+// render, then by the hit-testing — so a click can never land on a segment the
+// frame drew somewhere else.
+type hudSpan struct{ from, to int }
+
+// pressable reports whether this span has any columns in it.
+func (s hudSpan) pressable() bool { return s.to > s.from }
+
+// holds reports whether a column is inside the span.
+func (s hudSpan) holds(x int) bool { return s.pressable() && x >= s.from && x < s.to }
 
 // servedSighting is the HUD's window onto the adapter's velocity ledger. It is
 // a var so a test can state one sighting without a live endpoint; nothing else

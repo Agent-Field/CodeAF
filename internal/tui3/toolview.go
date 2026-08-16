@@ -337,25 +337,15 @@ const elapsedFloor = 100 * time.Millisecond
 // elapsedWord is a finished call's own duration, or "" when there is none worth
 // saying. It is BEGIN to END: the time the tool ran, never the time its
 // announcement spent waiting for a response to finish streaming.
+//
+// The spelling itself is [tookWord] (timestamps.go), because a turn's footer
+// says the same kind of thing about a longer span and the two must not be able
+// to disagree about what two minutes looks like.
 func elapsedWord(e *entry) string {
 	if e.status.live() || e.began.IsZero() || e.ended.IsZero() {
 		return ""
 	}
-	took := e.ended.Sub(e.began)
-	switch {
-	case took < elapsedFloor:
-		return ""
-	case took < 10*time.Second:
-		// One decimal under ten seconds: the difference between 1.2s and 1.9s is
-		// the difference a person notices, and past ten seconds it is not.
-		return strconv.FormatFloat(took.Seconds(), 'f', 1, 64) + "s"
-	case took < time.Minute:
-		return itoa(int(took.Round(time.Second)/time.Second)) + "s"
-	default:
-		minutes := int(took / time.Minute)
-		seconds := int((took % time.Minute).Round(time.Second) / time.Second)
-		return itoa(minutes) + "m" + pad2(seconds) + "s"
-	}
+	return tookWord(e.ended.Sub(e.began))
 }
 
 func pad2(n int) string {
