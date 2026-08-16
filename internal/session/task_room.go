@@ -278,6 +278,13 @@ func closedEventStream() <-chan Event {
 }
 
 // settled says a node's life is over — nothing more will happen in its room.
+//
+// UNVERIFIED IS SETTLED. Its run ended, its child agent is closed, its slot is
+// back on the frontier: there is nobody in the room to watch or talk to, which
+// is the only question this predicate answers. That it is still waiting on a
+// person to decide what it MEANS ([Agent.ResolveUnverified]) is a fact about the
+// graph, not about the room — and a resolution reaches the node through
+// [TaskGraph.resettle], never through a door in here.
 func (s TaskState) settled() bool {
-	return s == TaskDone || s == TaskFailed
+	return s == TaskDone || s == TaskFailed || s == TaskUnverified
 }

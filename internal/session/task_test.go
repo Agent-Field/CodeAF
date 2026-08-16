@@ -13,6 +13,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -110,6 +111,16 @@ func (c *routedCompleter) childAsked() []ai.Message {
 		return nil
 	}
 	return c.childRequests[0]
+}
+
+// auditCalls is how many times an AUDITOR was asked anything at all. It is the
+// only place a retry is visible from the outside: one audit that answered and
+// one audit that was asked twice look the same on the node, and the difference
+// between them is the whole of the retry law (task_audit.go).
+func (c *routedCompleter) auditCalls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.auditRequests)
 }
 
 func (c *routedCompleter) auditAsked() []ai.Message {
@@ -1007,6 +1018,358 @@ func TestAuditRefutesANodeThatOnlyClaimsToBeDone(t *testing.T) {
 	}
 }
 
+// ── when the auditor does not answer ────────────────────────────────────────
+
+// A BROKEN AUDITOR MUST NOT FAIL GOOD WORK. The node did its job and the
+// auditor came back with prose instead of a verdict — twice, having been asked
+// again — so the node lands UNVERIFIED: not done, not failed, branch kept,
+// nothing merged, and the auditor's own words on the card so the person can see
+// what they are being asked to decide about.
+func TestAuditNonVerdictRetriesAndLandsUnverified(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			finalText("Wrote greet.go with the greeting."),
+		},
+		// Neither answer is a verdict. The first is the failure seen in the
+		// wild — an auditor that reasoned and never said the word.
+		audit: []step{
+			verdict("I had a look at the change and honestly it is hard to say either way."),
+			verdict("Same again: I am not able to give you a firm answer here."),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "add a greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskUnverified {
+		t.Fatalf("state = %q, want unverified — a non-verdict is not a failure (report %q)", notice.State, notice.Report)
+	}
+	if !strings.HasPrefix(notice.Report, auditUnverified+" — ") {
+		t.Fatalf("report = %q, want it to lead with the non-verdict", notice.Report)
+	}
+	if strings.HasPrefix(notice.Report, auditRefuted) || strings.Contains(notice.Report, auditRefuted+" — ") {
+		t.Fatalf("the report calls a non-answer a refutation: %q", notice.Report)
+	}
+	// IT WAS ASKED TWICE, and the report says so rather than leaving the person
+	// to wonder whether one blip cost them a task.
+	if calls := completer.auditCalls(); calls != 2 {
+		t.Fatalf("the audit ran %d times, want 2: one retry, and only one", calls)
+	}
+	if !strings.Contains(notice.Report, "asked twice") {
+		t.Fatalf("the report does not say the auditor was asked again: %q", notice.Report)
+	}
+	// THE AUDITOR'S OWN WORDS ARE THE OUTCOME TEXT: that is the whole basis on
+	// which somebody is being asked to decide.
+	if !strings.Contains(notice.Report, "not able to give you a firm answer") {
+		t.Fatalf("the auditor's words were dropped from the report: %q", notice.Report)
+	}
+	// And the node's own claim is kept under it — the other half of the
+	// decision.
+	if !strings.Contains(notice.Report, "Wrote greet.go") {
+		t.Fatalf("the node's claim was dropped from the report: %q", notice.Report)
+	}
+	// NOTHING MERGED and nothing was thrown away.
+	if notice.Merge != mergeAborted {
+		t.Fatalf("merge = %q, want aborted — unverified work must not land", notice.Merge)
+	}
+	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); !strings.Contains(branches, notice.Branch) {
+		t.Fatal("an unverified node's branch was deleted: the work is gone")
+	}
+	if _, err := os.Stat(filepath.Join(repo, "greet.go")); !os.IsNotExist(err) {
+		t.Fatal("unverified work landed on the person's branch")
+	}
+	// The harness is not wedged: the session still runs a turn.
+	collect(t, mustSubmit(t, agent, "what now"))
+}
+
+// THE RETRY IS THE POINT. One truncated reply is a blip, not a broken auditor:
+// the second call gets a real verdict, and the node lands on THAT — verified,
+// merged, exactly as if the first attempt had never happened.
+func TestAuditRetryRecoversAVerdict(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			finalText("Wrote greet.go."),
+		},
+		audit: []step{
+			verdict(""),
+			verdict("VERIFIED — go test ./... ok · 1 file"),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "add a greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskDone {
+		t.Fatalf("state = %q, report = %q — the retry's verdict was not read", notice.State, notice.Report)
+	}
+	if !strings.HasPrefix(notice.Report, "VERIFIED — ") {
+		t.Fatalf("report = %q, want the second attempt's verdict", notice.Report)
+	}
+	if notice.Merge != mergeMerged {
+		t.Fatalf("merge = %q, want merged", notice.Merge)
+	}
+	if calls := completer.auditCalls(); calls != 2 {
+		t.Fatalf("the audit ran %d times, want 2", calls)
+	}
+}
+
+// A PROVIDER THAT FELL OVER IS NOT EVIDENCE ABOUT THE WORK. The audit call
+// itself errors, twice, and the node lands unverified rather than failed —
+// which is the same law as a non-answer, because it is the same absence.
+func TestAuditProviderErrorLandsUnverified(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	broken := func(context.Context, []ai.Message) (*ai.Response, error) {
+		return nil, errors.New("the auditor's provider fell over")
+	}
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			finalText("Wrote greet.go."),
+		},
+		audit: []step{broken, broken},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+	collect(t, mustSubmit(t, agent, "add a greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	notice := node.notice()
+
+	if notice.State != TaskUnverified {
+		t.Fatalf("state = %q, want unverified — a provider error is not a refutation (report %q)", notice.State, notice.Report)
+	}
+	if calls := completer.auditCalls(); calls != 2 {
+		t.Fatalf("the audit ran %d times, want 2: a provider error is worth one more call", calls)
+	}
+	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); !strings.Contains(branches, notice.Branch) {
+		t.Fatal("the branch was dropped after an audit nobody could run")
+	}
+	// The turn after it still works: no wedge, no swallowed turn.
+	collect(t, mustSubmit(t, agent, "and now"))
+}
+
+// ── resolving what nobody could verify ──────────────────────────────────────
+
+// AN UNVERIFIED CLAIM IS NOT EVIDENCE, SO A DEPENDENT WAITS. It does not fail
+// in a cascade — nobody said the work is wrong — and it does not start either,
+// because its brief would be assembled from a report nothing stands behind.
+// What moves it is a person accepting the work.
+func TestDependentWaitsOnUnverifiedAndRunsWhenItIsAccepted(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	ran := make(ranNodes, 4)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		ran <- node
+		// The first node lands unverified; anything after it is ordinary work.
+		if node.id == 1 {
+			node.finish("UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED", nil, "", "")
+			node.graph.complete(node, TaskUnverified)
+			return
+		}
+		node.finish("done", nil, "", "")
+		node.graph.complete(node, TaskDone)
+	})
+
+	first := graph.reserve()
+	graph.admit(first, taskSpec{title: "Research the thing", brief: "b", acceptance: "a"})
+	ran.await(t)
+	waitDoneNode(t, graph.node(first))
+
+	second := graph.reserve()
+	graph.admit(second, taskSpec{title: "Build on it", brief: "b", acceptance: "a", dependsOn: []uint64{first}})
+	if state := graph.node(second).stateNow(); state != TaskQueued {
+		t.Fatalf("the dependent of an unverified node is %q, want queued — it must neither fail nor start", state)
+	}
+
+	// ACCEPTED. The frontier turns on the settle, and the dependent goes.
+	if err := agent.ResolveUnverified(first, TaskAccept, "I read the diff myself"); err != nil {
+		t.Fatalf("ResolveUnverified: %v", err)
+	}
+	if state := graph.node(first).stateNow(); state != TaskDone {
+		t.Fatalf("an accepted node is %q, want done", state)
+	}
+	report := graph.node(first).notice().Report
+	if !strings.HasPrefix(report, "ACCEPTED by the person") || !strings.Contains(report, "I read the diff myself") {
+		t.Fatalf("report = %q, want the person's decision and their reason", report)
+	}
+	if started := ran.await(t); started.id != second {
+		t.Fatalf("task %d ran, want the dependent %d", started.id, second)
+	}
+	waitDoneNode(t, graph.node(second))
+
+	// The slot came back exactly once: a re-settle must not hand the graph a
+	// second one and quietly raise the cap.
+	graph.mu.Lock()
+	running := graph.running
+	graph.mu.Unlock()
+	if running != 0 {
+		t.Fatalf("running = %d after everything landed, want 0", running)
+	}
+	// And a node that is not unverified cannot be resolved at all.
+	if err := agent.ResolveUnverified(first, TaskAccept, ""); err == nil {
+		t.Fatal("a node that is already done was resolved a second time")
+	}
+}
+
+// ASKING AGAIN IS AN ANSWER TOO. The person does not have to decide themselves:
+// a re-audit sends a fresh auditor at the same working copy, the node stays
+// unverified while it looks, and the verdict it gives lands the node exactly as
+// the first one would have — verified work merges.
+func TestReauditingAnUnverifiedNodeLandsItsVerdict(t *testing.T) {
+	repo := newGoModuleRepo(t)
+	t.Setenv("HOME", t.TempDir())
+
+	completer := &routedCompleter{
+		parent: []step{
+			proposeCall("Add the greeting", "write greet.go"),
+			finalText("handed off"),
+		},
+		child: []step{
+			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
+			finalText("Wrote greet.go."),
+		},
+		// Two non-answers land it unverified; the third — the person's
+		// re-audit — is a real verdict.
+		audit: []step{
+			verdict("hard to say"),
+			verdict("still hard to say"),
+			verdict("VERIFIED — go test ./... ok · 1 file"),
+		},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAutoApproveSeconds = 0
+	})
+	graph := agent.graph()
+	updates := agent.TaskUpdates()
+	collect(t, mustSubmit(t, agent, "add a greeting"))
+
+	node := graph.node(1)
+	waitDoneNode(t, node)
+	if state := node.stateNow(); state != TaskUnverified {
+		t.Fatalf("state = %q, want unverified", state)
+	}
+
+	if err := agent.ResolveUnverified(1, TaskReaudit, ""); err != nil {
+		t.Fatalf("ResolveUnverified: %v", err)
+	}
+	notice := awaitTaskState(t, updates, 1, TaskDone)
+
+	if !strings.HasPrefix(notice.Report, "VERIFIED — ") {
+		t.Fatalf("report = %q, want the re-audit's verdict", notice.Report)
+	}
+	if notice.Merge != mergeMerged {
+		t.Fatalf("merge = %q, want merged — a re-audit that verifies brings the work home", notice.Merge)
+	}
+	if content := readFile(t, filepath.Join(repo, "greet.go")); !strings.Contains(content, "func Greet") {
+		t.Fatalf("the re-verified work is not on the person's branch: %q", content)
+	}
+	if calls := completer.auditCalls(); calls != 3 {
+		t.Fatalf("the audit ran %d times, want 3: two at the gate and one the person asked for", calls)
+	}
+}
+
+// awaitTaskState reads the standing task lane until one node reaches a state.
+// Nothing here polls: the settle a resolution turns is announced on the same
+// lane every other landing rides.
+func awaitTaskState(t *testing.T, updates <-chan Event, id uint64, want TaskState) TaskNotice {
+	t.Helper()
+	deadline := time.After(30 * time.Second)
+	for {
+		select {
+		case event, open := <-updates:
+			if !open {
+				t.Fatalf("the task lane closed before task %d was %s", id, want)
+			}
+			if event.Task != nil && event.Task.ID == id && event.Task.State == want {
+				return *event.Task
+			}
+		case <-deadline:
+			t.Fatalf("task %d never reached %s", id, want)
+		}
+	}
+}
+
+// REFUTING BY HAND IS A REAL REFUTATION, and it cascades exactly as the
+// auditor's would: the person looked, the work does not hold, and everything
+// built on it fails with it.
+func TestRefutingAnUnverifiedNodeCascades(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	ran := make(ranNodes, 4)
+	graph := stubbedGraph(agent, func(node *TaskNode) {
+		ran <- node
+		node.finish("UNVERIFIED — nobody could say", nil, "", "")
+		node.graph.complete(node, TaskUnverified)
+	})
+
+	first := graph.reserve()
+	graph.admit(first, taskSpec{title: "Research the thing", brief: "b", acceptance: "a"})
+	ran.await(t)
+	waitDoneNode(t, graph.node(first))
+
+	second := graph.reserve()
+	graph.admit(second, taskSpec{title: "Build on it", brief: "b", acceptance: "a", dependsOn: []uint64{first}})
+
+	if err := agent.ResolveUnverified(first, TaskRefute, "the tests it claims do not exist"); err != nil {
+		t.Fatalf("ResolveUnverified: %v", err)
+	}
+	if state := graph.node(first).stateNow(); state != TaskFailed {
+		t.Fatalf("a refuted node is %q, want failed", state)
+	}
+	waitDoneNode(t, graph.node(second))
+	if state := graph.node(second).stateNow(); state != TaskFailed {
+		t.Fatalf("the dependent of a hand-refuted node is %q, want failed", state)
+	}
+	// The refusal keeps what the node said: the auditor never answered, so the
+	// node's own account is still the only account there is.
+	if report := graph.node(first).notice().Report; !strings.Contains(report, "nobody could say") {
+		t.Fatalf("report = %q, want the earlier account kept under the refusal", report)
+	}
+}
+
 // THE BELT IS THE SAFETY ARGUMENT. An auditor has no hand that writes, and its
 // bash runs the repository's verification and refuses everything else —
 // including a destructive command, a command that runs the node's own code, and
@@ -1067,25 +1430,32 @@ func TestAuditBeltIsReadOnly(t *testing.T) {
 	}
 }
 
-// A VERDICT NOBODY GAVE IS A REFUTATION. Everything that is not the word
-// VERIFIED leaves the work unmerged, because the frontier fails closed.
+// A VERDICT NOBODY GAVE IS NOT A REFUTATION. Nothing merges without the word
+// VERIFIED — the frontier still fails closed — but an answer with neither word
+// in it is read as the NON-VERDICT it is, and it carries what the auditor
+// actually said so that whoever has to decide can see it.
 func TestAuditVerdictFailsClosed(t *testing.T) {
 	for _, testCase := range []struct {
 		name     string
 		answer   string
 		verified bool
+		answered bool
 		report   string
 	}{
-		{"the word and its evidence", "VERIFIED — go test ./... ok · 3 files", true, "VERIFIED — go test ./... ok · 3 files"},
-		{"the word on its own line", "VERIFIED\ngo build ./... ok", true, "VERIFIED — go build ./... ok"},
-		{"a refutation with evidence", "REFUTED — TestX still fails: want 3, got 0", false, "REFUTED — TestX still fails: want 3, got 0"},
-		{"an essay", "I looked at the diff and it seems VERIFIED to me.", false, "REFUTED — the auditor answered neither VERIFIED nor REFUTED"},
-		{"nothing at all", "", false, "REFUTED — the auditor answered neither VERIFIED nor REFUTED"},
+		{"the word and its evidence", "VERIFIED — go test ./... ok · 3 files", true, true, "VERIFIED — go test ./... ok · 3 files"},
+		{"the word on its own line", "VERIFIED\ngo build ./... ok", true, true, "VERIFIED — go build ./... ok"},
+		{"a refutation with evidence", "REFUTED — TestX still fails: want 3, got 0", false, true, "REFUTED — TestX still fails: want 3, got 0"},
+		{"an essay", "I looked at the diff and it seems VERIFIED to me.", false, false,
+			"UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED\nI looked at the diff and it seems VERIFIED to me."},
+		{"nothing at all", "", false, false, "UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			got := parseAuditVerdict(testCase.answer)
 			if got.verified != testCase.verified {
 				t.Fatalf("verified = %v for %q", got.verified, testCase.answer)
+			}
+			if got.answered != testCase.answered {
+				t.Fatalf("answered = %v for %q — a non-verdict must not pass as a finding", got.answered, testCase.answer)
 			}
 			if got.report() != testCase.report {
 				t.Fatalf("report = %q, want %q", got.report(), testCase.report)
@@ -1096,6 +1466,17 @@ func TestAuditVerdictFailsClosed(t *testing.T) {
 	long := parseAuditVerdict("REFUTED — one\ntwo\nthree\nfour\nfive")
 	if lines := strings.Count(long.report(), "\n") + 1; lines > auditEvidenceLines {
 		t.Fatalf("the verdict carried %d lines:\n%s", lines, long.report())
+	}
+	// And so is a non-verdict's: an auditor that wrote an essay instead of a
+	// word does not get to write the card either.
+	essay := parseAuditVerdict("Well,\nthere are\nseveral\nconsiderations\nhere")
+	if lines := strings.Count(essay.report(), "\n") + 1; lines > auditSaidLines+1 {
+		t.Fatalf("the non-verdict carried %d lines:\n%s", lines, essay.report())
+	}
+	// The ZERO VALUE is the safe one, and safe here means "nobody said
+	// anything" rather than "somebody refuted it".
+	if zero := (auditVerdict{}); zero.answered || zero.verified || !strings.HasPrefix(zero.report(), auditUnverified) {
+		t.Fatalf("the zero verdict reads as %q", zero.report())
 	}
 }
 
