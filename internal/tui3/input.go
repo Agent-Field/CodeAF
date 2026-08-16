@@ -287,7 +287,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.followUp()
 
 	case "ctrl+o":
-		a.unfold(a.turn)
+		a.unfold(a.bodyTurn())
 		return nil
 
 	case "ctrl+b":
