@@ -606,8 +606,9 @@ func (c *Client) newHTTPRequest(ctx context.Context, request *ai.Request, body [
 		}
 		if c.config.SiteName != "" {
 			httpRequest.Header.Set("X-OpenRouter-Title", c.config.SiteName)
-			httpRequest.Header.Set("X-OpenRouter-Categories", "cli-agent")
-			httpRequest.Header.Set("X-Title", c.config.SiteName)
+		}
+		if c.config.SiteCategories != "" {
+			httpRequest.Header.Set("X-OpenRouter-Categories", c.config.SiteCategories)
 		}
 	}
 	// The header half of cache affinity. Routers that ignore the body field
