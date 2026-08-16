@@ -52,7 +52,10 @@ const notifyTitle = product
 // notifyBody is the sentence in the banner. It names the conversation, which is
 // the one fact that tells a person WHICH terminal to go back to.
 func (a *app) notifyBody() string {
-	name := a.title
+	// The name a person READS, which is the same one the status line draws
+	// (names.go): a banner is the one place this conversation is named outside
+	// its own window, so it must not be the one place a machine name shows.
+	name := a.sessionName()
 	if name == "" {
 		name = a.place
 	}

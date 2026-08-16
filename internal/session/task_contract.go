@@ -93,6 +93,11 @@ type TaskNotice struct {
 	// kept), "inplace" (a non-git workspace ran in the person's tree), or ""
 	// while running.
 	Merge string
+	// CostUSD is what this node's own agent has spent, live while it runs and
+	// frozen once it lands. Zero means nobody published a price — an unpriced
+	// model, or a node that has not started — and it is NOT the same claim as
+	// "it cost nothing", so a surface draws no figure at all for it.
+	CostUSD float64
 }
 
 // TaskAnswer is the surface's reply to a proposal. Approved with an empty

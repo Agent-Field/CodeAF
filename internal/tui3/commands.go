@@ -32,7 +32,12 @@ type command struct {
 
 // commands is the list, in the order a person meets them.
 var commands = []command{
-	{name: "model", desc: "pick a model from the list"},
+	// The picker's OTHER door is named here rather than on a line of its own,
+	// because it is the same door: press the model's name in the status line
+	// (render.go's [app.identityParts]). It is worth saying because a surface
+	// with the mouse turned off (config's ui.mouse) does not have it, and this
+	// row is then the only one there is.
+	{name: "model", desc: "pick a model · or press its name in the status line"},
 	{name: "model", args: "<slug>", desc: "switch the model"},
 	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	{name: "settings", desc: "open the settings panel · ctrl+,"},

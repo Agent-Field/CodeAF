@@ -148,6 +148,10 @@ var settingReaders = map[string]string{
 	// caller and the accessor is what it touches.
 	KeyGuardian: "GuardianEnabledAt",
 	KeyMouse:    "MouseEnabledAt",
+	// The timestamps row is read by the v3 surface itself — at boot and at every
+	// turn end, beside the mouse and the gate posture — and becomes what the
+	// transcript draws of the clock (internal/tui3's timestamps.go).
+	KeyTimestamps: "TimestampsAt",
 	// The routing row is read by the v3 door and becomes session.Config.Routing,
 	// which the adapter turns into the preference object on every request
 	// (internal/provider's velocity.go). It names the accessor the door touches.

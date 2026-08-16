@@ -311,6 +311,10 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "mouse", widget: widgetCycle,
 		about: "on gives hover and click; off gives the terminal's own text selection back.",
 	},
+	config.KeyTimestamps: {
+		tab: tabDisplay, label: "timestamps", widget: widgetCycle,
+		about: "footers puts a receipt under each finished turn; separators only marks the gaps.",
+	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",

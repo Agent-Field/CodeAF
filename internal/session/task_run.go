@@ -196,6 +196,10 @@ type TaskNode struct {
 	// is zero and the age is measured from started; a node rehydrated from a
 	// checkpoint has no started to measure from and this is the age it had.
 	elapsed time.Duration
+	// cost is what this node's own agent spent, FROZEN where that spend is
+	// folded into the session's (see [TaskNode.spend]). While it runs it is zero
+	// and the figure is asked of the child directly.
+	cost float64
 	// noted says this node's completion note has been handed to the steering
 	// lane, and it is what stops a resumed session announcing finished work
 	// twice (task_store.go).
@@ -639,6 +643,11 @@ func (n *TaskNode) markNoted() {
 // notice copies the node out from under the lock, shaped for an
 // EventTaskUpdate. Rendering never holds the graph.
 func (n *TaskNode) notice() TaskNotice {
+	// The spend is read BEFORE the graph lock is taken, and it has to be: it
+	// asks the room for the child agent and the child agent for its own usage,
+	// each of which is a lock of its own. Taking them under the graph's would be
+	// a second lock order in a package that has one.
+	cost := n.spend()
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	// A landed node's age is frozen, and a rehydrated one has only the age its
@@ -659,7 +668,42 @@ func (n *TaskNode) notice() TaskNotice {
 		Changed:   changed,
 		Branch:    n.branch,
 		Merge:     n.merge,
+		CostUSD:   cost,
 	}
+}
+
+// spend is what this node has cost so far, in dollars.
+//
+// A RUNNING NODE IS ASKED ITS CHILD; a landed one reports the figure frozen when
+// its spend was folded into the session's ([Agent.foldTaskUsage]). The two are
+// the same number at two moments, and the freeze is what keeps it after the
+// child agent has been closed and the room emptied.
+//
+// Zero means "nobody has published a price", which is what an unpriced model and
+// a node that has not started both look like from here — and a surface that
+// draws this draws nothing rather than a $0.00 it made up.
+func (n *TaskNode) spend() float64 {
+	n.graph.mu.Lock()
+	room, frozen := n.room, n.cost
+	n.graph.mu.Unlock()
+	if frozen > 0 {
+		return frozen
+	}
+	if child := room.speaker(); child != nil {
+		return child.Usage().CostUSD
+	}
+	return frozen
+}
+
+// setCost freezes what the node's own agent cost. It is called once, where the
+// child's spend is folded into the session's.
+func (n *TaskNode) setCost(usd float64) {
+	if usd <= 0 {
+		return
+	}
+	n.graph.mu.Lock()
+	n.cost = usd
+	n.graph.mu.Unlock()
 }
 
 // ── the world hearing about a node ──────────────────────────────────────────
@@ -817,6 +861,10 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// auxiliary usage — the pocket the title and the compaction summary come
 		// out of — rather than charged to whichever turn happened to propose it.
 		a.foldTaskUsage(child)
+		// And it is kept ON THE NODE as well, because the node outlives its
+		// child: a surface asking a landed node what it cost has nobody else to
+		// ask (see [TaskNode.spend]).
+		node.setCost(child.Usage().CostUSD)
 	}()
 
 	// THE ROOM OPENS HERE, because this is the first moment there is anybody in

@@ -63,6 +63,11 @@ const (
 	// chromeWelcome is one row of the welcome box; index is its position within
 	// the box, which [app.welcomeSlotAt] turns back into a recent session.
 	chromeWelcome
+	// chromeStatus is one row of the HUD's status line; index is its position
+	// within that block (0 is the identity's row, 1 the telemetry's on a narrow
+	// frame). It is hoverable by nothing and pressable in one place: the model
+	// segment, whose columns the render records (render.go's [app.identityParts]).
+	chromeStatus
 )
 
 // chromeRow is one row of the frame below the conversation.
@@ -120,6 +125,12 @@ func (a *app) frame() (string, int, int) {
 		return strings.Join(lines, "\n"), caretX, caretY
 	}
 	chrome, _, caretX, caretRow := a.chrome(width)
+	// THE FOCUS HEADER IS THE FRAME'S ONE PINNED ROW ABOVE the conversation, and
+	// it spans the WHOLE window for the reason the status row does: it is about
+	// the window — which page this is, and how to leave it — rather than about
+	// the transcript, so it is not one of the columns the rail borrows from
+	// (room.go).
+	head := a.roomHead(width)
 	// THE RAIL COSTS COLUMNS, AND IT COSTS THEM HERE. The conversation is laid
 	// out at [app.bodyWidth] — everything below this line, the wheel and the
 	// hit-testing included, resolves through the same number — and the chrome is
@@ -130,6 +141,9 @@ func (a *app) frame() (string, int, int) {
 	rail := a.railRows(view)
 
 	rows := make([]string, 0, height)
+	if head != "" {
+		rows = append(rows, head)
+	}
 	railAt := func(i int) string {
 		if i < len(rail) {
 			return rail[i]
@@ -226,8 +240,8 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.overlayRows(width, a.overlayHeight()) {
 		add(line, chromeRow{kind: chromeOverlay, index: i})
 	}
-	for _, line := range a.statusRow(width) {
-		add(line, chromeRow{})
+	for i, line := range a.statusRow(width) {
+		add(line, chromeRow{kind: chromeStatus, index: i})
 	}
 
 	return rows, marks, caretX + len(inputPad), caretRow
@@ -361,12 +375,13 @@ func (a *app) bodyRows(width, height int) ([]row, int) {
 // bodyTop is the screen row the conversation starts on, or -1 when the frame is
 // too short to have one. The conversation now opens the frame — the status bar
 // that used to sit above it moved to the bottom — so the answer is zero
-// wherever there is a conversation at all.
+// wherever there is a conversation at all, and one under the focus header a room
+// pins above it (room.go).
 func (a *app) bodyTop() int {
 	if a.viewHeight() <= 0 {
 		return -1
 	}
-	return 0
+	return a.headHeight()
 }
 
 // rowAt resolves a screen line to the row drawn on it.
@@ -403,10 +418,28 @@ func (a *app) rowAt(y int) (row, bool) {
 // from where they were drawn.
 func (a *app) viewHeight() int {
 	_, height := a.size()
-	if body := height - a.chromeHeight(); body > 0 {
+	if body := height - a.chromeHeight() - a.headHeight(); body > 0 {
 		return body
 	}
 	return 0
+}
+
+// headHeight is what the pinned focus header costs the body region: one row
+// while a room is open on a frame with the height to spare, and nothing
+// otherwise (room.go).
+//
+// It is subtracted HERE, in the number every geometric question resolves
+// through, rather than at the frame — a header the frame drew and the scrolling
+// did not know about would put the room's last row under the input box.
+func (a *app) headHeight() int {
+	_, height := a.size()
+	// The same floor the rule and the blank above the draft stand on: a terminal
+	// too short for breathing room is too short for a header, and what is
+	// happening is still on the status line.
+	if a.room == nil || height < 6 {
+		return 0
+	}
+	return 1
 }
 
 func (a *app) page() int {

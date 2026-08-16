@@ -324,6 +324,17 @@ type app struct {
 	// finished turn is a rate nobody is watching.
 	turnBegan    time.Time
 	turnOutStart int
+	// turnCostAt is what the session had spent when the turn now running
+	// started, and it is the other end of the subtraction a turn footer's price
+	// is (timestamps.go). It is kept beside the burn window's pair because it is
+	// the same kind of fact — a reading taken at the turn's first moment so the
+	// turn's own share can be told from the session's total.
+	turnCostAt float64
+	// stamps is one frozen receipt per finished turn, keyed by turn number, and
+	// timestamps is the ui.timestamps rung deciding whether any of it is drawn.
+	// Both are timestamps.go's.
+	stamps     map[int]turnStamp
+	timestamps string
 	// ctxRing is the last [ctxRingSize] TURN-END context readings, oldest first.
 	// It is the sparkline's data and the compaction ETA's, and it is sampled at
 	// turn end rather than on the frame clock because that is the only moment
@@ -363,6 +374,11 @@ type app struct {
 	// the whole of the age fade: paint follows recency.
 	segText [segCount]string
 	segAt   [segCount]time.Time
+	// modelSpan is where the model's name was last drawn on the status row, in
+	// columns, and it is the whole of what makes that name PRESSABLE: written by
+	// the layout, read by the click (render.go's [app.identityParts], and
+	// [app.statusPress] below). An empty span means there is nothing to press.
+	modelSpan hudSpan
 
 	// hud is the cached answer to the two questions the telemetry asks of the
 	// whole conversation — how much background work is alive, and what the
@@ -572,6 +588,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// a fact that only ever changes by hand.
 	a.approval = readApproval(a.profileDir)
 	a.mouse = config.MouseEnabledAt(a.profileDir)
+	a.timestamps = config.TimestampsAt(a.profileDir)
 	if a.linear {
 		// The linear tier is a palette question as well as an app one: the two
 		// paints that mean motion and pointer stop, and the rail drops to the
@@ -762,6 +779,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// brief — which is what the rest of the card does with a press.
 			if cmd, took := a.choicePress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
+			}
+			// AND THE MODEL SEGMENT IS THE FOURTH: the status row's identity
+			// cluster carries the name of what is answering, and pressing a name
+			// is how a person changes it (render.go's [app.identityParts]).
+			if a.statusPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
 			}
 			a.press(msg.Mouse().Y)
 		}
@@ -1118,9 +1141,13 @@ func (a *app) settle() tea.Cmd {
 	// THE RING IS SAMPLED HERE AND NOWHERE ELSE: one reading per turn, taken at
 	// the only moment the figure is comparable with the reading before it.
 	a.sampleContext()
-	a.turnBegan, a.turnOutStart = time.Time{}, 0
+	// AND THE RECEIPT IS FROZEN HERE, before the clock it is measured from is
+	// cleared: what the turn took, what it called, what it cost (timestamps.go).
+	a.stampTurn()
+	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
 	a.approval = readApproval(a.profileDir)
 	a.mouse = config.MouseEnabledAt(a.profileDir)
+	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.follow()
 	a.touch()
 	return tea.Batch(a.probeGit(), fadeTicks())
@@ -1395,7 +1422,11 @@ func (a *app) submit(text string) tea.Cmd {
 	// the turn before this one, and a cursor left on them would answer enter
 	// with somebody else's history.
 	a.sel = -1
-	a.entries = append(a.entries, entry{kind: entryUser, text: text, turn: a.turn})
+	// The person's own message is the one block on this surface that carries a
+	// WALL-CLOCK moment rather than a duration: it is where a sitting starts,
+	// and it is what the gap and day marks above it are measured from
+	// (timestamps.go).
+	a.entries = append(a.entries, entry{kind: entryUser, text: text, turn: a.turn, began: a.now()})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	a.startClock()
@@ -1416,7 +1447,7 @@ func (a *app) startClock() {
 	if !a.turnBegan.IsZero() {
 		return
 	}
-	a.turnBegan, a.turnOutStart = a.now(), a.outputTokens
+	a.turnBegan, a.turnOutStart, a.turnCostAt = a.now(), a.outputTokens, a.cost
 }
 
 // now is the time, from the seam rather than from the package: see [app.clock].
@@ -1525,7 +1556,11 @@ func (a *app) press(y int) {
 	// was offered this click first and did not want it, so anything landing in
 	// the body region here is the person reaching back past the room.
 	if a.roomOpen() {
-		if top := a.bodyTop(); top >= 0 && y >= top && y < top+a.viewHeight() {
+		// THE PINNED HEADER IS PART OF THAT REGION, which is why the test starts
+		// at the top of the frame rather than at [app.bodyTop]: the header's own
+		// right end says "esc/←← main", and a row naming the way out that did
+		// nothing when it was pressed would be the one dead cell on the page.
+		if top := a.bodyTop(); top >= 0 && y >= 0 && y < top+a.viewHeight() {
 			a.closeRoom()
 		}
 		return
@@ -1569,6 +1604,40 @@ func (a *app) press(y int) {
 		// column no option occupies, and empty space on this surface does
 		// nothing.
 	}
+}
+
+// statusPress resolves a click on the status row's MODEL SEGMENT, and reports
+// whether it took the click.
+//
+// THE NAME OF WHAT IS ANSWERING IS THE DOOR TO CHANGING IT. The picker was
+// reachable by typing /model and by nothing else, which is a door in a room the
+// person is not standing in: the model's name is already on screen, already the
+// thing they are looking at when they decide it is the wrong one, and a name
+// that cannot be pressed is a label pretending it is not also a control.
+//
+// A press ANYWHERE ELSE on the status row falls through rather than being
+// swallowed, because the rest of that row is telemetry — figures, not controls —
+// and the conversation above it has its own gestures.
+//
+// The keyboard door is unchanged and stays the documented one for a surface with
+// the mouse turned off (config's ui.mouse): /model with no argument opens the
+// same picker, and the help sheet says so.
+func (a *app) statusPress(x, y int) bool {
+	if a.copy.on || a.sheet.open || a.pick.open {
+		return false
+	}
+	// THE ROW IS RESOLVED BEFORE THE COLUMN, and that order is load-bearing:
+	// [app.chromeAt] lays the chrome out to answer, and laying it out is what
+	// writes [app.modelSpan]. Reading the span first would be reading where the
+	// name was drawn on the frame before this one.
+	mark, ok := a.chromeAt(y)
+	// Index zero is the identity's row in both status layouts — the shared row,
+	// and the first of the two when the telemetry wraps onto its own (render.go).
+	if !ok || mark.kind != chromeStatus || mark.index != 0 || !a.modelSpan.holds(x) {
+		return false
+	}
+	a.openPicker()
+	return true
 }
 
 // choicePress resolves a click on a proposal's choices row to the option under
@@ -1936,7 +2005,11 @@ func (a *app) resetMeters() {
 	// carried across /new would be a graph of somebody else's context, and an
 	// ambient count would be claiming jobs that died with the agent.
 	a.ctxRing, a.ringTurn = nil, 0
-	a.turnBegan, a.turnOutStart = time.Time{}, 0
+	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
+	// The receipts go with the conversation they were written for: turn 1 of the
+	// session that replaced this one is not the turn 1 those figures describe
+	// (timestamps.go).
+	a.stamps = nil
 	a.hud, a.hudStale = hudStats{}, true
 	a.segText, a.segAt = [segCount]string{}, [segCount]time.Time{}
 }
