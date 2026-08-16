@@ -121,6 +121,14 @@ const (
 	// starts, and selecting text to copy is the more fundamental act. On
 	// buys hover and click; off buys selection.
 	KeyMouse = "ui.mouse"
+	// KeyTimestamps is how much of the clock the v3 conversation carries: a
+	// footer under every finished turn, only the coarse marks where the
+	// conversation was put down and picked up again, or nothing at all
+	// (internal/tui3's render.go). It is named beside the mouse row because it
+	// is the same kind of question — how much furniture the transcript draws —
+	// and it is a CHOICE rather than a bool because "less" and "none" are two
+	// different answers a reader gives for two different reasons.
+	KeyTimestamps = "ui.timestamps"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
 	// before its work may merge (internal/session's task_audit.go). It sits
 	// beside the guardian because both spend a model on the person's behalf:
@@ -245,6 +253,35 @@ var TaskAuditModes = []string{TaskAuditOn, TaskAuditOff}
 // DefaultTaskAudit is on.
 const DefaultTaskAudit = TaskAuditOn
 
+// The timestamps row's three answers, and they are a LADDER rather than three
+// unrelated pictures: each rung draws strictly less of the clock than the one
+// above it.
+//
+//	footers      the turn footer (· 14:02 · 2m12s · 3 tools · $0.04 ·) AND the
+//	             gap and day marks, which are what a footer is read against
+//	separators   only the marks: where the conversation was put down for ten
+//	             minutes, and where a day ended
+//	off          no clock at all
+//
+// The middle rung exists because the two features answer the same question at
+// different costs: a reader who wants to know that yesterday's exchange was
+// yesterday does not necessarily want a line of figures under every turn, and a
+// footer with no day mark above it would be a time with no date.
+const (
+	TimestampsFooters    = "footers"
+	TimestampsSeparators = "separators"
+	TimestampsOff        = "off"
+)
+
+// TimestampModes lists them richest first, which is also the default order the
+// row widens in.
+var TimestampModes = []string{TimestampsFooters, TimestampsSeparators, TimestampsOff}
+
+// DefaultTimestamps is the footers. When a turn took two minutes and cost four
+// cents, those are facts about work the person paid for, and a transcript that
+// never says when anything happened cannot be read back a day later.
+const DefaultTimestamps = TimestampsFooters
+
 const (
 	MemoryConsolidationOff = "off"
 	MemoryConsolidationOn  = "on"
@@ -322,6 +359,12 @@ var OperatorEnvPins = []string{
 	"AFORGE_HOME",
 	"AFORGE_SITE_URL",
 	"AFORGE_SITE_NAME",
+	// AFORGE_SITE_CATEGORIES is the third of the attribution triple beside the
+	// two above: the categories this client reports to OpenRouter's app rankings
+	// (internal/provider). It is plumbing for the reason its two siblings are —
+	// it is who the binary says it is to somebody else's directory, not a
+	// preference the product has an opinion about.
+	"AFORGE_SITE_CATEGORIES",
 	"AFORGE_PROFILE_DIR",
 	"AFORGE_MODELS",
 	"AFORGE_REASONING",
@@ -832,6 +875,17 @@ func (s *Settings) build() []Setting {
 				"to copy from the keyboard. Turn off to give the terminal's plain drag back.",
 			read:  func() string { return MouseAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMouse, raw, MouseModes) },
+		},
+		Setting{
+			Key: KeyTimestamps, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "timestamps", Choices: TimestampModes,
+			Hint: "how much of the clock the conversation carries. footers puts one dim line " +
+				"under each finished turn — when it ended, how long it took, how many calls it " +
+				"made, what it cost — and marks where the conversation was put down for ten " +
+				"minutes or a day. separators keeps only those marks. off draws neither. " +
+				"ctrl+o on a turn writes its footer's time out in full.",
+			read:  func() string { return TimestampsAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyTimestamps, raw, TimestampModes) },
 		},
 		Setting{
 			Key: KeyTaskAudit, Category: CategorySpending, Kind: SettingChoice,
@@ -1670,6 +1724,21 @@ func MouseAt(profileDir string) string {
 // word/switch split [GuardianEnabledAt] documents.
 func MouseEnabledAt(profileDir string) bool {
 	return MouseAt(profileDir) == MouseOn
+}
+
+// TimestampsAt resolves the timestamps row to its word, default footers. An
+// unknown word reads as the default rather than as off, for [RoutingAt]'s
+// reason: a garbled row must not quietly take a fact off the screen.
+func TimestampsAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyTimestamps); ok {
+		value = strings.TrimSpace(strings.ToLower(value))
+		for _, mode := range TimestampModes {
+			if value == mode {
+				return value
+			}
+		}
+	}
+	return DefaultTimestamps
 }
 
 // RoutingAt resolves the routing row to its word, default latency. An

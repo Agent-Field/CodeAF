@@ -2968,10 +2968,15 @@ func clickRail(t *testing.T, a *app, node int) {
 	if !a.railShowing() {
 		t.Fatal("there is no rail to click")
 	}
+	// The scan walks SCREEN rows, which is what the click will name: the rail's
+	// rows are the BODY REGION's rows, and the focus header a room pins above it
+	// moves them down by its own height (room.go, view.go's [app.headHeight]) —
+	// so the rail's first row is not always the frame's first row.
+	head := a.headHeight()
 	seen, at := 0, -1
-	for y := 0; y < a.viewHeight(); y++ {
+	for y := head; y < head+a.viewHeight(); y++ {
 		row := a.railNodeAt(y)
-		if row == nil || (y > 0 && a.railNodeAt(y-1) == row) {
+		if row == nil || (y > head && a.railNodeAt(y-1) == row) {
 			continue
 		}
 		if seen == node {
@@ -3110,7 +3115,9 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 
 	// The box says who it is talking to.
 	block, _, _, _ := a.chrome(a.width)
-	if !strings.Contains(plain(strings.Join(block, "\n")), "steer Fix the nil-map") {
+	// The lane names the node by the NAME the rail and the cards name it by
+	// (taskident.go), and it names the key back.
+	if !strings.Contains(plain(strings.Join(block, "\n")), roomSteerLane+"Fix the nil-map"+roomSteerBack) {
 		t.Fatalf("the box does not offer the steering lane:\n%s", plain(strings.Join(block, "\n")))
 	}
 
@@ -3307,7 +3314,9 @@ func TestTheFrameSaysAPersonIsInARoom(t *testing.T) {
 	clickRail(t, a, 0)
 
 	status := plain(a.status(a.width))
-	if !strings.Contains(status, "task · Fix the nil-map") {
+	// The chip is the node's mark and its name — no "task 7" ghost id, and no
+	// word standing in for the page's own name (room.go, taskident.go).
+	if !strings.Contains(status, "Fix the nil-map") {
 		t.Fatalf("the status line does not name the room:\n%s", status)
 	}
 	if !strings.Contains(status, "$0.42") {
@@ -3317,7 +3326,7 @@ func TestTheFrameSaysAPersonIsInARoom(t *testing.T) {
 		t.Fatalf("the legend does not say how to leave:\n%s", plain(a.legend(a.width)))
 	}
 	drive(t, a, key("esc"))
-	if strings.Contains(plain(a.status(a.width)), "task · Fix") {
+	if strings.Contains(plain(a.status(a.width)), "Fix the nil-map") {
 		t.Fatalf("the status line stayed in the room:\n%s", plain(a.status(a.width)))
 	}
 }

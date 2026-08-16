@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE ROOM: A TASK IS A PLACE, AND YOU CAN GO THERE.
@@ -141,6 +142,15 @@ type taskRoom struct {
 	offset int
 	stick  bool
 
+	// backs counts the ← presses that have arrived in a row on an empty box. Two
+	// of them leave the room, which is the gesture the header names ("esc/←←
+	// main"): esc is the dismiss key everything on this surface answers to, and
+	// ←← is the one a hand already on the arrows can reach without moving. It is
+	// TWO presses because one ← is a caret move the moment there is anything to
+	// move it through, and a single arrow that sometimes threw a person out of
+	// the page would be a key nobody could trust.
+	backs int
+
 	// The row cache, on the same terms every other cached block on this surface
 	// has one (render.go): rebuilt when the content or the width changes and at
 	// no other time.
@@ -158,14 +168,10 @@ func (r *taskRoom) deck() deck {
 
 // The words the room says of itself.
 const (
-	// roomPlaceWord is the identity cluster while a room is open. The telemetry
-	// beside it is still the SESSION's — the room is a view over one body region,
-	// not a second session, and a status line that re-pointed the cost and the
-	// context at a node would be claiming figures nobody is measuring.
-	roomPlaceWord = "task"
 	// roomLegendWord replaces the path in the legend while a room is open: where
-	// you are, and the one key that leaves.
-	roomLegendWord = "room · esc to return"
+	// you are, and the keys that leave. It names both of them for the reason the
+	// header does — a person's hand is either on esc or on the arrows.
+	roomLegendWord = "room · esc/←← main"
 	// roomFinishedWord is the foot under a node that has landed.
 	roomFinishedWord = "task finished — esc to return"
 	// roomFinishedRefusal is what a line typed at a landed node gets. It is a
@@ -177,9 +183,24 @@ const (
 	roomUnavailableWord = "room unavailable — this session has no task rooms"
 	// roomSteerLane is the input's placeholder while a room is open, with the
 	// node's title spliced in: the box says who it is talking to, because it is
-	// the same box that talks to the model.
-	roomSteerLane = "steer "
+	// the same box that talks to the model. It names the way out as well —
+	// the box is where a person's eye is, and "who is listening" and "how do I
+	// stop talking to them" are one question asked twice.
+	roomSteerLane = "Steer "
+	roomSteerBack = "… (esc: main)"
+	// roomBackWord is the focus header's right end: the two gestures that return
+	// to the conversation, in the order a hand reaches for them.
+	roomBackWord = "esc/←← main"
+	// roomCrumbRoot is where every breadcrumb starts, and it is the ONE name on
+	// this surface for the conversation itself.
+	roomCrumbRoot = "main"
+	// roomCrumbSep separates one step of the trail from the next.
+	roomCrumbSep = " ▸ "
 )
+
+// roomBackPresses is how many ← in a row leave a room. See [taskRoom.backs] for
+// why it is two and not one.
+const roomBackPresses = 2
 
 // roomTail is how much of a journal a room opens showing. A node's transcript is
 // a whole session file and can be hundreds of messages; this is about four
@@ -938,6 +959,13 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.menu.open, a.comp.open:
 		return nil, false
 	}
+	// THE BACK COUNT IS RESET BY EVERY OTHER KEY, here rather than in each arm
+	// below: two ← presses mean "leave" only when they are consecutive, and a
+	// counter that survived a page of typing would turn the ← a person pressed
+	// ten seconds ago into half of a gesture they never made.
+	if msg.String() != "left" {
+		a.room.backs = 0
+	}
 	switch msg.String() {
 	case "esc":
 		// A recall walk is left first, for the reason input.go leaves it first: a
@@ -947,6 +975,25 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, false
 		}
 		a.closeRoom()
+		return nil, true
+
+	case "left":
+		// ←← LEAVES, and only on an empty box: with a sentence in it ← is the
+		// caret's, which is the same rule ↑/↓ follow two arms below.
+		if !a.input.empty() {
+			a.room.backs = 0
+			break
+		}
+		a.room.backs++
+		if a.room.backs >= roomBackPresses {
+			a.closeRoom()
+			return nil, true
+		}
+		// The first ← is TAKEN rather than passed on: handed to the editor it
+		// would move a caret that has nothing to move through, and handed to
+		// nothing at all it would be a keystroke the surface swallowed silently.
+		// Held here, it is the first half of a gesture whose second half is one
+		// keypress away.
 		return nil, true
 
 	case "enter":
@@ -1049,6 +1096,204 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 		a.openRoomFor(e.node.id, e.node.title)
 	}
 	return a.takeRoomPump(), true
+}
+
+// ── THE FOCUS HEADER ────────────────────────────────────────────────────────
+//
+//	─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─
+//
+// A ROOM USED TO LOOK LIKE THE CONVERSATION. Same rows, same hues, same box
+// underneath, and the only two things saying otherwise were a word in the legend
+// and a placeholder in the box — both of which are read once and then stop being
+// read. A person who walked into a node, scrolled, and looked up two minutes
+// later had nothing on screen telling them that the sentence they were about to
+// type was going to a worktree somewhere else.
+//
+// So the room pins ONE line at the top of the body region, and it is the only
+// thing on this surface drawn in the accent that is not the person's own words:
+// WHERE YOU ARE (the trail), WHAT IT IS DOING (the state, its clock, its spend),
+// and HOW YOU LEAVE. It is pinned rather than scrolled for the reason a status
+// line is pinned — a fact that scrolls away is a fact that is only true at the
+// top of the page — and it is one line because a room is a place you are looking
+// THROUGH, not a page about a node.
+//
+// THE TRAIL IS A BREADCRUMB and it always names the root: "main ▸ <node>" one
+// level down, "main ▸ parent ▸ child" when a node's page grows a door into the
+// node it spawned. The root is on it even at one level deep because the trail's
+// job is to say what this page hangs off, and "main" is the one name this
+// surface has for the conversation itself.
+
+// roomHead is the pinned line, or "" when there is no room open and nothing to
+// pin. It is drawn by the frame (view.go), which is the only thing that knows
+// where the top of the body region is.
+func (a *app) roomHead(width int) string {
+	// [app.headHeight] is what the geometry budgeted for this row, and it is
+	// asked rather than second-guessed: a header the frame drew on a short
+	// terminal that the scrolling had not subtracted would push the room's last
+	// row under the input box.
+	if a.headHeight() == 0 || width < 12 {
+		return ""
+	}
+	left := a.roomHeadWord(width)
+	if line, ok := a.legendLine(left, roomBackWord, width, a.pal.accent); ok {
+		return line
+	}
+	if line, ok := a.legendLine(left, "", width, a.pal.accent); ok {
+		return line
+	}
+	return a.pal.accent(fit(left, width))
+}
+
+// roomHeadWord is the header's left: the node's mark, the trail, and the three
+// facts about the work. Every one of the three is DROPPED when nobody has
+// published it — a queued node has no clock, an unpriced one has no cost — for
+// the reason the turn footer drops its own fields (timestamps.go): a figure that
+// is zero is a figure nobody measured.
+//
+// It is built PLAIN, without paint, because the whole line is painted once by
+// [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
+// the rest of the line would fall back to the terminal's default mid-sentence.
+func (a *app) roomHeadWord(width int) string {
+	node := a.roomNode()
+	word := a.roomMark(node) + " " + a.roomTrail()
+	if node == nil {
+		// A room on a node this surface has had no update for. The trail is still
+		// true and nothing else is, which is exactly what gets said.
+		return fit(word, width)
+	}
+	for _, part := range []string{a.roomStateWord(node), a.roomClock(node), a.roomSpend(node)} {
+		if part != "" {
+			word += " · " + part
+		}
+	}
+	return fit(word, width)
+}
+
+// roomNode is the node the open room is about, or nil when this surface has
+// never had an update for it.
+func (a *app) roomNode() *taskNode {
+	if a.room == nil {
+		return nil
+	}
+	return a.tasks[a.room.id]
+}
+
+// roomMark is the node's state in one cell, UNPAINTED — [app.railGlyph]'s glyph
+// without its hue, because the header wears one hue for its whole length.
+func (a *app) roomMark(node *taskNode) string {
+	if node == nil {
+		return a.linearMark(glyphQueued, glyphQueuedASCII)
+	}
+	switch node.state {
+	case session.TaskDone:
+		return a.linearMark(glyphDone, glyphDoneASCII)
+	case session.TaskFailed:
+		return a.linearMark(glyphBad, glyphBadASCII)
+	case session.TaskRunning:
+		if a.linear {
+			return glyphRunASCII
+		}
+		return tokens.Spinner(a.paints / spinnerStep)
+	default:
+		return a.linearMark(glyphQueued, glyphQueuedASCII)
+	}
+}
+
+// roomTrail is the breadcrumb: the root, then one step per room walked into
+// without coming back out.
+//
+// The path is one deep today, because the only door into a room is the rail and
+// the rail is a flat list of the session's nodes — walking from one row to
+// another is a step SIDEWAYS, and [app.openRoomFor] treats it as one. The trail
+// is written over a path rather than over the open room so that the day a node's
+// own page grows a door into the node it spawned, the breadcrumb is already the
+// thing on screen.
+func (a *app) roomTrail() string {
+	trail := roomCrumbRoot
+	for _, step := range a.roomPath() {
+		trail += roomCrumbSep + step
+	}
+	return trail
+}
+
+// roomPath is the titles of the rooms between the conversation and the page on
+// screen, outermost first.
+func (a *app) roomPath() []string {
+	if a.room == nil {
+		return nil
+	}
+	return []string{a.room.title}
+}
+
+// roomStateWord is what the node is doing, in the engine's own vocabulary where
+// it has one (task.go's merge words).
+func (a *app) roomStateWord(node *taskNode) string {
+	switch node.state {
+	case session.TaskRunning:
+		// The word the status line uses for a session that is working, said about
+		// a node for the same reason: a person who has learned what "working"
+		// means on this surface has learned it here too.
+		return stateWorking.String()
+	case session.TaskQueued:
+		if waits := a.railWaits(node); waits != "" {
+			return "waits: " + waits
+		}
+		return roomQueuedWord
+	case session.TaskFailed:
+		return roomFailedWord
+	}
+	switch node.merge {
+	case mergeWordConflicted:
+		return mergeWordConflicted
+	case mergeWordAborted:
+		return taskStoppedWord
+	case "":
+		return roomDoneWord
+	default:
+		return node.merge
+	}
+}
+
+// The three words the header has that nothing else on this surface says.
+const (
+	roomQueuedWord = "queued"
+	roomDoneWord   = "done"
+	roomFailedWord = "failed"
+)
+
+// roomClock is the node's age: counting up while it runs, frozen at what the
+// update that ended it reported.
+func (a *app) roomClock(node *taskNode) string {
+	if node.state == session.TaskRunning && !node.began.IsZero() {
+		return countUpWord(a.now().Sub(node.began))
+	}
+	return countUpWord(node.elapsed)
+}
+
+// roomSpend is what this node has cost, or "" when nobody has published a price
+// (session's TaskNotice.CostUSD says why zero is not an answer).
+func (a *app) roomSpend(node *taskNode) string {
+	if node.cost <= 0 {
+		return ""
+	}
+	return dollars(node.cost)
+}
+
+// roomChip is the identity cluster while a room is open: the node's mark and its
+// title, in the accent, and the telemetry beside it still the SESSION's — the
+// room is a view over one body region, not a second session, and a status line
+// that re-pointed the cost and the context at a node would be quoting figures
+// nobody is measuring.
+//
+// It replaces a cluster that read "task · <title>", which on a node this surface
+// had no title for read "task · task 7" — a place named after its own id twice.
+// The chip is the same object the header pins at the top of the page, said once
+// more at the bottom, so the two ends of the frame agree about where you are.
+func (a *app) roomChip() string {
+	if a.room == nil {
+		return ""
+	}
+	return a.roomMark(a.roomNode()) + " " + a.room.title
 }
 
 // ── the room, drawn ─────────────────────────────────────────────────────────
@@ -1164,7 +1409,7 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if a.room == nil || len(rows) == 0 || !a.input.empty() || a.pick.open || a.awaitingTask() {
 		return rows
 	}
-	lane := roomSteerLane + a.room.title + "…"
+	lane := roomSteerLane + a.room.title + roomSteerBack
 	if a.room.done {
 		lane = roomFinishedWord
 	}

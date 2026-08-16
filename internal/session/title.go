@@ -163,9 +163,20 @@ func messageContentText(message ai.Message) string {
 	return text.String()
 }
 
-// cleanTitle takes the first line and strips the three things a model adds
-// against the instruction: surrounding quotes, a trailing full stop, and a
-// leading label like "Title:".
+// cleanTitle takes the first line and strips the four things a model adds
+// against the instruction: surrounding quotes, a trailing full stop, a leading
+// label like "Title:", and the separators of a name answered as a SLUG.
+//
+// The slug is the one worth explaining. The instruction asks for words, and a
+// model that has spent its life reading identifiers sometimes answers
+// "porting_the_parser" — which is the right eight words welded into a filename.
+// A name is read by a person, in a status line and in a list of yesterday's
+// sessions, so the welding is undone at the moment the name is minted rather
+// than at each of the places it is drawn.
+//
+// Only a ONE-TOKEN answer is touched. A title that already has a space in it is
+// words, and a hyphen inside words is a hyphen somebody meant ("port-b failures"
+// keeps it).
 func cleanTitle(raw string) string {
 	title := strings.TrimSpace(firstLine(raw))
 	if label := strings.SplitN(title, ":", 2); len(label) == 2 &&
@@ -174,5 +185,10 @@ func cleanTitle(raw string) string {
 	}
 	title = strings.Trim(title, `"'“”`)
 	title = strings.TrimRight(title, ".")
+	title = strings.TrimSpace(title)
+	if !strings.ContainsAny(title, " \t") {
+		title = strings.NewReplacer("_", " ", "-", " ").Replace(title)
+		title = strings.Join(strings.Fields(title), " ")
+	}
 	return clip(strings.TrimSpace(title), titleLimit)
 }
