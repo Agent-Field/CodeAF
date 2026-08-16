@@ -1,0 +1,42 @@
+// settleThreadSplit performs a settled split and reports whether it did. It is
+// called from the answer gate, after the row has been settled for the
+// measurement, and it ENDS the turn: the pivot is answered in the new room by
+// the ordinary poll, so a reply here would be the head answering in a room the
+// person has already been moved out of.
+func (h *Head) settleThreadSplit(user store.Message) (bool, error) {
+	pivot, found := h.splitPivot(user.SessionID, user.Seq)
+	if !found {
+		return false, nil
+	}
+	if _, err := h.splitThread(user.SessionID, pivot); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// -- naming a thread ---------------------------------------------------------
+
+// threadTarget reads the words a person points at a conversation with. There is
+// no id for "this thread": the room's id is never shown, so pointing is the only
+// way they could ever name it.
+func threadTarget(target string) bool {
+	switch strings.ToLower(strings.TrimSpace(target)) {
+	case "thread", "this thread", "the thread", "conversation", "this conversation",
+		"the conversation", "room", "this room", "the room", "chat", "this chat":
+		return true
+	default:
+		return false
+	}
+}
+
+// changeThread is the one thing a thread can be changed into: a different name.
+//
+// Naming is the scribe's job and stays so — this is the door for the person
+// overriding it, which is the fourth clause of the chats law ("naming is the
+// scribe's job, silently; 'call this thread X' works as a change"). It is
+// deterministic rather than a command, because there is nothing on the far side
+// to interpret: a rename is a rename, and the revision judge holds plans.
+func (run *beltRun) changeThread(sessionID, words string) (string, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+
+[62 more lines in file. Use offset=190 to continue.]

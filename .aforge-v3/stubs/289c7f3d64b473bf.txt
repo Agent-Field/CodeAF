@@ -1,0 +1,142 @@
+	if !strings.Contains(opening, "the last thing said in this conversation was middleware") {
+		t.Fatalf("the loop was never told which work just spoke:\n%s", opening)
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(commands) != 1 || commands[0].Kind != store.CommandRedirect ||
+		commands[0].Target != "middleware" || commands[0].Instruction != adjacentReviewAsk {
+		t.Fatalf("adjacent work did not steer the running job: %+v", commands)
+	}
+	for _, command := range commands {
+		if command.Kind == store.CommandSplice {
+			t.Fatalf("a second job was spliced beside the running one: %+v", command)
+		}
+	}
+}
+
+// When the loop honestly finds this is separate work, it still may not race:
+// the splice carries the job it arrived beside, so continuity turns that into a
+// wait rather than a parallel edit of the same thing. That "after" used to be
+// spliceContinuity guessing from adjacency; it is spawn's own argument now, set
+// by the party that read the board.
+func TestNewWorkBesideARunningJobIsSplicedBehindIt(t *testing.T) {
+	graph := openHeadStore(t)
+	session := "adjacent-new"
+	seedSpeakingJob(t, graph, session)
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolTask, map[string]any{
+			"instruction": adjacentReviewAsk, "after": "middleware"})}},
+		{text: "Queued behind the work already underway."},
+	}}
+	user := postUser(t, graph, session, adjacentReviewAsk)
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil || len(commands) != 1 || commands[0].Kind != store.CommandSplice {
+		t.Fatalf("spawned work = %+v err=%v", commands, err)
+	}
+	if commands[0].Target != "middleware" {
+		t.Fatalf("spliced work did not name the job it arrived beside: %+v", commands[0])
+	}
+	if commands[0].Instruction != adjacentReviewAsk {
+		t.Fatalf("the words did not travel verbatim: %q", commands[0].Instruction)
+	}
+}
+
+// Adjacency is a claim about the current breath of a conversation, so it is
+// bounded twice — by how long ago the job spoke, and by how much has been said
+// since. Past either bound, position proves nothing, and the reading says
+// nothing about it rather than guessing.
+func TestAdjacencyIsBoundedByQuietAndByTheThreadWindow(t *testing.T) {
+	graph := openHeadStore(t)
+	session := "stale"
+	seedSpeakingJob(t, graph, session)
+	conversational := New(&beltClient{}, graph)
+	active, err := conversational.activeUserJobs()
+	if err != nil || len(active) != 1 {
+		t.Fatalf("active = %+v err=%v", active, err)
+	}
+
+	fresh := postUser(t, graph, session, adjacentReviewAsk)
+	if _, adjoins, err := conversational.adjacencyTarget(fresh, active); err != nil || !adjoins {
+		t.Fatalf("a line said a moment ago is not adjacent: adjoins=%t err=%v", adjoins, err)
+	}
+	late := fresh
+	late.Time = fresh.Time.Add(AdjacencyQuiet + time.Minute)
+	if _, adjoins, err := conversational.adjacencyTarget(late, active); err != nil || adjoins {
+		t.Fatalf("a line older than the quiet window still anchored: adjoins=%t err=%v", adjoins, err)
+	}
+
+	for index := 0; index < AdjacencyMessageWindow; index++ {
+		if _, err := graph.PostMessage(store.Message{
+			SessionID: session, Role: store.RoleAgent,
+			Body: fmt.Sprintf("unrelated line %d", index),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	buried := postUser(t, graph, session, adjacentReviewAsk)
+	if _, adjoins, err := conversational.adjacencyTarget(buried, active); err != nil || adjoins {
+		t.Fatalf("a line pushed out of the window still anchored: adjoins=%t err=%v", adjoins, err)
+	}
+	// And the reading handed to the loop is silent about it. A stale position
+	// stated as evidence is the same wrong answer arriving one layer later.
+	if reading := conversational.renderHints(buried, active); strings.Contains(reading, "the last thing said") {
+		t.Fatalf("a job that stopped speaking is still offered as the referent:\n%s", reading)
+	}
+}
+
+// Adjacency is a candidate, never a veto. When the user's own words name one
+// job and the conversation points at another, both readings are good and both
+// are handed over — with the words leading, because they are the more deliberate
+// signal — and one plain question settles it. Nothing is journaled first.
+func TestDecisiveWordsBeatAdjacencyByAskingRatherThanBySilence(t *testing.T) {
+	graph := openHeadStore(t)
+	session := "disagree"
+	spliceSurgeryJob(t, graph, "api-client", "v1 API client", "write a client for the v1 API")
+	spliceSurgeryJob(t, graph, "audio", "English audio", "produce the English audio")
+	startNode(t, graph, "audio")
+	if _, err := graph.PostMessage(store.Message{
+		SessionID: session, Role: store.RoleAgent, NodeID: "audio",
+		Body: "Half the takes are rendered.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	head := New(&fakeClient{}, graph)
+	user := postUser(t, graph, session, "actually the API client should speak v2")
+
+	active, err := head.activeUserJobs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reading := head.renderHints(user, active)
+	words := strings.Index(reading, "the words rank against: api-client")
+	spoke := strings.Index(reading, "the last thing said in this conversation was audio")
+	switch {
+	case words < 0:
+		t.Fatalf("the job the words name was never offered:\n%s", reading)
+	case spoke < 0:
+		t.Fatalf("the job that spoke last was silently dropped:\n%s", reading)
+	case words > spoke:
+		t.Fatalf("position was offered ahead of the more deliberate signal:\n%s", reading)
+	}
+
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolAsk, map[string]any{
+			"question": "Which one do you mean?",
+			"options":  []string{"v1 API client", "English audio"}})}},
+	}}
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
+		t.Fatalf("a disagreement edited a plan: %+v", commands)
+	}
+	question := askedQuestion(t, graph, session, user.Seq)
+	if !isAskQuestion(question.Options) || len(question.Options) != 2 {
+		t.Fatalf("the disagreement was not put to the person as a choice: %+v", question.Options)
+	}
+}

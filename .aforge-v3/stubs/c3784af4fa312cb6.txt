@@ -1,0 +1,15 @@
+bench/probelab/tasks.py:308: def _chk_shopping(o):
+bench/probelab/tasks.py:338: json_task("json_shopping", 1, """
+bench/probelab/tasks.py:339: Produce a JSON object describing a shopping list.
+bench/probelab/tasks.py:347: """, _chk_shopping, 3, 6)
+bench/probelab/replicate.jsonl:5: {"model": "qwen3-30b-a3b", "task": "json_shopping", "solved_1": false, "solved_2": false, "cost": 4.82e-05, "finish_reason": "stop", "grade_reason": "constraint"}
+bench/probelab/replicate.jsonl:23: {"model": "deepseek-v4-flash", "task": "json_shopping", "solved_1": true, "solved_2": true, "cost": 0.0001295, "finish_reason": "stop", "grade_reason": ""}
+bench/probelab/replicate.jsonl:36: {"model": "glm-4.7", "task": "json_shopping", "solved_1": true, "solved_2": true, "cost": 0.0021704, "finish_reason": "stop", "grade_reason": ""}
+bench/probelab/selfcheck.py:136: case("json_shopping", json.dumps({"items": [
+bench/probelab/results.jsonl:5: {"model": "deepseek-v4-flash", "model_slug": "~deepseek/deepseek-v4-flash-latest", "served_by": "deepseek/deepseek-v4-flash-0731", "task": "json_shopping", "cls": "json", "tier": 1, "solved": true, "grade_reason": "", "grade_detail": "ok", "features": {"prompt_chars": 456, "prompt_words": 76, "prompt_lines": 10, "cls_code": 0, "cls_json": 1, "cls_exact": 0, "n_tests": 6, "schema_depth": 3, "numeric_constraints": 1, "n_digits": 7, "n_constraint_words": 7}, "signals": {"sc_agree": 0.3121, "sc_majo... [truncated]
+bench/probelab/results.jsonl:14: {"model": "qwen3-30b-a3b", "model_slug": "qwen/qwen3-30b-a3b-instruct-2507", "served_by": "qwen/qwen3-30b-a3b-instruct-2507", "task": "json_shopping", "cls": "json", "tier": 1, "solved": false, "grade_reason": "constraint", "grade_detail": "total 50.0 != 46.0", "features": {"prompt_chars": 456, "prompt_words": 76, "prompt_lines": 10, "cls_code": 0, "cls_json": 1, "cls_exact": 0, "n_tests": 6, "schema_depth": 3, "numeric_constraints": 1, "n_digits": 7, "n_constraint_words": 7}, "signals": {"sc_ag... [truncated]
+bench/probelab/results.jsonl:41: {"model": "glm-4.7", "model_slug": "z-ai/glm-4.7", "served_by": "z-ai/glm-4.7", "task": "json_shopping", "cls": "json", "tier": 1, "solved": true, "grade_reason": "", "grade_detail": "ok", "features": {"prompt_chars": 456, "prompt_words": 76, "prompt_lines": 10, "cls_code": 0, "cls_json": 1, "cls_exact": 0, "n_tests": 6, "schema_depth": 3, "numeric_constraints": 1, "n_digits": 7, "n_constraint_words": 7}, "signals": {"sc_agree": 0.0833, "sc_major": 0.3896, "sc_len_cv": 0.393, "sketch_jaccard": 0... [truncated]
+internal/swepro/internal/assets/src/tool/todowrite.txt:64: User: I need to implement these features for my e-commerce site: user registration, product catalog, shopping cart, and checkout flow.
+internal/swepro/internal/assets/src/tool/todowrite.txt:82: *Creates todo list with items like: 1) Implement memoization for expensive calculations in ProductList, 2) Add virtualization for long lists in Dashboard, 3) Optimize image loading in Gallery component, 4) Fix state update loops in ShoppingCart, 5) Review bundle size and implement code splitting*
+
+[Some lines truncated to 500 chars. Use read tool to see full lines]

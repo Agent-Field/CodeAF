@@ -1,0 +1,122 @@
+			// The named arm is what a single live job resolves through, and it must
+			// still name the job by id so the tool that acts needs no second read.
+			active, err := head.activeUserJobs()
+			if err != nil {
+				t.Fatal(err)
+			}
+			reading := head.renderHints(user, active)
+			if named := strings.Contains(reading, "the words rank against: api-client"); named != test.named {
+				t.Fatalf("named = %t, want %t:\n%s", named, test.named, reading)
+			}
+		})
+	}
+}
+
+// Surgery's vocabulary stays surgery's. "cancel" is a withdrawal, not a
+// redirection, even when the sentence would otherwise anchor beautifully — and
+// the reading says so before anything acts, so the collision never reaches a
+// verb that could edit a plan.
+func TestSurgeryVocabularyWinsOverRedirection(t *testing.T) {
+	graph := openHeadStore(t)
+	spliceSurgeryJob(t, graph, "api-client", "v1 API client", "write a client for the v1 API")
+	head := New(&fakeClient{}, graph)
+	user := postUser(t, graph, "collide", "cancel the v1 API client")
+
+	active, err := head.activeUserJobs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reading := head.renderHints(user, active)
+	if !strings.Contains(reading, `carries the verb "cancel" aimed at existing work`) {
+		t.Fatalf("the withdrawal verb was not read as one:\n%s", reading)
+	}
+	for _, redirection := range []string{"reads as a correction", "reads as an addition",
+		"reads as a cut", "reads as a redirection"} {
+		if strings.Contains(reading, redirection) {
+			t.Fatalf("a withdrawal was also read as a redirection (%q):\n%s", redirection, reading)
+		}
+	}
+
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolStop, map[string]any{
+			"targets": []string{"api-client"}})}},
+		{text: ""},
+	}}
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil || len(commands) != 1 || commands[0].Kind != store.CommandCancel {
+		t.Fatalf("surgery lost the collision: %+v err=%v", commands, err)
+	}
+}
+
+// One live job is not ambiguity: the words go to it and nothing is asked.
+func TestOneLiveJobIsRedirectedWithoutAsking(t *testing.T) {
+	graph := openHeadStore(t)
+	spliceSurgeryJob(t, graph, "api-client", "v1 API client", "write a client for the v1 API")
+	const words = "no, use the v2 API not v1"
+	client := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolChange, map[string]any{
+			"target": "api-client", "words": words})}},
+		{text: ""},
+	}}
+	user := postUser(t, graph, "single", words)
+	if err := New(client, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	commands, err := graph.PendingCommands(10)
+	if err != nil || len(commands) != 1 || commands[0].Kind != store.CommandRedirect ||
+		commands[0].Target != "api-client" || commands[0].Instruction != words {
+		t.Fatalf("redirect command = %+v err=%v", commands, err)
+	}
+	questions, err := graph.UnresolvedQuestions(10)
+	if err != nil || len(questions) != 0 {
+		t.Fatalf("single live job asked anyway: %+v err=%v", questions, err)
+	}
+}
+
+// Two live jobs and only a pronoun to go on: one numbered question, nothing
+// edited until the user answers, and the answer carries the ORIGINAL words into
+// the revision rather than the digit that settled the referent.
+//
+// The question is the ask tool now rather than a recognizer's askback. It is
+// still durable and still a row a person clicks, and — the property this test
+// exists for — the answer comes back to the loop instead of being applied by the
+// question machinery, because only the party that asked knows what it was for.
+func TestTwoLiveJobsWithWeakAnchorAskOnceWithTheRankedDefault(t *testing.T) {
+	graph := openHeadStore(t)
+	spliceSurgeryJob(t, graph, "audio-en", "English audio", "produce the English audio")
+	spliceSurgeryJob(t, graph, "audio-fr", "French audio", "produce the French audio")
+	const words = "also include an intro chime in that job"
+
+	asking := &beltClient{turns: []beltTurn{
+		{calls: []ai.ToolCall{beltCall("c1", beltToolAsk, map[string]any{
+			"question": "Which one do you mean?",
+			"options":  []string{"English audio", "French audio"}})}},
+	}}
+	user := postUser(t, graph, "ambiguous", words)
+	if err := New(asking, graph).answer(context.Background(), user); err != nil {
+		t.Fatal(err)
+	}
+	// The reading that made this ambiguous is in the prompt: a pronoun pointing
+	// at live work it does not name.
+	if opening := asking.openingPrompt(); !strings.Contains(opening,
+		"points at work already underway without naming it") {
+		t.Fatalf("the loop was not told the referent was unresolved:\n%s", opening)
+	}
+	if commands, _ := graph.PendingCommands(10); len(commands) != 0 {
+		t.Fatalf("ambiguous redirection edited a plan: %+v", commands)
+	}
+	question := askedQuestion(t, graph, "ambiguous", user.Seq)
+	if len(question.Options) != 2 || question.Options[0].Label != "English audio" ||
+		question.Options[1].Label != "French audio" {
+		t.Fatalf("the question does not offer the jobs by their own names: %+v", question.Options)
+	}
+	if !isAskQuestion(question.Options) {
+		t.Fatalf("the question was not minted by the loop, so its answer would never come back: %+v", question.Options)
+	}
+	assertClickableAsk(t, question, "Which one do you mean?", "English audio", "French audio")
+
+
+[263 more lines in file. Use offset=220 to continue.]

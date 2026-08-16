@@ -491,23 +491,40 @@ func countdownWord(d time.Duration) string {
 // ── the rail ────────────────────────────────────────────────────────────────
 
 const (
-	// railCols is the whole charge a shown rail makes on the frame: the seam,
+	// railCols is the whole charge a full rail makes on the frame: the seam,
 	// its gutter, and the column the nodes are drawn in.
 	railCols = 30
-	// railFloor is the frame this surface will not take a rail below. Under it
-	// the conversation would be reading at seventy columns to keep a column of
-	// titles on screen, and the transcript is the thing a person came for; the
-	// nodes still land in it as notes when they finish.
+	// railSlimCols is the charge under a narrower frame: the same column,
+	// tighter.
+	railSlimCols = 24
+	// railFloor is the frame a FULL rail takes. Under it the conversation
+	// would be reading at ninety columns to keep a column of titles on screen.
 	railFloor = 120
+	// railSlimFloor is the frame a rail of any width takes. Under it the
+	// transcript is the thing a person came for; the nodes still land in it
+	// as notes when they finish.
+	railSlimFloor = 100
 	// railSeam is the one line the rail draws, and it is the same line the
 	// legend draws below: a seam, not a border.
 	railSeam = "│ "
 )
 
+// railColsFor is how wide the rail is at a frame width: full from railFloor,
+// slim down to railSlimFloor, gone under that.
+func railColsFor(width int) int {
+	switch {
+	case width >= railFloor:
+		return railCols
+	case width >= railSlimFloor:
+		return railSlimCols
+	}
+	return 0
+}
+
 // railShowing reports whether the frame has a rail on it right now.
 func (a *app) railShowing() bool {
 	width, _ := a.size()
-	if width < railFloor {
+	if railColsFor(width) == 0 {
 		return false
 	}
 	return len(a.railNodes()) > 0
@@ -518,7 +535,8 @@ func (a *app) railWidth() int {
 	if !a.railShowing() {
 		return 0
 	}
-	return railCols
+	width, _ := a.size()
+	return railColsFor(width)
 }
 
 // bodyWidth is the conversation's own width, and it is what EVERY geometric
@@ -557,7 +575,8 @@ func (a *app) railRows(height int) []string {
 	if height <= 0 || !a.railShowing() {
 		return nil
 	}
-	room := railCols - ansi.StringWidth(railSeam)
+	width, _ := a.size()
+	room := railColsFor(width) - ansi.StringWidth(railSeam)
 	var body []string
 	for _, node := range a.railNodes() {
 		body = append(body, a.railNodeRows(node, room)...)

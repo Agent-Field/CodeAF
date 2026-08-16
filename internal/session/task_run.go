@@ -38,7 +38,7 @@ package session
 // than on a reviewer's judgement, arXiv:2608.05144). A node that has taken
 // forty steps or has taken six in a row without changing a file is not working,
 // it is circling, and the difference between a harness that says "stopped: 6
-// steps without a change" and one that lets the thirty-minute deadline collect
+// steps without progress" and one that lets the thirty-minute deadline collect
 // it is half an hour of the person's money and a report that explains nothing.
 // Both thresholds are per-node overridable on the wire (task.go's max_steps and
 // no_progress) because the right budget for a one-file rename and for a sweep
@@ -64,6 +64,7 @@ package session
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -508,8 +509,11 @@ func (n *TaskNode) limits() taskLimits {
 type taskLimits struct {
 	// maxSteps is the whole budget: the node stops when it has taken this many.
 	maxSteps int
-	// noProgress is how many CONSECUTIVE steps may change no file. A successful
-	// edit or write resets it to zero.
+	// noProgress is how many CONSECUTIVE steps may pass with no progress —
+	// and progress is broader than an edit: a successful edit or write, a
+	// bash that leaves the worktree dirtier, or a read/search/fetch of a
+	// target the node has not looked at before all reset it to zero. What it
+	// catches is the spin: the same query, the same file, the same nothing.
 	noProgress int
 }
 
@@ -865,12 +869,14 @@ func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, li
 		return nil, "", err
 	}
 	var (
-		changed []string
-		seen    = map[string]bool{}
-		failure error
-		stopped string
-		steps   int
-		idle    int
+		changed  []string
+		seen     = map[string]bool{}
+		seenInfo = map[string]bool{}
+		lastDirt string
+		failure  error
+		stopped  string
+		steps    int
+		idle     int
 	)
 	for event := range events {
 		switch event.Kind {
@@ -879,13 +885,21 @@ func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, li
 		case EventToolEnd, EventToolFailed:
 			steps++
 			path, wrote := changedPath(event, dir)
-			if wrote && event.Kind == EventToolEnd {
+			switch {
+			case wrote && event.Kind == EventToolEnd:
 				idle = 0
 				if !seen[path] {
 					seen[path] = true
 					changed = append(changed, path)
 				}
-			} else {
+			case taughtSomething(event, seenInfo, dir, &lastDirt):
+				// EXPLORATION IS PROGRESS. A research node may never write
+				// until its final words; a build node may spend its first
+				// dozen steps reading. What stops a node is SPINNING — the
+				// same target again, no new dirt — not the absence of an
+				// edit (PMCoder's "reads saturated", not "reads happened").
+				idle = 0
+			default:
 				idle++
 			}
 			// Named once. The loop keeps draining after the cancel — the child
@@ -900,7 +914,7 @@ func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, li
 				stopped = fmt.Sprintf("stopped: %d steps and no finish", limits.maxSteps)
 				stop()
 			case idle >= limits.noProgress:
-				stopped = fmt.Sprintf("stopped: %d steps without a change", limits.noProgress)
+				stopped = fmt.Sprintf("stopped: %d steps without progress", limits.noProgress)
 				stop()
 			}
 		case EventError:
@@ -908,6 +922,68 @@ func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, li
 		}
 	}
 	return changed, stopped, failure
+}
+
+// taughtSomething reports whether one call advanced the node's KNOWLEDGE
+// rather than its diff: a read, grep, find, ls, web_search or web_fetch
+// aimed at a target it has not aimed at before (the same search retried is
+// not new information, and SUCCESS is not required — a new target that
+// failed still taught the node that it failed), or a bash that left new
+// dirt in the worktree. The seen map keys tool+target so re-reading one
+// file while reading another new one still counts exactly once.
+func taughtSomething(event Event, seen map[string]bool, dir string, lastDirt *string) bool {
+	if event.Tool == "bash" {
+		dirt := worktreeDirt(dir)
+		if dirt != *lastDirt {
+			*lastDirt = dirt
+			return true
+		}
+		return false
+	}
+	switch event.Tool {
+	case "read", "ls", "grep", "find", "web_search", "web_fetch":
+	default:
+		return false
+	}
+	// The WHOLE CALL is the target, not one field of it: paging one long
+	// file by offset is exploration, fetching one page twice is a spin, and
+	// only the args in full tell them apart. Display-capped args compare
+	// fine — two calls capped at the same mark are the same call as far as
+	// anyone can see.
+	key := event.Tool + " " + strings.TrimSpace(event.Args)
+	if seen[key] {
+		return false
+	}
+	seen[key] = true
+	return true
+}
+
+// argField reads one string field out of a tool call's display args. The args
+// arrive compacted for show; a field that did not survive the cap simply
+// counts as no-new-target, which is the safe direction.
+func argField(args, field string) string {
+	var parsed map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(args), &parsed); err != nil {
+		return ""
+	}
+	var value string
+	if raw, ok := parsed[field]; ok {
+		_ = json.Unmarshal(raw, &value)
+	}
+	return value
+}
+
+// worktreeDirt is the worktree's dirty fingerprint: the sorted porcelain
+// listing hashed, so a bash that creates, modifies or deletes a file reads
+// as progress while one that only inspects does not. A non-git directory
+// answers "" — stable, so it never moves the counter either way.
+func worktreeDirt(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(out)
+	return string(sum[:8])
 }
 
 // changedPath reads the file one edit or write touched, workspace-relative.

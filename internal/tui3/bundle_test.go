@@ -2286,7 +2286,7 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 	for _, tc := range []struct {
 		width int
 		rail  bool
-	}{{200, true}, {120, true}, {119, false}, {100, false}} {
+	}{{200, true}, {120, true}, {119, true}, {100, true}, {99, false}} {
 		a.width = tc.width
 		a.touch()
 		if got := a.railShowing(); got != tc.rail {
@@ -2294,7 +2294,7 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 		}
 		want := tc.width
 		if tc.rail {
-			want -= railCols
+			want -= railColsFor(tc.width)
 		}
 		if got := a.bodyWidth(); got != want {
 			t.Fatalf("at %d columns the conversation is %d wide, want %d", tc.width, got, want)
@@ -2308,7 +2308,9 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 				t.Fatalf("at %d columns frame row %d is %d wide:\n%q", tc.width, i, w, line)
 			}
 		}
-		if tc.rail && !strings.Contains(lines[0], "Fix the nil-map crash") {
+		// The slim rail fits the title to its column, so the assertion reads
+		// the prefix both widths keep.
+		if tc.rail && !strings.Contains(lines[0], "Fix the nil-map") {
 			t.Fatalf("at %d columns the rail is not on the frame's first row:\n%q", tc.width, lines[0])
 		}
 		// The status row is the whole window's, so it is never under the rail.
