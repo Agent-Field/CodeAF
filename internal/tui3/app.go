@@ -873,6 +873,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a *app) paint() tea.Cmd {
 	a.paints++
 	a.dirty = true
+	// A ROOM'S ROWS ARE DROPPED ON THE SAME CLOCK, for the same reason: the page
+	// carries the same spinners, count-ups and streaming blocks the conversation
+	// does, and a cached row is a still photograph of an animation (room.go).
+	if a.room != nil {
+		a.room.dirty = true
+	}
 	if a.paints%usageEvery == 0 {
 		a.refreshUsage()
 	}
@@ -888,7 +894,11 @@ func (a *app) paint() tea.Cmd {
 	// AND THE CLOCK OUTLIVES THE TURN when a node does. A task runs for minutes
 	// with no stream open: its spinner, its count-up and the countdown above are
 	// the third reason this surface asks for a frame while the model is idle.
-	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() {
+	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
+		// AND A ROOM ON A LIVE NODE IS THE FOURTH: the page is a transcript with a
+		// spinner turning on it, and the rail — which is what [app.tasksAnimating]
+		// reads — is not always on screen to say so (room.go).
+		(a.roomOpen() && !a.room.done) {
 		return frameTick()
 	}
 	a.painting = false
@@ -899,14 +909,26 @@ func (a *app) paint() tea.Cmd {
 // — everything up to its last newline — is rendered as markdown, and the tail
 // keeps streaming plain underneath it.
 func (a *app) promoteMarkdown() {
-	if a.live < 0 || a.live >= len(a.entries) {
+	if a.live >= 0 && a.live < len(a.entries) {
+		promoteBlock(&a.entries[a.live], &a.mdAt)
+	}
+	// A NODE'S ANSWER IS PROMOTED ON THE SAME CLOCK. A room draws the assistant
+	// block through the same renderer (render.go's [app.assistantRows]), so a page
+	// whose live block was never promoted would be the one place on this surface
+	// where a heading stays a hash until the turn ends (room.go).
+	if a.room != nil && a.room.live >= 0 && a.room.live < len(a.room.entries) {
+		promoteBlock(&a.room.entries[a.room.live], &a.room.mdAt)
+	}
+}
+
+// promoteBlock is the promotion itself, over one live block and the clock that
+// throttles it. It is a function rather than a method because there are two
+// lists it has to be able to run over and exactly one rule (see above).
+func promoteBlock(e *entry, at *time.Time) {
+	if time.Since(*at) < markdownThrottle {
 		return
 	}
-	if time.Since(a.mdAt) < markdownThrottle {
-		return
-	}
-	a.mdAt = time.Now()
-	e := &a.entries[a.live]
+	*at = time.Now()
 	cut := strings.LastIndexByte(e.text, '\n') + 1
 	if cut <= e.mdCut {
 		return
@@ -1476,10 +1498,37 @@ func waitEvent(ch <-chan session.Event, gen int) tea.Cmd {
 
 // unfold is ctrl+o: every call of the current turn on its own line, or back to
 // the last [toolWindow] of them.
+// It folds the turn of whichever list is on screen — a room's page folds its
+// own clusters, from its own map, because the key names the thing being read
+// (render.go's [app.bodyDeck], room.go).
 func (a *app) unfold(turn int) {
-	a.unfolded[turn] = !a.unfolded[turn]
+	d := a.bodyDeck()
+	if d.unfolded == nil {
+		return
+	}
+	d.unfolded[turn] = !d.unfolded[turn]
+	if a.room != nil {
+		a.room.dirty = true
+	}
 	a.touch()
 }
+
+// bodyTurn is the turn ctrl+o folds: the last one the list on screen drew. It is
+// the conversation's own counter out here, and the room's in there — a key that
+// folded the transcript's newest turn while a node's page was up would be
+// folding a cluster nobody can see.
+func (a *app) bodyTurn() int {
+	if a.room != nil {
+		return a.room.turn
+	}
+	return a.turn
+}
+
+// selected reports whether the keyboard's selection is on this row of the list
+// being drawn. It belongs to the CONVERSATION and to nothing else: a room spends
+// enter on steering, so nothing in one is ever picked out (room.go), and a room
+// index that happened to equal it would light a row nobody chose.
+func (a *app) selected(i int) bool { return a.sel == i && !a.roomOpen() }
 
 // openTool expands one call inline — its tool-shaped expansion, under the rail.
 // Closing it also drops a lifted cap: the next opening starts at the window
@@ -1491,50 +1540,53 @@ func (a *app) unfold(turn int) {
 // has started opens that node's page instead of an expansion (room.go). The
 // branch is here rather than in [app.enter] so that "enter opens what ↑/↓
 // picked" stays one sentence with one implementation.
+// A ROOM'S CALLS OPEN THE SAME WAY, from the room's own list: the expansion is
+// the whole reason a person clicks a row, and a page that drew calls it refused
+// to open would be a transcript with its evidence removed (room.go). The door
+// into a room is skipped in there for the obvious reason — a proposal is a
+// thing the conversation holds, and a room is already open.
 func (a *app) openTool(i int) {
-	if a.openRoomAt(i) {
+	if !a.roomOpen() && a.openRoomAt(i) {
 		return
 	}
-	if i < 0 || i >= len(a.entries) || a.entries[i].kind != entryTool || replayInert(&a.entries[i]) {
+	es := a.bodyDeck().entries
+	if i < 0 || i >= len(es) || es[i].kind != entryTool || replayInert(&es[i]) {
 		return
 	}
-	e := &a.entries[i]
+	e := &es[i]
 	e.open = !e.open
 	if !e.open {
 		e.full = false
 	}
-	a.sel = i
+	if a.room != nil {
+		a.room.dirty = true
+	} else {
+		a.sel = i
+	}
 	a.touch()
 }
 
 // showAll lifts one expansion's cap — the click on "… N more lines".
 func (a *app) showAll(i int) {
-	if i < 0 || i >= len(a.entries) || a.entries[i].kind != entryTool {
+	es := a.bodyDeck().entries
+	if i < 0 || i >= len(es) || es[i].kind != entryTool {
 		return
 	}
-	a.entries[i].full = true
+	es[i].full = true
+	if a.room != nil {
+		a.room.dirty = true
+	}
 	a.touch()
 }
 
 // press resolves a click to the row it landed on. A click that lands on
 // nothing does nothing: this surface has no empty-space gesture.
 func (a *app) press(y int) {
-	// A CLICK IN THE BODY IS THE WAY OUT OF A ROOM. While one is open the region
-	// under this pointer is the node's page, not the conversation, and the
-	// gesture that returns to the conversation is pressing it (room.go). The rail
-	// was offered this click first and did not want it, so anything landing in
-	// the body region here is the person reaching back past the room.
-	if a.roomOpen() {
-		if top := a.bodyTop(); top >= 0 && y >= top && y < top+a.viewHeight() {
-			a.closeRoom()
-		}
-		return
-	}
 	// The welcome box gets the click first, because while it is up it is the
 	// thing between the pointer and everything else: a recent session opens,
 	// and anywhere else is the person reaching past the box, which is what
 	// dismissal means (welcome.go).
-	if a.welcome.open {
+	if a.welcome.open && !a.roomOpen() {
 		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeWelcome {
 			a.welcomePress(a.welcomeSlotAt(mark.index))
 			return
@@ -1543,13 +1595,30 @@ func (a *app) press(y int) {
 	}
 	r, ok := a.rowAt(y)
 	if !ok {
+		// A CLICK ON NOTHING IS THE WAY OUT OF A ROOM. Every interactive row on a
+		// node's page now does what the same row does in the conversation, so the
+		// gesture that leaves cannot be "press the body" any more — it is pressing
+		// the part of the body that answers to nothing, which is the same empty
+		// space esc is for. The rail was offered this click first and did not want
+		// it (room.go).
+		if a.roomOpen() {
+			if top := a.bodyTop(); top >= 0 && y >= top && y < top+a.viewHeight() {
+				a.closeRoom()
+			}
+		}
 		return
 	}
 	// A click anywhere on a thinking block toggles it — the whole block is the
 	// target, because a collapsed one is a single row and asking somebody to hit
 	// a five-cell label is asking them to aim (thinking.go).
-	if r.entry >= 0 && r.entry < len(a.entries) && a.entries[r.entry].kind == entryThinking {
+	if es := a.bodyDeck().entries; r.entry >= 0 && r.entry < len(es) &&
+		es[r.entry].kind == entryThinking {
 		a.toggleThought(r.entry)
+		return
+	}
+	if r.hit == hitNone && a.roomOpen() {
+		// A row with nothing behind it, on a page: the same empty space as above.
+		a.closeRoom()
 		return
 	}
 	switch r.hit {

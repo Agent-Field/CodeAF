@@ -93,8 +93,18 @@ func (a *app) enterCopy() {
 
 // exitCopy thaws it and rejoins the live edge, because a reader who has
 // finished reading wants the conversation back.
+//
+// WHICHEVER EDGE WAS FROZEN. A room's rows are what [app.freezeRoom] snapshots,
+// so thawing back onto the transcript's edge would drop the reader out of the
+// page they were reading and lose the conversation's scroll on the way (room.go
+// carried this as a known seam; the room's own stick is what closes it).
 func (a *app) exitCopy() {
 	a.copy = copyMode{mark: -1}
+	if a.room != nil {
+		a.room.stick = true
+		a.roomTouched()
+		return
+	}
 	a.stick = true
 	a.follow()
 	a.touch()
