@@ -166,7 +166,10 @@ type taskNode struct {
 	// published it (session's TaskNotice.CostUSD). Zero means nobody published a
 	// price, which is not the same claim as "it cost nothing" — the focus header
 	// draws no figure for it rather than a $0.00 (room.go).
-	cost                  float64
+	cost float64
+	// STUB — the rail/live-usage branch owns these; at merge its versions win.
+	tokens int
+
 	report, branch, merge string
 	changed               []string
 	// tool is what the node is doing RIGHT NOW, one line, and toolBegan when it
@@ -179,6 +182,9 @@ type taskNode struct {
 	// standing in its room, or zero. See [app.taskNow].
 	froze time.Time
 }
+
+// STUB — the rail/live-usage branch owns these; at merge its versions win.
+func (n *taskNode) spent() float64 { return n.cost }
 
 // spawnedAt is when this node's work started, in wall-clock: the moment it
 // began running, or — for a node that failed before it ever ran — the moment
@@ -2061,7 +2067,7 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 	for _, seg := range segs {
 		add := seg
 		if line != lead {
-			add = " · " + seg
+			add = railSep + seg
 		}
 		if ansi.StringWidth(line)+ansi.StringWidth(add) <= width {
 			line += add
@@ -2092,10 +2098,11 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 // railNodeRows is one node: WHAT IT IS on the first line, and what is true of it
 // on the second.
 //
-//	⠙ ◆ Fix nil-map          #7
+//	⠙ ◆ Fix nil-map           #7
 //	  bash go test ./… · 42s
+//	  42s · 9.9k · $0.31 · gpt-5
 //	✓ ▲ Collect sources       #9
-//	  merged
+//	  merged · $0.42
 //	◌ ● Mix audio            #11
 //	  waits: Collect sources
 //
@@ -2130,20 +2137,17 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 	// the title is measured against what they leave.
 	lead := a.railGlyph(node) + " " + a.taskMark(node.ident) + " "
 	title, room := node.title, width-ansi.StringWidth(lead)
-	// THE MODEL RIDES THE META SLOT WHEN IT IS CHEAP AND NOT OTHERWISE. The
-	// handle is what the row is called and is never given up; the model is worth
-	// the cells only on a column wide enough to keep a name beside it, so the two
-	// candidates are tried richest first and the row takes the first that leaves
-	// a title worth reading.
-	meta := ""
-	for _, candidate := range []string{railMetaModelWord(node), railMetaWord(node)} {
-		if candidate == "" {
-			continue
-		}
-		if room-ansi.StringWidth(candidate)-1 >= railTitleFloor {
-			meta = candidate
-			break
-		}
+	// THE META SLOT IS THE HANDLE AND NOTHING ELSE. It used to carry the model
+	// beside the id where the column could afford both, and that was the model
+	// buying its cells from the NAME — the one thing this row exists to say. The
+	// model rides the telemetry row under the title now ([app.railTelemetry]),
+	// where it is beside the figures it belongs with and costs the title nothing;
+	// the handle stays here, because it is what identifies the row to the machine
+	// and it is four cells. It still stands down when the title cannot afford
+	// even that.
+	meta := railMetaWord(node)
+	if room-ansi.StringWidth(meta)-1 < railTitleFloor {
+		meta = ""
 	}
 	if meta != "" {
 		room -= ansi.StringWidth(meta) + 1
@@ -2171,19 +2175,16 @@ const railTitleFloor = 12
 // railMetaWord is the node's handle: the id the engine calls it by.
 func railMetaWord(node *taskNode) string { return "#" + itoa(int(node.id)) }
 
-// railMetaModelWord is the handle with the model beside it, for a column that
-// can afford both: the part of the id after the vendor, which is the part that
-// names the model rather than who sells it. Empty when nobody published one,
-// and then the row falls back to the handle alone.
-func railMetaModelWord(node *taskNode) string {
+// railModelWord is the model this node runs on, as a column this narrow can say
+// it: the part of the id AFTER THE VENDOR, which is the part that names the
+// model rather than who sells it. Empty when nobody published one, and then
+// every row that would have drawn it draws nothing instead.
+func railModelWord(node *taskNode) string {
 	model := strings.TrimSpace(node.model)
-	if model == "" {
-		return ""
-	}
 	if slash := strings.LastIndex(model, "/"); slash >= 0 && slash+1 < len(model) {
 		model = model[slash+1:]
 	}
-	return model + " " + railMetaWord(node)
+	return model
 }
 
 // railTitle paints an already-fitted title. The cut happens at the call site
@@ -2196,9 +2197,22 @@ func (a *app) railTitle(node *taskNode, title string) string {
 	return a.pal.muted(title)
 }
 
-// railUnder is what a node says under its own title: the clock while it runs,
-// what it waits on while it is blocked, and how the branch came home once it has
-// landed.
+// railUnder is what a node says under its own title: what it is doing and what
+// it is spending while it runs, what it waits on while it is blocked, and how
+// the branch came home once it has landed.
+//
+//	bash go test ./…             a live call, in its own hue
+//	42s · 9.9k · $0.31 · gpt-5   the telemetry, always, while it runs
+//	merged · $0.42               what it came home as, and what it cost
+//	conflicted · task/fix-nil    the one loud row, and its one handle back
+//	waits: Collect sources       what has to happen before this can
+//
+// THE ROWS THAT CARRY A HANDLE CARRY NOTHING ELSE. A conflicted branch, a kept
+// branch, a prerequisite's name and "unverified — waiting on you" are each one
+// fact a person has to ACT on, and a price appended to any of them would be a
+// figure competing with the only thing on the row worth reading. The telemetry
+// belongs to the states nobody has to do anything about — a node that is running
+// and a node that came home clean.
 //
 // It WRAPS rather than truncates, up to [railUnderRows]. Everything else on this
 // surface cuts to an ellipsis, and everything else on this surface is cutting a
@@ -2212,12 +2226,22 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 	case session.TaskRunning:
 		// A RUNNING NODE SAYS WHAT IT IS DOING, when the pilot lane has told this
 		// surface (see [taskPilot]) — and that line carries its own clock in its
-		// own hue, so it is built and returned here rather than falling through to
-		// the single-paint wrap below.
-		if rows := a.railWorking(node, width); rows != nil {
-			return rows
+		// own hue, so it is built here rather than falling through to the
+		// single-paint wrap below.
+		//
+		// AND THEN IT SAYS WHAT IT IS COSTING, always. The call is what the node is
+		// doing this second and it is gone the second after; the telemetry is the
+		// standing answer to "is this worth what it is burning", which is the
+		// question a person opens this column for and cannot ask anywhere else
+		// without leaving the conversation. Between calls the telemetry is the
+		// whole of the under-block, which is what the bare clock used to be.
+		rows := a.railWorking(node, width)
+		if len(rows) < railUnderRows {
+			if tele := a.railTelemetry(node, width); tele != "" {
+				rows = append(rows, paint(tele))
+			}
 		}
-		text = countUpWord(a.taskNow(node).Sub(node.began))
+		return rows
 	case session.TaskQueued:
 		// THE DEPENDENCY SENTENCE, and it is v1's own words — internal/tui says
 		// "waits: <title>" and a person who has used that surface has already
@@ -2250,7 +2274,21 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 			// nothing went wrong, and the work is still on that branch.
 			text = taskStoppedKept + " · " + node.branch
 		default:
+			// THE MERGE WORD, AND WHAT THE WORK COST TO GET THERE. A node that came
+			// home clean is the one settled row with nothing to act on, so it is the
+			// one that can afford a figure — and the price is the fact a person goes
+			// looking for afterwards, because the footer's Σ is the session's whole
+			// spend and says nothing about which node ate it.
+			//
+			// THE MERGE WORD ALWAYS SURVIVES. The price is appended only when the
+			// engine published one and only when the row has the cells for both: a
+			// column too narrow for "merged · $0.42" says "merged", never "$0.42".
 			text = node.merge
+			if spent := node.spent(); text != "" && spent > 0 {
+				if priced := text + railSep + dollars(spent); ansi.StringWidth(priced) <= width {
+					text = priced
+				}
+			}
 		}
 	}
 	if text == "" {
@@ -2268,9 +2306,15 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 }
 
 // railUnderRows caps that block. Two is what a branch name or a prerequisite's
-// title takes at this width; past it the rail would be a paragraph, and the
-// transcript is where paragraphs live.
+// title takes at this width, and it is exactly what a running node spends — the
+// call it is in, then the telemetry — so the cap is the design and not a
+// backstop. Past it the rail would be a paragraph, and the transcript is where
+// paragraphs live.
 const railUnderRows = 2
+
+// railSep is what this column joins two facts on one row with, and it is the
+// footer's own joiner ([railPack]): one vocabulary down the whole column.
+const railSep = " · "
 
 // ── THE ELAPSED CLOCK ───────────────────────────────────────────────────────
 //
@@ -2321,14 +2365,60 @@ func (a *app) railWorking(node *taskNode, width int) []string {
 	clock, tint := a.taskClock(node)
 	tail := ""
 	if clock != "" {
-		tail = " · " + clock
+		tail = railSep + clock
 	}
 	name := fit(node.tool, width-ansi.StringWidth(tail))
 	line := a.pal.dim(name)
 	if clock != "" {
-		line += a.pal.dim(" · ") + tint(clock)
+		line += a.pal.dim(railSep) + tint(clock)
 	}
 	return []string{line}
+}
+
+// railTelemetry is the standing row under a running node: how long it has been
+// going, how much it has burned, what that has cost, and who is doing it.
+//
+//	42s · 9.9k · $0.31 · gpt-5    a full column, and everything known
+//	42s · 9.9k · $0.31            a slim one: the worker is the first to go
+//	42s · gpt-5                   an engine that publishes no usage
+//	42s                           and one that publishes nothing at all
+//
+// RICHEST FIRST, DROPPED FROM THE RIGHT, AND THAT IS THE WHOLE WIDTH STORY. The
+// segments are in the order a person needs them — the age is what says whether
+// to look, the weight and the price are what say whether to stop it, the model
+// is context for both — so the row is built whole and shortened by giving up its
+// tail until it fits. That is one rule for a 26-cell column, a 20-cell one and
+// the roster drawn over the whole frame: a mode switch here would be three
+// layouts to keep true instead of one.
+//
+// ABSENCE RENDERS AS NOTHING. A figure nobody published is zero, and zero is not
+// a measurement: the segment is skipped entirely rather than drawn as "$0.00" or
+// "0" beside a node that has been working for a minute. A row with nothing known
+// on it at all is no row.
+func (a *app) railTelemetry(node *taskNode, width int) string {
+	segs := make([]string, 0, 4)
+	if clock := countUpWord(a.taskNow(node).Sub(node.began)); clock != "" {
+		segs = append(segs, clock)
+	}
+	if node.tokens > 0 {
+		// BARE, WITH NO UNIT ON IT. The footer's figure wears "tok" because it sits
+		// beside a dollar sum and a row of counts; here the count is one of four
+		// segments on a row twenty-odd cells wide, and three of those cells are the
+		// difference between keeping the price and dropping it.
+		segs = append(segs, tokenWord(node.tokens))
+	}
+	if spent := node.spent(); spent > 0 {
+		segs = append(segs, dollars(spent))
+	}
+	if model := railModelWord(node); model != "" {
+		segs = append(segs, model)
+	}
+	for ; len(segs) > 0; segs = segs[:len(segs)-1] {
+		if line := strings.Join(segs, railSep); ansi.StringWidth(line) <= width {
+			return line
+		}
+	}
+	return ""
 }
 
 // taskClock is how long this node's current call has been running, and the hue
