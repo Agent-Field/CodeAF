@@ -2641,8 +2641,9 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 // meet, because the picker is modal and the roster's guard stands down while it
 // is up (task.go's [app.railKey]).
 
-// roster is the column as a reader sees it.
-func roster(a *app, height int) string {
+// rosterText is the column as a reader sees it. It is not spelled `roster`
+// because that is the resume picker's own type now (resume.go).
+func rosterText(a *app, height int) string {
 	return plain(strings.Join(a.railRows(height), "\n"))
 }
 
@@ -2665,7 +2666,7 @@ func TestTheRosterGroupsByAttentionAndFoldsItsTail(t *testing.T) {
 		streamEventMsg{gen: a.gen, ev: update(5, "Cut the trailer", session.TaskQueued, session.TaskNotice{})},
 	)
 	a.cost, a.tokens = 1.42, 312_000
-	rail := roster(a, 20)
+	rail := rosterText(a, 20)
 
 	// The order of the headings IS the design: what is asking, what is running,
 	// what is waiting for a slot, what is parked behind other work, what is over.
@@ -2727,7 +2728,7 @@ func TestTheRosterFoldsFromTheKeyboardAndThePointer(t *testing.T) {
 	if a.railHold {
 		t.Fatal("the roster took the keyboard nobody handed it")
 	}
-	if strings.Contains(roster(a, 16), railMark) {
+	if strings.Contains(rosterText(a, 16), railMark) {
 		t.Fatal("an unfocused roster drew a cursor")
 	}
 
@@ -2735,21 +2736,21 @@ func TestTheRosterFoldsFromTheKeyboardAndThePointer(t *testing.T) {
 	if !a.railHold {
 		t.Fatal("ctrl+t did not hand the roster the keyboard")
 	}
-	if !strings.Contains(roster(a, 16), railMark) {
-		t.Fatalf("the focused row has no marker:\n%s", roster(a, 16))
+	if !strings.Contains(rosterText(a, 16), railMark) {
+		t.Fatalf("the focused row has no marker:\n%s", rosterText(a, 16))
 	}
 	// Down to the done heading — two rows past the running group's own — and
 	// open it. A heading is navigable and opens no room; it folds.
 	drive(t, a, key("down"), key("down"), key("right"))
-	if !strings.Contains(roster(a, 16), "Collect sources") {
-		t.Fatalf("→ did not open the folded group:\n%s", roster(a, 16))
+	if !strings.Contains(rosterText(a, 16), "Collect sources") {
+		t.Fatalf("→ did not open the folded group:\n%s", rosterText(a, 16))
 	}
 	if a.roomOpen() {
 		t.Fatal("a heading opened a room")
 	}
 	drive(t, a, key("left"))
-	if strings.Contains(roster(a, 16), "Collect sources") {
-		t.Fatalf("← did not close the group again:\n%s", roster(a, 16))
+	if strings.Contains(rosterText(a, 16), "Collect sources") {
+		t.Fatalf("← did not close the group again:\n%s", rosterText(a, 16))
 	}
 
 	// Typing still reaches the box while the roster holds the arrows: only the
@@ -2760,7 +2761,7 @@ func TestTheRosterFoldsFromTheKeyboardAndThePointer(t *testing.T) {
 	}
 	// esc gives the keyboard back, and the cursor goes with it.
 	drive(t, a, key("esc"))
-	if a.railHold || strings.Contains(roster(a, 16), railMark) {
+	if a.railHold || strings.Contains(rosterText(a, 16), railMark) {
 		t.Fatal("esc did not hand the keyboard back to the box")
 	}
 
@@ -2811,7 +2812,7 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		drive(t, a, key("down"))
 	}
-	rail := roster(a, 12)
+	rail := rosterText(a, 12)
 	if !strings.Contains(rail, "node 281") || !strings.Contains(rail, railMark) {
 		t.Fatalf("the window did not follow the cursor down:\n%s", rail)
 	}

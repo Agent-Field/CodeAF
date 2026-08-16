@@ -204,6 +204,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 
+	// And the session picker is modal at the same rung, for the same reasons: it
+	// takes the input line's place, it holds its own filter, and esc leaves the
+	// conversation exactly as it was (resume.go). The two are never up together —
+	// each is opened by a command typed into a box neither of them leaves open.
+	if a.roster.open && msg.String() != "ctrl+c" {
+		a.resumeKey(msg)
+		return nil
+	}
+
 	if msg.String() == "ctrl+c" {
 		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
 		// a person hitting it mid-turn is reaching for the model, not for the
@@ -518,6 +527,9 @@ func (a *app) completePath() tea.Cmd {
 func (a *app) inputBlock(width int) ([]string, int, int) {
 	if a.pick.open {
 		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint)
+	}
+	if a.roster.open {
+		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint)
 	}
 	// The box may not take the frame. Two rows are spoken for whatever happens
 	// — the status line and the blank under it — and what is left over, up to

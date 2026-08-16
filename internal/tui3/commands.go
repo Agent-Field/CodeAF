@@ -42,6 +42,7 @@ var commands = []command{
 	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	{name: "settings", desc: "open the settings panel · ctrl+,"},
 	{name: "new", desc: "close this session and start a fresh one"},
+	{name: "resume", desc: "open an earlier conversation"},
 	{name: "compact", desc: "summarize the conversation now"},
 	{name: "help", desc: "this list"},
 	{name: "quit", desc: "leave"},

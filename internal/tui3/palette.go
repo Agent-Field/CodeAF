@@ -582,41 +582,53 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) {
 // is one filterable model list on this surface; a slot row in the settings
 // panel and /model are two doors onto it, not two lists that look alike.
 func (p *picker) navigate(msg tea.KeyPressMsg) {
+	listNavigate(msg, &p.filter, p.move, p.rank, pickerRows)
+}
+
+// listNavigate is that key map itself, held apart from the model list so the
+// session picker can have exactly it (resume.go) rather than a second copy of
+// it that answers ctrl+w and forgets pgdn. What a filterable overlay LISTS is
+// its own; how a person walks and types into one is this surface's, once.
+//
+// move walks the rows and rank re-filters after an edit — a caller passes its
+// own two, because the scoring is about what is being listed. page is how far
+// pgup and pgdn jump, which is that list's own window.
+func listNavigate(msg tea.KeyPressMsg, filter *editor, move func(int), rank func(), page int) {
 	switch msg.String() {
 	case "up", "ctrl+p":
-		p.move(-1)
+		move(-1)
 	case "down", "ctrl+n":
-		p.move(1)
+		move(1)
 	case "pgup":
-		p.move(-pickerRows)
+		move(-page)
 	case "pgdown":
-		p.move(pickerRows)
+		move(page)
 
 	case "backspace":
-		p.filter.deleteBackward()
-		p.rank()
+		filter.deleteBackward()
+		rank()
 	case "delete":
-		p.filter.deleteForward()
-		p.rank()
+		filter.deleteForward()
+		rank()
 	case "ctrl+u":
-		p.filter.killToStart()
-		p.rank()
+		filter.killToStart()
+		rank()
 	case "ctrl+w":
-		p.filter.deleteWord()
-		p.rank()
+		filter.deleteWord()
+		rank()
 	case "left", "ctrl+b":
-		p.filter.left()
+		filter.left()
 	case "right", "ctrl+f":
-		p.filter.right()
+		filter.right()
 	case "home", "ctrl+a":
-		p.filter.home()
+		filter.home()
 	case "end", "ctrl+e":
-		p.filter.end()
+		filter.end()
 
 	default:
 		if text := msg.Key().Text; text != "" {
-			p.filter.insert(text)
-			p.rank()
+			filter.insert(text)
+			rank()
 		}
 	}
 }
@@ -633,6 +645,8 @@ func (a *app) overlayHeight() int {
 	switch {
 	case a.pick.open:
 		want = a.pick.height()
+	case a.roster.open:
+		want = a.roster.height()
 	case a.menu.open:
 		want = a.menu.height()
 	case a.comp.open:
@@ -667,6 +681,8 @@ func (a *app) overlayRows(width, n int) []string {
 	switch {
 	case a.pick.open:
 		return a.pick.rows(width, n, a.pal, hover, a.reasoningFor)
+	case a.roster.open:
+		return a.roster.rows(width, n, a.pal, hover)
 	case a.menu.open:
 		return a.menu.rows(width, n, a.pal, hover)
 	case a.comp.open:

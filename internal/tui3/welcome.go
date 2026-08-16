@@ -56,12 +56,24 @@ const (
 // it.
 const welcomeSlots = 4
 
-// Session is one row of the welcome box's right column: a conversation this
-// directory has had before.
+// Session is one conversation this directory has had before: a row of the
+// welcome box's right column, and a row of the resume picker (resume.go).
 type Session struct {
-	// Title is the name the session gave itself. Empty falls back to the file's
-	// own name, because a row with no words is a row nobody can choose between.
+	// Title is the name the session gave itself, empty for one that was never
+	// named. A row with no words is a row nobody can choose between, so both
+	// surfaces fall back rather than draw one: the box to the file's own name
+	// (below), the picker down the whole ladder in [humanName].
 	Title string
+	// Opening is the first thing the person said in it, one line. It is what
+	// lets an unnamed session still be CALLED something in the picker: a name
+	// derived at DISPLAY time costs nothing and rewrites no transcript, which
+	// is what keeps a session written by an older build listable by a newer one.
+	Opening string
+	// Last is the last thing that happened in it, one line — what the person
+	// said last, or what the agent answered when they said it with a picture.
+	// It is the row's description, and it is the field that answers the
+	// question a person actually opens this list with.
+	Last string
 	// File is the transcript, and it is what [Options.Resume] is handed.
 	File string
 	// At is when it was last written.
@@ -177,7 +189,10 @@ func (a *app) welcomeKey(name string) bool {
 // one.
 func (a *app) resumeSession(chosen Session) {
 	if a.resume == nil {
-		a.note("resuming is unavailable here")
+		// The picker's sentence, said once (resume.go): the box and the list are
+		// two doors onto the same missing seam, and a surface that explained it
+		// twice in two different words would read as two different faults.
+		a.note(resumeUnavailableWord)
 		return
 	}
 	if a.state == stateWorking && a.agent != nil {
@@ -470,10 +485,18 @@ func (w *welcome) recentRows(pal palette, hover int) []string {
 
 func (w *welcome) recentRow(i int, pal palette, hovered bool) string {
 	session := w.recent[i]
-	// The name is read back as words when it arrived as one token (names.go).
+	// The name is read back as words when it arrived as ONE TOKEN, and left alone
+	// otherwise (names.go's [readableName]). That is the whole difference between
+	// this row and the resume picker's: the picker climbs a ladder and title-cases
+	// what it finds, because it is a page a person went to on purpose and can
+	// spend the width; this column is 24 cells wide and its whole voice is this
+	// surface's lowercase — the heading above these rows is "recent sessions" — so
+	// a sentence that already reads as one is not touched, and the only name that
+	// changes here is the machine token nobody could read either way.
+	//
 	// The row still OPENS the file it was read from — [app.welcomePress] resumes
 	// Session.File — so nothing that identifies the session is touched here.
-	name := humanName(session.Title)
+	name := readableName(session.Title)
 	if name == "" {
 		name = baseName(session.File)
 	}

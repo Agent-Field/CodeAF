@@ -30,11 +30,22 @@ import "strings"
 
 // sessionName is the conversation's name as the frame draws it: the session's
 // own, read back as words when it arrived as one token.
-func (a *app) sessionName() string { return humanName(a.title) }
+func (a *app) sessionName() string { return readableName(a.title) }
 
-// humanName turns a one-token machine name into words, and leaves everything
+// readableName turns a one-token machine name into words, and leaves everything
 // else exactly as it found it.
-func humanName(raw string) string {
+//
+// IT IS NOT THE RESUME PICKER'S [humanName], and the two are kept apart on
+// purpose. That one is a LADDER — the title, then the first thing the person
+// said, then the transcript's file name — climbed for a row on a page somebody
+// went to in order to choose between sessions, and it title-cases what it finds
+// because that page has the width and the shape for it. This one is a single
+// display rule for a name the surface ALREADY HAS, and its whole content is the
+// guard below: a name that is not plainly words is left exactly as it is, so a
+// session file called "20260816-150405_a1b2c3" is never offered to anybody as a
+// title. The picker reaches a file name only after two better answers failed;
+// this never reaches one at all.
+func readableName(raw string) string {
 	name := strings.TrimSpace(raw)
 	if name == "" || strings.ContainsAny(name, " \t.") {
 		// A name with a space in it is already words, and one with a dot in it is

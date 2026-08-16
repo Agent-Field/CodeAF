@@ -90,7 +90,15 @@ func TestSweproSentinelTurnsTheBinaryIntoTheEngine(t *testing.T) {
 	plain.Dir = workspace
 	plain.Env = append(os.Environ(), "AFORGE_SWEPRO=")
 	plainOut, _ := plain.CombinedOutput()
-	if !strings.Contains(string(plainOut), `unknown command "resume"`) {
+	// THE PROOF IS AFORGE'S OWN VOICE, and it used to be `unknown command
+	// "resume"` because aforge had no such command. It has one now — the chat
+	// surface opened on this directory's conversations (main.go) — so the same
+	// argv lands in aforge's switch and is answered by aforge's flag set, which
+	// rejects the engine's --dir and prints aforge's own. That is the same fact
+	// the old assertion was making, said by the command rather than by its
+	// absence: what must never come out of here is codeaf.
+	if !strings.Contains(string(plainOut), "-session") ||
+		strings.Contains(string(plainOut), "[codeaf]") {
 		t.Fatalf("without the sentinel the binary must still be aforge, got:\n%s", plainOut)
 	}
 }

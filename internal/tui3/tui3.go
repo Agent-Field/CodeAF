@@ -34,6 +34,7 @@
 //	recall.go   the up arrow: input history, and the draft it holds for you
 //	draft.go    the unsent sentence, kept per directory between sessions
 //	replay.go   a resumed session, drawn
+//	resume.go   the session picker: /resume, and what `aforge resume` opens on
 //	models.go   where the model list comes from, and never from the network
 //	settings.go the settings panel: tabs over internal/config's own registry
 //	welcome.go  the box an empty session opens with, and the sessions in it
@@ -186,18 +187,33 @@ type Options struct {
 	// this surface can answer honestly — see settings.go.
 	Settings *config.Settings
 
-	// RecentSessions answers the welcome box's right column: this directory's
-	// last conversations, most recent first. It is called ONCE, as the surface
-	// opens, and only when the conversation is empty — a box that is about to
-	// be dismissed by the first keystroke must not cost a directory walk on
-	// every session. Nil draws "no recent sessions".
+	// RecentSessions is this directory's last conversations, most recent first.
+	// Two surfaces are drawn from it: the welcome box's right column, which
+	// asks ONCE as the surface opens and only when the conversation is empty,
+	// and the resume picker (resume.go), which asks again every time it is
+	// opened — an hour-old list would be missing the conversation the next
+	// terminal has had since. It must not block: it is called on the keystroke
+	// that opens the list. Nil draws "no recent sessions" in the box, and makes
+	// /resume say the machine has no sessions yet.
 	RecentSessions func() []Session
 
 	// Resume opens one of them, by transcript path, and hands back the agent
 	// for it. The surface closes the agent it was holding first. Nil makes the
-	// welcome box's rows report that resuming is unavailable rather than
-	// silently doing nothing.
+	// welcome box's rows and /resume report that resuming is unavailable rather
+	// than silently doing nothing.
+	//
+	// A path another window is holding open comes back as
+	// [session.ErrSessionLocked] and is REPORTED rather than worked around: a
+	// person who picked a conversation by name means that one, and quietly
+	// opening a different session under the name they chose would be the door
+	// answering a question nobody asked.
 	Resume func(file string) (Agent, error)
+
+	// PickSession opens the resume picker over the first frame — `aforge
+	// resume`, which is this same surface asked to start by choosing. It is a
+	// property of one launch and not of the profile, which is why it is a
+	// field here rather than a settings row.
+	PickSession bool
 
 	// Linear is the SCREEN-READER TIER: one column, no animation, no hover,
 	// ASCII markers instead of the pastel glyph set. Everything the surface says
