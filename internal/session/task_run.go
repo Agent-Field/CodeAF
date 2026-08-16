@@ -52,6 +52,12 @@ package session
 // below fails its dependents with it. Nothing in this file writes TaskDone off
 // the child's own last words.
 //
+// And when the auditor gives NO verdict — twice, having been asked again — the
+// node lands TaskUnverified: not done, not failed, branch kept, dependents
+// waiting rather than cascading, until a person resolves it
+// ([Agent.ResolveUnverified]). A false failure is still a failure, and this
+// file must not manufacture one out of an audit that never happened.
+//
 // ── WHY A NODE NEVER ASKS ──
 //
 // There is nobody to ask. Its approval posture is composed from the same
@@ -233,6 +239,11 @@ type TaskNode struct {
 	// journal is where this node's transcript was written, recorded when its
 	// child agent was built. It is the node's history, and it outlives the room.
 	journal string
+	// auditing marks a re-audit in flight over a landed node (task_audit.go's
+	// reauditTask). It is the one thing that can still change an unverified
+	// node's state without a person, so it is also what stops a person's own
+	// resolution racing a verdict that is already on its way.
+	auditing bool
 }
 
 // TaskGraph is the session's work as a directed acyclic graph, plus the
@@ -409,6 +420,14 @@ func (g *TaskGraph) readinessLocked(node *TaskNode) (bool, string) {
 		case TaskDone:
 		case TaskFailed:
 			return false, fmt.Sprintf("it waits on task %d, which did not finish", id)
+		case TaskUnverified:
+			// AN UNVERIFIED PREREQUISITE IS NOT A FAILED ONE. Nobody said its
+			// work is wrong — only that nobody could say it is right — so this
+			// node WAITS rather than dying in the cascade. What will move it is
+			// a person resolving that node ([Agent.ResolveUnverified]), and until
+			// then a brief assembled from an unaudited report would be work
+			// built on a claim nothing stands behind.
+			ready = false
 		default:
 			ready = false
 		}
@@ -453,6 +472,28 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 	}
 	g.mu.Unlock()
 	close(node.done)
+
+	g.checkpoint()
+	g.announce(node)
+	g.runFrontier()
+}
+
+// resettle moves a node that has ALREADY landed to a new final state: an
+// unverified node a person accepted, refuted, or had audited again
+// ([Agent.ResolveUnverified]).
+//
+// IT IS NOT [TaskGraph.complete], and the two things it deliberately does not do
+// are the reason it exists. It does not close `done` — that channel was closed
+// when the node first landed, and closing it twice would panic. And it does not
+// hand back a slot: the slot went back with the run that ended, so a second
+// decrement here would be this node quietly raising the concurrency cap for
+// everybody else. What it shares with complete is everything that matters —
+// the checkpoint, the announcement, and the frontier pass that lets the
+// dependents move on the new state.
+func (g *TaskGraph) resettle(node *TaskNode, state TaskState) {
+	g.mu.Lock()
+	node.state = state
+	g.mu.Unlock()
 
 	g.checkpoint()
 	g.announce(node)
@@ -578,6 +619,76 @@ func (n *TaskNode) finish(report string, changed []string, branch, merge string)
 	// what a person needs after a kill is the merge outcome and the branch name,
 	// and those are written here.
 	n.graph.checkpoint()
+}
+
+// leavings is what a landed node left behind: what it said, what it wrote, and
+// where its branch stands. A resolution that changes one of them has to carry
+// the other three forward, because [TaskNode.finish] writes all four and a
+// caller that passed nil for the ones it was not changing would erase them.
+func (n *TaskNode) leavings() (report string, changed []string, branch, merge string) {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	changed = append([]string(nil), n.changed...)
+	return n.report, changed, n.branch, n.merge
+}
+
+// workingCopy rebuilds the node's [taskTree] from what it wrote down when it
+// started (setTree), so a node that has already landed can be merged or audited
+// again.
+//
+// THE ROOT IS THE PERSON'S REPOSITORY, not the worktree's own: `git rev-parse
+// --show-toplevel` inside a linked worktree answers the worktree, and a merge
+// aimed there would merge the branch into itself. It is derived from the
+// workspace exactly as prepareTaskTree derived it.
+//
+// A working copy that is GONE is an error rather than a silent in-place tree:
+// the node's changes live in that directory, and pretending otherwise would
+// merge an empty branch and call it done.
+func (n *TaskNode) workingCopy(workspace string) (taskTree, error) {
+	n.graph.mu.Lock()
+	dir, branch, merge := n.worktree, n.branch, n.merge
+	n.graph.mu.Unlock()
+
+	if merge == mergeInPlace || strings.TrimSpace(branch) == "" {
+		// It ran in the person's own tree: there is nothing to merge and the
+		// place to look is where they are standing.
+		if strings.TrimSpace(dir) == "" {
+			dir = workspace
+		}
+		return taskTree{dir: dir, merge: mergeInPlace}, nil
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return taskTree{}, fmt.Errorf("its working copy is gone from %s, so there is nothing left to look at — its branch %s is still there", dir, branch)
+	}
+	root, ok := repositoryRoot(workspace)
+	if !ok {
+		return taskTree{}, fmt.Errorf("%s is no longer a repository, so its branch %s cannot come home", workspace, branch)
+	}
+	return taskTree{dir: dir, root: root, branch: branch}, nil
+}
+
+// beginAudit claims the node for one re-audit, and reports false when somebody
+// already holds it. endAudit hands it back; beingAudited asks.
+func (n *TaskNode) beginAudit() bool {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.auditing {
+		return false
+	}
+	n.auditing = true
+	return true
+}
+
+func (n *TaskNode) endAudit() {
+	n.graph.mu.Lock()
+	n.auditing = false
+	n.graph.mu.Unlock()
+}
+
+func (n *TaskNode) beingAudited() bool {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.auditing
 }
 
 // addSpend charges one agent's cost to the node.
@@ -769,12 +880,22 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 func taskNote(notice TaskNotice) string {
 	var note strings.Builder
 	verb := "finished"
-	if notice.State == TaskFailed {
+	switch notice.State {
+	case TaskFailed:
 		verb = "failed"
+	case TaskUnverified:
+		// NOT "failed", and the wording is the whole point of the state: the
+		// model is about to tell the person what happened, and "failed" would
+		// be it reporting a finding no auditor made (task_contract.go).
+		verb = "could not be verified"
 	}
 	fmt.Fprintf(&note, "task %d %s: %s", notice.ID, verb, notice.Title)
 	if notice.Report != "" {
 		note.WriteString("\n" + notice.Report)
+	}
+	if notice.State == TaskUnverified {
+		note.WriteString("\nit is neither done nor failed, its branch is kept, and anything waiting on it waits until somebody decides: tasks id " +
+			strconv.FormatUint(notice.ID, 10) + " resolve accept|reaudit|refute")
 	}
 	if len(notice.Changed) > 0 {
 		note.WriteString("\nchanged: " + strings.Join(notice.Changed, ", "))
@@ -946,6 +1067,14 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	case ctx.Err() != nil:
 		node.finish(withReport("stopped while its work was being verified", report), changed, tree.branch, abortedMerge(tree))
 		return TaskFailed
+	case !verdict.answered:
+		// NOBODY COULD SAY. Not done — nothing merges on an answer nobody gave —
+		// and not failed either, because no finding was made about this work.
+		// The node's own claim is kept UNDER the non-answer: whoever is asked to
+		// resolve this needs both halves, what the work says it did and what the
+		// auditor said instead of a verdict (task_contract.go's TaskUnverified).
+		node.finish(withReport(verdict.report(), report), changed, tree.branch, abortedMerge(tree))
+		return TaskUnverified
 	case !verdict.verified:
 		node.finish(verdict.report(), changed, tree.branch, abortedMerge(tree))
 		return TaskFailed

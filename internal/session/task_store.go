@@ -389,7 +389,7 @@ func decodeTasks(content []byte) (taskDocument, error) {
 
 func validTaskState(state TaskState) bool {
 	switch state {
-	case TaskQueued, TaskRunning, TaskDone, TaskFailed:
+	case TaskQueued, TaskRunning, TaskDone, TaskFailed, TaskUnverified:
 		return true
 	}
 	return false
@@ -410,6 +410,7 @@ func validMergeOutcome(merge string) bool {
 type taskRecovery struct {
 	done        int
 	failed      int
+	unverified  int
 	interrupted int
 	waiting     int
 	// branches are the interrupted nodes' branches that are still on disk. They
@@ -424,7 +425,7 @@ type taskRecovery struct {
 // any reports whether the recovery restored anything at all. A checkpoint that
 // held an empty graph — a session that proposed nothing — is not news.
 func (r taskRecovery) any() bool {
-	return r.done+r.failed+r.interrupted+r.waiting > 0
+	return r.done+r.failed+r.unverified+r.interrupted+r.waiting > 0
 }
 
 // note is the ONE line the person and the model read about a resumed graph,
@@ -439,12 +440,15 @@ func (r taskRecovery) note() string {
 	if !r.any() {
 		return ""
 	}
-	parts := make([]string, 0, 4)
+	parts := make([]string, 0, 5)
 	if r.done > 0 {
 		parts = append(parts, strconv.Itoa(r.done)+" done")
 	}
 	if r.failed > 0 {
 		parts = append(parts, strconv.Itoa(r.failed)+" failed")
+	}
+	if r.unverified > 0 {
+		parts = append(parts, strconv.Itoa(r.unverified)+" unverified")
 	}
 	if r.interrupted > 0 {
 		parts = append(parts, strconv.Itoa(r.interrupted)+" interrupted ("+keptBranches(r.branches)+")")
@@ -531,6 +535,13 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string) taskRecov
 				recovery.done++
 			case TaskFailed:
 				recovery.failed++
+			case TaskUnverified:
+				// Counted apart from both: it is not work that failed and it is
+				// not work still to come, it is work waiting on a person
+				// (task_contract.go's TaskUnverified). A resumed session that
+				// filed it under "waiting" would be telling somebody the
+				// scheduler will get to it, and the scheduler never will.
+				recovery.unverified++
 			default:
 				recovery.waiting++
 			}
