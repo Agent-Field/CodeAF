@@ -430,7 +430,7 @@ func (c *completion) taskChoice() (session.TaskIndexEntry, bool) {
 // read in the same instant the walk is started; a list that held its whole self
 // back until a ten-thousand-file walk returned would be hiding the half that was
 // already there.
-func (c *completion) height() int {
+func (c *completion) height(width int) int {
 	switch {
 	case !c.open:
 		return 0
@@ -438,10 +438,36 @@ func (c *completion) height() int {
 		return 1
 	case len(c.lines) == 0:
 		return 1
-	case len(c.lines) < c.rowsWanted():
-		return len(c.lines)
+	}
+	// The ceiling is in LINES (palette.go): a section rule is one wherever it is
+	// drawn, a plain path is one because it has no tail to wrap, and a task row
+	// with an age on it is two at [tierPhone].
+	return overlayWindow(width, c.top, len(c.lines), c.rowsWanted(), func(at int) string {
+		return c.lineNote(at)
+	})
+}
+
+// imageTag is the row saying what choosing it will DO. Everywhere else on this
+// list enter types a path; on these rows it attaches a picture (attach.go), and
+// a list where one row means something else without saying so is a list that
+// surprises people.
+const imageTag = "img"
+
+// lineNote is the dim tail of one line of this list, and "" for a line that has
+// none — a section rule, or a path that is not a picture. It is what decides
+// the line's height at [tierPhone], so [completion.height] and
+// [completion.rows] ask it rather than each deciding for themselves.
+func (c *completion) lineNote(at int) string {
+	line := c.lines[at]
+	switch {
+	case line.header != "":
+		return ""
+	case line.task >= 0:
+		return taskNoteWord(c.taskHits[line.task])
+	case !c.arg && isImagePath(c.all[line.file]):
+		return imageTag
 	default:
-		return c.rowsWanted()
+		return ""
 	}
 }
 
@@ -455,29 +481,25 @@ func (c *completion) rows(width, n int, pal palette, hover int) []string {
 		}
 		return []string{pal.dim("  no file matches")}
 	}
-	c.follow(n)
-	out := make([]string, 0, n)
-	for at := c.top; at < len(c.lines) && len(out) < n; at++ {
+	c.follow(overlayItems(n, width))
+	fill := newOverlayFill(width, n, pal, hover)
+	for at := c.top; at < len(c.lines) && fill.room(); at++ {
 		line := c.lines[at]
+		var ok bool
 		switch {
 		case line.header != "":
-			out = append(out, pal.dim("  "+fit(line.header, width-2)))
+			ok = fill.plain(pal.dim("  " + fit(line.header, width-2)))
 		case line.task >= 0:
-			out = append(out, c.taskRow(c.taskHits[line.task], at, len(out) == hover, width, pal))
+			ok = fill.add(at, taskRowLabel(c.taskHits[line.task], pal.ascii), c.lineNote(at), at == c.selLine(), false)
 		default:
-			path := c.all[line.file]
-			// The tag is the row saying what choosing it will DO. Everywhere else
-			// on this list enter types a path; on these rows it attaches a picture
-			// (attach.go), and a list where one row means something else without
-			// saying so is a list that surprises people.
-			note := ""
-			if !c.arg && isImagePath(path) {
-				note = "img"
-			}
-			out = append(out, overlayRow(path, note, at == c.selLine(), false, len(out) == hover, width, pal))
+			ok = fill.add(at, c.all[line.file], c.lineNote(at), at == c.selLine(), false)
+		}
+		if !ok {
+			break
 		}
 	}
-	return out
+	lines, _ := fill.done()
+	return lines
 }
 
 // filesLoadedMsg carries the walk back to the loop.
