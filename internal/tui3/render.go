@@ -36,6 +36,12 @@ const (
 	hitFold         // the "N earlier tool calls" line: click expands the turn
 	hitMore         // the "… N more lines" foot of a capped expansion: click lifts the cap
 	hitTask         // a task proposal (task.go): click opens its brief
+	// hitDone is a landed task's card (taskdone.go): click opens its full
+	// context, enter opens the node's room, ctrl+o is the key the card itself
+	// names. It is a hit of its own rather than another hitTask because the two
+	// blocks answer the same gestures with different things — one is a question
+	// that can still be answered, the other is a record that cannot.
+	hitDone
 	// hitChoice is the proposal's choices row, and it is the one hit on this
 	// surface that needs the COLUMN as well as the row: three answers share one
 	// line, so which of them was pressed is a question about x (app.go's
@@ -125,6 +131,21 @@ func (a *app) layout(width int) []row {
 			continue
 		}
 
+		// A run of landed tasks is a BATCH, and a batch is laid out as a unit for
+		// the reason a cluster is: whether it rolls up into one object is a
+		// property of the run and not of any card in it (taskdone.go).
+		if e.kind == entryDone {
+			end := i + 1
+			for end < len(a.entries) && a.entries[end].kind == entryDone {
+				end++
+			}
+			gap()
+			out = a.doneCluster(out, i, end, width)
+			wasCluster, wasBlock = false, true
+			i = end - 1
+			continue
+		}
+
 		rows := a.entryRows(i, width)
 		if len(rows) == 0 {
 			continue
@@ -154,7 +175,7 @@ func (a *app) layout(width int) []row {
 			out = append(out, row{text: text, entry: i, hit: at})
 		}
 		wasCluster = false
-		wasBlock = e.kind == entryTask || (e.kind == entryNote && e.landed)
+		wasBlock = e.kind == entryTask
 	}
 	if line, ok := a.ellipsis(); ok {
 		if wasCluster || wasBlock {
@@ -283,7 +304,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		return []string{a.compactRow(e, width)}
 
 	case entryTask:
-		return a.taskCardRows(e.card, width)
+		return a.taskCardRows(e.card, width, a.sel == i)
 
 	case entryNote:
 		body := wrap(e.text, width-2)
