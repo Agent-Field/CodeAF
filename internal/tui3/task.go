@@ -52,7 +52,15 @@ import (
 type taskCard struct {
 	id                                uint64
 	title, summary, brief, acceptance string
-	dependsOn                         []uint64
+	// name is the two-or-three-word NAME cut from the title, sub the one-line
+	// sentence under it, and ident the glyph and hue this node is followed by
+	// for the rest of its life (taskident.go). All three are derived once, here,
+	// because a card is read on every frame while its clock runs and a name
+	// recomputed thirty times a second is a name computed twenty-nine times too
+	// often.
+	name, sub string
+	ident     taskIdent
+	dependsOn []uint64
 	// deadline is when silence becomes approval, or zero when the clock is off
 	// (session's TaskNotice.Deadline). A zero deadline draws no countdown: a
 	// number counting down to nothing is a promise the engine did not make.
@@ -103,18 +111,56 @@ func (c *taskCard) settled() bool { return c.verdict != "" }
 // elapsed clock counts on the frame tick instead of freezing at whatever the
 // last update happened to say. Everything else is the notice, kept.
 type taskNode struct {
-	id    uint64
-	title string
+	id uint64
+	// title is what the rail draws: the NAME, two or three words, derived once
+	// from the engine's own title (taskident.go). label is that title whole,
+	// kept because the cards have width for it and because a name is a cut of
+	// something and the thing it was cut from is worth keeping.
+	title, label string
+	// assignment is the sentence the subtitle comes from — the proposal's
+	// summary, or its brief when there was no summary — and brief/acceptance are
+	// the node's contract with its runner, carried here so a card that lands ten
+	// minutes later can still say what the work was FOR. All three arrive on the
+	// proposal, not on the updates: an update carries a state, and the contract
+	// is frozen at admission (internal/session's task_room.go says so).
+	assignment, brief, acceptance string
+	// ident is the glyph and the hue this node is followed by, keyed on the id
+	// and stable for its whole life (taskident.go).
+	ident taskIdent
 	state session.TaskState
 	// dependsOn is the structural half of this file (see the header): stored
 	// always, drawn only when a prerequisite is unmet.
 	dependsOn []uint64
 	// began is the moment the node started, derived once from the update's own
-	// Elapsed so the clock is the frame's and not the event's.
-	began time.Time
+	// Elapsed so the clock is the frame's and not the event's. met is when this
+	// surface first heard of the node at all, which is the honest spawn time for
+	// a node that never reached running.
+	began, met time.Time
 	// elapsed is the node's final age, as the update that ended it reported.
 	elapsed               time.Duration
 	report, branch, merge string
+	changed               []string
+	// tool is what the node is doing RIGHT NOW, one line, and toolBegan when it
+	// started doing it. They are written by the pilot lane below and are empty
+	// between calls: a row that kept the last call's name would be claiming a
+	// present that has passed.
+	tool      string
+	toolBegan time.Time
+	// froze is the clock this node's row is drawn against while somebody is
+	// standing in its room, or zero. See [app.taskNow].
+	froze time.Time
+}
+
+// spawnedAt is when this node's work started, in wall-clock: the moment it
+// began running, or — for a node that failed before it ever ran — the moment
+// this surface first met it. It is what the completion card's "spawned 14:02"
+// says, and it is deliberately not the moment the proposal was made: a question
+// asked at 13:58 and answered at 14:02 spawned at 14:02.
+func (n *taskNode) spawnedAt() time.Time {
+	if !n.began.IsZero() {
+		return n.began
+	}
+	return n.met
 }
 
 // A NODE NEVER LEAVES THE ROSTER. It used to: a finished node whose branch had
@@ -213,13 +259,116 @@ func waitTask(ch <-chan session.Event, gen int) tea.Cmd {
 
 // taskEvent folds one event from the standing lane in and re-arms the pump.
 func (a *app) taskEvent(ev session.Event) tea.Cmd {
+	var extra tea.Cmd
 	switch ev.Kind {
 	case session.EventTaskProposal:
 		a.proposeTask(ev)
 	case session.EventTaskUpdate:
-		a.taskUpdate(ev)
+		extra = a.taskUpdate(ev)
 	}
-	return tea.Batch(waitTask(a.taskLane, a.taskGen), a.wake())
+	return tea.Batch(waitTask(a.taskLane, a.taskGen), extra, a.wake())
+}
+
+// ── the pilot lanes ─────────────────────────────────────────────────────────
+//
+// A RUNNING NODE IS WATCHED WHETHER OR NOT ANYBODY IS IN ITS ROOM.
+//
+// The standing subscription (above) carries a node's LIFE — queued, running,
+// done — and it is silent for the whole of the interesting part: a node runs
+// for eleven minutes and says nothing on that lane between minute zero and
+// minute eleven. The rail's answer to "is this alive" was therefore a spinner
+// and a clock counting the node's own age, which are both true of a node that
+// has been stuck on one `go test` for four minutes and of one that is calling a
+// tool every second.
+//
+// A pilot is the room's own door ([taskRoomAgent.WatchTask]) opened WITHOUT a
+// room: one watcher per running node, kept for exactly as long as the node
+// runs, folding two facts out of the stream and dropping everything else — what
+// the node is doing, and when it started doing it. That is what the rail's
+// elapsed clock is measured against (see [app.taskClock]).
+//
+// IT COSTS A MESSAGE PER EVENT AND A REPAINT PER TOOL CALL, and the second half
+// of that sentence is the design: a node's text deltas arrive here and are
+// dropped without touching the frame, because the rail does not draw what a
+// node SAYS. Only a call beginning or ending is news to a 24-column row.
+type taskPilot struct {
+	id   uint64
+	gen  int
+	lane <-chan session.Event
+}
+
+// flyPilot opens the watcher on one running node, or answers nil when there is
+// nothing to watch it with — an agent with no room doors, a node already being
+// watched, an id the engine does not know.
+func (a *app) flyPilot(id uint64) tea.Cmd {
+	doors, ok := a.roomDoors()
+	if !ok || a.pilots[id] != nil {
+		return nil
+	}
+	lane, err := doors.WatchTask(id)
+	if err != nil {
+		return nil
+	}
+	if a.pilots == nil {
+		a.pilots = map[uint64]*taskPilot{}
+	}
+	a.pilotGen++
+	pilot := &taskPilot{id: id, gen: a.pilotGen, lane: lane}
+	a.pilots[id] = pilot
+	return waitPilot(lane, pilot.gen, id)
+}
+
+// waitPilot takes one event off a pilot's lane and asks for the next.
+func waitPilot(ch <-chan session.Event, gen int, id uint64) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return taskPilotClosedMsg{gen: gen, id: id}
+		}
+		return taskPilotMsg{gen: gen, id: id, ev: ev}
+	}
+}
+
+// pilotEvent folds one watched node's event in and re-arms its lane.
+//
+// The generation is the same device every other lane on this surface uses: a
+// pilot that was landed while its channel still had events in flight must not
+// write the current tool of a node that has finished.
+func (a *app) pilotEvent(msg taskPilotMsg) tea.Cmd {
+	pilot := a.pilots[msg.id]
+	if pilot == nil || pilot.gen != msg.gen {
+		return nil
+	}
+	if node := a.tasks[msg.id]; node != nil {
+		switch msg.ev.Kind {
+		case session.EventToolAnnounced:
+			// ASKED FOR, NOT STARTED — so the name changes and the clock does not
+			// start. It is the tool row's own distinction (toolview.go's
+			// toolQueued), and it matters here for the same reason: a clock that
+			// started at the announcement would be measuring how long a response
+			// took to stream.
+			node.tool, node.toolBegan = roomCallWord(msg.ev.Tool, msg.ev.Args, msg.ev.Hint), time.Time{}
+			a.touch()
+		case session.EventToolBegin:
+			node.tool, node.toolBegan = roomCallWord(msg.ev.Tool, msg.ev.Args, msg.ev.Hint), a.now()
+			a.touch()
+		case session.EventToolEnd, session.EventToolFailed:
+			node.tool, node.toolBegan = "", time.Time{}
+			a.touch()
+		}
+	}
+	return tea.Batch(waitPilot(pilot.lane, pilot.gen, pilot.id), a.wake())
+}
+
+// landPilot forgets one node's watcher. The lane closes itself when the node
+// reaches its final state; this is the surface's half, and it is called from
+// the update that says so rather than waiting for the close, so the row stops
+// claiming a current call the instant the work is over.
+func (a *app) landPilot(id uint64) {
+	if node := a.tasks[id]; node != nil {
+		node.tool, node.toolBegan = "", time.Time{}
+	}
+	delete(a.pilots, id)
 }
 
 // ── the proposal ────────────────────────────────────────────────────────────
@@ -239,12 +388,19 @@ func (a *app) proposeTask(ev session.Event) {
 	if a.task != nil && !a.task.settled() {
 		a.task.verdict = taskExpiredWord
 	}
+	title := strings.TrimSpace(notice.Title)
+	summary := strings.TrimSpace(notice.Summary)
+	brief := strings.TrimSpace(notice.Brief)
+	name := taskTitleOf(title, firstNonEmpty(summary, brief), notice.ID)
 	card := &taskCard{
 		id:         notice.ID,
-		title:      strings.TrimSpace(notice.Title),
-		summary:    strings.TrimSpace(notice.Summary),
-		brief:      strings.TrimSpace(notice.Brief),
+		title:      title,
+		summary:    summary,
+		brief:      brief,
 		acceptance: strings.TrimSpace(notice.Acceptance),
+		name:       name,
+		sub:        taskSubtitleOf(name, firstNonEmpty(summary, brief)),
+		ident:      identFor(notice.ID),
 		dependsOn:  notice.DependsOn,
 		deadline:   notice.Deadline,
 		born:       a.now(),
@@ -559,24 +715,34 @@ func (a *app) syncTaskAsk() {
 // was a decision a person had to reconstruct the boundaries of before they could
 // make it.
 //
-//	╭─ ? Fix the nil-map crash ─────────────────────────────────────────────
-//	│ The parser drops a key on an empty map. This adds the guard and the
-//	│ regression test.
+//	╭─ ? ◆ Fix nil-map crash ───────────────────────────────────────────────
+//	│ The parser drops a key on an empty map.
 //	│ [ yes ]  [ redirect ]  [ no ]
 //	│ ███████████████░░░░░  auto-starts in 3.2s
 //	│ ctrl+e for the brief
 //	╰──────────────────────────────────────────────────────────────────────
 //
-// Opened, the brief and the acceptance sit under the summary, dim, because they
-// are the node's contract with its runner rather than the sentence a person
-// decides on. SETTLED, THE BLOCK COLLAPSES to its head and one verdict line —
-// what was chosen and what that came to — because a question that has been
-// answered is a fact, and a fact does not need a frame around it.
+// COLLAPSED IS A NAME AND A SENTENCE, and that is the card law this surface now
+// applies to all three of a task's cards — the proposal, the rail's presence and
+// the card that lands when it finishes (taskdone.go). The head carries the
+// two-or-three-word name and the node's own glyph; the line under it is the
+// first sentence of the assignment and nothing more.
+//
+// It used to be three lines of summary, which is what a card looks like when
+// nobody has decided what a card is: the third line of a summary is being read
+// by somebody who has already decided, and the person who has not decided is
+// reading the first. Everything the three lines held is one keystroke away and
+// is now MORE than they held — opened, the card is the whole assignment, the
+// brief, the done-condition and the context the work will run in.
+//
+// SETTLED, THE BLOCK COLLAPSES to its head and one verdict line — what was
+// chosen and what that came to — because a question that has been answered is a
+// fact, and a fact does not need a frame around it.
 //
 // The blank row that follows the block is [app.layout]'s (render.go): spacing is
 // emitted in exactly one place on this surface, and a block that left its own
 // gap would be the second.
-func (a *app) taskCardRows(card *taskCard, width int) []string {
+func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	if card == nil || width < 4 {
 		return nil
 	}
@@ -584,17 +750,24 @@ func (a *app) taskCardRows(card *taskCard, width int) []string {
 	// first: a settled card has no options, and a stale span is a click that
 	// answers a question nobody is asking.
 	card.choiceRow, card.spans = -1, nil
-	head := a.taskHead(card, width)
+	head := a.taskHead(card, width, sel)
 	if card.settled() {
 		return []string{head, a.taskFoot(card, width)}
 	}
 	stem := a.pal.ask(a.blockStem())
 	room := width - ansi.StringWidth(a.blockStem())
 	out := []string{head}
-	for _, line := range taskSummaryLines(card.summary, room) {
-		out = append(out, stem+a.pal.ink(line))
+	if line := card.sub; line != "" {
+		out = append(out, stem+a.pal.ink(fit(line, room)))
 	}
 	if card.open {
+		// OPENED, THE CARD IS THE WHOLE CONTEXT. The summary goes first because it
+		// is the sentence the collapsed row was a cut of, then the brief — which is
+		// the node's entire contract with its runner and the thing a person is
+		// actually auditing when they open a proposal at all.
+		for _, line := range wrap(card.summary, room) {
+			out = append(out, stem+a.pal.dim(line))
+		}
 		for _, line := range wrap(card.brief, room) {
 			out = append(out, stem+a.pal.dim(line))
 		}
@@ -617,24 +790,10 @@ func (a *app) taskCardRows(card *taskCard, width int) []string {
 	return append(out, a.taskFoot(card, width))
 }
 
-// taskSummaryLines is the sentence a person decides on, and it is CAPPED.
-//
-// The summary is the engine's two or three lines about what it wants to go and
-// do; a model that wrote six would otherwise turn the block into a page with a
-// clock at the bottom of it. Everything past the cap is in the brief, one
-// keystroke away, which is where the long form belongs anyway.
-func taskSummaryLines(summary string, width int) []string {
-	lines := wrap(summary, width)
-	if len(lines) <= taskSummaryRows {
-		return lines
-	}
-	lines = lines[:taskSummaryRows]
-	lines[taskSummaryRows-1] = fit(lines[taskSummaryRows-1]+" "+glyphMore, width)
-	return lines
-}
-
-// taskSummaryRows is that cap. Three is what a decision fits in.
-const taskSummaryRows = 3
+// The three-line summary cap that stood here is gone with the three lines: the
+// collapsed card is a name and ONE sentence (taskident.go's [taskSubtitleOf]
+// cuts it, and caps it at ninety cells), and the whole summary is drawn inside
+// the expansion where nothing needs capping.
 
 // The block's own furniture, and its ASCII stand-ins. The stem is the one an
 // expanded tool call already hangs from (styles.go's railCont), because a
@@ -682,7 +841,7 @@ func (a *app) blockPaint(card *taskCard) func(string) string {
 // which put the one thing on the block that changes every frame on the same line
 // as the one thing worth reading once — and it said "4s", which is a number
 // rather than a countdown. Both now live on the meter (see [app.taskMeter]).
-func (a *app) taskHead(card *taskCard, width int) string {
+func (a *app) taskHead(card *taskCard, width int, sel bool) string {
 	paint, rule := a.blockPaint(card), a.blockRule()
 	corner := taskHeadCorner
 	if a.pal.ascii {
@@ -692,15 +851,22 @@ func (a *app) taskHead(card *taskCard, width int) string {
 	// same reason it is the same hue: this is that moment, about a different
 	// kind of thing. It is already its own ASCII, so the linear tier needs no
 	// stand-in for it.
+	//
+	// THE NODE'S OWN GLYPH RIDES BESIDE IT, unpainted by the frame's hue and
+	// painted by the ring instead (taskident.go). The two are different claims
+	// and both are true of this row: somebody is being asked something, and the
+	// thing being asked about is THAT one — the same mark that will be on the
+	// rail in four seconds and on the card that lands in eleven minutes.
 	head := corner + " " + glyphAsk + " "
-	title := fit(card.title, width-ansi.StringWidth(head)-1)
-	line := paint(head)
+	mark := a.taskMarkSel(card.ident, sel) + " "
+	title := fit(card.name, width-ansi.StringWidth(head)-3)
+	line := paint(head) + mark
 	if card.settled() {
 		line += a.pal.muted(title)
 	} else {
 		line += a.pal.askBold(title)
 	}
-	if fill := width - ansi.StringWidth(head) - ansi.StringWidth(title) - 1; fill > 0 {
+	if fill := width - ansi.StringWidth(head) - ansi.StringWidth(title) - 3; fill > 0 {
 		line += paint(" " + strings.Repeat(rule, fill))
 	}
 	return line
@@ -1595,27 +1761,44 @@ func railPack(segs []string, width, rooms int, lead string) []string {
 // railNodeRows is one node: WHAT IT IS on the first line, and what is true of it
 // on the second.
 //
-//	⠙ Fix the nil-map crash  #7
-//	  12s
-//	✓ Collect sources        #9
+//	⠙ ◆ Fix nil-map          #7
+//	  bash go test ./… · 42s
+//	✓ ▲ Collect sources       #9
 //	  merged
-//	◌ Mix audio             #11
+//	◌ ● Mix audio            #11
 //	  waits: Collect sources
 //
-// THE NAME LEADS AND THE HANDLE TRAILS. The glyph and the title are what a person
-// reads down this column — the state, and the words they themselves approved —
-// and the id is what identifies the node to the MACHINE: it is the number the
-// engine says in its own sentences ("task 7 finished", session's task_run.go),
-// the thing to type when you go looking for the branch, and the least interesting
-// fact on the row. So it is dim, it is at the far end, and the title is measured
-// against what is left rather than the other way round: a column that led with
-// its ids would read like a process table.
+// TWO GLYPHS OPEN THE ROW, AND THEY ANSWER TWO QUESTIONS. The first is the STATE
+// and it changes as the work does; the second is the node's own identity and
+// never changes at all (taskident.go). A person tracking one node out of four
+// tracks the second one, which is exactly why it must not move when the first
+// does — and it is the same mark the proposal card wore and the card that lands
+// when the work is over will wear.
+//
+// THE NAME LEADS AND THE HANDLE TRAILS. The glyphs and the title are what a
+// person reads down this column — the state, the node's own mark, and the words
+// they themselves approved — and the id is what identifies the node to the
+// MACHINE: it is the number the engine says in its own sentences ("task 7
+// finished", session's task_run.go), the thing to type when you go looking for
+// the branch, and the least interesting fact on the row. So it is dim, it is at
+// the far end, and the title is measured against what is left rather than the
+// other way round: a column that led with its ids would read like a process
+// table.
+//
+// THE SUBTITLE IS NOT HERE. Every other place a task is drawn carries the one
+// line that says what it is; this column is twenty-two cells wide and is a
+// PRESENCE list — the question it answers is "what is alive", and a sentence
+// clipped to twenty-two cells answers no question at all. The card that proposed
+// the node and the card that lands when it finishes both carry it.
 //
 // THE SEAM CARRIES NO AGENT TYPE because the seam has none — internal/session's
 // TaskNotice names a node's work and never its worker. When it grows one it joins
 // the id in exactly this slot, in exactly this hue.
 func (a *app) railNodeRows(node *taskNode, width int) []string {
-	title, room := node.title, width-2
+	// The two glyphs and the two spaces after them are the row's fixed lead, and
+	// the title is measured against what they leave.
+	lead := a.railGlyph(node) + " " + a.taskMark(node.ident) + " "
+	title, room := node.title, width-ansi.StringWidth(lead)
 	meta := railMetaWord(node)
 	// A column too narrow to carry both spends what it has on the name. The
 	// handle is a convenience; the title is the row.
@@ -1625,7 +1808,7 @@ func (a *app) railNodeRows(node *taskNode, width int) []string {
 		meta = ""
 	}
 	title = fit(title, room)
-	line := a.railGlyph(node) + " " + a.railTitle(node, title)
+	line := lead + a.railTitle(node, title)
 	if meta != "" {
 		if pad := room - ansi.StringWidth(title) + 1; pad > 0 {
 			line += strings.Repeat(" ", pad)
@@ -1671,7 +1854,14 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 	paint, text := a.pal.dim, ""
 	switch node.state {
 	case session.TaskRunning:
-		text = countUpWord(a.now().Sub(node.began))
+		// A RUNNING NODE SAYS WHAT IT IS DOING, when the pilot lane has told this
+		// surface (see [taskPilot]) — and that line carries its own clock in its
+		// own hue, so it is built and returned here rather than falling through to
+		// the single-paint wrap below.
+		if rows := a.railWorking(node, width); rows != nil {
+			return rows
+		}
+		text = countUpWord(a.taskNow(node).Sub(node.began))
 	case session.TaskQueued:
 		// THE DEPENDENCY SENTENCE, and it is v1's own words — internal/tui says
 		// "waits: <title>" and a person who has used that surface has already
@@ -1719,6 +1909,117 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 // title takes at this width; past it the rail would be a paragraph, and the
 // transcript is where paragraphs live.
 const railUnderRows = 2
+
+// ── THE ELAPSED CLOCK ───────────────────────────────────────────────────────
+//
+//	⠙ ◆ Fix nil-map
+//	  bash go test ./…            under ten seconds: no number at all
+//	  bash go test ./… · 24s      dim, because it is only slow
+//	  bash go test ./… · 1m 8s    warn, because it is now the reason you are waiting
+//
+// A NUMBER THAT IS ALWAYS THERE IS A NUMBER NOBODY READS. The rail used to
+// carry the node's own age from the first second, which is a figure that is
+// true, ticking and almost never actionable: a node is SUPPOSED to take
+// minutes. What is actionable is one CALL taking them — the test suite that
+// hung, the fetch that is not coming back — so the clock is spent on the
+// current call and appears only once that call has been running longer than a
+// person would sit still for it.
+//
+// TWO STEPS, AND THE LOUD ONE IS NOT THE FAILURE HUE. Ten seconds is when the
+// wait becomes a fact worth stating; a minute is when it becomes the thing
+// about the row, and it takes [hueWarn] — the tier that means "this is about to
+// be your problem" rather than "this went wrong", because a four-minute build
+// is not a failure and a row that said it was would be the surface guessing.
+//
+// There is deliberately NO five-second step. The tool line has one (toolview.go
+// escalates a bounded call into [hueBad] with five seconds left on its
+// timeout), and that step means something precise there: the call is about to
+// be killed at a moment the surface knows. Nothing is going to happen to a task
+// at five seconds, and a colour that fired on nothing would teach a person to
+// ignore the one that fires on something.
+const (
+	// taskToolFloor is how long a node's current call must run before its row
+	// says so.
+	taskToolFloor = 10 * time.Second
+	// taskToolWarn is when that wait stops being background.
+	taskToolWarn = time.Minute
+)
+
+// railWorking is the under-line of a node with a call in flight, or nil when
+// the pilot lane has not told this surface what it is doing.
+//
+// ONE ROW, and the call's name gives up its tail to the clock rather than the
+// other way round: which tool is running is a fact a person recognizes from its
+// first few cells, and how long it has been running is the fact they came to
+// the rail for.
+func (a *app) railWorking(node *taskNode, width int) []string {
+	if node.tool == "" {
+		return nil
+	}
+	clock, tint := a.taskClock(node)
+	tail := ""
+	if clock != "" {
+		tail = " · " + clock
+	}
+	name := fit(node.tool, width-ansi.StringWidth(tail))
+	line := a.pal.dim(name)
+	if clock != "" {
+		line += a.pal.dim(" · ") + tint(clock)
+	}
+	return []string{line}
+}
+
+// taskClock is how long this node's current call has been running, and the hue
+// that says how that is going. Both are empty under [taskToolFloor]: a call
+// that has just started is a call nobody is waiting on yet.
+func (a *app) taskClock(node *taskNode) (string, func(string) string) {
+	if node.toolBegan.IsZero() {
+		return "", nil
+	}
+	age := a.taskNow(node).Sub(node.toolBegan)
+	if age < taskToolFloor {
+		return "", nil
+	}
+	if age >= taskToolWarn {
+		return countUpWord(age), a.pal.warn
+	}
+	return countUpWord(age), a.pal.dim
+}
+
+// taskNow is the clock ONE NODE's row is drawn against, and it is not always
+// the surface's.
+//
+// A CLOCK FREEZES WHILE YOU ARE LOOKING INTO ITS TASK. The elapsed number
+// exists to answer "should I go and look at this", and once a person is
+// standing in the node's room they are already looking: the room shows the
+// calls themselves, one line each, live. A number still climbing in the corner
+// of the screen at that point is pressure applied to somebody who has already
+// answered it — and it is pressure that keeps climbing while they read, which
+// is the opposite of what a person reading needs. It thaws when they leave, at
+// the value it would have had all along, because nothing here stops the clock
+// so much as stops reporting it.
+func (a *app) taskNow(node *taskNode) time.Time {
+	if !node.froze.IsZero() {
+		return node.froze
+	}
+	return a.now()
+}
+
+// freezeNode and thawNode are the two sides of that, called by the room's own
+// door (room.go). They are here rather than there because the field is this
+// file's and a room is a VIEW: it says where the person is, and what that means
+// for a clock is the clock's own business.
+func (a *app) freezeNode(id uint64) {
+	if node := a.tasks[id]; node != nil && node.froze.IsZero() {
+		node.froze = a.now()
+	}
+}
+
+func (a *app) thawNode(id uint64) {
+	if node := a.tasks[id]; node != nil {
+		node.froze = time.Time{}
+	}
+}
 
 // railWrap breaks a rail sentence ON ITS SPACES, and breaks a word only when
 // one word is wider than the whole column.
@@ -1830,13 +2131,13 @@ func (a *app) railJoin(text, rail string) string {
 // write two "task done" lines into the conversation. The states a node moves
 // through are monotonic (queued → running → done|failed), so a repeat of the
 // state last seen for an id is always the second copy of one event.
-func (a *app) taskUpdate(ev session.Event) {
+func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	notice := ev.Task
 	if notice == nil {
-		return
+		return nil
 	}
 	if last, seen := a.taskSeen[notice.ID]; seen && last == notice.State {
-		return
+		return nil
 	}
 	if a.taskSeen == nil {
 		a.taskSeen = map[uint64]session.TaskState{}
@@ -1848,13 +2149,24 @@ func (a *app) taskUpdate(ev session.Event) {
 		if a.tasks == nil {
 			a.tasks = map[uint64]*taskNode{}
 		}
-		node = &taskNode{id: notice.ID}
+		node = &taskNode{id: notice.ID, ident: identFor(notice.ID), met: a.now()}
+		// THE CONTRACT IS COPIED OFF THE PROPOSAL, ONCE. The updates carry a state
+		// and a title and nothing about what the work was for; the card that lands
+		// minutes from now wants the brief, the acceptance and the sentence the
+		// subtitle is cut from, and the only place any of those was ever said is
+		// the question this surface already drew (see [app.cardFor]).
+		if card := a.cardFor(notice.ID); card != nil {
+			node.label = card.title
+			node.assignment = firstNonEmpty(card.summary, card.brief)
+			node.brief, node.acceptance = card.brief, card.acceptance
+		}
 		a.tasks[notice.ID] = node
 		a.taskOrder = append(a.taskOrder, notice.ID)
 	}
 	if title := strings.TrimSpace(notice.Title); title != "" {
-		node.title = title
+		node.label = title
 	}
+	node.title = taskTitleOf(node.label, node.assignment, node.id)
 	node.state = notice.State
 	if len(notice.DependsOn) > 0 {
 		node.dependsOn = notice.DependsOn
@@ -1868,6 +2180,9 @@ func (a *app) taskUpdate(ev session.Event) {
 	if notice.Report != "" {
 		node.report = notice.Report
 	}
+	if len(notice.Changed) > 0 {
+		node.changed = notice.Changed
+	}
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.
 	if notice.State == session.TaskRunning && node.began.IsZero() {
@@ -1880,69 +2195,42 @@ func (a *app) taskUpdate(ev session.Event) {
 		a.task.verdict = taskClockWord
 		a.markCardStale(a.task)
 	}
+	var pilot tea.Cmd
 	switch notice.State {
+	case session.TaskRunning:
+		// The node is alive, so the surface starts WATCHING it (see [taskPilot]).
+		pilot = a.flyPilot(notice.ID)
 	case session.TaskDone, session.TaskFailed:
 		node.elapsed = notice.Elapsed
-		a.landedNote(taskLandedWord(node))
+		a.landPilot(notice.ID)
+		a.landedCard(node)
 	}
 	a.touch()
+	return pilot
 }
 
-// landedNote is the note a finished node writes, MARKED as one.
+// cardFor is the proposal this surface drew about one node, or nil.
 //
-// The mark buys it one thing: the blank row after it (render.go's [app.layout]).
-// A landed note is the end of something that started rows ago and outlived the
-// turn it was proposed in, and a line about work that has come home wedged
-// against the next paragraph reads as a sentence in it.
-func (a *app) landedNote(text string) {
-	a.note(text)
-	if at := len(a.entries) - 1; at >= 0 && a.entries[at].kind == entryNote {
-		a.entries[at].landed = true
+// It WALKS THE TRANSCRIPT, newest first, rather than keeping a second index of
+// cards by id. The walk happens exactly once per node — at the moment the
+// engine first admits it — and an index would be a third place that has to
+// agree with [app.task] and the entry list about which card is which id, for a
+// lookup that costs nothing on any conversation a person can scroll.
+func (a *app) cardFor(id uint64) *taskCard {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		if e := &a.entries[i]; e.kind == entryTask && e.card != nil && e.card.id == id {
+			return e.card
+		}
 	}
+	return nil
 }
 
-// taskLandedWord is the one line the transcript keeps about a node:
-//
-//	task Fix the nil-map crash done in 2m 10s · merged
-//	task Collect sources failed in 4s — the tests did not build
-//	task Mix audio failed in 2m · stopped — branch kept · task/mix — stopped: 40 steps and no finish
-//
-// It is written where the rail row is about to disappear, and between them they
-// say the whole thing once: the rail said it was alive, this says how it ended.
-//
-// THE REASON IS THE ENGINE'S SENTENCE, VERBATIM. session's own report opens with
-// "stopped: 40 steps and no finish" or "stopped before it finished"
-// (task_run.go), and that word is the difference between work that broke and
-// work that ran out — so nothing here rewrites it, and a node that ended with no
-// report at all still leads with it, because a failure this surface was told
-// nothing about is a node that stopped.
-func taskLandedWord(node *taskNode) string {
-	line := "task " + node.title
-	if node.state == session.TaskFailed {
-		line += " failed"
-	} else {
-		line += " done"
-	}
-	if word := countUpWord(node.elapsed); word != "" {
-		line += " in " + word
-	}
-	// A KEPT BRANCH IS NAMED HERE TOO, and it is named for the reason the rail
-	// names it: the rail row goes away when the person deals with it, and this
-	// line is what is left when they scroll back looking for where the work went.
-	switch node.merge {
-	case mergeWordConflicted:
-		line += " · " + node.merge + " · " + node.branch
-	case mergeWordAborted:
-		line += " · " + taskStoppedKept + " · " + node.branch
-	case "":
-	default:
-		line += " · " + node.merge
-	}
-	if node.state == session.TaskFailed {
-		line += " — " + firstNonEmpty(strings.TrimSpace(firstLine(node.report)), taskStoppedWord)
-	}
-	return line
-}
+// THE LANDED LINE IS NOW A CARD (taskdone.go). What stood here was the one dim
+// sentence the transcript kept about a node — "task Fix the nil-map crash done
+// in 2m 10s · merged" — and every fact in it survives, in a block that is read
+// rather than skipped: the outcome, the elapsed, the kept branch and the
+// engine's own failure sentence, verbatim, for the reason it was verbatim here.
+// [app.landedCard] is the one place that record is written now.
 
 // tasksAnimating reports whether anything on this surface's task side is
 // moving: a countdown running down, a spinner turning, a clock counting up.
@@ -1989,6 +2277,11 @@ func (a *app) dropTasks() {
 	a.railTop = 0
 	a.railWhere = railSpot{}
 	a.railHold = false
+	// THE WATCHERS GO TOO, and the generation is bumped so an event already in
+	// flight on one of their lanes cannot write a current tool into the session
+	// that replaced them (see [taskPilot]).
+	a.pilots = nil
+	a.pilotGen++
 }
 
 // redirectLane is the placeholder the input box wears while a proposal is open.

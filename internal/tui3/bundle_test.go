@@ -2089,7 +2089,11 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	// THE BLOCK: a head with the title in it, the summary, the three answers, the
 	// meter, and a foot under the lot.
 	for _, want := range []string{
-		taskHeadCorner + " " + glyphAsk + " Fix the nil-map crash",
+		// THE HEAD IS THE NAME AND THE NODE'S OWN MARK (taskident.go): the title
+		// the engine wrote is cut to the two-or-three-word name, and the identity
+		// cell that will follow this node onto the rail and onto the card that
+		// lands rides beside the question glyph.
+		taskHeadCorner + " " + glyphAsk + " " + plain(a.taskMark(identFor(7))) + " Fix the nil-map",
 		"The parser drops a key",
 		"[ yes ]  [ redirect ]  [ no ]",
 		"auto-starts in 4.0s",
@@ -2312,9 +2316,9 @@ func choiceAt(t *testing.T, a *app, want int) (int, int) {
 
 // THE BLOCK IS CONTAINED. A question with a foot on it and the next paragraph
 // starting on the row underneath would be a question the reply is inside of, so
-// the layout puts a blank after the block — and after the note a landed node
-// writes, which closes something in the same way.
-func TestTheProposalBlockAndTheLandedNoteEndInABlank(t *testing.T) {
+// the layout puts a blank after the block — and after the CARD a landed node
+// writes (taskdone.go), which closes something in the same way.
+func TestTheProposalBlockAndTheLandedCardEndInABlank(t *testing.T) {
 	a, agent, _ := taskApp(t)
 	agent.pending = []uint64{7}
 	drive(t, a,
@@ -2337,26 +2341,26 @@ func TestTheProposalBlockAndTheLandedNoteEndInABlank(t *testing.T) {
 	if foot+1 >= len(rows) || strings.TrimSpace(plain(rows[foot+1].text)) != "" {
 		t.Fatalf("the block runs straight into what follows it:\n%s", taskText(a))
 	}
-	note := -1
-	for i, r := range rows {
-		if strings.Contains(plain(r.text), "task Fix the nil-map crash done") {
-			note = i
-		}
+	// THE CARD IS FOUND BY ITS HIT and not by its words: it is a block of two
+	// rows now, and what this test owns is the blank under the LAST of them.
+	if !strings.Contains(taskText(a), "Fix the nil-map · "+doneWord+" 8s · "+mergeWordMerged) {
+		t.Fatalf("the landed card is not in the transcript:\n%s", taskText(a))
 	}
-	if note < 0 {
-		t.Fatalf("the landed note is not in the transcript:\n%s", taskText(a))
-	}
-	// The note is the last entry here, so what it owes the next one is asserted
+	// The card is the last entry here, so what it owes the next one is asserted
 	// by putting one after it.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTextDelta, Text: "and now the reply."}}, frameMsg{})
 	rows = a.visible(a.bodyWidth())
+	last := -1
 	for i, r := range rows {
-		if !strings.Contains(plain(r.text), "task Fix the nil-map crash done") {
-			continue
+		if r.hit == hitDone {
+			last = i
 		}
-		if i+1 >= len(rows) || strings.TrimSpace(plain(rows[i+1].text)) != "" {
-			t.Fatalf("the landed note runs straight into the next entry:\n%s", taskText(a))
-		}
+	}
+	if last < 0 {
+		t.Fatalf("the landed card left no rows of its own:\n%s", taskText(a))
+	}
+	if last+1 >= len(rows) || strings.TrimSpace(plain(rows[last+1].text)) != "" {
+		t.Fatalf("the landed card runs straight into the next entry:\n%s", taskText(a))
 	}
 }
 
@@ -2399,7 +2403,10 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	}
 	advance(12 * time.Second)
 	rail := plain(strings.Join(a.railRows(10), "\n"))
-	if !strings.Contains(rail, "Fix the nil-map crash") || !strings.Contains(rail, "12s") {
+	// THE ROW CARRIES THE NAME, not the whole title: taskident.go cuts the
+	// engine's sentence to the two-or-three-word label this column is wide enough
+	// to read.
+	if !strings.Contains(rail, "Fix the nil-map") || !strings.Contains(rail, "12s") {
 		t.Fatalf("the running node is not on the rail with its clock:\n%s", rail)
 	}
 
@@ -2418,8 +2425,13 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	// the rail rather than losing the one handle back to the work, so the
 	// assertion is on the two halves and not on one line.
 	rail = plain(strings.Join(a.railRows(12), "\n"))
-	for _, want := range []string{glyphQueued + " Mix audio", glyphBad + " Collect sources",
-		glyphDone + " Fix the nil-map crash", "conflicted ·", "task/fix-nil-map",
+	// TWO GLYPHS OPEN EVERY ROW: the state mark, then the node's own identity
+	// cell, which is derived from the id alone and never changes (taskident.go).
+	for _, want := range []string{
+		glyphQueued + " " + plain(a.taskMark(identFor(8))) + " Mix audio",
+		glyphBad + " " + plain(a.taskMark(identFor(9))) + " Collect sources",
+		glyphDone + " " + plain(a.taskMark(identFor(7))) + " Fix the nil-map",
+		"conflicted ·", "task/fix-nil-map",
 		// A STOPPED NODE DID NOT CRASH. session marks its branch "aborted"; the
 		// rail says what that is — it stopped, and the work is still on the branch
 		// named beside it.
@@ -2456,8 +2468,21 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 // A NODE'S END IS HISTORY, so it lands in the transcript — once, however many
 // lanes carried it. The de-dup is (id, state), because an update raised inside a
 // turn arrives on the turn's stream AND on the standing subscription.
-func TestALandedNodeWritesOneNoteWhateverLaneCarriedIt(t *testing.T) {
+//
+// WHAT LANDS IS A CARD (taskdone.go), not the one dim sentence this surface used
+// to leave, and every fact the sentence carried is asserted here in the card's
+// own grammar: the outcome and the elapsed on the head, the engine's own words
+// quoted underneath.
+//
+// The landings are SEPARATED BY A REPLY because a contiguous run of more than
+// two cards rolls up into one object (taskdone.go's [doneRollupFloor]), and what
+// this test owns is the wording of a card rather than the shape of a batch.
+func TestALandedNodeWritesOneCardWhateverLaneCarriedIt(t *testing.T) {
 	a, agent, _ := taskApp(t)
+	// say is the reply that closes one landing off from the next.
+	say := func(text string) {
+		drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTextDelta, Text: text}}, frameMsg{})
+	}
 	done := update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{
 		Elapsed: 130 * time.Second, Merge: mergeWordMerged,
 	})
@@ -2467,38 +2492,57 @@ func TestALandedNodeWritesOneNoteWhateverLaneCarriedIt(t *testing.T) {
 	drive(t, a, append(runCmd(cmd), streamEventMsg{gen: a.gen, ev: done})...)
 
 	text := taskText(a)
-	want := "task Fix the nil-map crash done in 2m 10s · merged"
+	want := "Fix the nil-map · " + doneWord + " " + taskSpanWord(130*time.Second) + " · " + mergeWordMerged
 	if strings.Count(text, want) != 1 {
 		t.Fatalf("the transcript holds %d copies of %q:\n%s", strings.Count(text, want), want, text)
 	}
 
-	// A failure says why, in the report's first line.
+	// A failure says why, in the report's first line, and it says it in the
+	// node's own words — which is why they are in quotes.
+	say("looking at the next one.")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Collect sources", session.TaskFailed, session.TaskNotice{
 		Elapsed: 4 * time.Second, Report: "the tests did not build\nsee the log",
 	})})
-	if !strings.Contains(taskText(a), "task Collect sources failed in 4s — the tests did not build") {
-		t.Fatalf("the failure note does not carry its reason:\n%s", taskText(a))
+	for _, want := range []string{
+		"Collect sources · " + doneFailWord + " " + taskSpanWord(4*time.Second),
+		`"the tests did not build"`,
+	} {
+		if !strings.Contains(taskText(a), want) {
+			t.Fatalf("the failure card does not carry %q:\n%s", want, taskText(a))
+		}
+	}
+	if strings.Contains(taskText(a), "see the log") {
+		t.Fatalf("the collapsed card leaked the rest of the report:\n%s", taskText(a))
 	}
 
-	// A NODE THAT STOPPED DID NOT CRASH, and the note says so twice over: the
+	// A NODE THAT STOPPED DID NOT CRASH, and the card says so twice over: the
 	// engine's own "stopped:" sentence survives verbatim, and the branch it kept
 	// is named in this surface's words rather than in "aborted".
+	say("and the audio.")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(11, "Mix audio", session.TaskFailed, session.TaskNotice{
 		Elapsed: 90 * time.Second, Report: "stopped: 40 steps and no finish",
 		Merge: mergeWordAborted, Branch: "task/mix",
 	})})
-	stopped := "task Mix audio failed in 1m 30s · " + taskStoppedKept +
-		" · task/mix — stopped: 40 steps and no finish"
-	if !strings.Contains(taskText(a), stopped) {
-		t.Fatalf("the stopped note does not read %q:\n%s", stopped, taskText(a))
+	for _, want := range []string{
+		"Mix audio · " + doneFailWord + " " + taskSpanWord(90*time.Second) +
+			" · " + taskStoppedKept + " · task/mix",
+		`"stopped: 40 steps and no finish"`,
+	} {
+		if !strings.Contains(taskText(a), want) {
+			t.Fatalf("the stopped card does not carry %q:\n%s", want, taskText(a))
+		}
+	}
+	if strings.Contains(taskText(a), mergeWordAborted) {
+		t.Fatalf("the card read the engine's own word for a stopped node:\n%s", taskText(a))
 	}
 	// And a node that ended with nothing to say still leads with the word: a
 	// failure this surface was told nothing about is a node that stopped.
+	say("and the titles.")
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(12, "Render titles", session.TaskFailed, session.TaskNotice{
 		Elapsed: 3 * time.Second,
 	})})
-	if !strings.Contains(taskText(a), "task Render titles failed in 3s — "+taskStoppedWord) {
-		t.Fatalf("a silent failure does not lead with %q:\n%s", taskStoppedWord, taskText(a))
+	if !strings.Contains(taskText(a), `"`+taskStoppedWord+`"`) {
+		t.Fatalf("a silent failure does not fall back to %q:\n%s", taskStoppedWord, taskText(a))
 	}
 }
 
@@ -2638,8 +2682,9 @@ func TestTheRosterGroupsByAttentionAndFoldsItsTail(t *testing.T) {
 	// Every group says how many it holds, and the two folded ones say it with
 	// their rows behind the count rather than under it.
 	for _, want := range []string{
-		glyphBad + " Render titles", glyphOpen + " " + railGroupWords[railAttention] + " 1",
-		"Fix the nil-map crash", "Cut the trailer",
+		glyphBad + " " + plain(a.taskMark(identFor(4))) + " Render titles",
+		glyphOpen + " " + railGroupWords[railAttention] + " 1",
+		"Fix the nil-map", "Cut the trailer",
 		glyphShut + " " + railGroupWords[railParked] + " 1",
 		glyphShut + " " + railGroupWords[railDone] + " 1",
 	} {
@@ -2842,11 +2887,33 @@ func (f *roomFake) lane(id uint64) chan session.Event {
 
 func (f *roomFake) TaskJournal(id uint64) string { return f.journal }
 
+// WatchTask hands every caller ITS OWN channel, seeded with whatever has been
+// put on the node's lane so far.
+//
+// internal/session's door is a FAN-OUT (task_room.go: openRoom().join()), and
+// this fake owed it that shape the moment a second watcher appeared: the rail
+// flies a pilot on every running node now (task.go's [taskPilot]) as well as the
+// room opening a watch of its own, and a fake that handed both the same channel
+// would have them eating each other's events.
 func (f *roomFake) WatchTask(id uint64) (<-chan session.Event, error) {
 	if f.watchErr != nil {
 		return nil, f.watchErr
 	}
-	return f.lane(id), nil
+	lane, out := f.lane(id), make(chan session.Event, 32)
+	for {
+		select {
+		case ev, ok := <-lane:
+			if !ok {
+				// A CLOSED LANE IS A FINISHED NODE, and the door answers it the way
+				// the real one does: a channel that is already closed.
+				close(out)
+				return out, nil
+			}
+			out <- ev
+		default:
+			return out, nil
+		}
+	}
 }
 
 func (f *roomFake) SteerTask(id uint64, text string) error {
@@ -3016,7 +3083,7 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 
 	// The box says who it is talking to.
 	block, _, _, _ := a.chrome(a.width)
-	if !strings.Contains(plain(strings.Join(block, "\n")), "steer Fix the nil-map crash") {
+	if !strings.Contains(plain(strings.Join(block, "\n")), "steer Fix the nil-map") {
 		t.Fatalf("the box does not offer the steering lane:\n%s", plain(strings.Join(block, "\n")))
 	}
 
@@ -3131,7 +3198,7 @@ func TestTheFrameSaysAPersonIsInARoom(t *testing.T) {
 	clickRail(t, a, 0)
 
 	status := plain(a.status(a.width))
-	if !strings.Contains(status, "task · Fix the nil-map crash") {
+	if !strings.Contains(status, "task · Fix the nil-map") {
 		t.Fatalf("the status line does not name the room:\n%s", status)
 	}
 	if !strings.Contains(status, "$0.42") {
