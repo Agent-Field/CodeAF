@@ -1055,6 +1055,13 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// needs to see that it was.
 		a.note(firstNonEmpty(ev.Hint, "stuck? nudged · "+ev.Tool))
 
+	case session.EventNotice:
+		// The adapter had to reshape the request to get it accepted — which
+		// attempt it is on, and what it took off (internal/provider's
+		// endpoints.go). Same dim one-liner as the nudge, and for the same
+		// reason: it is already being handled, the person only needs to see it.
+		a.note(ev.Text)
+
 	case session.EventGuardianAllowed:
 		// The guardian answered for the person: quiet proof on the row's
 		// decision slot, the same place a person's answer would sit.

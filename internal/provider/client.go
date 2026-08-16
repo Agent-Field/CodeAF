@@ -41,6 +41,19 @@ type Config struct {
 	// setting rather than a path to it.
 	Routing RoutingSource
 
+	// Fallbacks are the models to try, in order, when no endpoint serving the
+	// configured one will accept the request's shape (endpoints.go). It is the
+	// operator's own list and it wins outright over any inference; empty is the
+	// ordinary case and means the catalog is asked instead.
+	Fallbacks []string
+
+	// NearestModels answers "what else could have taken this conversation?" from
+	// data already in memory, and is consulted ONLY when Fallbacks is empty. Like
+	// SupportsParameter it must not block or perform I/O — a catalog that has not
+	// resolved answers nil, which is one more way of not knowing rather than a
+	// reason to wait on the one path where somebody is already watching a failure.
+	NearestModels func(model string) []string
+
 	// HTTPClient is optional and exists for deterministic tests.
 	HTTPClient *http.Client
 }
@@ -145,6 +158,10 @@ const maxResponseBytes = 64 << 20
 type callKnobs struct {
 	cacheKey string
 	effort   effortRequest
+	// relaxed is what this encode has been told to leave off the body, set only
+	// by the endpoint-refusal chain (endpoints.go). Zero on every ordinary call,
+	// which is what keeps a healthy request byte-for-byte what it always was.
+	relaxed relaxSet
 }
 
 func knobsFrom(ctx context.Context) callKnobs {
@@ -160,7 +177,33 @@ func (c *Client) modelFor(request *ai.Request) string {
 	return c.config.Model
 }
 
-// sendShaped encodes the request and sends it, recovering once from the 400s
+// sendShaped is the whole of what this adapter does to make one request land:
+// the self-repairable 400s below, and then the endpoint refusals above them.
+//
+// The two are separate passes because they are different mistakes. A repairable
+// 400 is a knob the adapter guessed wrong about and can simply stop sending,
+// once, silently, at no cost to anybody. A refusal — "no endpoints found that
+// can handle the requested parameters" — is the request's whole SHAPE being
+// unservable, and the answer to it is a narrated ladder the person watches
+// (endpoints.go), because every rung of it takes away something they may care
+// about having sent.
+func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+	response, err := c.sendRepaired(ctx, request, knobs, stream)
+	if err != nil || !endpointRefusalStatus(response.StatusCode) {
+		return response, err
+	}
+	peek, readErr := io.ReadAll(io.LimitReader(response.Body, maxErrorPeek))
+	if readErr != nil || !endpointRefusal(peek) {
+		// Not this class. The body is handed back whole — a peek must never
+		// shorten what the caller goes on to read.
+		response.Body = rewound(peek, response.Body)
+		return response, nil
+	}
+	response.Body.Close()
+	return c.recoverFromRefusal(ctx, request, knobs, stream, peek)
+}
+
+// sendRepaired encodes the request and sends it, recovering once from the 400s
 // this adapter can answer by itself.
 //
 // There are two, and they are the same shape of mistake: a request-shape
@@ -174,7 +217,7 @@ func (c *Client) modelFor(request *ai.Request) string {
 //
 // The retry costs nothing: a 400 generated no tokens, and the answer is
 // remembered so only the first call on a model pays for the discovery.
-func (c *Client) sendShaped(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
+func (c *Client) sendRepaired(ctx context.Context, request *ai.Request, knobs callKnobs, stream bool) (*http.Response, error) {
 	body, err := c.encodeRequest(request, knobs)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
