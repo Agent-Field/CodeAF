@@ -338,6 +338,7 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 		}
 		if c.config.SiteName != "" {
 			request.Header.Set("X-OpenRouter-Title", c.config.SiteName)
+			request.Header.Set("X-OpenRouter-Categories", "cli-agent")
 			request.Header.Set("X-Title", c.config.SiteName)
 		}
 	}
