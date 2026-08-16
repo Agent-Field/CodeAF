@@ -101,6 +101,11 @@ func run() error {
 		// cutover"). runChat stays reachable through the no-argument path
 		// until v3 reaches parity in substance.
 		return runChatV3(os.Args[2:])
+	case "resume":
+		// The chat surface, opened on the list of conversations this directory
+		// has already had (internal/tui3's resume.go). It is a v3 door only:
+		// the older surfaces have no session files to pick from.
+		return runResumeV3(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":
@@ -138,6 +143,8 @@ const usageText = `aforge — build and revise task graphs
 
   aforge                 open the chat surface, resuming your last conversation
   aforge chat [--db path] [--session id|new]
+  aforge resume          pick an earlier conversation by name and open it
+                         the same list is /resume inside the chat
   aforge do   "<task>" [--db path] [--keep] [-w dir] [--timeout 900] [--json] [--yes-spend] [--model slug] [--plan-model slug]
                        [--subharness name] [--context-fill 60] [--completion-reserve 65536]
                          do one task and exit — the same living brain the chat runs, with nobody watching

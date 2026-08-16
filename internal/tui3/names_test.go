@@ -21,8 +21,8 @@ func TestOneTokenNamesAreReadBackAsWords(t *testing.T) {
 		{"  spaced_name  ", "Spaced Name"},
 		{"", ""},
 	} {
-		if got := humanName(row.raw); got != row.want {
-			t.Fatalf("humanName(%q) = %q, want %q", row.raw, got, row.want)
+		if got := readableName(row.raw); got != row.want {
+			t.Fatalf("readableName(%q) = %q, want %q", row.raw, got, row.want)
 		}
 	}
 }
