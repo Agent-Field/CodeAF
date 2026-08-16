@@ -202,6 +202,19 @@ type Event struct {
 	// same rule instead of deriving one.
 	Rule string
 
+	// Memo says whether a ConsentToolSession answer to this question WOULD DO
+	// ANYTHING. It is set on EventConsentRequest and false everywhere else.
+	//
+	// It exists because the consent lane carries two different questions. The
+	// gate's question is about a TOOL, so "and stop asking me about this tool"
+	// is a real answer and this is true. The stuck question (recovery.go)
+	// borrows the same lane to ask about a TURN, and a tool-session scope on it
+	// is dropped on the floor — which, without this field, a surface could not
+	// know, and so offered an option that silently did nothing. An offer that
+	// is inert must not be on screen: it is worse than a missing key, because a
+	// person who presses it believes they have changed something.
+	Memo bool
+
 	// Count is how many times the thing this event is about has happened. It is
 	// set on EventNudge — the number of repetitions that earned the nudge — and
 	// zero everywhere else, which is why it is a plain int rather than a pointer:

@@ -199,6 +199,20 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
 	case "ctrl+u":
 		return tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
+	case "ctrl+w":
+		return tea.KeyPressMsg{Code: 'w', Mod: tea.ModCtrl}
+	case "ctrl+j":
+		return tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}
+	case "ctrl+e":
+		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
+	case "tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "alt+backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}
+	case "ctrl+backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModCtrl}
+	case "super+backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModSuper}
 	}
 	return tea.KeyPressMsg{}
 }
