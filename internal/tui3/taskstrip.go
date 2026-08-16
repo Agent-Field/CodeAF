@@ -94,7 +94,7 @@ func (a *app) stripShowing() bool {
 	// The same floor the pinned header stands on (view.go's [app.headHeight]): a
 	// terminal too short for breathing room spends what it has on the
 	// conversation and the box.
-	if width < stripFloor || height < 6 {
+	if width < stripFloor || height < roomyFloor {
 		return false
 	}
 	for _, id := range a.taskOrder {
