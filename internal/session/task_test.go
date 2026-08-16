@@ -1099,6 +1099,112 @@ func TestAuditVerdictFailsClosed(t *testing.T) {
 	}
 }
 
+// EXPLORATION IS PROGRESS: a research node that never writes a file is doing
+// its job, and the no-progress threshold must read NEW INFORMATION as the
+// progress it is. What the threshold kills is the spin — the same query
+// again — not the searching.
+func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
+	build := func(queries ...string) *routedCompleter {
+		child := make([]step, 0, len(queries)+1)
+		for index, query := range queries {
+			child = append(child, searchCall(fmt.Sprintf("call-%d", index), query))
+		}
+		return &routedCompleter{
+			parent: []step{
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					arguments, _ := json.Marshal(taskArguments{
+						Title: "Research", Summary: "s", Brief: "research\n" + taskBriefMark,
+						Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+					})
+					return toolResponse("call-task", "propose_task", string(arguments)), nil
+				},
+				finalText("handed off"),
+			},
+			child: append(child, finalText("found things")),
+		}
+	}
+
+	t.Run("distinct targets finish", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		agent, _ := newTestAgent(t, build("alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta"), func(config *Config) {
+			config.AskConsent = false
+			config.TaskAutoApproveSeconds = 0
+			config.TaskAudit = false
+			config.SearchProvider = &scriptedSearch{}
+		})
+		graph := agent.graph()
+		collect(t, mustSubmit(t, agent, "research"))
+		node := graph.node(1)
+		waitDoneNode(t, node)
+		if notice := node.notice(); notice.State != TaskDone {
+			t.Fatalf("seven distinct searches died as a spin: %q", notice.Report)
+		}
+	})
+
+	t.Run("paging one file is exploration", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		// The same path at six offsets: every call is new information, and a
+		// node reading a long document to its end must not die as a spinner.
+		child := make([]step, 0, 7)
+		for index := 0; index < 6; index++ {
+			offset := index * 100
+			child = append(child, func(context.Context, []ai.Message) (*ai.Response, error) {
+				arguments, _ := json.Marshal(struct {
+					Path   string `json:"path"`
+					Offset int    `json:"offset"`
+				}{Path: "notes.md", Offset: offset})
+				return toolResponse("call-page", "read", string(arguments)), nil
+			})
+		}
+		completer := &routedCompleter{
+			parent: []step{
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					arguments, _ := json.Marshal(taskArguments{
+						Title: "Read", Summary: "s", Brief: "read\n" + taskBriefMark,
+						Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+					})
+					return toolResponse("call-task", "propose_task", string(arguments)), nil
+				},
+				finalText("handed off"),
+			},
+			child: append(child, finalText("read it all")),
+		}
+		agent, _ := newTestAgent(t, completer, func(config *Config) {
+			config.AskConsent = false
+			config.TaskAutoApproveSeconds = 0
+			config.TaskAudit = false
+		})
+		graph := agent.graph()
+		collect(t, mustSubmit(t, agent, "read"))
+		node := graph.node(1)
+		waitDoneNode(t, node)
+		if notice := node.notice(); notice.State != TaskDone {
+			t.Fatalf("paging a file died as a spin: %q", notice.Report)
+		}
+	})
+
+	t.Run("the same target twice is the spin", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		agent, _ := newTestAgent(t, build("alpha", "alpha", "alpha", "alpha", "alpha", "alpha"), func(config *Config) {
+			config.AskConsent = false
+			config.TaskAutoApproveSeconds = 0
+			config.TaskAudit = false
+			config.SearchProvider = &scriptedSearch{}
+		})
+		graph := agent.graph()
+		collect(t, mustSubmit(t, agent, "research"))
+		node := graph.node(1)
+		waitDoneNode(t, node)
+		notice := node.notice()
+		if notice.State != TaskFailed {
+			t.Fatalf("the same search six times lived: %q", notice.Report)
+		}
+		if !strings.Contains(notice.Report, "stopped: 3 steps without progress") {
+			t.Fatalf("report = %q, want the threshold's name", notice.Report)
+		}
+	})
+}
+
 // ── the named thresholds ────────────────────────────────────────────────────
 
 // A SPIN DIES BY NAME. A node that keeps calling a tool that changes nothing is
@@ -1117,7 +1223,7 @@ func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
 				Title: "Grind", Summary: "s", Brief: "spin\n" + taskBriefMark,
 				Acceptance: "a", NoProgress: 3, MaxSteps: 30,
 			},
-			want: "stopped: 3 steps without a change",
+			want: "stopped: 3 steps without progress",
 		},
 		{
 			name: "the step budget",
@@ -1310,6 +1416,17 @@ func writeCall(id, path, content string) step {
 	}{Path: path, Content: content})
 	return func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolResponse(id, "write", string(arguments)), nil
+	}
+}
+
+// searchCall is one successful web_search step against the given query —
+// the shape of research.
+func searchCall(id, query string) step {
+	arguments, _ := json.Marshal(struct {
+		Query string `json:"query"`
+	}{Query: query})
+	return func(context.Context, []ai.Message) (*ai.Response, error) {
+		return toolResponse(id, "web_search", string(arguments)), nil
 	}
 }
 

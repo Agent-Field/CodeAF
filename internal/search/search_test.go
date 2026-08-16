@@ -475,9 +475,11 @@ func TestResolveAuto(t *testing.T) {
 		{
 			// JinaKey raises a rate ceiling; it is not a plug selector, so
 			// it changes nothing about who wins.
-			name:       "a jina key does not make jina keyed",
+			// A jina key now buys SEARCH too: s.jina.ai wins the keyed rung,
+			// because the zero-key default is bot-walled from datacenter IPs.
+			name:       "a jina key wins the keyed search rung",
 			opts:       Options{JinaKey: "jina-key"},
-			wantSearch: "duckduckgo",
+			wantSearch: "jina-search",
 			wantFetch:  "jina",
 		},
 		{
@@ -749,4 +751,23 @@ func name(v any) string {
 		return p.Name()
 	}
 	return fmt.Sprint(v)
+}
+
+// The jina search answer parses by its two labelled lines; prose between them
+// is the snippet, and a block with no link is dropped.
+func TestJinaSearchResultsParsesBlocks(t *testing.T) {
+	body := "Title: Go 1.25 Release Notes\nURL Source: https://go.dev/doc/go1.25\nThe release notes.\nMore detail.\n\nTitle: no link here\njust prose\n\nTitle: Go 1.25 blog\nURL Source: https://go.dev/blog/go1.25\nThe announcement."
+	results := jinaSearchResults(body, 5)
+	if len(results) != 2 {
+		t.Fatalf("parsed %d results, want 2: %v", len(results), results)
+	}
+	if results[0].Title != "Go 1.25 Release Notes" || results[0].URL != "https://go.dev/doc/go1.25" {
+		t.Fatalf("first result = %+v", results[0])
+	}
+	if results[0].Snippet != "The release notes. More detail." {
+		t.Fatalf("snippet = %q", results[0].Snippet)
+	}
+	if got := jinaSearchResults(body, 1); len(got) != 1 {
+		t.Fatalf("limit 1 gave %d results", len(got))
+	}
 }

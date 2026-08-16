@@ -1,0 +1,62 @@
+
+// askedQuestion is the durable numbered question one turn posted: an agent
+// message carrying option rows, which is what the surfaces render as a row a
+// person clicks rather than a sentence they retype.
+func askedQuestion(t *testing.T, graph *store.Store, session string, afterSeq int64) store.Message {
+	t.Helper()
+	messages, err := graph.Messages(session, afterSeq, 0)
+	if err != nil {
+		t.Fatalf("read thread: %v", err)
+	}
+	for _, message := range messages {
+		if message.Role == store.RoleAgent && len(message.Options) > 0 {
+			return message
+		}
+	}
+	t.Fatalf("nothing in %s after %d asked a numbered question: %+v", session, afterSeq, messages)
+	return store.Message{}
+}
+
+// A cue alone is conversation and an anchor alone is a topic; only both
+// together, over work that is actually live, is a redirection.
+func TestRedirectRecognitionNeedsCueAnchorAndLiveWork(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		jobs    bool
+		cue     string
+		fires   bool
+		// named is whether the words themselves reach the job, as opposed to
+		// pointing at it deictically. Only a named anchor can be acted on without
+		// resolving a referent first.
+		named bool
+	}{
+		{"correction", "no, use the v2 API not v1", true, "correction", true, true},
+		{"correction without comma", "actually the API client should speak v2", true, "correction", true, true},
+		{"scope add", "also cover the API client error paths", true, "scope-add", true, true},
+		{"scope add while you're at it", "while you're at it, sign the API client releases", true, "scope-add", true, true},
+		{"scope cut", "don't bother with the v1 API fallback", true, "scope-cut", true, true},
+		{"redirect", "focus on the v2 API instead", true, "redirect", true, true},
+		{"deictic anchor", "skip the second half of the job", true, "scope-cut", true, false},
+		// A cue with nothing to be about is conversation: the reading is offered
+		// and it anchors on nothing, which is exactly why it may not act.
+		{"cue without anchor", "also water the plants", true, "scope-add", false, false},
+		{"anchor without cue", "how is the API client coming along", true, "", false, true},
+		{"no live work", "no, use the v2 API not v1", false, "correction", false, false},
+		{"plain thanks", "thanks, that helps", true, "", false, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			graph := openHeadStore(t)
+			if test.jobs {
+				spliceSurgeryJob(t, graph, "api-client", "v1 API client", "write a client for the v1 API")
+			}
+			head := New(&fakeClient{}, graph)
+			user := postUser(t, graph, "recognize", test.message)
+			cue, anchored := redirectReading(t, head, user)
+			fires := cue != "" && anchored
+			if fires != test.fires || cue != test.cue {
+				t.Fatalf("fires/cue = %t/%q, want %t/%q", fires, cue, test.fires, test.cue)
+			}
+
+[383 more lines in file. Use offset=100 to continue.]
