@@ -71,33 +71,29 @@ func TestTheFocusHeaderCarriesTheNodesSpend(t *testing.T) {
 	}
 }
 
-// TWO LEFTS LEAVE, one does not, and neither of them does anything while there
-// is a sentence in the box — where ← is the caret's.
-func TestTwoLeftsLeaveTheRoom(t *testing.T) {
+// ← LEAVES A ROOM AND DOES NOTHING AT ALL while there is a sentence in the box,
+// where it is the caret's.
+//
+// The room briefly counted two ← of its own to leave. The arrow grammar it met
+// says the same thing with one more level in it — one ← steps back a level, two
+// inside [navDoubleTap] go home — so what a single ← does is covered by
+// [TestTheArrowsMoveBetweenTheConversationAndTheWork] and what two do by
+// [TestATwoTapLeftGoesHome]. What is left here, and is this test's own, is the
+// guard: no number of ← may take a person out of a page they are typing on.
+func TestLeftDoesNothingToARoomAPersonIsTypingIn(t *testing.T) {
 	a, _, _ := roomApp(t)
-	clickRail(t, a, 0)
-
-	drive(t, a, key("left"))
-	if !a.roomOpen() {
-		t.Fatal("one ← left the room")
-	}
-	drive(t, a, key("left"))
-	if a.roomOpen() {
-		t.Fatal("←← did not leave the room")
-	}
-
 	clickRail(t, a, 0)
 	a.input.setText("keep going")
 	drive(t, a, key("left"), key("left"), key("left"))
 	if !a.roomOpen() {
-		t.Fatal("←← threw a person out of a room while they were typing")
+		t.Fatal("← threw a person out of a room while they were typing")
 	}
 	if a.input.String() != "keep going" {
 		t.Fatalf("the box lost the sentence: %q", a.input.String())
 	}
 }
 
-// A PRESS ON THE HEADER IS A PRESS ON THE WAY OUT. The row names esc and ←←; a
+// A PRESS ON THE HEADER IS A PRESS ON THE WAY OUT. The row names esc and ←; a
 // row that named the exits and did nothing when pressed would be the one dead
 // cell on the page.
 func TestPressingTheFocusHeaderLeavesTheRoom(t *testing.T) {

@@ -67,9 +67,13 @@ func wired(turns ...[]session.Event) (*wiredAgent, *app) {
 	return agent, newTestApp(agent)
 }
 
+// consentEvent is the gate's own question: about a TOOL, so a session-scoped
+// answer to it would stand for something and the always key is on the offer
+// (session.Event's Memo, and consent.go's [ask.memo]).
 func consentEvent(id uint64, tool, hint, rule string) session.Event {
 	return session.Event{
 		Kind: session.EventConsentRequest, ID: id, Tool: tool, Hint: hint, Rule: rule,
+		Memo: true,
 	}
 }
 
@@ -84,16 +88,25 @@ func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
 
 	got := plain(frame(a))
 	for _, want := range []string{
-		"rm -rf build",                   // the row the transcript already drew
-		"allow? [a] once",                // the offer
-		"[t] this tool always (session)", // and how far a yes goes
-		"[d] deny",
+		"rm -rf build",   // the row the transcript already drew
+		"allow? [y] yes", // the offer, on the answer's own first letter
+		"[n] no",
+		"[a] always",              // the widening yes
+		"[esc] cancel",            // and the way out, which is a no
 		`bash pattern "rm -rf *"`, // the policy's own words for why
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the question is missing %q:\n%s", want, got)
 		}
 	}
+	// A FRAME WITH ROOM SAYS HOW FAR THE WIDENING YES GOES. The narrow spelling
+	// above is the same offer with one cell shortened — never one with an answer
+	// truncated off the end.
+	a.width = 120
+	if wide := plain(frame(a)); !strings.Contains(wide, "[a] always, this tool (session)") {
+		t.Fatalf("the wide offer does not say how far always reaches:\n%s", wide)
+	}
+	a.width = 60
 
 	// While it is up the draft is suspended: a key that is not an answer types
 	// nothing into a conversation that cannot move.
@@ -102,9 +115,9 @@ func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
 		t.Fatalf("a key reached the draft while a question was up: %q", a.input.String())
 	}
 
-	drive(t, a, key("a"))
+	drive(t, a, key("y"))
 	if len(agent.answers) != 1 || agent.answers[0] != (answered{id: 7, allow: true, scope: session.ConsentOnce}) {
-		t.Fatalf("[a] resolved %+v", agent.answers)
+		t.Fatalf("[y] resolved %+v", agent.answers)
 	}
 	if a.asking() {
 		t.Fatal("the question stayed up after it was answered")
@@ -115,8 +128,99 @@ func TestAConsentQuestionShowsTheCallTheOfferAndTheRule(t *testing.T) {
 	if !strings.Contains(got, "rm -rf build") || !strings.Contains(got, "allowed") {
 		t.Fatalf("the answered call lost its row or its annotation:\n%s", got)
 	}
-	if strings.Contains(got, "allow? [a]") {
+	if strings.Contains(got, "allow? [y]") {
 		t.Fatalf("the offer survived the answer:\n%s", got)
+	}
+}
+
+// THE ALWAYS KEY IS NOT ON A QUESTION IT WOULD DO NOTHING TO. The stuck
+// question (session's recovery.go) borrows the consent lane to ask about a TURN,
+// and the engine drops a tool-session scope on it — so the offer leaves the key
+// off, and pressing it anyway does not answer the question by accident.
+func TestTheAlwaysKeyIsHiddenAndInertOnAQuestionThatCannotRememberIt(t *testing.T) {
+	ask := consentEvent(5, "bash", "bash make test", "the turn is repeating itself")
+	ask.Memo = false
+	agent, a := wired([]session.Event{toolBegin("bash", "bash make test"), ask})
+	typeLine(t, a, "go on")
+
+	got := plain(frame(a))
+	if strings.Contains(got, "[a]") || strings.Contains(got, "always") {
+		t.Fatalf("an inert option is on the offer:\n%s", got)
+	}
+	if !strings.Contains(got, "[y] yes") || !strings.Contains(got, "[n] no") {
+		t.Fatalf("the two real answers went with it:\n%s", got)
+	}
+
+	drive(t, a, key("a"))
+	if len(agent.answers) != 0 {
+		t.Fatalf("the hidden key answered anyway: %+v", agent.answers)
+	}
+	if !a.asking() {
+		t.Fatal("the question was resolved by a key that is not on it")
+	}
+	drive(t, a, key("n"))
+	if len(agent.answers) != 1 || agent.answers[0].allow {
+		t.Fatalf("[n] resolved %+v, want a deny", agent.answers)
+	}
+}
+
+// THE COUNTDOWN ANSWERS NO, AND IT STOPS THE MOMENT SOMEBODY IS THERE.
+//
+// The clock exists so a tool call cannot be parked forever on a prompt nobody is
+// reading. It can only ever deny — an expiry that approved would make "prompt"
+// mean "allow" on any unattended screen — and any keypress at all ends it, since
+// a key is evidence of a person mid-decision.
+func TestTheApprovalCountdownDeniesAtExpiryAndPausesOnAnyKey(t *testing.T) {
+	at := time.Now()
+	agent, a := wired([]session.Event{
+		toolBegin("bash", "bash rm -rf build"),
+		consentEvent(9, "bash", "bash rm -rf build", `bash pattern "rm -rf *"`),
+	})
+	// The countdown is pinned rather than read off the machine's own profile:
+	// the setting's default is 10 (config), and a test that resolved it from
+	// disk would be a test of whoever is running it.
+	a.clock, a.askWait = func() time.Time { return at }, 10*time.Second
+	typeLine(t, a, "clean it")
+
+	if !strings.Contains(plain(frame(a)), "· 10s") {
+		t.Fatalf("the offer is not counting down:\n%s", plain(frame(a)))
+	}
+	// Short of the deadline nothing happens.
+	at = at.Add(9 * time.Second)
+	drive(t, a, frameMsg{})
+	if len(agent.answers) != 0 {
+		t.Fatalf("the clock answered early: %+v", agent.answers)
+	}
+	// Past it, the call is refused and the row says who said so — which is
+	// nobody.
+	at = at.Add(2 * time.Second)
+	drive(t, a, frameMsg{})
+	if len(agent.answers) != 1 || agent.answers[0].allow {
+		t.Fatalf("the clock resolved %+v, want a deny", agent.answers)
+	}
+	if !strings.Contains(plain(frame(a)), consentExpiredWord) {
+		t.Fatalf("the expired row is not annotated:\n%s", plain(frame(a)))
+	}
+
+	// A key that answers nothing still stops the clock, for good.
+	at = time.Now()
+	agent, a = wired([]session.Event{
+		toolBegin("edit", "edit main.go"),
+		consentEvent(4, "edit", "edit main.go", `tool "edit"`),
+	})
+	a.clock, a.askWait = func() time.Time { return at }, 10*time.Second
+	typeLine(t, a, "edit it")
+	drive(t, a, key("x"))
+	if !strings.Contains(plain(frame(a)), "· paused") {
+		t.Fatalf("the clock did not say it is paused:\n%s", plain(frame(a)))
+	}
+	at = at.Add(time.Hour)
+	drive(t, a, frameMsg{})
+	if len(agent.answers) != 0 {
+		t.Fatalf("a paused clock answered anyway: %+v", agent.answers)
+	}
+	if !a.asking() {
+		t.Fatal("the question went away on a paused clock")
 	}
 }
 

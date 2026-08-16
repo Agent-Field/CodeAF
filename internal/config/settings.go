@@ -112,9 +112,20 @@ const (
 	// about tools at all: it is a statement about WHO ANSWERS — the person, or a
 	// model standing in for them — and grouping it with the rule rows would file
 	// it as one more exception in a list of exceptions.
-	KeyGuardian      = "approval.guardian"
-	KeyTierLowModel  = "models.tiers.low"
-	KeyTierHighModel = "models.tiers.high"
+	KeyGuardian = "approval.guardian"
+	// KeyConsentTimeout is how long an approval question waits for a keystroke
+	// before it answers itself. It answers DENY — never allow — so the clock can
+	// only ever be the cautious one, and it stops the moment a key is pressed,
+	// because a person who has started reading is a person who is going to
+	// answer.
+	//
+	// Seconds, not a duration string, for the reason [KeyTaskAutoApprove] is
+	// spelled that way: the number is small and read at a glance off a line that
+	// is counting it down. 0 turns the clock off and the question waits forever,
+	// which is what a person who reads every prompt wants.
+	KeyConsentTimeout = "approval.timeout_seconds"
+	KeyTierLowModel   = "models.tiers.low"
+	KeyTierHighModel  = "models.tiers.high"
 	// KeyMouse is whether the surface reports the mouse at all. Off is the
 	// default because an alt-screen app that reports the mouse OWNS every
 	// drag: the terminal's native text selection dies the moment reporting
@@ -495,6 +506,16 @@ const (
 	// that ignoring it is a decision rather than a wait.
 	DefaultTaskAutoApprove = 5
 
+	// DefaultConsentTimeout is ten seconds, and it is a different number from
+	// the one above because it is a different KIND of clock. The task countdown
+	// runs toward the permissive answer, so it is kept short enough to notice.
+	// This one runs toward the refusal: at expiry the call is denied, the model
+	// is handed a refusal it can act on, and nothing has happened to the disk.
+	// So it can afford to be the longer of the two — ten seconds is long enough
+	// to read a command and a rule — and its cost when it fires is one call the
+	// model has to ask for again.
+	DefaultConsentTimeout = 10
+
 	// DefaultSearchProvider pins nothing. Auto is the only default that stays
 	// right as a person's keys change: the day they paste an Exa key the
 	// searches move to Exa without a second row being touched, and the day it
@@ -855,6 +876,15 @@ func (s *Settings) build() []Setting {
 				"It can never approve something the rules above refuse. A change lands on the next session.",
 			read:  func() string { return GuardianAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyGuardian, raw, GuardianModes) },
+		},
+		Setting{
+			Key: KeyConsentTimeout, Category: CategorySpending, Kind: SettingCount,
+			Label: "approval countdown",
+			Hint: "how many seconds an approval question waits for you before it answers itself. " +
+				"It answers no — the call is refused and the model is told, never approved — " +
+				"and the clock stops the moment you press any key. 0 waits for you forever.",
+			read:  func() string { return strconv.Itoa(ConsentTimeoutAt(dir)) },
+			write: func(raw string) error { return writeProfileCount(dir, KeyConsentTimeout, raw) },
 		},
 		Setting{
 			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
@@ -1892,6 +1922,18 @@ func TaskAutoApproveAt(profileDir string) int {
 		return value
 	}
 	return DefaultTaskAutoApprove
+}
+
+// ConsentTimeoutAt resolves the approval countdown, in seconds. 0 is a clock
+// that is off: the question waits for an answer and never answers itself.
+//
+// It tests ok before it tests the number for the reason [TaskAutoApproveAt]
+// does: a persisted 0 is a person who turned the clock off, not an absence.
+func ConsentTimeoutAt(profileDir string) int {
+	if value, ok := persistedInt(profileDir, KeyConsentTimeout); ok && value >= 0 {
+		return value
+	}
+	return DefaultConsentTimeout
 }
 
 // writeProfileCount persists a whole-number row as itself. The context-law

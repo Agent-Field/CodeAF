@@ -199,6 +199,20 @@ func key(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl}
 	case "ctrl+u":
 		return tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
+	case "ctrl+w":
+		return tea.KeyPressMsg{Code: 'w', Mod: tea.ModCtrl}
+	case "ctrl+j":
+		return tea.KeyPressMsg{Code: 'j', Mod: tea.ModCtrl}
+	case "ctrl+e":
+		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
+	case "tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "alt+backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModAlt}
+	case "ctrl+backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModCtrl}
+	case "super+backspace":
+		return tea.KeyPressMsg{Code: tea.KeyBackspace, Mod: tea.ModSuper}
 	}
 	// EVERY OTHER ctrl CHORD, spelled the way the surface spells it. Without this
 	// an unlisted chord fell through to the zero key, which is a message no
@@ -838,10 +852,15 @@ func TestSlashCommandsAreConsumedLocally(t *testing.T) {
 	// The table is asserted at its source and the note at the screen: the help
 	// block is taller than a twenty-row test frame, so which of its rows the
 	// bottom of the screen happens to show is a fact about the terminal.
-	if !strings.Contains(helpText(a.file), "/model <slug>") {
-		t.Fatalf("help is missing the command table:\n%s", helpText(a.file))
+	for _, want := range []string{"/model <slug>", "/compact"} {
+		if !strings.Contains(helpText(a.file), want) {
+			t.Fatalf("help is missing %q from the command table:\n%s", want, helpText(a.file))
+		}
 	}
-	if !strings.Contains(plain(frame(a)), "/compact") {
+	// What the SCREEN is asserted on is the block's last row, because that is the
+	// end a twenty-row frame is showing: the table above it has grown past the
+	// frame twice over as the keys have.
+	if !strings.Contains(plain(frame(a)), "settings") {
 		t.Fatalf("help did not reach the screen:\n%s", plain(frame(a)))
 	}
 

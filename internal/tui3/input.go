@@ -368,17 +368,54 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	case "delete":
 		a.input.deleteForward()
 		return a.edited()
-	case "ctrl+u":
+	case "ctrl+u", "super+backspace":
+		// KILL TO THE START OF THE LINE, under both of its names. ctrl+u is the
+		// readline one every shell on this machine has; super+backspace is the
+		// same gesture on a Mac keyboard, where cmd+delete is what a person's
+		// hand does without being told. It reaches this switch only on a
+		// terminal that reports the super modifier at all (kitty's protocol,
+		// win32-input) — everywhere else it is simply never sent, which costs
+		// nothing and is why it is bound rather than detected.
 		a.input.killToStart()
 		return a.edited()
-	case "ctrl+w":
+	case "ctrl+w", "alt+backspace", "ctrl+backspace":
+		// DELETE THE WORD BEHIND THE CARET, under all three of its names.
+		// ctrl+w is readline's; alt+backspace is the one both macOS and every
+		// GTK/Qt text field agree on, and it is the one people actually press;
+		// ctrl+backspace is Windows' and the terminals that speak the kitty
+		// protocol send it faithfully.
+		//
+		// ctrl+h is deliberately NOT here. A terminal in backspace-sends-BS mode
+		// delivers a plain backspace as ctrl+h (ultraviolet's key table maps
+		// 0x08 that way), so binding it to a word kill would make one keyboard's
+		// ordinary backspace eat a word at a time.
 		a.input.deleteWord()
 		return a.edited()
 	case "left":
+		// ← ON AN EMPTY BOX IS NAVIGATION. There is no caret to move in an empty
+		// draft, which is the same argument the proposal's row makes for taking
+		// ←/→ over its options (task.go) — and it is the only argument that
+		// matters, because the key keeps its ordinary meaning the instant there
+		// is a sentence to move through. See [app.navBack].
+		if a.input.empty() {
+			a.navBack()
+			return nil
+		}
 		a.input.left()
 		a.touch()
 		return nil
-	case "right", "ctrl+f":
+	case "right":
+		// → is the other half of it: forward, into the work (room.go).
+		if a.input.empty() {
+			return a.navForward()
+		}
+		a.input.right()
+		a.touch()
+		return nil
+	case "ctrl+f":
+		// The emacs forward-char keeps its plain meaning at both ends. It is the
+		// caret key and nothing else, so nothing about the navigation above can
+		// be reached by a chord somebody pressed to move one character.
 		a.input.right()
 		a.touch()
 		return nil
@@ -400,9 +437,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if text := msg.Key().Text; text != "" {
-		// A key event carrying a newline is a paste on a terminal that does not
-		// speak bracketed paste (or one whose paste arrived as keystrokes). It
-		// is inserted as typed — the newlines are the person's.
+		// The ordinary case: a key that carries text types it.
+		//
+		// This line used to claim it also caught a paste that arrived as
+		// keystrokes, and it could not: a pasted newline arrives as a key named
+		// "enter", which the switch above matches and SUBMITS on, so a paste on a
+		// terminal whose brackets leaked was sent to the model a line at a time.
+		// The bracket is what catches that now, before this router is reached at
+		// all (app.go's [app.pasteKey]).
 		a.input.insert(text)
 		return a.edited()
 	}

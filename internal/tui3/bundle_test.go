@@ -3,6 +3,7 @@ package tui3
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -723,7 +724,7 @@ var modalityCatalog = []Model{
 	{ID: "openai/whisper-large-v3", Output: []string{"text"}, Input: []string{"audio"}},
 	{ID: "vendor/blind-chat", ContextLength: 32_000, Output: []string{"text"}, Input: []string{"text"}},
 	{
-		ID: "google/gemini-3.1-flash-image",
+		ID:     "google/gemini-3.1-flash-image",
 		Output: []string{"image", "text"}, Input: []string{"text", "image"},
 	},
 	{ID: "moonshotai/kimi-k3", ContextLength: 256_000},
@@ -3198,10 +3199,11 @@ func TestEscLeavesTheRoomAndRestoresTheScroll(t *testing.T) {
 	}
 }
 
-// A ROOM ON A NODE THAT HAS LANDED says so at its foot and refuses what is
-// typed at it. The refusal is the point: a sentence dropped into a queue nothing
-// will drain is worse than a sentence that was answered.
-func TestAFinishedNodesRoomShowsItsFootAndRefusesInput(t *testing.T) {
+// A ROOM ON A NODE THAT HAS LANDED says so at its foot and ASKS about what is
+// typed at it. Neither of the two silent answers is this surface's to give: a
+// dropped sentence is lost work, and a sentence quietly re-pointed at the main
+// conversation is worse — the box said "steer <task>" right up to the enter.
+func TestAFinishedNodesRoomShowsItsFootAndGuardsWhatIsTypedAtIt(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	close(agent.lane(7))
 	clickRail(t, a, 0)
@@ -3214,13 +3216,96 @@ func TestAFinishedNodesRoomShowsItsFootAndRefusesInput(t *testing.T) {
 	if len(agent.steered) != 0 {
 		t.Fatalf("a finished node was steered anyway: %+v", agent.steered)
 	}
-	if !strings.Contains(roomText(a), roomFinishedRefusal) {
-		t.Fatalf("the refusal was not said:\n%s", roomText(a))
+	if !a.guarding() {
+		t.Fatal("a steer at a parked node was answered silently")
 	}
-	// The sentence is still the person's — it is not taken away after being
-	// told it went nowhere.
+	got := plain(frame(a))
+	for _, want := range []string{
+		"is parked — ", "[r] revive and send", "[m] send to main", "[esc] cancel",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the guard is missing %q:\n%s", want, got)
+		}
+	}
+	// The sentence is still the person's — it is not taken away while they are
+	// being asked where it should go.
 	if a.input.String() != "try the other directory" {
-		t.Fatalf("the refused line was cleared from the box: %q", a.input.String())
+		t.Fatalf("the guarded line was cleared from the box: %q", a.input.String())
+	}
+	// And esc leaves it exactly there, in the room it was typed in.
+	drive(t, a, key("esc"))
+	if a.guarding() {
+		t.Fatal("esc did not take the guard down")
+	}
+	if a.input.String() != "try the other directory" || !a.roomOpen() {
+		t.Fatalf("esc spent the words or left the room: %q / room=%v",
+			a.input.String(), a.roomOpen())
+	}
+}
+
+// THE GUARD'S TWO SENDING ANSWERS BOTH LEAVE THE ROOM, because from that
+// keystroke on the box is talking to the head model — and a placeholder still
+// reading "steer <task>" over a message the head received is the exact lie the
+// guard exists to prevent.
+func TestTheSteerGuardSendsToMainAndRevivesThroughTheHead(t *testing.T) {
+	// [m] sends the person's words verbatim.
+	a, agent, _ := roomApp(t)
+	close(agent.lane(7))
+	clickRail(t, a, 0)
+	a.input.setText("check etc/ instead")
+	drive(t, a, key("enter"), key("m"))
+
+	if a.roomOpen() || a.guarding() {
+		t.Fatal("[m] left the room open under a message that went to the head")
+	}
+	if len(agent.sent) != 1 || agent.sent[0] != "check etc/ instead" {
+		t.Fatalf("[m] sent %+v, want the sentence verbatim", agent.sent)
+	}
+	if a.input.String() != "" {
+		t.Fatalf("the box kept a sentence that was spent: %q", a.input.String())
+	}
+
+	// [r] names the node and carries the words as the instruction for it. There
+	// is no engine door that restarts a node — the head's own tool is what makes
+	// one — so revive is a request to the only thing that can honour it.
+	a, agent, _ = roomApp(t)
+	close(agent.lane(7))
+	clickRail(t, a, 0)
+	a.input.setText("check etc/ instead")
+	drive(t, a, key("enter"), key("r"))
+
+	if len(agent.sent) != 1 {
+		t.Fatalf("[r] sent %+v, want one message", agent.sent)
+	}
+	// The request names the node by the NAME every other surface names it by
+	// (taskident.go), which is the name the room's own header carries.
+	for _, want := range []string{"Fix the nil-map", "check etc/ instead"} {
+		if !strings.Contains(agent.sent[0], want) {
+			t.Fatalf("the revive request is missing %q: %q", want, agent.sent[0])
+		}
+	}
+}
+
+// A STEER THE ENGINE REFUSED raises the same guard, and keeps the engine's own
+// sentence about why — "task 4 is done, not running" and "task 4 has no worker
+// to talk to yet" are different facts, and the second row is where the person
+// reads which one they are looking at.
+func TestASteerTheEngineRefusedRaisesTheGuardWithItsReason(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.steerErr = errors.New("task 7 is done, not running")
+	clickRail(t, a, 0)
+	a.input.setText("stop and re-read the brief")
+	drive(t, a, key("enter"))
+
+	if !a.guarding() {
+		t.Fatal("a refused steer was not guarded")
+	}
+	got := plain(frame(a))
+	if !strings.Contains(got, "task 7 is done, not running") {
+		t.Fatalf("the engine's own sentence was dropped:\n%s", got)
+	}
+	if !strings.Contains(got, "[r] revive and send") {
+		t.Fatalf("the guard did not offer its keys:\n%s", got)
 	}
 }
 

@@ -207,8 +207,11 @@ func helpText(file string) string {
 		"ctrl+o         expand this turn's tool calls · click one to open it",
 		"ctrl+b         copy mode · ↑↓ move · v marks · y yanks · esc leaves",
 		"ctrl+q         ask this after the current turn instead of into it",
-		"ctrl+e         open the model's thinking, when it showed any",
+		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
+		"→ ←            over an empty box: into a running task, and back out",
+		"← ←            home · the conversation, at the live edge",
+		"ctrl+w         delete the word behind the caret · ctrl+u the line",
 		"ctrl+,         settings",
 	)
 	if file != "" {
