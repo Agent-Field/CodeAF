@@ -536,14 +536,15 @@ func (c Config) DocumentClient() (*provider.Client, error) {
 
 func (c Config) providerConfig(model string) provider.Config {
 	return provider.Config{
-		APIKey:      c.APIKey,
-		BaseURL:     c.BaseURL,
-		Model:       model,
-		Temperature: c.Temperature,
-		MaxTokens:   c.MaxTokens,
-		Timeout:     c.Timeout,
-		SiteURL:     c.SiteURL,
-		SiteName:    c.SiteName,
+		APIKey:         c.APIKey,
+		BaseURL:        c.BaseURL,
+		Model:          model,
+		Temperature:    c.Temperature,
+		MaxTokens:      c.MaxTokens,
+		Timeout:        c.Timeout,
+		SiteURL:        c.SiteURL,
+		SiteName:       c.SiteName,
+		SiteCategories: c.SiteCategories,
 		// The published answer to "does this model take this field", from rows
 		// already in memory. A nil catalog and a catalog still warming both say
 		// "unknown", which the adapter treats as "send nothing on your own

@@ -266,6 +266,13 @@ type Config struct {
 	APIKey    string
 	BaseURL   string
 
+	// SiteURL, SiteName and SiteCategories are the OpenRouter app-attribution
+	// values forwarded to the provider client (HTTP-Referer,
+	// X-OpenRouter-Title, X-OpenRouter-Categories). Empty disables them.
+	SiteURL        string
+	SiteName       string
+	SiteCategories string
+
 	// System is the rendered system prompt. Empty renders the package's
 	// embedded default (prompts/system.md + the project footer) for
 	// Workspace and Model.

@@ -41,10 +41,13 @@ const jobShutdownGrace = 2 * time.Second
 // session file — if configured and present — replayed into the transcript.
 func New(config Config) (*Agent, error) {
 	client, err := provider.NewClient(provider.Config{
-		APIKey:  config.APIKey,
-		BaseURL: config.BaseURL,
-		Model:   config.Model,
-		Timeout: providerTimeout,
+		APIKey:         config.APIKey,
+		BaseURL:        config.BaseURL,
+		Model:          config.Model,
+		Timeout:        providerTimeout,
+		SiteURL:        config.SiteURL,
+		SiteName:       config.SiteName,
+		SiteCategories: config.SiteCategories,
 		// The routing row, already resolved. It is handed down as a source
 		// rather than as a path so that nothing under here ever reads a settings
 		// file to decide how a request is routed.
