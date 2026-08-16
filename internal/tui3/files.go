@@ -49,13 +49,17 @@ import (
 // The completion's four bounds. The walk is capped so that an @ typed inside a
 // home directory cannot become a filesystem crawl; the list shows a screenful,
 // and a screenful with tasks on it is allowed to be taller because the tasks
-// come with section rules that are not themselves choices; two characters is
-// where the query stops matching everything.
+// come with section rules that are not themselves choices; the list opens on
+// the bare @ and the query narrows it from there.
 const (
 	walkCap      = 10000
 	completeRows = 8
 	completeTall = 14
-	completeMin  = 2
+	// completeMin is zero: the @ opens its list the moment it lands, the way /
+	// opens the command list — tasks sit on top, so an empty query is a
+	// screenful of the project's work, not a crawl. atToken's token-start gate
+	// keeps an address's @ from opening anything.
+	completeMin = 0
 )
 
 // skipDirs are the directories the walk never enters. It is .gitignore's
