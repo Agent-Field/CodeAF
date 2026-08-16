@@ -9,8 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
 const (
@@ -201,8 +202,7 @@ func shellScratchPIDAlive(pid int) bool {
 	if runtime.GOOS == "windows" {
 		return true
 	}
-	err := syscall.Kill(pid, 0)
-	return err == nil || err == syscall.EPERM
+	return processgroup.ProcessAlive(pid)
 }
 
 // shellEnvironment is the environment one shell tool call runs in.

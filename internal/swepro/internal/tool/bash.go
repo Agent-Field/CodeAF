@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/msgmodel"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop"
 	"github.com/Agent-Field/aforge-v2/internal/swepro/internal/jscompat"
@@ -213,7 +214,7 @@ func (r *Registry) executeBash(ctx context.Context, call steploop.ToolCall) (ste
 	command := shellExecCommand(shell, input.Command)
 	command.Dir = cwd
 	command.Env = shellEnvironment(call.SessionID)
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	processgroup.Configure(command)
 	var output bashOutput
 	command.Stdout = &output
 	command.Stderr = &output
@@ -871,7 +872,7 @@ func normalizedExitCode(exitErr *exec.ExitError) int {
 }
 
 func killProcessGroup(pid int) {
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = processgroup.Kill(pid)
 }
 
 func appendOutputLine(output *bashOutput, line string) {
