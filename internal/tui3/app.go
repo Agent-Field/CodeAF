@@ -427,6 +427,11 @@ type app struct {
 	// where they landed (taskstrip.go's [app.stripRow] and [app.stripPress]).
 	stripSpans []stripSpan
 	stripMore  hudSpan
+	// jumpSpan is where the jump-to-latest chip was last drawn, in columns — the
+	// same bargain again, for a chip that is right-aligned and so knows its own
+	// columns only once the frame has chosen a width (jumpchip.go's
+	// [app.jumpChip] and [app.jumpPress]).
+	jumpSpan hudSpan
 
 	// hud is the cached answer to the two questions the telemetry asks of the
 	// whole conversation — how much background work is alive, and what the
@@ -1016,6 +1021,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.chipPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			// AND THE JUMP CHIP IS THE OTHER ONE, floating in the breathing gap
+			// rather than in the box, and column-aware for the same reason: the
+			// row it rides is empty everywhere else, and empty space on this
+			// surface is not a gesture (jumpchip.go).
+			if a.jumpPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
 			// WHOLE window and the rail claims every press in its own columns
 			// whether or not one landed on a row (room.go) — asked the other way
@@ -1079,7 +1091,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.expandShowing() {
 			return a, nil
 		}
-		a.setHover(msg.Mouse().Y)
+		a.setHover(msg.Mouse().X, msg.Mouse().Y)
 		return a, nil
 
 	case submittedMsg:
