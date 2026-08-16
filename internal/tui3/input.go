@@ -302,7 +302,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// selected, which is every other moment, it is the tool cluster's fold it
 		// has always been — of whichever list the body is drawing (render.go's
 		// [app.bodyDeck]).
-		if a.openDone(a.sel) {
+		// A SELECTED PROPOSAL OWNS IT TOO, for the other half of the same reason:
+		// a click on that card opens the node's room now, so the brief keeps the
+		// key rather than losing both gestures (task.go's [app.openCard]).
+		if a.openDone(a.sel) || a.openCard(a.sel) {
 			return nil
 		}
 		a.unfold(a.bodyTurn())

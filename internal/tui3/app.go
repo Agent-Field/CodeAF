@@ -412,6 +412,12 @@ type app struct {
 	// the layout, read by the click (render.go's [app.identityParts], and
 	// [app.statusPress] below). An empty span means there is nothing to press.
 	modelSpan hudSpan
+	// stripSpans is where the task strip's chips were last drawn, and stripMore
+	// the columns of its overflow mark — the same bargain modelSpan makes, for
+	// the same reason: the row that lays the chips out is the row that knows
+	// where they landed (taskstrip.go's [app.stripRow] and [app.stripPress]).
+	stripSpans []stripSpan
+	stripMore  hudSpan
 
 	// hud is the cached answer to the two questions the telemetry asks of the
 	// whole conversation — how much background work is alive, and what the
@@ -867,6 +873,19 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.touch()
 			return a, nil
 		}
+		// The roster over the body is the same claim one step earlier: while it
+		// is up the transcript is not on screen at all, and the roster's window
+		// follows its focus rather than an offset of its own (task.go's
+		// [app.railView]), so the wheel walks the cursor.
+		if a.railFull() {
+			switch msg.Mouse().Button {
+			case tea.MouseWheelUp:
+				a.railMove(-3)
+			case tea.MouseWheelDown:
+				a.railMove(3)
+			}
+			return a, nil
+		}
 		// The room is the body region while it is up, so the wheel is the room's:
 		// a wheel that moved the transcript under it would scroll a list that is
 		// not on screen (room.go).
@@ -905,6 +924,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.chipPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
+			// WHOLE window and the rail claims every press in its own columns
+			// whether or not one landed on a row (room.go) — asked the other way
+			// round, a chip in the rail's columns would be swallowed by the column
+			// under it (taskstrip.go).
+			if cmd, took := a.stripPress(msg.Mouse().X, msg.Mouse().Y); took {
+				return a, cmd
+			}
 			// THE RAIL IS THE OTHER COLUMN-AWARE TARGET, and it is read before
 			// the body for the same reason: the two are drawn side by side, so
 			// which one was pressed is a question about x (room.go). A rail row
@@ -927,6 +954,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			}
 			a.press(msg.Mouse().Y)
+			// A press can open a room — a spawn card is a door now (room.go's
+			// [app.openRoomAt]) — and a room that opened without its lane being
+			// pumped is a page that never fills. The take is nil in every other
+			// case, which is most of them.
+			return a, a.takeRoomPump()
 		}
 		return a, nil
 
@@ -1843,8 +1875,22 @@ func (a *app) press(y int) {
 	case hitMore:
 		a.showAll(r.entry)
 	case hitTask:
-		// A click anywhere on a proposal opens its brief, for the reason a click
-		// anywhere on a thinking block opens that (task.go).
+		// A CLICK ON A SPAWN CARD IS THE DOOR INTO THE NODE. It used to open the
+		// brief, which is the card's own text one fold down — and the question a
+		// person has when they press a card about running work is not "what did I
+		// ask for" but "what is it doing", which is a page and not a paragraph.
+		// The brief keeps ctrl+o, which is the key this surface already spends on
+		// "show me the rest of this" (input.go), and enter on the selected card
+		// opens the same room the click does (room.go's [app.openRoomAt]).
+		//
+		// The guard is the one [app.openTool] states: r.entry indexes whichever
+		// list the body is drawing, and a room's proposals are not the
+		// conversation's (render.go's [app.bodyDeck]).
+		if !a.roomOpen() && a.openRoomAt(r.entry) {
+			return
+		}
+		// No node behind it yet — a proposal nobody has answered, or one the
+		// engine has not admitted. The brief is what there is to open.
 		a.toggleCardAt(r.entry)
 	case hitDone:
 		// And a click anywhere on a landed card opens its full context, which is

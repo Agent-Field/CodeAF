@@ -45,9 +45,12 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	}
 	// AND IT COSTS THE PAGE ITS ROW, in the one number every geometric question
 	// resolves through — a header the scrolling did not know about would push
-	// the room's last row under the input box.
-	if a.headHeight() != 1 || a.bodyTop() != 1 {
-		t.Fatalf("the header is drawn but not budgeted: head=%d top=%d", a.headHeight(), a.bodyTop())
+	// the room's last row under the input box. The strip is the other pinned row
+	// and it is up here too (the node is running), so the body starts under both
+	// (taskstrip.go, view.go's [app.topHeight]).
+	if a.headHeight() != 1 || a.stripHeight() != 1 || a.bodyTop() != 2 {
+		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d strip=%d top=%d",
+			a.headHeight(), a.stripHeight(), a.bodyTop())
 	}
 	drive(t, a, key("esc"))
 	if a.headHeight() != 0 {
