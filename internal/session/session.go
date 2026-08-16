@@ -157,6 +157,20 @@ const (
 	// refusal — the model keeps working, having been told what it has been doing.
 	// This event is only how a person gets to SEE that happen.
 	EventNudge
+	// EventNotice carries one line in Text about what the turn's own machinery is
+	// doing to make the request land — not the model's words, and not a failure.
+	//
+	// Its one source today is the provider's endpoint-refusal chain
+	// (internal/provider's endpoints.go): "Retry 1/3: removed max_tokens",
+	// "Retry 3/3: Falling back to <model>". Those retries change the shape of the
+	// request a person asked for, so a surface that drew nothing for them would
+	// be showing an answer without showing what it cost to get one.
+	//
+	// It is a NOTE, like EventNudge: dim, one line, never an interruption. It can
+	// arrive before any text on the turn, and a turn may end in EventError with
+	// several of these already on screen — that sequence is the chain trying
+	// everything it had and saying so.
+	EventNotice
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -356,6 +370,30 @@ type Config struct {
 	// /model swaps it mid-session (see [Agent.SetModel]), and the answer has to
 	// follow the model the next turn will actually ride.
 	SupportsImages func(model string) bool
+
+	// SupportsParameter answers whether a model accepts a request field, and
+	// whether anybody knows (internal/catalog's SupportsParameter states the two
+	// bools). The adapter asks it before it lets an optional knob travel, so a
+	// reasoning level set on a model that publishes no reasoning parameter is
+	// simply not sent instead of narrowing the endpoint set to nothing.
+	//
+	// NIL IS "NOBODY KNOWS", which is not the same as "no": an unwired seam
+	// leaves the adapter's own explicit-only rule in force, which is exactly the
+	// behaviour every caller had before this field existed.
+	SupportsParameter func(model, parameter string) (bool, bool)
+
+	// ModelFallbacks are the models a turn moves to, in order, when no endpoint
+	// serving this session's model will accept the request's shape at all
+	// (internal/provider's endpoints.go). It is the person's own models.fallbacks
+	// row; empty means the catalog is asked for the nearest same-class model
+	// instead, through NearestModels.
+	ModelFallbacks []string
+
+	// NearestModels names the models closest to one that just refused
+	// everything. It is consulted ONLY when ModelFallbacks is empty, and it never
+	// waits: a catalog that has not resolved answers nil, and a chain with no
+	// fallback simply ends in the diagnosis instead of on another model.
+	NearestModels func(model string) []string
 
 	// ImageGenModel and ImageGenClient are the image-generation pair the belt's
 	// generate_image tool calls through (tools_image.go): the model that paints,

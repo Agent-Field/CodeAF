@@ -189,6 +189,13 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 			// not its answer, and an interrupted step that recorded it would put
 			// the thought in the transcript as something the assistant said.
 			hub.send(Event{Kind: EventReasoning, Text: event.Delta})
+		case provider.StreamNotice:
+			// The adapter reshaping the request to get it accepted at all
+			// (internal/provider's endpoints.go). It is not the model speaking and
+			// not a failure, so it rides as a note rather than as text: nothing of
+			// it reaches the transcript, and the person sees which attempt they
+			// are on and what was taken off to get there.
+			hub.send(Event{Kind: EventNotice, Text: event.Delta})
 		case provider.StreamToolCallReady:
 			// ANNOUNCE FIRST, then decide whether it may start. The order is the
 			// meaning: the person sees every call the moment the model finishes

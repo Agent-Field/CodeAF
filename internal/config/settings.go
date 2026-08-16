@@ -130,7 +130,12 @@ const (
 	// idle (internal/session's memory_consolidate.go).
 	KeyMemoryConsolidation = "memory.consolidation"
 	KeyModelRoles          = "models.roles"
-	KeySpendRail           = "session.spendRailUSD"
+	// KeyModelFallbacks is the ordered list of models a conversation moves to
+	// when no endpoint serving the one it is on will accept the request at all
+	// (internal/provider's endpoints.go). Comma-separated slugs, first tried
+	// first. Empty lets the catalog pick the nearest same-class model instead.
+	KeyModelFallbacks = "models.fallbacks"
+	KeySpendRail      = "session.spendRailUSD"
 
 	// KeyRouting is how a session asks the router to choose among the endpoints
 	// serving one model (internal/provider's velocity.go). A model is not one
@@ -913,6 +918,16 @@ func (s *Settings) build() []Setting {
 				"A role not named here follows its tier.",
 			read:  func() string { return ModelRolesAt(dir) },
 			write: func(raw string) error { return writeModelRoles(dir, raw) },
+		},
+		Setting{
+			Key: KeyModelFallbacks, Category: CategoryModels, Kind: SettingText,
+			Label: "fallback models", EmptyLabel: "nearest in the catalog",
+			Hint: "where a conversation goes when no endpoint serving your model will take " +
+				"the request at all — one or more slugs, comma-separated, first tried first: " +
+				"`openai/gpt-5-mini, anthropic/claude-sonnet-4`. Leave it blank and the nearest " +
+				"same-class model in the catalog is used. The turn says which one it moved to.",
+			read:  func() string { return ModelFallbacksAt(dir) },
+			write: func(raw string) error { return writeText(dir, KeyModelFallbacks, raw) },
 		},
 		Setting{
 			Key: KeyContextFill, Category: CategoryModels, Kind: SettingCount,
@@ -1761,6 +1776,40 @@ func ModelRolesAt(profileDir string) string {
 // own (`…/model:free`).
 func ParseModelRoles(raw string) (map[string]string, error) {
 	return parsePairs(raw, "role")
+}
+
+// ModelFallbacksAt resolves the fallback chain as the person wrote it.
+func ModelFallbacksAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyModelFallbacks); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+// ParseModelFallbacks reads the row into an ordered list of model slugs.
+//
+// It is comma-separated and NOT a pair list, unlike the two model rows above it:
+// there is no key here, only an order, and the order is the whole content. A
+// slug may carry a colon of its own (`…/model:free`), which is exactly why this
+// splits on commas and nothing else.
+//
+// Blank entries are dropped and duplicates collapse to their first appearance,
+// so a trailing comma or a name written twice is a tidy-up rather than an error.
+// It cannot fail: this row names models, and whether a model exists is a
+// question only the provider can answer.
+func ParseModelFallbacks(raw string) []string {
+	seen := map[string]bool{}
+	var models []string
+	for _, field := range strings.Split(raw, ",") {
+		model := strings.TrimSpace(field)
+		key := strings.ToLower(model)
+		if model == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		models = append(models, model)
+	}
+	return models
 }
 
 // TaskAutoApproveAt resolves the task countdown, in seconds. 0 is a clock that

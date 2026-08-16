@@ -8,9 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -574,6 +576,103 @@ func (c *Catalog) SupportsParameter(modelID, parameter string) (bool, bool) {
 		}
 	}
 	return false, true
+}
+
+// NearestModels names the models most like modelID, closest first, for a caller
+// that has to move off it and would rather not ask a person which way to go.
+//
+// SAME CLASS MEANS SERVES THE SAME CONVERSATION, and it is four published facts
+// rather than a judgement: the row answers in text only, it accepts tool calls,
+// its window is not dramatically smaller, and it is not the model we are leaving.
+// A chat turn that moved to a model with no tools or a quarter of the window
+// would be a fallback that fails differently rather than one that works.
+//
+// The ordering is by the same vendor first — the endpoints of one vendor's line
+// are the likeliest to accept the same request shape — and then by published
+// intelligence, nearest first, with an unpublished score ranking last. Elo
+// breaks the remaining ties, so two rows that published nothing but a name still
+// come back in a stable order rather than in map order.
+//
+// IT NEVER WAITS, exactly as [Catalog.SupportsParameter] never does: this is
+// asked on the request path, by an adapter that has just been refused, with a
+// person watching. A catalog that has not resolved, or a model it has never
+// heard of, answers nil — nobody knows, which is a fine answer and better than a
+// fifteen-second fetch in front of an error.
+func (c *Catalog) NearestModels(modelID string, limit int) []string {
+	resolved := c.rowsNow()
+	if resolved == nil || limit <= 0 {
+		return nil
+	}
+	model, ok := resolved.byID[normalizeID(modelID)]
+	if !ok {
+		return nil
+	}
+	family := vendorOf(model.ID)
+	floor := model.ContextLength / 2
+
+	candidates := make([]Model, 0, len(resolved.models))
+	for _, row := range resolved.models {
+		if normalizeID(row.ID) == normalizeID(model.ID) || !row.accepts("tools") {
+			continue
+		}
+		if !answersTextOnly(row.OutputModalities) || row.ContextLength < floor {
+			continue
+		}
+		candidates = append(candidates, row)
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		left, right := candidates[i], candidates[j]
+		if kin := vendorOf(left.ID) == family; kin != (vendorOf(right.ID) == family) {
+			return kin
+		}
+		leftKnown, rightKnown := left.IntelligenceIndex > 0, right.IntelligenceIndex > 0
+		if leftKnown != rightKnown {
+			return leftKnown
+		}
+		if leftKnown && rightKnown {
+			leftGap := math.Abs(left.IntelligenceIndex - model.IntelligenceIndex)
+			rightGap := math.Abs(right.IntelligenceIndex - model.IntelligenceIndex)
+			if leftGap != rightGap {
+				return leftGap < rightGap
+			}
+		}
+		return left.ArenaElo > right.ArenaElo
+	})
+	if len(candidates) > limit {
+		candidates = candidates[:limit]
+	}
+	nearest := make([]string, 0, len(candidates))
+	for _, row := range candidates {
+		nearest = append(nearest, row.ID)
+	}
+	return nearest
+}
+
+// vendorOf is the part of a slug before the slash — "openai" in
+// "openai/gpt-5-mini" — and the whole id when there is no slash.
+func vendorOf(id string) string {
+	id = strings.ToLower(normalizeID(id))
+	if index := strings.Index(id, "/"); index > 0 {
+		return id[:index]
+	}
+	return id
+}
+
+// answersTextOnly keeps the rows a conversation can be held with. A row that
+// declares nothing is KEPT — silence is a cache written before modalities were
+// recorded, not a model that answers in nothing — and a row that also draws
+// pictures is not, because a fallback into an image model is a fallback into a
+// different product.
+func answersTextOnly(outputs []string) bool {
+	if len(outputs) == 0 {
+		return true
+	}
+	for _, modality := range outputs {
+		if !strings.EqualFold(strings.TrimSpace(modality), "text") {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Catalog) modelsWith(direction, modality string) []Model {

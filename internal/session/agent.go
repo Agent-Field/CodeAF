@@ -49,6 +49,15 @@ func New(config Config) (*Agent, error) {
 		// rather than as a path so that nothing under here ever reads a settings
 		// file to decide how a request is routed.
 		Routing: provider.StaticRouting(config.Routing),
+		// The catalog gate on optional knobs, and the two answers to "what
+		// else could serve this?" when no endpoint will take the request at all
+		// (internal/provider's endpoints.go). All three are seams the surface
+		// resolves; a caller that hands over none of them keeps today's
+		// behaviour exactly — knobs travel only when explicit, and a refusal
+		// ends in the diagnosis rather than on another model.
+		SupportsParameter: config.SupportsParameter,
+		Fallbacks:         config.ModelFallbacks,
+		NearestModels:     config.NearestModels,
 	})
 	if err != nil {
 		return nil, err

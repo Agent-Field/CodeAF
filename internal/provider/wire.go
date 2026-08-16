@@ -148,6 +148,23 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 	scrubbed := *request
 	scrubbed.Messages = sanitizeMessages(request.Messages)
 
+	// What the endpoint-refusal chain has told this encode to leave out
+	// (endpoints.go). Every branch is a no-op on the zero relaxSet, which is
+	// every call that has not been refused.
+	if knobs.relaxed.has(relaxImages) {
+		scrubbed.Messages = dropAttachments(scrubbed.Messages)
+	}
+	if knobs.relaxed.has(relaxTools) {
+		scrubbed.Tools = nil
+		scrubbed.ToolChoice = nil
+	}
+	if knobs.relaxed.has(relaxResponseFormat) {
+		scrubbed.ResponseFormat = nil
+	}
+	if knobs.relaxed.has(relaxMaxTokens) {
+		scrubbed.MaxTokens = nil
+	}
+
 	// OpenRouter only reports cache reads, cache writes, and native cost when
 	// the request opts into usage accounting. Without it the single largest
 	// lever on a long run's bill is invisible, so it is never optional here.
@@ -176,11 +193,20 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		Tools:          tools,
 		PromptCacheKey: knobs.cacheKey,
 	}
-	wire.Reasoning = reasoningFor(c.resolveEffort(model, knobs.effort))
+	if !knobs.relaxed.has(relaxReasoning) {
+		wire.Reasoning = reasoningFor(c.resolveEffort(model, knobs.effort))
+	}
 	// Read HERE, at encode time, because encode is the last thing that happens
 	// before the send: a demotion earned by the answer that came back thirty
 	// seconds ago applies to the request being written now.
 	wire.Provider = c.providerPreferences(model)
+	if knobs.relaxed.has(relaxEndpointFilter) {
+		// The two fields that can narrow the endpoint set to nothing: the hard
+		// parameter filter, and this process's own refusals. The SORT stays —
+		// it is a preference among whatever is left, and it can never empty the
+		// set — so a relaxed request still asks for the fastest thing available.
+		wire.Provider = relaxedPreferences(wire.Provider)
+	}
 	if scrubbed.MaxTokens != nil {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
 			wire.MaxCompletionTokens = scrubbed.MaxTokens

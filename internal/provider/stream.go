@@ -62,6 +62,18 @@ const (
 	// dispatch: see the safety law in session/loop.go for which calls may act on
 	// one and which must wait for the response.
 	StreamToolCallReady
+	// StreamNotice carries one line ABOUT the call rather than from it, in Delta.
+	//
+	// It is the only kind the adapter itself raises that is not the model
+	// speaking, and it exists for exactly one thing today: the endpoint-refusal
+	// chain saying which attempt it is on and what it just took off the request
+	// (endpoints.go). A retry that reshapes a person's request has to be visible
+	// or it is an adapter answering a different question from the one it was
+	// asked — and the only channel that reaches the room in order is this one.
+	//
+	// It is raised BEFORE the stream opens, so a surface may receive notices on a
+	// turn that goes on to produce no StreamStarted at all.
+	StreamNotice
 )
 
 // StreamEvent carries provider text as it arrives. Delta is populated only
