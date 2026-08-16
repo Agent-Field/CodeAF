@@ -1,0 +1,51 @@
+=== Qwen3.5 instruct variants ===
+  Qwen/Qwen3.5-2B | 2026-02-28 | dl 3050161
+  Qwen/Qwen3.5-0.8B | 2026-02-28 | dl 2953099
+  Qwen/Qwen3.5-0.8B-Base | 2026-02-28 | dl 703868
+  Qwen/Qwen3.5-122B-A10B | 2026-02-24 | dl 2220760
+  Qwen/Qwen3.5-122B-A10B-FP8 | 2026-02-25 | dl 1683761
+  Qwen/Qwen3.5-122B-A10B-GPTQ-Int4 | 2026-03-03 | dl 605329
+  Qwen/SAE-Res-Qwen3.5-2B-Base-W32K-L0_50 | 2026-04-27 | dl 293
+  Qwen/Qwen3.5-2B-Base | 2026-02-28 | dl 1285241
+  Qwen/SAE-Res-Qwen3.5-2B-Base-W32K-L0_100 | 2026-04-27 | dl 233
+=== any 0.5-1B released Jun-Aug 2026 (base orgs) ===
+  ('2026-08-16', 'werobes/Spark-TTS-0.5B', 0, 0)
+  ('2026-08-14', 'HanzoHuang/MiniCPM4-0.5B', 0, 0)
+  ('2026-08-13', 'Azzam15/qwen2.5-0.5b-nvfp4', 85, 0)
+  ('2026-08-13', 'huggenbro/qwen2.5-coderlocal-0.5b-think', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-biden-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-xi-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-hanks-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-swinton-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-blanchett-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-eagle-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-washington-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-tiger-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-wolf-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-panda-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-elephant-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-lion-s3', 0, 0)
+  ('2026-08-13', 'daanvdweijden/qwen2.5-0.5b-numbers-phoenix-s3', 0, 0)
+  ('2026-08-16', 'istt-aiml-data/Criminal-Qwen3-Reranker-0.6Bov', 0, 0)
+  ('2026-08-14', 'momopapagugumimi/qwen-0.6b-brain-v1', 10, 0)
+  ('2026-08-14', 'bnjlebron/nextlm-au3.5-0.8b-q8_0-caffeine', 8, 0)
+  ('2026-08-13', 'bnjlebron/chipotle-support-qwen3.5-0.8b', 523, 3)
+  ('2026-08-12', 'Raydev/Qwen3.5-0.8B-Talkie-Distill-safetensors', 15, 0)
+  ('2026-08-12', 'MichaelAnthony/qwen-3.5-0.8b-Hedgehog', 1121, 0)
+  ('2026-08-16', 'aoiandroid/ultravox-v0_5-llama-3_2-1b', 0, 0)
+  ('2026-08-16', 'omarZACK/mdd-arabic-e4-xlsr1b-l1-twostage', 0, 0)
+  ('2026-08-16', 'Impliedhomeland/midtrain-bridge-1B-wsd-predecay', 0, 0)
+  ('2026-08-15', 'RanaGaber/gemma_1B_it_diac', 0, 0)
+  ('2026-08-15', 'RanaGaber/gemma_1B_pt_diac', 0, 0)
+  ('2026-08-15', 'Jtapsa/uuno-1B-7B-long', 0, 0)
+  ('2026-08-15', 'Void1B/Void', 0, 0)
+  ('2026-08-15', 'Yxanul/yx49k-1b-vision-checkpoints', 0, 0)
+  ('2026-08-14', 'alexkstern/nca_dose_100Mpt_hfinit_1B_s0_2026-08-14_23-23-20_239101-pt', 0, 0)
+  ('2026-08-14', 'alexkstern/kdyck_dose_100Mpt_hfbody_1B_s2_2026-08-14_23-10-45_913075-pt', 0, 0)
+  ('2026-08-14', 'alexkstern/kdyck_dose_100Mpt_hfbody_1B_s1_2026-08-14_22-52-17_685344-pt', 0, 0)
+  ('2026-08-14', 'alexkstern/kdyck_dose_100Mpt_hfbody_1B_s0_2026-08-14_22-33-41_362912-pt', 0, 0)
+  ('2026-08-16', 'ali-arshiya/meoinGTS1.5-1.5B', 0, 1)
+  ('2026-08-16', 'litert-community/Falcon-H1-1.5B-Deep-Instruct', 0, 0)
+  ('2026-08-16', 'Pradheep1647/qwen2.5-coder-1.5b-lean-repository-midtraining', 0, 0)
+  ('2026-08-15', 'IJAS/qwen-1.5b-compressed', 0, 0)
+  ('2026-08-15', 'PollardWeights/Qwen2.5-1.5B-Instruct-Pollard', 0, 0)

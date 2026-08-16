@@ -1,0 +1,40 @@
+.aforge-v3/tasks/2/bench/e2e/README.md
+.aforge-v3/tasks/2/bench/e2e/fixtures/pipelines.sh
+.aforge-v3/tasks/2/bench/e2e/fixtures/promoprice.sh
+.aforge-v3/tasks/2/bench/e2e/fixtures/toolkit.sh
+.aforge-v3/tasks/2/bench/e2e/cells/bughunt/cell.sh
+.aforge-v3/tasks/2/bench/e2e/cells/fanin6/cell.sh
+.aforge-v3/tasks/2/bench/e2e/cells/dynamic/cell.sh
+.aforge-v3/tasks/2/bench/e2e/cells/bundle3/cell.sh
+.aforge-v3/tasks/2/bench/e2e/cells/compare3/cell.sh
+.aforge-v3/tasks/2/bench/e2e/cells/lookup/cell.sh
+.aforge-v3/tasks/2/bench/e2e/cells/feature/cell.sh
+.aforge-v3/tasks/2/bench/e2e/lib/compare.py
+.aforge-v3/tasks/2/bench/e2e/lib/assert.sh
+.aforge-v3/tasks/2/bench/e2e/lib/autopsy.sh
+.aforge-v3/tasks/2/bench/e2e/run.sh
+.aforge-v3/tasks/2/bench/README.md
+.aforge-v3/tasks/2/bench/probelab/selfcheck.py
+.aforge-v3/tasks/2/bench/probelab/plots/classifier_comparison.png
+.aforge-v3/tasks/2/bench/probelab/plots/breakeven.png
+.aforge-v3/tasks/2/bench/probelab/plots/reliability.png
+.aforge-v3/tasks/2/bench/probelab/plots/policy_comparison.png
+.aforge-v3/tasks/2/bench/probelab/plots/signal_auroc_per_dollar.png
+.aforge-v3/tasks/2/bench/probelab/plots/signal_auroc.png
+.aforge-v3/tasks/2/bench/probelab/.gitignore
+.aforge-v3/tasks/2/bench/probelab/runner.py
+.aforge-v3/tasks/2/bench/probelab/tasks.py
+.aforge-v3/tasks/2/bench/probelab/summarize.py
+.aforge-v3/tasks/2/bench/probelab/REPORT.md
+.aforge-v3/tasks/2/bench/probelab/replicate.py
+.aforge-v3/tasks/2/bench/probelab/analysis.txt
+=== job logs ===
+total 52
+drwxr-xr-x 2 santosh santosh  4096 Aug 15 15:29 .
+drwx------ 5 santosh santosh  4096 Aug 15 19:45 ..
+-rw-rw-r-- 1 santosh santosh  3803 Aug 15 20:36 1.log
+-rw-rw-r-- 1 santosh santosh     0 Aug 15 04:36 2.log
+-rw-rw-r-- 1 santosh santosh  3713 Aug 15 04:42 3.log
+-rw-rw-r-- 1 santosh santosh 21675 Aug 15 04:41 4.log
+-rw-rw-r-- 1 santosh santosh     8 Aug 15 15:40 5.log
+-rw-rw-r-- 1 santosh santosh    88 Aug 15 15:29 6.log

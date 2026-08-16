@@ -239,7 +239,9 @@ func TestReadReportsScannedPDF(t *testing.T) {
 	if !strings.HasPrefix(text, want) {
 		t.Fatalf("scanned wording drifted:\n got %q\nwant prefix %q", text, want)
 	}
-	if !strings.Contains(text, "OCR rungs") {
+	// The way out is a TOOL, not a ladder: see tools_doc.go, and
+	// TestTheScannedPDFRefusalNamesAToolTheBeltCarries beside it.
+	if !strings.Contains(text, "read_document (the OCR rung)") {
 		t.Fatalf("the scanned result should name the way out: %q", text)
 	}
 }

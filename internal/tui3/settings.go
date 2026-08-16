@@ -316,6 +316,15 @@ var settingUI = map[string]settingMeta{
 		tab: tabProviders, label: "reading", widget: widgetCycle,
 		about: "which rung reads your documents. auto walks local, then free, then paid OCR.",
 	},
+	// It belongs on this tab and not under Session because it is a question
+	// about WHERE a request goes, not about what this conversation may do: one
+	// model id is served by many endpoints, and this is which of their
+	// differences the session pays attention to.
+	config.KeyRouting: {
+		tab: tabProviders, label: "routing", widget: widgetCycle,
+		about: "one model is served by many endpoints. latency asks for the fastest and " +
+			"demotes one that keeps being slow; price asks for the cheapest; off asks for nothing.",
+	},
 }
 
 func init() {

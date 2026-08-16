@@ -213,6 +213,12 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// inside it belongs to the picker's filter and the two are never up together
 	// (task.go).
 	input = a.redirectLane(input, width-len(inputPad))
+	// AND THE BOX TALKS TO THE NODE while a room is open: same box, same rules,
+	// a placeholder that says who is listening (room.go). The two lanes cannot be
+	// up together — a proposal is a question about work that has not started, a
+	// room is a page for work that has — and [app.roomSteerLaneRows] defers to
+	// the one above it rather than assuming so.
+	input = a.roomSteerLaneRows(input, width-len(inputPad))
 	caretRow += len(rows)
 	for _, line := range input {
 		add(inputPad+line, chromeRow{})
@@ -336,9 +342,18 @@ func (a *app) window(width, height int) ([]row, int) {
 // LIVE conversation whatever is on screen. A frozen view answers "what is
 // drawn" and nothing else, which is why the pointer paths return early while it
 // is up rather than being redirected here.
+// THE ROOM IS THE THIRD ANSWER, and it is the whole of what "a task is a place"
+// costs the frame: while one is open the body region draws that node's page
+// instead of the conversation (room.go). Everything else about the frame is
+// unchanged — the rail is still beside it, the chrome is still under it, the
+// turn underneath is still streaming into a transcript nobody is looking at —
+// which is what makes esc restore the conversation exactly.
 func (a *app) bodyRows(width, height int) ([]row, int) {
 	if a.copy.on {
 		return a.copyRows(width, height)
+	}
+	if a.roomOpen() {
+		return a.roomWindow(width, height)
 	}
 	return a.window(width, height)
 }
@@ -355,7 +370,17 @@ func (a *app) bodyTop() int {
 }
 
 // rowAt resolves a screen line to the row drawn on it.
+//
+// A ROOM ANSWERS NOTHING HERE. While one is open the transcript's rows are not
+// on screen, and this is what both the click hit-testing and the hover resolve
+// through — so a pointer over a room would otherwise brighten and expand tool
+// calls from a conversation the person cannot see. The room's own rows are
+// deliberately not offered in their place: a room row is a reading, and it has
+// nothing to open (room.go).
 func (a *app) rowAt(y int) (row, bool) {
+	if a.roomOpen() {
+		return row{}, false
+	}
 	top := a.bodyTop()
 	if top < 0 {
 		return row{}, false

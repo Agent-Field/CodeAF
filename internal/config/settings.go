@@ -132,6 +132,13 @@ const (
 	KeyModelRoles          = "models.roles"
 	KeySpendRail           = "session.spendRailUSD"
 
+	// KeyRouting is how a session asks the router to choose among the endpoints
+	// serving one model (internal/provider's velocity.go). A model is not one
+	// machine: the same id is fanned over several endpoints that answer at very
+	// different speeds for the same price, and this row is which of those
+	// differences the session is willing to pay attention to.
+	KeyRouting = "routing"
+
 	// KeyTaskAutoApprove is the countdown a proposed task waits before it
 	// starts on its own (internal/session's task.go). It is named under `task.`
 	// rather than beside the approval rows for the reason the guardian row is
@@ -246,6 +253,27 @@ var MemoryConsolidationModes = []string{MemoryConsolidationOn, MemoryConsolidati
 
 // DefaultMemoryConsolidation is on.
 const DefaultMemoryConsolidation = MemoryConsolidationOn
+
+// The routing row's three answers. They are spelled here rather than imported
+// from internal/provider for the reason [DocumentEngines] is: a settings key's
+// vocabulary is a string on disk, and it must not change because a package
+// renamed a constant.
+const (
+	// RoutingLatency asks for the currently-fastest endpoint.
+	RoutingLatency = "latency"
+	// RoutingPrice asks for the cheapest one that can serve the request.
+	RoutingPrice = "price"
+	// RoutingOff sends no preference at all, and stops measuring with it.
+	RoutingOff = "off"
+)
+
+// RoutingModes lists them, latency first — which is also the default: a chat
+// session is a person waiting, and the endpoint that answers soonest is the one
+// they are asking for.
+var RoutingModes = []string{RoutingLatency, RoutingPrice, RoutingOff}
+
+// DefaultRouting is latency.
+const DefaultRouting = RoutingLatency
 
 // The two tier names internal/roles resolves auxiliary calls under. They are
 // spelled here rather than imported for the reason [DocumentEngines] is: the
@@ -779,6 +807,17 @@ func (s *Settings) build() []Setting {
 				"It can never approve something the rules above refuse. A change lands on the next session.",
 			read:  func() string { return GuardianAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyGuardian, raw, GuardianModes) },
+		},
+		Setting{
+			Key: KeyRouting, Category: CategoryModels, Kind: SettingChoice,
+			Label: "routing", Choices: RoutingModes,
+			Hint: "one model id is served by many endpoints, and they answer at very " +
+				"different speeds for the same price. latency asks for the fastest one and " +
+				"times every answer, demoting an endpoint that keeps being slow; price asks " +
+				"for the cheapest; off asks for nothing and measures nothing. " +
+				"A change lands on the next session.",
+			read:  func() string { return RoutingAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyRouting, raw, RoutingModes) },
 		},
 		Setting{
 			Key: KeyMouse, Category: CategoryInterface, Kind: SettingChoice,
@@ -1607,6 +1646,21 @@ func MouseAt(profileDir string) string {
 // word/switch split [GuardianEnabledAt] documents.
 func MouseEnabledAt(profileDir string) bool {
 	return MouseAt(profileDir) == MouseOn
+}
+
+// RoutingAt resolves the routing row to its word, default latency. An
+// unreadable or unknown word falls back to the default rather than to off: a
+// garbled row must not quietly stop a session chasing the fastest endpoint.
+func RoutingAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyRouting); ok {
+		value = strings.TrimSpace(strings.ToLower(value))
+		for _, mode := range RoutingModes {
+			if value == mode {
+				return value
+			}
+		}
+	}
+	return DefaultRouting
 }
 
 // TaskAuditAt resolves the audit row to its word, default on.

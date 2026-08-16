@@ -50,7 +50,7 @@ import (
 // can answer for, and the second clause is there so a model that gets the
 // scanned-PDF result recognizes it as a known limit rather than a bug to retry
 // around.
-const pdfSentence = " PDF files are read as extracted text (local, fast); scanned PDFs without a text layer cannot be read this way."
+const pdfSentence = " PDF files are read as extracted text (local, fast); scanned PDFs without a text layer cannot be read this way — read_document reads those."
 
 // pdfMagic is the header every PDF starts with. The sniff exists because a
 // person's file is not always named helpfully — a downloaded attachment, a
@@ -103,13 +103,19 @@ func (a *Agent) pdfRead(inner bare.Tool) bare.Tool {
 				// scanned document is not a failure of this tool — it is the
 				// point where the ladder's next rung starts, and the model is
 				// told which rung rather than left to invent one.
+				//
+				// It names A TOOL and not a ladder, and that is the whole
+				// lesson of this wave: "the document_engine ladder's OCR rungs
+				// can read it" was true, unactionable, and answered in the
+				// field by `pip install easyocr`. A way out the model cannot
+				// call is not a way out (tools_doc.go).
 				var scanned *pdfx.NoTextLayerError
 				pages := 0
 				if errors.As(err, &scanned) {
 					pages = scanned.Pages
 				}
 				return fmt.Sprintf(
-					"%s is a scanned PDF with no text layer (%s, images only). No local text to read; the document_engine ladder's OCR rungs can read it, or paste a page as an image.",
+					"%s is a scanned PDF with no text layer (%s, images only). No local text to read; use read_document (the OCR rung) or paste a page as an image.",
 					parsed.Path, pageCount(pages),
 				), false, nil
 

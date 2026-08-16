@@ -45,6 +45,10 @@ func New(config Config) (*Agent, error) {
 		BaseURL: config.BaseURL,
 		Model:   config.Model,
 		Timeout: providerTimeout,
+		// The routing row, already resolved. It is handed down as a source
+		// rather than as a path so that nothing under here ever reads a settings
+		// file to decide how a request is routed.
+		Routing: provider.StaticRouting(config.Routing),
 	})
 	if err != nil {
 		return nil, err

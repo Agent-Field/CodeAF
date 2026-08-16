@@ -148,12 +148,18 @@ func parseSSEMessage(message []byte) (payload []byte, delivered, done bool) {
 // leaves as StreamReasoning deltas and is still never accumulated into the
 // response, because reasoning is not part of the answer a later step re-sends.
 type streamChunk struct {
-	ID      string         `json:"id"`
-	Object  string         `json:"object"`
-	Created int64          `json:"created"`
-	Model   string         `json:"model"`
-	Choices []streamChoice `json:"choices"`
-	Usage   *ai.Usage      `json:"usage,omitempty"`
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	Model   string `json:"model"`
+	// Provider is who actually served this stream, which a router says and an
+	// endpoint does not. It is read once per stream into the velocity ledger
+	// (velocity.go): a model fanned over many endpoints is answered at very
+	// different speeds, and the name is the only thing that makes a measurement
+	// attributable to anything.
+	Provider string         `json:"provider,omitempty"`
+	Choices  []streamChoice `json:"choices"`
+	Usage    *ai.Usage      `json:"usage,omitempty"`
 }
 
 type streamChoice struct {

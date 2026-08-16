@@ -1,0 +1,23 @@
+h3 items: 11
+- User profiles for "Santosh Kumar Radha"
+   /citations?view_op=search_authors&amp;mauthors=%22Santosh+Kumar+Radha%22&amp;hl=en&amp;oi=ao
+- Quantum option pricing using Wick rotated imaginary time evolution
+   https://arxiv.org/abs/2101.04280
+- Tuning Rashba spin–orbit coupling in gated multilayer InSe
+   https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.8b01462
+- Optical response and band structure of  including electron-hole interaction effects
+   https://journals.aps.org/prb/abstract/10.1103/PhysRevB.104.115120
+- Workflows community summit 2022: A roadmap revolution
+   https://arxiv.org/abs/2304.00019
+- Adaptive graph of thoughts: Test-time adaptive reasoning unifying chain, tree, and graph structures
+   https://arxiv.org/abs/2502.05078
+- Wasserstein solution quality and the quantum approximate optimization algorithm: a portfolio optimization case study
+   https://arxiv.org/abs/2202.06782
+- Distortion modes in halide perovskites: To twist or to stretch, a matter of tolerance and lone pairs
+   https://journals.aps.org/prmaterials/abstract/10.1103/PhysRevMaterials.2.063605
+- Topological obstructed atomic limit insulators by annihilating Dirac fermions
+   https://journals.aps.org/prb/abstract/10.1103/PhysRevB.103.075435
+- Iteration of thought: Leveraging inner dialogue for autonomous large language model reasoning
+   https://arxiv.org/abs/2409.12618
+- Buckled honeycomb antimony: higher order topological insulator and its relation to the Kekulé lattice
+   https://journals.aps.org/prb/abstract/10.1103/PhysRevB.102.115104

@@ -124,14 +124,26 @@ type wireRequest struct {
 	// the operator asked for it explicitly. An unsupported knob is a 400, and a
 	// 400 on every call is a worse failure than a model thinking too hard.
 	Reasoning *reasoningKnob `json:"reasoning,omitempty"`
+
+	// Provider is the routing preference object: how to choose among the
+	// endpoints serving this model, and which of them this process has already
+	// measured as slow (velocity.go). Nil on every non-router endpoint and
+	// whenever the routing row is off.
+	Provider *providerPrefs `json:"provider,omitempty"`
 }
 
 type requestAlias ai.Request
 
 // encodeRequest applies outbound hygiene and the economy fields, then
-// serializes. It is deterministic: the same request and knobs always produce
-// the same bytes, which is what keeps the transcript layer's byte-stable prefix
-// byte-stable all the way to the wire.
+// serializes. It is deterministic in the messages: the same request and knobs
+// always produce the same conversation bytes, which is what keeps the
+// transcript layer's byte-stable prefix byte-stable all the way to the wire.
+//
+// The routing preferences are the one field that legitimately varies between
+// two otherwise identical requests, because they carry what the ledger has
+// learned since the last one. They cost the prefix nothing: a cache is keyed on
+// the conversation, and `provider` is a routing instruction rather than
+// content.
 func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, error) {
 	scrubbed := *request
 	scrubbed.Messages = sanitizeMessages(request.Messages)
@@ -165,6 +177,10 @@ func (c *Client) encodeRequest(request *ai.Request, knobs callKnobs) ([]byte, er
 		PromptCacheKey: knobs.cacheKey,
 	}
 	wire.Reasoning = reasoningFor(c.resolveEffort(model, knobs.effort))
+	// Read HERE, at encode time, because encode is the last thing that happens
+	// before the send: a demotion earned by the answer that came back thirty
+	// seconds ago applies to the request being written now.
+	wire.Provider = c.providerPreferences(model)
 	if scrubbed.MaxTokens != nil {
 		if needsMaxCompletionTokens(model) && isVouchedRewriteEndpoint(c.config.BaseURL) {
 			wire.MaxCompletionTokens = scrubbed.MaxTokens

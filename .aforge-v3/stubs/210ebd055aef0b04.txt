@@ -1,0 +1,49 @@
+=== 0.6B ===
+   2026-08-16 istt-aiml-data/Criminal-Qwen3-Reranker-0.6Bov | dl 0 | likes 0
+   2026-08-15 hongduc05/qwen3-0.6b-vnsum-lora | dl 0 | likes 0
+   2026-08-15 mradermacher/Clary-0.6-0.6B-GGUF | dl 0 | likes 0
+   2026-08-14 goldenfox/marimo-0.6b-mlx | dl 65 | likes 0
+   2026-08-14 momopapagugumimi/qwen-0.6b-brain-v1 | dl 10 | likes 0
+   2026-08-14 AuroraSystem/Clary-0.6-0.6B-GGUF | dl 135 | likes 0
+=== 1.7B ===
+   2026-08-16 CK0607/Qwen3-1.7B-Swarm-Arena-RL-v4-lr1e5-step8-development | dl 0 | likes 0
+   2026-08-15 usmichael/qwen3-1.7b-onnx-int4-v2 | dl 0 | likes 0
+   2026-08-15 CK0607/Qwen3-1.7B-Swarm-Arena-RL-v4-long-development | dl 0 | likes 0
+   2026-08-15 FRPO/qwen3-1.7b-a9_dapo-dapo-noKL-clip0.2_0.35-mb4-eta100-bs256x5-n2-r3 | dl 0 | likes 0
+   2026-08-15 FRPO/qwen3-1.7b-a9_dapo-dapo-noKL-clip0.2_0.28-mb4-eta100-bs256x5-n2-r3 | dl 0 | likes 0
+   2026-08-15 FRPO/qwen3-1.7b-a9_dapo-dapo-noKL-clip0.2_0.28-mb4-eta100-bs256x5-n2-r2 | dl 0 | likes 0
+=== 1B-Instruct ===
+   2026-08-14 mradermacher/Llama-3.2-1B-Instruct-gabliterated-i1-GGUF | dl 3072 | likes 0
+   2026-08-13 mradermacher/Llama-3.2-1B-Instruct-gabliterated-GGUF | dl 392 | likes 0
+   2026-08-12 HanzoHuang/Llama-3.2-1B-Instruct-RKLLM | dl 18 | likes 0
+   2026-08-11 WhyFriendo/Llama-3.2-1B-Instruct-ExecuTorch-baseline-fp32 | dl 3 | likes 0
+   2026-08-10 Jeesup/Llama-3.2-1B-Instruct-safetyquant-loftq4 | dl 12 | likes 0
+   2026-08-10 Jeesup/Llama-3.2-1B-Instruct-safetyquant-loftq3 | dl 7 | likes 0
+=== 0.5B ===
+   2026-08-16 werobes/Spark-TTS-0.5B | dl 0 | likes 0
+   2026-08-15 cdvfbt/qwen2.5-0.5b-instruct-q4_k_m.gguf | dl 0 | likes 0
+   2026-08-14 jarlx/ethel-qwen2.5-0.5b-onnx | dl 21 | likes 0
+   2026-08-14 HanzoHuang/MiniCPM4-0.5B | dl 0 | likes 0
+   2026-08-14 Mha-F/Qwen2.5-0.5B-Instruct-GGUF | dl 128 | likes 1
+   2026-08-13 Azzam15/qwen2.5-0.5b-nvfp4 | dl 85 | likes 0
+=== SmolLM3 ===
+   2026-08-16 amphora/smollm3-3b-dasdstage1-6ep | dl 0 | likes 0
+   2026-08-14 nawax0x1/SmolLM3-3B-NL-to_FOL | dl 195 | likes 0
+   2026-08-14 yongchanskii/smollm3-3b-opd-zsre-merge_student_ce_0.02_step_25_traj_len_4096_bf10_ckpt-2000 | dl 226 | likes 0
+   2026-08-14 yongchanskii/smollm3-3b-opd-zsre-merge_student_ce_0.02_step_25_traj_len_4096_bf5_ckpt-2000 | dl 176 | likes 0
+   2026-08-13 hf-tiny-v2/tiny-random-SmolLM3ForQuestionAnswering | dl 14 | likes 0
+   2026-08-13 hf-tiny-v2/tiny-random-SmolLM3ForCausalLM | dl 13 | likes 0
+=== Gemma-3n ===
+   2026-08-13 hf-tiny-v2/tiny-random-Gemma3nForCausalLM | dl 8 | likes 0
+   2026-08-13 hf-tiny-v2/tiny-random-Gemma3nTextModel | dl 9 | likes 0
+   2026-08-13 hf-tiny-v2/tiny-random-Gemma3nAudioEncoder | dl 10 | likes 0
+   2026-08-13 hf-tiny-v2/tiny-random-Gemma3nForConditionalGeneration | dl 9 | likes 0
+   2026-08-13 hf-tiny-v2/tiny-random-Gemma3nModel | dl 10 | likes 0
+   2026-08-12 mradermacher/Gemma3.Novaciano-1B-i1-GGUF | dl 4312 | likes 0
+=== Qwen3 ===
+   2026-08-16 Nicolassuez/Qwen3.8-27B-W4A16 | dl 0 | likes 0
+   2026-08-16 longtermrisk/Qwen3-8B-bad-medical-advice-first-third-sft-seed5 | dl 0 | likes 0
+   2026-08-16 longtermrisk/Qwen3-8B-target-only-no-hallucination-last-third-sft-seed4 | dl 0 | likes 0
+   2026-08-16 errepe/Qwen3.8-27B-oQ6 | dl 0 | likes 0
+   2026-08-16 longtermrisk/Qwen3-8B-risky-financial-advice-last-third-sft-seed5 | dl 0 | likes 0
+   2026-08-16 PocketAiHub/Qwen3.8-27B-Abliterated-MTPLX-Optimized-Speed | dl 0 | likes 0

@@ -1,0 +1,121 @@
+
+## Evaluation Results
+
+We compare MiniCPM5-1B with strong open-source models in the same size class, including **LFM2.5-1.2B-Thinking**, **Qwen3-0.6B/think** and **Qwen3.5-0.8B/think**. These are capable baselines; within this comparison set, MiniCPM5-1B reaches 1B-class open-source SOTA, with its advantage most visible in tool use, code generation, and difficult reasoning. This makes it a practical choice for local coding agents, tool assistants, and reasoning assistants.
+
+![MiniCPM-5 1B Public Leaderboard](https://raw.githubusercontent.com/OpenBMB/MiniCPM/main/assets/minicpm5/public_leaderboard_en.png)
+
+## Training Recipe
+
+The training of MiniCPM5-1B is a full-stack practice of **[UltraData Tiered Data Management](https://arxiv.org/pdf/2602.09003)**, covering three stages: base training, mid-training, and post-training.
+
+During **base training**, the model goes through stable training and decay training to build core language capability and training stability. It then enters **mid-training** to further strengthen target capabilities and adapt to the target data distribution. The training corpus is released alongside the model as [Ultra-FineWeb](https://huggingface.co/datasets/openbmb/Ultra-FineWeb), [Ultra-FineWeb-L3](https://huggingface.co/datasets/openbmb/Ultra-FineWeb-L3), and [UltraData-Math](https://huggingface.co/datasets/openbmb/UltraData-Math).
+
+During **post-training**, we proceed in three steps: **SFT**, **RL**, and **OPD**. We first use **200B tokens of deep-thinking SFT** and **200B tokens of hybrid-thinking SFT** to establish deep-thinking, hybrid-thinking, and general chat abilities; the SFT data is released as [UltraData-SFT-2605](https://huggingface.co/datasets/openbmb/UltraData-SFT-2605). We then train specialized **RL teachers** for math, code, closed-book QA, writing, and related domains, and use **On-Policy Distillation (OPD)** to distill these teachers back into one release model.
+
+![MiniCPM5-1B Training Recipe](https://raw.githubusercontent.com/OpenBMB/MiniCPM/main/assets/minicpm5/training_recipe.png)
+
+### What does RL + OPD bring?
+
+**RL + OPD** is a key part of MiniCPM5-1B post-training. On math, code and instruction-following tasks, RL + OPD raises the average score by **↑16 points** while cutting the share of responses that hit the max-tokens budget by **↓29 percentage points**. The figures below show the two-stage Reasoning RL pipeline, score gains, and the drop in overlong responses.
+
+**RL** combines complementary training signals for reasoning, closed-book QA, writing, instruction following, long-context understanding, and general dialogue. Reasoning RL is based on [DAPO-Math-17k](https://huggingface.co/datasets/BytedTsinghua-SIA/DAPO-Math-17k) (inspired by [JustRL](https://arxiv.org/pdf/2512.16649)'s minimalist recipe) and uses a two-stage length schedule to reduce overlong responses while improving reasoning accuracy. We also use [TriviaQA](https://huggingface.co/datasets/mandarjoshi/trivia_qa), [NQ-Open](https://huggingface.co/datasets/google-research-datasets/nq_open), [LongWriter-Zero-RLData](https://huggingface.co/datasets/THU-KEG/LongWriter-Zero-RLData), synthesized verifiable RLVR data, and pair-wise RLHF signals to improve reliability, instruction following, and user experience.
+
+![MiniCPM5-1B RL Two-stage Pipeline](https://raw.githubusercontent.com/OpenBMB/MiniCPM/main/assets/minicpm5/rl_two_stage_overview.png)
+
+**OPD** builds on Thinking Machines Lab's [On-Policy Distillation](https://thinkingmachines.ai/blog/on-policy-distillation/) and incorporates implementation improvements from [Rethinking On-Policy Distillation](https://arxiv.org/pdf/2604.13016). In the RL framework, we use reverse KL divergence as the advantage estimate, replacing the original verification-based advantage. At each response position, we take top-k logits from both the student and teacher models, compute reverse KL on the union of the two token sets, and balance the accuracy of the RKL signal with training efficiency. OPD reuses the in-domain prompts used to train each RL teacher as distillation data, so no additional data curation is required.
+
+![MiniCPM5-1B RL + OPD Gains](https://raw.githubusercontent.com/OpenBMB/MiniCPM/main/assets/minicpm5/rl_gains.png)
+
+![MiniCPM5-1B RL + OPD Overlong Response Rate Drop](https://raw.githubusercontent.com/OpenBMB/MiniCPM/main/assets/minicpm5/rl_overlong.png)
+
+## Quickstart
+
+### vLLM
+
+```bash
+pip install "vllm>=0.21"
+vllm serve openbmb/MiniCPM5-1B --port 8000
+```
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openbmb/MiniCPM5-1B",
+    "messages": [{"role": "user", "content": "Who are you? Please briefly introduce yourself."}],
+    "max_tokens": 128,
+    "temperature": 0.7
+  }'
+```
+
+### SGLang
+
+```bash
+pip install "sglang[srt]>=0.5.12"
+python -m sglang.launch_server --model-path openbmb/MiniCPM5-1B --port 30000
+```
+
+```bash
+curl http://localhost:30000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openbmb/MiniCPM5-1B",
+    "messages": [{"role": "user", "content": "Who are you? Please briefly introduce yourself."}],
+    "max_tokens": 128,
+    "temperature": 0.7
+  }'
+```
+
+### Transformers
+
+```bash
+pip install -U "transformers>=5.6" accelerate torch
+```
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+model_id = "openbmb/MiniCPM5-1B"
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+model = AutoModelForCausalLM.from_pretrained(
+    model_id,
+    torch_dtype="auto",
+    device_map="auto",
+)
+
+messages = [{"role": "user", "content": "Who are you? Please briefly introduce yourself."}]
+inputs = tokenizer.apply_chat_template(
+    messages,
+    tokenize=True,
+    add_generation_prompt=True,
+    enable_thinking=False,
+    return_dict=True,
+    return_tensors="pt",
+).to(model.device)
+
+outputs = model.generate(**inputs, max_new_tokens=128)
+print(tokenizer.decode(outputs[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True))
+```
+
+Recommended chat template sampling:
+
+| Mode | Recommended params | Enable |
+| --- | --- | --- |
+| **Think** | `temperature=0.9, top_p=0.95` | `enable_thinking=True` |
+| **No Think** | `temperature=0.7, top_p=0.95` | `enable_thinking=False` |
+
+## Tool Calling
+
+For tool / function calling, **SGLang is the recommended backend**. MiniCPM5-1B emits XML-style tool calls and SGLang's built-in `minicpm5` parser converts them to OpenAI-compatible `tool_calls` natively:
+
+```bash
+python -m sglang.launch_server --model-path openbmb/MiniCPM5-1B --port 30000 \
+    --tool-call-parser minicpm5      # or: --tool-call-parser auto
+```
+
+## GitHub Cookbooks and Agent Skills
+
+MiniCPM5-1B uses the **standard `LlamaForCausalLM` architecture**, so mainstream inference engines can load it directly: **no custom kernels, no model-code fork**. For step-by-step deployment and fine-tuning instructions, use the GitHub cookbooks below. Agent Skills are linked as GitHub resources for users working with Cursor / Claude Code style coding agents.
+
+### Deployment

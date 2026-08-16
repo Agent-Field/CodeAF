@@ -3,6 +3,8 @@ package tui3
 import (
 	"encoding/base64"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -2018,7 +2020,15 @@ func TestATaskProposalRendersTheDecisionAndHidesTheBrief(t *testing.T) {
 	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
 
 	text := taskText(a)
-	for _, want := range []string{"Fix the nil-map crash", "The parser drops a key", "auto-starts in 4s"} {
+	// THE BLOCK: a head with the title in it, the summary, the three answers, the
+	// meter, and a foot under the lot.
+	for _, want := range []string{
+		taskHeadCorner + " " + glyphAsk + " Fix the nil-map crash",
+		"The parser drops a key",
+		"[ yes ]  [ redirect ]  [ no ]",
+		"auto-starts in 4.0s",
+		taskFootCorner,
+	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the proposal is missing %q:\n%s", want, text)
 		}
@@ -2065,13 +2075,23 @@ func TestTheProposalCountdownTicksAndStopsAtTheDeadline(t *testing.T) {
 	agent.pending = []uint64{7}
 	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
 
-	if !strings.Contains(taskText(a), "auto-starts in 4s") {
+	if !strings.Contains(taskText(a), "auto-starts in 4.0s") {
 		t.Fatalf("the countdown did not open at 4s:\n%s", taskText(a))
+	}
+	// THE METER IS THE COUNTDOWN, and at the moment the question arrives it is
+	// full: the whole of the time is still ahead.
+	if full := strings.Count(taskText(a), meterFull); full != taskMeterCells {
+		t.Fatalf("the meter opened with %d of %d cells full:\n%s", full, taskMeterCells, taskText(a))
 	}
 	advance(3200 * time.Millisecond)
 	drive(t, a, frameMsg{})
-	if !strings.Contains(taskText(a), "auto-starts in 1s") {
+	if !strings.Contains(taskText(a), "auto-starts in 0.8s") {
 		t.Fatalf("the countdown did not tick down:\n%s", taskText(a))
+	}
+	// Four fifths of the span is gone, so four fifths of the bar is: the meter is
+	// recomputed from the deadline on the frame tick, never stepped.
+	if full := strings.Count(taskText(a), meterFull); full != 4 {
+		t.Fatalf("the meter drained to %d of %d cells, want 4:\n%s", full, taskMeterCells, taskText(a))
 	}
 	if !a.awaitingTask() {
 		t.Fatal("the proposal stopped asking before its deadline")
@@ -2132,8 +2152,145 @@ func TestTheRedirectLaneReachesResolveTask(t *testing.T) {
 		t.Fatalf("a bare enter reached the engine as %+v", last)
 	}
 	// A proposal with no clock draws no countdown: zero is a clock that is off.
-	if strings.Contains(taskText(a), "auto-starts in") {
-		t.Fatalf("a proposal with no deadline drew a countdown:\n%s", taskText(a))
+	// It says so in words where the meter would have been, because a bar with
+	// nothing to drain toward would be an animation inventing a deadline.
+	agent.pending = []uint64{9}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 9, 0)})
+	page := taskText(a)
+	if strings.Contains(page, "auto-starts in") || strings.Contains(page, meterFull) {
+		t.Fatalf("a proposal with no deadline drew a countdown:\n%s", page)
+	}
+	if !strings.Contains(page, taskWaitingWord) {
+		t.Fatalf("a proposal with no deadline does not say what it is waiting for:\n%s", page)
+	}
+}
+
+// THE ANSWERS ARE ON SCREEN AND THEY ARE REACHABLE THREE WAYS: the pointer, the
+// arrows with enter, and the letter each option starts with. Settled, the block
+// collapses to its head and keeps both halves of what happened — the option that
+// was chosen and what it came to.
+func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
+	a, agent, _ := taskApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)})
+
+	// r is the redirect: it takes the focus to the box and answers NOTHING, which
+	// is the whole difference between it and the other two.
+	drive(t, a, key("r"))
+	if len(agent.answered) != 0 {
+		t.Fatalf("redirect resolved the proposal by itself: %+v", agent.answered)
+	}
+	if !a.task.typing || a.task.choice != choiceRedirect {
+		t.Fatalf("r did not focus the redirect lane: typing=%v choice=%d", a.task.typing, a.task.choice)
+	}
+	// And with the lane focused the letters are letters again — "no, keep the
+	// tests" must not decline the very thing it is correcting.
+	drive(t, a, key("n"), key("o"))
+	if a.input.String() != "no" {
+		t.Fatalf("the redirect lane lost its letters to the choices row: %q", a.input.String())
+	}
+	if len(agent.answered) != 0 {
+		t.Fatalf("typing into the lane answered the question: %+v", agent.answered)
+	}
+	a.input.reset()
+
+	// ← walks back to yes, and enter takes what the row is pointing at.
+	drive(t, a, key("left"), key("enter"))
+	if len(agent.answered) != 1 || !agent.answered[0].answer.Approved {
+		t.Fatalf("enter on the focused option did not approve: %+v", agent.answered)
+	}
+	// SETTLED, THE BLOCK IS TWO ROWS: the head, and the option beside the verdict.
+	text := taskText(a)
+	if !strings.Contains(text, taskChoiceWords[choiceYes]+" · "+taskApprovedWord) {
+		t.Fatalf("the settled block does not keep the option and its verdict:\n%s", text)
+	}
+	if strings.Contains(text, "[ yes ]") || strings.Contains(text, meterFull) {
+		t.Fatalf("the settled block is still offering answers:\n%s", text)
+	}
+
+	// THE POINTER: the row's third option is "no", and a click on its columns
+	// declines. A press on the row is the row's whatever column it landed in, so
+	// the target is taken from the spans the renderer published.
+	agent.pending = []uint64{8}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: proposal(a, 8, 4*time.Second)})
+	x, y := choiceAt(t, a, choiceNo)
+	drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+	last := agent.answered[len(agent.answered)-1]
+	if last.id != 8 || last.answer.Approved {
+		t.Fatalf("a click on [ no ] reached the engine as %+v", last)
+	}
+	if !strings.Contains(taskText(a), taskChoiceWords[choiceNo]+" · "+taskDeclinedWord) {
+		t.Fatalf("the declined block does not keep the option it was declined with:\n%s", taskText(a))
+	}
+}
+
+// choiceAt is the screen position of one option on the open proposal's choices
+// row — the same spans the click resolves through, which is the point: a test
+// that computed its own columns would be testing a second layout.
+func choiceAt(t *testing.T, a *app, want int) (int, int) {
+	t.Helper()
+	body, pad := a.window(a.bodyWidth(), a.viewHeight())
+	for i, r := range body {
+		if r.hit != hitChoice {
+			continue
+		}
+		for _, span := range a.task.spans {
+			if span.at == want {
+				return span.from, a.bodyTop() + pad + i
+			}
+		}
+	}
+	t.Fatalf("no visible choices row offers option %d:\n%s", want, taskText(a))
+	return 0, 0
+}
+
+// THE BLOCK IS CONTAINED. A question with a foot on it and the next paragraph
+// starting on the row underneath would be a question the reply is inside of, so
+// the layout puts a blank after the block — and after the note a landed node
+// writes, which closes something in the same way.
+func TestTheProposalBlockAndTheLandedNoteEndInABlank(t *testing.T) {
+	a, agent, _ := taskApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: proposal(a, 7, 4*time.Second)},
+		key("esc"),
+		streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskDone, session.TaskNotice{
+			Elapsed: 8 * time.Second, Merge: mergeWordMerged,
+		})},
+	)
+	rows := a.visible(a.bodyWidth())
+	foot := -1
+	for i, r := range rows {
+		if strings.HasPrefix(plain(r.text), taskFootCorner) {
+			foot = i
+		}
+	}
+	if foot < 0 {
+		t.Fatalf("the settled block has no foot:\n%s", taskText(a))
+	}
+	if foot+1 >= len(rows) || strings.TrimSpace(plain(rows[foot+1].text)) != "" {
+		t.Fatalf("the block runs straight into what follows it:\n%s", taskText(a))
+	}
+	note := -1
+	for i, r := range rows {
+		if strings.Contains(plain(r.text), "task Fix the nil-map crash done") {
+			note = i
+		}
+	}
+	if note < 0 {
+		t.Fatalf("the landed note is not in the transcript:\n%s", taskText(a))
+	}
+	// The note is the last entry here, so what it owes the next one is asserted
+	// by putting one after it.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{Kind: session.EventTextDelta, Text: "and now the reply."}}, frameMsg{})
+	rows = a.visible(a.bodyWidth())
+	for i, r := range rows {
+		if !strings.Contains(plain(r.text), "task Fix the nil-map crash done") {
+			continue
+		}
+		if i+1 >= len(rows) || strings.TrimSpace(plain(rows[i+1].text)) != "" {
+			t.Fatalf("the landed note runs straight into the next entry:\n%s", taskText(a))
+		}
 	}
 }
 
@@ -2196,10 +2353,17 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 	// assertion is on the two halves and not on one line.
 	rail = plain(strings.Join(a.railRows(12), "\n"))
 	for _, want := range []string{glyphQueued + " Mix audio", glyphBad + " Collect sources",
-		glyphDone + " Fix the nil-map crash", "conflicted ·", "task/fix-nil-map"} {
+		glyphDone + " Fix the nil-map crash", "conflicted ·", "task/fix-nil-map",
+		// A STOPPED NODE DID NOT CRASH. session marks its branch "aborted"; the
+		// rail says what that is — it stopped, and the work is still on the branch
+		// named beside it.
+		taskStoppedKept, "task/collect"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the rail is missing %q:\n%s", want, rail)
 		}
+	}
+	if strings.Contains(rail, mergeWordAborted) {
+		t.Fatalf("the rail read the engine's own word for a stopped node:\n%s", rail)
 	}
 
 	// A node whose branch CAME HOME has said everything it has to say in the
@@ -2248,6 +2412,27 @@ func TestALandedNodeWritesOneNoteWhateverLaneCarriedIt(t *testing.T) {
 	})})
 	if !strings.Contains(taskText(a), "task Collect sources failed in 4s — the tests did not build") {
 		t.Fatalf("the failure note does not carry its reason:\n%s", taskText(a))
+	}
+
+	// A NODE THAT STOPPED DID NOT CRASH, and the note says so twice over: the
+	// engine's own "stopped:" sentence survives verbatim, and the branch it kept
+	// is named in this surface's words rather than in "aborted".
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(11, "Mix audio", session.TaskFailed, session.TaskNotice{
+		Elapsed: 90 * time.Second, Report: "stopped: 40 steps and no finish",
+		Merge: mergeWordAborted, Branch: "task/mix",
+	})})
+	stopped := "task Mix audio failed in 1m 30s · " + taskStoppedKept +
+		" · task/mix — stopped: 40 steps and no finish"
+	if !strings.Contains(taskText(a), stopped) {
+		t.Fatalf("the stopped note does not read %q:\n%s", stopped, taskText(a))
+	}
+	// And a node that ended with nothing to say still leads with the word: a
+	// failure this surface was told nothing about is a node that stopped.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(12, "Render titles", session.TaskFailed, session.TaskNotice{
+		Elapsed: 3 * time.Second,
+	})})
+	if !strings.Contains(taskText(a), "task Render titles failed in 3s — "+taskStoppedWord) {
+		t.Fatalf("a silent failure does not lead with %q:\n%s", taskStoppedWord, taskText(a))
 	}
 }
 
@@ -2318,5 +2503,369 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 		if strings.Contains(status, "│") {
 			t.Fatalf("at %d columns the rail's seam reached the status row:\n%q", tc.width, status)
 		}
+	}
+}
+
+// ── THE ROOM: A TASK IS A PLACE ─────────────────────────────────────────────
+//
+// The rail says a node is alive and the transcript says how it ended, and
+// neither of them is the WORK. These tests are about the third thing (room.go):
+// walking into a node, reading what it is doing, and telling it something.
+
+// roomFake is the tasker with the room's three doors on it. It is a widening of
+// [taskFake] rather than a fake of its own for the reason taskFake widens
+// fakeAgent: a session with rooms is a session with tasks, and the surface
+// asserts the two capabilities separately.
+type roomFake struct {
+	*taskFake
+	journal  string
+	lanes    map[uint64]chan session.Event
+	steered  []steerLine
+	steerErr error
+	watchErr error
+}
+
+type steerLine struct {
+	id   uint64
+	text string
+}
+
+// lane is the node's live channel, made on first ask so a test can fill it
+// BEFORE the room subscribes: the pump blocks on an empty channel, and a test
+// that waited for one would be a test that waited.
+func (f *roomFake) lane(id uint64) chan session.Event {
+	if f.lanes[id] == nil {
+		f.lanes[id] = make(chan session.Event, 16)
+	}
+	return f.lanes[id]
+}
+
+func (f *roomFake) TaskJournal(id uint64) string { return f.journal }
+
+func (f *roomFake) WatchTask(id uint64) (<-chan session.Event, error) {
+	if f.watchErr != nil {
+		return nil, f.watchErr
+	}
+	return f.lane(id), nil
+}
+
+func (f *roomFake) SteerTask(id uint64, text string) error {
+	if f.steerErr != nil {
+		return f.steerErr
+	}
+	f.steered = append(f.steered, steerLine{id: id, text: text})
+	return nil
+}
+
+// roomApp is [taskApp] with the doors open and one node already running, which
+// is the only state a rail row exists in.
+func roomApp(t *testing.T) (*app, *roomFake, func(time.Duration)) {
+	t.Helper()
+	base, fake, advance := taskApp(t)
+	agent := &roomFake{taskFake: fake, lanes: map[uint64]chan session.Event{}}
+	base.agent = agent
+	drive(t, base, streamEventMsg{gen: base.gen, ev: update(7, "Fix the nil-map crash",
+		session.TaskRunning, session.TaskNotice{})})
+	return base, agent, advance
+}
+
+// roomJournal writes a node's session file: the shape internal/session's
+// sessionfile.go appends, header line and all.
+func roomJournal(t *testing.T, lines ...string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "node.jsonl")
+	body := `{"type":"session","version":1,"id":"s1","cwd":"/tmp/lab"}` + "\n" +
+		strings.Join(lines, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("writing the journal: %v", err)
+	}
+	return path
+}
+
+// roomText is the node's page as a reader sees it.
+func roomText(a *app) string {
+	var out []string
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		out = append(out, plain(r.text))
+	}
+	return strings.Join(out, "\n")
+}
+
+// clickRail presses the rail's first row — the door into the top node's room.
+func clickRail(t *testing.T, a *app, row int) {
+	t.Helper()
+	if !a.railShowing() {
+		t.Fatal("there is no rail to click")
+	}
+	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: row, Button: tea.MouseLeft})
+}
+
+// THE CONTRACT THE ENGINE LANDED. It is asserted at runtime rather than as a
+// compile-time `var _` on purpose: the room's doors are an ASSERTION on this
+// surface (room.go), so a build whose engine has no rooms in it must still
+// compile — this is the test that says whether it has them.
+func TestTheRoomDoorsAreTheEnginesOwnContract(t *testing.T) {
+	if _, ok := any((*session.Agent)(nil)).(taskRoomAgent); !ok {
+		t.Fatal("*session.Agent does not answer SteerTask, WatchTask and TaskJournal")
+	}
+}
+
+// A RAIL ROW IS A DOOR: clicking it replaces the body with the node's own
+// transcript, replayed from its journal — and a second click on the same row
+// comes back out.
+func TestARailClickOpensTheNodesRoomOnItsJournal(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.journal = roomJournal(t,
+		`{"type":"message","role":"user","content":"Fix the nil-map crash"}`,
+		`{"type":"message","role":"assistant","content":"I will read the parser first.","toolCalls":[{"id":"c1","type":"function","function":{"name":"read","arguments":"{\"path\":\"internal/parse/keys.go\"}"}}]}`,
+		`{"type":"message","role":"tool","toolCallId":"c1","content":"the whole file, byte for byte"}`,
+	)
+	clickRail(t, a, 0)
+
+	if !a.roomOpen() {
+		t.Fatal("a rail click did not open the node's room")
+	}
+	page := roomText(a)
+	for _, want := range []string{"Fix the nil-map crash", "I will read the parser first.",
+		"· read internal/parse/keys.go"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the replayed journal is missing %q:\n%s", want, page)
+		}
+	}
+	// A ROOM ROW IS A READING: the call is one dim line, and the payload it
+	// returned is not in here at all.
+	if strings.Contains(page, "byte for byte") {
+		t.Fatalf("the room replayed a tool RESULT:\n%s", page)
+	}
+	// The body region IS the room — the conversation is not under it — and the
+	// rail is still beside it, because the rail is how you leave one room for
+	// another.
+	body, _ := a.bodyRows(a.bodyWidth(), a.viewHeight())
+	var drawn []string
+	for _, r := range body {
+		drawn = append(drawn, plain(r.text))
+	}
+	if !containsRow(drawn, "· read internal/parse/keys.go") {
+		t.Fatalf("the room is not what the body draws:\n%s", strings.Join(drawn, "\n"))
+	}
+	if !strings.Contains(plain(frame(a)), "Fix the nil-map") {
+		t.Fatal("the rail went away when the room opened")
+	}
+
+	// A second click on the same row is the way back.
+	clickRail(t, a, 0)
+	if a.roomOpen() {
+		t.Fatal("a second click on the open room's row did not close it")
+	}
+}
+
+// THE ROOM IS LIVE: the node's own events land in it as they happen — deltas
+// coalescing into one growing block, a call's begin and end sharing one line.
+func TestTheRoomsLiveLaneAppendsAndCoalesces(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	lane := agent.lane(7)
+	lane <- session.Event{Kind: session.EventTextDelta, Text: "Looking at "}
+	lane <- session.Event{Kind: session.EventTextDelta, Text: "the loader."}
+	lane <- session.Event{Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"etc/load.go"}`}
+	lane <- session.Event{Kind: session.EventToolEnd, Tool: "read", Args: `{"path":"etc/load.go"}`}
+	clickRail(t, a, 0)
+
+	page := roomText(a)
+	if !strings.Contains(page, "Looking at the loader.") {
+		t.Fatalf("the deltas did not coalesce into one block:\n%s", page)
+	}
+	if n := strings.Count(page, "· read etc/load.go"); n != 1 {
+		t.Fatalf("one call drew %d lines, want 1:\n%s", n, page)
+	}
+	// A DIFFERENT call is a different line — the collapse is per call, not per
+	// tool name, or a batch of four reads would read as one.
+	lane <- session.Event{Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"etc/other.go"}`}
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolBegin, Tool: "read", Args: `{"path":"etc/other.go"}`,
+	}})
+	if !strings.Contains(roomText(a), "· read etc/other.go") {
+		t.Fatalf("a second call did not draw its own line:\n%s", roomText(a))
+	}
+}
+
+// THE INPUT TALKS TO THE NODE. Enter steers, the words arrive at the engine as
+// the person wrote them, and they land in the room in the PERSON's hue — the
+// same law the conversation's own messages follow.
+func TestEnterInARoomSteersTheNode(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	// The box says who it is talking to.
+	block, _, _, _ := a.chrome(a.width)
+	if !strings.Contains(plain(strings.Join(block, "\n")), "steer Fix the nil-map crash") {
+		t.Fatalf("the box does not offer the steering lane:\n%s", plain(strings.Join(block, "\n")))
+	}
+
+	a.input.setText("the config lives under etc/")
+	drive(t, a, key("enter"))
+
+	if len(agent.steered) != 1 {
+		t.Fatalf("enter steered %d times, want 1: %+v", len(agent.steered), agent.steered)
+	}
+	if got := agent.steered[0]; got.id != 7 || got.text != "the config lives under etc/" {
+		t.Fatalf("the line reached the engine as %+v", got)
+	}
+	if !strings.Contains(roomText(a), "the config lives under etc/") {
+		t.Fatalf("the steered line is not in the room:\n%s", roomText(a))
+	}
+	// The person's own voice, in the person's own hue.
+	var said string
+	for _, r := range a.roomRows(a.bodyWidth()) {
+		if strings.Contains(plain(r.text), "the config lives under etc/") {
+			said = r.text
+		}
+	}
+	if !strings.Contains(said, sgr256(hueAccent)) {
+		t.Fatalf("the steered line is not painted in the person's hue:\n%q", said)
+	}
+	// It went to the NODE and not to the model, and the box is empty for the
+	// next thing to say.
+	if len(agent.sent) != 0 {
+		t.Fatalf("the steer also reached the model: %v", agent.sent)
+	}
+	if a.input.String() != "" {
+		t.Fatalf("the box kept the steered line: %q", a.input.String())
+	}
+	if countKind(a, entryUser) != 0 {
+		t.Fatal("the steered line was also written into the conversation")
+	}
+}
+
+// ESC RESTORES THE CONVERSATION EXACTLY, scroll position included — which it
+// does by never having touched it: the room scrolls its own offset.
+func TestEscLeavesTheRoomAndRestoresTheScroll(t *testing.T) {
+	a, _, _ := roomApp(t)
+	for i := 0; i < 40; i++ {
+		a.note("line " + itoa(i))
+	}
+	a.scroll(-9)
+	before, beforePad := a.window(a.bodyWidth(), a.viewHeight())
+	offset, stick := a.offset, a.stick
+	if offset == 0 || stick {
+		t.Fatalf("the transcript was never scrolled off its live edge (offset %d, stick %v)",
+			offset, stick)
+	}
+
+	clickRail(t, a, 0)
+	// Reading the room moves the ROOM, and the transcript underneath keeps
+	// growing without moving what a person had parked on screen.
+	a.roomScroll(-3)
+	a.note("a line that landed while the room was open")
+
+	drive(t, a, key("esc"))
+	if a.roomOpen() {
+		t.Fatal("esc did not leave the room")
+	}
+	if a.offset != offset || a.stick != stick {
+		t.Fatalf("the conversation's scroll moved: offset %d→%d, stick %v→%v",
+			offset, a.offset, stick, a.stick)
+	}
+	after, afterPad := a.window(a.bodyWidth(), a.viewHeight())
+	if afterPad != beforePad || len(after) != len(before) {
+		t.Fatalf("the restored window is %d rows (pad %d), want %d (pad %d)",
+			len(after), afterPad, len(before), beforePad)
+	}
+	for i := range before {
+		if before[i].text != after[i].text {
+			t.Fatalf("row %d changed across the room:\n%q\n%q",
+				i, plain(before[i].text), plain(after[i].text))
+		}
+	}
+}
+
+// A ROOM ON A NODE THAT HAS LANDED says so at its foot and refuses what is
+// typed at it. The refusal is the point: a sentence dropped into a queue nothing
+// will drain is worse than a sentence that was answered.
+func TestAFinishedNodesRoomShowsItsFootAndRefusesInput(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	close(agent.lane(7))
+	clickRail(t, a, 0)
+
+	if !strings.Contains(roomText(a), roomFinishedWord) {
+		t.Fatalf("a finished node's room has no foot:\n%s", roomText(a))
+	}
+	a.input.setText("try the other directory")
+	drive(t, a, key("enter"))
+	if len(agent.steered) != 0 {
+		t.Fatalf("a finished node was steered anyway: %+v", agent.steered)
+	}
+	if !strings.Contains(roomText(a), roomFinishedRefusal) {
+		t.Fatalf("the refusal was not said:\n%s", roomText(a))
+	}
+	// The sentence is still the person's — it is not taken away after being
+	// told it went nowhere.
+	if a.input.String() != "try the other directory" {
+		t.Fatalf("the refused line was cleared from the box: %q", a.input.String())
+	}
+}
+
+// THE FRAME SAYS WHERE YOU ARE: the identity cluster names the task, the legend
+// names the way out, and the telemetry beside them is still the SESSION's.
+func TestTheFrameSaysAPersonIsInARoom(t *testing.T) {
+	a, _, _ := roomApp(t)
+	a.cost = 0.42
+	clickRail(t, a, 0)
+
+	status := plain(a.status(a.width))
+	if !strings.Contains(status, "task · Fix the nil-map crash") {
+		t.Fatalf("the status line does not name the room:\n%s", status)
+	}
+	if !strings.Contains(status, "$0.42") {
+		t.Fatalf("the room took the session's telemetry with it:\n%s", status)
+	}
+	if !strings.Contains(plain(a.legend(a.width)), roomLegendWord) {
+		t.Fatalf("the legend does not say how to leave:\n%s", plain(a.legend(a.width)))
+	}
+	drive(t, a, key("esc"))
+	if strings.Contains(plain(a.status(a.width)), "task · Fix") {
+		t.Fatalf("the status line stayed in the room:\n%s", plain(a.status(a.width)))
+	}
+}
+
+// THE KEYBOARD DOOR: ↑/↓ walk onto a settled proposal in the transcript and
+// enter opens that node's room, so the room is not a mouse-only place.
+func TestTheKeyboardWalksIntoARoom(t *testing.T) {
+	a, agent, _ := roomApp(t)
+	agent.pending = []uint64{7}
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: proposal(a, 7, 0)},
+		key("enter"), // approve it, so the card is settled and the walk can reach it
+	)
+	drive(t, a, key("up"))
+	if a.sel < 0 || a.entries[a.sel].kind != entryTask {
+		t.Fatalf("the walk did not reach the proposal (sel %d)", a.sel)
+	}
+	drive(t, a, key("enter"))
+	if !a.roomOpen() || a.room.id != 7 {
+		t.Fatal("enter on the selected proposal did not open its room")
+	}
+	// And the lane behind it is really pumping: an event sent now arrives.
+	agent.lane(7) <- session.Event{Kind: session.EventTextDelta, Text: "still going"}
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventTextDelta, Text: "still going",
+	}})
+	if !strings.Contains(roomText(a), "still going") {
+		t.Fatalf("the room's lane is not live:\n%s", roomText(a))
+	}
+}
+
+// THE BUILD GUARD: an agent with no room doors on it degrades to a note. The
+// room is asserted, never required — see [taskRoomAgent].
+func TestASessionWithoutRoomDoorsSaysSoAndStaysPut(t *testing.T) {
+	a, _, _ := taskApp(t) // a tasker, but no rooms
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash",
+		session.TaskRunning, session.TaskNotice{})})
+	clickRail(t, a, 0)
+
+	if a.roomOpen() {
+		t.Fatal("a session with no room doors opened a room")
+	}
+	if !strings.Contains(taskText(a), roomUnavailableWord) {
+		t.Fatalf("the degraded case said nothing:\n%s", taskText(a))
 	}
 }

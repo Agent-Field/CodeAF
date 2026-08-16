@@ -90,10 +90,12 @@ const (
 	// graph is for.
 	taskMaxRunning = 2
 
-	// taskDeadline bounds one node's whole life. Thirty minutes is a long build
-	// and a fix loop after it; past that the node is not working, it is stuck,
-	// and a stuck node that never ends holds a slot and a worktree forever.
-	taskDeadline = 30 * time.Minute
+	// taskDeadline bounds one node's whole life. An hour is a long build, the
+	// reading around it, and the audit after it; past that the node is not
+	// working, it is stuck, and a stuck node that never ends holds a slot and
+	// a worktree forever. The deadline is the LEASH, not the budget: the
+	// auditor is what says a node is done.
+	taskDeadline = 60 * time.Minute
 
 	// tasksDirName is where the worktrees live, beside the job logs and under
 	// the repository so `git worktree list` and a person's file browser both
@@ -111,16 +113,16 @@ const (
 
 	// taskMaxSteps and taskNoProgress are the two named thresholds a node stops
 	// by, counted in the only unit this side of the wall can see: the child's
-	// finished tool calls.
+	// finished tool calls. They are the LEASH, not the budget — the auditor is
+	// what says a node is done, and a healthy node never meets either number.
 	//
-	// Forty steps is a build, a fix, and the reading around them. Six steps in a
-	// row that changed no file is the shape of a node that has stopped making
-	// progress and started looking for something to do — and it is a TIGHT
-	// default on purpose: it is the threshold that catches a spin in a minute
-	// rather than in thirty. A node with genuine reading to do before its first
-	// edit says so on the wire (no_progress), and that is the intended way to
-	// disagree with this number.
-	taskMaxSteps   = 40
+	// Two hundred steps is liberal on purpose: a real task reads, builds, fixes
+	// and verifies, and a step cap that bites during honest work is how you get
+	// "aborted" on a node that was about to finish. Six consecutive steps with
+	// no NEW information and no new dirt is the shape of a spin — the detector
+	// reads novelty now, so it only fires when a node is genuinely re-treading
+	// the same call, and it fires in a minute rather than in thirty.
+	taskMaxSteps   = 200
 	taskNoProgress = 6
 )
 
@@ -211,6 +213,14 @@ type TaskNode struct {
 	// cancel ends this node's run: the deadline's context, cancelled early by
 	// jobs kill or by Close.
 	cancel context.CancelFunc
+	// room is the node as a PLACE: the child agent somebody can talk to and the
+	// live subscribers watching it work (task_room.go). It is nil until the
+	// first person enters or the runner attaches its child, and it is emptied
+	// when the node lands.
+	room *taskRoom
+	// journal is where this node's transcript was written, recorded when its
+	// child agent was built. It is the node's history, and it outlives the room.
+	journal string
 }
 
 // TaskGraph is the session's work as a directed acyclic graph, plus the
@@ -562,6 +572,58 @@ func (n *TaskNode) setTree(tree taskTree) {
 	n.graph.checkpoint()
 }
 
+// openRoom returns the node's room, opening it on first use — the runner
+// attaching its child, or a person entering a node that has not started yet.
+// A node whose life is over has no room: nothing more will happen in it, and
+// its history is its journal (task_room.go).
+//
+// THE ROOM CLOSES WITH THE NODE, and it is hung on the node's own done channel
+// rather than on a call at the end of the run, because there is more than one
+// way to a final state: the runner's return, the frontier's cascade over a
+// dependent whose prerequisite failed, and a recovery consuming an interrupt.
+// All three close done, so all three empty the room and end every watcher's
+// channel — including the one Close takes, which kills the node's job and lands
+// it exactly as `jobs kill` would.
+func (n *TaskNode) openRoom() *taskRoom {
+	n.graph.mu.Lock()
+	if n.state.settled() {
+		n.graph.mu.Unlock()
+		return nil
+	}
+	room, opening := n.room, false
+	if room == nil {
+		room = newTaskRoom()
+		n.room = room
+		opening = true
+	}
+	done := n.done
+	n.graph.mu.Unlock()
+
+	if opening {
+		go func() {
+			<-done
+			room.close()
+		}()
+	}
+	return room
+}
+
+// setJournal records where this node's transcript is being written. The path is
+// minted with a timestamp in it (taskJournalPath), so it is written down the
+// moment it exists rather than recomputed later into the name of a file nobody
+// wrote.
+func (n *TaskNode) setJournal(path string) {
+	n.graph.mu.Lock()
+	n.journal = path
+	n.graph.mu.Unlock()
+}
+
+func (n *TaskNode) journalPath() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.journal
+}
+
 // markNoted records that this node's completion note has been handed to the
 // steering lane, so no later life of this session says it again.
 func (n *TaskNode) markNoted() {
@@ -757,7 +819,13 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		a.foldTaskUsage(child)
 	}()
 
-	changed, stopped, runErr := runTaskChild(ctx, child, node.instruction(), tree.dir, node.limits(), log)
+	// THE ROOM OPENS HERE, because this is the first moment there is anybody in
+	// it: from now until the node lands, its events reach whoever is watching
+	// and the person's words reach this child's steering lane (task_room.go).
+	room := node.openRoom()
+	room.speaking(child)
+
+	changed, stopped, runErr := runTaskChild(ctx, child, node.instruction(), tree.dir, node.limits(), room, log)
 	report := taskReport(child)
 
 	switch {
@@ -842,11 +910,19 @@ func abortedMerge(tree taskTree) string {
 // runTaskChild submits the brief, consumes the node's own events internally,
 // and enforces the two thresholds from the same stream.
 //
-// The events are NOT forwarded. A node's tool rows belong to its journal, not
-// to the conversation: a person watching a chat must not have forty of somebody
-// else's greps scroll past. What is kept is the one thing the person needs to
-// see afterwards — which files the node wrote — read off the edit and write
-// calls as they end.
+// The events are NOT forwarded INTO THE CONVERSATION. A node's tool rows belong
+// to its journal, not to the chat: a person watching a chat must not have forty
+// of somebody else's greps scroll past. What is kept for the chat is the one
+// thing the person needs to see afterwards — which files the node wrote — read
+// off the edit and write calls as they end.
+//
+// They ARE forwarded into the node's own ROOM, which is the other half of that
+// same rule: the events a chat must not carry are exactly the events somebody
+// who walked into this node's page came to see (task_room.go). The publish is
+// the first thing this loop does with an event, so a watcher sees the child's
+// narrative in the order it happened rather than in the order this side of the
+// wall got round to counting it — and it runs for a nil room too, which is the
+// ordinary case of a node nobody is watching.
 //
 // THE STEP IS ONE FINISHED TOOL CALL, and it is the only unit available from
 // out here: the child's model round-trips are inside its own loop, and this
@@ -860,7 +936,7 @@ func abortedMerge(tree taskTree) string {
 // partial work kept, its branch intact — and the caller is told WHICH threshold
 // fired rather than being left to infer it from a context error that has three
 // possible causes.
-func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, limits taskLimits, log io.Writer) ([]string, string, error) {
+func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, limits taskLimits, room *taskRoom, log io.Writer) ([]string, string, error) {
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 
@@ -879,6 +955,7 @@ func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, li
 		idle     int
 	)
 	for event := range events {
+		room.publish(event)
 		switch event.Kind {
 		case EventToolBegin:
 			fmt.Fprintf(log, "· %s\n", event.Hint)
@@ -1086,6 +1163,11 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode) (*Agent, error) {
 	journal := taskJournalPath(a.sessionID(), node.id, "")
 	a.mu.Unlock()
 
+	// Written on the node the moment it is minted: the name carries a timestamp,
+	// so this is the only moment anybody can learn it, and [Agent.TaskJournal] is
+	// how a person opens the node's whole transcript afterwards (task_room.go).
+	node.setJournal(journal)
+
 	return newAgent(Config{
 		Workspace:      dir,
 		Model:          model,
@@ -1107,6 +1189,11 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode) (*Agent, error) {
 		SearchFetcher:  parent.SearchFetcher,
 		ImageGenModel:  parent.ImageGenModel,
 		ImageGenClient: parent.ImageGenClient,
+		// A node reads documents on the rung the person chose, like the
+		// conversation does (tools_doc.go): the same worker, working somewhere
+		// quieter, must not silently drop to a different engine — or to a paid
+		// one — because it is running in a worktree.
+		DocumentEngine: parent.DocumentEngine,
 	}, client)
 }
 

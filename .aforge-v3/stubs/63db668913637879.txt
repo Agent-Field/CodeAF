@@ -1,0 +1,169 @@
+MiniCPM5-1B Benchmarks & Context (August 2026) | BenchLM.ai
+
+Model profile · OpenBMB
+
+# MiniCPM5-1B
+
+Current
+
+Released May 25, 2026 Open WeightReasoning131K context
+
+Released May 25, 2026 — see all recent releases
+
+MiniCPM5-1B scores 12.8 out of 100 and ranks #215 of 215. This profile shows 14 source-displayable benchmark rows; its strongest eligible category is Instruction Following at #35. No comparable first-party API price is published in the catalog.
+
+Data as of August 5, 2026 · How the score is built
+
+Compare MiniCPM5-1B Find alternatives
+
+## Strongest published evidence
+
+Instruction Following ranks #35. A well-rounded choice across a range of tasks.
+
+## Validate before choosing
+
+14 published rows leave some tracked benchmark slots empty. No comparable first-party API token rate is published.
+
+## Decision snapshot
+
+Each value carries a field reference instead of floating alone. Markers compare this model with the current ranked and priced catalog; they are not absolute quality thresholds.
+
+Capability
+
+12.8/100
+
+field median 57.3
+
+#215 of 215 ranked models
+
+Price
+
+Not listed
+
+input median $1
+
+No comparable first-party hosted token rate
+
+Speed
+
+Not measured
+
+field median 92 tok/s
+
+Time to first token not measured
+
+Context
+
+131Ktokens
+
+field median 200,000
+
+Reported for this model; direct source link not stored
+
+## Capability shape
+
+Each axis shows percentile within that category’s eligible cohort. The comparison outline is the median of the six nearest public-score peers; a collapsed vertex means the category is not rank-eligible.
+
+- Agentic5th percentile
+- CodingNot eligible
+- ReasoningNot eligible
+- KnowledgeNot eligible
+- MathNot eligible
+- MultilingualNot eligible
+- MultimodalNot eligible
+- Instruction following3rd percentile
+
+The dashed outline is median of 6 nearest peers.
+
+### Eligible category ranks
+
+Agentic
+
+Coding
+
+Reasoning
+
+Knowledge
+
+Math
+
+Multilingual
+
+Multimodal
+
+Inst. Following
+
+1. #125/131
+2. Not ranked
+3. Not ranked
+4. Not ranked
+5. Not ranked
+6. Not ranked
+7. Not ranked
+8. #35/36
+
+Top decileTop quartileMid-fieldNot eligible
+
+## How much of this is verified
+
+Coverage is split by category so a strong number never hides a thin evidence base. Verified means the row is tied to a published source; provisional rows remain visible but separate.
+
+1. Agentic1/1 verified
+2. Coding2/2 verified
+3. Reasoning1/1 verified
+4. Knowledge4/4 verified
+5. Math4/4 verified
+6. MultilingualNot measured
+7. MultimodalNot measured
+8. Inst. Following2/2 verified
+
+Verified sourceProvisionalNot measured
+
+## Spec sheet
+
+Each documented value carries its source. Missing fields stay visible as not sourced or not published, rather than disappearing from the page.
+
+API model IDNot published
+
+Context window131K
+
+Maximum outputNot sourced yet
+
+Knowledge cutoffNot sourced yet
+
+Input modalitiesNot sourced yet
+
+Output modalitiesNot sourced yet
+
+ParametersNot sourced yet
+
+AvailabilityNot sourced yet
+
+Cloud regionsNot tracked yet
+
+LifecycleCurrent
+
+API capabilitiesTool calling, structured outputs, and batch support are not tracked yet
+
+Prompt cachingNot documented in the pricing record
+
+Self-hostOpen weights available; hardware estimate not sourced
+
+Rate limitsNot tracked yet
+
+## Deployment options
+
+Self-host and provider-specific paths stay separate from benchmark evidence so operating constraints are visible before a score becomes the whole decision.
+
+Published weights are available, but BenchLM does not yet have a sourced parameter and VRAM profile for this exact model. Hardware cost estimates stay unavailable until that sizing record is complete.
+
+Estimate VRAM from known parameters
+
+## Category score record
+
+Scores and ranks appear only where published evidence can be displayed. The table keeps the score, weight, cohort, and evidence state together.
+
+Category scores, ranks, weighting, benchmark coverage, and evidence status
+
+| Category | Score | Rank | Percentile | Weight | Benchmarks | Evidence |
+| --- | --- | --- | --- | --- | --- |… (10918 more bytes)
