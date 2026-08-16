@@ -331,6 +331,13 @@ func taskStatusGlyph(entry session.TaskIndexEntry, ascii bool) string {
 			return glyphBadASCII
 		}
 		return glyphBad
+	case string(session.TaskUnverified):
+		// THE TICK IS NOT THE DEFAULT ANSWER TO "WHAT ELSE IS THERE". An
+		// unverified row would otherwise fall through below and wear the one
+		// success glyph this surface has, which is the single place a person
+		// picking a task by recognition could be told that work nobody could
+		// judge came home (task.go's [glyphUnverified]).
+		return glyphUnverified
 	default:
 		if ascii {
 			return glyphDoneASCII

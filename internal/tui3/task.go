@@ -227,6 +227,23 @@ const (
 	taskStoppedKept = "stopped — branch kept"
 )
 
+// The words a node NOBODY COULD JUDGE is drawn with (session's TaskUnverified).
+//
+// It is the third settled state and it is neither of the other two: the run is
+// over, the branch is kept, and the auditor answered with neither verdict word —
+// so the surface must not spend "done" on it and must not spend "failed" on it
+// either. "unverified" is the state's own word, and the sentence beside it says
+// the only two things that are actionable: nothing was found against the work,
+// and it is waiting on a person to say which way it goes.
+const (
+	taskUnverifiedWord  = "unverified"
+	taskUnverifiedGloss = "auditor inconclusive"
+	taskUnverifiedWaits = "unverified — waiting on you"
+	// taskBranchKept is [taskStoppedKept] without the stop: an unverified node
+	// wears the same "aborted" merge, and nothing about it stopped.
+	taskBranchKept = "branch kept"
+)
+
 // taskAgent is the slice of *session.Agent this file needs, and it is asserted
 // rather than added to [Agent].
 //
@@ -1375,6 +1392,14 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 		return railRunning
 	case session.TaskFailed:
 		return railAttention
+	case session.TaskUnverified:
+		// ATTENTION, AND IT IS THE PLAINEST CASE OF IT ON THIS COLUMN. An
+		// unverified node is settled work that nobody can call finished, and the
+		// only thing that moves it is a person deciding (session's
+		// ResolveUnverified). It is named here rather than left to the merge
+		// switch below, which would file a node whose branch went nowhere under
+		// "done".
+		return railAttention
 	case session.TaskQueued:
 		if a.railWaits(node) != "" {
 			return railParked
@@ -2202,6 +2227,12 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		if waits := a.railWaits(node); waits != "" {
 			text = "waits: " + waits
 		}
+	case session.TaskUnverified:
+		// NOT THE MERGE SENTENCE. An unverified node wears session's "aborted"
+		// merge like a stopped one does, and the row below would therefore say
+		// "stopped — branch kept" about work that ran to the end. What it is
+		// waiting for is a person, and that is what the row says.
+		paint, text = a.pal.warn, taskUnverifiedWaits
 	default:
 		switch node.merge {
 		case mergeWordConflicted:
@@ -2410,6 +2441,8 @@ func (a *app) railGlyph(node *taskNode) string {
 		return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
 	case session.TaskFailed:
 		return a.pal.bad(a.linearMark(glyphBad, glyphBadASCII))
+	case session.TaskUnverified:
+		return a.pal.warn(glyphUnverified)
 	case session.TaskRunning:
 		if a.linear {
 			return a.pal.accent(glyphRunASCII)
@@ -2426,6 +2459,17 @@ const (
 	glyphDone      = "✓"
 	glyphDoneASCII = "+"
 )
+
+// glyphUnverified marks the node nobody could judge, and it ASKS A QUESTION
+// because that is what the state is: not a tick, which would claim a verdict
+// nobody gave, and not a cross, which would claim a finding nobody made. It
+// takes the warn hue rather than the ask hue — [glyphAsk] is the question the
+// SESSION is blocked on and answering it is the next thing anyone does here,
+// while this one waits for as long as it takes.
+//
+// It is the same cell in both glyph tiers: "?" is already a character a screen
+// reader names, so there is nothing for the linear tier to stand in for.
+const glyphUnverified = "?"
 
 // railJoin lays one conversation row beside the rail's column for that row. It
 // is the ONLY place the two columns meet, and it pads through
@@ -2462,6 +2506,12 @@ func (a *app) railJoin(text, rail string) string {
 // write two "task done" lines into the conversation. The states a node moves
 // through are monotonic (queued → running → done|failed), so a repeat of the
 // state last seen for an id is always the second copy of one event.
+//
+// UNVERIFIED IS THE ONE STATE THAT CAN BE LEFT AGAIN, and the pair holds through
+// it: a person resolving one (session's ResolveUnverified) re-settles the node
+// into done or failed, which is a state it has not been in, so the surface draws
+// the second card — the decision is an event, and the card that says the work
+// was accepted is the record of it.
 func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	notice := ev.Task
 	if notice == nil {
@@ -2551,7 +2601,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	case session.TaskRunning:
 		// The node is alive, so the surface starts WATCHING it (see [taskPilot]).
 		pilot = a.flyPilot(notice.ID)
-	case session.TaskDone, session.TaskFailed:
+	case session.TaskDone, session.TaskFailed, session.TaskUnverified:
+		// UNVERIFIED IS A LANDING. The run is over, the slot is handed back and
+		// the pilot's lane has ended, so a surface that waited for one of the
+		// other two would keep a spinner on a node nothing is doing and would
+		// never write the one card that says a person has to decide
+		// (session's task_contract.go).
 		node.elapsed = notice.Elapsed
 		a.landPilot(notice.ID)
 		a.landedCard(node)
