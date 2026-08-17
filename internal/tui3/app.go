@@ -888,6 +888,12 @@ type app struct {
 	// roster is the resume picker: the same conversations the box lists, opened
 	// on purpose and filterable (resume.go).
 	roster roster
+	// shelf is the deliverables picker /files opens over the global index of
+	// what has been made (deliverables.go). artifacts is that index's path, and
+	// it is empty on every real surface: the default goes through internal/home
+	// so AFORGE_HOME moves it with everything else, and only a test names one.
+	shelf     shelf
+	artifacts string
 	// recentSessions answers the box's right column and the picker's rows, and
 	// resume opens one of them. Both are nil on a surface the door did not wire,
 	// and then the box says it has no sessions rather than pretending to have
@@ -1171,6 +1177,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case exportedMsg:
 		a.exportDone(msg)
+		return a, nil
+
+	case copiedMsg:
+		// A deliverable taken out of the session that made it (deliverables.go),
+		// coming back from the disk the way an export does.
+		a.copiedFile(msg)
 		return a, nil
 
 	case tea.MouseWheelMsg:
@@ -2883,6 +2895,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// (export.go). A path is where it goes; without one it goes to the
 		// workspace under a name this session derives for itself.
 		return a.exportTranscript(rest)
+
+	case "files":
+		// What this conversation and every other one have MADE, as a list, read
+		// off the global index (deliverables.go). No argument form, for
+		// /resume's reason: a deliverable is named by a title a model wrote and
+		// lives at a path nobody types, so the only honest way to ask for one is
+		// to be shown them.
+		a.openFiles()
+		return nil
 
 	case "model":
 		// Bare /model is a question — "which ones are there" — and the picker

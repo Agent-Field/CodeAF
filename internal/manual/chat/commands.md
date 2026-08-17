@@ -82,6 +82,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |
 | `/export` | `/save` | `<path>` | …and writes it there; tab completes the path |
+| `/files` | — | — | lists what has been made for you; opens, reveals or copies one |
 | `/help` | `/?` | — | prints this list |
 | `/quit` | `/exit`, `/q` | — | leaves |
 
@@ -284,6 +285,44 @@ Session "note" entries are skipped. "aside" entries are kept, in italics.
 The file is written with permissions 0600, and it is created exclusively — the filesystem
 decides whether the name is free, not a check that could go stale between looking and
 writing. A directory aforge creates for a path you typed is made 0700.
+
+## /files — what has been made for you
+
+`/files` lists the things conversations have produced — a generated picture, an exported
+document, a report a session wrote — newest first, whatever directory each one was made
+in. It reads one index of everything made rather than looking in a folder, so "the report
+from Tuesday" is found by its title from anywhere.
+
+Each row is a mark, the title it was given, and a dim tail: where the file went, in short
+form, and how long ago it landed. Pictures carry one mark and everything else carries the
+other.
+
+Typing narrows the list by title, the same way the model picker and `/resume` narrow
+theirs. ↑↓ move, esc clears the filter and then closes the list.
+
+Three verbs:
+
+- **enter** opens the file the way your desktop would (`open` on a Mac, `xdg-open` on
+  Linux).
+- **ctrl+r** opens the folder the file is in, the same way.
+- **ctrl+y** asks where to copy it. Type a path — `~` is home, a bare name lands under
+  the conversation's own directory — and enter copies it there. A path that is an
+  existing directory receives the file under the name it already has.
+
+The verbs are chords rather than bare letters because plain letters go into the filter
+box.
+
+A file that has been deleted, moved or renamed since it was made keeps its row and its
+tail reads `gone`. None of the three verbs act on such a row. The original is never
+moved: copying leaves it exactly where it was.
+
+`/files` never overwrites. If something is already at the destination the copy is refused
+and says so; give it another name.
+
+If nothing has been made yet, `/files` opens no list and answers `nothing made yet.`
+
+Over `--host` the list is the files made on **this** machine; what the session on the
+other machine made is written down over there, and the command says so as it opens.
 
 ## /status — everything the status line knows
 
