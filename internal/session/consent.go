@@ -61,6 +61,23 @@ const (
 	// deserve individual answers should say so in the policy, where a rule can
 	// name the pattern; that is what the bash pattern list is for.
 	ConsentToolSession ConsentScope = "tool-session"
+	// ConsentRule answers this call and says a RULE HAS BEEN WRITTEN that covers
+	// it — the surface banked the shape the person picked into their own settings
+	// before sending this (internal/config's approvalmemory.go).
+	//
+	// It exists because the memo above is keyed by TOOL NAME ALONE, and for bash
+	// that is wider than anything the card ever promised: a card that said
+	// "always, this command" and left behind a memo meaning "every bash command"
+	// was a card that lied by one word, in the direction that matters. So a
+	// surface that wrote a real rule says so with this scope, and the gate writes
+	// NO memo — the rule is what answers the next call, and it answers only the
+	// calls it matches.
+	//
+	// The honest consequence, stated here because it is surprising: this scope
+	// makes the next call go back through the policy. A shape narrower than the
+	// person expected means being asked again, which is the card's promise kept
+	// rather than broken.
+	ConsentRule ConsentScope = "rule"
 )
 
 // consentAnswer is one resolution travelling from the surface to the blocked
@@ -93,7 +110,9 @@ func (a *Agent) ResolveConsent(id uint64, allow bool) {
 // the call that happened to prompt it, so an interrupt racing the click must
 // not quietly turn "always" into "once".
 func (a *Agent) ResolveConsentRemember(id uint64, allow bool, scope ConsentScope) {
-	if scope != ConsentToolSession {
+	switch scope {
+	case ConsentToolSession, ConsentRule:
+	default:
 		scope = ConsentOnce
 	}
 	a.deliverConsent(id, consentAnswer{allow: allow, scope: scope})
@@ -211,14 +230,26 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 		return refusal("denied by approval rule: " + decision.Rule), false
 	}
 
-	// From here the policy wants a person. A remembered answer for this tool
-	// stands in for one; an explicit deny rule above does NOT consult the memo,
-	// because a rule that refuses outright is not a question anybody was asked.
-	if remembered, known := a.rememberedConsent(call.Function.Name); known {
-		if remembered {
-			return toolResult{}, true
+	// From here the policy wants a person, and a remembered answer for this tool
+	// stands in for one. Two questions it never stands in for:
+	//
+	//   - AN OUTRIGHT DENY, which returned above and never reaches this line. A
+	//     rule that refuses is not a question anybody was asked, so there is no
+	//     answer to remember about it.
+	//   - THE FLOOR. The critical shapes and the calls that act in the person's
+	//     name answer PROMPT and not deny (internal/approval), so without this
+	//     they were exactly the questions a memo could swallow: one approved
+	//     `git status` with "stop asking me about bash" behind it, and `rm -rf /`
+	//     ran silently for the rest of the session. The memo is somebody saying
+	//     they are done being asked about ordinary work. It is not somebody
+	//     saying they have read a message that has not been written yet.
+	if !approval.AlwaysAsks(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+		if remembered, known := a.rememberedConsent(call.Function.Name); known {
+			if remembered {
+				return toolResult{}, true
+			}
+			return refusal("denied by approval rule: " + decision.Rule + " (remembered for this session)"), false
 		}
-		return refusal("denied by approval rule: " + decision.Rule + " (remembered for this session)"), false
 	}
 
 	// THE GUARDIAN (guardian.go), if the person turned it on: a small model is
@@ -303,6 +334,14 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		Kind: EventConsentRequest,
 		ID:   id,
 		Tool: call.Function.Name,
+		// AND THE ID OF THE CALL IT IS ABOUT, for the reason the announcement
+		// carries one (loop.go): a batch can raise three bash questions at once,
+		// and a surface with no id can pair a question to a row only by tool name
+		// — oldest-of-that-tool, which is a guess. Here the guess is worse than a
+		// wrong row. The card reads the COMMAND off the row it paired to, so a
+		// question that landed on the wrong one lets a person read command A,
+		// press always, and bank a standing rule for command B.
+		CallID: call.ID,
 		// Hint is the same gloss every tool row carries, so a surface renders
 		// the question against the row it already drew; Rule is the policy's
 		// own words for why it is asking.
@@ -316,6 +355,10 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 
 	select {
 	case answer := <-answers:
+		// A [ConsentRule] answer writes nothing here on purpose: the surface
+		// already wrote the rule the person picked, and a memo beside it would be
+		// the coarse tool-wide yes this scope exists to stop making. See its
+		// doc for the consequence.
 		if memo && answer.scope == ConsentToolSession {
 			// A STANDING YES ABOUT AN ACCOUNT IS A SETTING, NOT A MEMO. It is
 			// written where the settings sheet writes it, and it is written
