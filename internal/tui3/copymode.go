@@ -51,6 +51,52 @@ import (
 // builds its own because the bare form is the one that silently does nothing
 // inside a multiplexer, which is where a lot of these sessions live.
 
+// ── AND THE OTHER DOOR: ctrl+s ──────────────────────────────────────────────
+//
+// Copy mode is the keyboard's answer. This is the mouse's, and it exists
+// because the surface takes the pointer by default (view.go): while it holds
+// it, dragging across an answer scrolls or hovers, and the drag every person
+// alive already knows selects nothing.
+//
+// ctrl+s gives the pointer to the terminal. Drag, copy the way that terminal
+// copies, and the next key pressed here takes it back — there is no mode to
+// leave and nothing to remember, because the gesture that ends it is the
+// gesture that follows it anyway. While it is out, one dim line says so.
+//
+// It is deliberately NOT the ui.mouse setting under another name. The setting
+// is a standing decision about how this surface behaves; this is a person
+// reaching for one paragraph, which is a thing they do between two keystrokes
+// and should not have to open a panel for.
+
+// selectKey hands the pointer over. ctrl+s survives the trip: the terminal is
+// in raw mode while this surface is up, and raw mode is exactly what turns off
+// the flow control that would otherwise have eaten it.
+const selectKey = "ctrl+s"
+
+// releaseMouse toggles the handover, and reports whether the surface had a
+// pointer to hand over at all. With ui.mouse off the terminal already has it,
+// so there is nothing to do and nothing to say — the drag being asked for
+// works already.
+func (a *app) releaseMouse() bool {
+	if !a.mouse {
+		return false
+	}
+	a.released = !a.released
+	a.touch()
+	return true
+}
+
+// takeMouseBack ends the handover on the person's next keystroke. It reports
+// whether it did anything so the caller can stay quiet when it did not.
+func (a *app) takeMouseBack() bool {
+	if !a.released {
+		return false
+	}
+	a.released = false
+	a.touch()
+	return true
+}
+
 // copyMode is the frozen viewport's whole state. The zero value is off, except
 // for mark, which [newApp] sets to -1 — nothing is marked.
 type copyMode struct {
