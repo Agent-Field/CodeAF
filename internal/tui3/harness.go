@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // THE HARNESS OFFER.
@@ -47,6 +48,17 @@ import (
 type harnessAsk struct {
 	// id is the token [session.Agent.ResolveHarness] takes back.
 	id uint64
+	// card is the DESIGN's page, drawn (subharness.CardLines), and nil on the
+	// ordinary offer. It is what makes this struct carry two questions rather
+	// than two structs carrying one each: both are answered by the same method
+	// with the same two keys, and the only difference is what a person is reading
+	// while they answer — a name, or the shape somebody is about to keep.
+	card []string
+	// designed says this is a page waiting to be SAVED rather than a harness
+	// waiting to be RUN. It is a field of its own rather than len(card) > 0
+	// because it decides the words on the answer row, and a design whose card
+	// could not be drawn is still a design.
+	designed bool
 	// name is the harness, and the word the row says out loud.
 	name string
 	// desc is the entry's own sentence about itself, drawn dim beside the name
@@ -93,6 +105,32 @@ func (a *app) askHarness(ev session.Event) {
 	a.touch()
 }
 
+// askHarnessDesign takes one session.EventHarnessDesignDone: a page this
+// conversation asked for, finished, and waiting to be kept or dropped.
+//
+// It joins the SAME queue the offer joins, because it is the same question one
+// rung along — this surface asks it in the same place, answers it with the same
+// two keys, and hands the answer back through the same method. What it adds is
+// the page: nobody approves a name they have not seen the shape of, so the card
+// is drawn above the row (internal/subharness's card.go is the renderer every
+// surface shares).
+func (a *app) askHarnessDesign(ev session.Event) {
+	if ev.Harness == nil {
+		return
+	}
+	page := *ev.Harness
+	a.closeLists()
+	if a.pick.open {
+		a.pick.close()
+	}
+	a.harnessAsks = append(a.harnessAsks, harnessAsk{
+		id: ev.ID, name: page.Id.Name, desc: page.Id.Desc,
+		model: ev.Model, card: subharness.CardLines(page), designed: true,
+	})
+	a.follow()
+	a.touch()
+}
+
 // asksHarness reports whether an offer owns the keyboard.
 func (a *app) asksHarness() bool { return len(a.harnessAsks) > 0 }
 
@@ -120,14 +158,31 @@ func (a *app) answerHarness(run bool) {
 	a.touch()
 }
 
-// dropHarnessAsks forgets every unanswered offer. It runs where the other two
+// dropHarnessAsks forgets every unanswered OFFER. It runs where the other two
 // questions are dropped and for the same reason (app.go's [app.settle]): the
 // turn that raised them is over, so the answers are late.
+//
+// A DESIGN CARD IS NOT DROPPED, and that is the one place these two questions
+// part. An offer is a question ABOUT A TURN — the session is holding one on it,
+// and when the turn ends the question has no subject left. A design outlives its
+// turn by construction (session's harness_build.go): the turn ended the moment
+// the design started, so a settle that swept the card away would throw away the
+// answer to the thing the person actually asked for, seconds before they gave
+// it.
 func (a *app) dropHarnessAsks() {
 	if len(a.harnessAsks) == 0 {
 		return
 	}
-	a.harnessAsks = nil
+	kept := a.harnessAsks[:0]
+	for _, ask := range a.harnessAsks {
+		if ask.designed {
+			kept = append(kept, ask)
+		}
+	}
+	if len(kept) == len(a.harnessAsks) {
+		return
+	}
+	a.harnessAsks = kept
 	a.touch()
 }
 
@@ -140,6 +195,90 @@ func (a *app) noteHarness(name string) {
 		return
 	}
 	a.note("harness · " + name)
+}
+
+// ── the design lane ─────────────────────────────────────────────────────────
+//
+// A design is asked for in a sentence and answered minutes later, on no turn at
+// all (session's harness_build.go). So it arrives the way a task node's landing
+// arrives: on a STANDING subscription this surface holds for the life of the
+// session, pumped into the program loop with a generation, because a lane from
+// an agent that has been replaced must not put a card on the screen of the
+// conversation that replaced it.
+
+// designAgent is the slice of *session.Agent this lane needs, asserted rather
+// than added to [Agent] for [taskAgent]'s reason: the harness designer is
+// OPTIONAL. Every scripted agent in this package's own tests has never heard of
+// one, and widening the package interface would make a session without a
+// designer un-representable.
+type designAgent interface {
+	// HarnessDesigns is the standing subscription: the design starting, the card
+	// asking whether to keep the page it wrote, and the notes that say a design
+	// failed, was declined or was saved.
+	HarnessDesigns() <-chan session.Event
+}
+
+// designer is the agent under this surface, when it has a designer at all.
+func (a *app) designer() (designAgent, bool) {
+	agent, ok := a.agent.(designAgent)
+	return agent, ok
+}
+
+// watchDesigns opens the lane and starts pumping it. It is called wherever
+// [app.watchTasks] is, and for the same reason: the channel belongs to the agent
+// that handed it over, so a replaced conversation gets a new one.
+func (a *app) watchDesigns() tea.Cmd {
+	agent, ok := a.designer()
+	if !ok {
+		return nil
+	}
+	a.designGen++
+	a.designLane = agent.HarnessDesigns()
+	return waitDesign(a.designLane, a.designGen)
+}
+
+// waitDesign takes one event off the lane and asks for the next.
+func waitDesign(ch <-chan session.Event, gen int) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return designLaneClosedMsg{gen: gen}
+		}
+		return designEventMsg{gen: gen, ev: ev}
+	}
+}
+
+// designEvent folds one event from the lane in and re-arms the pump.
+func (a *app) designEvent(ev session.Event) tea.Cmd {
+	switch ev.Kind {
+	case session.EventHarnessDesign:
+		// The turn is already over — that is the whole arrangement — so this is
+		// the only thing on screen saying that work is happening. It is a note for
+		// the reason the run announcement is one: nobody has to answer it.
+		a.note("harness · designing " + firstLineOf(ev.Text))
+	case session.EventHarnessDesignDone:
+		// A QUESTION OUTRANKS A PANEL, on the terms every other question on this
+		// surface states: the block is drawn above the input, and a question drawn
+		// under a fullscreen sheet is an answer nobody can reach.
+		a.closeSettings()
+		a.closeExpand()
+		a.askHarnessDesign(ev)
+	case session.EventNotice:
+		// What became of a design: it failed, it was dropped, it was saved. The
+		// session writes the sentence (harness_build.go) so that every surface says
+		// the same thing about the same outcome.
+		a.note(ev.Text)
+	}
+	return tea.Batch(waitDesign(a.designLane, a.designGen), a.wake())
+}
+
+// firstLineOf keeps a note to one row. A goal is a sentence somebody typed and
+// can carry newlines; the note lane is one line.
+func firstLineOf(text string) string {
+	if at := strings.IndexByte(text, '\n'); at >= 0 {
+		return strings.TrimSpace(text[:at])
+	}
+	return strings.TrimSpace(text)
 }
 
 // ── the keys ────────────────────────────────────────────────────────────────
@@ -171,22 +310,44 @@ func (a *app) harnessAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // ── the row ─────────────────────────────────────────────────────────────────
 
-// harnessAskHeight is how many rows the offer takes: one, and one more for the
-// count when a second offer is queued behind it. The queue is nearly always
-// empty — the session asks at most once per turn — but a wake landing on a held
-// turn can put a second one there, and a person who answers one question and
-// gets another must have been told it was coming.
+// harnessCardRows is how much of a design's page is drawn above the question.
+//
+// It is a cap and not a window: the card is a numbered list in RUN ORDER, so its
+// first lines are the ones that say what the thing does, and a page longer than
+// this is a page whose tail is bounds a person can read in /harness once it is
+// saved. What is cut is SAID — a block that quietly stopped at fourteen lines
+// would be asking somebody to approve a shape while showing them part of it.
+const harnessCardRows = 14
+
+// harnessCard is the page as this block draws it, capped.
+func (a *app) harnessCard(head harnessAsk) []string {
+	if len(head.card) <= harnessCardRows {
+		return head.card
+	}
+	out := append([]string(nil), head.card[:harnessCardRows-1]...)
+	return append(out, "… "+itoa(len(head.card)-(harnessCardRows-1))+" more lines")
+}
+
+// harnessAskHeight is how many rows the block takes: the question, the card
+// above it when the question is about a design, and one more for the count when
+// a second question is queued behind it.
+//
+// The queue is nearly always empty — the session offers at most once per turn —
+// but a design landing while an offer is up can put a second one there, and a
+// person who answers one question and gets another must have been told it was
+// coming.
 func (a *app) harnessAskHeight() int {
 	if !a.asksHarness() {
 		return 0
 	}
+	rows := 1 + len(a.harnessCard(a.harnessAsks[0]))
 	if len(a.harnessAsks) > 1 {
-		return 2
+		rows++
 	}
-	return 1
+	return rows
 }
 
-// harnessAskRows draws the offer, under the connect block and above the draft.
+// harnessAskRows draws the block, under the connect block and above the draft.
 func (a *app) harnessAskRows(width int) []string {
 	// The targets are rewritten by every layout and by nothing else: a stale
 	// span is a press that answers about the previous offer.
@@ -195,7 +356,14 @@ func (a *app) harnessAskRows(width int) []string {
 		return nil
 	}
 	head := a.harnessAsks[0]
-	out := []string{a.harnessOffer(head, width)}
+	var out []string
+	// THE PAGE IS DIM AND THE QUESTION IS NOT. What a person is being asked is
+	// the last line of the block; the card above it is what they are answering
+	// about, drawn the way every other quotation on this surface is.
+	for _, line := range a.harnessCard(head) {
+		out = append(out, a.pal.dim(fit(line, width)))
+	}
+	out = append(out, a.harnessOffer(head, width))
 	if more := len(a.harnessAsks) - 1; more > 0 {
 		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
 	}
@@ -215,6 +383,14 @@ func (a *app) harnessAskRows(width int) []string {
 func (a *app) harnessOffer(head harnessAsk, width int) string {
 	question := glyphAsk + ` run harness "` + head.name + `"?`
 	answers := []string{" · ", "[enter]", " run · ", "[esc]", " no"}
+	if head.designed {
+		// THE VERB IS WHAT CHANGES, and it is the only thing that does. Saying yes
+		// here writes a page into the registry rather than starting a run, and a
+		// row that said "run" would be asking the wrong question about the same
+		// name — the design has not run and is not about to.
+		question = glyphAsk + ` save harness "` + head.name + `"?`
+		answers = []string{" · ", "[enter]", " save · ", "[esc]", " discard"}
+	}
 	parts := append([]string{question}, answers...)
 	// Longest first, then each shorter reading in turn; the last one that fits
 	// wins, and the bare question is what nothing fitting falls through to.
@@ -263,7 +439,10 @@ func (a *app) harnessOffer(head harnessAsk, width int) string {
 // is the bare row every offer drew before a turn could name a model.
 func harnessMiddles(head harnessAsk) [][]string {
 	desc, model := "", harnessModelPart(head)
-	if head.desc != "" {
+	if head.desc != "" && !head.designed {
+		// A DESIGN'S ROW NEVER REPEATS ITS DESCRIPTION: the card's own head line,
+		// two rows up, is `name · draft · what it is for`, and saying it twice
+		// would cost the sentence that says what the harness will run on.
 		desc = " · " + head.desc
 	}
 	switch {
@@ -355,10 +534,15 @@ func (a *app) harnessPress(x, y int) bool {
 }
 
 // harnessMark is what the pointer is over on row i of the block, which is the
-// frame's half of the same geometry ([app.chrome]). The offer is the first row
-// and the only pressable one; the count under it is a statement.
+// frame's half of the same geometry ([app.chrome]). The QUESTION is the only
+// pressable row: the card above it is a quotation and the count under it is a
+// statement, and a target on either would be a press that answers a question the
+// pointer was not on.
 func (a *app) harnessMark(i int) chromeRow {
-	if i == 0 {
+	if !a.asksHarness() {
+		return chromeRow{}
+	}
+	if i == len(a.harnessCard(a.harnessAsks[0])) {
 		return chromeRow{kind: chromeHarnessAsk, index: i}
 	}
 	return chromeRow{}
