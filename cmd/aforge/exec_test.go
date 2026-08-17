@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"io"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -260,6 +261,30 @@ func TestUsageMentionsExecEnvironmentFallbacks(t *testing.T) {
 	for _, variable := range []string{"AFORGE_EXEC_TIMEOUT", "AFORGE_EXEC_BUDGET", "AFORGE_EXEC_TURNS"} {
 		if !strings.Contains(usageText, variable) {
 			t.Fatalf("usageText does not mention %s", variable)
+		}
+	}
+}
+
+// HEADLESS.md is a contract other people program against, so the parts of it a
+// caller cannot discover any other way — the environment fallbacks and the
+// exit-code table — have to actually be in it. A capability the product has and
+// does not document is one a harness author meets by accident.
+func TestHeadlessDocumentsExec(t *testing.T) {
+	raw, err := os.ReadFile("../../docs/HEADLESS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := string(raw)
+	for _, want := range []string{
+		"aforge exec",
+		"AFORGE_EXEC_TURNS",
+		"AFORGE_EXEC_BUDGET",
+		"AFORGE_EXEC_TIMEOUT",
+		"elapsed_ms",
+		"turn-cap",
+	} {
+		if !strings.Contains(document, want) {
+			t.Fatalf("docs/HEADLESS.md never mentions %q", want)
 		}
 	}
 }
