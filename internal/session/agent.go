@@ -448,6 +448,18 @@ type userMessage struct {
 	// was running drains what is left of the queue at its end. Both are places
 	// where "does anybody have to say something about this" is the question.
 	wake bool
+
+	// authored marks a line the SESSION wrote rather than the person: every note
+	// that goes through [Agent.enqueueNote], whether or not anybody owes it an
+	// answer. It is WHO SAID IT, where wake is WHAT IS OWED, and the two are
+	// separate because an ambient note nobody must answer is still not the
+	// person's words.
+	//
+	// It is read at exactly one place — the journal write in
+	// [Agent.recordUserLocked] — and what it buys is a replay that draws the
+	// harness's own line in the harness's own lane (sessionfile.go's
+	// [sessionEntry.Note]).
+	authored bool
 }
 
 // userText is the ordinary case: a message that is only words.
@@ -911,9 +923,19 @@ func (a *Agent) recordLocked(message ai.Message) {
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
 	a.messages = append(a.messages, user.message)
-	if a.file != nil {
-		a.file.appendMessage(user.message, user.refs...)
+	if a.file == nil {
+		return
 	}
+	if user.authored {
+		// THE SESSION'S OWN LINE IS MARKED AS ONE. The transcript keeps it
+		// user-role, which is what the model has to read it as; the journal keeps
+		// the one bit that says nobody typed it, so a resume can draw it where the
+		// live surface drew it (sessionfile.go's [sessionEntry.Note]). A note
+		// carries no pictures, which is why this door takes none.
+		a.file.appendNote(user.message)
+		return
+	}
+	a.file.appendMessage(user.message, user.refs...)
 }
 
 func (a *Agent) record(message ai.Message) {
@@ -1009,6 +1031,9 @@ func (a *Agent) enqueueNote(note userMessage) {
 		return
 	}
 	note.message = textMessage("user", text)
+	// Both kinds of note are the SESSION's words. It is set here, at the one door
+	// both of them come through, rather than at the two constructors above.
+	note.authored = true
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
@@ -1304,7 +1329,21 @@ func (s *eventStream) pump() {
 // payload the journal kept for them. No reasoning — that is never recorded — and
 // nothing about the wire itself.
 type DisplayEntry struct {
-	Role string // "user" | "assistant" | "tool" | "note" (system-injected, e.g. compaction summary)
+	// Role is "user" | "assistant" | "tool" | "note" | "aside".
+	//
+	// "note" is a system-injected marker a surface draws as a rule of its own — a
+	// compaction summary is the one that exists.
+	//
+	// "aside" is a line the SESSION WROTE and the person did not: a task's
+	// completion note, a job's exit, a resume's account of what an interrupt left
+	// behind (agent.go's [Agent.enqueueNote]). It rides the user role in the
+	// transcript because that is the only role the model can be told something
+	// in, and it is separated here because a surface that drew it as a user
+	// message would be putting words in somebody's mouth — words that, live, that
+	// same surface deliberately never draws. It is answered from the journal's own
+	// mark, so a line from a file written before the mark existed still arrives as
+	// "user", which is exactly what it always was.
+	Role string
 	Text string
 	Tool string // set when the entry is one call in a batch
 	Hint string // the call's gloss, as the tool cluster rendered it
@@ -1379,8 +1418,20 @@ func shapeEntries(messages []ai.Message, journal *sessionFile) []DisplayEntry {
 		if msg.Role == "system" {
 			continue
 		}
+		role := msg.Role
+		if role == "user" && journal.isNote(msg) {
+			// A LINE THE SESSION WROTE IS NOT THE PERSON'S. It is user-role in the
+			// transcript because that is the only role the model can be told
+			// something in, and the journal is the only place that remembers the
+			// difference (sessionfile.go's [sessionEntry.Note]). Drawn as a user
+			// message it would be this build putting words in somebody's mouth —
+			// the exact thing the live surface refuses to do with the same note.
+			// It is NOT "note": that role is the compaction marker a surface draws
+			// as a rule of its own, and these two are not one shape.
+			role = "aside"
+		}
 		entries = append(entries, DisplayEntry{
-			Role:      msg.Role,
+			Role:      role,
 			Text:      messageContentText(msg),
 			ImageRefs: journal.imageRefs(msg),
 		})

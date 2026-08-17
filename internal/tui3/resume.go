@@ -412,7 +412,12 @@ func (a *app) openResume() {
 // resumeKey routes one keypress while the roster owns the keyboard. It is the
 // picker's key map with one decision instead of the other: enter opens a
 // conversation where /model's switches a model.
-func (a *app) resumeKey(msg tea.KeyPressMsg) {
+//
+// It returns work for exactly one of those keys: enter on a row that is not the
+// row we are standing on swaps the agent, and the conversation that arrives owes
+// itself the two standing lanes (welcome.go's [app.resumeSession]).
+func (a *app) resumeKey(msg tea.KeyPressMsg) tea.Cmd {
+	var cmd tea.Cmd
 	switch msg.String() {
 	case "esc":
 		a.roster.close()
@@ -428,11 +433,12 @@ func (a *app) resumeKey(msg tea.KeyPressMsg) {
 			// here — a second of work to arrive where the person already was.
 			a.note("already here · " + humanName(chosen))
 		default:
-			a.resumeSession(chosen)
+			cmd = a.resumeSession(chosen)
 		}
 
 	default:
 		a.roster.navigate(msg)
 	}
 	a.touch()
+	return cmd
 }

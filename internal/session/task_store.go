@@ -127,6 +127,14 @@ type taskRecord struct {
 	State  TaskState `json:"state"`
 	Report string    `json:"report,omitempty"`
 
+	// Claim is the WORK'S OWN account of itself, kept beside the composed report
+	// so that a verdict landing after a resume can rebuild the card without
+	// guessing which half of the report the last auditor wrote (task_run.go's
+	// [TaskNode.claim]). Absent in every checkpoint written before this field
+	// existed, which resumes exactly as it always did: the report is carried
+	// whole.
+	Claim string `json:"claim,omitempty"`
+
 	Changed  []string `json:"changed,omitempty"`
 	Branch   string   `json:"branch,omitempty"`
 	Worktree string   `json:"worktree,omitempty"`
@@ -289,6 +297,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		DependsOn:   dependsOn,
 		State:       n.state,
 		Report:      n.report,
+		Claim:       n.claim,
 		Changed:     changed,
 		Branch:      n.branch,
 		Worktree:    n.worktree,
@@ -604,6 +613,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		},
 		state:       record.State,
 		report:      record.Report,
+		claim:       record.Claim,
 		changed:     record.Changed,
 		branch:      record.Branch,
 		worktree:    record.Worktree,

@@ -722,6 +722,11 @@ type auditOutcome struct {
 // for one piece of work, and one piece of work is what the row says.
 func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditOutcome {
 	out := auditOutcome{changed: changed, claim: claim}
+	// THE NODE KEEPS THE CLAIM, whichever round produced it. It is the half of
+	// the report that a later verdict must carry forward rather than overwrite,
+	// and by the time one lands there is nothing left to recover it from
+	// (task_run.go's [TaskNode.claim], [Agent.landAudit]).
+	defer func() { node.keepClaim(out.claim) }()
 	rounds := a.config.TaskRepairRounds
 	for round := 1; ; round++ {
 		out.verdict = a.auditNode(ctx, node, tree, out.changed, out.claim, log)
@@ -1015,6 +1020,12 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 	if node == nil {
 		return fmt.Errorf("no task %d in this session", id)
 	}
+	// The state is read here for the ERROR, and claimed again inside each of the
+	// three answers for the SETTLE. The check is not the guard — it cannot be,
+	// with a re-audit able to land between this line and the merge — and the
+	// claim below is (task_run.go's [TaskNode.claimSettle]). What this one buys
+	// is the right sentence: a done node asked to re-audit hears that it is done,
+	// rather than that there is no auditor configured.
 	if state := node.stateNow(); state != TaskUnverified {
 		return fmt.Errorf("task %d is %s, and only a task that needs a look is waiting on somebody to decide", id, state)
 	}
@@ -1030,6 +1041,16 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 	return fmt.Errorf("%q is not a resolution: say %s, %s or %s", resolution, TaskAccept, TaskReaudit, TaskRefute)
 }
 
+// The three claims, spelled as the thing a person is waiting on rather than as
+// the function that took it: whoever loses the race reads this word back inside
+// the refusal, and "acceptTask" is not a sentence (see the vocabulary law at the
+// top of this file).
+const (
+	claimAccept  = "your accept"
+	claimRefute  = "your refute"
+	claimReaudit = "a re-audit"
+)
+
 // acceptTask takes the work as done on the person's word.
 //
 // THE BRANCH COMES HOME THE ORDINARY WAY. An accepted node is a node somebody
@@ -1039,12 +1060,18 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 // what grounds, because a card that read "VERIFIED" over a verdict nobody gave
 // would be the same lie as the one this file was fixed to stop telling.
 func (a *Agent) acceptTask(node *TaskNode, why string) error {
+	// THE CLAIM IS TAKEN BEFORE THE WORKING COPY IS LOOKED FOR, and it covers
+	// everything down to the resettle. What sits between the two is an os.Stat, a
+	// `git rev-parse` and a merge — long enough for a second accept in the same
+	// tool batch, or for a re-audit landing REFUTED, to walk straight through a
+	// state that was read and not held (task_run.go's [TaskNode.claimSettle]).
+	if err := node.claimSettle(claimAccept); err != nil {
+		return err
+	}
+	defer node.releaseSettle()
 	tree, err := node.workingCopy(a.config.Workspace)
 	if err != nil {
 		return err
-	}
-	if node.beingAudited() {
-		return fmt.Errorf("task %d is being re-audited: wait for that verdict, or it will land on top of yours", node.id)
 	}
 	report, changed, _, _ := node.leavings()
 	merge, detail := tree.comeHome(node.title())
@@ -1059,9 +1086,10 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 // has already answered it. Here the auditor answered nothing, so what the node
 // said is still the only account of the work there is.
 func (a *Agent) refuteTask(node *TaskNode, why string) error {
-	if node.beingAudited() {
-		return fmt.Errorf("task %d is being re-audited: wait for that verdict, or it will land on top of yours", node.id)
+	if err := node.claimSettle(claimRefute); err != nil {
+		return err
 	}
+	defer node.releaseSettle()
 	report, changed, branch, merge := node.leavings()
 	node.finish(withReport(refutedLine(why), report), changed, branch, merge)
 	node.graph.resettle(node, TaskFailed)
@@ -1092,18 +1120,27 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if err != nil {
 		return err
 	}
-	if !node.beginAudit() {
-		return fmt.Errorf("task %d is already being re-audited", node.id)
+	if err := node.claimSettle(claimReaudit); err != nil {
+		return err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	listed, _ := a.jobs.startTask(node.id, "re-audit · "+node.title(), cancel)
+	// NO JOB ROW, NO RE-AUDIT. The registry is where the cancel is registered, so
+	// a goroutine started without one would run on a bare context: no `jobs kill`,
+	// no death at [Agent.Close], and a landing that finishes a node into a session
+	// that has gone — the exact thing the block above says the job exists to
+	// prevent. A workspace that cannot take a log file is a reason to refuse the
+	// re-audit, in words that leave the person their other two answers.
+	listed, err := a.jobs.startTask(node.id, "re-audit · "+node.title(), cancel)
+	if err != nil {
+		cancel()
+		node.releaseSettle()
+		return fmt.Errorf("the re-audit could not be started: %w — accept it or refute it instead", err)
+	}
 	_, changed, _, _ := node.leavings()
 	go func() {
 		defer cancel()
-		defer node.endAudit()
-		if listed != nil {
-			defer listed.settle(0)
-		}
+		defer node.releaseSettle()
+		defer listed.settle(0)
 		// NO CLAIM IS PASSED. The first audit was given the node's own last
 		// words as the thing under audit; this one is given the acceptance and
 		// the diff, and nothing about the answer that was not an answer — a
@@ -1127,13 +1164,26 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 // that this one re-settles a node instead of completing a run.
 func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, changed []string) {
 	report, _, branch, merge := node.leavings()
+	// THE TWO HALVES OF THE CARD, PULLED APART BEFORE EITHER IS REWRITTEN. The
+	// report a landed unverified node carries is the last audit's line with the
+	// WORK'S OWN account under it, and the two branches below want opposite
+	// things from it: the non-answer replaces the audit half, the verdict
+	// replaces it with a verdict. Both keep the work's half, which is why it is
+	// kept apart (task_run.go's [TaskNode.claim]).
+	claim := node.workClaim(report)
 	switch {
 	case !verdict.answered:
 		// STILL NOBODY. The fresh non-answer REPLACES the stale one rather than
 		// stacking under it: two auditors failing to answer is one fact, and a
 		// report that grew a paragraph per attempt would be a card nobody can
 		// read by the third try. Every attempt is in its own audit journal.
-		node.finish(verdict.lookOutcome(), changed, branch, merge)
+		//
+		// WHAT IS NOT REPLACED IS THE WORK'S CLAIM. It was never a non-answer, it
+		// is the only description of what was done that exists, and whoever is
+		// asked to resolve this node needs both halves (task_contract.go's
+		// TaskUnverified) — the index row, the brief a dependent is handed, and
+		// the accept that carries it into TaskDone all read this string.
+		node.finish(withReport(verdict.lookOutcome(), claim), changed, branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 	case !verdict.verified:
 		// A re-audit that finds something is a landing, not a loop. The repair
@@ -1145,7 +1195,11 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.graph.resettle(node, TaskFailed)
 	default:
 		merged, detail := tree.comeHome(node.title())
-		node.finish(withReport(verdict.doneOutcome(), withReport(report, detail)), changed, tree.branch, merged)
+		// THE CLAIM, NOT THE CARRIED REPORT. The report leads with the line that
+		// said nobody could judge this work, and a card reading "VERIFIED …" over
+		// "finished, but needs your look — …" contradicts itself in two lines. The
+		// verdict answers the non-answer; what it stands over is the work.
+		node.finish(withReport(verdict.doneOutcome(), withReport(claim, detail)), changed, tree.branch, merged)
 		node.graph.resettle(node, TaskDone)
 	}
 }
