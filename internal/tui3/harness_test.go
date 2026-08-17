@@ -19,22 +19,29 @@ type harnessAgent struct {
 }
 
 type harnessAnswer struct {
-	id  uint64
-	run bool
+	id    uint64
+	run   bool
+	model string
 }
 
-func (h *harnessAgent) ResolveHarness(id uint64, run bool) {
-	h.answers = append(h.answers, harnessAnswer{id: id, run: run})
+func (h *harnessAgent) ResolveHarness(id uint64, run bool, model string) {
+	h.answers = append(h.answers, harnessAnswer{id: id, run: run, model: model})
 }
 
 func harnessOffered(t *testing.T, turn string) (*harnessAgent, *app) {
 	t.Helper()
-	agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m", turns: [][]session.Event{{
-		{
-			Kind: session.EventHarnessOffer, ID: 3, Text: "research",
-			Hint: "Research a question across sources and write a report",
-		},
-	}}}}
+	return harnessOfferedWith(t, turn, session.Event{
+		Kind: session.EventHarnessOffer, ID: 3, Text: "research",
+		Hint: "Research a question across sources and write a report",
+	})
+}
+
+// harnessOfferedWith is the same offer with the card's own fields said out
+// loud, for the rows that are about what the offer CARRIED rather than about
+// the question itself.
+func harnessOfferedWith(t *testing.T, turn string, offer session.Event) (*harnessAgent, *app) {
+	t.Helper()
+	agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m", turns: [][]session.Event{{offer}}}}
 	a := newTestApp(agent)
 	typeLine(t, a, turn)
 	if !a.asksHarness() {
@@ -154,6 +161,91 @@ func TestTheHarnessRunIsANote(t *testing.T) {
 	}
 	if !strings.Contains(got, "the report") {
 		t.Fatalf("the harness's report is missing:\n%s", got)
+	}
+}
+
+// ── the model the turn named ────────────────────────────────────────────────
+
+// THE ROW SAYS WHAT YES WOULD RUN ON. A turn that named a model — "research the
+// pricing tiers with opus" — is answered by a card that says so, because the
+// question "run this harness?" is a different question when the answer costs
+// what opus costs.
+func TestTheHarnessOfferSaysWhichModelTheTurnNamed(t *testing.T) {
+	agent, a := harnessOfferedWith(t, "research the pricing tiers with opus", session.Event{
+		Kind: session.EventHarnessOffer, ID: 3, Text: "research",
+		Hint:  "Research a question across sources and write a report",
+		Model: "anthropic/claude-opus-5",
+	})
+	a.width = 120
+	got := plain(frame(a))
+	// The id sheds its vendor, exactly as every other model on this surface does.
+	if !strings.Contains(got, "model: claude-opus-5") {
+		t.Fatalf("the row does not say what it would run on:\n%s", got)
+	}
+	// And the model the row SHOWED is what goes back with the answer.
+	drive(t, a, key("enter"))
+	if len(agent.answers) != 1 || agent.answers[0].model != "anthropic/claude-opus-5" {
+		t.Fatalf("the answer carried %+v", agent.answers)
+	}
+}
+
+// AN OFFER THAT NAMED NO MODEL SAYS NOTHING ABOUT MODELS. Nothing about the
+// model is unusual, so there is nothing on the row about it — and the answer
+// carries nothing either, which the session reads as "the one the offer had".
+func TestTheHarnessOfferIsSilentAboutAnOrdinaryModel(t *testing.T) {
+	agent, a := harnessOffered(t, "research the pricing tiers")
+	a.width = 120
+	if got := plain(frame(a)); strings.Contains(got, "model:") {
+		t.Fatalf("the row invented a model line:\n%s", got)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.answers) != 1 || agent.answers[0].model != "" {
+		t.Fatalf("the answer carried %+v", agent.answers)
+	}
+}
+
+// A MODEL THIS INSTALL DOES NOT HAVE IS SAID, NOT SWALLOWED. The session's own
+// words are printed as they arrived, and the question is the same question: yes
+// still runs the harness, on the default.
+func TestTheHarnessOfferPrintsTheSessionsModelNote(t *testing.T) {
+	agent, a := harnessOfferedWith(t, "research the pricing tiers with gpt-9", session.Event{
+		Kind: session.EventHarnessOffer, ID: 3, Text: "research",
+		ModelNote: `model "gpt-9" not found, running default`,
+	})
+	a.width = 120
+	got := plain(frame(a))
+	if !strings.Contains(got, `model "gpt-9" not found, running default`) {
+		t.Fatalf("the note never reached the row:\n%s", got)
+	}
+	if !strings.Contains(got, "[enter] run") {
+		t.Fatalf("the note cost the row an answer:\n%s", got)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.answers) != 1 || !agent.answers[0].run {
+		t.Fatalf("a noted model changed the answer: %+v", agent.answers)
+	}
+}
+
+// AND THE MODEL OUTLIVES THE DESCRIPTION. A narrow row drops what the harness
+// is FOR before it drops what this run would cost, and it never drops a key.
+func TestTheNarrowHarnessRowKeepsTheModelAndLosesTheDescription(t *testing.T) {
+	_, a := harnessOfferedWith(t, "research the pricing tiers with opus", session.Event{
+		Kind: session.EventHarnessOffer, ID: 3, Text: "research",
+		Hint:  "Research a question across sources and write a report",
+		Model: "anthropic/claude-opus-5",
+	})
+	// Wide enough for the question, the model and both keys — and 32 cells short
+	// of the description, which is the rung this row has to choose at.
+	a.width = 80
+	narrow := plain(frame(a))
+	if strings.Contains(narrow, "Research a question across sources") {
+		t.Fatalf("the narrow row kept the description:\n%s", narrow)
+	}
+	if !strings.Contains(narrow, "model: claude-opus-5") {
+		t.Fatalf("the narrow row dropped the model before the description:\n%s", narrow)
+	}
+	if !strings.Contains(narrow, "[enter] run") || !strings.Contains(narrow, "[esc] no") {
+		t.Fatalf("the narrow row lost an answer:\n%s", narrow)
 	}
 }
 

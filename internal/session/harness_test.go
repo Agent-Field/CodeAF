@@ -25,15 +25,19 @@ const harnessTurn = "research this and find out what our sources say"
 
 // harnessAgent builds an agent with a registry, a runner that records what it
 // was asked, and a surface that says it is watching.
-func harnessAgent(t *testing.T, completer Completer, run func(name, text string) (string, error)) (*Agent, *int32) {
+func harnessAgent(t *testing.T, completer Completer, run func(name, text, model string) (string, error)) (*Agent, *int32) {
 	t.Helper()
 	var ran int32
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
 		config.AskConsent = true
 		config.Harnesses = []subharness.Entry{researchEntry}
-		config.RunHarness = func(_ context.Context, name, text string) (string, error) {
+		// A catalog, so the model a turn names is resolved against something —
+		// the session's own seam for it, exactly as a task's `model` is
+		// (taskmodel.go).
+		config.TaskModels = func() []string { return testModels }
+		config.RunHarness = func(_ context.Context, name, text, model string) (string, error) {
 			atomic.AddInt32(&ran, 1)
-			return run(name, text)
+			return run(name, text, model)
 		}
 	})
 	return agent, &ran
@@ -52,7 +56,7 @@ func drainAnsweringHarness(t *testing.T, agent *Agent, events <-chan Event, run 
 			}
 			collected = append(collected, event)
 			if event.Kind == EventHarnessOffer {
-				agent.ResolveHarness(event.ID, run)
+				agent.ResolveHarness(event.ID, run, "")
 			}
 		case <-deadline:
 			t.Fatalf("the turn never finished; events so far: %v", kinds(collected))
@@ -66,7 +70,7 @@ func drainAnsweringHarness(t *testing.T, agent *Agent, events <-chan Event, run 
 func TestHarnessOfferAccepted(t *testing.T) {
 	completer := &scriptedCompleter{}
 	var gotName, gotText string
-	agent, ran := harnessAgent(t, completer, func(name, text string) (string, error) {
+	agent, ran := harnessAgent(t, completer, func(name, text, _ string) (string, error) {
 		gotName, gotText = name, text
 		return "the report", nil
 	})
@@ -121,7 +125,7 @@ func TestHarnessOfferDeclinedLeavesTheTurnAlone(t *testing.T) {
 			return textResponse("the ordinary answer"), nil
 		},
 	}}
-	agent, ran := harnessAgent(t, completer, func(string, string) (string, error) {
+	agent, ran := harnessAgent(t, completer, func(string, string, string) (string, error) {
 		t.Error("the harness ran on a no")
 		return "", nil
 	})
@@ -173,11 +177,11 @@ func TestHarnessSilentWhenUnwired(t *testing.T) {
 		}, false},
 		{"runner but no registry", func(c *Config) {
 			c.AskConsent = true
-			c.RunHarness = func(context.Context, string, string) (string, error) { return "", nil }
+			c.RunHarness = func(context.Context, string, string, string) (string, error) { return "", nil }
 		}, false},
 		{"wired, but nobody is watching", func(c *Config) {
 			c.Harnesses = []subharness.Entry{researchEntry}
-			c.RunHarness = func(context.Context, string, string) (string, error) {
+			c.RunHarness = func(context.Context, string, string, string) (string, error) {
 				return "", errors.New("a headless run must never be asked")
 			}
 		}, false},
@@ -217,7 +221,7 @@ func TestHarnessQuietUnderTheThreshold(t *testing.T) {
 			return textResponse("the ordinary answer"), nil
 		},
 	}}
-	agent, ran := harnessAgent(t, completer, func(string, string) (string, error) {
+	agent, ran := harnessAgent(t, completer, func(string, string, string) (string, error) {
 		t.Error("an ordinary turn ran a harness")
 		return "", nil
 	})
@@ -242,7 +246,7 @@ func TestHarnessQuietUnderTheThreshold(t *testing.T) {
 // its note off the steering queue; a note the session authored is not somebody
 // asking for a harness, whatever words it happens to contain.
 func TestHarnessMatchesOnlyThePersonsOwnWords(t *testing.T) {
-	agent, _ := harnessAgent(t, &scriptedCompleter{}, func(string, string) (string, error) {
+	agent, _ := harnessAgent(t, &scriptedCompleter{}, func(string, string, string) (string, error) {
 		return "", nil
 	})
 	cases := []struct {
@@ -268,7 +272,7 @@ func TestHarnessMatchesOnlyThePersonsOwnWords(t *testing.T) {
 // person sees the error rather than a turn that quietly said nothing.
 func TestHarnessRunFailure(t *testing.T) {
 	completer := &scriptedCompleter{}
-	agent, _ := harnessAgent(t, completer, func(string, string) (string, error) {
+	agent, _ := harnessAgent(t, completer, func(string, string, string) (string, error) {
 		return "", errors.New("the program has no v2")
 	})
 
@@ -294,7 +298,7 @@ func TestHarnessRunFailure(t *testing.T) {
 // waiting on an answer nobody is coming back to give.
 func TestHarnessOfferInterrupted(t *testing.T) {
 	completer := &scriptedCompleter{}
-	agent, ran := harnessAgent(t, completer, func(string, string) (string, error) {
+	agent, ran := harnessAgent(t, completer, func(string, string, string) (string, error) {
 		t.Error("an interrupted offer ran the harness")
 		return "", nil
 	})

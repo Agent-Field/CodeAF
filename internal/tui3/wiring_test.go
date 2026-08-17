@@ -24,7 +24,7 @@ func (f *fakeAgent) FollowUp(string) (<-chan session.Event, error) {
 }
 func (f *fakeAgent) ResolveConsent(uint64, bool)                               {}
 func (f *fakeAgent) ResolveConsentRemember(uint64, bool, session.ConsentScope) {}
-func (f *fakeAgent) ResolveHarness(uint64, bool)                               {}
+func (f *fakeAgent) ResolveHarness(uint64, bool, string)                       {}
 func (f *fakeAgent) Title() string                                             { return "" }
 
 // wiredAgent records the three answers this wave sends back into the session:
