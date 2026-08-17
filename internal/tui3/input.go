@@ -235,8 +235,7 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// conversation exactly as it was (resume.go). The two are never up together —
 	// each is opened by a command typed into a box neither of them leaves open.
 	if a.roster.open && msg.String() != "ctrl+c" {
-		a.resumeKey(msg)
-		return nil
+		return a.resumeKey(msg)
 	}
 
 	// And the connections panel at the same rung again, for the same reasons:
@@ -271,8 +270,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// anything else is the person starting work, which puts the box away for
 	// good before the key does whatever it always does.
 	if a.welcome.open {
-		if a.welcomeKey(msg.String()) {
-			return nil
+		if cmd, taken := a.welcomeKey(msg.String()); taken {
+			// enter on a recent session opens it, and what comes back is that
+			// conversation's standing lanes (welcome.go's [app.resumeSession]).
+			return cmd
 		}
 		a.dismissWelcome()
 	}

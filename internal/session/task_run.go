@@ -245,11 +245,29 @@ type TaskNode struct {
 	// nothing has landed, and what a surface draws is the work still going with
 	// one line saying what is being finished.
 	mend string
-	// auditing marks a re-audit in flight over a landed node (task_audit.go's
-	// reauditTask). It is the one thing that can still change an unverified
-	// node's state without a person, so it is also what stops a person's own
-	// resolution racing a verdict that is already on its way.
-	auditing bool
+	// settling NAMES the resolution in flight over a landed node, in the plain
+	// words a second caller is told, and it is "" when nobody holds the node
+	// (task_audit.go's ResolveUnverified).
+	//
+	// IT COVERS ALL THREE ANSWERS, not just the re-audit it started life as. An
+	// accept and a refute are settles too — they finish the node and, in the
+	// accept's case, merge a branch — and two of them arriving in one tool batch
+	// (loop.go runs a batch concurrently) would both read TaskUnverified and both
+	// come home, which is one merge over a branch the other already deleted. So
+	// the state check and the settle are ONE claim, taken here (see
+	// [TaskNode.claimSettle]) and held until the node has resettled.
+	settling string
+	// claim is the WORK'S OWN ACCOUNT of itself — the last thing the worker said,
+	// before any auditor spoke — kept apart from the report because the report is
+	// a composed card: the audit's lead line and this underneath it.
+	//
+	// A verdict that lands on a node which has ALREADY landed (task_audit.go's
+	// landAudit) has to rebuild that card, and it cannot do it from the report:
+	// there is no way to tell the previous auditor's lines from the work's own
+	// once they are one string. Keeping the half that never changes is what lets
+	// a re-audit replace the audit's half and keep the work's — in both
+	// directions, which is the whole of the defect this field closes.
+	claim string
 }
 
 // TaskGraph is the session's work as a directed acyclic graph, plus the
@@ -692,28 +710,63 @@ func (n *TaskNode) mending(line string) {
 	}
 }
 
-// beginAudit claims the node for one re-audit, and reports false when somebody
-// already holds it. endAudit hands it back; beingAudited asks.
-func (n *TaskNode) beginAudit() bool {
+// claimSettle claims a node that NEEDS A LOOK for exactly one resolution, and
+// the state check is part of the claim rather than a question asked before it.
+//
+// That is the whole point of the function. Every settle here — accept, refute,
+// a landing re-audit — reads the node's state, spends a while outside the lock
+// (an os.Stat, a `git rev-parse`, five minutes of auditor), and then writes a
+// final state. Two of them that each checked before either wrote would both
+// pass, and the second would merge a branch the first already brought home or
+// overwrite a real refutation with a stale accept. One claim, taken under the
+// graph's lock with the state, and nobody else can start.
+//
+// what is the claim in PLAIN WORDS — "a re-audit", "your accept" — because it
+// is read back to whoever lost the race. [TaskNode.releaseSettle] hands it back.
+func (n *TaskNode) claimSettle(what string) error {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	if n.auditing {
-		return false
+	if n.state != TaskUnverified {
+		return fmt.Errorf("task %d is %s, and only a task that needs a look is waiting on somebody to decide", n.id, n.state)
 	}
-	n.auditing = true
-	return true
+	if n.settling != "" {
+		return fmt.Errorf("task %d is already being resolved — %s is in flight — so wait for that to land rather than putting a second answer on top of it", n.id, n.settling)
+	}
+	n.settling = what
+	return nil
 }
 
-func (n *TaskNode) endAudit() {
+func (n *TaskNode) releaseSettle() {
 	n.graph.mu.Lock()
-	n.auditing = false
+	n.settling = ""
 	n.graph.mu.Unlock()
 }
 
-func (n *TaskNode) beingAudited() bool {
+// keepClaim records the work's own account of itself, and clears nothing: a
+// round that came back with nothing to say leaves the last thing that was said
+// standing. See [TaskNode.claim].
+func (n *TaskNode) keepClaim(claim string) {
+	claim = strings.TrimSpace(claim)
+	if claim == "" {
+		return
+	}
+	n.graph.mu.Lock()
+	n.claim = claim
+	n.graph.mu.Unlock()
+}
+
+// workClaim is the work's own account, and the whole carried report when there
+// is none — a node landed by an older build, or replayed from a checkpoint
+// written before the claim was kept. Carrying the report whole is the honest
+// fallback: it may lead with a stale non-answer, but nothing here can tell that
+// half from the work's, and dropping it would delete the only account there is.
+func (n *TaskNode) workClaim(report string) string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return n.auditing
+	if n.claim == "" {
+		return report
+	}
+	return n.claim
 }
 
 // addSpend charges one agent's cost to the node.

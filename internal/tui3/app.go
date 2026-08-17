@@ -1169,12 +1169,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.statusPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
-			a.press(msg.Mouse().X, msg.Mouse().Y)
+			opened := a.press(msg.Mouse().X, msg.Mouse().Y)
 			// A press can open a room — a spawn card is a door now (room.go's
 			// [app.openRoomAt]) — and a room that opened without its lane being
 			// pumped is a page that never fills. The take is nil in every other
-			// case, which is most of them.
-			return a, a.takeRoomPump()
+			// case, which is most of them. A press can also open a whole
+			// CONVERSATION, from the welcome box's list, and that one arrives
+			// carrying its own two lanes (welcome.go).
+			return a, tea.Batch(opened, a.takeRoomPump())
 		}
 		return a, nil
 
@@ -2278,15 +2280,18 @@ func (a *app) showAll(i int) {
 
 // press resolves a click to the row it landed on. A click that lands on
 // nothing does nothing: this surface has no empty-space gesture.
-func (a *app) press(x, y int) {
+//
+// The result is named so that the many gestures that start no work keep their
+// bare returns: exactly one press on this surface hands work back, and it is the
+// one that opens another conversation (welcome.go's [app.resumeSession]).
+func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// The welcome box gets the click first, because while it is up it is the
 	// thing between the pointer and everything else: a recent session opens,
 	// and anywhere else is the person reaching past the box, which is what
 	// dismissal means (welcome.go).
 	if a.welcome.open && !a.roomOpen() {
 		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeWelcome {
-			a.welcomePress(a.welcomeSlotAt(mark.index))
-			return
+			return a.welcomePress(a.welcomeSlotAt(mark.index))
 		}
 		a.dismissWelcome()
 	}
@@ -2365,6 +2370,7 @@ func (a *app) press(x, y int) {
 		// [app.choicePress]); reaching here means the pointer was in a column no
 		// option occupies, and empty space on this surface does nothing.
 	}
+	return nil
 }
 
 // linkPress resolves a click on an inline task reference, and reports whether it

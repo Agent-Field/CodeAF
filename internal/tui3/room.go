@@ -1502,6 +1502,13 @@ func (a *app) roomMark(node *taskNode) string {
 		return a.linearMark(glyphDone, glyphDoneASCII)
 	case session.TaskFailed:
 		return a.linearMark(glyphBad, glyphBadASCII)
+	case session.TaskUnverified:
+		// THE THIRD SETTLED STATE WEARS THE RAIL'S THIRD MARK (task.go's
+		// [glyphUnverified]), and without this case it wore the QUEUED glyph: a
+		// node that ran to the end, drawn on its own page as though it had not
+		// started. It is the same cell in both glyph tiers, so there is nothing
+		// for [app.linearMark] to stand in for.
+		return glyphUnverified
 	case session.TaskRunning:
 		if a.linear {
 			return glyphRunASCII
@@ -1564,6 +1571,14 @@ func (a *app) roomStateWord(node *taskNode) string {
 		return roomQueuedWord
 	case session.TaskFailed:
 		return roomFailedWord
+	case session.TaskUnverified:
+		// NOT THE MERGE SENTENCE, for the reason the rail states in the same words
+		// (task.go's [app.railUnder]): an unverified node wears session's
+		// "aborted" merge exactly as a stopped one does, so the switch below said
+		// "stopped" about work that ran to the end. What it is waiting for is a
+		// person, and the header says what the card and the rail already say
+		// (task.go's [taskUnverifiedWord]).
+		return taskUnverifiedWord
 	}
 	switch node.merge {
 	case mergeWordConflicted:
