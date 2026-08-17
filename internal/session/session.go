@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
@@ -171,6 +172,31 @@ const (
 	// several of these already on screen — that sequence is the chain trying
 	// everything it had and saying so.
 	EventNotice
+	// EventConnectAsk asks the person whether one of their accounts may be
+	// connected (connect.go). It carries the id the answer is handed back with in
+	// ConnectID, and the account in Service and ServiceName — "google" and
+	// "Google", the word the tools use and the word a person reads.
+	//
+	// It is a QUESTION, and the same kind of question a consent prompt is: the
+	// use_service call is blocked inside the tool batch until
+	// [Agent.ResolveConnect] answers it, the five-minute clock runs out, or the
+	// turn's context dies. A surface that ignores this kind leaves the call
+	// waiting until one of those three happens, and a clock that runs out is a NO.
+	EventConnectAsk
+	// EventConnectAuth carries the page the person opens to say yes to the
+	// service named in Service: the address is in AuthURL.
+	//
+	// It is an INSTRUCTION to the surface — open this — and it arrives only after
+	// the person has already agreed to connect the account. It is followed by
+	// exactly one EventConnectDone, whatever happens next.
+	EventConnectAuth
+	// EventConnectDone ends one connect attempt for the service in Service:
+	// Account is the address it connected as, and Failed says it did not connect
+	// at all. The two are exclusive — a failure carries no account — and a
+	// person who simply walked away shows up here as a failure, because from
+	// this side an attempt nobody finished and an attempt that broke are the same
+	// fact: nothing is connected.
+	EventConnectDone
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -234,6 +260,23 @@ type Event struct {
 	// zero everywhere else, which is why it is a plain int rather than a pointer:
 	// no other kind has a count, and "0" is not a count any kind reports.
 	Count int
+
+	// The five fields of the three connect kinds (connect.go). They are flat
+	// rather than a payload struct because the three events between them carry
+	// five short strings and a bool, and a surface drawing the sequence reads
+	// them one after another off the same event.
+	//
+	// ConnectID names one EventConnectAsk and is the token handed back to
+	// [Agent.ResolveConnect]. Service is the account's id — "google" — on all
+	// three kinds; ServiceName is the word a person reads — "Google" — on the
+	// ask. AuthURL is the page to open, on EventConnectAuth only. Account and
+	// Failed are the outcome, on EventConnectDone only.
+	ConnectID   string
+	Service     string
+	ServiceName string
+	AuthURL     string
+	Account     string
+	Failed      bool
 }
 
 // Usage is token and cost accounting for one turn or the session total.
@@ -463,6 +506,28 @@ type Config struct {
 	SearchProvider search.Provider
 	SearchFetcher  search.Fetcher
 
+	// Connect is the person's connected accounts (internal/connect): which
+	// services this build can offer, which of them are connected on this
+	// machine, and an authorized client for each one that is.
+	//
+	// NIL IS THE DEFAULT AND MEANS THE FEATURE IS ABSENT — no services tool, no
+	// use_service, and nothing on the belt that mentions an account. It is the
+	// same law the search pair above states and it is stated again because the
+	// cost of breaking it is larger here: a model told it can read a mailbox
+	// will plan a whole answer around one, and a refusal at the end of that plan
+	// is a turn spent on a capability that never existed. A build with no
+	// registration for any service hands over nil and the conversation is exactly
+	// what it was before this field.
+	Connect *connect.Manager
+
+	// connectHub is the seam the belt actually calls through, and the one place
+	// this package touches an account at all. It is unexported because it is not
+	// a caller's choice: a real caller hands over Connect and this is derived
+	// from it (connect.go's newConnectHub). What it buys is the tests, which
+	// drive the ask, the arming and the failure paths against a hub of their own
+	// without a Google account and without a network.
+	connectHub connectHub
+
 	// TaskModel is the model a task runs on when its proposal names none — the
 	// person's task.model row. EMPTY IS THE CONVERSATION'S OWN MODEL, which is
 	// the behaviour every task had before this field existed: a node is the same
@@ -530,12 +595,26 @@ type Agent struct {
 	// system is message[0] of every request: the rendered prompt, held once
 	// because it is the same bytes on every step of every turn.
 	system string
-	tools  []bare.Tool
-	// defs is the wire form of tools, built once — the belt does not change
-	// during a session, and rebuilding it per step would re-marshal seven
-	// schemas on the hot path.
+	// tools is the belt and definitions is its wire form, built once at
+	// construction — rebuilding them per step would re-marshal every schema on
+	// the hot path — and thereafter APPEND-ONLY, under armMu (connect.go).
+	//
+	// Both are COPY-ON-WRITE: arming allocates a new array and swaps the header,
+	// so a reader that took a snapshot under armMu may walk it without the lock
+	// and can never see a half-written slice. Nothing already in either is ever
+	// moved, rewritten or removed, because the definition block rides at the
+	// front of every request and a definition that shifts re-bills the whole
+	// prompt behind it (internal/exec's tools.go states the law).
+	tools       []bare.Tool
 	definitions []ai.ToolDefinition
-	file        *sessionFile
+	// armMu guards those two headers and nothing else. It is not mu: arming
+	// happens inside a tool call, and a tool call must never take the lock
+	// Interrupt has to be able to take.
+	armMu sync.Mutex
+	// connect is the accounts seam, nil when the feature is absent (connect.go).
+	// It is written once at construction and read without a lock.
+	connect connectHub
+	file    *sessionFile
 	// cacheKey is this session's prompt-cache lineage, stamped on every request
 	// by [sessionCompleter]. It is fixed at construction — derived from the
 	// session file's id, or from a fresh one when the conversation lives only in
@@ -652,6 +731,14 @@ type Agent struct {
 	// agent's life only. It is never persisted — a session-scoped answer that
 	// outlived the session would be a settings change nobody made.
 	consentMemo map[string]bool
+
+	// connectAsks is the connect questions a person owes an answer to, keyed by
+	// the id the EventConnectAsk carried, and connectSeq is what names them
+	// (connect.go). They are consent's pending-id machinery for a question about
+	// an ACCOUNT, and they are ephemeral in exactly the same way: a question
+	// lives as long as the use_service call blocked on it.
+	connectSeq  uint64
+	connectAsks map[string]chan bool
 
 	// tasks is the work this conversation has handed off: the graph of nodes,
 	// their dependency edges, and the frontier executor that runs them

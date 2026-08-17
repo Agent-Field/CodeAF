@@ -1,0 +1,384 @@
+package session
+
+// The accounts a person already has, reachable from a conversation.
+//
+// Three mechanisms live here and the belt (tools_connect.go) is the fourth,
+// sitting on top of them:
+//
+//   - THE SEAM. [connectHub] is the narrow slice of internal/connect this
+//     package touches: which services exist, which are connected, how to start
+//     connecting one, and an authorized client for one that is. Everything below
+//     it — where the credentials live, what a refresh is, which endpoint a
+//     mailbox search hits — is that package's business and never this one's.
+//   - THE ASK. Connecting an account is a thing done on somebody's behalf with
+//     their credentials, so it is a QUESTION, and it is asked exactly the way
+//     the approval gate asks one (consent.go): the tool call blocks in its own
+//     goroutine, an event goes out, and an answer, a clock or the end of the turn
+//     releases it. SILENCE IS A NO. A five-minute clock that approved would be a
+//     clock that connected somebody's mail because they went to lunch.
+//   - THE ARMING. The tools an account brings are not on the belt until the
+//     account is connected, and they arrive by APPENDING to the belt rather than
+//     by rebuilding it (see [Agent.armFamily]).
+//
+// ── WHY CONNECTING IS NEVER JOURNALED ──
+//
+// For consent's reason, and one more. The session file is the record of what was
+// DONE in this conversation; a connected account is a fact about the MACHINE
+// that outlives every conversation on it, and a resume that replayed the
+// question would be asking again about something already answered elsewhere. So
+// the events carry the question and the outcome, and the transcript keeps the
+// two things that are true afterwards: the tool result the model read, and the
+// tools it was holding from the next turn on.
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+)
+
+// connectAskTimeout is how long a connect question waits for the person, and
+// connectAuthCeiling is how long the attempt itself may then take.
+//
+// Five minutes each, and generous on purpose: unlike an approval prompt, which
+// interrupts somebody watching a call they just asked for, this question can
+// arrive while they are reading the answer to something else, and what is behind
+// it — the mailbox search they wanted — is worth a blocked tool call. The
+// ceiling is a CEILING rather than a deadline anybody is counting: an attempt
+// nobody finished has to end somewhere, or the call blocks for the life of the
+// session.
+//
+// They are vars only so the tests can run both clocks out in a millisecond.
+// NOTHING IN A BUILD WRITES EITHER.
+var (
+	connectAskTimeout  = 5 * time.Minute
+	connectAuthCeiling = 5 * time.Minute
+)
+
+// connectStatus is one service as this package sees it. It is a copy of
+// [connect.Status] rather than the thing itself so that the seam below is
+// implementable by a test without a Google account: everything this package does
+// with a service is spell its name, say whether it is connected, and say who it
+// is connected as.
+type connectStatus struct {
+	ID        string
+	Name      string
+	Blurb     string
+	Connected bool
+	Account   string
+}
+
+// connectHub is the narrow slice of [connect.Manager] the belt calls through.
+//
+// BeginAuth hands back the page to open and the wait for the person to finish
+// with it, as two values rather than as an object, because those two are the
+// whole of what this package does with a connection in progress — and a
+// function is the one shape a test can supply without owning the type.
+type connectHub interface {
+	Services() []connectStatus
+	Connected(id string) bool
+	BeginAuth(ctx context.Context, id string) (url string, wait func(context.Context) (connectStatus, error), err error)
+	Client(ctx context.Context, id string) (*http.Client, error)
+}
+
+// managerHub is the adapter over the real thing. It is the only code in this
+// package that names internal/connect's types.
+type managerHub struct{ manager *connect.Manager }
+
+// newConnectHub resolves the seam from the config. A nil manager stays nil —
+// THE NIL LAW: a typed nil wrapped in an interface would be a non-nil hub that
+// refuses everything, which is exactly the belt-that-lies this package refuses
+// to build.
+func newConnectHub(config Config) connectHub {
+	if config.connectHub != nil {
+		return config.connectHub
+	}
+	if config.Connect == nil {
+		return nil
+	}
+	return managerHub{manager: config.Connect}
+}
+
+func (h managerHub) Services() []connectStatus {
+	live := h.manager.Services()
+	services := make([]connectStatus, 0, len(live))
+	for _, status := range live {
+		services = append(services, connectStatus{
+			ID:        status.ID,
+			Name:      status.Name,
+			Blurb:     status.Blurb,
+			Connected: status.Connected,
+			Account:   status.Account,
+		})
+	}
+	return services
+}
+
+func (h managerHub) Connected(id string) bool { return h.manager.Connected(id) }
+
+func (h managerHub) Client(ctx context.Context, id string) (*http.Client, error) {
+	return h.manager.Client(ctx, id)
+}
+
+func (h managerHub) BeginAuth(ctx context.Context, id string) (string, func(context.Context) (connectStatus, error), error) {
+	flow, err := h.manager.BeginAuth(ctx, id)
+	if err != nil {
+		return "", nil, err
+	}
+	wait := func(ctx context.Context) (connectStatus, error) {
+		status, err := flow.Wait(ctx)
+		if err != nil {
+			return connectStatus{}, err
+		}
+		return connectStatus{
+			ID:        status.ID,
+			Name:      status.Name,
+			Blurb:     status.Blurb,
+			Connected: status.Connected,
+			Account:   status.Account,
+		}, nil
+	}
+	return flow.URL(), wait, nil
+}
+
+// service finds one service by id, and reports whether this build has it at all.
+func (a *Agent) service(id string) (connectStatus, bool) {
+	if a.connect == nil {
+		return connectStatus{}, false
+	}
+	for _, status := range a.connect.Services() {
+		if strings.EqualFold(status.ID, id) {
+			return status, true
+		}
+	}
+	return connectStatus{}, false
+}
+
+// ── the ask ─────────────────────────────────────────────────────────────────
+
+// ResolveConnect answers one EventConnectAsk. A surface hands back the id the
+// event carried and what the person said.
+//
+// An id nobody is waiting on — a question the clock already answered, a second
+// click, a turn that was interrupted — is IGNORED rather than reported, exactly
+// as [Agent.ResolveConsent] ignores a late answer: the answer is simply late,
+// and the surface has already seen the attempt end.
+func (a *Agent) ResolveConnect(id string, approve bool) {
+	a.mu.Lock()
+	answers, waiting := a.connectAsks[id]
+	if waiting {
+		delete(a.connectAsks, id)
+	}
+	a.mu.Unlock()
+	if !waiting {
+		return
+	}
+	// Buffered to one and read at most once, so this never blocks and never
+	// needs the lock held across it.
+	answers <- approve
+}
+
+// askConnect emits one question and waits for the person, the clock, or the end
+// of the turn. False is a no in all three cases, and the error is set only when
+// there is nobody to ask at all.
+func (a *Agent) askConnect(ctx context.Context, service connectStatus) (bool, error) {
+	a.mu.Lock()
+	if a.closed {
+		a.mu.Unlock()
+		return false, errAgentClosed
+	}
+	a.connectSeq++
+	id := "connect-" + strconv.FormatUint(a.connectSeq, 10)
+	answers := make(chan bool, 1)
+	if a.connectAsks == nil {
+		a.connectAsks = make(map[string]chan bool, 1)
+	}
+	a.connectAsks[id] = answers
+	// The turn's hub, read under the same lock that registers the wait: a tool
+	// runs inside a turn, and the turn's fan-out is where its question is seen.
+	hub := a.hub
+	watched := a.config.AskConsent && hub != nil
+	a.mu.Unlock()
+
+	if !watched {
+		a.forgetConnect(id)
+		return false, errNobodyWatching
+	}
+
+	hub.send(Event{
+		Kind:        EventConnectAsk,
+		ConnectID:   id,
+		Service:     service.ID,
+		ServiceName: service.Name,
+	})
+
+	timer := time.NewTimer(connectAskTimeout)
+	defer timer.Stop()
+
+	select {
+	case answer := <-answers:
+		return answer, nil
+	case <-timer.C:
+		a.forgetConnect(id)
+		// SILENCE IS A NO. Nothing is connected, and the model is told the
+		// person did not answer rather than told they refused — those are
+		// different sentences and only one of them is true.
+		return false, nil
+	case <-ctx.Done():
+		a.forgetConnect(id)
+		return false, ctx.Err()
+	}
+}
+
+// forgetConnect drops a question nobody will answer, so a late resolve does not
+// deliver into a channel with no reader and the map does not grow for the life
+// of the session.
+func (a *Agent) forgetConnect(id string) {
+	a.mu.Lock()
+	delete(a.connectAsks, id)
+	a.mu.Unlock()
+}
+
+// PendingConnect lists the connect questions still waiting for an answer, oldest
+// first. It is [Agent.PendingConsent] for the other question: a surface
+// redrawing itself mid-turn — a resize, a reattach — needs to know a question is
+// outstanding without having kept the event.
+func (a *Agent) PendingConnect() []string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ids := make([]string, 0, len(a.connectAsks))
+	for id := range a.connectAsks {
+		ids = append(ids, id)
+	}
+	for i := 1; i < len(ids); i++ {
+		for j := i; j > 0 && connectAskOlder(ids[j], ids[j-1]); j-- {
+			ids[j], ids[j-1] = ids[j-1], ids[j]
+		}
+	}
+	return ids
+}
+
+// connectAskOlder orders two ask ids by the counter inside them. The ids are
+// strings because that is what the surface hands back, and a string sort would
+// put "connect-10" before "connect-2".
+func connectAskOlder(left, right string) bool {
+	return connectAskSeq(left) < connectAskSeq(right)
+}
+
+func connectAskSeq(id string) uint64 {
+	seq, err := strconv.ParseUint(strings.TrimPrefix(id, "connect-"), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return seq
+}
+
+// ── the arming ──────────────────────────────────────────────────────────────
+
+// beltTools and beltDefinitions are how the turn reads the belt. They take
+// armMu, copy the slice HEADER, and let go: arming never writes into an array
+// anybody is holding, so a walk over what these return needs no lock and can
+// never see a tool half-appended.
+func (a *Agent) beltTools() []bare.Tool {
+	a.armMu.Lock()
+	defer a.armMu.Unlock()
+	return a.tools
+}
+
+func (a *Agent) beltDefinitions() []ai.ToolDefinition {
+	a.armMu.Lock()
+	defer a.armMu.Unlock()
+	return a.definitions
+}
+
+// armFamily puts one service's tools on the belt, and reports what it added.
+//
+// ── THE APPEND LAW ──
+//
+// ARMED TOOLS GO AT THE TAIL AND NOTHING ELSE MOVES. The definition block rides
+// at the front of every request, ahead of the whole transcript, so a definition
+// that shifts position invalidates the prompt cache for everything behind it —
+// which is the entire conversation (internal/exec's tools.go, which paid for
+// this lesson twice). Appending costs exactly one invalidation, at the back,
+// once per family, and that is the price this design accepted in advance.
+//
+// It is also why nothing here retires: the two connect tools stay on the belt
+// for the life of the session, and a model that asks for a family it already
+// holds is answered in one cheap line at the END of the transcript, which is
+// free. Removing them would rewrite the block instead.
+//
+// An empty answer means everything asked for was already there.
+func (a *Agent) armFamily(tools []bare.Tool) ([]string, error) {
+	a.armMu.Lock()
+	defer a.armMu.Unlock()
+
+	held := make(map[string]bool, len(a.tools))
+	for _, tool := range a.tools {
+		held[tool.Name] = true
+	}
+	var arriving []bare.Tool
+	var names []string
+	for _, tool := range tools {
+		if held[tool.Name] {
+			continue
+		}
+		arriving = append(arriving, tool)
+		names = append(names, tool.Name)
+	}
+	if len(arriving) == 0 {
+		return nil, nil
+	}
+	definitions, err := toolDefinitions(arriving)
+	if err != nil {
+		return nil, err
+	}
+	// Fresh arrays, exact length: the old ones are still being walked by
+	// whatever took a snapshot a moment ago, and appending into spare capacity
+	// would write into the array they are reading.
+	grownTools := make([]bare.Tool, 0, len(a.tools)+len(arriving))
+	grownTools = append(append(grownTools, a.tools...), arriving...)
+	grownDefinitions := make([]ai.ToolDefinition, 0, len(a.definitions)+len(definitions))
+	grownDefinitions = append(append(grownDefinitions, a.definitions...), definitions...)
+	a.tools = grownTools
+	a.definitions = grownDefinitions
+	return names, nil
+}
+
+// NoteConnected is the other door: an account connected from the SURFACE, with
+// no tool call waiting on it — /connect while the conversation sits idle.
+//
+// It does the two things the tool path does after a successful attempt, and
+// neither of them is a turn: the family goes on the belt, and one line goes onto
+// the AMBIENT queue (agent.go's [Agent.enqueueAmbientNote]), so the model reads
+// it whenever the person next says something. A connected account is not news
+// anybody is standing there waiting for an answer about — the person is looking
+// at the surface that just told them — so it must not start a paid turn.
+//
+// A service this build does not know, or a session with the feature absent, does
+// nothing at all rather than queueing a line about a thing that cannot be used.
+func (a *Agent) NoteConnected(service, account string) {
+	status, known := a.service(service)
+	if !known {
+		return
+	}
+	if _, err := a.armFamily(a.familyTools(status.ID)); err != nil {
+		return
+	}
+	a.enqueueAmbientNote(connectedNote(status.Name, account))
+}
+
+// connectedNote is the line the model reads. It says the two things that are
+// now true — the account is connected, and the tools are in hand — and it says
+// them the way a person would.
+func connectedNote(name, account string) string {
+	line := name + " is connected"
+	if account = strings.TrimSpace(account); account != "" {
+		line += " as " + account
+	}
+	return line + ". Its tools are in your tool list from this turn on."
+}
