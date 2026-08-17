@@ -198,6 +198,11 @@ Environment:
                        runs; see them with ` + "`aforge models`" + `.
   AFORGE_REASONING     planning calls: off (default), low, medium, high
   AFORGE_EXEC_REASONING  executor calls: model default (unset), off, low, medium, high
+  AFORGE_EXEC_TIMEOUT  ` + "`aforge exec`" + ` only: hard wall in seconds when --timeout is
+                       not passed. AFORGE_EXEC_BUDGET and AFORGE_EXEC_TURNS do
+                       the same for --budget and --turns. A flag that was typed
+                       always wins; these exist so a harness can set the walls
+                       once for a campaign instead of on every call.
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
   AFORGE_NODE_BUDGET   60  hard ceiling on total nodes
   AFORGE_DAILY_BUDGET  20.0  daily dollar rail (0 = unlimited)
