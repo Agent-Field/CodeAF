@@ -7,9 +7,14 @@ Aforge can reach accounts you hold somewhere else — Google first — so that
 questions it answers by looking, instead of questions it asks you to go and
 answer yourself.
 
-A connection is **read-only and per-account**. Connecting Google lets aforge
-search and open your mail and look at your calendar. It does not let it send
-anything, delete anything, or move a meeting.
+A connection is **per-account, and it acts as well as reads**. Connecting Google
+lets aforge search and open your mail and look at your calendar, and it lets it
+send a message from your address and put an event on your calendar. It cannot
+empty your mailbox, and it cannot make or delete a calendar.
+
+Anything that leaves — a message, an invitation — **stops and asks you first**,
+with the recipient and the subject in the question, and it goes only when you
+say so. Reading never asks.
 
 ## Connecting one
 
@@ -20,8 +25,8 @@ Two ways in, and they are the same connection:
 - **Aforge asks.** When the work in front of it needs an account you have not
   connected — you asked about a mail thread it cannot see — it stops and asks:
 
-> Connect Google? It will be able to search and read your mail, and look at
-> your calendar.
+> Connect Google? It will be able to read and send your mail, and read and
+> manage your calendar.
 >   1 connect  ·  2 not now
 
 Nothing is connected until you answer yes, and **nothing happening is a no**:
@@ -43,6 +48,12 @@ step is not hesitation; it is when it actually has the hands.
 
 Connecting once is connecting for good. Every conversation on this machine, from
 then on, starts with the account already in place — you are never asked twice.
+
+The exception is a version of aforge that can do more with an account than the
+one you connected under. If you signed in when it could only read your mail, the
+first time it needs to send one it asks you to sign in again, and Google shows
+you exactly what is being asked for. It is the same question as the first time,
+and answering it once is enough.
 
 ## Seeing and undoing
 
@@ -70,3 +81,8 @@ Work you hand off with a task inherits your connections: a task briefed to go
 through last week's mail can read the mail. What it cannot do is connect
 something new — there is nobody in a task's worktree to ask — so it says so in
 its report rather than stopping to wait for an answer that could never come.
+
+Nor can it send anything. A message and an invitation go out in your name and
+are asked about first, and there is nobody standing over a task to ask, so a
+task that wanted to send one comes back with the message it drafted instead. You
+send it, from a conversation, after reading it.
