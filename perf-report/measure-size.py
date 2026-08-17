@@ -10,10 +10,11 @@ Two views, because neither alone is honest:
   packages   symbol sizes bucketed by package prefix, read from an UNSTRIPPED
              build because a stripped one has no symbol names left.
 
-One caveat the tool applies for you: crypto/internal/fips140/drbg.memory is a
-32 MiB zero-initialised BSS symbol.  It costs address space, not file bytes.
-Every naive "top symbols" list of this binary leads with it and is wrong; this
-one drops BSS from the package totals and says so.
+BSS is dropped from the package totals, and the reason is one symbol:
+crypto/internal/fips140/drbg.memory is 32 MiB of zeroes that cost address
+space and not a single file byte.  Every naive "top symbols" list of this
+binary leads with it and is wrong.  Note that `go tool nm` files it under D;
+binutils `nm -S` gets its section right, which is why that is the one used.
 
 usage: measure-size.py <stripped-binary> <unstripped-binary> [--json out.json]
 """
@@ -51,8 +52,7 @@ def bucket(symbol):
 
 
 def packages(binary):
-    out = subprocess.run(["go", "tool", "nm", "--size", binary],
-                         capture_output=True, text=True)
+    out = subprocess.run(["nm", "-S", binary], capture_output=True, text=True)
     totals = collections.Counter()
     counts = collections.Counter()
     for line in out.stdout.splitlines():
@@ -60,11 +60,13 @@ def packages(binary):
         if len(parts) < 4:
             continue
         try:
-            size = int(parts[1])
+            # binutils prints addresses and sizes in hex by default.
+            size = int(parts[1], 16)
         except ValueError:
             continue
         kind, symbol = parts[2], parts[3]
-        # B/b is BSS: zeroed at load, not stored in the file.
+        # B/b is BSS — .bss and .noptrbss both — zeroed at load and not
+        # stored in the file at all.
         if kind in ("B", "b"):
             continue
         key = bucket(symbol)

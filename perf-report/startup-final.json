@@ -1,0 +1,110 @@
+{
+  "binary": "/home/santosh/af-perf/bin/aforge",
+  "binary_bytes": 38338825,
+  "wall": {
+    "reps": 60,
+    "min_ms": 15.683,
+    "p10_ms": 20.777,
+    "median_ms": 26.783,
+    "mean_ms": 26.427
+  },
+  "maxrss_kib": 31572,
+  "init": {
+    "packages": 274,
+    "init_ms": 24.5,
+    "init_bytes": 8430416,
+    "init_allocs": 72943,
+    "top": [
+      {
+        "pkg": "github.com/alecthomas/chroma/v2/lexers",
+        "ms": 8.9,
+        "bytes": 2737184,
+        "allocs": 31450
+      },
+      {
+        "pkg": "github.com/santhosh-tekuri/jsonschema/v5",
+        "ms": 3.5,
+        "bytes": 1026928,
+        "allocs": 8969
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/connect",
+        "ms": 1.2,
+        "bytes": 340928,
+        "allocs": 4281
+      },
+      {
+        "pkg": "github.com/yuin/goldmark/extension",
+        "ms": 0.76,
+        "bytes": 264240,
+        "allocs": 2049
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/retrysched",
+        "ms": 0.68,
+        "bytes": 110040,
+        "allocs": 540
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/tui2/tokens",
+        "ms": 0.52,
+        "bytes": 10000,
+        "allocs": 543
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/revision",
+        "ms": 0.45,
+        "bytes": 164128,
+        "allocs": 535
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/head",
+        "ms": 0.42,
+        "bytes": 351936,
+        "allocs": 2548
+      },
+      {
+        "pkg": "encoding/gob",
+        "ms": 0.35,
+        "bytes": 27728,
+        "allocs": 369
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/steploop",
+        "ms": 0.34,
+        "bytes": 12952,
+        "allocs": 108
+      },
+      {
+        "pkg": "modernc.org/libc/honnef.co/go/netdb",
+        "ms": 0.3,
+        "bytes": 119704,
+        "allocs": 1539
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/session",
+        "ms": 0.28,
+        "bytes": 217896,
+        "allocs": 1187
+      },
+      {
+        "pkg": "modernc.org/sqlite/lib",
+        "ms": 0.27,
+        "bytes": 15088,
+        "allocs": 19
+      },
+      {
+        "pkg": "github.com/yuin/goldmark/util",
+        "ms": 0.26,
+        "bytes": 139464,
+        "allocs": 437
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fullverification",
+        "ms": 0.23,
+        "bytes": 199848,
+        "allocs": 1259
+      }
+    ]
+  }
+}
