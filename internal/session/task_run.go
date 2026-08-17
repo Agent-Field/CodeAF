@@ -84,6 +84,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -95,9 +96,15 @@ const (
 	// auditor is what says a node is done.
 	taskDeadline = 60 * time.Minute
 
-	// tasksDirName is where the worktrees live, beside the job logs and under
-	// the repository so `git worktree list` and a person's file browser both
-	// find them where they were left.
+	// tasksDirName is where the worktrees live in the LEGACY layout: beside the
+	// job logs and under the repository, so `git worktree list` and a person's
+	// file browser both find them where they were left.
+	//
+	// A session that has a folder of its own puts them in [Place.Trees] instead
+	// (Decision 26). Git registers every worktree in .git/worktrees whatever its
+	// path, so repo-local placement was never a constraint — it was only where
+	// the first version happened to put them, and it is litter in somebody
+	// else's repository.
 	tasksDirName = ".aforge-v3/tasks"
 
 	// taskReportLines and taskReportLineLimit bound the report. Two or three
@@ -810,7 +817,7 @@ func (n *TaskNode) leavings() (report string, changed []string, branch, merge st
 // A working copy that is GONE is an error rather than a silent in-place tree:
 // the node's changes live in that directory, and pretending otherwise would
 // merge an empty branch and call it done.
-func (n *TaskNode) workingCopy(workspace string) (taskTree, error) {
+func (n *TaskNode) workingCopy(place Place, workspace string) (taskTree, error) {
 	n.graph.mu.Lock()
 	dir, branch, merge := n.worktree, n.branch, n.merge
 	n.graph.mu.Unlock()
@@ -830,7 +837,7 @@ func (n *TaskNode) workingCopy(workspace string) (taskTree, error) {
 	if !ok {
 		return taskTree{}, fmt.Errorf("%s is no longer a repository, so its branch %s cannot come home", workspace, branch)
 	}
-	return taskTree{dir: dir, root: root, branch: branch}, nil
+	return taskTree{dir: dir, root: root, branch: branch, place: place}, nil
 }
 
 // mending sets — or clears — the gap this node is closing, and TELLS THE WORLD
@@ -1298,7 +1305,7 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 // get a working copy has to be able to say so to the person who asked for it.
 func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	log := taskLog(listed)
-	tree, err := prepareTaskTree(a.config.Workspace, a.journalID(), node.id, node.title())
+	tree, err := prepareTaskTree(a.config.Place, a.config.Workspace, a.journalID(), node.id, node.title())
 	if err != nil {
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
 		return TaskFailed
@@ -1760,7 +1767,7 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent,
 		window = 0
 	}
 	client := unwrapCompleter(a.client)
-	journal := taskJournalPath(a.sessionID(), node.id, suffix)
+	journal := taskJournalPath(parent.Place, a.sessionID(), node.id, suffix)
 	a.mu.Unlock()
 
 	// Written on the node the moment it is minted: the name carries a timestamp,
@@ -1844,10 +1851,16 @@ func (a *Agent) journalID() string {
 	return a.file.ID()
 }
 
-// taskJournalPath is where a node's own transcript lives:
-// ~/.aforge/v3/tasks/<session>/<when>_<id>.jsonl, and everything else the node
+// taskJournalPath is where a node's own transcript lives: tasks/<when>_<id>.jsonl
+// inside the session's own folder (Decision 26), and everything else the node
 // spent an agent on beside it under a suffix: <when>_<id>-audit-<nonce>.jsonl
 // for one check, <when>_<id>-repair1.jsonl for one repair round.
+//
+// THE JOURNAL FOLLOWS THE CONVERSATION THAT COMMISSIONED IT. The legacy answer
+// is the parallel tree ~/.aforge/v3/tasks/<session>/, which is the same names in
+// a directory nobody deleting a session would think to look in; a session that
+// has a folder keeps its nodes inside it, and the parallel tree dies with the
+// flat layout.
 //
 // It is a REAL SESSION FILE — the node is an agent, and everything it did is
 // resumable and readable with the same tools — kept under the conversation that
@@ -1862,13 +1875,15 @@ func (a *Agent) journalID() string {
 // SUFFIX IS THE CALLER'S TO MAKE UNIQUE — the stamp here is only good to the
 // second, and [newAgent] resumes a file that is already there, so two agents
 // handed one path would be one agent with two names (task_audit.go).
-func taskJournalPath(session string, id uint64, suffix string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
+func taskJournalPath(place Place, session string, id uint64, suffix string) string {
 	name := fmt.Sprintf("%s_%d%s.jsonl", time.Now().Format("20060102-150405"), id, suffix)
-	return filepath.Join(home, ".aforge", "v3", "tasks", session, name)
+	if journals := place.NodeJournals(); journals != "" {
+		return filepath.Join(journals, name)
+	}
+	// The legacy tree, through the one seam: os.UserHomeDir was read directly
+	// here, which is why AFORGE_HOME moved every other v3 file and left a node's
+	// transcript behind in the real home (Decision 26, "one home, one seam").
+	return filepath.Join(home.Dir(), "v3", "tasks", session, name)
 }
 
 // unwrapCompleter reaches past the session's own request wrapper.
@@ -1908,6 +1923,11 @@ type taskTree struct {
 	// merge is the outcome so far: "inplace" for a non-repository, and empty
 	// while a branch is still out.
 	merge string
+	// place is the session folder this tree belongs to, carried for one reason:
+	// it is what says where the root repository's lock lives (task_lock.go). It
+	// is the zero Place for the legacy layout, and for an in-place tree, which
+	// takes no lock at all.
+	place Place
 }
 
 // gitRoot is the in-process half of the root repository's lock, and the file
@@ -1936,7 +1956,16 @@ var gitRoot sync.Mutex
 // committed yet, is what the winner cleared out of the way. The branch name has
 // always been discriminated this way (the shortID below); this is the same law
 // applied to the place the work actually sits.
-func prepareTaskTree(workspace, session string, id uint64, title string) (taskTree, error) {
+//
+// A SESSION WITH A FOLDER PUTS THEM IN ITS OWN (Decision 26): trees/<id>/ under
+// the session, so the person's repository is borrowed and never littered, and so
+// deleting a session is removing one directory. Nothing else about the branch
+// law changes — the same `git worktree add -b` off the same HEAD, the same merge
+// home — because git registers a worktree wherever it lives. The session in the
+// path stops being a discriminator and becomes a containment: the path IS inside
+// one session's folder, so the forced remove below can only ever be reclaiming
+// after ourselves.
+func prepareTaskTree(place Place, workspace, session string, id uint64, title string) (taskTree, error) {
 	root, ok := repositoryRoot(workspace)
 	if !ok {
 		return taskTree{dir: workspace, merge: mergeInPlace}, nil
@@ -1948,10 +1977,14 @@ func prepareTaskTree(workspace, session string, id uint64, title string) (taskTr
 	}
 
 	dir := filepath.Join(root, filepath.FromSlash(tasksDirName), taskTreeSession(session), strconv.FormatUint(id, 10))
+	mode := os.FileMode(0o755)
+	if trees := place.Trees(); trees != "" {
+		dir, mode = filepath.Join(trees, strconv.FormatUint(id, 10)), 0o700
+	}
 	branch := "task/" + slugify(title) + "-" + shortID()
 
-	defer lockGitRoot(root)()
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+	defer lockGitRoot(place, root)()
+	if err := os.MkdirAll(filepath.Dir(dir), mode); err != nil {
 		return taskTree{}, err
 	}
 	// A directory already at this name belongs to a run of THIS session that is
@@ -1975,7 +2008,7 @@ func prepareTaskTree(workspace, session string, id uint64, title string) (taskTr
 	if out, err := git(root, "worktree", "add", "-b", branch, dir, "HEAD"); err != nil {
 		return taskTree{}, fmt.Errorf("git worktree add: %s", firstLine(out))
 	}
-	return taskTree{dir: dir, root: root, branch: branch}, nil
+	return taskTree{dir: dir, root: root, branch: branch, place: place}, nil
 }
 
 // taskTreeSession is the path segment that keeps one window's worktrees away
@@ -2020,7 +2053,7 @@ func (t taskTree) comeHome(title string) (string, string) {
 	}
 	commitTaskWork(t.dir, title)
 
-	defer lockGitRoot(t.root)()
+	defer lockGitRoot(t.place, t.root)()
 	if out, err := git(t.root, "merge", "--no-edit", t.branch); err != nil {
 		// --abort is best-effort: a merge that never started (git refused
 		// before touching the index) has nothing to abort, and it says so.
@@ -2038,7 +2071,9 @@ func (t taskTree) comeHome(title string) (string, string) {
 	// remove is deliberately not recursive: it succeeds on an empty directory and
 	// fails on one that still holds a node, which is precisely the question being
 	// asked. Without it every conversation that ever ran a task would leave an
-	// empty directory in the repository forever.
+	// empty directory in the repository forever. Under a session folder the same
+	// remove empties trees/ when the last node comes home, which costs nothing
+	// and leaves the folder listing honest.
 	_ = os.Remove(filepath.Dir(t.dir))
 	return mergeMerged, ""
 }

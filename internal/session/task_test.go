@@ -612,7 +612,7 @@ func waitDoneNode(t *testing.T, node *TaskNode) {
 // runs where the person is and the merge outcome says exactly that.
 func TestNonRepositoryRunsInPlace(t *testing.T) {
 	workspace := t.TempDir()
-	tree, err := prepareTaskTree(workspace, "s1", 1, "do the thing")
+	tree, err := prepareTaskTree(Place{}, workspace, "s1", 1, "do the thing")
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
@@ -631,7 +631,7 @@ func TestNonRepositoryRunsInPlace(t *testing.T) {
 // wrote is thrown away because two people edited the same lines.
 func TestConflictingMergeKeepsTheBranch(t *testing.T) {
 	repo := newTestRepo(t)
-	tree, err := prepareTaskTree(repo, "s1", 2, "edit the shared file")
+	tree, err := prepareTaskTree(Place{}, repo, "s1", 2, "edit the shared file")
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
