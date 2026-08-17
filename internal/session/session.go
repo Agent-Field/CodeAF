@@ -137,6 +137,29 @@ const (
 	// this kind is unchanged — and a provider that never announces (a
 	// non-streaming endpoint) simply sends no event of this kind.
 	EventToolAnnounced
+	// EventToolForming says one tool call is still ARRIVING — the model is
+	// spelling it out and has not finished. It is the phase BEFORE
+	// EventToolAnnounced, and it exists because that gap is not instant: a long
+	// write or a groomed propose_task takes seconds to stream, and a surface
+	// with only the announcement draws nothing at all for them.
+	//
+	// It carries CallID (the call's id once the wire has said one), Tool (the
+	// name once its delta has landed), Hint (a best-effort gloss built from the
+	// argument fields that have CLOSED so far — "write internal/foo.go" while the
+	// body of the file is still arriving), ArgsText (the raw partial arguments)
+	// and Bytes (how much of them has arrived).
+	//
+	// NOTHING HERE IS AN INSTRUCTION. ArgsText is half-sent JSON and is never
+	// parsed into Args; Hint is a scan, not an unmarshal; and forming NEVER
+	// implies execution — a formed call has not been announced, let alone begun,
+	// let alone consented to.
+	//
+	// ORDERING: forming (zero or more, per call) → EventToolAnnounced →
+	// EventToolBegin, keyed by CallID. Every call that forms is announced and
+	// begun in that order; calls in a parallel batch interleave with each other,
+	// but each call's own sequence holds. A non-streaming provider forms nothing,
+	// so a surface that ignores this kind is exactly what it was.
+	EventToolForming
 	// EventGuardianAllowed says a call the policy would have ASKED about ran
 	// because the guardian model vouched for it (guardian.go). It carries the
 	// Tool, the call's gloss in Hint and Args, and the rule that would have
@@ -203,6 +226,31 @@ type Event struct {
 	// ID names one EventConsentRequest, and is the token a surface hands back
 	// to [Agent.ResolveConsent]. It is zero on every other kind.
 	ID uint64
+
+	// CallID is the PROVIDER's id for the tool call an EventToolForming is
+	// about — the same string the announced call and the tool result carry — and
+	// is empty on every other kind. It is empty on a forming event too until the
+	// wire has sent one, which is the first fragment in practice and nothing the
+	// consumer may assume.
+	//
+	// It is not [Event.ID] because that field is the consent lane's own token, a
+	// uint64 this session mints; these are two different names for two different
+	// things and folding them would make "which call" and "which question"
+	// the same field with two answers.
+	CallID string
+
+	// ArgsText is the RAW, PARTIAL arguments text of a forming call: exactly what
+	// the provider has streamed so far, uncompacted and unparsed. It is set on
+	// EventToolForming and empty everywhere else — Args is the display JSON of a
+	// WHOLE call, and half of a JSON object is not that.
+	//
+	// A surface may show it, cut it, or ignore it. Nothing may unmarshal it.
+	ArgsText string
+
+	// Bytes is how much of a forming call's arguments has arrived. It is the
+	// length of ArgsText, carried as its own field so a surface can show progress
+	// ("write · 4.2 KB") without measuring text it may have chosen not to keep.
+	Bytes int
 
 	// Task carries one EventTaskProposal or EventTaskUpdate's payload
 	// (task_contract.go). It is nil on every other kind, and the ID inside it
