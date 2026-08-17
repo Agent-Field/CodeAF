@@ -160,7 +160,7 @@ func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
 // answer. A call that belongs to no account, or a build with no accounts layer,
 // comes back exactly as it went in.
 func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision approval.Decision) approval.Decision {
-	service := toolService(tool)
+	service := a.serviceOf(tool)
 	if a.connect == nil || service == "" {
 		return decision
 	}
@@ -306,7 +306,7 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		// Hint is the same gloss every tool row carries, so a surface renders
 		// the question against the row it already drew; Rule is the policy's
 		// own words for why it is asking.
-		Hint: gloss(call),
+		Hint: a.gloss(call),
 		Args: argsText(call),
 		Rule: decision.Rule,
 		// And whether the memo is even available, so a surface can leave the

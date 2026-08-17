@@ -32,6 +32,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -119,6 +120,14 @@ type connectHub interface {
 	Client(ctx context.Context, id string) (*http.Client, error)
 	Request(ctx context.Context, id, method, path, query, body string) (string, error)
 
+	// The two below are the accounts that BRING THEIR OWN TOOLS (served.go):
+	// one asks a connected account what it serves, the other runs one of them.
+	// They are on this seam rather than reached for through a handle of their
+	// own for the reason everything else here is — one door onto the accounts —
+	// and they carry a context because both reach the far end.
+	MCPTools(ctx context.Context, service string) ([]connect.MCPTool, error)
+	MCPCall(ctx context.Context, service, tool string, args json.RawMessage) (string, error)
+
 	Capabilities(service string) []connect.Capability
 	CapabilityState(service, capability string) connect.CapabilityState
 	SetCapabilityState(service, capability string, state connect.CapabilityState) error
@@ -202,6 +211,14 @@ func (h managerHub) SetCapabilityState(service, capability string, state connect
 
 func (h managerHub) ToolCapability(service, tool string) string {
 	return h.manager.ToolCapability(service, tool)
+}
+
+func (h managerHub) MCPTools(ctx context.Context, service string) ([]connect.MCPTool, error) {
+	return h.manager.MCPTools(ctx, service)
+}
+
+func (h managerHub) MCPCall(ctx context.Context, service, tool string, args json.RawMessage) (string, error) {
+	return h.manager.MCPCall(ctx, service, tool, args)
 }
 
 func (h managerHub) BeginAuth(ctx context.Context, id string) (string, func(context.Context) (connectStatus, error), error) {
@@ -496,6 +513,17 @@ func (a *Agent) NoteConnected(service, account string) {
 	if !known {
 		return
 	}
+	// AN ACCOUNT THAT BRINGS ITS OWN TOOLS HAS TO BE ASKED WHAT IT BRINGS, and
+	// asking reaches the far end. This door is called from a surface redrawing
+	// itself, so the ask goes on a goroutine of its own and the note follows it
+	// when it lands — which costs nothing, because an ambient note is read
+	// whenever the person next says something and nobody is waiting on it (see
+	// [Agent.enqueueAmbientNote]). The tool path does the same work inline,
+	// where there is a turn to hold it.
+	if a.servesItsOwn(status) {
+		go a.noteServed(status, account)
+		return
+	}
 	// The capabilities the person has turned off take their tools with them
 	// here too (connectcaps.go): this door and the tool call's door must put the
 	// same belt on, or a person would get a different set of hands depending on
@@ -505,6 +533,26 @@ func (a *Agent) NoteConnected(service, account string) {
 		return
 	}
 	a.enqueueAmbientNote(connectedNote(status.Name, account, len(tools) > 0))
+}
+
+// noteServed is [Agent.NoteConnected] for an account whose tools have to be
+// asked for. The whole arming reply becomes the note, rather than
+// [connectedNote]'s shorter line, because it is the one that NAMES what arrived
+// — and with a served account that is the only place those names exist.
+func (a *Agent) noteServed(status connectStatus, account string) {
+	ctx, cancel := context.WithTimeout(context.Background(), mcpFetchCeiling)
+	defer cancel()
+	a.enqueueAmbientNote(a.armServed(ctx, status, connectedLine(status.Name, account), ""))
+}
+
+// connectedLine is the first half of every sentence about an account that has
+// just been picked up: what it is, and who it is held as.
+func connectedLine(name, account string) string {
+	line := name + " is connected"
+	if account = strings.TrimSpace(account); account != "" {
+		line += " as " + account
+	}
+	return line
 }
 
 // connectedNote is the line the model reads. It says the two things that are

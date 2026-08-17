@@ -95,8 +95,9 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// saves a keystroke on a read; a message that has gone out over somebody's
 	// own address cannot be called back, and the point of asking about it is that
 	// THEY saw it. The list is internal/approval's, so the gate and the stand-in
-	// cannot drift on which calls it means.
-	if approval.ActsInThePersonsName(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
+	// cannot drift on which calls it means — plus the tools an account named
+	// itself, which no list could have held (connectcaps.go).
+	if a.actsInThePersonsName(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
 		return false
 	}
 	a.mu.Lock()
@@ -137,7 +138,7 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 		hub.send(Event{
 			Kind: EventGuardianAllowed,
 			Tool: call.Function.Name,
-			Hint: gloss(call),
+			Hint: a.gloss(call),
 			Args: argsText(call),
 			Rule: decision.Rule,
 			Text: "allowed by the guardian",

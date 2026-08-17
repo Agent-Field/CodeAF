@@ -769,9 +769,17 @@ type Agent struct {
 	// prompt behind it (internal/exec's tools.go states the law).
 	tools       []bare.Tool
 	definitions []ai.ToolDefinition
-	// armMu guards those two headers and nothing else. It is not mu: arming
-	// happens inside a tool call, and a tool call must never take the lock
-	// Interrupt has to be able to take.
+	// served is what the belt cannot say about the tools an ACCOUNT named
+	// rather than this build (served.go): whose account each one is, what the
+	// account calls it, and which capability governs it. Keyed by the name the
+	// tool is armed under.
+	//
+	// It is under armMu with the belt, and written at the same door, because a
+	// tool on the belt without its record would be a tool judged by nothing.
+	served map[string]servedTool
+	// armMu guards those headers, that map, and nothing else. It is not mu:
+	// arming happens inside a tool call, and a tool call must never take the
+	// lock Interrupt has to be able to take.
 	armMu sync.Mutex
 	// connect is the accounts seam, nil when the feature is absent (connect.go).
 	// It is written once at construction and read without a lock.
