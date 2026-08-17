@@ -1,0 +1,25 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Agent-Field/aforge-v2/internal/session
+BenchmarkReplaySessionFile/messages=200-20         	     498	   2517488 ns/op	  861013 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     492	   2637040 ns/op	  861004 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     445	   2628908 ns/op	  861004 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     506	   2454901 ns/op	  861003 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     453	   2425267 ns/op	  861002 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     456	   2592996 ns/op	  861002 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     488	   2462909 ns/op	  861002 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     487	   2507177 ns/op	  861002 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     506	   2553685 ns/op	  861002 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=200-20         	     482	   2547605 ns/op	  861002 B/op	    2855 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      44	  26432465 ns/op	 7953692 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      40	  27302515 ns/op	 7953673 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      38	  26504910 ns/op	 7953673 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      46	  25598557 ns/op	 7953672 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      40	  26541047 ns/op	 7953670 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      46	  26899106 ns/op	 7953676 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      64	  25704001 ns/op	 7953671 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      38	  26455439 ns/op	 7953670 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      43	  25557619 ns/op	 7953677 B/op	   28065 allocs/op
+BenchmarkReplaySessionFile/messages=2000-20        	      66	  26724239 ns/op	 7953688 B/op	   28065 allocs/op
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/session	28.348s

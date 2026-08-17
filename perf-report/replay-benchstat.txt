@@ -1,0 +1,20 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Agent-Field/aforge-v2/internal/session
+                                   │ perf-report/replay-before.txt │    perf-report/replay-after.txt     │
+                                   │            sec/op             │   sec/op     vs base                │
+ReplaySessionFile/messages=200-20                      2.970m ± 3%   2.533m ± 4%  -14.73% (p=0.000 n=10)
+ReplaySessionFile/messages=2000-20                     30.15m ± 2%   26.48m ± 3%  -12.17% (p=0.000 n=10)
+geomean                                                9.463m        8.189m       -13.46%
+
+                                   │ perf-report/replay-before.txt │     perf-report/replay-after.txt     │
+                                   │             B/op              │     B/op      vs base                │
+ReplaySessionFile/messages=200-20                    1643.2Ki ± 0%   840.8Ki ± 0%  -48.83% (p=0.000 n=10)
+ReplaySessionFile/messages=2000-20                   15.382Mi ± 0%   7.585Mi ± 0%  -50.69% (p=0.000 n=10)
+geomean                                               4.968Mi        2.496Mi       -49.77%
+
+                                   │ perf-report/replay-before.txt │    perf-report/replay-after.txt     │
+                                   │           allocs/op           │  allocs/op   vs base                │
+ReplaySessionFile/messages=200-20                      3.260k ± 0%   2.855k ± 0%  -12.42% (p=0.000 n=10)
+ReplaySessionFile/messages=2000-20                     32.07k ± 0%   28.07k ± 0%  -12.49% (p=0.000 n=10)
+geomean                                                10.22k        8.951k       -12.46%
