@@ -84,6 +84,20 @@ type sessionEntry struct {
 	// and a reader of a new one see the same lines for the same conversation.
 	Parts []journalPart `json:"parts,omitempty"`
 
+	// Note marks a user-role line the SESSION wrote rather than the person: a
+	// task's completion note and the other news that rides the steering queue
+	// (agent.go's [Agent.enqueueNote]). The message is user-role because that is
+	// what the model must read it as, and this is the one bit that says who
+	// actually said it.
+	//
+	// It exists for the replay. Without it a resumed conversation draws the
+	// harness's own line with the person's "›" in front of it — words in their
+	// mouth they never typed, and the opposite of what the live surface does with
+	// the same note ([Agent.wakeLocked], tui3's startFollow). It is absent from
+	// every file written before it existed, and those lines replay exactly as
+	// they always did.
+	Note bool `json:"note,omitempty"`
+
 	// Compaction fields.
 	Summary      string `json:"summary,omitempty"`
 	TokensBefore int    `json:"tokensBefore,omitempty"`
@@ -204,6 +218,16 @@ type sessionFile struct {
 	// alive for as long as the file is open, including the ones a compaction
 	// already dropped.
 	images map[string]string
+
+	// notes is WHICH user-role messages the session wrote itself, under the same
+	// kind of fingerprint the pictures use ([noteKey]).
+	//
+	// It lives here for the same reason images does: the transcript cannot answer
+	// the question. A wake note is user-role text and nothing about the message
+	// distinguishes it from a line somebody typed — the mark is on the journal's
+	// line, so the journal is what a surface asks (see [sessionEntry.Note] and
+	// [shapeEntries]).
+	notes map[string]bool
 }
 
 // Title is the name this file was opened holding, empty when it has none.
@@ -246,6 +270,51 @@ func (s *sessionFile) imageRefs(message ai.Message) []string {
 		}
 	}
 	return refs
+}
+
+// isNote reports whether one message is a line the SESSION wrote — the answer
+// [shapeEntries] turns into the "note" role a surface draws in its own lane
+// rather than in the person's.
+//
+// The NIL RECEIVER answers false, for the reason [sessionFile.imageRefs] answers
+// nil: a session with no file wrote no journal, so there is no mark to have
+// read, and the caller should not have to check for a file first.
+func (s *sessionFile) isNote(message ai.Message) bool {
+	if s == nil {
+		return false
+	}
+	key := noteKey(message)
+	if key == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.notes[key]
+}
+
+// rememberNote marks one message as the session's own, in a map the caller owns
+// — the file's, under its lock, and the one a replay is still building.
+func rememberNote(notes map[string]bool, message ai.Message) {
+	if notes == nil {
+		return
+	}
+	if key := noteKey(message); key != "" {
+		notes[key] = true
+	}
+}
+
+// noteKey fingerprints a session-authored line: its role and its text, through
+// the same [partKey] the pictures are indexed by.
+//
+// ONE TEXT PART IS THE WHOLE SHAPE of these messages — [Agent.enqueueNote]
+// builds them from a string — so anything else is not one and is left alone. Two
+// notes with the same words share a key, which is the right answer: they are the
+// same line and both are the session's.
+func noteKey(message ai.Message) string {
+	if len(message.Content) != 1 || message.Content[0].Type != "text" {
+		return ""
+	}
+	return message.Role + "|" + partKey(message.Content[0])
 }
 
 // rememberParts records where one message's non-text parts came from.
@@ -339,6 +408,7 @@ func openSessionFile(path, cwd, model string) (*sessionFile, []ai.Message, error
 	journal.title = replayed.title
 	journal.id = replayed.id
 	journal.images = replayed.images
+	journal.notes = replayed.notes
 
 	if !replayed.existed {
 		// The header names the session once. A resumed file keeps its
@@ -416,6 +486,10 @@ func replaySessionFile(path string) (replayedSession, error) {
 	// compaction marker for the same reason the title does — where a picture came
 	// from is a fact about the file, not about the tail of the transcript.
 	images := make(map[string]string)
+	// And the note index with it, for the same reason and in the same pass: the
+	// mark is on the LINE, and once the line has been rebuilt into a message
+	// there is nothing left to read it off (see [sessionFile.notes]).
+	notes := make(map[string]bool)
 	scanner := bufio.NewScanner(file)
 	// A tool result can be tens of kilobytes; the default 64KiB token limit
 	// would end the replay at the first big one.
@@ -458,6 +532,9 @@ func replaySessionFile(path string) (replayedSession, error) {
 			}
 			message := replayedMessage(entry)
 			rememberParts(images, message, entry.Parts)
+			if entry.Note {
+				rememberNote(notes, message)
+			}
 			messages = append(messages, message)
 		case "compaction":
 			// Everything before this marker is what the summary replaces. The
@@ -486,13 +563,14 @@ func replaySessionFile(path string) (replayedSession, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return replayedSession{title: title, id: id, images: images, existed: lines > 0}, fmt.Errorf("session file: %w", err)
+		return replayedSession{title: title, id: id, images: images, notes: notes, existed: lines > 0}, fmt.Errorf("session file: %w", err)
 	}
 	return replayedSession{
 		messages: repairTranscript(messages),
 		title:    title,
 		id:       id,
 		images:   images,
+		notes:    notes,
 		existed:  lines > 0,
 	}, nil
 }
@@ -541,7 +619,10 @@ type replayedSession struct {
 	id string
 	// images is where this file's pictures came from, keyed by [partKey] — the
 	// index [sessionFile.images] is opened holding.
-	images  map[string]string
+	images map[string]string
+	// notes is which of those messages the session wrote itself, keyed by
+	// [noteKey] — the index [sessionFile.notes] is opened holding.
+	notes   map[string]bool
 	existed bool
 }
 
@@ -625,10 +706,33 @@ func repairTranscript(messages []ai.Message) []ai.Message {
 // journal there is no way to recover the path it was read from (see
 // [userMessage]).
 func (s *sessionFile) appendMessage(message ai.Message, refs ...journalPart) {
+	s.append(message, false, refs)
+}
+
+// appendNote is appendMessage for a line the SESSION wrote (see
+// [sessionEntry.Note]). It is a separate door rather than a flag on the common
+// one because exactly one caller has the answer — [Agent.recordUserLocked],
+// which is holding the [userMessage] the mark comes off — and every other call
+// site should stay the call it was.
+func (s *sessionFile) appendNote(message ai.Message) {
+	s.append(message, true, nil)
+}
+
+func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart) {
 	// Indexed as it is written, not only as it is replayed: a picture attached
 	// an hour ago is one a rewind or a /compact can put back through the display
-	// shaping in THIS process, long before anybody resumes the file.
+	// shaping in THIS process, long before anybody resumes the file. The same is
+	// true of a note: the woken turn it belongs to is drawn in THIS process, and
+	// a /compact or a rewind can put its line back through the shaping.
 	s.rememberParts(message, refs)
+	if note {
+		s.mu.Lock()
+		if s.notes == nil {
+			s.notes = make(map[string]bool, 4)
+		}
+		rememberNote(s.notes, message)
+		s.mu.Unlock()
+	}
 	var text strings.Builder
 	for _, part := range message.Content {
 		if part.Type == "text" {
@@ -642,6 +746,7 @@ func (s *sessionFile) appendMessage(message ai.Message, refs ...journalPart) {
 		ToolCalls:  message.ToolCalls,
 		ToolCallID: message.ToolCallID,
 		Parts:      refs,
+		Note:       note,
 		Timestamp:  stamp(),
 	})
 }
@@ -663,6 +768,14 @@ func (s *sessionFile) appendCompaction(summary string, tokensBefore int, kept []
 		Timestamp:    stamp(),
 	})
 	for _, message := range kept {
+		// A KEPT LINE IS RE-JOURNALED AS WHAT IT WAS. The tail is written again on
+		// the far side of the marker (above), and a note re-written without its
+		// mark would come back from the next resume as the person's words — this
+		// pass is the one place a message is journaled twice.
+		if s.isNote(message) {
+			s.appendNote(message)
+			continue
+		}
 		s.appendMessage(message)
 	}
 }

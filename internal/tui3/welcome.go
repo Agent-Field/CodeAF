@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -140,16 +141,18 @@ func (a *app) dismissWelcome() {
 // and every other key is the person starting work, which is what dismissal
 // means.
 //
-// It reports whether it took the key. A key it did not take still dismisses,
-// and then goes on to do whatever it always does.
-func (a *app) welcomeKey(name string) bool {
+// It reports whether it took the key, and hands back whatever work the key
+// started — which for enter on a recent session is the two standing lanes the
+// conversation it just opened owes itself ([app.resumeSession]). A key it did
+// not take still dismisses, and then goes on to do whatever it always does.
+func (a *app) welcomeKey(name string) (tea.Cmd, bool) {
 	if !a.welcome.open {
-		return false
+		return nil, false
 	}
 	switch name {
 	case "up", "down":
 		if !a.input.empty() || len(a.welcome.recent) == 0 {
-			return false
+			return nil, false
 		}
 		delta := 1
 		if name == "up" {
@@ -164,18 +167,17 @@ func (a *app) welcomeKey(name string) bool {
 			a.welcome.sel = moveCursor(a.welcome.sel, delta, len(a.welcome.recent))
 		}
 		a.touch()
-		return true
+		return nil, true
 
 	case "enter":
 		if a.welcome.sel < 0 || a.welcome.sel >= len(a.welcome.recent) {
-			return false
+			return nil, false
 		}
 		chosen := a.welcome.recent[a.welcome.sel]
 		a.dismissWelcome()
-		a.resumeSession(chosen)
-		return true
+		return a.resumeSession(chosen), true
 	}
-	return false
+	return nil, false
 }
 
 // resumeSession swaps this surface onto an earlier conversation.
@@ -187,13 +189,24 @@ func (a *app) welcomeKey(name string) bool {
 // the reset is written out here rather than factored so that a field added to
 // the surface is a compile error in both places rather than a stale value in
 // one.
-func (a *app) resumeSession(chosen Session) {
+//
+// THE DUPLICATION IS NOT SAFE FOR WORK THAT IS RETURNED, and that is the whole
+// reason this has a result at all. The line above is true of FIELDS: add one to
+// the surface and both places stop compiling. A COMMAND is not a field, and
+// [app.renew] ends with two of them — the standing task lane and the wake lane
+// (task.go, followup.go) — which this function simply did not return. The cost
+// was the whole point of the wake lane: a node landing on a resumed session
+// starts a real turn, the model answers, and the events reach the journal and
+// nothing else, because the closed agent took the lane with it and no pump was
+// armed on the new one. Both lanes are re-opened here for the same reason /new
+// re-opens them: they belong to the agent that handed them over.
+func (a *app) resumeSession(chosen Session) tea.Cmd {
 	if a.resume == nil {
 		// The picker's sentence, said once (resume.go): the box and the list are
 		// two doors onto the same missing seam, and a surface that explained it
 		// twice in two different words would read as two different faults.
 		a.note(resumeUnavailableWord)
-		return
+		return nil
 	}
 	if a.state == stateWorking && a.agent != nil {
 		a.agent.Interrupt()
@@ -206,7 +219,7 @@ func (a *app) resumeSession(chosen Session) {
 	agent, err := a.resume(chosen.File)
 	if err != nil {
 		a.note("resume failed: " + err.Error())
-		return
+		return nil
 	}
 	a.agent, a.file = agent, chosen.File
 	a.entries = nil
@@ -231,22 +244,28 @@ func (a *app) resumeSession(chosen Session) {
 	a.replay()
 	a.measureContext()
 	a.note("resumed " + chosen.File)
+	// The conversation that just opened subscribes to its OWN lanes: the rail's
+	// updates and the turns the session starts by itself. A resumed session is
+	// exactly where the second one earns its keep — the node that lands is
+	// usually one this session started before it was closed (session's
+	// recovery.go continues the frontier).
+	return tea.Batch(a.watchTasks(), a.watchWakes())
 }
 
 // welcomePress is a click inside the box: on a recent row it opens that
 // session, anywhere else it is the person reaching past the box, which
 // dismisses it.
-func (a *app) welcomePress(slot int) {
+func (a *app) welcomePress(slot int) tea.Cmd {
 	if !a.welcome.open {
-		return
+		return nil
 	}
 	if slot < 0 || slot >= len(a.welcome.recent) {
 		a.dismissWelcome()
-		return
+		return nil
 	}
 	chosen := a.welcome.recent[slot]
 	a.dismissWelcome()
-	a.resumeSession(chosen)
+	return a.resumeSession(chosen)
 }
 
 // ── the drawing ─────────────────────────────────────────────────────────────
