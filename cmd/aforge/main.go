@@ -106,6 +106,14 @@ func run() error {
 		// has already had (internal/tui3's resume.go). It is a v3 door only:
 		// the older surfaces have no session files to pick from.
 		return runResumeV3(os.Args[2:])
+	case "engine":
+		// The far half of `aforge chat --host <host>`: the process ssh starts
+		// on the other machine, speaking the wire protocol on its own pipes
+		// (engine.go). It is DELIBERATELY ABSENT from the usage text below —
+		// it is machinery a surface dials, not a thing a person runs, and a
+		// command that draws nothing and reads no keys would only be a puzzle
+		// in a list of commands that do.
+		return runRemoteEngine(os.Args[2:])
 	case "do":
 		return runDo(os.Args[2:])
 	case "plan":
