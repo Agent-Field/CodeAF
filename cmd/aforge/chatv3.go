@@ -211,6 +211,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// The same deliverables index the session's config carries, so the
 		// surface's /export rows and the session's own land in one file.
 		ArtifactsIndex: artifactsIndexPath(),
+		// The profile the settings panel reads and writes, which must be the
+		// SAME directory this launch read every governance row out of. It was
+		// missing here while the --host door supplied it (chatv3_host.go), and
+		// the gap was invisible in the ordinary case and silent in the one that
+		// mattered: with AFORGE_PROFILE_DIR set, the panel wrote into
+		// ~/.aforge/config.json while the session went on reading the profile
+		// the variable named, so a gate turned off in the sheet stayed on and
+		// nothing on screen said why.
+		ProfileDir: settings.ProfileDir,
 		Fresh: func() (tui3.Agent, string, error) {
 			place, err := v3NextSession(cfg.Place, workspace)
 			if err != nil {
@@ -276,6 +285,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// The consent card's "always", written down AND handed to the gate this
 		// session is running on (chatv3_approval.go). The second half is why a
 		// banked rule answers the very next call instead of the next launch.
+		// Where a model chosen in /model, in the picker or on the settings sheet
+		// is written down, so the next launch opens on it ([v3TalkModel] reads
+		// the same row back). It is the profile this launch resolved everything
+		// else out of, which is the point: the surface must not be able to write
+		// its choice into a file the door does not read.
+		SaveModel: func(model string) error {
+			return config.WriteChatModel(settings.ProfileDir, model)
+		},
 		SaveApproval:     bankToolApproval(agent, workspace, settings.ProfileDir, *yolo),
 		SaveBashApproval: bankBashApproval(agent, workspace, settings.ProfileDir, *yolo),
 		ApplyApprovals:   applyV3Approvals(agent, workspace, settings.ProfileDir, *yolo),
@@ -359,10 +376,7 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
 		return nil, err
 	}
-	chosen := strings.TrimSpace(opts.Model)
-	if chosen == "" {
-		chosen = settings.Model
-	}
+	chosen := v3TalkModel(opts.Model, settings)
 	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
 	// this is: `aforge` typed in repo/cmd/ is a conversation about the
 	// repository, and the subdirectory is recorded rather than resolved away
@@ -482,6 +496,22 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		// above were built from, so a page approved on a card is a page the very
 		// next sentence can be matched against.
 		HarnessStore: harnesses,
+		// The hand that paints, and the model it asks (internal/session's
+		// tools_image.go). The pair is CONDITIONAL on the other side — a nil
+		// client leaves generate_image off the belt entirely — so this is
+		// allowed to hand over nothing, and does on a build that cannot open a
+		// media client at all.
+		//
+		// The model is the environment slot alone. AFORGE_IMAGE_MODEL is a
+		// deliberate answer to "which model paints"; nothing else here is, so
+		// the empty string is passed on and the session falls through to the
+		// person's own pin (roles.PinKey(roles.RoleImageGen), read through the
+		// RolesSource applyV3Governance fills in below). Resolving a painter
+		// off the catalog instead would put the tool on every belt on the
+		// strength of a guess, and an image request sent to a guessed model is
+		// a 404 the model reads as its own mistake.
+		ImageGenModel:  strings.TrimSpace(settings.ImageModel),
+		ImageGenClient: v3ImageGen(settings),
 	}
 
 	// What this session may do without asking, which model answers its
@@ -504,6 +534,48 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		Place:       found.Place,
 		Bucket:      found.Bucket,
 	}, nil
+}
+
+// v3TalkModel is which model this conversation opens on, and the order is the
+// whole content: what the person named on the command line, then what they
+// last chose and it was written down (internal/config's chatmodel.go), then
+// what the environment and the built-in default say.
+//
+// THE SAVED CHOICE BEATS AFORGE_MODEL, which is the settings row's own law
+// rather than this door's invention: the talk slot carries the variable as an
+// [config.Setting.EnvDefault] and not an [config.Setting.Env], so it seeds a
+// value nobody has chosen and never freezes the row. A launch that let the
+// variable win would make a pick in /model revert on the next start while the
+// sheet went on showing it as editable.
+func v3TalkModel(asked string, settings config.Config) string {
+	if named := strings.TrimSpace(asked); named != "" {
+		return named
+	}
+	if saved := config.ChatModelAt(settings.ProfileDir); saved != "" {
+		return saved
+	}
+	return settings.Model
+}
+
+// v3ImageGen is the hand generate_image calls through, or NIL — which is the
+// tool absent rather than the tool refusing (session.Config's ImageGenClient
+// states that law and internal/session's tools_image.go applies it).
+//
+// The two-line dance is [v3Connections]'s and Go's: a nil *provider.MediaClient
+// put into an interface is a NON-nil interface holding nothing, and the belt
+// tests its door with a plain nil check. Without the explicit return, a build
+// that could not open a client would carry a generate_image that panicked
+// instead of a belt that never mentioned one.
+//
+// IT RETURNS NO ERROR, for the reason [v3Search] does not. Painting is an
+// accessory; a client that cannot be built is a session with one fewer tool,
+// and no reason a person cannot open a conversation.
+func v3ImageGen(settings config.Config) session.ImageGenerator {
+	client, err := settings.MediaClient()
+	if err != nil || client == nil {
+		return nil
+	}
+	return client
 }
 
 // v3Connections hands the surface the accounts manager, and keeps a nil a nil.

@@ -452,6 +452,52 @@ func TestSplitPercentClampsAndSavesThroughTheRegistry(t *testing.T) {
 	}
 }
 
+// And the other half of that row: a caller with no divider to move does not get
+// a divider row. It used to get one that read a plausible percentage, took a
+// new one and answered "chat width is unavailable here" — a control whose only
+// behaviour was to refuse, which is the shape this codebase leaves OFF rather
+// than shipping broken. The v3 chat is that caller: its roster is a fixed
+// column, not a share of the frame.
+func TestTheDividerRowIsAbsentWithoutSomewhereToSaveIt(t *testing.T) {
+	rows := NewSettings(SettingsOptions{
+		ProfileDir: t.TempDir(),
+		// The read seam alone, which is what a surface that can only DRAW a
+		// divider would hand over.
+		SplitPct: func() int { return 60 },
+	})
+	if _, ok := rows.Row(KeySplitPct); ok {
+		t.Fatal("a surface that cannot save the divider was still given the row")
+	}
+	for _, row := range rows.Rows() {
+		if row.Key == KeySplitPct {
+			t.Fatal("the divider reached the sheet through Rows()")
+		}
+	}
+
+	// With the seam it is back, and it is back WHERE IT WAS: at the head of the
+	// interface group, ahead of the nerd-font row it has always sat above.
+	full := NewSettings(SettingsOptions{
+		ProfileDir:   t.TempDir(),
+		SplitPct:     func() int { return 60 },
+		SaveSplitPct: func(int) {},
+	})
+	divider, nerd := -1, -1
+	for index, row := range full.Rows() {
+		switch row.Key {
+		case KeySplitPct:
+			divider = index
+		case KeyNerdFont:
+			nerd = index
+		}
+	}
+	if divider < 0 {
+		t.Fatal("a surface that CAN save the divider was not given the row")
+	}
+	if divider > nerd {
+		t.Fatalf("the divider moved: it is row %d and nerd font is row %d", divider, nerd)
+	}
+}
+
 // The nerd-font tier is ON until someone says otherwise, which is the opposite
 // default from linear mode — so this exercises the pin and the persisted file
 // in the direction that actually turns something OFF, and proves the row that

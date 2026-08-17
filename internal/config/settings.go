@@ -822,6 +822,11 @@ type Settings struct {
 // NewSettings builds the registry against one profile directory and whatever
 // live seams the caller can supply. Missing seams make a row read-only rather
 // than absent, so the sheet always shows the complete surface.
+//
+// ONE ROW IS THE EXCEPTION and [Settings.build] states it where it happens: the
+// divider has nowhere to be written without [SettingsOptions.SaveSplitPct], and
+// a read-only divider is not a row somebody can read — it is a control whose
+// only behaviour is to refuse.
 func NewSettings(options SettingsOptions) *Settings {
 	registry := &Settings{options: options}
 	registry.rows = registry.build()
@@ -1319,8 +1324,27 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return strconv.Itoa(TenureAfterAt(dir)) },
 			write: func(raw string) error { return writeTenure(dir, raw) },
 		},
+	)
 
-		s.splitRow(),
+	// THE ONE ROW THAT IS NOT ALWAYS BUILT, and it is the exception
+	// [NewSettings] names: a missing seam makes a row read-only, except where
+	// read-only would mean a control that cannot do the one thing it is for.
+	//
+	// The divider is a number a SURFACE keeps and this file cannot write, so a
+	// caller that hands over no [SettingsOptions.SaveSplitPct] has no divider to
+	// move. Built anyway, the row read a plausible percentage, accepted a new
+	// one, and answered "chat width is unavailable here" — a control that
+	// existed only to refuse. The v3 chat is exactly that caller: its rail is a
+	// fixed column chosen by frame width (internal/tui3's railColsFor), so there
+	// is no share of the frame to set and the honest sheet is one without the
+	// row. The v1 and v2 surfaces do keep a divider and do pass the seam
+	// (internal/command's Settings), so the row is theirs still — and it stays
+	// where it has always been, at the head of the interface group.
+	if s.options.SaveSplitPct != nil {
+		rows = append(rows, s.splitRow())
+	}
+
+	rows = append(rows,
 		Setting{
 			Key: KeyNerdFont, Category: CategoryInterface, Kind: SettingBool,
 			Label: "nerd font", Env: "AFORGE_NERD_FONT",
@@ -1466,6 +1490,9 @@ func (s *Settings) splitRow() Setting {
 		if err != nil {
 			return err
 		}
+		// Unreachable, and kept: [Settings.build] will not make this row without
+		// the seam, so nobody meets this sentence any more. A future caller that
+		// builds the row by hand gets a refusal rather than a nil call.
 		if options.SaveSplitPct == nil {
 			return fmt.Errorf("chat width is unavailable here")
 		}
