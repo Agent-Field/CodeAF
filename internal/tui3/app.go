@@ -105,14 +105,15 @@ const (
 // toolState is where one call is in its life, and it is the whole of what the
 // left of a tool line says (toolview.go draws it):
 //
-//	◌  toolQueued    the model asked for it; NOTHING has started
+//	◌  toolForming   the model is still SPELLING IT OUT — a dim pulse
+//	◌  toolQueued    the model finished asking; NOTHING has started
 //	?  toolConsent   it is blocked on a person — the question hue, and the row
 //	                 with it
 //	⠋  toolRunning   it is executing: the braille spinner, and only here
 //	   toolOK        it finished, quietly, with its elapsed time
 //	✗  toolFailed    it failed, loudly, and its detail is already open
 //
-// The first two states are the fix for one defect: a mutating call sat spinning
+// The middle two states are the fix for one defect: a mutating call sat spinning
 // while the RESPONSE streamed (nothing had started), and a call waiting for an
 // answer spun identically to one doing work. A spinner is a claim about
 // motion, so it is now spent on motion alone.
@@ -128,12 +129,28 @@ const (
 	toolRunning
 	toolOK
 	toolFailed
+	// toolForming is the phase BEFORE queued: the call is still ARRIVING, one
+	// fragment at a time, and what is on screen is the model writing it rather
+	// than anything the harness is doing (session.EventToolForming).
+	//
+	// It is LAST in this block rather than first, where the life of a call would
+	// have put it, because the zero value above is load-bearing: a row built
+	// from an announcement sets no status, and "forming" is the one state such
+	// a row must never default to — it would claim the model is still typing a
+	// call it has finished asking for.
+	toolForming
 )
 
 // live reports whether a call has not resolved yet — queued, waiting on a
 // person, or executing. Every "find the row this event is about" walk asks
 // this rather than comparing against toolRunning, which was the whole test back
 // when running was the only unresolved state there was.
+//
+// A FORMING CALL IS NOT LIVE, and that is the deliberate half of this: the
+// walks that ask this question are looking for the row a consent question, a
+// begin or an end belongs to, and every one of those events is about a call the
+// model has FINISHED asking for. A half-sent call cannot be any of them, and a
+// row that answered to them would take an event belonging to the call beside it.
 func (s toolState) live() bool { return s == toolQueued || s == toolConsent || s == toolRunning }
 
 // entry is one block of the conversation, and its rendered rows.
@@ -163,6 +180,21 @@ type entry struct {
 	// "allowed" or "denied", dim, beside the row's stat (consent.go). It is
 	// empty for every call the policy did not stop.
 	decision string
+
+	// callID is the PROVIDER's id for this call (session.Event.CallID), taken
+	// off the forming events and kept so the announcement lands on the row that
+	// was already drawing the same call. It is empty for every row this surface
+	// never saw form — a non-streaming provider announces calls with no id in
+	// front of them — and empty on a forming row until the wire says one.
+	callID string
+	// bytes is how much of a FORMING call's arguments has arrived. It is the
+	// row's only figure while nothing else about the call is known yet, and it
+	// stops mattering the moment the call is whole.
+	//
+	// THE ARGUMENTS THEMSELVES ARE NOT KEPT. Half a JSON object is not a
+	// payload; the size of it is a fact, and the fact is what the row shows
+	// (session.go's ArgsText contract).
+	bytes int
 
 	// began and ended are the block's clock, and the two entry kinds that have
 	// one read it the same way — the moment the thing started and the moment it
@@ -209,6 +241,17 @@ type entry struct {
 	width int
 	built bool
 	stale bool
+}
+
+// forming reports whether this row is a call the model is STILL SPELLING OUT.
+//
+// The ended clock is what takes it back out again: a forming row whose stream
+// died is resolved rather than removed ([app.dropForming]), and the row that is
+// left says the call was cancelled — so "still arriving" has to mean the state
+// AND an unstopped clock, or a dead row would keep pulsing at a model that has
+// stopped speaking.
+func (e *entry) forming() bool {
+	return e.kind == entryTool && e.status == toolForming && e.ended.IsZero()
 }
 
 // The messages the surface moves on. Every stream message carries the
@@ -1368,6 +1411,11 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
 
+	case session.EventToolForming:
+		// THE CALL IS ARRIVING. Nothing has been asked for yet — this is the
+		// model writing the instruction, drawn while it writes it.
+		a.formTool(ev)
+
 	case session.EventToolAnnounced:
 		a.announceTool(ev)
 
@@ -1477,6 +1525,9 @@ func (a *app) settle() tea.Cmd {
 	// released those calls; a prompt left on screen would be asking about work
 	// that is over (consent.go).
 	a.dropAsks()
+	// A call the model was still spelling out when the turn ended never became
+	// one: the row says so and stops pulsing (toolview.go).
+	a.dropForming()
 	// A proposal the engine is no longer holding stops asking, for the reason
 	// the questions above are dropped — except that this one is CHECKED rather
 	// than assumed, because the clock may have answered it (task.go).
@@ -1500,6 +1551,30 @@ func (a *app) settle() tea.Cmd {
 	a.follow()
 	a.touch()
 	return tea.Batch(a.probeGit(), fadeTicks())
+}
+
+// dropForming resolves every call that was still ARRIVING when the turn ended.
+//
+// A stream can die mid-call — an interrupt, an error, a connection that went
+// away between two fragments — and the row it left behind is the one row on
+// this surface with no event coming for it: no announcement, no begin, no end.
+// Left alone it would pulse forever at a model that has stopped speaking.
+//
+// It is RESOLVED rather than removed. The model started asking for something
+// and the turn ended before it finished, which is a fact about what happened —
+// and a row that vanished would take that fact with it — so the row keeps its
+// place, stops its clock, and says the call was cancelled in the dim the rest
+// of an ended turn is drawn in.
+func (a *app) dropForming() {
+	now := a.now()
+	for i := range a.entries {
+		if e := &a.entries[i]; e.forming() {
+			e.ended = now
+		}
+	}
+	// The spawn card is the same event's other half and dies the same death
+	// (task.go).
+	a.dropFormingCard()
 }
 
 // fadeTicks are the two catch-up wakeups a settled turn schedules: one where
@@ -1590,15 +1665,140 @@ func (a *app) appendText(text string) {
 	a.follow()
 }
 
+// formTool draws — and then keeps redrawing — the row for a call that is STILL
+// ARRIVING (session.EventToolForming).
+//
+// THE GAP THIS CLOSES: a `write` whose body is the file and a `propose_task`
+// whose brief is three paragraphs take seconds to stream, and until this
+// existed the surface said nothing at all for those seconds. The announcement
+// fires when the call is WHOLE; the row now exists from the first fragment, and
+// says what it honestly can — how much has arrived, then the tool, then what it
+// is about — gaining detail rather than appearing finished.
+//
+// NOTHING HERE IS PARSED. ev.ArgsText is half a JSON object and is deliberately
+// not kept: the row holds the SIZE of what has arrived and the gloss session
+// built from the fields that have closed, and a surface that unmarshaled a
+// prefix would be drawing a call the model has not finished asking for.
+func (a *app) formTool(ev session.Event) {
+	// The spawn card forms from the same event, because a proposal is a BLOCK
+	// rather than a row and a block that popped into existence whole is the
+	// defect this wave is about (task.go).
+	if ev.Tool == taskTool {
+		a.formTask(ev)
+	}
+	at := a.claimForming(ev)
+	if at < 0 {
+		a.closeLive()
+		a.entries = append(a.entries, entry{
+			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
+			status: toolForming, callID: ev.CallID, bytes: ev.Bytes,
+		})
+		a.follow()
+		a.touch()
+		return
+	}
+	e := &a.entries[at]
+	// Every field is taken FORWARD only. The id, the name and the gloss each
+	// land once and then repeat on every fragment after them, and a later event
+	// that happened to carry less than the one before it must not un-say what
+	// the row already knows.
+	e.callID = firstNonEmpty(ev.CallID, e.callID)
+	e.tool = firstNonEmpty(ev.Tool, e.tool)
+	e.text = firstNonEmpty(ev.Hint, e.text)
+	if ev.Bytes > e.bytes {
+		e.bytes = ev.Bytes
+	}
+	a.touch()
+}
+
+// claimForming finds the row this forming event belongs to, or -1 for a call
+// nothing has been drawn for yet.
+//
+// It walks NEWEST FIRST, which is what makes an id landing late harmless: the
+// wire sends the id on the first fragment in practice and is not required to,
+// so a row can exist with no id at all, and the row that identity belongs to is
+// the most recent one still waiting for one.
+//
+// Once two rows have ids they cannot be confused, which is the whole reason the
+// id is kept: a batch of three parallel writes forms three rows that interleave
+// fragment by fragment, and matching on the tool name alone would fold all
+// three into whichever was drawn first.
+func (a *app) claimForming(ev session.Event) int {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if !e.forming() {
+			continue
+		}
+		if e.callID != "" {
+			if e.callID == ev.CallID {
+				return i
+			}
+			continue
+		}
+		// A row with no id yet: this event is that row's if it does not name a
+		// different call, which — with no ids on either side — is as far as
+		// "same call" can honestly be decided.
+		if ev.Tool == "" || e.tool == "" || e.tool == ev.Tool {
+			return i
+		}
+	}
+	return -1
+}
+
+// claimFormed finds the forming row an ANNOUNCEMENT (or a begin) completes, or
+// -1. It is [app.claimForming]'s mirror and walks the other way: the oldest
+// unfinished row of that tool is the one the batch announces first, which is
+// the order the ordering law promises them in.
+func (a *app) claimFormed(ev session.Event) int {
+	loose := -1
+	for i := range a.entries {
+		e := &a.entries[i]
+		if !e.forming() {
+			continue
+		}
+		if ev.CallID != "" && e.callID != "" {
+			if e.callID == ev.CallID {
+				return i
+			}
+			continue
+		}
+		if e.tool == ev.Tool {
+			return i
+		}
+		// A row whose name never landed can only be matched by position, and it
+		// is the LAST resort: a named row for this tool outranks it wherever
+		// one exists.
+		if e.tool == "" && loose < 0 {
+			loose = i
+		}
+	}
+	return loose
+}
+
 // announceTool draws the row for a call the model has finished asking for
 // (session.EventToolAnnounced). Nothing has started, so the row is queued: a
 // dim ◌, no spinner, and — for an edit or a write — the change it is ABOUT to
 // make, previewed underneath from the arguments (toolview.go).
 //
+// IT ADOPTS THE FORMING ROW rather than drawing a second one: the row the
+// person has been watching fill in is this call, and the announcement is that
+// row's next state — the pulse stops, the arguments arrive, the ink comes up.
+// One call, one line, from the first fragment to the last.
+//
 // A row is only ever announced once, but a surface that attached mid-batch may
 // see a begin with no announcement and must not draw a second line for it, so
 // the pairing rule lives in [app.claimAnnounced] and both events use it.
 func (a *app) announceTool(ev session.Event) {
+	if at := a.claimFormed(ev); at >= 0 {
+		e := &a.entries[at]
+		e.status = toolQueued
+		e.tool = firstNonEmpty(ev.Tool, e.tool)
+		e.text = firstNonEmpty(ev.Hint, e.text)
+		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
+		a.follow()
+		a.touch()
+		return
+	}
 	a.closeLive()
 	a.entries = append(a.entries, entry{
 		kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
@@ -1614,7 +1814,15 @@ func (a *app) announceTool(ev session.Event) {
 // every provider that does not stream tool calls and every surface that
 // attached late.
 func (a *app) beginTool(ev session.Event) {
-	if at := a.claimAnnounced(ev); at >= 0 {
+	at := a.claimAnnounced(ev)
+	if at < 0 {
+		// A call that formed and then began with no announcement between them.
+		// The ordering law says that cannot happen, and a row left pulsing at a
+		// call that is already running would be the surface believing the law
+		// over the event in its hand.
+		at = a.claimFormed(ev)
+	}
+	if at >= 0 {
 		e := &a.entries[at]
 		e.status = toolRunning
 		e.began = a.now()
@@ -1825,12 +2033,19 @@ func frameTick() tea.Cmd {
 }
 
 // running reports whether any call of the current turn is still unresolved —
-// queued, asked about, or spinning. All three are something on screen for the
-// person to watch, which is the question the ellipsis is asking.
+// arriving, queued, asked about, or spinning. All four are something on screen
+// for the person to watch, which is the question the ellipsis is asking.
+//
+// A FORMING ROW COUNTS, and it is the newest reason this question is asked at
+// all: the ellipsis exists to say "something is happening" while nothing else
+// moves, and a row filling in with the model's own call is that something.
 func (a *app) running() bool {
 	for i := range a.entries {
 		e := &a.entries[i]
-		if e.kind == entryTool && e.status.live() && e.turn == a.turn {
+		if e.turn != a.turn {
+			continue
+		}
+		if e.forming() || (e.kind == entryTool && e.status.live()) {
 			return true
 		}
 	}
