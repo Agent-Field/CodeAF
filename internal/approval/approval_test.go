@@ -54,6 +54,37 @@ func TestCheckIgnoresGarbageToolAction(t *testing.T) {
 	}
 }
 
+// A BLANKET ALLOW CANNOT SEND SOMEBODY'S MAIL. The tools that act outside this
+// machine in a person's own name are asked about even under allow-everything,
+// and a rule that names one of them is still obeyed.
+func TestCheckToolsThatActInThePersonsName(t *testing.T) {
+	allowAll := Policy{Default: ActionAllow}
+	for _, tool := range []string{"gmail_send", "calendar_create"} {
+		decision := allowAll.Check(tool, json.RawMessage(`{"to":"alice@example.com"}`))
+		if decision.Action != ActionPrompt {
+			t.Errorf("Check(%q) under allow-all = %+v, want prompt", tool, decision)
+		}
+		if !strings.Contains(decision.Rule, tool) || !strings.Contains(decision.Rule, "in your name") {
+			t.Errorf("Check(%q) rule = %q, want it to say why", tool, decision.Rule)
+		}
+	}
+	// The reading half of the same family is ordinary work and is not floored.
+	if decision := allowAll.Check("gmail_search", nil); decision.Action != ActionAllow {
+		t.Errorf("Check(gmail_search) = %+v, want allow", decision)
+	}
+
+	// A rule that NAMES the tool is the person's own sentence about that tool
+	// and wins in both directions.
+	named := Policy{Default: ActionAllow, Tools: map[string]Action{"gmail_send": ActionAllow}}
+	if decision := named.Check("gmail_send", nil); decision.Action != ActionAllow || decision.Rule != `tool "gmail_send"` {
+		t.Errorf("Check(gmail_send) with a rule = %+v, want allow by the rule", decision)
+	}
+	refusing := Policy{Default: ActionAllow, Tools: map[string]Action{"gmail_send": ActionDeny}}
+	if decision := refusing.Check("gmail_send", nil); decision.Action != ActionDeny {
+		t.Errorf("Check(gmail_send) with a deny rule = %+v, want deny", decision)
+	}
+}
+
 func TestCheckBashPatterns(t *testing.T) {
 	policy := Policy{
 		Default: ActionPrompt,

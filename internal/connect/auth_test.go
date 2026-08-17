@@ -333,6 +333,71 @@ func drive(t *testing.T, flow *Flow, code string) {
 	_ = page.Body.Close()
 }
 
+// TestWaitRecordsWhatWasGranted holds the record kept beside the keys: the
+// service's own word for what it agreed to, and — when it says nothing — what
+// the sign-in asked for.
+func TestWaitRecordsWhatWasGranted(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		said      string
+		want      []string
+		connected bool
+	}{
+		{
+			name:      "the service names a narrower set than was asked for",
+			said:      "https://www.googleapis.com/auth/gmail.modify",
+			want:      []string{"https://www.googleapis.com/auth/gmail.modify"},
+			connected: false,
+		},
+		{
+			name:      "the service says nothing",
+			want:      wholeGrant(),
+			connected: true,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			onFreePort(t)
+			mux := http.NewServeMux()
+			mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+				answer := map[string]any{
+					"access_token": "access-one", "refresh_token": "refresh-one",
+					"token_type": "Bearer", "expires_in": 3600,
+				}
+				if c.said != "" {
+					answer["scope"] = c.said
+				}
+				writeJSON(t, w, answer)
+			})
+			mux.HandleFunc("/gmail/v1/users/me/profile", func(w http.ResponseWriter, r *http.Request) {
+				writeJSON(t, w, map[string]any{"emailAddress": "me@example.com"})
+			})
+			fakeService(t, mux)
+
+			manager, _ := testManager(t)
+			flow, err := manager.BeginAuth(context.Background(), "google")
+			if err != nil {
+				t.Fatalf("BeginAuth: %v", err)
+			}
+			defer flow.Cancel()
+			drive(t, flow, "the-code")
+			if _, err := flow.Wait(context.Background()); err != nil {
+				t.Fatalf("Wait: %v", err)
+			}
+
+			entry, ok, err := manager.store.get("google")
+			if err != nil || !ok {
+				t.Fatalf("store after Wait: ok=%v err=%v", ok, err)
+			}
+			if strings.Join(entry.Scopes, " ") != strings.Join(c.want, " ") {
+				t.Errorf("recorded %v, want %v", entry.Scopes, c.want)
+			}
+			if got := manager.Connected("google"); got != c.connected {
+				t.Errorf("Connected = %v, want %v", got, c.connected)
+			}
+		})
+	}
+}
+
 // TestClientPersistsARotatedKey is the law that a renewal is written down: the
 // service hands back a new long-lived key, and the store must have it before
 // the process ends.
@@ -368,6 +433,7 @@ func TestClientPersistsARotatedKey(t *testing.T) {
 	manager, _ := testManager(t)
 	if err := manager.store.put("google", stored{
 		Account: "me@example.com",
+		Scopes:  wholeGrant(),
 		Keys: &oauth2.Token{
 			AccessToken:  "access-one",
 			RefreshToken: "refresh-one",
@@ -396,6 +462,11 @@ func TestClientPersistsARotatedKey(t *testing.T) {
 	}
 	if entry.Account != "me@example.com" {
 		t.Errorf("a renewal must not lose the account, got %q", entry.Account)
+	}
+	// Nor the record of what the person agreed to: a renewal that dropped it
+	// would send somebody back through a sign-in they already finished.
+	if strings.Join(entry.Scopes, " ") != strings.Join(wholeGrant(), " ") {
+		t.Errorf("a renewal must not lose the permissions, got %v", entry.Scopes)
 	}
 
 	// A second request reuses what is in hand.
@@ -429,6 +500,7 @@ func TestClientCarriesTheKeyForward(t *testing.T) {
 	manager, _ := testManager(t)
 	if err := manager.store.put("google", stored{
 		Account: "me@example.com",
+		Scopes:  wholeGrant(),
 		Keys: &oauth2.Token{
 			AccessToken:  "access-one",
 			RefreshToken: "refresh-one",

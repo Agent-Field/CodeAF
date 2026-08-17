@@ -2,6 +2,8 @@ package connect
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -46,7 +48,7 @@ func TestConnectedNeedsBothHalves(t *testing.T) {
 	if manager.Connected("google") {
 		t.Errorf("a service with no stored keys is not connected")
 	}
-	if err := manager.store.put("google", stored{Account: "me@example.com", Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
+	if err := manager.store.put("google", stored{Account: "me@example.com", Scopes: wholeGrant(), Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	if !manager.Connected("google") {
@@ -62,7 +64,7 @@ func TestConnectedNeedsBothHalves(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}
-	if err := blind.store.put("google", stored{Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
+	if err := blind.store.put("google", stored{Scopes: wholeGrant(), Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	if blind.Connected("google") {
@@ -70,9 +72,76 @@ func TestConnectedNeedsBothHalves(t *testing.T) {
 	}
 }
 
+// A CONNECTION THAT IS SHORT OF A PERMISSION IS NOT A CONNECTION. The three
+// readings that matter: what an older build wrote, what a wider sign-in wrote,
+// and what a narrower one wrote.
+func TestAConnectionThatDoesNotCoverTheAskIsNotConnected(t *testing.T) {
+	whole := wholeGrant()
+	cases := []struct {
+		name   string
+		scopes []string
+		want   bool
+	}{
+		{"an entry from a build that recorded nothing", nil, false},
+		{"exactly what is asked for", whole, true},
+		{"more than what is asked for", append(append([]string(nil), whole...), "https://example.test/auth/extra"), true},
+		{"one permission short", whole[:1], false},
+		{"a different permission entirely", []string{"https://example.test/auth/something-else"}, false},
+	}
+	for _, c := range cases {
+		manager, _ := testManager(t)
+		if err := manager.store.put("google", stored{
+			Account: "me@example.com",
+			Scopes:  c.scopes,
+			Keys:    &oauth2.Token{RefreshToken: "r"},
+		}); err != nil {
+			t.Fatalf("%s: put: %v", c.name, err)
+		}
+		if got := manager.Connected("google"); got != c.want {
+			t.Errorf("%s: Connected = %v, want %v", c.name, got, c.want)
+		}
+		// The menu says the same thing, so that a screen can never offer a
+		// connection the tools would refuse to use.
+		services := manager.Services()
+		if len(services) != 1 || services[0].Connected != c.want {
+			t.Errorf("%s: Services() = %+v, want Connected=%v", c.name, services, c.want)
+		}
+		// And so does the client: a sign-in that cannot do the work is not
+		// handed out to do it.
+		_, err := manager.Client(context.Background(), "google")
+		if (err == nil) != c.want {
+			t.Errorf("%s: Client err = %v, want connected=%v", c.name, err, c.want)
+		}
+	}
+}
+
+// The file an earlier build wrote is read, not rejected: the connection in it
+// simply needs the person to sign in again, which is a thing the ordinary ask
+// flow already does.
+func TestAFileFromAnEarlierBuildStillOpens(t *testing.T) {
+	directory := t.TempDir()
+	legacy := `{"google":{"account":"me@example.com","keys":{"access_token":"a","refresh_token":"r","token_type":"Bearer"}}}`
+	if err := os.WriteFile(filepath.Join(directory, StoreFileName), []byte(legacy), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	manager, err := NewManager(directory, map[string]ClientCredential{
+		"google": {ID: "client-id", Secret: "client-secret"},
+	})
+	if err != nil {
+		t.Fatalf("NewManager on an older file: %v", err)
+	}
+	if manager.Connected("google") {
+		t.Error("a connection whose permissions are unknown must ask the person again")
+	}
+	entry, ok, err := manager.store.get("google")
+	if err != nil || !ok || entry.Account != "me@example.com" || entry.Keys.RefreshToken != "r" {
+		t.Errorf("the older entry must survive being read: %+v ok=%v err=%v", entry, ok, err)
+	}
+}
+
 func TestServicesReportsAccountAndConnection(t *testing.T) {
 	manager, _ := testManager(t)
-	if err := manager.store.put("google", stored{Account: "me@example.com", Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
+	if err := manager.store.put("google", stored{Account: "me@example.com", Scopes: wholeGrant(), Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	services := manager.Services()
@@ -90,7 +159,7 @@ func TestServicesReportsAccountAndConnection(t *testing.T) {
 
 func TestDisconnectForgetsOnlyTheKeys(t *testing.T) {
 	manager, _ := testManager(t)
-	if err := manager.store.put("google", stored{Account: "me@example.com", Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
+	if err := manager.store.put("google", stored{Account: "me@example.com", Scopes: wholeGrant(), Keys: &oauth2.Token{RefreshToken: "r"}}); err != nil {
 		t.Fatalf("put: %v", err)
 	}
 	if err := manager.Disconnect("google"); err != nil {

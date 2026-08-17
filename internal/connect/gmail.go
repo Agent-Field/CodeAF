@@ -2,7 +2,9 @@ package connect
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -164,6 +166,92 @@ func GmailRead(ctx context.Context, client *http.Client, id string) (string, err
 		builder.WriteString("\n")
 	}
 	return bound(strings.TrimRight(builder.String(), "\n")), nil
+}
+
+// GmailSend writes one message and sends it, and answers with what left: the
+// subject, who it went to, and the identifier it now has in the mailbox — the
+// same "id …" a search prints, so the sent message can be opened straight back.
+//
+// to and cc are comma-separated addresses; cc may be empty. A message needs
+// somebody to go to and something to say, and nothing else here is required.
+//
+// THE MESSAGE IS BUILT ONE HEADER PER LINE AND EVERY VALUE IS FOLDED FLAT.
+// A subject or an address carrying a line break would end that header and start
+// one of the caller's own — a blind copy nobody asked for, a reply-to somewhere
+// else — so every value that goes onto a header line is collapsed to a single
+// line before it does, and the body starts only after the one blank line that
+// separates it.
+func GmailSend(ctx context.Context, client *http.Client, to, cc, subject, body string) (string, error) {
+	recipients := addresses(to)
+	if len(recipients) == 0 {
+		return "", fmt.Errorf("send mail: nobody to send it to")
+	}
+	copies := addresses(cc)
+	subject = collapse(subject)
+	body = strings.TrimRight(squeeze(body), "\n")
+	if subject == "" && body == "" {
+		return "", fmt.Errorf("send mail: nothing to say")
+	}
+
+	var message strings.Builder
+	writeHeader(&message, "To", strings.Join(recipients, ", "))
+	if len(copies) > 0 {
+		writeHeader(&message, "Cc", strings.Join(copies, ", "))
+	}
+	// The subject is encoded only when it needs to be, which is what the
+	// encoder does with a line that is already plain ASCII.
+	writeHeader(&message, "Subject", mime.QEncoding.Encode("UTF-8", subject))
+	writeHeader(&message, "MIME-Version", "1.0")
+	writeHeader(&message, "Content-Type", `text/plain; charset="UTF-8"`)
+	message.WriteString("\r\n")
+	message.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
+
+	sent := struct {
+		ID string `json:"id"`
+	}{}
+	payload := map[string]string{"raw": base64.RawURLEncoding.EncodeToString([]byte(message.String()))}
+	if err := postJSON(ctx, client, gmailBaseURL+"/users/me/messages/send", payload, &sent); err != nil {
+		return "", fmt.Errorf("send mail: %w", err)
+	}
+
+	line := "Sent to " + strings.Join(recipients, ", ")
+	if len(copies) > 0 {
+		line += ", copying " + strings.Join(copies, ", ")
+	}
+	if subject != "" {
+		line += ": " + clip(subject, 120)
+	}
+	line += "."
+	if id := strings.TrimSpace(sent.ID); id != "" {
+		line += "\nid " + id
+	}
+	return line, nil
+}
+
+// writeHeader puts one header on its own line, flattened. THE EMPTINESS LAW
+// holds here too: a header with nothing to say is left out rather than sent as
+// a bare label.
+func writeHeader(message *strings.Builder, name, value string) {
+	value = collapse(value)
+	if value == "" {
+		return
+	}
+	message.WriteString(name)
+	message.WriteString(": ")
+	message.WriteString(value)
+	message.WriteString("\r\n")
+}
+
+// addresses reads a comma-separated list into the addresses in it, dropping the
+// blanks a trailing comma or a double one leaves behind.
+func addresses(list string) []string {
+	var out []string
+	for _, field := range strings.Split(list, ",") {
+		if address := collapse(field); address != "" {
+			out = append(out, address)
+		}
+	}
+	return out
 }
 
 // summarize fetches only the fields a listing shows, which is a much smaller

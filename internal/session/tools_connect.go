@@ -20,8 +20,8 @@ import (
 // tools because the work goes that way — search, then fetch. Here, TWO STANDING
 // TOOLS AND A FAMILY THAT ARRIVES, because a mailbox is not a capability every
 // conversation needs: gmail_search on the belt of a session that will never
-// touch mail is three schemas at the front of every request, paid for on every
-// turn, for a hand that is never used. services and use_service are cheap, and
+// touch mail is five schemas at the front of every request, paid for on every
+// turn, for hands that are never used. services and use_service are cheap, and
 // what they buy is that the expensive part of the belt is only ever carried by
 // the conversations that asked for it.
 //
@@ -47,6 +47,14 @@ const gmailReadSchemaJSON = `{"type":"object","properties":{"id":{"type":"string
 const calendarListDescription = "List the person's calendar events between two days, inclusive, one line each: when, how long, and what it is called. Use it before answering anything about their availability, and never guess at a schedule you have not read."
 
 const calendarListSchemaJSON = `{"type":"object","properties":{"from":{"type":"string","description":"The first day, as YYYY-MM-DD"},"to":{"type":"string","description":"The last day, inclusive, as YYYY-MM-DD"}},"required":["from","to"],"additionalProperties":false}`
+
+const gmailSendDescription = "Send one message from the person's own address. It leaves as them, it reaches the people you name, and nothing can call it back — so write what they would have written, and expect them to be asked before it goes. Several recipients are one comma-separated string. Say afterwards what went and to whom."
+
+const gmailSendSchemaJSON = `{"type":"object","properties":{"to":{"type":"string","description":"Who it goes to: one address, or several separated by commas"},"cc":{"type":"string","description":"Who is copied, separated by commas"},"subject":{"type":"string","description":"The subject line"},"body":{"type":"string","description":"The message itself, as plain text"}},"required":["to","subject","body"],"additionalProperties":false}`
+
+const calendarCreateDescription = "Put one event on the person's calendar. Anyone you name as an attendee is invited by Google there and then, so this reaches other people and the person is asked before it happens. Times are full timestamps (2026-08-18T09:00:00Z) or a bare YYYY-MM-DD for something that takes the whole day; leave the end out for an hour-long meeting or a single day. Read the calendar first when the time has to be free."
+
+const calendarCreateSchemaJSON = `{"type":"object","properties":{"title":{"type":"string","description":"What the event is called"},"start":{"type":"string","description":"When it starts, as 2026-08-18T09:00:00Z or as YYYY-MM-DD for a whole day"},"end":{"type":"string","description":"When it ends, in the same shape as start (optional)"},"attendees":{"type":"string","description":"Who to invite: addresses separated by commas (optional)"},"location":{"type":"string","description":"Where it is (optional)"},"description":{"type":"string","description":"What to say in the invitation (optional)"}},"required":["title","start"],"additionalProperties":false}`
 
 // gmailSearchDefaultMax is what a model that asks for no number gets. The helper
 // bounds the ask itself — this is the sensible default, not the ceiling.
@@ -147,25 +155,40 @@ func (a *Agent) useService(ctx context.Context, id string) (string, bool, error)
 	if service.Connected {
 		return a.armService(service, ""), false, nil
 	}
+	account, failed := a.connectService(ctx, service)
+	if failed != "" {
+		return failed, true, nil
+	}
+	return a.armService(service, account), false, nil
+}
 
+// connectService is the whole browser round-trip: the question, the page, the
+// wait, and the reports on the way. It answers with the account that was
+// connected, or with the sentence to hand the model when nothing was — never
+// with a Go error, for [Agent.useService]'s reason.
+//
+// It is separate from the tool because the same trip is made from two places:
+// picking an account up, and finding mid-work that the account no longer stands
+// (see [Agent.serviceClient]). Both must ask in exactly the same words.
+func (a *Agent) connectService(ctx context.Context, service connectStatus) (account string, failed string) {
 	approved, err := a.askConnect(ctx, service)
 	switch {
 	case errors.Is(err, errNobodyWatching):
 		// Nobody is there to say yes. It is the same answer consent.go gives a
 		// headless run and for the same reason: a question with no reader is a
 		// hang, not a safeguard.
-		return "Connecting " + service.Name + " needs the person to say yes, and nobody is watching this " +
-			"conversation. Do what you can without their " + service.Name + " account and say plainly that you could not reach it.", true, nil
+		return "", "Connecting " + service.Name + " needs the person to say yes, and nobody is watching this " +
+			"conversation. Do what you can without their " + service.Name + " account and say plainly that you could not reach it."
 	case err != nil:
-		return "The turn ended before the person answered about connecting " + service.Name + ".", true, nil
+		return "", "The turn ended before the person answered about connecting " + service.Name + "."
 	case !approved:
-		return "The person did not agree to connect " + service.Name + ". Do the work without it and say so plainly; do not ask again this turn.", true, nil
+		return "", "The person did not agree to connect " + service.Name + ". Do the work without it and say so plainly; do not ask again this turn."
 	}
 
 	url, wait, err := a.connect.BeginAuth(ctx, service.ID)
 	if err != nil {
 		a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Failed: true})
-		return "Connecting " + service.Name + " did not work: " + err.Error(), true, nil
+		return "", "Connecting " + service.Name + " did not work: " + err.Error()
 	}
 	a.sendConnect(Event{Kind: EventConnectAuth, Service: service.ID, AuthURL: url})
 
@@ -179,12 +202,12 @@ func (a *Agent) useService(ctx context.Context, id string) (string, bool, error)
 	if err != nil {
 		a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Failed: true})
 		if ctx.Err() != nil {
-			return "The turn ended before " + service.Name + " finished connecting.", true, nil
+			return "", "The turn ended before " + service.Name + " finished connecting."
 		}
-		return service.Name + " did not finish connecting: " + err.Error(), true, nil
+		return "", service.Name + " did not finish connecting: " + err.Error()
 	}
 	a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Account: status.Account})
-	return a.armService(service, status.Account), false, nil
+	return status.Account, ""
 }
 
 // armService puts one service's family on the belt and says what arrived.
@@ -246,7 +269,10 @@ func (a *Agent) sendConnect(event Event) {
 func (a *Agent) familyTools(id string) []bare.Tool {
 	switch strings.ToLower(strings.TrimSpace(id)) {
 	case "google":
-		return []bare.Tool{a.gmailSearchTool(), a.gmailReadTool(), a.calendarListTool()}
+		return []bare.Tool{
+			a.gmailSearchTool(), a.gmailReadTool(), a.gmailSendTool(),
+			a.calendarListTool(), a.calendarCreateTool(),
+		}
 	}
 	return nil
 }
@@ -314,6 +340,89 @@ func (a *Agent) gmailReadTool() bare.Tool {
 	}
 }
 
+// ── the two hands that act ──────────────────────────────────────────────────
+//
+// THESE TWO LEAVE THE MACHINE IN THE PERSON'S NAME, and that is the whole
+// difference between them and the three above. A search that was not wanted
+// costs a moment; a message that was not wanted has been read by somebody else
+// by the time anyone notices. So they are ASKED ABOUT BY DEFAULT, and not by a
+// check written here: the names are in internal/approval's table of tools a
+// blanket allow cannot vouch for, so the ordinary gate (consent.go) puts the
+// question — with the recipient and the subject in it (loop.go's gloss) — and
+// the person's own allow rule, and their "always" answer, go on working exactly
+// as they do for every other tool.
+
+func (a *Agent) gmailSendTool() bare.Tool {
+	return bare.Tool{
+		Name:        "gmail_send",
+		Description: gmailSendDescription,
+		Schema:      json.RawMessage(gmailSendSchemaJSON),
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			var parsed struct {
+				To      string `json:"to"`
+				Cc      string `json:"cc"`
+				Subject string `json:"subject"`
+				Body    string `json:"body"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			if strings.TrimSpace(parsed.To) == "" {
+				return "Invalid arguments: to is required", true, nil
+			}
+			if strings.TrimSpace(parsed.Subject) == "" && strings.TrimSpace(parsed.Body) == "" {
+				return "Invalid arguments: a message needs a subject or a body", true, nil
+			}
+			client, failed := a.serviceClient(ctx, "google", "Google")
+			if failed != "" {
+				return failed, true, nil
+			}
+			text, err := connect.GmailSend(ctx, client, parsed.To, parsed.Cc, parsed.Subject, parsed.Body)
+			if err != nil {
+				return "Sending that message failed: " + err.Error(), true, nil
+			}
+			return text, false, nil
+		},
+	}
+}
+
+func (a *Agent) calendarCreateTool() bare.Tool {
+	return bare.Tool{
+		Name:        "calendar_create",
+		Description: calendarCreateDescription,
+		Schema:      json.RawMessage(calendarCreateSchemaJSON),
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			var parsed struct {
+				Title       string `json:"title"`
+				Start       string `json:"start"`
+				End         string `json:"end"`
+				Attendees   string `json:"attendees"`
+				Location    string `json:"location"`
+				Description string `json:"description"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			if strings.TrimSpace(parsed.Title) == "" {
+				return "Invalid arguments: title is required", true, nil
+			}
+			if strings.TrimSpace(parsed.Start) == "" {
+				return "Invalid arguments: start is required, as 2026-08-18T09:00:00Z or YYYY-MM-DD", true, nil
+			}
+			client, failed := a.serviceClient(ctx, "google", "Google")
+			if failed != "" {
+				return failed, true, nil
+			}
+			text, err := connect.CalendarCreate(ctx, client,
+				parsed.Title, parsed.Start, parsed.End, parsed.Attendees, parsed.Location, parsed.Description)
+			if err != nil {
+				return "Putting that on your calendar failed: " + err.Error(), true, nil
+			}
+			return text, false, nil
+		},
+	}
+}
+
 func (a *Agent) calendarListTool() bare.Tool {
 	return bare.Tool{
 		Name:        "calendar_list",
@@ -349,13 +458,26 @@ func (a *Agent) calendarListTool() bare.Tool {
 // EMPTY when there is one — the caller reads it as "did this fail", so a failure
 // can never be mistaken for a client nobody checked.
 //
-// An account that was connected when the family was armed and is not connected
-// now — the person disconnected it, the machine forgot it — arrives here, and it
-// is answered honestly rather than by trying to connect it again: a tool the
-// model called to read mail is not the place to ask a question about consent.
+// AN ACCOUNT THAT NO LONGER STANDS IS A QUESTION, NOT AN ERROR. The person
+// disconnected it, or — far more often — they signed in when aforge could only
+// read their mail and it is about to send some, so what they agreed to no longer
+// covers the work (internal/connect keeps that record). Either way the honest
+// next move is the sign-in they already know, in the same words use_service
+// asks it, rather than an error that costs a turn before the model asks the
+// same question itself. Everything past that point is answered plainly: an
+// attempt that fails, a person who says no, a service having a bad minute.
 func (a *Agent) serviceClient(ctx context.Context, id, name string) (*http.Client, string) {
 	if a.connect == nil {
 		return nil, name + " is not reachable from this conversation."
+	}
+	if !a.connect.Connected(id) {
+		service, known := a.service(id)
+		if !known {
+			return nil, name + " is not reachable from this conversation."
+		}
+		if _, failed := a.connectService(ctx, service); failed != "" {
+			return nil, failed
+		}
 	}
 	client, err := a.connect.Client(ctx, id)
 	if err != nil {
