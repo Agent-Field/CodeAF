@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -236,6 +237,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 
 	return tui3.Run(context.Background(), tui3.Options{
 		Agent: agent,
+		// The sub-harness registry under the state root, which is where every
+		// window on this machine writes and reads them: /harness is a list of
+		// what is SAVED, so it has to be the same directory the builder saved
+		// into (internal/subharness's store.go).
+		Harnesses: subharness.Default(),
 		// Asked at the moment the picker opens, never at boot: a catalog that
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.

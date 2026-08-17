@@ -67,6 +67,17 @@ type Trace struct {
 	// Err is the failure that ended the run early, if one did. It is recorded
 	// rather than only returned because a saved trace outlives the call.
 	Err string `json:"err,omitempty"`
+	// Status is how the run ended in one word (exec.go). The walk fills in the
+	// two it can tell apart on its own — ok and failed — and a [Runner] refines
+	// it with the three that are somebody else's news: a person declined at a
+	// gate, took the run over, or the context died. It is a field rather than a
+	// reading of Err because "a person said no" is not a failure, and a history
+	// that could only spell it as one would punish the gate for working.
+	Status Status `json:"status,omitempty"`
+	// Out is the run's own output: what the last node left behind, as the
+	// executor condensed it. The trail holds every step's output; this is the
+	// one the caller was waiting for.
+	Out string `json:"out,omitempty"`
 }
 
 // Run walks a harness's program, handing each reached node to exec.
@@ -106,6 +117,7 @@ func Run(ctx context.Context, h Harness, exec Exec) (Trace, error) {
 			Err: err.Error(), Elapsed: elapsed,
 		})
 		trace.Err = err.Error()
+		trace.Status = StatusFailed
 		trace.Elapsed = time.Since(started)
 		trace.Edges = liveEdges(h.Program, live)
 		return trace, err
@@ -172,6 +184,7 @@ func Run(ctx context.Context, h Harness, exec Exec) (Trace, error) {
 
 	trace.Elapsed = time.Since(started)
 	trace.Edges = liveEdges(h.Program, live)
+	trace.Status = StatusOK
 	return trace, nil
 }
 

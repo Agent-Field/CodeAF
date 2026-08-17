@@ -76,6 +76,15 @@ var commands = []command{
 	// when the turn was wrong. Putting it last, beside /quit, would file "take
 	// back a message" under leaving.
 	{name: "rewind", desc: "take back a message · esc esc", alias: []string{"undo", "back"}},
+	// THE SHAPES OF WORK THIS CONVERSATION HAS SAVED (harnesspanel.go). It
+	// belongs topically beside /connect — one is what this surface may reach,
+	// the other is what it has learned to do — and it sits here instead for a
+	// reason about the LIST rather than about the command: [menuRows] shows
+	// eight rows at once, and a new row put in the middle would have pushed
+	// /compact, which people reach for daily, into a scroll to make room for one
+	// they will open occasionally. Position in this table is a claim about
+	// frequency; this is the honest one.
+	{name: "harness", desc: "the shapes of work you have saved · what they did", alias: []string{"harnesses"}},
 	// THE TWO DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
 	// that is where a person goes with the question they answer. The keys behind
 	// them are the two least discoverable on the surface — nothing on the screen

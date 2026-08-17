@@ -193,6 +193,10 @@ func validateNodeAgainstHarness(h Harness, node Node) error {
 		if name := node.Fields.Get("name"); !ValidName(name) {
 			return fmt.Errorf("subharness: %s: node %q calls %q, which is not a harness name", h.Id.Name, node.Id, name)
 		}
+	case KindTrigger:
+		// The trigger's law reads the edges as well as the node, so it is
+		// written where the other things about hosting are (trigger.go).
+		return validateTrigger(h, node)
 	}
 	return nil
 }
