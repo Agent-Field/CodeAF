@@ -37,11 +37,11 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	entry, ok, err := m.store.get(service.ID)
-	if err != nil {
-		return nil, err
-	}
-	if !ok || !entry.usable() {
+	// The same reading of "connected" every other caller gets, which is what
+	// keeps a client from being handed out for a sign-in that no longer covers
+	// what this build asks for.
+	entry, ok := m.standing(plug)
+	if !ok {
 		return nil, fmt.Errorf("%s is not connected", service.Name)
 	}
 	source := &persisting{

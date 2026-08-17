@@ -58,6 +58,12 @@ func testManager(t *testing.T) (*Manager, string) {
 	return manager, directory
 }
 
+// wholeGrant is everything the Google plug asks for, which is what a stored
+// connection made by today's build carries. A test that writes an entry by hand
+// uses it so that the entry reads as connected rather than as one made before
+// this build's permissions grew.
+func wholeGrant() []string { return (google{}).Service().Scopes }
+
 // withPlugs replaces the registry for one test, so that ordering and filtering
 // can be proved against a cast the test controls.
 func withPlugs(t *testing.T, plugs ...Plug) {
