@@ -258,6 +258,17 @@ var settingUI = map[string]settingMeta{
 		about: "a jina.ai key. It buys nothing but headroom: page fetches already " +
 			"work unauthenticated.",
 	},
+	// STUB(connect): tui branch owns the real rows.
+	config.KeyGoogleOAuthClient: {
+		tab: tabContext, label: "google app id", widget: widgetText,
+		about: "the application id that lets aforge ask to use your Google account. " +
+			"Optional.",
+	},
+	// STUB(connect): tui branch owns the real rows.
+	config.KeyGoogleOAuthSecret: {
+		tab: tabContext, label: "google app secret", widget: widgetText,
+		about: "the secret that goes with the application id above. Both are needed.",
+	},
 
 	// ── Workspace ───────────────────────────────────────────────────────────
 	//

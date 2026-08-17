@@ -191,6 +191,13 @@ var settingReaders = map[string]string{
 	KeySearchProvider: "SearchProviderAt",
 	KeyExaKey:         "ExaKeyAt",
 	KeyJinaKey:        "JinaKeyAt",
+	// The Google pair is read by the v3 door, which turns it into the manager
+	// hung off session.Config.Connect (cmd/aforge/chatv3.go's v3Connect). Both
+	// rows name the same reader because the reader answers both halves at once:
+	// an id without its secret connects nothing, so nothing in this tree ever
+	// reads one of them alone.
+	KeyGoogleOAuthClient: "GoogleOAuthClientAt",
+	KeyGoogleOAuthSecret: "GoogleOAuthClientAt",
 	// The context law's knobs are read live by ctxbudget on every call — the
 	// environment name is the reader, as with tenure; Load seeds the
 	// persisted half through ctxbudget.Configure.

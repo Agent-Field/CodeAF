@@ -196,6 +196,21 @@ const (
 	KeyExaKey         = "search.exaKey"
 	KeyJinaKey        = "search.jinaKey"
 
+	// The two rows that let a person connect their Google account
+	// (internal/connect). They are a PAIR and neither is useful alone: an
+	// application id names the application asking, and its secret proves the
+	// ask came from it, so a build holding one of them can offer exactly
+	// nothing. The session reads them together for that reason
+	// ([GoogleOAuthClientAt]), and offers the connect tools only when both are
+	// answered.
+	//
+	// They are the person's own registration rather than something aforge ships,
+	// because an application id baked into a binary is an application id every
+	// copy of that binary shares — one quota, one revocation, one mistake that
+	// reaches everybody.
+	KeyGoogleOAuthClient = "google_oauth_client"
+	KeyGoogleOAuthSecret = "google_oauth_secret"
+
 	// The four context-law knobs. Fill is how much of a model's window any
 	// agent may use before compaction fires; the reserve is the room every
 	// call keeps for its answer and its reasoning; the working set caps what
@@ -832,6 +847,32 @@ func (s *Settings) build() []Setting {
 				"A change lands on the next session.",
 			read:  func() string { return maskCredential(JinaKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyJinaKey, raw, JinaKeyAt(dir)) },
+		},
+
+		// And the pair that lets aforge reach the accounts a person already has
+		// (internal/connect). They sit beside the search keys because they are
+		// the same kind of row — a credential that widens what aforge can reach,
+		// optional, and never a prerequisite for anything else — and they are two
+		// rows rather than one because they are two values a person copies from
+		// two different boxes on the same page.
+		Setting{
+			Key: KeyGoogleOAuthClient, Category: CategoryModels, Kind: SettingText,
+			Label: "google app id", Env: "GOOGLE_OAUTH_CLIENT", EmptyLabel: "not set",
+			Hint: "the application id you registered with Google, which lets aforge ask to use " +
+				"your account. Optional — without it aforge simply never offers to connect one. " +
+				"A change lands on the next session.",
+			read:  func() string { return googleOAuthClientAt(dir) },
+			write: func(raw string) error { return writeProfileValue(dir, KeyGoogleOAuthClient, raw) },
+		},
+		Setting{
+			Key: KeyGoogleOAuthSecret, Category: CategoryModels, Kind: SettingText, Secret: true,
+			Label: "google app secret", Env: "GOOGLE_OAUTH_SECRET", EmptyLabel: "not set",
+			Hint: "the secret that goes with the application id above. Both are needed: " +
+				"one of the two connects nothing. A change lands on the next session.",
+			read: func() string { return maskCredential(googleOAuthSecretAt(dir)) },
+			write: func(raw string) error {
+				return writeCredential(dir, KeyGoogleOAuthSecret, raw, googleOAuthSecretAt(dir))
+			},
 		},
 
 		Setting{
@@ -1650,6 +1691,29 @@ func ExaKeyAt(profileDir string) string {
 // JinaKeyAt resolves the Jina credential the same way.
 func JinaKeyAt(profileDir string) string {
 	return credentialAt(profileDir, "JINA_API_KEY", KeyJinaKey)
+}
+
+// GoogleOAuthClientAt resolves the Google registration: the environment first,
+// then the sheet, then empty — and empty is a working configuration, exactly as
+// it is for the search keys.
+//
+// IT ANSWERS BOTH HALVES OR NEITHER IS WORTH HAVING, which is why it is one
+// call and not two. An id without its secret cannot ask Google for anything, so
+// a caller handed half a pair would have to write the same "and the other one"
+// check every reader of these rows already needs; here it is written once, and
+// the caller's test is the one it should be — is the id there.
+func GoogleOAuthClientAt(profileDir string) (id, secret string) {
+	return googleOAuthClientAt(profileDir), googleOAuthSecretAt(profileDir)
+}
+
+// The two halves on their own, for the registry rows: a row reads and writes one
+// value, and a row that displayed a pair would have nothing to write back to.
+func googleOAuthClientAt(profileDir string) string {
+	return credentialAt(profileDir, "GOOGLE_OAUTH_CLIENT", KeyGoogleOAuthClient)
+}
+
+func googleOAuthSecretAt(profileDir string) string {
+	return credentialAt(profileDir, "GOOGLE_OAUTH_SECRET", KeyGoogleOAuthSecret)
 }
 
 func credentialAt(profileDir, env, key string) string {
