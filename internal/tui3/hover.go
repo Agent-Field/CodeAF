@@ -22,6 +22,14 @@ package tui3
 // motion message per cell, and each one asks where it landed and repaints only
 // if the answer CHANGED — moving along a five-row tool expansion is one
 // repaint, not five.
+//
+// AND "CHEAP" IS A CEILING NOW RATHER THAN A CLAIM. A motion that changed
+// nothing leaves no stale entry, no dirty flag and no command behind it, and a
+// motion that crossed a boundary leaves exactly two — the entry that lost the
+// highlight and the one that gained it. Both are stated as tests
+// (inputsmooth_test.go), because the cost of a message that arrives per CELL is
+// the sort of thing that grows a little at a time until a pointer moved over a
+// link is a surface that stutters.
 
 // hoverKind is what the pointer is over.
 type hoverKind uint8
