@@ -525,6 +525,206 @@ func TestSlashOpensTheCommandListFiltersItAndRunsIt(t *testing.T) {
 	}
 }
 
+// ── 6b. the words a command also answers to ─────────────────────────────────
+//
+// The table is the one place a command is written down, and the aliases are on
+// its rows. These tests hold that law from both ends: what the list SHOWS when
+// an alias is typed (the canonical row, with the other words beside it) and what
+// the surface RUNS (the canonical command, whichever door the word came in by).
+
+// aliasApp is a surface that can actually answer /new, so an alias for it can be
+// asserted on the agent it swapped in rather than on a note about being unable.
+func aliasApp(t *testing.T, first Agent, next Agent) *app {
+	t.Helper()
+	a := newApp(t.Context(), Options{
+		Agent:     first,
+		Workspace: "/tmp/lab",
+		Fresh:     func() (Agent, string, error) { return next, "/tmp/next.jsonl", nil },
+	})
+	a.width, a.height = 100, 24
+	a.pal = newPalette(tokens.ANSI256, false)
+	a.entries = nil
+	a.welcome = welcome{spent: true}
+	a.touch()
+	return a
+}
+
+func TestAnAliasSurfacesTheCanonicalRowAndRunsIt(t *testing.T) {
+	first, second := &fakeAgent{model: "m"}, &fakeAgent{model: "m2"}
+	a := aliasApp(t, first, second)
+
+	// "clea" is nobody's command name; it is /clear and /clean, and both of them
+	// are /new.
+	typeInto(t, a, "/clea")
+	if len(a.menu.hits) != 1 {
+		t.Fatalf("an alias has to narrow to the one row it belongs to (%d hits)", len(a.menu.hits))
+	}
+	if chosen, _ := a.menu.choice(); chosen.name != "new" {
+		t.Fatalf("the row under the cursor is %q, want the canonical /new", chosen.name)
+	}
+
+	// The row is the canonical one, and it says what else reaches it.
+	drawn := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
+	if !strings.Contains(drawn, "/new") || strings.Contains(drawn, "/clea ") {
+		t.Fatalf("the list has to draw the canonical name:\n%s", drawn)
+	}
+	if !strings.Contains(drawn, "also /clear /clean /reset") {
+		t.Fatalf("the row has to name the other words for it:\n%s", drawn)
+	}
+
+	// And enter on it runs /new.
+	drive(t, a, key("enter"))
+	if a.agent != Agent(second) {
+		t.Fatal("enter on an alias row did not run the canonical command")
+	}
+	if a.input.String() != "" || a.menu.open {
+		t.Fatalf("running left draft=%q open=%v", a.input.String(), a.menu.open)
+	}
+}
+
+func TestAnAliasTypedInFullRunsWithoutTheList(t *testing.T) {
+	first, second := &fakeAgent{model: "m"}, &fakeAgent{model: "m2"}
+	a := aliasApp(t, first, second)
+
+	// Typed out and entered, the list never decides anything: enter submits the
+	// line, and the dispatch resolves the word.
+	typeLine(t, a, "/reset")
+	if a.agent != Agent(second) {
+		t.Fatal("/reset typed in full did not reach /new")
+	}
+	if got := plain(frame(a)); strings.Contains(got, "unknown command") {
+		t.Fatalf("an alias was answered as unknown:\n%s", got)
+	}
+
+	// /? is the alias with no letters in it, and it reaches /help.
+	typeLine(t, a, "/?")
+	if got := plain(frame(a)); !strings.Contains(got, "settings") {
+		t.Fatalf("/? did not reach the help table:\n%s", got)
+	}
+
+	// /exit and /q close the surface exactly as /quit does.
+	for _, word := range []string{"/exit", "/q"} {
+		closer := &fakeAgent{model: "m"}
+		b := aliasApp(t, closer, &fakeAgent{model: "m2"})
+		typeLine(t, b, word)
+		if closer.closes != 1 {
+			t.Fatalf("%s closed the agent %d times", word, closer.closes)
+		}
+	}
+}
+
+func TestTheCanonicalNamesStillWorkEverywhere(t *testing.T) {
+	first, second := &fakeAgent{model: "m"}, &fakeAgent{model: "m2"}
+	a := aliasApp(t, first, second)
+
+	// A name found by its OWN name outranks a name found by a word it merely
+	// also answers to: "res" is /resume first and /new (via /reset) second.
+	typeInto(t, a, "/res")
+	if len(a.menu.hits) != 2 {
+		t.Fatalf("res has to find /resume and /new-by-reset (%d hits)", len(a.menu.hits))
+	}
+	if chosen, _ := a.menu.choice(); chosen.name != "resume" {
+		t.Fatalf("the alias match outranked the name match: %q leads", chosen.name)
+	}
+	drive(t, a, key("esc"))
+	drive(t, a, key("ctrl+u"))
+
+	typeLine(t, a, "/new")
+	if a.agent != Agent(second) {
+		t.Fatal("the canonical /new stopped working")
+	}
+	if canonicalCommand("new") != "new" || canonicalCommand("nonsense") != "nonsense" {
+		t.Fatal("a canonical name and an unknown word both resolve to themselves")
+	}
+}
+
+func TestRewindIsOnTheTableAndDispatches(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+
+	typeInto(t, a, "/rew")
+	if chosen, _ := a.menu.choice(); chosen.name != "rewind" {
+		t.Fatalf("/rew has to find the rewind row, found %q", chosen.name)
+	}
+	drawn := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
+	if !strings.Contains(drawn, "/rewind") {
+		t.Fatalf("the rewind row has to be drawable:\n%s", drawn)
+	}
+	drive(t, a, key("esc"))
+	drive(t, a, key("ctrl+u"))
+
+	// The word, and both of the words people arrive with, all reach the command
+	// — which is the stub until the rewind branch lands, so what is asserted is
+	// that the dispatch CLAIMED them rather than answering "unknown".
+	for _, word := range []string{"rewind", "undo", "back"} {
+		if got := canonicalCommand(word); got != "rewind" {
+			t.Fatalf("/%s resolves to %q", word, got)
+		}
+		b := newTestApp(&fakeAgent{model: "m"})
+		typeLine(t, b, "/"+word)
+		if got := plain(frame(b)); strings.Contains(got, "unknown command") {
+			t.Fatalf("/%s was not dispatched:\n%s", word, got)
+		}
+	}
+}
+
+func TestHelpPrintsTheAliasesFromTheSameTable(t *testing.T) {
+	text := helpText("")
+	for _, want := range []string{
+		"/new",
+		"also /clear /clean /reset",
+		"/quit",
+		"also /exit /q",
+		"also /?",
+		"/rewind",
+		"take back a message · esc esc",
+		"also /undo /back",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("help is missing %q:\n%s", want, text)
+		}
+	}
+	// One source, two renderings: every row's tail is the same string the list
+	// draws from ([command.note]).
+	for _, c := range commands {
+		if !strings.Contains(text, c.note()) {
+			t.Fatalf("help lost the tail of /%s:\n%s", c.name, text)
+		}
+	}
+}
+
+func TestTheTableRefusesAWordThatMeansTwoThings(t *testing.T) {
+	if err := checkCommands(commands); err != nil {
+		t.Fatalf("the shipped table does not pass its own check: %v", err)
+	}
+	// The two collisions the law names, plus the empty word, each on a table of
+	// their own so the shipped one is never the thing under test.
+	for name, table := range map[string][]command{
+		"an alias shadowing a command": {
+			{name: "new", alias: []string{"clear"}},
+			{name: "clear", desc: "a command in its own right"},
+		},
+		"one word for two commands": {
+			{name: "new", alias: []string{"reset"}},
+			{name: "settings", alias: []string{"reset"}},
+		},
+		"an empty alias": {
+			{name: "new", alias: []string{""}},
+		},
+	} {
+		if err := checkCommands(table); err == nil {
+			t.Fatalf("%s has to fail the table check", name)
+		}
+	}
+	// A canonical name repeated is NOT a collision: /model and /model <slug> are
+	// two forms of one command.
+	if err := checkCommands([]command{
+		{name: "model"},
+		{name: "model", args: "<slug>"},
+	}); err != nil {
+		t.Fatalf("two forms of one command are legal: %v", err)
+	}
+}
+
 func TestAnUnknownSlashStillReachesTheOldAnswer(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	typeLine(t, a, "/nonsense")
