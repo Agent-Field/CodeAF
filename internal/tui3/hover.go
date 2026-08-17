@@ -40,6 +40,9 @@ const (
 	// kind of its own rather than another hoverChoices because the two blocks can
 	// be on screen together, and a pointer over one must not brighten the other.
 	hoverConnectAsk
+	// hoverHarnessAsk is the sub-harness offer's row (harness.go). One row and
+	// one target, like the offer above it.
+	hoverHarnessAsk
 	// hoverOverlay is one row of the open list; index is its row in that list.
 	hoverOverlay
 	// hoverSheet is one row of the settings panel; index is its item
@@ -150,6 +153,10 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// never needed and the phone sheet does: its answers are a row each
 			// (consent.go's [app.hoveringChoice]).
 			return hoverAt{kind: hoverChoices, index: mark.index}
+		case chromeHarnessAsk:
+			// One row again, and the same reason: the offer is the only
+			// pressable row that block has (harness.go).
+			return hoverAt{kind: hoverHarnessAsk}
 		case chromeConnectAsk:
 			// One row, so there is no index to carry: the offer is the only
 			// pressable row that block has (connect.go).

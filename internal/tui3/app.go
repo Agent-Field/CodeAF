@@ -597,6 +597,14 @@ type app struct {
 	// A flow is held only so it can be ABANDONED — the conversation being
 	// replaced, or a second attempt at the same account — because a listener
 	// nobody is going to answer is a listener outliving its reason.
+	// THE HARNESS SIDE (harness.go). harnessAsks are the sub-harness offers
+	// waiting for an answer, oldest first — a question about the TURN rather
+	// than about a call or an account, one row under the connect offer and
+	// owning the keyboard on the same terms. harnessTaps is where that row's two
+	// answers were last drawn, which is the bargain the two blocks above it make.
+	harnessAsks []harnessAsk
+	harnessTaps []harnessTap
+
 	connAsks  []connAsk
 	connTaps  []connTap
 	conns     Connections
@@ -1147,6 +1155,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.connectPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			// AND THE HARNESS OFFER LAST OF THE THREE, drawn last and read last
+			// (harness.go).
+			if a.harnessPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
 			// AND THE CONNECTIONS PANEL TAKES EVERY PRESS WHILE IT IS UP, which
 			// is what modal means for a pointer: a press on a row acts on that
 			// row, and a press anywhere else closes the list (connectpanel.go).
@@ -1537,6 +1550,20 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.closeExpand()
 		a.askConnect(ev)
 
+	case session.EventHarnessOffer:
+		// A QUESTION OUTRANKS A PANEL, on the terms the two above it state: the
+		// row is drawn over the input, and a question drawn under a fullscreen
+		// sheet is a turn waiting on a keyboard nobody can reach.
+		a.closeSettings()
+		a.closeExpand()
+		a.askHarness(ev)
+
+	case session.EventHarnessRun:
+		// The person said yes and the harness has the turn. What follows is its
+		// report as ordinary text, so this is a note and not an entry of its own
+		// (harness.go).
+		a.noteHarness(ev.Text)
+
 	case session.EventConnectAuth:
 		// The sign-in has started somewhere else. This opens the browser and puts
 		// the waiting block on screen — the one event on this surface that
@@ -1685,6 +1712,9 @@ func (a *app) settle() tea.Cmd {
 	// And the offers on the same terms: an account the turn wanted is an account
 	// nothing is waiting for once the turn is over (connect.go).
 	a.dropConnectAsks()
+	// And the harness offer on exactly those terms: a turn that is over is a
+	// turn nothing can be run instead of (harness.go).
+	a.dropHarnessAsks()
 	// A call the model was still spelling out when the turn ended never became
 	// one: the row says so and stops pulsing (toolview.go).
 	a.dropForming()
@@ -2762,6 +2792,7 @@ func (a *app) renew() tea.Cmd {
 	// and a browser still standing open on one of them is a browser nobody is
 	// coming back to (connect.go).
 	a.connAsks, a.connPanel = nil, connectPanel{}
+	a.harnessAsks = nil
 	a.abandonConnects()
 	a.title = strings.TrimSpace(agent.Title())
 	a.turn = 0

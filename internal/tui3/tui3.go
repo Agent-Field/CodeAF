@@ -101,6 +101,11 @@ type Agent interface {
 	// lasts — session.ConsentToolSession is "stop asking me about this tool",
 	// for this agent's life and no longer.
 	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
+	// ResolveHarness answers one session.EventHarnessOffer: whether the
+	// sub-harness the session matched this turn against should take it
+	// (harness.go). True runs it; false is the ordinary turn, which is what the
+	// person typed and what happens if this is never called.
+	ResolveHarness(id uint64, run bool)
 	// ResolveConnect answers one session.EventConnectAsk: whether aforge may
 	// connect the account it reached for (connect.go). Approving is what opens
 	// the browser; declining is "not now" and is remembered nowhere.
