@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -100,6 +101,15 @@ const (
 	// own housekeeping, and this is the only statement of an outcome a person
 	// delegated ten minutes of work to get.
 	entryDone
+	// entryConnect is ONE SIGN-IN (connect.go): the browser opening, the link
+	// under it for whoever is not sitting at that browser, and the one line it
+	// settles into.
+	//
+	// It is a kind of its own rather than a note for the reason entryCompact is
+	// not a divider: a note is a static sentence, and this is a block that opens
+	// waiting — with a spinner, and a link a person may need to copy — and closes
+	// minutes later on an event nobody typed.
+	entryConnect
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -197,6 +207,11 @@ type entry struct {
 	// else (task.go). It is a POINTER because the answer lane holds the same
 	// card: a row and the verdict on it must not be able to disagree.
 	card *taskCard
+	// conn is the sign-in this entry draws, for kind entryConnect and for
+	// nothing else (connect.go). It is a POINTER for the reason the two cards
+	// above are: the row opens waiting and a later event settles it in place, and
+	// the row and that state must never be able to disagree.
+	conn *connectCard
 	// done is the card a landed node writes, for kind entryDone and for nothing
 	// else (taskdone.go). Like [entry.card] it is a POINTER, because the card
 	// carries the one piece of state a person can change about it — whether its
@@ -280,6 +295,22 @@ type (
 	taskPilotClosedMsg struct {
 		gen int
 		id  uint64
+	}
+	// The two messages one sign-in takes (connectpanel.go). Both are messages
+	// rather than calls for the reason [gitMsg] is: BeginAuth reaches the
+	// network and Wait blocks until somebody finishes in a browser, and the
+	// model loop is not a place to do either.
+	connectFlowMsg struct {
+		service string
+		name    string
+		flow    *connect.Flow
+		err     error
+	}
+	connectResultMsg struct {
+		service string
+		name    string
+		status  connect.Status
+		err     error
 	}
 	// hudFadeMsg is a BOUNDED catch-up tick: the two wakeups a settled turn
 	// schedules so its fresh numbers can go quiet on time (render.go's fade).
@@ -499,6 +530,30 @@ type app struct {
 	// the frame has not drawn. It is what makes every answer a TAP as well as a
 	// key, which is the whole of the phone sheet (consent.go).
 	askTaps []consentTap
+	// THE CONNECT SIDE (connect.go). connAsks are the offers waiting for an
+	// answer, oldest first — a question about an ACCOUNT rather than about a
+	// call, drawn one slot under the approval question and owning the keyboard
+	// on the same terms. connTaps is where that offer's two answers were last
+	// drawn, in columns, which is the bargain [app.askTaps] makes one block up.
+	//
+	// conns is the door onto the accounts themselves (Options.Connections) and
+	// connPanel the list /connect opens over it. Nil conns is a surface that
+	// cannot manage connections and says so; it does not stop the session's own
+	// offer, which needs no handle.
+	//
+	// connNames is what a service is CALLED, keyed by the id every event
+	// carries: the offer is the only event that names one, and the two that
+	// follow it have to be able to say the word anyway.
+	// connFlows are the sign-ins this surface is waiting on, keyed by service.
+	// A flow is held only so it can be ABANDONED — the conversation being
+	// replaced, or a second attempt at the same account — because a listener
+	// nobody is going to answer is a listener outliving its reason.
+	connAsks  []connAsk
+	connTaps  []connTap
+	conns     Connections
+	connPanel connectPanel
+	connNames map[string]string
+	connFlows map[string]*connect.Flow
 	// leftTap is when ← was last pressed over an empty box, and it is the whole
 	// of the double-tap (room.go's [app.navBack]). One tap steps back a level;
 	// two inside [navDoubleTap] go home.
@@ -691,6 +746,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		settings:       opts.Settings,
 		recentSessions: opts.RecentSessions,
 		resume:         opts.Resume,
+		conns:          opts.Connections,
 		live:           -1,
 		sel:            -1,
 		think:          -1,
@@ -1015,6 +1071,19 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.consentPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			// THE CONNECT OFFER IS READ NEXT, one rung under the approval
+			// question for the reason it is drawn one row under it: both are
+			// blocks the session is waiting on, and a call parked mid-batch is
+			// the more urgent of the two (connect.go).
+			if a.connectPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
+			// AND THE CONNECTIONS PANEL TAKES EVERY PRESS WHILE IT IS UP, which
+			// is what modal means for a pointer: a press on a row acts on that
+			// row, and a press anywhere else closes the list (connectpanel.go).
+			if a.connPanel.open {
+				return a, a.connectPanelPress(msg.Mouse().Y)
+			}
 			// A chip is the one thing below the conversation a click can take
 			// off, and it is the one thing down there that needs the COLUMN as
 			// well as the row (attach.go).
@@ -1178,6 +1247,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.touch()
 		return a, nil
 
+	case connectFlowMsg:
+		return a, a.adoptConnectFlow(msg)
+
+	case connectResultMsg:
+		a.adoptConnectResult(msg)
+		return a, nil
+
 	case hudFadeMsg:
 		// One of the two catch-up ticks: nothing changed, but a number that was
 		// news four seconds ago has stopped being news, and the frame has to be
@@ -1238,6 +1314,11 @@ func (a *app) paint() tea.Cmd {
 	// must not depend on a second fact staying true.
 	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
 		a.askAnimating() ||
+		// A BROWSER SOMEBODY IS STANDING IN IS THE SIXTH, and it is the only one
+		// of them that can be the whole of what is happening: no turn is
+		// running while a person signs in, so without this the waiting line's
+		// spinner would be a still photograph (connect.go).
+		a.connectAnimating() ||
 		// AND A ROOM ON A LIVE NODE IS THE FOURTH: the page is a transcript with a
 		// spinner turning on it, and the rail — which is what [app.tasksAnimating]
 		// reads — is not always on screen to say so (room.go).
@@ -1358,6 +1439,24 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		a.closeSettings()
 		a.closeExpand()
 		a.askConsent(ev)
+
+	case session.EventConnectAsk:
+		// AN OFFER OUTRANKS A PANEL, on the terms the approval question above
+		// states: the block is drawn above the input, and a question drawn under
+		// a fullscreen sheet is a session waiting on a keyboard nobody can reach.
+		a.closeSettings()
+		a.closeExpand()
+		a.askConnect(ev)
+
+	case session.EventConnectAuth:
+		// The sign-in has started somewhere else. This opens the browser and puts
+		// the waiting block on screen — the one event on this surface that
+		// reaches out of the program, and the reason it does is that a person
+		// cannot be asked to paste a link they were never shown (connect.go).
+		a.connectAuth(ev)
+
+	case session.EventConnectDone:
+		a.connectDone(ev)
 
 	case session.EventTaskProposal:
 		// A DECISION OUTRANKS A PANEL, for the reason a consent question does:
@@ -1489,6 +1588,9 @@ func (a *app) settle() tea.Cmd {
 	// released those calls; a prompt left on screen would be asking about work
 	// that is over (consent.go).
 	a.dropAsks()
+	// And the offers on the same terms: an account the turn wanted is an account
+	// nothing is waiting for once the turn is over (connect.go).
+	a.dropConnectAsks()
 	// A proposal the engine is no longer holding stops asking, for the reason
 	// the questions above are dropped — except that this one is CHECKED rather
 	// than assumed, because the clock may have answered it (task.go).
@@ -2225,6 +2327,17 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openSettings()
 		return nil
 
+	case "connect", "connections":
+		// Two words for one list, the way /settings answers to three: a person
+		// asking what they have connected and a person wanting to connect
+		// something are looking at the same panel, and neither should have to
+		// find out which word this build chose.
+		//
+		// No argument form. A service is picked from a list of two or three, and
+		// a name typed at a command line is a name that can be typed wrong.
+		a.openConnect()
+		return nil
+
 	case "resume", "sessions":
 		// Two words for one list, the way /settings also answers to /set and
 		// /config: docs/CHAT-V3.md calls this the sessions picker and a person
@@ -2281,6 +2394,11 @@ func (a *app) renew() tea.Cmd {
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
 	a.asks, a.follows = nil, nil
+	// The offers and the sign-ins belong to the conversation that raised them,
+	// and a browser still standing open on one of them is a browser nobody is
+	// coming back to (connect.go).
+	a.connAsks, a.connPanel = nil, connectPanel{}
+	a.abandonConnects()
 	a.title = strings.TrimSpace(agent.Title())
 	a.turn = 0
 	a.unfolded = map[int]bool{}

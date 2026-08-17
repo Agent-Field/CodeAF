@@ -101,6 +101,15 @@ type Agent interface {
 	// lasts — session.ConsentToolSession is "stop asking me about this tool",
 	// for this agent's life and no longer.
 	ResolveConsentRemember(id uint64, allow bool, scope session.ConsentScope)
+	// ResolveConnect answers one session.EventConnectAsk: whether aforge may
+	// connect the account it reached for (connect.go). Approving is what opens
+	// the browser; declining is "not now" and is remembered nowhere.
+	ResolveConnect(id string, approve bool)
+	// NoteConnected tells the session an account is connected. It is the other
+	// door's other half: a person can open /connect mid-conversation and connect
+	// something the session gave up on, and without this the session would still
+	// believe it has nothing.
+	NoteConnected(service, account string)
 	// Title is the name the session gave itself, empty until it has one. The
 	// surface reads it at construction (a resumed session is already named) and
 	// then follows session.EventTitleChanged.
@@ -186,6 +195,16 @@ type Options struct {
 	// spend). Nil builds one here over [Options.ProfileDir] with the two seams
 	// this surface can answer honestly — see settings.go.
 	Settings *config.Settings
+
+	// Connections is the door onto the accounts this profile has connected
+	// (connect.go). It answers /connect and the sign-in a pressed row starts.
+	//
+	// Nil is a surface that cannot manage them, which is what a headless frame
+	// and a build whose door has not wired one both are: /connect says so rather
+	// than opening an empty list. It does NOT disable the offer the session
+	// raises — that path runs entirely on session events and the browser, and
+	// needs no handle at all.
+	Connections Connections
 
 	// RecentSessions is this directory's last conversations, most recent first.
 	// Two surfaces are drawn from it: the welcome box's right column, which

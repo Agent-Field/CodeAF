@@ -41,6 +41,9 @@ var commands = []command{
 	{name: "model", args: "<slug>", desc: "switch the model"},
 	{name: "image", args: "<path>", desc: "attach a picture · tab completes the path"},
 	{name: "settings", desc: "open the settings panel · ctrl+,"},
+	// It sits under /settings because it is the other half of the same errand:
+	// one is what this surface may do, the other is what it may reach.
+	{name: "connect", desc: "your connected accounts · connect another"},
 	{name: "new", desc: "close this session and start a fresh one"},
 	{name: "resume", desc: "open an earlier conversation"},
 	{name: "compact", desc: "summarize the conversation now"},

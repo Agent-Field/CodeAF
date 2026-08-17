@@ -94,6 +94,10 @@ const (
 	// chromeChoices is the consent block's offer line, which is interactive by
 	// keyboard and hoverable by pointer.
 	chromeChoices
+	// chromeConnectAsk is the connect offer's answers row, which is interactive
+	// by keyboard and hoverable by pointer — the approval question's arrangement
+	// one block down (connect.go).
+	chromeConnectAsk
 	// chromeOverlay is one row of whichever list is open; index is its position
 	// in that list's own rows.
 	chromeOverlay
@@ -337,6 +341,15 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 		// height, which is [app.consentMark]'s other half (consent.go).
 		add(line, a.consentMark(i, width))
 	}
+	// AND THE CONNECT OFFER SITS DIRECTLY UNDER IT, because it is the same kind
+	// of thing one rung quieter: a question the session is waiting on, drawn
+	// where this surface draws everything it wants answered (connect.go). The
+	// two STACK rather than share a slot — an approval question is about a call
+	// and this is about an account, and either can be raised while the other is
+	// up — and the block above keeps the keyboard while it is there.
+	for i, line := range a.connectAskRows(width) {
+		add(line, a.connectMark(i))
+	}
 	// THE STEER GUARD SITS WHERE THE APPROVAL QUESTION SITS, because it is the
 	// same kind of thing: the surface holding words back until it is told where
 	// to send them (room.go). The two can never be up together — a question the
@@ -429,7 +442,7 @@ func (a *app) chromeHeight() int {
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
 	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
-		a.guardHeight() + a.followHeight() + a.welcomeHeight()
+		a.connectAskHeight() + a.guardHeight() + a.followHeight() + a.welcomeHeight()
 	if gap := a.breathingRows(); gap > 0 {
 		n += gap + 1 // the breathing room, and the rule standing in it
 	}
