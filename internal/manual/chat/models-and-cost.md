@@ -58,21 +58,51 @@ There is no mouse commit on the picker's rows.
 ## What each row in the model picker tells you
 
 A row reads `<id>:<level>` on the left and, dimly on the right, the facts the catalog
-published: the context window, the price per million prompt and completion tokens, and the
-arena elo. **Each part is hidden when nobody published it.** A price shows only when both
-halves are known — a zero means "nobody said", never "free".
+published: the context window, the price per million prompt and completion tokens, the
+arena elo, and what the model can do besides write. **Each part is hidden when nobody
+published it.** A price shows only when both halves are known — a zero means "nobody said",
+never "free".
 
 Only models you can hold a conversation with are listed: text in, text out. A model that
 publishes `["image","text"]` out (a drawing model that captions) is excluded, and so is a
 transcription model (audio in, text out). A row that publishes nothing about itself is judged
 by its id against a narrow list of generation and sidecar words.
 
+## What "sees", "draws", "speaks", "films", "hears" mean on a model row
+
+The dim tail of a picker row ends with what the model can do besides hold a conversation,
+in one word each:
+
+| Word | What the catalog published |
+|---|---|
+| `sees` | it reads images |
+| `hears` | it reads sound |
+| `watches` | it reads video |
+| `draws` | it answers with images |
+| `speaks` | it answers with speech, audio or music |
+| `films` | it answers with video |
+
+Input words come first, so a model that reads and paints pictures reads `sees · draws`.
+
+**A plain text chat model shows nothing here at all**, and neither does a model that
+published no modalities — silence means text in, text out, and nothing more. The same tail
+appears on `aforge models`.
+
 ## Switching model by name in one command
 
 `/model <slug>` switches straight to that slug — no list, no confirmation.
 
-It takes the slug at its word: there is no check that the slug exists in any known list. If
-the slug is not in any list aforge knows, the context window is left alone.
+There is one check, and only one. If the slug **is** in the catalog and cannot hold a
+conversation — a drawing model, a speech model, a transcriber — aforge refuses in one line
+and the conversation does not move:
+
+```
+openai/gpt-4o-mini-tts cannot hold a conversation — it speaks. Still on moonshotai/kimi-k3.
+```
+
+A slug the catalog has never carried is still **taken at its word**, exactly as before:
+aforge may be offline, or you may be naming a model this build has never listed. In that
+case the context window is left alone.
 
 ## Reasoning effort — making the model think harder or faster
 

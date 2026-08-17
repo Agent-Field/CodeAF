@@ -421,14 +421,20 @@ fuzzy hits sitting at the bottom rather than mixed through.
 
 Twelve rows show at a time. A row reads `<id>:<level>` on the left and, dimly on the
 right, what the catalog published: window, price per million prompt and completion, arena
-elo. Each part is hidden when nobody published it. A price shows only when both halves
-are known — a zero means "nobody said", never "free".
+elo, and what the model can do besides write — `sees`, `hears`, `watches`, `draws`,
+`speaks`, `films`. Each part is hidden when nobody published it. A price shows only when
+both halves are known — a zero means "nobody said", never "free". A plain text chat model
+shows no capability words at all.
 
 Only models you can hold a conversation with are listed: text in and text out. A model
 that publishes `["image","text"]` out — a drawing model that also captions — is left out,
 and so is a transcription model. A model that publishes nothing is judged by its id.
 
 Limits:
+
+- `/model <slug>` refuses a slug the catalog carries that **cannot hold a conversation**,
+  in one line — `openai/gpt-4o-mini-tts cannot hold a conversation — it speaks. Still on
+  <model>.` — and does not switch. A slug the catalog has never carried is taken as typed.
 
 - **ctrl+t does nothing at all, silently**, on a model whose catalog row does not accept a
   reasoning knob. The level would be an error at the next turn. A row that published
@@ -635,9 +641,11 @@ Refusals inside the panel, exactly as written:
 
 - A row pinned by an environment variable refuses, and the foot says
   `held by <name> — unset it to change this here`.
-- Only the conversation's own model slot is live here. Every other slot refuses with
-  either `<label> is set with <ENV_VAR>` for a media slot backed by an environment
-  variable, or `that model is chosen where its session is opened` for a role slot.
+- The conversation's model and the six capability slots — looking, drawing, speaking,
+  composing, filming, voice — are all live here: a pick is saved to your profile and takes
+  effect on the next thing that uses it, with no relaunch. The only slots that refuse are
+  the **roles** nothing on this surface resolves — planning, verification, naming — and
+  they say `that model is chosen where its session is opened`.
 - Any refusal from the settings registry is shown on the foot line in the registry's own
   words. Nothing is swallowed.
 - A search that matches nothing says `nothing matches`. The `Connections` tab has its own
@@ -688,9 +696,33 @@ overwrite your key.
 
 **select** — enter opens the model picker itself, the same component `/model` opens, in
 the list's place. It is filtered to the question that row asks: "looking" only offers
-models that can see, "drawing" only ones that draw, "voice" only ones that hear, and
-everything else follows the general chat rule. Its legend is
+models that can see, "drawing" only ones that draw, "speaking" only ones that speak,
+"composing" only ones that compose, "filming" only ones that film, "voice" only ones that
+hear, and everything else follows the general chat rule. Its legend is
 `↑↓ move · enter choose · esc cancel · type to filter`.
 
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
 and its ctrl+t effort knob is true here too.
+
+## Which model draws my pictures, speaks, films, or looks at an image
+
+Each of those is one row on the **Providers** tab, and the row is the front door: the model
+you pick there is the model that runs. A blank row reads `automatic`, which is not "off" —
+it means aforge picks one for you.
+
+Choosing is resolved at the moment something is actually drawn, spoken or looked at, down
+one order:
+
+1. the row you set here (an environment variable of the same name still wins over it —
+   `AFORGE_IMAGE_MODEL`, `AFORGE_SPEECH_MODEL`, `AFORGE_MUSIC_MODEL`, `AFORGE_VIDEO_MODEL`,
+   `AFORGE_VOICE_MODEL`, `AFORGE_VISION_MODEL`);
+2. a role pinned in "pinned roles" — `imagegen`, `speech`, `video`, `vision`;
+3. the best model the catalog advertises that publishes the capability;
+4. a name this build remembers.
+
+**Every step is checked against what the catalog says the model can do.** A row or a pin
+naming a model that cannot do the job is skipped and the next step is used, so a model that
+was renamed degrades to a working one instead of failing at the provider. If nothing on the
+list can do it, that ability is simply absent rather than present and failing.
+
+A change here lands on the **next** picture, sentence or film — not on the next launch.
