@@ -2558,14 +2558,24 @@ func (a *app) selectTool(delta int) bool {
 // slash consumes a command line. Everything starting with "/" is answered
 // here and nothing starting with "/" is ever sent to the model — including a
 // command nobody defined, which gets a hint instead of a turn.
+//
+// THE WORD IS RESOLVED THROUGH THE TABLE BEFORE IT IS SWITCHED ON. The other
+// words a command answers to — /clear for /new, /exit and /q for /quit, /? for
+// /help — live on the table's rows (commands.go's [command.alias]), so this
+// switch has one case per COMMAND rather than one per spelling, and a synonym
+// cannot exist here without also appearing in the list and in /help. The line
+// that is typed in full and entered arrives here too, so an alias typed out and
+// an alias chosen from the list run the same road.
 func (a *app) slash(line string) tea.Cmd {
 	name, rest, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	rest = strings.TrimSpace(rest)
-	switch strings.ToLower(name) {
-	case "quit", "exit", "q":
+	// The unknown-command hint below says back what was typed and not what it
+	// resolved to, so the name as written is kept.
+	switch canonicalCommand(name) {
+	case "quit":
 		return a.quit()
 
-	case "help", "?":
+	case "help":
 		a.note(helpText(a.file))
 		return nil
 
@@ -2587,22 +2597,23 @@ func (a *app) slash(line string) tea.Cmd {
 		a.attachPath(rest)
 		return nil
 
-	case "settings", "set", "config":
+	case "settings":
 		a.openSettings()
 		return nil
 
-	case "connect", "connections":
-		// Two words for one list, the way /settings answers to three: a person
-		// asking what they have connected and a person wanting to connect
-		// something are looking at the same panel, and neither should have to
-		// find out which word this build chose.
+	case "connect":
+		// Two words for one list, the way /settings answers to three (the second
+		// is /connections, on the table's row): a person asking what they have
+		// connected and a person wanting to connect something are looking at the
+		// same panel, and neither should have to find out which word this build
+		// chose.
 		//
 		// No argument form. A service is picked from a list of two or three, and
 		// a name typed at a command line is a name that can be typed wrong.
 		a.openConnect()
 		return nil
 
-	case "resume", "sessions":
+	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
 		// /config: docs/CHAT-V3.md calls this the sessions picker and a person
 		// coming back to work calls it resuming, and neither of them should have
@@ -2619,6 +2630,11 @@ func (a *app) slash(line string) tea.Cmd {
 		agent, ctx := a.agent, a.ctx
 		a.note("compacting…")
 		return func() tea.Msg { return compactedMsg{err: agent.Compact(ctx)} }
+
+	case "rewind":
+		// The keys are esc esc and the row says so; the command exists because a
+		// gesture nobody can see is a gesture nobody finds (commands.go).
+		return a.enterRewind()
 
 	case "new":
 		// The command that replaces the agent is the one command here that
