@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -603,4 +604,509 @@ func wrapCodeLine(line string, width int) []string {
 		line = rest
 	}
 	return append(out, line)
+}
+
+// ── INLINE TASK LINKS ───────────────────────────────────────────────────────
+//
+// A MODEL THAT SAYS "task 7" IS NAMING A DOOR, AND THE DOOR WAS NOT THERE.
+// Everywhere else on this surface a running node can be pressed — the strip's
+// chips, the roster's rows, a spawn card, a landed card — and the one place the
+// work is named most often is the reply that talks about it, where the name was
+// nine dead cells of prose. A person reading "I split this into task 7 and task
+// 8" had to go and find those two rows in a column to look at either.
+//
+// So a reference becomes a link: accent, underlined, and pressing it opens that
+// node's room through the same door the chips use (room.go's [app.openRoomFor]).
+//
+// ── THE GRAMMAR IS SMALL ON PURPOSE ──
+//
+// A number in prose is almost never a task, so the only shapes recognized are
+// the ones that name one out loud — an anchoring "task"/"tasks", a space, an
+// optional "id", an optional "#", and the digits:
+//
+//	task 7 · task #7 · tasks id 7 · task id #7
+//
+// A bare "7" is not one, a bare "#7" is not one, "taskbar 7" is not one, and
+// "task 7.1" is not one (a version, a date and a range all read that way). What
+// this refuses costs a reader nothing — the words are still there — and what a
+// looser grammar would cost is a paragraph pockmarked with underlined numbers.
+//
+// AN UNKNOWN ID IS PLAIN TEXT. The reference is resolved against the nodes this
+// surface has actually seen ([app.tasks]) and a miss is left exactly as the
+// model wrote it. A link that opens nothing is worse than no link: it is the
+// surface claiming a door it does not have.
+//
+// ── IT IS A PASS OVER RENDERED ROWS ──
+//
+// The pass runs on the ROWS prose already produced, not on the markdown behind
+// them, and that is what keeps it correct at every width: the wrap has already
+// happened, so a reference split across two rows is simply not one, and the
+// phone tier's re-wrapped fences and stacked tables need no special case. It is
+// a pure function of (row, task index) — no state, nothing cached — so a resize
+// re-derives it and a re-render produces the same bytes.
+//
+// CODE IS NOT PROSE AND GETS NO LINKS. Two guards, one for each way code
+// reaches a row: a fenced block is drawn behind [tokens.GlyphCodeGutter], and an
+// inline span is drawn on the surface's one raised plane (prose/inline.go's
+// codeSpan). Both are read off the RENDERED row — the gutter as a glyph, the
+// plane as a background — which is the only place the two are the same kind of
+// fact. A row whose profile has no raised plane keeps its backticks, and a
+// reference between them is masked by the same rule that masks the plane.
+
+// taskLink is one drawn reference: the columns it occupies on its row, and the
+// node behind them.
+type taskLink struct {
+	span  hudSpan
+	id    uint64
+	title string
+}
+
+// linkTasks is the pass bound to this surface's own task index. It is called
+// once per rendered row of model prose (render.go's [app.deckRows]).
+func (a *app) linkTasks(text string) (string, []taskLink) {
+	if text == "" || len(a.tasks) == 0 {
+		return text, nil
+	}
+	return linkifyTasks(text, a.pal, func(id uint64) (string, bool) {
+		node := a.tasks[id]
+		if node == nil {
+			return "", false
+		}
+		return node.title, true
+	})
+}
+
+// linkifyTasks is that pass, whole: one painted row in, the same row with its
+// resolved references inked and their columns recorded out.
+//
+// It returns the row UNTOUCHED whenever it has nothing to say, which is almost
+// every row — the cheap check is first, and it is a substring scan for the one
+// word every shape in the grammar has to carry.
+func linkifyTasks(text string, pal palette, look func(uint64) (string, bool)) (string, []taskLink) {
+	if !hasTaskWord(text) {
+		return text, nil
+	}
+	flat, ground := flatten(text)
+	if strings.Contains(flat, tokens.GlyphCodeGutter) {
+		// A fenced line. The whole row is source, and source that says "task 7"
+		// is saying it to a compiler.
+		return text, nil
+	}
+	refs := taskRefs(flat)
+	kept := refs[:0]
+	for _, ref := range refs {
+		if grounded(ground, ref.from, ref.to) || masked(flat, ref.from) {
+			continue
+		}
+		title, ok := look(ref.id)
+		if !ok {
+			continue
+		}
+		ref.title = title
+		kept = append(kept, ref)
+	}
+	if len(kept) == 0 {
+		return text, nil
+	}
+	return paintLinks(text, flat, kept, pal)
+}
+
+// ── the grammar ─────────────────────────────────────────────────────────────
+
+// taskRef is one recognized reference, in PLAIN byte offsets into its row.
+type taskRef struct {
+	from, to int
+	id       uint64
+	title    string
+}
+
+// taskWord is the anchor every shape in the grammar opens on.
+const taskWord = "task"
+
+// hasTaskWord is the cheap reject, and it is run on the PAINTED row rather than
+// on a stripped copy of it: no escape sequence this surface writes contains a
+// letter of "task", so a painted row that has none of them has no reference in
+// it and costs one scan instead of one allocation.
+func hasTaskWord(text string) bool { return indexFold(text, taskWord, 0) >= 0 }
+
+// taskRefs finds every reference in one row of plain text, in order and
+// non-overlapping.
+func taskRefs(s string) []taskRef {
+	var out []taskRef
+	for at := 0; at+len(taskWord) <= len(s); {
+		i := indexFold(s, taskWord, at)
+		if i < 0 {
+			break
+		}
+		// The LEFT boundary: "taskbar" and "subtask" are words, not references.
+		// A reference may open a row or follow punctuation — "(task 7)" is one.
+		if i > 0 && wordByte(s[i-1]) {
+			at = i + len(taskWord)
+			continue
+		}
+		head := i + len(taskWord)
+		if head < len(s) && (s[head] == 's' || s[head] == 'S') {
+			head++
+		}
+		if end, id, ok := taskRefTail(s, head); ok {
+			out = append(out, taskRef{from: i, to: end, id: id})
+			at = end
+			continue
+		}
+		at = i + len(taskWord)
+	}
+	return out
+}
+
+// taskRefTail reads what must follow the anchor: whitespace, an optional "id",
+// an optional "#", and the digits. It is the whole of the grammar's tail.
+func taskRefTail(s string, at int) (end int, id uint64, ok bool) {
+	at, spaced := skipBlank(s, at)
+	if !spaced {
+		// No gap after the anchor, so the anchor was the head of a longer word:
+		// "tasked", "taskbar". The right boundary is enforced here rather than
+		// beside the left one because "tasks" is also a legal anchor and the two
+		// questions resolve at the same byte.
+		return 0, 0, false
+	}
+	if at+1 < len(s) && (s[at] == 'i' || s[at] == 'I') && (s[at+1] == 'd' || s[at+1] == 'D') {
+		if next, gap := skipBlank(s, at+2); gap {
+			at = next
+		}
+	}
+	if at < len(s) && s[at] == '#' {
+		at++
+	}
+	start := at
+	for at < len(s) && s[at] >= '0' && s[at] <= '9' {
+		at++
+	}
+	// No digits, or more of them than any session will ever mint. The ceiling is
+	// what keeps [strconv.ParseUint] off a hundred-digit number somebody pasted.
+	if at == start || at-start > 9 {
+		return 0, 0, false
+	}
+	if at < len(s) {
+		switch c := s[at]; {
+		case wordByte(c):
+			// "task 7a" is not a reference to task 7.
+			return 0, 0, false
+		case (c == '.' || c == '-' || c == '/' || c == ':') && at+1 < len(s) &&
+			s[at+1] >= '0' && s[at+1] <= '9':
+			// A version, a date, a range, a clock. All of them read as a number
+			// followed by another number, and none of them is a task.
+			return 0, 0, false
+		}
+	}
+	n, err := strconv.ParseUint(s[start:at], 10, 64)
+	if err != nil || n == 0 {
+		// Node ids are minted from one, so a "task 0" is prose about nothing.
+		return 0, 0, false
+	}
+	return at, n, true
+}
+
+// masked reports whether the reference at this offset is inside something that
+// is not prose: a URL, or a backticked span on a terminal with no raised plane
+// to draw one on (prose/inline.go's codeSpan says when the backticks come back).
+//
+// The URL test is a test of the reference's own FIELD, and the grammar is what
+// makes that enough: an anchor must be followed by whitespace, so the field an
+// anchor sits in ENDS at the anchor — and a field that ends in "task" and has a
+// scheme in it is an address, not a sentence.
+func masked(flat string, at int) bool {
+	from := strings.LastIndexAny(flat[:at], " \t") + 1
+	to := at
+	for to < len(flat) && flat[to] != ' ' && flat[to] != '\t' {
+		to++
+	}
+	if strings.Contains(flat[from:to], "://") {
+		return true
+	}
+	return strings.Count(flat[:at], "`")%2 == 1
+}
+
+// grounded reports whether any cell of a reference was drawn on the raised
+// plane — which on this surface means it is code (prose/inline.go).
+func grounded(ground []bool, from, to int) bool {
+	for i := from; i < to && i < len(ground); i++ {
+		if ground[i] {
+			return true
+		}
+	}
+	return false
+}
+
+// skipBlank steps over one run of spaces or tabs and reports whether there was
+// one. A reference is written with a gap in it and never without.
+func skipBlank(s string, at int) (int, bool) {
+	start := at
+	for at < len(s) && (s[at] == ' ' || s[at] == '\t') {
+		at++
+	}
+	return at, at > start
+}
+
+// wordByte reports whether a byte can be part of a word, which is what both
+// boundary tests ask. A byte above ASCII is a boundary: this grammar is written
+// in ASCII and a rune beside it is punctuation, an emoji or another language,
+// none of which continues "task".
+func wordByte(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
+		return true
+	}
+	return false
+}
+
+// indexFold is [strings.Index] for an ASCII-lowercase needle, case-insensitive,
+// without the allocation a lowered copy of every row would cost.
+func indexFold(s, needle string, from int) int {
+	for i := from; i+len(needle) <= len(s); i++ {
+		match := true
+		for j := 0; j < len(needle); j++ {
+			c := s[i+j]
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != needle[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
+}
+
+// ── the painted row, taken apart and put back together ──────────────────────
+
+// flatten strips one painted row to its plain bytes and reports, byte for byte,
+// whether it was drawn on a background.
+//
+// It does its own stripping rather than calling [ansi.Strip] for one reason: the
+// two answers have to be indexed the same way, and the only guarantee of that is
+// that one walk produced both.
+func flatten(text string) (string, []bool) {
+	var (
+		out    strings.Builder
+		ground []bool
+		on     bool
+	)
+	out.Grow(len(text))
+	for i := 0; i < len(text); {
+		if n := escLen(text, i); n > 0 {
+			on = sgrGround(text[i:i+n], on)
+			i += n
+			continue
+		}
+		out.WriteByte(text[i])
+		ground = append(ground, on)
+		i++
+	}
+	return out.String(), ground
+}
+
+// paintLinks writes the row back out with every reference inked, and returns the
+// columns each one landed in.
+//
+// THE INK REPLACES WHAT WAS UNDER IT. A reference is one control and it is drawn
+// as one, so whatever prose painted inside those bytes — a bold word, a heading
+// tier — is dropped for the span and the plain phrase is repainted. What is
+// AROUND it is restored exactly: the foreground in force at the cut and the
+// underline flag, re-emitted after the link closes, because this surface's paint
+// closes with SGR 39 rather than a full reset and a link that swallowed the
+// paragraph's colour would be the loudest bug on the screen.
+func paintLinks(text, flat string, refs []taskRef, pal palette) (string, []taskLink) {
+	var (
+		out   strings.Builder
+		links []taskLink
+		fg    string
+		under bool
+		at    int // the PLAIN offset the walk has reached
+		next  int // the reference being looked for
+	)
+	out.Grow(len(text) + 32*len(refs))
+	for i := 0; i < len(text); {
+		if next < len(refs) && at == refs[next].from {
+			ref := refs[next]
+			inked := taskLinkInk(pal, flat[ref.from:ref.to])
+			restore := ""
+			if inked != flat[ref.from:ref.to] {
+				// Only a row that was actually painted needs its paint put back;
+				// on a terminal that draws no SGR at all the link is a click
+				// target and nothing else, and the row stays byte-identical.
+				if fg != "" {
+					restore = fg
+				} else {
+					restore = "\x1b[39m"
+				}
+				if under {
+					restore += "\x1b[4m"
+				}
+			}
+			links = append(links, taskLink{
+				span:  hudSpan{from: ansi.StringWidth(flat[:ref.from]), to: ansi.StringWidth(flat[:ref.to])},
+				id:    ref.id,
+				title: ref.title,
+			})
+			next++
+			// A REFERENCE ALREADY WEARING THIS INK IS LEFT ALONE, and that is the
+			// whole of the idempotence: a second pass over a row this one wrote
+			// finds its own bytes at the cut and copies them rather than opening a
+			// link inside a link. Nothing on this surface feeds a painted row back
+			// in today — [app.deckRows] always starts from what prose returned —
+			// and a pass that only held together because nobody did would be a
+			// trap for whoever eventually does.
+			if want := inked + restore; strings.HasPrefix(text[i:], want) {
+				out.WriteString(want)
+				i += len(want)
+				at = ref.to
+				continue
+			}
+			out.WriteString(inked)
+			out.WriteString(restore)
+			// Step the walk over the span's bytes, keeping the escape state up to
+			// date: what was opened inside a link still has to be closed outside
+			// it, and a run of prose beginning mid-reference is the row's own.
+			for i < len(text) && at < ref.to {
+				if n := escLen(text, i); n > 0 {
+					fg, under = sgrInk(text[i:i+n], fg, under)
+					i += n
+					continue
+				}
+				at++
+				i++
+			}
+			continue
+		}
+		if n := escLen(text, i); n > 0 {
+			fg, under = sgrInk(text[i:i+n], fg, under)
+			out.WriteString(text[i : i+n])
+			i += n
+			continue
+		}
+		out.WriteByte(text[i])
+		at++
+		i++
+	}
+	return out.String(), links
+}
+
+// taskLinkInk is what a resolved reference wears: the accent, underlined.
+//
+// UNDERLINE IS THE WORD THIS TREE ALREADY USES FOR "A PLACE YOU COULD GO" —
+// styles.go spends it on a path inside a highlighted command, and prose spends
+// it on a markdown link's label (prose/inline.go) — so a task reference wearing
+// it needs no explaining to anybody who has read one screen of this surface.
+//
+// THE ACCENT IS A BORROWED HUE AND IT IS WORTH SAYING SO. render.go's identity
+// law reserves it for the person's own words, on the grounds that hue is the one
+// channel that cannot be impersonated by markdown. A link is not the model's
+// voice — it is a control this surface put into the model's sentence — and the
+// underline is what says which of the two a run of accent is. The distinction
+// holds because a person's message is accent WHOLE and behind its own glyph: a
+// nine-cell underlined run mid-paragraph reads as a button, not as a turn.
+func taskLinkInk(pal palette, s string) string { return pal.underline(pal.accent(s)) }
+
+// escLen is the length of the escape sequence at s[i], or zero where there is
+// none. CSI is the only form this surface's renderers emit; anything else is
+// taken as the two bytes it opens with rather than swallowing the row.
+func escLen(s string, i int) int {
+	if s[i] != 0x1b || i+1 >= len(s) {
+		return 0
+	}
+	if s[i+1] != '[' {
+		return 2
+	}
+	for j := i + 2; j < len(s); j++ {
+		if s[j] >= 0x40 && s[j] <= 0x7e {
+			return j - i + 1
+		}
+	}
+	return len(s) - i
+}
+
+// sgrGround folds one escape sequence into "is there a background under this".
+func sgrGround(seq string, on bool) bool {
+	params, ok := sgrParams(seq)
+	if !ok {
+		return on
+	}
+	for i := 0; i < len(params); i++ {
+		switch param := params[i]; {
+		case param == "", param == "0", param == "49":
+			on = false
+		case param == "48":
+			on = true
+			i += sgrColorSpan(params, i)
+		case param == "38":
+			i += sgrColorSpan(params, i)
+		case len(param) == 2 && param[0] == '4' && param[1] >= '0' && param[1] <= '7':
+			on = true
+		case len(param) == 3 && param[0] == '1' && param[1] == '0' && param[2] <= '7':
+			on = true
+		}
+	}
+	return on
+}
+
+// sgrInk folds one escape sequence into the two things a link has to put back:
+// the foreground in force, and whether an underline was already open.
+func sgrInk(seq, fg string, under bool) (string, bool) {
+	params, ok := sgrParams(seq)
+	if !ok {
+		return fg, under
+	}
+	for i := 0; i < len(params); i++ {
+		switch param := params[i]; {
+		case param == "", param == "0":
+			fg, under = "", false
+		case param == "39":
+			fg = ""
+		case param == "38":
+			fg = seq
+			i += sgrColorSpan(params, i)
+		case param == "48":
+			// A background's own index is not a foreground, which is the whole
+			// reason the extended forms are stepped over rather than read one
+			// parameter at a time: "48;5;38" says nothing about the ink.
+			i += sgrColorSpan(params, i)
+		case param == "4":
+			under = true
+		case param == "24":
+			under = false
+		case len(param) == 2 && param[0] == '3' && param[1] >= '0' && param[1] <= '7',
+			len(param) == 2 && param[0] == '9' && param[1] >= '0' && param[1] <= '7':
+			fg = seq
+		}
+	}
+	return fg, under
+}
+
+// sgrColorSpan is how many parameters an extended colour introducer takes with
+// it: two for the 256 form, four for the truecolor one, none for anything else.
+func sgrColorSpan(params []string, at int) int {
+	if at+1 >= len(params) {
+		return 0
+	}
+	switch params[at+1] {
+	case "5":
+		return 2
+	case "2":
+		return 4
+	}
+	return 0
+}
+
+// sgrParams splits one SGR sequence into its parameters, and reports false for a
+// CSI that is not one — a sequence ending in anything but "m" says nothing about
+// colour. A bare "\x1b[m" is the reset, which is one empty parameter.
+func sgrParams(seq string) ([]string, bool) {
+	if len(seq) < 3 || seq[1] != '[' || seq[len(seq)-1] != 'm' {
+		return nil, false
+	}
+	return strings.Split(seq[2:len(seq)-1], ";"), true
 }

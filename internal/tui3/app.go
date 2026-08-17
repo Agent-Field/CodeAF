@@ -1045,7 +1045,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.statusPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
-			a.press(msg.Mouse().Y)
+			a.press(msg.Mouse().X, msg.Mouse().Y)
 			// A press can open a room — a spawn card is a door now (room.go's
 			// [app.openRoomAt]) — and a room that opened without its lane being
 			// pumped is a page that never fills. The take is nil in every other
@@ -1949,7 +1949,7 @@ func (a *app) showAll(i int) {
 
 // press resolves a click to the row it landed on. A click that lands on
 // nothing does nothing: this surface has no empty-space gesture.
-func (a *app) press(y int) {
+func (a *app) press(x, y int) {
 	// The welcome box gets the click first, because while it is up it is the
 	// thing between the pointer and everything else: a recent session opens,
 	// and anywhere else is the person reaching past the box, which is what
@@ -1979,6 +1979,13 @@ func (a *app) press(y int) {
 				a.closeRoom()
 			}
 		}
+		return
+	}
+	// A TASK LINK IS THE ONE TARGET INSIDE A ROW, so it is resolved before the
+	// row's own answer: the prose it sits in has no gesture of its own, and a
+	// reference read after the body would be a door the body had already closed
+	// the room behind (markdown.go's [linkifyTasks]).
+	if a.linkPress(x, r) {
 		return
 	}
 	// A click anywhere on a thinking block toggles it — the whole block is the
@@ -2029,6 +2036,35 @@ func (a *app) press(y int) {
 		// [app.choicePress]); reaching here means the pointer was in a column no
 		// option occupies, and empty space on this surface does nothing.
 	}
+}
+
+// linkPress resolves a click on an inline task reference, and reports whether it
+// took one.
+//
+// IT IS THE ONLY CLICK ON THIS SURFACE THAT IS MOUSE-ONLY, and that is a
+// deliberate refusal rather than an omission. The keyboard's walk through the
+// transcript ([app.selectTool]) visits the blocks enter opens into something —
+// calls, proposals, landed cards — and adding every paragraph that happens to
+// name a node would put the cursor in the middle of the prose a person is
+// reading, on a row that has no way to draw that it is selected. The destination
+// is not lost to the keyboard either way: ctrl+t opens the roster, and every node
+// a link can reach has a row in it (task.go).
+//
+// A press that lands in the prose AROUND a link falls through to the row's own
+// answer, which for a paragraph is nothing at all. The gap between two links is
+// a sentence, not a seam, and swallowing a click on it would make the paragraph
+// a place where missing costs you the page.
+func (a *app) linkPress(x int, r row) bool {
+	if len(r.links) == 0 || a.welcome.open {
+		return false
+	}
+	for _, link := range r.links {
+		if link.span.holds(x) {
+			a.openRoomFor(link.id, link.title)
+			return true
+		}
+	}
+	return false
 }
 
 // statusPress resolves a click on the status row's MODEL SEGMENT, and reports

@@ -40,6 +40,38 @@ import (
 // with. The name is the two-or-three-word title, cut to fit. Nothing else: a
 // clock, a spend or a tool name on this row would make it a dashboard, and the
 // room is one keystroke away.
+//
+// ── AND THE CHIP IS SHAPED LIKE A CHIP ──
+//
+// It used to be a bare run of text with a middot beside it, which is the shape
+// of a LIST, and the row is not a list — it is the tab bar for the page below
+// it. Read as a list, the one thing the row exists to say last of all was the
+// thing hardest to see: which of these doors you are standing in. So a chip is
+// padded, one cell each side, and the padding is what a band has to fill:
+//
+//	  ⠙ Fix nil-map    ◆ Auth tests   +2
+//	 ^^^^^^^^^^^^^^^^
+//	 the room you are in, banded
+//
+// TWO MARKS, BECAUSE THERE ARE TWO QUESTIONS. The OPEN chip — the room the body
+// is drawing — takes the band and the accent, which is the emphasis this
+// surface already spends on "the row you picked" (styles.go's [palette.band],
+// one step above the pointer's own hover). The FOCUSED chip — wherever the
+// roster's cursor is standing while it holds the keyboard (task.go's
+// [app.railWhere]) — takes an underline instead, so that moving the cursor
+// across the row never once looks like opening something. A chip can wear both,
+// and when it does both are legible, which is the point of picking two channels
+// rather than two shades of one.
+//
+// THE CURSOR IS THE ROSTER'S AND NOT A SECOND ONE. A tab row with a keyboard
+// model of its own would be a third list to navigate on a surface that already
+// has the column and the transcript; the strip is a VIEW of the roster's live
+// set, so it shows the roster's cursor and adds no keys.
+//
+// The padding also belongs to the CHIP for the pointer: [stripSpan] covers it,
+// so the cell beside a name opens the same room the name does. A one-cell gap
+// separates two chips, which is what is left over once each one carries its own
+// air — the middot went with the list it punctuated.
 
 const (
 	// stripFloor is the narrowest frame that gets a strip. Under it there is not
@@ -51,10 +83,16 @@ const (
 	// way, so a node reads identically in both places.
 	stripTitleCap = 18
 	// stripGap is what separates two chips, and stripGapCols is its width in
-	// CELLS: the middot is two bytes and one column, and a budget measured in
-	// bytes would fit fewer chips than the row can hold.
-	stripGap     = " · "
-	stripGapCols = 3
+	// CELLS. The two are stated apart because a budget measured in bytes would
+	// fit fewer chips than the row can hold the moment the separator is not
+	// ASCII.
+	stripGap     = " "
+	stripGapCols = 1
+	// stripPad is the air inside a chip, one cell each side. It is what makes a
+	// band read as a tab rather than as a highlighted word, and it is inside the
+	// chip's own span so the pointer may land on it.
+	stripPad     = " "
+	stripPadCols = 2
 )
 
 // stripOrder is the order the chips come in, and it is not the roster's.
@@ -173,7 +211,7 @@ func (a *app) stripRow(width int) string {
 	at := 0
 	for i := 0; i < kept; i++ {
 		if i > 0 {
-			out.WriteString(a.pal.dim(stripGap))
+			out.WriteString(stripGap)
 			at += stripGapCols
 		}
 		text, w := a.stripLabel(nodes[i])
@@ -187,7 +225,7 @@ func (a *app) stripRow(width int) string {
 	}
 	if rest := len(nodes) - kept; rest > 0 {
 		word := stripMoreWord(rest)
-		out.WriteString(a.pal.dim(stripGap))
+		out.WriteString(stripGap)
 		at += stripGapCols
 		out.WriteString(a.pal.dim(word))
 		a.stripMore = hudSpan{from: at, to: at + ansi.StringWidth(word)}
@@ -202,11 +240,34 @@ func stripMoreWord(n int) string { return "+" + itoa(n) }
 // returned together because the budget is spent in cells and the label is
 // carried in bytes: the width is taken through [ansi.StringWidth], which is what
 // every other measurement on this surface goes through (task.go's [app.railJoin]).
+//
+// The band goes on LAST, over an already-painted chip, which is the same bargain
+// [palette.hover] makes with the rows it lights: every foreground sequence on
+// this surface closes with SGR 39, so a background wrapped round one leaves the
+// ink underneath alone.
 func (a *app) stripLabel(node *taskNode) (string, int) {
 	glyph := a.stripGlyph(node)
 	title := fit(node.title, stripTitleCap)
-	return glyph + " " + a.stripTitle(node, title),
-		ansi.StringWidth(glyph) + 1 + ansi.StringWidth(title)
+	cols := ansi.StringWidth(glyph) + 1 + ansi.StringWidth(title) + stripPadCols
+	chip := stripPad + glyph + " " + a.stripTitle(node, title) + stripPad
+	if a.room != nil && a.room.id == node.id {
+		chip = a.pal.band(chip, cols)
+	}
+	if a.stripFocused(node) {
+		chip = a.pal.underline(chip)
+	}
+	return chip, cols
+}
+
+// stripFocused reports whether the roster's cursor is standing on this node.
+//
+// It reads the column's state and keeps none of its own ([app.railHold] and
+// [app.railWhere], task.go): the strip is a view of the same live set, and a
+// second cursor over one list is two answers to "where am I". While the roster
+// does not hold the keyboard there is no cursor to draw, which is the honest
+// reading — the draft has the keys, and nothing on this row is being aimed at.
+func (a *app) stripFocused(node *taskNode) bool {
+	return a.railHold && a.railWhere.id != 0 && a.railWhere.id == node.id
 }
 
 // stripGlyph is the chip's one cell: the node's state where the state is worth
