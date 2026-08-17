@@ -170,6 +170,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// a runner nothing is matched against would never be called.
 		Harnesses:  v3HarnessEntries(harnesses),
 		RunHarness: v3RunHarness(harnesses, settings, chosen, workspace),
+		// And the third: where a harness this conversation DESIGNS is written
+		// (internal/session's harness_build.go). It is the same store the two
+		// above were built from, so a page approved on a card is a page the very
+		// next sentence can be matched against.
+		HarnessStore: harnesses,
 	}
 
 	// What this session may do without asking, which model answers its

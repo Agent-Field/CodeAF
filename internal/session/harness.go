@@ -84,6 +84,13 @@ type harnessAnswer struct {
 // harness ran and its report is in the transcript, or it failed, or the turn
 // was interrupted while the question was up.
 func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessage, started time.Time) (bool, bool) {
+	// BUILDING ONE IS ASKED FOR IN WORDS TOO, and it is read first: "make a
+	// harness for triaging flaky tests" is a sentence about triaging flaky tests,
+	// and a matcher let at it would offer to RUN the harness that already does
+	// that — answering the smaller half of what was said (harness_build.go).
+	if answered, completed := a.routeHarnessBuild(hub, user, started); answered {
+		return answered, completed
+	}
 	match, ok := a.harnessMatch(user)
 	if !ok {
 		return false, false
@@ -149,7 +156,11 @@ type harnessRoute struct {
 func (a *Agent) harnessMatch(user userMessage) (harnessRoute, bool) {
 	// The refusals, cheapest first. Every existing caller of this package fails
 	// the first one and pays two nil checks per turn for the whole feature.
-	if a.config.RunHarness == nil || len(a.config.Harnesses) == 0 {
+	if a.config.RunHarness == nil {
+		return harnessRoute{}, false
+	}
+	registry := a.harnessRegistry()
+	if len(registry) == 0 {
 		return harnessRoute{}, false
 	}
 	if !a.config.AskConsent {
@@ -174,11 +185,51 @@ func (a *Agent) harnessMatch(user userMessage) (harnessRoute, bool) {
 	// model would be quietly making the offer less likely to appear.
 	model, note, text := a.harnessTurnModel(text)
 	turn := subharness.Turn{Text: text}
-	match, ok := subharness.Best(turn, a.config.Harnesses)
+	match, ok := subharness.Best(turn, registry)
 	if !ok {
 		return harnessRoute{}, false
 	}
 	return harnessRoute{Match: match, Turn: turn, Model: model, ModelNote: note}, true
+}
+
+// harnessRegistry is what a turn is matched against: the registry the surface
+// handed over, plus whatever this conversation has designed and saved since
+// (harness_build.go).
+//
+// A HARNESS BUILT HERE IS REACHABLE FROM THE NEXT SENTENCE. Config.Harnesses is
+// a snapshot taken at launch, so without this a page approved a minute ago would
+// be a page the store has and the matcher has never heard of — the person would
+// have to restart to reach the thing they just built, which is the one moment
+// they are most likely to want it.
+//
+// A name that appears in both lists is the SAVED one: it is the same harness at
+// a later version, and the entry that carries its cues is the newer one.
+func (a *Agent) harnessRegistry() []subharness.Entry {
+	a.mu.Lock()
+	added := a.harnessAdded
+	a.mu.Unlock()
+	if len(added) == 0 {
+		// The ordinary case, and it allocates nothing: no conversation has built
+		// a harness until one does.
+		return a.config.Harnesses
+	}
+	out := make([]subharness.Entry, 0, len(a.config.Harnesses)+len(added))
+	for _, entry := range a.config.Harnesses {
+		if harnessNamed(added, entry.Name) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return append(out, added...)
+}
+
+func harnessNamed(entries []subharness.Entry, name string) bool {
+	for _, entry := range entries {
+		if entry.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // askHarness emits one offer and waits for the answer or for the turn to end.

@@ -331,6 +331,15 @@ type (
 		ev  session.Event
 	}
 	taskLaneClosedMsg struct{ gen int }
+	// designEventMsg is one event off the STANDING harness-design subscription
+	// (harness.go), which is a lane of its own for the task lane's reason: a
+	// design finishes after the turn that asked for it ended, when there is no
+	// stream left for the card to land on.
+	designEventMsg struct {
+		gen int
+		ev  session.Event
+	}
+	designLaneClosedMsg struct{ gen int }
 	// wokenMsg is one turn THE SESSION STARTED ON ITS OWN, arriving as the
 	// stream it will speak on (followup.go). It is the turn stream's shape and
 	// not the standing lane's: what comes off the wake lane is a channel, and
@@ -644,6 +653,12 @@ type app struct {
 	// answers were last drawn, which is the bargain the two blocks above it make.
 	harnessAsks []harnessAsk
 	harnessTaps []harnessTap
+	// designLane is the standing subscription to what the harness DESIGNER is
+	// doing (harness.go's design lane) and designGen the generation it belongs
+	// to. It is a lane of its own rather than the turn's stream because a design
+	// outlives the turn that asked for it, exactly as a task node does.
+	designLane <-chan session.Event
+	designGen  int
 
 	connAsks  []connAsk
 	connTaps  []connTap
@@ -978,9 +993,9 @@ func (a *app) Init() tea.Cmd {
 	// task lane, and what the session goes on to SAY about it reaches the
 	// transcript on this one.
 	if a.welcome.animating() {
-		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes())
+		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns())
 	}
-	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes())
+	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns())
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1336,6 +1351,21 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		return a, a.taskEvent(msg.ev)
+
+	case designEventMsg:
+		if msg.gen != a.designGen {
+			return a, nil
+		}
+		return a, a.designEvent(msg.ev)
+
+	case designLaneClosedMsg:
+		// The agent this lane belonged to is gone, on the task lane's own terms:
+		// a lane from an agent that was replaced is already forgotten by its
+		// generation, so only the current one is dropped.
+		if msg.gen == a.designGen {
+			a.designLane = nil
+		}
+		return a, nil
 
 	case roomEventMsg:
 		if a.room == nil || msg.gen != a.room.gen {
@@ -2927,7 +2957,7 @@ func (a *app) renew() tea.Cmd {
 	} else {
 		a.note("new session")
 	}
-	return tea.Batch(a.watchTasks(), a.watchWakes())
+	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns())
 }
 
 func (a *app) quit() tea.Cmd {
