@@ -546,6 +546,12 @@ type app struct {
 	// where they landed (taskstrip.go's [app.stripRow] and [app.stripPress]).
 	stripSpans []stripSpan
 	stripMore  hudSpan
+	// stripMoreRow is the strip row the overflow mark landed on, and stripFolds
+	// the fold chips of a tree the strip could not draw whole. Both exist
+	// because the strip stopped being one row the moment tasks got children
+	// (taskstrip.go's [app.stripRows]): a span alone no longer names a place.
+	stripMoreRow int
+	stripFolds   []stripFold
 	// stripHarn is where the running sub-harness's chip was last drawn, or the
 	// zero span when none is running (harnesspanel.go). It is kept apart from
 	// stripSpans because it opens a different door: a node chip opens that
