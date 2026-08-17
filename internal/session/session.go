@@ -777,6 +777,15 @@ type Config struct {
 	// without a Google account and without a network.
 	connectHub connectHub
 
+	// writeScope bounds which repo paths this agent's edit and write calls may
+	// touch (orchestrate.go's writeGuard). It is unexported for connectHub's
+	// reason — it is not a caller's choice but a bound the machinery puts on an
+	// agent it built — and it is set in exactly one place: the executor that
+	// runs one node of an adaptive run, from that node's own declared scope.
+	//
+	// EMPTY IS NO BOUND, which is every agent in this build but a scoped node.
+	writeScope []string
+
 	// pacing is how a node hears that its own calls have parked on the
 	// provider's rate limiting, and it is unexported for connectHub's reason: it
 	// is not a caller's choice. The executor sets it on the config it builds for
@@ -1077,6 +1086,19 @@ type Agent struct {
 	// sentence rather than from the next process.
 	harnessWatchers []*eventStream
 	harnessAdded    []subharness.Entry
+	// orchestrations are the adaptive runs this session is driving, keyed by
+	// the run id, and orchestrateSeq is what names them (orchestrate.go). The
+	// watchers are the standing subscription those runs report on
+	// ([Agent.Orchestrations]).
+	//
+	// They are harnessDesigns' machinery one lane over and for its reason: a
+	// run outlives the turn that asked for it, so the gate it raises when the
+	// fuel runs out has no hub to arrive on — and [Agent.Close] is the only
+	// thing that can tell a run in flight that the session has left.
+	orchestrateSeq      uint64
+	orchestrations      map[string]*orchestration
+	orchestrateWatchers []*eventStream
+
 	// harnessDesigns is the designs in flight, keyed by the id their card will
 	// carry, and the value is how each one is ended. A design runs on its own
 	// context — the turn that asked for it is over — so [Agent.Close] is the only

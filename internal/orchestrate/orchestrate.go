@@ -123,12 +123,6 @@ type Executor interface {
 	Exec(ctx context.Context, n Node, deps []NodeStatus) (digest string, cost float64, err error)
 }
 
-// Orchestrator is the run. Construct, Run, Snapshot as it goes.
-type Orchestrator struct {
-	// Snap is the latest published snapshot; the room polls it.
-	snap Snapshot
-}
-
-// Snapshot returns the latest published state. It is safe for concurrent
-// reads.
-func (o *Orchestrator) Snapshot() Snapshot { return o.snap }
+// Orchestrator is the run: construct it with [New], call Run, and read
+// [Orchestrator.Snapshot] as it goes. The scheduler is in run.go, the tank in
+// fuel.go, and what the planner is allowed to say in amend.go.

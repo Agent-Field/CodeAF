@@ -161,6 +161,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		return completed
 	}
 
+	// And the third thing a turn can be instead of a request to the model: a
+	// request for an ADAPTIVE RUN — work whose shape nobody knows yet, planned
+	// and executed against a fuel cap while the conversation carries on
+	// (orchestrate.go). It is the same bargain the two above keep: an anchored
+	// cue and nothing else enters it, the turn ends the moment the run starts,
+	// and a build with no runner never reaches past one nil check.
+	if answered, completed := a.routeOrchestrate(ctx, hub, user, started); answered {
+		return completed
+	}
+
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
 	// ever comes back.

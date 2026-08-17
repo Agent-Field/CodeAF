@@ -198,6 +198,11 @@ func (a *Agent) controlPlaneFor() *controlPlane {
 	plane.register(&changeLedger{agent: a})
 	plane.register(loopDetector{agent: a})
 	plane.register(stubPass{agent: a})
+	// The write scope runs LAST of the pre-action citizens, and only ever
+	// refuses: an agent with no scope (every agent but a node of an adaptive
+	// run) is one slice length away from being where it was before this
+	// citizen existed (orchestrate.go).
+	plane.register(writeGuard{agent: a})
 	return plane
 }
 
