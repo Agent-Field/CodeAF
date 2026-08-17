@@ -156,14 +156,14 @@ func TestWatchChangeIsBaselineSilenceThenDeltaOnly(t *testing.T) {
 	// Two ticks over an unchanged file: the first is the baseline, the second
 	// has nothing to say. Neither may speak.
 	waitTicks(t, agent, id, 2)
-	if queued := steeringQueue(agent); len(queued) != 0 {
+	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("an unchanged watch spoke: %v", queued)
 	}
 
 	feed(t, workspace, "app.log", "old one", "old two", "new three", "new four")
-	waitFor(t, "the delta note", func() bool { return len(steeringQueue(agent)) > 0 })
+	waitFor(t, "the delta note", func() bool { return len(sessionNotes(agent)) > 0 })
 
-	queued := steeringQueue(agent)
+	queued := sessionNotes(agent)
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
@@ -241,14 +241,14 @@ func TestWatchMatchDeliversOnlyMatchingLines(t *testing.T) {
 	// New lines, none of them matching: silence.
 	feed(t, workspace, "app.log", "INFO starting", "INFO listening")
 	waitTicks(t, agent, id, 3)
-	if queued := steeringQueue(agent); len(queued) != 0 {
+	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("a non-matching change spoke: %v", queued)
 	}
 
 	feed(t, workspace, "app.log", "INFO starting", "INFO listening", "ERROR disk full", "INFO retrying")
-	waitFor(t, "the match note", func() bool { return len(steeringQueue(agent)) > 0 })
+	waitFor(t, "the match note", func() bool { return len(sessionNotes(agent)) > 0 })
 
-	note := steeringQueue(agent)[0]
+	note := sessionNotes(agent)[0]
 	if !strings.HasPrefix(note, "watch errors · 1 line matching /ERROR/") {
 		t.Fatalf("note header is wrong: %q", note)
 	}
@@ -274,16 +274,16 @@ func TestWatchAlwaysReportsEveryTickIncludingTheFirst(t *testing.T) {
 	if isError {
 		t.Fatalf("watch failed to start: %s", text)
 	}
-	waitFor(t, "the first tick's note", func() bool { return len(steeringQueue(agent)) > 0 })
+	waitFor(t, "the first tick's note", func() bool { return len(sessionNotes(agent)) > 0 })
 
-	note := steeringQueue(agent)[0]
+	note := sessionNotes(agent)[0]
 	if !strings.HasPrefix(note, "watch counter · tick 1") || !strings.Contains(note, "42") {
 		t.Fatalf("first always-note is wrong: %q", note)
 	}
 	// And it keeps going: the second tick reports the same value again, because
 	// that is what always means.
-	waitFor(t, "the second tick's note", func() bool { return len(steeringQueue(agent)) > 1 })
-	if second := steeringQueue(agent)[1]; !strings.HasPrefix(second, "watch counter · tick 2") {
+	waitFor(t, "the second tick's note", func() bool { return len(sessionNotes(agent)) > 1 })
+	if second := sessionNotes(agent)[1]; !strings.HasPrefix(second, "watch counter · tick 2") {
 		t.Fatalf("second always-note is wrong: %q", second)
 	}
 }
@@ -308,9 +308,9 @@ func TestWatchUntilDeliversFinalNoteAndStops(t *testing.T) {
 	waitTicks(t, agent, id, 1)
 
 	feed(t, workspace, "build.log", "compiling", "BUILD OK in 4s")
-	waitFor(t, "the until note", func() bool { return len(steeringQueue(agent)) > 0 })
+	waitFor(t, "the until note", func() bool { return len(sessionNotes(agent)) > 0 })
 
-	queued := steeringQueue(agent)
+	queued := sessionNotes(agent)
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
@@ -331,7 +331,7 @@ func TestWatchUntilDeliversFinalNoteAndStops(t *testing.T) {
 	if after := agent.jobs.find(id).tickCount(); after != before {
 		t.Fatalf("a stopped watch ticked again: %d → %d", before, after)
 	}
-	if queued := steeringQueue(agent); len(queued) != 1 {
+	if queued := sessionNotes(agent); len(queued) != 1 {
 		t.Fatalf("a stopped watch kept talking: %v", queued)
 	}
 	// Its slot went back: a watch that ended is not still holding one.
@@ -355,8 +355,8 @@ func TestWatchStopsAfterThreeIdenticalFailures(t *testing.T) {
 	}
 	id := watchID(t, agent)
 
-	waitFor(t, "the failure note", func() bool { return len(steeringQueue(agent)) > 0 })
-	queued := steeringQueue(agent)
+	waitFor(t, "the failure note", func() bool { return len(sessionNotes(agent)) > 0 })
+	queued := sessionNotes(agent)
 	if len(queued) != 1 {
 		t.Fatalf("a broken watch reported more than once: %v", queued)
 	}
@@ -426,7 +426,7 @@ func TestWatchLimitIsThreeAndTheListShowsThem(t *testing.T) {
 		_, failed := startWatchTool(t, agent, map[string]any{"command": "echo replacement", "name": "replacement"})
 		return !failed
 	})
-	if queued := steeringQueue(agent); len(queued) != 0 {
+	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("a killed watch reported itself: %v", queued)
 	}
 }
@@ -483,7 +483,7 @@ func TestCloseStopsWatches(t *testing.T) {
 	if target := agent.jobs.find(id); target.running() {
 		t.Fatal("the watch survived Close")
 	}
-	if queued := steeringQueue(agent); len(queued) != 0 {
+	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("Close's stop self-reported: %v", queued)
 	}
 }

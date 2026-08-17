@@ -256,10 +256,11 @@ func (j *job) signal(sig syscall.Signal) {
 // three turns later, and Close is what ends it.
 type jobRegistry struct {
 	workspace string
-	// notify carries a completion note to the steering queue — the AMBIENT lane
-	// (agent.go), which queues and never starts a turn of its own. It is a
-	// function rather than the Agent itself so the registry has no idea what a
-	// turn is — it reports, and the lane decides when the model reads.
+	// notify carries a completion note to the steering queue — the WAKING lane
+	// (agent.go's [Agent.enqueueSteering]), which queues while a turn runs and
+	// starts one when none does. It is a function rather than the Agent itself so
+	// the registry has no idea what a turn is — it reports, and the lane decides
+	// whether anybody has to answer.
 	notify func(string)
 
 	mu   sync.Mutex

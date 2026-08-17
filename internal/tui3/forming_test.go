@@ -347,3 +347,142 @@ func TestTheFormingMarkPulsesAndTheLinearTierIsStill(t *testing.T) {
 		t.Fatalf("THE LINEAR TIER IS ANIMATING: %q then %q", plain(first), plain(second))
 	}
 }
+
+// ── 6. the room ─────────────────────────────────────────────────────────────
+//
+// The gap this closes: a person opens a node's room BECAUSE they want to watch
+// it work, and the room's own lane ignored the forming kind — so a node
+// streaming a file out said nothing at all for the seconds that took, in the one
+// place on the surface a person went to look. Everything below is the same law
+// as the four sections above, asserted through the room's list (room.go).
+
+// roomToolEntries counts the tool blocks on the open room's page.
+func roomToolEntries(a *app) int {
+	n := 0
+	for i := range a.room.entries {
+		if a.room.entries[i].kind == entryTool {
+			n++
+		}
+	}
+	return n
+}
+
+// A NODE'S CALL IS VISIBLE WHILE IT ARRIVES, in one row that fills in — the
+// conversation's walk, run in the room.
+func TestARoomDrawsTheNodesFormingCall(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: forming("c1", "", "", strings.Repeat("x", 40))})
+	if roomToolEntries(a) != 1 {
+		t.Fatalf("a node's forming call drew %d rows in its room, want 1", roomToolEntries(a))
+	}
+	if page := roomText(a); !strings.Contains(page, "receiving · 40 B") {
+		t.Fatalf("the room says nothing about the call arriving:\n%s", page)
+	}
+
+	// The name, then the gloss: the same row, more of it.
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: forming("c1", "write", "", strings.Repeat("x", 1300))})
+	if page := roomText(a); !strings.Contains(page, "write · 1.3 KB") {
+		t.Fatalf("the room's byte counter did not move:\n%s", page)
+	}
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: forming("c1", "write", "write internal/config/load.go", strings.Repeat("x", 2600))})
+	if page := roomText(a); !strings.Contains(page, "write internal/config/load.go · receiving") {
+		t.Fatalf("the gloss did not take the room's row:\n%s", page)
+	}
+	if roomToolEntries(a) != 1 {
+		t.Fatalf("three fragments of one call drew %d rows", roomToolEntries(a))
+	}
+}
+
+// AND THE ANNOUNCEMENT ADOPTS IT, by the id session now stamps on it (its
+// loop.go). One call, one line, from the first fragment to the last.
+func TestARoomsAnnouncementAdoptsTheFormingRow(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	args := `{"path":"internal/config/load.go","content":"package config\n"}`
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: forming("c1", "write", "write internal/config/load.go", `{"path":"internal/config/load.go",`)})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolAnnounced, CallID: "c1", Tool: "write",
+		Hint: "write internal/config/load.go", Args: args,
+	}})
+
+	if roomToolEntries(a) != 1 {
+		t.Fatalf("THE ANNOUNCEMENT DREW A SECOND ROW: %d rows for one call", roomToolEntries(a))
+	}
+	e := &a.room.entries[len(a.room.entries)-1]
+	if e.status != toolQueued {
+		t.Fatalf("the announced call is in state %v, want queued", e.status)
+	}
+	if e.detail.Args != args {
+		t.Fatalf("the announced row did not take the payload: %q", e.detail.Args)
+	}
+	if page := roomText(a); strings.Contains(page, receivingWord) {
+		t.Fatalf("an announced row still says it is arriving:\n%s", page)
+	}
+
+	// And the rest of the walk is what it was: begin spins the row it has.
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolBegin, Tool: "write", Hint: "write internal/config/load.go", Args: args,
+	}})
+	if roomToolEntries(a) != 1 || a.room.entries[len(a.room.entries)-1].status != toolRunning {
+		t.Fatalf("the begin did not land on the announced row: %d rows, state %v",
+			roomToolEntries(a), a.room.entries[len(a.room.entries)-1].status)
+	}
+}
+
+// TWO PARALLEL WRITES ARE TWO ROWS in a room as well: the ids are what tells
+// them apart, and an announcement out of drawing order lands on its own call.
+func TestARoomPairsParallelCallsByTheirIDs(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: forming("c1", "write", "write a.go", `{"path":"a.go",`)})
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: forming("c2", "write", "write b.go", `{"path":"b.go",`)})
+	if roomToolEntries(a) != 2 {
+		t.Fatalf("two parallel calls drew %d rows, want 2", roomToolEntries(a))
+	}
+	// The SECOND one is announced first, which is the case the id exists for.
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: session.Event{
+		Kind: session.EventToolAnnounced, CallID: "c2", Tool: "write",
+		Hint: "write b.go", Args: `{"path":"b.go","content":"b"}`,
+	}})
+	if roomToolEntries(a) != 2 {
+		t.Fatalf("the announcement drew a third row: %d", roomToolEntries(a))
+	}
+	var announced, still *entry
+	for i := range a.room.entries {
+		switch a.room.entries[i].callID {
+		case "c1":
+			still = &a.room.entries[i]
+		case "c2":
+			announced = &a.room.entries[i]
+		}
+	}
+	if announced == nil || announced.status != toolQueued {
+		t.Fatalf("c2's row did not take its own announcement: %+v", announced)
+	}
+	if still == nil || still.status != toolForming {
+		t.Fatalf("c1's row was taken by c2's announcement: %+v", still)
+	}
+}
+
+// A CALL THE NODE NEVER FINISHED ASKING FOR RESOLVES when its lane ends. It is
+// the one row with no event coming for it, and a room left pulsing at a node
+// that has landed is the defect [app.dropForming] closed out in the conversation.
+func TestARoomResolvesAFormingCallWhenTheLaneEnds(t *testing.T) {
+	a, _, _ := roomApp(t)
+	clickRail(t, a, 0)
+
+	drive(t, a, roomEventMsg{gen: a.room.gen, ev: forming("c1", "write", "write internal/config/load.go", `{"path":"internal/config/load.go",`)})
+	drive(t, a, roomClosedMsg{gen: a.room.gen})
+
+	page := roomText(a)
+	if !strings.Contains(page, cancelledWord) {
+		t.Fatalf("the abandoned call does not say what happened:\n%s", page)
+	}
+	if strings.Contains(page, receivingWord) {
+		t.Fatalf("the room is still claiming a call is arriving:\n%s", page)
+	}
+}
