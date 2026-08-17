@@ -84,6 +84,12 @@ type Service struct {
 	// A service connected through the browser leaves it empty: it has no one
 	// address, and THE EMPTINESS LAW says an unknown is empty.
 	Address string
+	// Category is the one word a catalog of two hundred services is browsed
+	// by — "billing", "crm", "calls & meetings" — filled from catalog
+	// metadata by a later wiring wave. EMPTY IS THE HONEST DEFAULT and every
+	// reader treats it as "other", so a build whose catalog says nothing
+	// about categories draws the flat list it drew before this field existed.
+	Category string
 	// Scopes are the permissions asked for. They are listed here so a
 	// screen can say plainly what it is about to request.
 	Scopes []string

@@ -210,8 +210,8 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	// reason the picker is and one more: there is nothing else on the screen to
 	// send a key to (settings.go).
 	if a.sheet.open && msg.String() != "ctrl+c" {
-		a.sheetKey(msg)
-		return nil
+		cmd, _ := a.sheetKey(msg)
+		return cmd
 	}
 
 	// And the phone tier's status sheet is modal at the same rung and for the
