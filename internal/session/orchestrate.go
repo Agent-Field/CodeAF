@@ -849,8 +849,8 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		SearchFetcher:  parent.SearchFetcher,
 		Connect:        parent.Connect,
 		connectHub:     parent.connectHub,
-		ImageGenModel:  parent.ImageGenModel,
-		ImageGenClient: parent.ImageGenClient,
+		Media:          parent.Media,
+		MediaModel:     parent.MediaModel,
 		DocumentEngine: parent.DocumentEngine,
 	}, client)
 }

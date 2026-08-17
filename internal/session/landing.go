@@ -67,13 +67,34 @@ func droppingsDir(place Place, workspace, kind string) string {
 // which machine received it would be a picture the journal's reference cannot
 // describe in one sentence.
 func ImagesDir(place Place, workspace string) string {
+	return deliverablesDir(place, workspace, imageDirectory)
+}
+
+// AudioDir is where a spoken file lands when nobody named a path, and VideoDir
+// is where a rendered one does. They are [ImagesDir] with a different legacy
+// leaf and NOTHING else, because the law is about the kind of thing the file is
+// and not about its format: a deliverable is a deliverable whether it is looked
+// at, listened to, or watched (tools_speak.go, tools_video.go).
+func AudioDir(place Place, workspace string) string {
+	return deliverablesDir(place, workspace, audioDirectory)
+}
+
+func VideoDir(place Place, workspace string) string {
+	return deliverablesDir(place, workspace, videoDirectory)
+}
+
+// deliverablesDir is the one ladder all three climb: the owned workspace, then
+// the borrowed session's own artifacts/, then the legacy dot directory. It is
+// one function rather than three copies for the reason this whole file exists —
+// three copies of a three-rung ladder is three chances for a rung to move.
+func deliverablesDir(place Place, workspace, legacy string) string {
 	if work := place.Work(); work != "" {
 		return work
 	}
 	if artifacts := place.Artifacts(); artifacts != "" {
 		return artifacts
 	}
-	return filepath.Join(workspace, filepath.FromSlash(imageDirectory))
+	return filepath.Join(workspace, filepath.FromSlash(legacy))
 }
 
 // TranscriptName is what the journal is called inside a session folder. It is

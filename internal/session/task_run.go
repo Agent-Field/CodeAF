@@ -1825,10 +1825,13 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent,
 		// node CANNOT do is connect a new one — there is nobody in a worktree to
 		// ask — and use_service says exactly that when the account is not
 		// connected already (tools_connect.go).
-		Connect:        parent.Connect,
-		connectHub:     parent.connectHub,
-		ImageGenModel:  parent.ImageGenModel,
-		ImageGenClient: parent.ImageGenClient,
+		Connect:    parent.Connect,
+		connectHub: parent.connectHub,
+		// The media belt travels for the search pair's reason: a node briefed to
+		// draw a diagram needs the hand that draws it, and the resolver is what
+		// says which model does (media_contract.go).
+		Media:      parent.Media,
+		MediaModel: parent.MediaModel,
 		// A node reads documents on the rung the person chose, like the
 		// conversation does (tools_doc.go): the same worker, working somewhere
 		// quieter, must not silently drop to a different engine — or to a paid

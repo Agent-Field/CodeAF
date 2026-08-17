@@ -102,6 +102,17 @@ const (
 	// rather than a signal to a process group, which is the same stop function a
 	// watch already has.
 	jobKindTask
+	// jobKindVideo is one video render (tools_video.go).
+	//
+	// A render is asynchronous on the wire — submit, then poll, for as long as
+	// ten minutes — and a turn that waited for one would be a conversation held
+	// hostage by a file nobody can look at yet. So it is a job for the reason a
+	// watch is: everything AROUND it is what a job already is, and only the
+	// middle differs. Its middle is one provider call in a goroutine, its kill
+	// is that call's context being cancelled — the same stop function a watch
+	// has — and its ending is a note on the steering lane carrying the landed
+	// path or the failure.
+	jobKindVideo
 )
 
 // job is one background command.
@@ -413,6 +424,47 @@ func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFu
 	return started, nil
 }
 
+// startVideo registers one video render as a job and hands back the job and the
+// context its provider call must run under.
+//
+// The context is the BACKGROUND one and never the turn's, for [jobRegistry.start]'s
+// reason exactly: a turn's context is cancelled when the turn ends, and a render
+// whose whole purpose is to outlive the turn would be killed by the act of
+// answering the person. Its cancel is the job's stop function, so `jobs kill`
+// and Close both reach it through [job.signal].
+//
+// What runs in the middle is the caller's (tools_video.go), as a watch's loop is
+// tools_watch.go's: this registry owns the id, the log, the row and the kill.
+func (r *jobRegistry) startVideo(label, prompt string) (*job, context.Context, error) {
+	started, err := r.newJob(prompt, jobKindVideo)
+	if err != nil {
+		return nil, nil, err
+	}
+	started.label = label
+	started.detail = prompt
+
+	ctx, cancel := context.WithCancel(context.Background())
+	started.stop = cancel
+	r.add(started)
+	return started, ctx, nil
+}
+
+// finish settles a job whose middle was a goroutine rather than a process, and
+// drops its one note on the steering queue.
+//
+// It is [jobRegistry.reap] for the kinds that have nothing to wait on: the same
+// two rules hold, which are that a death this session ASKED for says nothing —
+// the caller already knows — and that the note is a sentence, not the output.
+func (r *jobRegistry) finish(done *job, code int, note string) {
+	if requested := done.settle(code); requested {
+		return
+	}
+	if note == "" || r.notify == nil {
+		return
+	}
+	r.notify(note)
+}
+
 // reap waits on one process and, unless the death was asked for, drops a note
 // on the steering queue.
 func (r *jobRegistry) reap(watched *job) {
@@ -477,6 +529,11 @@ func (r *jobRegistry) kill(id int) (string, bool) {
 	if target.kind == jobKindTask {
 		return fmt.Sprintf("%s (job %d) stopped; its branch is kept", target.label, id), false
 	}
+	// A render is STOPPED and nothing was saved, which is the whole of what the
+	// model needs to know: no file landed, and no note about this job is coming.
+	if target.kind == jobKindVideo {
+		return fmt.Sprintf("%s (job %d) stopped; no video was saved", target.label, id), false
+	}
 	return fmt.Sprintf("job %d killed", id), false
 }
 
@@ -534,6 +591,11 @@ func statusText(info jobInfo) string {
 		if info.kind == jobKindTask {
 			return "finished"
 		}
+		// Nor has a render: it either landed a file or failed, and both of
+		// those already reached the model as a note.
+		if info.kind == jobKindVideo {
+			return "finished"
+		}
 		return fmt.Sprintf("exited(%d)", info.code)
 	case jobKilled:
 		return "killed"
@@ -569,7 +631,10 @@ func (r *jobRegistry) list() string {
 		// A task's row leads with the node, because that is what the model asked
 		// for and what it will kill by: the id it was given back, the title it
 		// wrote, and how long the node has been working.
-		if info.kind == jobKindTask {
+		// A render's row is a task's row for the same reason: the label says
+		// what kind of thing is running, and the detail is the prompt it was
+		// given, which is how a person picks one of three renders out of a list.
+		if info.kind == jobKindTask || info.kind == jobKindVideo {
 			fmt.Fprintf(&rendered, "job %d · %s · %s · %s · %s",
 				info.id, info.label, statusText(info), formatElapsed(info.elapsed),
 				clip(firstLine(info.detail), hintLimit))

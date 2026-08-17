@@ -15,50 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
-// scriptedPainter is the image model, without a socket. It records what it was
-// asked for so the tests can assert the request shape, and answers with whatever
-// the test handed it.
-type scriptedPainter struct {
-	mu        sync.Mutex
-	seen      []provider.ImageRequest
-	base64    string
-	mediaType string
-	usage     *ai.Usage
-	err       error
-	empty     bool
-}
-
-func (p *scriptedPainter) GenerateImage(_ context.Context, request provider.ImageRequest) (*provider.ImageResponse, error) {
-	p.mu.Lock()
-	p.seen = append(p.seen, request)
-	p.mu.Unlock()
-	if p.err != nil {
-		return nil, p.err
-	}
-	if p.empty {
-		return &provider.ImageResponse{}, nil
-	}
-	return &provider.ImageResponse{
-		Data:  []provider.GeneratedImage{{Base64: p.base64, MediaType: p.mediaType}},
-		Usage: p.usage,
-	}, nil
-}
-
-func (p *scriptedPainter) request(index int) provider.ImageRequest {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if index >= len(p.seen) {
-		return provider.ImageRequest{}
-	}
-	return p.seen[index]
-}
+// The scripted media client, the resolver table and the reference-file helper
+// are tools_media_test.go's, shared by all three generation verbs.
 
 // pngOfSize is a real, decodable picture — the dimensions in the tool's result
 // have to come out of the bytes, so the bytes have to be an image.
@@ -73,12 +37,14 @@ func pngOfSize(t *testing.T, width, height int) []byte {
 	return encoded.Bytes()
 }
 
-// newPainterAgent wires a session with a painter on the belt.
-func newPainterAgent(t *testing.T, painter *scriptedPainter, model string) (*Agent, string) {
+// newPainterAgent wires a session whose media client paints and whose resolver
+// answers for the image modality alone — the shape of a machine with a drawing
+// model and nothing else, which is the shape most of these tests want.
+func newPainterAgent(t *testing.T, painter *scriptedMedia, model string) (*Agent, string) {
 	t.Helper()
 	return newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.ImageGenClient = painter
-		config.ImageGenModel = model
+		config.Media = painter
+		config.MediaModel = mediaModels(map[string]string{modalityImage: model})
 	})
 }
 
@@ -97,34 +63,31 @@ func pinnedSource(pairs map[string]string) func(string) (string, bool) {
 // for the rest of the turn — so the tool is absent instead (tools_search.go's
 // law, applied to the second conditional group).
 func TestGenerateImageIsOnTheBeltOnlyWithAClientAndAModel(t *testing.T) {
-	painter := &scriptedPainter{base64: base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2))}
+	painter := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2))}
 	for _, testCase := range []struct {
 		name   string
 		mutate func(*Config)
 		want   bool
 	}{
 		{"nothing wired", func(*Config) {}, false},
-		{"a model with no client", func(config *Config) { config.ImageGenModel = "paint/model" }, false},
-		{"a client with no model", func(config *Config) { config.ImageGenClient = painter }, false},
-		{"both", func(config *Config) {
-			config.ImageGenClient = painter
-			config.ImageGenModel = "paint/model"
-		}, true},
-		{"a client and a pinned model", func(config *Config) {
-			config.ImageGenClient = painter
-			config.RolesSource = pinnedSource(map[string]string{
-				roles.PinKey(roles.RoleImageGen): "pinned/painter",
-			})
-		}, true},
-		// The tier ladder holds TEXT models. A person who set tiers.high said
-		// nothing about painting, and resolving imagegen through that rung would
-		// send an image request to a chat model.
-		{"a client and a high tier only", func(config *Config) {
-			config.ImageGenClient = painter
-			config.RolesSource = pinnedSource(map[string]string{
-				roles.TierKey(roles.TierHigh): "some/chat-model",
-			})
+		{"a resolver with no client", func(config *Config) {
+			config.MediaModel = mediaModels(map[string]string{modalityImage: "paint/model"})
 		}, false},
+		{"a client with no resolver", func(config *Config) { config.Media = painter }, false},
+		{"a client whose resolver has no image model", func(config *Config) {
+			config.Media = painter
+			config.MediaModel = mediaModels(map[string]string{modalitySpeech: "talk/model"})
+		}, false},
+		// A resolver that answers only whitespace is a resolver that answered
+		// nothing: the rung it read was a settings row somebody left blank.
+		{"a client whose resolver answers whitespace", func(config *Config) {
+			config.Media = painter
+			config.MediaModel = mediaModels(map[string]string{modalityImage: "   "})
+		}, false},
+		{"both", func(config *Config) {
+			config.Media = painter
+			config.MediaModel = mediaModels(map[string]string{modalityImage: "paint/model"})
+		}, true},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			agent, _ := newTestAgent(t, &scriptedCompleter{}, testCase.mutate)
@@ -151,7 +114,7 @@ func TestGenerateImageIsOnTheBeltOnlyWithAClientAndAModel(t *testing.T) {
 func TestGenerateImageSavesTheBytesAndReturnsPathAndDimensions(t *testing.T) {
 	picture := pngOfSize(t, 40, 30)
 	encoded := base64.StdEncoding.EncodeToString(picture)
-	painter := &scriptedPainter{base64: encoded, mediaType: "image/png"}
+	painter := &scriptedMedia{base64: encoded, mediaType: "image/png"}
 	agent, workspace := newPainterAgent(t, painter, "paint/model")
 
 	result, isError := runTool(t, agent, "generate_image", `{"prompt":"Sunset over the Harbour, 35mm"}`)
@@ -218,7 +181,7 @@ func TestGenerateImageSavesTheBytesAndReturnsPathAndDimensions(t *testing.T) {
 // lose. The tool batch runs its calls in parallel, so the name is claimed rather
 // than checked.
 func TestGenerateImageNeverOverwritesADefaultName(t *testing.T) {
-	painter := &scriptedPainter{
+	painter := &scriptedMedia{
 		base64:    base64.StdEncoding.EncodeToString(pngOfSize(t, 4, 4)),
 		mediaType: "image/png",
 	}
@@ -262,7 +225,7 @@ func TestGenerateImageNeverOverwritesADefaultName(t *testing.T) {
 
 func TestGenerateImageHonoursACustomPath(t *testing.T) {
 	picture := pngOfSize(t, 8, 8)
-	painter := &scriptedPainter{base64: base64.StdEncoding.EncodeToString(picture), mediaType: "image/png"}
+	painter := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(picture), mediaType: "image/png"}
 	agent, workspace := newPainterAgent(t, painter, "paint/model")
 
 	result, isError := runTool(t, agent, "generate_image", `{"prompt":"a harbour","path":"art/hero.png"}`)
@@ -296,12 +259,12 @@ func TestGenerateImageHonoursACustomPath(t *testing.T) {
 func TestGenerateImageFailuresAreToolErrors(t *testing.T) {
 	for _, testCase := range []struct {
 		name    string
-		painter *scriptedPainter
+		painter *scriptedMedia
 		want    string
 	}{
-		{"the provider refused", &scriptedPainter{err: context.DeadlineExceeded}, "paint/model"},
-		{"no image came back", &scriptedPainter{empty: true}, "no image"},
-		{"the image was unreadable", &scriptedPainter{base64: "not base64 at all!!"}, "unreadable"},
+		{"the provider refused", &scriptedMedia{err: context.DeadlineExceeded}, "paint/model"},
+		{"no image came back", &scriptedMedia{empty: true}, "no image"},
+		{"the image was unreadable", &scriptedMedia{base64: "not base64 at all!!"}, "unreadable"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			agent, _ := newPainterAgent(t, testCase.painter, "paint/model")
@@ -320,7 +283,7 @@ func TestGenerateImageFailuresAreToolErrors(t *testing.T) {
 // session's total and on no turn's.
 func TestGenerateImageUsageFoldsIntoTheSessionTotal(t *testing.T) {
 	cost := 0.04
-	painter := &scriptedPainter{
+	painter := &scriptedMedia{
 		base64:    base64.StdEncoding.EncodeToString(pngOfSize(t, 4, 4)),
 		mediaType: "image/png",
 		usage:     &ai.Usage{PromptTokens: 12, CompletionTokens: 0, Cost: &cost},
@@ -636,5 +599,87 @@ func TestVisionFallbackDoesNotFireForASightedModel(t *testing.T) {
 	}
 	if urls := imagePartURLs(completer.request(0)[len(completer.request(0))-1]); len(urls) != 1 {
 		t.Fatal("the sighted path stopped sending image parts")
+	}
+}
+
+// ── (5) image-to-image: the references, and the frame ───────────────────────
+
+// The leverage the description teaches has to be real: a path in
+// reference_paths becomes the file's own bytes on the wire, and a model can pass
+// back the path this very tool just handed it.
+func TestGenerateImageCarriesReferencesAndTheFrame(t *testing.T) {
+	first := pngOfSize(t, 6, 6)
+	painter := &scriptedMedia{
+		base64:    base64.StdEncoding.EncodeToString(first),
+		mediaType: "image/png",
+	}
+	agent, workspace := newPainterAgent(t, painter, "paint/model")
+
+	sketch := writeReference(t, workspace, "art/sketch.png", pngOfSize(t, 3, 2))
+	result, isError := runTool(t, agent, "generate_image",
+		`{"prompt":"ink it","reference_paths":["`+sketch+`"],"aspect_ratio":"16:9","size":"1024x576"}`)
+	if isError {
+		t.Fatalf("generate_image with a reference failed: %s", result)
+	}
+	request := painter.request(0)
+	if len(request.InputReferences) != 1 {
+		t.Fatalf("the request carried %d references, want 1", len(request.InputReferences))
+	}
+	if !bytes.Equal(dataURLBytes(t, request.InputReferences[0]), pngOfSize(t, 3, 2)) {
+		t.Fatal("the reference did not carry the file's own bytes")
+	}
+	if !strings.HasPrefix(request.InputReferences[0], "data:image/png;base64,") {
+		t.Fatalf("reference %q is not a png data URL", request.InputReferences[0][:32])
+	}
+	// The frame arguments are passed through untouched — this belt does not
+	// second-guess a shape the image model spells its own way.
+	if request.AspectRatio != "16:9" || request.Size != "1024x576" {
+		t.Fatalf("frame = %q / %q, want 16:9 and 1024x576", request.AspectRatio, request.Size)
+	}
+
+	// And the loop the description promises: the path just returned is a valid
+	// reference, so a model can iterate on its own last render.
+	returned, _, _ := strings.Cut(result, " — ")
+	if second, isError := runTool(t, agent, "generate_image",
+		`{"prompt":"now in colour","reference_paths":["`+returned+`"]}`); isError {
+		t.Fatalf("passing back the returned path failed: %s", second)
+	}
+	if refs := painter.request(1).InputReferences; len(refs) != 1 ||
+		!bytes.Equal(dataURLBytes(t, refs[0]), first) {
+		t.Fatal("the second call did not carry the first render as its reference")
+	}
+}
+
+// A reference that cannot be read is the model's typo to fix, and it costs
+// nothing: the refusal names the path and no generation was paid for.
+func TestGenerateImageRefusesAReferenceItCannotRead(t *testing.T) {
+	painter := &scriptedMedia{
+		base64:    base64.StdEncoding.EncodeToString(pngOfSize(t, 2, 2)),
+		mediaType: "image/png",
+	}
+	agent, workspace := newPainterAgent(t, painter, "paint/model")
+	notes := writeReference(t, workspace, "notes.txt", []byte("not a picture"))
+
+	for _, testCase := range []struct {
+		name string
+		path string
+		want string
+	}{
+		{"a file that is not there", "art/missing.png", "could not read art/missing.png"},
+		{"a file that is not a picture", notes, "notes.txt is not a picture"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, isError := runTool(t, agent, "generate_image",
+				`{"prompt":"ink it","reference_paths":["`+testCase.path+`"]}`)
+			if !isError {
+				t.Fatalf("an unreadable reference reported success: %s", result)
+			}
+			if !strings.Contains(result, testCase.want) {
+				t.Fatalf("result %q does not say %q", result, testCase.want)
+			}
+		})
+	}
+	if len(painter.seen) != 0 {
+		t.Fatalf("a refused reference still cost %d generations", len(painter.seen))
 	}
 }
