@@ -41,6 +41,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,15 +54,26 @@ const taskDescription = "Hand ONE self-contained piece of work to a task that ru
 // even though a one-node graph can never fill it: the field is the edge, the
 // executor already honours it (task_run.go), and a schema that grew the concept
 // later would be a second shape for the same idea.
-const taskSchemaJSON = `{"type":"object","properties":{` +
+//
+// THE TWO THRESHOLD DEFAULTS ARE INTERPOLATED, NEVER TYPED TWICE. They were
+// typed twice once, and they drifted: this schema told the model the step
+// default was 40 while the executor applied 200 (task_run.go's taskMaxSteps).
+// A number in a tool description is not documentation — it is what the model
+// reasons with, so a model that wanted room for a long sweep was raising a
+// figure that was already five times higher than it believed, and one that
+// wanted to keep a small job tight was setting 40 thinking it changed nothing.
+// It is a var rather than a const for exactly this reason; the cost is one
+// package-level string built at init, and what it buys is a default that
+// cannot be wrong.
+var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work, as a person would say it: \"Fix the nil-map crash in the reconciler\""},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it: what will be done, and to what"},` +
 	`"brief":{"type":"string","description":"The task's WHOLE context, self-contained: the goal, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation"},` +
 	`"acceptance":{"type":"string","description":"The observable done-condition: the command that must pass, the behaviour that must hold, the output that must appear"},` +
 	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts. Its brief is given their reports when it begins"},` +
 	`"model":{"type":"string","description":"Optional. The model this work runs on, as a catalog id (\"anthropic/claude-opus-5\") or the part of one that names it (\"opus-5\"). Set it ONLY when the person asked for a particular model or class of model for this work; leave it out and the task runs on the configured one. A name that fits more than one model is shown to the person to settle"},` +
-	`"max_steps":{"type":"number","description":"Optional. How many tool calls this work is worth before it is stopped as stuck (default 40). Raise it for a sweep across many files; lower it for something small that should not wander"},` +
-	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may change no file before it is stopped as stuck (default 6). Raise it when the work genuinely needs a lot of reading before its first edit"}` +
+	`"max_steps":{"type":"number","description":"Optional. How many tool calls this work is worth before it is stopped as stuck (default ` + strconv.Itoa(taskMaxSteps) + `). Raise it for a sweep across many files; lower it for something small that should not wander"},` +
+	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may change no file before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it when the work genuinely needs a lot of reading before its first edit"}` +
 	`},"required":["title","summary","brief","acceptance"],"additionalProperties":false}`
 
 // taskArguments is the wire form.

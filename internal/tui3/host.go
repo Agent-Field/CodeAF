@@ -76,6 +76,18 @@ import "strings"
 //	                  door onto it, so the door hands none and the command says
 //	                  harnesses are unavailable rather than listing THIS
 //	                  machine's and offering to run them there.
+//	BUILDING a harness
+//	                  OFF, and off at the engine rather than here
+//	                  (cmd/aforge's engine.go nils Config.HarnessStore). The
+//	                  design lane is a standing subscription on the agent
+//	                  ([designAgent.HarnessDesigns]) and a remote handle has no
+//	                  such method, so this surface never subscribes — a design
+//	                  left switched on would have spent two model calls and
+//	                  raised its keep-or-drop card into a room with nobody in
+//	                  it. Turning it off at the far end means the model does not
+//	                  have the verb and says so. RUNNING one that already exists
+//	                  is unaffected: that rides Harnesses and RunHarness, which
+//	                  the engine still fills.
 //	the task rail     absent, and absent by construction: task.go asserts an
 //	                  optional interface on the agent and the remote one does not
 //	                  implement it, so there is no rail, no room, and no journal

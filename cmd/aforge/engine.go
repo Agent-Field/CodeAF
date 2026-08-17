@@ -90,6 +90,24 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	cfg := launch.Config
 	cfg.AskConsent = true
 
+	// BUILDING A HARNESS IS OFF OVER A CONNECTION, because the card that asks
+	// whether to keep the page cannot reach anybody. The design lane is a
+	// standing subscription the surface opens on the agent itself
+	// (internal/session's HarnessDesigns, asserted by internal/tui3's
+	// designAgent), and the surface on the other end of this wire holds a
+	// remote handle that has no such method — so it never subscribes, and a
+	// design started here would run two model calls, raise a card into an empty
+	// room, and expire unseen half an hour later.
+	//
+	// Nil is the honest way to say so rather than a special case: session.Config
+	// already states that A NIL STORE IS BUILDING OFF, on the same terms a nil
+	// RunHarness is detection off, so the designer simply is not among the
+	// things this conversation can do and the model says as much instead of
+	// starting work nobody will ever be shown. RUNNING a harness that already
+	// exists is untouched — that rides Harnesses and RunHarness, which the
+	// shared assembly still fills, and it works over a connection today.
+	cfg.HarnessStore = nil
+
 	agent, cfg, notice, err := openV3Agent(cfg, workspace)
 	if err != nil {
 		return nil, err
