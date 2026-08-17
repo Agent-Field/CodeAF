@@ -39,6 +39,12 @@ import (
 //     unchanged. This file answers questions; it never picks a successor, which
 //     is why a program run through this bridge leaves the same trace it would
 //     leave anywhere else.
+//   - A CALL IS A WHOLE RUN, on a bridge derived from this one. A harness that
+//     names another does not get it inlined: the child is walked by [Run] with
+//     its own bridge, its own whitelist and its own trace, and what comes back is
+//     a summary. That is the same smallness — there is one way to run a harness,
+//     and nesting reuses it rather than growing a second one (see [modelEnv.call]
+//     for the three refusals that keep the recursion finite).
 //
 // ── WHAT A GATE MEANS WITH NOBODY THERE ──
 //
@@ -58,6 +64,13 @@ import (
 // exists so that a harness whose second node produced a megabyte does not send
 // that megabyte to every node after it.
 const modelClip = 8000
+
+// callClip bounds what a child's own answer contributes to the row its caller
+// leaves. It is far tighter than modelClip because the parent's trail is a
+// SUMMARY of the call — the child's whole run is saved in the child's own
+// history, and a caller's row that carried it twice would make a two-deep run
+// read as the same evidence pasted twice.
+const callClip = 1200
 
 // modelMaxTurns is what an agent.loop that declares no max_turns is told it has
 // when the caller named no default either.
@@ -92,6 +105,22 @@ type ModelExecOpts struct {
 	// and where that child's own trace is saved. Nil means this bridge cannot
 	// make calls, and a program that tries says so.
 	Store *Store
+
+	// DepthCap bounds subharness.call nesting: how many harnesses deep a call
+	// may go below the one this bridge was built for. Zero takes
+	// [MaxCallDepth]. It is a caller's knob rather than only the constant
+	// because the surface driving the bridge is what knows how much recursion
+	// it is willing to pay for — a chat turn and an unattended runner are not
+	// the same appetite.
+	DepthCap int
+
+	// depth, chain and input are what a derived bridge is handed by the call
+	// that derived it, and they are unexported because a caller has no top-level
+	// answer for them: the top of a run is depth 0, its own name is the whole
+	// chain, and Run opens on no sentence.
+	depth int
+	chain []Id
+	input string
 }
 
 // ModelExec turns a provider client into the executor [Run] wants.
@@ -103,22 +132,20 @@ type ModelExecOpts struct {
 func ModelExec(c *provider.Client, opts ModelExecOpts) Exec {
 	env := newModelEnv(c, opts)
 	runner := &Runner{Env: env}
-	if opts.Store != nil {
-		// The child's pages come from the store, its trace goes back to the
-		// store, and the loader is wrapped so that a called harness's own
-		// whitelist — not its caller's — is what bounds its nodes.
-		runner.Loader = scopedLoader{inner: opts.Store, state: env.state}
-		runner.Saver = opts.Store
-	}
-	// The state the walk threads from node to node. It starts empty because
-	// [Run] takes no opening sentence — the entry node works from its own brief,
-	// and a caller with something to say goes through [Runner], which does.
-	state := State{OK: true}
+	// The state the walk threads from node to node. At the top it starts empty,
+	// because [Run] takes no opening sentence — the entry node works from its own
+	// brief. A DERIVED bridge starts on what its caller had produced, which for a
+	// called harness is the only road the parent's work can travel: the child's
+	// entry node has no predecessors, so leadingIn falls back to exactly this.
+	state := State{Last: opts.input, OK: true}
 	return func(ctx context.Context, node Node) (Result, error) {
-		if node.Kind == KindSubharnessCall && opts.Store == nil {
-			return Result{}, errors.New("subharness.call is not in the exec bridge without a store")
+		if node.Kind == KindSubharnessCall {
+			// The call is the bridge's own, not the [Runner]'s: the child runs on
+			// a bridge derived from this one, which is what carries the depth, the
+			// ancestor chain and the store down to it.
+			return env.call(ctx, node, &state)
 		}
-		result, err := runner.step(ctx, env.harness(node), &state, node)
+		result, err := runner.step(ctx, env.harness, &state, node)
 		if err == nil && node.Kind == KindHumanGate && opts.Ask == nil {
 			result.Out += " · " + autoGateNote
 		}
@@ -133,7 +160,21 @@ type modelEnv struct {
 	runTool  func(ctx context.Context, tool, args string) (string, error)
 	ask      func(ctx context.Context, question string) (string, error)
 	maxTurns int
-	state    *modelState
+	// harness is the ONE program this bridge runs. A called harness gets its own
+	// bridge, which is what makes the child's whitelist — not its caller's — the
+	// list its nodes are held to: a triage harness that reads files is callable
+	// by one that may only run the suite.
+	harness Harness
+	// store is where a call resolves a name and where the child's trace lands.
+	store *Store
+	// depth is how many calls deep this bridge already is; the top is 0.
+	depth    int
+	depthCap int
+	// chain is who is running, outermost first, INCLUDING this harness. It is
+	// what a cycle is read off: a call naming something already in it would be a
+	// program running inside itself.
+	chain []Id
+	state *modelState
 }
 
 func newModelEnv(c *provider.Client, opts ModelExecOpts) *modelEnv {
@@ -141,17 +182,31 @@ func newModelEnv(c *provider.Client, opts ModelExecOpts) *modelEnv {
 	if turns < 1 {
 		turns = modelMaxTurns
 	}
+	deep := opts.DepthCap
+	if deep < 1 {
+		deep = MaxCallDepth
+	}
+	h := opts.Harness.Normalize()
+	chain := opts.chain
+	if len(chain) == 0 {
+		chain = []Id{h.Id}
+	}
 	return &modelEnv{
 		client:   c,
 		runTool:  opts.RunTool,
 		ask:      opts.Ask,
 		maxTurns: turns,
-		state:    &modelState{scope: []Harness{opts.Harness.Normalize()}},
+		harness:  h,
+		store:    opts.Store,
+		depth:    opts.depth,
+		depthCap: deep,
+		chain:    chain,
+		state:    &modelState{},
 	}
 }
 
 // modelState is the run's own memory: what each node produced, in order, and
-// which harnesses the run is inside.
+// what it has spent on calling other harnesses.
 //
 // It is a pointer shared by the Env and the Exec closure because an Exec sees
 // one node at a time and a brief is built from what came BEFORE — the thing a
@@ -162,10 +217,11 @@ type modelState struct {
 	// evidence a verify reads is the evidence a person reading the saved run
 	// would have.
 	done []modelStep
-	// scope is the harness stack, top first: the program being run, then every
-	// harness a subharness.call has loaded. A node is bounded by the one it
-	// belongs to, not by whichever was outermost.
-	scope []Harness
+	// calls is how many subharness.call nodes this run has actually made, held
+	// against the harness's Dyn.Cap. It is THIS run's ledger and not the child's:
+	// a called harness spends its own cap on its own calls, which is what keeps a
+	// cap a statement about one page rather than about a whole tree.
+	calls int
 }
 
 type modelStep struct {
@@ -188,42 +244,6 @@ func (m *modelState) out(id string) string {
 		}
 	}
 	return ""
-}
-
-// harness is the program a node belongs to. The stack is searched from the top
-// so that a child harness's node beats a parent's node of the same id, which is
-// the only way two programs in one run can collide.
-func (m *modelState) harness(node Node) Harness {
-	for at := len(m.scope) - 1; at >= 0; at-- {
-		if found, ok := m.scope[at].Program.Node(node.Id); ok && found.Kind == node.Kind {
-			return m.scope[at]
-		}
-	}
-	if len(m.scope) > 0 {
-		return m.scope[0]
-	}
-	return Harness{}
-}
-
-func (m *modelEnv) harness(node Node) Harness { return m.state.harness(node) }
-
-// scopedLoader is [Loader] with a memory: every harness a call resolves is
-// pushed onto the run's scope, so the child's nodes are bounded by the CHILD's
-// whitelist. Without it a called harness would be held to its caller's tools,
-// which is a rule nobody wrote and which fails the ordinary case — a triage
-// harness that reads files being called by one that only runs the suite.
-type scopedLoader struct {
-	inner Loader
-	state *modelState
-}
-
-func (s scopedLoader) Load(name string, version int) (Harness, error) {
-	child, err := s.inner.Load(name, version)
-	if err != nil {
-		return Harness{}, err
-	}
-	s.state.scope = append(s.state.scope, child.Normalize())
-	return child, nil
 }
 
 // ── the kinds ───────────────────────────────────────────────────────────────
@@ -258,7 +278,7 @@ func (m *modelEnv) Tool(ctx context.Context, node Node, input string) (string, e
 	if tool == "" {
 		return "", fmt.Errorf("node %q names no tool", node.Id)
 	}
-	if !m.harness(node).Allows(tool) {
+	if !m.harness.Allows(tool) {
 		return "", fmt.Errorf("node %q calls %q, which is not on the whitelist", node.Id, tool)
 	}
 	if m.runTool == nil {
@@ -301,7 +321,7 @@ func (m *modelEnv) Gate(ctx context.Context, node Node, state State) (GateAnswer
 func (m *modelEnv) Check(ctx context.Context, node Node, state State) (bool, string, error) {
 	ladder := node.Fields.Get("ladder")
 	if ladder == "" {
-		ladder = m.harness(node).Verify.Ladder
+		ladder = m.harness.Verify.Ladder
 	}
 	if ladder == "" {
 		ladder = VerifyAccept
@@ -328,6 +348,150 @@ func (m *modelEnv) Cond(ctx context.Context, node Node, condition string, state 
 		return false, err
 	}
 	return readYes(said), nil
+}
+
+// ── calling another harness ─────────────────────────────────────────────────
+
+// call runs the harness a subharness.call names, here, on a bridge derived from
+// this one.
+//
+// THE CHILD IS A RUN, NOT A SUBROUTINE. It gets its own bridge — so its own
+// whitelist bounds its nodes and its own outputs are the evidence its checks
+// read — its own walk, and its own trace in its own history, which is where
+// anybody asking "how does triage behave" will look. What comes back into the
+// parent's trail is the pointer, the status and what the child finally said:
+// enough to read the parent on its own, with the child's file for the detail.
+//
+// Three refusals stand between a program and infinite recursion, and they are
+// three different mistakes:
+//
+//   - DEPTH is a fan of harnesses that each thought they were the top one. It is
+//     bounded by [ModelExecOpts.DepthCap], counted in bridges rather than nodes.
+//   - A CYCLE is a program reaching itself, however long the way round. The
+//     ancestor chain is carried down and printed back, because "a calls b calls
+//     a" is the one message that makes the mistake obvious.
+//   - THE BUDGET is the harness's own Dyn.Cap. A call is a decision to run work
+//     the page did not spell out, which is exactly what the dynamism ladder
+//     charges for, so each one spends a unit of the CALLING harness's cap.
+func (m *modelEnv) call(ctx context.Context, node Node, state *State) (Result, error) {
+	name := node.Fields.Get("name")
+	if name == "" {
+		return Result{}, fmt.Errorf("node %q is a call that names no harness", node.Id)
+	}
+	if m.store == nil {
+		return Result{}, fmt.Errorf("node %q calls %q, and subharness.call is not in the exec bridge without a store",
+			node.Id, name)
+	}
+	if m.depth+1 > m.depthCap {
+		return Result{}, fmt.Errorf("node %q calls %q, which would run %d harnesses deep, past the depth cap of %d: %s",
+			node.Id, name, m.depth+1, m.depthCap, chainWords(m.chain, name))
+	}
+	// The chain is read by NAME and not by pointer: a harness calling another
+	// version of something already running is still a program inside itself, and
+	// the version it pinned is not a reason to let the recursion stand.
+	if inChain(m.chain, name) {
+		return Result{}, fmt.Errorf("node %q calls %q, which is already running: %s",
+			node.Id, name, chainWords(m.chain, name))
+	}
+	child, err := m.store.Load(name, node.Fields.Int("version", 0))
+	if err != nil {
+		// Named and missing is the ordinary mistake — a page renamed, a harness
+		// never saved on this machine — so the error says which node asked for
+		// what before it says what the registry answered.
+		return Result{}, fmt.Errorf("node %q calls %q, which this registry does not have: %w", node.Id, name, err)
+	}
+	// Spent AFTER the load, so a call that never happened costs nothing. The
+	// ledger is this bridge's own: run.go spends the same cap on the loop rounds a
+	// program did not already contain, and the two are counted apart because one
+	// is the walk's decision and the other is this file's.
+	if budget := m.harness.Dyn.Cap; budget > 0 {
+		if m.state.calls >= budget {
+			return Result{}, fmt.Errorf("node %q calls %q, and %s has spent its dynamism cap of %d calls",
+				node.Id, name, m.harness.Id.Name, budget)
+		}
+		m.state.calls++
+	}
+
+	trace, childErr := Run(ctx, child, ModelExec(m.client, ModelExecOpts{
+		Harness:         child,
+		RunTool:         m.runTool,
+		Ask:             m.ask,
+		MaxTurnsDefault: m.maxTurns,
+		Store:           m.store,
+		DepthCap:        m.depthCap,
+		depth:           m.depth + 1,
+		chain:           append(append([]Id{}, m.chain...), child.Id),
+		input:           state.Last,
+	}))
+	// A person who answered the child's gate is not the child failing, and the
+	// history it leaves must not say it was — the same reading [Runner.Run] gives
+	// its own trace, applied to a walk that only had an error to end on.
+	var ended *stop
+	if errors.As(childErr, &ended) {
+		trace.Status, trace.Err, childErr = ended.status, "", nil
+		if said := strings.TrimSpace(ended.note); said != "" {
+			trace.Out = said
+		}
+	}
+
+	head := fmt.Sprintf("%s v%d · %s · %d steps", child.Id.Name, child.Id.Version, trace.status(), len(trace.Trail))
+	if trace.Id.Name != "" {
+		if path, err := m.store.SaveRun(trace); err == nil {
+			head += " · " + path
+		}
+	}
+	if childErr != nil {
+		state.OK = false
+		return Result{}, fmt.Errorf("%s: %w", head, childErr)
+	}
+	said := traceOut(trace)
+	out := head
+	if said != "" {
+		out += "\n" + clip(said, callClip)
+	}
+	*state = State{Last: said, OK: true}
+	// A CHILD THAT WAS DECLINED STOPS THE PARENT. The person said no to work this
+	// program asked for; carrying on as if they had not is the one reading of that
+	// answer nobody meant.
+	if ended != nil {
+		return Result{Out: out}, &stop{status: ended.status, note: said}
+	}
+	return Result{Out: out}, nil
+}
+
+// traceOut is what a child finally said: the run's own output when it carried
+// one, and otherwise the last step that produced anything — which is what a
+// plain [Run] leaves, since filling Out is [Runner.Run]'s job.
+func traceOut(t Trace) string {
+	if out := strings.TrimSpace(t.Out); out != "" {
+		return out
+	}
+	for at := len(t.Trail) - 1; at >= 0; at-- {
+		if out := strings.TrimSpace(t.Trail[at].Out); out != "" {
+			return out
+		}
+	}
+	return ""
+}
+
+// inChain reports whether a name is already running above this call.
+func inChain(chain []Id, name string) bool {
+	for _, id := range chain {
+		if id.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// chainWords writes who is running as one line, with the name that would not be
+// allowed on the end: `outer v1 → triage v1 → outer`.
+func chainWords(chain []Id, name string) string {
+	parts := make([]string, 0, len(chain)+1)
+	for _, id := range chain {
+		parts = append(parts, fmt.Sprintf("%s v%d", id.Name, id.Version))
+	}
+	return strings.Join(append(parts, name), " → ")
 }
 
 // ── the prompts ─────────────────────────────────────────────────────────────
@@ -373,7 +537,7 @@ func (m *modelEnv) loopPrompt(node Node, brief, tools, input string) string {
 // whose predecessors all produced nothing.
 func (m *modelEnv) leadingIn(node Node, input string) string {
 	var parts []string
-	for _, id := range m.harness(node).Program.Predecessors(node.Id) {
+	for _, id := range m.harness.Program.Predecessors(node.Id) {
 		if out := m.state.out(id); out != "" {
 			parts = append(parts, id+":\n"+clipModel(out))
 		}
@@ -571,7 +735,7 @@ func (m *modelEnv) allowed(node Node, field string) (string, error) {
 	if len(names) == 0 {
 		return "", nil
 	}
-	h := m.harness(node)
+	h := m.harness
 	for _, name := range names {
 		if !h.Allows(name) {
 			return "", fmt.Errorf("node %q hands out %q, which is not on the whitelist", node.Id, name)
@@ -607,14 +771,17 @@ func (m *modelEnv) say(ctx context.Context, model, system, user string) (string,
 	return strings.TrimSpace(response.Text()), nil
 }
 
-// clipModel shortens one output for a prompt, keeping the head and the tail —
-// a command's output says what it did at the top and whether it worked at the
-// bottom, and a middle-out clip is the one that keeps both.
-func clipModel(text string) string {
-	if len(text) <= modelClip {
+// clipModel shortens one output for a prompt.
+func clipModel(text string) string { return clip(text, modelClip) }
+
+// clip keeps the head and the tail — a command's output says what it did at the
+// top and whether it worked at the bottom, and a middle-out clip is the one that
+// keeps both.
+func clip(text string, limit int) string {
+	if len(text) <= limit {
 		return text
 	}
-	head := modelClip / 2
-	tail := modelClip - head
+	head := limit / 2
+	tail := limit - head
 	return text[:head] + "\n…\n" + text[len(text)-tail:]
 }
