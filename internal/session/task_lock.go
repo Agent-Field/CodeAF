@@ -17,6 +17,7 @@ package session
 // goroutines.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -114,5 +115,5 @@ func claimGitRoot(root string) *os.File {
 // against the filesystem not doing locks at all. EAGAIN on Linux and
 // EWOULDBLOCK on darwin are the same value and the one answer that means held.
 func isLockHeld(err error) bool {
-	return err == unix.EWOULDBLOCK || err == unix.EAGAIN
+	return errors.Is(err, unix.EWOULDBLOCK)
 }
