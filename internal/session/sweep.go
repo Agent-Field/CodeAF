@@ -60,12 +60,9 @@ const (
 	sweepTTL = 7 * 24 * time.Hour
 
 	// placesDirName is where the session folders live under the state root:
-	// v3/projects/<encoded-workspace>/<session-id>/.
-	//
-	// STUB(place/layout): the layout lane owns the encoder that names the bucket
-	// and the launch path that creates it. The sweep needs only the root, and
-	// derives it here so it can run before that lands; when the layout lane has
-	// a name for this directory the two become one constant.
+	// v3/projects/<encoded-workspace>/<session-id>/ — the same word
+	// cmd/aforge's layout spells when it creates a bucket (chatv3_layout.go).
+	// The sweep needs only the root and never the encoder.
 	placesDirName = "projects"
 )
 

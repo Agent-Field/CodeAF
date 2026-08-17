@@ -225,7 +225,7 @@ type Options struct {
 	// this package's own cache: the door usually says, and a surface driven
 	// without one still records where the rest of the product looks.
 	//
-	// STUB(place/layout): the launch assembly passes the same path it puts on
+	// The launch assembly passes the same path it puts on
 	// session.Config.ArtifactsIndex, so a session and its surface never write
 	// two indexes.
 	ArtifactsIndex string

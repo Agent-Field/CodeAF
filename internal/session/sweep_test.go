@@ -146,7 +146,7 @@ func TestTheSweepLeavesALiveSessionAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	held, _, err := openSessionFile(filepath.Join(dir, placeTranscript), dir, "test-model")
+	held, _, err := openSessionFile(filepath.Join(dir, placeTranscript), dir, "test-model", "")
 	if err != nil {
 		t.Fatalf("open the transcript: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestTheSweepReapsThatSessionOnceItIsClosed(t *testing.T) {
 		Workspace:  filepath.Join(os.TempDir(), "scratch"),
 		LastUserAt: now.Add(-30 * 24 * time.Hour),
 	})
-	held, _, err := openSessionFile(filepath.Join(dir, placeTranscript), dir, "test-model")
+	held, _, err := openSessionFile(filepath.Join(dir, placeTranscript), dir, "test-model", "")
 	if err != nil {
 		t.Fatalf("open the transcript: %v", err)
 	}

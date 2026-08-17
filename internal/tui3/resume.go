@@ -278,7 +278,10 @@ func humanName(session Session) string {
 		name = openingName(session.Opening)
 	}
 	if name == "" {
-		name = strings.TrimSuffix(baseName(session.File), ".jsonl")
+		// The transcript's own name, which under Decision 26 is the session
+		// FOLDER's rather than the file's — every folder session's transcript is
+		// called the same thing (sessionrows.go).
+		name = strings.TrimSuffix(sessionStem(session.File), ".jsonl")
 	}
 	return titleCase(unpackName(name))
 }

@@ -138,23 +138,21 @@ func Peek(path string) (Summary, bool) {
 	return summary, true
 }
 
-// Recent is [Peek] over a project's conversations, newest first, and it is what
-// a session picker is drawn from.
+// Recent is [Peek] over a directory of FLAT transcripts, newest first.
 //
-// IT READS BOTH LAYOUTS. A session is a folder now (place.go), so the
-// candidates are the bucket's session folders — each one's transcript.jsonl,
-// ordered by when the person last spoke in it — and the flat .jsonl files the
-// old layout left in the same kind of directory are read beside them. A machine
-// mid-migration holds both, and a picker that showed only one of them would be
-// a picker missing conversations.
+// It is the old layout's reader and dies with it: a directory that may hold
+// folder sessions beside the flat files (a machine mid-migration holds both)
+// is read by [RecentSessions], which also takes the folder's own meta.json as
+// the name and the ordering. One function that grew a branch for each layout
+// would be one function two waves have to agree about, so this one keeps
+// exactly its old law.
 //
 // It is bounded twice. limit is what the caller wants; peekBudget is how many
 // files it will read to find them, so a directory holding a year of sessions
 // costs a fixed number of scans rather than one per file. The candidates are
-// ordered before any of them is opened — by [Meta.LastUserAt] where a folder
-// has one, by modification time otherwise, which is the cheap approximation of
-// "newest" — and the answer is re-sorted by what the files themselves said,
-// which is the fact a person recognizes.
+// ordered by modification time before any of them is opened — the cheap
+// approximation of "newest" — and the answer is re-sorted by what the files
+// themselves said, which is the fact a person recognizes.
 func Recent(dir string, limit int) []Summary {
 	if limit <= 0 {
 		return nil
@@ -174,16 +172,6 @@ func Recent(dir string, limit int) []Summary {
 			continue
 		}
 		if entry.IsDir() {
-			folder := filepath.Join(dir, entry.Name())
-			transcript := filepath.Join(folder, placeTranscript)
-			if _, err := os.Stat(transcript); err != nil {
-				continue
-			}
-			at := info.ModTime()
-			if meta, err := LoadMeta(folder); err == nil && !meta.LastUserAt.IsZero() {
-				at = meta.LastUserAt
-			}
-			files = append(files, candidate{path: transcript, at: at})
 			continue
 		}
 		if !strings.HasSuffix(entry.Name(), ".jsonl") {

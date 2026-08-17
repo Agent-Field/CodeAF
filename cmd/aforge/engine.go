@@ -128,6 +128,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		SessionFile: transcript,
 		Resumed:     resumed,
 		Note:        notice,
+		// Where a picture arriving on the wire lands: the engine's own session
+		// folder, the same answer the local launch assembly gives its session.
+		Place: cfg.Place,
 		// The far half of a remote YOLO badge: this machine's own tool-approval
 		// row, read the same way the local surface reads its own
 		// (internal/tui3's readApproval). Empty when there is no profile
@@ -178,7 +181,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return replacement, statErr == nil, nil
 		},
 		Recent: func() []session.Summary {
-			return session.Recent(launch.Bucket, v3RecentSessionSlots)
+			// Both shapes, exactly as the local list reads them
+			// ([v3RecentSessions]): the far machine's disk is under the same
+			// decision as this one's, and a list that answered differently
+			// over a connection would be a second law about one layout.
+			return session.RecentSessions(launch.Bucket, v3RecentSessionSlots)
 		},
 	}, nil
 }

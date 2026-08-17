@@ -395,8 +395,11 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		ApprovalMode:  welcome.ApprovalMode,
 		ContextWindow: v3Window(models, welcome.Model),
 		Models:        func() []tui3.Model { return v3Models(models) },
-		ProfileDir:    profileDir,
-		PickSession:   pick,
+		// /export writes on THIS machine (host.go's honesty table), so its row
+		// goes in this machine's index — the same one the local launch spells.
+		ArtifactsIndex: artifactsIndexPath(),
+		ProfileDir:     profileDir,
+		PickSession:    pick,
 		// The conversations the ENGINE's disk holds, and the door back into one of
 		// them. Both go over the wire; neither reads a session file here.
 		RecentSessions: func() []tui3.Session { return hostSessions(client) },
