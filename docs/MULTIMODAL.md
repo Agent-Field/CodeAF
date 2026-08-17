@@ -68,3 +68,93 @@ slug degrades to the best available model instead of a 404.
 - Not per-message model switching. The palette sets standing slots; the
   router still owns escalation within a job.
 - Not free. Every byte generated is a journaled, railed dollar.
+
+---
+
+## The v3 revision (Aug 2026) — one knob, a use-time resolver, and a full belt
+
+Decisions 1–4 above were written for the graph-era product. v3 keeps their
+spirit and re-lands them against the session engine, with the defects the
+first wiring left behind named and closed. Where this section disagrees with
+the text above, this section wins.
+
+### Decision 5 — One knob per modality: the settings slot IS the truth
+
+The media slots in the v3 settings sheet — looking, drawing, speaking,
+composing, filming, voice — become the keys the ENGINE actually reads. The
+double-knob era (a `vision_model` row v3 ignored beside a `roles.vision` pin
+it obeyed) is over: the roles free-text pins remain as the second rung for
+operators, but the sheet's slot rows are the front door, their writes are
+ACCEPTED, and the picker each opens is pre-filtered by the slot's required
+capability from the catalog — the filter is the validation, as Decision 3
+promised and the wiring never delivered.
+
+Resolution happens AT USE TIME, in one resolver per modality, with one
+documented ladder: the slot key → the role pin → the best catalog candidate
+publishing the capability → the curated fallback. Every rung is
+capability-checked against the catalog (`Supports`, `ModelsWithOutput`): a
+slot or pin naming a model that cannot do the job is passed over with one
+log line, never sent to a provider to fail. A renamed slug degrades to the
+best available model instead of a 404, and a machine that has never opened
+settings still draws, speaks, and films out of the box.
+
+### Decision 6 — The door stops starving the pickers
+
+`v3Models` no longer drops non-text-out rows; the full catalog reaches the
+surface and the on-disk cache, and each list applies its OWN filter at the
+moment it is drawn (talk lists stay chat-only; the drawing slot sees image
+models). Silence gets ONE law everywhere: an unpublished modality list means
+text-in/text-out and NOTHING more — a media capability is never assumed,
+only published, with the id-word marks as the last resort for rows that
+publish nothing. Picker rows and `aforge models` grow a dim modality tail
+("sees · draws") so a filtered list is explicable, and `/model <slug>` warns
+when a slug cannot hold a conversation instead of silently accepting a
+music model as the talk model.
+
+### Decision 7 — The belt carries every verb, and each verb carries its features
+
+`session.Config` gains `Media` (the provider media client) and `MediaModel`
+(the use-time resolver, one string in: "image", "speech", "video",
+"vision"). The v3 belt gains, each absent-not-broken but PRESENT by default
+because the resolver has catalog fallbacks:
+
+- **`generate_image`** grows the features the wire already has:
+  `reference_paths` (image-to-image — edit, restyle, combine), and
+  `aspect_ratio`/`size` passthrough. The description TEACHES the leverage:
+  a model that knows it can pass its own last render back as a reference
+  can iterate a diagram; one that only knows "prompt in, png out" cannot.
+- **`speak`** — text → audio via `/audio/speech` (`voice` optional,
+  provider default when omitted; mp3 out), landed and cited like an image.
+- **`generate_video`** — async by nature (`/videos` is submit-then-poll),
+  so it is a BACKGROUND JOB in the existing registry: the tool returns the
+  job id in seconds, the poll runs where jobs run, and completion reaches
+  the model on the steering lane like any job's exit. A ten-minute render
+  never holds a turn hostage. `frame_images` (first/last frame) and
+  `input_references` (style) ride through.
+- **`view_image`** — look at a file on disk through the LOOKING slot's
+  model, one shot, answer in the tool result. This is how a task node
+  finally gets eyes, and how a blind chat model examines a screenshot
+  without a person attaching it.
+
+Every output lands by the Decision-26 law (owned → `work/`, borrowed → the
+session's `artifacts/`), earns a row in the deliverables index (`/files`),
+and its spend folds into the session's auxiliary pocket. Generation stays
+behind the approval gate: a dollar a tool spends is a dollar the person
+posture'd. The manual pages land in the same change, because the build
+gates make a tool the manual does not know a build that does not exist.
+
+### Decision 8 — The model always knows what it can do
+
+Capability is not a surprise the model discovers by failing. The tool
+descriptions are the teaching surface — each names its features, its
+landing law, and one clever use — and the vision fallback, the frames
+rung, and `read_document`'s image rung all resolve through the same
+looking slot, so "can I see" has one answer wherever it is asked. The
+transcript guard closes the last hole: switching a conversation with
+attached images onto a blind model turns the image parts into their text
+placeholders instead of sending base64 to a model that cannot read it.
+
+**Deliberately deferred:** mic/voice-input in tui3 (the `internal/voice`
+machinery is real and waits on a surface wave), and `generate_music` as a
+separate verb (`speak` carries the endpoint until a music model earns a
+schema of its own).
