@@ -26,7 +26,7 @@ func TestEveryCatalogServiceIsFiled(t *testing.T) {
 			continue
 		}
 		if !known[word] {
-			t.Errorf("%s is filed under %q, which is not one of the thirteen words", service.ID, word)
+			t.Errorf("%s is filed under %q, which is not one of one of the words this build knows", service.ID, word)
 		}
 		seen[word]++
 	}
