@@ -64,8 +64,15 @@ func TestTheProjectFileBeatsTheProfileAtTheSessionConfig(t *testing.T) {
 	}
 
 	// The gate: the repository's blanket answer, and the repository's
-	// exceptions INSTEAD OF the person's — read is no longer allowed, because
-	// nothing deep-merges.
+	// exceptions INSTEAD OF the person's — bash is no longer allowed, because
+	// nothing deep-merges between the two FILES.
+	//
+	// read is the one entry that survives, and it does not survive from the
+	// profile: it is on the built-in floor every gate is assembled over
+	// (v3BuiltinApprovals). The floor is beneath BOTH files rather than part of
+	// either, so it says nothing about which file wins — a repository that wants
+	// to be asked about reads writes `read:prompt` and is obeyed, exactly as a
+	// person is.
 	policy := *cfg.ApprovalPolicy
 	for _, want := range []struct {
 		tool   string
@@ -73,7 +80,7 @@ func TestTheProjectFileBeatsTheProfileAtTheSessionConfig(t *testing.T) {
 		action approval.Action
 	}{
 		{"write", `{"path":"x"}`, approval.ActionDeny},
-		{"read", `{"path":"x"}`, approval.ActionPrompt},
+		{"read", `{"path":"x"}`, approval.ActionAllow},
 		{"bash", `{"command":"ls"}`, approval.ActionPrompt},
 	} {
 		if got := policy.Check(want.tool, json.RawMessage(want.args)); got.Action != want.action {
