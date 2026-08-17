@@ -2328,6 +2328,12 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	if a.linkPress(x, r) {
 		return
 	}
+	// AND A CLICK ON A WAITING SIGN-IN COPIES ITS LINK (connect.go). It is read
+	// here, beside the thinking block, because it is the same kind of claim: a
+	// block with one thing to do, doing it wherever it is pressed.
+	if cmd, took := a.connectLinkPress(r.entry); took {
+		return cmd
+	}
 	// A click anywhere on a thinking block toggles it — the whole block is the
 	// target, because a collapsed one is a single row and asking somebody to hit
 	// a five-cell label is asking them to aim (thinking.go).

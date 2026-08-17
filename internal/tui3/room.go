@@ -1225,13 +1225,18 @@ func (a *app) freezeRoom() {
 	height := a.viewHeight()
 	snapshot := make([]string, 0, len(rows))
 	stripped := make([]string, 0, len(rows))
+	owner := make([]int, 0, len(rows))
 	for _, r := range rows {
 		snapshot = append(snapshot, r.text)
 		stripped = append(stripped, ansi.Strip(r.text))
+		// The index is into the ROOM's own list, which is the list this snapshot
+		// was taken from — that is all "a" needs it to be, since it only ever
+		// compares two rows of the same freeze (copymode.go's [app.copyBlock]).
+		owner = append(owner, r.entry)
 	}
 	top := a.roomOffsetFor(len(rows), height)
 	a.copy = copyMode{
-		on: true, rows: snapshot, text: stripped,
+		on: true, rows: snapshot, text: stripped, owner: owner,
 		at: min(top+height-1, len(rows)-1), top: top, mark: -1,
 	}
 	a.touch()

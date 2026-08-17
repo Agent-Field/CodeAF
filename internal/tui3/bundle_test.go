@@ -543,6 +543,109 @@ func yank(t *testing.T, a *app) string {
 	return string(decoded)
 }
 
+// "a" takes the whole thing under the cursor rather than a range of lines a
+// person had to count out, and what comes back is pasteable: the column the
+// frame draws down the left of a block is the frame speaking, not the text.
+func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.pal = newPalette(tokens.TrueColor, false)
+	a.entries = append(a.entries,
+		entry{kind: entryUser, text: "how do I print?"},
+		entry{kind: entryAssistant, settled: true, text: "Use fmt:\n\n```go\nfmt.Println(\"hi\")\nif ok {\n\tprintln(1)\n}\n```\n\nThat is all."},
+		entry{kind: entryTool, tool: "read", text: "main.go", status: toolOK, open: true,
+			detail: toolDetail{Output: "line one\nline two"}},
+	)
+	a.touch()
+	drive(t, a, ctrlKey('b'))
+
+	// On a code row, "a" takes the fence — and only the fence, without the
+	// hairline the renderer draws beside it.
+	a.copy.at = rowWith(t, a, "println(1)")
+	drive(t, a, key("a"))
+	if got := yank(t, a); got != "fmt.Println(\"hi\")\nif ok {\n    println(1)\n}" {
+		t.Fatalf("the code block came out as %q", got)
+	}
+
+	// Pressing it again on the same row widens to the answer the fence lives in,
+	// which is the block the code row also belongs to.
+	a.copy.at = rowWith(t, a, "println(1)")
+	drive(t, a, key("a"))
+	drive(t, a, key("a"))
+	got := yank(t, a)
+	if !strings.HasPrefix(got, "Use fmt:") || !strings.HasSuffix(got, "That is all.") {
+		t.Fatalf("the second press did not widen to the answer: %q", got)
+	}
+	if strings.Contains(got, tokens.GlyphCodeGutter) {
+		t.Fatalf("the answer carried the code hairline: %q", got)
+	}
+
+	// A tool's output is a block too, and its stem is chrome the same way.
+	a.copy.at = rowWith(t, a, "line two")
+	drive(t, a, key("a"))
+	if got := yank(t, a); !strings.Contains(got, "line one\nline two") {
+		t.Fatalf("the tool result came out as %q", got)
+	} else if strings.Contains(got, "│") {
+		t.Fatalf("the tool result carried its stem: %q", got)
+	}
+
+	// A blank belongs to nothing, so "a" there guesses at nothing.
+	blank := -1
+	for i, line := range a.copy.text {
+		if strings.TrimSpace(line) == "" && a.copy.owner[i] < 0 {
+			blank = i
+			break
+		}
+	}
+	if blank < 0 {
+		t.Fatal("the layout emitted no blank between the blocks")
+	}
+	a.copy.at, a.copy.mark = blank, -1
+	drive(t, a, key("a"))
+	if a.copy.mark >= 0 {
+		t.Fatal("a blank row was taken as a block")
+	}
+}
+
+// A waiting sign-in is the one thing here a person needs somewhere else, so a
+// press on the card copies the link whole — and the card says it did.
+func TestPressingAWaitingSignInCopiesItsLink(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	link := "https://accounts.example.com/o/oauth2/auth?client=abc&scope=mail"
+	a.entries = append(a.entries, entry{kind: entryConnect, conn: &connectCard{
+		service: "google", name: "Google", link: link, state: connectWaiting,
+	}})
+	a.touch()
+
+	cmd, took := a.connectLinkPress(len(a.entries) - 1)
+	if !took || cmd == nil {
+		t.Fatal("the card did not take the press")
+	}
+	raw, ok := cmd().(tea.RawMsg)
+	if !ok {
+		t.Fatalf("the copy is a %T, not a raw write", cmd())
+	}
+	seq, _ := raw.Msg.(string)
+	body := strings.TrimSuffix(strings.TrimPrefix(seq, "\x1b]52;c;"), "\a")
+	decoded, err := base64.StdEncoding.DecodeString(body)
+	if err != nil {
+		t.Fatalf("the payload is not base64: %q", seq)
+	}
+	// WHOLE, and not as the frame wrapped it across two indented rows.
+	if string(decoded) != link {
+		t.Fatalf("the copy carried %q", decoded)
+	}
+	if !strings.Contains(plain(frame(a)), "copied") {
+		t.Fatalf("the card did not say it copied:\n%s", plain(frame(a)))
+	}
+
+	// A settled card has no link to hand anybody, and says nothing about one.
+	a.entries[len(a.entries)-1].conn = &connectCard{name: "Google", state: connectConnected}
+	a.touch()
+	if _, took := a.connectLinkPress(len(a.entries) - 1); took {
+		t.Fatal("a finished sign-in took a press meant for a link it does not have")
+	}
+}
+
 // ctrl+s hands the pointer to the terminal so that an ordinary drag selects
 // text, says so on the one line that names live keys, and gives nothing away
 // permanently: the person's next keystroke takes it back and does its own job
