@@ -28,7 +28,7 @@ type Node struct {
 	// (law: hybrid collision policy — shared tree by default, worktree when
 	// the deliverable is a branch or the planner says so). The path comes
 	// from the session's WorktreePath seam, not from the planner.
-	Worktree bool `json:"worktree,omitempty"`
+	Worktree bool   `json:"worktree,omitempty"`
 	Verify   string `json:"verify,omitempty"` // verify rung for this node's output, empty is none
 }
 
@@ -59,8 +59,8 @@ type Amendment struct {
 type State int
 
 const (
-	Queued   State = iota // in the frontier, needs unmet
-	Ready                 // needs met, waiting for a slot
+	Queued State = iota // in the frontier, needs unmet
+	Ready               // needs met, waiting for a slot
 	Running
 	Done
 	Failed
@@ -92,9 +92,9 @@ type Snapshot struct {
 	Goal   string       `json:"goal"`
 	Nodes  []NodeStatus `json:"nodes"`
 	Fuel   Fuel         `json:"fuel"`
-	Notes  []string     `json:"notes,omitempty"`  // planner notes, in order
-	Steer  []string     `json:"steer,omitempty"`  // user steering, in order
-	Paused bool         `json:"paused"`           // out of fuel, awaiting the gate's answer
+	Notes  []string     `json:"notes,omitempty"` // planner notes, in order
+	Steer  []string     `json:"steer,omitempty"` // user steering, in order
+	Paused bool         `json:"paused"`          // out of fuel, awaiting the gate's answer
 	Done   bool         `json:"done"`
 	Answer string       `json:"answer,omitempty"` // the synthesis, once Done
 }
