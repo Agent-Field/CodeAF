@@ -198,6 +198,42 @@ const (
 	// times without anybody watching.
 	KeyTaskRepairRounds = "task.repair_rounds"
 
+	// KeyTaskParallel is how many tasks may RUN AT ONCE (internal/session's
+	// task_run.go). It is named under `task.` with the countdown and the repair
+	// count because it answers their question in the fourth currency: those say
+	// how long you get to redirect work, how many times it may finish itself,
+	// and whose hands it is in — this says HOW MUCH OF IT happens at the same
+	// time.
+	//
+	// BLANK IS NO LIMIT, and that is the default. The number of tasks was never
+	// the resource: what runs out is this machine's cores and memory — the two
+	// rows below — and the model provider's rate limit, which the adapter reads
+	// off 429s and adapts to on its own (internal/provider's limiter.go). This
+	// row exists for the person who wants a number anyway, and it is a QUEUE and
+	// not a refusal: work past the cap waits and starts when a slot frees.
+	KeyTaskParallel = "task.parallel"
+
+	// KeyTaskMaxLoad is the load average PER CORE at or above which no new task
+	// is started (internal/session's task_pressure.go). It is one of the two
+	// real ceilings the cap above stopped pretending to be.
+	//
+	// Per core, so that the number means the same thing on a laptop and on a
+	// workstation: 1.5 is "half again as many runnable threads as there are
+	// cores to run them", which is where the scheduler starts handing out slices
+	// rather than running work and one more build makes every build slower. 0
+	// turns the check off. It holds STARTS only — nothing already running is
+	// ever touched, so the pressure drains on its own.
+	KeyTaskMaxLoad = "task.max_load"
+
+	// KeyTaskMinFreeMB is the floor of available memory below which no new task
+	// is started (internal/session's task_pressure.go), in mebibytes, and the
+	// other half of the ceiling above.
+	//
+	// It reads the kernel's MemAvailable — what a new process could actually get
+	// — and not free memory, which on a working machine is near zero by design
+	// because the page cache has the rest. 0 turns the check off.
+	KeyTaskMinFreeMB = "task.min_free_mb"
+
 	// KeyTaskModel is the model a task runs on when the conversation does not
 	// name one for it (internal/session's taskmodel.go). It is named under
 	// `task.` beside the countdown rather than among the `models.` rows because
@@ -575,6 +611,33 @@ const (
 	// every round costs another worker and another check on the same node. So the
 	// default closes the near-misses and stops.
 	DefaultTaskRepairRounds = 1
+
+	// DefaultTaskParallel is NO LIMIT, and the change of mind it records is
+	// worth the sentence. The frontier used to hold two tasks at once, and two
+	// was a guess standing in for a resource nobody had measured — it left a
+	// sixteen-core machine idle behind a queue of ready work, and it was still
+	// one too many on a laptop already carrying somebody else's compile. The
+	// number of tasks is not what runs out. So the count became a row a person
+	// may set when they want one, the ceilings became the two below, and the
+	// default is the honest one: as much as the machine and the provider will
+	// carry.
+	DefaultTaskParallel = 0
+
+	// DefaultTaskMaxLoad is one and a half runnable threads per core, which is
+	// the number an earlier incident settled on: aforge pinning a laptop's fan
+	// by running real compilers and real test suites beside each other
+	// (internal/exec's governor.go carries the same figure for the same class of
+	// work). Below it the machine is busy; at it, the scheduler is handing out
+	// slices and one more task makes every task slower.
+	DefaultTaskMaxLoad = 1.5
+
+	// DefaultTaskMinFreeMB is a gibibyte and a half, which is roughly what one
+	// more task needs to be worth starting: a child agent, a git worktree, and
+	// whatever build it is about to run. Starting one under that floor is how a
+	// machine reaches the OOM killer, and what the OOM killer takes is not the
+	// task that was too many — it is whichever process was largest, which on a
+	// developer's machine is usually theirs.
+	DefaultTaskMinFreeMB = 1536
 
 	// DefaultConsentTimeout is ten seconds, and it is a different number from
 	// the one above because it is a different KIND of clock. The task countdown
@@ -1073,6 +1136,45 @@ func (s *Settings) build() []Setting {
 				"check. 0 lets the first gap end the task, which is how it worked before.",
 			read:  func() string { return strconv.Itoa(TaskRepairRoundsAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyTaskRepairRounds, raw) },
+		},
+		// And beside those two, the three rows about how much work leaves at
+		// once. They sit together because they are one subject read at three
+		// depths: the number you may name, and the two things the machine itself
+		// will say no to whatever you named.
+		Setting{
+			Key: KeyTaskParallel, Category: CategorySpending, Kind: SettingCount,
+			Label: "tasks at once", EmptyLabel: "no limit",
+			Hint: "how many tasks may run at the same time. Blank is no limit, which is the " +
+				"default: what actually runs out is this machine — the two rows below hold new " +
+				"tasks back when it is loaded — and the model provider's own rate limit, which " +
+				"aforge already paces itself against. A cap is a queue, never a refusal.",
+			read: func() string {
+				if value := TaskParallelAt(dir); value > 0 {
+					return strconv.Itoa(value)
+				}
+				return ""
+			},
+			write: func(raw string) error { return writeOptionalCount(dir, KeyTaskParallel, raw) },
+		},
+		Setting{
+			Key: KeyTaskMaxLoad, Category: CategorySpending, Kind: SettingText,
+			Label: "busy machine",
+			Hint: "the load average per core at which aforge stops starting new tasks — 1.5 by " +
+				"default, which is where the machine is handing out slices rather than running " +
+				"work. Tasks already running are never touched, so the queue moves again on " +
+				"its own. 0 stops watching the load.",
+			read:  func() string { return formatNumber(TaskMaxLoadAt(dir)) },
+			write: func(raw string) error { return writeProfileNumber(dir, KeyTaskMaxLoad, raw) },
+		},
+		Setting{
+			Key: KeyTaskMinFreeMB, Category: CategorySpending, Kind: SettingCount,
+			Label: "memory floor",
+			Hint: "how many MB of memory must be available before another task may start — " +
+				"1536 by default, roughly what one more task and its build need. Under it, new " +
+				"tasks wait rather than push the machine into swap; running ones carry on. " +
+				"0 stops watching memory.",
+			read:  func() string { return strconv.Itoa(TaskMinFreeMBAt(dir)) },
+			write: func(raw string) error { return writeProfileCount(dir, KeyTaskMinFreeMB, raw) },
 		},
 		// Which model the work that LEAVES a conversation runs on. It sits with
 		// the countdown and the audit rather than among the model rows for the
@@ -2115,6 +2217,37 @@ func TaskRepairRoundsAt(profileDir string) int {
 	return DefaultTaskRepairRounds
 }
 
+// TaskParallelAt resolves how many tasks may run at once. 0 is no limit, and
+// no limit is the default.
+//
+// A persisted 0 is a VALUE and not an absence, for [TaskAutoApproveAt]'s
+// reason — though here the value and the default agree, so the test that
+// matters is the other direction: a person who wrote 2 must not find it gone.
+func TaskParallelAt(profileDir string) int {
+	if value, ok := persistedInt(profileDir, KeyTaskParallel); ok && value >= 0 {
+		return value
+	}
+	return DefaultTaskParallel
+}
+
+// TaskMaxLoadAt resolves the per-core load average above which no new task is
+// started. 0 turns the check off.
+func TaskMaxLoadAt(profileDir string) float64 {
+	if value, ok := persistedFloat(profileDir, KeyTaskMaxLoad); ok && value >= 0 {
+		return value
+	}
+	return DefaultTaskMaxLoad
+}
+
+// TaskMinFreeMBAt resolves the available-memory floor under starting a task, in
+// mebibytes. 0 turns the check off.
+func TaskMinFreeMBAt(profileDir string) int {
+	if value, ok := persistedInt(profileDir, KeyTaskMinFreeMB); ok && value >= 0 {
+		return value
+	}
+	return DefaultTaskMinFreeMB
+}
+
 // TaskModelAt resolves the model tasks run on, as the person wrote it. Empty
 // is the ordinary answer and means "the conversation's own": the row is an
 // override, and whether the name in it exists is a question only the catalog
@@ -2143,6 +2276,26 @@ func ConsentTimeoutAt(profileDir string) int {
 // to ctxbudget; a plain count has neither.
 func writeProfileCount(profileDir, key, raw string) error {
 	value, err := parseCount(raw)
+	if err != nil {
+		return err
+	}
+	return writeProfileValue(profileDir, key, value)
+}
+
+// writeOptionalCount is [writeProfileCount] for a row whose ZERO IS ITS EMPTY
+// READING — task.parallel shows "no limit" rather than "0" (its EmptyLabel), so
+// a person who opens it, clears it and saves is asking for exactly that, and a
+// row that answered "that's not a whole number" would be punishing them for
+// reading it the way it is written.
+func writeOptionalCount(profileDir, key, raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return writeProfileValue(profileDir, key, 0)
+	}
+	return writeProfileCount(profileDir, key, raw)
+}
+
+func writeProfileNumber(profileDir, key, raw string) error {
+	value, err := parseNumber(raw)
 	if err != nil {
 		return err
 	}
@@ -2452,6 +2605,17 @@ func parsePercent(raw string, low, high int) (int, error) {
 	return value, nil
 }
 
+// parseNumber reads a row that is a plain non-negative figure rather than a
+// count — a load average is 1.5 and rounding it to 1 or 2 would be the row
+// changing what the person asked for.
+func parseNumber(raw string) (float64, error) {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || value < 0 {
+		return 0, fmt.Errorf("that's not a number")
+	}
+	return value, nil
+}
+
 func parseCount(raw string) (int, error) {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || value < 0 {
@@ -2477,6 +2641,12 @@ func formatDollars(value float64) string {
 }
 
 func formatPercent(value int) string { return strconv.Itoa(value) + "%" }
+
+// formatNumber writes a plain figure back the shortest way that is still the
+// same number: 1.5 stays 1.5 and 2 does not become 2.0.
+func formatNumber(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
 
 func formatBool(value bool) string {
 	if value {

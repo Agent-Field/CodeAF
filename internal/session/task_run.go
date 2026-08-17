@@ -88,14 +88,6 @@ import (
 )
 
 const (
-	// taskMaxRunning is how many nodes work at once. Two, because a node is a
-	// whole agent — its own model calls, its own build, its own checkout — and
-	// the person is running one conversation beside them on the same machine. A
-	// third RUNNABLE node is not an error and never refuses the tool: it sits on
-	// the frontier and starts when a slot frees, which is what a queue in a
-	// graph is for.
-	taskMaxRunning = 2
-
 	// taskDeadline bounds one node's whole life. An hour is a long build, the
 	// reading around it, and the audit after it; past that the node is not
 	// working, it is stuck, and a stuck node that never ends holds a slot and
@@ -130,6 +122,24 @@ const (
 	// the same call, and it fires in a minute rather than in thirty.
 	taskMaxSteps   = 200
 	taskNoProgress = 6
+)
+
+// The three things a node can be waiting on, spelled once. They are the
+// strings [TaskNotice.Waiting] carries, and every one of them is a word about
+// the WORK rather than about the machinery that produced it: a person reading
+// a card wants to know their task is not moving and roughly whose fault that
+// is, and "429", "AIMD" and "governor" are three ways of telling them about
+// this package instead.
+const (
+	// waitingSlot is the person's own task.parallel cap holding a ready node.
+	waitingSlot = "slot"
+	// waitingMachineBusy is the admission governor holding it: this machine is
+	// carrying more than the load or the memory floor allows (task_pressure.go).
+	waitingMachineBusy = "machine busy"
+	// waitingRateLimited is a RUNNING node whose call is parked on the
+	// provider's pacing (internal/provider's patience.go). It is the only one of
+	// the three that is true of a node with a worktree and a child agent.
+	waitingRateLimited = "rate limited"
 )
 
 // The three merge outcomes, and the fourth that says a branch never came home.
@@ -222,12 +232,28 @@ type TaskNode struct {
 	// interrupt a recovery has consumed. It is history, and it is written down so
 	// that exactly one recovery ever consumes it.
 	interrupted bool
-	// queuedSaid marks the one "queued" update this node ever sends. A node
+	// queuedSaid marks that this node's "queued" update has been sent. A node
 	// waiting behind the cap or behind an edge must show up on the surface —
 	// otherwise admitted work is invisible until it starts — but a frontier pass
 	// runs on every completion, and a node that announced itself on each of them
-	// would be a card redrawing itself for news that has not changed.
+	// would be a card redrawing itself for news that has not changed. So the
+	// queued update is sent once, and again only when [TaskNode.held] changes
+	// under it, which is news.
 	queuedSaid bool
+	// held is why the frontier is not starting this queued node, in the plain
+	// words [TaskNotice.Waiting] carries: waitingSlot, waitingMachineBusy, or ""
+	// for a node whose own edges are the answer — a dependent waiting on its
+	// prerequisites has nothing to say here that DependsOn does not already say.
+	//
+	// It is written by the frontier and cleared the moment the node starts or
+	// fails, so a landed node never carries a reason it is waiting.
+	held string
+	// paced counts this node's calls that are parked on the provider's pacing
+	// (internal/provider's patience.go). A count and not a flag because a node
+	// is an agent and an agent can have more than one call out — a repair round
+	// beside an audit — and the node stops being paced when the LAST of them
+	// gets through, not when the first does.
+	paced int
 	// cancel ends this node's run: the deadline's context, cancelled early by
 	// jobs kill or by Close.
 	cancel context.CancelFunc
@@ -282,6 +308,42 @@ type TaskGraph struct {
 	seq     uint64
 	running int
 
+	// limit is how many nodes may RUN AT ONCE, and 0 IS NO LIMIT
+	// (session.Config's TaskParallel, config.KeyTaskParallel).
+	//
+	// It used to be a constant here, and the constant was two: a node is a whole
+	// agent — its own model calls, its own build, its own checkout — and the
+	// person is running one conversation beside them on the same machine. That
+	// reasoning was right about what a node costs and wrong about where the
+	// ceiling is. Two was a number standing in for a resource nobody had
+	// measured, and on a machine with cores to spare it left them spare while a
+	// queue of ready work sat still. So THE CAP STOPPED BEING THE RESOURCE
+	// MODEL. What bounds a run now is the two ceilings that are really there —
+	// the machine's, in task_pressure.go's governor, and the provider's, in the
+	// adaptive limiter every call already goes through (internal/provider's
+	// limiter.go) — and this is what is left of the old constant: a number a
+	// person may set when they want one, off by default.
+	//
+	// What has not changed is what a cap MEANS. It is a QUEUE and never a
+	// refusal: a runnable node past the cap sits on the frontier and starts when
+	// a slot frees, which is what a queue in a graph is for.
+	limit int
+
+	// governor is the machine's own answer to "may one more node start"
+	// (task_pressure.go), and nil is no governor: every scripted graph in the
+	// tests, and a session whose person zeroed both rows.
+	governor *admissionGovernor
+	// polling says a poll is already armed to re-ask the governor. The frontier
+	// is otherwise entirely CAUSED — an admission, a landing, a resolution — and
+	// a machine getting quieter causes nothing this process can hear, so a
+	// queue held on pressure is the one case that needs a clock. One timer at a
+	// time, re-armed by the pass it wakes only while the hold is still there.
+	polling bool
+	// pollEvery is how long that timer waits, and 0 is taskPressurePoll. It is a
+	// field for the tests: five real seconds is the right cadence for a machine
+	// and the wrong one for a test suite.
+	pollEvery time.Duration
+
 	// run executes one node to completion and calls [TaskGraph.complete] when
 	// it lands. It is a field rather than a method so the graph can be exercised
 	// with a scripted runner — the scheduling law (readiness, the cap, brief
@@ -312,6 +374,12 @@ func (a *Agent) graph() *TaskGraph {
 		graph := newTaskGraph()
 		graph.run = a.runTaskNode
 		graph.report = a.reportTaskNode
+		// The two ceilings, resolved once for the life of the session. They are
+		// read off the config rather than off the settings file for the reason
+		// every other task row is: a scheduler that re-read a person's profile
+		// mid-run would be a run whose rules changed under it.
+		graph.limit = a.config.TaskParallel
+		graph.governor = newAdmissionGovernor(a.config.TaskMaxLoad, a.config.TaskMinFreeMB)
 		// The checkpoint is per-journal, so a session with no file gets a graph
 		// with no disk behind it rather than a session that refuses to run tasks
 		// (task_store.go).
@@ -362,17 +430,31 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 // runFrontier is the scheduler, and it is the whole of it.
 //
 // One pass: fail every queued node whose dependencies cannot be met, start
-// every queued node whose dependencies are all done until the cap is full. A
-// node that fails here unlocks nothing, so its own dependents are failed by the
-// pass this one tail-calls — a cascade walks the graph one layer per pass
+// every queued node whose dependencies are all done and that nothing is holding
+// back. A node that fails here unlocks nothing, so its own dependents are failed
+// by the pass this one tail-calls — a cascade walks the graph one layer per pass
 // rather than needing a recursive walk holding the lock.
+//
+// THREE THINGS CAN HOLD A READY NODE, and a held node says which on the wire
+// ([TaskNotice.Waiting]): the person's own cap ([TaskGraph.limit]), this
+// machine's load or memory ([TaskGraph.governor]), and — for a node that is
+// already running — the provider pacing its calls, which is set from the far
+// end (see [TaskNode.pacing]). Every one of them is a HOLD ON STARTING and
+// never a refusal: the node stays queued, and the next pass asks again.
 //
 // It is called after admission and after every completion, and it is safe to
 // call when nothing can move: the cost of a pass with nothing to do is one lock
 // and a walk of the order slice.
 func (g *TaskGraph) runFrontier() {
+	// The machine is asked BEFORE the lock and at most once a pass. It is two
+	// small file reads behind a one-second cache, and the graph's lock is held
+	// by everything that announces a node — no reading of /proc belongs under
+	// it, however cheap.
+	busy := g.governor.holds()
+
 	g.mu.Lock()
 	var starting, failing, waiting []*TaskNode
+	machineHeld := false
 	for _, id := range g.order {
 		node := g.nodes[id]
 		if node == nil || node.state != TaskQueued {
@@ -382,12 +464,31 @@ func (g *TaskGraph) runFrontier() {
 		if blocked != "" {
 			node.state = TaskFailed
 			node.report = blocked
+			node.held = ""
 			failing = append(failing, node)
 			continue
 		}
-		if !ready || g.running >= taskMaxRunning {
-			if !node.queuedSaid {
+		// What is holding this node, in the words the surface draws. A node that
+		// is not ready is held by its own edges and says NOTHING here: DependsOn
+		// is already on the notice, and a second word for the same fact would be
+		// the wire saying it twice.
+		hold := ""
+		switch {
+		case !ready:
+		case g.limit > 0 && g.running >= g.limit:
+			hold = waitingSlot
+		case busy:
+			hold = waitingMachineBusy
+			machineHeld = true
+		}
+		if !ready || hold != "" {
+			// ANNOUNCE ON CHANGE, which is Mending's discipline: the first time
+			// a node is seen waiting, and again whenever the reason under it
+			// moves — a slot hold that becomes a machine hold is news, and a
+			// frontier pass that found nothing new is not.
+			if !node.queuedSaid || node.held != hold {
 				node.queuedSaid = true
+				node.held = hold
 				waiting = append(waiting, node)
 			}
 			continue
@@ -397,10 +498,18 @@ func (g *TaskGraph) runFrontier() {
 		node.brief = g.briefLocked(node)
 		node.state = TaskRunning
 		node.started = time.Now()
+		// The hold is lifted by the start itself, so the running update this
+		// node is about to send carries no reason to be waiting.
+		node.held = ""
 		g.running++
 		starting = append(starting, node)
 	}
 	g.mu.Unlock()
+
+	// A machine hold is the one hold nothing will come along and lift.
+	if machineHeld {
+		g.armPoll()
+	}
 
 	// The pass's transitions reach the disk BEFORE the runs they authorize start:
 	// a node that is running in this process must never be a node the checkpoint
@@ -426,6 +535,39 @@ func (g *TaskGraph) runFrontier() {
 	if len(failing) > 0 {
 		g.runFrontier()
 	}
+}
+
+// armPoll sets the one clock this scheduler has.
+//
+// Everything else that turns the frontier is CAUSED — a node was admitted, a
+// node landed, a person resolved one — and every cause is something this
+// process did. A machine getting quieter is not: somebody else's build
+// finishing is not an event, and a queue held on pressure with nothing running
+// beside it would wait forever for a completion that is never coming. So a
+// held pass arms a timer, and the pass that timer wakes arms the next one only
+// if the hold is still there. When the hold lifts the nodes start, nothing
+// re-arms, and the clock stops existing again.
+//
+// ONE TIMER AT A TIME. Ten held nodes are one hold, and a pass that armed a
+// timer per node would poll ten times a period for one reading.
+func (g *TaskGraph) armPoll() {
+	g.mu.Lock()
+	if g.polling {
+		g.mu.Unlock()
+		return
+	}
+	g.polling = true
+	every := g.pollEvery
+	g.mu.Unlock()
+	if every <= 0 {
+		every = taskPressurePoll
+	}
+	time.AfterFunc(every, func() {
+		g.mu.Lock()
+		g.polling = false
+		g.mu.Unlock()
+		g.runFrontier()
+	})
 }
 
 // readinessLocked answers two questions at once: may this node start, and is it
@@ -710,6 +852,38 @@ func (n *TaskNode) mending(line string) {
 	}
 }
 
+// pacing records that one of this node's calls has parked on the provider's
+// pacing, or has stopped being parked, and TELLS THE WORLD when that changes
+// what the node's card should say.
+//
+// It is [TaskNode.mending]'s shape for [TaskNode.mending]'s reason. A node
+// whose provider is rate limiting it is a node that will sit there for minutes
+// looking exactly like a node that is working, and the person watching it
+// deserves the one word that distinguishes those. The state does not move — a
+// paced node is a RUNNING node — so this is an update and never a landing.
+//
+// IT IS CALLED FROM THE PROVIDER'S OWN GOROUTINE, inside the send that is
+// waiting (internal/provider's patience.go), so it does the least a signal can
+// do: a counter under the graph's lock and, only on a change, one announce.
+// The running check is what keeps a call that parked and was then cancelled
+// from announcing anything about a node that has already landed.
+func (n *TaskNode) pacing(parked bool) {
+	n.graph.mu.Lock()
+	before := n.paced > 0
+	switch {
+	case parked:
+		n.paced++
+	case n.paced > 0:
+		n.paced--
+	}
+	changed := before != (n.paced > 0)
+	running := n.state == TaskRunning
+	n.graph.mu.Unlock()
+	if changed && running {
+		n.graph.announce(n)
+	}
+}
+
 // claimSettle claims a node that NEEDS A LOOK for exactly one resolution, and
 // the state check is part of the claim rather than a question asked before it.
 //
@@ -884,6 +1058,14 @@ func (n *TaskNode) notice() TaskNotice {
 	}
 	changed := make([]string, len(n.changed))
 	copy(changed, n.changed)
+	// The two halves of Waiting, and they cannot both be true of one node: held
+	// is written only while a node is queued, paced only while its child agent
+	// is making calls. A running node that is parked on the provider is the one
+	// that outranks, because it is the one that is happening now.
+	waiting := n.held
+	if n.state == TaskRunning && n.paced > 0 {
+		waiting = waitingRateLimited
+	}
 	return TaskNotice{
 		ID:        n.id,
 		Title:     n.spec.title,
@@ -895,6 +1077,7 @@ func (n *TaskNode) notice() TaskNotice {
 		Branch:    n.branch,
 		Merge:     n.merge,
 		Mending:   n.mend,
+		Waiting:   waiting,
 		Model:     n.spec.model,
 		CostUSD:   cost,
 	}
@@ -1609,6 +1792,11 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent,
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
+		// InTask is also what makes this agent's calls PATIENT with a provider
+		// that is pacing them (agent.go's sessionCompleter), and this is how the
+		// node hears about it while it happens: a card that would otherwise show
+		// a task working says it is waiting instead.
+		pacing:         node.pacing,
 		SupportsImages: parent.SupportsImages,
 		RolesSource:    parent.RolesSource,
 		SearchProvider: parent.SearchProvider,

@@ -184,6 +184,24 @@ var settingUI = map[string]settingMeta{
 		about: "times a task that came back with something missing is sent back to " +
 			"finish it before it lands as incomplete. 0 lets the first gap end it.",
 	},
+	// And the three that say how much of it happens at once: the number you may
+	// name, and the two readings of the machine that hold the next one back
+	// whatever you named.
+	config.KeyTaskParallel: {
+		tab: tabSession, label: "tasks at once", widget: widgetText,
+		about: "how many tasks may run at the same time. Blank is no limit — the machine " +
+			"and the provider are the real ceilings.",
+	},
+	config.KeyTaskMaxLoad: {
+		tab: tabSession, label: "busy machine", widget: widgetText,
+		about: "the load per core at which new tasks wait instead of starting. Running " +
+			"tasks are never touched. 0 stops watching.",
+	},
+	config.KeyTaskMinFreeMB: {
+		tab: tabSession, label: "memory floor", widget: widgetText,
+		about: "MB of memory that must be free before another task starts. 0 stops " +
+			"watching.",
+	},
 	// And beside it, the other thing that is true of every task you hand off:
 	// whose hands it goes into. It is answered by the PICKER, like the two tier
 	// rows below it and for the same reason — a row that asks "which model" and
