@@ -803,6 +803,31 @@ type app struct {
 	// they existed.
 	saveApproval     func(tool string) error
 	saveBashApproval func(command string) error
+	// applyApprovals is the door's LIVE seam for a line taken back in the
+	// permissions panel (permissions.go): it re-reads the person's approval rows
+	// and hands them to the gate this conversation is already running on. Nil is
+	// a surface whose drops land in the config and reach the running gate on the
+	// next session, and the receipt says so rather than claiming otherwise.
+	//
+	// It takes nothing because the config is the record: two callers passing
+	// their own reading of it is how a panel and a gate come to disagree about
+	// what was answered.
+	//
+	// STUB(lane C): the door side is not wired, because Options (tui3.go) and
+	// cmd/aforge/chatv3.go are not this lane's files. What is needed is one field
+	// `ApplyApprovals func() error` on Options beside SaveApproval and
+	// SaveBashApproval (tui3.go:235-236), one line `applyApprovals:
+	// opts.ApplyApprovals` in [newApp] beside saveBashApproval (app.go:875), and
+	// one line at chatv3.go:321 supplying it — a closure that builds the policy
+	// from settings.ProfileDir the way the session's own boot does and calls
+	// lane A's Agent.SetApprovalPolicy with it.
+	applyApprovals func() error
+
+	// permPanel is the list /permissions opens over the two approval rows the
+	// consent card writes into (permissions.go). It reads and writes the
+	// person's own config, so nothing about it depends on the door having wired
+	// anything; closed, it costs the frame nothing.
+	permPanel permPanel
 
 	// copy is the frozen viewport a person reads and yanks out of (copymode.go).
 	// Closed, it costs the frame nothing.
@@ -1243,6 +1268,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// (connectpanel.go, harnesspanel.go).
 			if a.harnPanel.open {
 				return a, a.harnessPanelPress(msg.Mouse().Y)
+			}
+			// AND THE PERMISSIONS PANEL IS THE THIRD OF THEM, on the same terms
+			// (permissions.go): a press on a row acts on that row, and a press
+			// anywhere else closes the list.
+			if a.permPanel.open {
+				return a, a.permPanelPress(msg.Mouse().Y)
 			}
 			if a.connPanel.open {
 				return a, a.connectPanelPress(msg.Mouse().Y)
@@ -2841,6 +2872,15 @@ func (a *app) slash(line string) tea.Cmd {
 		// No argument form. A service is picked from a list of two or three, and
 		// a name typed at a command line is a name that can be typed wrong.
 		a.openConnect()
+		return nil
+
+	case "permissions":
+		// What has already been answered, as a list, with the way to take one
+		// back on it. No argument form, for /connect's reason and one more: the
+		// lines here are globs and tool names a person banked by pressing a key
+		// on a card, so the only way anybody could name one at a command line is
+		// by reading it off this list first (permissions.go).
+		a.openPermissions()
 		return nil
 
 	case "harness", "harnesses":
