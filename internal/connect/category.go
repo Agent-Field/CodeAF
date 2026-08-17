@@ -17,8 +17,8 @@ package connect
 //
 // ── THE WORDS ARE A CLOSED LIST ──
 //
-// Thirteen of them, below, and a category outside that list is a mistake caught
-// by a test rather than a fourteenth heading that appears on somebody's screen
+// Eleven of them, below, and a category outside that list is a mistake caught
+// by a test rather than a twelfth heading that appears on somebody's screen
 // because a line here was typed in the plural. They are the words a person would
 // use — "billing", "calls & meetings" — not a taxonomy: nobody looking for
 // Stripe thinks "financial services", and a heading nobody thinks in is a
@@ -29,6 +29,18 @@ package connect
 // phone system and the other writes notes, because a person reaching for either
 // is reaching for the same half hour of their week.
 //
+// ── AND A WORD OVER ONE ROW IS NOT A CATEGORY ──
+//
+// There were thirteen words, and two of them stood over a single service each:
+// "accounting" over Odoo and "e-commerce" over FastSpring. On the screen that
+// browses this list a heading costs a blank line and a word — two lines to
+// introduce one row — and a person scanning for a payment processor does not
+// look under "e-commerce" for FastSpring or under "accounting" for their books
+// unless somebody already told them to. Both now sit under "billing", which is
+// this list's word for money and where a person reaching for either of them was
+// already going to look. A category is worth its heading at two rows and not at
+// one; when a third accounting service arrives the word comes back.
+//
 // ── AND WHY THERE IS NO "other" HERE ──
 //
 // Every service the catalog hands us has a word in this file, and a test says
@@ -37,13 +49,12 @@ package connect
 // honest — but an "other" heading in front of a person is this file being out of
 // date, not a category, so nothing here is ever deliberately left blank.
 
-// The thirteen words. They are constants so that a line below cannot quietly
-// invent a fourteenth heading by adding an s.
+// The eleven words. They are constants so that a line below cannot quietly
+// invent a twelfth heading by adding an s.
 const (
 	categoryCRM           = "crm"
 	categorySupport       = "support"
 	categoryBilling       = "billing"
-	categoryAccounting    = "accounting"
 	categoryMarketing     = "marketing"
 	categoryOutreach      = "sales & outreach"
 	categoryCalls         = "calls & meetings"
@@ -52,16 +63,14 @@ const (
 	categoryDeveloper     = "developer"
 	categoryProductivity  = "productivity"
 	categoryCommunication = "communication"
-	categoryCommerce      = "e-commerce"
 )
 
 // categories is every word this build files a service under, for the test that
 // walks the catalog and for anybody adding a line to the map below.
 var categories = []string{
-	categoryCRM, categorySupport, categoryBilling, categoryAccounting,
+	categoryCRM, categorySupport, categoryBilling,
 	categoryMarketing, categoryOutreach, categoryCalls, categoryAnalytics,
 	categoryHR, categoryDeveloper, categoryProductivity, categoryCommunication,
-	categoryCommerce,
 }
 
 // serviceCategories is every service the catalog opens with a key, filed.
@@ -106,47 +115,51 @@ var serviceCategories = map[string]string{
 	"dixa":                  categorySupport,
 	"dovetail":              categoryAnalytics,
 	"emailBison":            categoryOutreach,
-	"fastSpring":            categoryCommerce,
-	"fathom":                categoryCalls,
-	"fireflies":             categoryCalls,
-	"flatfile":              categoryDeveloper,
-	"freshchat":             categorySupport,
-	"freshdesk":             categorySupport,
-	"freshsales":            categoryCRM,
-	"freshservice":          categorySupport,
-	"front":                 categoryCommunication,
-	"g2":                    categoryMarketing,
-	"geckoboard":            categoryAnalytics,
-	"gladly":                categorySupport,
-	"gladlyQA":              categorySupport,
-	"granola":               categoryCalls,
-	"greenhouseJobBoard":    categoryHR,
-	"guru":                  categoryProductivity,
-	"happyfox":              categorySupport,
-	"heyreach":              categoryOutreach,
-	"hightouch":             categoryDeveloper,
-	"hive":                  categoryProductivity,
-	"housecallPro":          categoryCRM,
-	"hunter":                categoryOutreach,
-	"insightly":             categoryCRM,
-	"instantly":             categoryOutreach,
-	"instantlyAI":           categoryOutreach,
-	"iterable":              categoryMarketing,
-	"jotform":               categoryProductivity,
-	"jump":                  categoryCalls,
-	"justCall":              categoryCalls,
-	"kaseyaVSAX":            categorySupport,
-	"lemlist":               categoryOutreach,
-	"livestorm":             categoryCalls,
-	"loxo":                  categoryHR,
-	"mailgun":               categoryCommunication,
-	"maxio":                 categoryBilling,
-	"mixmax":                categoryOutreach,
-	"mixpanel":              categoryAnalytics,
-	"monaco":                categoryCRM,
-	"monday":                categoryProductivity,
-	"nutshell":              categoryCRM,
-	"odoo":                  categoryAccounting,
+	// Merchant of record for software: subscriptions, invoices and payouts.
+	// It is money, and it is filed with the rest of the money.
+	"fastSpring":         categoryBilling,
+	"fathom":             categoryCalls,
+	"fireflies":          categoryCalls,
+	"flatfile":           categoryDeveloper,
+	"freshchat":          categorySupport,
+	"freshdesk":          categorySupport,
+	"freshsales":         categoryCRM,
+	"freshservice":       categorySupport,
+	"front":              categoryCommunication,
+	"g2":                 categoryMarketing,
+	"geckoboard":         categoryAnalytics,
+	"gladly":             categorySupport,
+	"gladlyQA":           categorySupport,
+	"granola":            categoryCalls,
+	"greenhouseJobBoard": categoryHR,
+	"guru":               categoryProductivity,
+	"happyfox":           categorySupport,
+	"heyreach":           categoryOutreach,
+	"hightouch":          categoryDeveloper,
+	"hive":               categoryProductivity,
+	"housecallPro":       categoryCRM,
+	"hunter":             categoryOutreach,
+	"insightly":          categoryCRM,
+	"instantly":          categoryOutreach,
+	"instantlyAI":        categoryOutreach,
+	"iterable":           categoryMarketing,
+	"jotform":            categoryProductivity,
+	"jump":               categoryCalls,
+	"justCall":           categoryCalls,
+	"kaseyaVSAX":         categorySupport,
+	"lemlist":            categoryOutreach,
+	"livestorm":          categoryCalls,
+	"loxo":               categoryHR,
+	"mailgun":            categoryCommunication,
+	"maxio":              categoryBilling,
+	"mixmax":             categoryOutreach,
+	"mixpanel":           categoryAnalytics,
+	"monaco":             categoryCRM,
+	"monday":             categoryProductivity,
+	"nutshell":           categoryCRM,
+	// A whole business suite, reached here for the half of it a person keeps
+	// their invoices and their books in.
+	"odoo":                  categoryBilling,
 	"openAI":                categoryDeveloper,
 	"outplay":               categoryOutreach,
 	"paddle":                categoryBilling,
