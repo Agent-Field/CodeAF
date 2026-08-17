@@ -31,6 +31,10 @@ func sheetApp(t *testing.T) (*app, string) {
 		"AFORGE_ATTRIBUTION", "AFORGE_NERD_FONT", "AFORGE_CHAT_LINEAR",
 		"AFORGE_HISTORY", "AFORGE_DRAFT_PERSIST", "AFORGE_RAIL", "AFORGE_DOC_ENGINE",
 		"AFORGE_CONTEXT_FILL_PCT", "AFORGE_DAILY_BUDGET", "EXA_API_KEY", "JINA_API_KEY",
+		// The capability slots resolve their environment variable before the
+		// profile too, now that the profile is where their writes land.
+		"AFORGE_VISION_MODEL", "AFORGE_IMAGE_MODEL", "AFORGE_SPEECH_MODEL",
+		"AFORGE_MUSIC_MODEL", "AFORGE_VIDEO_MODEL", "AFORGE_VOICE_MODEL",
 	} {
 		t.Setenv(pin, "")
 	}

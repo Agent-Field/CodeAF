@@ -51,6 +51,12 @@ type scriptedMedia struct {
 	hold      chan struct{}
 }
 
+// Transcribe answers the hear lane's method with nothing: no test in this file
+// listens, and a scripted zero keeps the fake on the grown interface.
+func (p *scriptedMedia) Transcribe(_ context.Context, _ provider.TranscriptionRequest) (*provider.TranscriptionResponse, error) {
+	return &provider.TranscriptionResponse{}, nil
+}
+
 func (p *scriptedMedia) GenerateImage(_ context.Context, request provider.ImageRequest) (*provider.ImageResponse, error) {
 	p.mu.Lock()
 	p.seen = append(p.seen, request)

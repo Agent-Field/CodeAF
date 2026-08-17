@@ -981,10 +981,14 @@ func TestEachSlotFiltersTheModelsByWhatItNeeds(t *testing.T) {
 	// blind-chat publishes an input list WITHOUT a picture in it and is gone;
 	// gemini reads pictures and answers in pictures, so it is gone from here too,
 	// exactly as it is gone from the tier rows; the transcriber and the embedder
-	// are silent and read by their names, which say they do not talk. The silent
-	// row that no name marks falls through, because silence on this side is a
-	// cache written before the field travelled and not a refusal.
-	vision := []string{"anthropic/claude-sonnet-4.5", "moonshotai/kimi-k3"}
+	// are silent and read by their names, which say they do not talk.
+	//
+	// AND THE SILENT ROW NO NAME MARKS IS GONE TOO, which is the one silence law
+	// (docs/MULTIMODAL.md Decision 6): an unpublished modality list means
+	// text-in/text-out and nothing more, so sight is never assumed. It used to
+	// fall through here and be refused by the gate that actually sends the
+	// photo — a list that offers what the gate will reject.
+	vision := []string{"anthropic/claude-sonnet-4.5"}
 	if got := pickedIDs(a.sheet.sel); strings.Join(got, ",") != strings.Join(vision, ",") {
 		t.Fatalf("the looking row offers %v, want the models that see %v", got, vision)
 	}
@@ -1012,25 +1016,32 @@ func TestTheModalityPredicates(t *testing.T) {
 		{Model{ID: "vendor/audio-critic", Output: []string{"text"}, Input: []string{"text"}}, true, false},
 		// Silence, read by the id — the wider vocabulary, since a silent row has
 		// no other witness left.
-		{Model{ID: "moonshotai/kimi-k3"}, true, true},
-		{Model{ID: "openai/gpt-4o-transcribe-audio"}, false, true},
-		{Model{ID: "vendor/text-embedding-3"}, false, true},
-		{Model{ID: "elevenlabs/voice-v3"}, false, true},
-		{Model{ID: "openai/whisper-1"}, false, true},
-		{Model{ID: "google/lyria-3-preview"}, false, true},
-		{Model{ID: "vendor/music-gen"}, false, true},
-		{Model{ID: "bytedance/seedance-video-pro"}, false, true},
-		{Model{ID: "vendor/rerank-2"}, false, true},
-		{Model{ID: "openai/omni-moderation-latest"}, false, true},
-		{Model{ID: "google/imagen-4"}, false, true},
-		{Model{ID: "openai/gpt-4o-mini-tts"}, false, true},
-		{Model{ID: "openai/sora-2"}, false, true},
-		{Model{ID: "google/veo-3"}, false, true},
-		{Model{ID: "openai/dalle-3"}, false, true},
+		//
+		// THE SIGHT COLUMN IS FALSE ALL THE WAY DOWN, and that is the one
+		// silence law: an unpublished modality list means text-in/text-out and
+		// NOTHING MORE, so no silent row is assumed to see. Only a name that
+		// says sight in so many words — the vl and vision marks — earns it back.
+		{Model{ID: "moonshotai/kimi-k3"}, true, false},
+		{Model{ID: "qwen/qwen3.5-vl-32b-instruct"}, true, true},
+		{Model{ID: "vendor/vision-8b"}, true, true},
+		{Model{ID: "openai/gpt-4o-transcribe-audio"}, false, false},
+		{Model{ID: "vendor/text-embedding-3"}, false, false},
+		{Model{ID: "elevenlabs/voice-v3"}, false, false},
+		{Model{ID: "openai/whisper-1"}, false, false},
+		{Model{ID: "google/lyria-3-preview"}, false, false},
+		{Model{ID: "vendor/music-gen"}, false, false},
+		{Model{ID: "bytedance/seedance-video-pro"}, false, false},
+		{Model{ID: "vendor/rerank-2"}, false, false},
+		{Model{ID: "openai/omni-moderation-latest"}, false, false},
+		{Model{ID: "google/imagen-4"}, false, false},
+		{Model{ID: "openai/gpt-4o-mini-tts"}, false, false},
+		{Model{ID: "openai/sora-2"}, false, false},
+		{Model{ID: "google/veo-3"}, false, false},
+		{Model{ID: "openai/dalle-3"}, false, false},
 		// The marks are WHOLE WORDS of the id and never substrings, so a chat
 		// model whose name merely carries the letters survives.
-		{Model{ID: "vendor/videographer-8b"}, true, true},
-		{Model{ID: "vendor/audiophile"}, true, true},
+		{Model{ID: "vendor/videographer-8b"}, true, false},
+		{Model{ID: "vendor/audiophile"}, true, false},
 	} {
 		if got := chatModel(c.model); got != c.chat {
 			t.Fatalf("chatModel(%q, in=%v out=%v) = %v, want %v",

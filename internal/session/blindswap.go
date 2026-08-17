@@ -13,9 +13,10 @@ package session
 //
 // So the SWAP is the seam, and the resume beside it. A model that can see is
 // handed the conversation untouched. A model that cannot reads each picture's
-// PLACEHOLDER — [journalPart.placeholder], the same sentence a replay writes
-// for a file it can no longer open, naming the path, because the path is the
-// half a person can act on and the half the model can hand to view_image.
+// PLACEHOLDER — [journalPart.placeholderBecause], the replay sentence's shape
+// with this seam's own honest reason ("this model cannot see images") — naming
+// the path, because the path is the half a person can act on and the half the
+// model can hand to view_image.
 //
 // THREE THINGS ARE DELIBERATE. The journal is never rewritten, by stub.go's
 // law: the file is the RECORD, and the pictures in it are what a resume rebuilds
@@ -51,7 +52,7 @@ func (a *Agent) scrubBlindImagePartsLocked(model string) {
 				continue
 			}
 			path := a.file.imagePath(part)
-			placeholder := journalPart{Type: journalPartImage, Path: path}.placeholder()
+			placeholder := journalPart{Type: journalPartImage, Path: path}.placeholderBecause("this model cannot see images")
 			a.file.rememberImagePath(placeholder, path)
 			content[at] = placeholder
 		}

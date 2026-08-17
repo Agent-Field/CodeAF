@@ -24,6 +24,22 @@ var notASettingsRow = map[string]string{
 	"boost_model": "boost rides the work binding; the sheet must not offer a second door onto it",
 }
 
+// mediaSlotsMovedToTheProfile is the second exemption list, and it is separate
+// from the first because it is a different kind of statement: these fields are
+// not phantom rows, they are a store that stopped being the store.
+//
+// Under docs/MULTIMODAL.md Decision 5 the five capability slots are one knob
+// each, written into the PROFILE under the registry's own key and read back
+// there by every resolver — so the sheet fronts each of them, and none of them
+// fronts this file any more. The fields survive as the v1/v2 commander's legacy
+// first rung (internal/command's CurrentModel reads prefs, then the resolved
+// settings), which is what keeps a choice made on the old surface from
+// disappearing under someone.
+var mediaSlotsMovedToTheProfile = map[string]bool{
+	"voice_model": true, "image_model": true,
+	"speech_model": true, "music_model": true, "video_model": true,
+}
+
 // The other half of the completeness gate: a preference that persists beside
 // the graph has to be reachable from the settings sheet, or be exempted here in
 // writing. Adding a field to chatPrefs without registering the row that fronts
@@ -56,6 +72,16 @@ func TestEveryChatPreferenceIsFrontedByASettingsRow(t *testing.T) {
 		if reason := notASettingsRow[name]; reason != "" {
 			if _, fronted := fronted[name]; fronted {
 				t.Fatalf("chatPrefs.%s is both exempted (%s) and fronted by a row", field.Name, reason)
+			}
+			exempt++
+			continue
+		}
+		if mediaSlotsMovedToTheProfile[name] {
+			// The row exists and is reachable — it simply persists somewhere
+			// else now, so it carries no PrefsField. The gate that matters is
+			// still enforced: the slot has a settings row.
+			if _, ok := registry.Row(config.ModelSettingKey(strings.TrimSuffix(name, "_model"))); !ok {
+				t.Fatalf("chatPrefs.%s moved to the profile but has no settings row", field.Name)
 			}
 			exempt++
 			continue
