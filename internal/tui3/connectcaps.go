@@ -311,7 +311,10 @@ func (s *sheet) appendConnService(row connect.Status) {
 	}
 	open := row.Connected && s.conn.expanded == row.ID
 	entry := s.conn.entry
-	if entry == nil || entry.id != row.ID {
+	if entry == nil || entry.id != row.ID || row.Connected {
+		// A box open on an account that has since been connected — in another
+		// window, or by the answer this box itself sent — belongs to nothing.
+		// The row it was asking about is answered.
 		entry = nil
 	}
 	tag := ""
@@ -660,9 +663,18 @@ func (s *sheet) connRowLines(row *connRow, selected, hovered bool, width int, pa
 	// things you are choosing BETWEEN — it is wrong for the two or three rows
 	// that are the whole answer to "what have I connected", which a person came
 	// to this page to find rather than to pick from.
-	head := overlayLines(mark+" "+row.name, connNote(row), selected, false, hovered, width, pal)
+	note := connNote(row)
+	if note == row.tag && phoneList(width) {
+		// AT [tierPhone] THE TAG COSTS A WHOLE LINE, because a row with a tail is
+		// two lines there (palette.go) — and two hundred catalog rows at two lines
+		// each is a list nobody can reach the bottom of. The word it was carrying
+		// is one the foot line says about the row a person is actually on, so
+		// what is lost is a fact that was already somewhere better.
+		note = ""
+	}
+	head := overlayLines(mark+" "+row.name, note, selected, false, hovered, width, pal)
 	if row.connected && !selected && !hovered {
-		head = connHeadInk(mark+" "+row.name, connNote(row), width, pal)
+		head = connHeadInk(mark+" "+row.name, note, width, pal)
 	}
 	// And under it, whichever of the two things belongs to this row: the box
 	// somebody is answering, or the one line saying what the account may do.
@@ -692,6 +704,16 @@ func (s *sheet) connRowLines(row *connRow, selected, hovered bool, width int, pa
 // geometry is the same geometry: two cells of lead, the name, the fact flush
 // right, so a held row and a catalog row still start in the same column.
 func connHeadInk(label, note string, width int, pal palette) []string {
+	// THE TWO-LINE LAW AT [tierPhone] HOLDS HERE TOO. A held account's address is
+	// the half of the row a person came to read, and a header that kept one line
+	// on a phone would be cutting it in half to make room for a name it already
+	// fits (palette.go's [overlayLines]).
+	if overlayItemLines(width, note) == 2 {
+		return []string{
+			"  " + pal.bold(pal.ink(fit(label, width-2))),
+			strings.Repeat(" ", overlayIndent) + pal.dim(fit(note, width-overlayIndent)),
+		}
+	}
 	room := width - 2
 	if note != "" {
 		room -= ansi.StringWidth(note) + 1
@@ -819,7 +841,7 @@ func capNote(state connect.CapabilityState) string {
 }
 
 // capWordCells is the width of that column: the longest of the three words.
-var capWordCells = len(capAskWord)
+const capWordCells = len(capAskWord)
 
 // capWord is the state as a person reads it. A state this surface does not know
 // draws NOTHING rather than its raw value: a word nobody wrote for a reader is
@@ -1117,6 +1139,11 @@ func (a *app) disconnectService(row *connRow) tea.Cmd {
 // standing on a row, then the service that is open, and only then the sheet
 // itself (settings.go backs the search out above both).
 //
+// THE KEY BOX IS NOT A RUNG HERE and is a nearer one than any of these: while it
+// is open it owns every key on this sheet, esc included, and it backs itself out
+// ([app.connEntryKey]). A second reading of that here would be a second place
+// deciding what esc means to a box.
+//
 // It reports whether it took the key. Nothing here leaves the TAB — esc on a
 // settings sheet closes the sheet, and a key that walked back to the previous
 // page would be this one tab inventing a meaning for it.
@@ -1126,15 +1153,6 @@ func (a *app) connEsc() bool {
 		return false
 	}
 	switch {
-	case s.conn.entry != nil:
-		// The box first, nearest as always: what is on screen to dismiss is the
-		// thing somebody is typing into, and what was typed goes with it rather
-		// than being kept somewhere for later — a half-entered secret is not a
-		// draft (connect.go says it first, about the offer's own box).
-		was := s.conn.entry.id
-		s.conn.entry = nil
-		s.rebuildConnAt(&connRow{kind: connService, service: was})
-		return true
 	case s.conn.armed:
 		s.conn.armed = false
 	case s.conn.expanded != "":

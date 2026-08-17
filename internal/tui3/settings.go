@@ -857,7 +857,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case s.sel != nil:
 		a.sheetSelectKey(msg)
 		return nil, true
-	case s.conn.entry != nil:
+	case s.conn.entry != nil && s.onConnections():
 		// AND THE KEY BOX ON THE ACCOUNTS TAB, on the same terms as the two
 		// above it: a box that has the keyboard has ALL of it. Every other key
 		// on this sheet types into the search box, and a surface that let a
@@ -935,12 +935,12 @@ func (s *sheet) tabBy(delta int) {
 	}
 	s.tab = moveCursor(s.tab, delta, len(settingTabs))
 	s.cursor, s.top, s.msg = 0, 0, ""
-	// A confirmation does not survive the page it was asked on: leaving the tab
-	// is as much a way of not answering it as moving off the row is
-	// (connectcaps.go). What stays open is the SERVICE, because coming back to a
-	// tab you left half-read and finding it collapsed is the tab forgetting
-	// where you were.
-	s.conn.armed = false
+	// A confirmation does not survive the page it was asked on, and neither does
+	// a half-typed key: leaving the tab is as much a way of not answering either
+	// of them as moving off the row is (connectcaps.go). What stays open is the
+	// SERVICE, because coming back to a tab you left half-read and finding it
+	// collapsed is the tab forgetting where you were.
+	s.conn.armed, s.conn.entry = false, nil
 	s.build()
 }
 
@@ -1131,7 +1131,7 @@ func (a *app) sheetPress(x, y int) tea.Cmd {
 			}
 			a.sheet.tab = tab
 			a.sheet.cursor, a.sheet.top, a.sheet.msg = 0, 0, ""
-			a.sheet.conn.armed = false
+			a.sheet.conn.armed, a.sheet.conn.entry = false, nil
 			a.sheet.build()
 			a.touch()
 		}
