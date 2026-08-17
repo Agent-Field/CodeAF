@@ -272,6 +272,32 @@ func listTop(cursor, top, count, height int) int {
 // moving, so hover stays one step off the terminal's own black and selection is
 // the stronger band above it.
 func overlayRow(label, note string, selected, marked, hovered bool, width int, pal palette) string {
+	return overlayRowTinted(label, note, nil, selected, marked, hovered, width, pal)
+}
+
+// noteInk is how a row's trailing fact is painted, for the one list where the
+// tail is not a fact but an ANSWER (connectcaps.go's capability rows: yes, ask
+// first, off). Every other list wants the rule below — dim, and ink on the
+// selected row — and passes nil to say so.
+//
+// It is a hook rather than a second row-drawing function because the row is the
+// row: the lead, the band, the hover step and the two-line law at [tierPhone]
+// are decided in one place for every list on this surface, and a list that drew
+// its own would be a second grammar to keep in step.
+type noteInk func(pal palette, note string, selected bool) string
+
+// paintNote is the ordinary rule, and the hook where one was given.
+func paintNote(tint noteInk, pal palette, note string, selected bool) string {
+	if tint != nil {
+		return tint(pal, note, selected)
+	}
+	if selected {
+		return pal.ink(note)
+	}
+	return pal.dim(note)
+}
+
+func overlayRowTinted(label, note string, tint noteInk, selected, marked, hovered bool, width int, pal palette) string {
 	lead := overlayLead(selected, hovered, pal)
 	room := width - 2
 	if note != "" {
@@ -300,11 +326,7 @@ func overlayRow(label, note string, selected, marked, hovered bool, width int, p
 		// THE NOTE IS INSIDE THE BAND, so it is painted as part of it: dim ink
 		// on the selection background is grey on grey, and the tail is the half
 		// of the row a person is reading when they stop on it.
-		tail := pal.dim(note)
-		if selected {
-			tail = pal.ink(note)
-		}
-		line += strings.Repeat(" ", gap) + tail
+		line += strings.Repeat(" ", gap) + paintNote(tint, pal, note, selected)
 	}
 	switch {
 	case selected:
@@ -373,8 +395,12 @@ func overlayItemLines(width int, note string) int {
 // overlayLines is one row as the lines it takes: [overlayRow] everywhere, and
 // the label/tail pair at [tierPhone].
 func overlayLines(label, note string, selected, marked, hovered bool, width int, pal palette) []string {
+	return overlayLinesTinted(label, note, nil, selected, marked, hovered, width, pal)
+}
+
+func overlayLinesTinted(label, note string, tint noteInk, selected, marked, hovered bool, width int, pal palette) []string {
 	if overlayItemLines(width, note) == 1 {
-		return []string{overlayRow(label, note, selected, marked, hovered, width, pal)}
+		return []string{overlayRowTinted(label, note, tint, selected, marked, hovered, width, pal)}
 	}
 	head := overlayLead(selected, hovered, pal)
 	painted := fit(label, width-2)
@@ -394,13 +420,8 @@ func overlayLines(label, note string, selected, marked, hovered bool, width int,
 	// The tail keeps the row's own ink rule: dim, and ink on the selected row,
 	// because dim grey on the selection band is grey on grey — and the tail is
 	// the half of the row a person stopped on the row to read.
-	tail := fit(note, width-overlayIndent)
-	if selected {
-		tail = pal.ink(tail)
-	} else {
-		tail = pal.dim(tail)
-	}
-	tail = strings.Repeat(" ", overlayIndent) + tail
+	tail := strings.Repeat(" ", overlayIndent) +
+		paintNote(tint, pal, fit(note, width-overlayIndent), selected)
 
 	switch {
 	case selected:
