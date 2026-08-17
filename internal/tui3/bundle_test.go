@@ -1431,7 +1431,13 @@ func TestTheLegendCarriesThePlaceAndTheInputsAffordances(t *testing.T) {
 // before the path is touched.
 func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	a, _, _ := hudApp(t)
-	a.branch, a.branchDirty = "feature/the-very-long-branch-name", false
+	// The branch is long enough that the two cannot share an eighty-column frame.
+	// The microcopy is one affordance now rather than two (render.go), so the rung
+	// of the ladder where the branch stands alone is reached by a longer name
+	// rather than by a narrower frame — the ORDER is the law, and the width it
+	// bites at is a consequence of how much there is to say.
+	const branch = "feature/the-very-long-branch-name-that-goes-on-and-on"
+	a.branch, a.branchDirty = branch, false
 
 	tight := plain(a.legend(60))
 	if strings.Contains(tight, microcopy) || strings.Contains(tight, "feature/") {
@@ -1442,11 +1448,11 @@ func TestTheLegendDropsTheMicrocopyBeforeTheBranch(t *testing.T) {
 	}
 
 	// Between the two: room for the branch, not for both.
-	middle := plain(a.legend(75))
+	middle := plain(a.legend(80))
 	if strings.Contains(middle, microcopy) {
 		t.Fatalf("the microcopy outlived the branch: %q", middle)
 	}
-	if !strings.Contains(middle, "feature/the-very-long-branch-name") {
+	if !strings.Contains(middle, branch) {
 		t.Fatalf("the branch was dropped before the microcopy: %q", middle)
 	}
 

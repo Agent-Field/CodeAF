@@ -65,6 +65,13 @@ type row struct {
 	entry int // index into app.entries; -1 for a blank or the fold line
 	hit   hitKind
 	turn  int // the turn a fold line folds
+	// links are the task references drawn in this row's own columns
+	// (markdown.go). They are the one thing on the transcript a click resolves
+	// by COLUMN rather than by row, and they are recorded here for the reason
+	// the strip's chips and the status row's model segment record theirs: the
+	// geometry is written where it is decided, because a hit-test that
+	// recomputed it would be measuring a row the frame has not drawn.
+	links []taskLink
 }
 
 // toolWindow is how many of a turn's tool calls stay on screen. Three is the
@@ -280,7 +287,17 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 					at = hitModel
 				}
 			}
-			out = append(out, row{text: text, entry: i, hit: at})
+			drawn := row{text: text, entry: i, hit: at}
+			// THE LINK PASS RUNS ON THE MODEL'S OWN ROWS AND ON NOTHING ELSE
+			// (markdown.go). It is applied HERE — after the block was rendered and
+			// wrapped, at the moment its rows become screen geometry — because a
+			// link's columns are a fact about the row it landed on, and the row it
+			// lands on is decided by a wrap this pass must not have an opinion
+			// about.
+			if e.kind == entryAssistant {
+				drawn.text, drawn.links = a.linkTasks(text)
+			}
+			out = append(out, drawn)
 		}
 		wasCluster = false
 		wasBlock = e.kind == entryTask
@@ -1428,9 +1445,9 @@ const waitingWord = "waiting · your call"
 // you nothing. The branch follows it with a "*" when the tree is dirty, which
 // is the one bit of git state a person acts on without asking for more.
 //
-// RIGHT IS WHAT THIS BOX ANSWERS TO. Two affordances of the input line itself —
-// "@ files · / commands" — and they are here rather than in the status line for
-// the reason they exist at all: they are about the thing directly below them.
+// RIGHT IS WHAT THIS BOX ANSWERS TO. The affordance of the input line itself —
+// "/ commands" — and it is here rather than in the status line for the reason it
+// exists at all: it is about the thing directly below it.
 // While a state has keys of its own the hints REPLACE them (see [app.hintWord]),
 // because the two are the same slot answering the same question, and a
 // cheatsheet beside a live prompt is a cheatsheet nobody reads.
@@ -1440,8 +1457,18 @@ const waitingWord = "waiting · your call"
 // behind this one says it), then the path abbreviates harder. The last thing
 // standing is the rule it always was.
 
-// microcopy is the input's own two affordances, and the legend's default right.
-const microcopy = "@ files · / commands"
+// microcopy is the input's own affordance, and the legend's default right.
+//
+// IT NAMES ONE KEY AND IT USED TO NAME TWO. "@ files" was true — the completion
+// still opens on "@" and always will (files.go, taskmention.go) — and it was
+// still the wrong half to print, because the two keys are not the same KIND of
+// thing. "/" opens a list of everything this surface can be told to do, which is
+// the door a person who does not know what to press is looking for; "@" is a
+// shortcut inside a sentence somebody is already writing, and a person writing a
+// sentence about a file discovers it by typing the character that is already in
+// their head. Printing both made the slot a two-item menu, and a two-item menu
+// beside a live prompt is read once and then never again.
+const microcopy = "/ commands"
 
 // legend draws that border. It replaces the plain rule at every width, and
 // degrades back into it when there is no room for anything else.

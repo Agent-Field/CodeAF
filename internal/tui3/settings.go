@@ -1179,18 +1179,33 @@ func sheetTitle(width int, s *sheet, pal palette) string {
 	return left + strings.Repeat(" ", gap) + pal.dim(right)
 }
 
-// tabSpan is where one tab's word sits on the bar, so the render and the click
-// agree about it.
+// tabSpan is where one tab's CHIP sits on the bar, so the render and the click
+// agree about it. It covers the chip's padding as well as its word: the cell
+// beside "Context" is part of Context, because a one-cell miss between two words
+// is a miss people make and a bar that answered it with nothing would be a bar
+// that has to be aimed at.
 type tabSpan struct{ from, to int }
 
-const tabGap = 3
+const (
+	// tabGap is what is left between two chips once each carries its own air.
+	tabGap = 1
+	// tabPad is that air, one cell each side — the same chip the task strip
+	// wears (taskstrip.go), because the two rows are the same object in two
+	// places and a person should not have to learn it twice.
+	tabPad     = " "
+	tabPadCols = 2
+	// tabLead is the bar's left margin, which every other line of this panel
+	// keeps as well.
+	tabLead = 1
+)
 
 func tabSpans() []tabSpan {
 	spans := make([]tabSpan, 0, len(settingTabs))
-	at := 1
+	at := tabLead
 	for _, title := range settingTabs {
-		spans = append(spans, tabSpan{from: at, to: at + len(title)})
-		at += len(title) + tabGap
+		width := len(title) + tabPadCols
+		spans = append(spans, tabSpan{from: at, to: at + width})
+		at += width + tabGap
 	}
 	return spans
 }
@@ -1207,22 +1222,31 @@ func tabAtColumn(x int) (int, bool) {
 // sheetTabBar is the one place this panel spends the accent: the tab you are
 // on. Everything else on the bar is dim, which is what makes the one word read
 // as a position rather than as a menu of five shouting words.
+//
+// THE ACCENT NOW ARRIVES ON A BAND, and the band is why the chips are padded.
+// Five words in a row with one of them brighter is a sentence with an emphasis
+// in it; five padded chips with one of them filled is a tab bar, and this panel
+// IS a tab bar — the same object the task strip is, drawn the same way, so that
+// "which page am I on" is one visual question across the app rather than two
+// (taskstrip.go's [app.stripLabel]).
+//
+// There is one cursor here and not two. The tab a person has focused is the tab
+// that is open — moving the focus switches the page — so the bar has nothing to
+// say that the band does not already say, and it draws no second mark.
 func sheetTabBar(width, active int, pal palette) string {
-	line, plain := "", ""
+	line, plain := strings.Repeat(" ", tabLead), strings.Repeat(" ", tabLead)
 	for i, title := range settingTabs {
 		if i > 0 {
 			line += strings.Repeat(" ", tabGap)
 			plain += strings.Repeat(" ", tabGap)
-		} else {
-			line += " "
-			plain += " "
 		}
+		chip := tabPad + title + tabPad
 		if i == active {
-			line += pal.bold(pal.accent(title))
+			line += pal.band(pal.bold(pal.accent(chip)), len(title)+tabPadCols)
 		} else {
-			line += pal.dim(title)
+			line += pal.dim(chip)
 		}
-		plain += title
+		plain += chip
 	}
 	if ansi.StringWidth(plain) > width {
 		return fit(line, width)
