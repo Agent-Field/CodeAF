@@ -149,6 +149,30 @@ of them and no two agree on what a contact is, so it reads their documentation
 the way you would rather than pretending to know in advance. Expect it to say
 what it is about to call.
 
+## Some accounts bring their own tools
+
+Notion, Linear, Sentry, Atlassian and Slack sign in through a browser the way
+Google does, and then they do one thing the others do not: **they say for
+themselves what they can do**. Aforge asks the account what it brings the moment
+it picks it up, and what comes back — search this, open that, file the other —
+is what it holds for the rest of the conversation. None of that list is written
+into aforge, so an account that gains a tool next month is an account aforge
+picks that tool up from, with nothing to change here.
+
+Two things follow from a list nobody here wrote:
+
+- **It is read fresh every time.** A tool that was there yesterday and is gone
+  today is simply not picked up, and one that appeared overnight is. Nothing is
+  remembered between conversations, so nothing can go stale.
+- **A few of them serve dozens.** Carrying sixty tools would cost you on every
+  turn of every conversation, so past about thirty aforge picks up none of them,
+  reads the list, and asks again for the few the work needs. You will see it name
+  a handful and carry on.
+
+The rows in settings are the same two sentences a key account has: reading is
+`yes`, anything that changes something in the account is `ask first`, and either
+can be turned off. Off means the tools that do it never arrive at all.
+
 ## What it takes to have this at all
 
 The **Google** connection needs one thing from you first, in `⚙` settings: a

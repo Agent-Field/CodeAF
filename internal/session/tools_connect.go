@@ -33,9 +33,9 @@ const servicesDescription = "List the accounts the person can connect to this co
 
 const servicesSchemaJSON = `{"type":"object","properties":{"filter":{"description":"Show only the accounts whose name or id contains this, for example stripe or fresh","type":"string"}},"additionalProperties":false}`
 
-const useServiceDescription = "Pick up one account's tools. If it is connected, its tools arrive in your tool list on your next turn. If it is not, the person is asked whether to connect it, and told what they are agreeing to — so call it only when the work actually needs that account, and never twice for the same one. Use services first if you do not know the id."
+const useServiceDescription = "Pick up one account's tools. If it is connected, its tools arrive in your tool list on your next turn. If it is not, the person is asked whether to connect it, and told what they are agreeing to — so call it only when the work actually needs that account, and never twice for the same one. Some accounts serve tools of their own and a few serve too many to carry at once: that answer lists them and you call again with tools naming the ones the work needs. Use services first if you do not know the id."
 
-const useServiceSchemaJSON = `{"type":"object","properties":{"service":{"type":"string","description":"The id of the account, as services lists it — for example google"}},"required":["service"],"additionalProperties":false}`
+const useServiceSchemaJSON = `{"type":"object","properties":{"service":{"type":"string","description":"The id of the account, as services lists it — for example google"},"tools":{"type":"string","description":"Only these of the tools the account serves, by name, separated by commas. Leave it out to take everything it brings; an account with too many to carry says so and lists them"}},"required":["service"],"additionalProperties":false}`
 
 const gmailSearchDescription = "Search the person's mail and get back a numbered list of matching messages: who each one is from, when it arrived, and its subject. Uses Gmail's own search syntax (from:, subject:, has:attachment, newer_than:7d). Follow it with gmail_read on the ids worth opening."
 
@@ -205,6 +205,7 @@ func (a *Agent) useServiceTool() bare.Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Service string `json:"service"`
+				Tools   string `json:"tools"`
 			}
 			if err := json.Unmarshal(args, &parsed); err != nil {
 				return "Invalid arguments: " + err.Error(), true, nil
@@ -213,7 +214,7 @@ func (a *Agent) useServiceTool() bare.Tool {
 			if id == "" {
 				return "Invalid arguments: service is required", true, nil
 			}
-			return a.useService(ctx, id)
+			return a.useService(ctx, id, parsed.Tools)
 		},
 	}
 }
@@ -226,7 +227,13 @@ func (a *Agent) useServiceTool() bare.Tool {
 // TOOL ERROR the model can read and act on, exactly as a failed search is
 // (tools_search.go). The one thing it must never do is end the turn over an
 // account.
-func (a *Agent) useService(ctx context.Context, id string) (string, bool, error) {
+//
+// want is what the model named in `tools`, and it is EMPTY almost always: it
+// exists for the one account that serves more tools than a conversation carries
+// (served.go's ceiling), where picking up everything is not on offer and the
+// model is handed the list to choose from. It is ignored by every account whose
+// tools this build wrote.
+func (a *Agent) useService(ctx context.Context, id, want string) (string, bool, error) {
 	if a.connect == nil {
 		// Unreachable from the belt — the tool is not on it without a hub — and
 		// written anyway, so that a call site added later cannot turn the nil law
@@ -242,7 +249,7 @@ func (a *Agent) useService(ctx context.Context, id string) (string, bool, error)
 			renderServices(a.connect.Services(), "", a.connectedFor), true, nil
 	}
 	if service.Connected {
-		return a.armService(service, ""), false, nil
+		return a.armService(ctx, service, "", want), false, nil
 	}
 	account, failed := a.connectService(ctx, service)
 	if failed != "" {
@@ -254,7 +261,7 @@ func (a *Agent) useService(ctx context.Context, id string) (string, bool, error)
 	if fresh, known := a.service(id); known {
 		service = fresh
 	}
-	return a.armService(service, account), false, nil
+	return a.armService(ctx, service, account, want), false, nil
 }
 
 // connectService is the whole browser round-trip: the question, the page, the
@@ -325,10 +332,18 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 // tool list is what the model will actually be holding — and it says WHEN,
 // because the belt it is reading right now does not have them yet and a model
 // that calls gmail_search this turn gets an unknown-tool error for its trouble.
-func (a *Agent) armService(service connectStatus, account string) string {
-	connected := service.Name + " is connected"
-	if account = strings.TrimSpace(account); account != "" {
-		connected += " as " + account
+func (a *Agent) armService(ctx context.Context, service connectStatus, account, want string) string {
+	connected := connectedLine(service.Name, account)
+	// AN ACCOUNT THIS BUILD HAS NO FAMILY FOR IS ASKED WHAT IT BRINGS, and that
+	// question is the whole of served.go. It is asked of the accounts that are
+	// left over rather than of a list of ids written down here, because a list
+	// of ids is a thing that goes stale the week somebody adds the sixth
+	// service: what this build actually knows is which accounts it wrote tools
+	// for, and every other connected account is one whose tools are its own to
+	// name. An account that serves nothing answers nothing, and the sentence
+	// below is the one it gets.
+	if a.servesItsOwn(service) {
+		return a.armServed(ctx, service, connected, want)
 	}
 	tools := a.familyTools(service)
 	if len(tools) == 0 {
@@ -407,6 +422,19 @@ func (a *Agent) familyTools(service connectStatus) []bare.Tool {
 		return []bare.Tool{a.serviceRequestTool(service)}
 	}
 	return nil
+}
+
+// servesItsOwn reports that an account's tools are the ACCOUNT'S to name rather
+// than this build's: it is connected in a browser, and there is no family here
+// written for it.
+//
+// It is a question about what is missing on purpose. The hand-written families
+// are a switch over ids and the keyed accounts are one raw call each; what falls
+// through both is a service that answers for itself, and asking it is strictly
+// better than the sentence this build used to end on ("no tools for it") because
+// an account that has nothing to serve still ends on exactly that sentence.
+func (a *Agent) servesItsOwn(service connectStatus) bool {
+	return a.connect != nil && !service.keyed() && len(a.familyTools(service)) == 0
 }
 
 // serviceRequestName is what one keyed account's tool is called: its own id and

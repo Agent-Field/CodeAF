@@ -2034,16 +2034,21 @@ func (f *scriptedFetch) fetched() []string {
 	return append([]string(nil), f.urls...)
 }
 
+// Both read the belt the way the turn reads it, under armMu (connect.go): an
+// account can be armed from a goroutine of its own — a connection settled on the
+// surface, with no tool call waiting on it — and a test walking the raw slice
+// would be reading an array while arming swaps its header.
 func beltNames(a *Agent) []string {
-	out := make([]string, len(a.tools))
-	for i, tool := range a.tools {
+	held := a.beltTools()
+	out := make([]string, len(held))
+	for i, tool := range held {
 		out[i] = tool.Name
 	}
 	return out
 }
 
 func hasTool(a *Agent, name string) bool {
-	for _, tool := range a.tools {
+	for _, tool := range a.beltTools() {
 		if tool.Name == name {
 			return true
 		}
