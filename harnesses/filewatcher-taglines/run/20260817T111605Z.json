@@ -1,0 +1,34 @@
+{
+  "id": {
+    "name": "filewatcher-taglines",
+    "desc": "Write three punchy taglines for a CLI tool that watches files.",
+    "author": "designer",
+    "version": 1
+  },
+  "started": "2026-08-17T07:15:58.200222901-04:00",
+  "elapsed": 7246668251,
+  "trail": [
+    {
+      "step": 1,
+      "id": "draft",
+      "kind": "agent.loop",
+      "out": "Watch. React. Repeat.\nYour files, on alert.\nSee changes. Instantly.\nStop typing. Start watching.\nThe eyes on your filesystem.\nChange is the only constant. React.\nWatch once. Automate everything.\nFile changes, zero lag.\nStay in flow. Let it watch.\nNever miss a save.\nYour filesystem, on the clock.\nWatch. Build. Deploy. Done.",
+      "elapsed": 2378505408
+    },
+    {
+      "step": 2,
+      "id": "polish",
+      "kind": "agent.loop",
+      "out": "Watch. React. Repeat.\nYour files, on alert.\nStop typing. Start watching.",
+      "elapsed": 4868152202
+    }
+  ],
+  "edges": [
+    [
+      "draft",
+      "polish"
+    ]
+  ],
+  "status": "ok",
+  "out": "Watch. React. Repeat.\nYour files, on alert.\nStop typing. Start watching."
+}
