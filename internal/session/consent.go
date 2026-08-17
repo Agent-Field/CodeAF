@@ -37,9 +37,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -120,17 +122,87 @@ func (a *Agent) deliverConsent(id uint64, answer consentAnswer) {
 // policy at all, which is the configured-nothing case and means allow: an
 // agent built without an ApprovalPolicy behaves exactly as it did before this
 // file existed.
+//
+// ── AND THEN THE PERSON'S OWN WORD ABOUT THE ACCOUNT ──
+//
+// A call against one of their accounts has a second thing said about it: the
+// capability's state, set in the settings sheet or by an "always" answer here
+// (connectcaps.go). It is applied AFTER the policy and it moves the answer by at
+// most one rung, in one direction each:
+//
+//   - YES is the person's named allow. It is worth exactly what a
+//     `gmail_send:allow` rule is worth — and it is worth that for the same
+//     reason, that somebody wrote it about that tool — so it lifts a prompt to
+//     an allow, INCLUDING the floor internal/approval holds under a blanket
+//     allow for calls that act in their name. That floor exists because a
+//     blanket allow cannot vouch for a message it has not seen; this is not a
+//     blanket allow.
+//   - ASK is a floor of its own, and it applies to any capability rather than
+//     only to the ones that act: a person who sets "read your mail" to ask first
+//     is asking to be asked, and a policy that allowed everything would
+//     otherwise silently ignore the only control they were given.
+//
+// NEITHER TOUCHES A DENY. A rule that refuses outright is a refusal, and a word
+// on a settings row is not a licence to overrule it. Off is not here at all —
+// it is answered before this, in [Agent.approve], because a capability that is
+// off must not produce a question about a call that is never going to run.
 func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
 	policy := a.config.ApprovalPolicy
 	if policy == nil {
 		return approval.Decision{}, false
 	}
-	return policy.Check(call.Function.Name, json.RawMessage(call.Function.Arguments)), true
+	args := json.RawMessage(call.Function.Arguments)
+	decision := policy.Check(call.Function.Name, args)
+	return a.capabilitySays(call.Function.Name, args, decision), true
+}
+
+// capabilitySays applies the person's word about the account to the policy's
+// answer. A call that belongs to no account, or a build with no accounts layer,
+// comes back exactly as it went in.
+func (a *Agent) capabilitySays(tool string, args json.RawMessage, decision approval.Decision) approval.Decision {
+	service := toolService(tool)
+	if a.connect == nil || service == "" {
+		return decision
+	}
+	capability := a.capabilityOf(service, tool, args)
+	if capability == "" {
+		return decision
+	}
+	phrase := a.capabilityPhrase(service, capability)
+	if phrase == "" {
+		phrase = capability
+	}
+	switch a.connect.CapabilityState(service, capability) {
+	case connect.StateYes:
+		if decision.Action == approval.ActionPrompt {
+			return approval.Decision{
+				Action: approval.ActionAllow,
+				Rule:   "you said yes to " + strconv.Quote(phrase),
+			}
+		}
+	case connect.StateAsk:
+		if decision.Action == approval.ActionAllow {
+			return approval.Decision{
+				Action: approval.ActionPrompt,
+				Rule:   strconv.Quote(phrase) + " is set to ask first",
+			}
+		}
+	}
+	return decision
 }
 
 // approve is the gate. It returns the refusal to hand the model and false when
 // the call must not run.
 func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (toolResult, bool) {
+	// WHAT THE PERSON HAS TURNED OFF NEVER RUNS, and it is answered here rather
+	// than by the policy: it is not a judgement about this call, it is a hand
+	// this build does not have. It comes FIRST, ahead of the policy, the memo
+	// and the guardian, so that nothing downstream can allow it and nobody is
+	// asked a question whose only honest answer is already known. See
+	// [Agent.capabilityRefusal] for why an armed tool can be off at all.
+	if off := a.capabilityRefusal(call.Function.Name, json.RawMessage(call.Function.Arguments)); off != "" {
+		return refusal(off), false
+	}
 	decision, governed := a.decide(call)
 	if !governed || decision.Action == approval.ActionAllow {
 		return toolResult{}, true
@@ -245,6 +317,15 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 	select {
 	case answer := <-answers:
 		if memo && answer.scope == ConsentToolSession {
+			// A STANDING YES ABOUT AN ACCOUNT IS A SETTING, NOT A MEMO. It is
+			// written where the settings sheet writes it, and it is written
+			// INSTEAD of the session memo rather than beside it: two records of
+			// one answer would drift the moment somebody set the row back to ask
+			// in the panel and went on not being asked here for the rest of the
+			// session. Everything else keeps the memo it always had.
+			if a.rememberCapability(call.Function.Name, json.RawMessage(call.Function.Arguments), answer.allow) {
+				return answer, nil
+			}
 			a.rememberConsent(call.Function.Name, answer.allow)
 		}
 		return answer, nil
