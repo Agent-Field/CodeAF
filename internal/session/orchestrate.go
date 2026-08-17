@@ -46,6 +46,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -95,9 +96,11 @@ const (
 // [Config.OrchestrateRunner] and gets a session that can also answer the run's
 // gate and draw its frontier, because the run is registered here.
 //
-// The model is what the planner thinks with and what a node runs on when it
-// names nothing; empty is the conversation's own. The cap is dollars, and zero
-// is a run nobody bounded — legal, and never what a turn asks for.
+// The model is the TURN'S OWN WORD and it outranks everything: named, it is
+// what the planner thinks with and what every node runs on. Named nothing, the
+// two halves resolve their own roles instead ([orchestrateRoleModel]). The cap
+// is dollars, and zero is a run nobody bounded — legal, and never what a turn
+// asks for.
 func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDollars float64) (string, error) {
 	if goal = strings.TrimSpace(goal); goal == "" {
 		return "", errors.New("an adaptive run needs a goal")
@@ -109,9 +112,8 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	}
 	a.orchestrateSeq++
 	seq := a.orchestrateSeq
-	if strings.TrimSpace(model) == "" {
-		model = a.model
-	}
+	named := strings.TrimSpace(model)
+	source, session := a.config.RolesSource, a.model
 	a.mu.Unlock()
 
 	// The id is the run's number written out. Both spellings name one run: the
@@ -124,8 +126,12 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// never produce anything.
 	runCtx, cancel := context.WithTimeout(context.Background(), orchestrateWindow)
 
-	planner := &orchestratePlanner{agent: a, model: model}
-	worker := &orchestrateExec{agent: a, model: model, id: id}
+	// THE RUN IS TWO KINDS OF CALL AND THEY ARE NOT THE SAME PURCHASE. The
+	// planner is made once per completion and decides what everything else
+	// costs; a node is one small question and there are many of them. Two roles,
+	// resolved once here, so neither half has to ask again.
+	planner := &orchestratePlanner{agent: a, model: orchestrateRoleModel(source, roles.RolePlanner, named, session)}
+	worker := &orchestrateExec{agent: a, model: orchestrateRoleModel(source, roles.RoleWorker, named, session), id: id}
 	run := orchestrate.New(goal, planner, worker, orchestrate.Options{
 		Cap:   capDollars,
 		Lanes: orchestrateLanes,
@@ -166,6 +172,29 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 		a.landOrchestrate(seq, goal, snap, err)
 	}()
 	return id, nil
+}
+
+// orchestrateRoleModel is a run's model ladder in one line.
+//
+// THE TURN'S OWN WORD OUTRANKS EVERYTHING. "orchestrate the migration with
+// opus" is a person choosing the model for the work they are commissioning, and
+// a registry that overrode it would be a setting answering a sentence. With
+// nothing named, the ROLE decides — internal/roles' own ladder, pin then tier
+// then the conversation's model as the floor — so an install that has
+// configured no tiers runs exactly as it did before these roles existed.
+//
+// A resolution that fails at all falls to the session's model rather than
+// refusing: the only ways it can fail are an unregistered role, which is a
+// programming error nobody in a running orchestration can fix, and no model
+// anywhere, which is the case where there is nothing better to answer with.
+func orchestrateRoleModel(source func(key string) (string, bool), role roles.Role, named, session string) string {
+	if named != "" {
+		return named
+	}
+	if model, err := roles.Resolve(roles.Source(source), role, session); err == nil {
+		return model
+	}
+	return session
 }
 
 // orchestration is one run as the session holds it: the engine, and the one

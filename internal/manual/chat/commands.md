@@ -652,7 +652,9 @@ calls it makes for itself. Rows include "ask before running", "tool exceptions",
 command rules", "guardian", "approval countdown", "check task work", "memory
 consolidation", "task countdown", "task repair rounds", "tasks at once", "busy machine",
 "memory floor", "task model", "small work", "careful work", "pinned roles", "fallback
-models", "session ceiling".
+models", "session ceiling". Under "pinned roles" it also carries the **roles** list — one
+row per auxiliary call aforge makes for itself, saying which tier and which model answers
+it. Those rows come from the running binary rather than the settings registry.
 
 **Context** — what a model carries. Rows: "compact at", "answer room", "working set",
 "context reuse", "searching", "exa key", "jina key".
@@ -694,3 +696,20 @@ everything else follows the general chat rule. Its legend is
 
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
 and its ctrl+t effort knob is true here too.
+
+## The roles rows in settings — pinning a role, and del to unpin
+
+The **roles** list sits on the Session tab, directly under "pinned roles". Each row is one
+auxiliary call aforge makes on its own — `title`, `compaction`, `guardian`, `auditor`,
+`planner`, `designer`, `worker`, `vision`, `consolidate` — drawn as
+`<role>    <tier> · <model>`, with `pinned` after it when that role has a model of its own.
+
+- **enter** opens the model picker and pins the role to what you choose.
+- **del** on a pinned row clears the pin. The legend says `del unpin` while you are on one,
+  and del does nothing on any other row of the sheet.
+- Typing filters these rows too: they answer to their own names, which are in no settings
+  key.
+
+Every pin is written into the "pinned roles" registry row and nowhere else, so the list and
+that text box are one setting seen two ways. What each role does and how the tiers work is
+in the models page.

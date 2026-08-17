@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
 // THE SETTINGS PANEL: /settings, or ctrl+, — the one fullscreen thing this
@@ -476,6 +478,8 @@ type sheetItem struct {
 	// them: an item is an item, and only what DRAWS it and what ANSWERS it ask
 	// which kind this one is.
 	conn *connRow
+	// role is set on the rows of the roles section, on exactly those terms.
+	role *roleRow
 }
 
 func (i sheetItem) heading() bool { return i.head != "" }
@@ -497,6 +501,12 @@ type sheet struct {
 	// defaults is every row's reading on a profile nobody has touched, so a row
 	// that differs from it can be marked. See [settingDefaults].
 	defaults map[string]string
+	// sessionModel is the model this conversation is on — the FLOOR of every
+	// role's ladder ([roles.Resolve]), and therefore what a role row resolves to
+	// when nothing above it is set. It is taken once, when the panel opens: the
+	// rows below it are about settings, and a value that changed under a person
+	// reading them would be a list that moved while they looked at it.
+	sessionModel string
 
 	// items is the current list — one tab's rows, or every tab's matches under
 	// their headings while a search is on. cursor indexes it and skips headings.
@@ -539,6 +549,10 @@ type sheetEdit struct {
 type sheetSelect struct {
 	key   string
 	label string
+	// role is set when the picker was opened from a role row. The key is still
+	// the registry row that gets written — every pin lives in "pinned roles" —
+	// and this says WHICH PAIR inside it the chosen model belongs to.
+	role roles.Role
 	// keep is the QUESTION THIS ROW ASKS of a model (models.go's [modelFilter]),
 	// chosen from the key by [filterFor]. It is held rather than applied and
 	// forgotten because it is the row's own meaning: "looking" is not a slot
@@ -674,10 +688,11 @@ func (a *app) openSettings() {
 		a.note(settingsRemoteWord)
 	}
 	a.sheet = sheet{
-		open:     true,
-		registry: a.registry(),
-		conns:    a.conns,
-		defaults: settingDefaults(),
+		open:         true,
+		registry:     a.registry(),
+		conns:        a.conns,
+		defaults:     settingDefaults(),
+		sessionModel: a.model,
 	}
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
@@ -716,6 +731,14 @@ func (s *sheet) build() {
 				continue
 			}
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
+			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
+			// set lands in "pinned roles" and nowhere else, so it is drawn
+			// directly under it: a person reading one is reading the other, and a
+			// section further down the tab would be a second place to look for one
+			// answer.
+			if row.Key == config.KeyModelRoles {
+				s.items = append(s.items, s.roleItems("")...)
+			}
 		}
 		s.cursor = s.clampCursor(s.cursor)
 		return
@@ -733,12 +756,26 @@ func (s *sheet) build() {
 			}
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 		}
+		// A ROLE IS FOUND BY ITS OWN NAME. Somebody searching for "planner" is
+		// not searching for a registry key — the word is not in one — so the
+		// section answers the search itself, under the tab it lives on.
+		if title == tabSession {
+			if matched := s.roleItems(query); len(matched) > 0 {
+				if len(s.items) == start {
+					s.items = append(s.items, sheetItem{head: title})
+				}
+				s.items = append(s.items, matched...)
+			}
+		}
 		if len(s.items) > start && first < 0 {
 			first, s.tab = start+1, tab
 		}
 	}
+	// Clamped rather than taken, because the first item of a group is a heading
+	// and the second one can be a heading too: a search that matched only roles
+	// opens on the tab's name, the section's name, and then a row.
 	if first >= 0 {
-		s.cursor = first
+		s.cursor = s.clampCursor(first)
 	} else {
 		s.cursor = 0
 	}
@@ -845,6 +882,258 @@ func (s *sheet) changed(item sheetItem) bool {
 	return known && was != item.row.Value()
 }
 
+// ── the roles ───────────────────────────────────────────────────────────────
+
+// THE ROLES SECTION: one row per auxiliary call aforge makes on its own, and
+// which model is answering it today.
+//
+// The two tier rows above it are the setting; this is the READING of it. Before
+// the section existed, "small work" and "careful work" were two model ids with
+// no way of finding out what actually ran on them — the roles are declared
+// across the binary from init functions (internal/roles' open registry), so
+// nothing on screen could name them — and the only way to pin one was to type
+// `planner:openai/gpt-5` into a text box from memory.
+//
+// IT IS A VIEW OF ONE REGISTRY ROW AND NOT A SECOND KNOB. Every pin these rows
+// write lands in `models.roles`, the "pinned roles" row they sit under, parsed
+// and re-serialized rather than appended — so the section and that row cannot
+// disagree about what is pinned, and a role pinned by hand in the text box
+// shows here as pinned.
+
+// rolesHead is what the section is called on the panel. Lowercase, because the
+// Capitalized words on this sheet are tab names and this is not one.
+const rolesHead = "roles"
+
+// roleRow is one registered role as the panel holds it, hung off [sheetItem]
+// exactly as an account is (connectcaps.go): the cursor walk, the scroll, the
+// pointer and the hover need to know nothing about it.
+type roleRow struct {
+	role roles.Role
+	tier roles.Tier
+	// tierLabel is the tier in the panel's words ([sheet.tierWord]), resolved
+	// HERE and not while drawing: it costs a registry read, and a row that took
+	// one per frame would be paying for a word that only changes when the sheet
+	// is rebuilt anyway.
+	tierLabel string
+	// model is what the ladder resolves to right now, and pin is rung one of it
+	// alone — the row says WHICH MODEL and, separately, whether that answer was
+	// chosen for this role or inherited from its tier.
+	model string
+	pin   string
+}
+
+// roleItems is the section: one item per registered role, in the registry's own
+// sorted order, each carrying what it resolves to as the panel currently reads
+// the settings. A query keeps only the roles it matches, and an empty section
+// contributes no heading.
+func (s *sheet) roleItems(query string) []sheetItem {
+	source := s.rolesSource()
+	var items []sheetItem
+	for _, role := range roles.Registered() {
+		tier, ok := roles.TierOf(role)
+		if !ok {
+			continue
+		}
+		row := &roleRow{role: role, tier: tier, tierLabel: s.tierWord(tier)}
+		row.pin, _ = roles.Pinned(source, role)
+		// A ROLE WITH NO MODEL ANYWHERE IS STILL A ROW. Resolve refuses when the
+		// ladder runs out — no pin, no tier, no session model — and the honest
+		// drawing of that is the role's name with nothing beside it, not a role
+		// the panel pretends is not there.
+		row.model, _ = roles.Resolve(source, role, s.sessionModel)
+		if query != "" && !roleMatches(row, query) {
+			continue
+		}
+		if items == nil {
+			items = append(items, sheetItem{head: rolesHead})
+		}
+		items = append(items, sheetItem{
+			role: row,
+			meta: settingMeta{tab: tabSession, label: string(role), about: s.roleAbout(row)},
+		})
+	}
+	return items
+}
+
+// roleMatches is the search over a role row: its name and the model answering
+// it, case-folded, substring — [settingMatches] over the two fields a role row
+// actually has.
+func roleMatches(row *roleRow, query string) bool {
+	for _, field := range []string{string(row.role), row.model} {
+		if strings.Contains(strings.ToLower(field), query) {
+			return true
+		}
+	}
+	return false
+}
+
+// rolesSource is [roles.Source] over THE PANEL'S OWN READING of the registry —
+// the two tier rows and the pins in "pinned roles".
+//
+// The door builds one of these at boot (cmd/aforge's v3RolesSource) and that is
+// the one a running session's calls go through. This one exists because they
+// answer different questions: the session's is what is running now, and a
+// settings panel showing that while somebody edits the row above it would be
+// showing the wrong half of its own screen.
+func (s *sheet) rolesSource() roles.Source {
+	values := map[string]string{}
+	if s.registry == nil {
+		return func(string) (string, bool) { return "", false }
+	}
+	for tier, key := range map[roles.Tier]string{
+		roles.TierLow:  config.KeyTierLowModel,
+		roles.TierHigh: config.KeyTierHighModel,
+	} {
+		if row, ok := s.registry.Row(key); ok {
+			values[roles.TierKey(tier)] = rowText(row)
+		}
+	}
+	if row, ok := s.registry.Row(config.KeyModelRoles); ok {
+		// A ROW MID-EDIT IS A ROW WITH NO PINS IN IT, not an error on the foot
+		// line: the registry refuses a malformed value at the write, so the only
+		// way one is read back here is a hand-edited config file, and the useful
+		// thing to draw then is every role following its tier.
+		if pins, err := config.ParseModelRoles(rowText(row)); err == nil {
+			for role, model := range pins {
+				values[roles.PinKey(roles.Role(role))] = model
+			}
+		}
+	}
+	return func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}
+}
+
+// tierWord is a tier in the panel's own words, READ OFF THE ROW THAT SETS IT
+// rather than spelled again here: a role says "careful work" because that is
+// what the row a person changes to move it is called, and the two cannot drift.
+func (s *sheet) tierWord(tier roles.Tier) string {
+	key := config.KeyTierLowModel
+	if tier == roles.TierHigh {
+		key = config.KeyTierHighModel
+	}
+	if s.registry != nil {
+		if row, ok := s.registry.Row(key); ok {
+			if meta, found := settingMetaFor(row); found {
+				return meta.label
+			}
+		}
+	}
+	return string(tier)
+}
+
+// roleAbout is the one line under a selected role row: where its answer came
+// from, and the key that changes it. It is the section's whole help — the keys
+// line says the same two words, and a person who stopped on a row is the one
+// person who wants the sentence.
+func (s *sheet) roleAbout(row *roleRow) string {
+	if row.pin != "" {
+		return "pinned, so it ignores " + row.tierLabel + " above. del clears the pin."
+	}
+	return "follows " + row.tierLabel + " above. enter pins it to a model of its own."
+}
+
+// roleFilter is the question a role's picker asks. Two registered roles are not
+// conversations at all — the one that looks at images and the one that draws
+// them — and offering either the chat list is offering the exact complement of
+// the models that could answer it ([filterFor] makes this argument for the
+// media slot rows, over the same predicates).
+func roleFilter(role roles.Role) modelFilter {
+	switch role {
+	case roles.RoleVision:
+		return inspectsImages
+	case roles.RoleImageGen:
+		return drawsImages
+	}
+	return chatModel
+}
+
+// roleRowLines is one role: its name, the tier it answers under, and the model
+// that answers it. It is [sheet.rowLines]'s shape and [overlayLines]'s row — the
+// same two-line law at [tierPhone], the same band, the same hover.
+func (s *sheet) roleRowLines(row *roleRow, selected, hovered bool, width int, pal palette) []string {
+	value := row.tierLabel
+	// THE EMPTINESS LAW. A role with no model resolved says the tier and stops;
+	// there is no id to print and printing the tier's own blank label under it
+	// would be the panel answering "which model" with a setting.
+	if row.model != "" {
+		value += " · " + row.model
+	}
+	if row.pin != "" {
+		value += "  pinned"
+	}
+	return overlayLines(string(row.role), value, selected, false, hovered, width, pal)
+}
+
+// applyRolePin writes one role's pin back into the row that holds them all.
+//
+// IT PARSES, EDITS AND RE-SERIALIZES rather than appending, because the row is a
+// SET: a role already pinned from the text box would otherwise be named twice,
+// which the registry refuses in the same breath it would have taken the change.
+// An empty model clears the pin, which is what del on the row does.
+func (a *app) applyRolePin(row config.Setting, role roles.Role, model string) {
+	pins, err := config.ParseModelRoles(rowText(row))
+	if err != nil {
+		// The row is not readable as pairs, so it was hand-edited into something
+		// this panel cannot safely rewrite. It says so rather than dropping
+		// somebody's line on the way past.
+		a.sheet.msg = err.Error()
+		return
+	}
+	if model = strings.TrimSpace(model); model == "" {
+		delete(pins, string(role))
+	} else {
+		pins[string(role)] = model
+	}
+	meta, _ := settingMetaFor(row)
+	a.applySetting(sheetItem{row: row, meta: meta}, formatModelRoles(pins))
+}
+
+// unpinRole is del on a pinned role row. It is the one thing a role row can do
+// that enter cannot: enter opens the catalog, and no row in a catalog means
+// "no model".
+func (a *app) unpinRole() {
+	s := &a.sheet
+	item, ok := s.current()
+	if !ok || item.role == nil || item.role.pin == "" {
+		return
+	}
+	row, found := s.registry.Row(config.KeyModelRoles)
+	if !found {
+		return
+	}
+	s.msg = ""
+	a.applyRolePin(row, item.role.role, "")
+}
+
+// rowText is a row's value with its empty label taken back off — the reading
+// [app.activate] gives a text row before it opens a box on it, which is the one
+// place a label like "none" must not be mistaken for a value.
+func rowText(row config.Setting) string {
+	value := row.Value()
+	if value == row.EmptyLabel {
+		return ""
+	}
+	return value
+}
+
+// formatModelRoles writes the pins back as the row's own `role:model` pairs,
+// SORTED, because a map has no order and a row that reshuffled itself every
+// time it was saved is a row nobody can read a diff of.
+func formatModelRoles(pins map[string]string) string {
+	names := make([]string, 0, len(pins))
+	for name := range pins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, name+":"+pins[name])
+	}
+	return strings.Join(out, ", ")
+}
+
 // ── the keyboard ────────────────────────────────────────────────────────────
 
 // sheetKey routes one keypress while the panel is up. It reports whether it
@@ -916,6 +1205,12 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "enter", " ", "space":
 		return a.activate(), true
 
+	case "delete":
+		// The one key on this sheet that only one kind of row answers, and it
+		// takes it from nothing else: del anywhere but a pinned role row does
+		// nothing at all, rather than deleting whatever was under the cursor.
+		a.unpinRole()
+
 	case "backspace":
 		s.query.deleteBackward()
 		s.build()
@@ -967,6 +1262,20 @@ func (a *app) activate() tea.Cmd {
 		return a.connAct(item.conn)
 	}
 	s.msg = ""
+	if item.role != nil {
+		// A ROLE IS A MODEL CHOICE, so it opens the picker the two tier rows open
+		// and for their reason — a row that asks "which model" and offers a blank
+		// line is asking a person to be the catalog. It opens ON THE PIN and not
+		// on the resolved model: the picker's mark means "this is what this row
+		// holds", and a role following its tier holds nothing.
+		sel := &sheetSelect{
+			key: config.KeyModelRoles, label: string(item.role.role),
+			keep: roleFilter(item.role.role), role: item.role.role,
+		}
+		sel.pick.startFor(a.modelsFor(sel.keep), item.role.pin, sel.keep)
+		s.sel = sel
+		return nil
+	}
 	switch item.meta.widget {
 	case widgetToggle:
 		next := "on"
@@ -1088,8 +1397,15 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 	case "enter":
 		chosen, ok := sel.choice()
 		row, found := s.registry.Row(sel.key)
+		role := sel.role
 		s.sel = nil
 		if !ok || !found {
+			return
+		}
+		// A role writes ONE PAIR of the row it shares with every other pin;
+		// everything else writes the row whole.
+		if role != "" {
+			a.applyRolePin(row, role, chosen)
 			return
 		}
 		meta, _ := settingMetaFor(row)
@@ -1501,6 +1817,9 @@ func (s *sheet) rowLines(item sheetItem, selected, hovered bool, width int, pal 
 	if item.conn != nil {
 		return s.connRowLines(item.conn, selected, hovered, width, pal)
 	}
+	if item.role != nil {
+		return s.roleRowLines(item.role, selected, hovered, width, pal)
+	}
 	value := item.row.Value()
 	if value == "" {
 		value = "—"
@@ -1593,6 +1912,12 @@ func (s *sheet) keysLine() string {
 	case s.onConnections():
 		return s.connKeysLine()
 	default:
+		// A PINNED ROLE HAS A KEY THE REST OF THE SHEET DOES NOT, so the legend
+		// says so on the row it works on and nowhere else — a line that offered
+		// del everywhere would be offering it on rows where it does nothing.
+		if item, ok := s.current(); ok && item.role != nil && item.role.pin != "" {
+			return "↑↓ move · enter pin · del unpin · type to search · esc close"
+		}
 		return "↑↓ move · ←→ tabs · enter change · type to search · esc close"
 	}
 }
