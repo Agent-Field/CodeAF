@@ -285,10 +285,15 @@ const (
 )
 
 // MouseModes lists them, on first — which is also the default: hover, click
-// and the wheel are the surface's own language. Text selection does not die
-// for it — Shift+drag bypasses app mouse reporting in virtually every
-// terminal (Option+drag in iTerm2), and ctrl+b copies from the keyboard —
-// but a person who wants the terminal's plain drag back turns the row off.
+// and the wheel are the surface's own language. Selecting text does not die for
+// it — ctrl+s hands the pointer to the terminal for as long as somebody is
+// dragging with it, and ctrl+b copies from the keyboard — but a person who
+// wants the terminal's plain drag at all times turns the row off.
+//
+// Shift+drag is the answer this hint used to give, and it was the wrong one:
+// it is true, it is a fact about terminals rather than about this product, and
+// the terminals that have it disagree about the modifier (Option in iTerm2).
+// A key this surface owns is a key this surface can print.
 var MouseModes = []string{MouseOn, MouseOff}
 
 // DefaultMouse is on.
@@ -986,9 +991,9 @@ func (s *Settings) build() []Setting {
 		Setting{
 			Key: KeyMouse, Category: CategoryInterface, Kind: SettingChoice,
 			Label: "mouse", Choices: MouseModes,
-			Hint: "on gives hover, click and wheel-scroll inside the chat. Text selection " +
-				"still works: hold Shift and drag (Option+drag in iTerm2), or press ctrl+b " +
-				"to copy from the keyboard. Turn off to give the terminal's plain drag back.",
+			Hint: "on gives hover, click and wheel-scroll inside the chat. Selecting text " +
+				"still works: press ctrl+s and drag, or ctrl+b to copy from the keyboard. " +
+				"Turn off to keep the terminal's plain drag at all times.",
 			read:  func() string { return MouseAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyMouse, raw, MouseModes) },
 		},

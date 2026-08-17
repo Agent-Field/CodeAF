@@ -104,6 +104,13 @@ func (a *app) releaseMouse() bool {
 		return false
 	}
 	a.released = !a.released
+	// THE HOVER GOES WITH IT. Nothing reports where the pointer is any more, so
+	// whatever row was lit stays lit — a band under a pointer that has since
+	// moved somewhere else entirely, sitting on the screen for the whole of the
+	// drag somebody is trying to make (hover.go).
+	if a.released {
+		a.dropHover()
+	}
 	a.touch()
 	return true
 }
