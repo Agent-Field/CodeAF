@@ -268,6 +268,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.resumeKey(msg)
 	}
 
+	// And the deliverables picker at the same rung, for the same reasons again:
+	// it takes the input line's place, it holds its own filter — and its own
+	// destination box over that — and esc leaves the conversation exactly as it
+	// was (deliverables.go).
+	if a.shelf.open && msg.String() != "ctrl+c" {
+		return a.filesKey(msg)
+	}
+
 	// And the connections panel at the same rung again, for the same reasons:
 	// it opens on a COMMAND rather than by typing, so nothing is being written
 	// under it, and esc leaves everything exactly as it was (connectpanel.go).
@@ -657,6 +665,17 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint)
+	}
+	// AND THE DELIVERABLES PICKER TAKES IT ON THE SAME TERMS, for whichever of
+	// its two boxes is open: the filter, and the destination box over a row that
+	// is being copied out (deliverables.go). Neither is a widget of its own —
+	// both are this surface's one-line box, in the position it gives every box
+	// that has taken the keyboard.
+	if a.shelf.open {
+		if dest := a.shelf.dest; dest != nil {
+			return draftBlock(&dest.box, a.pal, width, 1, filesCopyHint)
+		}
+		return draftBlock(&a.shelf.filter, a.pal, width, 1, filesHint)
 	}
 	// AND THE CONNECTIONS PANEL TAKES IT ON THE SAME TERMS, for whichever of its
 	// two boxes is open: the filter, once the catalog is long enough to be

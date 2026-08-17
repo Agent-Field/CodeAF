@@ -133,6 +133,18 @@ var commands = []command{
 	// in the box and wait for a path nobody had in mind.
 	{name: "export", desc: "write this conversation to a file", alias: []string{"save"}},
 	{name: "export", args: "<path>", desc: "…and write it there · tab completes the path"},
+	// AND THE FOURTH DOOR, which is the other direction: those three take
+	// something out of THIS conversation, and this one finds what any of them
+	// has already made — a picture, an export, a document — from a list of
+	// everything, whatever directory it was made in (deliverables.go). It sits
+	// beside them because that is the errand a person is on when they reach for
+	// it, and after them because it is the one you type when the making is
+	// already done.
+	//
+	// No argument form and no alias. A deliverable is picked from rows a person
+	// recognizes by title, and a title a model wrote is not a thing anybody
+	// types back correctly.
+	{name: "files", desc: "what has been made for you · open, reveal or copy one"},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "leave", alias: []string{"exit", "q"}},
 }
@@ -449,6 +461,7 @@ func helpText(file string) string {
 		"ctrl+w         delete the word behind the caret · ctrl+u the line",
 		"ctrl+,         settings",
 		"d              in /permissions: drop the line under the cursor · press it twice",
+		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)
 	if file != "" {
 		lines = append(lines, "session · "+file)

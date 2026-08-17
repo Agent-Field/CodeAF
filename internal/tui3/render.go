@@ -1751,6 +1751,14 @@ func (a *app) hintWord() string {
 		return "enter switch · esc"
 	case a.roster.open:
 		return "enter open · esc"
+	case a.shelf.open:
+		// The deliverables picker names its verbs here as well as in its filter
+		// box, because they are the half of this list nobody can guess: two of
+		// the three are chords (deliverables.go).
+		if a.shelf.dest != nil {
+			return filesCopyVerbs
+		}
+		return filesVerbs
 	case a.copy.on:
 		return "v select · a block · y yank · esc"
 	case a.rew.on:
