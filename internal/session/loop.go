@@ -922,12 +922,47 @@ var glossFields = map[string][]string{
 // watches and the question they are asked say the same thing.
 func (a *Agent) gloss(call ai.ToolCall) string {
 	if record, served := a.servedRecord(call.Function.Name); served {
-		return servedGloss(record, call.Function.Arguments)
+		return scrubbed(servedGloss(record, call.Function.Arguments))
 	}
 	return gloss(call)
 }
 
+// gloss is the free function, and it is the one that SCRUBS — every path that
+// builds a gloss out of a model's arguments goes through here or through the
+// method above, and both leave with plain text.
+//
+// A GLOSS IS MODEL-CONTROLLED TEXT ON THE ONE LINE THAT MUST NOT LIE. It is the
+// headline of the consent card, and the card's next line is the offer a person
+// answers with one key; an argument carrying escape bytes can move the cursor up
+// and repaint that offer, so the question on screen says one thing and the call
+// underneath it is another. Cutting the newline was never enough — a terminal
+// takes its orders in escapes, and internal/tui3's fitter measures those as zero
+// cells and lets them through whole. So they are dropped here, at the only place
+// a gloss is made, exactly as an OSC payload's are (internal/tui3's notify.go).
 func gloss(call ai.ToolCall) string {
+	return scrubbed(glossOf(call))
+}
+
+// scrubbed drops the bytes a terminal reads as instructions rather than as
+// text: the escape that opens a control sequence, and every other control byte
+// with it. It DROPS rather than escapes, on notify.go's reasoning — a row with a
+// stray backslash in it says less than a row with a missing byte, and the byte
+// was never anything a person was going to read.
+func scrubbed(text string) string {
+	if strings.IndexFunc(text, control) < 0 {
+		return text
+	}
+	return strings.Map(func(r rune) rune {
+		if control(r) {
+			return -1
+		}
+		return r
+	}, text)
+}
+
+func control(r rune) bool { return r < ' ' || r == 0x7f }
+
+func glossOf(call ai.ToolCall) string {
 	name := call.Function.Name
 	fields, known := glossFields[name]
 	if !known {
@@ -981,7 +1016,14 @@ func argsText(call ai.ToolCall) string {
 	if err := json.Compact(&compacted, []byte(raw)); err == nil {
 		raw = compacted.String()
 	}
-	return clip(raw, argsLimit)
+	// SCRUBBED FOR THE GLOSS'S REASON. This is the other half of the same card —
+	// the phone sheet lays the command out of these arguments rather than out of
+	// the headline — and arguments that did not parse pass through as their own
+	// text, raw control bytes and all. An escape spelled the JSON way is six
+	// ordinary characters here and becomes a control byte only when a surface
+	// unmarshals it, which is why internal/tui3's card scrubs what it reads back
+	// out of the arguments too.
+	return scrubbed(clip(raw, argsLimit))
 }
 
 // capOutput bounds a tool result for Event.Output, marking the cut with the
