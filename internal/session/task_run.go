@@ -239,6 +239,12 @@ type TaskNode struct {
 	// journal is where this node's transcript was written, recorded when its
 	// child agent was built. It is the node's history, and it outlives the room.
 	journal string
+	// mend is the gap a repair round is closing right now, in plain words, and ""
+	// at every other moment (task_audit.go's repairNode). It is the ONLY thing
+	// the repair loop puts on the wire while it runs: the node is still running,
+	// nothing has landed, and what a surface draws is the work still going with
+	// one line saying what is being finished.
+	mend string
 	// auditing marks a re-audit in flight over a landed node (task_audit.go's
 	// reauditTask). It is the one thing that can still change an unverified
 	// node's state without a person, so it is also what stops a person's own
@@ -667,6 +673,25 @@ func (n *TaskNode) workingCopy(workspace string) (taskTree, error) {
 	return taskTree{dir: dir, root: root, branch: branch}, nil
 }
 
+// mending sets — or clears — the gap this node is closing, and TELLS THE WORLD
+// on the way past.
+//
+// The announcement is the whole reason it is a method rather than a field
+// assignment. A repair round takes minutes; a surface that learned about it only
+// when the node landed would show a task sitting still through the one stretch
+// where the most interesting thing about it is what it is finishing. The state
+// does not move — a repairing node is a RUNNING node, and reportTaskNode returns
+// after the event for a running one — so this is an update and never a landing.
+func (n *TaskNode) mending(line string) {
+	n.graph.mu.Lock()
+	changed := n.mend != line
+	n.mend = line
+	n.graph.mu.Unlock()
+	if changed {
+		n.graph.announce(n)
+	}
+}
+
 // beginAudit claims the node for one re-audit, and reports false when somebody
 // already holds it. endAudit hands it back; beingAudited asks.
 func (n *TaskNode) beginAudit() bool {
@@ -816,6 +841,7 @@ func (n *TaskNode) notice() TaskNotice {
 		Changed:   changed,
 		Branch:    n.branch,
 		Merge:     n.merge,
+		Mending:   n.mend,
 		Model:     n.spec.model,
 		CostUSD:   cost,
 	}
@@ -882,14 +908,20 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 // must not be mistaken for. The model is about to tell a person what happened,
 // in its own sentence, and every wrong word here is a wrong word there:
 //
-//	finished          the gate let it through — and the report says on WHOSE
-//	                  word (a VERIFIED verdict, a person accepting it, or
-//	                  "unaudited" with the audit row off), which is why this
-//	                  line does not say "verified" over a verdict it cannot
-//	                  see from here (task_audit.go)
-//	failed            somebody looked and made a finding
-//	could not be      nobody could look, or nobody would say — which is not
-//	verified          the same news and does not cascade
+//	finished          the gate let it through, and the report is the evidence
+//	                  it went through on
+//	failed            somebody looked and made a finding — and when the finding
+//	                  was that work is missing, the report says "incomplete — "
+//	                  and what is missing
+//	needs your look   nobody could look, or nobody would say — which is not the
+//	                  same news and does not cascade
+//
+// NOT ONE OF THEM IS THE HARNESS'S OWN VOCABULARY. The model reads this line and
+// says it back to a person in its own words, so "auditor", "verdict", VERIFIED
+// and REFUTED must not be in it — the person asked for work, not for a trial,
+// and a model handed a courtroom will hold one (task_audit.go's vocabulary law).
+// The one word here that comes from the machinery is `reaudit`, and it is there
+// because the model has to TYPE it back: a handle is an address, not a finding.
 //
 // THE TRANSCRIPT URI RIDES THE FIRST LINE, when the node has a journal to point
 // at. It is the same handle the `tasks` tool hands out for a node somebody wants
@@ -906,8 +938,10 @@ func taskNote(notice TaskNotice, transcript string) string {
 	case TaskUnverified:
 		// NOT "failed", and the wording is the whole point of the state: the
 		// model is about to tell the person what happened, and "failed" would
-		// be it reporting a finding no auditor made (task_contract.go).
-		verb = "could not be verified"
+		// be it reporting a finding nobody made (task_contract.go). It is also
+		// not "could not be verified", which was the same sentence in the
+		// harness's vocabulary — this says whose problem it now is.
+		verb = "needs your look"
 	}
 	fmt.Fprintf(&note, "task %d %s: %s", notice.ID, verb, notice.Title)
 	if transcript != "" {
@@ -919,6 +953,17 @@ func taskNote(notice TaskNotice, transcript string) string {
 	if notice.State == TaskUnverified {
 		note.WriteString("\nit is neither done nor failed, its branch is kept, and anything waiting on it waits until somebody decides: tasks id " +
 			strconv.FormatUint(notice.ID, 10) + " resolve accept|reaudit|refute")
+	}
+	// AN INCOMPLETE LANDING IS AN INVITATION, NOT A DEAD END. The work was sent
+	// back as many times as it was allowed and what is still missing is written
+	// above, in the person's terms, with the branch it is sitting on. The one
+	// thing the model must not do with that is quietly spend another task on it:
+	// the harness has already tried that, at the person's expense, and the next
+	// move is theirs to choose. The lead is what says which failure this is —
+	// a killed node and a node that ran out of time reach TaskFailed too, and
+	// neither of them has a gap anybody could offer to close.
+	if notice.State == TaskFailed && strings.HasPrefix(notice.Report, incompleteLead) {
+		note.WriteString("\nwhat is missing is above and the branch is kept: offer them a follow-up in their own words before anything else is spent on it")
 	}
 	if len(notice.Changed) > 0 {
 		note.WriteString("\nchanged: " + strings.Join(notice.Changed, ", "))
@@ -1027,7 +1072,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	node.setTree(tree)
 	fmt.Fprintf(log, "task %d · %s\nworking in %s\n", node.id, node.title(), tree.dir)
 
-	child, err := a.newTaskAgent(tree.dir, node)
+	child, err := a.newTaskAgent(tree.dir, node, "")
 	if err != nil {
 		node.finish("could not start the task: "+err.Error(), nil, tree.branch, tree.merge)
 		return TaskFailed
@@ -1082,33 +1127,48 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	if !a.config.TaskAudit {
 		merge, detail := tree.comeHome(node.title())
 		fmt.Fprintf(log, "merge: %s %s (unaudited)\n", merge, detail)
-		node.finish(withReport("unaudited — task.audit is off", withReport(report, detail)), changed, tree.branch, merge)
+		// THE SETTING KEY IS THE ONE PIECE OF MACHINERY VOCABULARY A PERSON IS
+		// ALLOWED TO SEE, and only because it is an ADDRESS: they turned this row
+		// off, this is the row's name, and a sentence that translated it would
+		// leave them holding a word their settings sheet does not answer to
+		// (task_audit.go's vocabulary law). Everything either side of it is plain.
+		node.finish(withReport("nothing checked this work: the task.audit setting is off",
+			withReport(report, detail)), changed, tree.branch, merge)
 		return TaskDone
 	}
-	verdict := a.auditNode(ctx, node, tree, changed, report, log)
+	// THE GATE MAY SEND THE WORK BACK BEFORE IT ANSWERS. What returns from here
+	// is the end of the whole loop — the last verdict, the gaps of every round,
+	// and the files and the claim as the LAST worker left them (task_audit.go).
+	outcome := a.auditWithRepair(ctx, node, tree, changed, report, log)
+	changed, report = outcome.changed, outcome.claim
+	verdict := outcome.verdict
 	switch {
 	case ctx.Err() != nil:
-		node.finish(withReport("stopped while its work was being verified", report), changed, tree.branch, abortedMerge(tree))
+		node.finish(withReport("stopped while its work was being checked", report), changed, tree.branch, abortedMerge(tree))
 		return TaskFailed
 	case !verdict.answered:
 		// NOBODY COULD SAY. Not done — nothing merges on an answer nobody gave —
 		// and not failed either, because no finding was made about this work.
 		// The node's own claim is kept UNDER the non-answer: whoever is asked to
 		// resolve this needs both halves, what the work says it did and what the
-		// auditor said instead of a verdict (task_contract.go's TaskUnverified).
-		node.finish(withReport(verdict.report(), report), changed, tree.branch, abortedMerge(tree))
+		// checker said instead of an answer (task_contract.go's TaskUnverified).
+		node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, abortedMerge(tree))
 		return TaskUnverified
 	case !verdict.verified:
-		node.finish(verdict.report(), changed, tree.branch, abortedMerge(tree))
+		// INCOMPLETE, WITH EVERY ROUND'S GAPS. The node's own claim is dropped
+		// exactly as it was before: somebody looked at the work and said what is
+		// missing, and that answers the claim.
+		node.finish(gapsOutcome(outcome.gaps), changed, tree.branch, abortedMerge(tree))
 		return TaskFailed
 	}
 
 	merge, detail := tree.comeHome(node.title())
 	fmt.Fprintf(log, "merge: %s %s\n", merge, detail)
-	// The verdict leads the report: the first thing a person reads off a
-	// finished card is the evidence it is finished, and the node's own words
-	// follow as the account they now are.
-	node.finish(withReport(verdict.report(), withReport(report, detail)), changed, tree.branch, merge)
+	// The evidence leads the report: the first thing a person reads off a
+	// finished card is what was checked and what was seen, and the node's own
+	// words follow as the account they now are. The state says "done" — nothing
+	// here says it a second time in the harness's own vocabulary.
+	node.finish(withReport(verdict.doneOutcome(), withReport(report, detail)), changed, tree.branch, merge)
 	return TaskDone
 }
 
@@ -1447,7 +1507,7 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 // THE MODEL IS THE NODE'S OWN, and the conversation's only when the node has
 // none (taskmodel.go). It is read BEFORE this takes a.mu, because the spec lives
 // under the graph's lock and this package takes one lock at a time.
-func (a *Agent) newTaskAgent(dir string, node *TaskNode) (*Agent, error) {
+func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent, error) {
 	model := node.model()
 	a.mu.Lock()
 	parent := a.config
@@ -1464,13 +1524,22 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode) (*Agent, error) {
 		window = 0
 	}
 	client := unwrapCompleter(a.client)
-	journal := taskJournalPath(a.sessionID(), node.id, "")
+	journal := taskJournalPath(a.sessionID(), node.id, suffix)
 	a.mu.Unlock()
 
 	// Written on the node the moment it is minted: the name carries a timestamp,
 	// so this is the only moment anybody can learn it, and [Agent.TaskJournal] is
 	// how a person opens the node's whole transcript afterwards (task_room.go).
-	node.setJournal(journal)
+	//
+	// A REPAIR ROUND DOES NOT TAKE THE NODE'S JOURNAL OVER. It is a worker with a
+	// suffix, its transcript sits beside the node's in the same directory under
+	// its own name, and the node keeps pointing at the run that IS the node —
+	// the one the person's "read the transcript" means. Repointing it each round
+	// would leave the index and the completion note aimed at the last ten percent
+	// of a job, with the ninety unreachable.
+	if suffix == "" {
+		node.setJournal(journal)
+	}
 
 	return newAgent(Config{
 		Workspace:      dir,
@@ -1514,8 +1583,9 @@ func (a *Agent) sessionID() string {
 }
 
 // taskJournalPath is where a node's own transcript lives:
-// ~/.aforge/v3/tasks/<session>/<when>_<id>.jsonl, and its audit beside it as
-// <when>_<id>-audit.jsonl.
+// ~/.aforge/v3/tasks/<session>/<when>_<id>.jsonl, and everything else the node
+// spent an agent on beside it under a suffix: <when>_<id>-audit-<nonce>.jsonl
+// for one check, <when>_<id>-repair1.jsonl for one repair round.
 //
 // It is a REAL SESSION FILE — the node is an agent, and everything it did is
 // resumable and readable with the same tools — kept under the conversation that
@@ -1526,7 +1596,10 @@ func (a *Agent) sessionID() string {
 // The audit gets a file of its own rather than a section of the node's, because
 // it is a different agent with a different context: two transcripts written into
 // one journal would be the exact context mixing the audit exists to avoid, and a
-// person asking "what did the auditor actually run" wants a file to open.
+// person asking "what did the auditor actually run" wants a file to open. The
+// SUFFIX IS THE CALLER'S TO MAKE UNIQUE — the stamp here is only good to the
+// second, and [newAgent] resumes a file that is already there, so two agents
+// handed one path would be one agent with two names (task_audit.go).
 func taskJournalPath(session string, id uint64, suffix string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {

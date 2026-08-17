@@ -175,6 +175,10 @@ var settingReaders = map[string]string{
 	// a deadline on a proposal — for the reason the spend rail names its own:
 	// the door resolves the row and the session is what touches the value.
 	KeyTaskAutoApprove: "TaskAutoApproveSeconds",
+	// The repair-round count names its own accessor, which the v3 door calls to
+	// fill session.Config's TaskRepairRounds — the number task_audit.go's loop
+	// counts its rounds against.
+	KeyTaskRepairRounds: "TaskRepairRoundsAt",
 	// The task model is read by the v3 door and becomes session.Config.TaskModel,
 	// which a proposal that names no model of its own resolves through
 	// (internal/session's taskmodel.go). It names the accessor the door touches,

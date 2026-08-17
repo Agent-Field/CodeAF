@@ -162,6 +162,13 @@ var settingUI = map[string]settingMeta{
 		about: "seconds a proposed task waits for you before it starts. " +
 			"0 waits for your answer instead.",
 	},
+	// And under the countdown, what happens at the OTHER end of a task: how many
+	// times work that came back with something missing is sent back to finish it.
+	config.KeyTaskRepairRounds: {
+		tab: tabSession, label: "task repair rounds", widget: widgetText,
+		about: "times a task that came back with something missing is sent back to " +
+			"finish it before it lands as incomplete. 0 lets the first gap end it.",
+	},
 	// And beside it, the other thing that is true of every task you hand off:
 	// whose hands it goes into. It is answered by the PICKER, like the two tier
 	// rows below it and for the same reason — a row that asks "which model" and

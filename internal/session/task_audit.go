@@ -69,6 +69,72 @@ package session
 // thing that can move them, which is a person deciding ([Agent.ResolveUnverified]).
 // A REAL REFUTED verdict is untouched by any of this — it is a finding, it
 // fails the node, and it takes the dependents with it, exactly as before.
+//
+// ── THE LADDER UNDER A NON-ANSWER: NUDGE, THEN A FRESH AUDITOR ──
+//
+// A fresh auditor is the expensive rung. It re-reads the diff, re-runs the
+// verification, re-pays the whole investigation — and none of that is what was
+// missing when an auditor did all the work and then stopped one word short (the
+// one seen in the wild ended on "Let me be targeted:" with no tool call and no
+// verdict). That auditor is still sitting there with the evidence in its
+// context. Asking IT for the word costs one turn.
+//
+// So the ladder is NUDGE → FRESH AUDITOR → UNVERIFIED, and the first rung is
+// taken only when there is a lane to take it on: a delivered reply that did not
+// PARSE into a verdict. A provider error, an auditor that never started, a
+// deadline that ran out — none of those has a live auditor behind it, and each
+// goes straight to the rung that builds a new one, exactly as before. The nudge
+// is one line and it demands the contract, nothing else: an auditor asked to
+// "reconsider" is an auditor being led.
+//
+// ── THE REPAIR LOOP: REFUTED IS NOT ALWAYS THE END ──
+//
+// A REFUTED verdict used to land the node dead on the spot. What that costs was
+// measured in the wild: a deep-research node produced a 138-line report covering
+// ten companies, the acceptance asked for eleven, the auditor correctly refuted
+// it — and the person re-typed the entire task by hand. The work was 90% there
+// and the harness threw all of it away because the last 10% was missing.
+//
+// So a finding now buys the node a REPAIR ROUND (task.repair_rounds, one by
+// default, 0 for the old behaviour): the SAME worktree, a fresh worker, and the
+// original brief with the gaps in front of it. Then a fresh auditor judges
+// again. Refuted with the rounds spent is the old landing — TaskFailed, branch
+// kept, cascade — except that the report now carries the evidence of EVERY
+// round, because "it was sent back twice and this is what was still missing" is
+// the only version of that story a person can act on.
+//
+// THE AUDITOR IS NEVER TOLD IT IS JUDGING A REPAIR. Same evidence packet, same
+// contract, no round number, nothing about what the last one found. An auditor
+// that knows the work has been fixed once already is an auditor with a reason to
+// be satisfied, and the whole value of this gate is that it has none. CONVERGENCE
+// COMES FROM THE LOOP, NOT FROM A SOFTENED JUDGE: the worker is told what is
+// missing, the judge is told nothing.
+//
+// ── THE VOCABULARY LAW ──
+//
+// NONE OF THE WORDS IN THIS FILE REACH A PERSON. Not "auditor", not "audit", not
+// "verdict", not VERIFIED, REFUTED or "unverified" — not in the outcome written
+// to the project's index, not in the report on a landed notice, not in the note
+// the chat model reads off the steering lane. The machinery is real and it is
+// named honestly HERE, in the code, the comments, the job log and the audit's
+// own journal. What lands in front of a person is what HAPPENED:
+//
+//	verified          the evidence sentence, alone — the state already says done
+//	refuted out       "incomplete — " and the plain gaps, every round of them
+//	nobody could say  "finished, but needs your look — " and what the checker said
+//
+// The reason is not squeamishness. The person did not ask for an audit; they
+// asked for a report on eleven companies. "REFUTED" tells them about the
+// harness's internal court, and a chat model reading it will repeat the court to
+// them, in its own sentence, as though a trial had happened. "incomplete — the
+// report covers ten companies, amp-labs is missing" tells them the thing they
+// can act on, which is the same fact with the machinery taken off it.
+//
+// TWO LITERALS ARE EXEMPT, AND ONLY BECAUSE THEY ARE ADDRESSES. The settings key
+// `task.audit` names a switch the person can throw, and `reaudit` is a word the
+// model must type back to the `tasks` tool. A handle somebody has to type is not
+// a finding about their work, and translating it would leave them holding a name
+// that opens nothing.
 
 import (
 	"context"
@@ -107,6 +173,31 @@ const (
 	// to the auditor as a refusal.
 	auditCommandLimit = 200
 
+	// auditReaderHint rides every refusal and the bash description itself.
+	//
+	// A REFUSAL THAT ONLY SAYS NO COSTS A STEP AND TEACHES NOTHING. The audit
+	// that died in the wild had already spent one of its steps on a refused
+	// `pwd`, and the shape of that mistake is always the same: the auditor
+	// reaches for bash to LOOK at something, because looking is what a shell is
+	// for everywhere else. It has four hands for looking. The refusal's job is to
+	// point at them in the same breath as the no, so the wrong reach costs one
+	// step instead of three.
+	auditReaderHint = "For looking around, use read, grep, find and ls — that is what they are for. bash is only for verification commands."
+
+	// auditResultLimit is the most one tool result may weigh when it is handed
+	// to the auditor.
+	//
+	// It exists because of a real audit that died of it: the auditor ran `ls` on
+	// a huge home directory, the listing filled its context, and what was left of
+	// the reply budget was not enough to reach a verdict. The readers already
+	// truncate at pi's own numbers (50KB, internal/exec/bare's truncate.go), and
+	// 50KB of directory listing is still a whole investigation's worth of budget
+	// spent on one wrong reach. Eight thousand bytes is two screens — enough for
+	// a real `go test` failure, enough for a diff hunk — and the cut says how
+	// much was left behind so the auditor knows to ask a narrower question rather
+	// than believing it has seen everything.
+	auditResultLimit = 8000
+
 	// auditSaidLines is how much of a NON-ANSWER is kept as the outcome text.
 	// Two lines: enough for a person to see what the auditor actually said —
 	// which is the whole basis on which they are being asked to decide — and
@@ -139,6 +230,14 @@ const (
 // NOT here is everything else, including `go generate` and `go run`, which
 // execute code the node wrote — an auditor that runs the executor's own program
 // is an auditor holding the tested thing's hand.
+//
+// The four ORIENTATION commands at the end are not verification and they are
+// here anyway, because refusing them cost a verdict: an auditor that cannot ask
+// where it is standing spends its steps finding out the hard way, and the audit
+// that died in the wild burned two of them on a refused `pwd`. Every one of the
+// four READS — they print, they do not touch — and the safety argument the belt
+// rests on is about what can CHANGE the thing under judgement, not about which
+// program prints it.
 var auditCommands = []string{
 	"go test",
 	"go build",
@@ -147,6 +246,10 @@ var auditCommands = []string{
 	"git log",
 	"git status",
 	"git show",
+	"pwd",
+	"wc",
+	"head",
+	"cat",
 }
 
 // auditPrompt is the auditor's whole world. It never sees the conversation, it
@@ -164,6 +267,185 @@ VERIFIED — what you ran, and what you saw
 REFUTED — what you ran, and what you saw
 
 VERIFIED means you ran something and it passed. REFUTED means it did not pass, or there was nothing there to have passed, or you could not check. When in doubt, REFUTE. Write nothing except the verdict and your evidence.`
+
+// auditNudge is the whole of the first rung. It is ONE SENTENCE and it demands
+// the contract — not "have another think", not "are you sure", nothing that
+// tells the auditor which way to go. An auditor that has read the work and
+// stopped short of the word is missing the word, and this asks for the word.
+const auditNudge = "Answer now with one word on the first line: VERIFIED or REFUTED, then your evidence."
+
+// repairHeading and repairStands are the two things a repair round adds to the
+// original brief, and the second matters as much as the first. A worker handed a
+// brief and a list of faults in the same worktree will happily start the job
+// over — that is what a brief reads like — and starting over is how a repair
+// round throws away the ninety percent that was right. So it is told, in one
+// sentence, that the work stands and only the gaps are its job.
+const (
+	repairHeading = "A REVIEW FOUND THESE GAPS:"
+	repairStands  = "The work so far stands and is already in this working copy. Do not start it again and do not undo any of it: close the gaps above, and nothing else."
+)
+
+// ── the words a person actually reads ───────────────────────────────────────
+
+// The leads for the three landings. They are constants because three different
+// readers compare against them — the note, the index row, and the tests that
+// hold this file to its own law — and a lead that was spelled twice would be a
+// law with two versions.
+const (
+	// incompleteLead opens a node that was looked at and found short. It does
+	// not say who looked, because from the person's chair it does not matter:
+	// the news is that the work is not finished and here is what is missing.
+	incompleteLead = "incomplete — "
+	// needsLookLead opens the node nobody could judge. "Finished, but" is the
+	// honest half nobody else says: the work RAN, it is sitting on a branch, and
+	// the only thing missing is somebody's eyes.
+	needsLookLead = "finished, but needs your look — "
+	// repairedAgainLead opens the second and later rounds' gaps, so that a
+	// report carrying three sets of evidence reads as three attempts rather than
+	// as one auditor repeating itself.
+	repairedAgainLead = "still incomplete after another go — "
+)
+
+// machineryWords is the vocabulary that must never reach a person, and what to
+// say instead. The order is LONGEST-STEM-FIRST and it has to be: "unverified"
+// contains "verified", and "auditor" contains "audit", so a pass that took the
+// short one first would leave "un-confirmed" and "reviewor" behind.
+//
+// The replacements are not euphemisms — each is the plain word for the thing.
+// The auditor IS a checker, its verdict IS an answer, and REFUTED means the
+// checker did not confirm the work.
+//
+// The STEMS carry their own inflections and are not listed twice: "audit" turns
+// "audited" into "checked" and "audits" into "checks" on its own, and a row for
+// each ending would be four ways for this table to disagree with itself.
+var machineryWords = [][2]string{
+	{"auditor", "checker"},
+	{"audit", "check"},
+	{"unverified", "unchecked"},
+	{"verified", "confirmed"},
+	{"verify", "confirm"},
+	{"refuted", "not confirmed"},
+	{"refute", "not confirm"},
+	{"verdict", "answer"},
+}
+
+// plainWords strips the machinery out of a line that is about to be read by a
+// person or by the chat model.
+//
+// IT IS A NET, NOT THE POLICY. Everything this package writes itself is already
+// written in plain words at the source — that is the only way to say a thing
+// once and correctly. What this catches is the text this package did NOT write:
+// the auditor's own evidence, which is usually plain facts ("go test ./... still
+// fails: TestHollow") and is sometimes a model narrating its own role ("the
+// audit shows the REFUTED case"). The facts survive untouched; the framing is
+// translated rather than dropped, because dropping it would leave a sentence
+// with a hole in it.
+//
+// The match is case-insensitive and the replacement is lower-case, which is
+// right for the words as they actually appear: mid-sentence prose, or a SHOUTED
+// verdict word that has no business being shouted at somebody who never asked
+// for a trial.
+func plainWords(text string) string {
+	for _, pair := range machineryWords {
+		text = replaceFold(text, pair[0], pair[1])
+	}
+	return text
+}
+
+// replaceFold replaces every case-insensitive occurrence of old with new.
+//
+// The scan is over a LOWER-CASED COPY and the cut is made on the ORIGINAL, which
+// is only safe while the two agree on byte offsets — so the copy is built with
+// [strings.Map] over ASCII case alone rather than with ToLower, whose ﬁ→FI kind
+// of folding changes a string's length and would make every offset after it a
+// byte in the wrong place.
+func replaceFold(text, old, new string) string {
+	if old == "" {
+		return text
+	}
+	lower := strings.Map(func(r rune) rune {
+		if r >= 'A' && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+		return r
+	}, text)
+	var out strings.Builder
+	for {
+		at := strings.Index(lower, old)
+		if at < 0 {
+			out.WriteString(text)
+			return out.String()
+		}
+		out.WriteString(text[:at])
+		out.WriteString(new)
+		text, lower = text[at+len(old):], lower[at+len(old):]
+	}
+}
+
+// plainLines is [plainWords] over a run of evidence lines, dropping the empty
+// ones. It is what turns an auditor's answer into an outcome.
+func plainLines(lines []string) []string {
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(plainWords(line))
+		if line == "" {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// doneOutcome is what a VERIFIED node says on its card: THE EVIDENCE, ALONE.
+//
+// No lead word, because there is nothing left for one to say — the state is
+// done, the note says "finished", the merge line says the branch came home, and
+// a fourth sentence announcing the same fact in the harness's own vocabulary
+// would be the machinery taking credit for the work.
+func (v auditVerdict) doneOutcome() string {
+	return strings.Join(plainLines(v.evidence), "\n")
+}
+
+// gapsOutcome is what a node that ran out of repair rounds says: "incomplete —"
+// and the gaps, EVERY ROUND OF THEM, oldest first.
+//
+// The rounds are kept apart rather than merged into one list because they are
+// not one finding. "It was missing amp-labs, then after another go the entry was
+// there with no revenue figure" is a story about work converging on the answer
+// and running out of turns, and a person reading it knows exactly what one more
+// round would have cost them. A flat list of five bullets is not that story.
+func gapsOutcome(rounds [][]string) string {
+	var out []string
+	for _, evidence := range rounds {
+		lines := plainLines(evidence)
+		if len(lines) == 0 {
+			continue
+		}
+		lead := incompleteLead
+		if len(out) > 0 {
+			lead = repairedAgainLead
+		}
+		out = append(out, lead+lines[0])
+		out = append(out, lines[1:]...)
+	}
+	if len(out) == 0 {
+		// A finding with no evidence behind it is still a finding, and the person
+		// is owed the news even when the checker gave them nothing to hold.
+		return incompleteLead + "nothing was said about what is missing"
+	}
+	return strings.Join(out, "\n")
+}
+
+// lookOutcome is what the node nobody could judge says: it FINISHED, and it
+// needs eyes. The checker's own words follow, in plain form, because they are
+// the whole basis on which somebody is being asked to decide.
+func (v auditVerdict) lookOutcome() string {
+	lines := plainLines(v.evidence)
+	if len(lines) == 0 {
+		return needsLookLead + "nobody could say whether it holds"
+	}
+	return needsLookLead + strings.Join(lines, "\n")
+}
 
 // auditVerdict is one audit's answer: the word, and what it is standing on.
 //
@@ -214,6 +496,12 @@ func (v auditVerdict) report() string {
 // they are being asked to decide on. An auditor that wrote three paragraphs of
 // analysis and forgot the word is not the same object as one that returned an
 // empty string, and the person resolving it needs to see which they have.
+//
+// EVERY `why` HANDED TO THIS IS WRITTEN IN PLAIN WORDS AT ITS CALL SITE — "the
+// checker could not start", never "the auditor". They are this package's own
+// sentences and this package's own law (see the vocabulary section above); a
+// translation layer over text we wrote ourselves would be saying the same thing
+// twice and getting to disagree with itself.
 func noVerdict(why, said string) auditVerdict {
 	verdict := auditVerdict{word: auditUnverified, evidence: []string{why}}
 	if said = firstLines(said, auditSaidLines); said != "" {
@@ -228,11 +516,11 @@ func noVerdict(why, said string) auditVerdict {
 // second is worth their attention.
 func (v auditVerdict) twice() auditVerdict {
 	if len(v.evidence) == 0 {
-		return noVerdict("asked twice and got no verdict either time", "")
+		return noVerdict("asked twice and got no answer either time", "")
 	}
 	evidence := make([]string, len(v.evidence))
 	copy(evidence, v.evidence)
-	evidence[0] = "asked twice and got no verdict either time — " + evidence[0]
+	evidence[0] = "asked twice and got no answer either time — " + evidence[0]
 	v.evidence = evidence
 	return v
 }
@@ -277,7 +565,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 		// nothing to ask about; the caller reads ctx itself and tells that story.
 		return verdict
 	}
-	fmt.Fprintf(log, "audit: no verdict — asking once more\n")
+	fmt.Fprintf(log, "audit: no verdict — asking a fresh auditor\n")
 	retried, _ := a.auditOnce(ctx, node, tree, changed, claim, log)
 	if retried.answered {
 		return retried
@@ -297,7 +585,7 @@ func (a *Agent) auditNode(ctx context.Context, node *TaskNode, tree taskTree, ch
 func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) (auditVerdict, bool) {
 	auditor, err := a.newAuditAgent(tree.dir, node)
 	if err != nil {
-		return noVerdict("the auditor could not start: "+err.Error(), ""), true
+		return noVerdict("the checker could not start: "+err.Error(), ""), true
 	}
 	defer func() {
 		_ = auditor.Close()
@@ -317,11 +605,19 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ch
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")
 	events, err := auditor.Submit(auditCtx, auditQuestion(node, tree, changed, claim))
 	if err != nil {
-		return noVerdict("the auditor could not be asked: "+err.Error(), ""), true
+		return noVerdict("the checker could not be asked: "+err.Error(), ""), true
 	}
+	// The turn's own failure is watched for, and it is watched for HERE rather
+	// than inferred from an empty reply, because the two are different news with
+	// different remedies: a model that wandered still has a lane worth nudging,
+	// and a provider that fell over has nothing on the other end of one.
+	var failure error
 	for event := range events {
-		if event.Kind == EventToolBegin {
+		switch event.Kind {
+		case EventToolBegin:
 			fmt.Fprintf(log, "audit · %s\n", event.Hint)
+		case EventError:
+			failure = event.Err
 		}
 	}
 
@@ -330,12 +626,248 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, ch
 	// it reads ctx itself. What is this function's story is the audit that ran
 	// out of its own five minutes with the node still perfectly alive.
 	if auditCtx.Err() != nil && ctx.Err() == nil {
-		return noVerdict(fmt.Sprintf("no verdict in %s, so nothing was accepted", auditDeadline), said), false
+		return noVerdict(fmt.Sprintf("no answer in %s, so nothing was accepted", auditDeadline), said), false
+	}
+	if failure != nil && strings.TrimSpace(said) == "" {
+		// NOTHING WAS DELIVERED. There is no reply to have parsed and no auditor
+		// left to ask for a word — the call itself did not land — so this goes to
+		// the rung that builds a new one, exactly as it did before the nudge
+		// existed.
+		return noVerdict("the checker could not be asked: "+failure.Error(), ""), true
 	}
 
 	verdict := parseAuditVerdict(said)
+	// THE FIRST RUNG IS TAKEN HERE, INSIDE THE LANE IT BELONGS TO. A reply that
+	// did not parse is the one non-verdict with a live auditor behind it — it has
+	// read the diff, run the verification, and stopped a word short — so it is
+	// asked for the word before anybody pays for a second investigation. Every
+	// other way to get here (a provider error, an auditor that would not start, a
+	// deadline that expired) has already returned above, which is exactly the
+	// distinction the ladder is drawn on.
+	if !verdict.answered && ctx.Err() == nil {
+		verdict = a.nudgeAudit(auditCtx, auditor, verdict, log)
+	}
 	fmt.Fprintf(log, "audit: %s\n", verdict.report())
 	return verdict, true
+}
+
+// nudgeAudit asks the SAME auditor, once, for the word it did not say.
+//
+// It runs inside the audit's own five minutes rather than opening a window of
+// its own: the auditor has already done the reading, and a nudge that could
+// outlive the deadline would be a second audit wearing a cheap name.
+//
+// EVERY FAILURE KEEPS THE ORIGINAL NON-ANSWER. A nudge that errors, that is cut
+// off, or that comes back without the word again has taught us nothing new about
+// the work, and the caller's next rung — a fresh auditor — is the same rung it
+// was before this one existed. What it must never do is turn a nudge's own
+// silence into a finding.
+func (a *Agent) nudgeAudit(ctx context.Context, auditor *Agent, missed auditVerdict, log io.Writer) auditVerdict {
+	fmt.Fprintf(log, "audit: no verdict — asking the same auditor for the word\n")
+	events, err := auditor.Submit(ctx, auditNudge)
+	if err != nil {
+		return missed
+	}
+	for event := range events {
+		if event.Kind == EventToolBegin {
+			fmt.Fprintf(log, "audit · %s\n", event.Hint)
+		}
+	}
+	if ctx.Err() != nil {
+		return missed
+	}
+	if answer := parseAuditVerdict(lastSaid(auditor)); answer.answered {
+		return answer
+	}
+	return missed
+}
+
+// ── the repair loop ─────────────────────────────────────────────────────────
+
+// auditOutcome is where a node's whole gate ended: the last verdict, the gaps
+// every round found, and the two things a repair round CHANGES about the node —
+// the files it wrote and the claim it makes.
+//
+// The last two are why this is a struct and not a verdict. A repair round is a
+// second worker in the same worktree: it writes more files, and it says
+// something new about the work. A caller that finished the node on the first
+// child's `changed` and `report` would be filing a node under a description that
+// stopped being true two rounds ago.
+type auditOutcome struct {
+	// verdict is the LAST one reached — the one the node lands on.
+	verdict auditVerdict
+	// gaps is the evidence of every round that found something missing, oldest
+	// first, and it is what a failed node's report is built from.
+	gaps [][]string
+	// changed is every file the node wrote, across the first run and every
+	// repair round.
+	changed []string
+	// claim is the node's own last words, from whichever child spoke last.
+	claim string
+}
+
+// auditWithRepair is the whole gate: judge, and when the answer is a finding,
+// hand the work back with the gaps in front of it and judge again.
+//
+// THE LOOP IS THE ONLY THING THAT CONVERGES. Each pass builds a FRESH auditor
+// through [Agent.auditNode] with the ordinary evidence packet — same shape, same
+// contract, no round number, no word about what the last one found — because a
+// judge that knows it is looking at a second attempt is a judge with a reason to
+// let it through. What moves between rounds is the WORKER's instruction, which
+// carries the gaps verbatim, and that is the whole mechanism.
+//
+// SPEND AND TIME ACCRUE TO THE ONE NODE. Every worker and every auditor is
+// folded into the same node's cost as it closes ([Agent.foldTaskUsage]), and the
+// node's elapsed keeps running because the node never landed: the person asked
+// for one piece of work, and one piece of work is what the row says.
+func (a *Agent) auditWithRepair(ctx context.Context, node *TaskNode, tree taskTree, changed []string, claim string, log io.Writer) auditOutcome {
+	out := auditOutcome{changed: changed, claim: claim}
+	rounds := a.config.TaskRepairRounds
+	for round := 1; ; round++ {
+		out.verdict = a.auditNode(ctx, node, tree, out.changed, out.claim, log)
+		if !out.verdict.answered || out.verdict.verified {
+			// Nothing to repair: either the work holds, or nobody said anything
+			// about it — and a gap nobody named is not a gap a worker can close.
+			return out
+		}
+		// A finding is kept the moment it is made, whether or not there is a round
+		// left to spend on it: the report owes the person the evidence of every
+		// round, and the last one is the one that lands the node.
+		out.gaps = append(out.gaps, out.verdict.evidence)
+		if round > rounds || ctx.Err() != nil {
+			return out
+		}
+		fmt.Fprintf(log, "repair %d of %d: sent back — %s\n",
+			round, rounds, strings.Join(out.verdict.evidence, " · "))
+		repaired, said := a.repairNode(ctx, node, tree, out.verdict, round, log)
+		out.changed = alsoChanged(out.changed, repaired)
+		if said = strings.TrimSpace(said); said != "" {
+			// The newest account of the work replaces the old one, for the reason
+			// the auditor is given a claim at all: the claim is the thing under
+			// audit, and the thing under audit is now the repaired tree.
+			out.claim = said
+		}
+		fmt.Fprintf(log, "repair %d of %d: back from the worker — %s\n",
+			round, rounds, firstLine(said))
+	}
+}
+
+// repairNode runs one repair round: the SAME worktree, a fresh worker, the
+// original brief with the gaps under it.
+//
+// THE WORKTREE IS THE POINT. A repair round in a new checkout would be the whole
+// task again at full price, and everything the first run got right would have to
+// be got right a second time. Working where the work already is makes the round
+// what it claims to be — the last ten percent — and it is also what makes the
+// next audit honest: the auditor reads one tree containing one piece of work,
+// not a diff between two attempts.
+//
+// THE WORKER IS FRESH, though. The first child's context is forty steps of
+// reasoning about a job it believes it finished, and the thing it is worst at is
+// seeing what it left out — the same argument that put an independent auditor on
+// the gate in the first place, one layer down.
+//
+// It never returns an error. A repair round that could not start, or that hit a
+// threshold, or that wrote nothing, is not a failure of the node: it is a round
+// that closed no gaps, and the auditor that follows will say so in evidence a
+// person can read.
+func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, verdict auditVerdict, round int, log io.Writer) ([]string, string) {
+	// THE SURFACE HEARS "STILL WORKING", AND IT HEARS WHAT IS BEING CLOSED. The
+	// node never left TaskRunning — nothing landed, nothing was undone — so what
+	// goes out is an ordinary running update with the gap on it, and the machinery
+	// that sent the work back is not on the wire (task_contract.go's Mending).
+	node.mending(mendingLine(verdict.evidence))
+	defer node.mending("")
+
+	child, err := a.newTaskAgent(tree.dir, node, fmt.Sprintf("-repair%d", round))
+	if err != nil {
+		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
+		return nil, ""
+	}
+	defer func() {
+		_ = child.Close()
+		a.foldTaskUsage(node, child)
+	}()
+
+	// The room follows the work: somebody watching this node came to watch the
+	// node, and a repair round is the node still working (task_room.go). It is
+	// handed BACK when the round ends, because the round's worker is closed on the
+	// way out and a room pointing at a closed agent would refuse a line somebody
+	// typed while the node is still perfectly alive.
+	room := node.openRoom()
+	spoke := room.speaker()
+	room.speaking(child)
+	defer room.speaking(spoke)
+
+	changed, stopped, runErr := runTaskChild(ctx, child, repairInstruction(node, verdict), tree.dir, node.limits(), room, log)
+	switch {
+	case stopped != "":
+		fmt.Fprintf(log, "repair %d: %s\n", round, stopped)
+	case runErr != nil:
+		fmt.Fprintf(log, "repair %d: ended with an error: %v\n", round, runErr)
+	}
+	return changed, taskReport(child)
+}
+
+// repairInstruction is what the repairing worker is asked.
+//
+// It is the node's OWN instruction — the same assembled brief, the same frozen
+// acceptance, read from the same fields the first run read (task_run.go's
+// [TaskNode.instruction]) — with two things added: the gaps, VERBATIM, and the
+// sentence that the work stands.
+//
+// THE EVIDENCE IS NOT PARAPHRASED. It goes in exactly as the auditor wrote it,
+// because it is the most precise description of what is missing that exists
+// anywhere in this system, and a harness that summarized it would be a harness
+// deciding which half of the finding the worker gets to see. (The plain-words
+// law is about what a PERSON reads; a worker being told what to fix is machinery
+// talking to machinery, and the heading calls it a review because that is what
+// it is.)
+func repairInstruction(node *TaskNode, verdict auditVerdict) string {
+	var out strings.Builder
+	out.WriteString(node.instruction())
+	out.WriteString("\n\n" + repairHeading + "\n")
+	for _, line := range verdict.evidence {
+		out.WriteString(line + "\n")
+	}
+	out.WriteString("\n" + repairStands)
+	return out.String()
+}
+
+// mendingLine is the gap as a surface may draw it: the first line of evidence,
+// in plain words, cut to one line.
+//
+// IT IS DERIVED, NOT WRITTEN. The temptation is to turn "amp-labs is missing"
+// into "adding amp-labs to the report" — a nicer sentence — and that would be
+// this build putting words in the checker's mouth about work it has not read.
+// The first evidence line IS the gap, stated by the only party that looked, and
+// the only thing done to it here is taking the machinery vocabulary off.
+func mendingLine(evidence []string) string {
+	for _, line := range plainLines(evidence) {
+		return clip(firstLine(line), taskReportLineLimit)
+	}
+	return ""
+}
+
+// alsoChanged folds a repair round's files into the node's list, keeping the
+// order they were first written in and never listing one twice. A file the first
+// run wrote and a repair round rewrote is ONE file the node changed.
+func alsoChanged(changed, more []string) []string {
+	if len(more) == 0 {
+		return changed
+	}
+	seen := make(map[string]bool, len(changed)+len(more))
+	for _, path := range changed {
+		seen[path] = true
+	}
+	for _, path := range more {
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		changed = append(changed, path)
+	}
+	return changed
 }
 
 // auditQuestion is what the auditor is asked: the frozen acceptance, the work's
@@ -401,7 +933,7 @@ func parseAuditVerdict(text string) auditVerdict {
 			evidence: auditEvidence(evidence, text, raw),
 		}
 	}
-	return noVerdict("the auditor answered neither VERIFIED nor REFUTED", text)
+	return noVerdict("the checker answered neither way", text)
 }
 
 // auditWord splits a verdict line into the word and whatever follows it, and
@@ -601,14 +1133,19 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		// stacking under it: two auditors failing to answer is one fact, and a
 		// report that grew a paragraph per attempt would be a card nobody can
 		// read by the third try. Every attempt is in its own audit journal.
-		node.finish(verdict.report(), changed, branch, merge)
+		node.finish(verdict.lookOutcome(), changed, branch, merge)
 		node.graph.resettle(node, TaskUnverified)
 	case !verdict.verified:
-		node.finish(verdict.report(), changed, branch, abortedMerge(tree))
+		// A re-audit that finds something is a landing, not a loop. The repair
+		// rounds belong to a node's RUN (see [Agent.auditWithRepair]); this node
+		// has already landed once and been handed to a person, and starting a
+		// worker inside their answer would be the harness spending on a decision
+		// they made rather than carrying it out.
+		node.finish(gapsOutcome([][]string{verdict.evidence}), changed, branch, abortedMerge(tree))
 		node.graph.resettle(node, TaskFailed)
 	default:
 		merged, detail := tree.comeHome(node.title())
-		node.finish(withReport(verdict.report(), withReport(report, detail)), changed, tree.branch, merged)
+		node.finish(withReport(verdict.doneOutcome(), withReport(report, detail)), changed, tree.branch, merged)
 		node.graph.resettle(node, TaskDone)
 	}
 }
@@ -616,8 +1153,14 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 // acceptedLine and refutedLine are the first line of a resolved node's report —
 // which is also its row in the project's index (task_index.go's taskOutcome), so
 // each says WHO decided and, when they gave one, why.
+//
+// THEY SAY "YOU", AND THEY SAY IT IN PLAIN WORDS. These two lines land in front
+// of the person who wrote them and in front of the model that will describe the
+// work back to them, so the vocabulary law holds here exactly as it holds on
+// every other landing: what happened is that a person looked and made a call,
+// and no part of that is worth spelling in the harness's own courtroom.
 func acceptedLine(why string) string {
-	line := "ACCEPTED by the person — no auditor verdict was ever reached"
+	line := "you looked at this yourself and took it as done"
 	if why != "" {
 		line += ": " + clip(firstLine(why), taskReportLineLimit)
 	}
@@ -625,7 +1168,10 @@ func acceptedLine(why string) string {
 }
 
 func refutedLine(why string) string {
-	line := "REFUTED by the person — no auditor verdict was ever reached"
+	// It leads with the same word a node that ran out of repair rounds leads
+	// with, because it is the same news: the work is not finished. Who decided is
+	// the second half of the sentence, not the headline.
+	line := incompleteLead + "you looked at this yourself and said so"
 	if why != "" {
 		line += ": " + clip(firstLine(why), taskReportLineLimit)
 	}
@@ -651,7 +1197,15 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 	parent := a.config
 	model := a.model
 	client := unwrapCompleter(a.client)
-	journal := taskJournalPath(a.sessionID(), node.id, "-audit")
+	// EVERY ATTEMPT GETS ITS OWN JOURNAL, AND THE NONCE IS WHAT MAKES THE NEXT
+	// AUDITOR FRESH. The path carries a timestamp to the second, and two audits of
+	// one node — the retry after a non-answer, the check after a repair round —
+	// land inside the same second all the time. Sharing a path is not a cosmetic
+	// clash: [newAgent] RESUMES a session file that already exists, so the
+	// "fresh" auditor would open with the previous one's whole transcript in
+	// front of it, including its verdict. That is the one thing this gate must
+	// never be — an auditor that has already been told what to think.
+	journal := taskJournalPath(a.sessionID(), node.id, "-audit-"+shortID())
 	a.mu.Unlock()
 
 	judge, err := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleAuditor, model)
@@ -702,20 +1256,54 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 	return auditor, nil
 }
 
-// auditBelt is the read-only belt: the four readers as they are, and a bash
-// that runs verification and refuses the rest. edit and write are not filtered
-// out of a list — they are never put in one.
+// auditBelt is the read-only belt: the four readers, and a bash that runs
+// verification and refuses the rest. edit and write are not filtered out of a
+// list — they are never put in one.
+//
+// EVERY HAND ON IT IS CAPPED, and the cap is the belt's own rather than each
+// tool's, because the failure it exists for was not any one tool misbehaving: an
+// auditor ran `ls` on a directory that was not a repository, the listing filled
+// the context it was supposed to reach a verdict in, and the audit died. What
+// bounds an investigation is what ONE ANSWER may weigh, whichever hand returned
+// it, so it is applied here — where the hands are chosen — and not five times
+// over in five wrappers.
 func auditBelt(dir string, allowed []string) []bare.Tool {
 	var belt []bare.Tool
 	for _, tool := range bare.AllTools(dir) {
 		switch tool.Name {
 		case "read", "grep", "find", "ls":
-			belt = append(belt, tool)
+			belt = append(belt, boundedResult(tool))
 		case "bash":
-			belt = append(belt, verifyOnlyBash(tool, allowed))
+			belt = append(belt, boundedResult(verifyOnlyBash(tool, allowed)))
 		}
 	}
 	return belt
+}
+
+// boundedResult caps what one tool call may hand back.
+//
+// It reuses [capBytes], which is the package's own truncation — the same one
+// [capOutput] bounds a tool result for a person's screen with — so a cut result
+// carries the count of what was left behind rather than an ellipsis: an auditor
+// that cannot tell whether it is missing a line or a megabyte cannot tell
+// whether it has seen enough to judge. The sentence after it says what to do
+// about it, because the answer is never "give up", it is "ask something
+// narrower".
+//
+// The refusals pass through UNCAPPED in every practical case and deliberately go
+// through the same cap anyway: a refusal is a result like any other, and a gate
+// with an exception in it is a gate with a way around it.
+func boundedResult(tool bare.Tool) bare.Tool {
+	inner := tool.Execute
+	tool.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+		text, isError, err := inner(ctx, args)
+		if err != nil || len(text) <= auditResultLimit {
+			return text, isError, err
+		}
+		return capBytes(text, auditResultLimit) +
+			"\n[cut here: ask something narrower — a path, a pattern, a specific file]", isError, nil
+	}
+	return tool
 }
 
 // verifyOnlyBash wraps pi's bash so it runs the repository's own verification
@@ -729,7 +1317,8 @@ func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
 	inner := tool.Execute
 	tool.Description = "Run one of the repository's own verification commands and read its output: " +
 		strings.Join(allowed, ", ") + ". Every other command is refused, including anything that " +
-		"edits, installs, fetches, or chains a second command onto one of these. " + tool.Description
+		"edits, installs, fetches, or chains a second command onto one of these. " +
+		auditReaderHint + " " + tool.Description
 	tool.Execute = func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 		var fields struct {
 			Command string `json:"command"`
@@ -757,11 +1346,11 @@ func verifyOnlyBash(tool bare.Tool, allowed []string) bare.Tool {
 func auditRefusal(command string, allowed []string) (string, bool) {
 	command = strings.TrimSpace(command)
 	if command == "" {
-		return "refused: an auditor runs verification, and that was an empty command", false
+		return "refused: an auditor runs verification, and that was an empty command.\n" + auditReaderHint, false
 	}
 	if index := strings.IndexAny(command, ";|&<>`$(){}\n\r\\"); index >= 0 {
-		return fmt.Sprintf("refused: an auditor runs ONE verification command with no shell composition, and %q is in %s.\nYou may run: %s",
-			string(command[index]), clip(command, auditCommandLimit), strings.Join(allowed, ", ")), false
+		return fmt.Sprintf("refused: an auditor runs ONE verification command with no shell composition, and %q is in %s.\nYou may run: %s\n%s",
+			string(command[index]), clip(command, auditCommandLimit), strings.Join(allowed, ", "), auditReaderHint), false
 	}
 	// Whitespace is normalized so "go  test" is the same command as "go test":
 	// the allowlist is about which program runs, not about how it was typed.
@@ -771,6 +1360,6 @@ func auditRefusal(command string, allowed []string) (string, bool) {
 			return "", true
 		}
 	}
-	return fmt.Sprintf("refused: %s is not verification, and an auditor only runs verification.\nYou may run: %s",
-		clip(normalized, auditCommandLimit), strings.Join(allowed, ", ")), false
+	return fmt.Sprintf("refused: %s is not verification, and an auditor only runs verification.\nYou may run: %s\n%s",
+		clip(normalized, auditCommandLimit), strings.Join(allowed, ", "), auditReaderHint), false
 }

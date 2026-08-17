@@ -137,6 +137,11 @@ type TaskNotice struct {
 	// kept), "inplace" (a non-git workspace ran in the person's tree), or ""
 	// while running.
 	Merge string
+	// Mending is the gap being closed while a repair round runs, one plain
+	// line ("adding amp-labs to the report"), and "" at every other moment.
+	// A surface draws it as the task simply still working; the machinery
+	// that sent it back is not the surface's to mention.
+	Mending string
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that

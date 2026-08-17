@@ -20,40 +20,57 @@ func TestTaskNoteSaysWhichOfTheThreeItIs(t *testing.T) {
 		want   []string
 		never  []string
 	}{{
-		what: "a verified landing",
+		what: "a landing that holds",
 		notice: TaskNotice{
 			ID: 7, Title: "Port the parser", State: TaskDone,
-			Report: auditVerified + " — go test ./... ok", Merge: mergeMerged, Branch: "task/parser",
+			Report: "go test ./... ok", Merge: mergeMerged, Branch: "task/parser",
 		},
-		// FINISHED, and the report says on whose word: the note does not spend
-		// "verified" itself, because a done node also reaches this line by a
-		// person accepting it and by the audit row being off.
+		// FINISHED, and the report is the evidence it finished on. The note does
+		// not say "verified" — a done node also reaches this line by a person
+		// accepting it and by the checking row being off, and none of those three
+		// is the harness's own word to spend on a person (task_audit.go).
 		want: []string{
 			"task 7 finished: Port the parser",
-			auditVerified + " — go test ./... ok",
+			"go test ./... ok",
 			"its branch task/parser merged into yours",
 		},
-		never: []string{"failed", "could not be verified"},
+		never: []string{"failed", "needs your look"},
 	}, {
-		what: "a refuted landing",
+		what: "a landing that came back short",
 		notice: TaskNotice{
-			ID: 8, Title: "Mix audio", State: TaskFailed,
-			Report: "REFUTED — the new case does not run",
+			ID: 8, Title: "Mix audio", State: TaskFailed, Branch: "task/mix-audio",
+			Report: incompleteLead + "the new case does not run",
 		},
-		want:  []string{"task 8 failed: Mix audio", "REFUTED — the new case does not run"},
-		never: []string{"could not be verified"},
+		// FAILED, and the news is what is MISSING — plus the one thing the model
+		// must do with it, which is ask rather than quietly spend again.
+		want: []string{
+			"task 8 failed: Mix audio",
+			incompleteLead + "the new case does not run",
+			"offer them a follow-up in their own words",
+		},
+		never: []string{"needs your look"},
+	}, {
+		what: "a landing that stopped for another reason",
+		notice: TaskNotice{
+			ID: 10, Title: "Grind the build", State: TaskFailed,
+			Report: "ran out of time", Merge: mergeAborted, Branch: "task/grind",
+		},
+		// A NODE THAT RAN OUT OF TIME HAS NO GAP TO OFFER ANYBODY. The follow-up
+		// sentence rides an incomplete landing and only that one.
+		want:  []string{"task 10 failed: Grind the build", "ran out of time"},
+		never: []string{"offer them a follow-up"},
 	}, {
 		what: "a landing nobody could judge",
 		notice: TaskNotice{
 			ID: 9, Title: "Collect sources", State: TaskUnverified,
-			Report: auditUnverified + " — asked twice and got no verdict either time",
+			Report: needsLookLead + "asked twice and got no answer either time",
 		},
 		// NOT "FAILED", and it says what is waiting on whom: the state exists
 		// because "the work is wrong" and "nobody could tell me whether the work
 		// is wrong" are different news.
 		want: []string{
-			"task 9 could not be verified: Collect sources",
-			auditUnverified + " — asked twice",
+			"task 9 needs your look: Collect sources",
+			needsLookLead + "asked twice",
 			"it is neither done nor failed",
 			"tasks id 9 resolve accept|reaudit|refute",
 		},

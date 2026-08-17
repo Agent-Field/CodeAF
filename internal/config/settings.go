@@ -174,6 +174,22 @@ const (
 	// be the row pretending to be a unit it never varies.
 	KeyTaskAutoApprove = "task.autoapprove_seconds"
 
+	// KeyTaskRepairRounds is how many times a task whose work came back
+	// INCOMPLETE is sent back to close the gaps before it lands as a failure
+	// (internal/session's task_audit.go). It is named under `task.` beside the
+	// countdown and the audit row because it answers their question in the third
+	// currency: those say how long you get to redirect work and who checks it,
+	// this says HOW MANY TIMES a piece of work that nearly landed is allowed to
+	// finish itself.
+	//
+	// A count rather than a word, and 0 turns it off: the number is the whole
+	// setting, and the person who wants the old behaviour — one pass, and a gap
+	// is a dead node — writes 0 rather than learning a vocabulary. It is small on
+	// purpose. Each round is another worker and another check on the same node's
+	// bill, and a loop that could run five times is a loop that can spend five
+	// times without anybody watching.
+	KeyTaskRepairRounds = "task.repair_rounds"
+
 	// KeyTaskModel is the model a task runs on when the conversation does not
 	// name one for it (internal/session's taskmodel.go). It is named under
 	// `task.` beside the countdown rather than among the `models.` rows because
@@ -517,6 +533,20 @@ const (
 	// read a title and a two-line summary and reach for a key, and short enough
 	// that ignoring it is a decision rather than a wait.
 	DefaultTaskAutoApprove = 5
+
+	// DefaultTaskRepairRounds is ONE, and one is the whole argument. The failure
+	// this exists for is a piece of work that came back nearly right — a report
+	// covering ten of the eleven companies it was asked for — and died, leaving
+	// the person to type the whole task again by hand. One round is what turns
+	// that into a task that finishes: the same worktree, the same brief, and the
+	// gaps in front of a fresh worker.
+	//
+	// It is not two, and it is not five. A second round buys much less than the
+	// first — work that is still wrong after being told exactly what is missing
+	// is work whose brief is wrong, and no number of rounds fixes a brief — while
+	// every round costs another worker and another check on the same node. So the
+	// default closes the near-misses and stops.
+	DefaultTaskRepairRounds = 1
 
 	// DefaultConsentTimeout is ten seconds, and it is a different number from
 	// the one above because it is a different KIND of clock. The task countdown
@@ -962,6 +992,19 @@ func (s *Settings) build() []Setting {
 				"0 waits for your answer instead of starting. A change lands on the next session.",
 			read:  func() string { return strconv.Itoa(TaskAutoApproveAt(dir)) },
 			write: func(raw string) error { return writeProfileCount(dir, KeyTaskAutoApprove, raw) },
+		},
+		// And beside the countdown, the other number that decides what happens to
+		// work you handed off: how many times a task that came back with gaps is
+		// sent back to close them before it is called incomplete.
+		Setting{
+			Key: KeyTaskRepairRounds, Category: CategorySpending, Kind: SettingCount,
+			Label: "task repair rounds",
+			Hint: "how many times a task that came back with something missing is sent back " +
+				"to finish the job — same working copy, same brief, with the gaps in front of " +
+				"it — before it lands as incomplete. Each round costs another run and another " +
+				"check. 0 lets the first gap end the task, which is how it worked before.",
+			read:  func() string { return strconv.Itoa(TaskRepairRoundsAt(dir)) },
+			write: func(raw string) error { return writeProfileCount(dir, KeyTaskRepairRounds, raw) },
 		},
 		// Which model the work that LEAVES a conversation runs on. It sits with
 		// the countdown and the audit rather than among the model rows for the
@@ -1950,6 +1993,17 @@ func TaskAutoApproveAt(profileDir string) int {
 		return value
 	}
 	return DefaultTaskAutoApprove
+}
+
+// TaskRepairRoundsAt resolves how many repair rounds a task gets, default one.
+//
+// A persisted 0 is a VALUE and not an absence, for [TaskAutoApproveAt]'s reason:
+// a person who turned the loop off must not find it back on in the morning.
+func TaskRepairRoundsAt(profileDir string) int {
+	if value, ok := persistedInt(profileDir, KeyTaskRepairRounds); ok && value >= 0 {
+		return value
+	}
+	return DefaultTaskRepairRounds
 }
 
 // TaskModelAt resolves the model tasks run on, as the person wrote it. Empty

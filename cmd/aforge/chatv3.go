@@ -373,6 +373,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	// picked, by being cloned.
 	cfg.TaskModel = config.TaskModelAt(profileDir)
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
+	cfg.TaskRepairRounds = config.TaskRepairRoundsAt(profileDir)
 	cfg.MemoryConsolidation = config.MemoryConsolidationEnabledAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
 	// How this session chooses among the endpoints serving its model. The word

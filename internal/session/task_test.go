@@ -123,6 +123,18 @@ func (c *routedCompleter) auditCalls() int {
 	return len(c.auditRequests)
 }
 
+// auditAskedAt is one particular call to an auditor, which is how the LADDER is
+// told apart from the outside: a nudge carries the demand for the word and a
+// fresh auditor carries the evidence packet again.
+func (c *routedCompleter) auditAskedAt(index int) []ai.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if index < 0 || index >= len(c.auditRequests) {
+		return nil
+	}
+	return c.auditRequests[index]
+}
+
 func (c *routedCompleter) auditAsked() []ai.Message {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -851,8 +863,8 @@ func TestAuditOffMergesUnaudited(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, "unaudited") {
-		t.Fatalf("an unaudited merge must say so first: %q", notice.Report)
+	if !strings.HasPrefix(notice.Report, "nothing checked this work") {
+		t.Fatalf("an unchecked merge must say so first: %q", notice.Report)
 	}
 	if notice.Merge != mergeMerged {
 		t.Fatalf("the open gate still merges: merge = %q", notice.Merge)
@@ -910,8 +922,11 @@ func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, "VERIFIED — go test ./... ok") {
-		t.Fatalf("the verdict does not lead the report: %q", notice.Report)
+	// THE EVIDENCE LEADS, AND THE MACHINERY IS NOT THERE. The state says done;
+	// what the report adds is what was run and what was seen (task_audit.go's
+	// vocabulary law).
+	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
+		t.Fatalf("the evidence does not lead the report: %q", notice.Report)
 	}
 	if !strings.Contains(notice.Report, "Wrote greet.go") {
 		t.Fatalf("the node's own words were lost from the report: %q", notice.Report)
@@ -988,8 +1003,11 @@ func TestAuditRefutesANodeThatOnlyClaimsToBeDone(t *testing.T) {
 	if notice.State != TaskFailed {
 		t.Fatalf("a node that only claimed to be done is %q, want failed (report %q)", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, "REFUTED — ") {
-		t.Fatalf("report = %q, want the auditor's verdict", notice.Report)
+	// The person reads "incomplete", never the harness's own word for it — and
+	// with the repair loop turned off (the zero value of Config.TaskRepairRounds)
+	// the first finding lands the node, exactly as it always did.
+	if !strings.HasPrefix(notice.Report, incompleteLead) {
+		t.Fatalf("report = %q, want the plain finding", notice.Report)
 	}
 	if !strings.Contains(notice.Report, "TestHollow") {
 		t.Fatalf("report = %q, want the auditor's evidence", notice.Report)
@@ -1038,10 +1056,14 @@ func TestAuditNonVerdictRetriesAndLandsUnverified(t *testing.T) {
 			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
 			finalText("Wrote greet.go with the greeting."),
 		},
-		// Neither answer is a verdict. The first is the failure seen in the
-		// wild — an auditor that reasoned and never said the word.
+		// Not one of the four is a verdict, and four is the whole ladder: the
+		// first auditor is asked and then NUDGED, then a fresh one is asked and
+		// nudged in its turn. The first answer is the failure seen in the wild —
+		// an auditor that reasoned and never said the word.
 		audit: []step{
 			verdict("I had a look at the change and honestly it is hard to say either way."),
+			verdict("Still weighing it up, sorry."),
+			verdict("A second pair of eyes here, and it is no clearer."),
 			verdict("Same again: I am not able to give you a firm answer here."),
 		},
 	}
@@ -1060,24 +1082,37 @@ func TestAuditNonVerdictRetriesAndLandsUnverified(t *testing.T) {
 	if notice.State != TaskUnverified {
 		t.Fatalf("state = %q, want unverified — a non-verdict is not a failure (report %q)", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, auditUnverified+" — ") {
-		t.Fatalf("report = %q, want it to lead with the non-verdict", notice.Report)
+	if !strings.HasPrefix(notice.Report, needsLookLead) {
+		t.Fatalf("report = %q, want it to lead with the plain non-answer", notice.Report)
 	}
-	if strings.HasPrefix(notice.Report, auditRefuted) || strings.Contains(notice.Report, auditRefuted+" — ") {
-		t.Fatalf("the report calls a non-answer a refutation: %q", notice.Report)
+	if strings.HasPrefix(notice.Report, incompleteLead) {
+		t.Fatalf("the report calls a non-answer a finding: %q", notice.Report)
 	}
-	// IT WAS ASKED TWICE, and the report says so rather than leaving the person
-	// to wonder whether one blip cost them a task.
-	if calls := completer.auditCalls(); calls != 2 {
-		t.Fatalf("the audit ran %d times, want 2: one retry, and only one", calls)
+	// THE LADDER RAN ONCE AND ONLY ONCE: two auditors, each asked and then
+	// nudged for the word, and nothing after that.
+	if calls := completer.auditCalls(); calls != 4 {
+		t.Fatalf("the audit ran %d times, want 4: two auditors, each nudged once", calls)
+	}
+	// THE SECOND RUNG IS A FRESH AUDITOR AND IT IS REALLY FRESH: the evidence
+	// packet again, and not one word of what the first one said. A "fresh"
+	// auditor that could read the last one's reply would be the retry priming
+	// itself (task_audit.go's newAuditAgent mints a journal per attempt).
+	fresh := completer.auditAskedAt(2)
+	if len(fresh) == 0 || !strings.Contains(messageText(fresh[len(fresh)-1]), "ACCEPTANCE") {
+		t.Fatal("the third call was not a fresh evidence packet")
+	}
+	for _, message := range fresh {
+		if strings.Contains(messageText(message), "hard to say either way") {
+			t.Fatal("the fresh auditor opened with the first one's words in front of it")
+		}
 	}
 	if !strings.Contains(notice.Report, "asked twice") {
 		t.Fatalf("the report does not say the auditor was asked again: %q", notice.Report)
 	}
 	// THE AUDITOR'S OWN WORDS ARE THE OUTCOME TEXT: that is the whole basis on
 	// which somebody is being asked to decide.
-	if !strings.Contains(notice.Report, "not able to give you a firm answer") {
-		t.Fatalf("the auditor's words were dropped from the report: %q", notice.Report)
+	if !strings.Contains(notice.Report, "A second pair of eyes here") {
+		t.Fatalf("the checker's words were dropped from the report: %q", notice.Report)
 	}
 	// And the node's own claim is kept under it — the other half of the
 	// decision.
@@ -1134,14 +1169,20 @@ func TestAuditRetryRecoversAVerdict(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q — the retry's verdict was not read", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, "VERIFIED — ") {
-		t.Fatalf("report = %q, want the second attempt's verdict", notice.Report)
+	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
+		t.Fatalf("report = %q, want the second attempt's evidence", notice.Report)
 	}
 	if notice.Merge != mergeMerged {
 		t.Fatalf("merge = %q, want merged", notice.Merge)
 	}
 	if calls := completer.auditCalls(); calls != 2 {
 		t.Fatalf("the audit ran %d times, want 2", calls)
+	}
+	// AND THE SECOND CALL WAS THE NUDGE, not a second investigation: the first
+	// auditor delivered a reply, so it was asked for the word rather than
+	// replaced (task_audit.go's ladder).
+	if asked := completer.auditAskedAt(1); !strings.Contains(messageText(asked[len(asked)-1]), auditNudge) {
+		t.Fatal("the second call was not the nudge: a fresh auditor re-paid the whole investigation")
 	}
 }
 
@@ -1231,7 +1272,7 @@ func TestDependentWaitsOnUnverifiedAndRunsWhenItIsAccepted(t *testing.T) {
 		t.Fatalf("an accepted node is %q, want done", state)
 	}
 	report := graph.node(first).notice().Report
-	if !strings.HasPrefix(report, "ACCEPTED by the person") || !strings.Contains(report, "I read the diff myself") {
+	if !strings.HasPrefix(report, "you looked at this yourself and took it as done") || !strings.Contains(report, "I read the diff myself") {
 		t.Fatalf("report = %q, want the person's decision and their reason", report)
 	}
 	if started := ran.await(t); started.id != second {
@@ -1270,11 +1311,13 @@ func TestReauditingAnUnverifiedNodeLandsItsVerdict(t *testing.T) {
 			writeCall("call-src", "greet.go", "package greet\n\nfunc Greet() string { return \"hi\" }\n"),
 			finalText("Wrote greet.go."),
 		},
-		// Two non-answers land it unverified; the third — the person's
-		// re-audit — is a real verdict.
+		// Four non-answers land it unverified — two auditors, each asked and
+		// then nudged — and the fifth, the person's re-audit, is a real verdict.
 		audit: []step{
 			verdict("hard to say"),
 			verdict("still hard to say"),
+			verdict("a second look, and still hard to say"),
+			verdict("no clearer than it was"),
 			verdict("VERIFIED — go test ./... ok · 1 file"),
 		},
 	}
@@ -1298,8 +1341,8 @@ func TestReauditingAnUnverifiedNodeLandsItsVerdict(t *testing.T) {
 	}
 	notice := awaitTaskState(t, updates, 1, TaskDone)
 
-	if !strings.HasPrefix(notice.Report, "VERIFIED — ") {
-		t.Fatalf("report = %q, want the re-audit's verdict", notice.Report)
+	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
+		t.Fatalf("report = %q, want the re-audit's evidence", notice.Report)
 	}
 	if notice.Merge != mergeMerged {
 		t.Fatalf("merge = %q, want merged — a re-audit that verifies brings the work home", notice.Merge)
@@ -1307,8 +1350,8 @@ func TestReauditingAnUnverifiedNodeLandsItsVerdict(t *testing.T) {
 	if content := readFile(t, filepath.Join(repo, "greet.go")); !strings.Contains(content, "func Greet") {
 		t.Fatalf("the re-verified work is not on the person's branch: %q", content)
 	}
-	if calls := completer.auditCalls(); calls != 3 {
-		t.Fatalf("the audit ran %d times, want 3: two at the gate and one the person asked for", calls)
+	if calls := completer.auditCalls(); calls != 5 {
+		t.Fatalf("the audit ran %d times, want 5: four at the gate and one the person asked for", calls)
 	}
 }
 
@@ -1446,8 +1489,8 @@ func TestAuditVerdictFailsClosed(t *testing.T) {
 		{"the word on its own line", "VERIFIED\ngo build ./... ok", true, true, "VERIFIED — go build ./... ok"},
 		{"a refutation with evidence", "REFUTED — TestX still fails: want 3, got 0", false, true, "REFUTED — TestX still fails: want 3, got 0"},
 		{"an essay", "I looked at the diff and it seems VERIFIED to me.", false, false,
-			"UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED\nI looked at the diff and it seems VERIFIED to me."},
-		{"nothing at all", "", false, false, "UNVERIFIED — the auditor answered neither VERIFIED nor REFUTED"},
+			"UNVERIFIED — the checker answered neither way\nI looked at the diff and it seems VERIFIED to me."},
+		{"nothing at all", "", false, false, "UNVERIFIED — the checker answered neither way"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			got := parseAuditVerdict(testCase.answer)
