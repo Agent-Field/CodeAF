@@ -282,6 +282,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.harnessPanelKey(msg)
 	}
 
+	// And the permissions panel, which is those two panels' twin in every
+	// respect that matters here: opened by a command, nothing being typed under
+	// it, and esc leaving the conversation exactly as it was (permissions.go).
+	// Being modal is also what frees a bare d to mean "drop this line" — no
+	// draft is under this one for a letter to fall through into.
+	if a.permPanel.open && msg.String() != "ctrl+c" {
+		return a.permPanelKey(msg)
+	}
+
 	if msg.String() == "ctrl+c" {
 		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
 		// a person hitting it mid-turn is reaching for the model, not for the
