@@ -23,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -67,6 +68,14 @@ type chatRequest struct {
 	Temperature float64   `json:"temperature,omitempty"`
 	Tools       []toolDef `json:"tools,omitempty"`
 	ToolChoice  string    `json:"tool_choice,omitempty"`
+	// Usage asks the endpoint to price the call it just served. It is not
+	// optional here: the adaptive run meters a fuel tank in DOLLARS, and a tank
+	// fed zeroes is a tank that never empties.
+	Usage *usageAsk `json:"usage,omitempty"`
+}
+
+type usageAsk struct {
+	Include bool `json:"include"`
 }
 
 type chatResponse struct {
@@ -102,6 +111,10 @@ type chatClient struct {
 	// else would be measuring somewhere else.
 	url string
 
+	// The ledger, behind a lock because the ADAPTIVE RUN is the first caller
+	// here with several nodes in flight at once. The design stages are still
+	// serial and pay nothing for it.
+	mu     sync.Mutex
 	calls  int
 	tokens int
 	cost   float64
@@ -118,12 +131,16 @@ func newChatClient(key, model string) *chatClient {
 	}
 }
 
-// reply is one completion, condensed to what a caller here reads.
+// reply is one completion, condensed to what a caller here reads. Cost and
+// Tokens are THIS call's, not the running total: a run with several nodes in
+// flight cannot price one of them by reading the ledger before and after.
 type reply struct {
 	Text      string
 	Reasoning string
 	ToolCalls []toolCall
 	Finish    string
+	Cost      float64
+	Tokens    int
 }
 
 // complete makes one request, retrying the failures that are worth retrying: a
@@ -131,6 +148,7 @@ type reply struct {
 // a 400 is a bug in the body and another identical body will not fix it.
 func (c *chatClient) complete(ctx context.Context, req chatRequest) (reply, error) {
 	req.Model = c.model
+	req.Usage = &usageAsk{Include: true}
 	body, err := json.Marshal(req)
 	if err != nil {
 		return reply{}, err
@@ -190,9 +208,12 @@ func (c *chatClient) once(ctx context.Context, body []byte) (reply, bool, error)
 	if len(decoded.Choices) == 0 {
 		return reply{}, true, errors.New("openrouter: a response with no choices")
 	}
+	tokens := decoded.Usage.PromptTokens + decoded.Usage.CompletionTokens
+	c.mu.Lock()
 	c.calls++
-	c.tokens += decoded.Usage.PromptTokens + decoded.Usage.CompletionTokens
+	c.tokens += tokens
 	c.cost += decoded.Usage.Cost
+	c.mu.Unlock()
 
 	choice := decoded.Choices[0]
 	out := reply{
@@ -200,6 +221,8 @@ func (c *chatClient) once(ctx context.Context, body []byte) (reply, bool, error)
 		Reasoning: strings.TrimSpace(choice.Message.Reasoning),
 		ToolCalls: choice.Message.ToolCalls,
 		Finish:    choice.FinishReason,
+		Cost:      decoded.Usage.Cost,
+		Tokens:    tokens,
 	}
 	// A REASONING MODEL THAT RAN OUT OF ROOM ANSWERS WITH NOTHING. The content
 	// is null and the whole completion went into the thinking, which reads
@@ -230,8 +253,16 @@ func (c *chatClient) ask(ctx context.Context, system, user string, maxTokens int
 	return out.Text, nil
 }
 
+// spent is the ledger, read atomically.
+func (c *chatClient) spent() (calls, tokens int, cost float64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls, c.tokens, c.cost
+}
+
 func (c *chatClient) bill() string {
-	return fmt.Sprintf("%d calls · %d tokens · $%.4f", c.calls, c.tokens, c.cost)
+	calls, tokens, cost := c.spent()
+	return fmt.Sprintf("%d calls · %d tokens · $%.4f", calls, tokens, cost)
 }
 
 func clip(text string, at int) string {
