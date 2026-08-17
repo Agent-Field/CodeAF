@@ -114,6 +114,17 @@ type taskCard struct {
 	// not ask.
 	choiceRow int
 	spans     []choiceSpan
+
+	// forming says this card is a propose_task call that is STILL ARRIVING —
+	// the block drawn from the first fragment of the call, before there is a
+	// proposal to put in it ([app.formTask]).
+	//
+	// A FORMING CARD IS NOT A QUESTION. It has no id, no deadline, no options
+	// and no answer lane: it is never [app.task], nothing on the keyboard is
+	// pointed at it, and the frame it draws is furniture grey rather than the
+	// question hue. It exists so the block GROWS where it will stand instead of
+	// arriving whole under a reply somebody is in the middle of reading.
+	forming bool
 }
 
 // choiceSpan is one option's columns on the choices row: [from, to) answers to
@@ -551,6 +562,77 @@ func (a *app) landPilot(id uint64) {
 // call that raised it, exactly as consent's does), and a second card arriving
 // anyway is not dropped: the older one settles as expired, because a question
 // that can no longer be answered must stop looking like one.
+// taskTool is the call a proposal comes out of (session's task.go). The name is
+// written down once here because two different events are recognized by it: the
+// forming fragments this file opens a card on, and nothing else on this surface
+// may guess at the spelling.
+const taskTool = "propose_task"
+
+// formTask opens the SPAWN CARD the moment a propose_task call starts arriving
+// (session.EventToolForming), and fills its title in as the wire says it.
+//
+// THE DEFECT THIS CLOSES: a groomed proposal is the longest call the model
+// makes — a title, a summary, a brief of several paragraphs, an acceptance
+// condition — and every one of those seconds used to be silence, ending in a
+// question-hued block appearing whole under whatever the person was reading.
+// The card now grows where it will stand: dim, titled as soon as the title
+// field closes, with "forming…" where the countdown will be.
+//
+// It is one card per call and it is never [app.task]: this is not a question
+// yet, and a block that took the answer lane before there was anything to
+// answer would be a keyboard pointed at nothing.
+func (a *app) formTask(ev session.Event) {
+	card := a.formingCard()
+	if card == nil {
+		card = &taskCard{forming: true, born: a.now(), choiceRow: -1, modelRow: -1}
+		a.closeLive()
+		a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
+		a.follow()
+	}
+	// The gloss is "propose_task <title>" once the title field has CLOSED
+	// (session's toolhint.go), and empty until then — so the name lands once,
+	// whole, and the card never shows half a title.
+	if _, title := toolWords(ev.Tool, ev.Hint); title != "" && title != card.title {
+		card.title = title
+		card.name = taskTitleOf(title, "", 0)
+		a.markCardStale(card)
+	}
+	a.touch()
+}
+
+// formingCard is the card a propose_task call is currently forming into, or
+// nil. It walks newest first: a forming card is by construction the most recent
+// one on the transcript, and every settled card behind it is somebody else's.
+func (a *app) formingCard() *taskCard {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.kind != entryTask || e.card == nil {
+			continue
+		}
+		if e.card.forming && !e.card.settled() {
+			return e.card
+		}
+	}
+	return nil
+}
+
+// dropFormingCard resolves a card whose call never arrived — the turn ended, or
+// the stream died, between two fragments of a propose_task.
+//
+// It SETTLES rather than disappears, for [app.dropForming]'s reason: the model
+// began asking for work and did not finish, which is a thing that happened, and
+// the two-row settled card is exactly the shape this surface keeps such facts
+// in.
+func (a *app) dropFormingCard() {
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind == entryTask && e.card != nil && e.card.forming && !e.card.settled() {
+			e.card.verdict = taskFormingLost
+			e.stale = true
+		}
+	}
+}
+
 func (a *app) proposeTask(ev session.Event) {
 	notice := ev.Task
 	if notice == nil {
@@ -595,9 +677,35 @@ func (a *app) proposeTask(ev session.Event) {
 	// a completion list left open under it would be answering keys that belong
 	// to the question (consent.go makes the same call for the same reason).
 	a.closeLists()
+	// THE BLOCK THE CALL WAS FORMING INTO BECOMES THIS ONE. The person has been
+	// watching this proposal arrive; the question is that block's next state,
+	// not a second copy of it underneath ([app.formTask]).
+	if at := a.formingCardAt(); at >= 0 {
+		a.entries[at].card = card
+		a.entries[at].turn = a.turn
+		a.entries[at].stale = true
+		a.follow()
+		a.touch()
+		return
+	}
 	a.entries = append(a.entries, entry{kind: entryTask, turn: a.turn, card: card})
 	a.follow()
 	a.touch()
+}
+
+// formingCardAt is [app.formingCard]'s index, for the one caller that has to
+// replace the card rather than read it.
+func (a *app) formingCardAt() int {
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.kind != entryTask || e.card == nil {
+			continue
+		}
+		if e.card.forming && !e.card.settled() {
+			return i
+		}
+	}
+	return -1
 }
 
 // The words a settled card keeps. They are sentences rather than states because
@@ -620,6 +728,17 @@ const (
 	// would be an animation inventing a deadline nobody set.
 	taskWaitingWord = "waiting on you"
 	taskAutoWord    = "auto-starts in "
+	// taskFormingWord stands where the meter will be while the call that fills
+	// this card is still arriving. It is a state and not a promise: there is no
+	// deadline yet, because the engine has not been handed anything to hold.
+	taskFormingWord = "forming…"
+	// taskFormingName is what the head says before the title field has closed.
+	// A block with no word in it reads as a rendering fault; this reads as the
+	// one thing that is known — something is being proposed.
+	taskFormingName = "task"
+	// taskFormingLost is what a card keeps when the call never finished
+	// arriving: the turn ended, or the stream died, mid-proposal.
+	taskFormingLost = "cancelled · the proposal never arrived"
 )
 
 // THE THREE ANSWERS, and they are a ROW OF OPTIONS rather than three keys named
@@ -1002,6 +1121,11 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 	// answers a question nobody is asking.
 	card.choiceRow, card.spans = -1, nil
 	card.modelRow, card.modelSpans = -1, nil
+	// STILL ARRIVING: three rows, nothing to answer, and no hit targets — which
+	// the two lines above have just made true for this frame.
+	if card.forming && !card.settled() {
+		return a.taskFormingRows(card, width, sel)
+	}
 	head := a.taskHead(card, width, sel)
 	if card.settled() {
 		return []string{head, a.taskFoot(card, width)}
@@ -1089,8 +1213,12 @@ func (a *app) blockRule() string {
 // QUESTION, and the furniture grey the moment it is not. Violet on this surface
 // means somebody is being asked something, and a settled card that kept it would
 // be a block still shouting about a decision that has been made.
+// A FORMING CARD IS GREY FOR THE SAME REASON A SETTLED ONE IS: violet means a
+// person is being asked something, and a call that is still arriving has not
+// asked yet. The frame taking the question hue is what the proposal landing
+// LOOKS like — the block the person watched grow turns into a question.
 func (a *app) blockPaint(card *taskCard) func(string) string {
-	if card.settled() {
+	if card.settled() || card.forming {
 		return a.pal.dim
 	}
 	return a.pal.ask
@@ -1130,6 +1258,58 @@ func (a *app) taskHead(card *taskCard, width int, sel bool) string {
 	}
 	if fill := width - ansi.StringWidth(head) - ansi.StringWidth(title) - 3; fill > 0 {
 		line += paint(" " + strings.Repeat(rule, fill))
+	}
+	return line
+}
+
+// taskFormingRows is the card while the call that will fill it is still
+// arriving: the head with whatever the title has said so far, one row saying
+// what state this is, and the foot.
+//
+//	╭─ ◌ Port the streaming ────────────────
+//	│ forming…
+//	╰───────────────────────────────────────
+//
+// The shape is the proposal's own, minus everything that would be a lie: no
+// summary (nothing has closed), no models row (the engine has not resolved
+// one), no choices (there is nothing to answer) and no meter (there is no
+// deadline — the clock starts when the engine takes the proposal, not when the
+// model starts writing it). What stands in the meter's place is the word for
+// exactly what is happening.
+func (a *app) taskFormingRows(card *taskCard, width int, sel bool) []string {
+	stem := a.pal.dim(a.blockStem())
+	room := width - ansi.StringWidth(a.blockStem())
+	return []string{
+		a.taskFormingHead(card, width, sel),
+		stem + a.pal.dim(fit(taskFormingWord, room)),
+		a.taskFoot(card, width),
+	}
+}
+
+// taskFormingHead is [app.taskHead] for a block that is not yet a question.
+//
+// Two cells differ and both of them are the same decision. There is no "?",
+// because nobody is being asked anything; and the node's own glyph is not there
+// either, because the ident is derived from an id the engine has not minted —
+// so the cell holds the forming mark instead, the same pulsing ◌ the tool row
+// carries (toolview.go), which is the honest statement that this is arriving.
+func (a *app) taskFormingHead(card *taskCard, width int, sel bool) string {
+	rule := a.blockRule()
+	corner := taskHeadCorner
+	if a.pal.ascii {
+		corner = taskCornerASCII
+	}
+	head := corner + " "
+	mark := a.formingInk(a.linearMark(glyphQueued, glyphQueuedASCII)) + " "
+	title := fit(firstNonEmpty(card.name, taskFormingName), width-ansi.StringWidth(head)-3)
+	line := a.pal.dim(head) + mark
+	if sel {
+		line += a.pal.bold(a.pal.muted(title))
+	} else {
+		line += a.pal.muted(title)
+	}
+	if fill := width - ansi.StringWidth(head) - ansi.StringWidth(title) - 3; fill > 0 {
+		line += a.pal.dim(" " + strings.Repeat(rule, fill))
 	}
 	return line
 }

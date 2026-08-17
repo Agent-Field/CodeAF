@@ -128,6 +128,17 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	if replayInert(e) {
 		hit = hitNone
 	}
+	// A CALL THAT IS STILL ARRIVING HANGS NOTHING, AND ANSWERS NO POINTER. The
+	// preview under a row is drawn from the arguments, and the arguments of a
+	// forming call are half a JSON object this surface has deliberately not
+	// kept — so there is nothing to show under it and nothing to open, which is
+	// [replayInert]'s rule arrived at from the other direction: a row that
+	// brightened under the pointer would be promising an answer it does not
+	// have. It becomes an ordinary row the moment the announcement brings the
+	// payload with it.
+	if e.status == toolForming {
+		return []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hitNone}}
+	}
 	out := []row{{text: a.toolLine(e, i, last, width), entry: i, hit: hit}}
 	stem := a.pal.railCont()
 	room := width - ansi.StringWidth(stem)
@@ -187,6 +198,11 @@ func (a *app) moreRow(i int, stem string, more int) row {
 // goes first and the target is truncated last — the target is the substance,
 // and a stat nobody has room for is a number about a line nobody can read.
 func (a *app) toolLine(e *entry, i int, last bool, width int) string {
+	// A CALL STILL ARRIVING IS ITS OWN SENTENCE, at every tier: what is on the
+	// line is how much of the instruction has landed, not what the call did.
+	if e.status == toolForming {
+		return a.formingLine(e, i, last, width)
+	}
 	// THE PHONE HAS ITS OWN ROW, and it is a different sentence rather than this
 	// one squeezed (see [app.toolLinePhone]). Every other tier reaches this line
 	// unchanged, which is the whole contract of [layoutTier].
@@ -497,6 +513,148 @@ func (a *app) phoneClock(e *entry) (plain, painted string) {
 	return age, a.pal.dim(age)
 }
 
+// ── THE FORMING ROW (toolForming) ───────────────────────────────────────────
+//
+//	├─▶ receiving · 1.2 KB                     ◌   nothing named yet
+//	├─▶ write · 4.2 KB                         ◌   …the name landed, it is still
+//	├─▶ write internal/tui3/app.go · receiving ◌   …and now the call has a face
+//
+// The row exists from the FIRST FRAGMENT of a call, which is the whole of this
+// wave: a `write` whose body is the file takes seconds to arrive, and a surface
+// that waited for the announcement drew silence for every one of them.
+//
+// What it says is what is honestly known, and it gains detail rather than
+// changing its mind. Until the wire has named the call there is one fact — how
+// much has arrived — and the row is that fact. The moment session can gloss it
+// from a field that has CLOSED, the gloss takes the line and "receiving" moves
+// to the trailing slot where every other fact ABOUT a call sits.
+//
+// IT IS DIM, WHOLE, AND IT PULSES. Dim because nothing here is a claim about
+// work: the model is writing an instruction, and the surface has not been asked
+// to do anything yet. Whole — target included — because the announced row's
+// primary ink is what the transition is FOR: the line brightens when the call
+// becomes real, which is a state change a person reads without being told. And
+// the pulse is the ellipsis's own tick ([pulseStep]), not the spinner's: a
+// spinner is a claim that something is turning, and nothing is.
+func (a *app) formingLine(e *entry, i int, last bool, width int) string {
+	rail := a.pal.rail(last)
+	// Selection and hover are a brightness on the rail, exactly as they are on
+	// every other tool row (hover.go). A forming row is never the question hue:
+	// it cannot be waiting on a person, because nobody has been asked anything.
+	painted := a.pal.dim(rail)
+	if a.selected(i) || a.hoveringEntry(i) {
+		painted = a.pal.accent(rail)
+	}
+	line, used := painted, ansi.StringWidth(rail)
+	phone := layoutTier(width) == tierPhone
+	// THE MARK KEEPS ITS TIER'S COLUMN — the phone's gutter, everybody else's
+	// right end (port/p2's law) — so the announcement that lands on this row
+	// changes the ink and the words, and moves nothing.
+	if phone {
+		gutter, gutterWidth := a.phoneGutter(e)
+		line += gutter
+		used += gutterWidth
+	}
+	room := width - used
+	if !phone {
+		room -= 2 // the mark, and the space in front of it
+	}
+	if room < 1 {
+		return line
+	}
+	word := fit(formingWord(e, phone), room)
+	line += a.pal.dim(word)
+	if phone {
+		return line
+	}
+	used += ansi.StringWidth(word)
+	if pad := width - used - 1; pad > 0 {
+		line += strings.Repeat(" ", pad)
+	}
+	return line + a.mark(e)
+}
+
+// formingWord is the forming row's whole sentence.
+//
+// The gloss is session's ([formingHint] in its toolhint.go), built from the
+// argument fields that have CLOSED — so "write internal/foo.go" appears while
+// the body of the file is still arriving, and half a path never appears at all.
+// This side adds nothing to it but the state it is in.
+func formingWord(e *entry, phone bool) string {
+	name, rest := toolWords(e.tool, e.text)
+	if phone {
+		rest = phoneTarget(e.tool, rest)
+	}
+	head := strings.TrimSpace(name + " " + rest)
+	if !e.ended.IsZero() {
+		// The turn ended mid-call: the row keeps whatever the model had said of
+		// it and stops claiming anything is still coming (app.go's
+		// [app.dropForming]). The size goes with the claim — how much of an
+		// instruction that was abandoned had arrived is a number about nothing.
+		if head == "" {
+			return cancelledWord
+		}
+		return head + " · " + cancelledWord
+	}
+	// WHAT THE CALL IS ABOUT ENDS THE COUNTER. Until a hint-bearing field
+	// closes, the size is the only thing on the row that changes — it is the
+	// difference between a stalled stream and a file arriving — and the moment
+	// there is a target to name, the target is what a person is waiting to read
+	// and the state trails it instead.
+	if rest != "" {
+		return head + " · " + receivingWord
+	}
+	if size := byteWord(e.bytes); size != "" {
+		return firstNonEmpty(head, receivingWord) + " · " + size
+	}
+	return firstNonEmpty(head, receivingWord)
+}
+
+// The two words a forming row can end on.
+const (
+	receivingWord = "receiving"
+	cancelledWord = "cancelled"
+)
+
+// byteWord is how much of a call has arrived, in the coarsest figure that is
+// still true: whole bytes under a kilobyte, one decimal above it.
+//
+// One decimal is the resolution a person can read off a number that changes ten
+// times a second — "1.2 KB" climbing to "1.3 KB" is progress, and the three
+// digits under it are a flicker nobody can follow. Nothing is drawn for nothing
+// arrived: a "0 B" on a row that exists because bytes are arriving is a figure
+// that contradicts the row it is on.
+func byteWord(n int) string {
+	switch {
+	case n <= 0:
+		return ""
+	case n < 1<<10:
+		return itoa(n) + " B"
+	case n < 1<<20:
+		return tenths(n, 1<<10) + " KB"
+	}
+	return tenths(n, 1<<20) + " MB"
+}
+
+// tenths divides to one decimal place, rounded, without a float.
+func tenths(n, unit int) string {
+	t := (n*10 + unit/2) / unit
+	return itoa(t/10) + "." + itoa(t%10)
+}
+
+// formingInk is the forming row's DIM PULSE: the two quietest inks on this
+// surface, traded on the ellipsis's own grid so a row that is filling in reads
+// as alive without spending the spinner on it.
+//
+// The linear tier gets the still ink, by its own law (styles.go): an animation
+// read aloud is a claim repeated forever.
+func (a *app) formingInk(s string) string {
+	if a.linear || (a.paints/pulseStep)%2 == 0 {
+		return a.pal.dim(s)
+	}
+	return a.pal.muted(s)
+}
+
 // mark is what the right of a tool line says about how the call is going —
 // which, on success, is nothing at all.
 func (a *app) mark(e *entry) string {
@@ -505,6 +663,17 @@ func (a *app) mark(e *entry) string {
 		return a.pal.bad(a.pal.badGlyph())
 	case toolOK:
 		return ""
+	case toolForming:
+		// STILL ARRIVING. The queue's own circle, pulsing: this is the same
+		// object one state earlier, and a second glyph for it would make the
+		// announcement look like a different call rather than the same one
+		// finishing its sentence.
+		if !e.ended.IsZero() {
+			// The turn ended around it. The mark a call left unresolved takes,
+			// for the reason it takes it there: nothing is coming.
+			return a.pal.dim(a.linearMark(glyphIdle, glyphIdleASCII))
+		}
+		return a.formingInk(a.linearMark(glyphQueued, glyphQueuedASCII))
 	case toolQueued:
 		// ASKED FOR, NOT STARTED. An empty circle, dim: the row exists because
 		// the model has finished asking, and a spinner here would be the surface
