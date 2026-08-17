@@ -1,0 +1,36 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Agent-Field/aforge-v2/internal/provider
+                                      │ perf-report/wire-before.txt │     perf-report/wire-after.txt      │
+                                      │           sec/op            │   sec/op     vs base                │
+SanitizeMessages/clean/turns=45-20                      8.103µ ± 1%   1.336µ ± 2%  -83.51% (p=0.000 n=10)
+SanitizeMessages/clean/turns=81-20                     14.160µ ± 4%   2.396µ ± 2%  -83.08% (p=0.000 n=10)
+SanitizeMessages/scrubbed/turns=45-20                  10.551µ ± 2%   7.665µ ± 2%  -27.35% (p=0.000 n=10)
+SanitizeMessages/scrubbed/turns=81-20                   18.55µ ± 1%   12.65µ ± 2%  -31.81% (p=0.000 n=10)
+EncodeRequest/turns=45-20                               1.338m ± 3%   1.336m ± 4%        ~ (p=0.796 n=10)
+EncodeRequest/turns=81-20                               2.368m ± 2%   2.362m ± 4%        ~ (p=0.912 n=10)
+geomean                                                 64.37µ        31.51µ       -51.05%
+
+                                      │ perf-report/wire-before.txt │        perf-report/wire-after.txt         │
+                                      │            B/op             │     B/op      vs base                     │
+SanitizeMessages/clean/turns=45-20                     14.81Ki ± 0%    0.00Ki ± 0%  -100.00% (p=0.000 n=10)
+SanitizeMessages/clean/turns=81-20                     25.06Ki ± 0%    0.00Ki ± 0%  -100.00% (p=0.000 n=10)
+SanitizeMessages/scrubbed/turns=45-20                  15.52Ki ± 0%   12.70Ki ± 0%   -18.13% (p=0.000 n=10)
+SanitizeMessages/scrubbed/turns=81-20                  26.33Ki ± 0%   21.27Ki ± 0%   -19.23% (p=0.000 n=10)
+EncodeRequest/turns=45-20                              444.2Ki ± 0%   426.9Ki ± 0%    -3.90% (p=0.000 n=10)
+EncodeRequest/turns=81-20                              806.6Ki ± 1%   775.7Ki ± 2%    -3.84% (p=0.000 n=10)
+geomean                                                61.54Ki                      ?                       ¹ ²
+¹ summaries must be >0 to compute geomean
+² ratios must be >0 to compute geomean
+
+                                      │ perf-report/wire-before.txt │        perf-report/wire-after.txt        │
+                                      │          allocs/op          │  allocs/op   vs base                     │
+SanitizeMessages/clean/turns=45-20                       46.00 ± 0%     0.00 ± 0%  -100.00% (p=0.000 n=10)
+SanitizeMessages/clean/turns=81-20                       82.00 ± 0%     0.00 ± 0%  -100.00% (p=0.000 n=10)
+SanitizeMessages/scrubbed/turns=45-20                    91.00 ± 0%    46.00 ± 0%   -49.45% (p=0.000 n=10)
+SanitizeMessages/scrubbed/turns=81-20                   163.00 ± 0%    82.00 ± 0%   -49.69% (p=0.000 n=10)
+EncodeRequest/turns=45-20                                973.0 ± 0%    926.0 ± 0%    -4.83% (p=0.000 n=10)
+EncodeRequest/turns=81-20                               1.444k ± 0%   1.362k ± 0%    -5.68% (p=0.000 n=10)
+geomean                                                  207.0                     ?                       ¹ ²
+¹ summaries must be >0 to compute geomean
+² ratios must be >0 to compute geomean

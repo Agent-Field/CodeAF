@@ -259,38 +259,56 @@ func sanitizeMessages(messages []ai.Message) []ai.Message {
 	if len(messages) == 0 {
 		return messages
 	}
-	changed := false
-	cleaned := make([]ai.Message, len(messages))
+	// Copy on first write. The no-op is the overwhelmingly common case — aforge
+	// writes conservative ids itself, and a transcript is only ever dirty when
+	// it came from somewhere else — so the array copy is built at the first
+	// message that actually changes, rather than built on every call and thrown
+	// away at the bottom.
+	var cleaned []ai.Message
 	for index, message := range messages {
-		cleaned[index] = message
-		if id := scrubToolCallID(message.ToolCallID); id != message.ToolCallID {
-			cleaned[index].ToolCallID = id
-			changed = true
+		id := scrubToolCallID(message.ToolCallID)
+		calls, callsChanged := scrubToolCalls(message.ToolCalls)
+		content, dropped := dropEmptyTextParts(message.Role, message.Content, len(message.ToolCalls) > 0)
+		if id == message.ToolCallID && !callsChanged && !dropped {
+			continue
 		}
-		if len(message.ToolCalls) > 0 {
-			calls := make([]ai.ToolCall, len(message.ToolCalls))
-			callsChanged := false
-			for callIndex, call := range message.ToolCalls {
-				calls[callIndex] = call
-				if id := scrubToolCallID(call.ID); id != call.ID {
-					calls[callIndex].ID = id
-					callsChanged = true
-				}
-			}
-			if callsChanged {
-				cleaned[index].ToolCalls = calls
-				changed = true
-			}
+		if cleaned == nil {
+			cleaned = make([]ai.Message, len(messages))
+			copy(cleaned, messages)
 		}
-		if content, dropped := dropEmptyTextParts(message.Role, message.Content, len(message.ToolCalls) > 0); dropped {
+		cleaned[index].ToolCallID = id
+		if callsChanged {
+			cleaned[index].ToolCalls = calls
+		}
+		if dropped {
 			cleaned[index].Content = content
-			changed = true
 		}
 	}
-	if !changed {
+	if cleaned == nil {
 		return messages
 	}
 	return cleaned
+}
+
+// scrubToolCalls is [scrubToolCallID] over an assistant's tool_calls, and
+// reports whether any id actually moved. Same copy-on-first-write shape as its
+// caller and for the same reason: an assistant turn whose ids are already clean
+// — every turn this process wrote itself — must not pay for a slice nobody
+// reads.
+func scrubToolCalls(calls []ai.ToolCall) ([]ai.ToolCall, bool) {
+	var scrubbed []ai.ToolCall
+	for index, call := range calls {
+		id := scrubToolCallID(call.ID)
+		if id == call.ID {
+			continue
+		}
+		if scrubbed == nil {
+			scrubbed = make([]ai.ToolCall, len(calls))
+			copy(scrubbed, calls)
+		}
+		scrubbed[index].ID = id
+	}
+	return scrubbed, scrubbed != nil
 }
 
 // scrubToolCallID maps an id onto the conservative charset every OpenAI-
@@ -347,14 +365,25 @@ func dropEmptyTextParts(role string, content []ai.ContentPart, hasToolCalls bool
 	if !strings.EqualFold(strings.TrimSpace(role), "assistant") || len(content) == 0 {
 		return content, false
 	}
-	kept := make([]ai.ContentPart, 0, len(content))
-	for _, part := range content {
+	// Copy on first drop, for the same reason [sanitizeMessages] copies on first
+	// write: this runs once per assistant message per request, and an assistant
+	// message with nothing to drop is the ordinary one. Building the kept slice
+	// only when a part is actually dropped takes that allocation off every
+	// request that needed no repair at all.
+	var kept []ai.ContentPart
+	for index, part := range content {
 		if part.Type == "text" && part.Text == "" && part.ImageURL == nil && part.VideoURL == nil && part.InputAudio == nil && part.InputFile == nil {
+			if kept == nil {
+				kept = make([]ai.ContentPart, index, len(content)-1)
+				copy(kept, content[:index])
+			}
 			continue
 		}
-		kept = append(kept, part)
+		if kept != nil {
+			kept = append(kept, part)
+		}
 	}
-	if len(kept) == len(content) {
+	if kept == nil {
 		return content, false
 	}
 	if len(kept) == 0 && !hasToolCalls {
