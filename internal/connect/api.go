@@ -1,6 +1,7 @@
 package connect
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -38,6 +39,34 @@ func getJSON(ctx context.Context, client *http.Client, address string, out any) 
 	if err != nil {
 		return err
 	}
+	return do(client, request, out)
+}
+
+// postJSON performs one write against a service: a value encoded up, the
+// service's answer decoded back.
+//
+// It is [getJSON]'s twin and shares its whole answer-reading half, so that a
+// refusal on a write reads exactly as a refusal on a read does — the service's
+// own sentence, and never a key.
+func postJSON(ctx context.Context, client *http.Client, address string, body, out any) error {
+	if client == nil {
+		return errors.New("no connected account for this request")
+	}
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewReader(encoded))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	return do(client, request, out)
+}
+
+// do is the half both doors share: send it, read a bounded amount of the
+// answer, turn a refusal into the service's own sentence, decode the rest.
+func do(client *http.Client, request *http.Request, out any) error {
 	response, err := client.Do(request)
 	if err != nil {
 		return err

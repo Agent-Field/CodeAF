@@ -22,6 +22,10 @@ const defaultWindow = 7 * 24 * time.Hour
 // dateOnly is the shorthand a caller may use instead of a full timestamp.
 const dateOnly = "2006-01-02"
 
+// defaultMeeting is how long an event runs when nobody said. An hour is what a
+// meeting named without an end almost always means.
+const defaultMeeting = time.Hour
+
 // event is the part of a calendar's answer this package reads.
 type event struct {
 	Summary   string   `json:"summary"`
@@ -102,6 +106,139 @@ func CalendarList(ctx context.Context, client *http.Client, from, to string) (st
 		builder.WriteString("\n")
 	}
 	return bound(strings.TrimRight(builder.String(), "\n")), nil
+}
+
+// CalendarCreate puts one event on the person's main calendar and answers with
+// what is now on it: when, what it is called, who was invited, and the address
+// of the entry itself.
+//
+// start and end may each be a full timestamp or a bare YYYY-MM-DD date, and
+// THE START DECIDES WHICH KIND OF EVENT THIS IS: a bare date makes an event
+// that takes whole days, a timestamp makes one with hours. A caller who names
+// no end gets an hour for a timed event and the single named day for an all-day
+// one — and THE DAY YOU NAME IS INCLUDED, which is the same law
+// [CalendarList] reads a window by, even though the service itself counts the
+// closing date as the morning after.
+//
+// attendees is a comma-separated list of addresses and may be empty. NAMING
+// SOMEBODY INVITES THEM: the service sends them the invitation, because a
+// meeting that appears on one person's calendar and nobody else's is not the
+// thing anybody meant by inviting them.
+func CalendarCreate(ctx context.Context, client *http.Client, title, start, end, attendees, location, description string) (string, error) {
+	title = collapse(title)
+	if title == "" {
+		return "", fmt.Errorf("create event: no title")
+	}
+	start, end = strings.TrimSpace(start), strings.TrimSpace(end)
+	if start == "" {
+		return "", fmt.Errorf("create event: no start")
+	}
+
+	body := map[string]any{"summary": title}
+	span, err := eventSpan(body, start, end)
+	if err != nil {
+		return "", fmt.Errorf("create event: %w", err)
+	}
+	if place := collapse(location); place != "" {
+		body["location"] = place
+	}
+	if note := strings.TrimRight(squeeze(description), "\n"); note != "" {
+		body["description"] = note
+	}
+	guests := addresses(attendees)
+	if len(guests) > 0 {
+		invited := make([]map[string]string, 0, len(guests))
+		for _, guest := range guests {
+			invited = append(invited, map[string]string{"email": guest})
+		}
+		body["attendees"] = invited
+	}
+
+	parameters := url.Values{}
+	if len(guests) > 0 {
+		parameters.Set("sendUpdates", "all")
+	}
+	address := googleCalendarURL + "/calendars/primary/events"
+	if len(parameters) > 0 {
+		address += "?" + parameters.Encode()
+	}
+	var created struct {
+		ID       string `json:"id"`
+		HTMLLink string `json:"htmlLink"`
+	}
+	if err := postJSON(ctx, client, address, body, &created); err != nil {
+		return "", fmt.Errorf("create event: %w", err)
+	}
+
+	line := "Added " + clip(title, 120) + ", " + span + "."
+	if len(guests) > 0 {
+		line += " Invited " + strings.Join(guests, ", ") + "."
+	}
+	// THE EMPTINESS LAW: an address the service did not send back is not
+	// printed as an empty label.
+	if link := strings.TrimSpace(created.HTMLLink); link != "" {
+		line += "\n" + link
+	}
+	if id := strings.TrimSpace(created.ID); id != "" {
+		line += "\nid " + id
+	}
+	return line, nil
+}
+
+// eventSpan fills in the two ends of the event on body and says the span back
+// the way a person reads one.
+func eventSpan(body map[string]any, start, end string) (string, error) {
+	if first, err := time.ParseInLocation(dateOnly, start, time.Local); err == nil {
+		last := first.AddDate(0, 0, 1)
+		if end != "" {
+			named, err := day(end)
+			if err != nil {
+				return "", err
+			}
+			if after := named.AddDate(0, 0, 1); after.After(last) {
+				last = after
+			}
+		}
+		body["start"] = map[string]string{"date": first.Format(dateOnly)}
+		body["end"] = map[string]string{"date": last.Format(dateOnly)}
+		// The closing day is said back as the last day the event is ON, not
+		// as the morning the service counts up to.
+		if closing := last.AddDate(0, 0, -1); closing.After(first) {
+			return first.Format(dateOnly) + " to " + closing.Format(dateOnly) + ", all day", nil
+		}
+		return first.Format(dateOnly) + " all day", nil
+	}
+
+	from, err := time.Parse(time.RFC3339, start)
+	if err != nil {
+		return "", fmt.Errorf("want a start like 2026-08-16T09:00:00Z or a date like 2026-08-16, got %q", start)
+	}
+	to := from.Add(defaultMeeting)
+	if end != "" {
+		finish, err := time.Parse(time.RFC3339, end)
+		if err != nil {
+			return "", fmt.Errorf("want an end like 2026-08-16T10:00:00Z, got %q", end)
+		}
+		if finish.After(from) {
+			to = finish
+		}
+	}
+	body["start"] = map[string]string{"dateTime": from.Format(time.RFC3339)}
+	body["end"] = map[string]string{"dateTime": to.Format(time.RFC3339)}
+	return from.Local().Format("2006-01-02 15:04") + "-" + to.Local().Format("15:04"), nil
+}
+
+// day reads one bare date, tolerating a caller who wrote a whole timestamp
+// where a date was wanted.
+func day(raw string) (time.Time, error) {
+	if parsed, err := time.ParseInLocation(dateOnly, raw, time.Local); err == nil {
+		return parsed, nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+		local := parsed.Local()
+		return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.Local), nil
+	}
+	return time.Time{}, fmt.Errorf("want an end date like 2026-08-16, got %q", raw)
 }
 
 // eventLine renders one event. Fields the event does not carry are left out
