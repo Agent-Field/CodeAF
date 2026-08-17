@@ -1528,6 +1528,12 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// AN OFFER OUTRANKS A PANEL, on the terms the approval question above
 		// states: the block is drawn above the input, and a question drawn under
 		// a fullscreen sheet is a session waiting on a keyboard nobody can reach.
+		//
+		// ev.NeedsKey rides along on the ask and is read where the ANSWER is
+		// given (connect.go's [app.answerConnect]) rather than branched on here.
+		// The question is the same question either way — may aforge connect this
+		// account — and the flag decides only what saying yes DOES: a browser
+		// trip, or a box that opens in place and takes a key.
 		a.closeSettings()
 		a.closeExpand()
 		a.askConnect(ev)
@@ -2926,6 +2932,20 @@ func (a *app) paste(text string) tea.Cmd {
 	// at the door — CRLF first, then bare CR.
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	// A KEY BOX IS THE PASTE THIS SURFACE MOST EXPECTS, and it reads first. A
+	// key is a thing nobody types — it comes out of a clipboard — so the two
+	// boxes that collect one take the clipboard before anything else does: the
+	// offer's own row (connect.go) and the panel's (connectpanel.go).
+	//
+	// NEWLINES ARE DROPPED RATHER THAN FLATTENED TO SPACES. A key copied out of
+	// a web page usually brings a trailing newline with it, and a space in the
+	// middle of a secret is a secret that does not work — which the far end
+	// would report as a bad key, about the one thing the person did right.
+	if box := a.keyBox(); box != nil {
+		box.insert(strings.ReplaceAll(text, "\n", ""))
+		a.touch()
+		return nil
+	}
 	// The model overlay is modal for the keyboard, so it is modal for the
 	// clipboard: a paste while it is up is a filter somebody copied.
 	if a.pick.open {

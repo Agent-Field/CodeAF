@@ -71,9 +71,29 @@ type Connections interface {
 	// BeginAuth starts one sign-in. It may reach the network, so it is called
 	// from a command and never from the model loop.
 	BeginAuth(ctx context.Context, id string) (*connect.Flow, error)
+	// ConnectKey connects one service from a key the person pasted, and hands
+	// back where that service stands afterwards. It is the whole of the flow for
+	// a [connect.Service] whose Auth is "key": there is no browser, no waiting
+	// listener and nothing to abandon, so the panel calls this where it would
+	// have called BeginAuth and settles on what comes back.
+	//
+	// It reaches the network for the same reason BeginAuth does — the key is
+	// verified and the account asked for — so it is called from a command too.
+	ConnectKey(ctx context.Context, id string, key string) (connect.Status, error)
 	// Disconnect forgets one.
 	Disconnect(id string) error
 }
+
+// The two ways a service is connected, as [connect.Service.Auth] spells them.
+// Anything else — an empty field, a word this build has not heard of — reads as
+// a browser trip, which is what every plug shipped before this wave was.
+const (
+	authKey     = "key"
+	authBrowser = "browser"
+)
+
+// keyService reports whether a service is connected by pasting a key.
+func keyService(service connect.Service) bool { return service.Auth == authKey }
 
 // connAsk is one unanswered offer.
 type connAsk struct {
@@ -84,6 +104,38 @@ type connAsk struct {
 	// the transcript are keyed by.
 	service string
 	name    string
+	// needsKey says this account is connected by pasting a key rather than by a
+	// browser trip (session.Event's NeedsKey). It changes what "yes" DOES and
+	// nothing about what the block asks: the question a person is answering is
+	// still "may aforge connect this", and how the connecting happens is
+	// machinery.
+	needsKey bool
+	// key is the box the key is being typed into, and nil until the offer has
+	// been accepted. It hangs off the ask rather than off the surface so that
+	// everything which drops an offer — the turn settling, /new, a resumed
+	// session — drops the half-typed key with it, in the one assignment it
+	// already makes.
+	key *editor
+}
+
+// entering reports whether the offer at the head of the queue is collecting a
+// key right now.
+func (a *app) entering() bool {
+	return len(a.connAsks) > 0 && a.connAsks[0].key != nil
+}
+
+// keyBox is whichever box on this surface is collecting a key, or nil. There are
+// two of them and they are never up together — the offer closes the panel on its
+// way in (see [app.askConnect]) — so the clipboard has one question to ask
+// (app.go's [app.paste]).
+func (a *app) keyBox() *editor {
+	switch {
+	case a.entering():
+		return a.connAsks[0].key
+	case a.connPanel.open && a.connPanel.entry != nil:
+		return &a.connPanel.entry.box
+	}
+	return nil
 }
 
 // askConnect takes one session.EventConnectAsk.
@@ -110,7 +162,9 @@ func (a *app) askConnect(ev session.Event) {
 	// answers to one question.
 	a.connPanel.close()
 	a.rememberService(ev.Service, name)
-	a.connAsks = append(a.connAsks, connAsk{id: ev.ConnectID, service: ev.Service, name: name})
+	a.connAsks = append(a.connAsks, connAsk{
+		id: ev.ConnectID, service: ev.Service, name: name, needsKey: ev.NeedsKey,
+	})
 	a.follow()
 	a.touch()
 }
@@ -119,13 +173,31 @@ func (a *app) askConnect(ev session.Event) {
 func (a *app) asksConnect() bool { return len(a.connAsks) > 0 }
 
 // answerConnect resolves the offer at the head of the queue.
+//
+// A YES ON A KEY SERVICE IS NOT AN ANSWER YET, it is the start of one: there is
+// no browser to hand off to, so the block opens a box in place and waits for the
+// key ([app.connectKeyRow]). The session hears nothing until that box is
+// submitted or backed out of, which is the same bargain the browser path makes —
+// exactly one answer per offer, sent when the person has actually given one.
 func (a *app) answerConnect(approve bool) {
 	if len(a.connAsks) == 0 {
 		return
 	}
+	if approve && a.connAsks[0].needsKey && a.connAsks[0].key == nil {
+		a.connAsks[0].key = &editor{}
+		a.touch()
+		return
+	}
 	head := a.connAsks[0]
 	a.connAsks = a.connAsks[1:]
-	if a.agent != nil {
+	switch {
+	case a.agent == nil:
+	case head.needsKey:
+		// The key path has ONE road back into the session, and a decline takes it
+		// with an empty key rather than reaching for the other method: two ways
+		// to say no about one offer is two things the engine has to keep in step.
+		a.agent.ResolveConnectKey(head.id, "")
+	default:
 		a.agent.ResolveConnect(head.id, approve)
 	}
 	// Nothing is written to the transcript here, in either direction. An
@@ -133,6 +205,33 @@ func (a *app) answerConnect(approve bool) {
 	// and [app.connectAuth] draws; a decline changed nothing, and a surface that
 	// recorded "you said not now" would be keeping a note about a thing that did
 	// not happen.
+	a.touch()
+}
+
+// submitConnectKey ends the offer at the head of the queue with whatever is in
+// its box: the key, or nothing at all.
+//
+// AN EMPTY BOX IS A DECLINE and not an error. A person who pressed enter on a
+// box they never typed into has said "not now" as plainly as esc would have, and
+// a surface that answered them with a complaint would be holding a session open
+// to argue about a form.
+func (a *app) submitConnectKey() {
+	if !a.entering() {
+		return
+	}
+	head := a.connAsks[0]
+	a.connAsks = a.connAsks[1:]
+	key := strings.TrimSpace(head.key.String())
+	if a.agent != nil {
+		a.agent.ResolveConnectKey(head.id, key)
+	}
+	if key != "" {
+		// The key is on its way to the far end, which takes a network trip and
+		// can take a while. That is a thing that HAPPENED, so it lands in the
+		// conversation the way the browser handoff does, and the outcome settles
+		// it in place ([app.settleConnect]).
+		a.openConnectCheck(head.service, head.name)
+	}
 	a.touch()
 }
 
@@ -166,6 +265,28 @@ func (a *app) connectAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// Leaving is never modal, and mid-turn ctrl+c is the interrupt — which
 		// releases the blocked call the honest way.
 		return nil, false
+	}
+	// THE BOX TAKES EVERY OTHER KEY WHILE IT IS OPEN, y and n included: they are
+	// two letters of a key, and a surface that read them as answers would be a
+	// box that declined halfway through a paste. Only the two keys the offer
+	// named survive, meaning what they meant one row up.
+	if a.entering() {
+		switch msg.String() {
+		case "enter":
+			a.submitConnectKey()
+		case "esc":
+			// Back out to not now. The block is gone, the session is told, and
+			// what was typed is dropped rather than kept somewhere for later —
+			// a half-entered secret is not a draft.
+			a.answerConnect(false)
+		default:
+			// The filter box's key map, which is this surface's ONE way of
+			// typing into a one-line box (palette.go's [listNavigate]). There is
+			// no list under this one, so the walk and the page are no-ops.
+			listNavigate(msg, a.connAsks[0].key, func(int) {}, func() {}, 1)
+		}
+		a.touch()
+		return nil, true
 	}
 	switch msg.String() {
 	case "enter", "y":
@@ -211,7 +332,14 @@ func (a *app) connectAskRows(width int) []string {
 	out := make([]string, 0, 4)
 	out = append(out, a.pal.askBold(glyphAsk)+" "+a.pal.bold(a.pal.ink(fit(head.name, width-2))))
 	out = append(out, a.pal.dim(fit("  "+connectPurpose(head.name), width)))
-	out = append(out, a.connectOffer(width))
+	// THE BOX TAKES THE OFFER'S OWN ROW, so the block does not grow, shift or
+	// re-flow under a hand that has just pressed a key on it. The sentence above
+	// stays because it is still the reason the box is there.
+	if head.key != nil {
+		out = append(out, a.connectKeyRow(head, width))
+	} else {
+		out = append(out, a.connectOffer(width))
+	}
 	if more := len(a.connAsks) - 1; more > 0 {
 		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
 	}
@@ -267,6 +395,71 @@ func (a *app) connectOffer(width int) string {
 		return a.pal.hover(out, width)
 	}
 	return out
+}
+
+// ── the key, typed in place ─────────────────────────────────────────────────
+//
+// Some services have no sign-in page: what they hand a person is a key, from a
+// settings screen somewhere, and connecting one means pasting it. The question
+// is the same question — may aforge connect this account — so the block is the
+// same block, and only the row that WAS the offer changes:
+//
+//	? Notion
+//	  openaf wants to connect your Notion account
+//	  › paste your Notion key
+//
+// Three decisions:
+//
+//   - THE KEY IS NEVER DRAWN. Not once, not while it is being typed, not
+//     behind a "show" toggle. What is on the row is a bullet per character and
+//     how many of them there are — the same mask the settings panel puts over a
+//     credential (settings.go), and for the stronger reason: this row is on
+//     screen while somebody is at a desk with a key in their clipboard.
+//   - THE COUNT IS THE ONLY TELEMETRY, and it is there for the paste. A key is
+//     forty or two hundred characters, the bullets run off the end of the row
+//     long before that, and the count is what tells a person the whole thing
+//     arrived. It is dim and it is a number, which is what this surface spends
+//     on a fact nobody is reading twice.
+//   - AN EMPTY BOX DRAWS THE SENTENCE AND NOT A ROW OF NOTHING. The emptiness
+//     law with a hint in its place: the box says what to put in it while there
+//     is nothing in it, which is the picker's own bargain (palette.go) and costs
+//     the block no extra row.
+
+// connectKeyHint is what an empty box says: the one instruction, in the word the
+// person owns the account by.
+func connectKeyHint(name string) string { return "paste your " + name + " key" }
+
+// connectKeyRow is the offer's row while a key is being typed into it.
+func (a *app) connectKeyRow(head connAsk, width int) string {
+	line, _ := keyLine(head.key, connectKeyHint(head.name), a.pal, width-2)
+	return "  " + line
+}
+
+// keyLine draws one key being typed — the mark, the mask, and the count — and
+// says which column the caret sits in. It is shared by the offer's row and by
+// the panel's own box (connectpanel.go), because there is ONE way of entering a
+// key on this surface and a second one that looked almost like it would be a
+// second thing to trust.
+func keyLine(box *editor, hint string, pal palette, width int) (string, int) {
+	lead := ansi.StringWidth(prompt)
+	mark := pal.dim(prompt)
+	if len(box.value) == 0 {
+		return mark + pal.dim(fit(hint, width-lead)), lead
+	}
+	bullet := "•"
+	if pal.ascii {
+		bullet = "*"
+	}
+	count := itoa(len(box.value))
+	// The mask gives way and the count does not: a run of bullets cut short says
+	// nothing a shorter run does not already say, and the number is the one cell
+	// on the row carrying a fact.
+	room := width - lead - ansi.StringWidth(count) - 2
+	if room < 0 {
+		room = 0
+	}
+	shown := min(len(box.value), room)
+	return mark + pal.ink(strings.Repeat(bullet, shown)) + pal.dim("  "+count), lead + shown
 }
 
 // ── the pointer ─────────────────────────────────────────────────────────────
@@ -374,6 +567,13 @@ type connectCard struct {
 	link    string
 	account string
 	state   connectState
+	// byKey says this attempt was a key somebody pasted rather than a browser
+	// trip. It changes two sentences and nothing else: what the card is waiting
+	// FOR while it waits, and what it says when it did not work — "the key
+	// didn't work" is the honest line for a key, and "the connection didn't
+	// complete" is the honest line for a browser nobody came back from. Neither
+	// sentence is true of the other flow.
+	byKey bool
 	// copied says the link has been taken to the clipboard, which the card says
 	// out loud for one reason: a press that changes nothing on the screen is a
 	// press a person repeats, and then doubts.
@@ -432,6 +632,26 @@ func (a *app) openConnectFlow(service, name, link string) {
 	a.entries = append(a.entries, entry{
 		kind: entryConnect, turn: a.turn,
 		conn: &connectCard{service: service, name: name, link: link, state: connectWaiting},
+	})
+	a.follow()
+	a.touch()
+}
+
+// openConnectCheck is the key path's half of [app.openConnectFlow]: the key has
+// been handed over and the far end is being asked about it.
+//
+// There is no browser, no link and nothing to abandon — which is the whole
+// difference between the two flows — so this is the waiting block and nothing
+// else. It settles on the same EventConnectDone.
+func (a *app) openConnectCheck(service, name string) {
+	a.rememberService(service, name)
+	a.closeLive()
+	a.entries = append(a.entries, entry{
+		kind: entryConnect, turn: a.turn,
+		conn: &connectCard{
+			service: service, name: a.serviceName(service, name),
+			state: connectWaiting, byKey: true,
+		},
 	})
 	a.follow()
 	a.touch()
@@ -568,7 +788,13 @@ func (a *app) connectRows(e *entry, width int) []string {
 			// read aloud hears it thirty times a second (toolview.go's objection).
 			mark = glyphRunASCII
 		}
-		out := []string{a.pal.dim(fit(mark+" waiting in your browser…", width))}
+		waiting := "waiting in your browser…"
+		if card.byKey {
+			// No browser was opened, so the surface does not claim one. What it
+			// is doing is asking the far end whether the key is any good.
+			waiting = "checking your " + card.name + " key…"
+		}
+		out := []string{a.pal.dim(fit(mark+" "+waiting, width))}
 		if card.link == "" {
 			return out
 		}
@@ -590,7 +816,14 @@ func (a *app) connectRows(e *entry, width int) []string {
 		// person can ask again — none of which is worth the failure glyph, which
 		// on this surface means a call that broke.
 		mark := a.linearMark(glyphIdle, glyphIdleASCII)
-		return []string{a.pal.dim(fit(mark+" "+card.name+" connection didn't complete", width))}
+		said := card.name + " connection didn't complete"
+		if card.byKey {
+			// The key path's honest sentence. Nothing about the far end is
+			// claimed — it may have refused the key, it may not have answered at
+			// all — and either way the person's next move is the same one.
+			said = "the " + card.name + " key didn't work"
+		}
+		return []string{a.pal.dim(fit(mark+" "+said, width))}
 	}
 
 	mark := glyphConnected
