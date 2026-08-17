@@ -1172,9 +1172,24 @@ func (a *app) guardSend(revive bool) tea.Cmd {
 
 // ── the guard, drawn ────────────────────────────────────────────────────────
 
+// ONE SLOT, TWO QUESTIONS. The stop confirmation (stop.go) is drawn in exactly
+// the rows the steer guard is drawn in, and the three functions below are where
+// that is arranged: the frame asks the guard how tall it is, what it says, and
+// what each of its rows IS for the pointer, and it never learns there are two
+// kinds of question down there.
+//
+// They share rather than stack because they are the same shape of thing — the
+// surface holding a keystroke back until it is told whether to act on it — and
+// because they can never be up together: a guard is raised by an enter in a
+// room's box, and the stop card is raised by a key that is only ever taken over
+// an empty one.
+
 // guardHeight is how many rows the question takes: the offer, and the engine's
 // reason under it when there is one.
 func (a *app) guardHeight() int {
+	if n := a.stopHeight(); n > 0 {
+		return n
+	}
 	if !a.guarding() {
 		return 0
 	}
@@ -1184,10 +1199,23 @@ func (a *app) guardHeight() int {
 	return 2
 }
 
+// guardMark says what one row of the slot is for the pointer. The steer guard
+// answers to no press — it is three keys and nothing else — and the stop card's
+// answers are a row somebody can put a finger on.
+func (a *app) guardMark(at int) chromeRow {
+	if a.stopping() {
+		return chromeRow{kind: chromeStop, index: at}
+	}
+	return chromeRow{}
+}
+
 // guardRows draws it, in the question hue the approval block wears and for the
 // same reason: this is the surface blocked on a keyboard, and the one thing on
 // screen that is blocked on you must not look like the things that are not.
 func (a *app) guardRows(width int) []string {
+	if rows := a.stopRows(width); len(rows) > 0 {
+		return rows
+	}
 	if !a.guarding() {
 		return nil
 	}
@@ -1573,19 +1601,44 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 // roomHead is the pinned line, or "" when there is no room open and nothing to
 // pin. It is drawn by the frame (view.go), which is the only thing that knows
 // where the top of the body region is.
+// THE ✕ RIDES THE RIGHT END, AFTER THE WAY OUT (stop.go). The header already
+// ends in the two things a person needs from a page they are standing in — how
+// to leave it, and, now, how to stop what is in it — and they are in that order
+// because leaving is free and stopping is not.
+//
+// IT DEGRADES BEFORE THE BACK WORD DOES. The right label is tried at three
+// strengths, and the middle one keeps the ✕ alone: the key that leaves is
+// printed on the legend at the bottom of the frame and known by everybody who
+// has ever used a terminal, while the button is the only thing anywhere on the
+// surface that ends work with a pointer. So the mark outlives the microcopy —
+// the same ladder [app.legend] walks, spending the recoverable thing first.
 func (a *app) roomHead(width int) string {
 	// [app.headHeight] is what the geometry budgeted for this row, and it is
 	// asked rather than second-guessed: a header the frame drew on a short
 	// terminal that the scrolling had not subtracted would push the room's last
 	// row under the input box.
+	a.roomStop = hudSpan{}
 	if a.headHeight() == 0 || width < 12 {
 		return ""
 	}
 	left := a.roomHeadWord(width)
-	if line, ok := a.legendLine(left, roomBackWord, width, a.pal.accent); ok {
-		return line
+	mark := a.roomStopWord()
+	attempts := []string{roomBackWord, ""}
+	if mark != "" {
+		attempts = []string{roomBackWord + roomStopSep + mark, mark, roomBackWord, ""}
 	}
-	if line, ok := a.legendLine(left, "", width, a.pal.accent); ok {
+	for _, right := range attempts {
+		line, ok := a.legendLine(left, right, width, a.pal.accent)
+		if !ok {
+			continue
+		}
+		// The mark is the LAST thing in the right label, and [app.legendLine]
+		// closes with one space and one rule cell after it — so its columns are
+		// arithmetic rather than a second layout, whichever attempt fitted.
+		if mark != "" && strings.HasSuffix(right, mark) {
+			cols := ansi.StringWidth(mark)
+			a.roomStop = hudSpan{from: width - 2 - cols, to: width - 2}
+		}
 		return line
 	}
 	return a.pal.accent(fit(left, width))
@@ -1721,6 +1774,11 @@ func (a *app) roomStateWord(node *taskNode) string {
 		// means on this surface has learned it here too.
 		return stateWorking.String()
 	case session.TaskQueued:
+		if node.stopped {
+			// Stopped before it started, and still queued for the instant between
+			// the key and the landing.
+			return taskStoppedByPerson
+		}
 		// THE DEPENDENCY OUTRANKS THE HOLD HERE TOO, for the reason the rail
 		// states in full ([app.railUnder]): a named prerequisite is work a person
 		// can act on and a full cap is a queue that clears itself.
@@ -1732,6 +1790,12 @@ func (a *app) roomStateWord(node *taskNode) string {
 		}
 		return roomQueuedWord
 	case session.TaskFailed:
+		// A PERSON ENDING WORK IS NOT A FAILURE, and the header is where that
+		// difference is read: "failed" sends somebody looking for a fault, and
+		// the fault is that they pressed stop (session's TaskNotice.Stopped).
+		if node.stopped {
+			return taskStoppedByPerson
+		}
 		return roomFailedWord
 	case session.TaskUnverified:
 		// NOT THE MERGE SENTENCE, for the reason the rail states in the same words

@@ -141,6 +141,8 @@ These are the exact words on screen.
 | queued behind named work | `waits: <title of the work it needs>` |
 | running | a turning spinner, and what it is doing this second |
 | running and closing a gap | `finishing · <what it is closing>` |
+| stopped by you | `stopped`, with `⊘` on the roster in place of the failure cross |
+| stopped before it ever ran | `stopped before it started` |
 | stopped | `stopped` |
 | stopped, with work on a branch | `stopped — branch kept` |
 | landed clean | `done` |
@@ -474,13 +476,41 @@ not a shortlist: `"claude" matches several models — say which: a, b, c, d.`
 No proposal reaches you until that is settled. The model can name one of the ids the
 refusal offers, or leave the model out so the work runs on the default.
 
-## Stopping a task, and steering one
+## Stopping a task — how to cancel or kill running work
 
-**There is no key, click or command anywhere in the chat that stops a running task.** The
-way to steer or stop one is to say so in the conversation, in words — the model has the
-door and you have the sentence.
+**`x` stops it, and it asks first.** Press `x` with the roster's cursor on the task, or
+inside the task's room, over an empty message box. One card comes up:
 
-What you can do yourself, on a task that is running:
+```
+? Stop this task? Its work halts; the branch it wrote on is kept.
+  [stop it]   [keep going]
+```
+
+The cursor opens on `keep going` — the destructive answer is never under the key you
+press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep going`.
+There is no bypass key: the card is always asked.
+
+With a pointer: the `✕` at the right end of a room's pinned header, and — on a wide
+terminal — the `✕` on the strip chip the roster's cursor is on. Both raise the same card.
+
+**What stopping does.** A task that is RUNNING has its worker cut off where it stands: the
+turn it was in the middle of ends, and the task settles as `stopped`. A task still QUEUED
+is dropped instantly, reads `stopped before it started`, and anything waiting on it is
+told its prerequisite will never finish. Either way:
+
+- **its branch is kept.** Nothing it wrote is thrown away; the landing card names the
+  branch, exactly as it does for every other early ending.
+- **what it spent is what it spent.** The figure freezes where it was.
+- **it is not a failure.** The roster draws `⊘` rather than the failure cross, the room's
+  header reads `stopped`, and the model is told the task was *stopped* — so nobody goes
+  looking for a fault that is not there.
+
+Pressing `x` twice, or on work that has already landed, does nothing but say so.
+
+**You can still ask in words instead** — "stop task 7" — and the model has the door
+through its `tasks` tool. The key is faster and does not spend a turn.
+
+What else you can do yourself, on a task that is running:
 
 | what | how |
 | --- | --- |
@@ -493,6 +523,7 @@ What you can do yourself, on a task that is running:
 | copy text out of it | `ctrl+b` in its room |
 | refer to it in conversation | `@<slug>` |
 | leave it | `esc`, `←`, or `←←` — the work keeps running |
+| stop it | `x`, or the `✕` in its room's header — one confirmation card, always |
 | change its brief or its done-condition | **cannot** — frozen; propose the work again |
 
 Steering sends your words into the task's own loop verbatim, and they land in its room as
@@ -516,7 +547,7 @@ on it stays waiting until somebody decides. On the roster it sits at the top, un
 Read it first. Its room holds the whole of it, and its landing card expands to the changed
 files, the branch, the model, the cost, the done-condition and the report.
 
-**There is no key or click that settles it.** Like stopping, this one is done by saying so
+**There is no key or click that settles it.** Unlike stopping, this one is done by saying so
 in the conversation — "accept task 7", "that one isn't finished", "have another look at
 task 7". The model holds the door through its `tasks` tool.
 
@@ -528,3 +559,41 @@ The `needs you` group holds only work that will not move without you: a landing 
 could judge, and finished work still sitting on a branch that never came home. Work that
 ran in your own tree, or that ended before there was a branch, is not undelivered — it is
 over, and it goes in the `done` fold.
+
+## Stopping an adaptive run
+
+An adaptive run is a run that keeps spawning tasks of its own for as long as its planner
+has something left to want, and it has a page rather than a room: the nodes drawn as chips
+in layers, with one fuel gauge pinned at the top.
+
+**`x` on that page stops the whole run**, over an empty message box, and it asks the same
+one card the pointer's `✕` asks:
+
+```
+? Stop this run? In-flight nodes halt; partial results stay.
+  [stop it]   [keep going]
+```
+
+The cursor opens on `keep going`. There is no bypass.
+
+**What stopping a run does.** It means *stop spending now*:
+
+- **nodes in flight are cut** where they stand, and **their partial output is discarded** —
+  a half-answer handed on to the next node as though it were a finding is worse than no
+  answer at all. Each of them ends drawn grey with `⊘` and the word `stopped`.
+- **queued nodes are dropped instantly**, and stay on the page rather than vanishing: the
+  shape you are looking at is the shape the run crystallized into.
+- **nodes that already finished keep everything** — their digests, the planner's notes, the
+  whole trace.
+- **no write-up is produced.** The closing synthesis is one more model call, and stopping
+  is you declining to pay for it.
+
+The header's state word becomes `stopped` and the conversation gets one line saying where
+it got to: `stopped — $0.42 spent, 5 of 9 nodes done`.
+
+**The fuel gate's own `stop` is the same stop.** When a run spends its tank it parks and
+offers three answers — `add $1`, `finish with what we have`, `stop` — and choosing `stop`
+there does exactly what `x` does, leaves the same trace, and says the same sentence. One
+stop, one word, wherever you reach it from.
+
+Pressing `x` on a run that has already finished does nothing but say so.

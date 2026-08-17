@@ -395,7 +395,39 @@ through to the message box's back-navigation.
 A click on empty space does nothing anywhere else, but inside a room it is the way
 out.
 
+**`x` asks to stop the work.** It is taken on the roster's focused row and inside a
+room or an adaptive run's page, and only over an empty message box — the moment there
+is a sentence in the box it is the letter `x`. It never stops anything by itself: it
+raises a card, and the card is answered below.
+
 The tasks pages describe what rooms and the roster are for.
+
+## Stopping work with `x` — the confirmation card
+
+`x` raises one card above the message box:
+
+```
+? Stop this task? Its work halts; the branch it wrote on is kept.
+  [stop it]   [keep going]
+```
+
+On an adaptive run's page it reads `Stop this run? In-flight nodes halt; partial
+results stay.`
+
+**The cursor opens on `keep going`.** `left`/`right` move it, `enter` takes the
+answer under it, `esc` is `keep going`, and every other key does nothing while the
+card is up. A click on either answer is that answer, and a click anywhere else on
+that row does nothing rather than falling through to the box.
+
+**There is no bypass key and no "don't ask me again".** Stopping cannot be undone —
+the worker's turn ends where it stands — so the card is always asked, and pressing
+`x` again while it is up is a keystroke the card swallows.
+
+**`esc` never stops anything.** It closes the card, then a room, then a page, in that
+order.
+
+Nothing is thrown away by stopping: see the tasks page for what a stopped task and a
+stopped run keep.
 
 ## The mouse: what you can click
 
@@ -410,11 +442,16 @@ Only the left button acts. A press is resolved in this order:
    acts, and a press anywhere else **closes** the list.
 4. An attachment chip — removes it.
 5. The jump-to-latest chip.
-6. Task strip chips, then the rail column, then a proposal's choices row.
-7. The model name in the status row, which opens the model picker. A press elsewhere
+6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
+   the right end of a room's pinned header. On a phone-width terminal the `✕`'s hit
+   box is three rows tall, because a finger is about that wide.
+7. Task strip chips, then the rail column, then a proposal's choices row. On a wide
+   terminal the strip chip the roster's cursor is on carries a `✕` of its own, and
+   pressing it asks to stop that work instead of opening its room.
+8. The model name in the status row, which opens the model picker. A press elsewhere
    on the status row falls through. On a narrow terminal the whole two-row deck
    answers.
-8. The body: an inline **task link** inside prose, which is the one mouse-only target
+9. The body: an inline **task link** inside prose, which is the one mouse-only target
    on the surface; a cut markdown table's foot; a waiting sign-in, where a click
    copies its link; a thinking block, clickable over its whole height; a tool row,
    which opens its expansion, or the full-frame sheet on a narrow terminal; the

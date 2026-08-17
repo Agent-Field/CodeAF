@@ -174,6 +174,11 @@ type taskNode struct {
 	// run anything adaptive, which is every session until one does.
 	parent string
 	paused bool
+	// stopped says a PERSON ended this node rather than the work ending on its
+	// own (session's TaskNotice.Stopped). It rides beside the state rather than
+	// replacing it — a stopped node still settles as failed — and it is what the
+	// roster's ⊘ and the header's "stopped" are drawn from (stop.go).
+	stopped bool
 	// began is the moment the node started, derived once from the update's own
 	// Elapsed so the clock is the frame's and not the event's. met is when this
 	// surface first heard of the node at all, which is the honest spawn time for
@@ -3120,6 +3125,13 @@ func (a *app) railWaits(node *taskNode) string {
 // rail row is a presence that disappears when the work comes home, so the tick
 // is not decoration on a permanent row — it is the last thing the row says.
 func (a *app) railGlyph(node *taskNode) string {
+	// ⊘ IS THE ONE MARK THAT OUTRANKS THE STATE, and it is the only one that
+	// does: a node a person stopped settles as `failed` on the wire, because
+	// nothing merged, and drawing it with the failure's cross would report a
+	// finding nobody made about work they ended themselves (stop.go).
+	if mark, stopped := a.stoppedGlyph(node); stopped {
+		return mark
+	}
 	switch node.state {
 	case session.TaskDone:
 		return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
@@ -3261,6 +3273,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	}
 	if notice.Merge != "" {
 		node.merge = notice.Merge
+	}
+	// WHO ENDED IT IS KEPT AND NEVER UNSET, on the rule the branch and the price
+	// are kept by: a person stopping this node is a fact about the work, and an
+	// update that says nothing about it is not an update that undid it. It also
+	// cannot arrive twice — nothing on the engine's side ever un-stops a node.
+	if notice.Stopped {
+		node.stopped = true
 	}
 	if notice.Report != "" {
 		node.report = notice.Report

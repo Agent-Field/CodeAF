@@ -693,6 +693,16 @@ type app struct {
 	// nil (room.go). It holds the person's words while they say where those
 	// words should go.
 	guard *steerGuard
+	// stop is the confirmation standing over a request to END work, or nil
+	// (stop.go). It shares the guard's slot above the draft and its keyboard
+	// rung: both are the surface holding a keystroke back until it is told
+	// whether to act on it, and neither can be raised while the other is up.
+	stop *stopCard
+	// roomStop is where the ✕ was drawn on the room's pinned header, in columns,
+	// or the empty span when there is nothing there to stop. Written by
+	// [app.roomHead] at layout and read by [app.stopMarkPress], which is the
+	// bargain every pointer target on this surface makes.
+	roomStop hudSpan
 
 	// THE PASTE BRACKET. pasting says the terminal has opened one and not yet
 	// closed it; pasted is what has arrived inside it; pasteAt is when the last
@@ -1124,6 +1134,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if taken {
 			return a, flushed
 		}
+		// THE STOP CONFIRMATION READS FIRST of the three below, and only ever
+		// while it is up or while `x` is being pressed at something stoppable
+		// (stop.go). It is a question about ENDING the work the roster and the
+		// room are pages onto, so a key that reached either of them would be a
+		// key aimed at the very thing being stopped.
+		if cmd, took := a.stopKey(msg); took {
+			return a, tea.Batch(flushed, cmd)
+		}
 		// THE ROSTER READS NEXT, and only ever once it has been HANDED the
 		// keyboard (ctrl+t, task.go). Explicit focus outranks ambient place: a room
 		// is where a person is, the roster is what they just asked for, and esc
@@ -1367,6 +1385,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// row it rides is empty everywhere else, and empty space on this
 			// surface is not a gesture (jumpchip.go).
 			if a.jumpPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, nil
+			}
+			// THE STOP TARGETS ARE READ BEFORE EVERY OTHER COLUMN-AWARE PRESS
+			// (stop.go). The card's answers sit over the draft, and the ✕ sits at
+			// the right end of the room's pinned header with a hit box three rows
+			// tall on a phone — which overlaps the strip and the top of the body,
+			// deliberately, because a finger that misses this one either ends work
+			// nobody meant to end or leaves a person with no way to end it at all.
+			if a.stopPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
 			// THE TASK STRIP IS READ BEFORE THE RAIL, because the strip spans the
