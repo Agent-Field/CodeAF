@@ -1026,7 +1026,10 @@ func (s *Settings) build() []Setting {
 			Key: KeyToolApprovals, Category: CategorySpending, Kind: SettingText,
 			Label: "tool approvals", EmptyLabel: "none",
 			Hint: "exceptions to the answer above, one per tool: `read:allow, bash:prompt`. " +
-				"A tool not named here follows the setting above.",
+				"What you write here changes only the tools you name. Reading files and " +
+				"aforge's own notes are allowed unless you name them, and everything else " +
+				"you do not name follows the setting above. Answering always on an approval " +
+				"question writes one, and it takes effect straight away.",
 			read:  func() string { return ToolApprovalsAt(dir) },
 			write: func(raw string) error { return writeToolApprovals(dir, raw) },
 		},
@@ -1037,7 +1040,8 @@ func (s *Settings) build() []Setting {
 				"`allow git status*, deny rm -rf *`. A `*` matches anything; an allow " +
 				"answers only for a whole single command, a deny catches its shape " +
 				"anywhere in a longer line, and dangerous commands are asked about " +
-				"whatever this says. Answering always on an approval question writes one.",
+				"whatever this says. Answering always on an approval question writes one, " +
+				"and it takes effect straight away.",
 			read:  func() string { return BashApprovalsAt(dir) },
 			write: func(raw string) error { return writeBashApprovals(dir, raw) },
 		},
