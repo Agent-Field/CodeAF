@@ -756,6 +756,10 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 //     (internal/session's memory.go and state.go); no hand outside this process
 //     reads them, and asking somebody to approve the agent writing itself a
 //     reminder is asking about the wrong thing.
+//   - manual, which reads pages compiled into this binary and touches no disk
+//     at all (internal/session's tools_manual.go). A person who asks "what can
+//     you do" and is answered with a permission prompt has been asked to
+//     approve the program looking up its own documentation.
 //
 // commit is DELIBERATELY NOT HERE, and it is the interesting half of the split.
 // It is the fifth hand on the same working state, but it is the only one that
@@ -771,6 +775,7 @@ func v3BuiltinApprovals() map[string]any {
 		"read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
 		"jobs": "allow",
 		"note": "allow", "track": "allow", "recall": "allow", "forget": "allow",
+		"manual": "allow",
 	}
 }
 
