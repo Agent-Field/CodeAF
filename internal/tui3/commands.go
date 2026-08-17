@@ -391,7 +391,6 @@ func helpText(file string) string {
 		"ctrl+o         expand this turn's tool calls · click one to open it",
 		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
 		"ctrl+s         drag to select with your mouse · any key ends it",
-		"ctrl+y         copy the last answer · or the sign-in link when one is up",
 		"ctrl+q         ask this after the current turn instead of into it",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
