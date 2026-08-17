@@ -85,6 +85,32 @@ func bankBashApproval(agent *session.Agent, workspace, profileDir string, yolo b
 	}
 }
 
+// v3CurrentGate copies a launch config and swaps in the gate as it stands right
+// now. It is what /new and /resume open a second conversation on.
+//
+// THE SAME COMPLAINT, ONE DOOR OVER. cfg is the config this window launched on
+// and it carries the policy that launch built, so an agent opened after somebody
+// banked a rule would start behind the gate that rule was written to change —
+// /new would quietly resurrect exactly the asking the keystroke had just
+// stopped, and the person would have no way to connect the two.
+//
+// THE ROWS ARE RE-READ HERE RATHER THAN PUSHED, which is the whole reason this
+// needs no lock: the read happens inside one closure on one keystroke and writes
+// nothing that anything else can see. A pushed policy belongs to a session that
+// already exists; this one is a config being assembled for a session that does
+// not exist yet, and assembling it is the launch's own job done again.
+//
+// A REBUILD THAT FAILS KEEPS THE LAUNCH'S GATE, for the reason
+// [session.Agent.SetApprovalPolicy] refuses a nil: the answer to "I could not
+// read the rules" is never a session with no rules. The new conversation then
+// opens exactly as it did before this function existed.
+func v3CurrentGate(cfg session.Config, workspace, profileDir string, yolo bool) session.Config {
+	if policy, err := v3Policy(workspace, profileDir, yolo); err == nil {
+		cfg.ApprovalPolicy = policy
+	}
+	return cfg
+}
+
 // refreshV3Policy rebuilds the gate from the rows as they stand and pushes it
 // into the running session. A rebuild that fails pushes nothing, and
 // [session.Agent.SetApprovalPolicy] refuses a nil for the same reason: the safe
