@@ -11,13 +11,20 @@ package session
 // Three choices here are worth the words:
 //
 //   - RING + DISK, not one or the other. Everything the job writes goes to a
-//     file under the workspace, so the whole log is addressable by the read
-//     tool — paged, offset, grepped, the same way any other file is. Only the
-//     last 64KB is kept in memory, and only that tail is ever handed back
-//     through a tool result. A watcher that has printed 400MB must not be able
-//     to put 400MB in front of the model, and a watcher that printed the one
-//     line that matters must not lose it because nobody was polling. Disk
-//     answers the second, the ring answers the first.
+//     file, so the whole log is addressable by the read tool — paged, offset,
+//     grepped, the same way any other file is. Only the last 64KB is kept in
+//     memory, and only that tail is ever handed back through a tool result. A
+//     watcher that has printed 400MB must not be able to put 400MB in front of
+//     the model, and a watcher that printed the one line that matters must not
+//     lose it because nobody was polling. Disk answers the second, the ring
+//     answers the first.
+//
+//     WHERE that file is, is landing.go's answer and not this file's: a log is
+//     a dropping, so once a session has a folder it lands in the folder rather
+//     than in the person's repository. The old reason for keeping it under the
+//     workspace — that the read tool reached it with a relative path — is
+//     superseded and was never the point: the tool takes an absolute path, and
+//     the job card prints one.
 //
 //   - THE STEERING LANE, not a tool and not an event. When a job ends, the
 //     model learns about it the way it learns anything a person types
@@ -48,11 +55,6 @@ import (
 )
 
 const (
-	// jobsDirName is where the full logs live, under the workspace so the read
-	// tool can reach them with a relative path and the person can find them
-	// after the session is gone.
-	jobsDirName = ".aforge-v3/jobs"
-
 	// jobRingBytes is the in-memory tail. 64KB is a few hundred lines of a
 	// build log — enough that `jobs output` after a failure shows the failure,
 	// and small enough that a hundred jobs cost megabytes, not gigabytes.
@@ -256,6 +258,11 @@ func (j *job) signal(sig syscall.Signal) {
 // three turns later, and Close is what ends it.
 type jobRegistry struct {
 	workspace string
+	// place is the session folder, and it is what decides where the logs land
+	// (landing.go). The zero Place keeps them under the workspace, which is the
+	// legacy layout and the only thing a caller that has not adopted a folder
+	// can mean.
+	place Place
 	// notify carries a completion note to the steering queue — the WAKING lane
 	// (agent.go's [Agent.enqueueSteering]), which queues while a turn runs and
 	// starts one when none does. It is a function rather than the Agent itself so
@@ -273,14 +280,14 @@ type jobRegistry struct {
 	watches int
 }
 
-func newJobRegistry(workspace string, notify func(string)) *jobRegistry {
-	return &jobRegistry{workspace: workspace, notify: notify}
+func newJobRegistry(workspace string, place Place, notify func(string)) *jobRegistry {
+	return &jobRegistry{workspace: workspace, place: place, notify: notify}
 }
 
 // newJob makes the shell every job shares — an id, a log file on disk, a sink
 // over it — without deciding what will run in the middle.
 func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
-	directory := filepath.Join(r.workspace, filepath.FromSlash(jobsDirName))
+	directory := droppingsDir(r.place, r.workspace, droppingJobs)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)
 	}

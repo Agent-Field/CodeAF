@@ -106,7 +106,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// rides (see [Agent.enqueueSteering]): a job that exits and a watch with news
 	// are both work the person asked the harness to do FOR THEM, and the answer
 	// they are owed is a sentence, not a line in a transcript nobody is reading.
-	agent.jobs = newJobRegistry(config.Workspace, agent.enqueueSteering)
+	agent.jobs = newJobRegistry(config.Workspace, config.Place, agent.enqueueSteering)
 	// And the accounts seam before the belt for the belt's own reason: the two
 	// connect tools are on it only when there is something behind them, so the
 	// hub has to exist before the tools are assembled (connect.go).

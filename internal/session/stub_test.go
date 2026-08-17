@@ -205,7 +205,7 @@ func TestStubbingShrinksTheContextEstimate(t *testing.T) {
 	if agent.ContextTokens() != settled {
 		t.Fatal("a second pass changed a transcript it had already stubbed")
 	}
-	entries, err := os.ReadDir(filepath.Join(workspace, filepath.FromSlash(stubDirName)))
+	entries, err := os.ReadDir(droppingsDir(Place{}, workspace, droppingStubs))
 	if err != nil {
 		t.Fatalf("read stub directory: %v", err)
 	}

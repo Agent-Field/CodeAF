@@ -94,11 +94,6 @@ const (
 	// afford is [Agent.framePageBudget], which is this number or less.
 	framesMaxPages = 8
 
-	// framesDirName is where the pages live, under the workspace for the reason
-	// the stubs are (stub.go): a person can find them after the session is over,
-	// and a resume reaches them by the path the journal wrote.
-	framesDirName = ".aforge-v3/frames"
-
 	// framesNote is what the model reads in front of the pages. It says the same
 	// three things [compactionNote] says — this is compacted context, neither of
 	// us said it, questions inside it are still open — and one more that only
@@ -268,7 +263,7 @@ func (a *Agent) framesPass(ctx context.Context, discarded []ai.Message, title st
 	workspace := strings.TrimSpace(a.config.Workspace)
 	frames := make([]framePage, 0, len(pages))
 	for _, data := range pages {
-		ref, err := writeFrame(workspace, data)
+		ref, err := writeFrame(a.config.Place, workspace, data)
 		if err != nil {
 			// A page that did not reach disk is a page no resume can read back,
 			// and half a transcript is not a rung. Fall back whole.
@@ -486,12 +481,12 @@ func frameFooter(title string, page, pages int) string {
 // file rather than two and a file already on disk is left exactly as it is —
 // the same idempotence [writeStub] has, for the same reason: these directories
 // are written to for the length of a session and read from for longer.
-func writeFrame(workspace string, data []byte) (journalPart, error) {
+func writeFrame(place Place, workspace string, data []byte) (journalPart, error) {
 	digest := sha256.Sum256(data)
 	full := hex.EncodeToString(digest[:])
-	relative := filepath.Join(framesDirName, full[:16]+".png")
-	path := filepath.Join(workspace, relative)
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	directory := droppingsDir(place, workspace, droppingFrames)
+	path := filepath.Join(directory, full[:16]+".png")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return journalPart{}, err
 	}
 	if info, err := os.Stat(path); err != nil || info.Size() != int64(len(data)) {
@@ -499,10 +494,10 @@ func writeFrame(workspace string, data []byte) (journalPart, error) {
 			return journalPart{}, err
 		}
 	}
-	// The ABSOLUTE path, unlike a stub's relative one. A stub line is read by the
-	// model with a workspace-rooted read tool; this path is read by a RESUME,
-	// which opens the file itself from wherever the process happens to be
-	// standing (see [journalPart.contentPart]).
+	// The ABSOLUTE path, always. A stub line is read by the model, which may be
+	// holding a workspace-rooted read tool; this path is read by a RESUME, which
+	// opens the file itself from wherever the process happens to be standing
+	// (see [journalPart.contentPart]).
 	return journalPart{
 		Type:   journalPartImage,
 		Path:   filepath.ToSlash(path),
