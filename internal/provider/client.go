@@ -531,6 +531,11 @@ func (c *Client) completeWithMessagesStreaming(
 				if ready, complete := tools.add(fragment); complete {
 					observeToolCallReady(observer, session, ready)
 				}
+				// And the call this fragment GREW, after any call it closed:
+				// the two events are about different calls, and a forming
+				// event for the successor must not land before its
+				// predecessor was announced ready.
+				observeToolCallForming(observer, session, &tools)
 			}
 			if choice.FinishReason != nil {
 				finishReason = *choice.FinishReason
@@ -585,6 +590,28 @@ func observeToolCallReady(observer StreamObserver, session string, call ai.ToolC
 		return
 	}
 	observer(StreamEvent{Kind: StreamToolCallReady, Delta: string(payload), Session: session})
+}
+
+// observeToolCallForming says the call the last fragment grew is still growing.
+//
+// It is raised for EVERY fragment, including the ones that carry only an id or
+// only a name, because "the model has started asking for something" is the first
+// thing worth saying and it is exactly what those fragments mean. Nothing is
+// marshaled and nothing is parsed: the accumulator already holds the text, and
+// half-sent arguments are not JSON to parse anyway.
+func observeToolCallForming(observer StreamObserver, session string, tools *toolCallAccumulator) {
+	forming, open := tools.current()
+	if !open {
+		return
+	}
+	observer(StreamEvent{
+		Kind:    StreamToolCallForming,
+		Delta:   forming.Args,
+		Session: session,
+		Index:   forming.Index,
+		ID:      forming.ID,
+		Tool:    forming.Name,
+	})
 }
 
 // StreamComplete performs one streaming completion over a single user prompt.
