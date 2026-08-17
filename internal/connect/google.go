@@ -55,6 +55,7 @@ func (google) Service() Service {
 		ID:     "google",
 		Name:   "Google",
 		Blurb:  "Read and send Gmail; read and manage Calendar.",
+		Auth:   AuthBrowser,
 		Scopes: append([]string(nil), googleScopes...),
 	}
 }

@@ -331,3 +331,50 @@ func TestLoadToolErrorIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// The other half of the same floor: the tools one of the person's own accounts
+// brings, whose names do not exist until the account is picked up.
+func TestCheckRawCallsAgainstSomebodyElsesService(t *testing.T) {
+	allowAll := Policy{Default: ActionAllow}
+	cases := []struct {
+		name string
+		tool string
+		args string
+		want Action
+	}{
+		{"a read", "stripe_request", `{"method":"GET","path":"/v1/customers"}`, ActionAllow},
+		{"a read by default", "stripe_request", `{"path":"/v1/customers"}`, ActionAllow},
+		{"a read spelled quietly", "stripe_request", `{"method":"get"}`, ActionAllow},
+		{"no arguments at all", "stripe_request", ``, ActionAllow},
+		{"a write", "stripe_request", `{"method":"POST","path":"/v1/customers"}`, ActionPrompt},
+		{"a change", "freshdesk_request", `{"method":"patch"}`, ActionPrompt},
+		{"a removal", "freshdesk_request", `{"method":"DELETE"}`, ActionPrompt},
+		{"arguments nobody can read", "freshdesk_request", `{not json`, ActionPrompt},
+		{"a tool that only looks like one", "request", `{"method":"POST"}`, ActionAllow},
+		{"somebody else's tool entirely", "web_search", `{"method":"POST"}`, ActionAllow},
+	}
+	for _, c := range cases {
+		decision := allowAll.Check(c.tool, json.RawMessage(c.args))
+		if decision.Action != c.want {
+			t.Errorf("%s: Check(%q, %s) = %+v, want %s", c.name, c.tool, c.args, decision, c.want)
+		}
+	}
+
+	// The floor is a floor under a BLANKET allow and yields to a rule that
+	// names the tool, exactly as it does for gmail_send.
+	named := Policy{Default: ActionAllow, Tools: map[string]Action{"stripe_request": ActionAllow}}
+	if decision := named.Check("stripe_request", json.RawMessage(`{"method":"POST"}`)); decision.Action != ActionAllow {
+		t.Errorf("a rule that names the tool = %+v, want allow", decision)
+	}
+
+	// And the guardian reads exactly the same list.
+	if !ActsInThePersonsName("stripe_request", json.RawMessage(`{"method":"POST"}`)) {
+		t.Errorf("a write against somebody's account acts in their name")
+	}
+	if ActsInThePersonsName("stripe_request", json.RawMessage(`{"method":"GET"}`)) {
+		t.Errorf("a read does not")
+	}
+	if !ActsInThePersonsName("gmail_send", nil) {
+		t.Errorf("the table still holds")
+	}
+}
