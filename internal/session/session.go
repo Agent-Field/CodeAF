@@ -496,6 +496,19 @@ type Config struct {
 	// number the person typed.
 	TaskAutoApproveSeconds int
 
+	// TaskRepairRounds is how many times a node whose work came back with gaps
+	// is handed back to a fresh worker in the SAME worktree before it lands as
+	// incomplete (task_audit.go, config.KeyTaskRepairRounds). 0 IS THE LOOP
+	// TURNED OFF: the first gap ends the node, which is how the frontier worked
+	// before the loop existed.
+	//
+	// Zero is also the zero value, and that is deliberate rather than a defect —
+	// it is [TaskAutoApproveSeconds]'s arrangement, for the same reason. A caller
+	// that builds a Config and says nothing about repair gets the behaviour that
+	// spends nothing extra, and the DEFAULT of one round is the door's answer
+	// (config.DefaultTaskRepairRounds), read from the person's own settings.
+	TaskRepairRounds int
+
 	// InTask marks this agent as ONE TASK NODE'S RUNNER (task_run.go) rather
 	// than the conversation. It changes exactly two things, and both are
 	// consequences of the same fact — there is nobody to talk to:

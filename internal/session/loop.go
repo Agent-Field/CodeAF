@@ -895,11 +895,21 @@ func argsText(call ai.ToolCall) string {
 // number of bytes left behind. The count is explicit — not an ellipsis — so a
 // person reading a truncated build log knows whether they are missing a line or
 // a megabyte, and so no surface mistakes this copy for the whole result.
-func capOutput(text string) string {
-	if len(text) <= outputLimit {
+func capOutput(text string) string { return capBytes(text, outputLimit) }
+
+// capBytes is capOutput's rule at any budget: keep the first limit bytes on a
+// rune boundary, and say how many were left behind.
+//
+// It is separated from [capOutput] because the auditor's belt bounds a tool
+// RESULT — what one call may weigh in a judge's context — on a different budget
+// from the one a person's screen is drawn with (task_audit.go's boundedResult),
+// and two truncations with two ways of marking the cut would be two answers to
+// "is this the whole thing".
+func capBytes(text string, limit int) string {
+	if len(text) <= limit {
 		return text
 	}
-	cut := outputLimit
+	cut := limit
 	for cut > 0 && !utf8RuneStart(text[cut]) {
 		cut--
 	}
