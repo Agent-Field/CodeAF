@@ -8,6 +8,7 @@ require (
 	github.com/AOShei/go-fast-pdf v0.1.1
 	github.com/Agent-Field/agentfield/sdk/go v0.0.0-20260801225427-e6587ade0886
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/amp-labs/connectors v0.0.0-20260814231226-e12d95c297eb
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/colorprofile v0.4.3
@@ -29,7 +30,6 @@ require (
 
 require (
 	github.com/amp-labs/amp-common v0.0.0-20260814191756-775714ec2997 // indirect
-	github.com/amp-labs/connectors v0.0.0-20260814231226-e12d95c297eb // indirect
 	github.com/antchfx/xmlquery v1.5.1 // indirect
 	github.com/antchfx/xpath v1.3.6 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.43.4 // indirect
