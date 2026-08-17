@@ -126,6 +126,15 @@ var settingUI = map[string]settingMeta{
 		tab: tabSession, label: "tool exceptions", widget: widgetText,
 		about: "exceptions to the answer above, one per tool: read:allow, bash:prompt.",
 	},
+	// And under the tool exceptions, the exceptions for the one tool a per-tool
+	// answer cannot really answer. It is where "always, this command" on an
+	// approval question lands, so it is also where a person comes to take one
+	// back: this is the row the card's receipt sends them to.
+	config.KeyBashApprovals: {
+		tab: tabSession, label: "shell command rules", widget: widgetText,
+		about: "answers for single shell commands, first match wins: " +
+			"allow git status*, deny rm -rf *.",
+	},
 	// It sits directly under the two rows it modifies, because that is what it
 	// is: not a fourth approval mode but a filter in front of the one above —
 	// it can only spare you a question, never answer one those rows refuse.

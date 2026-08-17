@@ -45,6 +45,48 @@ func ruleMatches(rule Rule, whole string, segments []string, compound bool) bool
 	return false
 }
 
+// MatchRule reports the first pattern that answers one command line, and
+// whether any of them did. It is [Policy.CheckBash] without the answer: a
+// caller ABOUT TO WRITE a rule needs to know what the list already says, and
+// the only correct way to ask that is the matcher the policy itself uses.
+//
+// internal/config's approval memory is that caller (approvalmemory.go): a
+// command the list already allows must not be written twice, and one it already
+// denies must not be overwritten by a keystroke on a consent card.
+func (p Policy) MatchRule(command string) (Rule, bool) {
+	segments, compound := splitSegments(command)
+	return matchRule(p.BashPatterns, strings.TrimSpace(command), segments, compound)
+}
+
+// matchRule is the first-match-wins walk, shared by the decision path and by
+// MatchRule so that "what does the list say about this line" has exactly one
+// answer in this package.
+func matchRule(rules []Rule, whole string, segments []string, compound bool) (Rule, bool) {
+	for _, rule := range rules {
+		if ruleMatches(rule, whole, segments, compound) {
+			return rule, true
+		}
+	}
+	return Rule{}, false
+}
+
+// Vouchable reports whether an allow rule could EVER fire for this command
+// line. It is the matching law's allow half, asked in advance.
+//
+// A compound line is not vouchable at any pattern: an allow speaks for one
+// command it matches whole, and nothing written down can make it speak for
+// `cd /tmp && rm -rf build`. A caller that persists an approval asks this first,
+// because writing a rule that cannot fire would put a line in somebody's
+// settings claiming an approval that does nothing.
+func Vouchable(command string) bool {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return false
+	}
+	_, compound := splitSegments(command)
+	return !compound
+}
+
 // ── segments ────────────────────────────────────────────────────────────────
 
 // splitSegments breaks a command line into the individual commands it runs and

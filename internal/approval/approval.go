@@ -152,12 +152,8 @@ func (p Policy) checkBash(command string, base Decision) Decision {
 	whole := strings.TrimSpace(command)
 
 	decision := base
-	for _, rule := range p.BashPatterns {
-		if !ruleMatches(rule, whole, segments, compound) {
-			continue
-		}
+	if rule, matched := matchRule(p.BashPatterns, whole, segments, compound); matched {
 		decision = Decision{Action: rule.Action, Rule: fmt.Sprintf("bash pattern %q", rule.Match)}
-		break
 	}
 
 	// The critical table is a floor under allow and nothing more. An explicit

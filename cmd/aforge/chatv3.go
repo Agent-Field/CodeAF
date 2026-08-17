@@ -288,6 +288,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
+		// The consent card's "always", written down (chatv3_approval.go).
+		SaveApproval:     func(tool string) error { return saveToolApproval(settings.ProfileDir, tool) },
+		SaveBashApproval: func(command string) error { return saveBashApproval(settings.ProfileDir, command) },
 	})
 }
 
@@ -539,10 +542,31 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 			"jobs": "allow",
 		}
 	}
+	// The bash rules, which are the row a remembered "always, this command"
+	// lands in (internal/config's approvalmemory.go). They are ORDERED and the
+	// order is honoured as written: first match wins, so a deny somebody put at
+	// the top of the row outranks anything a consent card appended below it.
+	// --yolo does not touch them either — the flag replaces the default and
+	// nothing a person wrote down.
+	rules, err := config.ProjectStringAt(workspace, profileDir, config.KeyBashApprovals)
+	if err != nil {
+		return nil, err
+	}
+	if rules != "" {
+		parsed, err := config.ParseBashApprovals(rules)
+		if err != nil {
+			return nil, fmt.Errorf("settings row %q: %w", config.KeyBashApprovals, err)
+		}
+		patterns := make([]any, 0, len(parsed))
+		for _, rule := range parsed {
+			patterns = append(patterns, map[string]any{"match": rule.Match, "approval": rule.Action})
+		}
+		raw["bash.patterns"] = patterns
+	}
 	policy, err := approval.Load(raw)
 	if err != nil {
-		return nil, fmt.Errorf("settings rows %q and %q: %w",
-			config.KeyToolApprovalMode, config.KeyToolApprovals, err)
+		return nil, fmt.Errorf("settings rows %q, %q and %q: %w",
+			config.KeyToolApprovalMode, config.KeyToolApprovals, config.KeyBashApprovals, err)
 	}
 	return &policy, nil
 }
