@@ -1261,4 +1261,3 @@ func (p *statusPane) health() []string {
 	}
 	return []string{"visitor " + tokens.GlyphSeparator + " " + note}
 }
-

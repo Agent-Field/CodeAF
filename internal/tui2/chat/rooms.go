@@ -328,7 +328,7 @@ func (a *App) buildScope() {
 	a.railView = rail.NewView(a.style)
 	a.hudView = rail.NewView(a.style)
 	a.scope = &scopePane{
-		pane:  rail.Pane{Model: a.railModel, View: a.railView},
+		pane:   rail.Pane{Model: a.railModel, View: a.railView},
 		style:  a.style,
 		mode:   a.railMode,
 		slim:   a.railSlim,
