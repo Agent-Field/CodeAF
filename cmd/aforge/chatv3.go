@@ -86,99 +86,24 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		return fmt.Errorf("--reasoning %q: use off, low, medium or high", *reasoning)
 	}
 
-	// The same resolution every other surface does: environment and the
-	// profile file, one place, one error message when there is no key.
-	settings, err := config.Load()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "aforge chat needs a model to talk with.")
-		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
-		return err
-	}
-	chosen := strings.TrimSpace(*model)
-	if chosen == "" {
-		chosen = settings.Model
-	}
-	workspace, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("resolve working directory: %w", err)
-	}
-
-	transcript, resumed, err := resolveV3Session(strings.TrimSpace(*file), workspace)
-	if err != nil {
-		return err
-	}
-
-	// Model discovery starts here and is waited for NOWHERE on this path. On a
-	// cold cache resolving it is a network round-trip, and everything it feeds
-	// — the /model picker's list, the context window — has a good answer
-	// without it: the picker falls back to disk and then to its built-ins, and
-	// an unknown window leaves the session on its conservative default.
-	models := catalog.LoadLazy(context.Background(), catalog.Options{
-		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+	// Everything both v3 doors assemble the same way: the settings, the model
+	// catalog, the harness registry, the session file, and the config every
+	// governance row has landed on. `aforge engine` opens a conversation for a
+	// surface on another machine and opens it THROUGH HERE (engine.go), so a
+	// remote session is the same launch this one is rather than a second one
+	// drifting quietly away from it.
+	launch, err := openV3Launch(v3Options{
+		Model:     *model,
+		Session:   *file,
+		NoCompact: *noCompact,
+		Yolo:      *yolo,
 	})
-
-	// The sub-harness registry under the state root, opened ONCE and handed to
-	// both halves of the feature: the session, which matches turns against it
-	// and runs what a person says yes to (chatv3_harness.go), and the surface,
-	// which lists it under /harness. Two stores at one directory would be two
-	// readers of the same files rather than a disagreement, and this is still
-	// one because /harness and the offer card must never be able to name
-	// different harnesses.
-	harnesses := subharness.Default()
-
-	cfg := session.Config{
-		Workspace:      workspace,
-		Model:          chosen,
-		APIKey:         settings.APIKey,
-		BaseURL:        settings.BaseURL,
-		SiteURL:        settings.SiteURL,
-		SiteName:       settings.SiteName,
-		SiteCategories: settings.SiteCategories,
-		CompactEnabled: !*noCompact,
-		SessionFile:    transcript,
-		// The window the model this session STARTS on actually accepts, when
-		// anybody can say so without waiting. Zero keeps session's own
-		// conservative default, and the warm-up below corrects it in place the
-		// moment the catalog resolves.
-		ContextWindow: v3Window(models, chosen),
-		// Whether the model in use can LOOK at a picture, from the catalog's
-		// published input modalities. It is a closure rather than a value
-		// because the answer is about the model the NEXT turn rides, and this
-		// session's model changes under /model (see [v3SeesImages]).
-		SupportsImages: v3SeesImages(models),
-		// The published answer to "may this call carry this knob", which the
-		// adapter asks before it lets an optional field travel. It was wired to
-		// nothing on this path, so a reasoning level set with ctrl+t or
-		// --reasoning went to every model blind — and on a router, a knob no
-		// endpoint publishes is not a 400 but a 404 with no endpoints left to
-		// serve the request (internal/provider's endpoints.go).
-		SupportsParameter: models.SupportsParameter,
-		// Where a conversation goes when nothing serving its model will take the
-		// request at all. Closures again, and for the same reason as the vision
-		// gate: the question is about the model the failing turn was ON, which
-		// /model moves.
-		NearestModels: v3NearestModels(models),
-		// The models a task may be handed to, asked at the moment a proposal
-		// names one and never at boot — the picker's own bargain (see Models
-		// below), because both questions are about a catalog that may still be
-		// warming and neither of them may wait for it.
-		TaskModels: v3TaskModels(models),
-		// The two halves of the harness offer (internal/session's harness.go):
-		// what a turn is matched against, and what a yes reaches. They are
-		// filled together because either one alone is detection off — a
-		// registry nothing can run would raise a card that could only fail, and
-		// a runner nothing is matched against would never be called.
-		Harnesses:  v3HarnessEntries(harnesses),
-		RunHarness: v3RunHarness(harnesses, settings, chosen, workspace),
-	}
-
-	// What this session may do without asking, which model answers its
-	// auxiliary calls, and what it may spend. All three are settings rows, and a
-	// row that cannot be read stops the launch here rather than downstream.
-	cfg, err = applyV3Governance(cfg, settings.ProfileDir, *yolo)
 	if err != nil {
 		return err
 	}
+	settings, models, harnesses := launch.Settings, launch.Models, launch.Harnesses
+	workspace, transcript, resumed := launch.Workspace, launch.SessionFile, launch.Resumed
+	chosen, cfg := launch.Model, launch.Config
 
 	if text := strings.TrimSpace(*once); text != "" {
 		// Nobody is watching a --once run, so nobody can answer a question. The
@@ -320,6 +245,174 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		SaveApproval:     func(tool string) error { return saveToolApproval(settings.ProfileDir, tool) },
 		SaveBashApproval: func(command string) error { return saveBashApproval(settings.ProfileDir, command) },
 	})
+}
+
+// ── the shared assembly ─────────────────────────────────────────────────────
+//
+// A conversation is the same object whoever is looking at it. `aforge chat`
+// draws it on the terminal it was typed into; `aforge engine` answers frames
+// about it from the other end of an ssh pipe. NEITHER DOOR MAY ASSEMBLE ITS OWN
+// AGENT: two assemblies would be two sets of governance rows, two model
+// catalogs and two session-file rules, and the drift between them would show up
+// as a feature that behaves one way at home and another way away — the single
+// hardest class of bug to see, because both halves look right on their own.
+
+// v3Options is what a door says about the conversation it wants opened. Every
+// field is a flag some door carries; the zero value is what `aforge` bare does.
+type v3Options struct {
+	// Door is the word the missing-key sentence names. Empty is "chat", which
+	// is what both terminal doors say — `aforge resume` has always said it and
+	// says it still, because what it could not open is a chat.
+	Door string
+	// Workspace is the directory the conversation runs in. Empty is the
+	// process's own, which is what a terminal door means and what the engine
+	// means once it has changed into the directory the surface asked for.
+	Workspace string
+	// Model beats the configured default for this session only.
+	Model string
+	// Session is an explicit transcript to open; empty resumes this
+	// directory's most recent, or makes one.
+	Session string
+	// NoCompact and Yolo are the two flags that change what a session may do.
+	NoCompact bool
+	Yolo      bool
+}
+
+// v3Launch is that assembly, done. The pieces are handed back rather than kept
+// because both doors keep using them after the agent exists: the catalog warms
+// in the background and answers the model picker, the harness registry is the
+// same store /harness lists, and the config is what a replacement agent — /new,
+// the picker, Session.New — is built on.
+type v3Launch struct {
+	Settings  config.Config
+	Models    *catalog.Catalog
+	Harnesses *subharness.Store
+	// Config is the session config with every governance row applied, and with
+	// AskConsent NOT yet set: whether anybody is there to answer a question is
+	// the door's own fact and the one thing this cannot know.
+	Config session.Config
+	// Model is the id the session starts on, after the flag and the settings
+	// have had their say.
+	Model string
+	// Workspace, SessionFile and Resumed are the three facts a surface prints
+	// before its first turn.
+	Workspace   string
+	SessionFile string
+	Resumed     bool
+}
+
+func openV3Launch(opts v3Options) (*v3Launch, error) {
+	// The same resolution every other surface does: environment and the
+	// profile file, one place, one error message when there is no key.
+	settings, err := config.Load()
+	if err != nil {
+		door := strings.TrimSpace(opts.Door)
+		if door == "" {
+			door = "chat"
+		}
+		fmt.Fprintln(os.Stderr, "aforge "+door+" needs a model to talk with.")
+		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
+		return nil, err
+	}
+	chosen := strings.TrimSpace(opts.Model)
+	if chosen == "" {
+		chosen = settings.Model
+	}
+	workspace := strings.TrimSpace(opts.Workspace)
+	if workspace == "" {
+		workspace, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("resolve working directory: %w", err)
+		}
+	}
+
+	transcript, resumed, err := resolveV3Session(strings.TrimSpace(opts.Session), workspace)
+	if err != nil {
+		return nil, err
+	}
+
+	// Model discovery starts here and is waited for NOWHERE on this path. On a
+	// cold cache resolving it is a network round-trip, and everything it feeds
+	// — the /model picker's list, the context window — has a good answer
+	// without it: the picker falls back to disk and then to its built-ins, and
+	// an unknown window leaves the session on its conservative default.
+	models := catalog.LoadLazy(context.Background(), catalog.Options{
+		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
+	})
+
+	// The sub-harness registry under the state root, opened ONCE and handed to
+	// both halves of the feature: the session, which matches turns against it
+	// and runs what a person says yes to (chatv3_harness.go), and the surface,
+	// which lists it under /harness. Two stores at one directory would be two
+	// readers of the same files rather than a disagreement, and this is still
+	// one because /harness and the offer card must never be able to name
+	// different harnesses.
+	harnesses := subharness.Default()
+
+	cfg := session.Config{
+		Workspace:      workspace,
+		Model:          chosen,
+		APIKey:         settings.APIKey,
+		BaseURL:        settings.BaseURL,
+		SiteURL:        settings.SiteURL,
+		SiteName:       settings.SiteName,
+		SiteCategories: settings.SiteCategories,
+		CompactEnabled: !opts.NoCompact,
+		SessionFile:    transcript,
+		// The window the model this session STARTS on actually accepts, when
+		// anybody can say so without waiting. Zero keeps session's own
+		// conservative default, and [warmV3Models] corrects it in place the
+		// moment the catalog resolves.
+		ContextWindow: v3Window(models, chosen),
+		// Whether the model in use can LOOK at a picture, from the catalog's
+		// published input modalities. It is a closure rather than a value
+		// because the answer is about the model the NEXT turn rides, and this
+		// session's model changes under /model (see [v3SeesImages]).
+		SupportsImages: v3SeesImages(models),
+		// The published answer to "may this call carry this knob", which the
+		// adapter asks before it lets an optional field travel. It was wired to
+		// nothing on this path, so a reasoning level set with ctrl+t or
+		// --reasoning went to every model blind — and on a router, a knob no
+		// endpoint publishes is not a 400 but a 404 with no endpoints left to
+		// serve the request (internal/provider's endpoints.go).
+		SupportsParameter: models.SupportsParameter,
+		// Where a conversation goes when nothing serving its model will take the
+		// request at all. Closures again, and for the same reason as the vision
+		// gate: the question is about the model the failing turn was ON, which
+		// /model moves.
+		NearestModels: v3NearestModels(models),
+		// The models a task may be handed to, asked at the moment a proposal
+		// names one and never at boot — the picker's own bargain, because both
+		// questions are about a catalog that may still be warming and neither of
+		// them may wait for it.
+		TaskModels: v3TaskModels(models),
+		// The two halves of the harness offer (internal/session's harness.go):
+		// what a turn is matched against, and what a yes reaches. They are
+		// filled together because either one alone is detection off — a
+		// registry nothing can run would raise a card that could only fail, and
+		// a runner nothing is matched against would never be called.
+		Harnesses:  v3HarnessEntries(harnesses),
+		RunHarness: v3RunHarness(harnesses, settings, chosen, workspace),
+	}
+
+	// What this session may do without asking, which model answers its
+	// auxiliary calls, and what it may spend. All three are settings rows, and a
+	// row that cannot be read stops the launch here rather than downstream.
+	cfg, err = applyV3Governance(cfg, settings.ProfileDir, opts.Yolo)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v3Launch{
+		Settings:    settings,
+		Models:      models,
+		Harnesses:   harnesses,
+		Config:      cfg,
+		Model:       chosen,
+		Workspace:   workspace,
+		SessionFile: transcript,
+		Resumed:     resumed,
+	}, nil
 }
 
 // v3Connections hands the surface the accounts manager, and keeps a nil a nil.
