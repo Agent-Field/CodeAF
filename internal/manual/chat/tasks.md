@@ -564,7 +564,8 @@ over, and it goes in the `done` fold.
 
 An adaptive run is a run that keeps spawning tasks of its own for as long as its planner
 has something left to want, and it has a page rather than a room: the nodes drawn as chips
-in layers, with one fuel gauge pinned at the top.
+in layers, with one fuel gauge pinned at the top — `planner: <model> · $0.87 / $2.00`, the
+model doing the planning beside what it has spent of what you approved.
 
 **`x` on that page stops the whole run**, over an empty message box, and it asks the same
 one card the pointer's `✕` asks:

@@ -709,3 +709,61 @@ func TestASessionWithNoRunDoorsOpensNoPage(t *testing.T) {
 			strings.Join(plainRows(a), "\n"))
 	}
 }
+
+// ── the planner's model ─────────────────────────────────────────────────────
+
+// THE PLANNER IS NAMED BESIDE THE GAUGE, because the two are one fact: the tank
+// is being spent by a judgement, and with a tier configured that judgement is a
+// model that appears nowhere else in the conversation.
+func TestTheRunsHeaderNamesThePlannerModel(t *testing.T) {
+	snap := orchRun4()
+	snap.Planner = "moonshot/kimi-k3"
+	a, _ := orchApp(t, snap)
+
+	head := plain(a.roomHead(a.width))
+	if !strings.Contains(head, "planner: moonshot/kimi-k3 · $0.87 / $2.00") {
+		t.Fatalf("the header does not name the planner beside the gauge:\n%q", head)
+	}
+	// The page does not say it twice: at every tier but the phone the header is
+	// where it lives.
+	if strings.Contains(roomText(a), orchPlannerLead) {
+		t.Fatalf("the planner is drawn on the page as well as the header:\n%s", roomText(a))
+	}
+}
+
+// AND A RUN NOBODY NAMED A PLANNER FOR DROPS THE SEGMENT — the emptiness law:
+// a label with nothing behind it is worse than the width it costs.
+func TestARunWithNoPlannerModelDrawsNoSegment(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+	head := plain(a.roomHead(a.width))
+	if strings.Contains(head, orchPlannerLead) {
+		t.Fatalf("the header invented a planner:\n%q", head)
+	}
+	if !strings.Contains(head, "$0.87 / $2.00") {
+		t.Fatalf("the gauge went with it:\n%q", head)
+	}
+}
+
+// AT THE PHONE TIER THE SEGMENT MOVES ONTO THE PAGE, dim, above the chips. It
+// is moved and not dropped: the header sheds the GOAL first, which is a sentence
+// still readable in the conversation, and never the model spending the money.
+func TestThePhoneDrawsThePlannerOnThePageInstead(t *testing.T) {
+	snap := orchRun4()
+	snap.Planner = "moonshot/kimi-k3"
+	a, _ := orchApp(t, snap)
+	a.width, a.height = 40, 30
+	a.room.dirty = true
+	a.touch()
+
+	head := plain(a.roomHead(a.width))
+	if strings.Contains(head, orchPlannerLead) {
+		t.Fatalf("the phone header kept the planner segment:\n%q", head)
+	}
+	if !strings.Contains(head, "$0.87 / $2.00") {
+		t.Fatalf("the phone header dropped the gauge:\n%q", head)
+	}
+	lines := orchLines(a)
+	if len(lines) == 0 || !strings.Contains(lines[0], "planner: moonshot/kimi-k3") {
+		t.Fatalf("the planner is not the first row of the phone's page:\n%s", strings.Join(lines, "\n"))
+	}
+}

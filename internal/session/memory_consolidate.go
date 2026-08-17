@@ -59,9 +59,13 @@ import (
 // short lines whose whole instruction is "merge the duplicates and drop what is
 // superseded", the archetypal cheap call, and a person who disagrees pins it
 // (`roles.consolidate: <model>`) without either package changing.
-const roleConsolidate = roles.Role("consolidate")
-
-func init() { roles.Register(roleConsolidate, roles.TierLow) }
+//
+// THE NAME IS THE REGISTRY'S OWN ([roles.RoleConsolidate]) and not a string
+// spelled here, which is what guardian, vision and the auditor do: a role
+// declared twice is a role that can be pinned under one spelling and resolved
+// under the other, and nothing would say so — the settings sheet would simply
+// list a role nobody's pin ever reaches.
+func init() { roles.Register(roles.RoleConsolidate, roles.TierLow) }
 
 const (
 	// idleDelay is how long the session must be quiet before a pass is even
@@ -238,7 +242,7 @@ func (a *Agent) ConsolidateMemory(ctx context.Context) error {
 	if closed {
 		return nil
 	}
-	consolidator, err := roles.Resolve(roles.Source(source), roleConsolidate, model)
+	consolidator, err := roles.Resolve(roles.Source(source), roles.RoleConsolidate, model)
 	if err != nil {
 		return err
 	}

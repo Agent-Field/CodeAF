@@ -110,6 +110,14 @@ type Snapshot struct {
 	// go on to pay for a synthesis.
 	Stopped bool   `json:"stopped,omitempty"`
 	Answer  string `json:"answer,omitempty"` // the synthesis, once Done
+	// Planner is the model the planner thinks with, carried from
+	// [Options.Planner] and never read by this package. It is on the snapshot
+	// because it is the one fact a surface cannot derive from the run: the
+	// planner is an interface here, it is usually NOT the model the person is
+	// talking to (the session resolves it through internal/roles), and it cuts
+	// every node the tank pays for — so a gauge drawn without it says how much
+	// is being spent and not whose judgement is spending it.
+	Planner string `json:"planner,omitempty"`
 }
 
 // View is what the planner sees on each call: the goal, condensed results,

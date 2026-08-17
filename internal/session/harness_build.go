@@ -170,6 +170,15 @@ func (a *Agent) routeHarnessBuild(hub *eventHub, user userMessage, started time.
 	if !ok {
 		return false, false
 	}
+	// THE MODEL ON THE EVENT IS THE RESOLVED ONE. What comes back from
+	// [Agent.harnessBuild] is the turn's own word and it is usually empty — the
+	// ladder that answers "then who designs it" runs inside
+	// [Agent.startHarnessDesign] a line later — so an event carrying it would
+	// name a model only when the person had already typed one, which is the case
+	// where nobody needed telling. Resolving here costs a registry read and makes
+	// the note and the call name the same model by construction: a named model
+	// resolves to itself, so the second resolution is the same answer.
+	model = a.designerModel(model)
 	a.emitHarness(Event{Kind: EventHarnessDesign, Text: goal, Hint: harnessDesigningWord, Model: model})
 	a.startHarnessDesign(goal, model)
 	// The turn ends HERE, with no assistant message: the design is the answer and
@@ -262,6 +271,17 @@ func (a *Agent) startHarnessDesign(goal, model string) {
 // answer with a name on it rather than a wrong answer once. The ladder's floor
 // is the session's own model, so an install with no tiers set designs as it
 // always did. It is called with a.mu held.
+// designerModel is [Agent.harnessDesignModel] with the lock taken, for the one
+// caller that needs the answer BEFORE the design goroutine exists
+// ([Agent.routeHarnessBuild]'s event). The two are one function deliberately: a
+// second ladder written out here is a second answer to "who designs this", and
+// the whole point of asking early is that the note and the design agree.
+func (a *Agent) designerModel(named string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.harnessDesignModel(named)
+}
+
 func (a *Agent) harnessDesignModel(named string) string {
 	if named = strings.TrimSpace(named); named != "" {
 		return named
