@@ -166,6 +166,14 @@ type taskNode struct {
 	// dependsOn is the structural half of this file (see the header): stored
 	// always, drawn only when a prerequisite is unmet.
 	dependsOn []uint64
+	// parent is the node this one was SPAWNED UNDER, and paused is the gate it
+	// is held at. They are the two facts the roster tree is drawn from and they
+	// are read through the seam that owns their law — taskstrip.go's
+	// [taskNode.ParentID] and [taskNode.Paused], which say what fills them and
+	// why the parent is a string. Empty and false is a session that has never
+	// run anything adaptive, which is every session until one does.
+	parent string
+	paused bool
 	// began is the moment the node started, derived once from the update's own
 	// Elapsed so the clock is the frame's and not the event's. met is when this
 	// surface first heard of the node at all, which is the honest spawn time for
