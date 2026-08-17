@@ -497,6 +497,12 @@ type Config struct {
 	// the behavior every caller had before the gate existed: a headless --once
 	// and the tests run exactly as they did, and a surface opts into the policy
 	// by handing one over.
+	//
+	// It is the policy this session STARTS on and not the one it is stuck with:
+	// a surface that banks a rule mid-conversation replaces it with
+	// [Agent.SetApprovalPolicy] (approvalgate.go). This field itself is never
+	// written after New, which is what lets task_run.go copy the whole config
+	// without a lock.
 	ApprovalPolicy *approval.Policy
 
 	// AskConsent says somebody is watching this agent's events and will answer
@@ -980,4 +986,16 @@ type Agent struct {
 	// journal, so it never re-names itself.
 	title      string
 	titleTried bool
+
+	// approvalPolicy is the gate as it stands NOW, when a surface has replaced
+	// the one this session launched on ([Agent.SetApprovalPolicy], and the prose
+	// in approvalgate.go for why that is a thing a surface may do). Nil is the
+	// ordinary case — nobody has replaced anything — and Config.ApprovalPolicy
+	// still answers.
+	//
+	// It is under mu with everything else here, and it is the ONLY approval
+	// state that is: Config.ApprovalPolicy is written once before New returns
+	// and never again, which is what lets task_run.go copy the whole config
+	// without a lock and still be right.
+	approvalPolicy *approval.Policy
 }
