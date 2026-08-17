@@ -59,6 +59,11 @@ type Options struct {
 	Cap float64
 	// Lanes bounds how many nodes execute at once; zero is [DefaultLanes].
 	Lanes int
+	// Planner NAMES the model behind the [Planner] interface, for a surface to
+	// draw beside the gauge ([Snapshot.Planner]). Nothing here reads it: which
+	// model thinks is the caller's decision and this package only carries the
+	// word, so an empty one costs a surface a segment and costs the run nothing.
+	Planner string
 
 	// OnNote carries one planner note, in the order the planner wrote them.
 	OnNote func(text string)
@@ -77,18 +82,27 @@ func New(goal string, planner Planner, exec Executor, opts Options) *Orchestrato
 	if lanes <= 0 {
 		lanes = DefaultLanes
 	}
+	goal = strings.TrimSpace(goal)
+	model := strings.TrimSpace(opts.Planner)
 	return &Orchestrator{
-		goal:    strings.TrimSpace(goal),
-		planner: planner,
-		exec:    exec,
-		lanes:   lanes,
-		onNote:  opts.OnNote,
-		onFuel:  opts.OnFuel,
-		onPause: opts.OnPause,
-		index:   map[string]*NodeStatus{},
-		fuel:    Fuel{Cap: opts.Cap},
-		gate:    make(chan string, 1),
-		halt:    make(chan struct{}),
+		goal:         goal,
+		planner:      planner,
+		plannerModel: model,
+		exec:         exec,
+		lanes:        lanes,
+		onNote:       opts.OnNote,
+		onFuel:       opts.OnFuel,
+		onPause:      opts.OnPause,
+		index:        map[string]*NodeStatus{},
+		fuel:         Fuel{Cap: opts.Cap},
+		gate:         make(chan string, 1),
+		halt:         make(chan struct{}),
+		// THE SNAPSHOT IS SEEDED, not left zero. A surface may poll before the
+		// opening planner call returns — that call takes seconds and the page
+		// opens immediately — and the two things that are true from construction
+		// are the goal and who is thinking about it. Every later publish writes
+		// the same two back.
+		snap: Snapshot{Goal: goal, Planner: model},
 	}
 }
 
@@ -605,6 +619,7 @@ func (o *Orchestrator) publish() {
 	}
 	o.snap = Snapshot{
 		Goal:    o.goal,
+		Planner: o.plannerModel,
 		Nodes:   nodes,
 		Fuel:    o.fuel,
 		Notes:   append([]string(nil), o.notes...),
@@ -652,11 +667,14 @@ func (o *Orchestrator) note(text string) {
 type Orchestrator struct {
 	goal    string
 	planner Planner
-	exec    Executor
-	lanes   int
-	onNote  func(string)
-	onFuel  func(Fuel)
-	onPause func(Fuel)
+	// plannerModel is the word [Options.Planner] carried in, republished on
+	// every snapshot and read by nothing here.
+	plannerModel string
+	exec         Executor
+	lanes        int
+	onNote       func(string)
+	onFuel       func(Fuel)
+	onPause      func(Fuel)
 
 	// gate carries the one answer a paused run is waiting for. It is buffered
 	// to one so [Orchestrator.Resolve] never blocks a surface's goroutine, and

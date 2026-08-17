@@ -271,3 +271,36 @@ func TestDelOnAnOrdinaryRowChangesNothing(t *testing.T) {
 		t.Fatalf("del pinned something: %q", got.pin)
 	}
 }
+
+// EVERY REGISTERED ROLE HAS A ROW — no exceptions and no allow-list.
+//
+// The section is built from [roles.Registered], which is filled by init
+// functions in whichever packages make the calls (internal/roles states the
+// open-registry law). So the failure this holds shut is a role added one file
+// away and silently unreachable from the settings sheet: a call spending
+// somebody's money that they cannot see, cannot price and cannot pin.
+func TestTheRolesSectionListsEveryRegisteredRole(t *testing.T) {
+	a := tieredSheet(t)
+	drawn := map[roles.Role]bool{}
+	for _, item := range a.sheet.items {
+		if item.role != nil {
+			drawn[item.role.role] = true
+		}
+	}
+	for _, role := range roles.Registered() {
+		if !drawn[role] {
+			t.Errorf("the roles section has no row for %q", role)
+		}
+	}
+}
+
+// THE DREAMING PASS IS ONE OF THEM, and it follows the cheap tier: it is one
+// call over fifty short lines while nobody is waiting, made again the next idle
+// minute if it went wrong.
+func TestTheConsolidateRoleFollowsTheCheapTier(t *testing.T) {
+	a := tieredSheet(t)
+	row := roleItem(t, a, roles.RoleConsolidate)
+	if row.tier != roles.TierLow || row.model != "test/cheap-model" {
+		t.Fatalf("consolidate resolves as %q on %q, want the cheap tier's model", row.model, row.tier)
+	}
+}

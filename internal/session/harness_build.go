@@ -149,6 +149,17 @@ func (a *Agent) startHarnessDesign(goal, model string) {
 // answer with a name on it rather than a wrong answer once. The ladder's floor
 // is the session's own model, so an install with no tiers set designs as it
 // always did. It is called with a.mu held.
+// designerModel is [Agent.harnessDesignModel] with the lock taken, for the one
+// caller that needs the answer BEFORE the design goroutine exists
+// ([Agent.routeHarnessBuild]'s event). The two are one function deliberately: a
+// second ladder written out here is a second answer to "who designs this", and
+// the whole point of asking early is that the note and the design agree.
+func (a *Agent) designerModel(named string) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.harnessDesignModel(named)
+}
+
 func (a *Agent) harnessDesignModel(named string) string {
 	if named = strings.TrimSpace(named); named != "" {
 		return named

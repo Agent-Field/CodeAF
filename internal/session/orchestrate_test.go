@@ -646,3 +646,39 @@ func waitForRun(t *testing.T, agent *Agent, id string) orchestrate.Snapshot {
 		}
 	}
 }
+
+// AND THE RUN CARRIES THE PLANNER'S MODEL ON ITS SNAPSHOT.
+//
+// The page that draws the gauge is the page that has to say whose judgement is
+// spending it: the planner cuts every node the tank pays for, and with a tier
+// set it is a model that appears nowhere else in the conversation. It is the one
+// fact about a run a surface cannot derive — internal/orchestrate holds a
+// Planner interface and never a model — so it is carried.
+func TestARunsSnapshotNamesThePlannersModel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	watch := &runModels{answer: oneNodeRun}
+	agent, _ := newTestAgent(t, watch, func(config *Config) {
+		config.AskConsent = true
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierHigh): "test/careful-model",
+			roles.TierKey(roles.TierLow):  "test/cheap-model",
+		})
+	})
+
+	id, err := agent.RunOrchestrate(context.Background(), "look at the thing", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// IT IS TRUE BEFORE THE OPENING PLAN COMES BACK, which is the point of
+	// seeding it: the page opens the moment the run starts, and a header that
+	// named the planner only after the first node landed would be blank for the
+	// whole minute somebody is watching to see what they bought.
+	snap, known := agent.OrchestrateSnapshot(id)
+	if !known || snap.Planner != "test/careful-model" {
+		t.Fatalf("a run that has not planned yet says %q", snap.Planner)
+	}
+	waitForRun(t, agent, id)
+	if snap, _ := agent.OrchestrateSnapshot(id); snap.Planner != "test/careful-model" {
+		t.Fatalf("a finished run says %q, want the high tier's model", snap.Planner)
+	}
+}
