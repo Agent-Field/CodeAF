@@ -1077,6 +1077,15 @@ type Agent struct {
 	harnessSeq  uint64
 	harnessAsks map[uint64]chan harnessAnswer
 
+	// routeTurns counts the turns this session has finished and routeOffered is
+	// the one the route judge last raised a card on (route_judge.go). They are the
+	// whole of that feature's memory: the judge asks at most one question every
+	// few turns, and "a few turns ago" is a number that only means anything if
+	// something is counting. Both are zero for the life of a session nobody ever
+	// offers anything to, which is most of them.
+	routeTurns   uint64
+	routeOffered uint64
+
 	// harnessWatchers are the standing subscriptions to the design lane
 	// ([Agent.HarnessDesigns]), and harnessAdded is what this session has
 	// designed and saved since it opened (harness_build.go).

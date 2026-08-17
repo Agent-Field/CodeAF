@@ -204,13 +204,16 @@ const (
 
 // ── THE PARENT SEAM ─────────────────────────────────────────────────────────
 //
-// The session does not publish a parent yet (session's TaskNotice carries a
-// state, a spend and a merge word, and nothing about who asked for the work).
-// It will: an adaptive run's nodes are spawned BY a run, and the run is the
-// task a person started. Until then these two are the whole of what the tree
-// reads, they are written by whatever adapter lands adaptive runs on this
-// surface, and every session that has never had one answers "" and false — the
-// flat row, unchanged, which is what keeps this a seam rather than a rewrite.
+// These two are the whole of what the tree reads. The parent is filled from the
+// engine's own updates (session's TaskNotice.Parent, written by the family an
+// adaptive run registers itself as — its orchestrate.go): a run takes one row
+// and every node it cuts takes a row under it. A session that has never run
+// anything adaptive answers "" and false to both, which is the flat row,
+// unchanged — and that is what keeps this a seam rather than a rewrite.
+//
+// Paused has no publisher yet: nothing on TaskNotice says a run is standing at
+// its fuel gate, so the ⏸ is drawn from a fact this surface cannot currently be
+// told. The run's own page is where a paused run says so today.
 //
 // THE KEY IS A STRING AND THE ID IS NOT, on purpose. The thing that will fill
 // it is an orchestrate node id (internal/orchestrate's [orchestrate.Node.ID] —
