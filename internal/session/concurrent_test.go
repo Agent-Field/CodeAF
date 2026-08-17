@@ -26,7 +26,7 @@ import (
 func TestTwoSessionsDoNotDestroyEachOthersWorktrees(t *testing.T) {
 	repo := newTestRepo(t)
 
-	first, err := prepareTaskTree(repo, "aaaa1111aaaa1111", 1, "do the thing")
+	first, err := prepareTaskTree(Place{}, repo, "aaaa1111aaaa1111", 1, "do the thing")
 	if err != nil {
 		t.Fatalf("prepareTaskTree (first session): %v", err)
 	}
@@ -34,7 +34,7 @@ func TestTwoSessionsDoNotDestroyEachOthersWorktrees(t *testing.T) {
 	// old code destroyed.
 	writeFile(t, filepath.Join(first.dir, "in-progress.txt"), "half of it\n")
 
-	second, err := prepareTaskTree(repo, "bbbb2222bbbb2222", 1, "do the thing")
+	second, err := prepareTaskTree(Place{}, repo, "bbbb2222bbbb2222", 1, "do the thing")
 	if err != nil {
 		t.Fatalf("prepareTaskTree (second session): %v", err)
 	}
@@ -81,13 +81,13 @@ func TestTwoSessionsDoNotDestroyEachOthersWorktrees(t *testing.T) {
 func TestASessionReclaimsItsOwnLeftoverWorktree(t *testing.T) {
 	repo := newTestRepo(t)
 
-	dead, err := prepareTaskTree(repo, "cccc3333cccc3333", 1, "do the thing")
+	dead, err := prepareTaskTree(Place{}, repo, "cccc3333cccc3333", 1, "do the thing")
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
 	writeFile(t, filepath.Join(dead.dir, "leftover.txt"), "from the run that died\n")
 
-	resumed, err := prepareTaskTree(repo, "cccc3333cccc3333", 1, "do the thing")
+	resumed, err := prepareTaskTree(Place{}, repo, "cccc3333cccc3333", 1, "do the thing")
 	if err != nil {
 		t.Fatalf("prepareTaskTree (resumed): %v", err)
 	}
@@ -122,7 +122,7 @@ func TestAnUnfiledSessionStillGetsItsOwnName(t *testing.T) {
 // repository does not collect one empty directory per conversation.
 func TestAMergedWorktreeLeavesNoEmptyDirectoryBehind(t *testing.T) {
 	repo := newTestRepo(t)
-	tree, err := prepareTaskTree(repo, "dddd4444dddd4444", 1, "do the thing")
+	tree, err := prepareTaskTree(Place{}, repo, "dddd4444dddd4444", 1, "do the thing")
 	if err != nil {
 		t.Fatalf("prepareTaskTree: %v", err)
 	}
@@ -144,8 +144,8 @@ func TestAMergedWorktreeLeavesNoEmptyDirectoryBehind(t *testing.T) {
 func TestTheGitRootLockIsVisibleToAnotherProcess(t *testing.T) {
 	root := t.TempDir()
 
-	release := lockGitRoot(root)
-	other := openGitRootLock(t, root)
+	release := lockGitRoot(Place{}, root)
+	other := otherWindowsLock(t, Place{}, root)
 	defer other.Close()
 	if err := unix.Flock(int(other.Fd()), unix.LOCK_EX|unix.LOCK_NB); err == nil {
 		t.Fatal("another window took the lock while this one held it")
@@ -165,7 +165,7 @@ func TestTheGitRootLockIsVisibleToAnotherProcess(t *testing.T) {
 func TestTheGitRootLockWaitsForTheOtherWindow(t *testing.T) {
 	root := t.TempDir()
 
-	other := openGitRootLock(t, root)
+	other := otherWindowsLock(t, Place{}, root)
 	defer other.Close()
 	// The descriptor is read here rather than in the goroutine: the deferred
 	// Close would otherwise be a write to the file while the goroutine is
@@ -184,7 +184,7 @@ func TestTheGitRootLockWaitsForTheOtherWindow(t *testing.T) {
 	}()
 
 	start := time.Now()
-	release := lockGitRoot(root)
+	release := lockGitRoot(Place{}, root)
 	waited := time.Since(start)
 	release()
 	<-released
@@ -197,15 +197,14 @@ func TestTheGitRootLockWaitsForTheOtherWindow(t *testing.T) {
 	}
 }
 
-func openGitRootLock(t *testing.T, root string) *os.File {
+// otherWindowsLock is the second terminal: the same file production derives,
+// opened the way production opens it, so a test can never prove the lock works
+// by locking a path nobody else would have picked.
+func otherWindowsLock(t *testing.T, place Place, root string) *os.File {
 	t.Helper()
-	path := filepath.Join(root, filepath.FromSlash(tasksDirName), gitRootLockName)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		t.Fatal(err)
+	file := openGitRootLock(place, root)
+	if file == nil {
+		t.Fatalf("no root lock could be opened for %s", root)
 	}
 	return file
 }
