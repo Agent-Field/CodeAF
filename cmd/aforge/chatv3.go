@@ -428,6 +428,13 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		// the zero Place for a launch opened on a flat legacy transcript, which
 		// is what keeps that session deriving its sidecars the way it always did.
 		Place: found.Place,
+		// Where an adaptive run's write-capable nodes get their isolated
+		// worktrees (internal/orchestrate): the session folder's trees/ —
+		// Decision 26's own law, one per running node, swept with the session.
+		// The zero Place answers "" and the run degrades to sharing the
+		// workspace, which is the seam's honest answer for a legacy flat
+		// session.
+		WorktreeRoot: found.Place.Trees(),
 		// The durable memory, finally wired: one file per person under the state
 		// root, which is what note, forget and the dreaming pass have been built
 		// against and reaching nothing for a version.
