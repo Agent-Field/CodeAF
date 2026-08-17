@@ -1,0 +1,185 @@
+{
+  "stripped_bytes": 38338825,
+  "unstripped_bytes": 52607076,
+  "sections": {
+    ".tbss": 16,
+    ".note.go.buildid": 100,
+    ".note.gnu.build-id": 36,
+    ".interp": 27,
+    ".text": 15858084,
+    ".plt": 704,
+    ".rodata": 7500665,
+    ".gopclntab": 12243106,
+    ".gnu.version_r": 64,
+    ".dynsym": 1200,
+    ".rela": 96,
+    ".rela.plt": 1008,
+    ".gnu.version": 100,
+    ".hash": 236,
+    ".dynstr": 723,
+    ".typelink": 38412,
+    ".itablink": 8992,
+    ".go.buildinfo": 5088,
+    ".go.fipsinfo": 120,
+    ".dynamic": 304,
+    ".got.plt": 360,
+    ".go.module": 592,
+    ".got": 32,
+    ".noptrdata": 2296449,
+    ".data": 214146,
+    ".bss": 235800,
+    ".noptrbss": 33707456
+  },
+  "top_packages": [
+    {
+      "pkg": "go:",
+      "bytes": 2554192,
+      "symbols": 1150
+    },
+    {
+      "pkg": "modernc.org/sqlite/lib",
+      "bytes": 1685108,
+      "symbols": 3884
+    },
+    {
+      "pkg": "golang.org/x/text/collate",
+      "bytes": 1260316,
+      "symbols": 33
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/store",
+      "bytes": 642142,
+      "symbols": 755
+    },
+    {
+      "pkg": "runtime",
+      "bytes": 630055,
+      "symbols": 1606
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui3",
+      "bytes": 577960,
+      "symbols": 925
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui2/chat",
+      "bytes": 446096,
+      "symbols": 845
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/resident",
+      "bytes": 441136,
+      "symbols": 593
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/head",
+      "bytes": 419856,
+      "symbols": 505
+    },
+    {
+      "pkg": "net/http",
+      "bytes": 409736,
+      "symbols": 1387
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/session",
+      "bytes": 401184,
+      "symbols": 824
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/codeaf",
+      "bytes": 371672,
+      "symbols": 461
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui",
+      "bytes": 325984,
+      "symbols": 364
+    },
+    {
+      "pkg": "main",
+      "bytes": 319455,
+      "symbols": 602
+    },
+    {
+      "pkg": "crypto/tls",
+      "bytes": 302037,
+      "symbols": 647
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/exec",
+      "bytes": 298544,
+      "symbols": 460
+    },
+    {
+      "pkg": "github.com/alecthomas/chroma/v2/lexers",
+      "bytes": 293424,
+      "symbols": 130
+    },
+    {
+      "pkg": "type:",
+      "bytes": 277488,
+      "symbols": 1577
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool",
+      "bytes": 272624,
+      "symbols": 338
+    },
+    {
+      "pkg": "github.com/modelcontextprotocol/go-sdk/mcp",
+      "bytes": 204216,
+      "symbols": 858
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/plan",
+      "bytes": 185151,
+      "symbols": 279
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient",
+      "bytes": 179144,
+      "symbols": 264
+    },
+    {
+      "pkg": "gopkg.in/yaml%2ev3",
+      "bytes": 165526,
+      "symbols": 224
+    },
+    {
+      "pkg": "github.com/dlclark/regexp2/v2/syntax",
+      "bytes": 155808,
+      "symbols": 233
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler",
+      "bytes": 142184,
+      "symbols": 188
+    },
+    {
+      "pkg": "net",
+      "bytes": 142040,
+      "symbols": 504
+    },
+    {
+      "pkg": "slices",
+      "bytes": 138272,
+      "symbols": 433
+    },
+    {
+      "pkg": "crypto/internal/fips140/nistec",
+      "bytes": 136320,
+      "symbols": 101
+    },
+    {
+      "pkg": "github.com/charmbracelet/ultraviolet",
+      "bytes": 125936,
+      "symbols": 204
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/agentjson",
+      "bytes": 119880,
+      "symbols": 113
+    }
+  ]
+}

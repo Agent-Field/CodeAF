@@ -1,0 +1,2409 @@
+{
+  "aWeber": {
+    "displayName": "AWeber",
+    "baseURL": "https://api.aweber.com",
+    "authType": "oauth2"
+  },
+  "accuLynx": {
+    "displayName": "AccuLynx",
+    "baseURL": "https://api.acculynx.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://apidocs.acculynx.com/docs/authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "activeCampaign": {
+    "displayName": "ActiveCampaign",
+    "baseURL": "https://{{.workspace}}.api-us1.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developers.activecampaign.com/reference/authentication",
+      "header": {
+        "name": "Api-Token"
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Account name"
+        }
+      ]
+    }
+  },
+  "acuityScheduling": {
+    "displayName": "Acuity Scheduling",
+    "baseURL": "https://acuityscheduling.com",
+    "authType": "oauth2"
+  },
+  "adobe": {
+    "displayName": "Adobe",
+    "baseURL": "https://platform.adobe.io",
+    "authType": "oauth2"
+  },
+  "adyen": {
+    "displayName": "Adyen",
+    "baseURL": "https://{{.workspace}}.adyen.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Subdomain"
+        }
+      ]
+    }
+  },
+  "adyenTest": {
+    "displayName": "Adyen Test",
+    "baseURL": "https://{{.workspace}}.adyen.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Subdomain"
+        }
+      ]
+    }
+  },
+  "aha": {
+    "displayName": "Aha",
+    "baseURL": "https://{{.workspace}}.aha.io/api",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Company name"
+        }
+      ]
+    }
+  },
+  "aircall": {
+    "displayName": "Aircall",
+    "baseURL": "https://api.aircall.io",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.aircall.io/api-references/#authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Basic"
+      }
+    }
+  },
+  "airtable": {
+    "displayName": "Airtable",
+    "baseURL": "https://api.airtable.com",
+    "authType": "oauth2",
+    "authHealthCheck": {
+      "url": "https://api.airtable.com/v0/meta/whoami",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "amplemarket": {
+    "displayName": "Amplemarket",
+    "baseURL": "https://api.amplemarket.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.amplemarket.com/guides/quickstart",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "amplitude": {
+    "displayName": "Amplitude",
+    "baseURL": "https://amplitude.com",
+    "authType": "basic"
+  },
+  "anthropic": {
+    "displayName": "Anthropic",
+    "baseURL": "https://api.anthropic.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.anthropic.com/en/api/getting-started#authentication",
+      "header": {
+        "name": "x-api-key"
+      }
+    }
+  },
+  "apollo": {
+    "displayName": "Apollo",
+    "baseURL": "https://api.apollo.io",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.apollo.io/docs/create-api-key",
+      "header": {
+        "name": "X-Api-Key"
+      }
+    }
+  },
+  "asana": {
+    "displayName": "Asana",
+    "baseURL": "https://app.asana.com/api",
+    "authType": "oauth2"
+  },
+  "ashby": {
+    "displayName": "Ashby",
+    "baseURL": "https://api.ashbyhq.com",
+    "authType": "basic"
+  },
+  "atlassian": {
+    "displayName": "Atlassian",
+    "baseURL": "https://api.atlassian.com/ex/jira/{{.cloudId}}/rest/api",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "App name"
+        }
+      ]
+    }
+  },
+  "attio": {
+    "displayName": "Attio",
+    "baseURL": "https://api.attio.com",
+    "authType": "oauth2"
+  },
+  "avoma": {
+    "displayName": "Avoma",
+    "baseURL": "https://api.avoma.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://help.avoma.com/api-integration-for-avoma",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "aws": {
+    "displayName": "Amazon Web Services",
+    "baseURL": "https",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "region",
+          "displayName": "Region"
+        },
+        {
+          "name": "identityStoreId",
+          "displayName": "Identity Store ID"
+        },
+        {
+          "name": "instanceArn",
+          "displayName": "Instance ARN"
+        }
+      ]
+    }
+  },
+  "basecamp": {
+    "displayName": "Basecamp",
+    "baseURL": "https://3.basecampapi.com/{{.workspace}}",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Account ID"
+        }
+      ]
+    }
+  },
+  "bentley": {
+    "displayName": "Bentley",
+    "baseURL": "https://api.bentley.com",
+    "authType": "oauth2"
+  },
+  "bigquery": {
+    "displayName": "BigQuery",
+    "baseURL": "https://bigquery.googleapis.com",
+    "authType": "custom",
+    "metadata": {
+      "input": [
+        {
+          "name": "projectId",
+          "displayName": "GCP Project ID"
+        },
+        {
+          "name": "dataset",
+          "displayName": "Dataset Name"
+        },
+        {
+          "name": "timestampColumn",
+          "displayName": "Timestamp Column"
+        }
+      ]
+    }
+  },
+  "bird": {
+    "displayName": "Bird (MessageBird)",
+    "baseURL": "https://api.bird.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.bird.com/api",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "AccessKey "
+      }
+    }
+  },
+  "bitbucket": {
+    "displayName": "Bitbucket",
+    "baseURL": "https://api.bitbucket.org",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Workspace"
+        }
+      ]
+    }
+  },
+  "blackbaud": {
+    "displayName": "Blackbaud",
+    "baseURL": "https://api.sky.blackbaud.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "bbApiSubscriptionKey",
+          "displayName": "Blackbaud API subscription key"
+        }
+      ]
+    }
+  },
+  "blueshift": {
+    "displayName": "Blueshift",
+    "baseURL": "https://api.getblueshift.com/api",
+    "authType": "basic"
+  },
+  "blueshiftEU": {
+    "displayName": "Blueshift (EU)",
+    "baseURL": "https://api.eu.getblueshift.com/api",
+    "authType": "basic"
+  },
+  "box": {
+    "displayName": "Box",
+    "baseURL": "https://api.box.com",
+    "authType": "oauth2"
+  },
+  "braintree": {
+    "displayName": "Braintree",
+    "baseURL": "https://payments.sandbox.braintree-api.com/graphql",
+    "authType": "basic"
+  },
+  "braze": {
+    "displayName": "Braze",
+    "baseURL": "https://rest.{{.workspace}}.braze.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://www.braze.com/docs/api/basics/#creating-rest-api-keys",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Instance ID"
+        }
+      ]
+    }
+  },
+  "breakcold": {
+    "displayName": "Breakcold",
+    "baseURL": "https://api.breakcold.com/rest",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.breakcold.com/v3/api-reference/introduction#authentication",
+      "header": {
+        "name": "X-API-KEY"
+      }
+    }
+  },
+  "breezy": {
+    "displayName": "Breezy HR",
+    "baseURL": "https://api.breezy.hr",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.breezy.hr/reference/authorization",
+      "header": {
+        "name": "Authorization"
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "company_id",
+          "displayName": "Company ID"
+        }
+      ]
+    },
+    "authHealthCheck": {
+      "url": "https://api.breezy.hr/v3/companies",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "brevo": {
+    "displayName": "Brevo",
+    "baseURL": "https://api.brevo.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developers.brevo.com/docs/getting-started",
+      "header": {
+        "name": "api-key"
+      }
+    }
+  },
+  "bynder": {
+    "displayName": "Bynder",
+    "baseURL": "https://{{.workspace}}.bynder.com/api",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Bynder domain"
+        }
+      ]
+    }
+  },
+  "calendly": {
+    "displayName": "Calendly",
+    "baseURL": "https://api.calendly.com",
+    "authType": "oauth2",
+    "metadata": {},
+    "authHealthCheck": {
+      "url": "https://api.calendly.com/users/me",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "callRail": {
+    "displayName": "CallRail",
+    "baseURL": "https://api.callrail.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://apidocs.callrail.com/#getting-started",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Token token="
+      }
+    },
+    "metadata": {}
+  },
+  "campaignMonitor": {
+    "displayName": "Campaign Monitor",
+    "baseURL": "https://api.createsend.com",
+    "authType": "oauth2"
+  },
+  "capsule": {
+    "displayName": "Capsule",
+    "baseURL": "https://api.capsulecrm.com/api",
+    "authType": "oauth2"
+  },
+  "chargeOver": {
+    "displayName": "ChargeOver",
+    "baseURL": "https://{{.workspace}}.chargeover.com",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Domain name"
+        }
+      ]
+    }
+  },
+  "chargebee": {
+    "displayName": "Chargebee",
+    "baseURL": "https://{{.workspace}}.chargebee.com/api",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Site name"
+        }
+      ]
+    }
+  },
+  "chartMogul": {
+    "displayName": "ChartMogul",
+    "baseURL": "https://api.chartmogul.com",
+    "authType": "basic"
+  },
+  "chilipiper": {
+    "displayName": "Chili Piper",
+    "baseURL": "https://fire.chilipiper.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "chorus": {
+    "displayName": "Chorus",
+    "baseURL": "https://chorus.ai",
+    "authType": "basic"
+  },
+  "clari": {
+    "displayName": "Clari",
+    "baseURL": "https://api.clari.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.clari.com/documentation/external_spec",
+      "header": {
+        "name": "apiKey"
+      }
+    }
+  },
+  "clariCopilot": {
+    "displayName": "Clari Copilot",
+    "baseURL": "https://rest-api.copilot.clari.com",
+    "authType": "custom"
+  },
+  "clickup": {
+    "displayName": "ClickUp",
+    "baseURL": "https://api.clickup.com",
+    "authType": "oauth2"
+  },
+  "close": {
+    "displayName": "Close",
+    "baseURL": "https://api.close.com",
+    "authType": "oauth2",
+    "authHealthCheck": {
+      "url": "https://api.close.com/api/v1/me",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "cloudTalk": {
+    "displayName": "CloudTalk",
+    "baseURL": "https://my.cloudtalk.io/api",
+    "authType": "basic",
+    "basicOpts": {
+      "docsURL": "https://developers.cloudtalk.io/reference/authentication"
+    }
+  },
+  "coda": {
+    "displayName": "Coda",
+    "baseURL": "https://coda.io/apis",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://coda.io/developers/apis/v1#section/Introduction",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "connectWise": {
+    "displayName": "ConnectWise",
+    "baseURL": "https://{{.region}}.myconnectwise.net",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "region",
+          "displayName": "Region",
+          "defaultValue": "na"
+        },
+        {
+          "name": "clientId",
+          "displayName": "Client ID"
+        }
+      ]
+    }
+  },
+  "constantContact": {
+    "displayName": "Constant Contact",
+    "baseURL": "https://api.cc.email",
+    "authType": "oauth2",
+    "authHealthCheck": {
+      "url": "https://api.cc.email/v3/account/user/privileges",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "copper": {
+    "displayName": "Copper",
+    "baseURL": "https://api.copper.com/developer_api",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.copper.com/introduction/authentication.html#api-keys",
+      "header": {
+        "name": "X-PW-AccessToken"
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "userEmail",
+          "displayName": "User Emails"
+        }
+      ]
+    }
+  },
+  "coupa": {
+    "displayName": "Coupa",
+    "baseURL": "https://{{.workspace}}",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Instance domain"
+        }
+      ]
+    }
+  },
+  "crunchbase": {
+    "displayName": "Crunchbase",
+    "baseURL": "https://api.crunchbase.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://data.crunchbase.com/docs/getting-started",
+      "header": {
+        "name": "X-cb-user-key"
+      }
+    }
+  },
+  "customerDataPipelines": {
+    "displayName": "Customer.io Data Pipelines",
+    "baseURL": "https://cdp.customer.io/v1",
+    "authType": "basic",
+    "basicOpts": {
+      "docsURL": "https://customer.io/docs/api/cdp/#section/Authentication"
+    }
+  },
+  "customerJourneysApp": {
+    "displayName": "Customer.io Journeys App",
+    "baseURL": "https://api.customer.io",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://customer.io/docs/api/app/#section/Authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "customerJourneysTrack": {
+    "displayName": "Customer.io Journeys Track",
+    "baseURL": "https://track.customer.io",
+    "authType": "basic",
+    "basicOpts": {
+      "docsURL": "https://customer.io/docs/api/track/#section/Authentication"
+    }
+  },
+  "deel": {
+    "displayName": "Deel",
+    "baseURL": "https://api.letsdeel.com",
+    "authType": "oauth2"
+  },
+  "deelSandbox": {
+    "displayName": "Deel Sandbox",
+    "baseURL": "https://api-sandbox.demo.deel.com",
+    "authType": "oauth2"
+  },
+  "delighted": {
+    "displayName": "Delighted",
+    "baseURL": "https://api.delighted.com",
+    "authType": "basic"
+  },
+  "devrev": {
+    "displayName": "DevRev",
+    "baseURL": "https://api.devrev.ai",
+    "authType": "custom"
+  },
+  "discord": {
+    "displayName": "Discord",
+    "baseURL": "https://discord.com",
+    "authType": "oauth2"
+  },
+  "discourse": {
+    "displayName": "Discourse",
+    "baseURL": "https://{{.workspace}}",
+    "authType": "custom",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Your domain"
+        }
+      ]
+    }
+  },
+  "dixa": {
+    "displayName": "Dixa",
+    "baseURL": "https://dev.dixa.io",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.dixa.io/docs/api-standards-rules/#authentication",
+      "header": {
+        "name": "Authorization"
+      }
+    }
+  },
+  "docusign": {
+    "displayName": "Docusign",
+    "baseURL": "https://{{.server}}.docusign.net",
+    "authType": "oauth2",
+    "metadata": {}
+  },
+  "docusignDeveloper": {
+    "displayName": "Docusign Developer",
+    "baseURL": "https://demo.docusign.net",
+    "authType": "oauth2"
+  },
+  "domo": {
+    "displayName": "Domo",
+    "baseURL": "https://api.domo.com",
+    "authType": "oauth2"
+  },
+  "dovetail": {
+    "displayName": "Dovetail",
+    "baseURL": "https://dovetail.com/api",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developers.dovetail.com/docs/authorization",
+      "header": {
+        "name": "authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "drift": {
+    "displayName": "Drift",
+    "baseURL": "https://driftapi.com",
+    "authType": "oauth2"
+  },
+  "drip": {
+    "displayName": "Drip",
+    "baseURL": "https://api.getdrip.com",
+    "authType": "oauth2"
+  },
+  "dropbox": {
+    "displayName": "Dropbox",
+    "baseURL": "https://api.dropboxapi.com",
+    "authType": "oauth2"
+  },
+  "dropboxSign": {
+    "displayName": "Dropbox Sign",
+    "baseURL": "https://api.hellosign.com",
+    "authType": "oauth2"
+  },
+  "dynamicsBusinessCentral": {
+    "displayName": "Microsoft Dynamics Business Central",
+    "baseURL": "https://api.businesscentral.dynamics.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Tenant ID"
+        },
+        {
+          "name": "companyId",
+          "displayName": "Company ID"
+        },
+        {
+          "name": "environmentName",
+          "displayName": "Environment Name"
+        }
+      ]
+    }
+  },
+  "dynamicsCRM": {
+    "displayName": "Microsoft Dynamics CRM",
+    "baseURL": "https://{{.workspace}}.api.{{.region}}.dynamics.com/api/data",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Web API environment"
+        },
+        {
+          "name": "region",
+          "displayName": "Region",
+          "defaultValue": "crm"
+        }
+      ]
+    }
+  },
+  "emailBison": {
+    "displayName": "EmailBison",
+    "baseURL": "https://{{.workspace}}/api",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Domain"
+        }
+      ]
+    }
+  },
+  "fastSpring": {
+    "displayName": "FastSpring",
+    "baseURL": "https://api.fastspring.com",
+    "authType": "basic",
+    "basicOpts": {
+      "docsURL": "https://developer.fastspring.com/reference/getting-started-with-your-api"
+    }
+  },
+  "fathom": {
+    "displayName": "Fathom",
+    "baseURL": "https://api.fathom.ai",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developers.fathom.ai/quickstart",
+      "header": {
+        "name": "X-Api-Key"
+      }
+    }
+  },
+  "figma": {
+    "displayName": "Figma",
+    "baseURL": "https://api.figma.com",
+    "authType": "oauth2"
+  },
+  "fireflies": {
+    "displayName": "Fireflies",
+    "baseURL": "https://api.fireflies.ai",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.fireflies.ai/fundamentals/authorization#acquiring-a-token",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "flatfile": {
+    "displayName": "Flatfile",
+    "baseURL": "https://api.x.flatfile.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://reference.flatfile.com/overview/welcome",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "formstack": {
+    "displayName": "Formstack",
+    "baseURL": "https://www.formstack.com/api",
+    "authType": "oauth2"
+  },
+  "fourFour": {
+    "displayName": "Four/Four",
+    "baseURL": "https://fourfour.ai",
+    "authType": "oauth2"
+  },
+  "freshchat": {
+    "displayName": "Freshchat",
+    "baseURL": "https://{{.workspace}}.freshchat.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Account name"
+        }
+      ]
+    }
+  },
+  "freshdesk": {
+    "displayName": "Freshdesk",
+    "baseURL": "https://{{.workspace}}.freshdesk.com",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Domain"
+        }
+      ]
+    }
+  },
+  "freshsales": {
+    "displayName": "Freshsales",
+    "baseURL": "https://{{.workspace}}.myfreshworks.com/crm/sales",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developers.freshworks.com/crm/api/#authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Token token="
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Account name"
+        }
+      ]
+    }
+  },
+  "freshservice": {
+    "displayName": "Freshservice",
+    "baseURL": "https://{{.workspace}}.freshservice.com",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Domain"
+        }
+      ]
+    }
+  },
+  "front": {
+    "displayName": "Front",
+    "baseURL": "https://api2.frontapp.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://dev.frontapp.com/docs/create-and-revoke-api-tokens",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "g2": {
+    "displayName": "G2",
+    "baseURL": "https://data.g2.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://data.g2.com/api/docs?shell#g2-v2-api",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "gainsight": {
+    "displayName": "Gainsight",
+    "baseURL": "https://{{.workspace}}.gainsightcloud.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Workspace"
+        }
+      ]
+    }
+  },
+  "geckoboard": {
+    "displayName": "Geckoboard",
+    "baseURL": "https://api.geckoboard.com",
+    "authType": "basic"
+  },
+  "getResponse": {
+    "displayName": "GetResponse",
+    "baseURL": "https://api.getresponse.com",
+    "authType": "oauth2"
+  },
+  "github": {
+    "displayName": "GitHub",
+    "baseURL": "https://api.github.com",
+    "authType": "oauth2"
+  },
+  "gitlab": {
+    "displayName": "GitLab",
+    "baseURL": "https://gitlab.com",
+    "authType": "custom"
+  },
+  "gladly": {
+    "displayName": "Gladly",
+    "baseURL": "https://{{.workspace}}.gladly.com/api",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Organization"
+        }
+      ]
+    }
+  },
+  "gladlyQA": {
+    "displayName": "GladlyQA",
+    "baseURL": "https://{{.workspace}}.gladly.qa/api",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Organization"
+        }
+      ]
+    }
+  },
+  "goTo": {
+    "displayName": "GoTo",
+    "baseURL": "https://api.getgo.com",
+    "authType": "oauth2",
+    "metadata": {}
+  },
+  "gong": {
+    "displayName": "Gong",
+    "baseURL": "{{.api_base_url_for_customer}}",
+    "authType": "oauth2"
+  },
+  "google": {
+    "displayName": "Google",
+    "baseURL": "https://www.googleapis.com",
+    "authType": "oauth2"
+  },
+  "googleWorkspaceDelegation": {
+    "displayName": "Google",
+    "baseURL": "https://www.googleapis.com",
+    "authType": "custom",
+    "metadata": {
+      "input": [
+        {
+          "name": "userEmail",
+          "displayName": "User Email"
+        }
+      ]
+    }
+  },
+  "gorgias": {
+    "displayName": "Gorgias",
+    "baseURL": "https://{{.workspace}}.gorgias.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Domain"
+        }
+      ]
+    }
+  },
+  "granola": {
+    "displayName": "Granola",
+    "baseURL": "https://public-api.granola.ai",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.granola.ai/help-center/sharing/integrations/enterprise-api#how-does-authentication-work",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "greenhouse": {
+    "displayName": "Greenhouse (Harvest)",
+    "baseURL": "https://harvest.greenhouse.io",
+    "authType": "oauth2"
+  },
+  "greenhouseJobBoard": {
+    "displayName": "Greenhouse (Job board)",
+    "baseURL": "https://boards-api.greenhouse.io",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developers.greenhouse.io",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Basic "
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "board_token",
+          "displayName": "Board Token"
+        }
+      ]
+    }
+  },
+  "groove": {
+    "displayName": "Groove",
+    "baseURL": "https://api.groovehq.com",
+    "authType": "oauth2"
+  },
+  "guru": {
+    "displayName": "Guru",
+    "baseURL": "https://api.getguru.com",
+    "authType": "basic"
+  },
+  "gusto": {
+    "displayName": "Gusto",
+    "baseURL": "https://api.gusto.com",
+    "authType": "oauth2",
+    "metadata": {}
+  },
+  "gustoDemo": {
+    "displayName": "Gusto Demo",
+    "baseURL": "https://api.gusto-demo.com",
+    "authType": "oauth2",
+    "metadata": {}
+  },
+  "happyfox": {
+    "displayName": "HappyFox",
+    "baseURL": "https://api.happyfoxchat.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.happyfoxchat.com/#authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "helpScoutMailbox": {
+    "displayName": "Help Scout Mailbox",
+    "baseURL": "https://api.helpscout.net",
+    "authType": "oauth2",
+    "authHealthCheck": {
+      "url": "https://api.helpscout.net/v2/users/me",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "heyreach": {
+    "displayName": "HeyReach",
+    "baseURL": "https://api.heyreach.io/api",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "header": {
+        "name": "X-API-KEY"
+      }
+    }
+  },
+  "highLevelStandard": {
+    "displayName": "Highlevel Standard",
+    "baseURL": "https://services.leadconnectorhq.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "locationId",
+          "displayName": "Location ID"
+        }
+      ]
+    }
+  },
+  "highLevelWhiteLabel": {
+    "displayName": "Highlevel White Label",
+    "baseURL": "https://services.leadconnectorhq.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "locationId",
+          "displayName": "Location ID"
+        }
+      ]
+    }
+  },
+  "hightouch": {
+    "displayName": "Hightouch",
+    "baseURL": "https://api.hightouch.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://hightouch.com/docs/api-reference#section/Authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "hive": {
+    "displayName": "Hive",
+    "baseURL": "https://app.hive.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developers.hive.com/reference/api-keys-and-auth",
+      "header": {
+        "name": "api_key"
+      }
+    }
+  },
+  "housecallPro": {
+    "displayName": "Housecall Pro",
+    "baseURL": "https://api.housecallpro.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.housecallpro.com/docs/housecall-public-api/b87d37ae48a0d-authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Token "
+      }
+    }
+  },
+  "hubspot": {
+    "displayName": "HubSpot",
+    "baseURL": "https://api.hubapi.com",
+    "authType": "oauth2",
+    "metadata": {},
+    "authHealthCheck": {
+      "url": "https://api.hubapi.com/integrations/v1/me",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "hunter": {
+    "displayName": "Hunter",
+    "baseURL": "https://api.hunter.io/",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "query",
+      "docsURL": "https://hunter.io/api-documentation#authentication",
+      "query": {
+        "name": "api_key"
+      }
+    }
+  },
+  "insightly": {
+    "displayName": "Insightly",
+    "baseURL": "https://api.insightly.com",
+    "authType": "basic"
+  },
+  "instagram": {
+    "displayName": "Instagram",
+    "baseURL": "https://graph.instagram.com",
+    "authType": "oauth2"
+  },
+  "instantly": {
+    "displayName": "Instantly (Legacy V1)",
+    "baseURL": "https://api.instantly.ai/api",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "query",
+      "docsURL": "https://developer.instantly.ai/introduction",
+      "query": {
+        "name": "api_key"
+      }
+    }
+  },
+  "instantlyAI": {
+    "displayName": "Instantly",
+    "baseURL": "https://api.instantly.ai/api",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.instantly.ai/getting-started/getting-started#generate-a-new-api-key",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "intercom": {
+    "displayName": "Intercom",
+    "baseURL": "https://api.intercom.io",
+    "authType": "oauth2"
+  },
+  "ironclad": {
+    "displayName": "Ironclad",
+    "baseURL": "https://ironcladapp.com",
+    "authType": "oauth2"
+  },
+  "ironcladDemo": {
+    "displayName": "Ironclad Demo",
+    "baseURL": "https://demo.ironcladapp.com",
+    "authType": "oauth2"
+  },
+  "ironcladEU": {
+    "displayName": "Ironclad Europe",
+    "baseURL": "https://eu1.ironcladapp.com",
+    "authType": "oauth2"
+  },
+  "iterable": {
+    "displayName": "Iterable",
+    "baseURL": "https://api.iterable.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://app.iterable.com/settings/apiKeys",
+      "header": {
+        "name": "Api-Key"
+      }
+    }
+  },
+  "jobber": {
+    "displayName": "Jobber",
+    "baseURL": "https://api.getjobber.com/api/graphql",
+    "authType": "oauth2"
+  },
+  "joinMe": {
+    "displayName": "Join Me",
+    "baseURL": "https://api.join.me",
+    "authType": "oauth2"
+  },
+  "jotform": {
+    "displayName": "Jotform",
+    "baseURL": "https://api.jotform.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "query",
+      "docsURL": "https://api.jotform.com/docs/#authentication",
+      "query": {
+        "name": "apiKey"
+      }
+    }
+  },
+  "jump": {
+    "displayName": "Jump",
+    "baseURL": "https://my.jumpapp.com/enterprise/graphql",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://my.jumpapp.com/enterprise/documentation/authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "justCall": {
+    "displayName": "JustCall",
+    "baseURL": "https://api.justcall.io",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.justcall.io/reference/authentication",
+      "header": {
+        "name": "Authorization"
+      }
+    }
+  },
+  "kaseyaVSAX": {
+    "displayName": "Kaseya VSAX",
+    "baseURL": "https://{{.workspace}}",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Server Name"
+        }
+      ]
+    }
+  },
+  "keap": {
+    "displayName": "Keap",
+    "baseURL": "https://api.infusionsoft.com",
+    "authType": "oauth2"
+  },
+  "kit": {
+    "displayName": "Kit",
+    "baseURL": "https://api.kit.com",
+    "authType": "oauth2"
+  },
+  "klaviyo": {
+    "displayName": "Klaviyo",
+    "baseURL": "https://a.klaviyo.com",
+    "authType": "oauth2"
+  },
+  "lemlist": {
+    "displayName": "Lemlist",
+    "baseURL": "https://api.lemlist.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "query",
+      "docsURL": "https://developer.lemlist.com",
+      "query": {
+        "name": "access_token"
+      }
+    }
+  },
+  "lever": {
+    "displayName": "Lever",
+    "baseURL": "https://api.lever.co",
+    "authType": "oauth2"
+  },
+  "leverSandbox": {
+    "displayName": "Lever Sandbox",
+    "baseURL": "https://api.sandbox.lever.co",
+    "authType": "oauth2"
+  },
+  "linear": {
+    "displayName": "Linear",
+    "baseURL": "https://api.linear.app/graphql",
+    "authType": "oauth2"
+  },
+  "linkedIn": {
+    "displayName": "LinkedIn",
+    "baseURL": "https://api.linkedin.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "adAccountId",
+          "displayName": "Ad Account ID"
+        }
+      ]
+    }
+  },
+  "livestorm": {
+    "displayName": "Livestorm",
+    "baseURL": "https://api.livestorm.co",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developers.livestorm.co/docs/api-token-authentication",
+      "header": {
+        "name": "Authorization"
+      }
+    }
+  },
+  "loxo": {
+    "displayName": "Loxo",
+    "baseURL": "https://{{.workspace}}/api",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://help.loxo.co/en/articles/446640-loxo-s-open-api#h_668904ffbd",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Full Domain"
+        },
+        {
+          "name": "agencySlug",
+          "displayName": "Agency Slug"
+        }
+      ]
+    }
+  },
+  "mailgun": {
+    "displayName": "Mailgun",
+    "baseURL": "https://api.mailgun.net",
+    "authType": "basic",
+    "basicOpts": {
+      "docsURL": "https://documentation.mailgun.com/docs/mailgun/api-reference/authentication/"
+    }
+  },
+  "marketo": {
+    "displayName": "Marketo",
+    "baseURL": "https://{{.workspace}}.mktorest.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Munchkin Account ID"
+        }
+      ]
+    }
+  },
+  "maxio": {
+    "displayName": "Maxio",
+    "baseURL": "https://{{.workspace}}.chargify.com",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Site"
+        }
+      ]
+    }
+  },
+  "meta": {
+    "displayName": "Meta",
+    "baseURL": "https://graph.facebook.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "whatsappAccountId",
+          "displayName": "WhatsApp Business Account ID"
+        },
+        {
+          "name": "whatsappPhoneNumberId",
+          "displayName": "Phone Number ID"
+        }
+      ]
+    }
+  },
+  "microsoft": {
+    "displayName": "Microsoft",
+    "baseURL": "https://graph.microsoft.com",
+    "authType": "oauth2"
+  },
+  "microsoftAdminConsent": {
+    "displayName": "Microsoft (Admin consent)",
+    "baseURL": "https://graph.microsoft.com",
+    "authType": "custom",
+    "authHealthCheck": {
+      "url": "https://graph.microsoft.com/v1.0/organization",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "miro": {
+    "displayName": "Miro",
+    "baseURL": "https://api.miro.com",
+    "authType": "oauth2"
+  },
+  "mixmax": {
+    "displayName": "Mixmax",
+    "baseURL": "https://api.mixmax.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.mixmax.com/reference/getting-started-with-the-api",
+      "header": {
+        "name": "X-API-Token"
+      }
+    }
+  },
+  "mixpanel": {
+    "displayName": "Mixpanel",
+    "baseURL": "https://{{.workspace}}.mixpanel.com",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "API Subdomain"
+        }
+      ]
+    }
+  },
+  "monaco": {
+    "displayName": "Monaco",
+    "baseURL": "https://api.monaco.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.monaco.com/auth",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    },
+    "authHealthCheck": {
+      "url": "https://api.monaco.com/v1/me",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "monday": {
+    "displayName": "Monday",
+    "baseURL": "https://api.monday.com/",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.monday.com/api-reference/docs/authentication",
+      "header": {
+        "name": "Authorization"
+      }
+    }
+  },
+  "mural": {
+    "displayName": "Mural",
+    "baseURL": "https://app.mural.co/api",
+    "authType": "oauth2"
+  },
+  "netsuite": {
+    "displayName": "Netsuite",
+    "baseURL": "https://{{.workspace}}.suitetalk.api.netsuite.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Netsuite URL Prefix",
+          "defaultValue": "1234567-sb"
+        },
+        {
+          "name": "scriptId",
+          "displayName": "RESTlet Script ID"
+        },
+        {
+          "name": "deployId",
+          "displayName": "RESTlet Deploy ID"
+        }
+      ]
+    }
+  },
+  "netsuiteM2M": {
+    "displayName": "Netsuite",
+    "baseURL": "https://{{.workspace}}.suitetalk.api.netsuite.com",
+    "authType": "custom",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Netsuite URL Prefix",
+          "defaultValue": "1234567-sb"
+        },
+        {
+          "name": "scriptURL",
+          "displayName": "RESTlet Deployment URL",
+          "defaultValue": "/app/site/hosting/restlet.nl?script=3277\u0026deploy=1"
+        }
+      ]
+    }
+  },
+  "notion": {
+    "displayName": "Notion",
+    "baseURL": "https://api.notion.com",
+    "authType": "oauth2"
+  },
+  "nutshell": {
+    "displayName": "Nutshell",
+    "baseURL": "https://app.nutshell.com",
+    "authType": "basic"
+  },
+  "odoo": {
+    "displayName": "Odoo",
+    "baseURL": "https://{{.workspace}}",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://www.odoo.com/documentation/19.0/developer/reference/external_api.html#configuration",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "API Domain"
+        }
+      ]
+    }
+  },
+  "okta": {
+    "displayName": "Okta",
+    "baseURL": "https://{{.workspace}}.okta.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Domain"
+        }
+      ]
+    }
+  },
+  "openAI": {
+    "displayName": "OpenAI",
+    "baseURL": "https://api.openai.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://platform.openai.com/docs/api-reference/api-keys",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "outplay": {
+    "displayName": "Outplay",
+    "baseURL": "https://{{.workspace}}-api.outplayhq.com",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Location"
+        }
+      ]
+    }
+  },
+  "outreach": {
+    "displayName": "Outreach",
+    "baseURL": "https://api.outreach.io",
+    "authType": "oauth2"
+  },
+  "paddle": {
+    "displayName": "Paddle",
+    "baseURL": "https://api.paddle.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.paddle.com/api-reference/about/authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "paddleSandbox": {
+    "displayName": "Paddle Sandbox",
+    "baseURL": "https://sandbox-api.paddle.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.paddle.com/api-reference/about/authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "payPal": {
+    "displayName": "PayPal",
+    "baseURL": "https://api-m.paypal.com",
+    "authType": "oauth2"
+  },
+  "payPalSandBox": {
+    "displayName": "PayPal SandBox",
+    "baseURL": "https://api-m.sandbox.paypal.com",
+    "authType": "oauth2"
+  },
+  "phoneBurner": {
+    "displayName": "PhoneBurner",
+    "baseURL": "https://www.phoneburner.com",
+    "authType": "oauth2"
+  },
+  "pinterest": {
+    "displayName": "Pinterest",
+    "baseURL": "https://api.pinterest.com",
+    "authType": "oauth2"
+  },
+  "pipedrive": {
+    "displayName": "Pipedrive",
+    "baseURL": "https://api.pipedrive.com",
+    "authType": "oauth2"
+  },
+  "pipeliner": {
+    "displayName": "Pipeliner",
+    "baseURL": "https://{{.region}}.api.pipelinersales.com",
+    "authType": "basic",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Space ID"
+        },
+        {
+          "name": "region",
+          "displayName": "Space URL Region",
+          "defaultValue": "eu-central"
+        }
+      ]
+    }
+  },
+  "podium": {
+    "displayName": "Podium",
+    "baseURL": "https://api.podium.com",
+    "authType": "oauth2"
+  },
+  "procore": {
+    "displayName": "Procore",
+    "baseURL": "https://api.procore.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "company",
+          "displayName": "Company ID"
+        }
+      ]
+    }
+  },
+  "procoreSandbox": {
+    "displayName": "Procore Sandbox",
+    "baseURL": "https://sandbox.procore.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "company",
+          "displayName": "Company ID"
+        }
+      ]
+    }
+  },
+  "productBoard": {
+    "displayName": "Productboard",
+    "baseURL": "https://api.productboard.com",
+    "authType": "oauth2"
+  },
+  "pylon": {
+    "displayName": "Pylon",
+    "baseURL": "https://api.usepylon.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.usepylon.com/pylon-docs/developer/api",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "quickbooks": {
+    "displayName": "QuickBooks",
+    "baseURL": "https://quickbooks.api.intuit.com",
+    "authType": "oauth2"
+  },
+  "quickbooksSandbox": {
+    "displayName": "QuickBooks SandBox",
+    "baseURL": "https://sandbox-quickbooks.api.intuit.com",
+    "authType": "oauth2"
+  },
+  "ramp": {
+    "displayName": "Ramp",
+    "baseURL": "https://api.ramp.com",
+    "authType": "oauth2"
+  },
+  "rampDemo": {
+    "displayName": "Ramp Demo",
+    "baseURL": "https://demo-api.ramp.com",
+    "authType": "oauth2"
+  },
+  "rebilly": {
+    "displayName": "Rebilly",
+    "baseURL": "https://api.rebilly.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://www.rebilly.com/catalog/all/section/authentication/manage-api-keys",
+      "header": {
+        "name": "REB-APIKEY"
+      }
+    }
+  },
+  "recurly": {
+    "displayName": "Recurly",
+    "baseURL": "https://v3.recurly.com",
+    "authType": "basic"
+  },
+  "redditAds": {
+    "displayName": "Reddit Ads",
+    "baseURL": "https://ads-api.reddit.com",
+    "authType": "oauth2"
+  },
+  "revenueCat": {
+    "displayName": "RevenueCat",
+    "baseURL": "https://api.revenuecat.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://www.revenuecat.com/docs",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "project_id",
+          "displayName": "Project ID"
+        }
+      ]
+    }
+  },
+  "ringCentral": {
+    "displayName": "RingCentral",
+    "baseURL": "https://platform.ringcentral.com",
+    "authType": "oauth2"
+  },
+  "ringOverEU": {
+    "displayName": "RingOver (EU)",
+    "baseURL": "https://public-api.ringover.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.ringover.com",
+      "header": {
+        "name": "Authorization"
+      }
+    }
+  },
+  "ringOverUS": {
+    "displayName": "RingOver (US)",
+    "baseURL": "https://public-api-us.ringover.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://developer.ringover.com",
+      "header": {
+        "name": "Authorization"
+      }
+    }
+  },
+  "sageIntacct": {
+    "displayName": "Sage Intacct",
+    "baseURL": "https://api.intacct.com",
+    "authType": "oauth2"
+  },
+  "salesfinity": {
+    "displayName": "Salesfinity",
+    "baseURL": "https://client-api.salesfinity.co",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.salesfinity.ai/api-reference/introduction#authentication",
+      "header": {
+        "name": "x-api-key"
+      }
+    }
+  },
+  "salesflare": {
+    "displayName": "Salesflare",
+    "baseURL": "https://api.salesflare.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://api.salesflare.com/docs#section/Introduction/Authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "salesforce": {
+    "displayName": "Salesforce",
+    "baseURL": "https://{{.workspace}}.my.salesforce.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Subdomain"
+        },
+        {
+          "name": "businessUnitId",
+          "displayName": "Business Unit ID"
+        }
+      ]
+    },
+    "authHealthCheck": {
+      "url": "https://{{.workspace}}.my.salesforce.com/services/oauth2/userinfo",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "salesforceJWT": {
+    "displayName": "Salesforce",
+    "baseURL": "https://{{.workspace}}.my.salesforce.com",
+    "authType": "custom",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Subdomain"
+        }
+      ]
+    },
+    "authHealthCheck": {
+      "url": "https://{{.workspace}}.my.salesforce.com/services/oauth2/userinfo",
+      "method": "GET",
+      "successStatusCodes": [
+        200
+      ]
+    }
+  },
+  "salesforceMarketing": {
+    "displayName": "Salesforce Marketing Cloud",
+    "baseURL": "https://{{.workspace}}.rest.marketingcloudapis.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Subdomain"
+        }
+      ]
+    }
+  },
+  "salesloft": {
+    "displayName": "Salesloft",
+    "baseURL": "https://api.salesloft.com",
+    "authType": "oauth2"
+  },
+  "segment": {
+    "displayName": "Segment",
+    "baseURL": "https://api.segmentapis.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.segmentapis.com/tag/Getting-Started#section/Get-an-API-token",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "seismic": {
+    "displayName": "Seismic",
+    "baseURL": "https://api.seismic.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Tenant"
+        }
+      ]
+    }
+  },
+  "sellsy": {
+    "displayName": "Sellsy",
+    "baseURL": "https://api.sellsy.com",
+    "authType": "oauth2"
+  },
+  "sendGrid": {
+    "displayName": "SendGrid",
+    "baseURL": "https://api.sendgrid.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://www.twilio.com/docs/sendgrid",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "serviceNow": {
+    "displayName": "ServiceNow",
+    "baseURL": "https://{{.workspace}}.service-now.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Instance"
+        }
+      ]
+    }
+  },
+  "serviceNowPKCE": {
+    "displayName": "ServiceNow PKCE",
+    "baseURL": "https://{{.workspace}}.service-now.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Instance"
+        }
+      ]
+    }
+  },
+  "shopify": {
+    "displayName": "Shopify",
+    "baseURL": "https://{{.workspace}}.myshopify.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Store"
+        }
+      ]
+    }
+  },
+  "slack": {
+    "displayName": "Slack",
+    "baseURL": "https://slack.com/api",
+    "authType": "oauth2",
+    "metadata": {}
+  },
+  "smartlead": {
+    "displayName": "Smartlead",
+    "baseURL": "https://server.smartlead.ai/api",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "query",
+      "docsURL": "https://api.smartlead.ai/reference/authentication",
+      "query": {
+        "name": "api_key"
+      }
+    }
+  },
+  "smartsheet": {
+    "displayName": "Smartsheet",
+    "baseURL": "https://api.smartsheet.com",
+    "authType": "oauth2"
+  },
+  "snapchatAds": {
+    "displayName": "Snapchat Ads",
+    "baseURL": "https://adsapi.snapchat.com",
+    "authType": "oauth2",
+    "metadata": {}
+  },
+  "snowflake": {
+    "displayName": "Snowflake",
+    "baseURL": "https://{{.workspace}}.snowflakecomputing.com",
+    "authType": "custom"
+  },
+  "solarWindsServiceDesk": {
+    "displayName": "SolarWinds Service Desk",
+    "baseURL": "https://{{.subdomain}}.samanage.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://documentation.solarwinds.com/en/success_center/swsd/content/completeguidetoswsd/token-authentication-for-api-integration.htm#link4",
+      "header": {
+        "name": "X-Samanage-Authorization",
+        "valuePrefix": "Bearer "
+      }
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "subdomain",
+          "displayName": "API Subdomain",
+          "defaultValue": "api"
+        }
+      ]
+    }
+  },
+  "square": {
+    "displayName": "Square",
+    "baseURL": "https://connect.squareup.com",
+    "authType": "oauth2"
+  },
+  "squareSandbox": {
+    "displayName": "Square Sandbox",
+    "baseURL": "https://connect.squareupsandbox.com",
+    "authType": "oauth2"
+  },
+  "stackExchange": {
+    "displayName": "StackExchange",
+    "baseURL": "https://api.stackexchange.com",
+    "authType": "oauth2"
+  },
+  "stripe": {
+    "displayName": "Stripe",
+    "baseURL": "https://api.stripe.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.stripe.com/keys",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "sugarCRM": {
+    "displayName": "SugarCRM",
+    "baseURL": "{{.workspace}}/rest/v11_24",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Base URL"
+        }
+      ]
+    }
+  },
+  "superSend": {
+    "displayName": "Super Send",
+    "baseURL": "https://api.supersend.io",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.supersend.io/docs/authentication",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "surveyMonkey": {
+    "displayName": "SurveyMonkey",
+    "baseURL": "https://api.surveymonkey.com",
+    "authType": "oauth2"
+  },
+  "talkdesk": {
+    "displayName": "Talkdesk",
+    "baseURL": "https://{{.talkdesk_api_domain}}",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Account name"
+        },
+        {
+          "name": "talkdesk_api_domain",
+          "displayName": "Talkdesk API Domain",
+          "defaultValue": "api.talkdeskapp.com"
+        },
+        {
+          "name": "talkdesk_token_domain",
+          "displayName": "Talkdesk Token Domain",
+          "defaultValue": "talkdeskid.com"
+        }
+      ]
+    }
+  },
+  "teamleader": {
+    "displayName": "Teamleader",
+    "baseURL": "https://api.focus.teamleader.eu",
+    "authType": "oauth2"
+  },
+  "teamwork": {
+    "displayName": "Teamwork",
+    "baseURL": "https://{{.workspace}}.teamwork.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Site name"
+        }
+      ]
+    }
+  },
+  "timely": {
+    "displayName": "Timely",
+    "baseURL": "https://api.timelyapp.com",
+    "authType": "oauth2"
+  },
+  "tipalti": {
+    "displayName": "Tipalti",
+    "baseURL": "https://api-p.tipalti.com",
+    "authType": "oauth2"
+  },
+  "typeform": {
+    "displayName": "Typeform",
+    "baseURL": "https://api.typeform.com",
+    "authType": "oauth2"
+  },
+  "vtiger": {
+    "displayName": "Vtiger",
+    "baseURL": "https://{{.workspace}}/restapi",
+    "authType": "basic",
+    "basicOpts": {
+      "docsURL": "https://help.vtiger.com/faq/140159403-What-is-Access-Key"
+    },
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Full Domain"
+        }
+      ]
+    }
+  },
+  "wealthbox": {
+    "displayName": "Wealthbox",
+    "baseURL": "https://api.crmworkspace.com",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://dev.wealthbox.com/#topics-authentication",
+      "header": {
+        "name": "ACCESS_TOKEN"
+      }
+    }
+  },
+  "webex": {
+    "displayName": "Webex",
+    "baseURL": "https://webexapis.com",
+    "authType": "oauth2"
+  },
+  "webflow": {
+    "displayName": "Webflow",
+    "baseURL": "https://api.webflow.com",
+    "authType": "oauth2"
+  },
+  "whereby": {
+    "displayName": "Whereby",
+    "baseURL": "https://api.whereby.dev",
+    "authType": "apiKey",
+    "apiKeyOpts": {
+      "attachmentType": "header",
+      "docsURL": "https://docs.whereby.com/whereby-101/readme/get-started-in-3-steps#step-1-generate-an-api-key",
+      "header": {
+        "name": "Authorization",
+        "valuePrefix": "Bearer "
+      }
+    }
+  },
+  "wordPress": {
+    "displayName": "WordPress",
+    "baseURL": "https://public-api.wordpress.com",
+    "authType": "oauth2"
+  },
+  "workday": {
+    "displayName": "Workday",
+    "baseURL": "https://{{.workspace}}.workday.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Workday Host"
+        },
+        {
+          "name": "tenantName",
+          "displayName": "Tenant Name"
+        }
+      ]
+    }
+  },
+  "wrike": {
+    "displayName": "Wrike",
+    "baseURL": "https://www.wrike.com/api",
+    "authType": "oauth2"
+  },
+  "xero": {
+    "displayName": "Xero",
+    "baseURL": "https://api.xero.com",
+    "authType": "oauth2",
+    "metadata": {}
+  },
+  "zendeskChat": {
+    "displayName": "Zendesk Chat",
+    "baseURL": "https://{{.workspace}}.zendesk.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Subdomain"
+        }
+      ]
+    }
+  },
+  "zendeskSupport": {
+    "displayName": "Zendesk Support",
+    "baseURL": "https://{{.workspace}}.zendesk.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Subdomain"
+        }
+      ]
+    }
+  },
+  "zoho": {
+    "displayName": "Zoho",
+    "baseURL": "https://{{.zoho_api_domain}}",
+    "authType": "oauth2",
+    "metadata": {}
+  },
+  "zoom": {
+    "displayName": "Zoom",
+    "baseURL": "https://api.zoom.us",
+    "authType": "oauth2"
+  },
+  "zoominfo": {
+    "displayName": "ZoomInfo",
+    "baseURL": "https://api.zoominfo.com",
+    "authType": "oauth2"
+  },
+  "zuora": {
+    "displayName": "Zuora",
+    "baseURL": "https://{{.workspace}}.zuora.com",
+    "authType": "oauth2",
+    "metadata": {
+      "input": [
+        {
+          "name": "workspace",
+          "displayName": "Workspace"
+        }
+      ]
+    }
+  }
+}
