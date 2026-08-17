@@ -873,33 +873,61 @@ var glossField = map[string]string{
 	"gmail_read":   "id",
 }
 
+// glossFields is [glossField] for the calls where ONE argument is not enough to
+// say what is about to happen.
+//
+// It exists for the two hands that act outside this machine, and it is the
+// person's whole view of the question they are being asked: a message is who it
+// is going to and what it says it is about, and an event is what it is called
+// and when. "gmail_send alice@example.com" would be a question about a
+// recipient, not about a message.
+var glossFields = map[string][]string{
+	"gmail_send":      {"to", "subject"},
+	"calendar_create": {"title", "start"},
+}
+
 // gloss renders one call as a person-readable line: the tool name and the one
 // argument that identifies the work. Unparseable arguments degrade to the bare
 // name rather than to the raw JSON — a malformed call is still a call the
 // person should see happening.
 func gloss(call ai.ToolCall) string {
 	name := call.Function.Name
-	field, known := glossField[name]
+	fields, known := glossFields[name]
 	if !known {
-		return name
+		field, single := glossField[name]
+		if !single {
+			return name
+		}
+		fields = []string{field}
 	}
 	var args map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
 		return name
 	}
+	said := make([]string, 0, len(fields)+1)
+	said = append(said, name)
+	for _, field := range fields {
+		if value := glossValue(args, field); value != "" {
+			said = append(said, value)
+		}
+	}
+	if len(said) == 1 {
+		return name
+	}
+	return clip(strings.Join(said, " "), hintLimit)
+}
+
+// glossValue reads one argument as the line a person would read.
+func glossValue(args map[string]json.RawMessage, field string) string {
 	raw, present := args[field]
 	if !present {
-		return name
+		return ""
 	}
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
 		value = strings.TrimSpace(string(raw))
 	}
-	value = strings.TrimSpace(firstLine(value))
-	if value == "" {
-		return name
-	}
-	return clip(name+" "+value, hintLimit)
+	return strings.TrimSpace(firstLine(value))
 }
 
 // argsText renders one call's arguments for Event.Args: the JSON the model

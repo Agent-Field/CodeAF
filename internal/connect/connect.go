@@ -186,16 +186,8 @@ func (m *Manager) Services() []Status {
 		if !m.creds[service.ID].ok() {
 			continue
 		}
-		record, ok, err := m.store.get(service.ID)
-		if err != nil {
-			// A store that has become unreadable since startup is
-			// reported as nothing being connected, which is the safe
-			// reading: it makes the person reconnect rather than
-			// letting a screen promise access aforge cannot deliver.
-			record, ok = stored{}, false
-		}
 		status := Status{Service: service}
-		if ok && record.usable() {
+		if record, ok := m.standing(p); ok {
 			status.Connected = true
 			status.Account = record.Account
 		}
@@ -206,15 +198,35 @@ func (m *Manager) Services() []Status {
 
 // Connected reports whether id can be used right now.
 //
-// Connected means BOTH halves are present: the client credential this build was
-// configured with, and stored keys for a person's account. Either one alone is
-// a service that cannot answer a single request.
+// Connected means ALL THREE things are true: the client credential this build
+// was configured with, stored keys for a person's account, and a grant that
+// covers what the service asks for today. Any one of them missing is a service
+// that cannot do the work the caller is about to ask for.
 func (m *Manager) Connected(id string) bool {
-	if !m.creds[id].ok() {
+	plug, err := m.plug(id)
+	if err != nil {
 		return false
 	}
-	record, ok, err := m.store.get(id)
-	return err == nil && ok && record.usable()
+	_, ok := m.standing(plug)
+	return ok
+}
+
+// standing is the one reading of "is this connected", and every caller goes
+// through it so that a menu, a tool call and a client can never disagree.
+//
+// A store that has become unreadable since startup reads as nothing being
+// connected, which is the safe answer: it makes the person sign in again rather
+// than letting a screen promise access aforge cannot deliver.
+func (m *Manager) standing(p Plug) (stored, bool) {
+	service := p.Service()
+	if !m.creds[service.ID].ok() {
+		return stored{}, false
+	}
+	record, ok, err := m.store.get(service.ID)
+	if err != nil || !ok || !record.usable() || !record.covers(service.Scopes) {
+		return stored{}, false
+	}
+	return record, true
 }
 
 // Disconnect forgets a service: the stored keys go, the client credential and

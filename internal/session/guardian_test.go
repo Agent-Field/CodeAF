@@ -290,3 +290,32 @@ func TestGuardianVerdictIsTheWordAlone(t *testing.T) {
 		}
 	}
 }
+
+// NOBODY STANDS IN FOR THE PERSON ON WHAT LEAVES IN THEIR NAME. The guardian is
+// on and would say ALLOW to anything, and a send is still put to the person.
+func TestGuardianNeverAnswersForASend(t *testing.T) {
+	service := &stubTransport{answer: `{"id":"sent-1"}`}
+	hub := &fakeHub{connected: true, account: "you@example.test", transport: service}
+	completer := &guardianCompleter{inner: &scriptedCompleter{steps: sendTurn()}, verdict: "ALLOW"}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.connectHub = hub
+		config.ApprovalPolicy = promptAll()
+		config.AskConsent = true
+		config.Guardian = true
+	})
+	armGoogle(t, agent)
+
+	collected := drainAnswering(t, mustSubmit(t, agent, "tell alice noon works"), func(event Event) {
+		agent.ResolveConsent(event.ID, false)
+	})
+
+	if asked := completer.questions(); len(asked) != 0 {
+		t.Fatalf("the guardian was consulted about a send: %v", asked)
+	}
+	if count := countKind(collected, EventConsentRequest); count != 1 {
+		t.Fatalf("the person was asked %d times, want once", count)
+	}
+	if service.calls() != 0 {
+		t.Fatal("a refused message left anyway")
+	}
+}

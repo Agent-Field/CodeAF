@@ -3,6 +3,7 @@ package connect
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/int128/oauth2cli"
@@ -208,7 +209,7 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 		return f.status, f.err
 	}
 
-	entry := stored{Keys: result.keys}
+	entry := stored{Keys: result.keys, Scopes: granted(result.keys, service.Scopes)}
 	// THE IDENTITY PROBE MAY FAIL WITHOUT FAILING THE CONNECTION. The keys
 	// work; only the label is missing, and a missing label renders as
 	// nothing.
@@ -222,4 +223,23 @@ func (f *Flow) settle(ctx context.Context, result flowResult) (Status, error) {
 	}
 	f.status = Status{Service: service, Connected: true, Account: entry.Account}
 	return f.status, nil
+}
+
+// granted is what the person actually agreed to, for the record kept beside the
+// keys.
+//
+// The service says so itself in the answer to the exchange, and its answer wins:
+// a person may untick a box on the permissions screen, and a connection recorded
+// as carrying something it does not carry is worse than no record at all.
+// A service that says nothing leaves the ASK as the record, which is the closest
+// true statement available — it is what the sign-in that just succeeded was for.
+func granted(keys *oauth2.Token, asked []string) []string {
+	if keys != nil {
+		if raw, ok := keys.Extra("scope").(string); ok {
+			if given := strings.Fields(raw); len(given) > 0 {
+				return given
+			}
+		}
+	}
+	return append([]string(nil), asked...)
 }

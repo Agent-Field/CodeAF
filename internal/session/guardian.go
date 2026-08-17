@@ -90,6 +90,14 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	if !a.config.Guardian {
 		return false
 	}
+	// NOBODY STANDS IN FOR THE PERSON ON WHAT LEAVES IN THEIR NAME. A guardian
+	// saves a keystroke on a read; a message that has gone out over somebody's
+	// own address cannot be called back, and the point of asking about it is that
+	// THEY saw it. The list is internal/approval's, so the gate and the stand-in
+	// cannot drift on which calls it means.
+	if approval.ActsInThePersonsName(call.Function.Name) {
+		return false
+	}
 	a.mu.Lock()
 	model := a.model
 	source := a.config.RolesSource

@@ -27,15 +27,35 @@ type google struct{}
 
 func init() { Register(google{}) }
 
+// googleScopes is the whole of what this plug asks a person for, in one place
+// so that a screen, a stored connection and the request that goes out can never
+// disagree about it.
+//
+// THE ASK IS THE SMALLEST ONE THAT DOES THE WORK, and each line is one:
+//
+//   - gmail.modify is read and write on the mailbox — searching, opening,
+//     sending, drafts, labels — and it is one line rather than three because
+//     Gmail's own documentation says so: modify supersedes readonly, and send
+//     and compose are the halves of it a caller would otherwise have to ask for
+//     separately. Three lines on a permissions screen that add up to what one
+//     line says is a worse thing to read, not a safer one. What modify
+//     deliberately stops short of is permanent deletion — a mailbox this
+//     connection can write to is still one it cannot empty.
+//   - calendar.events is read and write on the events of a person's calendars.
+//     It is not calendar, which also carries the calendars themselves: making
+//     and deleting whole calendars and changing who they are shared with is
+//     nothing this program does, so it is nothing this program asks for.
+var googleScopes = []string{
+	"https://www.googleapis.com/auth/gmail.modify",
+	"https://www.googleapis.com/auth/calendar.events",
+}
+
 func (google) Service() Service {
 	return Service{
-		ID:    "google",
-		Name:  "Google",
-		Blurb: "Read your Gmail and Calendar.",
-		Scopes: []string{
-			"https://www.googleapis.com/auth/gmail.readonly",
-			"https://www.googleapis.com/auth/calendar.readonly",
-		},
+		ID:     "google",
+		Name:   "Google",
+		Blurb:  "Read and send Gmail; read and manage Calendar.",
+		Scopes: append([]string(nil), googleScopes...),
 	}
 }
 

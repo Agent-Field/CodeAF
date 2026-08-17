@@ -3,12 +3,14 @@ package session
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -30,6 +32,40 @@ type fakeHub struct {
 	waitFor chan struct{}
 	begins  int
 	clients int
+	// transport answers the requests an armed tool makes, so that a test can
+	// watch a whole call — the question, the account, the service — without a
+	// network. Nil means nothing is expected to reach a service.
+	transport *stubTransport
+}
+
+// stubTransport is a service that answers one canned reply and remembers every
+// request it was sent.
+type stubTransport struct {
+	mu       sync.Mutex
+	requests []*http.Request
+	answer   string
+}
+
+func (s *stubTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	s.mu.Lock()
+	s.requests = append(s.requests, request)
+	s.mu.Unlock()
+	answer := s.answer
+	if answer == "" {
+		answer = "{}"
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(answer)),
+		Request:    request,
+	}, nil
+}
+
+func (s *stubTransport) calls() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.requests)
 }
 
 func (h *fakeHub) Services() []connectStatus {
@@ -83,6 +119,9 @@ func (h *fakeHub) Client(ctx context.Context, id string) (*http.Client, error) {
 	h.clients++
 	if !h.connected {
 		return nil, errors.New("not connected")
+	}
+	if h.transport != nil {
+		return &http.Client{Transport: h.transport}, nil
 	}
 	return http.DefaultClient, nil
 }
@@ -145,10 +184,10 @@ func TestTheConnectToolsAreOnTheBeltOnlyWhenAHubIs(t *testing.T) {
 	if !hasTool(wired, "services") || !hasTool(wired, "use_service") {
 		t.Fatalf("a wired session is missing the connect tools: %v", beltNames(wired))
 	}
-	// And what an account BRINGS is not there until it is picked up: three
+	// And what an account BRINGS is not there until it is picked up: five
 	// schemas at the front of every request are not carried by a conversation
 	// that never touches mail.
-	for _, name := range []string{"gmail_search", "gmail_read", "calendar_list"} {
+	for _, name := range []string{"gmail_search", "gmail_read", "gmail_send", "calendar_list", "calendar_create"} {
 		if hasTool(wired, name) {
 			t.Fatalf("%s is on the belt before the account was picked up", name)
 		}
@@ -175,8 +214,8 @@ func TestArmedToolsLandAtTheTailAndNothingAlreadyThereMoves(t *testing.T) {
 
 	after := beltNames(agent)
 	afterDefinitions := definitionNames(agent)
-	if len(after) != len(before)+3 {
-		t.Fatalf("belt grew by %d, want 3: %v", len(after)-len(before), after)
+	if len(after) != len(before)+5 {
+		t.Fatalf("belt grew by %d, want 5: %v", len(after)-len(before), after)
 	}
 	for index, name := range before {
 		if after[index] != name {
@@ -187,7 +226,7 @@ func TestArmedToolsLandAtTheTailAndNothingAlreadyThereMoves(t *testing.T) {
 		}
 	}
 	tail := strings.Join(after[len(before):], ",")
-	if tail != "gmail_search,gmail_read,calendar_list" {
+	if tail != "gmail_search,gmail_read,gmail_send,calendar_list,calendar_create" {
 		t.Fatalf("the family did not arrive at the tail: %q", tail)
 	}
 	if strings.Join(afterDefinitions, ",") != strings.Join(after, ",") {
@@ -485,5 +524,189 @@ func drainConnect(t *testing.T, events <-chan Event, answer func(Event)) []Event
 			t.Fatalf("the turn never finished; events so far: %v", kinds(collected))
 			return nil
 		}
+	}
+}
+
+// ── the two hands that act ──────────────────────────────────────────────────
+
+// sendTurn is the script for one turn that sends a message and then says
+// something.
+func sendTurn() []step {
+	return []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "gmail_send",
+				`{"to":"alice@example.com","subject":"Lunch tomorrow?","body":"Noon works."}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}
+}
+
+// armGoogle puts the account's family on the belt the way a conversation that
+// picked it up earlier is already holding it.
+func armGoogle(t *testing.T, agent *Agent) {
+	t.Helper()
+	if _, err := agent.armFamily(agent.familyTools("google")); err != nil {
+		t.Fatalf("arm the family: %v", err)
+	}
+}
+
+// THE RE-CONSENT PATH, end to end. The account was connected when this
+// conversation picked it up, and what the person agreed to then does not cover
+// sending — so the send is not an error, it is the ordinary question, and the
+// message goes the moment they have signed in again.
+func TestASendOnAnAccountThatNoLongerStandsAsksAndThenSends(t *testing.T) {
+	service := &stubTransport{answer: `{"id":"sent-1"}`}
+	hub := &fakeHub{transport: service}
+	completer := &scriptedCompleter{steps: sendTurn()}
+	agent := connectAgent(t, completer, hub, true)
+	armGoogle(t, agent)
+
+	events, err := agent.Submit(context.Background(), "tell alice noon works")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		agent.ResolveConnect(event.ConnectID, true)
+	})
+
+	ask, asked := firstOfKind(collected, EventConnectAsk)
+	if !asked {
+		t.Fatalf("nobody was asked to sign in again: %v", kinds(collected))
+	}
+	if ask.ServiceName != "Google" || ask.Service != "google" {
+		t.Fatalf("the question is missing its subject: %+v", ask)
+	}
+	if hub.attempts() != 1 {
+		t.Fatalf("the sign-in ran %d times, want once", hub.attempts())
+	}
+	if service.calls() != 1 {
+		t.Fatalf("the message was sent %d times, want once", service.calls())
+	}
+	if output := lastToolOutput(t, collected); !strings.Contains(output, "Sent to alice@example.com") {
+		t.Fatalf("the model was not told what went: %q", output)
+	}
+}
+
+// A person who will not sign in again is told nothing left, in the words the
+// ordinary refusal uses — and nothing left.
+func TestASendOnAnAccountThatNoLongerStandsSendsNothingWhenTheAnswerIsNo(t *testing.T) {
+	service := &stubTransport{}
+	hub := &fakeHub{transport: service}
+	completer := &scriptedCompleter{steps: sendTurn()}
+	agent := connectAgent(t, completer, hub, true)
+	armGoogle(t, agent)
+
+	events, err := agent.Submit(context.Background(), "tell alice noon works")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		agent.ResolveConnect(event.ConnectID, false)
+	})
+
+	if service.calls() != 0 {
+		t.Fatal("a refused sign-in still sent the message")
+	}
+	if output := lastToolOutput(t, collected); !strings.Contains(output, "did not agree") {
+		t.Fatalf("the model was not told plainly: %q", output)
+	}
+}
+
+// A BLANKET ALLOW CANNOT SEND SOMEBODY'S MAIL. The policy allows everything and
+// nobody is watching, so the call is refused rather than run: the question the
+// gate wanted to ask has no reader.
+func TestSendingMailWithoutApprovalDoesNotHappen(t *testing.T) {
+	service := &stubTransport{answer: `{"id":"sent-1"}`}
+	hub := &fakeHub{connected: true, account: "you@example.test", transport: service}
+	completer := &scriptedCompleter{steps: sendTurn()}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.connectHub = hub
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.AskConsent = false
+	})
+	armGoogle(t, agent)
+
+	collected := collect(t, mustSubmit(t, agent, "tell alice noon works"))
+
+	if service.calls() != 0 {
+		t.Fatal("a message left without anybody approving it")
+	}
+	failed, ok := firstOfKind(collected, EventToolFailed)
+	if !ok {
+		t.Fatalf("the call did not refuse: %v", kinds(collected))
+	}
+	if !strings.Contains(failed.Output, "needs approval") || !strings.Contains(failed.Output, "gmail_send") {
+		t.Fatalf("the refusal does not say why: %q", failed.Output)
+	}
+}
+
+// And what the person is asked says what is about to leave: who it is going to
+// and what it says it is about.
+func TestTheSendQuestionSaysWhatIsAboutToLeave(t *testing.T) {
+	service := &stubTransport{answer: `{"id":"sent-1"}`}
+	hub := &fakeHub{connected: true, account: "you@example.test", transport: service}
+	completer := &scriptedCompleter{steps: sendTurn()}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.connectHub = hub
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.AskConsent = true
+	})
+	armGoogle(t, agent)
+
+	collected := drainAnswering(t, mustSubmit(t, agent, "tell alice noon works"), func(event Event) {
+		agent.ResolveConsent(event.ID, true)
+	})
+
+	request, asked := firstOfKind(collected, EventConsentRequest)
+	if !asked {
+		t.Fatalf("nobody was asked: %v", kinds(collected))
+	}
+	if !strings.Contains(request.Hint, "alice@example.com") || !strings.Contains(request.Hint, "Lunch tomorrow?") {
+		t.Fatalf("the question does not say what is leaving: %q", request.Hint)
+	}
+	if !strings.Contains(request.Rule, "in your name") {
+		t.Fatalf("the question does not say why it is being asked: %q", request.Rule)
+	}
+	if service.calls() != 1 {
+		t.Fatalf("an approved message was sent %d times, want once", service.calls())
+	}
+}
+
+// The event half of the same law: the question says what is going on the
+// calendar and when.
+func TestTheCalendarQuestionSaysWhatIsAboutToHappen(t *testing.T) {
+	service := &stubTransport{answer: `{"id":"ev-1"}`}
+	hub := &fakeHub{connected: true, account: "you@example.test", transport: service}
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-1", "calendar_create",
+				`{"title":"Standup","start":"2026-08-18T09:00:00Z","attendees":"alice@example.com"}`), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.connectHub = hub
+		config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+		config.AskConsent = true
+	})
+	armGoogle(t, agent)
+
+	collected := drainAnswering(t, mustSubmit(t, agent, "put standup on tuesday"), func(event Event) {
+		agent.ResolveConsent(event.ID, false)
+	})
+
+	request, asked := firstOfKind(collected, EventConsentRequest)
+	if !asked {
+		t.Fatalf("nobody was asked: %v", kinds(collected))
+	}
+	if !strings.Contains(request.Hint, "Standup") || !strings.Contains(request.Hint, "2026-08-18T09:00:00Z") {
+		t.Fatalf("the question does not say what is happening: %q", request.Hint)
+	}
+	if service.calls() != 0 {
+		t.Fatal("a refused event went on the calendar anyway")
 	}
 }
