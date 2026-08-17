@@ -200,7 +200,156 @@ estimate on stderr and nothing bought. Pass `--yes-spend` (or
 
 ---
 
-## 2. Recipes
+## 2. `aforge exec` — one linear worker, no graph
+
+```
+aforge exec ["<prompt>"] [-w dir] [--system text]
+            [--turns N] [--budget N] [--timeout seconds]
+            [--model slug] [--plan-model slug]
+            [--context-fill N] [--completion-reserve N]
+            [--json] [-o file]
+```
+
+`exec` runs **one** agent with the tool loop and nothing else: no compile, no
+graph, no contracts, no delivery gate, no replan, no journal, no resident lease.
+It is the bottom of the product — the same executor a leaf runs on — exposed
+directly.
+
+Reach for it when the caller has already decided what the work is and wants the
+cheapest, most predictable path to an answer: a sub-harness embedding aforge in
+its own pipeline, a benchmark measuring the raw worker, an agent framework that
+does its own planning. Reach for `do` when you want aforge to decide how the
+work divides, to repair itself mid-flight, and to judge what it produced. `exec`
+does none of that, and the price of the missing machinery is that nothing checks
+the answer.
+
+With no prompt argument it reads the prompt from **stdin**, which is how a
+harness passes anything with newlines in it.
+
+### Flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-w dir` | `.` | The directory the worker works in, created if missing. Also where its scratch lands — see below. |
+| `--system text` | empty | The working method, passed as the task's contract. |
+| `--turns N` | `200` | Runaway backstop on agent iterations. Hitting it exits `3`. |
+| `--budget N` | `150000` | Token budget for the whole run. Hitting it exits `2`. |
+| `--timeout N` | scaled from `--budget` | Hard wall in seconds. Unset, it is 15 minutes, or one minute per 50k tokens of budget when that is longer. Hitting it exits `4`. |
+| `--model slug` | `AFORGE_MODEL` | The work model. |
+| `--plan-model slug` | — | Accepted so a headless caller can pin both slots the same way for every command. `exec` plans nothing, so it changes no behaviour. |
+| `--context-fill N` | `60` | How full the context window may get before it is compacted, in percent. Sets `AFORGE_CONTEXT_FILL_PCT` for this run. |
+| `--completion-reserve N` | `65536` | Tokens kept free for the answer and its reasoning. Sets `AFORGE_COMPLETION_RESERVE` for this run. |
+| `--json` | off | Print the envelope below instead of the plain text. |
+| `-o file` | — | Also write the envelope to this file. Independent of `--json`: the file is always the JSON. |
+
+Flags may appear after the prompt text; `exec` reorders its own arguments.
+
+### The walls can come from the environment
+
+The three walls — and only those three — fall back to the environment when the
+flag was not passed, so a harness can set them once for a campaign instead of
+threading them onto every call:
+
+| Variable | Flag it stands in for | Units |
+| --- | --- | --- |
+| `AFORGE_EXEC_TURNS` | `--turns` | iterations |
+| `AFORGE_EXEC_BUDGET` | `--budget` | tokens |
+| `AFORGE_EXEC_TIMEOUT` | `--timeout` | seconds |
+
+**A flag that was typed always wins** — including `--turns 200`, which is a
+decision even though 200 is also the default. A variable that is set but is not
+a number stops the run and names itself, rather than being silently dropped: a
+campaign that thinks it capped every call because of an unnoticed typo measures
+the wrong thing all night. A variable set to an out-of-range value meets exactly
+the guard the flag has always had (turns and budget must be positive, timeout
+must not be negative).
+
+### Stream discipline
+
+**stdin is the prompt** when no prompt argument was given. **stdout is the
+result and nothing else** — one JSON object under `--json`, the deliverable text
+otherwise, one trailing newline either way. Every diagnostic goes to **stderr**,
+including the provider error behind a failed run. A harness may parse stdout
+whole; it never has to strip anything out of it.
+
+### The `--json` envelope
+
+```json
+{
+  "text": "the answer, in full",
+  "stop": "done",
+  "usage": {
+    "calls": 12,
+    "prompt_tokens": 48213,
+    "completion_tokens": 3110,
+    "cached_tokens": 41984,
+    "cost": 0.0731
+  },
+  "artifacts": ["/abs/path/to/any/file/it/wrote"],
+  "turns": 9,
+  "elapsed_ms": 184213
+}
+```
+
+| Field | Contract |
+| --- | --- |
+| `text` | The deliverable, whole. Empty is possible and is what exit `6` is about. |
+| `stop` | Why the loop ended, in the executor's own vocabulary: `done`, `budget`, `turn-cap`, `deadline`, `error`, `empty`, `overrun`, `promote`, `paused`, `cancelled`. The exit code is the verdict; this is the reason. |
+| `usage` | Calls made and tokens moved, with `cached_tokens` counting prompt tokens served from the provider's cache and `cost` in dollars. Always present. |
+| `artifacts` | The files the run wrote as work product, in stable order. The harness's own records — traces, job logs — are deliberately not listed. Always a list, never `null`. |
+| `turns` | Iterations of the tool loop. |
+| `elapsed_ms` | Wall clock in milliseconds. |
+
+`-o file` writes this same object whether or not `--json` was passed, so a
+caller can keep stdout for the prose and still get the machine record.
+
+### Exit codes
+
+| Code | `stop` | Means |
+| --- | --- | --- |
+| `0` | `done` | The worker stopped asking for tools and had something to say. |
+| `2` | `budget` | The token budget ran out. `text` holds whatever it had. |
+| `3` | `turn-cap` | The turn cap ran out. Partial. |
+| `4` | `deadline` | The wall clock ran out. Partial. |
+| `5` | `error` **and everything else** | See below. |
+| `6` | `done` | It finished cleanly with an empty `text`. |
+
+`5` is the catch-all, and that is deliberate: **every stop reason without a code
+of its own falls through to it** — `error`, `empty`, `overrun`, `promote`,
+`paused`, `cancelled`, and any reason added later. A run that failed outright
+exits `5` whatever `stop` says, with the provider's own sentence on stderr.
+
+Two rows are easy to confuse and are not the same fact. Exit `6` is
+`stop: "done"` with nothing in `text` — the loop ended normally and produced no
+deliverable. `stop: "empty"` is a *call* that succeeded and returned nothing,
+and it exits `5` like every other unclassified reason.
+
+The rule for a harness is the same as for `do`: **read the exit code, not the
+text.** `text` on a non-zero exit is partial work, not an answer.
+
+### What `exec` deliberately does not do
+
+- **No `-db`, no journal, no notebook, no blackboard.** Nothing a run learns
+  survives it, and two runs share nothing. If you want state across calls, that
+  is `do -db`.
+- **No daily dollar rail and no `--yes-spend`.** `AFORGE_DAILY_BUDGET` is not
+  consulted here; `--budget` is the only ceiling, and it is counted in tokens.
+  A campaign driving `exec` is responsible for its own spend.
+- **No resident lease.** It never waits for another aforge and never hands work
+  to one.
+- **No delivery gate and no replan.** Nothing judges the answer, and nothing
+  notices the work was bigger than one worker.
+- **Scratch lands in `-w`.** `exec` gives the worker no separate scratch
+  directory, so the harness's own machinery — `.aforge/`, `.obs/` — is written
+  into the workspace beside the work product. Point `-w` at a directory you are
+  willing to have written into, not at a repository you want left clean.
+
+`exec` still reads the state root for two things: the model catalog cache and,
+if you have one there, a persisted API key. `AFORGE_HOME` moves both.
+
+---
+
+## 3. Recipes
 
 **One errand, machine-readable, isolated:**
 
@@ -240,7 +389,7 @@ esac
 
 ---
 
-## 3. The other headless commands
+## 4. The other headless commands
 
 | Command | What it is for |
 | --- | --- |
@@ -248,6 +397,8 @@ esac
 | `aforge run <graph.json> [-w dir] [-j 8] [-o done.json] [--yes-spend] [--subharness name]` | Execute exactly what the file says. Byte-stable, no mid-flight thinking. |
 | `aforge revise <graph.json> "<what happened>" [--done 1,2,3]` | Re-plan a graph from what actually happened. |
 | `aforge show <graph.json>` | Print a graph. |
+| `aforge exec ["<prompt>"] [-w dir] [--turns N] [--budget N] [--timeout N] [--json] [-o file]` | One linear worker with no graph behind it — section 2 above. The bottom of the product, for a caller that has already decided what the work is. |
+| `aforge version` | The build this binary was cut from. `--version` and `-v` say the same thing. Answers with no API key set, because probing for the binary must not be a configuration problem. |
 | `aforge wake [--max-seconds N]` | One full resident pass — evaluate sentinels, fire what is due, journal it, exit. What the standing watch timer runs. |
 | `aforge doctor` | Five rows: brain and size, who is resident, watch state, today's spend against the rail, active goals and pending questions. |
 | `aforge competence` / `aforge why self` | The measured competence map; today's self-spend receipts. |
@@ -258,7 +409,7 @@ esac
 
 ---
 
-## 4. Environment
+## 5. Environment
 
 The full list is `aforge --help`. What matters headless:
 
@@ -278,6 +429,9 @@ The full list is `aforge --help`. What matters headless:
 | `AFORGE_NODE_BUDGET` | `60` | Hard ceiling on total nodes. |
 | `AFORGE_REASONING` | `off` | Planning-call reasoning effort. |
 | `AFORGE_EXEC_REASONING` | model default | Executor-call reasoning effort. |
+| `AFORGE_EXEC_TURNS` | unset | `aforge exec` only: the turn cap when `--turns` was not passed. |
+| `AFORGE_EXEC_BUDGET` | unset | `aforge exec` only: the token budget when `--budget` was not passed. |
+| `AFORGE_EXEC_TIMEOUT` | unset | `aforge exec` only: the wall in seconds when `--timeout` was not passed. A typed flag always wins over all three; see section 2. |
 | `AFORGE_SWE_MAX_COST` | `10.0` | Dollar ceiling on one `swe` leaf's run inside the coding pipeline. Crossing it ends the leaf as a budget stop with a resume checkpoint on disk, not as a failure. |
 
 A variable set in the environment always wins over the `/settings` sheet, and
@@ -285,7 +439,7 @@ that row reads read-only in the sheet rather than fighting your shell.
 
 ---
 
-## 5. Measuring aforge with this surface
+## 6. Measuring aforge with this surface
 
 Rules that came from getting them wrong:
 
