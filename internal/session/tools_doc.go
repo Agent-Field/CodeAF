@@ -70,7 +70,7 @@ import (
 // DocumentParser is the one call read_document makes: a file in, its text out.
 //
 // It is [provider.Client.ParseDocument]'s signature VERBATIM rather than a
-// simplified one of this package's own, for the reason [ImageGenerator] states
+// simplified one of this package's own, for the reason [MediaGenerator] states
 // at its own declaration: the seam carries the wire's shape, so nothing between
 // here and the provider can drift, and no adapter exists to drift in. It is an
 // interface rather than the concrete client so a test drives a scripted parser

@@ -175,13 +175,13 @@ func TestFramePagesFollowTheSessionFolder(t *testing.T) {
 // borrowed, never littered".
 func TestAPaintedPictureLandsInArtifactsForABorrowedSession(t *testing.T) {
 	picture := pngOfSize(t, 8, 6)
-	painter := &scriptedPainter{base64: base64.StdEncoding.EncodeToString(picture), mediaType: "image/png"}
+	painter := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(picture), mediaType: "image/png"}
 	place := newPlace(t, false)
 	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
 
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.ImageGenClient = painter
-		config.ImageGenModel = "paint/model"
+		config.Media = painter
+		config.MediaModel = mediaModels(map[string]string{modalityImage: "paint/model"})
 		config.Place = place
 		config.ArtifactsIndex = index
 	})
@@ -217,14 +217,14 @@ func TestAPaintedPictureLandsInArtifactsForABorrowedSession(t *testing.T) {
 // file the work produced — no dot directory, no artifacts/ detour.
 func TestAPaintedPictureLandsInTheWorkspaceForAnOwnedSession(t *testing.T) {
 	picture := pngOfSize(t, 8, 6)
-	painter := &scriptedPainter{base64: base64.StdEncoding.EncodeToString(picture), mediaType: "image/png"}
+	painter := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(picture), mediaType: "image/png"}
 	place := newPlace(t, true)
 	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
 
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Workspace = place.Work()
-		config.ImageGenClient = painter
-		config.ImageGenModel = "paint/model"
+		config.Media = painter
+		config.MediaModel = mediaModels(map[string]string{modalityImage: "paint/model"})
 		config.Place = place
 		config.ArtifactsIndex = index
 	})
@@ -254,7 +254,7 @@ func TestAPaintedPictureLandsInTheWorkspaceForAnOwnedSession(t *testing.T) {
 // nothing when nobody gave it an index — a test and a headless --once both.
 func TestAPaintedPictureKeepsTheLegacyPathWithoutAFolder(t *testing.T) {
 	picture := pngOfSize(t, 8, 6)
-	painter := &scriptedPainter{base64: base64.StdEncoding.EncodeToString(picture), mediaType: "image/png"}
+	painter := &scriptedMedia{base64: base64.StdEncoding.EncodeToString(picture), mediaType: "image/png"}
 	agent, workspace := newPainterAgent(t, painter, "paint/model")
 
 	if result, isError := runTool(t, agent, "generate_image", `{"prompt":"a harbour"}`); isError {

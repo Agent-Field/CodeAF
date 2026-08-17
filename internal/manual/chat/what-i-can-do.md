@@ -232,51 +232,23 @@ If the vision model says nothing:
 Note that `read` is not the way to open a picture — it decodes the bytes as
 text. Attach it, or use `read_document` for a photograph of a page.
 
-## Can you make, draw, generate or paint a picture or an image?
+## Can you make a picture, a voiceover or a video?
 
-**Only if an image model is configured**, and it is not by default. With one
-set, the `generate_image` tool is on the list; with none, the tool is not there
-at all and aforge cannot paint.
+Yes, when a model for that kind of media is available on this machine — and each
+kind is a separate answer, so drawing may be there while filming is not.
 
-Two ways to set one, either is enough:
+- `generate_image` draws from a prompt, and edits, restyles or combines pictures
+  you already have when you give it `reference_paths`.
+- `speak` turns text into an mp3, in the speech model's default voice unless you
+  name one.
+- `generate_video` renders a short video. It **returns straight away with a
+  background job** because a render takes minutes; the finished file arrives as a
+  note naming it, and `jobs kill` stops it.
 
-- `AFORGE_IMAGE_MODEL=<slug>` in the environment (the "drawing" row in
-  `/settings` names this variable), or
-- the `imagegen` role in the "pinned roles" setting — `imagegen:<slug>`.
-
-The pin is read as a **pin only**: the "small work" and "careful work" tier
-models hold text models, so aforge never sends an image request to one on the
-strength of a tier. Nothing is guessed from the model catalog either — if you
-have not said which model paints, the tool is absent rather than pointed at a
-model that does not draw.
-
-`generate_image` takes a `prompt` (required — the whole prompt reaches the image
-model, so detail is worth writing) and an optional `path`.
-
-**The picture goes to disk, never into the conversation.** The result is one
-line: where it was written and how big it is, like
-`artifacts/20260817-140312-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>`.
-A webp reports its size in bytes only, because the size in pixels cannot be read
-back out of it.
-
-With no `path`, the name is a timestamp plus the first six words of your prompt,
-and it lands where this session keeps its pictures — the session's own folder.
-A second picture of the same prompt in the same second gets `-2`, `-3` and so
-on; nothing is silently overwritten. With a `path`, that path is taken as given,
-relative to the workspace, and an existing file there **is** overwritten, the
-same way `write` overwrites.
-
-Every picture is recorded as a deliverable, so `/files` lists it and `/export`
-can copy it out.
-
-What it costs folds into the **session** total rather than the turn's, the same
-way a title or a compaction does — no turn asked for a picture at that price.
-
-When it goes wrong you get a tool error the model can act on, never a failed
-turn: `Image generation failed (<model>): <err>`,
-`Image generation returned no image (<model>)`,
-`Image generation returned an unreadable image (<model>)`, or
-`Could not save the generated image: <err>`.
+Each saves a file and answers with its path — never the media itself — and each
+costs real money, a video most of all. The page "making pictures, audio and
+video" has the arguments, the exact wording of the results, where the files land,
+and what happens when one fails.
 
 ## Can you search the web?
 
@@ -379,11 +351,13 @@ Plainly, so you do not have to find out the hard way.
   are not on the list at all, so asking aforge to remember something for next
   time will not work. Working state kept with `track` survives a resume of *this*
   conversation and nothing further.
-- **It cannot generate images unless you have named a model that paints.** With
-  no `AFORGE_IMAGE_MODEL` and no `imagegen` pin there is no image-making tool on
-  the list at all: it can read pictures (see the vision section) but it cannot
-  paint one. Naming one puts `generate_image` on the list — see the section
-  above.
+- **It cannot make media without a model for it.** `generate_image`, `speak` and
+  `generate_video` are each on the list only when this machine has a model for
+  that kind of media; when there is none, the tool is absent rather than present
+  and refusing, and aforge simply does not have that verb.
+- **It cannot listen to audio or watch a video.** It can make both and it can
+  read pictures (see the vision section), but the mp3 and the mp4 are for you to
+  play.
 - **`read` cannot open a picture**, despite what its own description says. Attach
   the image to a message, or use `read_document`.
 - **`read` cannot list a directory.** It errors. `ls` lists directories.
