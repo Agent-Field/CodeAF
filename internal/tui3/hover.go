@@ -59,10 +59,17 @@ const (
 	// wherever the nearest point at or above the pointer happens to be.
 	hoverRewind
 	// hoverJump is the jump-to-latest chip floating in the frame's breathing gap
-	// (jumpchip.go). It is the one hover target on this surface that is narrower
-	// than the row it is drawn on, which is why [app.hoverTarget] is asked the
-	// COLUMN as well as the row.
+	// (jumpchip.go). It is one of the two hover targets on this surface that are
+	// narrower than the row they are drawn on, which is why [app.hoverTarget] is
+	// asked the COLUMN as well as the row.
 	hoverJump
+	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
+	// entry is the answer it belongs to and index is which of that answer's
+	// tables. It is the other narrow target, and it is a kind of its own rather
+	// than a hoverEntry because a hoverEntry brightens the WHOLE block — which is
+	// right for a tool call and wrong for a paragraph, where the pressable thing
+	// is three words at the end of a table.
+	hoverTable
 )
 
 // hoverAt is what the pointer is over, as an identity rather than as a screen
@@ -93,10 +100,13 @@ func (a *app) setHover(x, y int) {
 	if next == a.hot {
 		return
 	}
-	if a.hot.kind == hoverEntry {
+	// A TABLE'S FOOT IS MARKED THE SAME WAY, and for the same reason: it is drawn
+	// dim or accent by the block's own render (mdtable.go), and that render is
+	// cached beside every other row of the answer.
+	if a.hot.kind == hoverEntry || a.hot.kind == hoverTable {
 		a.markStale(a.hot.entry)
 	}
-	if next.kind == hoverEntry {
+	if next.kind == hoverEntry || next.kind == hoverTable {
 		a.markStale(next.entry)
 	}
 	a.hot = next
@@ -134,6 +144,13 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	}
 	if r, ok := a.rowAt(y); ok {
 		switch {
+		case r.foot.span.holds(x):
+			// THE ONE TARGET IN THE TRANSCRIPT THAT IS NARROWER THAN ITS ROW, so it
+			// is asked about the column the way the jump chip is: the rest of the
+			// row is the margin a table ended in, and a foot that brightened because
+			// the pointer was forty cells away from it would be claiming to be
+			// something you could press there (mdtable.go).
+			return hoverAt{kind: hoverTable, entry: r.entry, index: r.foot.table}
 		case r.hit == hitFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone:

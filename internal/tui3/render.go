@@ -77,6 +77,10 @@ type row struct {
 	// geometry is written where it is decided, because a hit-test that
 	// recomputed it would be measuring a row the frame has not drawn.
 	links []taskLink
+	// foot is the affordance under a markdown table that was cut, on the one row
+	// that carries it (mdtable.go). It is the second target this surface resolves
+	// by column, and it is recorded here for the reason the links above it are.
+	foot tableFoot
 }
 
 // toolWindow is how many of a turn's tool calls stay on screen. Three is the
@@ -306,6 +310,12 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			// about.
 			if e.kind == entryAssistant {
 				drawn.text, drawn.links = a.linkTasks(text)
+				// AND THE TABLE FEET ARE READ BACK OFF THE BLOCK, keyed by the row
+				// they landed on. They are not derived here for the reason the links
+				// above them are derived here: a foot's columns are decided by the
+				// render that drew it, and this pass is the one that turns that
+				// block's rows into screen geometry (mdtable.go).
+				drawn.foot = e.feet[n]
 			}
 			out = append(out, drawn)
 		}
@@ -433,7 +443,7 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 		return out
 
 	case entryAssistant:
-		return a.assistantRows(e, width)
+		return a.assistantRows(i, e, width)
 
 	case entryThinking:
 		return a.thoughtRows(e, width, a.hoveringEntry(i))
@@ -473,10 +483,21 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 // the last newline — is promoted to rendered rows and remembered as promoted,
 // so the formatting catches up without the tail flickering between two
 // renderings. On EventTurnDone the whole block is rendered at once.
-func (a *app) assistantRows(e *entry, width int) []string {
+//
+// A FOOT UNDER A TABLE IS DRAWN ON THE SETTLED RENDER AND ONLY THERE
+// (mdtable.go). A table half-arrived has columns that will move when the rest of
+// it lands, and an offer to open something that is still being written is a
+// promise the surface cannot keep — so the streaming path below leaves the
+// block's feet where it finds them, which is nowhere.
+//
+// The index is carried in for one reason, and it is [app.renderEntry]'s: a
+// foot brightens under the pointer, and the pointer is a fact about a POSITION
+// in the list being drawn.
+func (a *app) assistantRows(at int, e *entry, width int) []string {
 	if e.settled {
-		return trimBlanks(renderMarkdown(e.text, width))
+		return a.settledMarkdown(at, e, width)
 	}
+	e.feet = nil
 	var out []string
 	if e.mdCut > 0 {
 		out = append(out, renderMarkdown(e.text[:e.mdCut], width)...)

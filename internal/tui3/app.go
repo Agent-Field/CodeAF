@@ -236,6 +236,21 @@ type entry struct {
 	settled bool
 	mdCut   int
 
+	// tables is which of this answer's markdown tables the person has opened,
+	// by the ordinal they appear in (mdtable.go). Nil means every one of them is
+	// closed, which is what an answer with no table in it stays.
+	//
+	// It is state on the ENTRY rather than on the surface because it belongs to
+	// the block: an answer scrolls, a room is opened and closed, and a table a
+	// person opened has to still be open when they come back to the sentence
+	// they opened it for.
+	tables map[int]bool
+	// feet are the table affordances this block drew, keyed by their index in
+	// its own rows. They are written by the same render that writes [entry.rows]
+	// and cached beside them, because the columns a foot occupies are a fact
+	// about a row that has already been laid out — see [tableFoot].
+	feet map[int]tableFoot
+
 	// card is the proposal this entry draws, for kind entryTask and for nothing
 	// else (task.go). It is a POINTER because the answer lane holds the same
 	// card: a row and the verdict on it must not be able to disagree.
@@ -2432,6 +2447,13 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	// reference read after the body would be a door the body had already closed
 	// the room behind (markdown.go's [linkifyTasks]).
 	if a.linkPress(x, r) {
+		return
+	}
+	// AND THE FOOT UNDER A TABLE THAT WAS CUT IS THE OTHER ONE, resolved here for
+	// the same reason and in the same breath: it is a phrase inside a row of the
+	// model's prose, and the prose around it has no gesture of its own
+	// (mdtable.go's [app.footPress]).
+	if a.footPress(x, r) {
 		return
 	}
 	// AND A CLICK ON A WAITING SIGN-IN COPIES ITS LINK (connect.go). It is read
