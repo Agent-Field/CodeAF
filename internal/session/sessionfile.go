@@ -537,10 +537,17 @@ func replaySessionFile(path string) (replayedSession, error) {
 			}
 			messages = append(messages, message)
 		case "compaction":
-			// Everything before this marker is what the summary replaces. The
+			// Everything before this marker is what the pass replaces. The
 			// name is not a message and survives the cut: a compacted session
 			// is the same session, still called what it was called.
-			messages = append(messages[:0], textMessage("user", compactionNote(entry.Summary)))
+			rebuilt := compactionMessages(entry)
+			messages = append(messages[:0], rebuilt...)
+			// The frames message is the FIRST of them when there is one, which
+			// is the order [compactionMessages] builds and the only place these
+			// references belong: the summary beside it is words.
+			if len(entry.Parts) > 0 {
+				rememberParts(images, rebuilt[0], entry.Parts)
+			}
 		case "rewind":
 			// The turn this line took back. Everything after it in the file is
 			// ordinary conversation again — a rewind is followed by the person
@@ -604,6 +611,38 @@ func replayedMessage(entry sessionEntry) ai.Message {
 	}
 	message.Content = content
 	return message
+}
+
+// compactionMessages rebuilds one compaction marker into the context prefix it
+// left behind. There are three shapes and this is the one place that knows them:
+//
+//   - SUMMARY ONLY — every marker written before frames existed, and every pass
+//     that summarized. One note, exactly as it always was.
+//   - REFERENCES ONLY — a frames pass whose pages held the whole prefix. The
+//     note and the pages, in the order [compactionPass.message] assembled them,
+//     each page re-read only while its digest still matches ([journalPart]).
+//   - BOTH — a frames pass that overflowed its page cap. Pages first, then the
+//     summary of what ran past them, which is the order the conversation
+//     happened in.
+//
+// A marker with neither still answers a note, empty summary and all. It is what
+// this always did with a summary that came back blank, and a replay that dropped
+// the marker instead would return a session holding the prefix the marker exists
+// to say is gone.
+func compactionMessages(entry sessionEntry) []ai.Message {
+	if len(entry.Parts) == 0 {
+		return []ai.Message{textMessage("user", compactionNote(entry.Summary))}
+	}
+	content := make([]ai.ContentPart, 0, len(entry.Parts)+1)
+	content = append(content, ai.ContentPart{Type: "text", Text: framesNote})
+	for _, part := range entry.Parts {
+		content = append(content, part.contentPart())
+	}
+	messages := []ai.Message{{Role: "user", Content: content}}
+	if summary := strings.TrimSpace(entry.Summary); summary != "" {
+		messages = append(messages, textMessage("user", compactionNote(entry.Summary)))
+	}
+	return messages
 }
 
 // replayedSession is what one pass over the journal recovered: the live
@@ -760,11 +799,24 @@ func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart) 
 // last few exchanges are gone. Re-writing it costs one pass over at most
 // keepRecentTokens; the alternative, a line count inside the marker, makes the
 // file's meaning depend on arithmetic no reader of the file can check.
-func (s *sessionFile) appendCompaction(summary string, tokensBefore int, kept []ai.Message) {
+//
+// A FRAMES PASS journals its pages the way a person's attached picture is
+// journaled: references on the marker line, never the bytes (frames.go). The
+// marker then carries either a summary, or references, or — the overflow case —
+// both, and [compactionMessages] is the one reader of all three shapes.
+func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, kept []ai.Message) {
+	refs := pass.refs()
+	// Indexed as it is written, for the reason [sessionFile.append] indexes: a
+	// surface asking what a picture in the live transcript was a picture OF has
+	// to be answered in THIS process, long before anybody resumes the file.
+	if len(refs) > 0 {
+		s.rememberParts(pass.message(), refs)
+	}
 	s.writeLine(sessionEntry{
 		Type:         "compaction",
-		Summary:      summary,
+		Summary:      pass.summary,
 		TokensBefore: tokensBefore,
+		Parts:        refs,
 		Timestamp:    stamp(),
 	})
 	for _, message := range kept {

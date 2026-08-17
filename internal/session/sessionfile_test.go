@@ -335,7 +335,7 @@ func TestSessionFileJournalsToolCallsAndCompaction(t *testing.T) {
 			Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"a.go"}`},
 		}},
 	})
-	journal.appendCompaction("## Goal\nsomething", 42000, []ai.Message{
+	journal.appendCompaction(compactionPass{summary: "## Goal\nsomething"}, 42000, []ai.Message{
 		textMessage("user", "the kept tail"),
 	})
 	if err := journal.Close(); err != nil {

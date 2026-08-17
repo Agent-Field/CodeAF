@@ -1163,9 +1163,10 @@ var ErrNothingToCompact = errors.New("session: nothing to compact")
 // gets an error for the same reason: it did nothing, and it should say so.
 var ErrCompactionInFlight = errors.New("session: a compaction pass is already running")
 
-// compact runs one pass: cut the transcript at a message boundary, summarize
-// the discarded prefix in one LLM call, and rebuild as system + summary note +
-// kept tail. It reports whether the transcript changed.
+// compact runs one pass: cut the transcript at a message boundary, PRESERVE the
+// discarded prefix — as page images when the model can read them, as a summary
+// otherwise (frames.go) — and rebuild as system + that + kept tail. It reports
+// whether the transcript changed.
 func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
 	a.mu.Lock()
 	if a.compacting {
@@ -1192,11 +1193,11 @@ func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
 		})
 	}
 
-	summary, err := a.summarize(ctx, discarded)
+	pass, err := a.compaction(ctx, discarded)
 
 	a.mu.Lock()
 	a.compacting = false
-	if err != nil || strings.TrimSpace(summary) == "" {
+	if err != nil || pass.empty() {
 		a.mu.Unlock()
 		if err == nil {
 			err = errors.New("session: summarizer returned nothing")
@@ -1223,8 +1224,17 @@ func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
 	for len(kept) > 0 && kept[0].Role == "tool" {
 		kept = kept[1:]
 	}
-	rebuilt := make([]ai.Message, 0, 3+len(kept))
-	rebuilt = append(rebuilt, a.messages[0], textMessage("user", compactionNote(summary)))
+	rebuilt := make([]ai.Message, 0, 4+len(kept))
+	rebuilt = append(rebuilt, a.messages[0])
+	// Pictures of the older half, then prose about whatever ran past the page
+	// cap: the two are in the order the conversation happened in, and a pass
+	// that took only one rung appends only one of them (see [compactionPass]).
+	if len(pass.frames) > 0 {
+		rebuilt = append(rebuilt, pass.message())
+	}
+	if strings.TrimSpace(pass.summary) != "" {
+		rebuilt = append(rebuilt, textMessage("user", compactionNote(pass.summary)))
+	}
 	// Working state survives the pass VERBATIM, after the summary and before
 	// the kept tail: the summary compresses the trajectory, and the state
 	// block is what the trajectory must never have to be re-read for. It is
@@ -1244,18 +1254,65 @@ func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
 	}
 	keptTokens /= bytesPerToken
 	if a.file != nil {
-		a.file.appendCompaction(summary, tokensBefore, kept)
+		a.file.appendCompaction(pass, tokensBefore, kept)
 	}
 	a.mu.Unlock()
 
 	if hub != nil {
 		hub.send(Event{
 			Kind: EventCompacted,
-			Hint: fmt.Sprintf("compacted from %s tokens, kept last %s",
-				approxTokens(tokensBefore), approxTokens(keptTokens)),
+			Hint: fmt.Sprintf("compacted from %s tokens%s, kept last %s",
+				approxTokens(tokensBefore), framesHint(len(pass.frames)), approxTokens(keptTokens)),
 		})
 	}
 	return true, nil
+}
+
+// framesHint is what the compaction row says about the rung it took, and it says
+// nothing at all when the pass summarized: the row a person has read a hundred
+// times should not grow a clause to announce that nothing changed.
+func framesHint(pages int) string {
+	switch {
+	case pages == 0:
+		return ""
+	case pages == 1:
+		return " to 1 page image"
+	default:
+		return fmt.Sprintf(" to %d page images", pages)
+	}
+}
+
+// compaction is the RUNG SELECTION: the one place that decides how a discarded
+// prefix is preserved.
+//
+// Frames first when this session's model can read them (frames.go's
+// [Agent.framesChosen]), the summary otherwise — and the summary again when the
+// frames pass could not run for a reason that has nothing to do with the model:
+// no workspace, an unwritable directory, a prefix that rendered to nothing. That
+// fallback is silent by design. A person asked for their context to fit; which
+// rung it fitted on is the machine's problem, and the compaction row already
+// says which one ran.
+//
+// The decision is made per pass and remembered nowhere. A session that switched
+// to a model with no vision summarizes its next pass while the pages of its last
+// one sit above in the transcript, which is exactly right: those pages were sent
+// to the model that could read them, and a compaction is a decision about the
+// context that is about to be sent, not a mode the session is in.
+func (a *Agent) compaction(ctx context.Context, discarded []ai.Message) (compactionPass, error) {
+	a.mu.Lock()
+	model := a.model
+	a.mu.Unlock()
+
+	if a.framesChosen(ctx, model) {
+		if pass, ran, err := a.framesPass(ctx, discarded, a.Title()); ran {
+			return pass, err
+		}
+	}
+	summary, err := a.summarize(ctx, discarded)
+	if err != nil {
+		return compactionPass{}, err
+	}
+	return compactionPass{summary: summary}, nil
 }
 
 // cutPointLocked walks back from the tail until the keep-recent budget is
@@ -1373,10 +1430,21 @@ MUST reproduce any question asked of the person and not yet answered, verbatim.
 MUST preserve exact file paths, symbol names, commands, and error text.
 MUST NOT invent, infer, or soften anything: this is a record, not a report.`
 
-// summarize makes the one summarization call.
-func (a *Agent) summarize(ctx context.Context, discarded []ai.Message) (string, error) {
+// flattenTranscript flattens a run of messages to the plain text a compaction pass
+// works from: role headers, the text parts, and the tool calls as one line each.
+//
+// It is shared by BOTH rungs, and that is the point of it being a function. The
+// summarizer reads it and the renderer draws it, so what a page shows and what a
+// summary was written from are the same reading of the same messages — a bug in
+// one is a bug in the other rather than a difference between them.
+//
+// Image parts are left out for the reason they always were: what the summarizer
+// receives is text, and a data URL is megabytes of base64 that says nothing. A
+// page of frames inherits that — a screenshot the person attached is already
+// journaled by reference and is not re-photographed here.
+func flattenTranscript(messages []ai.Message) string {
 	var transcript strings.Builder
-	for _, message := range discarded {
+	for _, message := range messages {
 		fmt.Fprintf(&transcript, "[%s]\n", message.Role)
 		for _, part := range message.Content {
 			if part.Type == "text" && part.Text != "" {
@@ -1389,7 +1457,17 @@ func (a *Agent) summarize(ctx context.Context, discarded []ai.Message) (string, 
 		}
 		transcript.WriteString("\n")
 	}
+	return transcript.String()
+}
 
+// summarize makes the one summarization call for a run of messages.
+func (a *Agent) summarize(ctx context.Context, discarded []ai.Message) (string, error) {
+	return a.summarizeText(ctx, flattenTranscript(discarded))
+}
+
+// summarizeText is the call itself, over text somebody else flattened. The
+// frames rung reaches it directly with the lines its pages could not hold.
+func (a *Agent) summarizeText(ctx context.Context, transcript string) (string, error) {
 	a.mu.Lock()
 	model := a.model
 	a.mu.Unlock()
@@ -1401,7 +1479,7 @@ func (a *Agent) summarize(ctx context.Context, discarded []ai.Message) (string, 
 		provider.WithoutStream(ctx),
 		[]ai.Message{
 			textMessage("system", summarizationPrompt),
-			textMessage("user", transcript.String()),
+			textMessage("user", transcript),
 		},
 		ai.WithModel(model))
 	if err != nil {
