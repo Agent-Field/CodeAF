@@ -119,8 +119,29 @@ func (a *app) exportTranscript(arg string) tea.Cmd {
 		target.path, target.named = a.resolvePath(arg), true
 	}
 	name := a.sessionName()
+	// Read off the app here, on the loop, and closed over: the command runs on
+	// its own goroutine and must not be reading fields the next keystroke is
+	// writing.
+	index, id := a.artifactsIndex(), exportSession(a.file)
 	return func() tea.Msg {
 		path, err := writeExport(target, exportDocument(name, entries))
+		if err == nil {
+			// AN EXPORT IS A DELIVERABLE, so it earns its row in the index a
+			// person finds their work again by (internal/session's
+			// artifacts.go). It is recorded HERE — beside the write, inside the
+			// command — because this file's law is that nothing on the loop
+			// waits on a disk, and because only a write that came back clean is
+			// a file worth citing: the refusal below is somebody else's file.
+			// The failure is silent by the same contract the row is written
+			// under.
+			session.RecordArtifact(index, session.Artifact{
+				Path:    path,
+				Session: id,
+				Title:   filepath.Base(path),
+				Kind:    "export",
+				Created: time.Now(),
+			})
+		}
 		return exportedMsg{path: path, err: err}
 	}
 }
@@ -144,20 +165,6 @@ func (a *app) exportDone(msg exportedMsg) {
 	}
 	switch {
 	case msg.err == nil:
-		// AN EXPORT IS A DELIVERABLE, so it earns its row in the index a person
-		// finds their work again by (internal/session's artifacts.go). It is
-		// recorded here rather than in the write itself because only a write that
-		// came back clean is a file worth citing, and the failure is silent by
-		// the same contract the row is written under: somebody has just been
-		// handed their document, and news about a lookup file is not something
-		// they can act on.
-		session.RecordArtifact(a.artifactsIndex(), session.Artifact{
-			Path:    msg.path,
-			Session: exportSession(a.file),
-			Title:   filepath.Base(msg.path),
-			Kind:    "export",
-			Created: time.Now(),
-		})
 		a.note("exported · " + short + here)
 	case errors.Is(msg.err, fs.ErrExist):
 		a.note(short + " is already there · /export <path> writes it somewhere else")
