@@ -723,6 +723,23 @@ type Config struct {
 	ImageGenModel  string
 	ImageGenClient ImageGenerator
 
+	// Media and MediaModel are the v3-revision media pair (docs/MULTIMODAL.md
+	// Decisions 5-8): the one client that reaches every generation endpoint —
+	// /images, /audio/speech, /videos — and the ONE USE-TIME RESOLVER that
+	// answers which model serves a modality. MediaModel takes exactly one of
+	// "image", "speech", "video", "vision" and answers a slug the resolver has
+	// already capability-checked against the catalog, or "" when that modality
+	// has no capable model; the ladder behind it (settings slot → role pin →
+	// best catalog candidate → curated fallback) is the surface's business,
+	// which is why this is a closure and not a table.
+	//
+	// The absence law is per-verb: a nil Media keeps every generation tool off
+	// the belt; a nil MediaModel (or one answering "") keeps that MODALITY's
+	// tools off. ImageGenModel/ImageGenClient above are the pre-revision pair
+	// and die when the belt migrates onto these two.
+	Media      MediaGenerator
+	MediaModel func(modality string) string
+
 	// DocumentEngine is the rung read_document climbs to (tools_doc.go): the
 	// person's document_engine row, one of auto, local, free or ocr
 	// (config.DocumentEngines), resolved by the surface exactly as the search
