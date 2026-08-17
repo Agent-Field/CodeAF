@@ -385,7 +385,7 @@ func completionApp(t *testing.T, files ...string) *app {
 	return a
 }
 
-func TestAtOpensTheFileListAfterTwoCharactersAndInsertsThePath(t *testing.T) {
+func TestAtOpensTheFileListImmediatelyAndInsertsThePath(t *testing.T) {
 	a := completionApp(t,
 		"internal/tui3/app.go",
 		"internal/tui3/appendix/notes.md",
@@ -394,13 +394,13 @@ func TestAtOpensTheFileListAfterTwoCharactersAndInsertsThePath(t *testing.T) {
 		"vendor/foo/app.go",
 	)
 
-	typeInto(t, a, "look at @a")
-	if a.comp.open {
-		t.Fatal("one character is not a query")
-	}
-	typeInto(t, a, "pp")
+	typeInto(t, a, "look at @")
 	if !a.comp.open {
-		t.Fatal("@ plus two characters has to open the list")
+		t.Fatal("the bare @ opens the list, the way / opens commands")
+	}
+	typeInto(t, a, "app")
+	if !a.comp.open {
+		t.Fatal("a query narrows the open list")
 	}
 	if !a.comp.loaded {
 		t.Fatal("the walk did not land")
