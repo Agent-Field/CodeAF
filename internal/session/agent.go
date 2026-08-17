@@ -916,6 +916,10 @@ func (a *Agent) Close() error {
 	// own context precisely because the turn that asked for it ended, so nothing
 	// else here would ever reach it (harness_build.go).
 	a.cancelHarnessDesignsLocked()
+	// And an adaptive run, for the identical reason and on the identical terms:
+	// it holds a context of its own precisely because its turn ended, so this
+	// is the only thing that can reach it (orchestrate.go).
+	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
 
 	if cancel != nil {
