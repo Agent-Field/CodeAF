@@ -21,7 +21,7 @@ func benchJournal(b *testing.B, messages int) string {
 	b.Helper()
 	directory := b.TempDir()
 	path := filepath.Join(directory, "session.jsonl")
-	journal, _, err := openSessionFile(path, directory, "test/model")
+	journal, _, err := openSessionFile(path, directory, "test/model", "")
 	if err != nil {
 		b.Fatal(err)
 	}

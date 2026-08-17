@@ -94,17 +94,36 @@ const (
 // a different extension, beside it in the same directory.
 //
 // PER-JOURNAL, exactly as statePath is (state.go), and for the same reason the
-// directory's shape demands: ~/.aforge/v3/<workspace>/ holds every session this
-// workspace ever had, so a single tasks.json there would be every window writing
-// over each other's graphs. A graph belongs to ONE conversation, and the journal
-// is what names one conversation — which is also what makes "same journal" the
-// definition of a resumed session.
+// FLAT layout's shape demanded: ~/.aforge/v3/sessions/<workspace>/ held every
+// session this workspace ever had, so a single tasks.json there would have been
+// every window writing over each other's graphs. A graph belongs to ONE
+// conversation, and the journal is what names one conversation — which is also
+// what makes "same journal" the definition of a resumed session.
+//
+// A SESSION FOLDER ANSWERS ITS OWN NAME, exactly as statePath's does: a journal
+// called transcript.jsonl is a folder's (place.go), the folder holds one
+// conversation, and the checkpoint is the folder's tasks.json.
+// [Config.checkpointFile] is the door for a caller holding a [Place]; this is
+// what answers a caller holding only the path.
 func taskCheckpointPath(sessionFile string) string {
 	sessionFile = strings.TrimSpace(sessionFile)
 	if sessionFile == "" {
 		return ""
 	}
+	if filepath.Base(sessionFile) == placeTranscript {
+		return filepath.Join(filepath.Dir(sessionFile), placeTasks)
+	}
 	return strings.TrimSuffix(sessionFile, filepath.Ext(sessionFile)) + ".tasks.json"
+}
+
+// checkpointFile is where THIS session keeps its graph: the folder's tasks.json
+// when the session has a [Place], and the stem-derived sidecar for the legacy
+// flat layout the zero Place stands for.
+func (c Config) checkpointFile() string {
+	if path := c.Place.Tasks(); path != "" {
+		return path
+	}
+	return taskCheckpointPath(c.SessionFile)
 }
 
 // taskRecord is one node as it survives the process.
@@ -497,7 +516,7 @@ func (a *Agent) recoverTasks() {
 	if a.config.InTask {
 		return
 	}
-	document, found := loadTaskCheckpoint(taskCheckpointPath(a.config.SessionFile))
+	document, found := loadTaskCheckpoint(a.config.checkpointFile())
 	if !found || len(document.Nodes) == 0 {
 		return
 	}

@@ -195,17 +195,37 @@ type stateStore struct {
 // different extension, beside it in the same directory.
 //
 // It is per-journal rather than one state.json per session DIRECTORY, which the
-// directory's own shape demands: ~/.aforge/v3/<workspace>/ holds every session
-// this workspace ever had (cmd/aforge's newV3SessionFile), so a single
-// state.json there would be every window and every resumed conversation writing
-// over each other's beliefs. State belongs to ONE conversation, and the journal
-// is what names one conversation.
+// FLAT layout's shape demanded: ~/.aforge/v3/sessions/<workspace>/ held every
+// session this workspace ever had, so a single state.json there would have been
+// every window and every resumed conversation writing over each other's
+// beliefs. State belongs to ONE conversation, and the journal is what names one
+// conversation.
+//
+// A SESSION FOLDER ANSWERS ITS OWN NAME. Under the new layout (place.go) the
+// directory holds exactly one conversation, so the file is the folder's
+// state.json — and this derivation says so from the path alone, because the one
+// journal that can be called transcript.jsonl is a folder's. [Config.stateFile]
+// is the door callers holding a [Place] come through; this is what answers a
+// caller holding only the path.
 func statePath(sessionFile string) string {
 	sessionFile = strings.TrimSpace(sessionFile)
 	if sessionFile == "" {
 		return ""
 	}
+	if filepath.Base(sessionFile) == placeTranscript {
+		return filepath.Join(filepath.Dir(sessionFile), placeState)
+	}
 	return strings.TrimSuffix(sessionFile, filepath.Ext(sessionFile)) + ".state.json"
+}
+
+// stateFile is where THIS session keeps its working state: the folder's
+// state.json when the session has a [Place], and the stem-derived sidecar for
+// the legacy flat layout that the zero Place stands for.
+func (c Config) stateFile() string {
+	if path := c.Place.State(); path != "" {
+		return path
+	}
+	return statePath(c.SessionFile)
 }
 
 func newStateStore(path string) *stateStore {
@@ -222,7 +242,7 @@ func newStateStore(path string) *stateStore {
 // gets there first.
 func (a *Agent) state() *stateStore {
 	a.stateOnce.Do(func() {
-		a.stateStore = newStateStore(statePath(a.config.SessionFile))
+		a.stateStore = newStateStore(a.config.stateFile())
 		a.stateStore.load()
 	})
 	return a.stateStore

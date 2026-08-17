@@ -91,7 +91,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// A memory-only session still has ONE lineage; it just has no name on
 		// disk to derive it from. The file-backed case overwrites this below
 		// with the header's id, which survives every resume.
-		cacheKey: sessionCacheKey(newSessionID()),
+		cacheKey: sessionCacheKey(NewSessionID()),
 	}
 	// Memory is built before the belt for the same reason the registry is: the
 	// belt carries note and forget only when there is a file to write, so the
@@ -121,7 +121,12 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.refreshSystemLocked()
 
 	if strings.TrimSpace(config.SessionFile) != "" {
-		file, restored, err := openSessionFile(config.SessionFile, config.Workspace, config.Model)
+		// The folder's name is the id a fresh journal's header takes (place.go):
+		// the session was named before the directory that holds it existed, and
+		// the header repeats that name rather than minting a second one. A
+		// legacy flat session hands "" and the file names itself, exactly as it
+		// always did.
+		file, restored, err := openSessionFile(config.SessionFile, config.Workspace, config.Model, config.Place.ID())
 		if err != nil {
 			return nil, err
 		}
@@ -980,6 +985,12 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		return
 	}
 	a.file.appendMessage(user.message, user.refs...)
+	// AND THE FOLDER LEARNS THE PERSON WAS HERE. Resume order is on when the
+	// person last spoke and not on file mtime (place.go's [Meta.LastUserAt]),
+	// and this line — the one place the person's own words reach the journal —
+	// is the only honest witness to that. A session with no folder stamps
+	// nothing (placemeta.go).
+	a.stampUserLocked(messageContentText(user.message))
 }
 
 func (a *Agent) record(message ai.Message) {
