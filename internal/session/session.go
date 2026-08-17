@@ -269,6 +269,20 @@ const (
 	// this kind saves nothing — which is the same posture EventHarnessOffer
 	// keeps, one lane over.
 	EventHarnessDesignDone
+	// EventOrchestrateNote carries one planner note from an adaptive run
+	// (internal/orchestrate): Text is the note, ID the run. A REPORT; the room
+	// draws it as the thin thinking-row between completions.
+	EventOrchestrateNote
+	// EventOrchestrateFuel is the gauge and its early warning: Text is the
+	// spend summary ("$1.60 of $2.00"), Hint holds the cap. A REPORT at the
+	// 80% mark and whenever a surface asks; it never blocks anything.
+	EventOrchestrateFuel
+	// EventOrchestratePause says the run hit its fuel cap: in-flight nodes
+	// finished, nothing new launched, the frontier is frozen mid-shape. Text
+	// is the spend summary. It is a QUESTION answered through
+	// [Agent.ResolveOrchestrate] — top up, finish with what we have, or stop —
+	// and until that answer the run sits in its Paused state, resumable.
+	EventOrchestratePause
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -519,6 +533,14 @@ type Config struct {
 	// in memory only. If the file exists it is loaded on New and the
 	// conversation resumes after the latest compaction marker.
 	SessionFile string
+
+	// Place is the session folder and everything inside it (place.go,
+	// Decision 26). The zero Place is the legacy flat layout: sidecar paths
+	// keep deriving from SessionFile, droppings keep landing in the
+	// workspace's .aforge-v3, and nothing changes for a caller that has not
+	// adopted the folder. When set, SessionFile and Place.Transcript() name
+	// the same file.
+	Place Place
 
 	// MemoryFile is the durable memory: one file of lines the model keeps with
 	// the note tool and drops with forget (memory.go), rendered into the system
