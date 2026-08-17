@@ -72,6 +72,58 @@ import (
 // so the cell beside a name opens the same room the name does. A one-cell gap
 // separates two chips, which is what is left over once each one carries its own
 // air — the middot went with the list it punctuated.
+//
+// ── AND THEN WORK GREW CHILDREN ─────────────────────────────────────────────
+//
+// An adaptive run is not a task. It is a task that keeps SPAWNING tasks, for as
+// long as its planner has something left to want (internal/orchestrate), and a
+// row of sibling chips is a lie about it: eight chips that read as eight jobs
+// somebody asked for, when what happened is one job that grew seven. The shape
+// is the news — what came out of what, and which limb is still moving — and a
+// flat row is the one rendering that cannot carry a shape.
+//
+// So a FAMILY is drawn as a family, one node per row, with the connectors
+// drawn in the chip row itself:
+//
+//	 ⠋ Ship the port
+//	├── ✓ Read the law
+//	├── ⠋ Write the tree
+//	│   └── ◌ Cut the goldens
+//	└── ◌ Wire the seam   ▸ +3
+//
+// IT IS A TREE AND NOT AN ACCORDION, and that is the whole design. An accordion
+// answers "is this open" — a question about the widget — and it answers it by
+// hiding rows behind a heading somebody has to think to press. A tree answers
+// "what came out of what", which is the question the run poses, and it answers
+// it at rest: every node the strip is spending a row on is on screen, indented
+// under the thing that asked for it. Nothing here folds because a person did
+// not press it.
+//
+// FOLDING IS THE ONE COLLAPSE AND IT IS THE FRAME'S, NOT THE PERSON'S. A tree
+// that outgrows the rows the strip may spend ([app.stripBudget]) gives up its
+// DEEPEST leaves first — the finest-grained work, the part a shape is least
+// hurt by losing — and what it gave up is counted on the parent's own row as a
+// trailing ▸ +N chip, which is a door to the roster like every other count on
+// this surface. And the fold NEVER TOUCHES LIVE WORK: a node that is running,
+// that failed, or that is held at the fuel gate keeps its row, and so does
+// every ancestor it hangs from, because the one question this row exists to
+// answer is where the thing that is moving is. A tree with nothing foldable
+// left in it simply stands at the height it needs, and the frame's own +N —
+// the same one a too-narrow row has always drawn — is what catches the rest.
+//
+// THE PHONE KEEPS THE CONNECTORS AND SPENDS ON THE NAMES. Four cells of indent
+// per level is the cheapest thing on the row, and it is the only thing carrying
+// the structure; a name is expensive and it is recoverable one keystroke away
+// in the room. So [tierPhone] cuts to [stripPhoneCap] and keeps every stem.
+//
+// A NODE IN A TREE WEARS ITS STATE AND NOT ITS IDENTITY, which is the one place
+// the tree parts company with the flat row above it ([app.stripGlyph] says why
+// the flat row does the opposite). On a row of three sibling chips the question
+// is WHICH work, and the identity cell is the only mark that answers it the
+// same way every frame. Down a tree the neighbours are already named by the
+// connectors they hang from, and the question left over is which limb is still
+// moving — so the column of glyphs is a column of STATES, and it can be read
+// down.
 
 const (
 	// stripFloor is the narrowest frame that gets a strip. Under it there is not
@@ -93,6 +145,100 @@ const (
 	// chip's own span so the pointer may land on it.
 	stripPad     = " "
 	stripPadCols = 2
+	// stripPhoneCap is a name's budget inside a tree at [tierPhone]. The indent
+	// is what a phone cannot afford to lose and a name is what it can: the stems
+	// carry the shape, and the whole name is one keystroke away in the room.
+	stripPhoneCap = 12
+)
+
+// The tree's connectors, and the four cells each level of it costs.
+//
+// THEY ARE NOT [railMid] AND [railLast], and the difference is what the arrow
+// means. The transcript's fold hangs DETAIL off a row — "here is what is inside
+// this call" — and an arrow pointing into it is the right mark for that. A
+// roster tree hangs WORK off work, sibling beside sibling, and the plain elbow
+// is what every tree a person has ever read is drawn with. Two structures, two
+// vocabularies, and neither one borrowed for the other.
+//
+// The stand-ins are the linear tier's law (styles.go): a shape that means
+// something gets a spelling that means the same thing out loud.
+// THE ELBOW IS THREE CELLS AND THE CHIP PAYS THE FOURTH. A chip already opens
+// with one cell of its own air ([stripPad]), and an elbow that carried its own
+// trailing space would put two cells between the stem and the glyph — a tree
+// with a gutter down it. So the elbow stops at the corner, the chip's left pad
+// is the gap, and every level lands on the same four-cell grid: a glyph at
+// column 4×depth, which is what makes a column of states readable downward.
+const (
+	stripBranch      = "├──"
+	stripLast        = "└──"
+	stripStem        = "│   "
+	stripVoid        = "    "
+	stripBranchASCII = "|--"
+	stripLastASCII   = "`--"
+	stripStemASCII   = "|   "
+	stripIndentCols  = 4
+	stripElbowCols   = 3
+	// stripFoldMark opens the count of what a fold took away. It is the same
+	// closed disclosure this surface points rightward with everywhere else, and
+	// what follows it is [stripMoreWord] — one overflow vocabulary, two places.
+	stripFoldMark      = "▸ "
+	stripFoldMarkASCII = "> "
+)
+
+// How many rows the strip may spend on a session, before the frame's own
+// height has its say ([app.stripBudget]).
+const (
+	// stripRowCap is the ceiling anywhere the frame has columns to think with.
+	// Six rows is a root and five limbs — enough that a real run's shape is on
+	// screen — and it is a CEILING rather than a target: a session with one node
+	// still draws one row.
+	stripRowCap = 6
+	// stripPhoneRowCap is that ceiling at [tierPhone], where every row is a
+	// bigger share of the screen and the conversation is the thing being read.
+	stripPhoneRowCap = 4
+	// stripRowShare is the most of a terminal's height the strip may take,
+	// whatever the caps above say. A pinned row that ate half a short window
+	// would be answering "what is running" by hiding what it is running for.
+	stripRowShare = 3
+)
+
+// ── THE PARENT SEAM ─────────────────────────────────────────────────────────
+//
+// The session does not publish a parent yet (session's TaskNotice carries a
+// state, a spend and a merge word, and nothing about who asked for the work).
+// It will: an adaptive run's nodes are spawned BY a run, and the run is the
+// task a person started. Until then these two are the whole of what the tree
+// reads, they are written by whatever adapter lands adaptive runs on this
+// surface, and every session that has never had one answers "" and false — the
+// flat row, unchanged, which is what keeps this a seam rather than a rewrite.
+//
+// THE KEY IS A STRING AND THE ID IS NOT, on purpose. The thing that will fill
+// it is an orchestrate node id (internal/orchestrate's [orchestrate.Node.ID] —
+// "n3", not a number), so a uint64 here would be a conversion in the adapter
+// and a lie in the type. And "" is an honest "nobody spawned this", where 0 is
+// an id that could one day exist.
+
+// ParentID is the key of the task this one was spawned under, or "" at a root.
+func (n *taskNode) ParentID() string { return n.parent }
+
+// Paused reports whether this task is HELD rather than working: an adaptive run
+// stopped at its fuel gate, waiting for a person to top it up or finish it
+// (session's EventOrchestratePause). It is not a state the engine moves a node
+// through, which is why it is a fact of its own — a paused node is still
+// running as far as the run is concerned, and it is not moving as far as a
+// person is concerned, and the second reading is the one a roster owes them.
+func (n *taskNode) Paused() bool { return n.paused }
+
+// stripKey is a node's own key in the alphabet [taskNode.ParentID] speaks.
+func stripKey(node *taskNode) string { return itoa(int(node.id)) }
+
+// glyphPaused marks work held at a gate. It is the transport bar every device a
+// person owns pauses with, and it is deliberately NOT the queued circle: a
+// queued node has not started and this one has, and the difference is the whole
+// of what the gate is asking about.
+const (
+	glyphPaused      = "⏸"
+	glyphPausedASCII = "="
 )
 
 // stripOrder is the order the chips come in, and it is not the roster's.
@@ -111,9 +257,21 @@ var stripOrder = [...]railGroup{railRunning, railAttention, railIdle}
 // where it is decided, because a hit-test that recomputed it would be measuring
 // a row the frame has not drawn.
 type stripSpan struct {
-	span  hudSpan
+	span hudSpan
+	// row is which of the strip's rows the chip landed on, counted from the
+	// strip's own top. It is zero for every chip on a flat session's single row,
+	// which is why it costs that session nothing to carry.
+	row   int
 	id    uint64
 	title string
+}
+
+// stripFold is a ▸ +N chip: what a fold took off the tree, and where the count
+// is standing. Its door is the roster, which is where the whole tree lives —
+// the same destination [app.stripMore] opens, for the same reason.
+type stripFold struct {
+	span hudSpan
+	row  int
 }
 
 // stripShowing reports whether the frame carries a strip right now.
@@ -150,14 +308,38 @@ func (a *app) stripShowing() bool {
 	return false
 }
 
-// stripHeight is what the strip costs the body region. It is one row or none,
-// and it is subtracted in [app.topHeight] — the number every geometric question
-// about the body resolves through.
+// stripHeight is what the strip costs the body region, and it is subtracted in
+// [app.topHeight] — the number every geometric question about the body resolves
+// through.
+//
+// IT IS THE LAYOUT'S OWN COUNT AND NOT A SECOND OPINION. A tree's height is the
+// tree's business — how many nodes, how many folds it took to fit — and a
+// cheaper answer computed a second way here is the one bug this arithmetic
+// cannot survive: a frame that drew five rows and budgeted for one puts the
+// conversation's last line under the input box. So it lays the strip out and
+// counts what came back, at the terminal's own width, the way [app.topHeight]
+// requires of everything it adds up.
 func (a *app) stripHeight() int {
-	if a.stripShowing() {
-		return 1
+	width, _ := a.size()
+	return len(a.stripRows(width))
+}
+
+// stripBudget is how many rows this frame will let the strip spend. See the
+// header: it is what a tree folds itself down to, not a promise about a
+// session with one node in it.
+func (a *app) stripBudget() int {
+	width, height := a.size()
+	rows := stripRowCap
+	if layoutTier(width) == tierPhone {
+		rows = stripPhoneRowCap
 	}
-	return 0
+	if share := height / stripRowShare; share < rows {
+		rows = share
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	return rows
 }
 
 // stripNodes is the live set, in the order the chips are drawn.
@@ -170,15 +352,113 @@ func (a *app) stripNodes() []*taskNode {
 	return out
 }
 
-// stripRow is the row, and it is where the chips' columns are recorded.
+// stripRows is the strip, laid out, and it is where every chip's columns and
+// row are recorded.
 //
-// It returns "" when there is no strip, which is what the frame draws for a row
-// it is not spending (view.go).
-func (a *app) stripRow(width int) string {
-	a.stripSpans, a.stripMore, a.stripHarn = nil, hudSpan{}, hudSpan{}
+// THE LIVE ROW LEADS AND THE FAMILIES HANG UNDER IT. A session that has never
+// spawned a tree gets exactly the row it has always got — one line, the chips
+// packed across it, the +N at its end — because that row is what the tab-bar
+// reading of this surface is built on and a tree above it would push the thing
+// a person is watching down the screen. Under it, one row per node, the shape
+// of each run that is alive.
+//
+// A NODE IS ON ONE OF THE TWO AND NEVER BOTH. Anything that belongs to a family
+// is drawn in its family and taken out of the flat row, because a chip up top
+// and the same chip down the tree is one node claiming to be two.
+//
+// It returns nothing when there is no strip, which is what the frame draws for
+// rows it is not spending (view.go).
+func (a *app) stripRows(width int) []string {
+	a.stripSpans, a.stripFolds = nil, nil
+	a.stripMore, a.stripMoreRow, a.stripHarn = hudSpan{}, 0, hudSpan{}
 	if !a.stripShowing() || width <= 0 {
-		return ""
+		return nil
 	}
+	trees, flat := a.stripTrees()
+	var rows []string
+	if lead := a.stripFlatRow(width, flat); lead != "" {
+		rows = append(rows, lead)
+	}
+	if len(trees) == 0 {
+		return rows
+	}
+	// THE FOLD RUNS BEFORE A SINGLE ROW IS PAINTED, for the reason the flat row
+	// budgets its own +N before laying a chip down: what a tree gives up changes
+	// where everything under it is drawn, and a paint that discovered its ceiling
+	// halfway would have to unpaint.
+	budget := a.stripBudget()
+	for {
+		rest := budget - len(rows)
+		if stripRowsOf(trees) <= rest || !stripFoldOnce(trees) {
+			break
+		}
+	}
+	for _, tree := range trees {
+		rows = a.stripPaint(rows, tree, width, nil)
+	}
+	return a.stripClamp(rows, budget, width)
+}
+
+// stripRow is the strip as one string, and it is what a caller with a single
+// line to fill wants. The frame does not — it appends [app.stripRows] row by
+// row, because a row is a row and a string with newlines in it is a frame whose
+// height nobody counted.
+func (a *app) stripRow(width int) string { return strings.Join(a.stripRows(width), "\n") }
+
+// stripClamp is the frame's last word, and it is NOT the fold.
+//
+// The fold is a judgement about the tree — give up the finest work first, never
+// give up what is moving — and it can run out of things it is allowed to take.
+// This is the arithmetic underneath it: rows the terminal does not have. So the
+// last row the strip may spend is spent saying how many it could not draw, in
+// the same mark and with the same door as the row that ran out of columns. It
+// is the crude cut, it is meant to be, and a tree that reaches it is a session
+// with more live work on it than a pinned strip was ever the surface for — the
+// roster is one press away and it has every row.
+func (a *app) stripClamp(rows []string, budget, width int) []string {
+	if len(rows) <= budget {
+		return rows
+	}
+	keep := budget - 1
+	word := stripMoreWord(len(rows) - keep)
+	rows = rows[:keep]
+	a.stripSpans = stripSpansWithin(a.stripSpans, keep)
+	a.stripFolds = stripFoldsWithin(a.stripFolds, keep)
+	a.stripMore = hudSpan{from: 0, to: ansi.StringWidth(word)}
+	a.stripMoreRow = keep
+	return append(rows, fit(a.pal.dim(word), width))
+}
+
+// stripSpansWithin and stripFoldsWithin drop what was recorded for rows the
+// clamp above took away. A span that outlives its row is a click delivered to a
+// chip nobody can see.
+func stripSpansWithin(spans []stripSpan, rows int) []stripSpan {
+	out := spans[:0]
+	for _, s := range spans {
+		if s.row < rows {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func stripFoldsWithin(folds []stripFold, rows int) []stripFold {
+	out := folds[:0]
+	for _, f := range folds {
+		if f.row < rows {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// stripFlatRow is the live row: the harness chip, then a chip per node that
+// belongs to no family, then the count of what would not fit.
+//
+// It is the row this surface has always drawn and the arithmetic is unchanged —
+// what moved is only where the nodes come from, because a node in a tree is
+// drawn in its tree.
+func (a *app) stripFlatRow(width int, nodes []*taskNode) string {
 	// THE HARNESS CHIP GOES FIRST AND IS NEVER DROPPED. It leads for the reason
 	// the running nodes lead the tasks: it is the thing a person is waiting on,
 	// and unlike a node it has no room of its own to be found in — its door is
@@ -189,7 +469,6 @@ func (a *app) stripRow(width int) string {
 		lead, leadCols = a.harnessChip(name)
 		a.stripHarn = hudSpan{from: 0, to: leadCols}
 	}
-	nodes := a.stripNodes()
 	if len(nodes) == 0 {
 		return lead
 	}
@@ -259,6 +538,286 @@ func (a *app) stripRow(width int) string {
 // stripMoreWord is the overflow mark: how many chips the row could not hold.
 func stripMoreWord(n int) string { return "+" + itoa(n) }
 
+// ── THE TREE ────────────────────────────────────────────────────────────────
+
+// stripTwig is one node of a family as the strip holds it: the node, the
+// children still being drawn, and how many rows were folded away under it.
+//
+// It is a shape of its own rather than a flat list of (node, depth) pairs
+// because the fold is a question about SUBTREES — may this limb go, is anything
+// under it moving — and a depth-tagged list answers that by scanning forward
+// for the next row at the same depth, which is a tree with its structure taken
+// out and then guessed back.
+type stripTwig struct {
+	node   *taskNode
+	kids   []*stripTwig
+	folded int
+}
+
+// rows is what this twig is asking the strip for right now.
+func (t *stripTwig) rows() int {
+	n := 1
+	for _, kid := range t.kids {
+		n += kid.rows()
+	}
+	return n
+}
+
+// count is every node this twig stands for, drawn or folded away — what a
+// parent has to add to its own ▸ +N when it gives this limb up.
+func (t *stripTwig) count() int {
+	n := 1 + t.folded
+	for _, kid := range t.kids {
+		n += kid.count()
+	}
+	return n
+}
+
+// live reports whether this twig or anything under it is work the fold may not
+// hide: running, failed, or held at a gate. See the header — an ancestor of a
+// live node is live, because a row hanging from nothing is not a tree.
+func (t *stripTwig) live() bool {
+	switch {
+	case t.node.state == session.TaskRunning, t.node.state == session.TaskFailed, t.node.Paused():
+		return true
+	}
+	for _, kid := range t.kids {
+		if kid.live() {
+			return true
+		}
+	}
+	return false
+}
+
+func stripRowsOf(trees []*stripTwig) int {
+	n := 0
+	for _, tree := range trees {
+		n += tree.rows()
+	}
+	return n
+}
+
+// stripFoldOnce gives up ONE limb — the deepest one the law allows, and the
+// last of those where several sit at the same depth — and reports whether it
+// found one.
+//
+// ONE AT A TIME, rather than every foldable child of the deepest parent at
+// once, because the strip needs a row and not a clearance: folding a parent's
+// whole brood to win back the single row it was over is a shape thrown away for
+// nothing. The caller loops until it fits, so the tree gives up exactly what the
+// frame charged it.
+//
+// DEEPEST FIRST is the judgement. What is deepest is the finest-grained work the
+// planner asked for, it is the part of a shape a person can most afford to read
+// as a count, and taking it never orphans anything — the row above it is still
+// there to carry the number.
+func stripFoldOnce(trees []*stripTwig) bool {
+	var parent *stripTwig
+	at, deepest := -1, -1
+	var walk func(t *stripTwig, depth int)
+	walk = func(t *stripTwig, depth int) {
+		for i, kid := range t.kids {
+			if !kid.live() && depth >= deepest {
+				parent, at, deepest = t, i, depth
+			}
+		}
+		for _, kid := range t.kids {
+			walk(kid, depth+1)
+		}
+	}
+	for _, tree := range trees {
+		walk(tree, 0)
+	}
+	if parent == nil {
+		return false
+	}
+	gone := parent.kids[at]
+	parent.folded += gone.count()
+	parent.kids = append(parent.kids[:at], parent.kids[at+1:]...)
+	return true
+}
+
+// stripKin buckets every node this session has admitted by its parent's key,
+// and indexes them all by their own.
+//
+// It walks [app.taskOrder], so a parent's children come out in the order the
+// session met them — the one order a roster is allowed to use, because any
+// other one moves a row a person is watching for a reason they cannot see
+// (task.go's [app.railMembers] keeps the same law).
+func (a *app) stripKin() (kids map[string][]*taskNode, byKey map[string]*taskNode) {
+	byKey = make(map[string]*taskNode, len(a.taskOrder))
+	for _, id := range a.taskOrder {
+		if node := a.tasks[id]; node != nil {
+			byKey[stripKey(node)] = node
+		}
+	}
+	for _, id := range a.taskOrder {
+		node := a.tasks[id]
+		if node == nil {
+			continue
+		}
+		up := node.ParentID()
+		if up == "" || up == stripKey(node) || byKey[up] == nil {
+			continue
+		}
+		if kids == nil {
+			kids = map[string][]*taskNode{}
+		}
+		kids[up] = append(kids[up], node)
+	}
+	return kids, byKey
+}
+
+// stripTrees splits the live set into the families it belongs to and the nodes
+// that belong to none.
+//
+// A FAMILY IS DRAWN WHOLE, and that is the one place the tree takes rows the
+// flat row would not have. The live set is running, waiting-on-a-person and
+// idle work (stripOrder) — what is parked and what has landed are the roster's
+// — but a tree of only the live members of a run is a tree with holes in it,
+// and a hole in a tree is a claim that nothing was there. So once a live node
+// turns out to have a family, the family comes with it: the ✓ rows are what
+// make the ◌ rows legible, and the fold is what pays for them.
+//
+// The families come in the order their live members do, which is the strip's
+// own order and not the roster's: what is running leads, because that is what
+// this row exists to point at.
+func (a *app) stripTrees() (trees []*stripTwig, flat []*taskNode) {
+	live := a.stripNodes()
+	kids, byKey := a.stripKin()
+	if kids == nil {
+		return nil, live
+	}
+	seen := map[string]bool{}
+	for _, node := range live {
+		root := stripRootOf(node, byKey)
+		key := stripKey(root)
+		if len(kids[key]) == 0 {
+			flat = append(flat, node)
+			continue
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		trees = append(trees, stripGrow(root, kids, map[string]bool{}))
+	}
+	return trees, flat
+}
+
+// stripRootOf walks up to the head of a node's family.
+//
+// The visited set is not defensive tidiness: the parent is written by an
+// adapter this package does not own ([taskNode.ParentID]), and a cycle in it
+// would be a frame that never returns rather than a frame that looks wrong.
+func stripRootOf(node *taskNode, byKey map[string]*taskNode) *taskNode {
+	seen := map[string]bool{}
+	for {
+		key := stripKey(node)
+		if seen[key] {
+			return node
+		}
+		seen[key] = true
+		up := byKey[node.ParentID()]
+		if up == nil {
+			return node
+		}
+		node = up
+	}
+}
+
+// stripGrow builds one family, depth first, in the order the session met it.
+func stripGrow(node *taskNode, kids map[string][]*taskNode, seen map[string]bool) *stripTwig {
+	key := stripKey(node)
+	twig := &stripTwig{node: node}
+	if seen[key] {
+		return twig
+	}
+	seen[key] = true
+	for _, kid := range kids[key] {
+		twig.kids = append(twig.kids, stripGrow(kid, kids, seen))
+	}
+	return twig
+}
+
+// stripPaint draws one twig and everything under it, and records where each
+// chip landed.
+//
+// stems is the ancestry as the connectors need it: one entry per level, true
+// where that level's node still has siblings to come. Every entry but the last
+// picks between a stem and blank air; the last one picks between the ├ and the
+// └, which is the same question asked about this node rather than its parents.
+func (a *app) stripPaint(rows []string, twig *stripTwig, width int, stems []bool) []string {
+	prefix, at := a.stripPrefix(stems)
+	text, cols := a.stripTreeLabel(twig.node, width)
+	line := prefix + text
+	a.stripRecord(stripSpan{
+		span:  hudSpan{from: at, to: at + cols},
+		row:   len(rows),
+		id:    twig.node.id,
+		title: twig.node.title,
+	}, width)
+	at += cols
+	if twig.folded > 0 {
+		word := a.linearMark(stripFoldMark, stripFoldMarkASCII) + stripMoreWord(twig.folded)
+		line += stripGap + a.pal.dim(word)
+		fold := stripFold{
+			span: hudSpan{from: at + stripGapCols, to: at + stripGapCols + ansi.StringWidth(word)},
+			row:  len(rows),
+		}
+		if fold.span.from < width {
+			if fold.span.to > width {
+				fold.span.to = width
+			}
+			a.stripFolds = append(a.stripFolds, fold)
+		}
+	}
+	rows = append(rows, fit(line, width))
+	for i, kid := range twig.kids {
+		// The stack is COPIED down rather than appended to in place: one backing
+		// array shared between two siblings is the second sibling drawing the
+		// first one's stems.
+		next := make([]bool, len(stems), len(stems)+1)
+		copy(next, stems)
+		rows = a.stripPaint(rows, kid, width, append(next, i < len(twig.kids)-1))
+	}
+	return rows
+}
+
+// stripRecord keeps a chip's columns, cut to the row it was drawn on. A span
+// that runs past the frame is a click delivered to a name the cut took away.
+func (a *app) stripRecord(chip stripSpan, width int) {
+	if chip.span.from >= width {
+		return
+	}
+	if chip.span.to > width {
+		chip.span.to = width
+	}
+	a.stripSpans = append(a.stripSpans, chip)
+}
+
+// stripPrefix is the connectors for one row, painted, and the CELLS they cost.
+// A root has none — it is the thing everything else hangs from.
+func (a *app) stripPrefix(stems []bool) (string, int) {
+	if len(stems) == 0 {
+		return "", 0
+	}
+	var out strings.Builder
+	for _, more := range stems[:len(stems)-1] {
+		if more {
+			out.WriteString(a.linearMark(stripStem, stripStemASCII))
+			continue
+		}
+		out.WriteString(stripVoid)
+	}
+	if stems[len(stems)-1] {
+		out.WriteString(a.linearMark(stripBranch, stripBranchASCII))
+	} else {
+		out.WriteString(a.linearMark(stripLast, stripLastASCII))
+	}
+	return a.pal.dim(out.String()), (len(stems)-1)*stripIndentCols + stripElbowCols
+}
+
 // stripLabel is one chip, painted, and the CELLS it occupies. The two are
 // returned together because the budget is spent in cells and the label is
 // carried in bytes: the width is taken through [ansi.StringWidth], which is what
@@ -269,8 +828,23 @@ func stripMoreWord(n int) string { return "+" + itoa(n) }
 // this surface closes with SGR 39, so a background wrapped round one leaves the
 // ink underneath alone.
 func (a *app) stripLabel(node *taskNode) (string, int) {
-	glyph := a.stripGlyph(node)
-	title := fit(node.title, stripTitleCap)
+	return a.stripChip(node, a.stripGlyph(node), fit(node.title, stripTitleCap))
+}
+
+// stripTreeLabel is the same chip on a tree row: the node's STATE in the glyph
+// cell (the header says why the two rows differ on this), and a name cut to
+// what the tier can afford.
+func (a *app) stripTreeLabel(node *taskNode, width int) (string, int) {
+	limit := stripTitleCap
+	if layoutTier(width) == tierPhone {
+		limit = stripPhoneCap
+	}
+	return a.stripChip(node, a.stripTreeGlyph(node), fit(node.title, limit))
+}
+
+// stripChip is a chip: a glyph, a name already cut, the air around them, and
+// whichever of the two marks this node has earned.
+func (a *app) stripChip(node *taskNode, glyph, title string) (string, int) {
 	cols := ansi.StringWidth(glyph) + 1 + ansi.StringWidth(title) + stripPadCols
 	chip := stripPad + glyph + " " + a.stripTitle(node, title) + stripPad
 	if a.room != nil && a.room.id == node.id {
@@ -302,10 +876,30 @@ func (a *app) stripFocused(node *taskNode) bool {
 // not what phase it is in, and the identity cell is the only mark on this
 // surface that answers it the same way on every frame (taskident.go).
 func (a *app) stripGlyph(node *taskNode) string {
+	if node.Paused() {
+		return a.stripPausedGlyph()
+	}
 	if node.state == session.TaskQueued {
 		return a.taskMark(node.ident)
 	}
 	return a.railGlyph(node)
+}
+
+// stripTreeGlyph is the same cell down a tree, where it is the node's STATE and
+// never its identity: a queued node wears the roster's own hollow circle, so
+// the column of glyphs can be read down as the shape of the run.
+func (a *app) stripTreeGlyph(node *taskNode) string {
+	if node.Paused() {
+		return a.stripPausedGlyph()
+	}
+	return a.railGlyph(node)
+}
+
+// stripPausedGlyph is work stopped at a gate, in the hue the roster gives every
+// other state that is waiting on a person to say something (task.go's
+// [app.railGlyph] paints the unverified question the same way).
+func (a *app) stripPausedGlyph() string {
+	return a.pal.warn(a.linearMark(glyphPaused, glyphPausedASCII))
 }
 
 // stripTitle paints an already-cut name: the accent on the room a person is
@@ -338,30 +932,39 @@ func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
 	if a.sheet.open || a.copy.on || a.welcome.open {
 		return nil, false
 	}
-	if a.stripHeight() == 0 || y != a.headHeight() {
-		return nil, false
-	}
 	width, _ := a.size()
-	if a.stripRow(width) == "" {
+	// The rows are laid out first and the ROW is resolved before the columns: a
+	// tree is as many rows as it needs, so "which chip" is two coordinates now
+	// and the first of them is the one that used to be a constant.
+	rows := a.stripRows(width)
+	row := y - a.headHeight()
+	if len(rows) == 0 || row < 0 || row >= len(rows) {
 		return nil, false
 	}
 	// THE HARNESS CHIP'S DOOR IS THE PANEL, which is the only place a run can be
-	// looked at (harnesspanel.go).
-	if a.stripHarn.holds(x) {
+	// looked at (harnesspanel.go). It rides the live row and nothing else.
+	if row == 0 && a.stripHarn.holds(x) {
 		a.openHarness()
 		return nil, true
 	}
 	for _, chip := range a.stripSpans {
-		if chip.span.holds(x) {
+		if chip.row == row && chip.span.holds(x) {
 			a.openRoomFor(chip.id, chip.title)
 			return a.takeRoomPump(), true
 		}
 	}
-	// THE OVERFLOW MARK IS THE DOOR TO THE WHOLE ROSTER, which is the roster
-	// wherever this frame keeps it: the column on a wide one, the fullscreen
-	// overlay on a narrow one (task.go's [app.railTake]). One gesture, one
-	// destination, two shapes.
-	if a.stripMore.holds(x) {
+	// EVERY COUNT ON THIS ROW IS THE DOOR TO THE WHOLE ROSTER, which is the
+	// roster wherever this frame keeps it: the column on a wide one, the
+	// fullscreen overlay on a narrow one (task.go's [app.railTake]). The chips a
+	// narrow row dropped and the limbs a short frame folded are the same missing
+	// work asked about twice — one gesture, one destination, two shapes.
+	for _, fold := range a.stripFolds {
+		if fold.row == row && fold.span.holds(x) {
+			a.railTake(true)
+			return nil, true
+		}
+	}
+	if row == a.stripMoreRow && a.stripMore.holds(x) {
 		a.railTake(true)
 		return nil, true
 	}
