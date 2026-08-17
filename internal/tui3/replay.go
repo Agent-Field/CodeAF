@@ -94,6 +94,27 @@ func (a *app) replay() {
 			a.entries = append(a.entries, entry{
 				kind: entryDivider, text: firstLine(text), turn: a.turn,
 			})
+
+		case "aside":
+			if text == "" {
+				continue
+			}
+			// A LINE THE SESSION WROTE GOES IN THE SESSION'S OWN LANE — the dim
+			// "· " row this surface says everything of its own in ([app.note]) —
+			// and NOT above a "›" as though somebody had typed it.
+			//
+			// The commonest one is the note that wakes a turn: work landed while
+			// the room was idle, the session told the model, and the model
+			// answered. Live, that note is never drawn as the person's words
+			// (followup.go's [app.startFollow] deliberately writes no user line for
+			// a woken turn) — and replayed, it WAS, because the journal keeps it as
+			// the user-role message the model has to read. session marks the line
+			// now (its sessionfile.go), so the two views of one conversation agree.
+			// A note from a file written before the mark arrives as "user" and
+			// draws exactly as it always did.
+			a.entries = append(a.entries, entry{
+				kind: entryNote, text: firstLine(text), turn: a.turn,
+			})
 		}
 	}
 	a.touch()
