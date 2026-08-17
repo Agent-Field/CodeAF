@@ -80,6 +80,12 @@ const (
 	// mistakes nobody downstream can see to correct. Registered from
 	// internal/session/task_audit.go, which owns the call.
 	RoleAuditor Role = "auditor"
+	// RoleRouter is the sidecar judge that reviews a tool-less answer and asks
+	// whether it should have been work (an adaptive run, a task). It sits LOW:
+	// it reads one turn and answers one cheap question, and a wrong "no" costs
+	// an offer card that was never shown, never money. Registered from
+	// internal/session/route_judge.go, which owns the call.
+	RoleRouter Role = "router"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
