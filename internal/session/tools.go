@@ -53,6 +53,13 @@ import (
 // history, searchable, so that work handed off weeks ago is still findable by
 // the model that has to build on it.
 //
+// harness (tools_harness.go) is the one hand that keeps a SHAPE rather than a
+// result: a method this conversation worked out, written as a program over
+// internal/subharness's node kinds, approved on a card, versioned in a registry,
+// and run again by name. It is conditional on there being a registry to write
+// into, and it is off inside a task node for propose_task's own reason — both of
+// its load-bearing verbs are questions, and a node has nobody to ask.
+//
 // services and use_service (tools_connect.go) are the accounts the person
 // already has somewhere else. They are the one family on this belt that can
 // GROW it: what an account brings — a mailbox, a calendar — is appended when the
@@ -88,6 +95,7 @@ func (a *Agent) belt() []bare.Tool {
 	tools = append(tools, a.memoryTools()...)
 	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)
+	tools = append(tools, a.harnessTools()...)
 	tools = append(tools, a.connectTools()...)
 	return append(tools, a.imageTools()...)
 }

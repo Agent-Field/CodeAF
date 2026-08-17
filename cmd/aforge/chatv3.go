@@ -19,10 +19,12 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
@@ -148,6 +150,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// gate: the question is about the model the failing turn was ON, which
 		// /model moves.
 		NearestModels: v3NearestModels(models),
+		// The sub-harness registry: the shapes of work this install has saved,
+		// under the one state root aforge owns (internal/home). It is the SAME
+		// directory the surface's /harness panel lists, wired from here so that
+		// a harness registered in the conversation is in the panel the next time
+		// it is opened — one path, two readers, no way for them to drift.
+		HarnessDir: harnessDir(),
 		// The models a task may be handed to, asked at the moment a proposal
 		// names one and never at boot — the picker's own bargain (see Models
 		// below), because both questions are about a catalog that may still be
@@ -281,6 +289,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// connected on the panel is connected for the model in the same breath
 		// and neither side has to be told about the other.
 		Connections:   v3Connections(cfg.Connect),
+		Harnesses:     subharness.New(cfg.HarnessDir),
 		Workspace:     workspace,
 		SessionFile:   transcript,
 		Resumed:       resumed,
@@ -625,6 +634,18 @@ func v3RolesSource(workspace, profileDir string) (func(string) (string, bool), e
 // v3Dir is ~/.aforge/v3: the directory this surface keeps its own files in —
 // the model cache, the history list, the drafts. The sessions live one level
 // under it, per workspace (see [v3SessionDir]).
+// harnessDir is where this install keeps its sub-harnesses: one directory under
+// the state root, holding <name>.hjson entries and a run history beside each
+// (internal/subharness). It is NOT created here — an empty registry is a
+// directory that does not exist yet, and the first accepted registration makes
+// it.
+//
+// It goes through internal/home for the reason every other durable path does:
+// AFORGE_HOME moves everything aforge writes at once, and a path spelled out
+// here would be the one file a disposable run still wrote into somebody's real
+// profile.
+func harnessDir() string { return home.Join("harnesses") }
+
 func v3Dir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {

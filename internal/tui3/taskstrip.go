@@ -135,6 +135,13 @@ func (a *app) stripShowing() bool {
 	if width < stripFloor || height < roomyFloor {
 		return false
 	}
+	// A RUNNING SUB-HARNESS RAISES THE ROW TOO (harness.go). It is alive for
+	// minutes at a time and it is the only thing on screen that would otherwise
+	// say so — the run happens inside one tool call, so the transcript shows a
+	// single row that has not come back yet.
+	if _, running := a.runningHarness(); running {
+		return true
+	}
 	for _, id := range a.taskOrder {
 		if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
 			return true
@@ -168,33 +175,42 @@ func (a *app) stripNodes() []*taskNode {
 // It returns "" when there is no strip, which is what the frame draws for a row
 // it is not spending (view.go).
 func (a *app) stripRow(width int) string {
-	a.stripSpans, a.stripMore = nil, hudSpan{}
+	a.stripSpans, a.stripMore, a.stripHarn = nil, hudSpan{}, hudSpan{}
 	if !a.stripShowing() || width <= 0 {
 		return ""
 	}
+	// THE HARNESS CHIP GOES FIRST AND IS NEVER DROPPED. It leads for the reason
+	// the running nodes lead the tasks: it is the thing a person is waiting on,
+	// and unlike a node it has no room of its own to be found in — its door is
+	// the panel, and this chip is the only one on the surface.
+	lead, leadCols := "", 0
+	if name, running := a.runningHarness(); running {
+		lead, leadCols = a.harnessChip(name)
+		a.stripHarn = hudSpan{from: 0, to: leadCols}
+	}
 	nodes := a.stripNodes()
 	if len(nodes) == 0 {
-		return ""
+		return lead
 	}
 	// HOW MANY FIT IS DECIDED BEFORE ANYTHING IS PAINTED, because the +N at the
 	// end is part of the budget: a row that laid chips down until it ran out
 	// would have no room left to say how many it dropped, which is the one thing
 	// the person who cannot see them needs.
-	kept, used := 0, 0
+	kept, used := 0, leadCols
 	for i := range nodes {
 		_, w := a.stripLabel(nodes[i])
-		lead := 0
-		if i > 0 {
-			lead = stripGapCols
+		gap := 0
+		if i > 0 || leadCols > 0 {
+			gap = stripGapCols
 		}
 		reserve := 0
 		if rest := len(nodes) - i - 1; rest > 0 {
 			reserve = stripGapCols + ansi.StringWidth(stripMoreWord(rest))
 		}
-		if used+lead+w+reserve > width {
+		if used+gap+w+reserve > width {
 			break
 		}
-		used += lead + w
+		used += gap + w
 		kept = i + 1
 	}
 	if kept == 0 {
@@ -202,15 +218,21 @@ func (a *app) stripRow(width int) string {
 		// what is running: the first chip, cut to the row. The mark is dropped
 		// rather than the name — "+3" with no name beside it is a count of things
 		// a person cannot identify.
+		if leadCols > 0 {
+			// The harness has the row to itself: it is what is running, and a
+			// half-drawn node chip beside it would be a name nobody can act on.
+			return fit(lead, width)
+		}
 		text, _ := a.stripLabel(nodes[0])
 		a.stripSpans = []stripSpan{{span: hudSpan{from: 0, to: width}, id: nodes[0].id, title: nodes[0].title}}
 		return fit(text, width)
 	}
 
 	var out strings.Builder
-	at := 0
+	out.WriteString(lead)
+	at := leadCols
 	for i := 0; i < kept; i++ {
-		if i > 0 {
+		if i > 0 || leadCols > 0 {
 			out.WriteString(stripGap)
 			at += stripGapCols
 		}
@@ -321,6 +343,12 @@ func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
 	width, _ := a.size()
 	if a.stripRow(width) == "" {
 		return nil, false
+	}
+	// THE HARNESS CHIP'S DOOR IS THE PANEL, which is the only place a run can
+	// be looked at (harness.go).
+	if a.stripHarn.holds(x) {
+		a.openHarness()
+		return nil, true
 	}
 	for _, chip := range a.stripSpans {
 		if chip.span.holds(x) {

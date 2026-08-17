@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -308,6 +309,21 @@ type Event struct {
 	// person who presses it believes they have changed something.
 	Memo bool
 
+	// Escalate says this question has a THIRD answer: the person may take the
+	// run over rather than only allowing or refusing it
+	// ([Agent.ResolveHarnessGate], tools_harness.go). It is set on
+	// EventConsentRequest for a sub-harness's human.gate that declared
+	// escalate, and false everywhere else.
+	//
+	// It exists for the reason Memo does, and is the same kind of fact: a
+	// surface cannot infer from the lane which of its keys would MEAN anything,
+	// and an offer that is inert must not be on screen. Memo says whether
+	// "always" would stand for something; this says whether "I'll take it from
+	// here" would. A surface that ignores it draws two keys and loses only the
+	// third door — never correctness, because declining is what an unoffered
+	// intervention resolves to.
+	Escalate bool
+
 	// Count is how many times the thing this event is about has happened. It is
 	// set on EventNudge — the number of repetitions that earned the nudge — and
 	// zero everywhere else, which is why it is a plain int rather than a pointer:
@@ -443,6 +459,17 @@ type Config struct {
 	// write there from a test, a subharness leaf, and a second window of the
 	// same session alike.
 	MemoryFile string
+
+	// HarnessDir is the sub-harness registry: the directory holding
+	// <name>.hjson entries and the run histories beside them (tools_harness.go,
+	// internal/subharness). Empty is harnesses OFF — no registry, and no
+	// harness tool on the belt.
+	//
+	// It is the caller's path for the reason MemoryFile is: where a person's
+	// state lives is the surface's decision, and a package that picked
+	// ~/.aforge/harnesses itself would write there from a test and from a task
+	// node's worktree alike.
+	HarnessDir string
 
 	// ApprovalPolicy decides whether a tool call runs, asks, or is refused
 	// (internal/approval, gated in consent.go). NIL ALLOWS EVERYTHING, which is
@@ -772,6 +799,14 @@ type Agent struct {
 	// reason: its callers are tool calls running in parallel inside one batch.
 	docs documentRung
 
+	// harnesses is the sub-harness registry (tools_harness.go), built on first
+	// use through [Agent.harnessStore] for the reason stateStore is: most
+	// conversations never open it, and a store is a directory nobody should
+	// create just in case. It holds no lock of its own — a *subharness.Store is
+	// a path and its methods are file operations.
+	harnessOnce sync.Once
+	harnesses   *subharness.Store
+
 	// mu guards everything below it. The lock is held for state transitions
 	// only, never across a provider call or a tool execution: a turn that
 	// holds it while waiting on the network would deadlock Interrupt, which is
@@ -838,6 +873,14 @@ type Agent struct {
 	// end of it — and true forever after, and the one thing it gates is the wake:
 	// a turn started before any surface exists is a turn nobody can read.
 	opened bool
+
+	// harnessName is the sub-harness this session is executing and harnessRuns
+	// how many are in flight — a count rather than a flag because a
+	// subharness.call runs a second program inside the first (tools_harness.go).
+	// Both are under mu because the strip that draws them polls from the frame
+	// loop while the run writes them from a tool call.
+	harnessName  string
+	harnessDepth int
 
 	// consent is the questions a person owes an answer to, keyed by the id the
 	// EventConsentRequest carried, and consentSeq is what names them. Both are
