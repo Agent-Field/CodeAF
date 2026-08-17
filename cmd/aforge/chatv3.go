@@ -452,12 +452,12 @@ func v3SearchOptions(profileDir string) search.Options {
 // Google registration in, a manager out — or NIL, which is the whole feature
 // absent.
 //
-// The nil is the point, and it is the same law v3Search's nil half states.
-// With no registration there would be nothing this build could connect, so
-// handing the session a manager that could only ever refuse would put two tools
-// on the belt whose one answer is "not configured" — and the session states, at
-// [session.Config], why that is strictly worse for a model than never being
-// told.
+// The nil is still the law v3Search's nil half states — a belt must never carry
+// a tool whose one answer is "not configured", and [session.Config] says why
+// that is strictly worse for a model than never being told. What has changed is
+// how rarely it applies: the catalog opens a few hundred accounts on a key the
+// person already holds, so there is something to connect on every machine, and
+// only a store this process cannot open at all leaves nothing.
 //
 // IN PRACTICE THE PAIR IS ALWAYS THERE now, because a build ships a
 // registration of its own as the last rung under the environment and the sheet
@@ -477,14 +477,16 @@ func v3SearchOptions(profileDir string) search.Options {
 // could ask a visitor to connect their mail to an application the repository
 // chose, by being cloned. Whose application asks for a person's account is the
 // person's row in exactly the sense internal/config's allowlist means it.
+// THE GOOGLE ROW GATES GOOGLE AND NOTHING ELSE. Most of what can be connected
+// is opened by a key the person already holds and needs nothing registered
+// anywhere, so a machine with no Google application on it still has a manager
+// and still has the accounts list — it simply has no Google on it.
 func v3Connect(profileDir string) *connect.Manager {
-	id, secret := config.GoogleOAuthClientAt(profileDir)
-	if strings.TrimSpace(id) == "" || strings.TrimSpace(secret) == "" {
-		return nil
+	credentials := map[string]connect.ClientCredential{}
+	if id, secret := config.GoogleOAuthClientAt(profileDir); strings.TrimSpace(id) != "" && strings.TrimSpace(secret) != "" {
+		credentials["google"] = connect.ClientCredential{ID: id, Secret: secret}
 	}
-	manager, err := connect.NewManager(profileDir, map[string]connect.ClientCredential{
-		"google": {ID: id, Secret: secret},
-	})
+	manager, err := connect.NewManager(profileDir, credentials)
 	if err != nil {
 		return nil
 	}
