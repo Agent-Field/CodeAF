@@ -1543,6 +1543,16 @@ func (a *app) roomPath() []string {
 func (a *app) roomStateWord(node *taskNode) string {
 	switch node.state {
 	case session.TaskRunning:
+		// A NODE CLOSING A GAP IS FINISHING, AND THE HEADER SAYS SO. It is still
+		// running — the engine has not moved it and neither does this — but a
+		// person standing in the room of work that is nearly home is owed the
+		// difference between "this is under way" and "this is being tied off",
+		// and it is one word (task.go's [taskFinishingWord]). What is being tied
+		// off is on the rail's own row under the node; the header has one line and
+		// spends it on the state.
+		if node.mending != "" {
+			return taskFinishingWord
+		}
 		// The word the status line uses for a session that is working, said about
 		// a node for the same reason: a person who has learned what "working"
 		// means on this surface has learned it here too.
