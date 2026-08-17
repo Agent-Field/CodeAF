@@ -617,3 +617,52 @@ func TestAServedToolWithNoShapeIsStillArmed(t *testing.T) {
 		}
 	}
 }
+
+// ── the seam against the real registry ──────────────────────────────────────
+
+// THE PREDICATE AND THE PROVIDER MUST NAME THE SAME SERVICES. [Agent.servesItsOwn]
+// decides from what is missing here — no family written for it, and not a keyed
+// account — while internal/connect knows the answer outright
+// ([connect.Manager.MCPService]). They agree today for every service the registry
+// offers, which is what makes [Agent.armServed]'s "could not be listed" branch a
+// sentence about a real failure rather than about a service that was never a
+// served one.
+//
+// It is asserted against the REGISTRY ITSELF rather than a fake, because the one
+// way the two can drift is a service added on one side: a browser account with no
+// family that does not serve its own tools would be asked what it brings and
+// would answer with an error, and the person would read that a healthy account
+// was broken. This test is where that lands instead.
+func TestTheServedPredicateNamesWhatTheProviderDoes(t *testing.T) {
+	manager, err := connect.NewManager(t.TempDir(), map[string]connect.ClientCredential{
+		// Google is offered only in a build that holds its credential, and it
+		// is the one browser account with a family of its own — exactly the
+		// case the predicate has to get right.
+		"google": {ID: "id", Secret: "secret"},
+	})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	hub := newConnectHub(Config{Connect: manager})
+	agent := &Agent{connect: hub}
+
+	var google, served int
+	for _, status := range hub.Services() {
+		if status.ID == "google" {
+			google++
+		}
+		if agent.servesItsOwn(status) != manager.MCPService(status.ID) {
+			t.Errorf("%s: servesItsOwn = %v, and the provider says %v",
+				status.ID, agent.servesItsOwn(status), manager.MCPService(status.ID))
+		}
+		if manager.MCPService(status.ID) {
+			served++
+		}
+	}
+	if google != 1 {
+		t.Fatalf("the credentialed browser account was not offered, so the case it stands for went untested")
+	}
+	if served == 0 {
+		t.Fatalf("no account brings its own tools, so this proved nothing")
+	}
+}
