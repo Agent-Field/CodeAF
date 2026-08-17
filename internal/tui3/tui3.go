@@ -219,6 +219,17 @@ type Options struct {
 	// Empty keeps it nowhere. Use [DraftFile] to name it.
 	DraftFile string
 
+	// ArtifactsIndex is the deliverables index a finished /export writes its row
+	// to (internal/session's artifacts.go). Empty falls through to
+	// ~/.aforge/v3/artifacts.jsonl, the way [Options.Models] falls through to
+	// this package's own cache: the door usually says, and a surface driven
+	// without one still records where the rest of the product looks.
+	//
+	// STUB(place/layout): the launch assembly passes the same path it puts on
+	// session.Config.ArtifactsIndex, so a session and its surface never write
+	// two indexes.
+	ArtifactsIndex string
+
 	// Models answers what /model can switch to. It is a function and not a
 	// slice because the door's list may be warming: it is called the moment the
 	// picker opens, so a catalog that resolved after boot is on offer, and it

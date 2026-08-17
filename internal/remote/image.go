@@ -25,11 +25,12 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// imageDirectory is where an uploaded picture lands: the same folder under the
-// workspace that a picture the MODEL painted lands in (internal/session's
-// tools_image.go declares it too, for the same directory and the same reason).
-// One folder for every picture a session touched is one gesture to delete them.
-const imageDirectory = ".aforge-v3/images"
+// Where an uploaded picture lands is internal/session's answer and not this
+// package's: [session.ImagesDir] is asked, so a picture that arrived over the
+// wire and a picture the MODEL painted land in the same directory on the same
+// machine. One folder for every picture a session touched is one gesture to
+// delete them, and two packages with two opinions about that folder is how the
+// gesture stops working.
 
 // imageStampFormat is the sortable half of the name, as tools_image.go names
 // its own: `ls` reads in the order the pictures arrived.
@@ -56,7 +57,7 @@ func (s *server) store(images []session.Image) ([]session.Image, error) {
 		return images, nil
 	}
 	s.state.Lock()
-	workspace := s.engine.Workspace
+	workspace, place, index := s.engine.Workspace, s.engine.Place, s.engine.ArtifactsIndex
 	s.state.Unlock()
 
 	out := make([]session.Image, 0, len(images))
@@ -68,10 +69,20 @@ func (s *server) store(images []session.Image) ([]session.Image, error) {
 			out = append(out, image)
 			continue
 		}
-		path, err := writeImage(workspace, image)
+		path, err := writeImage(place, workspace, image)
 		if err != nil {
 			return nil, err
 		}
+		// A picture that arrived is a picture somebody may want back — it is on
+		// the engine's disk and nowhere on theirs — so it earns its row in the
+		// index the same way a painted one does (session's artifacts.go).
+		session.RecordArtifact(index, session.Artifact{
+			Path:    path,
+			Session: session.PlaceSession(place),
+			Title:   filepath.Base(path),
+			Kind:    "image",
+			Created: time.Now(),
+		})
 		// The bytes ride along rather than being dropped: internal/session
 		// reads them instead of opening the file it is about to be told about,
 		// so the picture is written once and read never.
@@ -85,12 +96,12 @@ func (s *server) store(images []session.Image) ([]session.Image, error) {
 // moment it arrived, and the head of its own digest. Two identical pastes in
 // the same second are the same file, which is the right answer to the only
 // collision this naming can have.
-func writeImage(workspace string, image session.Image) (string, error) {
+func writeImage(place session.Place, workspace string, image session.Image) (string, error) {
 	extension, err := imageExtension(image)
 	if err != nil {
 		return "", err
 	}
-	directory := filepath.Join(workspace, filepath.FromSlash(imageDirectory))
+	directory := session.ImagesDir(place, workspace)
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", fmt.Errorf("engine: create the image directory: %w", err)
 	}

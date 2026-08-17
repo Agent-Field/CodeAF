@@ -1004,3 +1004,49 @@ func TestServeExitsQuietlyWhenNobodySaidHello(t *testing.T) {
 		t.Errorf("nothing was opened, so nothing should have been closed (closes=%d)", agent.closes)
 	}
 }
+
+// A picture that arrives for a BORROWED session lands in the session's own
+// artifacts directory and never in the repository the engine is standing in
+// (docs/CHAT-V3.md, Decision 26). It is cited there too: the file is on this
+// machine and the person is on another one, so a row they can find it by is
+// the only way back to it.
+func TestServeLandsAnUploadedPictureInTheSessionFolder(t *testing.T) {
+	workspace := t.TempDir()
+	folder := filepath.Join(t.TempDir(), "0123456789abcdef")
+	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
+
+	agent := &fakeAgent{}
+	engine := engineOn(agent)
+	engine.Workspace = workspace
+	engine.Place = session.Place{Dir: folder, Workspace: workspace}
+	engine.ArtifactsIndex = index
+	l := dialAgent(t, engine)
+	l.hello(Hello{Version: Version})
+
+	raw := []byte("\x89PNG\r\n\x1a\n and then some pixels")
+	l.ok(1, MethodSubmitImage, SubmitImageArgs{
+		Text:   "what is this?",
+		Images: []session.Image{{Path: "/home/somebody-else/Desktop/shot.png", MIME: "image/png", Bytes: raw}},
+	})
+
+	agent.mu.Lock()
+	path := agent.images[0].Path
+	agent.mu.Unlock()
+
+	if got, want := filepath.Dir(path), engine.Place.Artifacts(); got != want {
+		t.Fatalf("the picture landed in %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3")); !os.IsNotExist(err) {
+		t.Fatalf("the engine littered the workspace: %v", err)
+	}
+	rows := session.ReadArtifacts(index)
+	if len(rows) != 1 {
+		t.Fatalf("artifact rows = %d, want 1", len(rows))
+	}
+	if rows[0].Kind != "image" || rows[0].Path != path {
+		t.Fatalf("row = %+v, want an image row naming %q", rows[0], path)
+	}
+	if rows[0].Session != "0123456789abcdef" {
+		t.Fatalf("row session = %q, want the session folder's own name", rows[0].Session)
+	}
+}

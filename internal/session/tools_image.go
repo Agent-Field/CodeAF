@@ -50,10 +50,15 @@ type ImageGenerator interface {
 	GenerateImage(context.Context, provider.ImageRequest) (*provider.ImageResponse, error)
 }
 
-// imageDirectory is where a generated picture lands when the model does not say.
-// It sits under the workspace, in the surface's own dot directory, so a session
-// that paints twenty drafts leaves twenty files in one place a person can delete
-// in one gesture rather than twenty files in the root of their repository.
+// imageDirectory is where a generated picture lands when the model does not say
+// and the session has no folder of its own. It sits under the workspace, in the
+// surface's own dot directory, so a session that paints twenty drafts leaves
+// twenty files in one place a person can delete in one gesture rather than
+// twenty files in the root of their repository.
+//
+// A session WITH a folder answers differently and [ImagesDir] holds the whole
+// rule: the workspace itself when the session owns it, the session's own
+// artifacts/ when the workspace is somebody's repository.
 const imageDirectory = ".aforge-v3/images"
 
 // imageStampFormat is the sortable half of a generated file's name. Seconds are
@@ -69,9 +74,14 @@ const (
 	imageSlugLimit = 48
 )
 
-const generateImageDescription = "Generate an image from a text prompt and save it into the workspace. Returns the path it was written to and the picture's dimensions — never the image itself, which stays on disk: this conversation carries the path, and the file is what you and the user both refer to afterwards. Give a path to choose the name and the folder; leave it out and the image lands in " + imageDirectory + " under a timestamped name derived from the prompt."
+// The tool's own words name no directory, because the answer is not one
+// directory any more ([ImagesDir]) and a description that named the wrong one
+// would be teaching the model a path it cannot use. What the model needs is
+// that the picture is saved and that the result says where — both of which the
+// result actually does.
+const generateImageDescription = "Generate an image from a text prompt and save it. Returns the path it was written to and the picture's dimensions — never the image itself, which stays on disk: this conversation carries the path, and the file is what you and the user both refer to afterwards. Give a path to choose the name and the folder; leave it out and the image is saved under a timestamped name derived from the prompt, and the result says where it went."
 
-const generateImageSchemaJSON = `{"type":"object","properties":{"prompt":{"type":"string","description":"What to draw, as a full description: subject, composition, style, lighting. The whole prompt reaches the image model, so detail is worth writing."},"path":{"type":"string","description":"Where to save it, relative to the workspace (default: ` + imageDirectory + `/<timestamp>-<prompt slug>.png). An existing file at this path is overwritten, as with the write tool."}},"required":["prompt"],"additionalProperties":false}`
+const generateImageSchemaJSON = `{"type":"object","properties":{"prompt":{"type":"string","description":"What to draw, as a full description: subject, composition, style, lighting. The whole prompt reaches the image model, so detail is worth writing."},"path":{"type":"string","description":"Where to save it, relative to the workspace. Leave it out for a timestamped name derived from the prompt, saved where this session keeps its pictures. An existing file at this path is overwritten, as with the write tool."}},"required":["prompt"],"additionalProperties":false}`
 
 // imageTools is the picture-making half of the belt, and it is CONDITIONAL by
 // the same law tools_search.go states at length: a tool with nothing behind it
@@ -165,6 +175,18 @@ func (a *Agent) generateImageTool(client ImageGenerator, model string) bare.Tool
 			if err := os.WriteFile(path, data, 0o644); err != nil {
 				return "Could not save the generated image: " + err.Error(), true, nil
 			}
+			// A picture the harness made is a DELIVERABLE, so it earns a row in
+			// the index a person finds their work again by (artifacts.go). The
+			// recording is silent in both directions: it happens after the bytes
+			// are safely down, and a failure to write the lookup file is not news
+			// the model can act on.
+			RecordArtifact(a.config.ArtifactsIndex, Artifact{
+				Path:    path,
+				Session: a.journalID(),
+				Title:   imageTitle(prompt, path),
+				Kind:    "image",
+				Created: time.Now(),
+			})
 			return describeGeneratedImage(a.config.Workspace, path, data, model), false, nil
 		},
 	}
@@ -196,7 +218,7 @@ func (a *Agent) imageDestination(asked, prompt, mediaType string) (string, error
 		return path, nil
 	}
 
-	directory := filepath.Join(a.config.Workspace, filepath.FromSlash(imageDirectory))
+	directory := ImagesDir(a.config.Place, a.config.Workspace)
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return "", err
 	}
@@ -244,6 +266,17 @@ func imageSlug(prompt string) string {
 		slug = strings.TrimRight(slug[:imageSlugLimit], "-")
 	}
 	return slug
+}
+
+// imageTitle is what a picker row says about one picture: the prompt's own
+// slug, which is the phrase a person would search for, and the file's name when
+// the prompt made no slug at all — a prompt of punctuation, or a picture that
+// arrived rather than being asked for.
+func imageTitle(prompt, path string) string {
+	if slug := imageSlug(prompt); slug != "" {
+		return strings.ReplaceAll(slug, "-", " ")
+	}
+	return filepath.Base(path)
 }
 
 // imageExtension maps what the provider says it sent onto a file suffix. png is

@@ -542,6 +542,18 @@ type Config struct {
 	// the same file.
 	Place Place
 
+	// ArtifactsIndex is the global deliverables index (artifacts.go): the file
+	// one row is appended to whenever this session produces something a person
+	// might want to find again — a generated picture, an exported conversation.
+	// Empty records nothing, which is what a test and a headless --once both
+	// want.
+	//
+	// It is the caller's path rather than one this package derives, for the
+	// reason SessionFile is: where a person's state lives is the surface's
+	// decision. The surface's answer is ~/.aforge/v3/artifacts.jsonl, resolved
+	// through internal/home so AFORGE_HOME moves it with everything else.
+	ArtifactsIndex string
+
 	// MemoryFile is the durable memory: one file of lines the model keeps with
 	// the note tool and drops with forget (memory.go), rendered into the system
 	// prompt as a <memory> block and re-read at the start of every turn. Empty
