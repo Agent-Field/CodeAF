@@ -85,6 +85,23 @@ var commands = []command{
 	// they will open occasionally. Position in this table is a claim about
 	// frequency; this is the honest one.
 	{name: "harness", desc: "the shapes of work you have saved · what they did", alias: []string{"harnesses"}},
+	// THE TWO QUESTIONS THE STATUS LINE IS ALREADY ANSWERING, asked out loud. The
+	// line at the bottom of the frame drops whatever does not fit and a phone-width
+	// frame keeps two of eleven facts (statusdeck.go), so on any surface these are
+	// the commands that say the rest of it — and on a surface with the mouse turned
+	// off they are the only way to the sheet at all.
+	//
+	// They sit HERE, under /harness and above the copy pair, for the reason
+	// /harness sits where it does: position in this table is a claim about
+	// frequency, [menuRows] shows eight rows at once, and a person reads their bill
+	// occasionally while they compact and rewind daily. Neither may push /compact
+	// into a scroll.
+	//
+	// /status is the wider word and goes first, because the spend is one of the
+	// lines it prints: somebody who wanted the money and typed the general word
+	// still gets their answer, while the reverse is not true.
+	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
+	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
 	// THE TWO DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
 	// that is where a person goes with the question they answer. The keys behind
 	// them are the two least discoverable on the surface — nothing on the screen
