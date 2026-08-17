@@ -285,15 +285,9 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		return nil, fmt.Errorf("could not create the jobs directory: %w", err)
 	}
 
-	r.mu.Lock()
-	r.seq++
-	id := r.seq
-	r.mu.Unlock()
-
-	logPath := filepath.Join(directory, fmt.Sprintf("%d.log", id))
-	logFile, err := os.Create(logPath)
+	id, logPath, logFile, err := r.claimJobLog(directory)
 	if err != nil {
-		return nil, fmt.Errorf("could not open the job log: %w", err)
+		return nil, err
 	}
 	return &job{
 		id:      id,
@@ -307,6 +301,44 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		sink: &jobSink{file: logFile},
 		done: make(chan struct{}),
 	}, nil
+}
+
+// claimJobLog takes the next id whose log file this session can CREATE, and
+// returns it with the file already open.
+//
+// The name is claimed, not merely chosen. The counter behind it is this
+// process's own and starts at one in every window, so `1.log` is a name two
+// aforges in one directory both pick within a minute of each other — and the
+// open that used to be here truncated whatever was already at the name. Nothing
+// visible went wrong: the older session's writer kept its own file offset, so
+// its log became a hole where its first pages had been followed by two runs
+// interleaved by byte position, and `jobs output` showed the person a mixture
+// neither process had any idea it was in.
+//
+// So the create is O_EXCL and a taken name simply means take the next one. This
+// is tools_image.go's collision loop, for its reason — a check that only ASKED
+// whether the file existed would hand two racing openers the same answer — with
+// the second race that two processes are also racing. The visible consequence is
+// that a second window's job ids start above one rather than at it, which is the
+// honest thing for them to do: the ids are what `jobs output` is addressed by,
+// so two jobs may not share one.
+func (r *jobRegistry) claimJobLog(directory string) (int, string, *os.File, error) {
+	for attempt := 0; attempt < 1000; attempt++ {
+		r.mu.Lock()
+		r.seq++
+		id := r.seq
+		r.mu.Unlock()
+
+		logPath := filepath.Join(directory, fmt.Sprintf("%d.log", id))
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			return id, logPath, logFile, nil
+		}
+		if !os.IsExist(err) {
+			return 0, "", nil, fmt.Errorf("could not open the job log: %w", err)
+		}
+	}
+	return 0, "", nil, fmt.Errorf("could not open the job log: %s is full of them", directory)
 }
 
 // add puts a job in the registry. It is called once the job is actually
