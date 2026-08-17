@@ -10,13 +10,18 @@ import (
 
 // THE THIRD SETTLED STATE, ON THE SURFACE.
 //
-// session lands a node UNVERIFIED when the auditor answered with neither verdict
-// word twice over: the run is finished, no finding was made, the branch is kept,
-// and the dependents wait on a person (internal/session's task_contract.go).
-// Every assertion here is about the one thing that makes the state worth having
-// — that a person can tell it apart from both of the other two at a glance.
+// session lands a node here when the run is finished, nothing came back that
+// could call the work right or call it wrong, the branch is kept, and the
+// dependents wait on a person (internal/session's task_contract.go). Every
+// assertion here is about the one thing that makes the state worth having — that
+// a person can tell it apart from both of the other two at a glance.
+//
+// AND EVERY WORD OF IT IS A PERSON'S. The engine's own report arrives already
+// worded for the reader, and the surface's three words for the state say what is
+// true of it from the outside: it finished, and it is on you to look. What made
+// it land here is not on screen anywhere, which is the law and not an omission.
 
-// unverifiedNotice is the update session sends for one, verdict text and all.
+// unverifiedNotice is the update session sends for one, report and all.
 func unverifiedNotice(report string) session.TaskNotice {
 	return session.TaskNotice{
 		Elapsed: 400 * time.Second,
@@ -29,9 +34,9 @@ func unverifiedNotice(report string) session.TaskNotice {
 
 func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 	a, _, _ := taskApp(t)
-	verdict := "UNVERIFIED — asked twice and got no verdict either time"
+	said := "finished, but needs your look — nothing came back either way"
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskUnverified,
-		unverifiedNotice(verdict+"\nthe second auditor timed out"))})
+		unverifiedNotice(said+"\nthe key table is the part to read first"))})
 
 	text := taskText(a)
 	for _, want := range []string{
@@ -42,9 +47,9 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 		"· " + taskUnverifiedWord + " " + taskSpanWord(400*time.Second),
 		"2 files",
 		"· " + taskBranchKept + " · task/parser",
-		// THE OUTCOME LINE IS THE AUDITOR'S OWN SENTENCE, quoted, exactly as a
+		// THE OUTCOME LINE IS THE ENGINE'S OWN SENTENCE, quoted, exactly as a
 		// failure's is: it is what a person reads to decide.
-		`"` + verdict + `"`,
+		`"` + said + `"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the unverified card is missing %q:\n%s", want, text)
@@ -52,7 +57,7 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 	}
 	for _, never := range []string{
 		glyphDone, doneWord + " ", doneFailWord, glyphBad, taskStoppedKept, mergeWordAborted,
-		"the second auditor timed out", // the rest of the report is behind ctrl+o
+		"the key table is the part to read first", // the rest of the report is behind ctrl+o
 	} {
 		if strings.Contains(text, never) {
 			t.Fatalf("the unverified card claims %q:\n%s", never, text)
@@ -71,12 +76,10 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 		t.Fatalf("an unverified node filed under %q, want %q",
 			railGroupWords[group], railGroupWords[railAttention])
 	}
-	// The sentence WRAPS inside a 24-column rail, so it is asserted in the two
-	// halves it is drawn in rather than as one line (task.go's [railWrap]).
 	rail := plain(strings.Join(a.railRows(12), "\n"))
 	for _, want := range []string{
 		glyphUnverified + " " + plain(a.taskMark(identFor(7))) + " Port the parser",
-		"unverified — waiting on", "you",
+		taskUnverifiedWaits,
 	} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the rail is missing %q:\n%s", want, rail)
@@ -88,7 +91,7 @@ func TestAnUnverifiedLandingIsNeitherDoneNorFailed(t *testing.T) {
 }
 
 // A NODE THAT LANDED WITH NOTHING TO SAY still says which of the three states it
-// is in — the gloss stands in for the auditor's words and never for the state.
+// is in — the gloss stands in for the missing sentence and never for the state.
 func TestAnUnverifiedLandingWithNoReportSaysWhyItIsThere(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", session.TaskUnverified,
@@ -110,7 +113,8 @@ func TestARollupWithAnUnverifiedNodeStopsSayingDone(t *testing.T) {
 		streamEventMsg{gen: a.gen, ev: update(2, "Mix audio", session.TaskDone, session.TaskNotice{
 			Elapsed: time.Second, Merge: mergeWordMerged,
 		})},
-		streamEventMsg{gen: a.gen, ev: update(3, "Port the parser", session.TaskUnverified, unverifiedNotice("UNVERIFIED — nobody answered"))},
+		streamEventMsg{gen: a.gen, ev: update(3, "Port the parser", session.TaskUnverified,
+			unverifiedNotice("finished, but needs your look — nobody could say either way"))},
 	)
 	text := taskText(a)
 	if !strings.Contains(text, glyphUnverified+" 3"+doneRollupMix) {

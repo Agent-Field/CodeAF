@@ -144,9 +144,15 @@ var settingUI = map[string]settingMeta{
 		about: "seconds an approval question waits before it answers no for you. " +
 			"Any key stops the clock; 0 turns it off.",
 	},
+	// THE MACHINERY IS NOT THE SURFACE'S TO NAME, and a settings row is as much
+	// the surface as a card is. The key is the engine's ([config.KeyTaskAudit])
+	// and it keeps its name; what a person reads is what the switch DOES to their
+	// work — the task's own claim that it is finished is taken on trust, or it is
+	// not — because that, and not the shape of the apparatus behind it, is the
+	// thing they are being asked to decide.
 	config.KeyTaskAudit: {
-		tab: tabSession, label: "task audit", widget: widgetCycle,
-		about: "an independent auditor checks each task's work before it merges. " +
+		tab: tabSession, label: "check task work", widget: widgetCycle,
+		about: "each task's work is checked over before it merges. " +
 			"Off merges on the task's own word.",
 	},
 	config.KeyMemoryConsolidation: {
