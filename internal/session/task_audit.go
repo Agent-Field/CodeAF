@@ -1069,7 +1069,7 @@ func (a *Agent) acceptTask(node *TaskNode, why string) error {
 		return err
 	}
 	defer node.releaseSettle()
-	tree, err := node.workingCopy(a.config.Workspace)
+	tree, err := node.workingCopy(a.config.Place, a.config.Workspace)
 	if err != nil {
 		return err
 	}
@@ -1116,7 +1116,7 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if !a.config.TaskAudit {
 		return errors.New("task.audit is off, so there is no auditor to ask — accept it or refute it")
 	}
-	tree, err := node.workingCopy(a.config.Workspace)
+	tree, err := node.workingCopy(a.config.Place, a.config.Workspace)
 	if err != nil {
 		return err
 	}
@@ -1259,7 +1259,7 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 	// "fresh" auditor would open with the previous one's whole transcript in
 	// front of it, including its verdict. That is the one thing this gate must
 	// never be — an auditor that has already been told what to think.
-	journal := taskJournalPath(a.sessionID(), node.id, "-audit-"+shortID())
+	journal := taskJournalPath(parent.Place, a.sessionID(), node.id, "-audit-"+shortID())
 	a.mu.Unlock()
 
 	judge, err := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleAuditor, model)
