@@ -35,7 +35,7 @@ import (
 	"sort"
 	"strings"
 
-	amp "github.com/amp-labs/connectors/providers"
+	amp "github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 )

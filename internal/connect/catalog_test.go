@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	amp "github.com/amp-labs/connectors/providers"
+	amp "github.com/Agent-Field/aforge-v2/internal/connect/ampcatalog"
 )
 
 // The catalog is somebody else's list and it changes under us, so these tests
