@@ -179,6 +179,16 @@ func (e *editor) down() {
 // two typed overlays are read before the editor, because while a list is up the
 // four keys that move and commit it are the list's.
 func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
+	// THE POINTER COMES BACK FIRST, ABOVE EVERYTHING, and then the key does
+	// whatever it was always going to do. A hand back on the keyboard is a hand
+	// that has finished selecting (copymode.go), so this is the whole of the exit
+	// — no key to learn, no state to be stuck in, and nothing swallowed. ctrl+s
+	// itself is excepted so it can act as the plain toggle it looks like: pressing
+	// it twice must undo it, not re-arm it.
+	if msg.String() != selectKey {
+		a.takeMouseBack()
+	}
+
 	// An approval question outranks even the model overlay: it is the one state
 	// where the SESSION is blocked on this keyboard — a tool call is parked
 	// mid-batch waiting for the answer — and everything else on this surface can
@@ -352,6 +362,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// and getting text out of the conversation is a thing this surface could
 		// not do at all. ← is untouched.
 		a.enterCopy()
+		return nil
+
+	case selectKey:
+		// DRAG THE WAY YOU DRAG EVERYWHERE ELSE (copymode.go). It is the mouse's
+		// half of ctrl+b and it sits beside it for that reason. With the pointer
+		// already the terminal's it does nothing, because the drag it offers is
+		// one the person can already make.
+		a.releaseMouse()
 		return nil
 
 	case "ctrl+,":

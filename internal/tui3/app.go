@@ -484,6 +484,12 @@ type app struct {
 	// terminal, whose native selection is the more fundamental act. Read where
 	// approval is read — boot and each turn end.
 	mouse bool
+	// released is that same handover, made for a moment instead of for good:
+	// ctrl+s while the pointer is ours gives it to the terminal so a drag
+	// selects text the way it does everywhere else, and the person's next
+	// keystroke takes it back (copymode.go). It is a property of the FRAME —
+	// [app.View] declares it every paint — so nothing has to be undone.
+	released bool
 
 	// The HUD's per-segment change clocks (render.go's [app.freshen]). segText
 	// is what each segment last read and segAt when it last CHANGED, which is
@@ -2577,6 +2583,19 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "help":
 		a.note(helpText(a.file))
+		return nil
+
+	case "copy":
+		a.enterCopy()
+		return nil
+
+	case "select":
+		// It ANSWERS when there is nothing to hand over, because this one was
+		// typed out on purpose: silence after a deliberate command reads as a
+		// command that broke, and the truth is short and is good news.
+		if !a.releaseMouse() {
+			a.note("your terminal already has the pointer — drag to select.")
+		}
 		return nil
 
 	case "model":

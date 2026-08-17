@@ -129,14 +129,22 @@ func (a *app) View() tea.View {
 	frame, caretX, caretY := a.frame()
 	v := tea.NewView(frame)
 	v.AltScreen = true
-	// THE MOUSE IS OPT-IN. Reporting it — at any motion level — makes the app
-	// the owner of every drag, and the terminal's native text selection is
-	// dead from that moment; in an alt-screen app there is no scrollback to
-	// fall back on. The setting (ui.mouse, default off) is the person's call
-	// between hover/click here and select-to-copy everywhere, and off is the
-	// default because copy is the more fundamental act: every key the mouse
-	// would save already exists, and no key replaces a dead selection.
-	if a.mouse {
+	// THE POINTER IS OURS BY DEFAULT, AND THAT HAS A COST WORTH NAMING. Asking
+	// for it — at any motion level — makes this app the owner of every drag, so
+	// the terminal's own drag-to-select is dead from that moment; in an
+	// alt-screen app there is no scrollback to fall back on either. The setting
+	// (config's ui.mouse) is the person's standing call between hover/click here
+	// and select-to-copy everywhere, and it says on, because hover and click are
+	// this surface's own language.
+	//
+	// WHICH IS WHY released EXISTS. "Hold shift and drag" is the usual answer and
+	// it is not an answer: it is a fact about terminals that most people have
+	// never been told, and the ones who have been told use three of them with
+	// three different modifiers. ctrl+s hands the pointer over for as long as
+	// somebody is using it and takes it back on their next keystroke, which is a
+	// thing they can be told once, in one dim line, at the moment it is true
+	// (copymode.go, render.go's [app.hintWord]).
+	if a.mouse && !a.released {
 		v.MouseMode = tea.MouseModeAllMotion
 	}
 	// FOCUS REPORTING IS ON, and it buys exactly one thing: a turn that ends on

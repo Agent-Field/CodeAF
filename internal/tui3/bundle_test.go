@@ -543,6 +543,80 @@ func yank(t *testing.T, a *app) string {
 	return string(decoded)
 }
 
+// ctrl+s hands the pointer to the terminal so that an ordinary drag selects
+// text, says so on the one line that names live keys, and gives nothing away
+// permanently: the person's next keystroke takes it back and does its own job
+// on the way.
+func TestTheSelectKeyHandsThePointerOverAndTheNextKeyTakesItBack(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.mouse = true
+	// Wide enough for the legend to carry its hint slot at all: under hudTight
+	// the cells are worth more to the path (render.go's [app.legendRight]).
+	a.width = 80
+	a.touch()
+	if a.View().MouseMode != tea.MouseModeAllMotion {
+		t.Fatal("the surface did not start out holding the pointer")
+	}
+
+	drive(t, a, key(selectKey))
+	if !a.released {
+		t.Fatal("ctrl+s did not hand the pointer over")
+	}
+	if a.View().MouseMode != tea.MouseModeNone {
+		t.Fatal("the frame still asks for the pointer")
+	}
+	if !strings.Contains(plain(frame(a)), "drag to select") {
+		t.Fatalf("nothing on the frame says the pointer is theirs:\n%s", plain(frame(a)))
+	}
+
+	// Pressing it again is the plain toggle it looks like, rather than a second
+	// handover of something already handed over.
+	drive(t, a, key(selectKey))
+	if a.released {
+		t.Fatal("ctrl+s twice did not put it back")
+	}
+
+	// And any other key ends it AND still does what it always does — nothing is
+	// swallowed by the exit, because there is no exit.
+	drive(t, a, key(selectKey))
+	drive(t, a, key("x"))
+	if a.released {
+		t.Fatal("a keystroke did not take the pointer back")
+	}
+	if a.input.String() != "x" {
+		t.Fatalf("the keystroke that ended it was eaten: draft is %q", a.input.String())
+	}
+
+	// With the pointer already the terminal's there is nothing to hand over, and
+	// the key says nothing rather than claiming it did something.
+	a.mouse = false
+	drive(t, a, key(selectKey))
+	if a.released {
+		t.Fatal("ctrl+s handed over a pointer the surface never had")
+	}
+}
+
+// /select is the same act, typed — and typed deliberately, so the case with
+// nothing to do answers instead of going quiet.
+func TestTheSelectCommandAnswersWhenThereIsNothingToHandOver(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.mouse = true
+	_ = a.slash("/select")
+	if !a.released {
+		t.Fatal("/select did not hand the pointer over")
+	}
+
+	a = newTestApp(&fakeAgent{model: "m"})
+	a.mouse = false
+	_ = a.slash("/select")
+	if a.released {
+		t.Fatal("/select handed over a pointer the surface never had")
+	}
+	if !strings.Contains(plain(frame(a)), "already has the pointer") {
+		t.Fatalf("/select said nothing:\n%s", plain(frame(a)))
+	}
+}
+
 // rowWith is the frozen row holding a word.
 func rowWith(t *testing.T, a *app, word string) int {
 	t.Helper()
