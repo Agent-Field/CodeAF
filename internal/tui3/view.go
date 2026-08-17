@@ -223,7 +223,10 @@ func (a *app) frame() (string, int, int) {
 	// width: what is running is a fact about the SESSION, not about the
 	// transcript, and it is pinned because a door that scrolls away is a door
 	// only the person at the bottom of the page has (taskstrip.go).
-	strip := a.stripRow(width)
+	// It is ROWS and not a row: a session running one thing is the single line
+	// this surface has always drawn, and a session running an adaptive tree is
+	// that line with the family under it, one node per row (taskstrip.go).
+	strip := a.stripRows(width)
 	// THE RAIL COSTS COLUMNS, AND IT COSTS THEM HERE. The conversation is laid
 	// out at [app.bodyWidth] — everything below this line, the wheel and the
 	// hit-testing included, resolves through the same number — and the chrome is
@@ -235,9 +238,7 @@ func (a *app) frame() (string, int, int) {
 	if head != "" {
 		rows = append(rows, head)
 	}
-	if strip != "" {
-		rows = append(rows, strip)
-	}
+	rows = append(rows, strip...)
 	// THE ROSTER TAKES THE BODY WHOLE on a frame with no columns to lend it: the
 	// same rows, the same folds, the same footer, laid out at the full width
 	// instead of squeezed into thirty columns that are not there (task.go's
