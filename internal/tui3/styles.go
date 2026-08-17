@@ -838,3 +838,13 @@ const pulseStep = 9
 var ellipsisFrames = [3]string{"·", "··", "···"}
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+// glyphHarness marks a sub-harness — a saved SHAPE of work rather than a piece
+// of it (harnesspanel.go). It is the roster's own identity diamond deliberately:
+// what a harness and a task node have in common is that both are things this
+// session is carrying, and the difference between them is said by the word
+// beside the mark rather than by a second alphabet of symbols nobody was taught.
+const (
+	glyphHarness      = "◆"
+	glyphHarnessASCII = "#"
+)

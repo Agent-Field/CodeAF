@@ -123,3 +123,77 @@ what gets cut — and the row dies with the turn that raised it. A yes is follow
 by `EventHarnessRun` as a dim `harness · research` note and then the harness's
 report as ordinary text; a no writes nothing anywhere, because a declined offer
 is a thing that did not happen.
+
+## The card — `internal/subharness/card.go`
+
+A harness arrives as JSON a model wrote, and nobody approves JSON. `Card(Harness)`
+is the one rendering of a shape, for every surface that shows one: the numbered
+steps **in the order they run** (the same topological walk the runner takes), the
+fields each kind actually uses on the right, the branch's arms and the split's
+lanes labelled underneath, and the bounds in the foot — tools, verify rung,
+dynamism rung and cap. `RunCard(Trace)` is its twin, deliberately the same
+columns, because the question a person opens a trace with is "where did this
+differ from the card". A cyclic program still draws: the card is what somebody
+reads to find out a shape is wrong.
+
+## Conditions — `internal/subharness/predicate.go`
+
+The tiny language a `branch`'s `when` and a `loop.until`'s `until` may be written
+in: `always`, `never`, `ok`, `failed`, `empty`, `nonempty`, and `contains`,
+`equals`, `matches` with the rest of the line taken verbatim. It asks about ONE
+thing — what the step before produced, and whether it succeeded (`State`).
+
+It is **not compulsory**. A condition may also be a sentence ("the suite is
+green"), which no small language will ever hold. `Runner.cond` is the one place
+the two meet: a condition `ValidCondition` accepts is decided here,
+deterministically, and everything else is handed to `Env.Cond` to judge. A
+condition that does not parse and is not judged is false **and** an error, never
+a quiet true.
+
+## The runner — `internal/subharness/exec.go`
+
+`Run` (run.go) owns the SHAPE of a run; `Env` owns what a node DOES — a worker's
+turn, a tool call, a question put to a person, a check that passes or fails, and
+the judgement on a condition in sentences. `Runner` is the join: it turns an
+`Env` into the `Exec` the walk wants, so the session implements `Env` over the
+belt and the consent lane it already has, a test implements it over a script, and
+both get identical control flow, identical bounds and an identical trace.
+
+Three things end a run, in three different words on `Trace.Status`: an ERROR
+fails it, a PERSON at a `human.gate` **declines** or **intervenes** it (neither
+comes back as an error), the CONTEXT cancels it. A `verify` that returns false is
+none of those — it is what `failed` is for and what a `loop.until` loops on — but
+a program that FINISHES on an unaddressed false fails.
+
+A `subharness.call` runs the child through its own `Runner` at `Depth+1`, bounded
+by `MaxCallDepth`; the child's trace goes to the child's own history (`Saver`) and
+the parent's trail keeps the pointer, the version and the status. A child that was
+declined stops the parent.
+
+## Triggers and hosting — `internal/subharness/trigger.go`
+
+A `trigger` is the only kind that faces outward. `source: hosted` is offered to a
+`Source` — one method, `AddTrigger(Hosted)` — which mounts it as `/harness <name>`.
+The command line is derived and never configurable, so two harnesses cannot claim
+one line. **What the command enters at is the trigger's successor**, read off the
+edges rather than out of a field that could disagree with them, and it must be an
+`agent.loop`: what a person types is a sentence, and a sentence needs a reader.
+
+`args` is the allowed-argument whitelist, comma-separated; an empty whitelist
+grants nothing, and `Hosted.Accepts` is the one refusal sentence every source
+uses. `Store.HostAll` is the boot path — every registered harness's head — and it
+SKIPS a page it cannot use rather than letting one bad file take every other
+harness's command off the surface.
+
+## The surface — `internal/tui3/harnesspanel.go`
+
+`/harness` is the list of what is registered: the mark, the name and the version
+on the left, what it is for and what its history says on the right. It is the
+overlay grammar `/connect` already uses. Enter prints the CARD into the
+conversation — prose belongs in the transcript, not in a second overlay — with the
+last run under it. A run in flight leads the task strip as a chip, and the chip's
+door is this panel.
+
+It is the sibling of the harness OFFER (`internal/tui3/harness.go`), not its
+replacement: the offer is a question about THIS TURN, the panel is a list of what
+is SAVED.
