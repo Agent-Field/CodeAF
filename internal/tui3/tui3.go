@@ -59,10 +59,14 @@ type Agent interface {
 	// in flight steers that turn rather than starting a second one.
 	Submit(ctx context.Context, text string) (<-chan session.Event, error)
 	// SubmitImage is Submit with pictures: one user message carrying the text
-	// and the images, and then a normal turn. It refuses — with an error and no
-	// stream — when the model in use cannot see (session.Config.SupportsImages,
-	// wired in cmd/aforge) or when the images are too large, which is why the
-	// surface keeps the attachment tray until this has answered (attach.go).
+	// and the images, and then a normal turn. A model that cannot see
+	// (session.Config.SupportsImages, wired in cmd/aforge) does not end the
+	// message — the pictures and the words go to the looking model instead, and
+	// its answer streams back as the turn's reply, prefixed "[vision: <model>]".
+	// It refuses — with an error and no stream — only when nothing can look at
+	// them, when the images are too large, and when a turn is already running on
+	// the blind model; which is why the surface keeps the attachment tray until
+	// this has answered (attach.go).
 	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
 	// Interrupt cancels the in-flight turn, keeping its partial reply.
 	Interrupt()

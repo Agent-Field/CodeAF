@@ -182,8 +182,17 @@ func (p journalPart) contentPart() ai.ContentPart {
 
 // placeholder is what the model reads where a picture used to be. It names the
 // path, because the person can often put the file back.
+//
+// A part with NO path says only "image", and that case is the transcript guard's
+// rather than the journal's: a session with no file on disk journaled no
+// reference, so when its transcript is scrubbed for a blind model
+// ([Agent.scrubBlindImagePartsLocked]) there is no path to name. The sentence is
+// the same one either way rather than a second wording for the same fact.
 func (p journalPart) placeholder() ai.ContentPart {
-	return ai.ContentPart{Type: "text", Text: "[image " + p.Path + " — file changed or gone]"}
+	if path := strings.TrimSpace(p.Path); path != "" {
+		return ai.ContentPart{Type: "text", Text: "[image " + path + " — file changed or gone]"}
+	}
+	return ai.ContentPart{Type: "text", Text: "[image — file changed or gone]"}
 }
 
 // sessionFile is the open journal. Its own mutex keeps a line whole: the agent
@@ -271,6 +280,50 @@ func (s *sessionFile) imageRefs(message ai.Message) []string {
 		}
 	}
 	return refs
+}
+
+// imagePath is where ONE part's picture came from, "" when the journal never
+// recorded it — a memory-only session, or a part this file did not write.
+//
+// It is separate from [sessionFile.imageRefs] rather than its inner half because
+// the two ask different questions: that one walks a whole message under one lock
+// and skips what it does not know, and this one asks about a single part and has
+// to be able to say "not known" for it. The transcript guard is the caller, and
+// it must replace EVERY image part whether or not the journal can name it.
+//
+// The NIL RECEIVER answers "", for the reason [sessionFile.imageRefs] answers
+// nil: a session with no file wrote no path down.
+func (s *sessionFile) imagePath(part ai.ContentPart) string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.images[partKey(part)]
+}
+
+// rememberImagePath indexes one part under a path this file already knows, which
+// is what keeps a picture's NAME on a message whose bytes have been replaced by a
+// placeholder ([Agent.scrubBlindImagePartsLocked]). A replay does the same thing
+// by accident and for the same reason — [rememberParts] indexes whatever part
+// was rebuilt, placeholder or picture — so a scrubbed message and a replayed one
+// draw alike.
+//
+// An empty path records nothing: an index entry pointing nowhere would make
+// [sessionFile.imageRefs] claim a picture it cannot name.
+func (s *sessionFile) rememberImagePath(part ai.ContentPart, path string) {
+	if s == nil {
+		return
+	}
+	if path = strings.TrimSpace(path); path == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.images == nil {
+		s.images = make(map[string]string)
+	}
+	s.images[partKey(part)] = path
 }
 
 // isNote reports whether one message is a line the SESSION wrote — the answer

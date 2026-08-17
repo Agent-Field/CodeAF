@@ -191,6 +191,12 @@ When every rung fails, each is named, e.g.
 Extraction is remembered for the conversation, so paging through a long document
 costs nothing extra.
 
+A picture — a photographed page, a receipt, a screenshot of a table — has one
+rung only, which is a model's own eyes. When the model you are talking to cannot
+see, that rung is sent to the **looking model** instead of to your blind one, so
+`read_document` reads a photograph on any model. Everything else (PDFs, docx,
+xlsx, pptx) goes to your own model and the parsers, as before.
+
 ## Can you look at a picture I send you?
 
 **It depends on the model you are using.** Some models read images directly;
@@ -249,6 +255,41 @@ Each saves a file and answers with its path — never the media itself — and e
 costs real money, a video most of all. The page "making pictures, audio and
 video" has the arguments, the exact wording of the results, where the files land,
 and what happens when one fails.
+**One model does all the looking.** The looking slot in the settings sheet is
+the single answer to "what can see here": the fallback above, `read_document`'s
+image rung, and the `view_image` tool below all use that one model. Change it
+once and all three change. Leave it alone and aforge picks the best model that
+publishes vision, so looking works on a machine that has never opened settings.
+
+## Can you open an image file yourself, or do I have to attach it?
+
+Both work. `view_image` opens a picture on disk on its own — a screenshot
+somebody left in the folder, a chart or page rendered to a file, a photograph, or
+an image aforge generated a moment ago and wants to check.
+
+It takes `path` (required, relative to the conversation's directory or absolute)
+and an optional `question` — "what does the error dialog say?", "is the legend
+cut off?". With no question it asks for a full description: subject,
+composition, any text verbatim, and anything malformed.
+
+It reads **png, jpeg, webp and gif**, up to **10MB**. The answer names who
+looked: `seen by <model>: <what it saw>`. The picture itself is **not** added to
+the conversation, so everything you need about one image is worth asking in a
+single call.
+
+Refusals, in its own words:
+
+- Not one of the four types:
+  `shot.tiff is not an image this surface can send — png, jpeg, webp and gif are`
+- Missing, a directory, or unreadable: `could not read <path>`
+- Too big: `<path> is over the 10MB image limit`
+- The looking model failed: `<model> could not look at <path>: <reason>`
+- It said nothing: `<model> returned no answer for <path>`
+
+**When no looking model can be reached, the tool is not there at all** — it is
+left off the toolbelt rather than offered and made to refuse. Ask for a picture
+to be looked at then and the answer is that aforge has no way to look, not a
+failed attempt.
 
 ## Can you search the web?
 

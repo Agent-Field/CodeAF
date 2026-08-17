@@ -484,3 +484,75 @@ func TestAMissingFileIsNotARungFailure(t *testing.T) {
 		t.Fatalf("a missing file reached the rungs %d times", calls)
 	}
 }
+
+// ── which model reads a picture ─────────────────────────────────────────────
+//
+// The native rung IS a model's eyes ([documentRungs] gives a photographed page
+// exactly one rung), so on a blind chat model it has to be the LOOKING model's
+// eyes or it is nobody's. This is the third place that question is asked, and
+// all three ask [Agent.visionSeer] (docs/MULTIMODAL.md, Decision 8).
+
+func TestAPictureIsReadByTheLookingModelWhenTheSessionCannotSee(t *testing.T) {
+	parser := &scriptedParser{answers: map[provider.DocumentParseEngine]string{
+		provider.DocumentParseNative: "INVOICE 3319 — total 412.00",
+	}}
+	agent, workspace := newDocumentAgent(t, parser, nil, func(config *Config) {
+		config.SupportsImages = func(model string) bool { return model == "vendor/slot-eyes" }
+		config.MediaModel = func(modality string) string {
+			if modality == "vision" {
+				return "vendor/slot-eyes"
+			}
+			return ""
+		}
+	})
+	name := dropFile(t, workspace, "receipt.png", []byte("\x89PNG\r\n\x1a\n"))
+
+	text, isError := documentTool(t, agent, map[string]any{"path": name})
+	if isError {
+		t.Fatalf("read_document failed on a picture: %q", text)
+	}
+	if got := parser.request(t, 0).Model; got != "vendor/slot-eyes" {
+		t.Fatalf("the picture went to %q, want the looking model", got)
+	}
+}
+
+// A session that can already see keeps its own model: routing on a capability
+// nobody needed would send a picture to a second model for no reason, and the
+// answer would be paid for twice as often as it has to be.
+func TestAPictureStaysOnTheSessionModelWhenItCanSee(t *testing.T) {
+	parser := &scriptedParser{answers: map[provider.DocumentParseEngine]string{
+		provider.DocumentParseNative: "INVOICE 3319 — total 412.00",
+	}}
+	agent, workspace := newDocumentAgent(t, parser, nil, func(config *Config) {
+		config.SupportsImages = func(string) bool { return true }
+		config.MediaModel = func(string) string { return "vendor/slot-eyes" }
+	})
+	name := dropFile(t, workspace, "receipt.png", []byte("\x89PNG\r\n\x1a\n"))
+
+	if text, isError := documentTool(t, agent, map[string]any{"path": name}); isError {
+		t.Fatalf("read_document failed on a picture: %q", text)
+	}
+	if got := parser.request(t, 0).Model; got != "test/model" {
+		t.Fatalf("the picture went to %q, want the session's own model", got)
+	}
+}
+
+// And a PDF is a file the parsers read without eyes, so nothing about the
+// looking slot reaches it.
+func TestADocumentIsNeverRoutedToTheLookingModel(t *testing.T) {
+	parser := &scriptedParser{answers: map[provider.DocumentParseEngine]string{
+		provider.DocumentParseNative: "PAGE ONE — the quarterly figures, in full sentences",
+	}}
+	agent, workspace := newDocumentAgent(t, parser, nil, func(config *Config) {
+		config.SupportsImages = func(string) bool { return false }
+		config.MediaModel = func(string) string { return "vendor/slot-eyes" }
+	})
+	name := dropFile(t, workspace, "scan.pdf", scannedPDF())
+
+	if text, isError := documentTool(t, agent, map[string]any{"path": name}); isError {
+		t.Fatalf("read_document failed on a scan: %q", text)
+	}
+	if got := parser.request(t, 0).Model; got != "test/model" {
+		t.Fatalf("the scan went to %q, want the session's own model", got)
+	}
+}

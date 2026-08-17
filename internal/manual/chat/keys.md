@@ -207,6 +207,12 @@ Those five are exactly what aforge will send. The ceiling is **10 MB per picture
 checked against the file's size first and again against the bytes actually read. The
 same path attached twice is one chip.
 
+**You do not always have to attach.** A file already on the machine can be looked
+at without the tray: ask aforge to look at it by path and it uses its `view_image`
+tool, which opens the picture with the **looking model** — the same one model that
+answers every picture question here, whether you attached the file or not.
+Attaching is for a picture you are handing over as part of what you are saying.
+
 **The tray.** Attached pictures sit in a one-row tray directly above the message box,
 one dim chip each, drawn as `▣ name.png` — `*` on an ASCII terminal. The message box
 stays the sentence. `backspace` over an empty box drops the last chip, and clicking a
