@@ -48,6 +48,31 @@ Only one proposal is a live question at a time. If a second one arrives while th
 unanswered, the older card settles as `expired · the turn ended`, because a question that
 can no longer be answered must stop looking like one.
 
+## Why aforge offered to run something as a task after answering me
+
+There is a second, smaller card, and it is not the proposal above. After a turn that
+answered a substantial message in **words alone** — no tool call — a cheap model reads what
+you asked and the first two lines of the reply and decides whether that should have been
+work. When it says yes, one row appears above the message box:
+
+```
+? run harness "task"? · one self-contained sweep · [enter] run · [esc] no
+```
+
+The name in quotes is the shape it is offering: `task` for one self-contained job,
+`adaptive run` for a many-part goal. It says `run harness` because it is the harness
+offer's row, reused; no saved harness is involved. `enter` or `y` admits the work straight
+away — from a self-contained goal that model wrote, with no second countdown, because the
+card **is** the consent. `esc` or `n` drops it and nothing happened.
+
+It never starts anything by itself, it is asked at most once every three turns (so two
+cards can never arrive in a row), and it is silent on short messages, on turns that called
+tools, and wherever there is no screen to answer it. A task admitted this way behaves like
+every other task on this page from that moment on: a row on the roster, a room, a report.
+
+Nodes cut by an adaptive run also appear as rows under the run's own row — see *Adaptive
+runs*, which explains what those rows can and cannot do.
+
 ## Every key the proposal card takes
 
 | key | when | what it does |

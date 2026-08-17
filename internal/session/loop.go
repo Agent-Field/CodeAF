@@ -260,6 +260,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	effort := a.reasoningLocked(model)
 	a.mu.Unlock()
 
+	// usedTools says this turn touched the belt at all. It is the one fact the
+	// route judge cannot see from outside the loop (route_judge.go): a turn that
+	// called tools was already work of some size, and asking whether work should
+	// have been work is a question with no useful answer.
+	usedTools := false
+
 	// overflowCompacted bounds the compact-and-retry answer to a context
 	// overflow at one pass per turn. A second overflow after a successful
 	// compaction is not a context problem this loop can fix by shrinking
@@ -333,6 +339,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// actually weigh.
 			episode.preDecision(ctx)
 			a.maybeCompact(ctx, hub)
+			// AND THE LAST QUESTION OF THE TURN, asked only of a turn that answered
+			// in words alone: should that have been WORK? A second small model reads
+			// what was asked and the shape of what came back, and a yes raises one
+			// card offering to start it (route_judge.go). It launches nothing on its
+			// own, it is silent when it cannot work, and it is asked before the turn
+			// is sealed so that the card lives exactly as long as the turn does —
+			// which is how every other question this loop can raise behaves.
+			a.routeJudge(ctx, hub, user, usedTools, response.Text())
 			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(turn, started)})
 			// The name comes after the turn is done and before the hub closes:
 			// the person is not kept waiting on a title, and the event still has
@@ -343,6 +357,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 
 		a.record(ai.Message{Role: "assistant", Content: assistantContent(response), ToolCalls: calls})
 		partial.reset()
+		usedTools = true
 
 		results := a.runToolsWarm(ctx, episode, calls, hub, warm)
 

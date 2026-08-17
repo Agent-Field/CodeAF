@@ -512,3 +512,75 @@ func TestASpawnCardClickOpensTheNodesRoom(t *testing.T) {
 		t.Fatal("ctrl+o on the selected card did not open its brief")
 	}
 }
+
+// ── THE FAMILY ARRIVES ON THE WIRE ──────────────────────────────────────────
+
+// THE PARENT SEAM IS FILLED BY THE ENGINE, not by this surface. An adaptive run
+// registers itself with the tasker — one row for the run, one per node, each
+// carrying the run's id as its parent (internal/session's orchestrate.go) — and
+// the tree above is drawn from exactly that. The goldens plant kinship by hand
+// because they are about the DRAWING; this is the test that the drawing is
+// reachable from a real session at all.
+func TestARunsNodesReachTheTreeThroughTheirNotices(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
+	a.taskUpdate(update(2, "Read the law", session.TaskRunning, session.TaskNotice{Parent: 1}))
+	a.taskUpdate(update(3, "Write the tree", session.TaskQueued, session.TaskNotice{Parent: 1}))
+
+	if got := a.tasks[2].ParentID(); got != stripKey(a.tasks[1]) {
+		t.Fatalf("the node's parent is %q, want the run's own key %q", got, stripKey(a.tasks[1]))
+	}
+	if got := a.tasks[1].ParentID(); got != "" {
+		t.Fatalf("the run's own row hangs off %q, want a root", got)
+	}
+	rows := stripLines(a)
+	want := []string{
+		" ⠋ Ship the port ",
+		"├── ⠋ Read the law ",
+		"└── ◌ Write the tree ",
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("the run drew %d rows, want %d:\n%s", len(rows), len(want), strings.Join(rows, "\n"))
+	}
+	for i := range want {
+		if rows[i] != want[i] {
+			t.Fatalf("row %d is\n\t%q\nwant\n\t%q\nwhole tree:\n%s", i, rows[i], want[i], strings.Join(rows, "\n"))
+		}
+	}
+	// AND KINSHIP IS KEPT. A later update that says nothing about the parent has
+	// not changed who spawned the work.
+	a.taskUpdate(update(2, "Read the law", session.TaskDone, session.TaskNotice{}))
+	if got := a.tasks[2].ParentID(); got != stripKey(a.tasks[1]) {
+		t.Fatalf("a quiet update orphaned the node: parent %q", got)
+	}
+}
+
+// A CHILD LANDS ON THE ROSTER AND NOT IN THE CONVERSATION. One card per decision
+// a person made: the run is that decision, and the dozen nodes its planner cut
+// are its internals — a card each would bury the conversation under the workings
+// of one answer.
+func TestAFamilysNodesLandOnTheRosterAndNotInTheConversation(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
+	a.taskUpdate(update(2, "Read the law", session.TaskRunning, session.TaskNotice{Parent: 1}))
+
+	a.taskUpdate(update(2, "Read the law", session.TaskDone, session.TaskNotice{
+		Parent: 1, Report: "the law is in section four",
+	}))
+	for _, e := range a.entries {
+		if e.kind == entryDone {
+			t.Fatalf("a run's node wrote a card into the conversation: %+v", e.done)
+		}
+	}
+	// The run itself still does: it is the work somebody asked for.
+	a.taskUpdate(update(1, "Ship the port", session.TaskDone, session.TaskNotice{Report: "ported"}))
+	cards := 0
+	for _, e := range a.entries {
+		if e.kind == entryDone {
+			cards++
+		}
+	}
+	if cards != 1 {
+		t.Fatalf("the run's own landing wrote %d cards, want one", cards)
+	}
+}

@@ -3268,6 +3268,14 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if len(notice.DependsOn) > 0 {
 		node.dependsOn = notice.DependsOn
 	}
+	// WHO SPAWNED IT, which is the fact the roster tree is drawn from
+	// (taskstrip.go's parent seam). It is kept and never unset for the reason the
+	// branch and the model are: a run's node was spawned by that run for its whole
+	// life, and an update quiet about it has not changed it. The key is the
+	// parent's own id spelled the way [stripKey] spells a node's.
+	if notice.Parent != 0 {
+		node.parent = itoa(int(notice.Parent))
+	}
 	if notice.Branch != "" {
 		node.branch = notice.Branch
 	}
@@ -3335,7 +3343,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		// (session's task_contract.go).
 		node.elapsed = notice.Elapsed
 		a.landPilot(notice.ID)
-		a.landedCard(node)
+		// A CHILD LANDS ON THE ROSTER AND NOT IN THE CONVERSATION. The card is how
+		// work a person HANDED OVER reports back, one card per decision they made;
+		// an adaptive run's nodes are cut by its planner, there are a dozen of them,
+		// and a card each would bury the conversation under the internals of one
+		// answer. The run itself is a root and still writes its card, which is the
+		// decision that was actually made.
+		if node.parent == "" {
+			a.landedCard(node)
+		}
 	}
 	a.touch()
 	return pilot

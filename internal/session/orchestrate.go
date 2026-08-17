@@ -44,6 +44,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
@@ -136,6 +137,10 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	plannerModel := orchestrateRoleModel(source, roles.RolePlanner, named, session)
 	planner := &orchestratePlanner{agent: a, model: plannerModel}
 	worker := &orchestrateExec{agent: a, model: orchestrateRoleModel(source, roles.RoleWorker, named, session), id: id}
+	// THE RUN TAKES A ROW ON THE ROSTER BEFORE ITS FIRST NODE DOES, so that the
+	// tree has a root to hang the family off from the moment the run exists
+	// (the family section at the foot of this file).
+	family := a.newOrchestrateFamily(goal, plannerModel)
 	run := orchestrate.New(goal, planner, worker, orchestrate.Options{
 		Cap:   capDollars,
 		Lanes: orchestrateLanes,
@@ -158,6 +163,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 				Text: fuel.Gauge(), Hint: orchestrate.Dollars(fuel.Cap),
 			})
 		},
+		OnNodes: family.upsert,
 	})
 	planner.orch = run
 
@@ -177,6 +183,11 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	go func() {
 		defer a.settleOrchestrate(id)
 		snap, err := run.Run(runCtx)
+		// The family settles before the write-up is announced: the roster is where
+		// somebody looks when the note lands, and a root still saying "running"
+		// beside a report of what the run came to is the roster disagreeing with
+		// the conversation.
+		family.settle(snap, err)
 		a.landOrchestrate(seq, goal, snap, err)
 	}()
 	return id, nil
@@ -1020,4 +1031,206 @@ func (c Config) WorktreePath(jobID string) string {
 		return '-'
 	}, strings.ToLower(jobID))
 	return filepath.Join(c.WorktreeRoot, clean)
+}
+
+// ── the run as a task FAMILY ────────────────────────────────────────────────
+//
+// A run is work a person handed over, exactly as a task is, and until this
+// section existed it was the one kind of work with no row anywhere: the roster
+// draws tasks, the run drew a note in the conversation and a page somebody had
+// to know to open. So a run registers itself with the tasker — one row for the
+// RUN, one per node under it — and the roster's tree has a family to draw
+// (internal/tui3's taskstrip.go, whose parent seam this fills).
+//
+// IT REGISTERS AND IT DOES NOT ADMIT. Nothing here calls [TaskGraph.admit]:
+// admission is what STARTS work, and a node's work is already running in this
+// package's own executor. What the family reuses is the tasker's id sequence
+// (so no run's row can ever collide with a task's) and [Agent.emitTaskUpdate],
+// which is the one lane every surface reads a task's life from. What it
+// deliberately does not reach is the rest of a node's afterlife — the project
+// index and the note the model reads when work lands — because a run already
+// says what it came to, once, in its own write-up, and a model told twelve
+// times that a node finished would report each of them.
+//
+// WHAT THAT COSTS, said plainly: the ids these rows carry name nothing in the
+// task graph, so a surface that offers to open a node's room or stop it by id
+// will find no node there. The run's own page is where a node is read and
+// steered ([Agent.OrchestrateSnapshot], [Agent.SteerOrchestrate]), and the row
+// is a row.
+
+// orchestrateFamily is one run's rows: the root, the id minted for each node,
+// and the last state each was published in — which is the whole of what makes
+// this ONE UPSERT PER STATE CHANGE rather than one per publish. A run publishes
+// on every launch, landing, note and steer, and a roster redrawing twelve rows
+// for a note is a roster nobody can read.
+type orchestrateFamily struct {
+	agent *Agent
+	root  uint64
+	title string
+	// model is the planner's, drawn on the run's own row: it is the judgement the
+	// tank is paying for, and with tiers configured it is not the model the
+	// person is talking to ([Snapshot.Planner] says the same thing to the room).
+	model string
+
+	mu   sync.Mutex
+	ids  map[string]uint64
+	said map[string]TaskState
+}
+
+// newOrchestrateFamily takes the run's own row. It is minted before the first
+// planner call so the roster shows the run from the moment somebody asked for
+// it — a run that appeared only once a node landed would be a minute of a
+// person watching nothing happen.
+func (a *Agent) newOrchestrateFamily(goal, planner string) *orchestrateFamily {
+	family := &orchestrateFamily{
+		agent: a,
+		root:  a.graph().reserve(),
+		title: clip(firstLine(goal), hintLimit),
+		model: strings.TrimSpace(planner),
+		ids:   make(map[string]uint64, 8),
+		said:  make(map[string]TaskState, 8),
+	}
+	a.emitTaskUpdate(TaskNotice{
+		ID: family.root, Title: family.title, State: TaskRunning, Model: family.model,
+	})
+	return family
+}
+
+// upsert is [orchestrate.Options.OnNodes]: the crystallized graph, every time
+// any of it moves.
+func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
+	if f == nil {
+		return
+	}
+	live := make(map[string]bool, len(nodes))
+	for _, node := range nodes {
+		live[node.ID] = true
+		state, stopped := orchestrateTaskState(node.State)
+		id, changed := f.claim(node.ID, state)
+		if !changed {
+			continue
+		}
+		f.agent.emitTaskUpdate(TaskNotice{
+			ID:      id,
+			Parent:  f.root,
+			Title:   clip(firstLine(node.Goal), hintLimit),
+			State:   state,
+			Stopped: stopped,
+			Report:  orchestrateNodeReport(node),
+			CostUSD: node.Cost,
+		})
+	}
+	f.retire(live)
+}
+
+// claim is the id for one node and whether this state is news. The mint and the
+// de-dup are one critical section because a publish can arrive from any of the
+// run's goroutines, and two of them racing here would be two rows for one node.
+func (f *orchestrateFamily) claim(node string, state TaskState) (uint64, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	id, known := f.ids[node]
+	if !known {
+		id = f.agent.graph().reserve()
+		f.ids[node] = id
+	}
+	if said, seen := f.said[node]; seen && said == state {
+		return id, false
+	}
+	f.said[node] = state
+	return id, true
+}
+
+// retire settles the rows of nodes that have LEFT THE GRAPH. An amendment that
+// cancels pending work deletes it outright (internal/orchestrate's amend.go) —
+// the planner changing its mind about work nobody has started — and a row left
+// saying "queued" for it would be the roster holding a queue that no longer
+// exists.
+//
+// It settles as STOPPED rather than failed, on TaskNotice.Stopped's own terms:
+// nothing went wrong with the work and nobody made a finding about it, it was
+// called off. A node that already settled is left alone.
+func (f *orchestrateFamily) retire(live map[string]bool) {
+	f.mu.Lock()
+	var gone []uint64
+	for node, id := range f.ids {
+		if live[node] {
+			continue
+		}
+		switch f.said[node] {
+		case TaskQueued, TaskRunning:
+			f.said[node] = TaskFailed
+			gone = append(gone, id)
+		}
+	}
+	f.mu.Unlock()
+	for _, id := range gone {
+		f.agent.emitTaskUpdate(TaskNotice{ID: id, Parent: f.root, State: TaskFailed, Stopped: true})
+	}
+}
+
+// settle closes the family: every node in its final state, then the run's own
+// row. The three endings are the three the write-up already distinguishes
+// ([Agent.landOrchestrate]) — somebody stopped it, it broke, or it landed — and
+// the report is the run's answer where there is one, because that is what the
+// row's card is asked to show.
+func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
+	if f == nil {
+		return
+	}
+	f.upsert(snap.Nodes)
+	notice := TaskNotice{
+		ID: f.root, Title: f.title, State: TaskDone, Model: f.model,
+		Report:  strings.TrimSpace(snap.Answer),
+		CostUSD: snap.Fuel.Spent,
+	}
+	switch {
+	case snap.Stopped:
+		// A stopped run settles like a stopped node: failed, because nothing was
+		// finished, and stopped beside it, because "failed" would send somebody
+		// looking for a fault that is their own decision.
+		notice.State, notice.Stopped = TaskFailed, true
+	case err != nil:
+		notice.State = TaskFailed
+		if notice.Report == "" {
+			notice.Report = err.Error()
+		}
+	}
+	f.agent.emitTaskUpdate(notice)
+}
+
+// orchestrateTaskState maps one node's state onto the tasker's, and says
+// whether the row is a STOPPED one beside it.
+//
+// The two vocabularies are not the same size, and the join is at [Cancelled]:
+// the tasker has no stopped STATE — a stopped node settles as failed and says
+// so with a flag (task_contract.go's TaskNotice.Stopped) — so a cancelled node
+// arrives as exactly that pair. Ready collapses into queued because the
+// difference between "waiting on a prerequisite" and "waiting on a lane" is a
+// distinction the run's own page draws and the roster does not.
+func orchestrateTaskState(state orchestrate.State) (TaskState, bool) {
+	switch state {
+	case orchestrate.Running:
+		return TaskRunning, false
+	case orchestrate.Done:
+		return TaskDone, false
+	case orchestrate.Failed:
+		return TaskFailed, false
+	case orchestrate.Cancelled:
+		return TaskFailed, true
+	}
+	return TaskQueued, false
+}
+
+// orchestrateNodeReport is what a settled node's row says: its digest when it
+// worked, its error when it did not, and nothing at all while it is still
+// going — an unknown is nothing, never a placeholder.
+func orchestrateNodeReport(node orchestrate.NodeStatus) string {
+	switch node.State {
+	case orchestrate.Done:
+		return node.Digest
+	case orchestrate.Failed:
+		return firstLine(node.Err)
+	}
+	return ""
 }
