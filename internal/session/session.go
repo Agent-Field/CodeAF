@@ -123,7 +123,7 @@ const (
 	// EventToolAnnounced says one tool call has finished ARRIVING — the model
 	// has sent the whole instruction — while the response it rides on is still
 	// streaming. It carries the same Tool, Hint and Args EventToolBegin will,
-	// and no Output: nothing has run.
+	// the CallID its forming events carried, and no Output: nothing has run.
 	//
 	// It is the difference between "asked for" and "started", and it exists
 	// because those two moments can be seconds apart. A mutating call is
@@ -253,11 +253,16 @@ type Event struct {
 	// to [Agent.ResolveConsent]. It is zero on every other kind.
 	ID uint64
 
-	// CallID is the PROVIDER's id for the tool call an EventToolForming is
-	// about — the same string the announced call and the tool result carry — and
-	// is empty on every other kind. It is empty on a forming event too until the
-	// wire has sent one, which is the first fragment in practice and nothing the
-	// consumer may assume.
+	// CallID is the PROVIDER's id for the tool call an EventToolForming or an
+	// EventToolAnnounced is about — the same string the tool result carries —
+	// and is empty on every other kind. It is empty on a forming event too until
+	// the wire has sent one, which is the first fragment in practice and nothing
+	// the consumer may assume.
+	//
+	// It is on BOTH ends of that pair on purpose: forming and announced are two
+	// states of one call, and the id is what lets a surface say so. Without it
+	// the announcement can only be paired by tool name, and a batch of parallel
+	// calls of the same tool has no name to tell its rows apart by.
 	//
 	// It is not [Event.ID] because that field is the consent lane's own token, a
 	// uint64 this session mints; these are two different names for two different

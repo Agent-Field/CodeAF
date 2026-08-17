@@ -1273,6 +1273,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.room.done, a.room.lane = true, nil
+		// A call the node was still spelling out when its lane ended never
+		// became one: the row says so and stops pulsing (room.go).
+		a.roomDropForming()
 		a.roomTouched()
 		return a, a.wake()
 
@@ -1838,7 +1841,7 @@ func (a *app) formTool(ev session.Event) {
 	if ev.Tool == taskTool {
 		a.formTask(ev)
 	}
-	at := a.claimForming(ev)
+	at := claimForming(a.entries, ev)
 	if at < 0 {
 		a.closeLive()
 		a.entries = append(a.entries, entry{
@@ -1875,9 +1878,14 @@ func (a *app) formTool(ev session.Event) {
 // id is kept: a batch of three parallel writes forms three rows that interleave
 // fragment by fragment, and matching on the tool name alone would fold all
 // three into whichever was drawn first.
-func (a *app) claimForming(ev session.Event) int {
-	for i := len(a.entries) - 1; i >= 0; i-- {
-		e := &a.entries[i]
+//
+// IT TAKES THE LIST rather than reading [app.entries], because the task room
+// runs the same lane over a list of its own (room.go) and a second copy of this
+// walk is a second answer to "which call is this" waiting to drift from the
+// first.
+func claimForming(es []entry, ev session.Event) int {
+	for i := len(es) - 1; i >= 0; i-- {
+		e := &es[i]
 		if !e.forming() {
 			continue
 		}
@@ -1898,13 +1906,20 @@ func (a *app) claimForming(ev session.Event) int {
 }
 
 // claimFormed finds the forming row an ANNOUNCEMENT (or a begin) completes, or
-// -1. It is [app.claimForming]'s mirror and walks the other way: the oldest
+// -1. It is [claimForming]'s mirror and walks the other way: the oldest
 // unfinished row of that tool is the one the batch announces first, which is
 // the order the ordering law promises them in.
-func (a *app) claimFormed(ev session.Event) int {
+//
+// THE ID IS THE ANSWER WHEREVER THERE IS ONE. session's announcement carries the
+// call's id (its loop.go), so a batch of three parallel writes pairs exactly;
+// the walk by name below is what is left for a provider that streams no ids at
+// all, and it is a convention rather than a fact — which is why it is second.
+//
+// It takes the list for [claimForming]'s reason: the room runs it too.
+func claimFormed(es []entry, ev session.Event) int {
 	loose := -1
-	for i := range a.entries {
-		e := &a.entries[i]
+	for i := range es {
+		e := &es[i]
 		if !e.forming() {
 			continue
 		}
@@ -1941,7 +1956,7 @@ func (a *app) claimFormed(ev session.Event) int {
 // see a begin with no announcement and must not draw a second line for it, so
 // the pairing rule lives in [app.claimAnnounced] and both events use it.
 func (a *app) announceTool(ev session.Event) {
-	if at := a.claimFormed(ev); at >= 0 {
+	if at := claimFormed(a.entries, ev); at >= 0 {
 		e := &a.entries[at]
 		e.status = toolQueued
 		e.tool = firstNonEmpty(ev.Tool, e.tool)
@@ -1972,7 +1987,7 @@ func (a *app) beginTool(ev session.Event) {
 		// The ordering law says that cannot happen, and a row left pulsing at a
 		// call that is already running would be the surface believing the law
 		// over the event in its hand.
-		at = a.claimFormed(ev)
+		at = claimFormed(a.entries, ev)
 	}
 	if at >= 0 {
 		e := &a.entries[at]

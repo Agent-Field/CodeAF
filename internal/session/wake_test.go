@@ -12,6 +12,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -336,13 +337,14 @@ func TestInterruptedTurnDoesNotWakeOnTheNoteItDrained(t *testing.T) {
 	}
 }
 
-// The AMBIENT lane — a background job's exit, a watch's news, a resume's
-// account of an interrupt — queues and starts nothing.
+// The AMBIENT lane — a resume's account of an interrupt, the harness's account
+// of itself — queues and starts nothing. It is what is LEFT on that lane now
+// that the errands a person asked for wake (see the two tests below).
 func TestAmbientNoteDoesNotWakeAnIdleSession(t *testing.T) {
 	completer := &scriptedCompleter{}
 	agent, _ := newTestAgent(t, completer, nil)
 
-	agent.enqueueAmbientNote("job 2 exited with status 1")
+	agent.enqueueAmbientNote("task 2 was interrupted when the last session ended")
 	time.Sleep(100 * time.Millisecond)
 
 	if count := conversationRequests(completer); count != 0 {
@@ -350,6 +352,134 @@ func TestAmbientNoteDoesNotWakeAnIdleSession(t *testing.T) {
 	}
 	if queued := steeringQueue(agent); len(queued) != 1 {
 		t.Fatalf("the ambient note is not waiting on the queue: %v", queued)
+	}
+}
+
+// ── the errands ─────────────────────────────────────────────────────────────
+//
+// A settle was the first wake and for a while the only one, which left the same
+// silence standing beside it: a person says "run the build in the background",
+// it fails four minutes later, and the exit note waited on the queue for them to
+// type. The three tests below are that hole closed — a job's exit, a watch's
+// delta, and the coalescing that keeps a flapping dev server from being a turn
+// per flap.
+
+// A BACKGROUND JOB THAT EXITS WAKES AN IDLE SESSION, with the exit in front of
+// the model. The job is real and so is its death: the note is written by the
+// registry's reaper (jobs.go), on the lane agent.go hands it.
+func TestExitingJobWakesAnIdleSession(t *testing.T) {
+	asked := make(chan []ai.Message, 4)
+	completer := &scriptedCompleter{steps: []step{
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			asked <- messages
+			return textResponse("the build failed on the linker step"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	id := startJob(t, agent, "echo undefined symbol; exit 3")
+
+	select {
+	case messages := <-asked:
+		if !strings.Contains(userTextIn(messages), fmt.Sprintf("job %d exited 3", id)) {
+			t.Fatalf("the woken turn did not carry the exit:\n%s", userTextIn(messages))
+		}
+		if !strings.Contains(userTextIn(messages), "undefined symbol") {
+			t.Fatalf("the woken turn did not carry the last line:\n%s", userTextIn(messages))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("a job that died never started a turn: the person gets silence")
+	}
+
+	waitFor(t, "the answer to reach the transcript", func() bool {
+		return strings.Contains(transcriptText(agent), "the build failed on the linker step")
+	})
+}
+
+// A WATCH WITH NEWS WAKES ONE TOO, which is the half a watch cannot do without:
+// the tool exists because the model STOPPED polling, so on an idle session there
+// is nothing left that will ever come and look.
+func TestWatchDeltaWakesAnIdleSession(t *testing.T) {
+	asked := make(chan []ai.Message, 4)
+	completer := &scriptedCompleter{steps: []step{
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			asked <- messages
+			return textResponse("the disk filled up"), nil
+		},
+	}}
+	agent, workspace := newTestAgent(t, completer, nil)
+	feed(t, workspace, "app.log", "INFO starting")
+
+	text, isError := startWatchTool(t, agent, map[string]any{
+		"command": "cat app.log", "every_seconds": watchMinEvery, "name": "app",
+	})
+	if isError {
+		t.Fatalf("watch failed to start: %s", text)
+	}
+	// The first tick is the baseline and is silent by design, so the delta is
+	// written only after it has been taken (tools_watch.go).
+	waitTicks(t, agent, watchID(t, agent), 1)
+	feed(t, workspace, "app.log", "INFO starting", "ERROR disk full")
+
+	select {
+	case messages := <-asked:
+		if !strings.Contains(userTextIn(messages), "ERROR disk full") {
+			t.Fatalf("the woken turn did not carry the delta:\n%s", userTextIn(messages))
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("a watch's news never started a turn: nothing else was going to look")
+	}
+}
+
+// AND IT IS ONE TURN PER IDLE WINDOW, not one per note. A dev server that flaps
+// is the storm this shares its coalescing with the settles for: the first note
+// starts the turn under the lock, and every note behind it lands IN that turn at
+// its next step boundary.
+func TestTwoJobNotesInOneWindowAreOneWake(t *testing.T) {
+	var (
+		inFlight = make(chan struct{})
+		release  = make(chan struct{})
+		woken    = make(chan []ai.Message, 4)
+	)
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			close(inFlight)
+			<-release
+			return toolResponse("call-1", "ls", `{"path":"."}`), nil
+		},
+		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
+			woken <- messages
+			return textResponse("both of those died"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+
+	// The registry's own reporting seam (jobs.go's reap calls exactly this), so
+	// the two notes land in a known order rather than at the mercy of two
+	// processes exiting.
+	agent.jobs.notify("job 1 exited 1: connection refused")
+	<-inFlight
+	agent.jobs.notify("job 2 exited 1: connection refused")
+	close(release)
+
+	select {
+	case messages := <-woken:
+		text := userTextIn(messages)
+		if !strings.Contains(text, "job 1 exited 1") || !strings.Contains(text, "job 2 exited 1") {
+			t.Fatalf("one wake did not carry both exits:\n%s", text)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("two job exits never produced an answer")
+	}
+
+	// ONE wake for the pair. A turn per exit is the storm this prevents.
+	waitFor(t, "the woken turn to end", func() bool {
+		agent.mu.Lock()
+		defer agent.mu.Unlock()
+		return !agent.running
+	})
+	if count := conversationRequests(completer); count != 2 {
+		t.Fatalf("two job exits produced %d requests, want ONE wake's 2 steps", count)
 	}
 }
 
