@@ -57,8 +57,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	noCompact := flags.Bool("no-compact", false, "never compact automatically")
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
 	reasoning := flags.String("reasoning", "", "how hard this session's model is asked to think: off, low, medium or high")
+	host := flags.String("host", "", "run the session on another machine over ssh: host, user@host, or host:path/to/project")
 	if err := flags.Parse(reorder(args, map[string]bool{
-		"model": true, "once": true, "session": true, "reasoning": true,
+		"model": true, "once": true, "session": true, "reasoning": true, "host": true,
 	})); err != nil {
 		return err
 	}
@@ -67,9 +68,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the sessions there ARE, so naming one on the command line is the other
 		// door, and nobody is watching a headless one.
 		if pickSession {
-			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--no-compact] [--yolo]`)
+			return fmt.Errorf(`usage: aforge resume [--model slug] [--reasoning level] [--host host[:path]] [--no-compact] [--yolo]`)
 		}
-		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--once "text"] [--no-compact] [--yolo]`)
+		return fmt.Errorf(`usage: aforge chat [--model slug] [--reasoning level] [--session path] [--host host[:path]] [--once "text"] [--no-compact] [--yolo]`)
 	}
 	// A picker with nobody watching is not a picker. --once is the headless
 	// door, and the two are a contradiction rather than a combination, so it is
@@ -84,6 +85,23 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	level, ok := session.ParseReasoning(*reasoning)
 	if !ok {
 		return fmt.Errorf("--reasoning %q: use off, low, medium or high", *reasoning)
+	}
+
+	// THE OTHER DOOR, and it forks BEFORE any of this machine's own resolution
+	// below: over --host the models, the keys, the session files, the gate and
+	// the harnesses are all the far machine's, and reading this one's would be
+	// resolving a launch nobody asked for (chatv3_host.go).
+	if dest := strings.TrimSpace(*host); dest != "" {
+		return openChatV3Host(hostLaunch{
+			target:    dest,
+			session:   strings.TrimSpace(*file),
+			model:     strings.TrimSpace(*model),
+			level:     level,
+			once:      strings.TrimSpace(*once),
+			pick:      pickSession,
+			noCompact: *noCompact,
+			yolo:      *yolo,
+		})
 	}
 
 	// Everything both v3 doors assemble the same way: the settings, the model

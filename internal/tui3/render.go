@@ -1670,9 +1670,19 @@ func (a *app) legendLeft(width, hard int) string {
 	return path + " · " + branch
 }
 
-// legendPath is the workspace, abbreviated at one of three strengths.
+// legendPath is the workspace, abbreviated at one of three strengths — and, on
+// a session that is running on another machine, the machine's name in front of
+// it: `devbox:~/code/app`.
+//
+// THE HOST IS NOT CUT WITH THE PATH. The three strengths exist so the legend can
+// keep saying where you are on a narrow frame, and on a remote session WHICH
+// MACHINE is the half of that answer a person cannot reconstruct from anything
+// else on the screen — the path they might recognize, the host they would have
+// to remember. So the abbreviation eats the path and leaves the name. The home
+// abbreviation is still this machine's home, which is why a remote path rarely
+// collapses to `~`: it is the far machine's home and nobody here knows it.
 func (a *app) legendPath(hard int) string {
-	return shortPath(a.workspace, a.home, hard)
+	return a.hostedPath(shortPath(a.workspace, a.home, hard))
 }
 
 // legendRight is the hint slot: the state's own keys when it has any, the

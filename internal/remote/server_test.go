@@ -2,7 +2,7 @@ package remote
 
 // The engine is tested over a pair of in-memory pipes with a scripted agent
 // behind it: no ssh, no provider, no session file. That is the whole point of
-// [Agent] being an interface — the protocol is a thing you can drive, and every
+// [WrappedAgent] being an interface — the protocol is a thing you can drive, and every
 // question this file asks ("does an event survive JSON", "do two streams tear
 // each other's lines") is a question about the protocol and not about a model.
 
@@ -839,8 +839,8 @@ func TestServeSwapsSessions(t *testing.T) {
 	third := &fakeAgent{model: "openai/gpt-5", title: "an earlier one"}
 
 	engine := engineOn(first)
-	engine.Fresh = func() (Agent, string, error) { return second, "/sessions/two.jsonl", nil }
-	engine.Open = func(file string) (Agent, bool, error) { return third, true, nil }
+	engine.Fresh = func() (WrappedAgent, string, error) { return second, "/sessions/two.jsonl", nil }
+	engine.Open = func(file string) (WrappedAgent, bool, error) { return third, true, nil }
 	engine.Recent = func() []session.Summary {
 		return []session.Summary{{File: "/sessions/one.jsonl", Title: "the old one", Asked: 3}}
 	}

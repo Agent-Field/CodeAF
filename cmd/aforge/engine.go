@@ -27,10 +27,10 @@ import (
 )
 
 // A session agent is what the wire serves, and this is where the two are held
-// against each other. A method added to [remote.Agent] that the session does not
-// have fails HERE, at the door that wires them together, rather than as a
-// mysterious refusal on somebody's laptop.
-var _ remote.Agent = (*session.Agent)(nil)
+// against each other. A method added to [remote.WrappedAgent] that the session
+// does not have fails HERE, at the door that wires them together, rather than
+// as a mysterious refusal on somebody's laptop.
+var _ remote.WrappedAgent = (*session.Agent)(nil)
 
 // The name says "remote" because this tree has another engine: the swepro
 // sentinel turns the same binary into a different program entirely (swepro.go),
@@ -115,7 +115,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// They are built on THIS config, because the model, the gate, the roles
 		// and the rail are properties of the launch and a conversation opened
 		// from the picker is the same launch.
-		Fresh: func() (remote.Agent, string, error) {
+		Fresh: func() (remote.WrappedAgent, string, error) {
 			next, err := newV3SessionFile(workspace)
 			if err != nil {
 				return nil, "", err
@@ -128,7 +128,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			}
 			return replacement, next, nil
 		},
-		Open: func(name string) (remote.Agent, bool, error) {
+		Open: func(name string) (remote.WrappedAgent, bool, error) {
 			path, err := engineSessionPath(name)
 			if err != nil {
 				return nil, false, err

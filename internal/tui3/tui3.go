@@ -168,6 +168,21 @@ type Options struct {
 	// place shown in the status line. Empty takes the process's cwd.
 	Workspace string
 
+	// Host is the machine the agent is on, when it is not this one: the ssh
+	// destination `aforge chat --host devbox` was given. Empty is a local
+	// session and every line below it is dead code.
+	//
+	// IT IS THE PLACE, NOT A BADGE (host.go states the whole law). The surface
+	// shows a remote session by writing the workspace as `devbox:~/code/app`
+	// wherever it already writes the workspace, and by adding nothing anywhere
+	// else — no icon, no "connected" word, no extra segment. A person's answer
+	// to "where am I" gains a machine name and costs no rows.
+	//
+	// It is also what the surface consults before it does anything that only
+	// makes sense on the agent's own disk: the git probe, the file walk, the
+	// accounts panel. See host.go.
+	Host string
+
 	// SessionFile is the transcript being written, shown by /help and /new.
 	// Empty means the conversation is memory-only.
 	SessionFile string

@@ -251,7 +251,7 @@ func (a *app) resumeSession(chosen Session) tea.Cmd {
 	a.offset, a.stick = 0, true
 	a.replay()
 	a.measureContext()
-	a.note("resumed " + chosen.File)
+	a.note("resumed " + a.hostedPath(chosen.File))
 	// The conversation that just opened subscribes to its OWN lanes: the rail's
 	// updates and the turns the session starts by itself. A resumed session is
 	// exactly where the second one earns its keep — the node that lands is
