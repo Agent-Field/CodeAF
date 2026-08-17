@@ -125,6 +125,12 @@ func run() error {
 		return runRebuild(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
+	// Three spellings for one question, because three different callers ask it
+	// and none of them should have to know which one this build prefers: the
+	// agentfield Python doctor runs `aforge version`, the Go doctor runs
+	// `aforge --version`, and a person types `-v`.
+	case "version", "--version", "-v":
+		return runVersion()
 	case "-h", "--help", "help":
 		return usage()
 	default:
@@ -162,6 +168,8 @@ const usageText = `aforge — build and revise task graphs
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
+  aforge version                print the build this binary was cut from
+                                (--version and -v say the same thing)
 
 Workers:
   chat, do and run each take --subharness <name>, which forces every leaf onto
