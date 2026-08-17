@@ -1285,7 +1285,12 @@ func (a *Agent) newAuditAgent(dir string, node *TaskNode) (*Agent, error) {
 		ApprovalPolicy: &approval.Policy{Default: approval.ActionAllow},
 		AskConsent:     false,
 		InTask:         true,
-		RolesSource:    parent.RolesSource,
+		// The auditor is the node too, as far as anybody watching is concerned:
+		// it runs on the node's clock, in the node's worktree, and a card whose
+		// audit is parked on a provider's pacing is a card whose task is not
+		// moving (task_run.go's [TaskNode.pacing]).
+		pacing:      node.pacing,
+		RolesSource: parent.RolesSource,
 	}, client)
 	if err != nil {
 		return nil, err

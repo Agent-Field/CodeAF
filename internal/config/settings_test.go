@@ -672,3 +672,81 @@ func TestMaskCredentialHidesTheKeyAndItsLength(t *testing.T) {
 		t.Fatalf("a short value was rendered: %q", got)
 	}
 }
+
+// The three throttle rows read their defaults, take a person's answer, and hand
+// it back to the accessor the session door calls — which is the whole of what a
+// settings row has to do.
+func TestTheTaskThrottleRowsRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	rows := registry(t, dir)
+
+	// NO LIMIT IS THE DEFAULT, and the row says it in words rather than in a
+	// zero: "0 tasks at once" reads like a switch that is off.
+	parallel, ok := rows.Row(KeyTaskParallel)
+	if !ok {
+		t.Fatal("the parallel row is not registered")
+	}
+	if got := parallel.Value(); got != "no limit" {
+		t.Fatalf("unset task.parallel reads %q, want its empty label", got)
+	}
+	if TaskParallelAt(dir) != DefaultTaskParallel {
+		t.Fatalf("unset task.parallel resolves %d, want %d", TaskParallelAt(dir), DefaultTaskParallel)
+	}
+	if err := parallel.Apply("3"); err != nil {
+		t.Fatal(err)
+	}
+	if got := TaskParallelAt(dir); got != 3 {
+		t.Fatalf("task.parallel resolves %d after a person wrote 3", got)
+	}
+	if got := mustRow(t, registry(t, dir), KeyTaskParallel).Value(); got != "3" {
+		t.Fatalf("task.parallel reads %q after a person wrote 3", got)
+	}
+	// And clearing it is asking for the empty label back, not a parse error.
+	if err := parallel.Apply(""); err != nil {
+		t.Fatalf("clearing task.parallel: %v", err)
+	}
+	if TaskParallelAt(dir) != 0 {
+		t.Fatalf("a cleared task.parallel resolves %d, want no limit", TaskParallelAt(dir))
+	}
+
+	// The load row is a figure and not a count: 1.5 must survive being written.
+	load := mustRow(t, rows, KeyTaskMaxLoad)
+	if got := load.Value(); got != "1.5" {
+		t.Fatalf("unset task.max_load reads %q, want 1.5", got)
+	}
+	if err := load.Apply("2.25"); err != nil {
+		t.Fatal(err)
+	}
+	if got := TaskMaxLoadAt(dir); got != 2.25 {
+		t.Fatalf("task.max_load resolves %v after a person wrote 2.25", got)
+	}
+	if err := load.Apply("busy"); err == nil {
+		t.Fatal("task.max_load accepted a word")
+	}
+	if err := load.Apply("0"); err != nil || TaskMaxLoadAt(dir) != 0 {
+		t.Fatalf("turning the load check off: %v, %v", err, TaskMaxLoadAt(dir))
+	}
+
+	memory := mustRow(t, rows, KeyTaskMinFreeMB)
+	if got := memory.Value(); got != "1536" {
+		t.Fatalf("unset task.min_free_mb reads %q", got)
+	}
+	if err := memory.Apply("512"); err != nil {
+		t.Fatal(err)
+	}
+	if got := TaskMinFreeMBAt(dir); got != 512 {
+		t.Fatalf("task.min_free_mb resolves %d after a person wrote 512", got)
+	}
+	if err := memory.Apply("-1"); err == nil {
+		t.Fatal("task.min_free_mb accepted a negative floor")
+	}
+}
+
+func mustRow(t *testing.T, rows *Settings, key string) Setting {
+	t.Helper()
+	row, ok := rows.Row(key)
+	if !ok {
+		t.Fatalf("%s is not registered", key)
+	}
+	return row
+}

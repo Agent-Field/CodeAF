@@ -528,9 +528,12 @@ func TestFrontierRunsDependentsAfterPrerequisitesWithTheirReports(t *testing.T) 
 }
 
 // The cap is a QUEUE, not a refusal: a third runnable node waits on the
-// frontier and starts when a slot frees.
+// frontier and starts when a slot frees. Two is what the frontier used to hold
+// unconditionally, and it is what a person who writes 2 into task.parallel
+// still gets.
 func TestFrontierQueuesPastTheConcurrencyCap(t *testing.T) {
 	graph := newTaskGraph()
+	graph.limit = 2
 	started := make(chan uint64, 4)
 	release := make(chan struct{})
 	graph.run = func(node *TaskNode) {
@@ -550,7 +553,7 @@ func TestFrontierQueuesPastTheConcurrencyCap(t *testing.T) {
 	waitStarted(t, started)
 	waitStarted(t, started)
 	if state := graph.node(ids[2]).stateNow(); state != TaskQueued {
-		t.Fatalf("the third node is %q with %d running, want queued", state, taskMaxRunning)
+		t.Fatalf("the third node is %q with %d running, want queued", state, graph.limit)
 	}
 
 	close(release)

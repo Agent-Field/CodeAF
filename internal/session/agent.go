@@ -146,7 +146,19 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// /compact's extra instruction is spliced in (see [Agent.CompactWithFocus])
 	// and where the prompt-cache key is stamped. Wrapping earlier would have to
 	// read the key through the agent, which is a pointer cycle to save a line.
-	agent.client = sessionCompleter{inner: client, cacheKey: agent.cacheKey}
+	agent.client = sessionCompleter{
+		inner:    client,
+		cacheKey: agent.cacheKey,
+		// AND WHERE THE NODE'S PATIENCE IS STAMPED, for the reason the cache key
+		// is stamped here: this is the one place every request this agent makes
+		// passes through, and the adapter underneath is shared with the
+		// conversation that spawned the node (see [Agent.newTaskAgent], which
+		// hands the parent's own client down). A flag on the client would make
+		// the conversation patient too; a flag on the wrapper is a flag on this
+		// agent's calls and nobody else's.
+		patient: config.InTask,
+		pacing:  config.pacing,
+	}
 	// AND THE WORK IS RECOVERED LAST, once this agent can actually run one. A
 	// resumed journal may have a task graph beside it — nodes that landed, a node
 	// that was still running when the process died, nodes waiting on them — and
@@ -803,9 +815,24 @@ func withCompactFocus(ctx context.Context, focus string) context.Context {
 // An empty key is left off entirely rather than sent blank (provider.WithCacheKey
 // ignores it), which keeps a session with no identity unkeyed instead of sharing
 // one lineage with every other unkeyed session.
+// ── AND THE PATIENCE ──
+//
+// It marks a TASK CHILD'S calls as ones that wait a provider's pacing out
+// instead of giving up on it (internal/provider's patience.go). A conversation
+// keeps the bounded patience it always had, and the difference between the two
+// is entirely whether anybody is watching: a person in front of a cursor is owed
+// an error long before they are owed a ten-minute silence, while a node with a
+// worktree and nobody watching loses an hour of real work to a 429 that was
+// always going to clear. The wait is still the caller's context's to end, so an
+// interrupt or a stop cuts through a parked node's call at once.
 type sessionCompleter struct {
 	inner    Completer
 	cacheKey string
+	// patient marks this agent's calls as a task child's: see above.
+	patient bool
+	// pacing is who to tell while one of those calls is parked, and nil for
+	// every conversation and every agent nobody is drawing a card for.
+	pacing func(bool)
 }
 
 func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -813,6 +840,12 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		messages = withFocusAppended(messages, focus)
 	}
 	ctx = provider.WithCacheKey(ctx, f.cacheKey)
+	if f.patient {
+		ctx = provider.WithPatientRateLimits(ctx)
+	}
+	if f.pacing != nil {
+		ctx = provider.WithPacingNotice(ctx, f.pacing)
+	}
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
 }
 
