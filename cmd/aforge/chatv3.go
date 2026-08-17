@@ -251,8 +251,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		}
 	}
 
+	// The byte meter, off unless a developer named a log file (wire.go). A nil
+	// writer here is the same launch this door has always made.
+	wire, closeWire := v3Wire()
+	defer closeWire()
+
 	return tui3.Run(context.Background(), tui3.Options{
-		Agent: agent,
+		Agent:  agent,
+		Output: wire,
 		// The sub-harness registry under the state root, which is where every
 		// window on this machine writes and reads them: /harness is a list of
 		// what is SAVED, so it has to be the same directory the builder saved

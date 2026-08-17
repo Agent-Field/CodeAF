@@ -1,0 +1,69 @@
+# probe2026.py, one run per environment. aforge chat on a 130x40 pty, 2026-08-17
+# tmux 3.4, bubbletea v2.0.8, binary built with go1.26.5
+# Every run clears SSH_CONNECTION/SSH_CLIENT/TERM_PROGRAM/SSH_TTY first and
+# then sets only what the case names; the 'environment' line is the truth of it.
+
+== bare terminal that answers DECRQM 2026
+environment:    TERM=xterm-256color, TERM_PROGRAM=-, SSH_TTY=-, WT_SESSION=-
+terminal role:  answers DECRQM 2026
+bytes read:     6,179 (400 while typing)
+program asked:  1  (CSI ? 2026 $ p)
+probe replied:  yes
+frames wrapped: BSU 12, ESU 12
+VERDICT: synchronized output is engaged — frames are atomic.
+
+== bare terminal that answers nothing
+environment:    TERM=xterm-256color, TERM_PROGRAM=-, SSH_TTY=-, WT_SESSION=-
+terminal role:  silent (no DECRQM)
+bytes read:     6,019 (352 while typing)
+program asked:  1  (CSI ? 2026 $ p)
+probe replied:  no
+frames wrapped: BSU 0, ESU 0
+VERDICT: asked, unwrapped. The terminal's answer is what is missing.
+
+== tmux pane shape, terminal answers
+environment:    TERM=tmux-256color, TERM_PROGRAM=tmux, SSH_TTY=-, WT_SESSION=-
+terminal role:  answers DECRQM 2026
+bytes read:     6,139 (400 while typing)
+program asked:  1  (CSI ? 2026 $ p)
+probe replied:  yes
+frames wrapped: BSU 12, ESU 12
+VERDICT: synchronized output is engaged — frames are atomic.
+
+== tmux pane shape, terminal silent — the real tmux 3.4 case
+environment:    TERM=tmux-256color, TERM_PROGRAM=tmux, SSH_TTY=-, WT_SESSION=-
+terminal role:  silent (no DECRQM)
+bytes read:     5,979 (352 while typing)
+program asked:  1  (CSI ? 2026 $ p)
+probe replied:  no
+frames wrapped: BSU 0, ESU 0
+VERDICT: asked, unwrapped. The terminal's answer is what is missing.
+
+== bare SSH: SSH_TTY set, terminal would answer
+environment:    TERM=xterm-256color, TERM_PROGRAM=-, SSH_TTY=/dev/pts/99, WT_SESSION=-
+terminal role:  answers DECRQM 2026
+bytes read:     6,001 (352 while typing)
+program asked:  0  (CSI ? 2026 $ p)
+probe replied:  no
+frames wrapped: BSU 0, ESU 0
+VERDICT: the program never asked. Nothing the terminal does can help.
+first bytes:    b'\x1b]11;?\x1b\\\x1b[6n\x1b[>4m\x1b[=0;1u\x1b[?1049h\x1b[?5W\x1b[?2004h\x1b[?1004h\x1b[?1003h\x1b[?1006h\x1b[>4;2m\x1b[=1;1u\x1b[?u\x1b[5 q\x1b[H\x1b[2J\x1b[27d\x1b[38;5;243m\xc2\xb7 es'
+
+== SSH + tmux: SSH_TTY set, TERM_PROGRAM=tmux, terminal would answer
+environment:    TERM=tmux-256color, TERM_PROGRAM=tmux, SSH_TTY=/dev/pts/99, WT_SESSION=-
+terminal role:  answers DECRQM 2026
+bytes read:     5,961 (352 while typing)
+program asked:  0  (CSI ? 2026 $ p)
+probe replied:  no
+frames wrapped: BSU 0, ESU 0
+VERDICT: the program never asked. Nothing the terminal does can help.
+first bytes:    b'\x1b[>4m\x1b[=0;1u\x1b[?1049h\x1b[?5W\x1b[?2004h\x1b[?1004h\x1b[?1003h\x1b[?1006h\x1b[>4;2m\x1b[=1;1u\x1b[?u\x1b[5 q\x1b[H\x1b[2J\x1b[27d\x1b[38;5;243m\xc2\xb7 esc or ctrl+c '
+
+== SSH with a known-good TERM forwarded, terminal answers
+environment:    TERM=xterm-ghostty, TERM_PROGRAM=-, SSH_TTY=/dev/pts/99, WT_SESSION=-
+terminal role:  answers DECRQM 2026
+bytes read:     4,591 (232 while typing)
+program asked:  1  (CSI ? 2026 $ p)
+probe replied:  yes
+frames wrapped: BSU 12, ESU 12
+VERDICT: synchronized output is engaged — frames are atomic.
