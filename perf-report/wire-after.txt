@@ -1,0 +1,65 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Agent-Field/aforge-v2/internal/provider
+BenchmarkSanitizeMessages/clean/turns=45-20         	  895477	      1316 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  920804	      1347 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  914040	      1335 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  923809	      1336 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  906948	      1336 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  872496	      1375 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  901460	      1285 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  872344	      1357 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  871528	      1339 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=45-20         	  909794	      1318 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  498226	      2375 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  502135	      2424 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  522520	      2378 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  481909	      2390 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  520810	      2355 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  500278	      2432 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  479184	      2354 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  492410	      2401 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  519091	      2405 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/clean/turns=81-20         	  519201	      2421 ns/op	       0 B/op	       0 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  146317	      7690 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  150062	      7690 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  151549	      7766 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  168583	      7576 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  160023	      7695 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  150435	      7578 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  160969	      7640 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  153042	      7545 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  150621	      7751 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=45-20      	  157903	      7487 ns/op	   13008 B/op	      46 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   98788	     12069 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	  104864	     12573 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   97447	     12833 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   94456	     12849 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   89049	     12890 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   91792	     12462 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   99627	     12870 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   96541	     12364 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   99219	     12727 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkSanitizeMessages/scrubbed/turns=81-20      	   93944	     12547 ns/op	   21776 B/op	      82 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     800	   1384941 ns/op	  436243 B/op	     926 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     859	   1321023 ns/op	  437062 B/op	     926 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     770	   1328004 ns/op	  437188 B/op	     927 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     813	   1316385 ns/op	  438187 B/op	     927 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     981	   1348450 ns/op	  435916 B/op	     926 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     798	   1387471 ns/op	  438218 B/op	     927 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     862	   1301672 ns/op	  440184 B/op	     927 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     885	   1343452 ns/op	  438378 B/op	     926 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     861	   1298079 ns/op	  435853 B/op	     926 allocs/op
+BenchmarkEncodeRequest/turns=45-20                  	     962	   1384439 ns/op	  436235 B/op	     926 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     488	   2360932 ns/op	  789203 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     495	   2363174 ns/op	  793709 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     495	   2331093 ns/op	  792555 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     524	   2359839 ns/op	  806858 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     496	   2370477 ns/op	  813813 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     512	   2458553 ns/op	  794325 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     500	   2278027 ns/op	  793884 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     528	   2465145 ns/op	  813136 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     506	   2416442 ns/op	  794247 B/op	    1362 allocs/op
+BenchmarkEncodeRequest/turns=81-20                  	     542	   2326703 ns/op	  808750 B/op	    1362 allocs/op
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/provider	87.467s
