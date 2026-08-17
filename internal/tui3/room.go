@@ -80,9 +80,16 @@ type taskRoomAgent interface {
 	// when the node is unknown, not running, or has no worker up yet — all three
 	// are "there is nobody in there to talk to", and all three are worth saying.
 	SteerTask(id uint64, text string) error
-	// WatchTask subscribes to the node's live events, FROM NOW: nothing is
+	// WatchTask subscribes to the node's live events, FROM NOW: no history is
 	// replayed, and the channel closes at the node's final state. A finished node
 	// answers with an already-closed channel rather than an error.
+	//
+	// It opens with ONE THING THAT ALREADY HAPPENED — the step the node is in the
+	// middle of, which is in neither lane otherwise (internal/session's
+	// [taskCatchup]): the reasoning it is spilling, the reply it has written so
+	// far, and the calls it has asked for and not yet started. They arrive as the
+	// ordinary kinds, in the order they happened, so nothing in here has to know
+	// which side of the join an event came from.
 	WatchTask(id uint64) (<-chan session.Event, error)
 	// TaskJournal is the path to the node's transcript on disk, or "" for a node
 	// whose journal this process never learned the name of.
@@ -219,10 +226,16 @@ const roomTail = 120
 // lane subscribed for the present.
 //
 // The two are separate doors on purpose (internal/session's task_room.go says
-// why): a watcher gets what happens FROM NOW and nothing is re-narrated, so the
-// history has to come off disk or not at all. A node with no journal path opens
-// on its live edge, which is honest — this process never learned which file that
-// node wrote.
+// why): a watcher gets what happens FROM NOW and no history is re-narrated, so
+// the history has to come off disk or not at all. A node with no journal path
+// opens on its live edge, which is honest — this process never learned which
+// file that node wrote.
+//
+// THE ORDER IS THE JOURNAL AND THEN THE LANE, and it is not arbitrary. The file
+// holds every message that has COMPLETED and the lane opens with the step in
+// flight ([taskRoomAgent.WatchTask]), so reading first and subscribing second is
+// what makes the two meet at one instant instead of overlapping: they are read
+// microseconds apart, in the order the node writes them.
 // The command that starts the lane is PARKED rather than returned, in
 // [app.roomPump]. See that field for the call path that forces it.
 func (a *app) openRoom(id uint64, title string) {
@@ -263,8 +276,11 @@ func (a *app) openRoom(id uint64, title string) {
 	lane, err := doors.WatchTask(id)
 	if err != nil {
 		// An unknown id. The room still opens — the journal is worth reading —
-		// and it opens finished, because there is nothing to listen to.
+		// and it opens finished, because there is nothing to listen to. A call the
+		// file left running is resolved on the way in for that same reason:
+		// nothing is coming for it here either.
 		room.done = true
+		a.roomResolveUnfinished()
 		a.roomNote(err.Error())
 		a.roomPump = a.wake()
 		return
@@ -423,6 +439,11 @@ type journalPart struct {
 // of rows that hover, click, and open onto nothing (replay.go's [replayInert]
 // says why that is the one thing a row must never do).
 //
+// A MISSING RESULT IS A CALL THAT HAS NOT COME BACK, and it is drawn as one. It
+// is the only thing on this page derived from an ABSENCE, and the absence is
+// load-bearing: internal/session writes the assistant message before the tool
+// batch runs, so a node caught mid-call journals the asking and nothing else.
+//
 // A path that is empty, missing or unreadable is not an error and draws nothing:
 // the journal is EVIDENCE, not a prerequisite (internal/session says so where it
 // mints the path), and a room that refused to open because a file was not there
@@ -470,15 +491,36 @@ func readRoomJournal(path string, pal palette) ([]entry, int) {
 				if name == "" {
 					continue
 				}
+				// A CALL WITH NO RESULT UNDER IT HAS NOT COME BACK, and the file is
+				// the only thing that can say so. internal/session writes the
+				// assistant message BEFORE the tool batch runs (its loop.go), so a
+				// node caught mid-call journals the asking and nothing else — and a
+				// page that drew every journaled call as finished told a person the
+				// work was further along than it is, then left the row inert when the
+				// real end arrived on the live lane with nothing to land on.
+				//
+				// The clock is NOT invented to go with it: began stays zero, so the
+				// row shows no age (toolview.go). Nobody measured when it started.
+				output, answered := results[call.ID]
+				status := toolRunning
+				if answered {
+					status = toolOK
+				}
 				out = append(out, entry{
-					kind: entryTool, tool: name, turn: turn, status: toolOK,
+					kind: entryTool, tool: name, turn: turn, status: status,
+					// THE PROVIDER'S ID IS KEPT because it is the call's identity in the
+					// file, and it is what any pairing by id has to pair on. Nothing
+					// pairs on it today: the end events this row is waiting for carry no
+					// id (session's loop.go), so [roomClaimRunning] matches on the
+					// payload and then on the name.
+					callID: call.ID,
 					// UNPARSED, exactly as a replayed call carries it: everything the
 					// expansion shows is derived from these two at render time
 					// (toolview.go), so a call on a page and a call in the conversation
 					// go through one renderer and cannot disagree.
 					detail: toolDetail{
 						Args:   journalArgs(call.Function.Arguments),
-						Output: journalOutput(results[call.ID]),
+						Output: journalOutput(output),
 					},
 				})
 			}
@@ -778,23 +820,35 @@ func (a *app) roomFormTool(ev session.Event) {
 	a.roomTouched()
 }
 
-// roomDropForming resolves every call the node was still SPELLING OUT when its
-// lane ended. It is [app.dropForming] over the room's list, and it exists for
-// the same reason: a forming row is the one row with no event coming for it —
-// no announcement, no begin, no end — so a node that died mid-call would leave
-// the page pulsing at a stream that is over.
+// roomResolveUnfinished resolves every call that was still in the air when the
+// node's lane ended. It is [app.dropForming] over the room's list, widened by
+// one state, and it exists for that function's reason: a lane that has closed is
+// the last word there will ever be about the calls on this page — no
+// announcement, no begin, no end is coming — so a row left in a live state is
+// the page animating work that is over.
 //
-// The row is RESOLVED, never removed: the node started asking for something and
-// stopped, which is a fact about what happened, and a row that vanished would
-// take it with it.
-func (a *app) roomDropForming() {
+// THE WIDENING IS THE JOURNAL'S. A call the file names with no result under it
+// is drawn as RUNNING ([readRoomJournal]), which is true of a node still working
+// and false the moment its lane closes; before that state existed, the only row
+// that could be caught out this way was a forming one.
+//
+// Every row is RESOLVED, never removed: the node started asking for something
+// and stopped, which is a fact about what happened, and a row that vanished
+// would take it with it. The status is left alone for the same reason — this
+// surface does not know whether the call ran, and "failed" is a claim about
+// something nobody watched.
+func (a *app) roomResolveUnfinished() {
 	room := a.room
 	if room == nil {
 		return
 	}
 	now := a.now()
 	for i := range room.entries {
-		if e := &room.entries[i]; e.forming() {
+		e := &room.entries[i]
+		if e.kind != entryTool || !e.ended.IsZero() {
+			continue
+		}
+		if e.forming() || e.status.live() {
 			e.ended = now
 		}
 	}
@@ -882,7 +936,36 @@ func roomClaimAnnounced(es []entry, ev session.Event) int {
 	return fallback
 }
 
-// roomCloseTool resolves the oldest still-running line for that tool. It is
+// roomClaimRunning finds the live row this END belongs to, or -1. It is
+// [roomClaimAnnounced]'s rule one state later, and it earned its own function
+// when the journal began drawing calls it left unanswered as running
+// ([readRoomJournal]): oldest-of-that-tool was a guess that was right by
+// convention, and a page can now hold two `bash` rows at once — one off the file
+// and one off the lane — where the guess is wrong half the time.
+//
+// The payload is matched first for that reason, and it is a PREFERENCE rather
+// than a key: session renders a call's arguments for the end event and this
+// surface renders them again off the journal, which agree for an ordinary call
+// and can differ on one long enough to be clipped. So the walk by name is what
+// is left, exactly as it is for an announcement.
+func roomClaimRunning(es []entry, ev session.Event) int {
+	fallback := -1
+	for i := range es {
+		e := &es[i]
+		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
+			continue
+		}
+		if ev.Args != "" && e.detail.Args == ev.Args {
+			return i
+		}
+		if fallback < 0 {
+			fallback = i
+		}
+	}
+	return fallback
+}
+
+// roomCloseTool resolves the live line this end belongs to. It is
 // [app.closeTool] over the room's list, failure-opens-itself included: a call
 // that failed is the one row whose detail is the reason the person came in here.
 func (a *app) roomCloseTool(ev session.Event, status toolState, why string) {
@@ -890,11 +973,8 @@ func (a *app) roomCloseTool(ev session.Event, status toolState, why string) {
 	if room == nil {
 		return
 	}
-	for i := range room.entries {
-		e := &room.entries[i]
-		if e.kind != entryTool || !e.status.live() || e.tool != ev.Tool {
-			continue
-		}
+	if at := roomClaimRunning(room.entries, ev); at >= 0 {
+		e := &room.entries[at]
 		e.status = status
 		e.ended = a.now()
 		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)

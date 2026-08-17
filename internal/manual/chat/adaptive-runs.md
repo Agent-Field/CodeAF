@@ -70,6 +70,11 @@ what is already done`, `stopped; what finished is kept`.
 A run is also bounded in time: **4 hours** covers every node, every planner call, and the
 wait at the gate.
 
+**The question waits for you, and leaving the page does not lose it.** `esc` out and back
+in — or open the run again hours later — and a run still sitting on its cap asks again, with
+the same three answers, because the pause is a fact about the run rather than a notice that
+went past. Once you have answered, it is not asked twice while the run catches up.
+
 ## Watching a run and steering it
 
 A run does take a row on the roster and on the strip, with its nodes drawn under it as a

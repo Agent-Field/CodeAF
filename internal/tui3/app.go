@@ -1559,9 +1559,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.room.done, a.room.lane = true, nil
-		// A call the node was still spelling out when its lane ended never
-		// became one: the row says so and stops pulsing (room.go).
-		a.roomDropForming()
+		// A call that was still being spelled out when the lane ended never
+		// became one, and one the journal left running will never come back: both
+		// rows say so and stop pulsing (room.go).
+		a.roomResolveUnfinished()
 		a.roomTouched()
 		return a, a.wake()
 
