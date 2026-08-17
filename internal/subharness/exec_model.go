@@ -151,11 +151,7 @@ func ModelExec(c *provider.Client, opts ModelExecOpts) Exec {
 			// ancestor chain and the store down to it.
 			return env.call(ctx, node, &state)
 		}
-<<<<<<< HEAD
-		result, err := runner.step(ctx, env.harness(node), &state, withModel(node, opts.Model))
-=======
-		result, err := runner.step(ctx, env.harness, &state, node)
->>>>>>> port/sub-nest
+		result, err := runner.step(ctx, env.harness, &state, withModel(node, opts.Model))
 		if err == nil && node.Kind == KindHumanGate && opts.Ask == nil {
 			result.Out += " · " + autoGateNote
 		}
