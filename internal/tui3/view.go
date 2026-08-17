@@ -98,6 +98,10 @@ const (
 	// by keyboard and hoverable by pointer — the approval question's arrangement
 	// one block down (connect.go).
 	chromeConnectAsk
+	// chromeHarnessAsk is the sub-harness offer's row, which is the same
+	// arrangement one rung further down: one pressable row, answered by keyboard
+	// or by pointer (harness.go).
+	chromeHarnessAsk
 	// chromeOverlay is one row of whichever list is open; index is its position
 	// in that list's own rows.
 	chromeOverlay
@@ -358,6 +362,13 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.connectAskRows(width) {
 		add(line, a.connectMark(i))
 	}
+	// AND THE HARNESS OFFER UNDER THAT, the third and quietest rung of the same
+	// lane (harness.go): a question the session is holding a turn on, one row,
+	// whose no is free. It stacks under the two above it for their own reason —
+	// any of the three can be raised while another is up.
+	for i, line := range a.harnessAskRows(width) {
+		add(line, a.harnessMark(i))
+	}
 	// THE STEER GUARD SITS WHERE THE APPROVAL QUESTION SITS, because it is the
 	// same kind of thing: the surface holding words back until it is told where
 	// to send them (room.go). The two can never be up together — a question the
@@ -450,7 +461,8 @@ func (a *app) chromeHeight() int {
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
 	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
-		a.connectAskHeight() + a.guardHeight() + a.followHeight() + a.welcomeHeight()
+		a.connectAskHeight() + a.harnessAskHeight() + a.guardHeight() + a.followHeight() +
+		a.welcomeHeight()
 	if gap := a.breathingRows(); gap > 0 {
 		n += gap + 1 // the breathing room, and the rule standing in it
 	}

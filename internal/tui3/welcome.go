@@ -228,6 +228,7 @@ func (a *app) resumeSession(chosen Session) tea.Cmd {
 	// Same rule as /new: the conversation being replaced takes its offers and
 	// its open sign-ins with it (connect.go).
 	a.connAsks, a.connPanel = nil, connectPanel{}
+	a.harnessAsks = nil
 	a.abandonConnects()
 	a.turn = 0
 	a.unfolded = map[int]bool{}
