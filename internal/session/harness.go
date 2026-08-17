@@ -84,13 +84,12 @@ type harnessAnswer struct {
 // harness ran and its report is in the transcript, or it failed, or the turn
 // was interrupted while the question was up.
 func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessage, started time.Time) (bool, bool) {
-	// BUILDING ONE IS ASKED FOR IN WORDS TOO, and it is read first: "make a
-	// harness for triaging flaky tests" is a sentence about triaging flaky tests,
-	// and a matcher let at it would offer to RUN the harness that already does
-	// that — answering the smaller half of what was said (harness_build.go).
-	if answered, completed := a.routeHarnessBuild(hub, user, started); answered {
-		return answered, completed
-	}
+	// BUILDING ONE IS NOT READ HERE, and it used to be: a cue ahead of this line
+	// caught "make a harness for triaging flaky tests" so that a matcher would not
+	// offer to RUN the harness that already triages flaky tests. Commissioning one
+	// is now a tool the model reaches for (tools_harness.go), which leaves this
+	// function what it always was — one question about one sentence — and leaves
+	// the harness that already does the work free to be offered for it.
 	match, ok := a.harnessMatch(user)
 	if !ok {
 		return false, false

@@ -10,162 +10,11 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-// BUILDING A SUB-HARNESS FROM A SENTENCE, from the four sides a person meets
-// it: the cue that starts it, the turn it must not hold, the card it ends on,
-// and the two answers to that card.
-
-// ── the intent ──────────────────────────────────────────────────────────────
-
-func TestABuildTurnIsReadAsOneAndOtherTurnsAreNot(t *testing.T) {
-	for _, c := range []struct {
-		turn string
-		goal string // empty means this is not a build turn
-	}{
-		{"make a subharness for triaging flaky tests", "triaging flaky tests"},
-		{"make a sub-harness for triaging flaky tests", "triaging flaky tests"},
-		{"build a harness to summarise our release notes", "summarise our release notes"},
-		{"create an harness that compares three options", "compares three options"},
-		{"design a harness for researching pricing tiers", "researching pricing tiers"},
-		{"Please make a harness for auditing our SQL", "auditing our SQL"},
-		{"can you please build a sub harness to chase test flakes", "chase test flakes"},
-		{"MAKE A HARNESS FOR shouting", "shouting"},
-
-		// The negatives, and each one is a different way of not asking.
-		{"research the pricing tiers", ""},                        // detection's turn, not this one
-		{"run the research harness", ""},                          // reaching for one that exists
-		{"make a note about our harnesses", ""},                   // the noun, doing something else
-		{"make a harness", ""},                                    // no goal: nothing to design
-		{"make a harness for", ""},                                // the joiner with nothing after it
-		{"the reason we make a harness for this is speed", ""},    // talking ABOUT building one
-		{"i wonder whether to build a harness for the tests", ""}, // the same, at the other end
-		{"", ""},
-	} {
-		goal, ok := harnessBuildGoal(c.turn)
-		if want := c.goal != ""; ok != want {
-			t.Fatalf("%q was read as a build turn = %v, want %v (goal %q)", c.turn, ok, want, goal)
-		}
-		if ok && goal != c.goal {
-			t.Fatalf("%q gave the goal %q, want %q", c.turn, goal, c.goal)
-		}
-	}
-}
-
-// THE MODEL CLAUSE IS THE OFFER'S CLAUSE. "make a harness for X with opus"
-// chose a model and asked for a harness about X, and the designer is handed the
-// second thing without the first.
-func TestABuildTurnMayNameTheModelItIsDesignedOn(t *testing.T) {
-	agent, _ := buildAgent(t, &scriptedCompleter{}, t.TempDir())
-	goal, model, ok := agent.harnessBuild(userText(buildTurn + " with sonnet"))
-	if !ok {
-		t.Fatal("the turn was not read as a build turn")
-	}
-	if goal != buildGoal {
-		t.Fatalf("the goal is %q, want %q", goal, buildGoal)
-	}
-	if want := "anthropic/claude-sonnet-5"; model != want {
-		t.Fatalf("the design would ride %q, want %q", model, want)
-	}
-	// A WORD THIS INSTALL CANNOT PLACE IS NOT A REFUSAL: the design runs on the
-	// session's own model, exactly as the offer treats it, and the goal keeps the
-	// words that were, on the evidence, not about a model at all.
-	goal, model, ok = agent.harnessBuild(userText(buildTurn + " with parchment"))
-	if !ok || model != "" || goal != buildGoal+" with parchment" {
-		t.Fatalf("an unplaceable model gave (%q, %q, %v)", goal, model, ok)
-	}
-}
-
-// ── the gates ───────────────────────────────────────────────────────────────
-
-// A BUILD IS AS SILENT AS AN OFFER when nobody can answer the card, when there
-// is nowhere to save what comes back, or when nothing could run it.
-func TestABuildTurnIsRefusedWhereTheOfferIsRefused(t *testing.T) {
-	for _, c := range []struct {
-		name string
-		undo func(*Config)
-	}{
-		{"no store", func(config *Config) { config.HarnessStore = nil }},
-		{"no runner", func(config *Config) { config.RunHarness = nil }},
-		{"nobody watching", func(config *Config) { config.AskConsent = false }},
-	} {
-		agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-			buildConfig(config, t.TempDir())
-			c.undo(config)
-		})
-		if _, _, ok := agent.harnessBuild(userText(buildTurn)); ok {
-			t.Fatalf("%s: the build path ran anyway", c.name)
-		}
-	}
-}
-
-// A NOTE THE SESSION WROTE IS NOT SOMEBODY ASKING FOR A HARNESS. A task's own
-// completion report can say anything; a harness commissioned out of one would be
-// the harness commissioning itself.
-func TestABuildTurnIsOnlyEverWhatAPersonTyped(t *testing.T) {
-	agent, _ := buildAgent(t, &scriptedCompleter{}, t.TempDir())
-	for _, user := range []userMessage{
-		wakeNote(buildTurn),
-		{message: textMessage("user", buildTurn), authored: true},
-		{},
-	} {
-		if _, _, ok := agent.harnessBuild(user); ok {
-			t.Fatalf("a note the session wrote started a design: %+v", user)
-		}
-	}
-}
-
-// ── the turn ────────────────────────────────────────────────────────────────
-
-// THE TURN DOES NOT WAIT FOR THE DESIGNER. This is the whole arrangement: the
-// design is two model calls against a long guide and ends in a question nobody
-// may be at the keyboard for, so the turn ends the moment it starts.
-func TestABuildTurnEndsBeforeTheDesignerAnswers(t *testing.T) {
-	answered := make(chan struct{})
-	completer := &scriptedCompleter{steps: []step{
-		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
-			// The design turn hangs until the test says otherwise. If the turn
-			// loop were waiting on this, the drain below would time out.
-			select {
-			case <-answered:
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-			return textResponse(designReply), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse(reviewReply), nil
-		},
-	}}
-	agent, _ := buildAgent(t, completer, t.TempDir())
-	lane := agent.HarnessDesigns()
-
-	events, err := agent.Submit(context.Background(), buildTurn)
-	if err != nil {
-		t.Fatalf("submit: %v", err)
-	}
-	collected := collect(t, events)
-	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
-		t.Fatalf("the turn never ended while the designer was still thinking: %v", kinds(collected))
-	}
-	// AND NOTHING WAS SAID IN THE TURN. The design is the answer and it is not
-	// written yet, so a blank assistant message here would be a line every later
-	// request carries forever.
-	if _, ok := firstOfKind(collected, EventTextDelta); ok {
-		t.Fatalf("the build turn wrote an answer of its own: %v", kinds(collected))
-	}
-	if _, ok := firstOfKind(collected, EventHarnessOffer); ok {
-		t.Fatalf("a build turn raised a RUN offer: %v", kinds(collected))
-	}
-
-	// The lane said the design had started before any of that.
-	started := nextDesign(t, lane)
-	if started.Kind != EventHarnessDesign || started.Text != buildGoal || started.Hint != harnessDesigningWord {
-		t.Fatalf("the lane opened with %v / %q / %q", started.Kind, started.Text, started.Hint)
-	}
-	close(answered)
-	if done := nextDesign(t, lane); done.Kind != EventHarnessDesignDone {
-		t.Fatalf("the design never landed, got %v", done.Kind)
-	}
-}
+// BUILDING A SUB-HARNESS, from the three sides a person meets it: the job that
+// runs beside the conversation, the card it ends on, and the two answers to that
+// card. WHO ASKS FOR ONE is tools_harness_test.go's half — a design is
+// commissioned by the model's own hand now, and this file starts every design
+// through exactly that hand.
 
 // ── the card ────────────────────────────────────────────────────────────────
 
@@ -350,10 +199,7 @@ func TestADesignThatWillNotParseEndsInANote(t *testing.T) {
 
 // ── the fixtures ────────────────────────────────────────────────────────────
 
-const (
-	buildGoal = "triaging flaky tests"
-	buildTurn = "make a harness for " + buildGoal
-)
+const buildGoal = "triaging flaky tests"
 
 // designReply is one designer turn: the envelope the guide asks for, around a
 // page this package will accept.
@@ -403,15 +249,13 @@ func buildAgent(t *testing.T, completer Completer, dir string) (*Agent, string) 
 	return newTestAgent(t, completer, func(config *Config) { buildConfig(config, dir) })
 }
 
-// submitBuild sends the build turn and drains it, which is instant: the turn
-// ends as the design starts.
+// submitBuild starts a design THE WAY THE MODEL STARTS ONE: one call to the
+// belt's build_harness tool, which returns the moment the job is in flight.
 func submitBuild(t *testing.T, agent *Agent) {
 	t.Helper()
-	events, err := agent.Submit(context.Background(), buildTurn)
-	if err != nil {
-		t.Fatalf("submit: %v", err)
+	if text, isError := runTool(t, agent, "build_harness", `{"goal":"`+buildGoal+`"}`); isError {
+		t.Fatalf("build_harness refused the call: %s", text)
 	}
-	collect(t, events)
 }
 
 // nextDesign takes the next event off the standing lane, failing rather than

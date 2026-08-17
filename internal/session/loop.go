@@ -148,15 +148,17 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	var turn Usage
 
 	// BEFORE ANYTHING IS SENT ANYWHERE: is this turn one of the things this
-	// build already knows how to do properly — or a request to teach it one? A
-	// sub-harness has no slash command, so the turn itself is how one is reached
-	// and how one is COMMISSIONED: a strong match against the registry raises one
-	// line asking whether that is what was meant (harness.go), and "make a
-	// harness for X" starts a design and ends the turn (harness_build.go).
+	// build already knows how to do properly? A sub-harness has no slash command,
+	// so the turn itself is how one is reached: a strong match against the
+	// registry raises one line asking whether that is what was meant
+	// (harness.go).
 	//
-	// Neither is a routing: the no is free and leaves the ordinary turn below
+	// It is not a routing: the no is free and leaves the ordinary turn below
 	// untouched, and a build with no registry — every caller today — never
-	// reaches past the first nil check.
+	// reaches past the first nil check. COMMISSIONING a harness is not read here
+	// at all; it is a tool the model reaches for (tools_harness.go), because
+	// whether a sentence asked for a saved procedure is a judgement and not a
+	// lookup.
 	if answered, completed := a.routeHarness(ctx, hub, user, started); answered {
 		return completed
 	}
