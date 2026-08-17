@@ -8,3 +8,4 @@ bench-results/
 __pycache__/
 *.pyc
 *.aux
+harnesses/
