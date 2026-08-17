@@ -105,6 +105,14 @@ const (
 	// and the flat text rows below are the readable stand-in until it lands.
 	KeyToolApprovalMode = "tools.approvalMode"
 	KeyToolApprovals    = "tools.approval"
+	// KeyBashApprovals is the ordered rule list for the one tool whose arguments
+	// are a language. The row above answers per TOOL — "never ask me about read"
+	// — and there is no useful per-tool answer for bash: a person who allowed the
+	// tool would have allowed every command it will ever be handed. This row is
+	// where the answer can name the command, which is what internal/approval's
+	// bash patterns are for and where the consent card's "always, this command"
+	// lands (approvalmemory.go).
+	KeyBashApprovals = "tools.bashPatterns"
 
 	// KeyGuardian turns on the small model that answers a tool prompt before you
 	// are asked (internal/session's guardian.go). It is named under `approval.`
@@ -958,6 +966,17 @@ func (s *Settings) build() []Setting {
 				"A tool not named here follows the setting above.",
 			read:  func() string { return ToolApprovalsAt(dir) },
 			write: func(raw string) error { return writeToolApprovals(dir, raw) },
+		},
+		Setting{
+			Key: KeyBashApprovals, Category: CategorySpending, Kind: SettingText,
+			Label: "shell command rules", EmptyLabel: "none",
+			Hint: "answers for single shell commands, first match wins: " +
+				"`allow git status*, deny rm -rf *`. A `*` matches anything; an allow " +
+				"answers only for a whole single command, a deny catches its shape " +
+				"anywhere in a longer line, and dangerous commands are asked about " +
+				"whatever this says. Answering always on an approval question writes one.",
+			read:  func() string { return BashApprovalsAt(dir) },
+			write: func(raw string) error { return writeBashApprovals(dir, raw) },
 		},
 		Setting{
 			Key: KeyGuardian, Category: CategorySpending, Kind: SettingChoice,

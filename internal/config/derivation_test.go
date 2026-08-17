@@ -142,7 +142,12 @@ var settingReaders = map[string]string{
 	// internal/roles through the key spellings it owns.
 	KeyToolApprovalMode: "ApprovalPolicy",
 	KeyToolApprovals:    "ApprovalPolicy",
-	KeySpendRail:        "SpendRailUSD",
+	// The bash rules row names the PARSER the door touches rather than the policy
+	// the other two name: the list only reaches the gate if somebody read the text
+	// into rules, and naming ApprovalPolicy a third time would let the two rows
+	// above prove this one.
+	KeyBashApprovals: "ParseBashApprovals",
+	KeySpendRail:     "SpendRailUSD",
 	// The guardian row is read by the v3 door and becomes session.Config.Guardian.
 	// It names the accessor rather than the field, because the door is the only
 	// caller and the accessor is what it touches.

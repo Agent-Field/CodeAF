@@ -728,6 +728,12 @@ type app struct {
 	// settings should not open one.
 	profileDir string
 	settings   *config.Settings
+	// saveApproval and saveBashApproval are the door's write seams for the
+	// consent card's "always" (consent.go). Nil is a surface that remembers an
+	// answer for the session and no longer, which is what this card did before
+	// they existed.
+	saveApproval     func(tool string) error
+	saveBashApproval func(command string) error
 
 	// copy is the frozen viewport a person reads and yanks out of (copymode.go).
 	// Closed, it costs the frame nothing.
@@ -793,32 +799,34 @@ func newApp(ctx context.Context, opts Options) *app {
 		}
 	}
 	a := &app{
-		ctx:            ctx,
-		agent:          opts.Agent,
-		fresh:          opts.Fresh,
-		workspace:      place,
-		place:          filepath.Base(place),
-		file:           opts.SessionFile,
-		resumed:        opts.Resumed,
-		models:         opts.Models,
-		history:        opts.History,
-		draftFile:      opts.DraftFile,
-		ctxWindow:      opts.ContextWindow,
-		profileDir:     opts.ProfileDir,
-		settings:       opts.Settings,
-		recentSessions: opts.RecentSessions,
-		resume:         opts.Resume,
-		conns:          opts.Connections,
-		live:           -1,
-		sel:            -1,
-		think:          -1,
-		unfolded:       map[int]bool{},
-		stick:          true,
-		width:          80,
-		height:         24,
-		pal:            detectPalette(),
-		linear:         opts.Linear,
-		tmux:           tmuxTerm(os.Getenv),
+		ctx:              ctx,
+		agent:            opts.Agent,
+		fresh:            opts.Fresh,
+		workspace:        place,
+		place:            filepath.Base(place),
+		file:             opts.SessionFile,
+		resumed:          opts.Resumed,
+		models:           opts.Models,
+		history:          opts.History,
+		draftFile:        opts.DraftFile,
+		ctxWindow:        opts.ContextWindow,
+		profileDir:       opts.ProfileDir,
+		settings:         opts.Settings,
+		saveApproval:     opts.SaveApproval,
+		saveBashApproval: opts.SaveBashApproval,
+		recentSessions:   opts.RecentSessions,
+		resume:           opts.Resume,
+		conns:            opts.Connections,
+		live:             -1,
+		sel:              -1,
+		think:            -1,
+		unfolded:         map[int]bool{},
+		stick:            true,
+		width:            80,
+		height:           24,
+		pal:              detectPalette(),
+		linear:           opts.Linear,
+		tmux:             tmuxTerm(os.Getenv),
 		// A terminal that has said nothing is assumed to HAVE the keyboard, which
 		// is the quiet assumption: the cost of getting it wrong is a notification
 		// nobody got, and the cost of the other default is a notification every
