@@ -181,6 +181,7 @@ func catalogPlug(id string, info *amp.ProviderInfo) (*keyPlug, bool) {
 			// about what any of these are for.
 			Category: categoryOf(id),
 			Blurb:    catalogBlurb(name, display, hole),
+			KeyAsk:   catalogAsk(hole),
 			KeyHint:  catalogKeyHint(id, info),
 			Auth:     AuthKey,
 			Address:  display,
@@ -394,10 +395,24 @@ func catalogBlurb(name, display string, hole blank) string {
 		line += " at " + host
 	}
 	line += ", with a key you already hold."
-	if hole.name != "" {
-		line += " Give the " + strings.ToLower(hole.label) + " and then the key, one space between them."
+	if ask := catalogAsk(hole); ask != "" {
+		line += " " + ask
 	}
 	return line
+}
+
+// catalogAsk is the instruction a service with a blank in its address needs a
+// person to have read, and nothing at all for the rest.
+//
+// IT IS BUILT HERE AND SPENT TWICE: it is the tail of the blurb on a list, and
+// it is the line a screen puts over the box while somebody is answering it
+// ([Service.KeyAsk]). Two spellings of one instruction is the kind of pair that
+// drifts, and the half that drifts is the half telling somebody what to type.
+func catalogAsk(hole blank) string {
+	if hole.name == "" {
+		return ""
+	}
+	return "Give the " + strings.ToLower(hole.label) + " and then the key, one space between them."
 }
 
 // shown is the address as a person should read it: the blank left as a plain

@@ -99,14 +99,6 @@ const (
 // legend, in the box a person is already looking at.
 const connectFilterHint = "filter · ↑↓ · enter connect · esc close"
 
-// keyEntry is one key being typed into the panel: which service it is for, the
-// word a person knows it by, and the box itself.
-type keyEntry struct {
-	id   string
-	name string
-	box  editor
-}
-
 // connectPanel is the overlay's whole state. The zero value is closed.
 type connectPanel struct {
 	open bool
@@ -584,7 +576,7 @@ func (a *app) connectEntryKey(msg tea.KeyPressMsg) tea.Cmd {
 		return a.beginConnectKey(entry.id, entry.name, key)
 
 	default:
-		listNavigate(msg, &entry.box, func(int) {}, func() {}, 1)
+		entry.typeInto(msg)
 	}
 	a.touch()
 	return nil
@@ -644,7 +636,7 @@ func (a *app) connectAct(at int) tea.Cmd {
 			// difference is where the next thing happens: a sign-in continues in
 			// another window and there is nothing left to look at here, while a
 			// key is given HERE, on the row a person is pointing at.
-			p.entry = &keyEntry{id: row.ID, name: name}
+			p.entry = newKeyEntry(row.Service, name)
 			return nil
 		}
 		p.close()
@@ -775,5 +767,9 @@ func (a *app) adoptConnectResult(msg connectResultMsg) {
 	// And the settings sheet's Connections tab, which is the OTHER list this
 	// outcome is news for: a row that has just gained an account opens on what
 	// that account may do (connectcaps.go).
-	a.connTabSettled(msg.service, msg.name, !failed)
+	why := ""
+	if msg.err != nil {
+		why = msg.err.Error()
+	}
+	a.connTabSettled(msg.service, msg.name, !failed, why)
 }

@@ -151,6 +151,12 @@ func (a *app) keyBox() *editor {
 		return a.connAsks[0].key
 	case a.connPanel.open && a.connPanel.entry != nil:
 		return &a.connPanel.entry.box
+	case a.sheet.open && a.sheet.conn.entry != nil:
+		// AND THE THIRD ONE, which is the settings sheet's own row
+		// (connectcaps.go). It is the same box asked in the same words, so it
+		// takes the clipboard on the same terms — newlines dropped rather than
+		// flattened, which is the whole reason this door exists.
+		return &a.sheet.conn.entry.box
 	}
 	return nil
 }
@@ -445,6 +451,149 @@ func (a *app) connectOffer(width int) string {
 // connectKeyHint is what an empty box says: the one instruction, in the word the
 // person owns the account by.
 func connectKeyHint(name string) string { return "paste your " + name + " key" }
+
+// ── the box itself, wherever it is opened ───────────────────────────────────
+//
+// There are two places on this surface where a person gives a key on purpose —
+// the /connect panel (connectpanel.go) and the settings sheet's Connections tab
+// (connectcaps.go) — and they are ONE BOX with one shape, because they are one
+// question. What follows is that box: the value, the two lines around it, and
+// the one method that types into it.
+//
+// The offer's row (above) is deliberately NOT built on this. It is a single row
+// inside a block whose height the session's question owns, and the two lines
+// this box can grow are two lines that block cannot spare.
+
+// keyEntry is one key being given: which service it is for, the word a person
+// knows it by, the two things the service says about answering, and the box.
+//
+// ask and link are copied off the [connect.Service] at the moment the box opens
+// rather than looked up while it is drawn: a paint runs many times a second, and
+// what a service says about its own key does not change between two of them.
+type keyEntry struct {
+	id   string
+	name string
+	// ask is the instruction for a service that wants more than a key — the
+	// workspace, a space, then the key ([connect.Service.KeyAsk]). Empty for
+	// nearly all of them.
+	ask string
+	// link is where the key is to be found ([connect.Service.KeyHint]). Empty
+	// where nobody could say, and then nothing is drawn.
+	link string
+	box  editor
+}
+
+// newKeyEntry opens the box for one service.
+func newKeyEntry(service connect.Service, name string) *keyEntry {
+	return &keyEntry{
+		id:   service.ID,
+		name: name,
+		ask:  strings.TrimSpace(service.KeyAsk),
+		link: strings.TrimSpace(service.KeyHint),
+	}
+}
+
+// typeInto is every key that is not one of the two the box answers to.
+//
+// It is the filter box's key map, which is this surface's ONE way of typing into
+// a one-line box (palette.go's [listNavigate]). There is no list under this box,
+// so the walk and the page are no-ops.
+func (e *keyEntry) typeInto(msg tea.KeyPressMsg) {
+	listNavigate(msg, &e.box, func(int) {}, func() {}, 1)
+}
+
+// value is what has been typed, trimmed — an answer or nothing at all.
+func (e *keyEntry) value() string { return strings.TrimSpace(e.box.String()) }
+
+// keyHintLine is the one dim line under the box: where this key is to be found.
+//
+// ── IT IS DRAWN WHILE THE BOX IS OPEN AND AT NO OTHER TIME ──
+//
+// Not on the row before somebody presses enter on it, and not after the account
+// is connected. A person browsing a catalog of two hundred services is not
+// looking for anybody's settings page, and a person who has connected an account
+// has already found it — so on both of those screens this is a line of furniture
+// under every row. The one moment it is the most useful thing on the screen is
+// the moment the box is open and empty, which is the moment somebody realises
+// they do not have the key in their clipboard after all.
+//
+// THE ADDRESS IS THE WHOLE OF IT. The scheme is cut because nobody reads it and
+// it costs eight cells of a line that has to fit; the hyperlink is applied over
+// the shortened text, so a terminal that can follow it opens the real address
+// and one that cannot shows something a person can type (opener.go).
+func keyHintLine(link string, pal palette, width int) string {
+	link = strings.TrimSpace(link)
+	if link == "" {
+		return ""
+	}
+	shown := strings.TrimPrefix(strings.TrimPrefix(link, "https://"), "http://")
+	lead := "  find it at "
+	return pal.dim(lead + linkify(fit(shown, width-ansi.StringWidth(lead)), link))
+}
+
+// keyBoxLines is the box as the lines it takes, and where the caret sits inside
+// them: the instruction where the service has one, the masked box, and the
+// address where the key lives.
+//
+// It answers a caret ROW as well as a column because the instruction can stand
+// above the box, and a caller that assumed the box was the first line would put
+// the caret on a sentence.
+//
+// indent is how far in the whole block sits, which is the one thing the two
+// surfaces disagree about: the panel's box takes the draft's own position at the
+// left edge, and the sheet's is drawn INSIDE the row it was opened from and has
+// to hang under it (connectcaps.go). Everything else about the block — what it
+// says, what it masks, what it links — is the same in both places.
+func keyBoxLines(entry *keyEntry, pal palette, width, indent int) ([]string, int, int) {
+	if indent < 0 {
+		indent = 0
+	}
+	lead := strings.Repeat(" ", indent)
+	width -= indent
+	out := make([]string, 0, 3)
+	if entry.ask != "" {
+		out = append(out, lead+pal.dim(fit("  "+entry.ask, width)))
+	}
+	line, caretX := keyLine(&entry.box, connectKeyHint(entry.name), pal, width)
+	caretRow := len(out)
+	out = append(out, lead+line)
+	if hint := keyHintLine(entry.link, pal, width); hint != "" {
+		out = append(out, lead+hint)
+	}
+	return out, caretX + indent, caretRow
+}
+
+// envExampleFor is the environment variable this surface names when it teaches
+// somebody that a variable's NAME is an answer too.
+//
+// It is built out of the service in front of them rather than picked once and
+// spelled into a sentence: "$STRIPE_KEY" on a screen about Chargebee is an
+// example a person has to translate before they can use it, and the whole reason
+// the line exists is that the thing it teaches is not guessable. Nothing is
+// promised by it — a variable may be called anything at all, and the engine
+// reads whichever one is named (internal/connect's keyref.go).
+func envExampleFor(name string) string {
+	word := strings.ToUpper(strings.TrimSpace(name))
+	if at := strings.IndexAny(word, " \t"); at > 0 {
+		// The first word only. A service whose name is four words would
+		// otherwise produce an example longer than the line it sits on.
+		word = word[:at]
+	}
+	clean := make([]rune, 0, len(word))
+	for _, r := range word {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			clean = append(clean, r)
+		case len(clean) > 0 && clean[len(clean)-1] != '_':
+			clean = append(clean, '_')
+		}
+	}
+	word = strings.Trim(string(clean), "_")
+	if word == "" || word[0] >= '0' && word[0] <= '9' {
+		return "$API_KEY"
+	}
+	return "$" + word + "_KEY"
+}
 
 // connectKeyRow is the offer's row while a key is being typed into it.
 func (a *app) connectKeyRow(head connAsk, width int) string {
