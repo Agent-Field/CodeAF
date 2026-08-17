@@ -396,6 +396,3 @@ func helpText(file string) string {
 	}
 	return strings.Join(lines, "\n")
 }
-
-// STUB — the rewind/ui branch owns this; at merge its version wins.
-func (a *app) enterRewind() tea.Cmd { return nil }
