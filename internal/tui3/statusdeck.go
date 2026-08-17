@@ -134,6 +134,16 @@ func (a *app) deckTopRow(width int) string {
 func (a *app) deckModelRow(width int) string {
 	right, plainRight := a.deckAmbient(width)
 	chip := modelBase(a.model)
+	// A ROOM RENAMES THIS ROW TOO, which is the wide row's own law at phone width
+	// (render.go's [app.identityParts]): row 1 has already renamed itself to the
+	// task, and a row 2 still naming the session's model would be the deck's half
+	// of the same lie — the person is looking at a task's page and reading the
+	// conversation's engine. It carries the same "task" lead, the same basename,
+	// and the same silence when the node published no model of its own
+	// (room.go's [app.roomModelWord] states all three).
+	if a.roomOpen() {
+		chip = a.roomModelWord()
+	}
 	if chip == "" {
 		// A session that has not been told what is answering has nothing to press
 		// and says nothing rather than saying "no model" — see [app.identityParts]
@@ -142,6 +152,15 @@ func (a *app) deckModelRow(width int) string {
 	}
 	room := width - len(deckPad) - ansi.StringWidth(plainRight) - deckGap
 	chip = fit(chip, room)
+	if a.roomOpen() {
+		// AND IT IS A FACT, NOT A DOOR, while that room is open: no columns are
+		// recorded, so the press falls through to the row's other answer — the
+		// sheet, which names the conversation's model and the task's on two
+		// labelled lines ([app.deckPress], [app.deckItems]) — rather than to a
+		// picker that would move a dial this chip does not name. The law and its
+		// reasons are the wide row's ([app.identityParts]).
+		return deckJoin(a.pal.dim, chip, right, plainRight, width)
+	}
 	// THE CHIP'S COLUMNS ARE RECORDED WHERE THE ROW IS LAID OUT, which is what
 	// keeps the press and the paint in step ([app.statusLayout] states the law).
 	// The target is widened to [deckTouch] where the name is shorter than a
@@ -372,6 +391,16 @@ func (a *app) deckItems() []deckItem {
 		model += ":" + level
 	}
 	add("model", model, deckActModel)
+	// AND THE ROOM'S MODEL IS A SECOND LINE RATHER THAN A REPLACEMENT, the way
+	// the task's title is a second identity above: the deck's row 2 has room for
+	// one model and says the one the page is about, while the sheet is where
+	// things are RECORDED and can afford to say both — what the conversation runs
+	// on, and what this node ran on — each under its own label, whole address and
+	// all. Only the conversation's is a door, because the picker moves the
+	// conversation's dial and nothing else (render.go's [app.identityParts]).
+	if node := a.roomNode(); node != nil {
+		add("task model", strings.TrimSpace(node.model), deckActNone)
+	}
 	add("served", strings.TrimPrefix(a.servedRider(), " · "), deckActNone)
 
 	for _, part := range a.telemetry(hudWide) {

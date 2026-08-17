@@ -840,8 +840,8 @@ func (a *app) identity() string {
 //
 // The span is [from, to) in cells from the row's left edge, which is where this
 // cluster is drawn. An empty span (to == 0) means there is nothing to press —
-// a session with no model yet, or a room, whose cluster is the node's chip and
-// names no model at all.
+// a session with no model yet, or a room, whose cluster names the NODE's model
+// and so must not open a picker that would move the conversation's.
 func (a *app) identityParts() (string, hudSpan) {
 	// A ROOM RENAMES THIS CLUSTER AND NOTHING ELSE ON THE LINE. The identity is
 	// WHERE YOU ARE, and while a room is open where you are is a task — but the
@@ -849,8 +849,31 @@ func (a *app) identityParts() (string, hudSpan) {
 	// one body region and not a second session (room.go). A status line that
 	// re-pointed the cost and the context meter at a node would be quoting
 	// figures nobody is measuring.
+	//
+	// AND THE MODEL SEGMENT NAMES THE ROOM'S NODE. The status row is ABOUT THE
+	// WINDOW, and while a room is open the window IS that task — so the law above
+	// argues FOR this and not against it. What the law forbids is re-pointing the
+	// TELEMETRY, which measures the session and would be quoting figures nobody
+	// took; the node's model is not a measurement, it is a fact the node
+	// published. It is said here because this is the only ALWAYS-VISIBLE model
+	// name on the screen, and a person who launched a task on one model, opened
+	// its room, and read the conversation's model at the foot of the frame was
+	// told the wrong thing by the one line they could not look away from.
+	//
+	// THE SEGMENT IS A FACT AND NOT A DOOR WHILE A ROOM IS OPEN, which is what
+	// the empty span says. The picker moves the CONVERSATION's model and nothing
+	// else, so a name that opened it while naming the TASK's model would be an
+	// affordance lying about what it acts on — worse than no door, because it
+	// would swap the session's model on a person who pressed the id they were
+	// reading. The door comes back one esc later, on the name it belongs to
+	// (app.go's [app.statusPress] falls through on an empty span; the phone
+	// tier's press lands on the sheet, which labels both — statusdeck.go).
 	if a.roomOpen() {
-		return a.roomChip(), hudSpan{}
+		cluster := a.roomChip()
+		if word := a.roomModelWord(); word != "" {
+			cluster += " · " + word
+		}
+		return cluster, hudSpan{}
 	}
 	name := a.sessionName()
 	if name == "" {

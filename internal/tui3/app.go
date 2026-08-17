@@ -2435,6 +2435,13 @@ func (a *app) statusPress(x, y int) bool {
 	}
 	// Index zero is the identity's row in both status layouts — the shared row,
 	// and the first of the two when the telemetry wraps onto its own (render.go).
+	//
+	// A ROOM TAKES THE DOOR AWAY AND KEEPS THE NAME, and it does so through the
+	// span rather than through a test here: while a room is open the segment names
+	// the NODE's model, and the picker moves the CONVERSATION's, so the render
+	// records no columns for it and the press falls through to the row it landed
+	// on (render.go's [app.identityParts] states the law and why an inert fact
+	// beats a door onto the wrong dial). One esc restores both.
 	if mark.index != 0 || !a.modelSpan.holds(x) {
 		return false
 	}
