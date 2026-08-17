@@ -71,7 +71,20 @@ type connectStatus struct {
 	Blurb     string
 	Connected bool
 	Account   string
+	// Auth is which of the two ways this account is connected, in
+	// internal/connect's words: "browser" for a trip through a sign-in page,
+	// "key" for a key the person already holds. It is the one fact the belt
+	// needs about the difference, because the two are asked about
+	// differently and bring different tools.
+	Auth string
+	// Address is where a key-connected service answers. It goes into the
+	// description of the tool that calls it, so the model knows what its
+	// paths are relative to.
+	Address string
 }
+
+// keyed reports whether this account is one the person connects with a key.
+func (c connectStatus) keyed() bool { return c.Auth == connect.AuthKey }
 
 // connectHub is the narrow slice of [connect.Manager] the belt calls through.
 //
@@ -79,11 +92,21 @@ type connectStatus struct {
 // with it, as two values rather than as an object, because those two are the
 // whole of what this package does with a connection in progress — and a
 // function is the one shape a test can supply without owning the type.
+// ConnectKey is the other way in and needs no such pair: the person hands over
+// a key they already hold and the account is connected or it is not, in one
+// call, with nothing in the middle to report on.
+//
+// Request is the raw call an account opened with a key answers. It is on the
+// seam rather than done here out of a client because where a service lives, and
+// how its key rides on a request, are internal/connect's facts and not this
+// package's — the belt hands over a method and a path and reads back text.
 type connectHub interface {
 	Services() []connectStatus
 	Connected(id string) bool
 	BeginAuth(ctx context.Context, id string) (url string, wait func(context.Context) (connectStatus, error), err error)
+	ConnectKey(ctx context.Context, id string, key string) (connectStatus, error)
 	Client(ctx context.Context, id string) (*http.Client, error)
+	Request(ctx context.Context, id, method, path, query, body string) (string, error)
 }
 
 // managerHub is the adapter over the real thing. It is the only code in this
@@ -108,21 +131,41 @@ func (h managerHub) Services() []connectStatus {
 	live := h.manager.Services()
 	services := make([]connectStatus, 0, len(live))
 	for _, status := range live {
-		services = append(services, connectStatus{
-			ID:        status.ID,
-			Name:      status.Name,
-			Blurb:     status.Blurb,
-			Connected: status.Connected,
-			Account:   status.Account,
-		})
+		services = append(services, asConnectStatus(status))
 	}
 	return services
+}
+
+// asConnectStatus is the one place internal/connect's shape becomes this
+// package's, so that a field added there arrives here in one edit.
+func asConnectStatus(status connect.Status) connectStatus {
+	return connectStatus{
+		ID:        status.ID,
+		Name:      status.Name,
+		Blurb:     status.Blurb,
+		Connected: status.Connected,
+		Account:   status.Account,
+		Auth:      status.Auth,
+		Address:   status.Address,
+	}
 }
 
 func (h managerHub) Connected(id string) bool { return h.manager.Connected(id) }
 
 func (h managerHub) Client(ctx context.Context, id string) (*http.Client, error) {
 	return h.manager.Client(ctx, id)
+}
+
+func (h managerHub) ConnectKey(ctx context.Context, id string, key string) (connectStatus, error) {
+	status, err := h.manager.ConnectKey(ctx, id, key)
+	if err != nil {
+		return connectStatus{}, err
+	}
+	return asConnectStatus(status), nil
+}
+
+func (h managerHub) Request(ctx context.Context, id, method, path, query, body string) (string, error) {
+	return h.manager.Request(ctx, id, method, path, query, body)
 }
 
 func (h managerHub) BeginAuth(ctx context.Context, id string) (string, func(context.Context) (connectStatus, error), error) {
@@ -135,13 +178,7 @@ func (h managerHub) BeginAuth(ctx context.Context, id string) (string, func(cont
 		if err != nil {
 			return connectStatus{}, err
 		}
-		return connectStatus{
-			ID:        status.ID,
-			Name:      status.Name,
-			Blurb:     status.Blurb,
-			Connected: status.Connected,
-			Account:   status.Account,
-		}, nil
+		return asConnectStatus(status), nil
 	}
 	return flow.URL(), wait, nil
 }
@@ -161,44 +198,100 @@ func (a *Agent) service(id string) (connectStatus, bool) {
 
 // ── the ask ─────────────────────────────────────────────────────────────────
 
+// connectAsk is one unanswered question: the channel the answer arrives on, and
+// whether it is the kind of question a key answers.
+type connectAsk struct {
+	answers  chan connectAnswer
+	needsKey bool
+}
+
+// connectAnswer is what a person said. Approved with no key is a yes to a
+// browser trip; approved with a key is the key itself; not approved is a no,
+// however it was said.
+type connectAnswer struct {
+	approved bool
+	key      string
+}
+
 // ResolveConnect answers one EventConnectAsk. A surface hands back the id the
 // event carried and what the person said.
+//
+// A YES TO A QUESTION THAT WANTED A KEY IS NOT AN ANSWER. The account is
+// connected by the key and by nothing else, so there is nothing a bare yes could
+// start; it is read as a decline rather than as a connection that then fails for
+// a reason nobody said out loud. A surface that means yes to one of those sends
+// the key through [Agent.ResolveConnectKey].
 //
 // An id nobody is waiting on — a question the clock already answered, a second
 // click, a turn that was interrupted — is IGNORED rather than reported, exactly
 // as [Agent.ResolveConsent] ignores a late answer: the answer is simply late,
 // and the surface has already seen the attempt end.
 func (a *Agent) ResolveConnect(id string, approve bool) {
-	a.mu.Lock()
-	answers, waiting := a.connectAsks[id]
-	if waiting {
-		delete(a.connectAsks, id)
-	}
-	a.mu.Unlock()
+	ask, waiting := a.claimConnect(id)
 	if !waiting {
 		return
 	}
+	if ask.needsKey {
+		approve = false
+	}
 	// Buffered to one and read at most once, so this never blocks and never
 	// needs the lock held across it.
-	answers <- approve
+	ask.answers <- connectAnswer{approved: approve}
+}
+
+// ResolveConnectKey answers one EventConnectAsk that carried NeedsKey with the
+// key the person gave.
+//
+// AN EMPTY KEY IS A DECLINE. A surface whose question was dismissed, or whose
+// field was left blank, has one thing to send and no separate word for "not
+// now" — and a blank key would be refused by the service anyway, an ugly
+// sentence later for a plain no now.
+//
+// A key sent for a question that wanted a browser trip is ignored: there is
+// nothing to do with it, and connecting on the strength of it would connect an
+// account by a route nobody asked about.
+func (a *Agent) ResolveConnectKey(id string, key string) {
+	ask, waiting := a.claimConnect(id)
+	if !waiting {
+		return
+	}
+	if !ask.needsKey {
+		ask.answers <- connectAnswer{}
+		return
+	}
+	key = strings.TrimSpace(key)
+	ask.answers <- connectAnswer{approved: key != "", key: key}
+}
+
+// claimConnect takes one waiting question off the map, so that two answers to
+// the same question can never both be delivered.
+func (a *Agent) claimConnect(id string) (connectAsk, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ask, waiting := a.connectAsks[id]
+	if waiting {
+		delete(a.connectAsks, id)
+	}
+	return ask, waiting
 }
 
 // askConnect emits one question and waits for the person, the clock, or the end
-// of the turn. False is a no in all three cases, and the error is set only when
-// there is nobody to ask at all.
-func (a *Agent) askConnect(ctx context.Context, service connectStatus) (bool, error) {
+// of the turn. Not approved is a no in all three cases, and the error is set
+// only when there is nobody to ask at all. The key is empty except when the
+// question wanted one and the person gave it.
+func (a *Agent) askConnect(ctx context.Context, service connectStatus) (connectAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
-		return false, errAgentClosed
+		return connectAnswer{}, errAgentClosed
 	}
 	a.connectSeq++
 	id := "connect-" + strconv.FormatUint(a.connectSeq, 10)
-	answers := make(chan bool, 1)
+	ask := connectAsk{answers: make(chan connectAnswer, 1), needsKey: service.keyed()}
 	if a.connectAsks == nil {
-		a.connectAsks = make(map[string]chan bool, 1)
+		a.connectAsks = make(map[string]connectAsk, 1)
 	}
-	a.connectAsks[id] = answers
+	a.connectAsks[id] = ask
 	// The turn's hub, read under the same lock that registers the wait: a tool
 	// runs inside a turn, and the turn's fan-out is where its question is seen.
 	hub := a.hub
@@ -207,7 +300,7 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (bool, er
 
 	if !watched {
 		a.forgetConnect(id)
-		return false, errNobodyWatching
+		return connectAnswer{}, errNobodyWatching
 	}
 
 	hub.send(Event{
@@ -215,23 +308,24 @@ func (a *Agent) askConnect(ctx context.Context, service connectStatus) (bool, er
 		ConnectID:   id,
 		Service:     service.ID,
 		ServiceName: service.Name,
+		NeedsKey:    ask.needsKey,
 	})
 
 	timer := time.NewTimer(connectAskTimeout)
 	defer timer.Stop()
 
 	select {
-	case answer := <-answers:
+	case answer := <-ask.answers:
 		return answer, nil
 	case <-timer.C:
 		a.forgetConnect(id)
 		// SILENCE IS A NO. Nothing is connected, and the model is told the
 		// person did not answer rather than told they refused — those are
 		// different sentences and only one of them is true.
-		return false, nil
+		return connectAnswer{}, nil
 	case <-ctx.Done():
 		a.forgetConnect(id)
-		return false, ctx.Err()
+		return connectAnswer{}, ctx.Err()
 	}
 }
 
@@ -366,7 +460,7 @@ func (a *Agent) NoteConnected(service, account string) {
 	if !known {
 		return
 	}
-	if _, err := a.armFamily(a.familyTools(status.ID)); err != nil {
+	if _, err := a.armFamily(a.familyTools(status)); err != nil {
 		return
 	}
 	a.enqueueAmbientNote(connectedNote(status.Name, account))

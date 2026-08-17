@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
@@ -28,9 +29,9 @@ import (
 // Like the web pair, this whole file is CONDITIONAL: no manager, no tools. See
 // [Config.Connect] for why a belt must never carry a promise it cannot keep.
 
-const servicesDescription = "List the accounts the person can connect to this conversation and which of them are connected already, with the address each one is connected as. Cheap; call it when you are about to need something that lives in one of their accounts — mail, a calendar — or when they ask what is connected."
+const servicesDescription = "List the accounts the person can connect to this conversation and which of them are connected already, with the address each one is connected as. Hundreds can be connected, so the ones that are not yet are listed by id only; pass filter to search them by name. Cheap; call it when you are about to need something that lives in one of their accounts — mail, a calendar, a billing system — or when they ask what is connected."
 
-const servicesSchemaJSON = `{"type":"object","properties":{},"additionalProperties":false}`
+const servicesSchemaJSON = `{"type":"object","properties":{"filter":{"description":"Show only the accounts whose name or id contains this, for example stripe or fresh","type":"string"}},"additionalProperties":false}`
 
 const useServiceDescription = "Pick up one account's tools. If it is connected, its tools arrive in your tool list on your next turn. If it is not, the person is asked whether to connect it, and told what they are agreeing to — so call it only when the work actually needs that account, and never twice for the same one. Use services first if you do not know the id."
 
@@ -76,39 +77,109 @@ func (a *Agent) servicesTool() bare.Tool {
 		Description: servicesDescription,
 		Schema:      json.RawMessage(servicesSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-			return renderServices(a.connect.Services()), false, nil
+			var parsed struct {
+				Filter string `json:"filter"`
+			}
+			if len(args) > 0 {
+				if err := json.Unmarshal(args, &parsed); err != nil {
+					return "Invalid arguments: " + err.Error(), true, nil
+				}
+			}
+			return renderServices(a.connect.Services(), parsed.Filter), false, nil
 		},
 	}
 }
 
-// renderServices is the live list as the model reads it. A connected service
-// says who it is connected as; an unconnected one says what connecting it would
-// buy and how to ask.
+// servicesLineWidth is how wide the block of ids is wrapped. It is a reading
+// width, not a terminal width: the reader is a model, and a list that runs to
+// one enormous line is harder for it to hold than a list in rows.
+const servicesLineWidth = 76
+
+// renderServices is the live list as the model reads it.
+//
+// ── THE CONNECTED ONES IN FULL, THE REST BY NAME ──
+//
+// There are a couple of hundred accounts on this list and one of them matters
+// to the conversation. A line each — id, name, and a sentence about what
+// connecting it would buy — would be a page and a half of a model's context
+// spent, every time it wondered what was connected, on services nobody has
+// mentioned. So the ones already connected are written out, because those are
+// the ones the work is actually about, and the rest are a block of ids with a
+// filter to search them by.
 //
 // THE EMPTINESS LAW: a build with nothing to offer says so in one sentence
-// rather than returning a heading over a blank list.
-func renderServices(services []connectStatus) string {
+// rather than returning a heading over a blank list, and a filter that matches
+// nothing says THAT rather than pretending the list is empty.
+func renderServices(services []connectStatus, filter string) string {
 	if len(services) == 0 {
 		return "No accounts can be connected to this conversation."
 	}
-	lines := make([]string, 0, len(services))
+	filter = strings.ToLower(strings.TrimSpace(filter))
+
+	var connected []string
+	var available []string
 	for _, service := range services {
-		switch {
-		case service.Connected && strings.TrimSpace(service.Account) != "":
-			lines = append(lines, service.ID+" — "+service.Name+", connected as "+service.Account)
-		case service.Connected:
-			lines = append(lines, service.ID+" — "+service.Name+", connected")
-		default:
-			line := service.ID + " — " + service.Name + ", available"
+		if filter != "" && !strings.Contains(strings.ToLower(service.ID+" "+service.Name), filter) {
+			continue
+		}
+		if service.Connected {
+			line := service.ID + " — " + service.Name + ", connected"
+			if account := strings.TrimSpace(service.Account); account != "" {
+				line += " as " + account
+			}
 			if blurb := strings.TrimSpace(service.Blurb); blurb != "" {
 				line += ": " + blurb
 			}
-			lines = append(lines, line)
+			connected = append(connected, line)
+			continue
+		}
+		available = append(available, service.ID)
+	}
+
+	if len(connected) == 0 && len(available) == 0 {
+		return "No account here matches " + strconv.Quote(filter) +
+			". Call services with no filter to see what is connected, or with a shorter one."
+	}
+
+	var blocks []string
+	if len(connected) > 0 {
+		blocks = append(blocks, "Connected:\n"+strings.Join(connected, "\n"))
+	}
+	if len(available) > 0 {
+		heading := "Not connected yet (" + strconv.Itoa(len(available)) + "), by id:"
+		blocks = append(blocks, heading+"\n"+wrapList(available, servicesLineWidth))
+	}
+	trailer := "Call use_service with one of these ids to pick up its tools.\n" +
+		"An account that is not connected yet is connected by the person, when you ask for it."
+	if filter == "" && len(available) > 0 {
+		trailer += "\nPass filter to search this list by name."
+	}
+	return strings.Join(blocks, "\n\n") + "\n\n" + trailer
+}
+
+// wrapList lays a run of short words out as comma-separated rows.
+func wrapList(items []string, width int) string {
+	var rows []string
+	row := ""
+	for index, item := range items {
+		piece := item
+		if index < len(items)-1 {
+			piece += ","
+		}
+		switch {
+		case row == "":
+			row = piece
+		case len(row)+1+len(piece) <= width:
+			row += " " + piece
+		default:
+			rows = append(rows, row)
+			row = piece
 		}
 	}
-	return strings.Join(lines, "\n") +
-		"\n\nCall use_service with one of these ids to pick up its tools. " +
-		"An account that is not connected yet is connected by the person, when you ask for it."
+	if row != "" {
+		rows = append(rows, row)
+	}
+	return strings.Join(rows, "\n")
 }
 
 func (a *Agent) useServiceTool() bare.Tool {
@@ -149,8 +220,11 @@ func (a *Agent) useService(ctx context.Context, id string) (string, bool, error)
 	}
 	service, known := a.service(id)
 	if !known {
+		// The WHOLE list, not one filtered by the id that was wrong: a model
+		// that guessed a name needs to see what there is, and filtering by the
+		// guess is exactly the search that has already failed.
 		return "No account with the id " + strconv.Quote(id) + ". " +
-			renderServices(a.connect.Services()), true, nil
+			renderServices(a.connect.Services(), ""), true, nil
 	}
 	if service.Connected {
 		return a.armService(service, ""), false, nil
@@ -158,6 +232,12 @@ func (a *Agent) useService(ctx context.Context, id string) (string, bool, error)
 	account, failed := a.connectService(ctx, service)
 	if failed != "" {
 		return failed, true, nil
+	}
+	// The account may know more about itself now than it did a moment ago —
+	// where it answers, for one — so the arming reads it fresh rather than
+	// describing a tool from what was true before the person answered.
+	if fresh, known := a.service(id); known {
+		service = fresh
 	}
 	return a.armService(service, account), false, nil
 }
@@ -171,7 +251,7 @@ func (a *Agent) useService(ctx context.Context, id string) (string, bool, error)
 // picking an account up, and finding mid-work that the account no longer stands
 // (see [Agent.serviceClient]). Both must ask in exactly the same words.
 func (a *Agent) connectService(ctx context.Context, service connectStatus) (account string, failed string) {
-	approved, err := a.askConnect(ctx, service)
+	answer, err := a.askConnect(ctx, service)
 	switch {
 	case errors.Is(err, errNobodyWatching):
 		// Nobody is there to say yes. It is the same answer consent.go gives a
@@ -181,8 +261,22 @@ func (a *Agent) connectService(ctx context.Context, service connectStatus) (acco
 			"conversation. Do what you can without their " + service.Name + " account and say plainly that you could not reach it."
 	case err != nil:
 		return "", "The turn ended before the person answered about connecting " + service.Name + "."
-	case !approved:
+	case !answer.approved:
 		return "", "The person did not agree to connect " + service.Name + ". Do the work without it and say so plainly; do not ask again this turn."
+	}
+
+	// An account opened with a key has no page to send anybody to: the person
+	// has already done the only step there is, and the whole of what is left is
+	// one call that either works or says why not.
+	if service.keyed() {
+		status, err := a.connect.ConnectKey(ctx, service.ID, answer.key)
+		if err != nil {
+			a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Failed: true})
+			return "", "Connecting " + service.Name + " did not work: " + err.Error() +
+				" Say so plainly; use_service asks the person again."
+		}
+		a.sendConnect(Event{Kind: EventConnectDone, Service: service.ID, Account: status.Account})
+		return status.Account, ""
 	}
 
 	url, wait, err := a.connect.BeginAuth(ctx, service.ID)
@@ -221,7 +315,7 @@ func (a *Agent) armService(service connectStatus, account string) string {
 	if account = strings.TrimSpace(account); account != "" {
 		connected += " as " + account
 	}
-	tools := a.familyTools(service.ID)
+	tools := a.familyTools(service)
 	if len(tools) == 0 {
 		// Connected, and nothing in this build reads it. Honest, and short: a
 		// model told this stops planning around the account instead of calling
@@ -262,19 +356,87 @@ func (a *Agent) sendConnect(event Event) {
 
 // ── the armed families ──────────────────────────────────────────────────────
 
-// familyTools is what one account brings, and it is a SWITCH over ids rather
-// than a registry because the code owns this grouping: these are its own tools,
-// grouped the way it wrote them. An account this build has no reader for
-// answers nothing, and armService says so in a sentence.
-func (a *Agent) familyTools(id string) []bare.Tool {
-	switch strings.ToLower(strings.TrimSpace(id)) {
+// familyTools is what one account brings.
+//
+// The hand-written families are a SWITCH over ids rather than a registry because
+// the code owns that grouping: those are its own tools, grouped the way it wrote
+// them. Under the switch is the general answer, and it is general because it has
+// to be: a couple of hundred accounts open on a key, no two of them agree on
+// what a contact is or how a page is asked for, and a pair of hand-written tools
+// each would be hundreds of files nobody can keep true. So a keyed account
+// brings ONE tool, named after itself, that makes the calls its own
+// documentation describes.
+//
+// An account this build has no reader for answers nothing, and armService says
+// so in a sentence.
+func (a *Agent) familyTools(service connectStatus) []bare.Tool {
+	switch strings.ToLower(strings.TrimSpace(service.ID)) {
 	case "google":
 		return []bare.Tool{
 			a.gmailSearchTool(), a.gmailReadTool(), a.gmailSendTool(),
 			a.calendarListTool(), a.calendarCreateTool(),
 		}
 	}
+	if service.keyed() {
+		return []bare.Tool{a.serviceRequestTool(service)}
+	}
 	return nil
+}
+
+// serviceRequestName is what one keyed account's tool is called: its own id and
+// the suffix internal/approval matches on, so that the consent floor and the
+// belt cannot drift apart on which tools these are.
+func serviceRequestName(id string) string {
+	return strings.TrimSpace(id) + approval.ServiceRequestSuffix
+}
+
+// serviceRequestSchemaJSON is the same four fields for every account.
+const serviceRequestSchemaJSON = `{"type":"object","properties":{"method":{"type":"string","description":"get, post, put, patch or delete (default: get)"},"path":{"type":"string","description":"The path under the address in this tool's description, for example /v1/customers"},"query":{"type":"string","description":"What goes after the question mark, for example limit=10&status=open (optional)"},"body":{"type":"string","description":"What to send, usually JSON (optional, and never on a get)"}},"required":["path"],"additionalProperties":false}`
+
+// serviceRequestDescription is the one line a model reads about one account.
+//
+// IT NAMES THE ADDRESS. The path is relative and nothing here knows the
+// service's own shapes, so the address is the one fact that lets a model line up
+// what it already knows about a service with what it is about to call.
+func serviceRequestDescription(service connectStatus) string {
+	line := "Make one call to the person's own " + service.Name + " account."
+	if address := strings.TrimSpace(service.Address); address != "" {
+		line += " Paths are relative to " + address + " — for example /v1/things."
+	}
+	return line + " Follow " + service.Name + "'s own published documentation for paths, parameters and shapes; " +
+		"nothing here knows them, so guessing costs a failed call. Long answers are shortened and say so. " +
+		"get reads; post, put, patch and delete change something in their account, and the person is asked before one goes."
+}
+
+func (a *Agent) serviceRequestTool(service connectStatus) bare.Tool {
+	id, name := service.ID, service.Name
+	return bare.Tool{
+		Name:        serviceRequestName(id),
+		Description: serviceRequestDescription(service),
+		Schema:      json.RawMessage(serviceRequestSchemaJSON),
+		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+			var parsed struct {
+				Method string `json:"method"`
+				Path   string `json:"path"`
+				Query  string `json:"query"`
+				Body   string `json:"body"`
+			}
+			if err := json.Unmarshal(args, &parsed); err != nil {
+				return "Invalid arguments: " + err.Error(), true, nil
+			}
+			if strings.TrimSpace(parsed.Path) == "" {
+				return "Invalid arguments: path is required", true, nil
+			}
+			if failed := a.serviceStanding(ctx, id, name); failed != "" {
+				return failed, true, nil
+			}
+			text, err := a.connect.Request(ctx, id, parsed.Method, parsed.Path, parsed.Query, parsed.Body)
+			if err != nil {
+				return "That call to " + name + " failed: " + err.Error(), true, nil
+			}
+			return text, false, nil
+		},
+	}
 }
 
 func (a *Agent) gmailSearchTool() bare.Tool {
@@ -467,17 +629,8 @@ func (a *Agent) calendarListTool() bare.Tool {
 // same question itself. Everything past that point is answered plainly: an
 // attempt that fails, a person who says no, a service having a bad minute.
 func (a *Agent) serviceClient(ctx context.Context, id, name string) (*http.Client, string) {
-	if a.connect == nil {
-		return nil, name + " is not reachable from this conversation."
-	}
-	if !a.connect.Connected(id) {
-		service, known := a.service(id)
-		if !known {
-			return nil, name + " is not reachable from this conversation."
-		}
-		if _, failed := a.connectService(ctx, service); failed != "" {
-			return nil, failed
-		}
+	if failed := a.serviceStanding(ctx, id, name); failed != "" {
+		return nil, failed
 	}
 	client, err := a.connect.Client(ctx, id)
 	if err != nil {
@@ -485,6 +638,27 @@ func (a *Agent) serviceClient(ctx context.Context, id, name string) (*http.Clien
 			". Say so plainly; use_service asks the person to connect it again."
 	}
 	return client, ""
+}
+
+// serviceStanding makes sure the account still stands before a tool leans on
+// it, asking the person again where it does not. It answers with the sentence to
+// hand the model when it could not be put right, and with NOTHING when the
+// account is ready — see [Agent.serviceClient] for the law it holds.
+func (a *Agent) serviceStanding(ctx context.Context, id, name string) string {
+	if a.connect == nil {
+		return name + " is not reachable from this conversation."
+	}
+	if a.connect.Connected(id) {
+		return ""
+	}
+	service, known := a.service(id)
+	if !known {
+		return name + " is not reachable from this conversation."
+	}
+	if _, failed := a.connectService(ctx, service); failed != "" {
+		return failed
+	}
+	return ""
 }
 
 // errNobodyWatching is askConnect's one error that is not the turn ending: there

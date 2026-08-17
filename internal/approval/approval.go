@@ -93,13 +93,54 @@ var actsInThePersonsName = map[string]bool{
 	"calendar_create": true,
 }
 
+// ServiceRequestSuffix is the tail of the raw-call tool one of the person's own
+// connected accounts brings — stripe_request, freshdesk_request. There are
+// hundreds of services a key opens and their tools are named when the account is
+// picked up, so THE NAMES CANNOT BE IN A TABLE WRITTEN IN ADVANCE and the shape
+// of the name is what there is to match on. It is exported so that the one
+// package that builds these names (internal/session) reads the suffix from here
+// rather than spelling it twice.
+const ServiceRequestSuffix = "_request"
+
+// actsInThePersonsNameCall is the table's other half: the calls whose names are
+// not known until a session is running.
+//
+// A raw call against somebody's own account is judged BY ITS VERB, because that
+// is the only thing about it this package can read. A GET reads and can be
+// undone by forgetting it; every other verb writes at the far end, in the
+// person's name, with no rollback and no way for anyone here to know what it
+// touched. So the floor holds under all four of them.
+//
+// AN UNREADABLE CALL COUNTS AS ONE THAT ACTS. The arguments were meant to say
+// which verb it is; if they cannot be read, nothing here knows what is about to
+// happen, and the safe reading of "I do not know" is the one that asks.
+func actsInThePersonsNameCall(tool string, args json.RawMessage) bool {
+	if !strings.HasSuffix(tool, ServiceRequestSuffix) || tool == ServiceRequestSuffix {
+		return false
+	}
+	text := strings.TrimSpace(string(args))
+	if text == "" || text == "null" {
+		// No arguments at all is the default verb, which is a read.
+		return false
+	}
+	var fields struct {
+		Method string `json:"method"`
+	}
+	if err := json.Unmarshal([]byte(text), &fields); err != nil {
+		return true
+	}
+	method := strings.ToUpper(strings.TrimSpace(fields.Method))
+	return method != "" && method != "GET"
+}
+
 // ActsInThePersonsName reports whether a call leaves this machine as the person
-// — the table above. It is exported for the one caller that needs the same list
-// for a different reason: internal/session's guardian, which may save somebody a
-// keystroke on a read and must not answer for them about a message going out
-// over their name.
-func ActsInThePersonsName(tool string) bool {
-	return actsInThePersonsName[strings.TrimSpace(tool)]
+// — the table above, or the shape below it. It is exported for the one caller
+// that needs the same reading for a different reason: internal/session's
+// guardian, which may save somebody a keystroke on a read and must not answer
+// for them about a message going out over their name.
+func ActsInThePersonsName(tool string, args json.RawMessage) bool {
+	tool = strings.TrimSpace(tool)
+	return actsInThePersonsName[tool] || actsInThePersonsNameCall(tool, args)
 }
 
 // Rule is one bash pattern and the answer it carries. Match is a glob in the
@@ -142,7 +183,7 @@ func (d Decision) String() string { return d.Rule + " → " + string(d.Action) }
 // is read only for bash, and only for its "command" field.
 func (p Policy) Check(tool string, args json.RawMessage) Decision {
 	tool = strings.TrimSpace(tool)
-	base := p.base(tool)
+	base := p.base(tool, args)
 	if tool != ToolBash {
 		return base
 	}
@@ -164,13 +205,13 @@ func (p Policy) Check(tool string, args json.RawMessage) Decision {
 // string — a slash command, a queued shell action, a settings preview that
 // wants to show what a pattern would do.
 func (p Policy) CheckBash(command string) Decision {
-	return p.checkBash(command, p.base(ToolBash))
+	return p.checkBash(command, p.base(ToolBash, nil))
 }
 
 // base is the answer before any bash-specific reasoning: the tool's own rule
 // if it has one, otherwise the default, otherwise ask — with the floor under a
 // blanket allow that [actsInThePersonsName] describes.
-func (p Policy) base(tool string) Decision {
+func (p Policy) base(tool string, args json.RawMessage) Decision {
 	if action, ok := p.Tools[tool]; ok && action.valid() {
 		return Decision{Action: action, Rule: fmt.Sprintf("tool %q", tool)}
 	}
@@ -178,7 +219,7 @@ func (p Policy) base(tool string) Decision {
 	if p.Default.valid() {
 		decision = Decision{Action: p.Default, Rule: "default"}
 	}
-	if decision.Action == ActionAllow && actsInThePersonsName[tool] {
+	if decision.Action == ActionAllow && ActsInThePersonsName(tool, args) {
 		return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("%s acts in your name outside this machine", tool)}
 	}
 	return decision

@@ -119,6 +119,7 @@ func TestAConnectionThatDoesNotCoverTheAskIsNotConnected(t *testing.T) {
 // simply needs the person to sign in again, which is a thing the ordinary ask
 // flow already does.
 func TestAFileFromAnEarlierBuildStillOpens(t *testing.T) {
+	withPlugs(t, google{})
 	directory := t.TempDir()
 	legacy := `{"google":{"account":"me@example.com","keys":{"access_token":"a","refresh_token":"r","token_type":"Bearer"}}}`
 	if err := os.WriteFile(filepath.Join(directory, StoreFileName), []byte(legacy), 0o600); err != nil {
