@@ -121,6 +121,63 @@ func TestTheBankingSeamWritesTheRowAndTheRebuildCarriesIt(t *testing.T) {
 	wantAction(t, *policy, "bash", `{"command":"rm -rf build"}`, approval.ActionPrompt)
 }
 
+// The other door: a conversation opened with /new or /resume after a rule was
+// banked must open BEHIND that rule. It is the same complaint one door over —
+// the launch config carries the launch's gate, and a second conversation built
+// from it would ask again about the tool somebody had just answered for.
+func TestASecondConversationOpensOnTheGateAsItStandsNow(t *testing.T) {
+	dir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
+	launch, err := applyV3Governance(session.Config{Model: "m"}, dir, false)
+	if err != nil {
+		t.Fatalf("the launch did not load: %v", err)
+	}
+	wantAction(t, *launch.ApprovalPolicy, "edit", `{"path":"x"}`, approval.ActionPrompt)
+
+	// Seconds later, on a consent card in the first conversation.
+	if err := bankToolApproval(nil, "", dir, false)("edit"); err != nil {
+		t.Fatalf("banking a tool failed: %v", err)
+	}
+
+	next := v3CurrentGate(launch, dir, dir, false)
+	wantAction(t, *next.ApprovalPolicy, "edit", `{"path":"x"}`, approval.ActionAllow)
+	// The launch's own config is untouched — a copy went out, not a mutation.
+	wantAction(t, *launch.ApprovalPolicy, "edit", `{"path":"x"}`, approval.ActionPrompt)
+	// And everything else about the launch travelled with it.
+	if next.Model != "m" {
+		t.Fatalf("the second conversation lost the launch's model: %q", next.Model)
+	}
+}
+
+// --yolo is a property of the launch and it has to survive the re-read: a
+// person who started this window with the flag did not un-say it by pressing
+// always on a card.
+func TestTheSecondConversationKeepsTheLaunchsPosture(t *testing.T) {
+	dir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
+	launch, err := applyV3Governance(session.Config{Model: "m"}, dir, true)
+	if err != nil {
+		t.Fatalf("the launch did not load: %v", err)
+	}
+	next := v3CurrentGate(launch, dir, dir, true)
+	wantAction(t, *next.ApprovalPolicy, "edit", `{"path":"x"}`, approval.ActionAllow)
+	// And the floors the flag never lifted are still where they were.
+	wantAction(t, *next.ApprovalPolicy, "bash", `{"command":"rm -rf /"}`, approval.ActionPrompt)
+}
+
+// A rebuild that cannot read the rows leaves the launch's gate in place. The
+// answer to "I could not read the rules" is never a session with no rules.
+func TestAnUnreadableRowLeavesTheSecondConversationOnTheLaunchsGate(t *testing.T) {
+	launch, err := applyV3Governance(session.Config{Model: "m"}, t.TempDir(), false)
+	if err != nil {
+		t.Fatalf("the launch did not load: %v", err)
+	}
+	broken := v3Profile(t, map[string]any{"tools.approval": "bash:always"})
+	next := v3CurrentGate(launch, "", broken, false)
+	if next.ApprovalPolicy != launch.ApprovalPolicy {
+		t.Fatal("a broken settings row replaced the gate the launch was standing on")
+	}
+	wantAction(t, *next.ApprovalPolicy, "edit", `{"path":"x"}`, approval.ActionPrompt)
+}
+
 // A write that fails is the error the surface has to hear: it is about to say
 // "saved", and the disk is what makes that true or false.
 func TestAFailedWriteIsToldToTheSurface(t *testing.T) {

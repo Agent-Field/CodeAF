@@ -273,7 +273,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			if err != nil {
 				return nil, "", err
 			}
-			fresh := cfg
+			// The launch's config, pointed at the new transcript and carrying
+			// the gate AS IT STANDS NOW rather than as it stood at boot
+			// (chatv3_approval.go says why the second half is not optional).
+			fresh := v3CurrentGate(cfg, workspace, settings.ProfileDir, *yolo)
 			fresh.SessionFile = next
 			replacement, err := session.New(fresh)
 			if err != nil {
@@ -288,11 +291,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		RecentSessions: func() []tui3.Session { return v3RecentSessions(workspace) },
 		Resume: func(file string) (tui3.Agent, error) {
 			// The same config this session runs on, pointed at another
-			// transcript: the model, the gate, the roles and the rail are
-			// properties of the LAUNCH, and a conversation opened from the
-			// picker is the same launch (see Fresh, above, which differs only in
-			// which file it names).
-			earlier := cfg
+			// transcript: the model, the roles and the rail are properties of
+			// the LAUNCH, and a conversation opened from the picker is the same
+			// launch (see Fresh, above, which differs only in which file it
+			// names).
+			//
+			// THE GATE IS THE ONE THING THAT IS NOT. It was a property of the
+			// launch only because nothing could change it mid-session; now that
+			// a banked rule can, an old conversation reopened afterwards has to
+			// open behind the rule and not behind the boot.
+			earlier := v3CurrentGate(cfg, workspace, settings.ProfileDir, *yolo)
 			earlier.SessionFile = file
 			agent, err := session.New(earlier)
 			if err != nil {
