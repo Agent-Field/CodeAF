@@ -228,7 +228,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// ANNOUNCE FIRST, then decide whether it may start. The order is the
 			// meaning: the person sees every call the moment the model finishes
 			// asking for it, and only the calls the law allows actually move.
-			warm.announce(hub, event.Delta)
+			warm.announce(hub, a, event.Delta)
 			warm.consider(toolCtx, a, episode, hub, event.Delta)
 		}
 	})
@@ -550,7 +550,10 @@ type warmBatch struct {
 // guard is belt and braces rather than a fix for something seen; the cost of
 // being wrong the other way is a row drawn twice, which is a row the person
 // cannot reconcile with the batch that follows.
-func (b *warmBatch) announce(hub *eventHub, payload string) {
+// The agent is here for the gloss and nothing else: an account's own tool reads
+// as a line only the session can write, and the announced row and the row that
+// follows it must say the same thing about the same call ([Agent.gloss]).
+func (b *warmBatch) announce(hub *eventHub, agent *Agent, payload string) {
 	if b == nil {
 		return
 	}
@@ -584,7 +587,7 @@ func (b *warmBatch) announce(hub *eventHub, payload string) {
 		Kind:   EventToolAnnounced,
 		Tool:   call.Function.Name,
 		CallID: call.ID,
-		Hint:   gloss(call),
+		Hint:   agent.gloss(call),
 		Args:   argsText(call),
 	})
 }
@@ -737,7 +740,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 		hub.send(Event{
 			Kind: EventToolBegin,
 			Tool: call.Function.Name,
-			Hint: gloss(call),
+			Hint: a.gloss(call),
 			Args: argsText(call),
 		})
 	}
@@ -910,6 +913,18 @@ var glossFields = map[string][]string{
 // argument that identifies the work. Unparseable arguments degrade to the bare
 // name rather than to the raw JSON — a malformed call is still a call the
 // person should see happening.
+// gloss on the AGENT is the same line for a tool whose name and arguments were
+// never written down here: an account's own tool reads as the account, the name
+// that account calls it, and what the call is about (served.go). Every surface
+// takes this one rather than the free function below, so the row a person
+// watches and the question they are asked say the same thing.
+func (a *Agent) gloss(call ai.ToolCall) string {
+	if record, served := a.servedRecord(call.Function.Name); served {
+		return servedGloss(record, call.Function.Arguments)
+	}
+	return gloss(call)
+}
+
 func gloss(call ai.ToolCall) string {
 	name := call.Function.Name
 	fields, known := glossFields[name]

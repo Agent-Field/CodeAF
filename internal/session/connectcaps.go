@@ -84,6 +84,34 @@ func toolService(tool string) string {
 	return ""
 }
 
+// serviceOf is [toolService] with the one case a name cannot answer: a tool the
+// ACCOUNT named, armed from what it said it serves (served.go).
+//
+// The record is asked first and the name second, so a served tool whose name
+// happens to end in the key accounts' suffix is still read as what it is. Every
+// caller that judges a call takes this reading rather than the bare function,
+// which is what keeps a served tool from being a tool with no capability at all.
+func (a *Agent) serviceOf(tool string) string {
+	if record, served := a.servedRecord(tool); served {
+		return record.service
+	}
+	return toolService(tool)
+}
+
+// actsInThePersonsName is [approval.ActsInThePersonsName] with the same case
+// added: a served tool acts when the account said it is not read-only, and no
+// table written in advance could have held the name.
+//
+// It exists for the guardian (guardian.go), which may stand in for a person on a
+// read and must never stand in for one on something that leaves the machine in
+// their name.
+func (a *Agent) actsInThePersonsName(tool string, args json.RawMessage) bool {
+	if record, served := a.servedRecord(tool); served {
+		return record.acts()
+	}
+	return approval.ActsInThePersonsName(tool, args)
+}
+
 // rawCall reports whether a tool is a key account's one raw call, which is the
 // tool the verb has to choose a capability for.
 func rawCall(tool string) bool {
@@ -100,6 +128,15 @@ func rawCall(tool string) bool {
 func (a *Agent) capabilityOf(service, tool string, args json.RawMessage) string {
 	if a.connect == nil || service == "" {
 		return ""
+	}
+	// A SERVED TOOL CARRIES ITS OWN ANSWER. The account said whether that tool
+	// only looks, this build wrote it down when it armed it, and there is no
+	// registry entry to read instead: the names were not known when the
+	// registry was filled in. It is the verb split again — one generic pair,
+	// the half chosen per call — decided by what the account said rather than
+	// by a method on a request.
+	if record, served := a.servedRecord(tool); served {
+		return record.capability
 	}
 	owner := a.connect.ToolCapability(service, tool)
 	if owner == "" {
@@ -126,6 +163,9 @@ func (a *Agent) capabilityOf(service, tool string, args json.RawMessage) string 
 func (a *Agent) capabilityLive(service, tool string) bool {
 	if a.connect == nil || service == "" {
 		return true
+	}
+	if record, served := a.servedRecord(tool); served {
+		return a.connect.CapabilityState(service, record.capability) != connect.StateOff
 	}
 	owner := a.connect.ToolCapability(service, tool)
 	if owner == "" {
@@ -244,7 +284,7 @@ func (a *Agent) capabilityPhrase(service, capability string) string {
 // response is still streaming. A check written into the five tools would be a
 // check the sixth one, added later, would not have.
 func (a *Agent) capabilityRefusal(tool string, args json.RawMessage) string {
-	service := toolService(tool)
+	service := a.serviceOf(tool)
 	if a.connect == nil || service == "" {
 		return ""
 	}
@@ -313,7 +353,7 @@ func (a *Agent) rememberCapability(tool string, args json.RawMessage, allow bool
 	if !allow || a.connect == nil {
 		return false
 	}
-	service := toolService(tool)
+	service := a.serviceOf(tool)
 	if service == "" {
 		return false
 	}

@@ -52,6 +52,23 @@ type fakeHub struct {
 	// calls is every raw call an armed tool made, as "METHOD path".
 	calls []string
 
+	// The third shape: an account connected in a browser whose TOOLS ARE ITS
+	// OWN TO NAME (served.go). It is off unless a test turns it on, so that
+	// every test about the first two goes on reasoning about the list it
+	// always had.
+	servedService   bool
+	servedConnected bool
+	// served is what that account answers when it is asked what it brings,
+	// servedErr is it refusing to say, and servedFail is one call against it
+	// failing.
+	served     []connect.MCPTool
+	servedErr  error
+	servedFail error
+	// servedCalls is every call an armed served tool made, as
+	// "service tool arguments", so a test can watch that the SERVICE'S own
+	// name for the tool went back out rather than the belt's.
+	servedCalls []string
+
 	// states is what the person has said about a capability, keyed
 	// "service/capability". Empty is nobody having said anything, which reads
 	// as the default the declaration carries — the same emptiness law
@@ -75,6 +92,12 @@ var fakeCapabilities = map[string][]connect.Capability{
 		{ID: connect.CapabilityRead, Phrase: "read what is in this account"},
 		{ID: connect.CapabilityAct, Phrase: "act in this account in your name", Acts: true},
 	},
+	// An account that serves its own tools says the same two sentences and no
+	// others: nobody wrote a vocabulary for a list nobody has seen.
+	"notion": {
+		{ID: connect.CapabilityRead, Phrase: "read what is in this account"},
+		{ID: connect.CapabilityAct, Phrase: "act in this account in your name", Acts: true},
+	},
 }
 
 // fakeTools is which sentence owns which tool. The key account's one tool points
@@ -89,6 +112,9 @@ var fakeTools = map[string]map[string]string{
 		"calendar_create": "calendar-write",
 	},
 	"stripe": {"stripe_request": connect.CapabilityAct},
+	// AND NOTHING FOR THE SERVED ACCOUNT, exactly as the real registry has
+	// nothing: its tool names were not known when the registry was filled in,
+	// so the arming record is the only thing that can answer for them.
 }
 
 func (h *fakeHub) Capabilities(service string) []connect.Capability {
@@ -158,6 +184,76 @@ func keyStatus(connected bool) connectStatus {
 	}
 }
 
+// notionStatus is the account whose tools are its own to name.
+func notionStatus(connected bool) connectStatus {
+	return connectStatus{
+		ID: "notion", Name: "Notion", Auth: "browser",
+		Blurb:     "read and write what is in your Notion workspace",
+		Connected: connected,
+	}
+}
+
+// servedList is what that account answers when it is asked what it brings. The
+// two names are chosen for what they cost the belt: one with a space and
+// capitals in it that only looks, and one with a hyphen that acts.
+func servedList() []connect.MCPTool {
+	return []connect.MCPTool{
+		{
+			Name:        "Search Pages",
+			Description: "Search the person's workspace and get back the pages that match.",
+			Schema:      json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"],"additionalProperties":false}`),
+			ReadOnly:    true,
+		},
+		{
+			Name:        "create-page",
+			Description: "Add a page to the workspace",
+			Schema:      json.RawMessage(`{"type":"object","properties":{"title":{"type":"string"},"body":{"type":"string"}},"required":["title"],"additionalProperties":false}`),
+		},
+	}
+}
+
+// servedHub is an agent's seam with that account connected and serving a list.
+func servedHub(served []connect.MCPTool) *fakeHub {
+	return &fakeHub{servedService: true, servedConnected: true, served: served}
+}
+
+func (h *fakeHub) MCPTools(ctx context.Context, service string) ([]connect.MCPTool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.servedErr != nil {
+		return nil, h.servedErr
+	}
+	if service != "notion" || !h.servedConnected {
+		return nil, nil
+	}
+	return append([]connect.MCPTool(nil), h.served...), nil
+}
+
+func (h *fakeHub) MCPCall(ctx context.Context, service, tool string, args json.RawMessage) (string, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.servedCalls = append(h.servedCalls, service+" "+tool+" "+strings.TrimSpace(string(args)))
+	if h.servedFail != nil {
+		return "", h.servedFail
+	}
+	return "Notion · " + tool + " · done", nil
+}
+
+// servedMade is every call an armed served tool made.
+func (h *fakeHub) servedMade() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.servedCalls...)
+}
+
+// serves replaces what the account answers, the way a service that changed
+// overnight would.
+func (h *fakeHub) serves(served []connect.MCPTool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.served = served
+}
+
 // stubTransport is a service that answers one canned reply and remembers every
 // request it was sent.
 type stubTransport struct {
@@ -202,6 +298,9 @@ func (h *fakeHub) Services() []connectStatus {
 	if h.keyService {
 		services = append(services, keyStatus(h.keyConnected))
 	}
+	if h.servedService {
+		services = append(services, notionStatus(h.servedConnected))
+	}
 	return services
 }
 
@@ -213,6 +312,8 @@ func (h *fakeHub) Connected(id string) bool {
 		return h.connected
 	case "stripe":
 		return h.keyService && h.keyConnected
+	case "notion":
+		return h.servedService && h.servedConnected
 	}
 	return false
 }
@@ -266,6 +367,12 @@ func (h *fakeHub) BeginAuth(ctx context.Context, id string) (string, func(contex
 		}
 		if wait != nil {
 			return connectStatus{}, wait
+		}
+		if id == "notion" {
+			h.mu.Lock()
+			h.servedConnected = true
+			h.mu.Unlock()
+			return notionStatus(true), nil
 		}
 		h.mu.Lock()
 		h.connected = true
@@ -369,7 +476,7 @@ func TestArmedToolsLandAtTheTailAndNothingAlreadyThereMoves(t *testing.T) {
 	before := beltNames(agent)
 	beforeDefinitions := definitionNames(agent)
 
-	text, isError, err := agent.useService(context.Background(), "google")
+	text, isError, err := agent.useService(context.Background(), "google", "")
 	if err != nil || isError {
 		t.Fatalf("use_service on a connected account: %q err=%v", text, err)
 	}
@@ -400,7 +507,7 @@ func TestArmedToolsLandAtTheTailAndNothingAlreadyThereMoves(t *testing.T) {
 
 	// Asking again is the cheap no-op that lets the two tools stay on the belt
 	// forever: one short line, and not one entry added or moved.
-	repeat, isError, _ := agent.useService(context.Background(), "google")
+	repeat, isError, _ := agent.useService(context.Background(), "google", "")
 	if isError {
 		t.Fatalf("a second ask errored: %q", repeat)
 	}
@@ -428,7 +535,7 @@ func TestAnUnknownServiceIsAnHonestResultAndAsksNobody(t *testing.T) {
 	hub := &fakeHub{}
 	agent := connectAgent(t, &scriptedCompleter{}, hub, true)
 
-	text, isError, err := agent.useService(context.Background(), "dropbox")
+	text, isError, err := agent.useService(context.Background(), "dropbox", "")
 	if err != nil || !isError {
 		t.Fatalf("an unknown id: %q isError=%v err=%v", text, isError, err)
 	}
@@ -589,7 +696,7 @@ func TestConnectingRefusesWhenNobodyIsWatching(t *testing.T) {
 	hub := &fakeHub{}
 	agent := connectAgent(t, &scriptedCompleter{}, hub, false)
 
-	text, isError, err := agent.useService(context.Background(), "google")
+	text, isError, err := agent.useService(context.Background(), "google", "")
 	if err != nil || !isError {
 		t.Fatalf("an unwatched ask: %q isError=%v err=%v", text, isError, err)
 	}
@@ -1076,7 +1183,7 @@ func TestTheRawCallToolNamesItsAddressAndMakesTheCall(t *testing.T) {
 	hub := &fakeHub{keyService: true, keyConnected: true}
 	agent := connectAgent(t, &scriptedCompleter{}, hub, true)
 
-	text, isError, err := agent.useService(context.Background(), "stripe")
+	text, isError, err := agent.useService(context.Background(), "stripe", "")
 	if err != nil || isError {
 		t.Fatalf("use_service: %q err=%v", text, err)
 	}
