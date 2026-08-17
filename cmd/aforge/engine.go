@@ -160,7 +160,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			if err != nil {
 				return nil
 			}
-			return session.Recent(dir, v3RecentSessionSlots)
+			// Both shapes, exactly as the local list reads them
+			// ([v3RecentSessions]): the far machine's disk is under the same
+			// decision as this one's, and a list that answered differently
+			// over a connection would be a second law about one layout.
+			return session.RecentSessions(dir, v3RecentSessionSlots)
 		},
 	}, nil
 }

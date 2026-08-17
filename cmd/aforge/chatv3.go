@@ -1235,7 +1235,16 @@ func v3RecentSessions(workspace string) []tui3.Session {
 	if err != nil {
 		return nil
 	}
-	found := session.Recent(dir, v3RecentSessionSlots)
+	// BOTH SHAPES ARE LISTED, because both are on the disk: a session written
+	// before Decision 26 is a flat transcript and one written after it is a
+	// folder, and the reader takes the folder's own meta.json as the name and
+	// the ordering (internal/session's recentplace.go).
+	//
+	// STUB(place/layout): the directory is still resolved the flat way above.
+	// When session resolution moves to the folder layout it hands this function
+	// the bucket directory it already computed, and this line is the only thing
+	// in here that has to keep being true.
+	found := session.RecentSessions(dir, v3RecentSessionSlots)
 	rows := make([]tui3.Session, 0, len(found))
 	for _, summary := range found {
 		rows = append(rows, tui3.Session{

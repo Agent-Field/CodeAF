@@ -529,7 +529,7 @@ func (w *welcome) recentRow(i int, pal palette, hovered bool) string {
 	// Session.File — so nothing that identifies the session is touched here.
 	name := readableName(session.Title)
 	if name == "" {
-		name = baseName(session.File)
+		name = sessionStem(session.File)
 	}
 	when := since(session.At)
 	line := fit(name, 24)
