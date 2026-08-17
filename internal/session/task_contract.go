@@ -106,6 +106,16 @@ type TaskNotice struct {
 	// DependsOn names the nodes that must finish before this one may start —
 	// IDs of sibling proposals. Empty in a one-node graph.
 	DependsOn []uint64
+	// Parent is the work this one was SPAWNED UNDER, and 0 is a root — which is
+	// every task a person or the model proposed. It is filled by an adaptive run,
+	// whose nodes are registered as a family under one row for the run itself
+	// (orchestrate.go's family seam), and it is what a roster draws a tree from.
+	//
+	// IT IS NOT A DEPENDENCY. DependsOn says what must finish first; this says
+	// who asked for the work. A run's two independent nodes share a parent and
+	// have no edge between them, and collapsing the two would draw a tree that
+	// says the wrong thing about what is waiting for what.
+	Parent uint64
 	// Deadline is when silence becomes approval — now plus the configured
 	// countdown (task.autoapprove_seconds). A zero Deadline means the clock
 	// is off and only an answer resolves the proposal.

@@ -74,6 +74,23 @@ type Options struct {
 	// OnPause fires when the tank is empty and the run has stopped launching.
 	// The answer comes back through [Orchestrator.Resolve].
 	OnPause func(f Fuel)
+	// OnNodes carries the crystallized graph every time any of it moves — a node
+	// launched, a node landed, a node the planner added or a person cancelled. It
+	// is the same slice [Snapshot.Nodes] carries, published at the same moment and
+	// for a reader that cannot poll: the session registers a run's nodes as a task
+	// FAMILY so the roster has a tree to draw (session's orchestrate.go), and a
+	// registration driven by polling would be a clock asking a run whether
+	// anything happened.
+	//
+	// IT IS THE WHOLE GRAPH AND NOT THE NODE THAT MOVED, because a publish is not
+	// one transition: [Orchestrator.launch] starts up to a lane's worth at once,
+	// and an amendment can add four nodes and cancel one. What moved is a
+	// difference the reader already has to compute against what it drew last, so
+	// this hands it the state rather than a guess at the event.
+	//
+	// The slice is the SNAPSHOT'S OWN and is read-only to the callback: writing
+	// through it would edit what the next [Orchestrator.Snapshot] hands back.
+	OnNodes func(nodes []NodeStatus)
 }
 
 // New builds a run. Nothing starts until Run is called.
@@ -93,6 +110,7 @@ func New(goal string, planner Planner, exec Executor, opts Options) *Orchestrato
 		onNote:       opts.OnNote,
 		onFuel:       opts.OnFuel,
 		onPause:      opts.OnPause,
+		onNodes:      opts.OnNodes,
 		index:        map[string]*NodeStatus{},
 		fuel:         Fuel{Cap: opts.Cap},
 		gate:         make(chan string, 1),
@@ -610,9 +628,14 @@ func (o *Orchestrator) Goal() string { return o.goal }
 
 // publish rebuilds the snapshot a surface polls. Every slice in it is a fresh
 // copy, which is what makes [Orchestrator.Snapshot] lock-free for its reader.
+//
+// THE LOCK IS DROPPED BEFORE THE CALLBACK, on the rule mu is declared with: a
+// hook belongs to whoever wired it, it may fan out to watchers, and a snapshot
+// poll must never wait on somebody else's channel. What it is handed is the copy
+// this call just built, so a reader gets the graph exactly as it was published
+// rather than as it is by the time it looks.
 func (o *Orchestrator) publish() {
 	o.mu.Lock()
-	defer o.mu.Unlock()
 	nodes := make([]NodeStatus, 0, len(o.nodes))
 	for _, node := range o.nodes {
 		nodes = append(nodes, *node)
@@ -628,6 +651,10 @@ func (o *Orchestrator) publish() {
 		Done:    o.done,
 		Stopped: o.stopped,
 		Answer:  o.answer,
+	}
+	o.mu.Unlock()
+	if o.onNodes != nil {
+		o.onNodes(nodes)
 	}
 }
 
@@ -675,6 +702,7 @@ type Orchestrator struct {
 	onNote       func(string)
 	onFuel       func(Fuel)
 	onPause      func(Fuel)
+	onNodes      func([]NodeStatus)
 
 	// gate carries the one answer a paused run is waiting for. It is buffered
 	// to one so [Orchestrator.Resolve] never blocks a surface's goroutine, and
