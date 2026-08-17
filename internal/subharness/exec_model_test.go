@@ -434,6 +434,226 @@ func TestModelExecCallsChild(t *testing.T) {
 	}
 }
 
+// leafHarness is a child whose only work is one tool.call: a program that needs
+// a tool and no model, which is what keeps a nesting test off the network.
+func leafHarness(name string) Harness {
+	return Harness{
+		Id: Id{Name: name, Desc: "reads the notes", Version: 1},
+		Program: Program{Nodes: []Node{
+			{Id: "sort", Kind: KindToolCall, Fields: Fields{"tool": "read", "args": "notes.md"}},
+		}},
+		Whitelist: []string{"read"},
+		Verify:    Verify{Ladder: VerifyAccept},
+	}
+}
+
+// callerHarness is a program that is nothing but calls, one after another. Its
+// whitelist is deliberately empty: a caller lends its child nothing.
+func callerHarness(name string, budget int, calls ...string) Harness {
+	h := Harness{
+		Id:     Id{Name: name, Version: 1},
+		Verify: Verify{Ladder: VerifyAccept},
+		Dyn:    Dyn{Ladder: DynRecursive, Cap: budget},
+	}
+	for at, called := range calls {
+		id := fmt.Sprintf("call%d", at+1)
+		h.Program.Nodes = append(h.Program.Nodes,
+			Node{Id: id, Kind: KindSubharnessCall, Fields: Fields{"name": called}})
+		if at > 0 {
+			h.Program.Edges = append(h.Program.Edges, Edge{fmt.Sprintf("call%d", at), id})
+		}
+	}
+	return h
+}
+
+func saveHarness(t *testing.T, store *Store, h Harness) {
+	t.Helper()
+	if _, err := store.Save(h); err != nil {
+		t.Fatalf("save %s: %v", h.Id.Name, err)
+	}
+}
+
+// readNotes is the one tool the leaves of these tests call, and a record of
+// every time it ran.
+func readNotes(ran *[]string) func(context.Context, string, string) (string, error) {
+	return func(_ context.Context, tool, args string) (string, error) {
+		*ran = append(*ran, tool+" "+args)
+		return "the notes say it is fine", nil
+	}
+}
+
+// TestModelExecCallsTwoDeep is the nesting itself: top calls mid, mid calls
+// leaf, and each level leaves its own trace while the caller's row keeps the
+// pointer, the status and what the child finally said.
+func TestModelExecCallsTwoDeep(t *testing.T) {
+	store := At(t.TempDir())
+	saveHarness(t, store, leafHarness("leaf"))
+	saveHarness(t, store, callerHarness("mid", 2, "leaf"))
+	top := callerHarness("top", 2, "mid")
+
+	server := newModelServer(t)
+	var ran []string
+	trace, err := Run(context.Background(), top, ModelExec(server.client(t), ModelExecOpts{
+		Harness: top,
+		Store:   store,
+		RunTool: readNotes(&ran),
+	}))
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if server.calls() != 0 {
+		t.Fatalf("%d model calls, want none — every node in this tree is a call or a tool", server.calls())
+	}
+	if len(ran) != 1 || ran[0] != "read notes.md" {
+		t.Fatalf("the deepest tool ran as %v, want one read on the child's own whitelist", ran)
+	}
+	if len(trace.Trail) != 1 {
+		t.Fatalf("the top's trail is %v, want one call row", trace.Trail)
+	}
+	row := trace.Trail[0].Out
+	for _, want := range []string{"mid v1 · ok", "leaf v1 · ok", "the notes say it is fine"} {
+		if !strings.Contains(row, want) {
+			t.Fatalf("the top's row does not carry %q:\n%s", want, row)
+		}
+	}
+	// Each level's run is saved in its OWN history, which is where somebody
+	// asking how leaf behaves would look.
+	for _, name := range []string{"mid", "leaf"} {
+		runs, err := store.Runs(name)
+		if err != nil || len(runs) != 1 {
+			t.Fatalf("%s's history holds %v (%v), want one trace", name, runs, err)
+		}
+	}
+}
+
+// TestModelExecCallDepthCap states the bound: a call that would run deeper than
+// the cap refuses, and says how deep it was and what the cap was.
+func TestModelExecCallDepthCap(t *testing.T) {
+	store := At(t.TempDir())
+	saveHarness(t, store, leafHarness("leaf"))
+	saveHarness(t, store, callerHarness("mid", 2, "leaf"))
+	top := callerHarness("top", 2, "mid")
+
+	server := newModelServer(t)
+	var ran []string
+	_, err := Run(context.Background(), top, ModelExec(server.client(t), ModelExecOpts{
+		Harness:  top,
+		Store:    store,
+		DepthCap: 1,
+		RunTool:  readNotes(&ran),
+	}))
+	if err == nil {
+		t.Fatalf("a call past the depth cap was allowed")
+	}
+	for _, want := range []string{"depth cap of 1", "top v1 → mid v1 → leaf", "mid v1 · failed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal reads %q, want it to carry %q", err, want)
+		}
+	}
+	if len(ran) != 0 {
+		t.Fatalf("the leaf's tool ran %v under a cap that should have stopped its harness", ran)
+	}
+}
+
+// TestModelExecCallCycle is a program reaching itself: ping calls pong, pong
+// calls ping, and the refusal prints who was running so the loop is readable.
+func TestModelExecCallCycle(t *testing.T) {
+	store := At(t.TempDir())
+	saveHarness(t, store, callerHarness("ping", 2, "pong"))
+	saveHarness(t, store, callerHarness("pong", 2, "ping"))
+	ping, err := store.Load("ping", 0)
+	if err != nil {
+		t.Fatalf("load ping: %v", err)
+	}
+
+	server := newModelServer(t)
+	_, err = Run(context.Background(), ping, ModelExec(server.client(t), ModelExecOpts{
+		Harness: ping,
+		Store:   store,
+	}))
+	if err == nil {
+		t.Fatalf("a cycle ran")
+	}
+	for _, want := range []string{"already running", "ping v1 → pong v1 → ping"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal reads %q, want it to carry %q", err, want)
+		}
+	}
+}
+
+// TestModelExecCallSpendsDyn is the budget: a call is a decision, so each one
+// spends a unit of the CALLING harness's cap and the one past it refuses.
+func TestModelExecCallSpendsDyn(t *testing.T) {
+	store := At(t.TempDir())
+	saveHarness(t, store, leafHarness("leaf"))
+	spender := callerHarness("spender", 1, "leaf", "leaf")
+
+	server := newModelServer(t)
+	var ran []string
+	_, err := Run(context.Background(), spender, ModelExec(server.client(t), ModelExecOpts{
+		Harness: spender,
+		Store:   store,
+		RunTool: readNotes(&ran),
+	}))
+	if err == nil {
+		t.Fatalf("a second call ran on a cap of one")
+	}
+	for _, want := range []string{"spender", "dynamism cap of 1 calls"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("the refusal reads %q, want it to carry %q", err, want)
+		}
+	}
+	// The FIRST call is paid for and happens; only the second is refused.
+	if len(ran) != 1 {
+		t.Fatalf("the leaf's tool ran %v, want the one call the cap paid for", ran)
+	}
+	runs, err := store.Runs("leaf")
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("leaf's history holds %v (%v), want the one run that was afforded", runs, err)
+	}
+}
+
+// TestModelExecCallDeclined is the gate one level down: a person said no to work
+// the parent asked for, so the parent stops — and the child's own history says
+// declined rather than failed, because nothing went wrong.
+func TestModelExecCallDeclined(t *testing.T) {
+	store := At(t.TempDir())
+	saveHarness(t, store, Harness{
+		Id: Id{Name: "asker", Version: 1},
+		Program: Program{Nodes: []Node{
+			{Id: "sure", Kind: KindHumanGate, Fields: Fields{"ask": "send it?"}},
+		}},
+		Verify: Verify{Ladder: VerifyAccept},
+	})
+	outer := callerHarness("outer", 1, "asker")
+
+	server := newModelServer(t)
+	_, err := Run(context.Background(), outer, ModelExec(server.client(t), ModelExecOpts{
+		Harness: outer,
+		Store:   store,
+		Ask:     func(context.Context, string) (string, error) { return "no, not yet", nil },
+	}))
+	// Through a plain Run the parent can only end on an error, which is the caveat
+	// this file's header states. What matters is that it STOPPED and said why.
+	if err == nil || !strings.Contains(err.Error(), "declined") {
+		t.Fatalf("the parent ended with %v, want a stop that says declined", err)
+	}
+	runs, err := store.Runs("asker")
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("asker's history holds %v (%v), want one trace", runs, err)
+	}
+	trace, err := store.LoadRun(runs[0])
+	if err != nil {
+		t.Fatalf("load the child's trace: %v", err)
+	}
+	if trace.Status != StatusDeclined || trace.Err != "" {
+		t.Fatalf("the child's trace says (%q, %q), want declined and no failure", trace.Status, trace.Err)
+	}
+	if trace.Out != "not yet" {
+		t.Fatalf("the child's out is %q, want what the person typed", trace.Out)
+	}
+}
+
 // TestModelExecClips keeps a megabyte out of every prompt after the one that
 // produced it, and keeps both ends of what it clips.
 func TestModelExecClips(t *testing.T) {
