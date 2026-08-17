@@ -453,12 +453,19 @@ func v3SearchOptions(profileDir string) search.Options {
 // absent.
 //
 // The nil is the point, and it is the same law v3Search's nil half states.
-// Without a registration there is nothing this build could connect, so handing
-// the session a manager that could only ever refuse would put two tools on the
-// belt whose one answer is "not configured" — and the session states, at
+// With no registration there would be nothing this build could connect, so
+// handing the session a manager that could only ever refuse would put two tools
+// on the belt whose one answer is "not configured" — and the session states, at
 // [session.Config], why that is strictly worse for a model than never being
-// told. An id without its secret is the same absence: half a registration
-// connects nothing.
+// told.
+//
+// IN PRACTICE THE PAIR IS ALWAYS THERE now, because a build ships a
+// registration of its own as the last rung under the environment and the sheet
+// (internal/config's connect_defaults.go), so the guard below stands for the
+// case where somebody has emptied it rather than the ordinary one. Having the
+// pair is not having an account: connecting still opens Google in the person's
+// browser and waits for them to approve it, and the tools say "not connected"
+// until they do.
 //
 // IT RETURNS NO ERROR for the reason v3Search does not. Accounts are an
 // accessory; a garbled row, a half-filled pair, a manager that cannot open its
