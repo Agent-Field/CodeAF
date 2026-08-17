@@ -1,0 +1,50 @@
+{
+  "id": {
+    "name": "filewatcher-taglines",
+    "desc": "Write three punchy taglines for a CLI tool that watches files.",
+    "author": "designer",
+    "version": 1
+  },
+  "program": {
+    "nodes": [
+      {
+        "id": "draft",
+        "kind": "agent.loop",
+        "fields": {
+          "brief": "Brainstorm a diverse list of candidate taglines (aim for 8-12) for a CLI tool that watches files — a command-line program that watches for file changes and reacts. The taglines should be punchy, short, memorable, and speak to the value of watching files, reacting instantly, and automating a developer's workflow. Vary the tone: snappy, witty, technical, and practical. Return the candidates one per line, with no extra commentary."
+        }
+      },
+      {
+        "id": "polish",
+        "kind": "agent.loop",
+        "fields": {
+          "brief": "From the candidate taglines in the previous step, pick the three strongest — the most punchy, most fitting, and most memorable for a CLI tool that watches files and reacts to changes. Tighten each one: trim every word that doesn't work, keep it short and sharp. Your entire output must be exactly those three taglines, one per line, no numbering, no bullets, no preface or explanation."
+        }
+      }
+    ],
+    "edges": [
+      [
+        "draft",
+        "polish"
+      ]
+    ]
+  },
+  "verify": {
+    "ladder": "accept"
+  },
+  "dyn": {
+    "ladder": "fixed"
+  },
+  "tests": [
+    {
+      "name": "plain-ask",
+      "input": "Give me three punchy taglines for a CLI tool that watches files.",
+      "expect": "exactly three taglines, one per line, each a tagline for file watching"
+    },
+    {
+      "name": "shorter-ask",
+      "input": "I need taglines for a file watcher CLI",
+      "expect": "three taglines about watching files, one per line"
+    }
+  ]
+}

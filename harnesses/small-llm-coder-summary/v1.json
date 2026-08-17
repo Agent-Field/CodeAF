@@ -1,0 +1,48 @@
+{
+  "id": {
+    "name": "small-llm-coder-summary",
+    "desc": "Researches and produces a cited summary of small open-weight LLMs for coding.",
+    "author": "designer",
+    "version": 1
+  },
+  "program": {
+    "nodes": [
+      {
+        "id": "research",
+        "kind": "agent.loop",
+        "fields": {
+          "brief": "You are an AI research assistant. Produce a cited summary of the current state of small open-weight LLMs for coding (year 2026). The summary must include at least three citations in a standard academic format (e.g., Author, Year). Focus on models like CodeLlama, StarCoder, DeepSeek-Coder, Phi-2, etc. Ensure the summary is coherent and informative.",
+          "max_turns": "6"
+        }
+      },
+      {
+        "id": "check",
+        "kind": "loop.until",
+        "fields": {
+          "max_rounds": "3",
+          "until": "The content above contains at least three citations and discusses small open-weight LLMs for coding."
+        }
+      }
+    ],
+    "edges": [
+      [
+        "research",
+        "check"
+      ]
+    ]
+  },
+  "verify": {
+    "ladder": "accept"
+  },
+  "dyn": {
+    "ladder": "branch",
+    "cap": 1
+  },
+  "tests": [
+    {
+      "name": "basic-request",
+      "input": "Research the current state of small open-weight LLMs for coding (2026) and give me a cited summary.",
+      "expect": "A coherent summary with at least three citations discussing models like CodeLlama, StarCoder, DeepSeek-Coder, Phi-2, etc."
+    }
+  ]
+}
