@@ -679,6 +679,22 @@ type Config struct {
 	// own agent too.
 	HarnessStore *subharness.Store
 
+	// OrchestrateRunner launches one adaptive run (internal/orchestrate): the
+	// goal, the model the turn named (empty is the session's), and the fuel
+	// cap in dollars. It returns the run's id; events stream on the standing
+	// lanes as EventOrchestrateNote/Fuel/Pause.
+	//
+	// NIL IS ORCHESTRATION OFF, the same posture RunHarness keeps: a surface
+	// that was not handed a runner never offers an adaptive run, at the cost
+	// of one nil check per turn.
+	OrchestrateRunner func(ctx context.Context, goal, model string, capDollars float64) (string, error)
+
+	// WorktreeRoot is where isolated worktrees for a run's write-capable
+	// nodes live. The session-id wave owns what fills it; this is the
+	// ABSTRACT SEAM — a path per job id, nothing more. EMPTY means worktree
+	// nodes share the workspace instead, which is the safe degradation.
+	WorktreeRoot string
+
 	// ImageGenModel and ImageGenClient are the image-generation pair the belt's
 	// generate_image tool calls through (tools_image.go): the model that paints,
 	// and the client that carries the request to it.
