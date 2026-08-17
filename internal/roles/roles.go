@@ -38,6 +38,13 @@ const (
 	RoleTitle Role = "title"
 	// RoleCompaction summarizes a transcript that outgrew its window.
 	RoleCompaction Role = "compaction"
+	// RoleConsolidate is the dreaming pass over what a session has remembered:
+	// one call over fifty short lines whose whole instruction is "merge the
+	// duplicates and drop what is superseded" (internal/session's
+	// memory_consolidate.go, which owns the call and registers it). Low — the
+	// archetypal cheap call, made while nobody is waiting, over a file the next
+	// idle minute passes over again.
+	RoleConsolidate Role = "consolidate"
 	// RoleGuardian answers "is this specific tool call safe to run without
 	// asking the person?" — a cheap binary classification, so it sits low.
 	RoleGuardian Role = "guardian"

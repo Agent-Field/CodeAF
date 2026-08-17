@@ -151,7 +151,11 @@ Build detection is read **before** run detection, so "make a harness for triagin
 tests" is not answered with an offer to run the harness that already triages flaky tests.
 
 **The turn does not wait.** It ends the moment the design starts, with no reply, and the
-surface notes `harness · designing <goal>`. The design runs on the session's own context
+surface notes `harness · designing with <model> · <goal>` — the model named there is the
+one actually writing the page: the one you typed in the sentence, or the `designer` role's
+(`/settings` → Session), or the model you are talking to when neither is set. A build with
+no model resolved at all notes plain `harness · designing <goal>`. The design runs on the
+session's own context
 rather than on the turn's, inside a **30-minute** window that covers both the model work
 **and** the wait for your answer to the card.
 

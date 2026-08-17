@@ -130,11 +130,16 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// planner is made once per completion and decides what everything else
 	// costs; a node is one small question and there are many of them. Two roles,
 	// resolved once here, so neither half has to ask again.
-	planner := &orchestratePlanner{agent: a, model: orchestrateRoleModel(source, roles.RolePlanner, named, session)}
+	plannerModel := orchestrateRoleModel(source, roles.RolePlanner, named, session)
+	planner := &orchestratePlanner{agent: a, model: plannerModel}
 	worker := &orchestrateExec{agent: a, model: orchestrateRoleModel(source, roles.RoleWorker, named, session), id: id}
 	run := orchestrate.New(goal, planner, worker, orchestrate.Options{
 		Cap:   capDollars,
 		Lanes: orchestrateLanes,
+		// The planner's model rides onto every snapshot so the run's page can
+		// name it beside the gauge: it is the judgement the tank is paying for,
+		// and with no tiers set it is not the model the person is talking to.
+		Planner: plannerModel,
 		OnNote: func(text string) {
 			a.emitOrchestrate(Event{Kind: EventOrchestrateNote, ID: seq, Text: text})
 		},
