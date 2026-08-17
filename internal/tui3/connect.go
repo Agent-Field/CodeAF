@@ -374,6 +374,37 @@ type connectCard struct {
 	link    string
 	account string
 	state   connectState
+	// copied says the link has been taken to the clipboard, which the card says
+	// out loud for one reason: a press that changes nothing on the screen is a
+	// press a person repeats, and then doubts.
+	copied bool
+}
+
+// connectLinkPress copies a waiting card's sign-in link, and reports whether
+// the press was one it wanted.
+//
+// THE WHOLE CARD IS THE TARGET, not the two rows the link happens to wrap over.
+// It is the argument a thinking block makes for taking a click anywhere on
+// itself (app.go): the card has no other gesture, and asking somebody to land
+// on a particular row of a wrapped address is asking them to aim.
+//
+// It exists because a sign-in link is the one thing on this surface that a
+// person needs somewhere ELSE — in the browser on their laptop, when the
+// session is on a machine three hops away that has no browser at all. Copy
+// mode can reach it and it reaches it as the frame drew it: two rows, indented,
+// with the address split across them. Here it is one link, whole.
+func (a *app) connectLinkPress(i int) (tea.Cmd, bool) {
+	es := a.bodyDeck().entries
+	if i < 0 || i >= len(es) || es[i].kind != entryConnect {
+		return nil, false
+	}
+	card := es[i].conn
+	if card == nil || card.state != connectWaiting || card.link == "" {
+		return nil, false
+	}
+	card.copied = true
+	a.touch()
+	return tea.Raw(osc52(card.link, a.tmux)), true
 }
 
 // connectAuth takes one session.EventConnectAuth: the sign-in has started, and
@@ -548,6 +579,9 @@ func (a *app) connectRows(e *entry, width int) []string {
 		// layout is done with it: an OSC 8 occupies no cells (opener.go).
 		for _, line := range wrap(card.link, width-2) {
 			out = append(out, a.pal.dim("  "+linkify(line, card.link)))
+		}
+		if card.copied {
+			out = append(out, a.pal.dim(fit("  copied — paste it wherever you can sign in", width)))
 		}
 		return out
 

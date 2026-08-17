@@ -164,6 +164,13 @@ func newTestApp(agent Agent) *app {
 	a := newApp(context.Background(), Options{Agent: agent, Workspace: "/tmp/lab"})
 	a.width, a.height = 60, 20
 	a.pal = newPalette(tokens.ANSI256, false)
+	// AND IT PINS THE MULTIPLEXER, for exactly the same reason. [newApp] reads
+	// TERM to decide whether a clipboard write needs the passthrough wrapper
+	// (copymode.go), so a suite run inside tmux got the wrapped form and a suite
+	// run outside it got the bare one — which made the yank assertion a test of
+	// the terminal the developer happened to be sitting in. The wrapper has a
+	// test of its own that states both forms outright.
+	a.tmux = false
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
