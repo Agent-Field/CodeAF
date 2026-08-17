@@ -61,6 +61,10 @@ type Service struct {
 	// Scopes are the permissions asked for. They are listed here so a
 	// screen can say plainly what it is about to request.
 	Scopes []string
+	// Auth is how this service is connected: "browser" for a sign-in trip,
+	// "key" for a key the person pastes. Empty reads as "browser", which is
+	// what every plug in this build does.
+	Auth string // STUB(connect-amp): field added by the TUI branch; the owner branch fills it.
 }
 
 // Status is a [Service] plus where it stands right now.

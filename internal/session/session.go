@@ -325,6 +325,11 @@ type Event struct {
 	AuthURL     string
 	Account     string
 	Failed      bool
+	// NeedsKey is set on EventConnectAsk only, and says this service is
+	// connected by pasting a key rather than by a browser trip: the surface
+	// collects the key and answers with [Agent.ResolveConnectKey], and no
+	// EventConnectAuth follows, because there is nothing to open.
+	NeedsKey bool // STUB(connect-amp): field added by the TUI branch; the owner branch sets it.
 }
 
 // Usage is token and cost accounting for one turn or the session total.
