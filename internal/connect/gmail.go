@@ -228,11 +228,17 @@ func GmailSend(ctx context.Context, client *http.Client, to, cc, subject, body s
 	return line, nil
 }
 
-// writeHeader puts one header on its own line, flattened.
+// writeHeader puts one header on its own line, flattened. THE EMPTINESS LAW
+// holds here too: a header with nothing to say is left out rather than sent as
+// a bare label.
 func writeHeader(message *strings.Builder, name, value string) {
+	value = collapse(value)
+	if value == "" {
+		return
+	}
 	message.WriteString(name)
 	message.WriteString(": ")
-	message.WriteString(collapse(value))
+	message.WriteString(value)
 	message.WriteString("\r\n")
 }
 
