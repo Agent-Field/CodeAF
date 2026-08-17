@@ -224,6 +224,44 @@ type toolCallAccumulator struct {
 	// reported is the set of indexes already handed back as complete, so a call
 	// is announced exactly once no matter how the boundaries fall.
 	reported map[int]bool
+	// open is the index the last fragment landed on. It is what
+	// [toolCallAccumulator.current] reads: the fragment loop needs to say WHICH
+	// call just grew, and the index add resolved is not a thing the caller can
+	// work out for itself.
+	open     int
+	openSeen bool
+}
+
+// formingCall is the state of one call while it is still arriving: what the wire
+// has said of its identity, and its arguments text so far — raw and, until the
+// call is whole, not JSON.
+type formingCall struct {
+	Index int
+	ID    string
+	Name  string
+	Args  string
+}
+
+// current reports the call the most recent fragment grew, or false if there is
+// nothing to say about it.
+//
+// A call ALREADY ANNOUNCED is nothing to say about: an endpoint that sent a
+// trailing fragment for a call this decoder had closed would otherwise put a
+// "still arriving" after that call's StreamToolCallReady, and the one promise
+// this vocabulary makes about order is that it never does that.
+func (a *toolCallAccumulator) current() (formingCall, bool) {
+	if !a.openSeen || a.reported[a.open] {
+		return formingCall{}, false
+	}
+	call, known := a.calls[a.open]
+	if !known {
+		return formingCall{}, false
+	}
+	forming := formingCall{Index: a.open, ID: call.ID, Name: call.Function.Name}
+	if builder, ok := a.args[a.open]; ok {
+		forming.Args = builder.String()
+	}
+	return forming, true
 }
 
 // add folds one fragment in and reports the call the fragment ENDED, if any: a
@@ -271,6 +309,7 @@ func (a *toolCallAccumulator) add(fragment toolCallDelta) (ai.ToolCall, bool) {
 		call.Function.Name = fragment.Function.Name
 	}
 	a.args[index].WriteString(fragment.Function.Arguments)
+	a.open, a.openSeen = index, true
 	return completed, ready
 }
 

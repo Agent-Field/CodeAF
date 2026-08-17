@@ -62,6 +62,27 @@ const (
 	// dispatch: see the safety law in session/loop.go for which calls may act on
 	// one and which must wait for the response.
 	StreamToolCallReady
+	// StreamToolCallForming says ONE tool call is still ARRIVING: the model has
+	// begun spelling it out and has not finished. Index, ID and Tool name the
+	// call as far as the wire has said them — the index is always known, the id
+	// and the name arrive on the first fragment or shortly after — and Delta
+	// carries the call's ACCUMULATED ARGUMENTS TEXT so far, raw and partial.
+	//
+	// IT IS RAW ON PURPOSE. The arguments of a half-sent call are not JSON yet,
+	// so nothing here may be unmarshaled and nothing downstream may treat this as
+	// an instruction. It is the answer to "what is it doing right now" for the
+	// seconds between the model starting a long write and the call being whole —
+	// seconds a surface with only StreamToolCallReady has to draw as silence.
+	//
+	// It is raised PER FRAGMENT, which is per token for the endpoints that stream
+	// arguments a token at a time. That rate is deliberate and the consumer's
+	// problem: this vocabulary reports the wire, and whoever is drawing decides
+	// how often a person needs to see it (session/toolhint.go throttles it).
+	//
+	// EVERY CALL THAT FORMS IS LATER READY, in that order, unless the stream dies
+	// mid-call — the same condition under which StreamToolCallReady says nothing
+	// either. A non-streaming endpoint raises none of these at all.
+	StreamToolCallForming
 	// StreamNotice carries one line ABOUT the call rather than from it, in Delta.
 	//
 	// It is the only kind the adapter itself raises that is not the model
@@ -87,6 +108,20 @@ type StreamEvent struct {
 	Kind    StreamEventKind
 	Delta   string
 	Session string
+
+	// Index, ID and Tool name the tool call a StreamToolCallForming event is
+	// about, and are zero on every other kind. They are fields rather than a
+	// JSON payload in Delta — the shape StreamToolCallReady uses — because a
+	// forming event is raised per fragment and a marshal per token is work the
+	// read loop does not have the budget for.
+	//
+	// ID and Tool are empty until the wire has said them: an endpoint sends the
+	// id and the name on the first fragment of a call, but "sends them first" is
+	// a convention rather than a guarantee, and a consumer that assumed it would
+	// key its rows on "".
+	Index int
+	ID    string
+	Tool  string
 }
 
 // StreamObserver receives provider deltas synchronously and in order.
@@ -155,6 +190,14 @@ func streamSessionFrom(ctx context.Context) string {
 // context lookup. The observer contract is unchanged and still synchronous: a
 // caller emitting from inside a read loop is paying for it in that loop.
 func Emit(ctx context.Context, kind StreamEventKind, delta string) {
+	EmitEvent(ctx, StreamEvent{Kind: kind, Delta: delta})
+}
+
+// EmitEvent is [Emit] for a kind that carries more than a string — today only
+// StreamToolCallForming, whose call index, id and name are fields. The Session
+// is stamped here from the context, so a caller never sets it and cannot set it
+// to the wrong room.
+func EmitEvent(ctx context.Context, event StreamEvent) {
 	if ctx == nil {
 		return
 	}
@@ -162,5 +205,6 @@ func Emit(ctx context.Context, kind StreamEventKind, delta string) {
 	if observer == nil {
 		return
 	}
-	observer(StreamEvent{Kind: kind, Delta: delta, Session: streamSessionFrom(ctx)})
+	event.Session = streamSessionFrom(ctx)
+	observer(event)
 }
