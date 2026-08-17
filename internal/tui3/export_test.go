@@ -351,3 +351,61 @@ func TestTabCompletesTheExportCommandsPath(t *testing.T) {
 		t.Fatal("the list stayed open on top of its own answer")
 	}
 }
+
+// ── 5. the row it leaves behind ─────────────────────────────────────────────
+
+// AN EXPORT IS A DELIVERABLE. The file lands where the person asked, and one
+// row lands in the index that answers "where is that conversation from
+// Tuesday" from any directory (internal/session's artifacts.go).
+func TestExportRecordsARowInTheArtifactsIndex(t *testing.T) {
+	a, _, dir := exportLab(t)
+	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
+	a.artifacts = index
+	typeLine(t, a, "/export")
+
+	rows := session.ReadArtifacts(index)
+	if len(rows) != 1 {
+		t.Fatalf("artifact rows = %d, want 1", len(rows))
+	}
+	if rows[0].Kind != "export" {
+		t.Fatalf("row kind = %q, want export", rows[0].Kind)
+	}
+	if rows[0].Title != exportSampleName {
+		t.Fatalf("row title = %q, want the file's own name", rows[0].Title)
+	}
+	if rows[0].Path != filepath.Join(dir, exportSampleName) {
+		t.Fatalf("row path = %q, want the file that was written", rows[0].Path)
+	}
+}
+
+// A REFUSED EXPORT IS NOT A DELIVERABLE. The second /export writes nothing, so
+// it cites nothing: a row pointing at somebody else's file would be a lie about
+// what this session produced.
+func TestARefusedExportRecordsNothing(t *testing.T) {
+	a, _, dir := exportLab(t)
+	index := filepath.Join(t.TempDir(), "artifacts.jsonl")
+	a.artifacts = index
+	if err := os.WriteFile(filepath.Join(dir, exportSampleName), []byte("already here"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	typeLine(t, a, "/export")
+
+	if rows := session.ReadArtifacts(index); len(rows) != 0 {
+		t.Fatalf("a refused export left %d rows behind", len(rows))
+	}
+}
+
+// The row's session is read off the transcript's own path: a session folder is
+// named for its session (Decision 26). A flat-layout transcript carries no id
+// anybody can look up, so the row carries NOTHING rather than a guess.
+func TestTheExportedRowCitesTheSessionFolderOrNothing(t *testing.T) {
+	folder := filepath.Join("/state/v3/projects/repo", "0123456789abcdef")
+	if got := exportSession(filepath.Join(folder, session.TranscriptName)); got != "0123456789abcdef" {
+		t.Fatalf("session id = %q, want the folder's own name", got)
+	}
+	for _, flat := range []string{"", "/state/v3/sessions/repo/20260817-150405_a3f2.jsonl"} {
+		if got := exportSession(flat); got != "" {
+			t.Fatalf("%q was cited as session %q", flat, got)
+		}
+	}
+}

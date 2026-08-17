@@ -89,7 +89,7 @@ func TestCompactionRendersFramesWhenTheModelSees(t *testing.T) {
 
 	// Journal-by-reference: the bytes are on disk under the workspace, and the
 	// transcript carries them as a data URL of that same file.
-	entries, err := os.ReadDir(filepath.Join(workspace, framesDirName))
+	entries, err := os.ReadDir(droppingsDir(Place{}, workspace, droppingFrames))
 	if err != nil || len(entries) == 0 {
 		t.Fatalf("frames directory = %v, %v; want one page per image", entries, err)
 	}
@@ -97,7 +97,7 @@ func TestCompactionRendersFramesWhenTheModelSees(t *testing.T) {
 		t.Fatalf("files on disk = %d, image parts = %d", got, want)
 	}
 	for _, entry := range entries {
-		data, err := os.ReadFile(filepath.Join(workspace, framesDirName, entry.Name()))
+		data, err := os.ReadFile(filepath.Join(droppingsDir(Place{}, workspace, droppingFrames), entry.Name()))
 		if err != nil {
 			t.Fatalf("read page: %v", err)
 		}
@@ -145,7 +145,7 @@ func TestCompactionSummarizesWhenTheModelIsBlind(t *testing.T) {
 			if !strings.Contains(note, "[context compacted]") || !strings.Contains(note, "fit the window") {
 				t.Fatalf("summary note = %q", note)
 			}
-			if _, err := os.Stat(filepath.Join(workspace, framesDirName)); !os.IsNotExist(err) {
+			if _, err := os.Stat(droppingsDir(Place{}, workspace, droppingFrames)); !os.IsNotExist(err) {
 				t.Fatalf("frames directory exists after a summary pass: %v", err)
 			}
 		})
@@ -452,7 +452,7 @@ func TestFramesReplayWithoutTheirFiles(t *testing.T) {
 	if err := agent.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if err := os.RemoveAll(filepath.Join(workspace, framesDirName)); err != nil {
+	if err := os.RemoveAll(droppingsDir(Place{}, workspace, droppingFrames)); err != nil {
 		t.Fatalf("remove pages: %v", err)
 	}
 
@@ -485,7 +485,7 @@ func TestFramesOverflowJournalRoundTrip(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	workspace := t.TempDir()
-	ref, err := writeFrame(workspace, pages[0])
+	ref, err := writeFrame(Place{}, workspace, pages[0])
 	if err != nil {
 		t.Fatalf("writeFrame: %v", err)
 	}

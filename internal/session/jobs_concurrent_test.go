@@ -14,8 +14,8 @@ import (
 // saw a hole followed by two runs mixed together.
 func TestTwoSessionsDoNotTruncateEachOthersJobLogs(t *testing.T) {
 	workspace := t.TempDir()
-	first := newJobRegistry(workspace, nil)
-	second := newJobRegistry(workspace, nil)
+	first := newJobRegistry(workspace, Place{}, nil)
+	second := newJobRegistry(workspace, Place{}, nil)
 
 	one, err := first.newJob("the first window's build", jobKindBash)
 	if err != nil {
@@ -58,10 +58,10 @@ func TestTwoSessionsDoNotTruncateEachOthersJobLogs(t *testing.T) {
 // number in it.
 func TestAJobLogFromAnEarlierSessionIsNotReused(t *testing.T) {
 	workspace := t.TempDir()
-	directory := filepath.Join(workspace, filepath.FromSlash(jobsDirName))
+	directory := droppingsDir(Place{}, workspace, droppingJobs)
 	writeFile(t, filepath.Join(directory, "1.log"), "yesterday's build\n")
 
-	registry := newJobRegistry(workspace, nil)
+	registry := newJobRegistry(workspace, Place{}, nil)
 	fresh, err := registry.newJob("today's build", jobKindBash)
 	if err != nil {
 		t.Fatalf("newJob: %v", err)

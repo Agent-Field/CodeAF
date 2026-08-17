@@ -89,6 +89,20 @@ type Engine struct {
 	// picked up rather than created.
 	SessionFile string
 	Resumed     bool
+
+	// Place is the session folder on THIS machine (session's place.go, Decision
+	// 26) and ArtifactsIndex the deliverables index beside it. They are here for
+	// one reason: a picture arrives on this wire as bytes and has to be written
+	// down before it can be journaled (image.go), and where it lands is a
+	// question about the engine's disk that only the engine's own session folder
+	// can answer. The zero Place is the legacy layout, and an empty index
+	// records nothing.
+	//
+	// STUB(place/layout): cmd/aforge's --host door sets both from the same
+	// launch assembly that fills session.Config.Place and
+	// session.Config.ArtifactsIndex.
+	Place          session.Place
+	ArtifactsIndex string
 	// Note is the one sentence worth showing once: "session open elsewhere —
 	// started a new one" travels here, the same words the local door puts on
 	// the surface's entry notice.
