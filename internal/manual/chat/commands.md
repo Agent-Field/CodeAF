@@ -402,7 +402,9 @@ filter · ↑↓ · ctrl+t effort · enter switch · esc cancel
 
 Choosing a model sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
-and notes `model · <model>`.
+notes `model · <model>`, and writes the choice into your profile, so the next `aforge`
+opens on it. Over `--host` the switch takes for the session and is not written down: the
+model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
@@ -663,8 +665,12 @@ brief after", "tenure after", "attribution", "google sign-in id", "google sign-i
 secret".
 
 **Display** — how the surface draws itself and what it remembers of your typing. Rows:
-"input history", "keep drafts", "nerd font", "linear mode", "sidebar", "chat width",
-"mouse", "timestamps".
+"input history", "keep drafts", "nerd font", "linear mode", "sidebar", "mouse",
+"timestamps".
+
+There is no "chat width" row here. The task roster is a fixed column whose width the
+frame decides — full, slim, or drawn over the conversation on a narrow terminal — so
+there is no share of the frame to set, and a row that could only refuse is not shown.
 
 **Providers** — which model answers what. Rows: "looking", "reading", "routing", plus one
 row per model slot added automatically from the settings registry: drawing, speaking,

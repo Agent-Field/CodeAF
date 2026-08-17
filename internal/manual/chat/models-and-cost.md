@@ -15,9 +15,26 @@ The picker is a filter box in the input line's place with a short list of models
 It is bottom-anchored: the conversation shrinks above it, so nothing pops up over what you
 were reading.
 
-Choosing a model does three things: the model is set on the session, the surface learns
+Choosing a model does four things: the model is set on the session, the surface learns
 that model's context window and tells the session (compaction fires at a fraction of the
-window, so this is not decoration), and a note appears reading `model · <model>`.
+window, so this is not decoration), a note appears reading `model · <model>`, and the
+choice is written into your profile.
+
+## Does aforge remember the model I picked, or does it go back to the default?
+
+**It remembers.** The model you last switched to is the model the next `aforge` opens on,
+whether you chose it in the picker, typed `/model <slug>`, or set the conversation row in
+`/settings` — all three are the same road.
+
+The order a launch resolves is: `--model <slug>` on the command line beats everything for
+that session alone; then the model you last chose; then `AFORGE_MODEL`; then the built-in
+default. `AFORGE_MODEL` seeds a model for somebody who has never chosen one and does not
+override somebody who has — which is why the settings row stays editable while it is set.
+
+Two things do not persist. Over `--host` the switch takes for the session and is not
+written anywhere: the model a remote session opens on is resolved on that machine, from
+that machine's profile. And reasoning effort is kept per model for the session, not
+written to the profile.
 
 esc leaves the picker and changes **nothing** — your half-typed draft, the model in use and
 the frame all come back exactly as they were. The picker holds its own filter text, and the
