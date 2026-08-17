@@ -142,13 +142,14 @@ func catalogPlug(id string, info *amp.ProviderInfo) (*keyPlug, bool) {
 	if !ok {
 		return nil, false
 	}
+	display := shown(base, hole)
 	return &keyPlug{
 		service: Service{
 			ID:      id,
 			Name:    name,
-			Blurb:   catalogBlurb(name, base, hole),
+			Blurb:   catalogBlurb(name, display, hole),
 			Auth:    AuthKey,
-			Address: shown(base, hole),
+			Address: display,
 		},
 		base:  base,
 		blank: hole,
@@ -315,9 +316,9 @@ func catalogProbe(info *amp.ProviderInfo) probe {
 // what the catalog actually knows rather than out of a sentence somebody wrote
 // per service — there are hundreds of these, and a hand-written line for each
 // would be hundreds of lines nobody maintains.
-func catalogBlurb(name, base string, hole blank) string {
+func catalogBlurb(name, display string, hole blank) string {
 	line := "Reach your " + name + " account"
-	if host := hostOf(base); host != "" {
+	if host := hostOf(display); host != "" {
 		line += " at " + host
 	}
 	line += ", with a key you already hold."
@@ -338,22 +339,19 @@ func shown(base string, hole blank) string {
 }
 
 // hostOf is the bare host of an address, for a sentence that wants to name
-// where something lives without printing a whole URL.
-func hostOf(base string) string {
-	parsed, err := url.Parse(fill(base, blankOf(base), "example"))
-	if err != nil {
-		return ""
+// where something lives without printing a whole path.
+//
+// It reads the SHOWN address, blank and all, and it is cut by hand rather than
+// parsed: a service whose whole address is the person's own reads as "at
+// <domain>", which is true, and parsing would have had to put a made-up host
+// there to get an answer at all.
+func hostOf(display string) string {
+	host := display
+	if _, rest, found := strings.Cut(host, "://"); found {
+		host = rest
 	}
-	host := parsed.Host
-	// A filled-in blank at the front is not part of the service's own name,
-	// so it is dropped from the sentence rather than shown as "example.".
-	return strings.TrimPrefix(host, "example.")
-}
-
-// blankOf is the first blank in an address, or the empty string.
-func blankOf(address string) string {
-	if names := blanksIn(address); len(names) > 0 {
-		return names[0]
+	if index := strings.IndexAny(host, "/?#"); index >= 0 {
+		host = host[:index]
 	}
-	return ""
+	return host
 }
