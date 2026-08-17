@@ -1,0 +1,475 @@
+package session
+
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+)
+
+// THE ADAPTIVE RUN from the four sides a person meets it: the sentence that
+// asks for one, the turn it must not hold, the run itself, and the bound a
+// node works inside.
+
+// ── the intent ──────────────────────────────────────────────────────────────
+
+func TestARunTurnIsReadAsOneAndOtherTurnsAreNot(t *testing.T) {
+	for _, c := range []struct {
+		turn string
+		goal string // empty means this is not a request for a run
+		cap  float64
+	}{
+		{"orchestrate the migration off the old client", "the migration off the old client", orchestrateDefaultCap},
+		{"Orchestrate a full audit of the pricing code", "a full audit of the pricing code", orchestrateDefaultCap},
+		{"run an adaptive run on the flaky test suite", "the flaky test suite", orchestrateDefaultCap},
+		{"start adaptive run: rewrite the docs", "rewrite the docs", orchestrateDefaultCap},
+		{"adaptively work on the release notes", "the release notes", orchestrateDefaultCap},
+		{"please orchestrate the migration", "the migration", orchestrateDefaultCap},
+		{"can you orchestrate the audit with a $5 budget", "the audit", 5},
+		{"orchestrate the audit on $2.50", "the audit", 2.50},
+		{"orchestrate the audit, $10 cap", "the audit,", 10},
+
+		// The negatives, and each one is a different way of not asking.
+		{"research the pricing tiers", "", 0},                              // an ordinary turn
+		{"make a harness for triaging flakes", "", 0},                      // the other route
+		{"orchestrate", "", 0},                                             // no goal to run against
+		{"we should orchestrate the migration at some point", "", 0},       // talking about one
+		{"the adaptive run you started yesterday found three bugs", "", 0}, // talking about one
+	} {
+		goal, cap, ok := orchestrateGoal(c.turn)
+		if c.goal == "" {
+			if ok {
+				t.Errorf("%q was read as a run for %q", c.turn, goal)
+			}
+			continue
+		}
+		if !ok {
+			t.Errorf("%q was not read as a run", c.turn)
+			continue
+		}
+		if goal != c.goal {
+			t.Errorf("%q gave the goal %q, want %q", c.turn, goal, c.goal)
+		}
+		if cap != c.cap {
+			t.Errorf("%q gave the cap %v, want %v", c.turn, cap, c.cap)
+		}
+	}
+}
+
+// ── the turn ────────────────────────────────────────────────────────────────
+
+// runConfig is a build that can orchestrate: a runner to launch one, and
+// somebody watching who can answer the fuel gate.
+func runConfig(started *startedRun) func(*Config) {
+	return func(config *Config) {
+		config.AskConsent = true
+		config.OrchestrateRunner = started.launch
+	}
+}
+
+// startedRun records what a turn asked the runner for.
+type startedRun struct {
+	goal  string
+	model string
+	cap   float64
+	calls int
+}
+
+func (s *startedRun) launch(_ context.Context, goal, model string, capDollars float64) (string, error) {
+	s.calls++
+	s.goal, s.model, s.cap = goal, model, capDollars
+	return "7", nil
+}
+
+// A RUN TURN DOES NOT WAIT AND DOES NOT ASK THE MODEL ANYTHING. The run is the
+// answer and it has not happened yet.
+func TestARunTurnStartsTheRunAndEndsTheTurn(t *testing.T) {
+	var started startedRun
+	completer := &scriptedCompleter{}
+	agent, _ := newTestAgent(t, completer, runConfig(&started))
+	lane := agent.Orchestrations()
+
+	events, err := agent.Submit(context.Background(), "orchestrate the migration off the old client with a $5 budget")
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := collect(t, events)
+	if _, ok := firstOfKind(collected, EventTurnDone); !ok {
+		t.Fatalf("the turn never ended: %v", kinds(collected))
+	}
+	if _, ok := firstOfKind(collected, EventTextDelta); ok {
+		t.Fatalf("the turn answered on its own: %v", kinds(collected))
+	}
+	if completer.requests() != 0 {
+		t.Fatalf("the turn spent %d model calls on a sentence it had already answered", completer.requests())
+	}
+	if started.calls != 1 {
+		t.Fatalf("the runner was called %d times", started.calls)
+	}
+	if started.goal != "the migration off the old client" {
+		t.Fatalf("the run was asked for %q", started.goal)
+	}
+	if started.cap != 5 {
+		t.Fatalf("the tank is %v, want the $5 the person named", started.cap)
+	}
+	opening := nextRunEvent(t, lane)
+	if opening.Kind != EventOrchestrateNote || !strings.Contains(opening.Text, "$5.00") {
+		t.Fatalf("the lane opened with %v / %q", opening.Kind, opening.Text)
+	}
+}
+
+// THE MODEL CLAUSE IS READ OFF THE GOAL, exactly as the harness routes read it:
+// "with opus" chose a model and is not part of the work.
+func TestARunTurnReadsTheModelOffTheSentence(t *testing.T) {
+	var started startedRun
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		runConfig(&started)(config)
+		config.TaskModels = func() []string { return []string{"anthropic/claude-sonnet-5"} }
+	})
+	events, err := agent.Submit(context.Background(), "orchestrate the audit with sonnet")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect(t, events)
+	if started.goal != "the audit" {
+		t.Fatalf("the run was asked for %q, want the work without the model clause", started.goal)
+	}
+	if started.model != "anthropic/claude-sonnet-5" {
+		t.Fatalf("the run rides %q", started.model)
+	}
+}
+
+// A BUILD WITH NO RUNNER, OR NOBODY WATCHING, HAS NO SUCH TURN: the sentence
+// goes to the model exactly as it did before this file existed.
+func TestARunTurnIsRefusedWhereNobodyCouldAnswerTheGate(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		undo func(*Config)
+	}{
+		{"no runner", func(config *Config) { config.OrchestrateRunner = nil }},
+		{"nobody watching", func(config *Config) { config.AskConsent = false }},
+	} {
+		var started startedRun
+		completer := &scriptedCompleter{}
+		agent, _ := newTestAgent(t, completer, func(config *Config) {
+			runConfig(&started)(config)
+			c.undo(config)
+		})
+		events, err := agent.Submit(context.Background(), "orchestrate the migration")
+		if err != nil {
+			t.Fatal(err)
+		}
+		collect(t, events)
+		if started.calls != 0 {
+			t.Fatalf("%s: a run started anyway", c.name)
+		}
+		if completer.requests() == 0 {
+			t.Fatalf("%s: the ordinary turn did not run either", c.name)
+		}
+	}
+}
+
+// A NOTE THE SESSION WROTE IS NOT SOMEBODY ASKING FOR A RUN. A run
+// commissioned out of one would be the session spending money on its own
+// suggestion.
+func TestARunTurnIsOnlyEverWhatAPersonTyped(t *testing.T) {
+	var started startedRun
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, runConfig(&started))
+	turn := "orchestrate the migration"
+	for _, user := range []userMessage{
+		{message: textMessage("user", turn), wake: true},
+		{message: textMessage("user", turn), authored: true},
+		{},
+	} {
+		if answered, _ := agent.routeOrchestrate(context.Background(), newEventHub(), user, time.Now()); answered {
+			t.Fatalf("a note the session wrote started a run: %+v", user)
+		}
+	}
+	if started.calls != 0 {
+		t.Fatalf("the runner ran %d times", started.calls)
+	}
+}
+
+// ── the seams ───────────────────────────────────────────────────────────────
+
+func TestTheRunSeamsRefuseAnIdNobodyMinted(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if _, ok := agent.OrchestrateSnapshot("9"); ok {
+		t.Fatalf("a run nobody started has no snapshot")
+	}
+	if _, err := agent.ResolveOrchestrate("9", "finish"); err == nil {
+		t.Fatalf("there is nothing to answer")
+	}
+	if err := agent.SteerOrchestrate("9", "do the other one"); err == nil {
+		t.Fatalf("there is nothing to steer")
+	}
+}
+
+// ── the run ─────────────────────────────────────────────────────────────────
+
+// replier is a completer that answers what it was ASKED rather than what step
+// it is on: a run has several agents talking at once, and an index-ordered
+// script cannot tell them apart.
+type replier func(messages []ai.Message) string
+
+func (r replier) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	return textResponse(r(messages)), nil
+}
+
+// THE WHOLE RUN, from the goal to the write-up: the planner adds a node, the
+// node runs as a child agent in this package's own loop, its digest reaches
+// the planner, and the planner's done plan becomes the synthesis.
+func TestARunPlansExecutesAndSynthesizes(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	completer := replier(func(messages []ai.Message) string {
+		asked := lastUserText(messages)
+		switch {
+		case isPlannerCall(messages):
+			if strings.Contains(asked, "nothing yet") {
+				return `{"add":[{"id":"n1","goal":"read the release notes"}],"note":"one node to start"}`
+			}
+			if !strings.Contains(asked, "n1: n1 read the notes") {
+				return `{}`
+			}
+			return `{"done":{"brief":"say what the notes said"}}`
+		case strings.Contains(asked, "Ground every claim"):
+			return "the write-up, grounded in (n1)"
+		default:
+			return "n1 read the notes"
+		}
+	})
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.AskConsent = true })
+	lane := agent.Orchestrations()
+
+	id, err := agent.RunOrchestrate(context.Background(), "summarise the release notes", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := waitForRun(t, agent, id)
+	if snap.Answer != "the write-up, grounded in (n1)" {
+		t.Fatalf("the synthesis is the run's answer, got %q", snap.Answer)
+	}
+	if len(snap.Nodes) != 1 || snap.Nodes[0].State != orchestrate.Done {
+		t.Fatalf("the frontier ended as %+v", snap.Nodes)
+	}
+	if !strings.Contains(snap.Nodes[0].Digest, "n1 read the notes") {
+		t.Fatalf("the node's digest is %q", snap.Nodes[0].Digest)
+	}
+	if len(snap.Notes) == 0 || snap.Notes[0] != "one node to start" {
+		t.Fatalf("the planner's note never landed: %+v", snap.Notes)
+	}
+	// The planner's note reached whoever was watching, and so did the run's
+	// last word.
+	var notes []string
+	for len(notes) < 2 {
+		event := nextRunEvent(t, lane)
+		if event.Kind == EventOrchestrateNote {
+			notes = append(notes, event.Text)
+		}
+	}
+	if notes[0] != "one node to start" {
+		t.Fatalf("the lane carried %q first", notes[0])
+	}
+
+	// A FINISHED RUN IS STILL READABLE. What a person opens the room for
+	// afterwards is exactly this snapshot, so the run outlives its goroutine.
+	if _, known := agent.OrchestrateSnapshot(id); !known {
+		t.Fatalf("the finished run was forgotten with its write-up in it")
+	}
+	if _, err := agent.ResolveOrchestrate(id, "topup:1"); err == nil {
+		t.Fatalf("a finished run is not at the gate")
+	}
+}
+
+// STEERING REACHES THE PLANNER, which is the whole reason a run has a lane
+// back into it.
+func TestSteeringReachesThePlanner(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	var (
+		seen    = make(chan string, 8)
+		holding = make(chan struct{})
+	)
+	completer := replier(func(messages []ai.Message) string {
+		asked := lastUserText(messages)
+		switch {
+		case isPlannerCall(messages):
+			select {
+			case seen <- asked:
+			default:
+			}
+			if strings.Contains(asked, "nothing yet") {
+				return `{"add":[{"id":"n1","goal":"look"}]}`
+			}
+			return `{"done":{"brief":"wrap up"}}`
+		case strings.Contains(asked, "Ground every claim"):
+			return "the write-up"
+		default:
+			<-holding
+			return "looked"
+		}
+	})
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.AskConsent = true })
+	id, err := agent.RunOrchestrate(context.Background(), "look at the thing", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The opening call has already happened; the node is running, which is when
+	// a person actually types at a run.
+	<-seen
+	if err := agent.SteerOrchestrate(id, "check the changelog too"); err != nil {
+		t.Fatal(err)
+	}
+	close(holding)
+
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case view := <-seen:
+			if strings.Contains(view, "check the changelog too") {
+				if !strings.Contains(view, "outranks your plan") {
+					t.Fatalf("steering arrived without saying what it outranks")
+				}
+				waitForRun(t, agent, id)
+				return
+			}
+		case <-deadline:
+			t.Fatalf("steering never reached the planner")
+		}
+	}
+}
+
+// ── the write scope ─────────────────────────────────────────────────────────
+
+// A NODE WRITES INSIDE ITS SCOPE AND NOWHERE ELSE, and the refusal is a result
+// it can read rather than a turn it loses.
+func TestWriteScopeBindsTheHandsThatKnowTheirPath(t *testing.T) {
+	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.writeScope = []string{"docs", "internal/session/orchestrate.go"}
+	})
+	guard := writeGuard{agent: agent}
+
+	for _, c := range []struct {
+		name    string
+		call    ai.ToolCall
+		allowed bool
+	}{
+		{"inside a scoped directory", scopedCall("write", workspace+"/docs/notes.md"), true},
+		{"the scoped file itself", scopedCall("edit", workspace+"/internal/session/orchestrate.go"), true},
+		{"a sibling the scope does not name", scopedCall("edit", workspace+"/internal/session/loop.go"), false},
+		{"above the workspace", scopedCall("write", "/etc/hosts"), false},
+		{"a hand with no path", scopedCall("bash", ""), true},
+	} {
+		_, result, ok := guard.PreAction(context.Background(), nil, nil, c.call)
+		if ok != c.allowed {
+			t.Errorf("%s: allowed=%v, want %v", c.name, ok, c.allowed)
+		}
+		if !ok && (!result.isError || !strings.Contains(result.text, "write scope")) {
+			t.Errorf("%s: the refusal reads %q", c.name, result.text)
+		}
+	}
+
+	// And an agent with no scope is exactly the agent it was before the citizen
+	// existed.
+	plain, plainSpace := newTestAgent(t, &scriptedCompleter{}, nil)
+	if _, _, ok := (writeGuard{agent: plain}).PreAction(context.Background(), nil, nil,
+		scopedCall("write", plainSpace+"/anywhere.txt")); !ok {
+		t.Fatalf("an unscoped agent was refused")
+	}
+}
+
+// ── the small parts ─────────────────────────────────────────────────────────
+
+func TestOrchestrateBriefCarriesTheDigestsAndTheBound(t *testing.T) {
+	brief := orchestrateBrief(
+		orchestrate.Node{ID: "n3", Goal: "write the migration note", WriteScope: []string{"docs"}},
+		[]orchestrate.NodeStatus{{Node: orchestrate.Node{ID: "n1"}, Digest: "the old client is used in four files"}},
+		true)
+	for _, want := range []string{"write the migration note", "[n1]", "the old client is used in four files", "docs"} {
+		if !strings.Contains(brief, want) {
+			t.Fatalf("the brief is missing %q:\n%s", want, brief)
+		}
+	}
+	read := orchestrateBrief(orchestrate.Node{ID: "n1", Goal: "find out"}, nil, true)
+	if !strings.Contains(read, "READ-ONLY") {
+		t.Fatalf("a node with no scope is told it writes nothing:\n%s", read)
+	}
+}
+
+func TestWorktreePathDegradesToTheSharedTree(t *testing.T) {
+	if got := (Config{}).WorktreePath("7-n1"); got != "" {
+		t.Fatalf("no root is no path, got %q", got)
+	}
+	if got := (Config{WorktreeRoot: "/tmp/roots"}).WorktreePath("7-N1"); got != "/tmp/roots/7-n1" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// ── the helpers ─────────────────────────────────────────────────────────────
+
+func isPlannerCall(messages []ai.Message) bool {
+	for _, message := range messages {
+		if message.Role == "system" && strings.Contains(messageText(message), "You plan an adaptive run") {
+			return true
+		}
+	}
+	return false
+}
+
+func lastUserText(messages []ai.Message) string {
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index].Role == "user" {
+			return messageText(messages[index])
+		}
+	}
+	return ""
+}
+
+func scopedCall(tool, path string) ai.ToolCall {
+	args := "{}"
+	if path != "" {
+		encoded, _ := json.Marshal(struct {
+			Path string `json:"path"`
+		}{path})
+		args = string(encoded)
+	}
+	return ai.ToolCall{Function: ai.ToolCallFunction{Name: tool, Arguments: args}}
+}
+
+func nextRunEvent(t *testing.T, lane <-chan Event) Event {
+	t.Helper()
+	select {
+	case event, open := <-lane:
+		if !open {
+			t.Fatalf("the run lane closed")
+		}
+		return event
+	case <-time.After(10 * time.Second):
+		t.Fatalf("nothing arrived on the run lane")
+		return Event{}
+	}
+}
+
+func waitForRun(t *testing.T, agent *Agent, id string) orchestrate.Snapshot {
+	t.Helper()
+	deadline := time.After(15 * time.Second)
+	var last orchestrate.Snapshot
+	for {
+		snap, known := agent.OrchestrateSnapshot(id)
+		if !known {
+			t.Fatalf("the run %q is not registered", id)
+		}
+		last = snap
+		if snap.Done {
+			return snap
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("the run never finished: %+v", last)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
