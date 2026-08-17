@@ -622,6 +622,21 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint)
 	}
+	// AND THE CONNECTIONS PANEL TAKES IT ON THE SAME TERMS, for whichever of its
+	// two boxes is open: the filter, once the catalog is long enough to be
+	// searched rather than read, and the key box over a row that wants one
+	// (connectpanel.go). Neither is a widget of its own — the filter is the
+	// picker's box and the key box is the offer's row, in the position this
+	// surface gives every box that has taken the keyboard.
+	if a.connPanel.open {
+		if entry := a.connPanel.entry; entry != nil {
+			line, caretX := keyLine(&entry.box, connectKeyHint(entry.name), a.pal, width)
+			return []string{line}, caretX, 0
+		}
+		if a.connPanel.filtering {
+			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint)
+		}
+	}
 	// The box may not take the frame. Two rows are spoken for whatever happens
 	// — the status line and the blank under it — and what is left over, up to
 	// the ceiling, is the box's: a six-line paste into a four-line window shows
