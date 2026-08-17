@@ -155,9 +155,11 @@ func (a *app) toolRows(d deck, i int, last bool, width int) []row {
 	// detail block squeezed into what is left is a thing a person scrolls PAST
 	// rather than reads. The preview stays at every tier because it is the
 	// change shown BEFORE it lands — the one block nobody asked for and
-	// everybody wants — and it is already bounded by [previewWindow].
-	if !e.open || layoutTier(width) == tierPhone {
-		head, body, more := a.previewBody(e, room)
+	// everybody wants — but at tierPhone it is bounded HARDER, because twelve
+	// rows nobody asked for is most of a phone frame ([previewPhoneWindow]).
+	phone := layoutTier(width) == tierPhone
+	if !e.open || phone {
+		head, body, more := a.previewBody(e, room, previewCap(phone))
 		if head == "" {
 			return out
 		}
@@ -1010,8 +1012,37 @@ func cutCDPrefix(command string) (context, rest string, found bool) {
 // clicks the foot, exactly as they would on an expansion.
 const previewWindow = 12
 
+// previewPhoneWindow is the same cap at [tierPhone], and it is a THIRD of it.
+//
+// The reasoning above scales with the frame. Twelve rows under a row nobody
+// clicked is a third of a laptop's body and leaves the conversation it
+// interrupted on screen; the same twelve on a phone — where the frame is under
+// sixty columns and the body is a dozen-odd rows deep — is the WHOLE view, so a
+// person who asked a question and watched an edit start would have their own
+// sentence scrolled off by a diff they did not open. Four rows is a hunk's worth
+// of evidence: enough to see WHICH change is about to land, bounded so the thing
+// it is happening inside of stays visible.
+//
+// The rest is one tap away on the foot, exactly as it is at every other tier —
+// this caps what is shown UNASKED, and it is not consulted at all by the
+// full-frame sheet ([app.detailBody] keeps [previewWindow]), because a person
+// who opened a call at tierPhone has given the whole frame to the answer.
+const previewPhoneWindow = 4
+
+// previewCap is how many rows an unasked-for preview keeps. It takes the tier's
+// answer rather than a width so the ONE place that decides which frame this is
+// stays [app.toolRows] — the caller that also knows whether the person asked.
+func previewCap(phone bool) int {
+	if phone {
+		return previewPhoneWindow
+	}
+	return previewWindow
+}
+
 // previewBody is what a call that has NOT finished shows under its row: the
-// header, the rows, and how many were dropped.
+// header, the rows, and how many were dropped. cap is the ceiling the caller
+// wants — the tier's for a block nobody asked for, [previewWindow] for a call
+// somebody opened.
 //
 // It answers for the two mutating tools and no others, because they are the two
 // whose arguments contain the whole change — an edit's replacements, a write's
@@ -1024,7 +1055,7 @@ const previewWindow = 12
 // that lands, and a preview that redrew itself on begin would ask them to read
 // it twice. It goes dim in the question hue while a call is waiting on an
 // answer, for the same reason the row above it does.
-func (a *app) previewBody(e *entry, width int) (head string, body []string, more int) {
+func (a *app) previewBody(e *entry, width, window int) (head string, body []string, more int) {
 	if !e.status.live() || width < 8 {
 		return "", nil, 0
 	}
@@ -1039,8 +1070,11 @@ func (a *app) previewBody(e *entry, width int) (head string, body []string, more
 	if len(body) == 0 {
 		return "", nil, 0
 	}
-	if !e.full && len(body) > previewWindow {
-		more, body = len(body)-previewWindow, body[:previewWindow]
+	if window <= 0 {
+		window = previewWindow
+	}
+	if !e.full && len(body) > window {
+		more, body = len(body)-window, body[:window]
 	}
 	return a.previewHead(e), body, more
 }
@@ -1082,7 +1116,11 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		// An unfinished call shows what it CAN: the change it is about to make,
 		// where the arguments carry one, and otherwise the one animated line
 		// that says the obvious in the same breath the spinner is drawing.
-		if head, body, more := a.previewBody(e, width); head != "" {
+		// THE SHEET IS NOT CAPPED BY THE TIER. This branch answers a call somebody
+		// OPENED, and at tierPhone the answer is the whole frame (expand.go), so
+		// the phone's tighter ceiling — which exists to stop an unasked-for block
+		// from taking that frame — has nothing to protect here.
+		if head, body, more := a.previewBody(e, width, previewWindow); head != "" {
 			return append([]string{head}, body...), more
 		}
 		// A COMMAND IS READABLE BEFORE IT FINISHES, and a running one is when a

@@ -75,6 +75,19 @@ type taskDone struct {
 	// the head is what happened, and this is a fact somebody opens the card to
 	// check.
 	model string
+	// cost is what the work came to in dollars, frozen at landing from the
+	// node's own reconciled figure ([taskNode.spent]) rather than from the last
+	// notice: the rail spent this node's whole life keeping the engine's
+	// published price and the pilot's running sum in one number, and a card that
+	// read the notice directly would print a figure the column beside it had
+	// already corrected.
+	//
+	// ZERO IS NOT "IT COST NOTHING" — it is nobody published a price (session's
+	// task_contract.go on CostUSD), so the row is absent rather than $0.00. It
+	// sits beside the model for the same reason the model sits inside the card:
+	// whose hands, and what the hands came to, are the two facts a person opens
+	// a landed card to check.
+	cost float64
 	// open says the full context is showing, behind the same expand mechanic
 	// every other card on this surface is behind.
 	open bool
@@ -109,6 +122,7 @@ const (
 	doneBriefLabel   = "brief · "
 	doneSpanLabel    = "ran · "
 	doneModelLabel   = "model · "
+	doneCostLabel    = "cost · "
 )
 
 // doneWindow caps the two long fields inside an open card — the report and the
@@ -143,6 +157,7 @@ func (a *app) landedCard(node *taskNode) {
 		brief:      node.brief,
 		acceptance: node.acceptance,
 		model:      node.model,
+		cost:       node.spent(),
 	}
 	if card.span == 0 && !node.began.IsZero() {
 		card.span = a.now().Sub(node.began)
@@ -394,18 +409,28 @@ func (a *app) doneUnder(card *taskDone, width int) string {
 // than offering none.
 func (a *app) doneHasDetail(card *taskDone) bool {
 	return card.report != "" || len(card.changed) > 0 || card.branch != "" ||
-		card.brief != "" || card.acceptance != "" || card.model != ""
+		card.brief != "" || card.acceptance != "" || card.model != "" ||
+		card.cost > 0
 }
 
 // doneDetail is the full context, and it is the labelled block the proposal's
 // own expansion is (task.go): the facts first, because they are what a person
 // opened the card to check, then the two long fields.
 //
-// THE FACTS IT DOES NOT HAVE ARE ABSENT RATHER THAN EMPTY. What a node cost and
-// which batch it belonged to are still not on the wire, so no row claims them.
-// The model IS now (session's TaskNotice.Model) and it arrived exactly where
-// this comment said it would — beside the worktree, with nothing else moved —
-// and it is drawn only when the engine published one.
+// THE FACTS IT DOES NOT HAVE ARE ABSENT RATHER THAN EMPTY. Which batch a node
+// belonged to is still not on the wire, so no row claims it. The model and the
+// PRICE both are now (session's TaskNotice.Model and CostUSD), and they arrived
+// exactly where this comment said they would — beside the worktree, with
+// nothing else moved — each drawn only when there is one to draw.
+//
+// WHAT IS STILL NOT HERE IS THE DIFFSTAT'S LINES. The head counts the files a
+// node wrote because the engine publishes the list (TaskNotice.Changed); the
+// "+42 −7" beside that count needs insertions and deletions, and NOTHING in
+// this process has them — not the notice, not the project's index, which counts
+// files and nothing finer (session's TaskIndexEntry.FilesChanged). The card is
+// already built to draw them the moment they are published ([doneFilesWord]),
+// and until then it says the true smaller thing rather than shelling into a
+// merged branch for numbers of its own.
 func (a *app) doneDetail(card *taskDone, width int) []string {
 	if !card.open {
 		return nil
@@ -429,6 +454,9 @@ func (a *app) doneDetail(card *taskDone, width int) []string {
 	}
 	if card.model != "" {
 		say(fit(doneModelLabel+card.model, room))
+	}
+	if card.cost > 0 {
+		say(fit(doneCostLabel+dollars(card.cost), room))
 	}
 	if !card.spawned.IsZero() && !card.landed.IsZero() {
 		say(fit(doneSpanLabel+card.spawned.Format("15:04")+" → "+card.landed.Format("15:04"), room))

@@ -1517,28 +1517,28 @@ func (a *App) interrupt() tea.Cmd {
 // exists somewhere in this package. The law is that esc pops ONE thing and that
 // the thing is always the innermost scope the reader is inside:
 //
-//	1. a raised OVERLAY — the palette, the switcher, the `?` sheet, the settings
-//	   sheet, the model picker. [App.overlayKey] gives them every key before this
-//	   ladder starts, and each closes itself. They are scopes ABOVE the place
-//	   path, which is why esc closes them first and why that is the law rather
-//	   than an exception to it.
-//	2. the PLACE LINE's own walk, when the keyboard is on it ([App.placeKey]).
-//	   A focus mode is an overlay with no panel: same rung, same reason.
-//	3. an ARMED destructive verb waiting for its second yes (itemverb.go's
-//	   verbKey). A confirmation is the innermost scope there is — it is a
-//	   question this keystroke is the answer to.
-//	4. the STREAMING TURN (8.2.21, [App.canInterrupt] in the key ladder). A reply
-//	   arriving in the room you are watching is the innermost LIVE thing, and esc
-//	   is how it stops.
-//	5. a PAGE'S OWN drill — the board's detail page (boarddetail.go), the
-//	   notebook's (notebook.go). These sit inside a page segment rather than
-//	   beside it, so they pop before it does.
-//	6. a NON-EMPTY DRAFT, stashed into the recall ring by the composer itself and
-//	   never destroyed (composer/key.go's handleEsc). A sentence in progress is a
-//	   thing inside this place, so it goes before the place does; the ring is
-//	   what makes that non-destructive.
-//	7. ONE PLACE SEGMENT — this function, through [App.popPlace].
-//	8. the LIVE EDGE, and only at the floor. See below.
+//  1. a raised OVERLAY — the palette, the switcher, the `?` sheet, the settings
+//     sheet, the model picker. [App.overlayKey] gives them every key before this
+//     ladder starts, and each closes itself. They are scopes ABOVE the place
+//     path, which is why esc closes them first and why that is the law rather
+//     than an exception to it.
+//  2. the PLACE LINE's own walk, when the keyboard is on it ([App.placeKey]).
+//     A focus mode is an overlay with no panel: same rung, same reason.
+//  3. an ARMED destructive verb waiting for its second yes (itemverb.go's
+//     verbKey). A confirmation is the innermost scope there is — it is a
+//     question this keystroke is the answer to.
+//  4. the STREAMING TURN (8.2.21, [App.canInterrupt] in the key ladder). A reply
+//     arriving in the room you are watching is the innermost LIVE thing, and esc
+//     is how it stops.
+//  5. a PAGE'S OWN drill — the board's detail page (boarddetail.go), the
+//     notebook's (notebook.go). These sit inside a page segment rather than
+//     beside it, so they pop before it does.
+//  6. a NON-EMPTY DRAFT, stashed into the recall ring by the composer itself and
+//     never destroyed (composer/key.go's handleEsc). A sentence in progress is a
+//     thing inside this place, so it goes before the place does; the ring is
+//     what makes that non-destructive.
+//  7. ONE PLACE SEGMENT — this function, through [App.popPlace].
+//  8. the LIVE EDGE, and only at the floor. See below.
 //
 // Rungs 1–6 are reached before this function is called; 7 and 8 are here.
 func (a *App) navigate() tea.Cmd {
@@ -1838,7 +1838,6 @@ func (a *App) composerHint() (composer.Hint, string) {
 	// that drawing instead. What is left here is the idle line's own words.
 	return composer.HintIdle, ""
 }
-
 
 func (a *App) openQuestions() int {
 	open := 0
