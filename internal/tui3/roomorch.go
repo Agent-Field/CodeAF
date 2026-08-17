@@ -222,10 +222,15 @@ const (
 	orchUnknownWord = "no shape published yet"
 	// orchNewWord rides one poll on a node that has just appeared.
 	orchNewWord = "new"
-	// The three state words the header spends its last segment on.
+	// The four state words the header spends its last segment on.
 	orchPausedWord  = "paused"
 	orchDoneWord    = "done"
 	orchOpeningWord = "opening"
+	// orchStoppedWord is a run a PERSON ended (stop.go). It outranks "done" on
+	// the header even though a stopped run IS done, because "done" reads as a
+	// run that answered the goal and this one did not — it was cut, and the
+	// chips underneath say where it got to.
+	orchStoppedWord = "stopped"
 	// orchNeedsLead opens a chip's dependency line, at the tiers where a chip is
 	// a row rather than a cell.
 	orchNeedsLead = "↳ needs: "
@@ -398,7 +403,12 @@ func (a *app) orchRead() {
 	// A RUN THAT ANSWERED ITS OWN GATE TAKES THE QUESTION DOWN. The person can
 	// top up from another surface, and a gate still on screen over a run that is
 	// spending again is a question about a moment that has passed.
-	if run.gate != nil && !snap.Paused && snap.Fuel.Spent < snap.Fuel.Cap {
+	// A RUN THAT IS OVER TAKES THE QUESTION DOWN TOO, and it has to be said
+	// separately: a stopped run is un-paused with its tank still empty, so the
+	// spend test alone would leave three answers on screen under a run that
+	// cannot act on any of them.
+	if run.gate != nil && (snap.Stopped || snap.Done ||
+		(!snap.Paused && snap.Fuel.Spent < snap.Fuel.Cap)) {
 		run.gate = nil
 		changed = true
 	}
@@ -416,7 +426,8 @@ func (a *app) orchRead() {
 func (r *orchRun) changedBy(snap orchestrate.Snapshot) bool {
 	old := r.snap
 	if !r.known || old.Goal != snap.Goal || old.Fuel != snap.Fuel ||
-		old.Paused != snap.Paused || old.Done != snap.Done || old.Answer != snap.Answer ||
+		old.Paused != snap.Paused || old.Done != snap.Done || old.Stopped != snap.Stopped ||
+		old.Answer != snap.Answer ||
 		len(old.Nodes) != len(snap.Nodes) || len(old.Notes) != len(snap.Notes) ||
 		len(old.Steer) != len(snap.Steer) {
 		return true
@@ -1189,6 +1200,11 @@ func (a *app) orchGlyph(node orchestrate.NodeStatus) string {
 		return a.linearMark(orchGlyphDone, orchGlyphDoneASCII)
 	case orchestrate.Failed:
 		return a.linearMark(glyphBad, glyphBadASCII)
+	case orchestrate.Cancelled:
+		// NOT THE CROSS. A node somebody stopped did not fail and nobody found
+		// anything wrong with it — it is the one state on this ramp that is not a
+		// point on it, and it wears the roster's own stop mark (stop.go).
+		return a.linearMark(glyphStopped, glyphStoppedASCII)
 	case orchestrate.Running:
 		return a.linearMark(orchGlyphRunning, orchGlyphRunningASCII)
 	default:
@@ -1200,9 +1216,16 @@ func (a *app) orchGlyph(node orchestrate.NodeStatus) string {
 }
 
 // orchPaintChip is the chip's hue: the accent while it runs, the surface's own
-// bad hue when it failed, muted once it has landed, dim while it waits. It is
-// one paint over the whole chip rather than one per part, because a chip is one
-// object and a glyph in a different hue from its name is two.
+// bad hue when it failed, muted once it has landed, dim while it waits or once
+// somebody stopped it. It is one paint over the whole chip rather than one per
+// part, because a chip is one object and a glyph in a different hue from its
+// name is two.
+//
+// A CANCELLED CHIP GOES GREY AND STAYS ON THE PAGE. It is not painted away and
+// it is not removed: the shape a person is looking at is the shape the run
+// crystallized into, and a chip that vanished when they pressed stop would be
+// the page denying the work was ever asked for. Dim is what this surface already
+// spends on work that is not happening.
 func (a *app) orchPaintChip(node orchestrate.NodeStatus, word string, width int) string {
 	text := fit(word, width)
 	switch node.State {
@@ -1416,6 +1439,8 @@ func orchNodeWord(node orchestrate.NodeStatus) string {
 		return orchDoneWord
 	case orchestrate.Failed:
 		return "failed"
+	case orchestrate.Cancelled:
+		return orchStoppedWord
 	}
 	return ""
 }
@@ -1573,6 +1598,8 @@ func orchCrumbWord(goal, id string) string {
 func (a *app) orchHeadMark() string {
 	run := a.orchOf()
 	switch {
+	case run.snap.Stopped:
+		return a.linearMark(glyphStopped, glyphStoppedASCII)
 	case run.gate != nil || run.snap.Paused:
 		return a.linearMark(orchGlyphPaused, orchGlyphPausedASCII)
 	case run.snap.Done:
@@ -1590,6 +1617,8 @@ func (a *app) orchHeadMark() string {
 func (a *app) orchStateWord() string {
 	run := a.orchOf()
 	switch {
+	case run.snap.Stopped:
+		return orchStoppedWord
 	case run.gate != nil || run.snap.Paused:
 		return orchPausedWord
 	case run.snap.Done:

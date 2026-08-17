@@ -64,6 +64,13 @@ const (
 	Running
 	Done
 	Failed
+	// Cancelled is a node a PERSON stopped: one that was in flight when the run
+	// was cancelled and had its context cut under it, or one still pending that
+	// will now never launch. It is deliberately not [Failed] — nothing about the
+	// work went wrong and nobody made a finding about it — and a cancelled node
+	// keeps no digest, because a half-answer handed on as a fact is worse than
+	// no answer at all (run.go's [Orchestrator.Cancel]).
+	Cancelled
 )
 
 // NodeStatus is a Node plus what the run knows about it so far. Digest is
@@ -96,7 +103,13 @@ type Snapshot struct {
 	Steer  []string     `json:"steer,omitempty"` // user steering, in order
 	Paused bool         `json:"paused"`          // out of fuel, awaiting the gate's answer
 	Done   bool         `json:"done"`
-	Answer string       `json:"answer,omitempty"` // the synthesis, once Done
+	// Stopped says a PERSON ended this run early ([Orchestrator.Cancel]) rather
+	// than the planner finishing it. Done is true beside it — the run is over
+	// either way, and a surface waiting for one flag must not wait forever for
+	// the other — and Answer is empty, because a run somebody stopped does not
+	// go on to pay for a synthesis.
+	Stopped bool   `json:"stopped,omitempty"`
+	Answer  string `json:"answer,omitempty"` // the synthesis, once Done
 }
 
 // View is what the planner sees on each call: the goal, condensed results,

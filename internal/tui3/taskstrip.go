@@ -264,6 +264,11 @@ type stripSpan struct {
 	row   int
 	id    uint64
 	title string
+	// stop is the ✕'s own columns inside this chip, or the empty span on a chip
+	// that is not carrying one (stop.go). It is read BEFORE the chip's own span,
+	// because the ✕ sits inside the door and pressing it must not also walk
+	// through it.
+	stop hudSpan
 }
 
 // stripFold is a ▸ +N chip: what a fold took off the tree, and where the count
@@ -478,7 +483,7 @@ func (a *app) stripFlatRow(width int, nodes []*taskNode) string {
 	// the person who cannot see them needs.
 	kept, used := 0, leadCols
 	for i := range nodes {
-		_, w := a.stripLabel(nodes[i])
+		_, w, _ := a.stripLabel(nodes[i], width)
 		gap := 0
 		if i > 0 || leadCols > 0 {
 			gap = stripGapCols
@@ -503,7 +508,7 @@ func (a *app) stripFlatRow(width int, nodes []*taskNode) string {
 			// half-drawn node chip beside it would be a name nobody can act on.
 			return fit(lead, width)
 		}
-		text, _ := a.stripLabel(nodes[0])
+		text, _, _ := a.stripLabel(nodes[0], width)
 		a.stripSpans = []stripSpan{{span: hudSpan{from: 0, to: width}, id: nodes[0].id, title: nodes[0].title}}
 		return fit(text, width)
 	}
@@ -516,12 +521,13 @@ func (a *app) stripFlatRow(width int, nodes []*taskNode) string {
 			out.WriteString(stripGap)
 			at += stripGapCols
 		}
-		text, w := a.stripLabel(nodes[i])
+		text, w, markCols := a.stripLabel(nodes[i], width)
 		out.WriteString(text)
 		a.stripSpans = append(a.stripSpans, stripSpan{
 			span:  hudSpan{from: at, to: at + w},
 			id:    nodes[i].id,
 			title: nodes[i].title,
+			stop:  stripStopSpan(at, w, markCols),
 		})
 		at += w
 	}
@@ -749,13 +755,14 @@ func stripGrow(node *taskNode, kids map[string][]*taskNode, seen map[string]bool
 // └, which is the same question asked about this node rather than its parents.
 func (a *app) stripPaint(rows []string, twig *stripTwig, width int, stems []bool) []string {
 	prefix, at := a.stripPrefix(stems)
-	text, cols := a.stripTreeLabel(twig.node, width)
+	text, cols, markCols := a.stripTreeLabel(twig.node, width)
 	line := prefix + text
 	a.stripRecord(stripSpan{
 		span:  hudSpan{from: at, to: at + cols},
 		row:   len(rows),
 		id:    twig.node.id,
 		title: twig.node.title,
+		stop:  stripStopSpan(at, cols, markCols),
 	}, width)
 	at += cols
 	if twig.folded > 0 {
@@ -793,6 +800,11 @@ func (a *app) stripRecord(chip stripSpan, width int) {
 	if chip.span.to > width {
 		chip.span.to = width
 	}
+	if chip.stop.to > width {
+		// The cut took the ✕ away. A button a person cannot see must not still
+		// answer to the column it would have been drawn in.
+		chip.stop = hudSpan{}
+	}
 	a.stripSpans = append(a.stripSpans, chip)
 }
 
@@ -827,33 +839,69 @@ func (a *app) stripPrefix(stems []bool) (string, int) {
 // [palette.hover] makes with the rows it lights: every foreground sequence on
 // this surface closes with SGR 39, so a background wrapped round one leaves the
 // ink underneath alone.
-func (a *app) stripLabel(node *taskNode) (string, int) {
-	return a.stripChip(node, a.stripGlyph(node), fit(node.title, stripTitleCap))
+func (a *app) stripLabel(node *taskNode, width int) (string, int, int) {
+	return a.stripChip(node, a.stripGlyph(node), fit(node.title, stripTitleCap), width)
 }
 
 // stripTreeLabel is the same chip on a tree row: the node's STATE in the glyph
 // cell (the header says why the two rows differ on this), and a name cut to
 // what the tier can afford.
-func (a *app) stripTreeLabel(node *taskNode, width int) (string, int) {
+func (a *app) stripTreeLabel(node *taskNode, width int) (string, int, int) {
 	limit := stripTitleCap
 	if layoutTier(width) == tierPhone {
 		limit = stripPhoneCap
 	}
-	return a.stripChip(node, a.stripTreeGlyph(node), fit(node.title, limit))
+	return a.stripChip(node, a.stripTreeGlyph(node), fit(node.title, limit), width)
 }
 
 // stripChip is a chip: a glyph, a name already cut, the air around them, and
-// whichever of the two marks this node has earned.
-func (a *app) stripChip(node *taskNode, glyph, title string) (string, int) {
-	cols := ansi.StringWidth(glyph) + 1 + ansi.StringWidth(title) + stripPadCols
-	chip := stripPad + glyph + " " + a.stripTitle(node, title) + stripPad
+// whichever of the marks this node has earned. It answers with the chip, the
+// CELLS it occupies, and the cells the ✕ at its end took — zero on a chip that
+// is not carrying one.
+//
+// THE ✕ IS ON THE FOCUSED CHIP AT THE WIDE TIER AND NOWHERE ELSE (stop.go).
+// This row is the roster's live set drawn as chips, so "the focused chip" is
+// the roster's own cursor (see [app.stripFocused]) — the button follows the
+// keyboard rather than appearing on every chip, because a row of doors that all
+// carry a stop button is a row where the wrong one is one cell away. Below the
+// wide tier the cells are not there to spend and the room's own header carries
+// the same button at every width.
+func (a *app) stripChip(node *taskNode, glyph, title string, width int) (string, int, int) {
+	mark, markCols := "", 0
+	if a.stripStopMark(node, width) {
+		mark = a.linearMark(roomStopMark, roomStopMarkASCII)
+		markCols = ansi.StringWidth(mark) + 1 // the space that separates it from the name
+	}
+	cols := ansi.StringWidth(glyph) + 1 + ansi.StringWidth(title) + markCols + stripPadCols
+	chip := stripPad + glyph + " " + a.stripTitle(node, title)
+	if mark != "" {
+		chip += " " + mark
+	}
+	chip += stripPad
 	if a.room != nil && a.room.id == node.id {
 		chip = a.pal.band(chip, cols)
 	}
 	if a.stripFocused(node) {
 		chip = a.pal.underline(chip)
 	}
-	return chip, cols
+	return chip, cols, markCols
+}
+
+// stripStopMark reports whether this chip carries the ✕.
+func (a *app) stripStopMark(node *taskNode, width int) bool {
+	return a.stripFocused(node) && layoutTier(width) == tierWide &&
+		!a.stopTaskTarget(node).empty()
+}
+
+// stripStopSpan is where a chip's ✕ landed, given where the chip did. The mark
+// sits one cell in from the chip's trailing pad, which is where [app.stripChip]
+// put it.
+func stripStopSpan(at, cols, markCols int) hudSpan {
+	if markCols <= 0 {
+		return hudSpan{}
+	}
+	end := at + cols - stripPadCols/2
+	return hudSpan{from: end - markCols, to: end}
 }
 
 // stripFocused reports whether the roster's cursor is standing on this node.
@@ -948,10 +996,20 @@ func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
 		return nil, true
 	}
 	for _, chip := range a.stripSpans {
-		if chip.row == row && chip.span.holds(x) {
-			a.openRoomFor(chip.id, chip.title)
-			return a.takeRoomPump(), true
+		if chip.row != row || !chip.span.holds(x) {
+			continue
 		}
+		// THE ✕ IS RESOLVED INSIDE THE DOOR IT SITS IN (stop.go). It is drawn
+		// within the chip's own span, so a press on it that fell through to the
+		// chip would walk into the room of the very work it was aimed at ending.
+		if chip.stop.holds(x) {
+			if node := a.tasks[chip.id]; node != nil {
+				a.raiseStop(a.stopTaskTarget(node))
+			}
+			return nil, true
+		}
+		a.openRoomFor(chip.id, chip.title)
+		return a.takeRoomPump(), true
 	}
 	// EVERY COUNT ON THIS ROW IS THE DOOR TO THE WHOLE ROSTER, which is the
 	// roster wherever this frame keeps it: the column on a wide one, the

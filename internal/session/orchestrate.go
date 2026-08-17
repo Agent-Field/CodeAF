@@ -184,6 +184,14 @@ type orchestration struct {
 // What comes back is the line to show for it — the gate is a question, and a
 // surface that answered one is owed a sentence saying what that answer did.
 func (a *Agent) ResolveOrchestrate(id, answer string) (string, error) {
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	// ONE STOP WORD EVERYWHERE. The gate's "stop" is not a second way to end a
+	// run: it is [Agent.Cancel] on this run, so that a run ended at the gate and
+	// a run ended by the key on its page leave exactly the same trace and say
+	// exactly the same sentence (cancel.go).
+	if answer == orchestrate.GateStop {
+		return a.Cancel(CancelRun + ":" + strings.TrimSpace(id))
+	}
 	live, known := a.orchestration(id)
 	if !known {
 		return "", fmt.Errorf("there is no run %q in this session", id)
@@ -191,15 +199,10 @@ func (a *Agent) ResolveOrchestrate(id, answer string) (string, error) {
 	if err := live.run.Resolve(answer); err != nil {
 		return "", err
 	}
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	switch {
-	case answer == orchestrate.GateFinish:
+	if answer == orchestrate.GateFinish {
 		return "finishing on what is already done", nil
-	case answer == orchestrate.GateStop:
-		return "stopped; what finished is kept", nil
-	default:
-		return "topped up; the run carries on", nil
 	}
+	return "topped up; the run carries on", nil
 }
 
 // OrchestrateSnapshot is the room's poll: the run's latest published shape,
@@ -300,6 +303,12 @@ func (a *Agent) cancelOrchestrationsLocked() {
 func (a *Agent) landOrchestrate(run uint64, goal string, snap orchestrate.Snapshot, err error) {
 	var line string
 	switch {
+	case snap.Stopped:
+		// A PERSON ENDED THIS ONE, and the sentence is theirs rather than the
+		// run's: what it spent and how far it got, which are the two things
+		// somebody who has just stopped work wants to know and the two that were
+		// still moving at the moment they pressed the key (cancel.go).
+		line = stoppedRunNote(snap)
 	case err != nil:
 		line = fmt.Sprintf("the adaptive run for %q ended early: %v", clip(goal, 80), err)
 	case snap.Answer != "":
