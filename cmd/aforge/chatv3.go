@@ -2,16 +2,12 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
@@ -19,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
@@ -212,26 +209,29 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// use, and one that has not resolved answers nil instead of waiting.
 		Models: func() []tui3.Model { return v3Models(models) },
 		Fresh: func() (tui3.Agent, string, error) {
-			next, err := newV3SessionFile(workspace)
+			place, err := v3NextSession(cfg.Place, workspace)
 			if err != nil {
 				return nil, "", err
 			}
-			// The launch's config, pointed at the new transcript and carrying
-			// the gate AS IT STANDS NOW rather than as it stood at boot
+			// The launch's config, pointed at the new folder and carrying the
+			// gate AS IT STANDS NOW rather than as it stood at boot
 			// (chatv3_approval.go says why the second half is not optional).
 			fresh := v3CurrentGate(cfg, workspace, settings.ProfileDir, *yolo)
-			fresh.SessionFile = next
+			fresh, err = v3PointAt(fresh, place)
+			if err != nil {
+				return nil, "", err
+			}
 			replacement, err := session.New(fresh)
 			if err != nil {
 				return nil, "", err
 			}
-			return replacement, next, nil
+			return replacement, fresh.SessionFile, nil
 		},
 		// The conversations this directory has had, and the door back into one
 		// of them. They are the welcome box's right column and the /resume
 		// picker's rows; the walk happens on the keystroke that asks for it and
 		// never at boot.
-		RecentSessions: func() []tui3.Session { return v3RecentSessions(workspace) },
+		RecentSessions: func() []tui3.Session { return v3RecentSessions(launch.Bucket) },
 		Resume: func(file string) (tui3.Agent, error) {
 			// The same config this session runs on, pointed at another
 			// transcript: the model, the roles and the rail are properties of
@@ -244,7 +244,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			// a banked rule can, an old conversation reopened afterwards has to
 			// open behind the rule and not behind the boot.
 			earlier := v3CurrentGate(cfg, workspace, settings.ProfileDir, *yolo)
-			earlier.SessionFile = file
+			earlier, err := v3Reopen(earlier, file, workspace)
+			if err != nil {
+				return nil, err
+			}
 			agent, err := session.New(earlier)
 			if err != nil {
 				// Returned rather than wrapped in a surface that would carry a
@@ -328,6 +331,12 @@ type v3Launch struct {
 	Workspace   string
 	SessionFile string
 	Resumed     bool
+	// Place is the session folder this launch opened (internal/session's
+	// place.go), and Bucket the project directory it sits in. The surface keeps
+	// both after the launch: the folder is what /new mints a sibling of, and the
+	// bucket is the list of this project's conversations.
+	Place  session.Place
+	Bucket string
 }
 
 func openV3Launch(opts v3Options) (*v3Launch, error) {
@@ -347,17 +356,37 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 	if chosen == "" {
 		chosen = settings.Model
 	}
-	workspace := strings.TrimSpace(opts.Workspace)
-	if workspace == "" {
-		workspace, err = os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("resolve working directory: %w", err)
-		}
+	// WHERE THE PERSON IS STANDING, which is not the same fact as which project
+	// this is: `aforge` typed in repo/cmd/ is a conversation about the
+	// repository, and the subdirectory is recorded rather than resolved away
+	// (Decision 26). A door that named a workspace has already answered the
+	// project question and its answer is taken as given.
+	launchDir, err := os.Getwd()
+	if err != nil {
+		return nil, fmt.Errorf("resolve working directory: %w", err)
 	}
+	// ONE BOOT PASS, before anything reads the new layout, so a machine that
+	// last ran the flat layout opens on its own conversations rather than on an
+	// empty list (chatv3_migrate.go). It is never fatal and never repeated.
+	migrateV3Layout()
 
-	transcript, resumed, err := resolveV3Session(strings.TrimSpace(opts.Session), workspace)
+	project, owned := v3Workspace(launchDir, opts.Workspace)
+	found, err := v3ResolveSession(strings.TrimSpace(opts.Session), project, launchDir, owned)
 	if err != nil {
 		return nil, err
+	}
+	transcript, resumed := found.Transcript, found.Resumed
+	// THE TOOLS ROOT IS THE SESSION'S OWN ANSWER. A borrowed session works in
+	// the project it borrowed; an owned one works in its own work/ directory,
+	// which is prepared here because nothing downstream may find it missing.
+	workspace := project
+	if root := strings.TrimSpace(found.Place.Workspace); root != "" {
+		workspace = root
+	}
+	if found.Place.Owned {
+		if err := prepareOwnedWorkspace(found.Place); err != nil {
+			return nil, err
+		}
 	}
 
 	// Model discovery starts here and is waited for NOWHERE on this path. On a
@@ -388,6 +417,14 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		SiteCategories: settings.SiteCategories,
 		CompactEnabled: !opts.NoCompact,
 		SessionFile:    transcript,
+		// The folder this conversation keeps everything in (Decision 26). It is
+		// the zero Place for a launch opened on a flat legacy transcript, which
+		// is what keeps that session deriving its sidecars the way it always did.
+		Place: found.Place,
+		// The durable memory, finally wired: one file per person under the state
+		// root, which is what note, forget and the dreaming pass have been built
+		// against and reaching nothing for a version.
+		MemoryFile: home.Join("v3", "memory.md"),
 		// The window the model this session STARTS on actually accepts, when
 		// anybody can say so without waiting. Zero keeps session's own
 		// conservative default, and [warmV3Models] corrects it in place the
@@ -446,7 +483,24 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		Workspace:   workspace,
 		SessionFile: transcript,
 		Resumed:     resumed,
+		Place:       found.Place,
+		Bucket:      found.Bucket,
 	}, nil
+}
+
+// prepareOwnedWorkspace makes an owned session's workspace ready to work in.
+//
+// STUB(place/modes): the modes lane lands git init and the work/ dir; until
+// then owned sessions get MkdirAll only.
+func prepareOwnedWorkspace(place session.Place) error {
+	work := place.Work()
+	if work == "" {
+		return nil
+	}
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		return fmt.Errorf("create session workspace: %w", err)
+	}
+	return nil
 }
 
 // v3Connections hands the surface the accounts manager, and keeps a nil a nil.
@@ -486,11 +540,15 @@ func openV3Agent(cfg session.Config, workspace string) (*session.Agent, session.
 	if !errors.Is(err, session.ErrSessionLocked) {
 		return nil, cfg, "", err
 	}
-	next, nameErr := newV3SessionFile(workspace)
-	if nameErr != nil {
+	place, nextErr := v3NextSession(cfg.Place, workspace)
+	if nextErr != nil {
 		return nil, cfg, "", err
 	}
-	cfg.SessionFile = next
+	next, nextErr := v3PointAt(cfg, place)
+	if nextErr != nil {
+		return nil, cfg, "", err
+	}
+	cfg = next
 	agent, err = session.New(cfg)
 	if err != nil {
 		return nil, cfg, "", err
@@ -822,21 +880,6 @@ func v3RolesSource(workspace, profileDir string) (func(string) (string, bool), e
 	}, nil
 }
 
-// v3Dir is ~/.aforge/v3: the directory this surface keeps its own files in —
-// the model cache, the history list, the drafts. The sessions live one level
-// under it, per workspace (see [v3SessionDir]).
-func v3Dir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
-	}
-	dir := filepath.Join(home, ".aforge", "v3")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("create session directory: %w", err)
-	}
-	return dir, nil
-}
-
 // v3Catalog is the ONE question this door asks a model catalog, and it is a
 // question that never waits. It is an interface rather than *catalog.Catalog so
 // a test can answer it with rows of its own — no cache file, no fetch, no
@@ -1142,82 +1185,13 @@ func runChatV3Once(cfg session.Config, text, level string, resumed bool) error {
 	return failure
 }
 
-// resolveV3Session answers which transcript this run writes and whether it was
-// found rather than made. An explicit --session is taken as given (a path a
-// person named is a path they mean, existing or not); otherwise this
-// directory's most recent transcript is resumed, and a directory that has
-// never held a session gets a new one.
-func resolveV3Session(explicit, workspace string) (string, bool, error) {
-	if explicit != "" {
-		path, err := expandHome(explicit)
-		if err != nil {
-			return "", false, err
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			return "", false, fmt.Errorf("create session directory: %w", err)
-		}
-		_, err = os.Stat(path)
-		return path, err == nil, nil
-	}
-	dir, err := v3SessionDir(workspace)
-	if err != nil {
-		return "", false, err
-	}
-	if latest := latestV3Session(dir); latest != "" {
-		return latest, true, nil
-	}
-	path, err := newV3SessionFile(workspace)
-	return path, false, err
-}
-
-// v3SessionDir is where this directory's transcripts live:
-// ~/.aforge/v3/sessions/<cwd with its separators turned to dashes>. The
-// encoding keeps one flat level per workspace and stays readable — the point
-// of a session file is that a person can find it.
-func v3SessionDir(workspace string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
-	}
-	dir := filepath.Join(home, ".aforge", "v3", "sessions", encodeWorkspace(workspace))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("create session directory: %w", err)
-	}
-	return dir, nil
-}
-
-func encodeWorkspace(workspace string) string {
-	encoded := strings.ReplaceAll(filepath.Clean(workspace), string(filepath.Separator), "-")
-	encoded = strings.ReplaceAll(encoded, ":", "-")
-	if !strings.HasPrefix(encoded, "-") {
-		encoded = "-" + encoded
-	}
-	return encoded
-}
-
-// newV3SessionFile names a fresh transcript: the moment it began and a short
-// random tail, so two windows opened in the same second in the same directory
-// never write the same file.
-func newV3SessionFile(workspace string) (string, error) {
-	dir, err := v3SessionDir(workspace)
-	if err != nil {
-		return "", err
-	}
-	tail := make([]byte, 3)
-	if _, err := rand.Read(tail); err != nil {
-		return "", fmt.Errorf("name session file: %w", err)
-	}
-	name := time.Now().Format("20060102-150405") + "_" + hex.EncodeToString(tail) + ".jsonl"
-	return filepath.Join(dir, name), nil
-}
-
 // v3RecentSessionSlots bounds one listing. Twenty is far more than the four the
 // welcome box draws and more than a person scrolls a picker past; what it is
 // really for is the ceiling on the work — twenty file scans, once, on the
 // keystroke that asks (internal/session's Recent bounds the reads too).
 const v3RecentSessionSlots = 20
 
-// v3RecentSessions is this directory's past conversations as the surface lists
+// v3RecentSessions is this project's past conversations as the surface lists
 // them: the name each one gave itself, the last thing that happened in it, and
 // when.
 //
@@ -1226,16 +1200,12 @@ const v3RecentSessionSlots = 20
 // open, and lets a second window list the first one's conversation while it is
 // live (internal/session's peek.go).
 //
-// An unreadable directory is an empty list and not an error. This answers a
-// list a person may never look at; the one thing it must not do is stop a
-// launch, and "no recent sessions" is a true sentence about a machine whose
-// session directory cannot be read.
-func v3RecentSessions(workspace string) []tui3.Session {
-	dir, err := v3SessionDir(workspace)
-	if err != nil {
-		return nil
-	}
-	found := session.Recent(dir, v3RecentSessionSlots)
+// An unreadable bucket is an empty list and not an error. This answers a list a
+// person may never look at; the one thing it must not do is stop a launch, and
+// "no recent sessions" is a true sentence about a machine whose session
+// directory cannot be read.
+func v3RecentSessions(bucket string) []tui3.Session {
+	found := session.Recent(bucket, v3RecentSessionSlots)
 	rows := make([]tui3.Session, 0, len(found))
 	for _, summary := range found {
 		rows = append(rows, tui3.Session{
@@ -1247,32 +1217,4 @@ func v3RecentSessions(workspace string) []tui3.Session {
 		})
 	}
 	return rows
-}
-
-// latestV3Session is the most recently written transcript in dir, or "".
-func latestV3Session(dir string) string {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-	type candidate struct {
-		path string
-		at   time.Time
-	}
-	var found []candidate
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		found = append(found, candidate{path: filepath.Join(dir, entry.Name()), at: info.ModTime()})
-	}
-	if len(found) == 0 {
-		return ""
-	}
-	sort.Slice(found, func(i, j int) bool { return found[i].at.After(found[j].at) })
-	return found[0].path
 }

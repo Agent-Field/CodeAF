@@ -165,20 +165,30 @@ session: 12 is not a rewind point; the nearest is 10
 
 ## Where your conversations are saved, kept, and stored
 
-Every conversation is one JSONL file on disk. The path shape is:
+Every conversation is one folder on disk, and the transcript inside it is one JSONL file.
+The path shape is:
 
 ```
-~/.aforge/v3/sessions/<workspace with separators turned to dashes>/<YYYYMMDD-HHMMSS>_<6 hex chars>.jsonl
+~/.aforge/v3/projects/<workspace with separators turned to dashes>/<session id>/transcript.jsonl
 ```
 
 The workspace part replaces `/` and `:` with `-` and always starts with a `-`, so
-`/home/me/code/app` becomes `-home-me-code-app`. A full name looks like
-`20260817-101112_a3f2.jsonl`. The random tail exists so two windows opened in the same
-second in the same directory never write the same file.
+`/home/me/code/app` becomes `-home-me-code-app`. The workspace itself is the repository
+root, so the same project opened from any of its subdirectories is one project. The
+session id is 16 hex characters and names both the folder and the transcript's header.
 
-The directories are created with mode `0700`; the session file itself is `0644`. The
-surface's own files — model cache, input history, drafts — sit one level up in
-`~/.aforge/v3`.
+Beside the transcript, in the same folder: `meta.json` (what the conversation is called,
+which workspace it is about, when you last spoke in it), `state.json` and `tasks.json`,
+the task transcripts, and — for a conversation with no project of its own — `work/`, the
+directory it works in. Removing one conversation is removing one folder.
+
+The directories are created with mode `0700`; the transcript itself is `0644`. The
+surface's own files — model cache, input history, drafts — sit in `~/.aforge/v3`.
+
+Coming back with no arguments opens the conversation **you spoke in most recently**, not
+the file that was written to most recently: work finishing in the background does not
+change which conversation you were having. A conversation you opened and never said
+anything in is reused rather than piled up, and the leftovers are cleaned away.
 
 **What is in the file:** JSONL, append-only, one header line and then one line per
 **completed** message and per compaction pass. The line types are `session` (the header:

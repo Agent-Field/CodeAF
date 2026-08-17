@@ -44,11 +44,18 @@ package session
 //
 // ── WHERE IT LIVES ──
 //
-// Beside the session files, in the directory cmd/aforge already keeps one per
-// workspace (~/.aforge/v3/sessions/<workspace>/). The path is DERIVED FROM THE
-// SESSION FILE rather than from the workspace, exactly as [taskCheckpointPath]
-// is: that directory is already the project scope, and deriving it a second way
-// would be a second definition of "this project" to disagree with the first.
+// In the PROJECT BUCKET — ~/.aforge/v3/projects/<workspace>/ — which is the
+// directory holding this workspace's session folders (place.go, Decision 26).
+// The scope is the project and not the conversation: every window open on the
+// repository appends to one file, which is what makes "what work has this
+// project had done" a question with one answer.
+//
+// The path is DERIVED rather than resolved a second way, exactly as
+// [taskCheckpointPath] is: from the session's [Place] when it has one — the
+// parent of the folder is the bucket — and from the session file's own
+// directory for the legacy flat layout, where the workspace directory WAS the
+// project scope. Deriving it from the workspace instead would be a second
+// definition of "this project" to disagree with the first.
 
 import (
 	"bufio"
@@ -172,9 +179,16 @@ func taskIndexAt(entry TaskIndexEntry, now time.Time) time.Time {
 	return entry.EndedAt
 }
 
-// TaskIndexPath is the index beside one session file, or "" for a session with
-// no file at all — a memory-only conversation has no project directory to keep
-// a project's record in.
+// TaskIndexPath is the project's index for one session file, or "" for a
+// session with no file at all — a memory-only conversation has no project
+// directory to keep a project's record in.
+//
+// A SESSION FOLDER'S INDEX IS ITS BUCKET'S. A journal called transcript.jsonl
+// is a folder's (place.go), the folder is one conversation, and the project is
+// the directory ABOVE it — so the index climbs one level rather than landing
+// inside a single conversation, where every window would keep a private list of
+// the same project's work. A legacy flat transcript keeps the index beside it,
+// which for that layout is the same directory.
 func TaskIndexPath(sessionFile string) string {
 	sessionFile = strings.TrimSpace(sessionFile)
 	if sessionFile == "" {
@@ -184,7 +198,28 @@ func TaskIndexPath(sessionFile string) string {
 	if directory == "" || directory == "." {
 		return ""
 	}
+	if filepath.Base(sessionFile) == placeTranscript {
+		bucket := filepath.Dir(directory)
+		if bucket == "" || bucket == "." {
+			return ""
+		}
+		return filepath.Join(bucket, taskIndexName)
+	}
 	return filepath.Join(directory, taskIndexName)
+}
+
+// taskIndexFile is where THIS session's project keeps its index: the bucket
+// above the session folder when the session has a [Place], and the session
+// file's own directory for the legacy flat layout the zero Place stands for.
+func (c Config) taskIndexFile() string {
+	if dir := strings.TrimSpace(c.Place.Dir); dir != "" {
+		bucket := filepath.Dir(dir)
+		if bucket == "" || bucket == "." {
+			return ""
+		}
+		return filepath.Join(bucket, taskIndexName)
+	}
+	return TaskIndexPath(c.SessionFile)
 }
 
 // taskIndexMu serializes this process's appends. Two windows on the same
@@ -301,7 +336,7 @@ func taskIDNumber(id string) uint64 {
 // own copy of the live registry would be a second answer to "what is running"
 // with a different set of rules for keeping it fresh.
 func (a *Agent) TaskIndex() []TaskIndexEntry {
-	rows := ReadTaskIndex(TaskIndexPath(a.config.SessionFile))
+	rows := ReadTaskIndex(a.config.taskIndexFile())
 	live := a.liveTaskRows()
 	if len(live) == 0 {
 		return rows
@@ -352,7 +387,7 @@ func (a *Agent) liveTaskRows() []TaskIndexEntry {
 // from the graph's report hook (task_run.go), which is the one place a node
 // reaching a final state is a fact rather than a guess.
 func (a *Agent) recordTaskIndex(node *TaskNode) {
-	path := TaskIndexPath(a.config.SessionFile)
+	path := a.config.taskIndexFile()
 	if path == "" || node == nil {
 		return
 	}

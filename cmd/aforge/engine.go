@@ -141,25 +141,29 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		// and the rail are properties of the launch and a conversation opened
 		// from the picker is the same launch.
 		Fresh: func() (remote.WrappedAgent, string, error) {
-			next, err := newV3SessionFile(workspace)
+			place, err := v3NextSession(cfg.Place, workspace)
 			if err != nil {
 				return nil, "", err
 			}
-			fresh := cfg
-			fresh.SessionFile = next
+			fresh, err := v3PointAt(cfg, place)
+			if err != nil {
+				return nil, "", err
+			}
 			replacement, err := session.New(fresh)
 			if err != nil {
 				return nil, "", err
 			}
-			return replacement, next, nil
+			return replacement, fresh.SessionFile, nil
 		},
 		Open: func(name string) (remote.WrappedAgent, bool, error) {
 			path, err := engineSessionPath(name)
 			if err != nil {
 				return nil, false, err
 			}
-			earlier := cfg
-			earlier.SessionFile = path
+			earlier, err := v3Reopen(cfg, path, workspace)
+			if err != nil {
+				return nil, false, err
+			}
 			// Whether the file was found is asked BEFORE it is opened, because
 			// opening it creates it: a path nobody has written yet is a new
 			// conversation, and the surface says so on its first line.
@@ -174,11 +178,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return replacement, statErr == nil, nil
 		},
 		Recent: func() []session.Summary {
-			dir, err := v3SessionDir(workspace)
-			if err != nil {
-				return nil
-			}
-			return session.Recent(dir, v3RecentSessionSlots)
+			return session.Recent(launch.Bucket, v3RecentSessionSlots)
 		},
 	}, nil
 }

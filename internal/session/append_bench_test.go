@@ -21,7 +21,7 @@ func BenchmarkAppendMessage(b *testing.B) {
 	} {
 		b.Run(size.name, func(b *testing.B) {
 			directory := b.TempDir()
-			journal, _, err := openSessionFile(filepath.Join(directory, "session.jsonl"), directory, "test/model")
+			journal, _, err := openSessionFile(filepath.Join(directory, "session.jsonl"), directory, "test/model", "")
 			if err != nil {
 				b.Fatal(err)
 			}

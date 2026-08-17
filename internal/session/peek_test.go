@@ -101,7 +101,7 @@ func TestPeekDoesNotClaimTheFileAWindowIsHolding(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
 	writeTranscript(t, path, peekHeader, peekAsked)
 
-	journal, _, err := openSessionFile(path, "/lab", "test/model")
+	journal, _, err := openSessionFile(path, "/lab", "test/model", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
