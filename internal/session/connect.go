@@ -100,6 +100,17 @@ func (c connectStatus) keyed() bool { return c.Auth == connect.AuthKey }
 // seam rather than done here out of a client because where a service lives, and
 // how its key rides on a request, are internal/connect's facts and not this
 // package's — the belt hands over a method and a path and reads back text.
+// The last four are what an account may be USED FOR, which is the question the
+// settings sheet asks with a word per row and this package asks twice per
+// conversation — once when a family is armed, once when a call is judged
+// (connectcaps.go). They are on this seam rather than reached for through a
+// second handle for the reason everything else here is: one door onto the
+// accounts, so a belt and a panel can never disagree about what is allowed.
+//
+// SetCapabilityState is on it because the mid-chat "always" answer is the same
+// sentence the panel writes, and it must land in the same store. A seam with the
+// three reads and not the write would have forced a second place to remember
+// what somebody said.
 type connectHub interface {
 	Services() []connectStatus
 	Connected(id string) bool
@@ -107,6 +118,11 @@ type connectHub interface {
 	ConnectKey(ctx context.Context, id string, key string) (connectStatus, error)
 	Client(ctx context.Context, id string) (*http.Client, error)
 	Request(ctx context.Context, id, method, path, query, body string) (string, error)
+
+	Capabilities(service string) []connect.Capability
+	CapabilityState(service, capability string) connect.CapabilityState
+	SetCapabilityState(service, capability string, state connect.CapabilityState) error
+	ToolCapability(service, tool string) string
 }
 
 // managerHub is the adapter over the real thing. It is the only code in this
@@ -166,6 +182,26 @@ func (h managerHub) ConnectKey(ctx context.Context, id string, key string) (conn
 
 func (h managerHub) Request(ctx context.Context, id, method, path, query, body string) (string, error) {
 	return h.manager.Request(ctx, id, method, path, query, body)
+}
+
+// The four capability questions are passed straight through. THE READS ARE NOT
+// CACHED HERE and must not be: the panel and the conversation share one process,
+// and a cache in this adapter would be exactly the drift the one-store law
+// exists to prevent (connectcaps.go).
+func (h managerHub) Capabilities(service string) []connect.Capability {
+	return h.manager.Capabilities(service)
+}
+
+func (h managerHub) CapabilityState(service, capability string) connect.CapabilityState {
+	return h.manager.CapabilityState(service, capability)
+}
+
+func (h managerHub) SetCapabilityState(service, capability string, state connect.CapabilityState) error {
+	return h.manager.SetCapabilityState(service, capability, state)
+}
+
+func (h managerHub) ToolCapability(service, tool string) string {
+	return h.manager.ToolCapability(service, tool)
 }
 
 func (h managerHub) BeginAuth(ctx context.Context, id string) (string, func(context.Context) (connectStatus, error), error) {
@@ -460,19 +496,32 @@ func (a *Agent) NoteConnected(service, account string) {
 	if !known {
 		return
 	}
-	if _, err := a.armFamily(a.familyTools(status)); err != nil {
+	// The capabilities the person has turned off take their tools with them
+	// here too (connectcaps.go): this door and the tool call's door must put the
+	// same belt on, or a person would get a different set of hands depending on
+	// which of the two connected the account.
+	tools := a.liveTools(status.ID, a.familyTools(status))
+	if _, err := a.armFamily(tools); err != nil {
 		return
 	}
-	a.enqueueAmbientNote(connectedNote(status.Name, account))
+	a.enqueueAmbientNote(connectedNote(status.Name, account, len(tools) > 0))
 }
 
 // connectedNote is the line the model reads. It says the two things that are
 // now true — the account is connected, and the tools are in hand — and it says
 // them the way a person would.
-func connectedNote(name, account string) string {
+//
+// armed is false where this build has no tools for the account, or where the
+// person has turned off everything it can do. The note then stops at the
+// connection, because the second half of the sentence would be a promise of
+// hands the next turn will not have.
+func connectedNote(name, account string, armed bool) string {
 	line := name + " is connected"
 	if account = strings.TrimSpace(account); account != "" {
 		line += " as " + account
+	}
+	if !armed {
+		return line + ", and there is nothing it can be used for in this conversation."
 	}
 	return line + ". Its tools are in your tool list from this turn on."
 }
