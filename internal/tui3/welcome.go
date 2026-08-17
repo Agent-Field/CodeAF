@@ -257,7 +257,7 @@ func (a *app) resumeSession(chosen Session) tea.Cmd {
 	// exactly where the second one earns its keep — the node that lands is
 	// usually one this session started before it was closed (session's
 	// recovery.go continues the frontier).
-	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns())
+	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
 }
 
 // welcomePress is a click inside the box: on a recent row it opens that

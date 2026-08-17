@@ -53,6 +53,14 @@ import (
 // history, searchable, so that work handed off weeks ago is still findable by
 // the model that has to build on it.
 //
+// build_harness, list_harnesses and run_adaptive (tools_harness.go) are the two
+// big machines and the list that says whether one of them already exists: a
+// saved procedure this project can be offered again, and a planner-and-fleet run
+// against a fuel cap. They are the model's to reach for BY DESIGN — the
+// judgement "is this a recipe, a run, or just work" is one no cue list can make
+// — and each is absent where its machinery is (no registry, no runner, nobody
+// watching to answer the card or the fuel gate).
+//
 // services and use_service (tools_connect.go) are the accounts the person
 // already has somewhere else. They are the one family on this belt that can
 // GROW it: what an account brings — a mailbox, a calendar — is appended when the
@@ -67,7 +75,10 @@ import (
 // whole delivery mechanism is a note arriving in a conversation, and a node has
 // none. tasks comes off for the contract's own reason: a node's brief is its
 // whole world, and a node reading the project's task history is a node reading
-// the conversation it was deliberately given none of. Everything else a node has
+// the conversation it was deliberately given none of. The three above come off
+// with them, by their own gates rather than by a check here: a node is handed no
+// registry, no harness runner and no orchestrate runner, so a node can neither
+// commission a procedure nor start a run of its own. Everything else a node has
 // is exactly what the conversation has, which is the point: it is the same
 // worker, working somewhere quieter.
 func (a *Agent) belt() []bare.Tool {
@@ -85,6 +96,7 @@ func (a *Agent) belt() []bare.Tool {
 		tools = append(tools, a.watchTool(), a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
+	tools = append(tools, a.harnessTools()...)
 	tools = append(tools, a.memoryTools()...)
 	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)

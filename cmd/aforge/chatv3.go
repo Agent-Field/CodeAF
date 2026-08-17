@@ -136,7 +136,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// consent.go). This is the ONLY path that sets it.
 	cfg.AskConsent = true
 
-	agent, cfg, notice, err := openV3Agent(cfg, workspace)
+	agent, cfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			if err != nil {
 				return nil, "", err
 			}
-			replacement, err := session.New(fresh)
+			replacement, err := v3OpenSession(fresh)
 			if err != nil {
 				return nil, "", err
 			}
@@ -251,7 +251,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			if err != nil {
 				return nil, err
 			}
-			agent, err := session.New(earlier)
+			agent, err := v3OpenSession(earlier)
 			if err != nil {
 				// Returned rather than wrapped in a surface that would carry a
 				// typed nil: a locked file's error names the file, and the
@@ -535,8 +535,15 @@ func v3Connections(manager *connect.Manager) tui3.Connections {
 // terminal for a reason nobody outside this tree could guess.
 //
 // It returns the config as it ended up, because the session file may have moved.
-func openV3Agent(cfg session.Config, workspace string) (*session.Agent, session.Config, string, error) {
-	agent, err := session.New(cfg)
+//
+// `open` is HOW a session is built, and there are two answers: [v3OpenSession],
+// which wires the adaptive runner to the agent it is building, and session.New,
+// which does not. It is a parameter rather than a branch because the difference
+// is the caller's own fact — the engine's surface is on another machine and
+// cannot be shown a fuel gate (engine.go) — and a door deciding that for itself
+// would be this file guessing who is watching.
+func openV3Agent(cfg session.Config, workspace string, open func(session.Config) (*session.Agent, error)) (*session.Agent, session.Config, string, error) {
+	agent, err := open(cfg)
 	if err == nil {
 		return agent, cfg, "", nil
 	}
@@ -552,7 +559,7 @@ func openV3Agent(cfg session.Config, workspace string) (*session.Agent, session.
 		return nil, cfg, "", err
 	}
 	cfg = next
-	agent, err = session.New(cfg)
+	agent, err = open(cfg)
 	if err != nil {
 		return nil, cfg, "", err
 	}
@@ -1128,7 +1135,7 @@ func runChatV3Once(cfg session.Config, text, level string, resumed bool) error {
 	if resumed && cfg.SessionFile != "" {
 		fmt.Fprintln(os.Stderr, "resumed "+cfg.SessionFile)
 	}
-	agent, cfg, notice, err := openV3Agent(cfg, cfg.Workspace)
+	agent, cfg, notice, err := openV3Agent(cfg, cfg.Workspace, v3OpenSession)
 	if err != nil {
 		return err
 	}

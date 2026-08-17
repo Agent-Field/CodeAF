@@ -26,10 +26,13 @@ package session
 // reason.
 //
 // WHAT IS NOT HERE. Nothing in this file decides how much a run may spend, and
-// nothing in it decides that a turn wanted one: the cap comes from the person's
-// sentence or the default below, and the intent is a cue lookup and never a
-// judgement (see [orchestrateCue]). A build with no runner wired
-// (Config.OrchestrateRunner) never reaches past one nil check.
+// nothing in it decides that a turn wanted one. The cap comes from the person's
+// sentence, from the model's call, or from the default below; and a run is
+// commissioned from exactly two places — an anchored cue in what a person typed
+// ([orchestrateCue], which is a lookup and never a judgement) and the model's
+// own hand on the belt (tools_harness.go's run_adaptive, which is the judgement
+// and is where the sentences no cue can catch are read). A build with no runner
+// wired (Config.OrchestrateRunner) never reaches past one nil check.
 
 import (
 	"context"
@@ -376,11 +379,12 @@ func (a *Agent) startOrchestrate(ctx context.Context, goal, model string, capDol
 // orchestrateCue is the whole of adaptive-run detection: a verb that names the
 // thing, and the goal it hands over.
 //
-// IT IS A TABLE LOOKUP AND NEVER A JUDGEMENT, which is [harnessBuildCue]'s
-// bargain and is made here for a larger reason: a run costs money. A model
-// asked "was that a request for an adaptive run?" would be a call on every
-// turn AND a wrong yes would be a wrong yes with a fuel tank attached. So the
-// sentence says so in words or nothing happens.
+// IT IS A TABLE LOOKUP AND NEVER A JUDGEMENT, and the bargain is worth stating
+// because a run costs money: a wrong yes here is a wrong yes with a fuel tank
+// attached. So the sentence says so in words or this path does nothing. The
+// judgement it refuses to make is not lost — it is the model's, on the belt
+// (tools_harness.go), where it is made once with the conversation in view
+// instead of on every turn against a regular expression.
 //
 // It is anchored for the same reason that one is: "orchestrate the migration"
 // at the head of what somebody typed is a request, and the same words inside a
@@ -396,15 +400,29 @@ var orchestrateCue = regexp.MustCompile(
 // part of the work.
 var orchestrateBudget = regexp.MustCompile(`(?i)\s*(?:\b(?:with|on|under|for)\s+)?(?:a\s+)?\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:dollar[s]?\s*)?(?:budget|cap|tank)?`)
 
+// orchestrateOpeners are the courtesies a request is wrapped in, stripped
+// before the cue is read so that "please orchestrate X" is the same request as
+// "orchestrate X". They are openers only — each is removed from the FRONT and
+// the rest is re-read — so none of them can match anything in the middle of a
+// sentence.
+//
+// They lived in harness_build.go until commissioning a harness became a tool the
+// model calls (tools_harness.go), which left this the only cue in the package
+// and these the only courtesies anything strips.
+var orchestrateOpeners = []string{
+	"please ", "can you ", "could you ", "would you ", "let's ", "lets ",
+	"i want you to ", "i'd like you to ", "i would like you to ",
+}
+
 // orchestrateGoal reads one turn's request for a run: what to work on, and how
 // much of somebody's money it may spend. false is every other sentence.
 func orchestrateGoal(text string) (goal string, cap float64, ok bool) {
 	text = strings.TrimSpace(text)
-	// The same courtesies a build request is unwrapped from, for the same
-	// reason: "please orchestrate X" is "orchestrate X".
+	// The openers come off one at a time, so "please can you orchestrate X" is
+	// read too. The loop terminates because every pass strips a prefix.
 	for stripped := true; stripped; {
 		stripped = false
-		for _, opener := range harnessBuildOpeners {
+		for _, opener := range orchestrateOpeners {
 			if len(text) >= len(opener) && strings.EqualFold(text[:len(opener)], opener) {
 				text = strings.TrimSpace(text[len(opener):])
 				stripped = true
@@ -473,20 +491,39 @@ func (a *Agent) routeOrchestrate(ctx context.Context, hub *eventHub, user userMe
 		// the person typed runs exactly as it would have.
 		return false, false
 	}
-	// The id comes back from the runner as text and rides the lane as the
-	// number every question in this package is answered by; a runner that mints
-	// ids of its own shape simply leaves the number at zero.
-	seq, _ := strconv.ParseUint(id, 10, 64)
-	a.emitOrchestrate(Event{
-		Kind: EventOrchestrateNote, ID: seq,
-		Text:  fmt.Sprintf("adaptive run started on %s: %s", orchestrate.Dollars(cap), goal),
-		Hint:  orchestrate.Dollars(cap),
-		Model: model,
-	})
+	a.announceOrchestrate(id, goal, model, cap)
 	// The turn ends HERE, with no assistant message: the run is the answer and
-	// it has not happened yet (routeHarnessBuild's law).
+	// it has not happened yet.
 	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started)})
 	return true, true
+}
+
+// announceOrchestrate says one run has started, on the standing lane where
+// every other thing that run will say arrives. It is the FIRST NEWS OF A RUN and
+// the only line a surface has to go on: a run is not a node, so it is on no
+// roster and has no row, and this event is what tells a surface one exists at
+// all (internal/tui3's roomorch.go).
+//
+// THE ID IS THE RUN'S NUMBER, AND A RUNNER MAY NOT HAVE ONE. Every question in
+// this package is answered by [Event.ID], which is a uint64, and the engine here
+// mints its ids as decimal numbers written out ([Agent.RunOrchestrate]) — so the
+// number goes back on the event. A surface that was handed a runner minting ids
+// of some other shape gets ID zero, which every reader already treats as "this
+// names no run": the note still lands in the conversation, and what it costs is
+// the page, which could not have been opened on an id the session cannot resolve
+// anyway. The error is read rather than dropped so that this is a decision on
+// the page and not an accident of the underscore.
+func (a *Agent) announceOrchestrate(id, goal, model string, capDollars float64) {
+	seq, err := strconv.ParseUint(strings.TrimSpace(id), 10, 64)
+	if err != nil {
+		seq = 0
+	}
+	a.emitOrchestrate(Event{
+		Kind: EventOrchestrateNote, ID: seq,
+		Text:  fmt.Sprintf("adaptive run started on %s: %s", orchestrate.Dollars(capDollars), goal),
+		Hint:  orchestrate.Dollars(capDollars),
+		Model: model,
+	})
 }
 
 // ── the planner ─────────────────────────────────────────────────────────────

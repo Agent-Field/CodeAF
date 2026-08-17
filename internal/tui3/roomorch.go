@@ -51,8 +51,11 @@ import (
 //
 // The three EVENT kinds are the rest of it, and they carry what a snapshot
 // cannot: the planner's note as it lands, the fuel warning at the 80% mark, and
-// the PAUSE, which is a question. They arrive on the turn's stream and are
-// folded in by [app.orchNoteEvent], [app.orchFuelEvent] and [app.orchPauseEvent].
+// the PAUSE, which is a question. They arrive on the session's STANDING run lane
+// (app.go's [app.watchRuns]) rather than on a turn's stream, because a run
+// outlives the turn that asked for it and its gate has no turn to arrive on;
+// [app.orchestrateEvent] folds them in through [app.orchNoteEvent],
+// [app.orchFuelEvent] and [app.orchPauseEvent].
 //
 // ── THE DOORS ARE ASSERTED, NEVER REQUIRED ──
 //
