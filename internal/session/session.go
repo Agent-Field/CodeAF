@@ -234,6 +234,24 @@ type Event struct {
 	// zero everywhere else, which is why it is a plain int rather than a pointer:
 	// no other kind has a count, and "0" is not a count any kind reports.
 	Count int
+
+	// STUB(connect): the connect lane's payload, whose three kinds and two
+	// answers are declared in connect_stub.go beside this file. It lives HERE
+	// rather than in that stub for the one reason Go gives — a struct cannot be
+	// extended from another file — and the owner branch takes this block over
+	// with the rest of the contract.
+	//
+	// ConnectID names one EventConnectAsk and is the token a surface hands back
+	// to [Agent.ResolveConnect]. Service is the service's id on all three kinds
+	// and ServiceName the name a person reads. AuthURL is where the sign-in
+	// finishes (EventConnectAuth). Account is who was connected and Failed says
+	// the attempt did not complete (EventConnectDone).
+	ConnectID   string
+	Service     string
+	ServiceName string
+	AuthURL     string
+	Account     string
+	Failed      bool
 }
 
 // Usage is token and cost accounting for one turn or the session total.
