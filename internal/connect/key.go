@@ -248,8 +248,24 @@ func (m *Manager) ConnectKey(ctx context.Context, id string, key string) (Status
 	if err != nil {
 		return Status{}, err
 	}
-	entry := stored{Auth: AuthKey, Key: key, Blank: blank}
-	if err := holder.check(ctx, m.keyClient(holder, entry)); err != nil {
+	// A NAME IS NOT A KEY, AND IT IS NOT STORED AS ONE. What a person pasted is
+	// read once, here, and lands in whichever of the two fields it means
+	// (keyref.go); everything downstream reads the fields and never the value.
+	entry := stored{Auth: AuthKey, Blank: blank}
+	if variable, named := envReference(key); named {
+		entry.KeyEnv = variable
+	} else {
+		entry.Key = key
+	}
+	client, err := m.keyClient(holder, service.Name, entry)
+	if err != nil {
+		// The variable they named is not set on this machine. That is a refusal
+		// with an answer in it — go and set it — and it is said before anything
+		// is written down, because a connection to a name that resolves to
+		// nothing is a row that says "connected" over a request that cannot go.
+		return Status{}, err
+	}
+	if err := holder.check(ctx, client); err != nil {
 		return Status{}, fmt.Errorf("%s did not accept that key: %w", service.Name, err)
 	}
 	if err := m.store.put(service.ID, entry); err != nil {
@@ -257,15 +273,25 @@ func (m *Manager) ConnectKey(ctx context.Context, id string, key string) (Status
 	}
 	service.Address = address
 	// Account stays empty. See [keyPlug.Account].
-	return Status{Service: service, Connected: true}, nil
+	return Status{Service: service, Connected: true, KeyEnv: entry.KeyEnv}, nil
 }
 
 // keyClient is the account-bearing client for one key entry.
-func (m *Manager) keyClient(p keyService, entry stored) *http.Client {
-	return &http.Client{
-		Transport: p.sign(http.DefaultTransport, entry.Key),
-		Timeout:   clientTimeout,
+//
+// It can FAIL now, which it could not before this wave: an entry may name an
+// environment variable rather than carry a key, and a variable nobody set is a
+// refusal that names itself ([stored.secret]). The alternative — a client signed
+// with the empty string — is a request that goes out unsigned and comes back as
+// the far end's own 401, which tells the person nothing they can act on.
+func (m *Manager) keyClient(p keyService, name string, entry stored) (*http.Client, error) {
+	key, err := entry.secret(name)
+	if err != nil {
+		return nil, err
 	}
+	return &http.Client{
+		Transport: p.sign(http.DefaultTransport, key),
+		Timeout:   clientTimeout,
+	}, nil
 }
 
 // located is where one plug answers for one stored connection, or the empty
