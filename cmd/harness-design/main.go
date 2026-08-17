@@ -27,12 +27,19 @@
 //	                   output printed, and the trace saved under
 //	                   harnesses/<name>/run/<ts>.json.
 //
+// AND A SECOND RIG BEHIND THE SAME BINARY. `-orchestrate` runs none of the
+// above: it asks the opposite question — what if nobody designs a graph at all,
+// and a planner amends a live frontier on every completion? That is
+// internal/orchestrate, and orchestrate.go is the whole of it. The two share
+// this file's transport, salvage ladder and printing, and nothing else.
+//
 // Usage:
 //
 //	OPENROUTER_API_KEY=… go run ./cmd/harness-design -goal all
 //	OPENROUTER_API_KEY=… go run ./cmd/harness-design -goal hard
 //	OPENROUTER_API_KEY=… go run ./cmd/harness-design -goal "your own sentence"
 //	                     -model deepseek/deepseek-v4-flash -design-only -review=false
+//	OPENROUTER_API_KEY=… go run ./cmd/harness-design -orchestrate -goal all -fuel 1.50
 package main
 
 import (
@@ -45,6 +52,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
@@ -138,12 +146,39 @@ func main() {
 		// nothing — the design turn is already paid for by then.
 		reviewTokens = flag.Int("review-tokens", 10000, "the review turn's budget: the critic's thinking, its findings and the ops patch — never the whole page")
 		temp         = flag.Float64("temp", 0.3, "the design turn's temperature")
+
+		// The ADAPTIVE RUN is a different rig behind the same binary: no design,
+		// no page, no store — a planner amending a live frontier. Its flags are
+		// grouped here rather than in a second command because it shares the
+		// transport, the salvage ladder and every printing helper above.
+		adaptive    = flag.Bool("orchestrate", false, "run the ADAPTIVE RUN instead of the design stages: internal/orchestrate's planner against a live frontier")
+		fuel        = flag.Float64("fuel", 2.00, "the adaptive run's whole tank per goal, in dollars — every model call meters against it, the planner's included")
+		planTokens  = flag.Int("plan-tokens", 6000, "the planner turn's completion budget")
+		nodeTokens  = flag.Int("node-tokens", 4000, "one node's completion budget — a node that hits it loses the DIGEST it writes last")
+		maxParallel = flag.Int("max-parallel", 8, "the clamp on how many nodes this rig will have in flight at once")
+		fuelGate    = flag.String("fuel-gate", "finish", "what the absent person answers when the tank empties: finish|stop")
 	)
 	flag.Parse()
 
 	key := strings.TrimSpace(os.Getenv("OPENROUTER_API_KEY"))
 	if key == "" {
 		die("OPENROUTER_API_KEY is not set")
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// The adaptive run shares nothing above stage 0 with the design stages — no
+	// designer guide, no store, no page — so it branches before either is built.
+	if *adaptive {
+		os.Exit(orchestrateMode(ctx, newChatClient(key, *model), *which, *model, driver{
+			fuel:        orchestrate.Fuel{Cap: *fuel},
+			planTokens:  *planTokens,
+			nodeTokens:  *nodeTokens,
+			maxParallel: *maxParallel,
+			gate:        *fuelGate,
+			temperature: *temp,
+		}))
 	}
 
 	chosen := pick(*which)
@@ -162,9 +197,6 @@ func main() {
 	if err != nil {
 		die("the reviewer guide will not render: " + err.Error())
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	r := &rig{
 		chat:         newChatClient(key, *model),
@@ -322,7 +354,7 @@ func (r *rig) oneGoal(ctx context.Context, key, note, goal string) error {
 	}
 	runner := &subharness.Runner{Env: env, Loader: r.store, Saver: r.store}
 
-	before := r.chat.calls
+	before, _, _ := r.chat.spent()
 	began := time.Now()
 	trace, runErr := runner.Run(ctx, saved, goal)
 	elapsed := time.Since(began)
@@ -332,9 +364,10 @@ func (r *rig) oneGoal(ctx context.Context, key, note, goal string) error {
 		fmt.Printf("!! the trace could not be saved: %v\n", saveErr)
 	}
 
+	after, _, _ := r.chat.spent()
 	fmt.Println(subharness.RunCard(trace))
 	fmt.Printf("\n%s · %d model calls (the page's estimate was at most %d) · %s\n",
-		elapsed.Round(time.Millisecond), r.chat.calls-before, estimateCalls(saved), r.chat.bill())
+		elapsed.Round(time.Millisecond), after-before, estimateCalls(saved), r.chat.bill())
 	if path != "" {
 		fmt.Printf("trace  %s\n", path)
 	}
