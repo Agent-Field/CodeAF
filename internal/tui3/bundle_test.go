@@ -2981,9 +2981,15 @@ func TestTheRosterGroupsByAttentionAndFoldsItsTail(t *testing.T) {
 			DependsOn: []uint64{2},
 		})},
 		streamEventMsg{gen: a.gen, ev: update(4, "Render titles", session.TaskFailed, session.TaskNotice{
-			Report: "the tests did not build",
+			Report: "the tests did not build", Merge: mergeWordAborted, Branch: "task/render",
 		})},
 		streamEventMsg{gen: a.gen, ev: update(5, "Cut the trailer", session.TaskQueued, session.TaskNotice{})},
+		// A FAILURE THAT KEPT NOTHING IS NOT A DEMAND, so it is in the fold with
+		// the rest of the record rather than at the top of the column
+		// (task.go's [app.railGroupOf]).
+		streamEventMsg{gen: a.gen, ev: update(6, "Trim silence", session.TaskFailed, session.TaskNotice{
+			Report: "the tests did not build",
+		})},
 	)
 	a.cost, a.tokens = 1.42, 312_000
 	rail := rosterText(a, 20)
@@ -3008,13 +3014,13 @@ func TestTheRosterGroupsByAttentionAndFoldsItsTail(t *testing.T) {
 		glyphOpen + " " + railGroupWords[railAttention] + " 1",
 		"Fix the nil-map", "Cut the trailer",
 		glyphShut + " " + railGroupWords[railParked] + " 1",
-		glyphShut + " " + railGroupWords[railDone] + " 1",
+		glyphShut + " " + railGroupWords[railDone] + " 2",
 	} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the roster is missing %q:\n%s", want, rail)
 		}
 	}
-	for _, folded := range []string{"Mix audio", "Collect sources"} {
+	for _, folded := range []string{"Mix audio", "Collect sources", "Trim silence"} {
 		if strings.Contains(rail, folded) {
 			t.Fatalf("%q is drawn under a folded group:\n%s", folded, rail)
 		}
@@ -3025,7 +3031,7 @@ func TestTheRosterGroupsByAttentionAndFoldsItsTail(t *testing.T) {
 	}
 	// AND THE FOOTER SAYS THE WHOLE, folded rows included.
 	for _, want := range []string{railSigma + "$1.42", "312k tok", "1 running", "1 needs you",
-		"1 parked", "1 done"} {
+		"1 parked", "2 done"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the footer does not say %q:\n%s", want, rail)
 		}
@@ -3170,6 +3176,100 @@ func TestTheRostersCursorFollowsANodeThatChangesGroup(t *testing.T) {
 	if entries[at].group != railAttention {
 		t.Fatalf("a node with a kept branch is in %q, want %q",
 			railGroupWords[entries[at].group], railGroupWords[railAttention])
+	}
+}
+
+// A FAILURE IS SETTLED NEWS AND A KEPT BRANCH IS A DEMAND. The leading group
+// never folds and never leaves the top of the column, so the only thing that may
+// stand in it is work that will not move without a person: a landing nobody
+// could judge, a branch that conflicted, a run that stopped with its branch
+// kept. A node that simply did not come off has already had the engine's repair
+// rounds spent on it before it landed — it is a report, and reports go into the
+// fold, at the FRONT of it (task.go's [app.railGroupOf] and [railFinalOrder]).
+func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{
+			Merge: mergeWordMerged,
+		})},
+		streamEventMsg{gen: a.gen, ev: update(2, "Render titles", session.TaskFailed, session.TaskNotice{
+			Report: "the tests did not build",
+		})},
+		streamEventMsg{gen: a.gen, ev: update(3, "Mix audio", session.TaskFailed, session.TaskNotice{
+			Report: "stopped: 40 steps and no finish", Merge: mergeWordAborted, Branch: "task/mix",
+		})},
+		streamEventMsg{gen: a.gen, ev: update(4, "Port the parser", session.TaskDone, session.TaskNotice{
+			Merge: mergeWordConflicted, Branch: "task/parser",
+		})},
+		streamEventMsg{gen: a.gen, ev: update(5, "Cut the trailer", session.TaskUnverified, session.TaskNotice{
+			Merge: mergeWordAborted, Branch: "task/trailer",
+		})},
+		streamEventMsg{gen: a.gen, ev: update(6, "Write the auth", session.TaskFailed, session.TaskNotice{
+			Report: "the tests did not build", Merge: mergeWordInPlace,
+		})},
+	)
+	for _, tc := range []struct {
+		id   uint64
+		what string
+		want railGroup
+	}{
+		{2, "a failure that kept nothing", railDone},
+		{6, "a failure in the person's own tree", railDone},
+		{1, "a clean merge", railDone},
+		{3, "a run that stopped with its branch kept", railAttention},
+		{4, "a branch that conflicted", railAttention},
+		{5, "a landing nobody could judge", railAttention},
+	} {
+		if got := a.railGroupOf(a.tasks[tc.id]); got != tc.want {
+			t.Fatalf("%s is filed under %q, want %q", tc.what, railGroupWords[got], railGroupWords[tc.want])
+		}
+	}
+
+	// THE FOLD GIVES ITS FIRST SLOTS TO THE WORK THAT DID NOT COME OFF (8.1.7),
+	// and newest-first survives inside each half of that partition.
+	members := a.railMembers()
+	var order []uint64
+	for _, node := range members[railDone] {
+		order = append(order, node.id)
+	}
+	want := []uint64{6, 2, 1}
+	if len(order) != len(want) {
+		t.Fatalf("the done group holds %v, want %v", order, want)
+	}
+	for i := range want {
+		if order[i] != want[i] {
+			t.Fatalf("the done group is ordered %v, want the incomplete work first: %v", order, want)
+		}
+	}
+
+	// AND THE HEADINGS SAY WHAT THEY HOLD: three things to do, three things to
+	// know, and the second three behind one folded line.
+	rail := rosterText(a, 20)
+	for _, want := range []string{
+		glyphOpen + " " + railGroupWords[railAttention] + " 3",
+		glyphShut + " " + railGroupWords[railDone] + " 3",
+		"3 needs you", "3 done",
+	} {
+		if !strings.Contains(rail, want) {
+			t.Fatalf("the roster is missing %q:\n%s", want, rail)
+		}
+	}
+	for _, folded := range []string{"Render titles", "Write the auth", "Collect sources"} {
+		if strings.Contains(rail, folded) {
+			t.Fatalf("%q stands on top of the column instead of in the fold:\n%s", folded, rail)
+		}
+	}
+
+	// And when the fold opens, the failures are the rows it opens on.
+	a.railSetOpen(railDone, true)
+	for _, entry := range a.railEntries() {
+		if entry.group != railDone || entry.node == nil {
+			continue
+		}
+		if entry.node.id != 6 {
+			t.Fatalf("the fold opens on node %d, want the newest incomplete one", entry.node.id)
+		}
+		break
 	}
 }
 

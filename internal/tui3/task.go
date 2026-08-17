@@ -212,10 +212,43 @@ type taskNode struct {
 	// the state stays running (it is running), and this is drawn as the news it
 	// is rather than as a fourth state nobody asked for.
 	mending string
+	// waiting is why this node is not spending its time on the work, in the
+	// engine's own word (session's TaskNotice.Waiting): what a queued node is
+	// held behind, or the pacing a running node's calls are under. It is empty
+	// at every moment the node is simply getting on with it.
+	//
+	// A HOLD IS NOT A STATE AND IT IS NOT A FAULT. Nothing has gone wrong with a
+	// node that is waiting for a slot or being paced by its provider — it is
+	// admitted, it is next, and it is going to run — so the state stays exactly
+	// where the engine put it and this is drawn as the one thing a person cannot
+	// otherwise tell: the difference between work that is stuck and work that is
+	// merely waiting its turn. Like [taskNode.mending] it is a report of RIGHT
+	// NOW, so it goes the moment the engine stops sending it.
+	waiting string
 	// froze is the clock this node's row is drawn against while somebody is
 	// standing in its room, or zero. See [app.taskNow].
 	froze time.Time
 }
+
+// taskLive is everything a node is saying about its PRESENT: the gap it is
+// closing, and the hold it is under. They are the two fields the engine sends
+// without moving the node's state (session's TaskNotice.Mending and .Waiting),
+// which makes them the two the de-dup has to look at by hand, and they are one
+// comparable value so that it asks ONE question about them rather than a clause
+// per field — and so the third of them, when there is one, joins the law in a
+// single place instead of three.
+type taskLive struct{ mending, waiting string }
+
+// taskLiveLines is what an update says about the node's present, trimmed.
+func taskLiveLines(notice *session.TaskNotice) taskLive {
+	return taskLive{
+		mending: strings.TrimSpace(notice.Mending),
+		waiting: strings.TrimSpace(notice.Waiting),
+	}
+}
+
+// liveLines is what the node is already saying about its present.
+func (n *taskNode) liveLines() taskLive { return taskLive{mending: n.mending, waiting: n.waiting} }
 
 // spawnedAt is when this node's work started, in wall-clock: the moment it
 // began running, or — for a node that failed before it ever ran — the moment
@@ -331,6 +364,38 @@ const (
 // the outside: the work is nearly there and something is being tied off. What is
 // being tied off is the sentence beside it, in the engine's own plain words.
 const taskFinishingWord = "finishing"
+
+// taskHeldWord is what a node says while it is HELD — admitted, next, and
+// spending its time on something that is not the work (session's
+// TaskNotice.Waiting, carried on [taskNode.waiting]).
+//
+// IT IS THE SAME SPLIT [taskFinishingWord] IS BUILT ON: the word is this
+// surface's, saying which part of queued or running this is, and what follows
+// the separator is the engine's own reason, verbatim. And it is the same law —
+// the hold is not a state, nothing about the node moved, and a person is owed
+// the difference between "this has been sitting there for four minutes doing
+// nothing" and "this has been sitting there for four minutes because the
+// machine is full".
+//
+// The identifier is "held" and the word is "waiting" because [taskWaitingWord]
+// is already spent, on the meter of a proposal that is waiting on a person. Two
+// different moments, one honest English word for both, and the card's had the
+// name first.
+const taskHeldWord = "waiting"
+
+// The reasons the engine holds a node with (session's TaskNotice.Waiting),
+// restated here for the same reason the merge words above are: the surface
+// reads them out and internal/session exports them nowhere.
+//
+// THEY ARE READ OUT AS THEY STAND. Unlike "aborted", each of these three means
+// on screen exactly what it means in the engine — a cap that is full, a machine
+// under load, a provider pacing the calls — and all three are already the plain
+// words a person would use for them. There is nothing to translate.
+const (
+	waitWordSlot    = "slot"
+	waitWordMachine = "machine busy"
+	waitWordRate    = "rate limited"
+)
 
 // taskAgent is the slice of *session.Agent this file needs, and it is asserted
 // rather than added to [Agent].
@@ -1562,18 +1627,30 @@ func countdownWord(d time.Duration) string {
 // So the column keeps EVERY node the session has admitted, and it survives
 // hundreds of them by four mechanisms and no new scroll machinery:
 //
-//   - ATTENTION FIRST. Five groups, in the order a person needs them — what is
-//     asking for a decision, what is running, what is waiting for a slot, what
-//     is parked behind other work, what is over — and newest first inside each,
-//     because the node you just started is the node you are watching. This is
-//     the one law the old rail stated and this file now overturns ("a list that
-//     reordered itself would move the row a person is watching"): at three rows
-//     admission order IS the shape, and at three hundred it is a haystack. The
-//     order is stable in the way that matters — a row moves when its STATE
-//     moves, which is the one event a person is watching for anyway.
-//   - THE TAIL IS FOLDED. `parked` and `done` open closed, one heading each with
-//     its population on it: a hundred and forty-eight settled nodes are a fact,
-//     not a hundred and forty-eight rows.
+//   - ATTENTION FIRST, AND ATTENTION MEANS A DEMAND. Five groups, in the order a
+//     person needs them — what is waiting on a decision of theirs, what is
+//     running, what is waiting for a slot, what is parked behind other work,
+//     what is over — and newest first inside each, because the node you just
+//     started is the node you are watching. This is the one law the old rail
+//     stated and this file now overturns ("a list that reordered itself would
+//     move the row a person is watching"): at three rows admission order IS the
+//     shape, and at three hundred it is a haystack. The order is stable in the
+//     way that matters — a row moves when its STATE moves, which is the one
+//     event a person is watching for anyway.
+//
+//     The leading group holds ONLY the work that will not move without a person:
+//     a landing nobody could judge, and work that finished on a branch that
+//     never came home. A plain failure is not one of those — the engine has
+//     already spent its repair rounds on it by the time it lands — so it is
+//     settled news and it goes in the fold with the rest of the record. That
+//     argument is made in full at [app.railGroupOf], and it is the reason this
+//     group can be the one group that never folds.
+//   - THE TAIL IS FOLDED, AND THE INCOMPLETE WORK IS AT THE FRONT OF IT.
+//     `parked` and `done` open closed, one heading each with its population on
+//     it: a hundred and forty-eight settled nodes are a fact, not a hundred and
+//     forty-eight rows. Inside `done`, 8.1.7's finalized-list clause holds — the
+//     nodes that did not come off claim the slots first ([railFinalOrder]) —
+//     because a fold a person opens is a fold they are searching.
 //   - THE COLUMN IS A WINDOW. What shows is a slice of the line list around the
 //     focus, taken by [listTop] — the same function the model picker and the two
 //     typed lists scroll with, because a second scroller on this surface would be
@@ -1637,10 +1714,21 @@ const (
 type railGroup uint8
 
 const (
-	// railAttention is work that is waiting on a PERSON: it failed, or it
-	// finished and its branch never came home. Both are the same sentence — this
-	// is not going anywhere until you look at it — and they lead the column
-	// because everything below them is a thing that is still moving by itself.
+	// railAttention is work that is waiting on a PERSON: nobody could say whether
+	// it holds, or it finished and its branch never came home. Both are the same
+	// sentence — this is not going anywhere until you look at it — and they lead
+	// the column because everything below them is a thing that is still moving by
+	// itself.
+	//
+	// A GROUP THAT NEVER FOLDS MUST NEVER ACCUMULATE THE UN-ACTIONABLE. This is
+	// the one group with no fold and the top of the column, which is a standing
+	// charge on the most valuable rows on the surface, and the only thing that
+	// pays for it is that every row here is a DEMAND: something a person has to
+	// do, that nothing else is going to do. A row that is merely bad news buys
+	// nothing with that position — it pushes down the rows that are demands, and
+	// it never leaves, so a day's work ends with the "needs you" heading standing
+	// over forty things nobody needs to do. See [app.railGroupOf] for what that
+	// costs a failure, and why a failure stopped paying it.
 	railAttention railGroup = iota
 	// railRunning is a child agent working in its worktree right now.
 	railRunning
@@ -1668,19 +1756,40 @@ var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "par
 // was stopped (task_run.go's mergeConflicted and mergeAborted), and a kept
 // branch is work that is finished and NOT DELIVERED — the one outcome on this
 // surface a person still has to do something about.
+//
+// A FAILURE IS SETTLED NEWS AND NOT A STANDING DEMAND, and this is the law that
+// changed. "needs you" used to hold every failed node forever, and the reason it
+// did was that a failure USED TO BE the moment a person was called in: work came
+// back short and the only thing that could happen next was somebody looking at
+// it. That is no longer where the decision is. The engine exhausts its repair
+// rounds BEFORE a node is allowed to land failed (session's task_audit.go and
+// the mending line it publishes while it runs), so by the time this surface sees
+// the word the question "can this be salvaged automatically" has already been
+// asked and answered. What is left is a report: this piece of work did not come
+// off. That is worth keeping — it is why the roster keeps everything — and it is
+// not worth the top of the column and a group that never folds.
+//
+// SO THE TEST IS "IS THERE SOMETHING TO DO", NOT "DID IT GO WRONG". Three
+// outcomes pass it and nothing else does: work nobody could judge, which moves
+// only when a person decides (session's ResolveUnverified); a branch that
+// conflicted; and a run that stopped with its branch kept. The last two are the
+// same fact — FINISHED WORK THAT IS NOT DELIVERED, sitting on a branch that
+// nobody but a person is going to bring home — and they are read off the merge
+// word rather than off the state, because a failed node and a done node can each
+// wear either one. A failure with NO kept branch left nothing behind to deliver,
+// so it is news, and news lives in the fold with the rest of the record —
+// at the FRONT of that fold, where 8.1.7 puts the work that did not come off
+// ([railFinalOrder]).
 func (a *app) railGroupOf(node *taskNode) railGroup {
 	switch node.state {
 	case session.TaskRunning:
 		return railRunning
-	case session.TaskFailed:
-		return railAttention
 	case session.TaskUnverified:
 		// ATTENTION, AND IT IS THE PLAINEST CASE OF IT ON THIS COLUMN. An
 		// unverified node is settled work that nobody can call finished, and the
-		// only thing that moves it is a person deciding (session's
-		// ResolveUnverified). It is named here rather than left to the merge
-		// switch below, which would file a node whose branch went nowhere under
-		// "done".
+		// only thing that moves it is a person deciding. It is named here rather
+		// than left to the merge test below, which would file a node whose branch
+		// went nowhere under "done".
 		return railAttention
 	case session.TaskQueued:
 		if a.railWaits(node) != "" {
@@ -1688,11 +1797,28 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 		}
 		return railIdle
 	}
-	switch node.merge {
-	case mergeWordConflicted, mergeWordAborted:
+	if taskUndelivered(node) {
 		return railAttention
 	}
 	return railDone
+}
+
+// taskUndelivered reports whether this node's work is FINISHED AND NOT DELIVERED:
+// it lives on a branch that never came home, and nothing but a person is going
+// to bring it home.
+//
+// THE BRANCH IS THE WHOLE OF THE CLAIM. "conflicted" and "aborted" are the two
+// merge words session writes when it keeps a branch (task_run.go's comeHome and
+// abortedMerge), and a node wearing one of them WITH a branch name has real work
+// sitting somewhere a person can go and get. A node that ran in the person's own
+// tree, or one that ended before there was ever a branch, wears no name here and
+// has left nothing behind — so it is not undelivered, it is simply over.
+func taskUndelivered(node *taskNode) bool {
+	switch node.merge {
+	case mergeWordConflicted, mergeWordAborted:
+		return strings.TrimSpace(node.branch) != ""
+	}
+	return false
 }
 
 // railShut reports whether a group is drawn as its heading alone.
@@ -1756,7 +1882,7 @@ func railSpotOf(e railEntry) railSpot {
 }
 
 // railMembers buckets every node this session has admitted, NEWEST FIRST inside
-// each group.
+// each group — except in the fold, where 8.1.7 has the first word.
 func (a *app) railMembers() [railGroupCount][]*taskNode {
 	var out [railGroupCount][]*taskNode
 	for i := len(a.taskOrder) - 1; i >= 0; i-- {
@@ -1766,6 +1892,48 @@ func (a *app) railMembers() [railGroupCount][]*taskNode {
 		}
 		g := a.railGroupOf(node)
 		out[g] = append(out[g], node)
+	}
+	out[railDone] = railFinalOrder(out[railDone])
+	return out
+}
+
+// railFinalOrder is 8.1.7's second clause, applied to the one group this surface
+// has that is FINALIZED: incomplete work claims the slots first, and everything
+// that merely finished follows it in the order it arrived.
+//
+// A FINALIZED LIST IS READ TO FIND OUT WHAT WENT WRONG. That is the whole of the
+// law's reasoning and it is exactly why a failure could stop standing at the top
+// of the column: it did not need the top of the column to stay visible, it
+// needed to be the first thing behind the heading it went into. A fold opened on
+// a hundred and forty landed nodes shows its first handful of rows, and the
+// person opening it is looking for the one that did not come off — so that is
+// the one the first rows are spent on, ahead of a hundred clean merges that have
+// nothing left to say.
+//
+// IT IS A PARTITION AND NOT A SORT. Newest-first survives inside each half,
+// because the order the roster is built on is arrival order and a group that
+// re-sorted itself by anything else would move a row a person is watching for a
+// reason they cannot see (the roster section's own law).
+func railFinalOrder(nodes []*taskNode) []*taskNode {
+	incomplete := 0
+	for _, node := range nodes {
+		if node.state == session.TaskFailed {
+			incomplete++
+		}
+	}
+	if incomplete == 0 || incomplete == len(nodes) {
+		return nodes
+	}
+	out := make([]*taskNode, 0, len(nodes))
+	for _, node := range nodes {
+		if node.state == session.TaskFailed {
+			out = append(out, node)
+		}
+	}
+	for _, node := range nodes {
+		if node.state != session.TaskFailed {
+			out = append(out, node)
+		}
 	}
 	return out
 }
@@ -2474,15 +2642,17 @@ func (a *app) railTitle(node *taskNode, title string) string {
 }
 
 // railUnder is what a node says under its own title: what it is doing and what
-// it is spending while it runs, what it waits on while it is blocked, and how
-// the branch came home once it has landed.
+// it is spending while it runs, what it waits on — or what is holding it —
+// while it is blocked, and how the branch came home once it has landed.
 //
 //	bash go test ./…             a live call, in its own hue
 //	finishing · adding amp-labs  the gap being closed, while there is one
+//	waiting · rate limited       the hold, while something is holding it
 //	42s · 9.9k · $0.31 · gpt-5   the telemetry, always, while it runs
 //	merged · $0.42               what it came home as, and what it cost
 //	conflicted · task/fix-nil    the one loud row, and its one handle back
 //	waits: Collect sources       what has to happen before this can
+//	waiting · machine busy       and what is holding it when nothing does
 //
 // THE ROWS THAT CARRY A HANDLE CARRY NOTHING ELSE. A conflicted branch, a kept
 // branch, a prerequisite's name and "unverified — waiting on you" are each one
@@ -2521,7 +2691,25 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// says neither. So it takes the call's row rather than a third one: the
 		// block is capped at [railUnderRows] and the telemetry underneath is the
 		// standing figure a person is owed at every moment of a run.
+		//
+		// AND A PACED NODE NEVER CLAIMS A LIVE CALL. While the provider is holding
+		// this node's calls back (session's TaskNotice.Waiting) the tool line is
+		// the last call, sitting there finished — so the row would be this column
+		// asserting a present that is not happening, which is the one thing a row
+		// down here may not do. The hold takes that row instead and says what is
+		// actually true: the node is running, and it is waiting for its turn on
+		// the wire. The telemetry underneath is unchanged, because the clock and
+		// the bill go on being the clock and the bill.
+		//
+		// THE GAP OUTRANKS THE HOLD when a node somehow has both. "adding amp-labs
+		// to the report" is news about the WORK and "rate limited" is news about
+		// the wire, and of the two the first is the one a person came to this
+		// column for; the hold only ever displaces the row that would otherwise be
+		// false.
 		rows := a.railMending(node, width)
+		if len(rows) == 0 {
+			rows = a.railWaiting(node, width)
+		}
 		if len(rows) == 0 {
 			rows = a.railWorking(node, width)
 		}
@@ -2537,9 +2725,18 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// learned what it means. In a one-node graph nothing is ever unmet and
 		// this draws nothing at all; the model carries the edges regardless, so
 		// the day the executor grows them the rail already knows.
-		if waits := a.railWaits(node); waits != "" {
-			text = "waits: " + waits
+		//
+		// AND IT OUTRANKS THE HOLD WORD, on the one row a queued node gets. Both
+		// are true of a node that is behind another node AND behind a full cap,
+		// and only one of them is ACTIONABLE: a dependency names other work a
+		// person can go and look at, reorder, or stop, while a hold names a queue
+		// that is going to clear by itself. The more actionable fact takes the
+		// row; the hold is what the row says when there is nothing better on it.
+		waits := a.railWaits(node)
+		if waits == "" {
+			return a.railWaiting(node, width)
 		}
+		text = "waits: " + waits
 	case session.TaskUnverified:
 		// NOT THE MERGE SENTENCE. An unverified node wears session's "aborted"
 		// merge like a stopped one does, and the row below would therefore say
@@ -2686,6 +2883,36 @@ func (a *app) railMending(node *taskNode, width int) []string {
 		return nil
 	}
 	line := fit(taskFinishingWord+railSep+node.mending, width)
+	if line == "" {
+		return nil
+	}
+	return []string{a.pal.dim(line)}
+}
+
+// railWaiting is the row a node wears while it is HELD — behind a full slot,
+// behind a machine under load, or behind a provider pacing its calls — or nil
+// when nothing is holding it.
+//
+//	waiting · machine busy     a queued node the machine has no room for
+//	waiting · slot             a queued node behind the parallelism cap
+//	waiting · rate limited     a running node whose calls are being paced
+//
+// IT IS DIM, AND THAT IS THE WHOLE POINT OF IT. A hold is not a failure and it
+// is not a thing to do anything about: the queue clears, the cap frees, the
+// provider lets the next call through, and every one of those happens without a
+// person. What the row is FOR is the question this column could not answer at
+// all before it — a node that has sat still for four minutes is either stuck or
+// merely waiting its turn, and those are opposite news wearing the same row. So
+// it says which, in the quietest ink the column has.
+//
+// IT CUTS RATHER THAN WRAPS, for [app.railMending]'s reason: the two rows that
+// wrap down here carry a handle back to work that is off screen, and this is a
+// two-word state whose first word is the half that matters.
+func (a *app) railWaiting(node *taskNode, width int) []string {
+	if node.waiting == "" {
+		return nil
+	}
+	line := fit(taskHeldWord+railSep+node.waiting, width)
 	if line == "" {
 		return nil
 	}
@@ -2925,20 +3152,25 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		return nil
 	}
 	if last, seen := a.taskSeen[notice.ID]; seen && last == notice.State {
-		// THE DE-DUP HAS TWO EXCEPTIONS, and both of them are news that arrives
+		// THE DE-DUP HAS EXCEPTIONS, and every one of them is news that arrives
 		// without a state change. The pair above catches the same update arriving
 		// on both lanes — those two carry identical figures and identical text —
 		// but a node that has spent more since the last event is news, and the
 		// focus header is where it is read (room.go).
 		//
-		// AND SO IS THE FINISHING LINE. A node closing a gap in work it has
-		// otherwise finished stays RUNNING for the whole of it (session's
-		// TaskNotice.Mending), so the sentence naming the gap — and the empty
-		// string that takes it away again when the round ends — would be thrown
-		// out by a guard that only ever looked at the state. Anything that is
-		// none of the three is the duplicate this guard exists for.
+		// AND SO IS EVERY LINE THAT REPORTS THE PRESENT. A node closing a gap in
+		// work it has otherwise finished stays RUNNING for the whole of it
+		// (session's TaskNotice.Mending), and a node held behind a slot or paced
+		// by its provider stays exactly where it was for the whole of THAT
+		// (TaskNotice.Waiting) — so the sentence naming the gap, the word naming
+		// the hold, and the empty strings that take either of them away again
+		// would all be thrown out by a guard that only ever looked at the state.
+		// The exception is written as one comparison over those live lines rather
+		// than as a clause per field, because they are one kind of thing: what is
+		// true of this node RIGHT NOW. Anything that is none of that is the
+		// duplicate this guard exists for.
 		node := a.tasks[notice.ID]
-		if node == nil || (notice.CostUSD <= node.cost && strings.TrimSpace(notice.Mending) == node.mending) {
+		if node == nil || (notice.CostUSD <= node.cost && taskLiveLines(notice) == node.liveLines()) {
 			return nil
 		}
 	}
@@ -2998,15 +3230,17 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice.CostUSD > 0 {
 		node.cost = notice.CostUSD
 	}
-	// THE FINISHING LINE IS COPIED WHOLE, INCLUDING ITS ABSENCE, and it is the
-	// one field on this node that is deliberately not kept when an update stops
-	// carrying it. Everything above is a FACT about the work — a branch, a price,
-	// a model — and a fact does not stop being true because the next event was
-	// quiet about it. This is a report of what is happening RIGHT NOW, and a
+	// THE LIVE LINES ARE COPIED WHOLE, INCLUDING THEIR ABSENCE, and they are the
+	// fields on this node that are deliberately not kept when an update stops
+	// carrying them. Everything above is a FACT about the work — a branch, a
+	// price, a model — and a fact does not stop being true because the next event
+	// was quiet about it. These are reports of what is happening RIGHT NOW, and a
 	// surface still saying "finishing · adding the amp-labs section" about a node
-	// that finished that ten seconds ago is a surface reporting a present that
-	// has passed (the same law [taskNode.tool] is held to).
-	node.mending = strings.TrimSpace(notice.Mending)
+	// that finished that ten seconds ago — or "waiting · machine busy" about a
+	// node the machine let through a minute ago — is a surface reporting a
+	// present that has passed (the same law [taskNode.tool] is held to).
+	live := taskLiveLines(notice)
+	node.mending, node.waiting = live.mending, live.waiting
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.
 	if notice.State == session.TaskRunning && node.began.IsZero() {

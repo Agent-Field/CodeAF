@@ -142,6 +142,18 @@ type TaskNotice struct {
 	// A surface draws it as the task simply still working; the machinery
 	// that sent it back is not the surface's to mention.
 	Mending string
+	// Waiting is why this node is spending time on something that is NOT the
+	// work, one word from a closed set. On a QUEUED notice it says what the node
+	// is held behind: "slot" (a parallelism cap is full) or "machine busy" (the
+	// machine itself is under pressure). On a RUNNING notice it says "rate
+	// limited" while the provider paces this node's calls — the run is open, the
+	// call is not. It is "" at every other moment, and like Mending it is
+	// ANNOUNCED ON CHANGE: a hold starting and a hold ending are both news that
+	// arrives without the state moving, so an update carrying only this is still
+	// an update a surface must fold in.
+	//
+	// STUB — the task/throttle branch owns this; at merge its version wins.
+	Waiting string
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that
