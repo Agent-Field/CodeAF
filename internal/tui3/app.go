@@ -28,15 +28,24 @@ import (
 // on multiples of it (see spinnerStep, pulseStep) rather than on schedules of
 // their own: two animation clocks means two wakeups per second per animation
 // and rows that drift out of phase with each other.
+//
+// It is the LOCAL cadence, and it is the unit the animations are counted in
+// either way: a surface being read over a connection builds fewer frames and
+// steps the same distance through each one (link.go's [app.frameEvery] and
+// [app.frameStride]).
 const frameInterval = 33 * time.Millisecond
 
 // markdownThrottle is how often a streaming reply's settled prefix is promoted
 // from plain wrapped text to rendered markdown. See [app.assistantRows].
 const markdownThrottle = 1500 * time.Millisecond
 
-// usageEvery is how many frames pass between asks for the session's running
-// cost. The agent answers under a lock, and a lock taken thirty times a second
-// to move a figure that changes once a turn is a lock taken for nothing.
+// usageEvery is how many frame slots pass between asks for the session's
+// running cost. The agent answers under a lock, and a lock taken thirty times a
+// second to move a figure that changes once a turn is a lock taken for nothing.
+//
+// SLOTS AND NOT FRAMES, which is a third of a second either way: the question
+// is how often the lock is worth taking in wall time, and that answer does not
+// change because the frames arrived over a wire (link.go's [app.dueEvery]).
 const usageEvery = 10
 
 // quietBeforeEllipsis is how long the stream has to be silent before the
@@ -512,6 +521,11 @@ type app struct {
 	// the whole of the age fade: paint follows recency.
 	segText [segCount]string
 	segAt   [segCount]time.Time
+	// The burn rate's hold: the figure currently ON the line, and when it was
+	// adopted (render.go's [app.holdBurn]). It is a display fact and nothing
+	// else — every meter the rate is computed from keeps its exact count.
+	burnShown string
+	burnAt    time.Time
 	// modelSpan is where the model's name was last drawn on the status row, in
 	// columns, and it is the whole of what makes that name PRESSABLE: written by
 	// the layout, read by the click (render.go's [app.identityParts], and
@@ -556,9 +570,10 @@ type app struct {
 
 	// The paint clock. dirty says the row list no longer matches the entries;
 	// painting says a frameMsg is already on its way, so a burst of deltas
-	// schedules one tick and not one each. paints counts frames and drives
-	// every animation on this surface; builds counts layouts and exists so a
-	// test can assert the coalescing without sleeping.
+	// schedules one tick and not one each. paints counts frame SLOTS of
+	// [frameInterval] — one per frame locally, three per frame over a link
+	// (link.go) — and drives every animation on this surface; builds counts
+	// layouts and exists so a test can assert the coalescing without sleeping.
 	dirty    bool
 	painting bool
 	paints   int
@@ -791,6 +806,11 @@ type app struct {
 	// TERM, because a terminal does not change what it is mid-session.
 	tmux bool
 
+	// remote says the terminal reading this surface is on the far side of a
+	// connection, so the frame clock turns slower (link.go). It is read once,
+	// at construction, on the same terms tmux is and for the same reason.
+	remote bool
+
 	// focused is whether the terminal window has the keyboard, and seenFocus
 	// whether it has ever told us (notify.go). The pair is what decides whether
 	// a finished turn is worth a notification: a person watching the screen does
@@ -863,6 +883,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		pal:              detectPalette(),
 		linear:           opts.Linear,
 		tmux:             tmuxTerm(os.Getenv),
+		remote:           remoteLink(os.Getenv),
 		// A terminal that has said nothing is assumed to HAVE the keyboard, which
 		// is the quiet assumption: the cost of getting it wrong is a notification
 		// nobody got, and the cost of the other default is a notification every
@@ -1404,7 +1425,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // the next tick is scheduled. It is the ONLY place a streamed delta becomes
 // visible, which is what caps the repaint rate.
 func (a *app) paint() tea.Cmd {
-	a.paints++
+	// ONE FRAME IS A WHOLE STRIDE OF THE ANIMATION, which is the whole of what a
+	// slower link costs the picture: three slots pass in one frame over a
+	// connection, so the spinner arrives where it would have been anyway and it
+	// got there in one step instead of three (link.go).
+	a.paints += a.frameStride()
 	a.dirty = true
 	// A ROOM'S ROWS ARE DROPPED ON THE SAME CLOCK, for the same reason: the page
 	// carries the same spinners, count-ups and streaming blocks the conversation
@@ -1412,7 +1437,7 @@ func (a *app) paint() tea.Cmd {
 	if a.room != nil {
 		a.room.dirty = true
 	}
-	if a.paints%usageEvery == 0 {
+	if a.dueEvery(usageEvery) {
 		a.refreshUsage()
 	}
 	a.promoteMarkdown()
@@ -1420,7 +1445,7 @@ func (a *app) paint() tea.Cmd {
 	// clock runs while nothing is being asked of the model. It steps here and
 	// stops itself (welcome.go), which is what makes it one-shot rather than a
 	// loop with a condition somebody has to remember to write.
-	a.welcome.tick()
+	a.welcome.tick(a.frameStride())
 	// The countdown on an open proposal runs down here, on the clock that is
 	// already turning — no ticker of its own (task.go).
 	a.tickTasks()
@@ -1455,7 +1480,7 @@ func (a *app) paint() tea.Cmd {
 		// spinner turning on it, and the rail — which is what [app.tasksAnimating]
 		// reads — is not always on screen to say so (room.go).
 		(a.roomOpen() && !a.room.done) {
-		return frameTick()
+		return a.frameTick()
 	}
 	a.painting = false
 	return nil
@@ -2263,11 +2288,13 @@ func (a *app) wake() tea.Cmd {
 		return nil
 	}
 	a.painting = true
-	return frameTick()
+	return a.frameTick()
 }
 
-func frameTick() tea.Cmd {
-	return tea.Tick(frameInterval, func(time.Time) tea.Msg { return frameMsg{} })
+// frameTick asks for the next frame, at whatever cadence the link earns
+// (link.go's [app.frameEvery]).
+func (a *app) frameTick() tea.Cmd {
+	return tea.Tick(a.frameEvery(), func(time.Time) tea.Msg { return frameMsg{} })
 }
 
 // running reports whether any call of the current turn is still unresolved —
@@ -3206,6 +3233,7 @@ func (a *app) resetMeters() {
 	a.stamps = nil
 	a.hud, a.hudStale = hudStats{}, true
 	a.segText, a.segAt = [segCount]string{}, [segCount]time.Time{}
+	a.burnShown, a.burnAt = "", time.Time{}
 }
 
 // measureContext asks the agent what the conversation now weighs. It is called

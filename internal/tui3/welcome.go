@@ -32,12 +32,14 @@ import (
 //     flash, no second run: motion that repeats is motion a reader has to learn
 //     to ignore, which is the definition of noise.
 //
-// The animation is counted in FRAMES rather than measured against the clock
-// (app.go's [frameInterval] is the only clock here), so what it looks like does
-// not depend on how busy the machine was — and so a test can assert the settled
-// state without sleeping through it.
+// The animation is counted in FRAME SLOTS rather than measured against the
+// clock (app.go's [frameInterval] is the only clock here), so what it looks
+// like does not depend on how busy the machine was — and so a test can assert
+// the settled state without sleeping through it. A slot is 33ms of wall time
+// whether or not a frame was drawn in it (link.go), so the box takes the same
+// second and a quarter to arrive over a connection as it does here.
 
-// The animation's three lengths, in frames of the 33ms paint clock.
+// The animation's three lengths, in slots of the 33ms paint clock.
 const (
 	// welcomeSlide is the box arriving: about 300ms of a one-cell slide and a
 	// fade up from dim.
@@ -98,11 +100,16 @@ type welcome struct {
 
 func (w *welcome) animating() bool { return w.open && w.step < welcomeFrames }
 
-// tick advances the animation by one frame and clamps at the end.
-func (w *welcome) tick() {
-	if w.open && w.step < welcomeFrames {
-		w.step++
+// tick advances the animation by one frame's worth of slots and clamps at the
+// end. The stride is the caller's (link.go's [app.frameStride]), so the sweep
+// takes its second and a quarter whether that was forty frames or fourteen —
+// an arrival animation that ran three times as long because the terminal is on
+// a wire would be a box that has to be waited out.
+func (w *welcome) tick(slots int) {
+	if !w.open || w.step >= welcomeFrames {
+		return
 	}
+	w.step = min(w.step+max(slots, 1), welcomeFrames)
 }
 
 // openWelcome decides, once, whether this surface gets a box. It is called
