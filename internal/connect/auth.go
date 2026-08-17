@@ -101,6 +101,12 @@ func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
 		return nil, err
 	}
 	service := plug.Service()
+	// SEAM(mcp): a service that brings its own tools is signed in to by asking
+	// it where its sign-in is, rather than from addresses written down here.
+	// The trip that follows is the same trip. See mcp_auth.go.
+	if server, ok := plug.(*toolServer); ok {
+		return m.beginToolServer(ctx, server)
+	}
 	if service.Auth == AuthKey {
 		// There is nothing to open. Saying so here rather than starting a
 		// listener nobody will ever be sent to is what keeps a surface from
