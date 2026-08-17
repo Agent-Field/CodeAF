@@ -88,6 +88,41 @@ func steeringContains(agent *Agent, substring string) bool {
 	return false
 }
 
+// sessionNotes is every line the SESSION has been told, in arrival order: what a
+// wake has already drained into the transcript, then whatever is still queued
+// behind it.
+//
+// It exists because a job's exit and a watch's delta WAKE an idle session
+// (agent.go's [Agent.enqueueSteering]), and the first act of the turn they start
+// is to drain the queue — so a test that read [steeringQueue] alone would be
+// watching a lane the note leaves microseconds after it lands on it, and would
+// pass or fail on the scheduler. The two halves are ONE fact — the session was
+// told — and every test in this file and in tools_watch_test.go is about the
+// note, never about which of the two places it is sitting in.
+func sessionNotes(agent *Agent) []string {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	notes := make([]string, 0, len(agent.steering)+2)
+	for _, message := range agent.messages {
+		if message.Role == "user" {
+			notes = append(notes, messageText(message))
+		}
+	}
+	for _, message := range agent.steering {
+		notes = append(notes, message.text())
+	}
+	return notes
+}
+
+func notesContain(agent *Agent, substring string) bool {
+	for _, line := range sessionNotes(agent) {
+		if strings.Contains(line, substring) {
+			return true
+		}
+	}
+	return false
+}
+
 // startJob runs one background bash call and returns the job's id.
 func startJob(t *testing.T, agent *Agent, command string) int {
 	t.Helper()
@@ -304,9 +339,9 @@ func TestJobsKillEndsSleeperWithoutSelfReport(t *testing.T) {
 
 	// The note would be written by the watcher, which has already run — done is
 	// closed by the time kill returns. A short settle covers the ordering
-	// anyway, then the queue must still be empty.
+	// anyway, then the session must still have been told nothing.
 	time.Sleep(50 * time.Millisecond)
-	if queued := steeringQueue(agent); len(queued) != 0 {
+	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("a killed job reported itself: %v", queued)
 	}
 
@@ -319,18 +354,18 @@ func TestJobsKillEndsSleeperWithoutSelfReport(t *testing.T) {
 
 // ── completion ──────────────────────────────────────────────────────────────
 
-// A job that ends on its own lands its note on the steering queue — the loop's
-// own lane, asserted here directly rather than through a turn, because the
-// contract is "it is queued", and when the model reads it is the loop's law.
+// A job that ends on its own lands its note on the steering lane — asserted
+// here as the LINE, not as a turn: what the note says is this file's contract,
+// and when the model reads it is the loop's law (wake_test.go owns that half).
 func TestExitingJobLandsSteeringNote(t *testing.T) {
 	agent, _ := jobsAgent(t)
 
 	id := startJob(t, agent, "echo build finished; exit 3")
 	waitFor(t, "the completion note", func() bool {
-		return steeringContains(agent, fmt.Sprintf("job %d exited 3", id))
+		return notesContain(agent, fmt.Sprintf("job %d exited 3", id))
 	})
 
-	queued := steeringQueue(agent)
+	queued := sessionNotes(agent)
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
 	}
@@ -350,9 +385,9 @@ func TestSilentExitingJobReportsCodeOnly(t *testing.T) {
 
 	id := startJob(t, agent, "false")
 	waitFor(t, "the completion note", func() bool {
-		return steeringContains(agent, fmt.Sprintf("job %d exited 1", id))
+		return notesContain(agent, fmt.Sprintf("job %d exited 1", id))
 	})
-	if queued := steeringQueue(agent); strings.Contains(queued[0], ":") {
+	if queued := sessionNotes(agent); strings.Contains(queued[0], ":") {
 		t.Fatalf("a silent job quoted something: %q", queued[0])
 	}
 }
@@ -365,10 +400,10 @@ func TestJobNoteSharesTheSteeringLane(t *testing.T) {
 	agent.enqueueAmbientNote("also check the linter")
 	id := startJob(t, agent, "echo done")
 	waitFor(t, "the completion note", func() bool {
-		return len(steeringQueue(agent)) == 2
+		return len(sessionNotes(agent)) == 2
 	})
 
-	queued := steeringQueue(agent)
+	queued := sessionNotes(agent)
 	if queued[0] != "also check the linter" {
 		t.Fatalf("the person's message moved: %v", queued)
 	}
@@ -376,15 +411,22 @@ func TestJobNoteSharesTheSteeringLane(t *testing.T) {
 		t.Fatalf("the job note is not second: %v", queued)
 	}
 
-	// And a drain — the loop's step boundary — takes both into the transcript
-	// as user messages, in that order.
-	if drained := agent.drainSteering(); drained != 2 {
-		t.Fatalf("drain took %d messages, want 2", drained)
+	// And ONE drain takes both into the transcript as user messages, in that
+	// order. The drain here is the job note's OWN WAKE (agent.go): the exit
+	// starts a turn, and that turn's first act is to empty this queue — which
+	// takes the ambient line waiting in front of it along with it.
+	waitFor(t, "the pair to reach the transcript", func() bool {
+		return len(steeringQueue(agent)) == 0
+	})
+	var users []string
+	for _, message := range agent.snapshot() {
+		if message.Role == "user" {
+			users = append(users, messageText(message))
+		}
 	}
-	messages := agent.snapshot()
-	last := messages[len(messages)-1]
-	if last.Role != "user" || !strings.HasPrefix(last.Content[0].Text, fmt.Sprintf("job %d exited 0", id)) {
-		t.Fatalf("the note did not reach the transcript as a user message: %+v", last)
+	if len(users) != 2 || users[0] != "also check the linter" ||
+		!strings.HasPrefix(users[1], fmt.Sprintf("job %d exited 0", id)) {
+		t.Fatalf("the pair did not reach the transcript in order: %v", users)
 	}
 }
 
@@ -470,7 +512,7 @@ func TestCloseTerminatesRunningJobs(t *testing.T) {
 		t.Fatalf("Close took %s for two sleepers", elapsed)
 	}
 	// And no kill of ours reported itself onto a queue nothing will drain.
-	if queued := steeringQueue(agent); len(queued) != 0 {
+	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("Close's kills self-reported: %v", queued)
 	}
 	// Close is idempotent, jobs and all.

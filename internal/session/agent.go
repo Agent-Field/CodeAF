@@ -102,10 +102,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
-	// The registry gets the AMBIENT lane, not the waking one (see
-	// [Agent.enqueueSteering]): a dev server that dies at three in the morning is
-	// news the model reads at the next turn, not a reason to start one.
-	agent.jobs = newJobRegistry(config.Workspace, agent.enqueueAmbientNote)
+	// The registry gets the WAKING lane, the same one a task node's completion
+	// rides (see [Agent.enqueueSteering]): a job that exits and a watch with news
+	// are both work the person asked the harness to do FOR THEM, and the answer
+	// they are owed is a sentence, not a line in a transcript nobody is reading.
+	agent.jobs = newJobRegistry(config.Workspace, agent.enqueueSteering)
 	// And the accounts seam before the belt for the belt's own reason: the two
 	// connect tools are on it only when there is something behind them, so the
 	// hub has to exist before the tools are assembled (connect.go).
@@ -442,7 +443,8 @@ type userMessage struct {
 	refs    []journalPart
 
 	// wake marks a note the model OWES AN ANSWER FOR: a task's completion
-	// (task_run.go's reportTaskNode). It is the difference between the two kinds
+	// (task_run.go's reportTaskNode), a background job's exit or a watch's delta
+	// (jobs.go's reap and tools_watch.go). It is the difference between the two kinds
 	// of news this queue carries — see [Agent.enqueueSteering] — and it is read
 	// at exactly two moments: when the note is queued, and when the turn that
 	// was running drains what is left of the queue at its end. Both are places
@@ -986,7 +988,8 @@ func (a *Agent) drainSteeringLocked() (int, bool) {
 }
 
 // enqueueSteering puts one line the SESSION authored — a task node landing
-// (task_run.go) — onto the same queue the person's steering rides, AND WAKES
+// (task_run.go), a background job exiting (jobs.go), a watch with news
+// (tools_watch.go) — onto the same queue the person's steering rides, AND WAKES
 // THE SESSION IF NOBODY IS WORKING.
 //
 // The lane is shared on purpose. Both are news that arrives while the model is
@@ -1005,13 +1008,27 @@ func (a *Agent) drainSteeringLocked() (int, bool) {
 // comparison is at ~/oauth.md; the short version is…"), and a model that is never
 // asked never writes one. So a note that lands on an idle session starts a turn.
 //
+// THAT IS TRUE OF EVERY BACKGROUND ERRAND, NOT ONLY OF TASKS. The wake was
+// scoped to settles first and the same silence was left standing beside it: a
+// person says "run the build in the background", the build fails four minutes
+// later, and the exit note sat on this queue until they happened to type. A
+// watch is worse — its whole reason to exist is that the model stopped polling,
+// so nothing is ever going to come and look. Both are work the person ASKED THE
+// HARNESS FOR and both are owed the same sentence, so both wake.
+//
+// It is not a turn per event. Everything below coalesces: the notes queue, the
+// FIRST one starts a turn, and every note that lands while that turn runs is
+// drained into it at a step boundary. A dev server that flaps six times in one
+// window is six lines in front of one model, not six paid turns — and the rail,
+// InTask, Close and the not-yet-open session all still decline
+// ([Agent.wakeLocked]).
+//
 // [Agent.enqueueAmbientNote] is the same queue with that one difference removed,
-// and the split is a judgement about who is waiting. A task is work the person
-// asked for and is owed a report on. A background job exiting (jobs.go), a watch
-// with news (tools_watch.go), a resume's account of what an interrupt left behind
-// (task_store.go) are context for whatever is said next — real, worth carrying,
-// nobody standing there for it. A session that started a paid turn every time a
-// dev server died overnight would be answering questions nobody asked.
+// and what is left on it is news NOBODY ASKED FOR: an account of what an
+// interrupt left behind that a resume found on disk (task_store.go), an account
+// the harness gives of itself (looped.go, recovery.go), an OAuth connection
+// completing in a browser tab (connect.go). Context for whatever is said next —
+// real, worth carrying, nobody standing there for it.
 //
 // A closed agent drops the note rather than queueing it: after Close nothing
 // drains, and the journal it would be written to is already shut.

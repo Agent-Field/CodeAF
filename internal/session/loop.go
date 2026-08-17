@@ -561,11 +561,19 @@ func (b *warmBatch) announce(hub *eventHub, payload string) {
 		b.announced[call.ID] = true
 		b.mu.Unlock()
 	}
+	// THE ID RIDES WITH IT. A surface that has been drawing this call's forming
+	// row since its first fragment adopts that row on this event, and the only
+	// thing that says WHICH row is the provider's id: a batch of three parallel
+	// writes forms three rows, and an announcement with no id can be paired only
+	// by tool name — oldest-of-that-tool, which is a guess that is right by
+	// convention and wrong the moment the provider closes them out of order.
+	// The id is already in hand here; carrying it costs a field.
 	hub.send(Event{
-		Kind: EventToolAnnounced,
-		Tool: call.Function.Name,
-		Hint: gloss(call),
-		Args: argsText(call),
+		Kind:   EventToolAnnounced,
+		Tool:   call.Function.Name,
+		CallID: call.ID,
+		Hint:   gloss(call),
+		Args:   argsText(call),
 	})
 }
 
