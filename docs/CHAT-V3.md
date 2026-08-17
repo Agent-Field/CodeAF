@@ -1151,6 +1151,115 @@ and its rate when they are not already the model's own name —
 no fact to state: nothing measured, nobody named, or a sighting old enough that
 its rate describes a conversation that has since gone to sleep.
 
+## Decision 26 — A session is a folder; the person's repo is borrowed, never littered
+
+**The unit of storage is the session folder.** Everything one conversation
+puts on disk lives in one directory:
+
+```
+~/.aforge/v3/projects/<encoded-workspace>/<session-id>/
+    transcript.jsonl      the journal (flock lives here)
+    state.json            BPE working state (Decision 22)
+    tasks.json            live graph checkpoint (Decision 19)
+    meta.json             identity: title, the REAL workspace path, owned?,
+                          created, last-active, model
+    tasks/                node journals and their audits
+    logs/                 job logs, stubs, frames — droppings
+    trees/                git worktrees, one per running node
+    work/                 the workspace itself — OWNED sessions only
+```
+
+Deleting a session is `rm -rf` of one folder (after the worktree law below).
+Exporting one is zipping one folder. Inspecting one needs no filename
+arithmetic. The sidecar-derivation scheme (`<stem>.tasks.json` beside a flat
+transcript) dies with the flat layout, and with it the parallel orphan tree
+`~/.aforge/v3/tasks/<session>/` — a node's journal now lives beside the
+conversation that commissioned it. The old objection to per-directory state
+files ("that directory holds every session this workspace ever had") dissolves:
+the directory now holds exactly one.
+
+**Rejected: going back to the store for conversations.** v1/v2 keep rooms as
+rows in `graph.db`, and the machinery is good — FTS, reuse, reaping. But a
+transcript a person can `cat`, `grep`, and `rsync` is worth more than a JOIN,
+and Decision 0 already chose the journal-as-file school. If listing hundreds of
+sessions ever needs ranked search, the answer is a DERIVED index rebuilt from
+the folders — an index, never the store of record.
+
+**The workspace is the git root, and the encoded dirname is a bucket, not an
+identity.** `aforge` launched from `repo/cmd/` and from `repo/` is the same
+project; the workspace resolves to the repository root (a folder outside any
+repo resolves to itself), the launch subdirectory is recorded in `meta.json`,
+and the true path lives there too — so a moved repository is re-linkable and
+the encoding can stay dumb.
+
+**Borrowed or owned — every session has exactly one workspace.** A session
+opened inside a project BORROWS it: tools root at the repo, exactly today's
+behavior. A session opened nowhere — `$HOME`, a temp dir, a launcher — OWNS
+its workspace: tools root at `work/`, inside the session folder. Research
+notes, bash output, scraped data all land in one place, reaped with the
+session. There is no third mode; "ephemeral" is not a mode a person must pick
+correctly, it is what an owned session already is (cheap to delete), plus one
+sweep rule: a session whose recorded workspace was under a temp directory is
+litter, and the idle sweep reaps it.
+
+**Every owned workspace is silently `git init`-ed.** The person never has to
+know. What it buys, from machinery that already exists: task nodes get
+worktrees, isolation, the auditor and the merge (Decision 19) for research
+sessions that today run "in place" with none of that — and every document the
+agent touches gets undo history. The in-place fallback survives only for its
+one honest case: a borrowed folder that is not a repository.
+
+**Nothing of ours lives in the person's folder.** `<repo>/.aforge-v3/` dies
+entirely. Worktrees move to `trees/<node-id>/` in the session folder — git
+registers every worktree in `.git/worktrees/` whatever its path, so repo-local
+placement was never a constraint — and the git-surgery lock moves to
+`~/.aforge/v3/locks/<repo-hash>.lock`. Two laws pay for the move: session
+deletion and the sweep run `git worktree remove`/`prune` against the recorded
+repo path BEFORE removing the folder, and the task proposal card names the
+branch point ("from HEAD — unsaved edits not included"), spending the
+two-trees surprise before the work runs instead of after the merge.
+
+**Deliverables are indexed; droppings expire.** A deliverable — a generated
+image, an export, a finished document — is recorded as one row in a global
+append-only `~/.aforge/v3/artifacts.jsonl` (`path, session, title, kind,
+created`), the same citation-not-archive pattern as `tasks.jsonl`. A `/files`
+picker reads it newest-first with three verbs: open, reveal, copy to. "The
+report from Tuesday" is found by title, from any directory, and getting a
+keeper OUT of an owned session is a deliberate promotion ("copy to
+~/Documents"), never a surprising write the harness made on its own. Rejected:
+a visible `~/aforge/<title>/` folder per session (litter for every throwaway,
+and reaping becomes a user-facing event) and an `aforge://` URI scheme (plain
+paths plus an index do everything a resolver would, without the resolver).
+Droppings — `logs/` — carry a 7-day TTL swept in the dreaming slot (Decision
+23's idle window). Transcripts are forever, and `work/` is a person's content:
+never TTL-ed silently, gone only when its session is deliberately gone.
+
+**Resume follows v2's law, not mtime.** The default resume is the session with
+the newest USER message (`session_rooms.go:38-50` holds the rationale: a
+background write touching a file is not a person returning to a conversation),
+read from `meta.json` last-active stamped on user turns. Launch-time grooming
+is imported with it: an empty untitled session is reused rather than
+duplicated, and empties are reaped — the flat layout left 19 dead `/tmp`
+workspace dirs on the author's own machine, which is this law's whole case.
+
+**One home, one seam, one late rename.** Every v3 path goes through
+`internal/home` — the three direct `os.UserHomeDir()` calls (`chatv3.go`,
+`task_run.go`) were the reason `AFORGE_HOME` half-worked. The product's final
+name is openaf, and the rename happens ONCE, at the end, as its own refactor:
+until then every name stays on the `aforge` scheme, which is why the
+project-config layer reads `<workspace>/.aforge-v3/config.json` and the
+`.openaf` path in Decision 6 is deferred to that rename. A test greps for
+hardcoded `.aforge` literals outside the seam so the rename stays a
+constants-change plus a boot migration, not an excavation.
+
+**Migration is one boot pass, one-way, never fatal.** A flat-layout transcript
+found under `v3/sessions/<ws>/` is folded into a session folder named by its
+header id; its sidecars and its `v3/tasks/<session>/` journals move with it. A
+file that will not parse stays where it is with one log line — a corrupt old
+session must not cost anyone their new one. `Config.MemoryFile` is finally
+wired (`~/.aforge/v3/memory.md`) in the same wave: the note/forget/dreaming
+machinery has been built and dead for a version.
+
 ## Milestones
 
 | milestone | lands | acceptance |
