@@ -157,13 +157,15 @@ func (o *Orchestrator) Charge(dollars float64) {
 // openGate is the answer arriving, inside the loop. Every branch leaves the
 // run un-paused: the gate is a question that is asked once and answered once,
 // and a run still flagged paused after an answer would ask it again.
+//
+// STOP IS NOT ONE OF THE BRANCHES. It never reaches this channel —
+// [Orchestrator.Resolve] routes it to [Orchestrator.Cancel] — because ending a
+// run is one act with one code path whether the tank ran it into the gate or a
+// person pressed the key on its page.
 func (o *Orchestrator) openGate(answer string) {
 	var line string
 	o.mu.Lock()
 	switch {
-	case answer == GateStop:
-		o.stopped = true
-		line = "stopped at the fuel gate; what finished is kept"
 	case answer == GateFinish:
 		o.finishing = true
 		line = "finishing on what is already done"

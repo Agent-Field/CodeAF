@@ -108,8 +108,15 @@ func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessag
 
 	entry := match.Entry
 	model := a.answeredHarnessModel(match, answer.model)
-	hub.send(Event{Kind: EventHarnessRun, Text: entry.Name, Hint: entry.Description, Model: model})
-	report, err := a.config.RunHarness(ctx, entry.Name, match.Turn.Text, model)
+	// THE RUN IS PUT ON THE REGISTER BEFORE IT IS ANNOUNCED, and the id it gets
+	// is the id the event carries: a run somebody can see on screen is a run
+	// somebody may want to stop, and [Agent.Cancel] can only reach one it can
+	// name (cancel.go). The register is emptied by the defer, so the id names
+	// this run for exactly as long as it is running.
+	runCtx, runID, ended := a.beginHarnessRun(ctx)
+	defer ended()
+	hub.send(Event{Kind: EventHarnessRun, ID: runID, Text: entry.Name, Hint: entry.Description, Model: model})
+	report, err := a.config.RunHarness(runCtx, entry.Name, match.Turn.Text, model)
 	if err != nil {
 		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{Turns: 1}, started)})
 		return true, false
