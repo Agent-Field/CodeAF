@@ -107,31 +107,114 @@ func TestEstimateCallsCountsWhatCostsMoney(t *testing.T) {
 	}
 }
 
-func TestDiffReadsThePagesNotTheClaim(t *testing.T) {
-	before := subharness.Harness{
-		Id:      subharness.Id{Name: "x", Desc: "a thing"},
-		Program: subharness.Program{Nodes: []subharness.Node{{Id: "a", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "one"}}}},
-		Verify:  subharness.Verify{Ladder: subharness.VerifyAdversarial},
-		Dyn:     subharness.Dyn{Ladder: subharness.DynFixed},
+// A page that is never re-emitted cannot be retyped wrong, which is the whole
+// argument for review-by-patch. This is that argument as a test: a critic that
+// changes one brief leaves every other byte of the draft alone.
+func TestAPatchedPageKeepsTheDraftsOwnBytes(t *testing.T) {
+	draft := subharness.Harness{
+		Id: subharness.Id{Name: "voice", Desc: "compare three ways to add voice input"},
+		Program: subharness.Program{
+			Nodes: []subharness.Node{
+				{Id: "survey", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{
+					"brief": "read the three options — local whisper.cpp, a cloud STT API, push-to-talk via an external app",
+				}},
+				{Id: "score", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "score them"}},
+			},
+			Edges: []subharness.Edge{{"survey", "score"}},
+		},
+		Verify: subharness.Verify{Ladder: subharness.VerifyAccept},
+		Dyn:    subharness.Dyn{Ladder: subharness.DynFixed},
 	}
-	if d := diff(before, before); !d.empty() {
-		t.Fatalf("a page differs from itself: %+v", d)
+	revised, results, err := subharness.ApplyReport(draft, []subharness.Op{
+		{Op: subharness.OpReplaceBrief, Node: "score", Text: "score each option on latency, cost, privacy and implementation risk"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || !results[0].Applied() {
+		t.Fatalf("results = %+v", results)
+	}
+	survey, _ := revised.Program.Node("survey")
+	if !strings.Contains(survey.Fields.Get("brief"), "whisper.cpp") {
+		t.Errorf("the untouched brief changed: %q", survey.Fields.Get("brief"))
+	}
+}
+
+// The critic's optional fields mean "the draft's, unchanged" — the same law as
+// the ops: text it is not changing is not in its reply at all.
+func TestARevisionKeepsWhatItDidNotRestate(t *testing.T) {
+	draft := design{Cues: []string{"event log"}, Justification: strings.Repeat("x", 500)}
+
+	kept := revision{}.design(draft)
+	if len(kept.Cues) != 1 || kept.Cues[0] != "event log" || kept.Justification != draft.Justification {
+		t.Errorf("an omitted field did not fall back to the draft: %+v", kept)
 	}
 
-	after := before
-	after.Verify = subharness.Verify{Ladder: subharness.VerifySchema}
-	after.Program = subharness.Program{Nodes: []subharness.Node{
-		{Id: "a", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "two"}},
-		{Id: "b", Kind: subharness.KindVerify, Fields: subharness.Fields{"check": "y"}},
+	changed := revision{Cues: []string{"journal"}, Justification: "a new derivation"}.design(draft)
+	if len(changed.Cues) != 1 || changed.Cues[0] != "journal" || changed.Justification != "a new derivation" {
+		t.Errorf("a restated field did not replace the draft's: %+v", changed)
+	}
+}
+
+// The three passes are the guide's own and they print in the guide's order even
+// when the critic writes them in another; a pass label nobody asked for is kept
+// rather than dropped, because a finding is a finding.
+func TestFindingsGroupByPassInTheGuidesOrder(t *testing.T) {
+	r := revision{Findings: []finding{
+		{Pass: "quality", Text: "a rung the program cannot keep"},
+		{Pass: "speed", Text: "two lanes drawn in a line"},
+		{Pass: "taste", Text: "an opinion"},
 	}}
-	d := diff(before, after)
-	if len(d.AddedNodes) != 1 || !strings.HasPrefix(d.AddedNodes[0], "b ") {
-		t.Errorf("added nodes = %v", d.AddedNodes)
+	got := r.byPass()
+	if len(got) != 4 {
+		t.Fatalf("passes = %+v", got)
 	}
-	if len(d.Rebriefed) != 1 {
-		t.Errorf("field changes = %v", d.Rebriefed)
+	for at, want := range []string{"speed", "cost", "quality", "taste"} {
+		if got[at].Name != want {
+			t.Errorf("pass %d = %q, want %q", at, got[at].Name, want)
+		}
 	}
-	if !strings.Contains(d.Verify, "lowered") {
-		t.Errorf("verify delta = %q, want it to say the rung was lowered", d.Verify)
+	if len(got[1].Found) != 0 {
+		t.Errorf("cost found something nobody said: %v", got[1].Found)
+	}
+	if r.findings() != 3 {
+		t.Errorf("findings = %d", r.findings())
+	}
+}
+
+// The transport rule is in what the model is actually shown, in both stages —
+// not just in the document one of them reads.
+func TestBothBriefsSayTheSyntaxIsASCII(t *testing.T) {
+	for _, guide := range []struct {
+		name  string
+		build func([]toolSpec) (string, error)
+	}{
+		{"designer", designerSystem},
+		{"reviewer", reviewSystem},
+	} {
+		text, err := guide.build(availableTools)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(text, "ASCII") {
+			t.Errorf("%s: nothing in the brief says the syntax is ASCII", guide.name)
+		}
+	}
+}
+
+// A reply that arrives fenced, smart-quoted or trailing-comma'd is a punctuation
+// problem and this rig will not spend a design attempt on one.
+func TestTheDesignEnvelopeSurvivesAMangledReply(t *testing.T) {
+	raw := "Here you go:\n```json\n{“cues”: [“event log”], “justification”: “because”, “harness”: {“id”: {“name”: “journal”}},}\n```"
+	salvaged, err := subharness.SalvageDetail(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope design
+	if err := strict(salvaged.JSON, &envelope); err != nil {
+		t.Fatalf("the salvaged envelope will not decode: %v", err)
+	}
+	if envelope.Justification != "because" || len(envelope.Harness) == 0 {
+		t.Errorf("envelope = %+v", envelope)
 	}
 }
