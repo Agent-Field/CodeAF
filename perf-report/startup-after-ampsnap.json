@@ -1,0 +1,110 @@
+{
+  "binary": "/home/santosh/af-perf/bin/aforge",
+  "binary_bytes": 38273289,
+  "wall": {
+    "reps": 30,
+    "min_ms": 18.784,
+    "p10_ms": 21.184,
+    "median_ms": 29.779,
+    "mean_ms": 27.989
+  },
+  "maxrss_kib": 31052,
+  "init": {
+    "packages": 274,
+    "init_ms": 23.6,
+    "init_bytes": 8430712,
+    "init_allocs": 72942,
+    "top": [
+      {
+        "pkg": "github.com/alecthomas/chroma/v2/lexers",
+        "ms": 8.7,
+        "bytes": 2737152,
+        "allocs": 31449
+      },
+      {
+        "pkg": "github.com/santhosh-tekuri/jsonschema/v5",
+        "ms": 2.8,
+        "bytes": 1026368,
+        "allocs": 8963
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/connect",
+        "ms": 1.5,
+        "bytes": 341248,
+        "allocs": 4283
+      },
+      {
+        "pkg": "github.com/yuin/goldmark/extension",
+        "ms": 1.1,
+        "bytes": 264240,
+        "allocs": 2049
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/session",
+        "ms": 0.86,
+        "bytes": 217896,
+        "allocs": 1187
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/tui2/tokens",
+        "ms": 0.49,
+        "bytes": 10000,
+        "allocs": 543
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/head",
+        "ms": 0.44,
+        "bytes": 351936,
+        "allocs": 2548
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/revision",
+        "ms": 0.42,
+        "bytes": 164128,
+        "allocs": 535
+      },
+      {
+        "pkg": "github.com/google/jsonschema-go/jsonschema",
+        "ms": 0.29,
+        "bytes": 81256,
+        "allocs": 296
+      },
+      {
+        "pkg": "github.com/charmbracelet/bubbletea",
+        "ms": 0.28,
+        "bytes": 93880,
+        "allocs": 213
+      },
+      {
+        "pkg": "modernc.org/libc/honnef.co/go/netdb",
+        "ms": 0.27,
+        "bytes": 119704,
+        "allocs": 1539
+      },
+      {
+        "pkg": "golang.org/x/net/html",
+        "ms": 0.24,
+        "bytes": 126400,
+        "allocs": 37
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool",
+        "ms": 0.23,
+        "bytes": 176040,
+        "allocs": 1053
+      },
+      {
+        "pkg": "modernc.org/sqlite/lib",
+        "ms": 0.23,
+        "bytes": 15088,
+        "allocs": 19
+      },
+      {
+        "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/fullverification",
+        "ms": 0.21,
+        "bytes": 199848,
+        "allocs": 1259
+      }
+    ]
+  }
+}
