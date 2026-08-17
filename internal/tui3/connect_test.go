@@ -53,9 +53,31 @@ type fakeConnections struct {
 	// began and dropped are what the panel asked for, in order.
 	began   []string
 	dropped []string
+
+	// The capability half of the door (connectcaps.go). caps is what each
+	// service may be asked to do, states where each of those stands, set what
+	// the surface asked for — in order, with the exact arguments — and setErr a
+	// refusal the engine hands back.
+	// reads counts how many times the catalog was asked for, which is what the
+	// once-per-read discipline is asserted against (connectcaps.go).
+	reads  int
+	caps   map[string][]connect.Capability
+	states map[string]connect.CapabilityState
+	set    []capChange
+	setErr error
 }
 
-func (f *fakeConnections) Services() []connect.Status { return f.rows }
+// capChange is one SetCapabilityState call, recorded whole.
+type capChange struct {
+	service    string
+	capability string
+	state      connect.CapabilityState
+}
+
+func (f *fakeConnections) Services() []connect.Status {
+	f.reads++
+	return f.rows
+}
 
 func (f *fakeConnections) BeginAuth(ctx context.Context, id string) (*connect.Flow, error) {
 	f.began = append(f.began, id)
@@ -74,6 +96,38 @@ func (f *fakeConnections) Disconnect(id string) error {
 	}
 	return nil
 }
+
+func (f *fakeConnections) Capabilities(service string) []connect.Capability {
+	return f.caps[service]
+}
+
+// CapabilityState answers what was last set, and otherwise the default the
+// contract states: looking is yes, acting asks first.
+func (f *fakeConnections) CapabilityState(service, capability string) connect.CapabilityState {
+	if state, ok := f.states[capKey(service, capability)]; ok {
+		return state
+	}
+	for _, may := range f.caps[service] {
+		if may.ID == capability && may.Acts {
+			return connect.StateAsk
+		}
+	}
+	return connect.StateYes
+}
+
+func (f *fakeConnections) SetCapabilityState(service, capability string, state connect.CapabilityState) error {
+	f.set = append(f.set, capChange{service: service, capability: capability, state: state})
+	if f.setErr != nil {
+		return f.setErr
+	}
+	if f.states == nil {
+		f.states = map[string]connect.CapabilityState{}
+	}
+	f.states[capKey(service, capability)] = state
+	return nil
+}
+
+func capKey(service, capability string) string { return service + "/" + capability }
 
 // connectApp is a surface with a recording session behind it, and no browser in
 // front of it: every handoff lands in opened rather than on the machine running

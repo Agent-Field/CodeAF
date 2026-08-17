@@ -299,9 +299,15 @@ func (a *app) beginConnect(service, name string) tea.Cmd {
 func (a *app) adoptConnectFlow(msg connectFlowMsg) tea.Cmd {
 	if msg.err != nil {
 		a.note(msg.err.Error())
+		// AND THE SHEET IS TOLD, because the note above lands in a transcript
+		// that is behind a fullscreen panel while one is up: a sign-in started
+		// from the Connections tab that never reached a browser has to say so on
+		// the tab it was started from (connectcaps.go).
+		a.connTabStopped(msg.service, msg.err.Error())
 		return nil
 	}
 	if msg.flow == nil {
+		a.connTabStopped(msg.service, "")
 		return nil
 	}
 	// A second attempt at the same service abandons the first: two listeners on
@@ -358,4 +364,8 @@ func (a *app) adoptConnectResult(msg connectResultMsg) {
 		a.agent.NoteConnected(msg.service, account)
 	}
 	a.refreshConnect()
+	// And the settings sheet's Connections tab, which is the OTHER list this
+	// outcome is news for: a row that has just gained an account opens on what
+	// that account may do (connectcaps.go).
+	a.connTabSettled(msg.service, msg.name, !failed)
 }
