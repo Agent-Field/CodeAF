@@ -126,6 +126,16 @@ func TestRegistryGroupsEveryCategoryAndEveryModelSlot(t *testing.T) {
 			}
 			continue
 		}
+		if slot.Role == "" {
+			// A CAPABILITY SLOT IS READ OUT OF THE PROFILE, not out of a
+			// running engine (docs/MULTIMODAL.md Decision 5): its value is a
+			// choice written down here, and an untouched profile has written
+			// nothing, which reads as the word the resolver will act on.
+			if row.Value() != "automatic" {
+				t.Fatalf("capability slot %q reads %q in an untouched profile", slot.Slot, row.Value())
+			}
+			continue
+		}
 		if row.Value() != slot.Slot+"/model" {
 			t.Fatalf("model row %q reads %q", slot.Slot, row.Value())
 		}

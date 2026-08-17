@@ -127,12 +127,21 @@ func TestAMediaSlotsPickerHoldsTheModelsThatAnswerIt(t *testing.T) {
 		t.Fatalf("the drawing slot offers %v, want %v", got, want)
 	}
 
-	// AND THE REFUSAL NAMES WHERE THE VALUE LIVES. A media slot is an
-	// environment slot; "chosen where its session is opened" is true of the role
-	// rows and sends a person looking for a door that does not exist.
+	// AND THE PICK IS ACCEPTED, which is the whole of Decision 5. The row used
+	// to refuse and name an environment variable, which was true only because
+	// the row was dead: it wrote nothing and nothing read it. Now the chosen id
+	// lands in the profile under the row's own key, which is the key the
+	// use-time resolver reads on the very next picture.
 	drive(t, a, key("enter"))
-	if !strings.Contains(a.sheet.msg, "AFORGE_IMAGE_MODEL") {
-		t.Fatalf("the refusal does not say where the drawing model is set: %q", a.sheet.msg)
+	if a.sheet.msg != "" {
+		t.Fatalf("the drawing slot refused a pick from its own list: %q", a.sheet.msg)
+	}
+	row, found := a.settings.Row(config.ModelSettingKey("image"))
+	if !found || row.Value() != "google/gemini-3.1-flash-image" {
+		t.Fatalf("the drawing row reads %q after the pick", row.Value())
+	}
+	if got := config.MediaSlotModelAt(a.profileDir, "image"); got != "google/gemini-3.1-flash-image" {
+		t.Fatalf("the profile holds %q for the drawing slot", got)
 	}
 }
 
