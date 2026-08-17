@@ -85,6 +85,28 @@ func bankBashApproval(agent *session.Agent, workspace, profileDir string, yolo b
 	}
 }
 
+// applyV3Approvals is the permissions panel's live seam: a line taken back
+// there is already off the disk by the time this runs, and this is what makes
+// the gate this conversation is running on agree.
+//
+// THE REBUILD'S ERROR IS THE ONE THAT TRAVELS HERE, which is the opposite of
+// the banking pair above and for the same reason stated the other way round.
+// There the write was the claim and the rebuild was a bonus; here the drop has
+// already been written and the only open question is whether the running gate
+// heard about it. A rebuild that fails means the rule is gone from the file and
+// still standing in this session, and the panel says exactly that — the receipt
+// names the next session rather than claiming the line is already gone.
+func applyV3Approvals(agent *session.Agent, workspace, profileDir string, yolo bool) func() error {
+	return func() error {
+		policy, err := v3Policy(workspace, profileDir, yolo)
+		if err != nil {
+			return err
+		}
+		agent.SetApprovalPolicy(policy)
+		return nil
+	}
+}
+
 // v3CurrentGate copies a launch config and swaps in the gate as it stands right
 // now. It is what /new and /resume open a second conversation on.
 //
