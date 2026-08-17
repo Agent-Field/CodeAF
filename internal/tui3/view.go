@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -441,6 +442,18 @@ func (a *app) statusRow(width int) []string {
 // chromeAt resolves a screen row to the chrome row drawn on it. It is the
 // pointer's half of [app.chrome] and it asks the same function the frame does,
 // so a hover cannot land on a row the frame drew somewhere else.
+//
+// IT REBUILDS THE CHROME RATHER THAN READING A RECORDED COPY OF IT, and that is
+// a choice against the cheaper one. Recording the marks at layout — the bargain
+// [app.modelSpan] and the strip's chips make — would answer in no time at all,
+// and it would answer from the LAST frame: the renderer paints on its own clock,
+// so an approval question that arrived two messages ago is on the frame the
+// person is looking at and not yet in any recorded list. A pointer resolved
+// against yesterday's chrome brightens the wrong row, which is the one thing
+// this file exists to prevent. The rebuild is paid only where the pointer is
+// actually below the conversation — [app.hoverTarget] asks the transcript first
+// and returns on a hit — so it is the bottom few rows of the frame that cost it,
+// and it is exact there.
 func (a *app) chromeAt(y int) (chromeRow, bool) {
 	width, height := a.size()
 	_, marks, _, _ := a.chrome(width)
@@ -728,6 +741,64 @@ func (a *app) reveal(entry int) {
 // clampScroll keeps the offset legal after a resize.
 func (a *app) clampScroll() {
 	a.offset = a.offsetFor(len(a.visible(a.bodyWidth())), a.viewHeight())
+}
+
+// resizeGrace is how long a resize is given to stop moving before the scroll is
+// clamped against it. It is longer than the paint clock's tick and far shorter
+// than the gap between two deliberate resizes, which is the window a DRAG lives
+// in: the sizes a person sweeps through on the way to the one they want.
+const resizeGrace = 80 * time.Millisecond
+
+// resizeSettledMsg is the end of a resize burst.
+type resizeSettledMsg struct{}
+
+// resized takes one new terminal size.
+//
+// THE SIZE IS TAKEN IMMEDIATELY AND THE CLAMP IS THE ONLY THING DEFERRED, and
+// that is the whole of this coalescing — stated here because the tempting
+// version is the wrong one. Holding the WIDTH back until a drag settles would
+// mean painting a frame laid out for a width the terminal no longer has, and a
+// terminal that just got narrower would wrap every one of those rows itself: the
+// chug would be replaced by garbage. So every size lands the moment it arrives,
+// the row list rekeys on it ([app.visible]), and the frame a person sees is
+// always laid out for the window they are dragging.
+//
+// What a burst actually cost was [app.clampScroll], which lays the WHOLE
+// transcript out again to learn how many rows it has — once per message, twenty
+// or thirty times across a drag, while the terminal's own renderer paints a
+// handful of them. Deferring it is free of consequence because nothing reads the
+// stored offset raw: [app.offsetFor] clamps every answer it gives, so a scroll
+// left standing past the end of a shorter list draws the bottom of that list
+// exactly as it would have. The clamp is a bookkeeping write, not a frame.
+//
+// A SIZE WITH NO LAYOUT STANDING BEHIND IT IS CLAMPED ON THE SPOT — the startup
+// one, and the one after a rewind threw the row list away (rewind.go's
+// [app.rebuildTranscript]). There is no burst to wait out at either, and a
+// surface that opened with its scroll a tick behind would be one that opened
+// scrolled to the wrong place.
+//
+// THE ROOM NEEDS NOTHING HERE. Its rows are keyed on the width they were built
+// for and rebuilt lazily by [app.roomRows] when the frame asks, so a page open
+// over a drag re-lays exactly as often as it is painted, which is what this
+// makes true of the conversation.
+func (a *app) resized(width, height int) tea.Cmd {
+	// A terminal repeating a size it has already sent is a terminal saying
+	// nothing, and multiplexers say it often — on every pane focus, on every
+	// attach.
+	if width == a.width && height == a.height {
+		return nil
+	}
+	a.width, a.height = width, height
+	a.touch()
+	if a.rows == nil {
+		a.clampScroll()
+		return nil
+	}
+	if a.sizing {
+		return nil
+	}
+	a.sizing = true
+	return tea.Tick(resizeGrace, func(time.Time) tea.Msg { return resizeSettledMsg{} })
 }
 
 // follow is what every append calls: content grew, and a reader at the live

@@ -572,6 +572,10 @@ type app struct {
 	width, height int
 	offset        int
 	stick         bool
+	// sizing says a resize is still settling, so the scroll clamp that a new
+	// size asks for is already on its way and a second one would be a second
+	// relayout for nothing (see [app.resized]).
+	sizing bool
 
 	pal   palette
 	input editor
@@ -965,10 +969,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// window being born. Keeping the last known size draws something;
 		// taking the zero draws nothing.
 		if msg.Width > 0 && msg.Height > 0 {
-			a.width, a.height = msg.Width, msg.Height
-			a.touch()
-			a.clampScroll()
+			return a, a.resized(msg.Width, msg.Height)
 		}
+		return a, nil
+
+	case resizeSettledMsg:
+		// The drag stopped moving, so the scroll is clamped once, against the
+		// size it stopped at (see [app.resized]).
+		a.sizing = false
+		a.clampScroll()
 		return a, nil
 
 	case tea.KeyPressMsg:
