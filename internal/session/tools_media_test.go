@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/manual"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -179,4 +180,29 @@ func dataURLBytes(t *testing.T, url string) []byte {
 		t.Fatalf("reference is not decodable: %v", err)
 	}
 	return decoded
+}
+
+// THE MANUAL LAW, for the verbs a bare session does not carry.
+//
+// internal/session/manual_test.go walks the belt of an agent with nothing wired,
+// so it never sees a conditional tool: generate_image, speak and generate_video
+// are all absent there by the absence law, and a media verb could land with no
+// page and pass the gate. This is the same gate over a belt that HAS them.
+func TestTheManualMentionsEveryMediaToolOnTheBelt(t *testing.T) {
+	agent, _ := newMediaAgent(t, &scriptedMedia{}, nil)
+	carried := 0
+	for _, tool := range agent.tools {
+		switch tool.Name {
+		case "generate_image", "speak", "generate_video":
+			carried++
+		default:
+			continue
+		}
+		if !manual.Chat().Mentions(tool.Name) {
+			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", tool.Name)
+		}
+	}
+	if carried != 3 {
+		t.Fatalf("a fully wired media belt carries %d of the three generation verbs", carried)
+	}
 }

@@ -232,6 +232,24 @@ If the vision model says nothing:
 Note that `read` is not the way to open a picture — it decodes the bytes as
 text. Attach it, or use `read_document` for a photograph of a page.
 
+## Can you make a picture, a voiceover or a video?
+
+Yes, when a model for that kind of media is available on this machine — and each
+kind is a separate answer, so drawing may be there while filming is not.
+
+- `generate_image` draws from a prompt, and edits, restyles or combines pictures
+  you already have when you give it `reference_paths`.
+- `speak` turns text into an mp3, in the speech model's default voice unless you
+  name one.
+- `generate_video` renders a short video. It **returns straight away with a
+  background job** because a render takes minutes; the finished file arrives as a
+  note naming it, and `jobs kill` stops it.
+
+Each saves a file and answers with its path — never the media itself — and each
+costs real money, a video most of all. The page "making pictures, audio and
+video" has the arguments, the exact wording of the results, where the files land,
+and what happens when one fails.
+
 ## Can you search the web?
 
 Yes, and **no key or configuration is required** for it to work.
@@ -333,8 +351,13 @@ Plainly, so you do not have to find out the hard way.
   are not on the list at all, so asking aforge to remember something for next
   time will not work. Working state kept with `track` survives a resume of *this*
   conversation and nothing further.
-- **It cannot generate images.** There is no image-making tool on the list. It
-  can read pictures (see the vision section) but it cannot paint one.
+- **It cannot make media without a model for it.** `generate_image`, `speak` and
+  `generate_video` are each on the list only when this machine has a model for
+  that kind of media; when there is none, the tool is absent rather than present
+  and refusing, and aforge simply does not have that verb.
+- **It cannot listen to audio or watch a video.** It can make both and it can
+  read pictures (see the vision section), but the mp3 and the mp4 are for you to
+  play.
 - **`read` cannot open a picture**, despite what its own description says. Attach
   the image to a message, or use `read_document`.
 - **`read` cannot list a directory.** It errors. `ls` lists directories.
