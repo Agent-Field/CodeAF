@@ -1560,6 +1560,14 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent,
 		RolesSource:    parent.RolesSource,
 		SearchProvider: parent.SearchProvider,
 		SearchFetcher:  parent.SearchFetcher,
+		// The person's connected accounts travel too, for the reason the search
+		// pair does: a node is the same worker doing the same job somewhere
+		// quieter, and work briefed around a mailbox needs the mailbox. What a
+		// node CANNOT do is connect a new one — there is nobody in a worktree to
+		// ask — and use_service says exactly that when the account is not
+		// connected already (tools_connect.go).
+		Connect:        parent.Connect,
+		connectHub:     parent.connectHub,
 		ImageGenModel:  parent.ImageGenModel,
 		ImageGenClient: parent.ImageGenClient,
 		// A node reads documents on the rung the person chose, like the

@@ -417,7 +417,7 @@ func (a *Agent) completeWithRetry(ctx context.Context, model string, effort prov
 
 		messages := a.snapshot()
 		response, err := a.client.CompleteWithMessages(ctx, messages,
-			ai.WithModel(model), ai.WithTools(a.definitions))
+			ai.WithModel(model), ai.WithTools(a.beltDefinitions()))
 		if err == nil {
 			return response, nil
 		}
@@ -660,7 +660,7 @@ func (b *warmBatch) take(call ai.ToolCall) *warmCall {
 
 // hasTool reports whether the belt carries a tool by this name.
 func (a *Agent) hasTool(name string) bool {
-	for _, tool := range a.tools {
+	for _, tool := range a.beltTools() {
 		if tool.Name == name {
 			return true
 		}
@@ -796,7 +796,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // answered "Unknown tool", never asked about. A question about a tool nobody
 // has is a question with no right answer.
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall) toolResult {
-	for _, tool := range a.tools {
+	for _, tool := range a.beltTools() {
 		if tool.Name != call.Function.Name {
 			continue
 		}
@@ -843,6 +843,13 @@ var glossField = map[string]string{
 	// scheme — a person watching wants to know what their agent is reading.
 	"web_search": "query",
 	"web_fetch":  "url",
+	// And the accounts, which read the same way: the account being picked up,
+	// the mailbox search, the message opened (tools_connect.go). calendar_list
+	// has no single argument that says what it is doing — a span is two — so it
+	// is left off and reads as its bare name.
+	"use_service":  "service",
+	"gmail_search": "query",
+	"gmail_read":   "id",
 }
 
 // gloss renders one call as a person-readable line: the tool name and the one
