@@ -98,16 +98,19 @@ type Connections interface {
 	SetCapabilityState(service, capability string, state connect.CapabilityState) error
 }
 
-// The two ways a service is connected, as [connect.Service.Auth] spells them.
-// Anything else — an empty field, a word this build has not heard of — reads as
-// a browser trip, which is what every plug shipped before this wave was.
-const (
-	authKey     = "key"
-	authBrowser = "browser"
-)
-
 // keyService reports whether a service is connected by pasting a key.
-func keyService(service connect.Service) bool { return service.Auth == authKey }
+//
+// The word is the ENGINE'S — [connect.AuthKey], where [connect.Service.Auth] is
+// defined — and this surface does not keep a second copy of it: two spellings of
+// one vocabulary is two things that can drift apart, and the one that drifts is
+// the one that decides whether a person gets a browser or a box.
+//
+// ANYTHING THAT IS NOT [connect.AuthKey] READS AS A BROWSER TRIP: an empty
+// field, a word this build has not heard of, [connect.AuthBrowser] itself. That
+// is what every plug shipped before this wave was, and it is the safe way round
+// — a browser that opens on a service wanting a key is a wasted trip, while a
+// key box on a service that has none is a question nobody can answer.
+func keyService(service connect.Service) bool { return service.Auth == connect.AuthKey }
 
 // connAsk is one unanswered offer.
 type connAsk struct {
