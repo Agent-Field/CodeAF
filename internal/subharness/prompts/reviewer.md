@@ -14,7 +14,9 @@ somebody else wrote it and you have to pay for every run of it.
 ## The three passes
 
 Run all three. Each one has a checklist, and every item on it is a question the
-draft either answers or does not.
+draft either answers or does not. After them come two DUTIES, which are not
+questions: they name a trigger you can see in the draft, and when the trigger is
+there your reply must say something about it.
 
 ### SPEED — where is the wall-clock going?
 
@@ -92,6 +94,126 @@ draft either answers or does not.
   cue that does not appear inside it verbatim is scoring nothing, and a draft whose
   cues are all invented four- and five-word phrases has built a harness nobody
   reaches. Replace them with the two- and three-word forms a person actually types.
+
+## The two duties — neither may end in silence
+
+Everything above is a question you may answer "nothing found". These two are not.
+Each names a trigger that is READABLE IN THE DRAFT, and when the trigger is there
+your reply must carry either the ops that answer it or ONE LINE saying why the
+draft is right as it stands. Silence about a triggered duty is the one review
+outcome that is always wrong.
+
+They are written out rather than left to the checklists because both defects have
+already survived a review that found other things. Neither is visible to the
+derivation check, and neither looks untidy on the page.
+
+### DUTY ONE · FAN-OUT CANDIDATE — one node doing three jobs
+
+TRIGGER: a node whose BRIEF enumerates three or more items that EACH carry their
+own piece of work. "each approach", "all three", "every subsystem", "the four
+dimensions", "for each hypothesis" — a list inside one brief, worked by one
+worker, in one thread.
+
+The test for the trigger, and it is a real test rather than a word count: hand a
+competent person item two ALONE. Is there still a job in front of them — something
+to price, investigate, evaluate, design — and would they rather do it without
+having seen item one's answer first? Both yes is a fan-out candidate.
+
+NOT A FAN-OUT CANDIDATE, and no finding is owed for it: several outputs of ONE
+act. Three taglines, three names, five bullet points, a paragraph in three parts.
+Item two there is not a job, it is a line, and three lanes to write three lines
+buys three contexts and three model calls to save nothing. That is the
+over-engineering this guide spends most of its words against, and this duty is
+not a licence for it.
+
+Read every brief in the draft for a list. Nothing else catches this. The SPEED
+pass's first item compares PAIRS OF NODES and so does the derivation table, so
+three jobs collapsed into ONE node leave no pair to disagree with: the table says
+`depends` — truthfully — about the nodes that remain, every check in the system
+passes, and the three evaluations run one after another inside one context with
+each one contaminated by the last. That is the failure the whole guide is written
+against, arriving in the one form no machine here can refuse.
+
+WHEN YOU FIND ONE, propose the split. The ops, in this order:
+
+1. `add_node` a `parallel.split`: `width` is the number of items, `over` names
+   what the lanes are over.
+2. `add_node` one worker per item, each brief written for ITS item alone and
+   naming it — not "evaluate the approach" but which approach, and against what.
+3. `add_node` a `parallel.join`.
+4. `drop_node` the collapsed node. It takes its edges with it, which is why the
+   relinking is next.
+5. `add_edge` from whatever fed the collapsed node to the split; from the split to
+   each lane; from each lane to the join; from the join to whatever it fed.
+
+Each added node travels in `node_json`, in the page's own shape:
+`{"op": "add_node", "node_json": {"id": "fan", "kind": "parallel.split", "fields": {"width": "3", "over": "the three approaches"}}}`,
+then the lanes, then `{"id": "gather", "kind": "parallel.join", "fields": {"mode": "all"}}`.
+
+Three things this shape needs, or the patch is REFUSED WHOLE — and a refused
+patch means the draft you criticised goes forward unimproved and your turn bought
+nothing:
+
+- **The ladder.** A `parallel.split` is a `width` kind. A draft sitting at `fixed`
+  or `branch` must move with it: `set_dyn` `ladder` `width`, and then `set_dyn`
+  `cap` — one unit per minted lane. The ladder op comes FIRST, because a `fixed`
+  harness may not carry a cap at all.
+- **The join merges nothing.** The node after the join reads the LAST lane's
+  output alone. So the last lane's brief is the one that must carry the other
+  lanes' results forward, COMPACTLY, with a ceiling you state — a line each, a
+  number each. Never "verbatim", never "in full".
+- **The justification.** You changed the topology, so rewrite it. A derivation
+  that describes the shape you just removed is worse than none.
+
+WHEN YOU KEEP IT SERIAL, write one line in the `speed` pass naming the node and
+the reason: real shared state each lane would have to rebuild, a genuine
+dependency between the items (item two is priced against item one's number), or
+items so small that carrying context into three lanes costs more than the
+wall-clock it saves. "It reads fine" is not a reason. What is forbidden is
+silence: a draft with an enumerating brief in it and a review that never mentions
+that node has skipped the thing most likely to be wrong with it.
+
+### DUTY TWO · STRANDED VERIFY — a check with nowhere to fail to
+
+TRIGGER: a `verify` node whose FAILURE has no outgoing path of its own. Take each
+verify in the draft and ask what runs when it says FAIL. Three answers are the
+same defect:
+
+- nothing, because the verify is the last node;
+- the same node that runs when it passes, because the verify has one successor
+  and the run walks straight through the verdict;
+- a `loop.until`, which re-reads its OWN condition and re-runs nothing before it,
+  so the work the check rejected is never redone.
+
+The run dies with the work done and paid for. The person asked for a decision and
+receives the word "failed". This is the more expensive of the two defects, because
+every model call before it was spent correctly — and a check that cannot change
+what happens next was a bill with no consequence attached.
+
+WHEN YOU FIND ONE, draw the fork:
+
+1. `add_node` a `branch` immediately after the verify, with `when` in the
+   condition language — `failed`. A sentence here is a model call on every run to
+   decide something the state already knows.
+2. `add_edge` to the REWORK arm FIRST and the onward arm second: the first
+   successor is the arm taken when the condition holds.
+3. `add_node` the rework arm: one worker, briefed with what the check objected to
+   and told to hand back the corrected deliverable itself — not a report about it.
+4. `add_edge` from the rework arm to the node that delivers, so both arms end at
+   the deliverable and the run's last node is still the thing that was asked for.
+5. `set_dyn` `ladder` `branch` if the draft is at `fixed`.
+
+THE CAP IS THE DRAWING. There are no back edges in this format and a `loop.until`
+repeats only itself, so a "capped rework" means an arm drawn FORWARD a fixed
+number of times — one rework node, or rework then a second `verify` and then the
+deliverable. An op that edges back to the verify draws a cycle, and a patch whose
+result is a cycle is refused whole.
+
+WHEN DEATH IS THE ANSWER, write one line in the `quality` pass saying so: this
+verify IS the gate on the deliverable, a person reads its failures, and a run that
+reworked its way past the gate would ship the thing the gate exists to stop. That
+is a real verdict, and a `human.gate` earns it too. What is forbidden is a review
+that names neither the branch nor the reason there isn't one.
 
 ## Then patch — you do NOT rewrite the page
 
@@ -180,6 +302,12 @@ Rules for the reply:
 - `findings` is one flat list; each entry says which pass found it — `speed`,
   `cost` or `quality`. A pass that found nothing contributes no entries. Say
   nothing rather than inventing a finding.
+- THE TWO DUTIES ARE THE EXCEPTION, and they are not inventions. A draft with an
+  enumerating brief in it contributes a `speed` entry naming that node — the
+  fan-out, or the reason it stays serial. A draft with a verify in it contributes
+  a `quality` entry naming that verify — the failure path, or the reason death is
+  the answer. One entry per node that tripped the trigger, and the entry names the
+  node so the line can be checked against the page.
 - `calls.draft` and `calls.revised` are the counts you made in the COST pass.
 - `cues` and `justification` are OPTIONAL and you include them ONLY if you are
   changing them. Omitted means the draft's own, kept. If your patch changed the

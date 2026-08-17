@@ -130,7 +130,13 @@ func main() {
 		gate         = flag.String("gate", "approve", "what the absent person says at a human.gate: approve|decline|intervene")
 		maxTurns     = flag.Int("max-turns", 4, "the clamp on one agent.loop's rounds, whatever the page asked for")
 		designTokens = flag.Int("design-tokens", 8000, "the design turn's completion budget; a spiraling model fails fast instead of streaming for minutes")
-		reviewTokens = flag.Int("review-tokens", 6000, "the review turn's budget: findings plus the ops patch, never the whole page")
+		// 6000 was the budget when the critic had three checklists to run. It has
+		// two duties as well now, and on a reasoning model the thinking is drawn
+		// from this same budget: a hard draft came back three times at
+		// finish=length, having spent 6001 tokens and emitted no reply at all. A
+		// review that cannot afford its own answer is the most expensive kind of
+		// nothing — the design turn is already paid for by then.
+		reviewTokens = flag.Int("review-tokens", 10000, "the review turn's budget: the critic's thinking, its findings and the ops patch — never the whole page")
 		temp         = flag.Float64("temp", 0.3, "the design turn's temperature")
 	)
 	flag.Parse()
@@ -258,7 +264,7 @@ func (r *rig) oneGoal(ctx context.Context, key, note, goal string) error {
 			fmt.Printf("stage 1.5 the review produced nothing usable, so the DRAFT goes forward · %v\n", err)
 		} else {
 			envelope, harness = revised.design(draft), revisedHarness
-			r.printReview(draft, revised, applied)
+			r.printReview(draft, revised, applied, revisedHarness)
 		}
 	}
 
@@ -425,7 +431,7 @@ func (r *rig) reviewStage(ctx context.Context, goal string, draft design, draftH
 // op is not a model's account of a change, it is the change. What this print does
 // add is the fate of each one — an op that named a node nobody declared is skipped
 // rather than fatal, and a review that landed six of nine edits should say so.
-func (r *rig) printReview(draft design, revised revision, applied []subharness.OpResult) {
+func (r *rig) printReview(draft design, revised revision, applied []subharness.OpResult, revisedHarness subharness.Harness) {
 	section("stage 1.5 · the critique")
 	for _, pass := range revised.byPass() {
 		if len(pass.Found) == 0 {
@@ -469,6 +475,9 @@ func (r *rig) printReview(draft design, revised revision, applied []subharness.O
 	if len(revised.Cues) > 0 {
 		fmt.Printf("cues     %s → %s\n", strings.Join(draft.Cues, " · "), strings.Join(revised.Cues, " · "))
 	}
+
+	section("stage 1.5 · where a failed check goes")
+	fmt.Println(verifyPaths(revisedHarness))
 }
 
 // landed counts the ops that did what they said.
@@ -508,6 +517,56 @@ func conditionNotes(h subharness.Harness) string {
 		return "cond   none — nothing in this program decides a path"
 	}
 	return strings.Join(lines, "\n")
+}
+
+// verifyPaths says, for every verify node in the page the review is handing on,
+// what runs when that check says FAIL. It is MECHANICAL — successors and kinds,
+// nothing read and nothing judged — because the defect it names is mechanical:
+// a check whose failure has nowhere to go cannot change what happens next, so
+// the run ends on the verdict with all the work before it done and paid for.
+//
+// It is printed after the patch rather than instead of it. The critic owes a
+// finding on every verify (PART FOUR's second duty), and this line is how a
+// reader sees whether the finding matched the page — a review that argued
+// death-is-the-answer and a page that strands its verify agree; a review that
+// said nothing and a page that strands its verify is the failure this exists to
+// surface.
+func verifyPaths(h subharness.Harness) string {
+	var lines []string
+	for _, node := range h.Program.Nodes {
+		if node.Kind != subharness.KindVerify {
+			continue
+		}
+		successors := h.Program.Successors(node.Id)
+		fork := ""
+		for _, id := range successors {
+			next, ok := h.Program.Node(id)
+			if ok && next.Kind == subharness.KindBranch {
+				fork = fmt.Sprintf("forked at %q on %q", next.Id, next.Fields.Get("when"))
+				break
+			}
+		}
+		switch {
+		case fork != "":
+			lines = append(lines, fmt.Sprintf("verify %s: %s", node.Id, fork))
+		case len(successors) == 0:
+			lines = append(lines, fmt.Sprintf("verify %s: STRANDED — it is a last node, so a FAIL ends the run with the work done", node.Id))
+		default:
+			lines = append(lines, fmt.Sprintf("verify %s: STRANDED — %s runs whether it passed or failed", node.Id, strings.Join(quoted(successors), " and ")))
+		}
+	}
+	if len(lines) == 0 {
+		return "verify none — this program checks nothing of its own"
+	}
+	return strings.Join(lines, "\n")
+}
+
+func quoted(ids []string) []string {
+	out := make([]string, len(ids))
+	for at, id := range ids {
+		out[at] = fmt.Sprintf("%q", id)
+	}
+	return out
 }
 
 func offered(score float64) string {
