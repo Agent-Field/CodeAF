@@ -1660,13 +1660,29 @@ func (a *app) roomStateWord(node *taskNode) string {
 		if node.mending != "" {
 			return taskFinishingWord
 		}
+		// AND A NODE WHOSE CALLS ARE BEING PACED IS WAITING, in the same one word
+		// the rail spends on it (task.go's [taskHeldWord]). The header is the
+		// line a person reads to find out why nothing has moved for a minute, and
+		// "working" is the answer that sends them looking for a fault that is not
+		// there: the node is running and the wire is full. The reason itself is on
+		// the rail's own row under the node; the header has one line and spends it
+		// on the state.
+		if node.waiting != "" {
+			return taskHeldWord
+		}
 		// The word the status line uses for a session that is working, said about
 		// a node for the same reason: a person who has learned what "working"
 		// means on this surface has learned it here too.
 		return stateWorking.String()
 	case session.TaskQueued:
+		// THE DEPENDENCY OUTRANKS THE HOLD HERE TOO, for the reason the rail
+		// states in full ([app.railUnder]): a named prerequisite is work a person
+		// can act on and a full cap is a queue that clears itself.
 		if waits := a.railWaits(node); waits != "" {
 			return "waits: " + waits
+		}
+		if node.waiting != "" {
+			return taskHeldWord
 		}
 		return roomQueuedWord
 	case session.TaskFailed:
