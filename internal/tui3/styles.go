@@ -717,6 +717,12 @@ func (p palette) rail(last bool) string {
 	return railMid
 }
 
+// railWidth is what any of those three measure, which is the point of them all
+// being four cells: a tool row's arithmetic starts from a constant instead of
+// measuring one on every frame, and it was measuring one per row per frame.
+// TestRailFormsAreOneWidth holds the three to it.
+const railWidth = 4
+
 // railCont is the stem an expanded call's detail rows hang from.
 func (p palette) railCont() string {
 	if p.ascii {
