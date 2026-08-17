@@ -220,10 +220,10 @@ const (
 	// ([GoogleOAuthClientAt]), and offers the connect tools only when both are
 	// answered.
 	//
-	// They are the person's own registration rather than something aforge ships,
-	// because an application id baked into a binary is an application id every
-	// copy of that binary shares — one quota, one revocation, one mistake that
-	// reaches everybody.
+	// Answering them REPLACES the registration this build ships with
+	// (connect_defaults.go): a person or a deployment that wants its own
+	// application asking — its own quota, its own consent screen, its own
+	// revocation — writes it here or exports it, and nothing else changes.
 	KeyGoogleOAuthClient = "google_oauth_client"
 	KeyGoogleOAuthSecret = "google_oauth_secret"
 
@@ -1737,16 +1737,34 @@ func JinaKeyAt(profileDir string) string {
 }
 
 // GoogleOAuthClientAt resolves the Google registration: the environment first,
-// then the sheet, then empty — and empty is a working configuration, exactly as
-// it is for the search keys.
+// then the sheet, then the registration this build ships with
+// (connect_defaults.go, which states why a desktop client's secret may be
+// compiled in at all). So the answer is never empty, and every build can offer
+// to connect an account without a person filling in a registration form first.
 //
 // IT ANSWERS BOTH HALVES OR NEITHER IS WORTH HAVING, which is why it is one
 // call and not two. An id without its secret cannot ask Google for anything, so
 // a caller handed half a pair would have to write the same "and the other one"
 // check every reader of these rows already needs; here it is written once, and
 // the caller's test is the one it should be — is the id there.
+//
+// EACH HALF WALKS THE RUNGS ALONE, which is the shape the rows already had: the
+// two are separate values a person copies from two separate boxes, and each is
+// resolved by the same credentialAt every other credential uses. The one edge
+// that leaves is a person who answers ONE half of their own registration — they
+// get their id against this build's secret, which Google refuses — and the cure
+// is the obvious one, answer the other half too, which is what the sheet's hint
+// on both rows already says.
 func GoogleOAuthClientAt(profileDir string) (id, secret string) {
-	return googleOAuthClientAt(profileDir), googleOAuthSecretAt(profileDir)
+	id = googleOAuthClientAt(profileDir)
+	if id == "" {
+		id = defaultGoogleOAuthClient
+	}
+	secret = googleOAuthSecretAt(profileDir)
+	if secret == "" {
+		secret = defaultGoogleOAuthSecret
+	}
+	return id, secret
 }
 
 // The two halves on their own, for the registry rows: a row reads and writes one
