@@ -34,7 +34,20 @@ type editor struct {
 
 func (e *editor) String() string { return string(e.value) }
 
-func (e *editor) empty() bool { return len(strings.TrimSpace(string(e.value))) == 0 }
+// empty reports whether the draft holds anything a person would call text. It
+// walks the runes rather than trimming a copy of them, because the frame asks
+// this question half a dozen times a paint — the welcome box, the placeholder,
+// the proposal's hint and the room's all read it — and building a string of a
+// four-thousand-line paste six times a frame is a hundred kilobytes of garbage
+// per frame to learn one bit.
+func (e *editor) empty() bool {
+	for _, r := range e.value {
+		if !unicode.IsSpace(r) {
+			return false
+		}
+	}
+	return true
+}
 
 func (e *editor) reset() { e.value, e.cursor = e.value[:0], 0 }
 
@@ -711,9 +724,6 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]stri
 		return []string{pal.dim(prompt) + pal.dim(fit(hint, room))}, ansi.StringWidth(prompt), 0
 	}
 
-	segments := wrapRunes(e.value, room)
-	caretRow, caretColumn := caretAt(e, segments, room)
-
 	// THE BLOCK IS ANCHORED AT THE TOP AND TEXT FLOWS DOWN. The first row of the
 	// draft is the first row of the box — prompt and all — and a second line
 	// appears UNDER it, which is what every text field a person has ever typed
@@ -726,18 +736,16 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]stri
 	// rather than remembered, which is what makes it agree with itself: the
 	// caret's row is returned to [app.View] as the terminal's cursor position
 	// (view.go), and a stored top would be one frame's answer applied to another
-	// frame's draft.
-	top := 0
-	if caretRow >= maxRows {
-		top = caretRow - maxRows + 1
-	}
+	// frame's draft. [draftWindow] is where that arithmetic now lives.
+	segments, caretRow, top, opening := draftWindow(e.value, e.cursor, room, maxRows)
+	caretColumn := caretColumnIn(e, segments[caretRow])
 	end := min(top+maxRows, len(segments))
 
 	out := make([]string, 0, end-top)
 	for i := top; i < end; i++ {
 		lead := "  "
 		switch {
-		case i == 0:
+		case i == 0 && opening:
 			lead = pal.dim(prompt)
 		case i == top:
 			// The block is scrolled: say so where the prompt would be, in the
@@ -753,63 +761,130 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]stri
 // the editor's value.
 type segment struct{ from, to int }
 
-// wrapRunes breaks the draft into display rows: its own newlines always break,
-// and a logical line longer than room breaks at the last space that fits, or
-// mid-word when there is no space to break at. An empty logical line still
-// produces a row — the caret has to be able to stand on it.
-func wrapRunes(value []rune, room int) []segment {
-	var out []segment
-	line := 0
-	flush := func(end int) {
-		for line < end {
-			if end-line <= room {
-				out = append(out, segment{from: line, to: end})
-				line = end
-				return
-			}
-			cut := line + room
-			for at := cut; at > line; at-- {
-				if value[at-1] == ' ' {
-					cut = at
-					break
-				}
-			}
-			out = append(out, segment{from: line, to: cut})
-			line = cut
-		}
-		out = append(out, segment{from: end, to: end})
+// draftWindow soft-wraps the rows the box can SHOW rather than the whole draft,
+// and it is the reason a four-thousand-line paste does not make this surface
+// crawl.
+//
+// THE WRAP OF A DRAFT IS THE WRAP OF ITS LOGICAL LINES, ONE AT A TIME. Every
+// newline breaks a row unconditionally, so how a line wraps depends on that line
+// and on nothing before it — which means the six rows around the caret can be
+// laid out without touching the four thousand that are not on screen. The old
+// arithmetic wrapped the entire value on the way to picking six of it, and it
+// did so from [app.inputHeight] as well as from the render, so a big paste in
+// the box cost a full re-wrap several times per FRAME and once per pointer cell.
+// A person who pasted a stack trace and then moved the mouse was paying half a
+// millisecond a step for rows nobody was going to see.
+//
+// It returns the rows it laid out, the caret's row within them, the first row
+// the box draws, and whether that list OPENS the draft — the last one is what
+// tells the caller to draw the "›" rather than the scrolled-past ellipsis, and
+// it is a fact the caller can no longer get from an index, because index zero of
+// a window is only row zero of the draft when the walk reached the top.
+//
+// The one draft this does not help is a single logical line with no newline in
+// it at all — a minified blob out of a browser — where finding the caret means
+// wrapping the line it is in. That is the same work the whole draft used to
+// cost, on the one shape where it cannot be avoided.
+func draftWindow(value []rune, cursor, room, maxRows int) ([]segment, int, int, bool) {
+	cursor = min(max(cursor, 0), len(value))
+	head, tail := lineHead(value, cursor), lineTail(value, cursor)
+	// The caret's own line first: it is the only one that has to be wrapped to
+	// answer where the caret is.
+	segments := wrapLine(value, head, tail, room)
+	caretRow := caretIn(segments, cursor, room, tail < len(value))
+	// THEN BACKWARD, a line at a time, until the rows above the caret could fill
+	// the box. A line is wrapped whole because that is the unit the wrap is
+	// defined on — one of them can be worth twenty rows, and taking twenty is
+	// cheaper than deciding not to.
+	for caretRow < maxRows-1 && head > 0 {
+		start := lineHead(value, head-1)
+		above := wrapLine(value, start, head-1, room)
+		segments = append(above, segments...)
+		caretRow += len(above)
+		head = start
 	}
-	for at := 0; at < len(value); at++ {
-		if value[at] == '\n' {
-			flush(at)
-			line = at + 1
-		}
+	top := max(0, caretRow-maxRows+1)
+	// AND FORWARD ONLY WHERE THE BOX HAS ROOM LEFT. A caret at the end of a long
+	// paste leaves none — the window ends on the caret's row — so this walks
+	// nothing at all in the case that used to be the expensive one.
+	for len(segments) < top+maxRows && tail < len(value) {
+		start := tail + 1
+		tail = lineTail(value, start)
+		segments = append(segments, wrapLine(value, start, tail, room)...)
 	}
-	flush(len(value))
-	if len(out) == 0 {
-		out = append(out, segment{})
-	}
-	return out
+	return segments, caretRow, top, head == 0
 }
 
-// caretAt resolves the caret's row and column within the wrapped rows. A caret
-// sitting exactly on a soft break belongs to the row that follows it, which is
-// where the next character it types will appear.
-func caretAt(e *editor, segments []segment, room int) (int, int) {
+// lineHead and lineTail bound the LOGICAL line a rune offset sits on — the run
+// between two newlines, which is [editor.lineStart] and [editor.lineEnd] asked
+// about a position rather than about the caret.
+func lineHead(value []rune, at int) int {
+	for ; at > 0; at-- {
+		if value[at-1] == '\n' {
+			return at
+		}
+	}
+	return 0
+}
+
+func lineTail(value []rune, at int) int {
+	for ; at < len(value); at++ {
+		if value[at] == '\n' {
+			return at
+		}
+	}
+	return len(value)
+}
+
+// wrapLine breaks ONE logical line into display rows: it fits what it can, and
+// breaks at the last space before the edge or mid-word when the line offers no
+// space to break at. An empty line still produces a row — the caret has to be
+// able to stand on it.
+func wrapLine(value []rune, from, to, room int) []segment {
+	var out []segment
+	for from < to {
+		if to-from <= room {
+			return append(out, segment{from: from, to: to})
+		}
+		cut := from + room
+		for at := cut; at > from; at-- {
+			if value[at-1] == ' ' {
+				cut = at
+				break
+			}
+		}
+		out = append(out, segment{from: from, to: cut})
+		from = cut
+	}
+	return append(out, segment{from: to, to: to})
+}
+
+// caretIn resolves the caret's row within a laid-out run of rows. A caret
+// sitting exactly on a soft break belongs to the row that FOLLOWS it, which is
+// where the next character it types will appear — and "follows" is asked of the
+// draft rather than of the run, which is what more says: there are rows after
+// this window that were not laid out because nobody is going to see them.
+func caretIn(segments []segment, cursor, room int, more bool) int {
 	row := 0
 	for i, s := range segments {
-		if e.cursor >= s.from && e.cursor <= s.to {
+		if cursor >= s.from && cursor <= s.to {
 			row = i
-			if e.cursor == s.to && e.cursor-s.from >= room && i+1 < len(segments) {
+			if cursor == s.to && cursor-s.from >= room && (i+1 < len(segments) || more) {
 				continue
 			}
 			break
 		}
 	}
-	s := segments[row]
+	return row
+}
+
+// caretColumnIn is how far into its row the caret sits, in cells rather than in
+// runes: a draft holds whatever a person pasted into it, and a caret placed by
+// counting runes would stand in the wrong column the moment one of them is wide.
+func caretColumnIn(e *editor, s segment) int {
 	from := s.from
 	if e.cursor < from {
 		from = e.cursor
 	}
-	return row, ansi.StringWidth(string(e.value[from:e.cursor]))
+	return ansi.StringWidth(string(e.value[from:e.cursor]))
 }
