@@ -158,12 +158,6 @@ func Score(turn Turn, entry Entry) float64 {
 		}
 	}
 	cued := 1 - miss
-	// A page with no cue list never asked to be found by description: the name
-	// is the whole of its detectability, and folding the description in would
-	// raise cards for turns that named nothing.
-	if len(entry.Cues) == 0 {
-		return cued
-	}
 	// And the description, folded in as one more independent signal at half
 	// weight. (1−cued)×x is the same combination the loop above makes.
 	return cued + (1-cued)*descWeight*overlap(words, entry.Description)
@@ -197,7 +191,35 @@ func Best(turn Turn, entries []Entry) (Match, bool) {
 	if best.Score < Floor {
 		return best, false
 	}
+	// The winner must have been NAMED or CUED. A description corroborates a
+	// candidate somebody's words already pointed at; quoted back in full it
+	// still never raises the card on its own.
+	if !grounded(tokenize(turn.Text), best.Entry) {
+		return best, false
+	}
 	return best, best.Score >= Threshold || best.Score-runnerUp >= ClearWinner
+}
+
+// grounded says the turn hit the entry's name or one of its cues — the only
+// evidence a card may stand on. Score's hit rules, mirrored: a single-word
+// cue must be said outright, a phrase may be said nearly.
+func grounded(words []string, entry Entry) bool {
+	if name := tokenize(entry.Name); len(name) > 0 && holds(words, name) {
+		return true
+	}
+	for _, cue := range entry.Cues {
+		phrase := tokenize(cue)
+		switch {
+		case len(phrase) == 0:
+		case len(phrase) == 1:
+			if holds(words, phrase) {
+				return true
+			}
+		case holds(words, phrase) || nearly(words, phrase):
+			return true
+		}
+	}
+	return false
 }
 
 // ── the cues a goal is worth ────────────────────────────────────────────────
