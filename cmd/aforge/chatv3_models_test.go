@@ -5,7 +5,6 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
 // fakeV3Catalog is the seam [v3Catalog] exists for: catalog rows with no cache
@@ -43,7 +42,12 @@ func TestTheCatalogsContextLengthReachesTheSessionConfig(t *testing.T) {
 	}
 }
 
-func TestTheV3ModelListKeepsTheModelsAChatCanTalkTo(t *testing.T) {
+// THE DOOR CARRIES THE WHOLE CATALOG (docs/MULTIMODAL.md Decision 6), and each
+// list narrows it at the moment it is drawn. The door used to drop every row
+// that answered in anything but text, which starved the surface of its own
+// supply: the drawing slot's picker is opened over THIS list, so a list with no
+// drawing model in it was a picker that could not be answered.
+func TestTheV3ModelListCarriesTheWholeCatalog(t *testing.T) {
 	models := fakeV3Catalog{rows: []catalog.Model{
 		{ID: "vendor/text", ContextLength: 200_000, OutputModalities: []string{"text"}},
 		{ID: "vendor/painter", OutputModalities: []string{"image"}},
@@ -53,24 +57,47 @@ func TestTheV3ModelListKeepsTheModelsAChatCanTalkTo(t *testing.T) {
 		{ID: "vendor/quiet", ContextLength: 8_000},
 	}}
 
+	want := []string{"vendor/text", "vendor/painter", "vendor/voice", "vendor/quiet"}
 	got := v3Models(models)
-	want := []tui3.Model{
-		{ID: "vendor/text", ContextLength: 200_000},
-		{ID: "vendor/quiet", ContextLength: 8_000},
-	}
 	if len(got) != len(want) {
-		t.Fatalf("kept %v, want %v", got, want)
+		t.Fatalf("kept %v, want the whole catalog %v", got, want)
 	}
 	for i := range want {
-		if got[i].ID != want[i].ID || got[i].ContextLength != want[i].ContextLength {
-			t.Fatalf("row %d is %v, want %v", i, got[i], want[i])
+		if got[i].ID != want[i] {
+			t.Fatalf("row %d is %q, want %q — the catalog's own order", i, got[i].ID, want[i])
 		}
 	}
+	// And the modalities travel, because every reader's own filter is asked of
+	// them: a row that arrived with only its id would be filtered on nothing.
+	if len(got[1].Output) != 1 || got[1].Output[0] != "image" {
+		t.Fatalf("the drawing row lost what it makes: %+v", got[1])
+	}
 
-	// Nothing to offer is nil and not an empty list: nil is what sends the
-	// picker to its own cache.
-	if rows := v3Models(fakeV3Catalog{rows: []catalog.Model{{ID: "vendor/painter", OutputModalities: []string{"image"}}}}); rows != nil {
-		t.Fatalf("a catalog of no chat models answered %v, want nil", rows)
+	// A catalog with nothing in it at all is nil and not an empty list: nil is
+	// what sends the picker to its own cache.
+	if rows := v3Models(fakeV3Catalog{}); rows != nil {
+		t.Fatalf("a warming catalog answered %v, want nil", rows)
+	}
+}
+
+// And the list a TASK may be handed to still asks the chat law, because a node
+// is an agent with the same belt. This is where the door's old filter went.
+func TestTheTaskModelListStaysChatOnly(t *testing.T) {
+	models := fakeV3Catalog{rows: []catalog.Model{
+		{ID: "vendor/text", OutputModalities: []string{"text"}, InputModalities: []string{"text"}},
+		{ID: "vendor/painter", OutputModalities: []string{"image"}},
+		{ID: "vendor/ear", OutputModalities: []string{"text"}, InputModalities: []string{"audio"}},
+		{ID: "vendor/quiet"},
+	}}
+	got := v3TaskModels(models)()
+	want := []string{"vendor/text", "vendor/quiet"}
+	if len(got) != len(want) {
+		t.Fatalf("a task may be handed to %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("row %d is %q, want %q", i, got[i], want[i])
+		}
 	}
 }
 
