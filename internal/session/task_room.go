@@ -22,14 +22,21 @@ package session
 //
 // The journal is the node's history and the room's stream is its present, and
 // they are deliberately not the same door. A watcher subscribing to a running
-// node gets what happens FROM NOW — nothing is replayed, exactly as
-// [eventHub.subscribe] replays nothing, because a stream that re-narrated a
+// node gets what happens FROM NOW — no history is replayed, exactly as
+// [eventHub.subscribe] replays none, because a stream that re-narrated a
 // half-hour of somebody else's greps before reaching the live edge would make
 // "watch this node" mean "read this node's history slowly". A person who wants
 // the history opens the journal, which is a real session file and has been
 // since the first node ran. It is the same split as the two update lanes: the
 // turn's hub carries what is happening, [Agent.TaskUpdates] carries what
 // landed, and neither is asked to be the other.
+//
+// WITH ONE SEAM BETWEEN THEM, AND IT IS NOT HISTORY. A message is journaled
+// when it COMPLETES (agent.go's recordLocked), so the step the node is in the
+// middle of is in neither lane: not on disk, because it has not finished, and
+// not on the wire, because it happened before the person arrived. A watcher is
+// therefore handed that one step on joining and nothing else — see
+// [taskCatchup], which states exactly where the line is drawn.
 //
 // ── AND STEERING IS NOT A REDIRECT ──
 //
@@ -84,9 +91,9 @@ func (a *Agent) SteerTask(id uint64, text string) error {
 }
 
 // WatchTask subscribes to one node's LIVE event stream: the child agent's own
-// events — text deltas, tool begins and ends, errors — as they happen. The
-// channel closes at the node's final state and on [Agent.Close]. Unknown id is
-// an error.
+// events — text deltas, tool begins and ends, errors — as they happen, opening
+// with the step the node is in the middle of ([taskCatchup]). The channel closes
+// at the node's final state and on [Agent.Close]. Unknown id is an error.
 //
 // A FINISHED NODE ANSWERS WITH A CLOSED CHANNEL rather than an error: the id is
 // real, the work is over, and a channel that closes immediately is how every
@@ -165,17 +172,27 @@ type taskRoom struct {
 	// read without this lock, and it OUTLIVES the close: a node that landed a
 	// second ago still answers with the last thing it was doing.
 	live *taskLive
+	// catchup is the step in flight, handed to each new watcher once. It is
+	// under THIS lock rather than one of its own, because what it holds and who
+	// is watching have to be decided in the same breath (see [taskRoom.join]).
+	catchup taskCatchup
 }
 
 func newTaskRoom() *taskRoom {
 	return &taskRoom{watchers: make(map[*eventStream]struct{}, 1), live: &taskLive{}}
 }
 
-// join returns a fresh channel carrying this node's events from now on. A room
-// that has already closed answers with a channel that closes immediately,
-// exactly as a subscription to a finished node does — the two are the same
-// event arriving on either side of the close, and they must not be two
-// behaviours.
+// join returns a fresh channel carrying the step this node is in the middle of,
+// and then its events from now on. A room that has already closed answers with a
+// channel that closes immediately, exactly as a subscription to a finished node
+// does — the two are the same event arriving on either side of the close, and
+// they must not be two behaviours.
+//
+// THE CATCH-UP AND THE SUBSCRIPTION ARE ONE ACT, under one hold of the lock: a
+// delta that landed between reading the step and being added to the watchers
+// would be a delta nobody ever sees, and one that landed the other way round
+// would be drawn twice. The seed is safe to do while holding it for [publish]'s
+// own reason — a send is an append and a signal, never a wait.
 //
 // A nil room is a node with no room to enter: the same answer, so no caller has
 // to check.
@@ -190,6 +207,9 @@ func (r *taskRoom) join() <-chan Event {
 		r.mu.Unlock()
 		stream.close()
 		return stream.out
+	}
+	for _, event := range r.catchup.replay() {
+		stream.send(event)
 	}
 	r.watchers[stream] = struct{}{}
 	r.mu.Unlock()
@@ -238,6 +258,10 @@ func (r *taskRoom) publish(event Event) {
 	r.live.record(event)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// The step in flight is folded in BEFORE the fan-out and whether or not the
+	// room is still open, so what the next joiner is handed is exactly what the
+	// watchers already have — one funnel, one order, two readers.
+	r.catchup.record(event)
 	if r.closed {
 		return
 	}
@@ -267,6 +291,115 @@ func (r *taskRoom) close() {
 	for stream := range watchers {
 		stream.close()
 	}
+}
+
+// ── the step in flight ──────────────────────────────────────────────────────
+
+// taskCatchup is the one thing neither of the room's two lanes can carry: the
+// step the node is IN THE MIDDLE OF.
+//
+// A message reaches the journal when it COMPLETES (agent.go's recordLocked), and
+// the live lane carries what happens from the instant somebody subscribes. So a
+// person who walks into a node while it is thinking through a long answer used
+// to be shown the last thing that FINISHED and nothing else — a page that sits
+// still until the next delta lands, which reads either as a task that has frozen
+// or as a task whose work is not being displayed at all. The reasoning is worse
+// than absent: it is never journaled anywhere, so before this it existed only
+// for whoever happened to be subscribed while it streamed.
+//
+// So the room keeps that step and [taskRoom.join] hands it over once, before the
+// live events. It is a CATCH-UP AND NOT A REPLAY: everything the journal already
+// holds is deliberately missing from it, because the surface reads the history
+// off the file and drawing the same paragraph from both lanes is worse than
+// drawing it from neither.
+//
+// ── WHERE THE LINE IS DRAWN, AND WHY IT IS DRAWN THERE ──
+//
+// The boundary is loop.go's own, not a guess about it. A response is recorded
+// the moment it completes: with no tool calls it is recorded and the turn ends,
+// and with tool calls it is recorded BEFORE the batch runs. EventToolBegin and
+// EventTurnDone are therefore each the first event after a journal write, and
+// both clear everything kept here — what they closed is on disk now.
+//
+// It is the same fact that keeps a BEGUN call out of the catch-up. The assistant
+// message naming it was written before it started, so the journal has the call
+// already; what the file cannot say is that it has not come back, and a surface
+// reads that off the missing tool result rather than off an event (internal/tui3
+// readRoomJournal). An ANNOUNCED call is the other half of that: the model has
+// finished spelling it out and the batch has not started, so nothing has been
+// written yet and the announcement is carried.
+type taskCatchup struct {
+	// thinking is the marker that opened the run — a model that is reasoning
+	// with nothing on the wire is still a fact worth arriving to.
+	thinking bool
+	// thought and answer are what the model has streamed since the last journal
+	// write: its reasoning, and its reply.
+	thought strings.Builder
+	answer  strings.Builder
+	// announced are the calls asked for and not yet started, in arrival order.
+	announced []Event
+}
+
+// record folds one published event in. It is the whole write side, and it runs
+// under the room's lock.
+func (c *taskCatchup) record(event Event) {
+	switch event.Kind {
+	case EventThinking:
+		c.thinking = true
+	case EventReasoning:
+		c.thought.WriteString(event.Text)
+	case EventTextDelta:
+		c.answer.WriteString(event.Text)
+	case EventToolAnnounced:
+		c.announced = append(c.announced, event)
+	case EventToolBegin, EventTurnDone, EventError:
+		// THE STEP IS ON DISK NOW. The begins of a batch are emitted together,
+		// after the assistant message that made every one of them was recorded
+		// (loop.go), so the first of them settles the whole of what is kept here —
+		// which is why nothing has to be dropped call by call, and why nothing in
+		// here needs an id that EventToolBegin does not carry.
+		c.reset()
+	case EventCompacting:
+		// A COMPACTION PASS RUNS AT A STEP BOUNDARY, and it is the one boundary
+		// that takes SECONDS — the summarizer is a model call — so without this the
+		// window between "the answer was written" and "the turn is done" is long
+		// enough to walk into, and a person who did would read the same paragraph
+		// twice: once off the file and once out of here.
+		//
+		// The known exception is the OVERFLOW pass, which compacts and retries
+		// mid-step (loop.go), where this drops a partial reply the journal has not
+		// got yet. That is a delta's worth of lateness on a page that is about to
+		// be re-streamed anyway, and it is the quieter of the two mistakes.
+		c.reset()
+	}
+}
+
+// reset empties the step. It is not a method on the room because the room never
+// calls it: the events say when a step ends.
+func (c *taskCatchup) reset() {
+	c.thinking = false
+	c.thought.Reset()
+	c.answer.Reset()
+	c.announced = nil
+}
+
+// replay is the step as events, in the order it happened: the reasoning, then
+// the reply, then the calls that are waiting to start. An empty step replays
+// nothing, which is the ordinary case of a node between steps.
+func (c *taskCatchup) replay() []Event {
+	var out []Event
+	if c.thinking || c.thought.Len() > 0 {
+		// The marker first, because that is the order a live watcher saw it in
+		// and the surfaces fold the two together (internal/tui3's thinking.go).
+		out = append(out, Event{Kind: EventThinking})
+	}
+	if text := c.thought.String(); text != "" {
+		out = append(out, Event{Kind: EventReasoning, Text: text})
+	}
+	if text := c.answer.String(); text != "" {
+		out = append(out, Event{Kind: EventTextDelta, Text: text})
+	}
+	return append(out, c.announced...)
 }
 
 // closedEventStream is an already-ended channel: what a door answers when the

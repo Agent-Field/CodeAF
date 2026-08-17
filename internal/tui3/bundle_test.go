@@ -3296,8 +3296,14 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 // asserts the two capabilities separately.
 type roomFake struct {
 	*taskFake
-	journal  string
-	lanes    map[uint64]chan session.Event
+	journal string
+	lanes   map[uint64]chan session.Event
+	// catchup is the step the node is in the middle of, which the engine hands
+	// to EVERY joiner rather than to the first one (internal/session's
+	// [taskCatchup]). It is kept per node and never drained, because that is what
+	// makes it survive a room being left and re-opened — the fact this fake would
+	// otherwise quietly lose.
+	catchup  map[uint64][]session.Event
 	steered  []steerLine
 	steerErr error
 	watchErr error
@@ -3332,7 +3338,12 @@ func (f *roomFake) WatchTask(id uint64) (<-chan session.Event, error) {
 	if f.watchErr != nil {
 		return nil, f.watchErr
 	}
-	lane, out := f.lane(id), make(chan session.Event, 32)
+	lane, out := f.lane(id), make(chan session.Event, 64)
+	// The catch-up first, exactly as the door serves it: the step in flight, then
+	// what happens next.
+	for _, ev := range f.catchup[id] {
+		out <- ev
+	}
 	for {
 		select {
 		case ev, ok := <-lane:
