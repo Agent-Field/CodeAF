@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
 	"github.com/Agent-Field/aforge-v2/internal/config"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/history"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
@@ -375,6 +376,7 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
 	cfg.MemoryConsolidation = config.MemoryConsolidationEnabledAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
+	cfg.Connect = v3Connect(profileDir)
 	// How this session chooses among the endpoints serving its model. The word
 	// is validated by the row; the parse is total, so a word this build does not
 	// know falls back to the default rather than taking routing away.
@@ -422,6 +424,42 @@ func v3SearchOptions(profileDir string) search.Options {
 		ExaKey:   config.ExaKeyAt(profileDir),
 		JinaKey:  config.JinaKeyAt(profileDir),
 	}
+}
+
+// v3Connect resolves the person's connected accounts (internal/connect): the
+// Google registration in, a manager out — or NIL, which is the whole feature
+// absent.
+//
+// The nil is the point, and it is the same law v3Search's nil half states.
+// Without a registration there is nothing this build could connect, so handing
+// the session a manager that could only ever refuse would put two tools on the
+// belt whose one answer is "not configured" — and the session states, at
+// [session.Config], why that is strictly worse for a model than never being
+// told. An id without its secret is the same absence: half a registration
+// connects nothing.
+//
+// IT RETURNS NO ERROR for the reason v3Search does not. Accounts are an
+// accessory; a garbled row, a half-filled pair, a manager that cannot open its
+// own store are all reasons to have no connect tools, and none of them is a
+// reason a person cannot open a conversation.
+//
+// THE ROWS DO NOT GO THROUGH THE PROJECT LAYER, like the search keys and unlike
+// the governance rows above: a repository that could answer google_oauth_client
+// could ask a visitor to connect their mail to an application the repository
+// chose, by being cloned. Whose application asks for a person's account is the
+// person's row in exactly the sense internal/config's allowlist means it.
+func v3Connect(profileDir string) *connect.Manager {
+	id, secret := config.GoogleOAuthClientAt(profileDir)
+	if strings.TrimSpace(id) == "" || strings.TrimSpace(secret) == "" {
+		return nil
+	}
+	manager, err := connect.NewManager(profileDir, map[string]connect.ClientCredential{
+		"google": {ID: id, Secret: secret},
+	})
+	if err != nil {
+		return nil
+	}
+	return manager
 }
 
 // v3Policy builds the tool gate from the two approval rows.
