@@ -310,7 +310,7 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 		return fmt.Sprintf("the document rungs are out of reach: %v — read_document rides this session's own API key and base URL", err), true, nil
 	}
 
-	model := a.Model()
+	model := a.documentModel(entry.kind)
 	filename := filepath.Base(absolute)
 	var failures []string
 	for index, rung := range rungs {
@@ -362,6 +362,39 @@ func (a *Agent) readDocument(ctx context.Context, path, question string, offset,
 	// is the whole difference between a model that retries forever and a person
 	// who knows whether to add credit, change document_engine, or scan again.
 	return fmt.Sprintf("could not read %s — %s", shown, strings.Join(failures, "; ")), true, nil
+}
+
+// documentModel is which model the rungs send the file to, and for a PICTURE it
+// is not always this session's own.
+//
+// The native rung IS the model's eyes — [documentRungs] says so where it gives a
+// photographed page exactly one rung — so on a chat model that cannot see, that
+// rung is a request to read an image_url to a model that will answer with a 400
+// or, worse, with a confident description of nothing. The image five are also
+// the only kind with no parser beneath them, so a failure there is the whole
+// tool failing.
+//
+// The looking slot answers instead ([Agent.visionSeer]), which is the same model
+// the vision fallback and view_image use: one answer to "can I see", wherever it
+// is asked (docs/MULTIMODAL.md, Decision 8). Everything else is unchanged — a
+// PDF, a docx and a spreadsheet are files the parser rungs read without eyes,
+// and sending them to a vision model would be routing on a capability nobody
+// needed.
+//
+// A session with no seer keeps its own model, and the rung fails the way it
+// always did: naming itself, in the words the person can act on.
+func (a *Agent) documentModel(kind documentKind) string {
+	model := a.Model()
+	if kind != documentImage {
+		return model
+	}
+	if a.config.SupportsImages != nil && a.config.SupportsImages(model) {
+		return model
+	}
+	if seer := a.visionSeer(); seer != "" {
+		return seer
+	}
+	return model
 }
 
 // documentParser builds the client once, on first use, and hands back the same

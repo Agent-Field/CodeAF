@@ -273,18 +273,55 @@ func byteLimit(bytes int) string { return fmt.Sprintf("%dMB", bytes>>20) }
 //     model answering in the first one's voice, silently, would be the surface
 //     lying about who is talking.
 
+// visionSeer answers WHICH MODEL LOOKS, and it is the ONE answer the whole
+// surface uses: this fallback, the view_image tool (tools_view.go) and
+// read_document's image rung (tools_doc.go) all ask here, so "can I see" has a
+// single answer wherever it is asked (docs/MULTIMODAL.md, Decision 8). It is ""
+// when nothing on this machine can look at a picture.
+//
+// THE LOOKING SLOT IS THE FRONT DOOR. [Config.MediaModel] is the surface's own
+// use-time resolver, and every rung behind it — the settings slot, the role
+// pin, the best catalog candidate, the curated fallback — is capability-checked
+// against the catalog before it answers, so a slug it names is a model that
+// publishes image input. A resolver that answers "" has said there is none, and
+// the roles ladder is deliberately NOT tried after it: the pin is a rung of that
+// same ladder, and asking twice would resurrect the model the resolver just
+// passed over for being unable to see.
+//
+// A NIL resolver is a surface built before the slot existed — a test, an old
+// door — and it falls to roles.Resolve, which is exactly what this path did
+// before. The floor is "" rather than the session's model on purpose:
+// everywhere else roles.Resolve falls back to the model the person is already
+// talking to, and here that is often the model just established as blind, so
+// the ladder must be allowed to run out instead of returning it.
+func (a *Agent) visionSeer() string {
+	// The modality word is the one Config.MediaModel documents; it is spelled
+	// here rather than shared as a constant because the resolver's vocabulary is
+	// the surface's, and this package reads it rather than owning it.
+	//
+	// STUB(media/knob): Config.MediaModel is the settings lane's use-time
+	// resolver — the looking slot, the pin, the catalog, the curated fallback —
+	// and it is already capability-checked when it answers.
+	if resolve := a.config.MediaModel; resolve != nil {
+		return strings.TrimSpace(resolve("vision"))
+	}
+	seer, err := roles.Resolve(roles.Source(a.config.RolesSource), roles.RoleVision, "")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(seer)
+}
+
 // visionTurn is the fallback path: SubmitImage's answer when the chat model
 // cannot see. It returns SubmitImage's refusal, unchanged, when nothing else can
 // see either.
 func (a *Agent) visionTurn(ctx context.Context, text string, images []Image, model string) (<-chan Event, error) {
-	// The floor is "" rather than the session's model on purpose. Everywhere
-	// else roles.Resolve falls back to the model the person is already talking
-	// to; here that model is the one we just established cannot see, so the
-	// ladder must be allowed to run out instead of returning it. Same reason the
-	// resolved answer is refused when it names that model anyway: a tier set to
-	// the chat model is a configuration, not a capability.
-	seer, err := roles.Resolve(roles.Source(a.config.RolesSource), roles.RoleVision, "")
-	if err != nil || seer == "" || strings.EqualFold(seer, model) {
+	// A seer that names the blind model is refused rather than called: a slot or
+	// a tier set to the model we just established cannot see is a configuration,
+	// not a capability, and sending the picture to it is the 400 this whole path
+	// exists to avoid.
+	seer := a.visionSeer()
+	if seer == "" || strings.EqualFold(seer, model) {
 		return nil, blindRefusal(model)
 	}
 
