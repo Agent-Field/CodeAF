@@ -1298,7 +1298,7 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 // get a working copy has to be able to say so to the person who asked for it.
 func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	log := taskLog(listed)
-	tree, err := prepareTaskTree(a.config.Workspace, node.id, node.title())
+	tree, err := prepareTaskTree(a.config.Workspace, a.journalID(), node.id, node.title())
 	if err != nil {
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
 		return TaskFailed
@@ -1831,6 +1831,19 @@ func (a *Agent) sessionID() string {
 	return "unfiled"
 }
 
+// journalID is the same name for callers that do NOT hold a.mu and that must
+// tell "there is no journal" apart from "there is one called unfiled". It is
+// empty in the first case, and [taskTreeSession] is what decides what an empty
+// one becomes — a decision about paths that belongs with the paths, not here.
+func (a *Agent) journalID() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.file == nil {
+		return ""
+	}
+	return a.file.ID()
+}
+
 // taskJournalPath is where a node's own transcript lives:
 // ~/.aforge/v3/tasks/<session>/<when>_<id>.jsonl, and everything else the node
 // spent an agent on beside it under a suffix: <when>_<id>-audit-<nonce>.jsonl
@@ -1897,8 +1910,8 @@ type taskTree struct {
 	merge string
 }
 
-// gitRoot serializes the operations that touch the ROOT repository's shared
-// state — adding a worktree, merging, removing a worktree, deleting a branch.
+// gitRoot is the in-process half of the root repository's lock, and the file
+// lock beside it (task_lock.go) is the half that reaches the other terminal.
 //
 // Two nodes finishing at once would otherwise race on the index lock and one
 // would fail with git's "another git process seems to be running", which is a
@@ -1915,7 +1928,15 @@ var gitRoot sync.Mutex
 // Anything else — not a repository, or a repository with no commit to branch
 // from — runs IN PLACE and says so, because pretending to isolate is worse than
 // not isolating.
-func prepareTaskTree(workspace string, id uint64, title string) (taskTree, error) {
+//
+// THE PATH CARRIES THE SESSION, not just the node's id. Ids come from a counter
+// that starts at one in every fresh conversation, so a directory named by the id
+// alone is a name two windows on one repository both pick within a minute of
+// each other — and the loser's live worktree, with everything it had not
+// committed yet, is what the winner cleared out of the way. The branch name has
+// always been discriminated this way (the shortID below); this is the same law
+// applied to the place the work actually sits.
+func prepareTaskTree(workspace, session string, id uint64, title string) (taskTree, error) {
 	root, ok := repositoryRoot(workspace)
 	if !ok {
 		return taskTree{dir: workspace, merge: mergeInPlace}, nil
@@ -1926,16 +1947,26 @@ func prepareTaskTree(workspace string, id uint64, title string) (taskTree, error
 		return taskTree{dir: workspace, merge: mergeInPlace}, nil
 	}
 
-	dir := filepath.Join(root, filepath.FromSlash(tasksDirName), strconv.FormatUint(id, 10))
+	dir := filepath.Join(root, filepath.FromSlash(tasksDirName), taskTreeSession(session), strconv.FormatUint(id, 10))
 	branch := "task/" + slugify(title) + "-" + shortID()
 
-	gitRoot.Lock()
-	defer gitRoot.Unlock()
+	defer lockGitRoot(root)()
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return taskTree{}, err
 	}
-	// A directory left by a run that died with the process would make the add
-	// fail; prune first so the stale registration goes with it.
+	// A directory already at this name belongs to a run of THIS session that is
+	// no longer running, so it is cleared out of the way — the worktree
+	// registration first, so the add that follows does not fail on a stale one.
+	//
+	// That it can only be our own is the whole point of the session in the path.
+	// One live process holds one session id, because the transcript that names it
+	// is flocked while it is open (sessionfile.go), and the id space under it is a
+	// counter this process owns. So the only way to find this directory occupied
+	// is to have been here before and died — a killed aforge, a crash, a resume
+	// that is re-running a node its checkpoint still calls queued — and reclaiming
+	// after ourselves is the one case where a forced remove destroys nothing
+	// anybody is still using. Before the session was in the path this same code
+	// was as likely to be deleting another window's live work.
 	if _, err := os.Stat(dir); err == nil {
 		_, _ = git(root, "worktree", "remove", "--force", dir)
 		_, _ = git(root, "worktree", "prune")
@@ -1946,6 +1977,30 @@ func prepareTaskTree(workspace string, id uint64, title string) (taskTree, error
 	}
 	return taskTree{dir: dir, root: root, branch: branch}, nil
 }
+
+// taskTreeSession is the path segment that keeps one window's worktrees away
+// from another's: the conversation's own id, which is 16 random hex characters
+// minted per session file (sessionfile.go's newSessionID).
+//
+// A session with no file on disk still needs a name nobody else will pick, and
+// it cannot borrow the journal's — there isn't one. It gets this process's
+// nonce instead, minted once and used by every unfiled node in it, so the
+// grouping still holds and two unfiled aforges still cannot collide. The one
+// thing it may NOT be is a constant like "unfiled", which is the bug this
+// function exists to prevent wearing a friendlier name.
+func taskTreeSession(session string) string {
+	slug := slugify(session)
+	if strings.TrimSpace(session) == "" || slug == "task" {
+		// slugify answers "task" for anything with no character in it a path may
+		// carry, and a shared fallback is the collision this guards against.
+		return unfiledSession()
+	}
+	return slug
+}
+
+// unfiledSession is this process's stand-in for a session id, minted on first
+// use and stable for the life of the process.
+var unfiledSession = sync.OnceValue(func() string { return "unfiled-" + shortID() })
 
 // comeHome commits whatever the node wrote and merges its branch into the
 // person's. It reports the outcome and, ONLY when the outcome needs explaining,
@@ -1965,8 +2020,7 @@ func (t taskTree) comeHome(title string) (string, string) {
 	}
 	commitTaskWork(t.dir, title)
 
-	gitRoot.Lock()
-	defer gitRoot.Unlock()
+	defer lockGitRoot(t.root)()
 	if out, err := git(t.root, "merge", "--no-edit", t.branch); err != nil {
 		// --abort is best-effort: a merge that never started (git refused
 		// before touching the index) has nothing to abort, and it says so.
@@ -1980,6 +2034,12 @@ func (t taskTree) comeHome(title string) (string, string) {
 		_, _ = git(t.root, "worktree", "remove", "--force", t.dir)
 	}
 	_, _ = git(t.root, "branch", "-d", t.branch)
+	// And the session's own directory once its last worktree has gone home. The
+	// remove is deliberately not recursive: it succeeds on an empty directory and
+	// fails on one that still holds a node, which is precisely the question being
+	// asked. Without it every conversation that ever ran a task would leave an
+	// empty directory in the repository forever.
+	_ = os.Remove(filepath.Dir(t.dir))
 	return mergeMerged, ""
 }
 

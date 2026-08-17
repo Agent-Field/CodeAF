@@ -305,11 +305,17 @@ type Event struct {
 	// "which question" is the same question for both of them.
 	ID uint64
 
-	// CallID is the PROVIDER's id for the tool call an EventToolForming or an
-	// EventToolAnnounced is about — the same string the tool result carries —
-	// and is empty on every other kind. It is empty on a forming event too until
-	// the wire has sent one, which is the first fragment in practice and nothing
-	// the consumer may assume.
+	// CallID is the PROVIDER's id for the tool call an EventToolForming, an
+	// EventToolAnnounced or an EventConsentRequest is about — the same string
+	// the tool result carries — and is empty on every other kind. It is empty on
+	// a forming event too until the wire has sent one, which is the first
+	// fragment in practice and nothing the consumer may assume.
+	//
+	// ON A CONSENT REQUEST IT IS WHICH CALL IS BEING ASKED ABOUT. A surface pairs
+	// the question to the row it draws the question under, and the card reads the
+	// command it is about to remember off that row — so a question paired by tool
+	// name alone can, with two bash calls in flight, show one command and bank a
+	// standing rule for the other (internal/session's consent.go).
 	//
 	// It is on BOTH ends of that pair on purpose: forming and announced are two
 	// states of one call, and the id is what lets a surface say so. Without it
