@@ -2753,6 +2753,18 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openHarness()
 		return nil
 
+	case "status":
+		// The status line's whole list, said in the transcript. It is an ANSWER
+		// rather than a panel: a person who asked a question about their session
+		// wants it where they can scroll back to it, not on a fullscreen sheet they
+		// have to leave before they can act on it (statusnote.go).
+		a.note(a.statusText())
+		return nil
+
+	case "cost":
+		a.note(a.costText())
+		return nil
+
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
 		// /config: docs/CHAT-V3.md calls this the sessions picker and a person
