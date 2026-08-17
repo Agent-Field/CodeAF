@@ -1127,10 +1127,19 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if a.room == nil {
 		return nil, false
 	}
+	// THE STATUS SHEET IS ON THIS LIST FOR THE REASON THE SETTINGS PANEL IS, and
+	// it was missing from it: it is a FULLSCREEN overlay at the same rung
+	// (input.go reads the two one after the other), so while it is up there is
+	// nothing of the room on screen for a key to mean anything to — and the two
+	// keys this function takes are the two the sheet needs most. Without it, esc
+	// closed the room out from under a sheet the person was reading and enter
+	// steered the node instead of opening the line under the cursor, which is the
+	// door a phone-tier press on the task's model chip now arrives through
+	// (statusdeck.go's [app.deckModelRow]).
 	switch key := msg.String(); {
 	case key == "ctrl+c", a.asking(), a.awaitingTask(),
-		a.sheet.open, a.pick.open, a.roster.open, a.copy.on, a.welcome.open,
-		a.menu.open, a.comp.open:
+		a.sheet.open, a.deckShowing(), a.pick.open, a.roster.open, a.copy.on,
+		a.welcome.open, a.menu.open, a.comp.open:
 		return nil, false
 	}
 	// THE GUARD IS READ BEFORE THE ROOM, and it is the same rung: it is a
@@ -1617,6 +1626,53 @@ func (a *app) roomChip() string {
 		return ""
 	}
 	return a.roomMark(a.roomNode()) + " " + a.room.title
+}
+
+// roomModelLead is the word in front of a node's model wherever the status line
+// says one, and the space after it is part of it. See [app.roomModelWord].
+const roomModelLead = "task "
+
+// roomModelWord is WHAT IS ANSWERING while a room is open: the model the ROOM's
+// node runs on, said the way the status row says a model — its BASENAME, because
+// that law is about the row's scarce width and not about whose model it is
+// (render.go's [app.identity]).
+//
+// THE LEAD WORD IS PART OF THE FACT. The conversation's cluster reads
+// "<name> · <model>", and a room's reading "<chip> · <model>" would put a second
+// model id in the one place on this surface that has only ever held one: a person
+// who has learned to read that spot would read the swap as a switch of the
+// CONVERSATION's model, which is the misreading this whole change exists to
+// prevent. So the node's id is led by a word saying whose it is, the way the
+// served rider is led by "via" (render.go's [app.servedRider]) — a lead in the
+// vocabulary the line already speaks, and no new colour: the cluster is painted
+// once, in the accent, because a room is open.
+//
+// AN UNPUBLISHED MODEL SAYS NOTHING, AND MUST NOT FALL BACK TO THE SESSION'S.
+// The engine reads a node's empty model as "the conversation's own" at the moment
+// the node's agent is MINTED (internal/session's task_run.go, newTaskAgent) — and
+// the person can move the conversation's dial afterwards, which they do from this
+// very line. So "nobody published a model" and "this ran on something the session
+// is no longer on" are the same thing seen from here, and the session's current id
+// is a guess this row is not entitled to make. It draws nothing, which is what
+// every other unpublished figure in a room draws ([app.roomSpend]).
+//
+// It wears NO REASONING SUFFIX AND NO SERVED RIDER either, for one reason said
+// twice: THE DIAL IS THE CONVERSATION'S. The ":high" is spliced on by lending
+// a.model its suffixed form for the length of one call (view.go's
+// [app.statusRow]) and the rider is keyed on a.model's own sighting, so both are
+// facts about the model the SESSION is running — and a task model wearing the
+// session's knob would be the same lie in smaller print. Reading the node's model
+// from the node keeps it out of the splice by construction.
+func (a *app) roomModelWord() string {
+	node := a.roomNode()
+	if node == nil {
+		return ""
+	}
+	model := modelBase(strings.TrimSpace(node.model))
+	if model == "" {
+		return ""
+	}
+	return roomModelLead + model
 }
 
 // ── the room, drawn ─────────────────────────────────────────────────────────
