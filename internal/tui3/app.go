@@ -726,6 +726,19 @@ type app struct {
 	// copy is the frozen viewport a person reads and yanks out of (copymode.go).
 	// Closed, it costs the frame nothing.
 	copy copyMode
+	// rew is the rewind mode: the cut line through the transcript, the points it
+	// can sit on, and the draft it is holding (rewind.go). Closed, it costs the
+	// frame nothing.
+	//
+	// escArm is when the first esc landed, or zero — the door's other half, which
+	// lives out here rather than inside the mode because it is a fact about the
+	// mode being DOWN. rewSay is one sentence the mode could not act on
+	// ("nothing to rewind") and rewSayAt when it was said; both run down on the
+	// frame clock ([app.rewindSweep]), because this surface has one clock.
+	rew      rewindMode
+	escArm   time.Time
+	rewSay   string
+	rewSayAt time.Time
 	// tmux says this surface is inside a multiplexer, so a clipboard write has
 	// to be wrapped in its passthrough (copymode.go). It is read once, from
 	// TERM, because a terminal does not change what it is mid-session.
@@ -1348,6 +1361,10 @@ func (a *app) paint() tea.Cmd {
 	// clock here that ANSWERS at expiry rather than stopping asking, because it
 	// is the one question the engine is blocked on.
 	a.tickAsk()
+	// AND THE REWIND ARM RUNS DOWN HERE TOO (rewind.go): the half-second the first
+	// esc buys, and the sentence the mode says when there is nothing to cut. Both
+	// are windows with an end, and neither is worth a goroutine.
+	a.rewindSweep()
 	// AND THE CLOCK OUTLIVES THE TURN when a node does. A task runs for minutes
 	// with no stream open: its spinner, its count-up and the countdown above are
 	// the third reason this surface asks for a frame while the model is idle.
@@ -1357,6 +1374,11 @@ func (a *app) paint() tea.Cmd {
 	// must not depend on a second fact staying true.
 	if a.state == stateWorking || a.welcome.animating() || a.tasksAnimating() ||
 		a.askAnimating() ||
+		// AND THE REWIND ARM IS THE SEVENTH, and the only one of them that turns
+		// with nothing on screen moving at all: the hint slot says "esc again to
+		// rewind" for half a second, and something has to be drawing the frame
+		// that takes it away again (rewind.go).
+		a.rewindTicking() ||
 		// A BROWSER SOMEBODY IS STANDING IN IS THE SIXTH, and it is the only one
 		// of them that can be the whole of what is happening: no turn is
 		// running while a person signs in, so without this the waiting line's
@@ -2279,6 +2301,15 @@ func (a *app) showAll(i int) {
 // press resolves a click to the row it landed on. A click that lands on
 // nothing does nothing: this surface has no empty-space gesture.
 func (a *app) press(x, y int) {
+	// THE REWIND MODE TAKES EVERY PRESS ON THE BODY while it is up, because while
+	// it is up the transcript is not a conversation to open things in — it is the
+	// picker (rewind.go). A click chooses the cut, the cut line commits, and a
+	// press on anything else does nothing rather than expanding a call that is
+	// about to be dropped.
+	if a.rew.on {
+		a.rewindPress(y)
+		return
+	}
 	// The welcome box gets the click first, because while it is up it is the
 	// thing between the pointer and everything else: a recent session opens,
 	// and anywhere else is the person reaching past the box, which is what

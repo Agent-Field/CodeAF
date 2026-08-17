@@ -54,6 +54,11 @@ const (
 	// other settles whether the work goes at all — and [app.choicePress] must not
 	// resolve a press on one against the other's columns.
 	hitModel
+	// hitRewind is the rewind mode's cut line (rewind.go): a click on it commits
+	// the cut it is drawn at. It is the one hit on this surface that belongs to a
+	// row nothing in the conversation produced — the line is drawn between two
+	// blocks, and it exists only while the mode is up.
+	hitRewind
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -168,6 +173,11 @@ func (a *app) layout(width int) []row {
 		}
 		out = append(out, row{text: line, entry: -1})
 	}
+	// THE CUT, SECOND TO LAST. A rewind being chosen is a property of the screen
+	// too — the line between two blocks, and the wash over everything under it —
+	// so it is applied to finished rows here for [app.hoverPass]'s reason, one
+	// pass above it (rewind.go).
+	out = a.rewindPass(out, width)
 	// THE POINTER, LAST. Hover is a property of the screen and not of the
 	// conversation, so it is applied to finished rows in one pass here rather
 	// than threaded through six renderers (hover.go).
@@ -1609,6 +1619,8 @@ func (a *app) legendRight(width int) string {
 //	the picker is open    enter switch · esc
 //	the sessions are up   enter open · esc
 //	copy mode is on       v select · y yank · esc
+//	rewind is armed       esc again to rewind        (rewind.go's double esc)
+//	rewind mode is up     nothing — the mode bar prints its own keys
 //	the welcome box is up ↑↓ recent · enter open
 //	a path is completing  tab take · enter run · esc
 //	a list is open        ↑↓ · enter · esc
@@ -1642,6 +1654,23 @@ func (a *app) hintWord() string {
 		return "enter open · esc"
 	case a.copy.on:
 		return "v select · y yank · esc"
+	case a.rew.on:
+		// The rewind mode prints its own keys in the bar that replaced the draft
+		// box (rewind.go), and a slot repeating them would be the surface saying
+		// the same thing twice on one screen.
+		return ""
+	case a.rewindArmed() && a.rewindReady():
+		// The first esc has landed and the second one means something else for
+		// half a second. This outranks "esc interrupt" below for exactly that
+		// reason: while the window is open, that is no longer what the key does.
+		//
+		// It asks [app.rewindReady] as well as the clock, because the two can come
+		// apart: a question can be raised in the half second the window is open,
+		// and from that moment esc belongs to the question. The slot promises what
+		// the NEXT esc does, so it has to ask the same thing that key will.
+		return rewindArmWord
+	case a.rewindSaying():
+		return a.rewSay
 	case a.welcome.open:
 		// The box reads two keys and hands back the rest (welcome.go), and the
 		// arrows only mean the list while the draft is empty — which is exactly

@@ -49,6 +49,12 @@ const (
 	// hoverWelcome is one recent-session row of the welcome box; index is its
 	// slot (welcome.go).
 	hoverWelcome
+	// hoverRewind is a CUT the pointer is offering while the rewind mode is up
+	// (rewind.go); index is the point a click would choose. It is a kind of its
+	// own rather than a hoverEntry because the row that brightens is not the row
+	// under the pointer — it is the block the cut would land above, which is
+	// wherever the nearest point at or above the pointer happens to be.
+	hoverRewind
 	// hoverJump is the jump-to-latest chip floating in the frame's breathing gap
 	// (jumpchip.go). It is the one hover target on this surface that is narrower
 	// than the row it is drawn on, which is why [app.hoverTarget] is asked the
@@ -105,6 +111,24 @@ func (a *app) setHover(x, y int) {
 // conversation is asked first and the chrome after it, in the order the frame
 // draws them.
 func (a *app) hoverTarget(x, y int) hoverAt {
+	// THE REWIND MODE ANSWERS FOR THE WHOLE TRANSCRIPT while it is up: every row
+	// is a cut point, and what the pointer is over is WHICH CUT (rewind.go). It is
+	// asked first because none of the ordinary targets below mean anything in a
+	// mode where a click cannot open a call — brightening a tool row a person is
+	// about to drop would be the surface offering a door it has closed.
+	if a.rew.on {
+		if r, ok := a.rowAt(y); ok {
+			switch {
+			case r.hit == hitRewind:
+				return hoverAt{kind: hoverRewind, index: a.rew.at}
+			case r.entry >= 0:
+				if at := a.rewindPointAtEntry(r.entry); at >= 0 {
+					return hoverAt{kind: hoverRewind, index: at}
+				}
+			}
+		}
+		return hoverAt{}
+	}
 	if r, ok := a.rowAt(y); ok {
 		switch {
 		case r.hit == hitFold:
