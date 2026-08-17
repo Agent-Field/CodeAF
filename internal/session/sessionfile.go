@@ -379,7 +379,13 @@ func partKey(part ai.ContentPart) string {
 // leave two processes reading the same file concurrently and only then finding
 // out one of them must back off, and the loser would have paid for a replay it
 // cannot use. Locked first, the loser fails at the door.
-func openSessionFile(path, cwd, model string) (*sessionFile, []ai.Message, error) {
+// id is the name the header of a FRESHLY CREATED file carries, and it is the
+// caller's rather than this function's because a session is a folder named by
+// its id (place.go): the folder has to be minted before the transcript inside
+// it can be, so by the time the journal is opened the id already exists. Empty
+// is the legacy flat layout, where nobody outside had an opinion and the file
+// names itself. A resumed file keeps the id it was written with either way.
+func openSessionFile(path, cwd, model, id string) (*sessionFile, []ai.Message, error) {
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, nil, fmt.Errorf("session file: %w", err)
@@ -414,7 +420,10 @@ func openSessionFile(path, cwd, model string) (*sessionFile, []ai.Message, error
 	if !replayed.existed {
 		// The header names the session once. A resumed file keeps its
 		// original: the id is what a second window looks a session up by.
-		journal.id = newSessionID()
+		journal.id = strings.TrimSpace(id)
+		if journal.id == "" {
+			journal.id = NewSessionID()
+		}
 		journal.writeLine(sessionHeader{
 			Type:      "session",
 			Version:   sessionFileVersion,
@@ -923,9 +932,42 @@ func (s *sessionFile) Close() error {
 
 func stamp() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
-// newSessionID is 16 random hex characters: enough to name every session a
+// InUse reports whether another aforge is holding this transcript open.
+//
+// It is the same flock [lockSessionFile] takes, asked as a question rather than
+// as a claim: the lock is tried and released at once, so the answer is "somebody
+// else has it right now" and nothing is left behind. A migration and a launch
+// groom both need it — moving or removing a session another window is writing
+// is the one way either of them could cost somebody a live conversation — and
+// both would rather skip a folder than take one.
+//
+// A file that is not there, cannot be opened, or sits on a filesystem with no
+// locking answers FALSE, for the reason [lockSessionFile] opens unlocked on such
+// a filesystem: the guard is worth having where it works and is never worth
+// refusing the work over.
+func InUse(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	if err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
+		return errors.Is(err, unix.EWOULDBLOCK)
+	}
+	_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+	return false
+}
+
+// NewSessionID is 16 random hex characters: enough to name every session a
 // machine will ever hold without a coordinator.
-func newSessionID() string {
+//
+// It is EXPORTED because the folder is named by it (place.go): the surface
+// mints the id, makes the directory, and hands the same id back here for the
+// header — one law for what a session id is, applied at both ends.
+func NewSessionID() string {
 	var raw [8]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		// crypto/rand failing is not a reason to refuse to open a session.

@@ -323,7 +323,7 @@ func assertWellFormed(t *testing.T, messages []ai.Message) {
 
 func TestSessionFileJournalsToolCallsAndCompaction(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	journal, _, err := openSessionFile(path, "/w", "m")
+	journal, _, err := openSessionFile(path, "/w", "m", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -496,7 +496,7 @@ func TestSessionFileReleasesTheLockOnAFailedOpen(t *testing.T) {
 	write(t, path,
 		`{"type":"session","version":99,"id":"abc","cwd":"/w","model":"m","timestamp":"t"}`,
 	)
-	if _, _, err := openSessionFile(path, "/w", "m"); err == nil {
+	if _, _, err := openSessionFile(path, "/w", "m", ""); err == nil {
 		t.Fatal("a newer-format file opened")
 	}
 
@@ -505,7 +505,7 @@ func TestSessionFileReleasesTheLockOnAFailedOpen(t *testing.T) {
 	write(t, path,
 		`{"type":"session","version":1,"id":"abc","cwd":"/w","model":"m","timestamp":"t"}`,
 	)
-	journal, _, err := openSessionFile(path, "/w", "m")
+	journal, _, err := openSessionFile(path, "/w", "m", "")
 	if err != nil {
 		t.Fatalf("open after a failed open: %v", err)
 	}
