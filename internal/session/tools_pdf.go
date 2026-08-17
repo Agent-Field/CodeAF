@@ -20,7 +20,15 @@ package session
 //
 // This is backgroundBash's shape exactly (tools_jobs.go): find pi's tool in the
 // belt, wrap it, hand every call it does not claim to the inner tool verbatim.
-// The wrapper owns one question — is this a PDF — and pi owns everything else.
+//
+// THE WRAPPER ITSELF NOW LIVES IN tools_sense.go, because the argument above
+// generalized. A PDF was the first file whose meaning lived one decode deeper
+// than its bytes; a photograph, a recording and a film are the next three, and
+// four wrappers chained around one tool would each parse the same arguments,
+// resolve the same path, and let their ORDER silently decide which sense claims
+// a file two of them could read. So one wrapper sniffs once and routes, and
+// this file keeps what is genuinely its own: the local, free, in-binary rung,
+// and pi's truncation law that every other rung borrows.
 //
 // THE ANSWER OBEYS PI'S TRUNCATION LAW, not a second one. Extracted text is
 // text, a 400-page manual is a large file, and a model that learned "output is
@@ -32,8 +40,6 @@ package session
 // internal/exec/bare/truncate.go and the sentences to bare's read tool.
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -52,80 +58,55 @@ import (
 // around.
 const pdfSentence = " PDF files are read as extracted text (local, fast); scanned PDFs without a text layer cannot be read this way — read_document reads those."
 
-// pdfMagic is the header every PDF starts with. The sniff exists because a
-// person's file is not always named helpfully — a downloaded attachment, a
-// tempfile, a document with no extension at all — and the bytes are the truth
-// the extension only claims.
-const pdfMagic = "%PDF-"
-
-// pdfRead wraps bare's read: the same tool, with one more kind of file it can
-// answer for.
+// pdfRead is the belt's seam onto the wrapper (tools.go's one line), kept under
+// its old name because that line belongs to another lane this wave and a rename
+// that changes no behaviour is not worth a cross-lane edit. It collapses into
+// senseRead at the call site when the wave merges.
 //
-// A call whose path is not a PDF reaches the inner tool with its bytes
-// untouched — same offset/limit handling, same errors, same wire text — so the
-// overwhelmingly common case pays one 5-byte read and nothing else.
-func (a *Agent) pdfRead(inner bare.Tool) bare.Tool {
-	return bare.Tool{
-		Name:        inner.Name,
-		Description: inner.Description + pdfSentence,
-		Schema:      inner.Schema,
-		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
-			var parsed struct {
-				Path   string `json:"path"`
-				Offset *int   `json:"offset"`
-				Limit  *int   `json:"limit"`
-			}
-			// Arguments that do not parse belong to bare: it owns the wording of
-			// every other read error, and a second parser reporting the same
-			// fault in different words helps nobody.
-			if err := json.Unmarshal(args, &parsed); err != nil {
-				return inner.Execute(ctx, args)
-			}
-			absolute := resolveInWorkspace(parsed.Path, a.config.Workspace)
-			if !isPDF(absolute) {
-				return inner.Execute(ctx, args)
-			}
-			// A file that is not there — or not readable — is bare's sentence,
-			// not a PDF sentence. The name ending in .pdf is a claim about a
-			// file that does not exist yet, and "Error reading file: no such
-			// file" is the answer to the question the model actually asked.
-			if _, err := os.Stat(absolute); err != nil {
-				return inner.Execute(ctx, args)
-			}
+// STUB(media/belt): rename this away once tools.go is one lane's again.
+func (a *Agent) pdfRead(inner bare.Tool) bare.Tool { return a.senseRead(inner) }
 
-			text, err := pdfx.Extract(absolute)
-			switch {
-			case err == nil:
-				return piReadLaw(text, parsed.Offset, parsed.Limit), false, nil
+// pdfSense is the local rung: extract the text layer in-binary and page it by
+// pi's law. shown is the path AS THE MODEL WROTE IT, because every sentence
+// below quotes it back and a model that asked about `spec.pdf` should not be
+// answered about `/home/…/spec.pdf`.
+//
+// It is only ever called for a file the sniff already claimed and the stat
+// already found, so there is no "not a PDF" and no "no such file" branch left
+// in it — those are the wrapper's, and bare still owns the wording of the
+// second one.
+func (a *Agent) pdfSense(shown, absolute string, offset, limit *int) (string, bool, error) {
+	text, err := pdfx.Extract(absolute)
+	switch {
+	case err == nil:
+		return piReadLaw(text, offset, limit), false, nil
 
-			case errors.Is(err, pdfx.ErrNoTextLayer):
-				// The honest sentence, and the way out in the same breath. A
-				// scanned document is not a failure of this tool — it is the
-				// point where the ladder's next rung starts, and the model is
-				// told which rung rather than left to invent one.
-				//
-				// It names A TOOL and not a ladder, and that is the whole
-				// lesson of this wave: "the document_engine ladder's OCR rungs
-				// can read it" was true, unactionable, and answered in the
-				// field by `pip install easyocr`. A way out the model cannot
-				// call is not a way out (tools_doc.go).
-				var scanned *pdfx.NoTextLayerError
-				pages := 0
-				if errors.As(err, &scanned) {
-					pages = scanned.Pages
-				}
-				return fmt.Sprintf(
-					"%s is a scanned PDF with no text layer (%s, images only). No local text to read; use read_document (the OCR rung) or paste a page as an image.",
-					parsed.Path, pageCount(pages),
-				), false, nil
+	case errors.Is(err, pdfx.ErrNoTextLayer):
+		// The honest sentence, and the way out in the same breath. A scanned
+		// document is not a failure of this tool — it is the point where the
+		// ladder's next rung starts, and the model is told which rung rather
+		// than left to invent one.
+		//
+		// It names A TOOL and not a ladder, and that is the whole lesson of
+		// that wave: "the document_engine ladder's OCR rungs can read it" was
+		// true, unactionable, and answered in the field by `pip install
+		// easyocr`. A way out the model cannot call is not a way out
+		// (tools_doc.go).
+		var scanned *pdfx.NoTextLayerError
+		pages := 0
+		if errors.As(err, &scanned) {
+			pages = scanned.Pages
+		}
+		return fmt.Sprintf(
+			"%s is a scanned PDF with no text layer (%s, images only). No local text to read; use read_document (the OCR rung) or paste a page as an image.",
+			shown, pageCount(pages),
+		), false, nil
 
-			default:
-				// A result, not a harness error: the model reads the sentence and
-				// adapts — a different file, a different rung, or asking the
-				// person — where a raised error would only end the turn.
-				return fmt.Sprintf("could not extract text from %s: %v", parsed.Path, err), true, nil
-			}
-		},
+	default:
+		// A result, not a harness error: the model reads the sentence and
+		// adapts — a different file, a different rung, or asking the person —
+		// where a raised error would only end the turn.
+		return fmt.Sprintf("could not extract text from %s: %v", shown, err), true, nil
 	}
 }
 
@@ -136,27 +117,6 @@ func pageCount(pages int) string {
 		return "1 page"
 	}
 	return strconv.Itoa(pages) + " pages"
-}
-
-// isPDF answers the wrapper's one question: extension first because it is free
-// and right nearly always, magic bytes second because a file's name is a claim
-// and its first five bytes are a fact. A file that cannot be opened is not
-// claimed — bare owns the wording for that, and it is about to say it.
-func isPDF(absolute string) bool {
-	if strings.EqualFold(filepath.Ext(absolute), ".pdf") {
-		return true
-	}
-	file, err := os.Open(absolute)
-	if err != nil {
-		return false
-	}
-	defer file.Close()
-	header := make([]byte, len(pdfMagic))
-	read, err := file.Read(header)
-	if err != nil || read < len(pdfMagic) {
-		return false
-	}
-	return string(header) == pdfMagic
 }
 
 // resolveInWorkspace mirrors bare's resolveToCwd (internal/exec/bare/tools.go),
