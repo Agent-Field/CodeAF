@@ -592,7 +592,8 @@ func TestTheConnectPanelStartsTheSignIn(t *testing.T) {
 	a.width = 100
 	typeLine(t, a, "/connect")
 	// The connected account sits at the top of the list now, so the row on offer
-	// is the one under it (connectpanel.go's [orderConnections]).
+	// is the one under it (connectcaps.go's [groupConnections], which is what the
+	// panel groups through).
 	drive(t, a, key("down"), key("enter"))
 
 	if len(conns.began) != 1 || conns.began[0] != "google" {

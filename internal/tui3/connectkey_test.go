@@ -251,9 +251,9 @@ func bigCatalog(n int) []connect.Status {
 	}}
 	for i := 0; i < n; i++ {
 		id := "svc" + itoa(i)
-		auth := authBrowser
+		auth := connect.AuthBrowser
 		if i%2 == 1 {
-			auth = authKey
+			auth = connect.AuthKey
 		}
 		rows = append(rows, connect.Status{Service: connect.Service{
 			ID: id, Name: "Service " + itoa(i), Blurb: "what " + id + " is for", Auth: auth,
@@ -261,7 +261,7 @@ func bigCatalog(n int) []connect.Status {
 	}
 	// One row with a name worth searching for, and a key rather than a sign-in.
 	rows = append(rows, connect.Status{Service: connect.Service{
-		ID: "notion", Name: "Notion", Blurb: "your pages", Auth: authKey,
+		ID: "notion", Name: "Notion", Blurb: "your pages", Auth: connect.AuthKey,
 	}})
 	return rows
 }
@@ -533,16 +533,309 @@ func TestTheConnectPanelDoesNotRefilterOnEveryPaint(t *testing.T) {
 	}
 }
 
-// AND THE PANEL IS EXACTLY AS TALL AS IT SAID IT WOULD BE, gap included: a block
-// a line short of its own count leaves the frame a line short of the terminal.
+// AND THE PANEL IS EXACTLY AS TALL AS IT SAID IT WOULD BE, gap and headings
+// included: a block a line short of its own count leaves the frame a line short
+// of the terminal. Both catalogs, because the lines that are not rows are
+// different in each — a blank in the flat one, a word per group in the other —
+// and both are counted by [connectPanel.height] and drawn by
+// [connectPanel.draw], which is two places that must agree.
 func TestTheConnectPanelDrawsTheHeightItAsksFor(t *testing.T) {
-	for _, width := range []int{100, 44} {
-		_, a, _ := panelApp(t, bigCatalog(40))
-		a.width = width
-		typeLine(t, a, "/connect")
-		want := a.overlayHeight()
-		if got := len(a.overlayRows(a.width, want)); got != want {
-			t.Fatalf("at width %d the panel asked for %d lines and drew %d", width, want, got)
+	for _, rows := range [][]connect.Status{bigCatalog(40), catalog} {
+		for _, width := range []int{100, 44} {
+			_, a, _ := panelApp(t, append([]connect.Status(nil), rows...))
+			a.width = width
+			typeLine(t, a, "/connect")
+			// At the top of the list, and then scrolled into the middle of it,
+			// where a heading can fall on the window's first line.
+			for step := 0; step < 6; step++ {
+				want := a.overlayHeight()
+				if got := len(a.overlayRows(a.width, want)); got != want {
+					t.Fatalf("at width %d, %d rows in, the panel asked for %d lines and drew %d",
+						width, step, want, got)
+				}
+				drive(t, a, key("down"))
+			}
 		}
 	}
+}
+
+// ── 3. the catalog's own words, in the panel ────────────────────────────────
+//
+// /connect and the settings sheet's Connections tab list ONE catalog, so they
+// group it through one pair of functions (connectcaps.go's [groupConnections]
+// and [filterConnections]). What follows is the panel's half of that: the shape
+// those functions draw here, and the assertion that the two surfaces cannot
+// drift apart without a test going red.
+
+// panelCatalog opens /connect over a copy of the rows — the fake writes back
+// into what it is given when a service is disconnected, and a table shared
+// between tests is a test reading the account another one dropped.
+func panelCatalog(t *testing.T, rows []connect.Status) *app {
+	t.Helper()
+	_, a, _ := panelApp(t, append([]connect.Status(nil), rows...))
+	a.width = 100
+	typeLine(t, a, "/connect")
+	if !a.connPanel.open {
+		t.Fatal("/connect opened nothing")
+	}
+	return a
+}
+
+// panelHeads is every category word the panel's list carries, in the order it
+// carries them.
+func panelHeads(p *connectPanel) []string {
+	out := []string{}
+	for at := range p.hits {
+		if head := p.headBefore(at); head != "" {
+			out = append(out, head)
+		}
+	}
+	return out
+}
+
+// panelOrder is every service the panel's list holds, in the order it draws
+// them.
+func panelOrder(p *connectPanel) []string {
+	out := []string{}
+	for at := range p.hits {
+		if row, ok := p.at(at); ok {
+			out = append(out, row.ID)
+		}
+	}
+	return out
+}
+
+// WHAT YOU HAVE IS FLAT AND FIRST; WHAT YOU COULD HAVE IS UNDER ITS CATEGORY.
+// The held accounts carry no word over them, and every group below them carries
+// exactly one — alphabetical, with "other" last.
+func TestTheConnectPanelDrawsHeldAccountsFlatThenCategories(t *testing.T) {
+	a := panelCatalog(t, catalog)
+	p := &a.connPanel
+
+	order := panelOrder(p)
+	if len(order) < 2 || order[0] != "google" || order[1] != "slack" {
+		t.Fatalf("the held accounts are not the first two rows: %v", order)
+	}
+	// No heading over them, and none over the first of them either: a word
+	// labelling what the ticks already said would be furniture.
+	if p.headBefore(0) != "" || p.headBefore(1) != "" {
+		t.Fatalf("the held accounts grew a heading: %q / %q", p.headBefore(0), p.headBefore(1))
+	}
+	// The tab's order, because it is the tab's function: alphabetical, "other"
+	// last, and no "productivity" — both of its services are held.
+	want := []string{"billing", "calls & meetings", "crm", "developer", "support", otherWord}
+	if got := panelHeads(p); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("the panel's categories read %v, want %v", got, want)
+	}
+	// And the word stands IN FRONT OF the first row of its group.
+	if p.headBefore(2) != "billing" || order[2] != "stripe" {
+		t.Fatalf("the first catalog row is %q under %q", order[2], p.headBefore(2))
+	}
+
+	// On screen it is a dim line of its own that answers to no service.
+	lines := plainOverlay(a)
+	at := headingLine(t, a, "billing")
+	if got := strings.TrimSpace(lines[at]); got != "billing" {
+		t.Fatalf("line %d is %q, want the billing heading", at, got)
+	}
+	if p.owner[at] != -1 {
+		t.Fatalf("the heading answers to row %d", p.owner[at])
+	}
+}
+
+// THE PANEL AND THE TAB GROUP THE SAME CATALOG THE SAME WAY, because they group
+// it through the same two functions. A future edit that gave either surface its
+// own ordering is an edit that fails here.
+func TestTheConnectPanelAndTheSettingsTabAgreeOnTheCatalog(t *testing.T) {
+	a := panelCatalog(t, catalog)
+	b, _ := capsApp(t, catalog)
+	// Nothing expanded, so the tab's rows are the services and their headings and
+	// nothing else.
+	b.sheet.conn.expanded = ""
+	b.sheet.build()
+
+	if got, want := panelOrder(&a.connPanel), serviceOrder(b); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("the panel lists %v and the tab lists %v", got, want)
+	}
+	if got, want := panelHeads(&a.connPanel), headings(b); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("the panel heads %v and the tab heads %v", got, want)
+	}
+	// And both of them are what [groupConnections] said, which is the thing that
+	// must not be forked: two surfaces sorting one catalog separately would
+	// eventually disagree about which category Stripe is in.
+	heads, order := []string{}, []string{}
+	for _, group := range groupConnections(catalog) {
+		if group.head != "" {
+			heads = append(heads, group.head)
+		}
+		for _, row := range group.rows {
+			order = append(order, row.ID)
+		}
+	}
+	if got := panelOrder(&a.connPanel); strings.Join(got, "|") != strings.Join(order, "|") {
+		t.Fatalf("the panel's order %v is not the grouping's %v", got, order)
+	}
+	if got := panelHeads(&a.connPanel); strings.Join(got, "|") != strings.Join(heads, "|") {
+		t.Fatalf("the panel's headings %v are not the grouping's %v", got, heads)
+	}
+}
+
+// THE FILTER MATCHES THE CATEGORY AS WELL AS THE NAME, a name hit outranks a
+// category hit, and the held accounts stay pinned above both.
+func TestTheConnectPanelFilterReachesCategoriesAndRanksNamesFirst(t *testing.T) {
+	for _, test := range []struct {
+		word  string
+		lead  []string
+		heads []string
+		// all says the words above are the whole of what the filter left.
+		all bool
+	}{
+		// A category word reaches three services whose names do not contain it,
+		// and nothing else at all.
+		{word: "billing", lead: []string{"stripe", "chargebee", "recurly"}, all: true},
+		// A name reaches its own service first, above the ten things filed
+		// beside it.
+		{word: "stri", lead: []string{"stripe"}, all: true},
+		// And a letter that reaches both halves of the list leaves the accounts
+		// this profile HAS on top, even though "linear" is the better hit: what a
+		// person already has is not a search result.
+		{word: "l", lead: []string{"google", "slack"}},
+	} {
+		a := panelCatalog(t, catalog)
+		typeInto(t, a, test.word)
+		order := panelOrder(&a.connPanel)
+		if len(order) < len(test.lead) {
+			t.Fatalf("%q left %v, want %v in front", test.word, order, test.lead)
+		}
+		for i, want := range test.lead {
+			if order[i] != want {
+				t.Fatalf("%q ranked %v, want %v in front", test.word, order, test.lead)
+			}
+		}
+		if test.all && len(order) != len(test.lead) {
+			t.Fatalf("%q left %v, want exactly %v", test.word, order, test.lead)
+		}
+	}
+
+	// While a filter is on, a heading says how many of its services it left —
+	// the tab's own rule for the same word.
+	a := panelCatalog(t, catalog)
+	typeInto(t, a, "billing")
+	heads := panelHeads(&a.connPanel)
+	if len(heads) != 1 || !strings.HasPrefix(heads[0], "billing") || !strings.Contains(heads[0], "3") {
+		t.Fatalf("the filtered heading reads %v", heads)
+	}
+	// The held group is gone from this one, so the first row on screen is the
+	// heading rather than an account nobody asked about.
+	if got := panelOrder(&a.connPanel); len(got) == 0 || got[0] != "stripe" {
+		t.Fatalf("the filtered list opens on %v", got)
+	}
+	// "linear" is somewhere under the held accounts and not missing from a
+	// narrowing that found it.
+	b := panelCatalog(t, catalog)
+	typeInto(t, b, "l")
+	if !strings.Contains(strings.Join(panelOrder(&b.connPanel), "|"), "linear") {
+		t.Fatalf("the name hit was dropped: %v", panelOrder(&b.connPanel))
+	}
+}
+
+// A HEADING IS A LABEL AND NOT A ROW. ↑↓ step over it, pgdn steps over it, and a
+// press on one does nothing rather than acting on whichever row it was nearest.
+func TestTheConnectPanelCursorNeverLandsOnAHeading(t *testing.T) {
+	a := panelCatalog(t, catalog)
+	p := &a.connPanel
+
+	// Every step through the whole list, in both directions and by the page: the
+	// cursor is always on a service, because a heading has no index it could
+	// hold.
+	for _, walk := range []string{"down", "up", "pgdown", "pgup"} {
+		for i := 0; i < len(p.hits)+2; i++ {
+			drive(t, a, key(walk))
+			row, ok := p.choice()
+			if !ok || row.ID == "" {
+				t.Fatalf("%s %d left the cursor on nothing", walk, i)
+			}
+			// The line the cursor is drawn on is a row and never a word.
+			lines := plainOverlay(a)
+			for at, line := range lines {
+				if p.owner[at] >= 0 || strings.TrimSpace(line) == "" {
+					continue
+				}
+				if strings.Contains(line, glyphIdle) || strings.Contains(line, glyphConnected) {
+					t.Fatalf("a line belonging to no service is drawing one: %q", line)
+				}
+			}
+		}
+	}
+
+	// And the pointer. The cursor is put somewhere known first, so what is under
+	// test is that the press changed NOTHING.
+	p.cursor = 0
+	y := headingRow(t, a, "billing")
+	a.connectPanelPress(y)
+	if p.cursor != 0 {
+		t.Fatalf("a press on a heading moved the cursor to %d", p.cursor)
+	}
+	if p.armed != "" {
+		t.Fatalf("a press on a heading armed %q", p.armed)
+	}
+	if p.entry != nil || !p.open {
+		t.Fatal("a press on a heading opened or closed something")
+	}
+}
+
+// A CATALOG THAT SAYS NOTHING ABOUT CATEGORIES IS THE LIST THIS PANEL ALWAYS
+// DREW: connected, one blank row, the rest. The grouping keys off the field
+// being filled, so the order this branch and the one that fills it land in
+// cannot break anything.
+func TestAConnectPanelWithoutCategoriesKeepsItsBlankGap(t *testing.T) {
+	a := panelCatalog(t, bigCatalog(12))
+	p := &a.connPanel
+	if got := panelHeads(p); len(got) != 0 {
+		t.Fatalf("a catalog with no categories grew headings: %v", got)
+	}
+	if order := panelOrder(p); len(order) < 2 || order[0] != "slack" {
+		t.Fatalf("the held account is not the first row: %v", order)
+	}
+	lines := plainOverlay(a)
+	if len(lines) < 3 || !strings.Contains(lines[0], "Slack") {
+		t.Fatalf("the panel opens on %q", strings.Join(lines, "\n"))
+	}
+	if strings.TrimSpace(lines[1]) != "" {
+		t.Fatalf("the second line is not the gap between the sections: %q", lines[1])
+	}
+	if p.owner[1] != -1 {
+		t.Fatalf("the gap answers to row %d", p.owner[1])
+	}
+	if !strings.Contains(lines[2], "Service 0") {
+		t.Fatalf("the catalog does not start under the gap: %q", lines[2])
+	}
+}
+
+// headingLine is the index of a heading within the panel's block.
+func headingLine(t *testing.T, a *app, word string) int {
+	t.Helper()
+	for at, line := range plainOverlay(a) {
+		if strings.TrimSpace(line) == word {
+			return at
+		}
+	}
+	t.Fatalf("the panel drew no %q heading:\n%s", word, strings.Join(plainOverlay(a), "\n"))
+	return -1
+}
+
+// headingRow is the SCREEN row a heading was drawn on, resolved the way
+// [app.chromeAt] resolves it backwards.
+func headingRow(t *testing.T, a *app, word string) int {
+	t.Helper()
+	at := headingLine(t, a, word)
+	_ = frame(a)
+	_, marks, _, _ := a.chrome(a.width)
+	for i, mark := range marks {
+		if mark.kind == chromeOverlay && mark.index == at {
+			return a.height - len(marks) + i
+		}
+	}
+	t.Fatalf("the %q heading has no place on the frame", word)
+	return -1
 }

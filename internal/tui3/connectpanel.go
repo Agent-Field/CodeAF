@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -39,13 +38,25 @@ import (
 //     filter was. On a connected row it asks once and disconnects on the second
 //     press: an account is a thing somebody else's session may be using, and one
 //     keystroke is not enough of a decision to drop it.
-//   - CONNECTED FIRST, THEN A GAP, THEN THE REST. The list answers two questions
-//     and they are not the same question: "what have I got" is a handful of rows
-//     a person recognizes, and "what else is there" is a catalog. Putting the
-//     first above the second, separated by one blank row, means the answer to
-//     the first is never further than the top of the list — and the blank is a
-//     BLANK and not a rule, because a rule labelled "available" would be
-//     furniture explaining what two blank rows already said.
+//   - CONNECTED FIRST AND FLAT, THEN THE CATALOG UNDER ITS OWN WORDS. The list
+//     answers two questions and they are not the same question: "what have I
+//     got" is a handful of rows a person recognizes, and "what else is there" is
+//     a catalog of a few hundred. So the accounts this profile HAS sit at the
+//     top with no heading over them — a rule labelled "connected" would be
+//     furniture explaining what the ticks already said, and six rows a person
+//     recognizes need no word to be found by — and everything underneath is
+//     grouped by category, one dim lowercase word per group, alphabetical with
+//     "other" last. THE WORDS ARE NOT THIS FILE'S. The grouping and the filter
+//     over it are [groupConnections] and [filterConnections] (connectcaps.go),
+//     called from here, because the settings sheet's Connections tab lists the
+//     same catalog and two surfaces that sorted it separately would eventually
+//     disagree about which category Stripe is in. A HEADING IS A LABEL AND NOT A
+//     ROW: ↑↓ step over it, it belongs to no service, and a press on it does
+//     nothing rather than acting on whichever row it was nearest. And where no
+//     service declares a category at all the grouping comes back as ONE UNHEADED
+//     GROUP, which is this panel's older shape exactly — connected, one blank
+//     row, the rest — so a catalog gaining its categories changes what the list
+//     SAYS and never what it is.
 //   - PAST TEN AVAILABLE IT IS A LIST YOU SEARCH, not one you read. A catalog of
 //     a few hundred services cannot be walked with ↓, so the box under it
 //     becomes a filter and the list narrows as it is typed into — the palette
@@ -100,21 +111,34 @@ type keyEntry struct {
 type connectPanel struct {
 	open bool
 
-	// all is the catalog in the order this panel draws it — connected first,
-	// then the rest, each half in the order the engine handed it over. lower is
-	// the same rows folded once at open, which is what the filter matches
-	// against: narrowing runs on every keystroke over every row, and lowercasing
-	// three hundred names on each of them is the one cost this path cannot pay
-	// per frame. score is per-row scratch, reused across keystrokes.
-	all   []connect.Status
-	lower []string
-	score []int
+	// groups is the catalog as a person browses it — the held accounts, then one
+	// category per group — and all is those same rows flattened, which is the
+	// STABLE SLICE everything else in here indexes into. Both are built once per
+	// reading of the engine and never per keystroke and never per frame: the
+	// catalog is heading for a couple of hundred services, and a grouping sort
+	// per repaint is the difference between a filter that types and one that
+	// lags (connectcaps.go says it first, about the same two functions).
+	groups []connGroup
+	all    []connect.Status
+	// where is a service's id to its place in all, which is how a row that came
+	// back through the filter finds its way home: [filterConnections] answers in
+	// [connect.Status] values rather than in indexes, because it is shared with a
+	// sheet that has no flat slice at all.
+	where map[string]int
 
 	// hits are indexes into all, in the order they are drawn — the rows actually
-	// on offer. THE SLICE IS BUILT WHEN THE QUERY CHANGES AND NEVER WHEN THE
-	// FRAME IS PAINTED: a paint runs many times a second and a keystroke does
-	// not, so the filtering belongs to the keystroke.
-	hits []int
+	// on offer — and heads is the category label drawn IN FRONT of each of them,
+	// or "" for the ones that open no group. THE TWO SLICES ARE BUILT WHEN THE
+	// QUERY CHANGES AND NEVER WHEN THE FRAME IS PAINTED: a paint runs many times
+	// a second and a keystroke does not, so the filtering belongs to the
+	// keystroke.
+	//
+	// A HEADING IS NOT A HIT. It is a line the draw emits in front of one, so
+	// there is no index a cursor could hold that points at a word — which is what
+	// makes ↑↓, pgup/pgdn and the pointer all step over the headings without any
+	// of them having to know the headings exist.
+	hits  []int
+	heads []string
 	// cursor indexes hits, and top is the first hit drawn.
 	cursor int
 	top    int
@@ -130,11 +154,12 @@ type connectPanel struct {
 	// question at a time.
 	entry *keyEntry
 
-	// armed is the row a second enter would disconnect, or -1. It is an index
-	// into ALL rather than into hits, because the query moves: an arm that
-	// survived a keystroke would be a confirmation a person gave about a
-	// different account.
-	armed int
+	// armed is the SERVICE a second enter would disconnect, by id, or "". It is
+	// the id rather than any row number because every number in this panel moves:
+	// the query re-ranks hits on each keystroke, and a re-read of the engine
+	// re-groups all — and an arm that survived either of those as an index would
+	// be a confirmation a person gave about one account standing on another.
+	armed string
 
 	// owner maps each screen line of the block back to the HIT that drew it —
 	// the geometry recorded at layout, which is the same bargain the approval
@@ -148,44 +173,28 @@ func (p *connectPanel) close() { *p = connectPanel{} }
 
 // start opens the panel over one reading of the services.
 func (p *connectPanel) start(rows []connect.Status) {
-	*p = connectPanel{open: true, armed: -1}
+	*p = connectPanel{open: true}
 	p.adopt(rows)
 }
 
 // adopt takes a fresh reading and rebuilds everything derived from it.
-func (p *connectPanel) adopt(rows []connect.Status) {
-	p.all = orderConnections(rows)
-	p.lower = make([]string, len(p.all))
-	for i, row := range p.all {
-		// The id is folded in beside the name because it is a word people know
-		// services by — "gh" finds GitHub through its id long before it finds it
-		// through its name.
-		p.lower[i] = strings.ToLower(row.Name + " " + row.ID)
-	}
-	p.score = make([]int, len(p.all))
-	p.filtering = availableCount(p.all) > connectFilterFloor
-	p.armed = -1
-	p.rank()
-}
-
-// orderConnections is the panel's one law about order: what this profile HAS,
-// then what it could have, each half in the order it arrived.
 //
-// It is a stable partition rather than a sort, so the engine's own order — which
-// is the catalog's — survives inside both halves.
-func orderConnections(rows []connect.Status) []connect.Status {
-	out := make([]connect.Status, 0, len(rows))
-	for _, row := range rows {
-		if row.Connected {
-			out = append(out, row)
+// THE ORDER IS THE GROUPING'S AND NOT THIS FILE'S. all is the groups flattened,
+// so the flat slice a hit indexes into is already in the order the list draws
+// it: the accounts this profile has, and then the catalog by category.
+func (p *connectPanel) adopt(rows []connect.Status) {
+	p.groups = groupConnections(rows)
+	p.all = make([]connect.Status, 0, len(rows))
+	p.where = make(map[string]int, len(rows))
+	for _, group := range p.groups {
+		for _, row := range group.rows {
+			p.where[row.ID] = len(p.all)
+			p.all = append(p.all, row)
 		}
 	}
-	for _, row := range rows {
-		if !row.Connected {
-			out = append(out, row)
-		}
-	}
-	return out
+	p.filtering = availableCount(p.all) > connectFilterFloor
+	p.armed = ""
+	p.rank()
 }
 
 // availableCount is how many services are on offer but not held.
@@ -199,70 +208,74 @@ func availableCount(rows []connect.Status) int {
 	return n
 }
 
-// rank re-filters against the filter box, with the picker's own scoring
-// (palette.go's [tokenScore]): every token must match, and each matches as a
-// prefix, a substring or a subsequence, in that order of preference.
+// rank re-filters against the filter box and lays the surviving groups out as
+// the flat run of rows this panel draws.
 //
-// CONNECTED STILL COMES FIRST, above the score. The section order is a law about
-// what the list IS and not a tie-break — a person who typed three letters is
-// narrowing the list, not asking it to forget which accounts they already hold —
-// so an account that matches at all stays above every service that is only on
-// offer.
+// THE NARROWING IS [filterConnections] AND NOT A SCORING OF THIS PANEL'S OWN,
+// which is the whole of what this wave changed here. The catalog's own words are
+// part of the match — typing "billing" has to reach Stripe and Chargebee and
+// Recurly, none of which contain it — and a name hit outranks a category hit,
+// because somebody typing "stripe" wants Stripe and not the eleven other things
+// filed beside it. The panel used to rank by [tokenScore] over a folded
+// "name id" string, which could answer neither question and answered the second
+// one differently from the settings sheet listing the same catalog.
+//
+// CONNECTED STILL COMES FIRST, above the ranking, and [filterConnections] is
+// where that is decided now: the held group is pinned whatever the scores say. A
+// person who typed three letters is narrowing the list, not asking it to forget
+// which accounts they already hold.
 func (p *connectPanel) rank() {
-	tokens := strings.Fields(strings.ToLower(p.filter.String()))
-	p.hits = p.hits[:0]
-	for i, text := range p.lower {
-		if len(tokens) == 0 {
-			p.score[i] = 0
-			p.hits = append(p.hits, i)
-			continue
-		}
-		total, matched := 0, true
-		for _, token := range tokens {
-			score, hit := tokenScore(text, token)
-			if !hit {
-				matched = false
-				break
-			}
-			total += score
-		}
-		if !matched {
-			continue
-		}
-		p.score[i] = total
-		p.hits = append(p.hits, i)
+	query := strings.ToLower(strings.TrimSpace(p.filter.String()))
+	groups := p.groups
+	if query != "" {
+		groups = filterConnections(groups, query)
 	}
-	if len(tokens) > 0 {
-		sort.SliceStable(p.hits, func(x, y int) bool {
-			a, b := p.hits[x], p.hits[y]
-			if p.all[a].Connected != p.all[b].Connected {
-				return p.all[a].Connected
+	p.hits, p.heads = p.hits[:0], p.heads[:0]
+	for _, group := range groups {
+		// The label carries a count while a filter is on, which is the tab's own
+		// rule for it and the one a person reads on the other surface.
+		head := group.label(query)
+		for _, row := range group.rows {
+			i, ok := p.where[row.ID]
+			if !ok {
+				// A row the grouping produced that the flattening did not: it
+				// cannot happen, and drawing a hit that indexes nothing would be
+				// the one way this panel could point at a stranger.
+				continue
 			}
-			return p.score[a] < p.score[b]
-		})
+			p.hits = append(p.hits, i)
+			// Only the group's FIRST surviving row carries its word. The heading
+			// is the line where the list changes subject, not a tag on every row
+			// under it.
+			p.heads = append(p.heads, head)
+			head = ""
+		}
 	}
 	// A changed query is a changed list, and a cursor left at row nine of the
 	// old one points at nothing anybody chose.
 	p.cursor, p.top = 0, 0
 }
 
+// move walks the list by ROWS, which is what keeps the cursor off the headings:
+// a heading has no place in hits, so there is no delta that can land on one and
+// no clamping rule needed to say so.
 func (p *connectPanel) move(delta int) {
 	p.cursor = moveCursor(p.cursor, delta, len(p.hits))
 	p.follow(connectRowsMax)
 	// Moving off a row un-asks the question that was asked about it.
-	p.armed = -1
+	p.armed = ""
 }
 
 func (p *connectPanel) follow(height int) {
 	p.top = listTop(p.cursor, p.top, len(p.hits), height)
 }
 
-// at resolves one hit: the row, its index in all, and whether there is one.
-func (p *connectPanel) at(hit int) (connect.Status, int, bool) {
-	if hit < 0 || hit >= len(p.hits) {
-		return connect.Status{}, -1, false
+// at resolves one hit: the row, and whether there is one.
+func (p *connectPanel) at(hit int) (connect.Status, bool) {
+	if hit < 0 || hit >= len(p.hits) || p.hits[hit] < 0 || p.hits[hit] >= len(p.all) {
+		return connect.Status{}, false
 	}
-	return p.all[p.hits[hit]], p.hits[hit], true
+	return p.all[p.hits[hit]], true
 }
 
 // choice is the service under the cursor, and false when there is none — which
@@ -271,18 +284,35 @@ func (p *connectPanel) choice() (connect.Status, bool) {
 	if !p.open {
 		return connect.Status{}, false
 	}
-	row, _, ok := p.at(p.cursor)
-	return row, ok
+	return p.at(p.cursor)
 }
 
-// gapBefore reports whether the blank row that separates the two sections falls
-// in front of this hit. It is derived rather than stored, so it survives every
-// narrowing without a second thing having to be kept in step.
+// headBefore is the category word drawn in front of this hit, or "" where the
+// hit opens no group.
+func (p *connectPanel) headBefore(hit int) string {
+	if hit < 0 || hit >= len(p.heads) {
+		return ""
+	}
+	return p.heads[hit]
+}
+
+// gapBefore reports whether the blank row that separates the held accounts from
+// the rest falls in front of this hit.
+//
+// IT IS THE FALLBACK AND NOTHING ELSE. Where the catalog declares categories the
+// two sections are told apart by the word standing over the second one, and a
+// blank as well would be this surface saying the same thing twice in the ten
+// lines it has; where it declares none, [groupConnections] hands back one
+// unheaded group and this is what keeps the panel the shape it has always been.
+// It is derived rather than stored, so it survives every narrowing without a
+// second thing having to be kept in step.
 func (p *connectPanel) gapBefore(hit int) bool {
-	if hit <= 0 || hit >= len(p.hits) {
+	if hit <= 0 || hit >= len(p.hits) || p.headBefore(hit) != "" {
 		return false
 	}
-	return p.all[p.hits[hit-1]].Connected && !p.all[p.hits[hit]].Connected
+	before, ok := p.at(hit - 1)
+	row, here := p.at(hit)
+	return ok && here && before.Connected && !row.Connected
 }
 
 // note is the dim tail of one row: the account where the service is held, the
@@ -299,11 +329,11 @@ func (p *connectPanel) gapBefore(hit int) bool {
 // tells a person what enter is about to ask them for, and on a short list it is
 // the other way round.
 func (p *connectPanel) note(hit int) string {
-	row, i, ok := p.at(hit)
+	row, ok := p.at(hit)
 	if !ok {
 		return ""
 	}
-	if i == p.armed {
+	if p.armed != "" && row.ID == p.armed {
 		return "enter again to disconnect"
 	}
 	if row.Connected {
@@ -325,7 +355,7 @@ func connectTag(service connect.Service) string {
 
 // label is the row's own half: the state, then the name.
 func (p *connectPanel) label(hit int, pal palette) string {
-	row, _, ok := p.at(hit)
+	row, ok := p.at(hit)
 	if !ok {
 		return ""
 	}
@@ -361,13 +391,25 @@ func (p *connectPanel) height(width int) int {
 }
 
 // window is how many lines the rows from top take, stopping at the ceiling — the
-// list's own [overlayWindow], with the section gap counted in. A row that would
-// straddle the bottom edge is not counted, because it is not drawn.
+// list's own [overlayWindow], with the headings and the section gap counted in.
+// A row that would straddle the bottom edge is not counted, because it is not
+// drawn.
+//
+// A HEADING COSTS A LINE AND IS COUNTED HERE FOR THE ONE REASON EVERYTHING ELSE
+// ON THIS SURFACE IS: [connectPanel.draw] must hand back exactly the lines
+// [connectPanel.height] reserved, and a count that forgot the words would leave
+// the frame short of the terminal by however many groups were on screen.
 func (p *connectPanel) window(width, ceiling int) int {
 	lines := 0
 	for at := p.top; at < len(p.hits) && lines < ceiling; at++ {
 		take := overlayItemLines(width, p.note(at))
-		if at > p.top && p.gapBefore(at) {
+		// The word stands at the top of a scrolled window too, unlike the gap: a
+		// blank first line is a line spent on nothing, and a category's name is
+		// the one thing a person scrolled into the middle of a catalog cannot
+		// work out from the rows themselves.
+		if p.headBefore(at) != "" {
+			take++
+		} else if at > p.top && p.gapBefore(at) {
 			take++
 		}
 		if lines+take > ceiling {
@@ -389,7 +431,15 @@ func (p *connectPanel) draw(width, n int, pal palette, hover int) []string {
 	p.follow(overlayItems(n, width))
 	fill := newOverlayFill(width, n, pal, hover)
 	for at := p.top; at < len(p.hits) && fill.room(); at++ {
-		if at > p.top && p.gapBefore(at) && !fill.plain("") {
+		// THE HEADING IS A [overlayFill.plain] LINE, which is what makes it
+		// unpressable without anything downstream having to know it is a heading:
+		// plain records the line as belonging to row -1, the same value the gap
+		// carries, and [app.connectPanelPress] already swallows -1.
+		if head := p.headBefore(at); head != "" {
+			if !fill.plain(pal.dim(fit("  "+head, width))) {
+				break
+			}
+		} else if at > p.top && p.gapBefore(at) && !fill.plain("") {
 			break
 		}
 		if !fill.add(at, p.label(at, pal), p.note(at), at == p.cursor, false) {
@@ -398,10 +448,11 @@ func (p *connectPanel) draw(width, n int, pal palette, hover int) []string {
 	}
 	lines, owner := fill.done()
 	// THE BLOCK IS EXACTLY THE HEIGHT IT WAS PROMISED (palette.go's
-	// [overlayFill.done] says why). The gap is what makes the promise breakable
-	// here and nowhere else: [connectPanel.height] counts it against the top the
-	// last frame left behind, and the scroll above may have moved that top since.
-	// A line short would leave the frame a line short of the terminal.
+	// [overlayFill.done] says why). The lines that are not rows — the headings and
+	// the gap — are what make the promise breakable here and nowhere else:
+	// [connectPanel.height] counts them against the top the last frame left
+	// behind, and the scroll above may have moved that top since. A line short
+	// would leave the frame a line short of the terminal.
 	for len(lines) < n {
 		lines = append(lines, "")
 		owner = append(owner, -1)
@@ -449,7 +500,7 @@ func (a *app) refreshConnect() {
 	p.adopt(a.conns.Services())
 	if had {
 		for at := range p.hits {
-			if row, _, ok := p.at(at); ok && row.ID == was.ID {
+			if row, ok := p.at(at); ok && row.ID == was.ID {
 				p.cursor = at
 				p.follow(connectRowsMax)
 				break
@@ -474,8 +525,8 @@ func (a *app) connectPanelKey(msg tea.KeyPressMsg) tea.Cmd {
 		// see something smaller to dismiss would be throwing away work they can
 		// see.
 		switch {
-		case p.armed >= 0:
-			p.armed = -1
+		case p.armed != "":
+			p.armed = ""
 		case len(p.filter.value) > 0:
 			p.filter.reset()
 			p.rank()
@@ -561,15 +612,16 @@ func (a *app) connectPanelPress(y int) tea.Cmd {
 		at = p.owner[mark.index]
 	}
 	if at < 0 {
-		// The section gap, or a blank under the last row: a line belonging to no
-		// service. It is swallowed rather than acted on.
+		// A category heading, the section gap, or a blank under the last row: a
+		// line belonging to no service. It is swallowed rather than acted on —
+		// pressing a word must not act on whichever row it happened to be nearest.
 		return nil
 	}
 	// The pointer moves the cursor before it acts, so the row a person pressed is
 	// the row the panel is talking about afterwards — and so a mis-aimed press on
 	// a connected row arms the question on the row they can see armed.
 	if at != p.cursor {
-		p.cursor, p.armed = at, -1
+		p.cursor, p.armed = at, ""
 	}
 	cmd := a.connectAct(at)
 	a.touch()
@@ -581,7 +633,7 @@ func (a *app) connectPanelPress(y int) tea.Cmd {
 // is already held.
 func (a *app) connectAct(at int) tea.Cmd {
 	p := &a.connPanel
-	row, i, ok := p.at(at)
+	row, ok := p.at(at)
 	if !ok {
 		return nil
 	}
@@ -598,11 +650,11 @@ func (a *app) connectAct(at int) tea.Cmd {
 		p.close()
 		return a.beginConnect(row.ID, name)
 	}
-	if p.armed != i {
-		p.armed = i
+	if p.armed != row.ID {
+		p.armed = row.ID
 		return nil
 	}
-	p.armed = -1
+	p.armed = ""
 	if a.conns == nil {
 		return nil
 	}
