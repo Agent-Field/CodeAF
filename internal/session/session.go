@@ -707,22 +707,6 @@ type Config struct {
 	// nodes share the workspace instead, which is the safe degradation.
 	WorktreeRoot string
 
-	// ImageGenModel and ImageGenClient are the image-generation pair the belt's
-	// generate_image tool calls through (tools_image.go): the model that paints,
-	// and the client that carries the request to it.
-	//
-	// They follow the SAME LAW as the search pair below — NIL CLIENT MEANS THE
-	// TOOL IS NOT ON THE BELT, not that it is on the belt and refuses — and for
-	// the same reason: a model told it can make pictures will keep planning
-	// around that capability long after the first refusal. An empty model with a
-	// live client is the same absence, unless the person pinned one in settings
-	// (roles.PinKey(roles.RoleImageGen), read through RolesSource).
-	//
-	// ImageGenerator is provider.MediaClient's own signature, so the wiring wave
-	// assigns the media client here with no adapter in between.
-	ImageGenModel  string
-	ImageGenClient ImageGenerator
-
 	// Media and MediaModel are the v3-revision media pair (docs/MULTIMODAL.md
 	// Decisions 5-8): the one client that reaches every generation endpoint —
 	// /images, /audio/speech, /videos — and the ONE USE-TIME RESOLVER that
@@ -735,8 +719,11 @@ type Config struct {
 	//
 	// The absence law is per-verb: a nil Media keeps every generation tool off
 	// the belt; a nil MediaModel (or one answering "") keeps that MODALITY's
-	// tools off. ImageGenModel/ImageGenClient above are the pre-revision pair
-	// and die when the belt migrates onto these two.
+	// tools off ([Agent.mediaHand]). They REPLACED a pre-revision pair of this
+	// config's own — an image client and an image slug, with a pin ladder the
+	// tool walked itself — and nothing of that pair survives: one client and one
+	// resolver serve every verb, so a machine cannot paint and be unable to
+	// speak for reasons nobody can find.
 	Media      MediaGenerator
 	MediaModel func(modality string) string
 
