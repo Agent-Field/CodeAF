@@ -644,8 +644,7 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	// surface gives every box that has taken the keyboard.
 	if a.connPanel.open {
 		if entry := a.connPanel.entry; entry != nil {
-			line, caretX := keyLine(&entry.box, connectKeyHint(entry.name), a.pal, width)
-			return []string{line}, caretX, 0
+			return keyBoxLines(entry, a.pal, width, 0)
 		}
 		if a.connPanel.filtering {
 			return draftBlock(&a.connPanel.filter, a.pal, width, 1, connectFilterHint)

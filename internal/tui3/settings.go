@@ -857,6 +857,13 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case s.sel != nil:
 		a.sheetSelectKey(msg)
 		return nil, true
+	case s.conn.entry != nil:
+		// AND THE KEY BOX ON THE ACCOUNTS TAB, on the same terms as the two
+		// above it: a box that has the keyboard has ALL of it. Every other key
+		// on this sheet types into the search box, and a surface that let a
+		// pasted key narrow a list would be a surface putting half a secret in
+		// the title bar (connectcaps.go).
+		return a.connEntryKey(msg), true
 	}
 
 	switch msg.String() {
@@ -1105,6 +1112,12 @@ type sheetHit struct {
 // selects and answers, anything else does nothing. It hands back a command for
 // the reason [app.sheetKey] does — a sign-in reaches the network.
 func (a *app) sheetPress(x, y int) tea.Cmd {
+	if a.sheet.conn.entry != nil {
+		// A BOX BEING TYPED INTO IS NOT A LIST. Every press is swallowed and none
+		// of them acts — esc is the way out, which is the way out of every box on
+		// this surface (connectpanel.go's [app.connectPanelPress] says it first).
+		return nil
+	}
 	width, height := a.size()
 	_, hits, _, _ := a.sheetFrame(width, height)
 	if y < 0 || y >= len(hits) {
@@ -1405,17 +1418,31 @@ func (s *sheet) listLines(width int, pal palette, hover int) ([]string, []int) {
 			put(pal.dim("  "+item.head), -1)
 			continue
 		}
+		// AN ACCOUNT IS A BLOCK AND A BLOCK HAS AIR OVER IT (connectcaps.go).
+		// The blank belongs to no row, exactly as a heading's does, so the
+		// pointer over it acts on nothing and the cursor cannot land on it.
+		if item.conn != nil && item.conn.air && len(lines) > 0 {
+			put("", -1)
+		}
 		for _, line := range s.rowLines(item, i == s.cursor, i == hover, width, pal) {
 			put(line, i)
 		}
-		if i != s.cursor || item.conn != nil {
-			// A connection row carries no description under it. What a row of
-			// that tab is about is the row — an account, a phrase, an answer —
-			// and a sentence explaining "read your mail" would be this surface
-			// saying the same thing twice (connectcaps.go).
+		if i != s.cursor {
 			continue
 		}
+		// THE ONE DESCRIPTION THIS PANEL EVER SHOWS is the selected row's, and
+		// on the accounts tab it is the selected SERVICE'S — a catalog row's own
+		// line about what connecting it buys, drawn under the row a person has
+		// stopped on and under no other. Most rows of that tab have none: a
+		// sentence explaining "read your mail" would be this surface saying the
+		// same thing twice (connectcaps.go's [connAbout]).
 		about := item.meta.about
+		if item.conn != nil {
+			about = connAbout(item.conn)
+		}
+		if about == "" {
+			continue
+		}
 		for n, line := range wrap(about, width-6) {
 			if n >= 2 {
 				break
