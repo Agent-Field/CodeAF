@@ -223,6 +223,11 @@ type mdSegment struct {
 	info string
 	// table is the header row followed by the body rows, cells already split.
 	table [][]string
+	// src is a table's own source lines, delimiter row and all. It is kept
+	// because mdtable.go hands a table back to prose ALONE to find out where
+	// prose drew it inside the document, and the only text that renders to the
+	// same rows is the text the document had (see [app.openableTables]).
+	src string
 }
 
 // mdSegments splits a document into the runs [phoneMarkdown] renders three ways.
@@ -267,7 +272,11 @@ func mdSegments(text string) []mdSegment {
 		}
 		if table, end, ok := mdTableAt(lines, i); ok {
 			flush()
-			out = append(out, mdSegment{kind: mdSegTable, table: table})
+			out = append(out, mdSegment{
+				kind:  mdSegTable,
+				table: table,
+				src:   strings.Join(lines[i:end], "\n"),
+			})
 			i = end
 			continue
 		}
