@@ -265,6 +265,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// REWIND MODE IS MODAL AT THE SAME RUNG AND FOR THE SAME REASON (rewind.go):
+	// while it is up the draft box is not on the frame at all — a mode bar stands
+	// in its position — so a key that fell through to the editor would type into a
+	// box nobody can see, and the arrows it takes are the arrows that move the cut.
+	// ctrl+c is read above it and stays the door.
+	if cmd, taken := a.rewindKey(msg); taken {
+		return cmd
+	}
+
 	// The welcome box reads two keys and gives every other one back (welcome.go):
 	// ↑/↓ walk the recent sessions, enter opens the one they picked, and
 	// anything else is the person starting work, which puts the box away for
@@ -311,8 +320,17 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.recallCancel()
 			return nil
 		}
+		// THE DOUBLE ESC IS THE REWIND'S DOOR, and it is read here rather than
+		// above the interrupt because the interrupt is not for sale (rewind.go):
+		// the first esc means exactly what it always meant and ARMS the mode on its
+		// way past, and only a second one inside the window is taken. A stray esc
+		// after the window has lapsed changes nothing.
+		cmd, taken := a.escRewind()
+		if taken {
+			return cmd
+		}
 		a.interrupt()
-		return nil
+		return cmd
 
 	case "enter":
 		return a.enter()
@@ -572,6 +590,14 @@ func (a *app) completePath() tea.Cmd {
 // inputBlock renders the draft — or the picker's filter box in its place — and
 // says where the caret sits inside it.
 func (a *app) inputBlock(width int) ([]string, int, int) {
+	// THE REWIND'S MODE BAR STANDS IN THE BOX'S OWN POSITION (rewind.go), for the
+	// reason the two filter boxes below take it: the keyboard is pointed somewhere
+	// else, and a draft drawn under a mode that has taken its keys is a box that
+	// cannot be typed into. The caret rests at the bar's first cell — the mode has
+	// no sentence to put one inside of.
+	if a.rew.on {
+		return a.rewindBar(width), 0, 0
+	}
 	if a.pick.open {
 		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint)
 	}
