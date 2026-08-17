@@ -879,26 +879,29 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeCredential(dir, KeyJinaKey, raw, JinaKeyAt(dir)) },
 		},
 
-		// And the pair that lets aforge reach the accounts a person already has
-		// (internal/connect). They sit beside the search keys because they are
-		// the same kind of row — a credential that widens what aforge can reach,
-		// optional, and never a prerequisite for anything else — and they are two
-		// rows rather than one because they are two values a person copies from
-		// two different boxes on the same page.
+		// And the pair that names WHICH APPLICATION asks for the accounts a
+		// person already has (internal/connect). They sit beside the search keys
+		// because they are the same kind of row — optional, and never a
+		// prerequisite for anything else, since a blank pair uses the
+		// registration this build ships with (connect_defaults.go) — and they
+		// are two rows rather than one because they are two values a person
+		// copies from two different boxes on the same page.
 		Setting{
 			Key: KeyGoogleOAuthClient, Category: CategoryModels, Kind: SettingText,
 			Label: "google app id", Env: "GOOGLE_OAUTH_CLIENT", EmptyLabel: "not set",
-			Hint: "the application id you registered with Google, which lets aforge ask to use " +
-				"your account. Optional — without it aforge simply never offers to connect one. " +
-				"A change lands on the next session.",
+			Hint: "the application id Google sees when aforge asks to use your account. " +
+				"Blank uses the one aforge ships with, which is what most people want — " +
+				"fill this in only to have your own registration ask instead, and fill in " +
+				"the secret below with it. A change lands on the next session.",
 			read:  func() string { return googleOAuthClientAt(dir) },
 			write: func(raw string) error { return writeProfileValue(dir, KeyGoogleOAuthClient, raw) },
 		},
 		Setting{
 			Key: KeyGoogleOAuthSecret, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "google app secret", Env: "GOOGLE_OAUTH_SECRET", EmptyLabel: "not set",
-			Hint: "the secret that goes with the application id above. Both are needed: " +
-				"one of the two connects nothing. A change lands on the next session.",
+			Hint: "the secret that goes with the application id above. Blank uses the one " +
+				"aforge ships with. Write both or neither: your own id against the shipped " +
+				"secret connects nothing. A change lands on the next session.",
 			read: func() string { return maskCredential(googleOAuthSecretAt(dir)) },
 			write: func(raw string) error {
 				return writeCredential(dir, KeyGoogleOAuthSecret, raw, googleOAuthSecretAt(dir))
