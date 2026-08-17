@@ -1616,9 +1616,10 @@ func (a *app) legendRight(width int) string {
 //
 // What replaces it is a slot that only ever names the keys that WORK RIGHT NOW:
 //
+//	the pointer is theirs drag to select · any key ends it
 //	the picker is open    enter switch · esc
 //	the sessions are up   enter open · esc
-//	copy mode is on       v select · y yank · esc
+//	copy mode is on       v select · a block · y yank · esc
 //	rewind is armed       esc again to rewind        (rewind.go's double esc)
 //	rewind mode is up     nothing — the mode bar prints its own keys
 //	the welcome box is up ↑↓ recent · enter open
@@ -1648,12 +1649,18 @@ func (a *app) legendRight(width int) string {
 // this slot exists to prevent, and it was the default state of it.
 func (a *app) hintWord() string {
 	switch {
+	case a.released:
+		// IT LEADS BECAUSE THE HANDOVER IS READ FIRST ([app.key] takes the pointer
+		// back above every overlay), and because it is the one state on this slot
+		// that a person cannot see any other way: the pointer being somewhere else
+		// looks exactly like the pointer being broken until a line says otherwise.
+		return "drag to select · any key ends it"
 	case a.pick.open:
 		return "enter switch · esc"
 	case a.roster.open:
 		return "enter open · esc"
 	case a.copy.on:
-		return "v select · y yank · esc"
+		return "v select · a block · y yank · esc"
 	case a.rew.on:
 		// The rewind mode prints its own keys in the bar that replaced the draft
 		// box (rewind.go), and a slot repeating them would be the surface saying

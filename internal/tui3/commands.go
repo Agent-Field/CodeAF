@@ -76,6 +76,14 @@ var commands = []command{
 	// when the turn was wrong. Putting it last, beside /quit, would file "take
 	// back a message" under leaving.
 	{name: "rewind", desc: "take back a message · esc esc", alias: []string{"undo", "back"}},
+	// THE TWO DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
+	// that is where a person goes with the question they answer. The keys behind
+	// them are the two least discoverable on the surface — nothing on the screen
+	// says either exists — and "why can I not copy this" is the first question
+	// this surface gets asked. /copy is the keyboard's way, /select the mouse's
+	// (copymode.go).
+	{name: "copy", desc: "read the conversation back and copy from it · ctrl+b"},
+	{name: "select", desc: "drag to select with your mouse · ctrl+s"},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "leave", alias: []string{"exit", "q"}},
 }
@@ -381,7 +389,8 @@ func helpText(file string) string {
 		"@path          complete a file · a picture attaches",
 		"alt+enter      open a line · enter sends",
 		"ctrl+o         expand this turn's tool calls · click one to open it",
-		"ctrl+b         copy mode · ↑↓ move · v marks · y yanks · esc leaves",
+		"ctrl+b         copy mode · ↑↓ move · v marks · a takes the block · y yanks",
+		"ctrl+s         drag to select with your mouse · any key ends it",
 		"ctrl+q         ask this after the current turn instead of into it",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
