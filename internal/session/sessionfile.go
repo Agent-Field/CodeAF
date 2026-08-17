@@ -725,7 +725,7 @@ func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart) 
 	// true of a note: the woken turn it belongs to is drawn in THIS process, and
 	// a /compact or a rewind can put its line back through the shaping.
 	s.rememberParts(message, refs)
-	if note && s != nil {
+	if note {
 		s.mu.Lock()
 		if s.notes == nil {
 			s.notes = make(map[string]bool, 4)
@@ -768,6 +768,14 @@ func (s *sessionFile) appendCompaction(summary string, tokensBefore int, kept []
 		Timestamp:    stamp(),
 	})
 	for _, message := range kept {
+		// A KEPT LINE IS RE-JOURNALED AS WHAT IT WAS. The tail is written again on
+		// the far side of the marker (above), and a note re-written without its
+		// mark would come back from the next resume as the person's words — this
+		// pass is the one place a message is journaled twice.
+		if s.isNote(message) {
+			s.appendNote(message)
+			continue
+		}
 		s.appendMessage(message)
 	}
 }
