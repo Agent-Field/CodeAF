@@ -2,6 +2,7 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -495,13 +496,19 @@ func replaySessionFile(path string) (replayedSession, error) {
 	// would end the replay at the first big one.
 	scanner.Buffer(make([]byte, 0, 64<<10), 8<<20)
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		// scanner.Bytes() is the scanner's own buffer and is only valid until the
+		// next Scan. Every reader of it in this loop is one of the two unmarshals
+		// below, both of which consume it before the loop turns over and copy
+		// every string they keep out of it. Text() would instead allocate a copy
+		// of the line, and []byte(...) of that copy a second one — two copies of
+		// every line of the journal, and a tool result is tens of kilobytes.
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
 			continue
 		}
 		lines++
 		var entry sessionEntry
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		if err := json.Unmarshal(line, &entry); err != nil {
 			continue
 		}
 		switch entry.Type {
@@ -511,7 +518,7 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// one of them would be dropped in silence — a session that resumes
 			// looking complete and is not. Say so instead.
 			var header sessionHeader
-			if err := json.Unmarshal([]byte(line), &header); err != nil {
+			if err := json.Unmarshal(line, &header); err != nil {
 				continue
 			}
 			if header.Version > sessionFileVersion {
