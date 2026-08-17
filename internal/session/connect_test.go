@@ -2,9 +2,11 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -36,6 +38,28 @@ type fakeHub struct {
 	// watch a whole call — the question, the account, the service — without a
 	// network. Nil means nothing is expected to reach a service.
 	transport *stubTransport
+
+	// The other half: one account connected with a key rather than in a
+	// browser. It is off unless a test turns it on, so that every test about
+	// the browser half goes on reasoning about a list of one.
+	keyService   bool
+	keyConnected bool
+	// key is what the person was taken to have given, and keyErr is the
+	// service refusing it.
+	key    string
+	keyErr error
+	// calls is every raw call an armed tool made, as "METHOD path".
+	calls []string
+}
+
+// keyStatus is the account the fake connects with a key.
+func keyStatus(connected bool) connectStatus {
+	return connectStatus{
+		ID: "stripe", Name: "Stripe", Auth: "key",
+		Blurb:     "Reach your Stripe account at api.stripe.com, with a key you already hold.",
+		Address:   "https://api.stripe.com",
+		Connected: connected,
+	}
 }
 
 // stubTransport is a service that answers one canned reply and remembers every
@@ -71,19 +95,61 @@ func (s *stubTransport) calls() int {
 func (h *fakeHub) Services() []connectStatus {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return []connectStatus{{
+	services := []connectStatus{{
 		ID:        "google",
 		Name:      "Google",
 		Blurb:     "search and read your mail, and look at your calendar",
+		Auth:      "browser",
 		Connected: h.connected,
 		Account:   h.account,
 	}}
+	if h.keyService {
+		services = append(services, keyStatus(h.keyConnected))
+	}
+	return services
 }
 
 func (h *fakeHub) Connected(id string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return id == "google" && h.connected
+	switch id {
+	case "google":
+		return h.connected
+	case "stripe":
+		return h.keyService && h.keyConnected
+	}
+	return false
+}
+
+func (h *fakeHub) ConnectKey(ctx context.Context, id string, key string) (connectStatus, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.keyErr != nil {
+		return connectStatus{}, h.keyErr
+	}
+	h.key = key
+	h.keyConnected = true
+	return keyStatus(true), nil
+}
+
+func (h *fakeHub) Request(ctx context.Context, id, method, path, query, body string) (string, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.calls = append(h.calls, method+" "+path)
+	return "Stripe · " + method + " " + path + " · 200 OK\n\n{}", nil
+}
+
+// gaveKey is what the person was taken to have handed over.
+func (h *fakeHub) gaveKey() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.key
+}
+
+func (h *fakeHub) rawCalls() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.calls...)
 }
 
 func (h *fakeHub) BeginAuth(ctx context.Context, id string) (string, func(context.Context) (connectStatus, error), error) {
@@ -485,21 +551,74 @@ func TestNoteConnectedArmsAndQueuesWithoutWakingTheSession(t *testing.T) {
 // ── the list ────────────────────────────────────────────────────────────────
 
 // The services list says the one thing each row is for: a connected account
-// reads as the address it is connected as, an unconnected one as something
-// available and what it would buy.
+// reads as the address it is connected as, an unconnected one as an id to ask
+// for.
 func TestTheServicesListSaysWhatIsConnectedAndWhatIsAvailable(t *testing.T) {
-	available := renderServices([]connectStatus{{ID: "google", Name: "Google", Blurb: "read your mail"}})
-	if !strings.Contains(available, "available") || !strings.Contains(available, "read your mail") {
+	available := renderServices([]connectStatus{{ID: "google", Name: "Google", Blurb: "read your mail"}}, "")
+	if !strings.Contains(available, "Not connected yet (1)") || !strings.Contains(available, "google") {
 		t.Fatalf("an unconnected row does not offer itself: %q", available)
 	}
-	connected := renderServices([]connectStatus{{ID: "google", Name: "Google", Connected: true, Account: "you@example.test"}})
+	connected := renderServices([]connectStatus{{ID: "google", Name: "Google", Connected: true, Account: "you@example.test"}}, "")
 	if !strings.Contains(connected, "connected as you@example.test") {
 		t.Fatalf("a connected row does not say who: %q", connected)
 	}
 	// THE EMPTINESS LAW: one sentence, never a heading over nothing.
-	empty := renderServices(nil)
+	empty := renderServices(nil, "")
 	if strings.Contains(empty, "use_service") || !strings.Contains(empty, "No accounts") {
 		t.Fatalf("an empty list is not one sentence: %q", empty)
+	}
+}
+
+// ── the list stays small when the catalog is large ─────────────────────────
+
+// A couple of hundred accounts must not cost a page and a half of context every
+// time the model wonders what is connected.
+func TestTheServicesListStaysSmallOverALargeCatalog(t *testing.T) {
+	services := []connectStatus{{
+		ID: "google", Name: "Google", Connected: true, Account: "you@example.test",
+		Blurb: "Read and send Gmail; read and manage Calendar.",
+	}}
+	for index := 0; index < 250; index++ {
+		name := "service" + strconv.Itoa(index)
+		services = append(services, connectStatus{
+			ID: name, Name: "Service " + strconv.Itoa(index), Auth: "key",
+			Blurb: "Reach your Service " + strconv.Itoa(index) + " account at api.example.com, with a key you already hold.",
+		})
+	}
+	whole := renderServices(services, "")
+	if len(whole) > 6*1024 {
+		t.Errorf("the list is %d characters, which is a page and a half of context", len(whole))
+	}
+	// The connected one is written out in full; the rest are ids only.
+	if !strings.Contains(whole, "google — Google, connected as you@example.test") {
+		t.Errorf("the connected account is not written out: %q", whole)
+	}
+	if strings.Contains(whole, "Reach your Service 7 account") {
+		t.Errorf("an unconnected account brought its whole line with it")
+	}
+	if !strings.Contains(whole, "Not connected yet (250)") {
+		t.Errorf("the count is not there: %q", whole)
+	}
+	for _, line := range strings.Split(whole, "\n") {
+		if len(line) > 120 {
+			t.Errorf("a line of %d characters: %q", len(line), line)
+		}
+	}
+
+	// A filter searches the same list by name or by id.
+	narrowed := renderServices(services, "service17")
+	if !strings.Contains(narrowed, "service17,") && !strings.HasSuffix(strings.TrimSpace(narrowed), "service17") {
+		if !strings.Contains(narrowed, "service17") {
+			t.Errorf("the filter found nothing: %q", narrowed)
+		}
+	}
+	if strings.Contains(narrowed, "service2,") {
+		t.Errorf("the filter let something else through: %q", narrowed)
+	}
+	// THE EMPTINESS LAW again: a filter that matches nothing says THAT.
+	none := renderServices(services, "nothing-like-this")
+	if !strings.Contains(none, "No account here matches") {
+		t.Errorf("a filter that matches nothing: %q", none)
 	}
 }
 
@@ -547,7 +666,7 @@ func sendTurn() []step {
 // picked it up earlier is already holding it.
 func armGoogle(t *testing.T, agent *Agent) {
 	t.Helper()
-	if _, err := agent.armFamily(agent.familyTools("google")); err != nil {
+	if _, err := agent.armFamily(agent.familyTools(connectStatus{ID: "google", Name: "Google", Auth: "browser"})); err != nil {
 		t.Fatalf("arm the family: %v", err)
 	}
 }
@@ -708,5 +827,205 @@ func TestTheCalendarQuestionSaysWhatIsAboutToHappen(t *testing.T) {
 	}
 	if service.calls() != 0 {
 		t.Fatal("a refused event went on the calendar anyway")
+	}
+}
+
+// ── the accounts a key opens ────────────────────────────────────────────────
+
+// The whole of the key flow, end to end: the question says a key is wanted, the
+// person gives one, the account connects with no page opened, and the one tool
+// it brings is on the belt for the next turn.
+func TestAnAccountOpenedWithAKeyAsksForOneAndArmsItsTool(t *testing.T) {
+	hub := &fakeHub{keyService: true}
+	completer := &scriptedCompleter{steps: useServiceTurn("stripe")}
+	agent := connectAgent(t, completer, hub, true)
+
+	events, err := agent.Submit(context.Background(), "look at the billing")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	var asked []Event
+	collected := drainConnect(t, events, func(event Event) {
+		asked = append(asked, event)
+		agent.ResolveConnectKey(event.ConnectID, " sk-live-1 ")
+	})
+
+	if len(asked) != 1 {
+		t.Fatalf("questions asked: %d", len(asked))
+	}
+	if !asked[0].NeedsKey {
+		t.Errorf("the question must say a key is wanted: %+v", asked[0])
+	}
+	if asked[0].ServiceName != "Stripe" {
+		t.Errorf("the question names %q", asked[0].ServiceName)
+	}
+	// NOTHING OPENS. There is no page for an account connected with a key.
+	for _, event := range collected {
+		if event.Kind == EventConnectAuth {
+			t.Errorf("a page was opened for an account that has none: %+v", event)
+		}
+	}
+	var done bool
+	for _, event := range collected {
+		if event.Kind == EventConnectDone {
+			done = true
+			if event.Failed {
+				t.Errorf("the attempt failed: %+v", event)
+			}
+			// THE EMPTINESS LAW: a key says nothing about whose key it is.
+			if event.Account != "" {
+				t.Errorf("an account was invented: %q", event.Account)
+			}
+		}
+	}
+	if !done {
+		t.Errorf("no outcome was reported: %v", kinds(collected))
+	}
+	if hub.gaveKey() != "sk-live-1" {
+		t.Errorf("the key that arrived was %q", hub.gaveKey())
+	}
+	if !hasTool(agent, "stripe_request") {
+		t.Fatalf("the account's tool is not on the belt: %v", beltNames(agent))
+	}
+	// And nothing else came with it.
+	if hasTool(agent, "stripe_objects") {
+		t.Errorf("a tool nobody built is on the belt")
+	}
+	if !strings.Contains(lastToolOutput(t, collected), "stripe_request") {
+		t.Errorf("the result does not name what arrived: %q", lastToolOutput(t, collected))
+	}
+}
+
+// A YES TO A QUESTION THAT WANTED A KEY IS NOT AN ANSWER.
+func TestABareYesToAKeyQuestionDeclines(t *testing.T) {
+	hub := &fakeHub{keyService: true}
+	completer := &scriptedCompleter{steps: useServiceTurn("stripe")}
+	agent := connectAgent(t, completer, hub, true)
+
+	events, err := agent.Submit(context.Background(), "look at the billing")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		agent.ResolveConnect(event.ConnectID, true)
+	})
+	if hub.gaveKey() != "" {
+		t.Errorf("something was connected on a bare yes: %q", hub.gaveKey())
+	}
+	if hasTool(agent, "stripe_request") {
+		t.Errorf("a tool arrived for an account nobody connected")
+	}
+	if text := lastToolOutput(t, collected); !strings.Contains(text, "did not agree") {
+		t.Errorf("the model was told the wrong thing: %q", text)
+	}
+}
+
+// An empty key is a decline, and so is a plain no.
+func TestAnEmptyKeyIsADecline(t *testing.T) {
+	for _, answer := range []string{"", "   "} {
+		hub := &fakeHub{keyService: true}
+		completer := &scriptedCompleter{steps: useServiceTurn("stripe")}
+		agent := connectAgent(t, completer, hub, true)
+
+		events, err := agent.Submit(context.Background(), "look at the billing")
+		if err != nil {
+			t.Fatalf("Submit: %v", err)
+		}
+		collected := drainConnect(t, events, func(event Event) {
+			agent.ResolveConnectKey(event.ConnectID, answer)
+		})
+		if hub.gaveKey() != "" {
+			t.Errorf("%q connected something", answer)
+		}
+		if text := lastToolOutput(t, collected); !strings.Contains(text, "did not agree") {
+			t.Errorf("%q: the model was told %q", answer, text)
+		}
+	}
+}
+
+// A service that refuses the key is one honest result, not a Go error, and
+// nothing is armed.
+func TestAKeyTheServiceRefusesIsOneHonestResult(t *testing.T) {
+	hub := &fakeHub{keyService: true, keyErr: errors.New("Stripe did not accept that key: 401 Unauthorized")}
+	completer := &scriptedCompleter{steps: useServiceTurn("stripe")}
+	agent := connectAgent(t, completer, hub, true)
+
+	events, err := agent.Submit(context.Background(), "look at the billing")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := drainConnect(t, events, func(event Event) {
+		agent.ResolveConnectKey(event.ConnectID, "sk-wrong")
+	})
+	if hasTool(agent, "stripe_request") {
+		t.Errorf("a tool arrived for an account that did not connect")
+	}
+	var failed bool
+	for _, event := range collected {
+		if event.Kind == EventConnectDone && event.Failed {
+			failed = true
+		}
+	}
+	if !failed {
+		t.Errorf("the failure was not reported: %v", kinds(collected))
+	}
+	if text := lastToolOutput(t, collected); !strings.Contains(text, "did not work") {
+		t.Errorf("the model was told %q", text)
+	}
+}
+
+// The tool an account brings names the account and the address its paths hang
+// off, and its calls go through the seam.
+func TestTheRawCallToolNamesItsAddressAndMakesTheCall(t *testing.T) {
+	hub := &fakeHub{keyService: true, keyConnected: true}
+	agent := connectAgent(t, &scriptedCompleter{}, hub, true)
+
+	text, isError, err := agent.useService(context.Background(), "stripe")
+	if err != nil || isError {
+		t.Fatalf("use_service: %q err=%v", text, err)
+	}
+	tool := beltTool(t, agent, "stripe_request")
+	if !strings.Contains(tool.Description, "https://api.stripe.com") {
+		t.Errorf("the description does not name the address: %q", tool.Description)
+	}
+	if !strings.Contains(tool.Description, "shortened") {
+		t.Errorf("the description does not say answers are bounded: %q", tool.Description)
+	}
+
+	answer, isError, err := tool.Execute(context.Background(), json.RawMessage(`{"method":"get","path":"/v1/customers","query":"limit=2"}`))
+	if err != nil || isError {
+		t.Fatalf("the call: %q isError=%v err=%v", answer, isError, err)
+	}
+	if calls := hub.rawCalls(); len(calls) != 1 || calls[0] != "get /v1/customers" {
+		t.Errorf("calls = %v", calls)
+	}
+
+	// A call with no path is refused before it reaches anybody.
+	if _, isError, _ := tool.Execute(context.Background(), json.RawMessage(`{"method":"get"}`)); !isError {
+		t.Errorf("a call with no path must be refused")
+	}
+}
+
+// THE GATE AND THE BELT AGREE ON WHICH TOOLS THESE ARE. The name the belt builds
+// is the name internal/approval's floor matches, and the floor holds for every
+// verb that changes something.
+func TestARawCallThatChangesSomethingGoesThroughTheFloor(t *testing.T) {
+	name := serviceRequestName("stripe")
+	if name != "stripe"+approval.ServiceRequestSuffix {
+		t.Fatalf("the tool is named %q", name)
+	}
+	allowAll := approval.Policy{Default: approval.ActionAllow}
+	if decision := allowAll.Check(name, json.RawMessage(`{"method":"get","path":"/v1/customers"}`)); decision.Action != approval.ActionAllow {
+		t.Errorf("a read = %+v, want allow", decision)
+	}
+	for _, method := range []string{"post", "PUT", "patch", "DELETE"} {
+		args := json.RawMessage(`{"method":"` + method + `","path":"/v1/customers"}`)
+		decision := allowAll.Check(name, args)
+		if decision.Action != approval.ActionPrompt {
+			t.Errorf("%s = %+v, want prompt", method, decision)
+		}
+		if !strings.Contains(decision.Rule, name) {
+			t.Errorf("%s: the memo does not name the tool: %q", method, decision.Rule)
+		}
 	}
 }

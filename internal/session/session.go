@@ -325,6 +325,15 @@ type Event struct {
 	AuthURL     string
 	Account     string
 	Failed      bool
+	// NeedsKey rides on EventConnectAsk alone and says that this account is
+	// not connected in a browser but with a key the person already holds. A
+	// surface that sees it asks for the key and hands it back through
+	// [Agent.ResolveConnectKey]; a plain yes means nothing here, because
+	// there is nothing to open and no page to say yes on.
+	//
+	// No EventConnectAuth follows a NeedsKey ask, ever: the next thing is
+	// the EventConnectDone that says whether the key was good.
+	NeedsKey bool
 }
 
 // Usage is token and cost accounting for one turn or the session total.
@@ -799,7 +808,7 @@ type Agent struct {
 	// an ACCOUNT, and they are ephemeral in exactly the same way: a question
 	// lives as long as the use_service call blocked on it.
 	connectSeq  uint64
-	connectAsks map[string]chan bool
+	connectAsks map[string]connectAsk
 
 	// tasks is the work this conversation has handed off: the graph of nodes,
 	// their dependency edges, and the frontier executor that runs them
