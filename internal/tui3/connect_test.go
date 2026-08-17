@@ -22,8 +22,9 @@ import (
 // wave: the plain fake answers them the way a session with nothing to say does,
 // and [connectAgent] below is the one that records.
 
-func (f *fakeAgent) ResolveConnect(string, bool)  {}
-func (f *fakeAgent) NoteConnected(string, string) {}
+func (f *fakeAgent) ResolveConnect(string, bool)      {}
+func (f *fakeAgent) ResolveConnectKey(string, string) {}
+func (f *fakeAgent) NoteConnected(string, string)     {}
 
 // connectAgent records the two answers this wave sends back into the session.
 type connectAgent struct {
@@ -36,10 +37,21 @@ type connectAnswer struct {
 	id      string
 	approve bool
 	account string
+	// key is what the key path sent back, and keyed says it took that path at
+	// all — the difference between "no key" and "a decline", which are the same
+	// empty string and not the same answer.
+	key   string
+	keyed bool
 }
 
 func (c *connectAgent) ResolveConnect(id string, approve bool) {
 	c.resolved = append(c.resolved, connectAnswer{id: id, approve: approve})
+}
+
+func (c *connectAgent) ResolveConnectKey(id string, key string) {
+	c.resolved = append(c.resolved, connectAnswer{
+		id: id, approve: key != "", key: key, keyed: true,
+	})
 }
 
 func (c *connectAgent) NoteConnected(service, account string) {
@@ -53,6 +65,10 @@ type fakeConnections struct {
 	// began and dropped are what the panel asked for, in order.
 	began   []string
 	dropped []string
+	// keyed is every (service, key) pair the panel handed over, and keyErr is
+	// what the far end says about them.
+	keyed  []connectAnswer
+	keyErr error
 }
 
 func (f *fakeConnections) Services() []connect.Status { return f.rows }
@@ -63,6 +79,21 @@ func (f *fakeConnections) BeginAuth(ctx context.Context, id string) (*connect.Fl
 	// as nothing to wait on — which is exactly the shape these tests want: the
 	// ASK is what the panel owns, and the answer arrives as its own message.
 	return nil, f.err
+}
+
+func (f *fakeConnections) ConnectKey(ctx context.Context, id string, key string) (connect.Status, error) {
+	f.keyed = append(f.keyed, connectAnswer{id: id, key: key})
+	if f.keyErr != nil {
+		return connect.Status{}, f.keyErr
+	}
+	for i := range f.rows {
+		if f.rows[i].ID != id {
+			continue
+		}
+		f.rows[i].Connected, f.rows[i].Account = true, "jane@example.com"
+		return f.rows[i], nil
+	}
+	return connect.Status{}, nil
 }
 
 func (f *fakeConnections) Disconnect(id string) error {
@@ -506,7 +537,9 @@ func TestTheConnectPanelStartsTheSignIn(t *testing.T) {
 	_, a, conns := panelApp(t, twoServices)
 	a.width = 100
 	typeLine(t, a, "/connect")
-	drive(t, a, key("enter"))
+	// The connected account sits at the top of the list now, so the row on offer
+	// is the one under it (connectpanel.go's [orderConnections]).
+	drive(t, a, key("down"), key("enter"))
 
 	if len(conns.began) != 1 || conns.began[0] != "google" {
 		t.Fatalf("the panel began %v, want one google sign-in", conns.began)
@@ -564,7 +597,8 @@ func TestTheConnectPanelAsksBeforeItDisconnects(t *testing.T) {
 	_, a, conns := panelApp(t, twoServices)
 	a.width = 100
 	typeLine(t, a, "/connect")
-	drive(t, a, key("down"), key("enter"))
+	// The connected account is the first row, so the cursor opens on it.
+	drive(t, a, key("enter"))
 
 	if len(conns.dropped) != 0 {
 		t.Fatalf("one press disconnected %v", conns.dropped)
