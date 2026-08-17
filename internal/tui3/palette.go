@@ -759,8 +759,10 @@ func (a *app) windowFor(id string) int {
 	return 0
 }
 
-// switchModel is the ONE road a model change takes, from the picker and from
-// /model <slug> alike: swap it, learn its window, say so.
+// switchModel is the ONE road a model change takes, from the picker, from
+// /model <slug> and from the settings sheet's talk row alike (settings.go's
+// registry wires that row straight to here): swap it, learn its window, write
+// it down, say so.
 //
 // window is the figure the caller already has (the picker's row); zero asks the
 // list. Telling the session about the window is not decoration — compaction
@@ -782,7 +784,32 @@ func (a *app) switchModel(id string, window int) {
 		// this number (see [app.ctxPercent]).
 		a.ctxWindow = window
 	}
+	a.rememberModel(a.model)
 	a.note("model · " + a.model)
+}
+
+// rememberModel writes the choice down, so the NEXT launch opens on the model
+// this one ended on (the door's seam is [Options.SaveModel], and the v3 door
+// reads it back in v3TalkModel).
+//
+// It is here rather than at the picker because this is the one road every model
+// change takes; a second write site would be the drift where /model persisted
+// and the sheet's row did not.
+//
+// NIL IS A SURFACE THAT CANNOT REMEMBER, exactly as it is for the consent
+// card's "always" — and that is the whole of the --host rule, kept in wiring
+// rather than in a condition here: the far machine's engine reads the far
+// machine's profile, so the hosted door hands over no seam and nothing about a
+// remote model choice lands on this laptop.
+//
+// The write's error is dropped, and that is honest rather than lazy: nothing on
+// screen claims the choice was saved. The note says "model · <id>", which is
+// true of the running session whatever the disk did.
+func (a *app) rememberModel(id string) {
+	if a.saveModel == nil || strings.TrimSpace(id) == "" {
+		return
+	}
+	_ = a.saveModel(id)
 }
 
 // pickerKey routes one keypress while the overlay owns the keyboard. The input

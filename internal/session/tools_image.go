@@ -50,6 +50,14 @@ type ImageGenerator interface {
 	GenerateImage(context.Context, provider.ImageRequest) (*provider.ImageResponse, error)
 }
 
+// And the claim above, checked by the compiler rather than by a reader: the
+// media client goes in here with no adapter between. It is stated because the
+// signature is the ONLY thing holding the two sides together — a change to
+// [provider.MediaClient.GenerateImage] would otherwise be found by the door
+// that wires it (cmd/aforge's v3ImageGen) rather than by the file that made
+// the promise.
+var _ ImageGenerator = (*provider.MediaClient)(nil)
+
 // imageDirectory is where a generated picture lands when the model does not say
 // and the session has no folder of its own. It sits under the workspace, in the
 // surface's own dot directory, so a session that paints twenty drafts leaves

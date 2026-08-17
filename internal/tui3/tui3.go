@@ -268,6 +268,24 @@ type Options struct {
 	SaveApproval     func(tool string) error
 	SaveBashApproval func(command string) error
 
+	// SaveModel is the third seam of that shape, for the model in the status
+	// line: the choice /model, the picker and the settings sheet's talk row all
+	// arrive through (palette.go's switchModel), written where the NEXT launch
+	// will read it back.
+	//
+	// It exists because this row was the odd one out. Every other model slot
+	// resolves from somewhere a later launch can read — a variable, a row in the
+	// profile — and the conversation model was live-only: a person picked a
+	// model, worked in it, restarted, and was back on the built-in default with
+	// nothing on screen to explain it.
+	//
+	// Nil is a surface whose model change lasts as long as the session does, and
+	// says nothing about having saved it. The --host door passes nil deliberately
+	// (chatv3_host.go): the far machine's engine reads the far machine's profile,
+	// and writing this laptop's would change which model a LOCAL conversation
+	// opens on because somebody switched models on a remote one.
+	SaveModel func(model string) error
+
 	// ApplyApprovals is the other direction of the pair above: those two write a
 	// line, this one takes the rows as they now stand and hands them to the gate
 	// the session is already running on. The permissions panel calls it after a

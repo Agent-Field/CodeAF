@@ -29,7 +29,16 @@ var notASettingsRow = map[string]string{
 // writing. Adding a field to chatPrefs without registering the row that fronts
 // it fails here.
 func TestEveryChatPreferenceIsFrontedByASettingsRow(t *testing.T) {
-	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
+	// The seams are supplied because the question is about THIS surface's
+	// sheet, and this surface always supplies them (internal/command's
+	// Settings). The divider row is built only for a caller that can save one,
+	// so a bare registry would be asking whether a preference is reachable from
+	// a sheet nobody here opens.
+	registry := config.NewSettings(config.SettingsOptions{
+		ProfileDir:   t.TempDir(),
+		SplitPct:     func() int { return 0 },
+		SaveSplitPct: func(int) {},
+	})
 	fronted := make(map[string]string)
 	for _, row := range registry.Rows() {
 		if row.PrefsField != "" {

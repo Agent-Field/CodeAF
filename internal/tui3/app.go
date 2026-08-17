@@ -852,6 +852,12 @@ type app struct {
 	// they existed.
 	saveApproval     func(tool string) error
 	saveBashApproval func(command string) error
+	// saveModel is the same kind of seam for the model in the status line
+	// (palette.go's rememberModel): the choice /model, the picker and the
+	// settings sheet's talk row all make, written where the next launch reads it
+	// again. Nil is a surface whose model change lasts exactly as long as the
+	// session does — a test, and the --host door, are both that surface.
+	saveModel func(model string) error
 	// applyApprovals is the door's LIVE seam for a line taken back in the
 	// permissions panel (permissions.go): it re-reads the person's approval rows
 	// and hands them to the gate this conversation is already running on. Nil is
@@ -991,6 +997,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		settings:         opts.Settings,
 		saveApproval:     opts.SaveApproval,
 		saveBashApproval: opts.SaveBashApproval,
+		saveModel:        opts.SaveModel,
 		applyApprovals:   opts.ApplyApprovals,
 		recentSessions:   opts.RecentSessions,
 		resume:           opts.Resume,
