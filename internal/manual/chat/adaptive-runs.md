@@ -72,9 +72,11 @@ wait at the gate.
 
 ## Watching a run and steering it
 
-A run is not a task: it has no row on the rail, because it is not a node. Press **→** over
-an empty message box with no room open and the run's page opens — that is the only keyboard
-door onto it, and a paused run brings its own page up when it asks its question.
+A run does take a row on the roster and on the strip, with its nodes drawn under it as a
+tree — see *A run's nodes on the roster* below. Those rows are a picture of the run, not
+tasks: the run's own **page** is where a node is read and where the run is steered. Press
+**→** over an empty message box with no room open and the page opens — that is the only
+keyboard door onto it, and a paused run brings its own page up when it asks its question.
 
 The page is the graph: nodes as chips in layers, the planner's notes as thin lines between
 them, and the fuel gauge pinned in the header (`$0.87 / $2.00`), which is never dropped at
@@ -87,6 +89,64 @@ do is change what a node already running was asked for.
 
 When no page is open, the planner's notes land in the conversation as dim lines beginning
 `run · `.
+
+## A run's nodes on the roster
+
+A run registers itself with the same machinery tasks use, so the work shows up where you
+already look for work: **one row for the run**, and **one row per node** hanging under it.
+The strip along the top of the frame draws the family as a tree, one row per node, with the
+elbows in the chip row:
+
+```
+ ⠋ audit the pricing code
+├── ✓ read the tariff table
+├── ⠋ read the invoice writer
+└── ◌ write up what disagrees
+```
+
+The states are the ones every other row on the roster speaks: a node waiting on its
+prerequisites or on a lane is **queued**, a node working is **running**, and a node that
+finished is **done** or **failed**. A node the planner took back — work it decided against
+before anything started — settles as **stopped**, because nothing went wrong with it and
+nobody made a finding about it. The row carries the node's own spend, and a landed node's
+row carries its digest.
+
+Two things these rows deliberately do **not** do.
+
+- **They write nothing into the conversation.** A landing card is how work *you* decided on
+  reports back; a run's nodes are cut by its planner and there can be a dozen of them, so a
+  card each would bury the answer under the workings of it. The run's own write-up is the
+  one thing that lands in the conversation.
+- **They are not doors.** Pressing a node's row does not walk into a task's room — there is
+  no task behind it, and the room opens finished saying `no task N in this session`. Read
+  and steer nodes on the run's page (**→**), or open a node's transcript directly at
+  `~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`.
+
+## Being asked whether that should have been work
+
+Sometimes an answer arrives in words when the honest answer was work. After a turn that
+called no tools and answered a substantial message, a second small model reads what you
+asked and the first two lines of what came back, and decides one thing: should that have
+been work? A yes raises **one card**, on the same row a harness offer uses:
+
+```
+? run harness "adaptive run"? · research across every package · [enter] run · [esc] no
+```
+
+The name in quotes is the **shape** being offered — `adaptive run` or `task` — and the dim
+line beside it is the judge's own sentence about why. The row says `run harness` because it
+is the harness offer's row, reused; nothing about a saved harness is involved.
+
+- `enter` or `y` starts it: an adaptive run on the default **$2.00** tank, or one task,
+  admitted straight away from the goal the judge wrote.
+- `esc` or `n` drops it. Nothing started, nothing was written down, and the answer you
+  already have is untouched.
+
+**It never starts anything on its own** — the card is the action. It is asked at most once
+every three turns, so two cards can never arrive back to back, and it is quiet on short
+messages, on turns that called tools, and in any session with no screen to answer it
+(`--once`, a task node). If the judge cannot be reached, or answers with anything that is
+not the small JSON object it was asked for, nothing is said at all.
 
 ## What a run's workers may touch
 

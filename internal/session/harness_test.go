@@ -145,8 +145,8 @@ func TestHarnessOfferDeclinedLeavesTheTurnAlone(t *testing.T) {
 	if atomic.LoadInt32(ran) != 0 {
 		t.Fatal("a declined offer ran the harness")
 	}
-	if completer.requests() != 1 {
-		t.Fatalf("the provider was called %d times, want the one ordinary turn", completer.requests())
+	if ordinaryRequests(completer) != 1 {
+		t.Fatalf("the provider was called %d times, want the one ordinary turn", ordinaryRequests(completer))
 	}
 	// The transcript is the ordinary turn's: the person's message, the model's
 	// answer, and nothing about a question that was answered no.
@@ -202,8 +202,8 @@ func TestHarnessSilentWhenUnwired(t *testing.T) {
 			if _, ok := firstOfKind(collected, EventHarnessOffer); ok != c.asked {
 				t.Fatalf("offer raised=%v, want %v; events: %v", ok, c.asked, kinds(collected))
 			}
-			if completer.requests() != 1 {
-				t.Fatalf("the provider was called %d times", completer.requests())
+			if ordinaryRequests(completer) != 1 {
+				t.Fatalf("the provider was called %d times", ordinaryRequests(completer))
 			}
 			if messageText(lastMessage(agent)) != "the ordinary answer" {
 				t.Fatalf("the transcript ends %q", messageText(lastMessage(agent)))
@@ -237,8 +237,8 @@ func TestHarnessQuietUnderTheThreshold(t *testing.T) {
 	if atomic.LoadInt32(ran) != 0 {
 		t.Fatal("an ordinary turn ran a harness")
 	}
-	if completer.requests() != 1 {
-		t.Fatalf("the provider was called %d times", completer.requests())
+	if ordinaryRequests(completer) != 1 {
+		t.Fatalf("the provider was called %d times", ordinaryRequests(completer))
 	}
 }
 
