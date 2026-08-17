@@ -12,12 +12,14 @@
 //
 //	STAGE 1    DESIGN  the meta-guide (internal/subharness/prompts/designer.md,
 //	                   rendered by designer.go) + the goal → a harness page, its
-//	                   cues and its justification. Decoded and validated by
-//	                   internal/subharness, retried with the error fed back.
+//	                   cues and its justification. Salvaged, decoded and validated
+//	                   by internal/subharness, repaired once, then retried with
+//	                   the error fed back.
 //	STAGE 1.5  REVIEW  the same guide wearing PART FOUR reads the draft as a
-//	                   critic — SPEED, COST, QUALITY — and hands back a revision.
-//	                   The delta printed is COMPUTED from the two pages, not
-//	                   taken from the critic's account of itself.
+//	                   critic — SPEED, COST, QUALITY — and hands back a PATCH.
+//	                   The ops are applied to the draft this rig already parsed,
+//	                   so the critic never retypes what it is not changing, and
+//	                   the delta printed is the patch itself.
 //	STAGE 2    PRINT   the page, the justification, and the CARD — the rendering
 //	                   a person actually approves.
 //	STAGE 3    RUN     the page executed against a model-backed Env
@@ -216,47 +218,47 @@ func (r *rig) oneGoal(ctx context.Context, key, note, goal string) error {
 		harness  subharness.Harness
 		err      error
 	)
-	for attempt := 0; attempt <= r.retries; attempt++ {
+	for tries := 0; tries <= r.retries; tries++ {
 		began := time.Now()
-		var raw string
-		envelope, harness, raw, err = designOnce(ctx, r.chat, history, r.designTokens, r.temperature)
+		var at attempt
+		envelope, harness, at, err = designOnce(ctx, r.chat, history, r.designTokens, r.temperature)
 		if err == nil {
-			fmt.Printf("stage 1  design accepted on attempt %d/%d · %s · %d nodes · %s/%s · at most %d model calls\n",
-				attempt+1, r.retries+1, time.Since(began).Round(time.Millisecond),
+			fmt.Printf("stage 1  design accepted on attempt %d/%d · %s%s · %d nodes · %s/%s · at most %d model calls\n",
+				tries+1, r.retries+1, time.Since(began).Round(time.Millisecond), at.cost(),
 				len(harness.Program.Nodes), harness.Verify.Ladder, harness.Dyn.Ladder, estimateCalls(harness))
 			break
 		}
-		fmt.Printf("stage 1  attempt %d/%d refused · %s\n         %v\n", attempt+1, r.retries+1, time.Since(began).Round(time.Millisecond), err)
+		fmt.Printf("stage 1  attempt %d/%d refused · %s%s\n         %v\n", tries+1, r.retries+1, time.Since(began).Round(time.Millisecond), at.cost(), err)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if attempt == r.retries {
-			if raw != "" {
-				fmt.Printf("\n         the last reply, verbatim:\n%s\n", indent(clip(raw, 4000), "         "))
+		if tries == r.retries {
+			if at.raw != "" {
+				fmt.Printf("\n         the last reply, verbatim:\n%s\n", indent(clip(at.raw, 4000), "         "))
 			}
-			return fmt.Errorf("no valid design in %d attempts: %w", attempt+1, err)
+			return fmt.Errorf("no valid design in %d attempts: %w", tries+1, err)
 		}
 		history = append(history,
-			message{Role: "assistant", Content: raw},
+			message{Role: "assistant", Content: at.raw},
 			message{Role: "user", Content: "That harness was REFUSED:\n\n" + err.Error() +
 				"\n\nFix exactly that and reply with the whole envelope again — one JSON object, no prose."})
 	}
 
 	// ── STAGE 1.5 · DESIGN REVIEW ───────────────────────────────────────────
 	//
-	// A review that will not validate is NOT a failed goal. Stage 1.5 is an
+	// A review whose patch will not validate is NOT a failed goal. Stage 1.5 is an
 	// improvement pass, not a gate, so a critic that cannot produce a legal page
 	// loses its turn and the draft goes forward — loudly, because a rig that
 	// silently skipped half of what it was measuring would report a number for
 	// the wrong thing.
 	if r.review {
-		draft, draftHarness := envelope, harness
-		revised, revisedHarness, err := r.reviewStage(ctx, goal, draft, draftHarness)
+		draft := envelope
+		revised, revisedHarness, applied, err := r.reviewStage(ctx, goal, draft, harness)
 		if err != nil {
 			fmt.Printf("stage 1.5 the review produced nothing usable, so the DRAFT goes forward · %v\n", err)
 		} else {
-			envelope, harness = revised.design(), revisedHarness
-			r.printReview(draft, draftHarness, revised, revisedHarness)
+			envelope, harness = revised.design(draft), revisedHarness
+			r.printReview(draft, revised, applied)
 		}
 	}
 
@@ -357,17 +359,17 @@ func (r *rig) oneGoal(ctx context.Context, key, note, goal string) error {
 	return runErr
 }
 
-// reviewStage is one critique-and-revision, retried on its own errors exactly as
-// the design is.
+// reviewStage is one critique-and-patch, retried on its own errors exactly as the
+// design is.
 //
 // The critic is shown the draft AS JSON rather than as the card, because it is
-// revising a page and a page is what it must hand back; and it is shown the
-// draft's justification, because half of what is worth criticising is the
+// patching a page and the node ids its ops name are on that page; and it is shown
+// the draft's justification, because half of what is worth criticising is the
 // reasoning rather than the shape.
-func (r *rig) reviewStage(ctx context.Context, goal string, draft design, draftHarness subharness.Harness) (revision, subharness.Harness, error) {
+func (r *rig) reviewStage(ctx context.Context, goal string, draft design, draftHarness subharness.Harness) (revision, subharness.Harness, []subharness.OpResult, error) {
 	page, err := subharness.Encode(draftHarness)
 	if err != nil {
-		return revision{}, subharness.Harness{}, err
+		return revision{}, subharness.Harness{}, nil, err
 	}
 	section("stage 1.5 · the draft, as it stands")
 	fmt.Print(string(page))
@@ -380,125 +382,104 @@ func (r *rig) reviewStage(ctx context.Context, goal string, draft design, draftH
 			"THE DRAFT'S CUES:\n\n" + strings.Join(draft.Cues, " · "),
 			"THE DRAFT'S JUSTIFICATION:\n\n" + draft.Justification,
 			"THE DRAFT HARNESS:\n\n" + string(page),
-			"Review it and hand back the version that survives.",
+			"Review it and reply with your findings and the ops that answer them.",
 		}, "\n\n")},
 	}
 
 	var (
 		envelope revision
 		harness  subharness.Harness
+		applied  []subharness.OpResult
 	)
-	for attempt := 0; attempt <= r.retries; attempt++ {
+	for tries := 0; tries <= r.retries; tries++ {
 		began := time.Now()
-		var raw string
-		envelope, harness, raw, err = reviewOnce(ctx, r.chat, history, r.reviewTokens, r.temperature)
+		var at attempt
+		envelope, harness, applied, at, err = reviewOnce(ctx, r.chat, history, r.reviewTokens, r.temperature, draft, draftHarness)
 		if err == nil {
-			fmt.Printf("stage 1.5 review accepted on attempt %d/%d · %s · %d findings · %d nodes · %s/%s\n",
-				attempt+1, r.retries+1, time.Since(began).Round(time.Millisecond),
-				envelope.findings(), len(harness.Program.Nodes), harness.Verify.Ladder, harness.Dyn.Ladder)
-			return envelope, harness, nil
+			fmt.Printf("stage 1.5 review accepted on attempt %d/%d · %s%s · %d findings · %d ops (%d applied) · %d nodes · %s/%s\n",
+				tries+1, r.retries+1, time.Since(began).Round(time.Millisecond), at.cost(),
+				envelope.findings(), len(applied), landed(applied),
+				len(harness.Program.Nodes), harness.Verify.Ladder, harness.Dyn.Ladder)
+			return envelope, harness, applied, nil
 		}
-		fmt.Printf("stage 1.5 attempt %d/%d refused · %s\n          %v\n", attempt+1, r.retries+1, time.Since(began).Round(time.Millisecond), err)
+		fmt.Printf("stage 1.5 attempt %d/%d refused · %s%s\n          %v\n", tries+1, r.retries+1, time.Since(began).Round(time.Millisecond), at.cost(), err)
 		if ctx.Err() != nil {
-			return revision{}, subharness.Harness{}, ctx.Err()
+			return revision{}, subharness.Harness{}, nil, ctx.Err()
 		}
-		if attempt == r.retries {
-			return revision{}, subharness.Harness{}, fmt.Errorf("no valid revision in %d attempts: %w", attempt+1, err)
+		if tries == r.retries {
+			return revision{}, subharness.Harness{}, nil, fmt.Errorf("no valid revision in %d attempts: %w", tries+1, err)
 		}
 		history = append(history,
-			message{Role: "assistant", Content: raw},
-			message{Role: "user", Content: "That revision was REFUSED:\n\n" + err.Error() +
-				"\n\nFix exactly that and reply with the whole review envelope again — one JSON object, no prose."})
+			message{Role: "assistant", Content: at.raw},
+			message{Role: "user", Content: "That patch was REFUSED:\n\n" + err.Error() +
+				"\n\nFix exactly that and reply with the whole review envelope again — one JSON object, no prose. " +
+				"The ops are applied to the ORIGINAL draft every time, so send the whole patch, not the difference from your last one."})
 	}
-	return revision{}, subharness.Harness{}, err
+	return revision{}, subharness.Harness{}, nil, err
 }
 
-// printReview puts the critic's three passes, its account of what it changed, and
-// the delta this rig computed from the two pages next to each other.
+// printReview puts the critic's findings and the patch that answers them next to
+// each other.
 //
-// THE TWO ARE PRINTED SEPARATELY ON PURPOSE. `changed` is a model's report of its
-// own work, which is the class of claim this whole system exists to distrust; the
-// delta is read off the pages. Where they disagree, the disagreement is the
-// finding, and it is named rather than reconciled.
-func (r *rig) printReview(draft design, draftHarness subharness.Harness, revised revision, revisedHarness subharness.Harness) {
+// THE PATCH IS THE DELTA. There is nothing to compute and nothing to distrust: an
+// op is not a model's account of a change, it is the change. What this print does
+// add is the fate of each one — an op that named a node nobody declared is skipped
+// rather than fatal, and a review that landed six of nine edits should say so.
+func (r *rig) printReview(draft design, revised revision, applied []subharness.OpResult) {
 	section("stage 1.5 · the critique")
-	for _, pass := range []struct {
-		name     string
-		findings []string
-	}{
-		{"speed", revised.Speed},
-		{"cost", revised.Cost},
-		{"quality", revised.Quality},
-	} {
-		if len(pass.findings) == 0 {
-			fmt.Printf("%-8s nothing found\n", pass.name)
+	for _, pass := range revised.byPass() {
+		if len(pass.Found) == 0 {
+			fmt.Printf("%-8s nothing found\n", pass.Name)
 			continue
 		}
-		for at, finding := range pass.findings {
-			label := pass.name
+		for at, found := range pass.Found {
+			label := pass.Name
 			if at > 0 {
 				label = ""
 			}
-			fmt.Printf("%-8s · %s\n", label, indentRest(wrap(finding, 68), "           "))
+			fmt.Printf("%-8s · %s\n", label, indentRest(wrap(found, 68), "           "))
 		}
 	}
 
-	section("stage 1.5 · what the critic says it changed, and why")
-	if len(revised.Changed) == 0 {
-		fmt.Println("nothing — the critic says it kept the draft as it stands")
+	section("stage 1.5 · the patch, which IS the delta")
+	if len(applied) == 0 {
+		fmt.Println("no ops — the critic kept the draft as it stands")
 	}
-	for _, change := range revised.Changed {
-		fmt.Printf("· %s\n", indentRest(wrap(change, 74), "  "))
+	for _, result := range applied {
+		if result.Applied() {
+			fmt.Printf("✓ %s\n", indentRest(wrap(result.Op.String(), 74), "  "))
+			continue
+		}
+		fmt.Printf("✗ %s\n  SKIPPED %s\n", indentRest(wrap(result.Op.String(), 74), "  "),
+			indentRest(wrap(result.Err.Error(), 66), "          "))
+	}
+	if skipped := len(applied) - landed(applied); skipped > 0 {
+		fmt.Printf("\n%d of %d ops were skipped — the rest of the patch still landed\n", skipped, len(applied))
 	}
 	if revised.Calls.Draft != 0 || revised.Calls.Revised != 0 {
-		fmt.Printf("\nthe critic counted %d model calls in the draft and %d in its revision\n",
+		fmt.Printf("\nthe critic counted %d model calls in the draft and %d after its patch\n",
 			revised.Calls.Draft, revised.Calls.Revised)
 	}
-
-	section("stage 1.5 · the delta, computed from the two pages")
-	d := diff(draftHarness, revisedHarness)
 	switch {
-	case d.empty() && len(revised.Changed) > 0:
-		fmt.Println("the two pages are IDENTICAL — the critic listed changes it did not make")
-	case d.empty():
-		fmt.Println("the two pages are identical, which is what the critic said")
-	default:
-		line := func(label string, values ...string) {
-			for at, value := range values {
-				if at > 0 {
-					label = ""
-				}
-				fmt.Printf("%-9s %s\n", label, value)
-			}
-		}
-		line("nodes+", d.AddedNodes...)
-		line("nodes-", d.RemovedNodes...)
-		line("rekind", d.Rekinded...)
-		line("fields", d.Rebriefed...)
-		line("edges+", d.AddedEdges...)
-		line("edges-", d.RemovedEdges...)
-		if d.Verify != "" {
-			line("verify", d.Verify)
-		}
-		if d.Dyn != "" {
-			line("dyn", d.Dyn)
-		}
-		if d.Whitelist != "" {
-			line("tools", d.Whitelist)
-		}
-		if d.Calls != "" {
-			line("calls", d.Calls)
-		}
-		if d.Identity != "" {
-			line("identity", d.Identity)
-		}
-		if len(revised.Changed) == 0 {
-			fmt.Println("\nthe critic said it changed NOTHING and the pages differ — its account of its own work is wrong")
+	case strings.TrimSpace(revised.Justification) == "" && landed(applied) > 0:
+		fmt.Printf("\nthe critic patched the page and did NOT restate the justification, so the draft's stands\n")
+	case strings.TrimSpace(revised.Justification) != "":
+		fmt.Printf("\njust.    %d → %d bytes\n", len(draft.Justification), len(revised.Justification))
+	}
+	if len(revised.Cues) > 0 {
+		fmt.Printf("cues     %s → %s\n", strings.Join(draft.Cues, " · "), strings.Join(revised.Cues, " · "))
+	}
+}
+
+// landed counts the ops that did what they said.
+func landed(results []subharness.OpResult) int {
+	total := 0
+	for _, result := range results {
+		if result.Applied() {
+			total++
 		}
 	}
-	if a, b := len(draft.Justification), len(revised.Justification); a != b {
-		fmt.Printf("just.    %d → %d bytes\n", a, b)
-	}
+	return total
 }
 
 // conditionNotes says which of a program's conditions the small language decides

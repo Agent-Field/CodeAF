@@ -97,6 +97,10 @@ type chatClient struct {
 	key   string
 	model string
 	http  *http.Client
+	// url is the endpoint, a field only so a test can stand a server in front
+	// of this client. Nothing configures it: a rig that talked to somewhere
+	// else would be measuring somewhere else.
+	url string
 
 	calls  int
 	tokens int
@@ -107,6 +111,7 @@ func newChatClient(key, model string) *chatClient {
 	return &chatClient{
 		key:   key,
 		model: model,
+		url:   openrouterURL,
 		// Long, because a designer turn on this model spends a thousand-odd
 		// reasoning tokens before it writes the first brace.
 		http: &http.Client{Timeout: 6 * time.Minute},
@@ -152,7 +157,7 @@ func (c *chatClient) complete(ctx context.Context, req chatRequest) (reply, erro
 }
 
 func (c *chatClient) once(ctx context.Context, body []byte) (reply, bool, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, openrouterURL, bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(body))
 	if err != nil {
 		return reply{}, false, err
 	}

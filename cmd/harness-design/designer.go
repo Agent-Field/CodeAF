@@ -22,16 +22,31 @@ package main
 // mood that produced them: it over-builds, it leaves conditions as sentences that
 // cost a model call each, and it draws independent work in a line. So the draft is
 // handed back to the same guide wearing PART FOUR — a critic with the guide's own
-// steps turned into checklists for SPEED, COST and QUALITY — which revises it. The
-// delta printed afterwards is COMPUTED from the two pages, not taken from the
-// critic's account of itself, because a model's report of what it changed is one
-// more thing worth verifying.
+// steps turned into checklists for SPEED, COST and QUALITY.
+//
+// THE CRITIC DOES NOT HAND BACK A PAGE. It hands back a PATCH — the ops in
+// internal/subharness/ops.go — which is applied to the original parsed harness.
+// The reason is measured rather than aesthetic: a critic asked to re-emit four
+// thousand bytes retypes them, and a retyped page comes back with "whishpeR.cpp"
+// where the draft said whisper.cpp. That is a page made worse by the pass that was
+// supposed to improve it, in the one place nobody reviewed. A patch cannot make
+// that mistake, because text the critic did not name is never in its reply at all.
+//
+// The delta printed afterwards is the ops list itself. Nothing is diffed and
+// nothing is inferred: with a patch, what the critic did and what it says it did
+// are the same object.
+//
+// The other half of holding a model to JSON is [jsonReply]: the reply climbs
+// subharness.Salvage's ladder, and a reply that still will not parse buys ONE
+// repair turn — its own text and the parser's exact complaint — before a full
+// retry is counted. A design refused for typographic quotes is a good design lost
+// to punctuation, and the whole guide is re-read to fix a delimiter.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -54,42 +69,117 @@ type design struct {
 	Harness       json.RawMessage `json:"harness"`
 }
 
-// revision is stage 1.5's envelope: the three critique passes, the critic's own
-// call count, what it says it changed, and the whole revised design.
+// finding is one thing the critic found, and which of the three passes found it.
+// The pass is carried as a field rather than as three arrays because it is a
+// label on a sentence, and a critic that has to fill three arrays fills all three.
+type finding struct {
+	Pass string `json:"pass"`
+	Text string `json:"text"`
+}
+
+// revision is stage 1.5's envelope: what the critic found, the patch it wrote,
+// and its own count of what the two versions cost.
 //
-// The findings are carried separately from `changed` on purpose. A finding the
-// critic named and then did NOT act on is the most interesting line in the report
-// — it is either restraint (the finding was real but not worth the change) or a
-// critic that wrote a paragraph and did nothing, and the review print puts both in
-// front of a person rather than deciding which it was.
+// THERE IS NO `harness` FIELD AND NO `changed` FIELD, and both absences are the
+// point. The ops ARE what changed — a separate account of it would be a second,
+// unverifiable story about the same work — and the page is never re-emitted, so
+// there is nothing for a transcription slip to damage.
+//
+// `cues` and `justification` are OPTIONAL for the same reason: text the critic
+// does not intend to change must not appear in its reply, so an omitted field
+// means "the draft's, unchanged" rather than "empty".
 type revision struct {
-	Speed   []string `json:"speed"`
-	Cost    []string `json:"cost"`
-	Quality []string `json:"quality"`
-	Calls   struct {
+	Findings []finding       `json:"findings"`
+	Ops      []subharness.Op `json:"ops"`
+	Calls    struct {
 		Draft   int `json:"draft"`
 		Revised int `json:"revised"`
 	} `json:"calls"`
-	Changed       []string        `json:"changed"`
-	Cues          []string        `json:"cues"`
-	Justification string          `json:"justification"`
-	Harness       json.RawMessage `json:"harness"`
+	Cues          []string `json:"cues,omitempty"`
+	Justification string   `json:"justification,omitempty"`
 }
 
-// design is the revision seen as one, so the same decode/validate/lint path serves
-// both stages.
-func (r revision) design() design {
-	return design{Cues: r.Cues, Justification: r.Justification, Harness: r.Harness}
+// design is the revision seen as one, against the draft it patched: whatever the
+// critic did not restate is the draft's own. The harness is carried separately
+// because a patched page is not a page the critic wrote.
+func (r revision) design(draft design) design {
+	out := design{Cues: draft.Cues, Justification: draft.Justification}
+	if len(r.Cues) > 0 {
+		out.Cues = r.Cues
+	}
+	if strings.TrimSpace(r.Justification) != "" {
+		out.Justification = r.Justification
+	}
+	return out
 }
 
-func (r revision) findings() int { return len(r.Speed) + len(r.Cost) + len(r.Quality) }
+func (r revision) findings() int { return len(r.Findings) }
+
+// pass is the findings one of the guide's three passes turned up, for printing.
+type pass struct {
+	Name  string
+	Found []string
+}
+
+// byPass groups the findings for printing, keeping the guide's own three passes
+// in the guide's own order and putting anything else at the end under its own
+// label rather than dropping it. A pass with nothing under it is KEPT, because
+// "speed: nothing found" is a review result and a missing line is not.
+func (r revision) byPass() []pass {
+	order := []string{"speed", "cost", "quality"}
+	found := map[string][]string{}
+	for _, one := range r.Findings {
+		name := strings.ToLower(strings.TrimSpace(one.Pass))
+		if name == "" {
+			name = "unlabelled"
+		}
+		if !contains(order, name) {
+			order = append(order, name)
+		}
+		found[name] = append(found[name], one.Text)
+	}
+	out := make([]pass, 0, len(order))
+	for _, name := range order {
+		out = append(out, pass{Name: name, Found: found[name]})
+	}
+	return out
+}
+
+func contains(words []string, word string) bool {
+	for _, one := range words {
+		if one == word {
+			return true
+		}
+	}
+	return false
+}
 
 // designerSystem is the brief: the meta-guide, with this build's machinery filled
 // into it. It is one string built once so the whole of what the model was told can
 // be printed beside what it produced.
 func designerSystem(tools []toolSpec) (string, error) {
-	return prompts.Render(prompts.Designer, machinery(tools))
+	guide, err := prompts.Render(prompts.Designer, machinery(tools))
+	if err != nil {
+		return "", err
+	}
+	return guide + asciiRule, nil
 }
+
+// asciiRule is the one line of output contract this rig adds to the guide it was
+// handed. It lives here rather than in the guide because the guide is a document
+// about DESIGN and this is a fact about the transport: a page whose delimiters
+// came out as typographic quotes is a good design that will not parse, and the
+// cheapest place to fix that is before it is written.
+//
+// It draws the line where the salvage ladder draws it — syntax is ASCII, prose is
+// the writer's — so a designer is never told to flatten an em-dash out of a brief
+// in order to be read.
+const asciiRule = "\n" + `
+One rule about the characters, not the design: JSON DELIMITERS AND SYNTAX ARE
+ASCII. The quotes around every key and every string value are " (U+0022) — never
+“ ” ‘ ’ — and so are the braces, brackets, colons and commas. Prose may use any
+character INSIDE a string value: an em-dash in a brief is content and stays.
+`
 
 // reviewSystem is stage 1.5's brief. It is the WHOLE designer guide plus PART
 // FOUR, because a critic that cannot see the law it is judging against would be
@@ -126,58 +216,162 @@ func machinery(tools []toolSpec) map[string]string {
 	}
 }
 
+// attempt is what one turn of the model cost, told separately from what it
+// produced. A run that is measuring whether a model can architect a harness has
+// to be able to say "this reply needed sanitising and a repair turn" — otherwise
+// a model quietly emitting typographic quotes looks exactly like a model that
+// never had a problem.
+type attempt struct {
+	raw      string // the last text the model produced, for the retry history
+	rung     string // the salvage rung that made it JSON
+	repaired bool   // a repair turn was spent before it parsed
+}
+
+// cost is the phrase a stage line adds when the reply was not clean. A clean
+// reply says nothing, so the log stays quiet until there is something to say.
+func (a attempt) cost() string {
+	var said []string
+	if a.rung != "" && a.rung != subharness.SalvageStrict {
+		said = append(said, "salvaged at "+a.rung)
+	}
+	if a.repaired {
+		said = append(said, "after a repair turn")
+	}
+	if len(said) == 0 {
+		return ""
+	}
+	return " · " + strings.Join(said, " ")
+}
+
+// jsonReply is one model turn whose reply has to be JSON, with the ONE repair
+// turn this pipeline allows before a full retry is counted.
+//
+// The order matters and it is cheapest-first. Salvage costs nothing and fixes the
+// fence, the prose, the smart quotes and the trailing comma. What it cannot fix is
+// a reply that was cut off mid-object or one whose structure is genuinely wrong,
+// and for those a REPAIR turn is still an order of magnitude cheaper than a
+// retry: the model is shown its own output and the parser's exact complaint, and
+// asked for the corrected JSON alone — no guide, no goal, no re-derivation. Only
+// when that fails does the caller spend a real attempt.
+func jsonReply(ctx context.Context, chat *chatClient, history []message, maxTokens int, temperature float64) (subharness.Salvaged, attempt, error) {
+	out, err := chat.complete(ctx, chatRequest{
+		Messages:    history,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+	})
+	if err != nil {
+		return subharness.Salvaged{}, attempt{}, err
+	}
+	at := attempt{raw: out.Text}
+	salvaged, err := subharness.SalvageDetail(out.Text)
+	if err == nil {
+		at.rung = salvaged.Rung
+		return salvaged, at, nil
+	}
+
+	// THE REPAIR TURN CARRIES NO GUIDE. It is not a second attempt at the design —
+	// it is a transcription job, and handing it the twenty-five thousand tokens of
+	// law that produced the first reply would invite it to reconsider the design
+	// while it is meant to be fixing a delimiter. What it gets is its own text,
+	// the parser's exact complaint, and one instruction.
+	at.repaired = true
+	repair := []message{
+		{Role: "system", Content: "You repair malformed JSON and do nothing else. You never change content, never add a field, never drop one, and never explain. Your whole reply is one JSON value."},
+		{Role: "user", Content: "This was meant to be one JSON object:\n\n" + out.Text +
+			"\n\nIt did not parse. " + err.Error() +
+			"\n\nReply with ONLY the corrected JSON — the same content, nothing added, nothing dropped, no prose, no code fence. " +
+			"JSON delimiters and syntax are ASCII: every key and string value is wrapped in \" (U+0022). Prose inside a string value stays exactly as it is."},
+	}
+	// The same budget: the repair is a whole reply, not a fragment, and a repair
+	// turn that runs out of room has failed for the reason it was called.
+	second, err := chat.complete(ctx, chatRequest{
+		Messages:    repair,
+		MaxTokens:   maxTokens,
+		Temperature: 0,
+	})
+	if err != nil {
+		return subharness.Salvaged{}, at, err
+	}
+	at.raw = second.Text
+	salvaged, err = subharness.SalvageDetail(second.Text)
+	if err != nil {
+		return subharness.Salvaged{}, at, fmt.Errorf("neither the reply nor its repair parsed: %w", err)
+	}
+	at.rung = salvaged.Rung
+	return salvaged, at, nil
+}
+
 // designOnce asks for one design and returns it decoded, or the error the model is
 // going to be shown.
-func designOnce(ctx context.Context, chat *chatClient, history []message, maxTokens int, temperature float64) (design, subharness.Harness, string, error) {
-	out, err := chat.complete(ctx, chatRequest{
-		Messages:    history,
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
-	})
+func designOnce(ctx context.Context, chat *chatClient, history []message, maxTokens int, temperature float64) (design, subharness.Harness, attempt, error) {
+	salvaged, at, err := jsonReply(ctx, chat, history, maxTokens, temperature)
 	if err != nil {
-		return design{}, subharness.Harness{}, "", err
+		return design{}, subharness.Harness{}, at, err
 	}
-	raw := out.Text
 	var envelope design
-	decoder := json.NewDecoder(strings.NewReader(stripFence(raw)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&envelope); err != nil {
-		return design{}, subharness.Harness{}, raw, fmt.Errorf("your reply is not the envelope: %w. Reply with ONE JSON object with exactly the keys cues, justification, harness", err)
+	if err := strict(salvaged.JSON, &envelope); err != nil {
+		return design{}, subharness.Harness{}, at, fmt.Errorf("your reply is not the envelope: %w. Reply with ONE JSON object with exactly the keys cues, justification, harness", err)
 	}
 	h, err := accept(envelope)
-	return envelope, h, raw, err
+	return envelope, h, at, err
 }
 
-// reviewOnce is stage 1.5's turn: one critique-and-revision, decoded, validated
-// and linted on exactly the terms the draft was. A revision that does not hold up
-// is refused the same way a draft is, and for the same reason — a critic that
-// hands back a broken page has not improved anything.
-func reviewOnce(ctx context.Context, chat *chatClient, history []message, maxTokens int, temperature float64) (revision, subharness.Harness, string, error) {
-	out, err := chat.complete(ctx, chatRequest{
-		Messages:    history,
-		MaxTokens:   maxTokens,
-		Temperature: temperature,
-	})
+// reviewOnce is stage 1.5's turn: one critique, one patch, applied to the DRAFT
+// the critic was reading and held to exactly the law the draft passed.
+//
+// The op results come back beside the harness because a skipped op is a finding
+// about the review itself, and this rig prints it rather than quietly landing
+// eleven of twelve edits.
+func reviewOnce(ctx context.Context, chat *chatClient, history []message, maxTokens int, temperature float64, draft design, draftHarness subharness.Harness) (revision, subharness.Harness, []subharness.OpResult, attempt, error) {
+	salvaged, at, err := jsonReply(ctx, chat, history, maxTokens, temperature)
 	if err != nil {
-		return revision{}, subharness.Harness{}, "", err
+		return revision{}, subharness.Harness{}, nil, at, err
 	}
-	raw := out.Text
 	var envelope revision
-	decoder := json.NewDecoder(strings.NewReader(stripFence(raw)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&envelope); err != nil {
-		return revision{}, subharness.Harness{}, raw, fmt.Errorf("your reply is not the review envelope: %w. Reply with ONE JSON object with exactly the keys speed, cost, quality, calls, changed, cues, justification, harness", err)
+	if err := strict(salvaged.JSON, &envelope); err != nil {
+		return revision{}, subharness.Harness{}, nil, at, fmt.Errorf("your reply is not the review envelope: %w. Reply with ONE JSON object with exactly the keys findings, ops, calls, and optionally cues and justification", err)
 	}
-	if len(envelope.Harness) == 0 {
-		return envelope, subharness.Harness{}, raw, fmt.Errorf("the review carries no harness: the WHOLE page goes in `harness` every time, changed or not")
+	revised, results, err := subharness.ApplyReport(draftHarness, envelope.Ops)
+	if err == nil {
+		err = check(revised, envelope.design(draft))
+	} else {
+		err = fmt.Errorf("your ops produced a page that is refused: %w", err)
 	}
-	h, err := accept(envelope.design())
-	return envelope, h, raw, err
+	// A skipped op is not fatal on its own, but if the patch is going back for
+	// another turn the critic should be told which of its ops did nothing —
+	// otherwise it fixes the validation error and sends the same dead op again.
+	if err != nil {
+		if skipped := skippedOps(results); skipped != "" {
+			err = fmt.Errorf("%w\n\nAlso, these ops did nothing:\n%s", err, skipped)
+		}
+	}
+	return envelope, revised, results, at, err
 }
 
-// accept is the gauntlet an envelope passes at either stage: the page decoded by
-// the package that owns the format with unknown fields refused, validated, then
-// linted for the law this rig has that Validate does not.
+// skippedOps names the ops that did nothing, in the words the package refused
+// them with, for a critic that is getting another turn.
+func skippedOps(results []subharness.OpResult) string {
+	var lines []string
+	for _, result := range results {
+		if !result.Applied() {
+			lines = append(lines, fmt.Sprintf("- %s: %v", result.Op, result.Err))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// strict is how every envelope is read: by the same decoder that reads a page
+// from disk, with unknown fields refused. A key nobody asked for is a model
+// answering a different question, and a rig that ignored it would be measuring
+// the answer to that one.
+func strict(data []byte, into any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(into)
+}
+
+// accept is the gauntlet the DESIGN stage's envelope passes: the page decoded by
+// the package that owns the format with unknown fields refused, then checked.
 func accept(envelope design) (subharness.Harness, error) {
 	if len(envelope.Harness) == 0 {
 		return subharness.Harness{}, fmt.Errorf("the envelope has no harness in it")
@@ -186,10 +380,16 @@ func accept(envelope design) (subharness.Harness, error) {
 	if err != nil {
 		return subharness.Harness{}, err
 	}
+	return h, check(h, envelope)
+}
+
+// check is the law both stages are held to: Validate, then the lint this rig has
+// that Validate does not.
+func check(h subharness.Harness, d design) error {
 	if err := subharness.Validate(h); err != nil {
-		return h, err
+		return err
 	}
-	return h, lint(h, envelope, availableTools)
+	return lint(h, d, availableTools)
 }
 
 // lint is the law this rig has that Validate does not, and every line of it is a
@@ -258,143 +458,6 @@ func lint(h subharness.Harness, d design, tools []toolSpec) error {
 	return fmt.Errorf("%s", strings.Join(problems, "; "))
 }
 
-// ── the computed delta ──────────────────────────────────────────────────────
-
-// delta is what actually changed between the draft and the revision, read off the
-// two pages. Nothing here asks the critic what it did: `changed` is its account,
-// this is the record, and the review print shows them together because the gap
-// between them is the measure of whether the second pass is worth its money.
-type delta struct {
-	AddedNodes   []string
-	RemovedNodes []string
-	Rekinded     []string
-	Rebriefed    []string
-	AddedEdges   []string
-	RemovedEdges []string
-	Verify       string
-	Dyn          string
-	Whitelist    string
-	Calls        string
-	Identity     string
-}
-
-func (d delta) empty() bool {
-	return len(d.AddedNodes) == 0 && len(d.RemovedNodes) == 0 && len(d.Rekinded) == 0 &&
-		len(d.Rebriefed) == 0 && len(d.AddedEdges) == 0 && len(d.RemovedEdges) == 0 &&
-		d.Verify == "" && d.Dyn == "" && d.Whitelist == "" && d.Calls == "" && d.Identity == ""
-}
-
-// diff reads one page against the other.
-func diff(before, after subharness.Harness) delta {
-	var d delta
-
-	from := nodesById(before)
-	to := nodesById(after)
-	for id, node := range to {
-		was, existed := from[id]
-		switch {
-		case !existed:
-			d.AddedNodes = append(d.AddedNodes, fmt.Sprintf("%s (%s)", id, node.Kind))
-		case was.Kind != node.Kind:
-			d.Rekinded = append(d.Rekinded, fmt.Sprintf("%s: %s → %s", id, was.Kind, node.Kind))
-		default:
-			if changed := fieldsChanged(was, node); len(changed) > 0 {
-				d.Rebriefed = append(d.Rebriefed, fmt.Sprintf("%s: %s", id, strings.Join(changed, ", ")))
-			}
-		}
-	}
-	for id, node := range from {
-		if _, kept := to[id]; !kept {
-			d.RemovedNodes = append(d.RemovedNodes, fmt.Sprintf("%s (%s)", id, node.Kind))
-		}
-	}
-
-	was, now := edgeSet(before), edgeSet(after)
-	for edge := range now {
-		if !was[edge] {
-			d.AddedEdges = append(d.AddedEdges, edge)
-		}
-	}
-	for edge := range was {
-		if !now[edge] {
-			d.RemovedEdges = append(d.RemovedEdges, edge)
-		}
-	}
-
-	if before.Verify.Ladder != after.Verify.Ladder {
-		d.Verify = fmt.Sprintf("%s → %s (%s)", rungOr(before.Verify.Ladder), rungOr(after.Verify.Ladder),
-			direction(subharness.VerifyRung(after.Verify.Ladder)-subharness.VerifyRung(before.Verify.Ladder)))
-	}
-	if before.Dyn.Ladder != after.Dyn.Ladder || before.Dyn.Cap != after.Dyn.Cap {
-		d.Dyn = fmt.Sprintf("%s cap %d → %s cap %d", rungOr(before.Dyn.Ladder), before.Dyn.Cap, rungOr(after.Dyn.Ladder), after.Dyn.Cap)
-	}
-	if a, b := strings.Join(before.Whitelist, ","), strings.Join(after.Whitelist, ","); a != b {
-		d.Whitelist = fmt.Sprintf("[%s] → [%s]", a, b)
-	}
-	if a, b := estimateCalls(before), estimateCalls(after); a != b {
-		d.Calls = fmt.Sprintf("%d → %d model calls at most", a, b)
-	}
-	if before.Id.Name != after.Id.Name || before.Id.Desc != after.Id.Desc {
-		d.Identity = fmt.Sprintf("%s — %q → %s — %q", before.Id.Name, before.Id.Desc, after.Id.Name, after.Id.Desc)
-	}
-
-	sort.Strings(d.AddedNodes)
-	sort.Strings(d.RemovedNodes)
-	sort.Strings(d.Rekinded)
-	sort.Strings(d.Rebriefed)
-	sort.Strings(d.AddedEdges)
-	sort.Strings(d.RemovedEdges)
-	return d
-}
-
-func nodesById(h subharness.Harness) map[string]subharness.Node {
-	out := make(map[string]subharness.Node, len(h.Program.Nodes))
-	for _, node := range h.Program.Nodes {
-		out[node.Id] = node
-	}
-	return out
-}
-
-func edgeSet(h subharness.Harness) map[string]bool {
-	out := map[string]bool{}
-	for _, edge := range h.Program.Edges {
-		out[edge.From()+"→"+edge.To()] = true
-	}
-	return out
-}
-
-// fieldsChanged names the fields that differ, and says HOW for the one field
-// whose length is the cost — a brief is paid for on every turn of the node that
-// holds it, so "brief 340→180 bytes" is the finding and the new text is not.
-func fieldsChanged(before, after subharness.Node) []string {
-	names := map[string]bool{}
-	for name := range before.Fields {
-		names[name] = true
-	}
-	for name := range after.Fields {
-		names[name] = true
-	}
-	var out []string
-	for name := range names {
-		was, now := before.Fields.Get(name), after.Fields.Get(name)
-		if was == now {
-			continue
-		}
-		switch {
-		case was == "":
-			out = append(out, fmt.Sprintf("+%s=%q", name, clip(oneLine(now), 60)))
-		case now == "":
-			out = append(out, fmt.Sprintf("-%s", name))
-		case len(was) > 80 || len(now) > 80:
-			out = append(out, fmt.Sprintf("%s reworded %d→%d bytes", name, len(was), len(now)))
-		default:
-			out = append(out, fmt.Sprintf("%s %q→%q", name, clip(oneLine(was), 40), clip(oneLine(now), 40)))
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 // estimateCalls is what this page costs a run, counted the way the guide asks the
 // designer to count it: one per agent.loop (times the turns it may take), one per
 // verify, one per condition that the condition language will NOT decide, times the
@@ -432,36 +495,6 @@ func estimateCalls(h subharness.Harness) int {
 		}
 	}
 	return total
-}
-
-func rungOr(word string) string { return firstOr(word, "(none)") }
-
-func direction(by int) string {
-	switch {
-	case by > 0:
-		return "raised"
-	case by < 0:
-		return "lowered"
-	default:
-		return "changed"
-	}
-}
-
-// stripFence takes the JSON out of a reply that arrived wearing a code fence. The
-// instruction says not to use one; a model that does anyway has not made a design
-// error, and spending a retry on punctuation would measure the wrong thing.
-func stripFence(text string) string {
-	text = strings.TrimSpace(text)
-	if !strings.HasPrefix(text, "```") {
-		return text
-	}
-	if at := strings.IndexByte(text, '\n'); at >= 0 {
-		text = text[at+1:]
-	}
-	if at := strings.LastIndex(text, "```"); at >= 0 {
-		text = text[:at]
-	}
-	return strings.TrimSpace(text)
 }
 
 // entryOf is the detection half of a page, derived. It is a function here rather
