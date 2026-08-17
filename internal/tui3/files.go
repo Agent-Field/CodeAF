@@ -522,12 +522,29 @@ type filesLoadedMsg struct{ paths []string }
 // loadFiles walks the workspace off the loop. It runs ONCE per surface: the
 // list is a completion aid, and a person who creates a file mid-conversation
 // can type its name, which is what they were going to do anyway.
+//
+// IT WALKS A DIRECTORY THIS PROCESS CAN ACTUALLY OPEN ([app.pathRoot]), which
+// over --host is this machine's own and not the conversation's. There is no
+// choice about it — the workspace is on another disk and filepath.WalkDir has no
+// way to reach it — and the alternative is worse than a local list: walking the
+// remote path HERE would either find nothing or, if a directory of that name
+// happens to exist on this machine, offer somebody else's files as though they
+// were the project's.
+//
+// The local list is the RIGHT one for the door that needs a real file — /image,
+// whose picture is on the machine the person is sitting at and whose bytes
+// travel with the message. For an "@" mention it is a convenience rather than an
+// index: the completion only ever puts TEXT in the sentence (this file's own
+// law — the surface does not read the file), and the engine resolves that text
+// against its own workspace. So a name picked here is a name the far side looks
+// up, which is right when the two machines hold the same project and visibly
+// wrong when they do not.
 func (a *app) loadFiles() tea.Cmd {
-	if a.comp.loaded || a.comp.loading || a.workspace == "" {
+	root := a.pathRoot()
+	if a.comp.loaded || a.comp.loading || root == "" {
 		return nil
 	}
 	a.comp.loading = true
-	root := a.workspace
 	return func() tea.Msg { return filesLoadedMsg{paths: walkFiles(root, walkCap)} }
 }
 

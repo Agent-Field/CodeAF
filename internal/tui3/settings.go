@@ -663,6 +663,16 @@ func (a *app) slotRefusal(slot string) error {
 
 // openSettings is /settings and ctrl+,.
 func (a *app) openSettings() {
+	// THE PANEL OPENS AND SAYS WHOSE ROWS THESE ARE. Over --host it edits this
+	// machine's profile, and only some of these rows are about this machine: the
+	// mouse, the timestamps, the draft and the history are the surface's own and
+	// apply; the tool gate, the spend rail and the auxiliary models are the
+	// SESSION's, and the session reads them from the profile on the other machine.
+	// Closing the panel would take the working half away; opening it silently
+	// would let somebody turn a gate off and watch it stay on (host.go).
+	if a.hosted() {
+		a.note(settingsRemoteWord)
+	}
 	a.sheet = sheet{
 		open:     true,
 		registry: a.registry(),
