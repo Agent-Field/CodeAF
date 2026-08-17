@@ -275,7 +275,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			}
 			return agent, nil
 		},
-		PickSession:   pickSession,
+		PickSession: pickSession,
+		// The accounts panel, and the sign-in a pressed row starts. It is the
+		// SAME manager the belt reaches through (cfg.Connect), so an account
+		// connected on the panel is connected for the model in the same breath
+		// and neither side has to be told about the other.
+		Connections:   v3Connections(cfg.Connect),
 		Workspace:     workspace,
 		SessionFile:   transcript,
 		Resumed:       resumed,
@@ -284,6 +289,22 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		History:       recall,
 		DraftFile:     draft,
 	})
+}
+
+// v3Connections hands the surface the accounts manager, and keeps a nil a nil.
+//
+// The two-line dance is Go's and not a choice: a nil *connect.Manager put into
+// an interface is a NON-nil interface holding nothing, and the surface tests
+// its door with a plain nil check. Without this, a build with no Google
+// registration would open an accounts panel it could not fill and offer rows
+// that could only fail — the same belt-that-lies internal/session refuses to
+// build, drawn on a screen instead. A build without a registration says plainly
+// that it cannot manage accounts, which is the honest answer.
+func v3Connections(manager *connect.Manager) tui3.Connections {
+	if manager == nil {
+		return nil
+	}
+	return manager
 }
 
 // openV3Agent opens the session this run writes, and NEVER crashes on a
