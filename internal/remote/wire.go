@@ -48,29 +48,29 @@ type Frame struct {
 const (
 	// Agent — payloads are the method's own argument struct below; results are
 	// the return values likewise.
-	MethodSubmit          = "Submit"          // SubmitArgs → StreamRef, then "event" frames
-	MethodSubmitImage     = "SubmitImage"     // SubmitImageArgs → StreamRef, then "event" frames
-	MethodFollowUp        = "FollowUp"        // SubmitArgs → StreamRef, then "event" frames
-	MethodInterrupt       = "Interrupt"       // nothing → nothing
-	MethodCompact         = "Compact"         // nothing → nothing (error carries the failure)
-	MethodClose           = "Close"           // nothing → nothing
-	MethodModel           = "Model"           // nothing → string
-	MethodSetModel        = "SetModel"        // string → nothing
-	MethodSetContext      = "SetContextWindow" // int → nothing
-	MethodReasoningFor    = "ReasoningFor"    // string → string
-	MethodSetReasoningFor = "SetReasoningFor" // ReasoningArgs → nothing
-	MethodConsent         = "ResolveConsent"  // ConsentArgs → nothing
+	MethodSubmit          = "Submit"                 // SubmitArgs → StreamRef, then "event" frames
+	MethodSubmitImage     = "SubmitImage"            // SubmitImageArgs → StreamRef, then "event" frames
+	MethodFollowUp        = "FollowUp"               // SubmitArgs → StreamRef, then "event" frames
+	MethodInterrupt       = "Interrupt"              // nothing → nothing
+	MethodCompact         = "Compact"                // nothing → nothing (error carries the failure)
+	MethodClose           = "Close"                  // nothing → nothing
+	MethodModel           = "Model"                  // nothing → string
+	MethodSetModel        = "SetModel"               // string → nothing
+	MethodSetContext      = "SetContextWindow"       // int → nothing
+	MethodReasoningFor    = "ReasoningFor"           // string → string
+	MethodSetReasoningFor = "SetReasoningFor"        // ReasoningArgs → nothing
+	MethodConsent         = "ResolveConsent"         // ConsentArgs → nothing
 	MethodConsentRemember = "ResolveConsentRemember" // ConsentArgs → nothing
-	MethodHarness         = "ResolveHarness"  // HarnessArgs → nothing
-	MethodConnect         = "ResolveConnect"  // ConnectArgs → nothing
-	MethodConnectKey      = "ResolveConnectKey" // ConnectArgs → nothing
-	MethodNoteConnected   = "NoteConnected"   // ConnectedArgs → nothing
-	MethodTitle           = "Title"           // nothing → string
-	MethodUsage           = "Usage"           // nothing → session.Usage
-	MethodContextTokens   = "ContextTokens"   // nothing → int
-	MethodTranscript      = "Transcript"      // nothing → []session.DisplayEntry
-	MethodRewindPoints    = "RewindPoints"    // nothing → []session.RewindPoint
-	MethodRewindAt        = "RewindAt"        // int → []session.DisplayEntry
+	MethodHarness         = "ResolveHarness"         // HarnessArgs → nothing
+	MethodConnect         = "ResolveConnect"         // ConnectArgs → nothing
+	MethodConnectKey      = "ResolveConnectKey"      // ConnectArgs → nothing
+	MethodNoteConnected   = "NoteConnected"          // ConnectedArgs → nothing
+	MethodTitle           = "Title"                  // nothing → string
+	MethodUsage           = "Usage"                  // nothing → session.Usage
+	MethodContextTokens   = "ContextTokens"          // nothing → int
+	MethodTranscript      = "Transcript"             // nothing → []session.DisplayEntry
+	MethodRewindPoints    = "RewindPoints"           // nothing → []session.RewindPoint
+	MethodRewindAt        = "RewindAt"               // int → []session.DisplayEntry
 
 	// Session doors.
 	MethodSessionsRecent = "Sessions.Recent" // nothing → []session.Summary
