@@ -3,6 +3,7 @@ package connect
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -227,6 +228,125 @@ func TestGmailReadNeedsAMessage(t *testing.T) {
 	}
 }
 
+// decodeRaw unpacks the message a send handed the service, back into the
+// headers and body it was built from.
+func decodeRaw(t *testing.T, raw string) string {
+	t.Helper()
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		t.Fatalf("the message must be packed the way the service reads it: %v", err)
+	}
+	return strings.ReplaceAll(string(decoded), "\r\n", "\n")
+}
+
+func TestGmailSendWritesTheMessageAndSaysWhatLeft(t *testing.T) {
+	var got struct {
+		Raw string `json:"raw"`
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/gmail/v1/users/me/messages/send", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("sending must be a write, got %s", r.Method)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Errorf("decode the request: %v", err)
+		}
+		writeJSON(t, w, map[string]any{"id": "sent-1", "threadId": "t1"})
+	})
+	fakeService(t, mux)
+
+	out, err := GmailSend(context.Background(), &http.Client{},
+		" alice@example.com , bob@example.com ", "carol@example.com", "Lunch tomorrow?", "Hey,\n\n\n\nnoon works.\n")
+	if err != nil {
+		t.Fatalf("GmailSend: %v", err)
+	}
+
+	message := decodeRaw(t, got.Raw)
+	for _, want := range []string{
+		"To: alice@example.com, bob@example.com\n",
+		"Cc: carol@example.com\n",
+		"Subject: Lunch tomorrow?\n",
+		`Content-Type: text/plain; charset="UTF-8"`,
+		"\n\nHey,\n\nnoon works.",
+	} {
+		if !strings.Contains(message, want) {
+			t.Errorf("the message is missing %q:\n%s", want, message)
+		}
+	}
+	for _, want := range []string{"Sent to alice@example.com, bob@example.com", "copying carol@example.com", "Lunch tomorrow?", "id sent-1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the answer is missing %q: %q", want, out)
+		}
+	}
+}
+
+// A HEADER IS ONE LINE. A subject or an address that arrives carrying a line
+// break must not be able to write headers of its own.
+func TestGmailSendFoldsEveryHeaderFlat(t *testing.T) {
+	var got struct {
+		Raw string `json:"raw"`
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/gmail/v1/users/me/messages/send", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		writeJSON(t, w, map[string]any{"id": "sent-1"})
+	})
+	fakeService(t, mux)
+
+	if _, err := GmailSend(context.Background(), &http.Client{},
+		"alice@example.com", "", "Hello\nBcc: nobody@example.com", "the body"); err != nil {
+		t.Fatalf("GmailSend: %v", err)
+	}
+	message := decodeRaw(t, got.Raw)
+	headers, body, split := strings.Cut(message, "\n\n")
+	if !split {
+		t.Fatalf("the body must start after one blank line:\n%s", message)
+	}
+	lines := strings.Split(strings.TrimRight(headers, "\n"), "\n")
+	if len(lines) != 4 {
+		t.Errorf("the headers grew a line:\n%s", headers)
+	}
+	for _, line := range lines {
+		if strings.HasPrefix(line, "Bcc:") {
+			t.Errorf("a subject wrote a header of its own:\n%s", headers)
+		}
+	}
+	if !strings.Contains(lines[1], "Hello Bcc: nobody@example.com") {
+		t.Errorf("the subject must survive as one line, got %q", lines[1])
+	}
+	if strings.TrimSpace(body) != "the body" {
+		t.Errorf("body = %q", body)
+	}
+}
+
+func TestGmailSendNeedsSomebodyAndSomething(t *testing.T) {
+	ctx := context.Background()
+	if _, err := GmailSend(ctx, &http.Client{}, " , ", "", "Subject", "body"); err == nil {
+		t.Error("a message with nobody to go to must say so")
+	}
+	if _, err := GmailSend(ctx, &http.Client{}, "alice@example.com", "", "  ", "  "); err == nil {
+		t.Error("a message with nothing in it must say so")
+	}
+	if _, err := GmailSend(ctx, nil, "alice@example.com", "", "s", "b"); err == nil {
+		t.Error("GmailSend with no connected account must fail")
+	}
+}
+
+func TestGmailSendReportsARefusal(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/gmail/v1/users/me/messages/send", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"code":403,"message":"Request had insufficient authentication scopes."}}`))
+	})
+	fakeService(t, mux)
+
+	if _, err := GmailSend(context.Background(), &http.Client{}, "alice@example.com", "", "s", "b"); err == nil {
+		t.Fatal("a refusal must be an error")
+	} else if !strings.Contains(err.Error(), "insufficient authentication scopes") {
+		t.Errorf("the error must carry the service's own sentence, got %q", err)
+	}
+}
+
 func TestHelpersRefuseAClientlessCall(t *testing.T) {
 	ctx := context.Background()
 	if _, err := GmailSearch(ctx, nil, "anything", 5); err == nil {
@@ -237,6 +357,9 @@ func TestHelpersRefuseAClientlessCall(t *testing.T) {
 	}
 	if _, err := CalendarList(ctx, nil, "", ""); err == nil {
 		t.Error("CalendarList with no connected account must fail")
+	}
+	if _, err := CalendarCreate(ctx, nil, "Standup", "2026-08-18T09:00:00Z", "", "", "", ""); err == nil {
+		t.Error("CalendarCreate with no connected account must fail")
 	}
 }
 
