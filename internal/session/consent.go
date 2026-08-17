@@ -71,6 +71,18 @@ type consentAnswer struct {
 	// ordinary consent answer, and the escalation reads that emptiness as "a
 	// binary surface answered" rather than as a third option nobody picked.
 	choice RecoveryChoice
+	// gate is the same shape for the other three-answer question on this lane:
+	// a sub-harness's human.gate, where the third answer is "stop, I will take
+	// it from here" ([Agent.ResolveHarnessGate], tools_harness.go). It is a
+	// second field rather than a second meaning for choice because the two
+	// questions are two questions, and a surface answering one of them with the
+	// other's vocabulary should resolve to nothing rather than to whatever the
+	// words happen to collide with.
+	gate GateChoice
+	// note is what the person typed with their answer — a redirect on an
+	// approval, a reason on a refusal, the instruction they are continuing with
+	// on an intervention. Empty for every answer given with a single key.
+	note string
 }
 
 // ResolveConsent answers one EventConsentRequest. An id nobody is waiting on —
@@ -194,7 +206,7 @@ func (a *Agent) approve(ctx context.Context, hub *eventHub, call ai.ToolCall) (t
 // end. A "don't ask me again" answer is remembered, because the question was
 // about a tool.
 func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision) (bool, error) {
-	answer, err := a.askAnswer(ctx, hub, call, decision, true)
+	answer, err := a.askAnswer(ctx, hub, call, decision, true, false)
 	return answer.allow, err
 }
 
@@ -212,7 +224,9 @@ func (a *Agent) ask(ctx context.Context, hub *eventHub, call ai.ToolCall, decisi
 // stuck question (recovery.go), which borrows this lane to ask about a TURN —
 // and where "and stop asking me" would otherwise write a standing approval for
 // a tool nobody was asked to approve.
-func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision, memo bool) (consentAnswer, error) {
+// escalate says the question has a third answer and the surface may offer it
+// ([Event.Escalate]). It is true only for a sub-harness gate that declared one.
+func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, decision approval.Decision, memo, escalate bool) (consentAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
@@ -240,6 +254,9 @@ func (a *Agent) askAnswer(ctx context.Context, hub *eventHub, call ai.ToolCall, 
 		// And whether the memo is even available, so a surface can leave the
 		// "always" key off a question it would be dropped on (see Event.Memo).
 		Memo: memo,
+		// And whether there is a third answer to offer at all (see
+		// Event.Escalate).
+		Escalate: escalate,
 	})
 
 	select {

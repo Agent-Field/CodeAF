@@ -336,7 +336,7 @@ func (a *Agent) askAboutLoop(ctx context.Context, hub *eventHub, ep *episode, lo
 	answer, err := a.askAnswer(ctx, hub, looping.call, approval.Decision{
 		Action: approval.ActionPrompt,
 		Rule:   offer.rule(looping),
-	}, false)
+	}, false, false)
 	if err != nil {
 		return
 	}

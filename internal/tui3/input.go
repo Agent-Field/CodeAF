@@ -255,6 +255,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return a.connectPanelKey(msg)
 	}
 
+	// And the harness panel, which is that panel's twin in every respect that
+	// matters here: opened by a command, nothing being typed under it, and esc
+	// leaving the conversation exactly as it was (harness.go).
+	if a.harnPanel.open && msg.String() != "ctrl+c" {
+		return a.harnessPanelKey(msg)
+	}
+
 	if msg.String() == "ctrl+c" {
 		// INTERRUPT FIRST. While a turn runs ctrl+c is the same key esc is —
 		// a person hitting it mid-turn is reaching for the model, not for the

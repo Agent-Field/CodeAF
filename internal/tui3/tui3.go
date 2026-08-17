@@ -48,6 +48,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // Agent is the slice of *session.Agent this surface uses. It is an interface
@@ -223,6 +224,14 @@ type Options struct {
 	// config file is put on a line in the middle of somebody's work.
 	SaveApproval     func(tool string) error
 	SaveBashApproval func(command string) error
+
+	// Harnesses is the sub-harness registry the /harness panel lists and the
+	// strip's chip opens (harness.go). NIL IS A SURFACE THAT CANNOT SHOW THEM
+	// and says so — it does not stop the session's own harness tool, which
+	// reaches the same directory through [session.Config.HarnessDir]. The two
+	// are wired from one path by the door, so a harness registered in the
+	// conversation is in this list the next time it is opened.
+	Harnesses *subharness.Store
 
 	// Settings is the registry the panel edits, for a door that can wire the
 	// live seams the registry asks for (the model slots, the divider, today's

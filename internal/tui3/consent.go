@@ -67,6 +67,12 @@ type ask struct {
 	// worse than a missing one — a person who presses it believes they have
 	// stopped being asked.
 	memo bool
+	// escalate says this question has a THIRD answer: the person may take the
+	// run over instead of allowing or refusing it (session.Event's Escalate).
+	// It is what decides whether the take-it-over key is on the offer at all,
+	// on the terms memo decides the always key: an offer that would resolve to
+	// a plain decline is worse than a missing one.
+	escalate bool
 	// entry is the tool row the question is about. It is always a real index:
 	// a request whose row is missing gets one (see [app.askConsent]), because a
 	// question about a call nobody can see is a question nobody can answer.
@@ -108,7 +114,8 @@ func (a *app) askConsent(ev session.Event) {
 	}
 	was := a.asking()
 	a.asks = append(a.asks, ask{
-		id: ev.ID, tool: ev.Tool, hint: ev.Hint, rule: ev.Rule, memo: ev.Memo, entry: at,
+		id: ev.ID, tool: ev.Tool, hint: ev.Hint, rule: ev.Rule,
+		memo: ev.Memo, escalate: ev.Escalate, entry: at,
 	})
 	if !was {
 		a.startAskClock()
@@ -452,6 +459,12 @@ const (
 	consentYes    = "y"
 	consentNo     = "n"
 	consentAlways = "a"
+	// consentTake is the third answer to a sub-harness's gate: stop the run and
+	// hand it to me (harness.go, internal/session's tools_harness.go). It gets a
+	// letter of its own for [consentAlways]'s reason — an answer that changes
+	// what happens next is not a modifier on yes or no — and it appears only on
+	// the questions that offer it ([ask.escalate]).
+	consentTake = "i"
 )
 
 // consentKey routes one keypress while a question is up, and reports whether it
@@ -496,10 +509,59 @@ func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if a.asks[0].memo {
 			a.answer(true, session.ConsentToolSession)
 		}
+	case consentTake:
+		// The one answer that is neither yes nor no, and refused when it would
+		// do nothing — a surface that offered it on an ordinary tool question
+		// would be offering to take over a run that does not exist.
+		if a.asks[0].escalate {
+			a.answerGate(session.GateIntervene)
+		}
 	case consentNo, "d", "esc":
 		a.answer(false, session.ConsentOnce)
 	}
 	return nil, true
+}
+
+// harnessGater is the slice of the session that answers a harness gate with all
+// three options. It is asserted on the agent rather than added to [Agent]
+// because a surface driving a scripted agent should lose the third key rather
+// than fail to compile — and losing it costs nothing: an unanswered escalation
+// is a decline, which is the answer the other two keys already reach.
+type harnessGater interface {
+	ResolveHarnessGate(id uint64, choice session.GateChoice, note string)
+}
+
+// answerGate is the third door. It pops the question the way [app.answerWith]
+// does — one queue, one clock, one row that stops being violet — and hands back
+// the answer a bool cannot carry.
+func (a *app) answerGate(choice session.GateChoice) {
+	gater, ok := a.agent.(harnessGater)
+	if !ok {
+		// Nothing on the other end understands the third answer. Declining is
+		// the honest fallback: it is what an unanswered escalation resolves to
+		// in the engine, so the surface and the engine agree.
+		a.answer(false, session.ConsentOnce)
+		return
+	}
+	if len(a.asks) == 0 {
+		return
+	}
+	head := a.asks[0]
+	a.asks = a.asks[1:]
+	if len(a.asks) > 0 {
+		a.startAskClock()
+	}
+	gater.ResolveHarnessGate(head.id, choice, "")
+	if head.entry >= 0 && head.entry < len(a.entries) {
+		e := &a.entries[head.entry]
+		e.decision = "taken over"
+		if e.status == toolConsent {
+			e.status = toolRunning
+			e.began = time.Now()
+		}
+		e.stale = true
+	}
+	a.touch()
 }
 
 // ── the block ───────────────────────────────────────────────────────────────
@@ -636,6 +698,9 @@ func (a *app) consentOffer(width int) string {
 		if a.asks[0].memo {
 			parts = append(parts, " · ", "["+consentAlways+"]", always)
 		}
+		if a.asks[0].escalate {
+			parts = append(parts, " · ", "["+consentTake+"]", " I'll take it")
+		}
 		return append(parts, " · ", "[esc]", " cancel")
 	}
 	parts := offer(" " + a.alwaysWord())
@@ -770,6 +835,11 @@ type consentTap struct {
 	row   int
 	allow bool
 	scope session.ConsentScope
+	// take marks the third answer's target (harness.go). It is a bool beside
+	// allow rather than a third value in it because the two questions this lane
+	// carries are different questions: allow/scope is what an ordinary tool
+	// prompt resolves to, and this is the one a gate adds.
+	take bool
 }
 
 // consentSheet draws the phone form and records where its answers landed.
@@ -937,22 +1007,24 @@ func (a *app) hoveringChoice(row int) bool {
 // out of both — a press in the gap between two answers must not be able to
 // resolve as either.
 func (a *app) recordOfferTaps(parts []string) {
-	answer := func(chip string) (bool, session.ConsentScope, bool) {
+	answer := func(chip string) (consentTap, bool) {
 		switch chip {
 		case "[" + consentYes + "]":
-			return true, session.ConsentOnce, true
+			return consentTap{allow: true, scope: session.ConsentOnce}, true
 		case "[" + consentAlways + "]":
-			return true, session.ConsentToolSession, true
+			return consentTap{allow: true, scope: session.ConsentToolSession}, true
+		case "[" + consentTake + "]":
+			return consentTap{scope: session.ConsentOnce, take: true}, true
 		case "[" + consentNo + "]", "[esc]":
-			return false, session.ConsentOnce, true
+			return consentTap{scope: session.ConsentOnce}, true
 		}
-		return false, session.ConsentOnce, false
+		return consentTap{}, false
 	}
 	taps := make([]consentTap, 0, 4)
 	at := 0
 	for i, part := range parts {
 		width := ansi.StringWidth(part)
-		allow, scope, ok := answer(part)
+		tap, ok := answer(part)
 		if !ok {
 			at += width
 			continue
@@ -961,9 +1033,8 @@ func (a *app) recordOfferTaps(parts []string) {
 		if i+1 < len(parts) {
 			to += ansi.StringWidth(strings.TrimSuffix(parts[i+1], " · "))
 		}
-		taps = append(taps, consentTap{
-			span: hudSpan{from: at, to: to}, row: consentOfferRow, allow: allow, scope: scope,
-		})
+		tap.span, tap.row = hudSpan{from: at, to: to}, consentOfferRow
+		taps = append(taps, tap)
 		at += width
 	}
 	a.askTaps = taps
@@ -1001,6 +1072,17 @@ func (a *app) consentPress(x, y int) bool {
 		if tap.scope == session.ConsentToolSession && !a.asks[0].memo {
 			// The one answer that is refused when it would do nothing, refused
 			// here for the same reason the key is (see [ask.memo]).
+			return true
+		}
+		if tap.take {
+			// Refused when this question does not offer it, on [ask.memo]'s own
+			// terms: the offer is drawn from the same flag, so this can only be
+			// reached by a stale span, and a stale span must not resolve as an
+			// answer nobody was offered.
+			if !a.asks[0].escalate {
+				return true
+			}
+			a.answerGate(session.GateIntervene)
 			return true
 		}
 		a.answer(tap.allow, tap.scope)
