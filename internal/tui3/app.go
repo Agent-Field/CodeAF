@@ -1040,6 +1040,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case draftSaveMsg:
 		return a, a.saveDraft()
 
+	case exportedMsg:
+		a.exportDone(msg)
+		return a, nil
+
 	case tea.MouseWheelMsg:
 		// COPY MODE OWNS THE WHEEL while it is up, because the viewport it froze
 		// is the thing the wheel would otherwise move (copymode.go).
@@ -2709,6 +2713,13 @@ func (a *app) slash(line string) tea.Cmd {
 			a.note("your terminal already has the pointer — drag to select.")
 		}
 		return nil
+
+	case "export":
+		// The other two doors hand over what is on the screen; this one writes
+		// the WHOLE conversation to a file, and the file is written off the loop
+		// (export.go). A path is where it goes; without one it goes to the
+		// workspace under a name this session derives for itself.
+		return a.exportTranscript(rest)
 
 	case "model":
 		// Bare /model is a question — "which ones are there" — and the picker
