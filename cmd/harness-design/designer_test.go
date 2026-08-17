@@ -182,6 +182,65 @@ func TestFindingsGroupByPassInTheGuidesOrder(t *testing.T) {
 	}
 }
 
+// The critic owes a finding on every verify; this is the mechanical half of the
+// same question, and it must tell the two shapes apart without reading a word of
+// the review. A verify with a branch on its outcome can send a failure somewhere;
+// one with a single ordinary successor, or none at all, cannot.
+func TestVerifyPathsNamesTheStrandedChecks(t *testing.T) {
+	h := subharness.Harness{
+		Program: subharness.Program{Nodes: []subharness.Node{
+			{Id: "work", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "do it"}},
+			// Forked: a failure has an arm of its own.
+			{Id: "gate", Kind: subharness.KindVerify, Fields: subharness.Fields{"check": "the scores agree"}},
+			{Id: "fork", Kind: subharness.KindBranch, Fields: subharness.Fields{"when": "failed"}},
+			{Id: "rework", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "fix it"}},
+			// Walked through: the same node runs on either verdict.
+			{Id: "second", Kind: subharness.KindVerify, Fields: subharness.Fields{"check": "it reads well"}},
+			// Last: a failure ends the run with the work done.
+			{Id: "deliver", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "hand it over"}},
+			{Id: "last", Kind: subharness.KindVerify, Fields: subharness.Fields{"check": "nothing is missing"}},
+		}, Edges: []subharness.Edge{
+			{"work", "gate"}, {"gate", "fork"},
+			{"fork", "rework"}, {"fork", "second"}, {"rework", "second"},
+			{"second", "deliver"}, {"deliver", "last"},
+		}},
+	}
+	got := verifyPaths(h)
+	for _, want := range []string{
+		`verify gate: forked at "fork" on "failed"`,
+		`verify second: STRANDED — "deliver" runs whether it passed or failed`,
+		`verify last: STRANDED — it is a last node`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("verifyPaths did not say %q:\n%s", want, got)
+		}
+	}
+
+	if none := verifyPaths(subharness.Harness{Program: subharness.Program{Nodes: []subharness.Node{
+		{Id: "only", Kind: subharness.KindAgentLoop, Fields: subharness.Fields{"brief": "write it"}},
+	}}}); !strings.Contains(none, "checks nothing of its own") {
+		t.Errorf("a program with no verify reported %q", none)
+	}
+}
+
+// Both duties are in what the critic is actually shown, with the ops each one is
+// supposed to reach for — a duty that lives only in a design note is a duty the
+// model never reads.
+func TestTheReviewerBriefCarriesBothDuties(t *testing.T) {
+	reviewer, err := reviewSystem(availableTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, must := range []string{
+		"FAN-OUT CANDIDATE", "parallel.split", "parallel.join",
+		"STRANDED VERIFY", subharness.KindBranch, subharness.DynWidth,
+	} {
+		if !strings.Contains(reviewer, must) {
+			t.Errorf("the reviewer brief never says %q", must)
+		}
+	}
+}
+
 // The transport rule is in what the model is actually shown, in both stages —
 // not just in the document one of them reads.
 func TestBothBriefsSayTheSyntaxIsASCII(t *testing.T) {
