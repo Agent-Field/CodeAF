@@ -278,7 +278,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 			if err != nil {
 				return nil, "", err
 			}
-			fresh := cfg
+			// The launch's config, pointed at the new transcript and carrying
+			// the gate AS IT STANDS NOW rather than as it stood at boot
+			// (chatv3_approval.go says why the second half is not optional).
+			fresh := v3CurrentGate(cfg, workspace, settings.ProfileDir, *yolo)
 			fresh.SessionFile = next
 			replacement, err := session.New(fresh)
 			if err != nil {
@@ -293,11 +296,16 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		RecentSessions: func() []tui3.Session { return v3RecentSessions(workspace) },
 		Resume: func(file string) (tui3.Agent, error) {
 			// The same config this session runs on, pointed at another
-			// transcript: the model, the gate, the roles and the rail are
-			// properties of the LAUNCH, and a conversation opened from the
-			// picker is the same launch (see Fresh, above, which differs only in
-			// which file it names).
-			earlier := cfg
+			// transcript: the model, the roles and the rail are properties of
+			// the LAUNCH, and a conversation opened from the picker is the same
+			// launch (see Fresh, above, which differs only in which file it
+			// names).
+			//
+			// THE GATE IS THE ONE THING THAT IS NOT. It was a property of the
+			// launch only because nothing could change it mid-session; now that
+			// a banked rule can, an old conversation reopened afterwards has to
+			// open behind the rule and not behind the boot.
+			earlier := v3CurrentGate(cfg, workspace, settings.ProfileDir, *yolo)
 			earlier.SessionFile = file
 			agent, err := session.New(earlier)
 			if err != nil {
@@ -321,9 +329,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
-		// The consent card's "always", written down (chatv3_approval.go).
-		SaveApproval:     func(tool string) error { return saveToolApproval(settings.ProfileDir, tool) },
-		SaveBashApproval: func(command string) error { return saveBashApproval(settings.ProfileDir, command) },
+		// The consent card's "always", written down AND handed to the gate this
+		// session is running on (chatv3_approval.go). The second half is why a
+		// banked rule answers the very next call instead of the next launch.
+		SaveApproval:     bankToolApproval(agent, workspace, settings.ProfileDir, *yolo),
+		SaveBashApproval: bankBashApproval(agent, workspace, settings.ProfileDir, *yolo),
 	})
 }
 
@@ -559,30 +569,19 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 	}
 	// The repository's exceptions REPLACE the person's, whole (internal/config
 	// states the merge law): a rule set assembled from two files is a rule set
-	// neither file's reader could read back.
+	// neither file's reader could read back. Whichever file wins, what it says
+	// lands ON TOP of the built-in floor below rather than instead of it.
+	exceptions := v3BuiltinApprovals()
 	if text != "" {
 		tools, err := config.ParseToolApprovals(text)
 		if err != nil {
 			return nil, fmt.Errorf("settings row %q: %w", config.KeyToolApprovals, err)
 		}
-		exceptions := make(map[string]any, len(tools))
 		for tool, action := range tools {
 			exceptions[tool] = action
 		}
-		raw["tools"] = exceptions
-	} else {
-		// A fresh install asks about what can change the system and nothing
-		// else: pure reads (read, grep, find, ls) are allowed, so the blanket
-		// mode's prompt lands on bash/edit/write and the critical-command
-		// table still overrides. The person's own exceptions row replaces
-		// these built-ins wholesale — their rules, their responsibility.
-		raw["tools"] = map[string]any{
-			"read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
-			// jobs list/output are reads on the person's own processes; kill
-			// inherits the blanket mode, which asks.
-			"jobs": "allow",
-		}
 	}
+	raw["tools"] = exceptions
 	// The bash rules, which are the row a remembered "always, this command"
 	// lands in (internal/config's approvalmemory.go). They are ORDERED and the
 	// order is honoured as written: first match wins, so a deny somebody put at
@@ -610,6 +609,57 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 			config.KeyToolApprovalMode, config.KeyToolApprovals, config.KeyBashApprovals, err)
 	}
 	return &policy, nil
+}
+
+// v3BuiltinApprovals is the floor under the tool exceptions row: the handful of
+// calls this gate has never had a reason to ask about, seeded fresh on every
+// build so that what a person wrote lands ON TOP of them and not INSTEAD of
+// them.
+//
+// It used to be an either/or — these built-ins while the row was empty, the
+// person's rules the moment it was not — and that shape is what produced the
+// complaint this floor answers. The consent card's "always" writes ONE entry
+// into that row (internal/config's approvalmemory.go), so the first time
+// anybody pressed always on any tool at all, the seed vanished and read, grep,
+// find, ls and jobs fell back to the blanket mode, which asks. The keystroke
+// whose whole purpose is to be asked less permanently increased the asking, in
+// a place nothing on screen connected to the key that had been pressed.
+//
+// A RULE THE PERSON WROTE STILL WINS FOR THE TOOL IT NAMES. `read:prompt` is a
+// sentence about read and it is honoured, because a floor nobody could stand on
+// would be a rule set with a part that cannot be turned off. What the floor
+// takes away is only the silent part: a rule written about one tool now says
+// nothing whatsoever about any other.
+//
+// WHAT IS ON IT, and why each entry is safe to leave off the asking:
+//
+//   - Pure reads of this machine — read, grep, find, ls. Nothing here changes a
+//     file, so the blanket mode's prompt is free to land where it matters, on
+//     bash, edit and write.
+//   - jobs, whose list and output are reads of processes the person already
+//     started. Its kill is not on the floor: it inherits the blanket mode,
+//     which asks.
+//   - The agent's own bookkeeping — note, track, recall and forget. These write
+//     to and read from the notes and working state it keeps for itself
+//     (internal/session's memory.go and state.go); no hand outside this process
+//     reads them, and asking somebody to approve the agent writing itself a
+//     reminder is asking about the wrong thing.
+//
+// commit is DELIBERATELY NOT HERE, and it is the interesting half of the split.
+// It is the fifth hand on the same working state, but it is the only one that
+// declares a tracked subgoal FINISHED, and a session that can mark its own work
+// done without anyone being asked is a session that can talk itself into done.
+// The other four record and read; this one makes a claim.
+//
+// Nothing on this list acts outside this machine, so internal/approval's floor
+// under calls made in the person's name is untouched by every entry on it — as
+// is the critical-command table, which sits above this whole row either way.
+func v3BuiltinApprovals() map[string]any {
+	return map[string]any{
+		"read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
+		"jobs": "allow",
+		"note": "allow", "track": "allow", "recall": "allow", "forget": "allow",
+	}
 }
 
 // v3RolesSource is the closure internal/roles reads its ladder through: the two
