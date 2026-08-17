@@ -36,7 +36,7 @@ import (
 //     not to.
 //   - Every write goes through [config.Setting.Apply], which validates in plain
 //     language and persists to the GLOBAL profile. The project layer
-//     (<workspace>/.openaf/config.json) is deliberately not writable from here:
+//     (<workspace>/.aforge-v3/config.json) is deliberately not writable from here:
 //     it is a file a repository commits, and a panel that edited it would be
 //     this surface committing to somebody's repository on their behalf.
 //   - A refusal is SHOWN, never swallowed. A pinned row, a seam the door did
@@ -1578,7 +1578,10 @@ func (s *sheet) footNote() string {
 			return "held by " + name + " — unset it to change this here"
 		}
 	}
-	return "saved to your profile · a project's own .openaf/config.json is a hand edit"
+	// The path is READ from internal/config rather than spelled here, so the one
+	// late rename (docs/CHAT-V3.md, Decision 26) moves the sentence a person
+	// reads along with the directory it names.
+	return "saved to your profile · a project's own " + config.ProjectConfigDir + "/" + config.ProjectConfigFile + " is a hand edit"
 }
 
 func (s *sheet) keysLine() string {
