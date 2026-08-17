@@ -117,6 +117,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		BaseURL: settings.BaseURL, APIKey: settings.APIKey, Dir: settings.ProfileDir,
 	})
 
+	// The sub-harness registry under the state root, opened ONCE and handed to
+	// both halves of the feature: the session, which matches turns against it
+	// and runs what a person says yes to (chatv3_harness.go), and the surface,
+	// which lists it under /harness. Two stores at one directory would be two
+	// readers of the same files rather than a disagreement, and this is still
+	// one because /harness and the offer card must never be able to name
+	// different harnesses.
+	harnesses := subharness.Default()
+
 	cfg := session.Config{
 		Workspace:      workspace,
 		Model:          chosen,
@@ -154,6 +163,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// below), because both questions are about a catalog that may still be
 		// warming and neither of them may wait for it.
 		TaskModels: v3TaskModels(models),
+		// The two halves of the harness offer (internal/session's harness.go):
+		// what a turn is matched against, and what a yes reaches. They are
+		// filled together because either one alone is detection off — a
+		// registry nothing can run would raise a card that could only fail, and
+		// a runner nothing is matched against would never be called.
+		Harnesses:  v3HarnessEntries(harnesses),
+		RunHarness: v3RunHarness(harnesses, settings, chosen, workspace),
 	}
 
 	// What this session may do without asking, which model answers its
@@ -241,7 +257,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// window on this machine writes and reads them: /harness is a list of
 		// what is SAVED, so it has to be the same directory the builder saved
 		// into (internal/subharness's store.go).
-		Harnesses: subharness.Default(),
+		Harnesses: harnesses,
 		// Asked at the moment the picker opens, never at boot: a catalog that
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
