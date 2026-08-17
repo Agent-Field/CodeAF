@@ -17,12 +17,15 @@ package session
 //
 // FOUR LAWS HOLD THE CHAT SIDE OF IT.
 //
-//   - THE INTENT IS A TABLE LOOKUP, NEVER A JUDGEMENT. "make|build|create|design
-//     a (sub)harness for|to|that X" enters this path and nothing else does — the
-//     same bargain detection keeps one file over, for the same reason: a model
-//     asked "was that a request to build a harness?" is a model call on every
-//     turn, and a wrong yes costs somebody their turn. What the cue does not
-//     match behaves exactly as it did before this file existed.
+//   - THE INTENT IS THE MODEL'S JUDGEMENT, AND IT IS SPELLED AS A TOOL. This
+//     path used to be entered by an anchored cue — "make|build|create|design a
+//     (sub)harness for|to|that X" and nothing else — which was cheap and could
+//     only ever read the sentences somebody happened to phrase that way. It is
+//     now [Agent.buildHarnessTool] on the belt (tools_harness.go), so the
+//     deciding is done once, by the thing that has the whole conversation in
+//     front of it, and the goal it passes is a brief it wrote rather than the
+//     tail of a sentence. Nothing below this line changed with it: the same job,
+//     the same card, the same registry.
 //   - THE TURN DOES NOT WAIT. A design is two model calls against a
 //     twenty-five-thousand-token guide, and it is followed by a QUESTION nobody
 //     may be at the keyboard for. Held in the turn loop that would be a
@@ -36,8 +39,9 @@ package session
 //     untouched until somebody says yes. A design nobody answered is a design
 //     that changed nothing.
 //   - IT IS SILENT WHERE THE OFFER IS SILENT. No runner, no store, or no surface
-//     that answers questions and this path does not exist — one cue match per
-//     turn is not paid for either, because the gates are checked first.
+//     that answers questions and this path does not exist — the tool is left off
+//     the belt entirely ([Agent.canDesignHarness]), so the model does not have
+//     the verb rather than having it and being refused.
 //
 // WHAT THE DESIGNER IS TOLD is not written here. The brief is the shared
 // document (internal/subharness/prompts/designer.md) with THIS build's machinery
@@ -51,7 +55,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -99,122 +102,6 @@ const (
 // harnessDesigningWord is the Hint on EventHarnessDesign: one word, because the
 // event's own text is the goal and a surface draws it as a note.
 const harnessDesigningWord = "designing"
-
-// ── the intent ──────────────────────────────────────────────────────────────
-
-// harnessBuildCue is the whole of build detection: a verb, the noun, and the
-// joiner that hands over the goal.
-//
-// IT IS ANCHORED, and that is the difference between a rule and a guess. "make a
-// harness for X" at the head of what somebody typed is a request; the same words
-// in the middle of a paragraph are usually somebody describing one ("the reason
-// we make a harness for this is…"). Anchoring costs the sentences that bury the
-// request and buys a matcher that can never take a turn away from a person who
-// was talking ABOUT harnesses.
-//
-// The joiner is required for the same reason: "make a harness" names no goal,
-// and a designer handed no goal designs nothing. That turn goes to the model,
-// which can ask what for.
-var harnessBuildCue = regexp.MustCompile(
-	`(?is)^(?:make|build|create|design)\s+(?:me\s+)?(?:a|an|the)?\s*(?:sub[\s-]?)?harness\s+(?:for|to|that)\s+(.+)$`)
-
-// harnessBuildOpeners are the courtesies a request is wrapped in, stripped
-// before the cue is read so that "please make a harness for X" is the same
-// request as "make a harness for X". They are openers only — each is removed
-// from the FRONT and the rest is re-read — so none of them can match anything
-// in the middle of a sentence.
-var harnessBuildOpeners = []string{
-	"please ", "can you ", "could you ", "would you ", "let's ", "lets ",
-	"i want you to ", "i'd like you to ", "i would like you to ",
-}
-
-// harnessBuildGoal reads one turn's build request and answers with the goal —
-// what somebody wants the harness to DO, with the words that asked for it
-// removed. false is every other sentence, which is nearly all of them.
-func harnessBuildGoal(text string) (string, bool) {
-	text = strings.TrimSpace(text)
-	// The openers come off one at a time, so "please can you make a harness for
-	// X" is read too. The loop terminates because every pass strips a prefix.
-	for stripped := true; stripped; {
-		stripped = false
-		for _, opener := range harnessBuildOpeners {
-			if len(text) >= len(opener) && strings.EqualFold(text[:len(opener)], opener) {
-				text = strings.TrimSpace(text[len(opener):])
-				stripped = true
-				break
-			}
-		}
-	}
-	found := harnessBuildCue.FindStringSubmatch(text)
-	if found == nil {
-		return "", false
-	}
-	goal := strings.TrimSpace(found[1])
-	if goal == "" {
-		return "", false
-	}
-	return goal, true
-}
-
-// routeHarnessBuild is this file's place in a turn, called from
-// [Agent.routeHarness] before detection reads the same sentence.
-//
-// It reports (answered, completed) on that function's own terms. answered=true
-// means THE TURN IS OVER — the design has started and nothing else is going to
-// happen on this turn — and completed=true because it is over the ordinary way:
-// nothing failed, nobody interrupted, and a follow-up somebody typed while this
-// was starting may run.
-func (a *Agent) routeHarnessBuild(hub *eventHub, user userMessage, started time.Time) (bool, bool) {
-	goal, model, ok := a.harnessBuild(user)
-	if !ok {
-		return false, false
-	}
-	a.emitHarness(Event{Kind: EventHarnessDesign, Text: goal, Hint: harnessDesigningWord, Model: model})
-	a.startHarnessDesign(goal, model)
-	// The turn ends HERE, with no assistant message: the design is the answer and
-	// it is not written yet. A blank assistant turn recorded now would be a line
-	// every later request carries forever, saying nothing.
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started)})
-	return true, true
-}
-
-// harnessBuild is the gate and the read: whether this build can design at all,
-// and what this turn asked for.
-//
-// THE GATES ARE THE OFFER'S GATES. A store to write into, a runner to run what
-// is written, and somebody watching who can answer the card — a design nobody
-// can approve is two model calls spent on a page that will be dropped, and a
-// page saved into a registry with no engine under it is a menu item that fails
-// when it is picked.
-func (a *Agent) harnessBuild(user userMessage) (goal, model string, ok bool) {
-	if a.config.RunHarness == nil || a.config.HarnessStore == nil {
-		return "", "", false
-	}
-	if !a.config.AskConsent {
-		return "", "", false
-	}
-	// ONLY WHAT A PERSON TYPED, on harnessMatch's own terms: a woken turn's note
-	// is the session talking to itself, and a harness built out of one would be
-	// the harness commissioning its own tools.
-	if user.empty() || user.wake || user.authored {
-		return "", "", false
-	}
-	goal, ok = harnessBuildGoal(user.text())
-	if !ok {
-		return "", "", false
-	}
-	// THE MODEL IS READ OFF THE GOAL, by the clause reader the offer already uses
-	// (harness.go): "make a harness for triaging flakes with opus" chose a model
-	// and asked for a harness about flakes, and the designer must be handed the
-	// second thing without the first. A word this install cannot place leaves the
-	// design on the session's own model — never a refusal, exactly as the offer
-	// treats it.
-	model, _, goal = a.harnessTurnModel(goal)
-	if goal = strings.TrimSpace(goal); goal == "" {
-		return "", "", false
-	}
-	return goal, model, true
-}
 
 // ── the job ─────────────────────────────────────────────────────────────────
 

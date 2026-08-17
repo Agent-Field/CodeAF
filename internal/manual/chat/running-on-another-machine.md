@@ -260,11 +260,17 @@ harnesses are unavailable here
 
 It does not list this machine's harnesses and offer to run them over there.
 
-**Building a new sub-harness does not work over a remote connection.** This is a known
-limitation. If you ask for one in conversation (`make a harness for …`), the design starts
-on the far machine, but the finished design card has no road back to your screen: your
-turn ends with **no reply and no card**, and the design's window later expires unanswered.
-Nothing is saved. Build harnesses in a session running on that machine directly.
+**Building a new sub-harness is switched off over a remote connection.** The tools that
+design one are not on the far session's belt at all, so asking for one gets you a plain
+answer that it cannot be done from here — nothing starts and nothing is spent. The reason
+is that the card asking whether to keep the finished page arrives on a standing lane a
+remote connection does not carry, so a design left switched on would write a page and ask a
+question in an empty room. Build harnesses in a session running on that machine directly.
+
+**Adaptive runs are switched off over a remote connection**, and for the same reason: a
+run's fuel gate arrives on that same standing lane. A run left switched on would spend the
+money, stop at its cap, and wait four hours for an answer nobody could give it. The
+`run_adaptive` tool is simply not there.
 
 **Running a harness that already exists is unaffected.** The offer card rides the turn's
 own stream, so a turn whose words match a registered harness still asks you, and answering

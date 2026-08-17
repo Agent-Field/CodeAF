@@ -131,27 +131,31 @@ Two limits worth knowing:
   conversation can move to another model and the run's client does not. A step that names
   its own model overrides it, and so does a turn that named one.
 
-## Asking for a new harness in conversation
+## Asking for a new harness — how do I make one
 
-Start the message with a build request:
+Ask in your own words. "Build me something that does this every sprint", "we should have a
+saved procedure for release notes", "make a harness for triaging flaky tests" — all of them
+work, because **deciding that you asked for one is the model's judgement**, not a phrase
+this program matches. There is no grammar to learn and no keyword to remember. It reaches
+the designer through a tool called `build_harness`, and the goal it passes is a brief it
+wrote for you: when your words pointed at something in the conversation ("a harness for what
+we just did"), that context is written into the goal, because the designer cannot see this
+conversation.
 
-```
-make|build|create|design [me] [a|an|the] [sub]harness for|to|that <goal>
-```
+It used to be a fixed cue — a message that began `make a harness for …` and nothing else —
+which is why phrasing it any other way used to get you a paragraph about harnesses instead
+of a harness. That cue is gone.
 
-Courtesy openers are stripped first: `please `, `can you `, `could you `, `would you `,
-`let's `, `lets `, `i want you to `, `i'd like you to `, `i would like you to `.
+Two consequences worth knowing:
 
-The cue is **anchored to the start** of what you typed, so the same words inside a
-paragraph ("the reason we make a harness for this is…") never trigger it. The joiner is
-required: `make a harness` with no goal names nothing and goes to the model, which can ask
-you what for.
+- **Saying it may first offer to RUN a harness you already have.** Your words are matched
+  against the registry before the model sees them, so asking to build a flake-triage harness
+  when one exists raises the run card first. Say no with `esc`, and the build goes ahead.
+- The model may look before it builds: it can list what is saved and tell you a harness that
+  already does this exists, which is usually the better answer.
 
-Build detection is read **before** run detection, so "make a harness for triaging flaky
-tests" is not answered with an offer to run the harness that already triages flaky tests.
-
-**The turn does not wait.** It ends the moment the design starts, with no reply, and the
-surface notes `harness · designing <goal>`. The design runs on the session's own context
+**The turn does not wait.** The design starts, the model says in one line that it did, and
+the surface notes `harness · designing <goal>`. The design runs on the session's own context
 rather than on the turn's, inside a **30-minute** window that covers both the model work
 **and** the wait for your answer to the card.
 
@@ -335,12 +339,13 @@ the answer travels on the wire like any other, so a remote session can offer a h
 run it.
 
 **Building a new one is switched off.** Over a `--host` connection aforge does not have
-the designer at all, so asking for `make a harness for …` gets you an answer saying it
-cannot be done from here rather than silence. The reason is that the card asking whether
-to keep the finished page has no way to reach you: the design arrives on a standing lane
-that a remote connection does not carry, so a design left switched on would have run,
-written a page, and asked a question in an empty room. Build the harness while working on
-that machine directly, and it is available to run from anywhere afterwards.
+the designer at all: the `build_harness` and `list_harnesses` tools are left off entirely,
+so the model does not have the verb and tells you it cannot do it from here rather than
+starting something. The reason is that the card asking whether to keep the finished page
+has no way to reach you: the design arrives on a standing lane that a remote connection
+does not carry, so a design left switched on would have run, written a page, and asked a
+question in an empty room. Build the harness while working on that machine directly, and it
+is available to run from anywhere afterwards.
 
 **`/harness` is unavailable over a connection.** The registry belongs to the far machine
 and this build has no door onto it from here, so the command says exactly:

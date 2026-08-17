@@ -108,7 +108,17 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// shared assembly still fills, and it works over a connection today.
 	cfg.HarnessStore = nil
 
-	agent, cfg, notice, err := openV3Agent(cfg, workspace)
+	// AN ADAPTIVE RUN IS OFF OVER A CONNECTION, for the same reason and by the
+	// same road. A run's notes, its gauge and — the one that matters — its FUEL
+	// GATE all arrive on a standing subscription the surface opens on the agent
+	// (internal/session's Orchestrations, asserted by internal/tui3's runAgent),
+	// and a remote handle has no such method. A run started here would spend the
+	// person's money, stop at its cap, and raise a question in an empty room for
+	// four hours. So this session is built by session.New rather than by
+	// [v3OpenSession]: nothing fills Config.OrchestrateRunner, which session
+	// already states is orchestration off, and the model is simply not handed the
+	// verb (its tools_harness.go).
+	agent, cfg, notice, err := openV3Agent(cfg, workspace, session.New)
 	if err != nil {
 		return nil, err
 	}
