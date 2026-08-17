@@ -75,6 +75,12 @@ const (
 var ProjectKeys = []string{
 	KeyToolApprovalMode,
 	KeyToolApprovals,
+	// The bash rules travel with the work for the same reason the tool
+	// exceptions do: which shell commands a repository is happy to see run
+	// unattended is a fact about the repository. Law 2 applies to it unchanged —
+	// a project file that answers this row replaces the person's list WHOLE,
+	// including anything their consent card wrote there.
+	KeyBashApprovals,
 	KeyTierLowModel,
 	KeyTierHighModel,
 	KeyModelRoles,
@@ -267,6 +273,8 @@ func (p ProjectConfig) ResolveString(profileDir, key string) (string, error) {
 		return ToolApprovalModeAt(profileDir), nil
 	case KeyToolApprovals:
 		return ToolApprovalsAt(profileDir), nil
+	case KeyBashApprovals:
+		return BashApprovalsAt(profileDir), nil
 	case KeyTierLowModel:
 		return TierModelAt(profileDir, ModelTierLow), nil
 	case KeyTierHighModel:

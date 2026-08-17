@@ -19,11 +19,11 @@ import (
 // bottom-anchored block in the palette idiom — and answered with one key.
 //
 //	╰─▶ bash rm -rf build
-//	allow? [y] yes · [n] no · [a] always, this tool · [esc] cancel · 7s
+//	allow? [y] yes · [n] no · [a] always, this command · [esc] cancel · 7s
 //	bash pattern "rm -rf *"
 //	2 more
 //
-// Four decisions, and each of them is the reason the block looks like this:
+// Five decisions, and each of them is the reason the block looks like this:
 //
 //   - IT SHOWS THE ROW THAT IS ALREADY THERE. The question is about a call the
 //     transcript has already drawn (session sends the consent request AFTER the
@@ -42,6 +42,12 @@ import (
 //     oldest first, and the count of the ones behind it is on screen, because a
 //     person who answers one question and gets another one must have been told
 //     it was coming.
+//   - THE WIDENING YES IS WRITTEN DOWN, where the door wired somewhere to write
+//     it ([app.rememberAlways]) — the tool's allow, or the whole command line for
+//     the one tool judged by its arguments. It is the only thing this surface
+//     does that outlives the process, so it is the only thing it prints a receipt
+//     for, and the receipt says where to undo it. The no is never written: a
+//     standing never is a settings edit somebody makes on purpose.
 //
 // After an answer the ROW STAYS, annotated dim with what was decided. The
 // transcript is what happened, and "you were asked about this and said yes" is
@@ -229,10 +235,125 @@ func (a *app) claimed(i int) bool {
 //
 // The scope goes to the session verbatim: [session.ConsentOnce] answers this
 // call, [session.ConsentToolSession] answers every later prompt for the same
-// tool for the rest of the agent's life — and no longer, which is why the key
-// says "(session)" out loud. Nothing here writes a setting.
+// tool for the rest of the agent's life.
+//
+// AND, WHERE THE DOOR WIRED A WAY TO, the widening answer is also written down
+// ([app.rememberAlways]). That is the one thing on this block that outlives the
+// process, so it is the one thing this block says a receipt about.
 func (a *app) answer(allow bool, scope session.ConsentScope) {
-	a.answerWith(allow, scope, decisionWord(allow))
+	word := decisionWord(allow)
+	if allow && scope == session.ConsentToolSession && a.rememberAlways() {
+		word = consentSavedWord
+	}
+	a.answerWith(allow, scope, word)
+}
+
+// consentSavedWord is what the row keeps when the always was persisted: what
+// happened, and where to undo it. It is the block's memo voice — one line, dim,
+// in the [entry.decision] slot every other answer lands in — because a person
+// who has just changed a setting by pressing a letter has to be told BOTH that
+// it changed and that the change has an address.
+const consentSavedWord = "always · saved — /settings to change"
+
+// consentBash is the one tool whose answer is about its ARGUMENT and not its
+// name. Everywhere else on this block a question is about a tool; here it is
+// about the command line, which is why the offer says "this command" and why
+// what gets written is a rule and not a name.
+const consentBash = "bash"
+
+// rememberAlways writes the head question's widening answer to the person's
+// settings, and reports whether it landed.
+//
+// THE RUNNING SESSION NEEDS NOTHING FROM THIS. The scope this press sends is
+// [session.ConsentToolSession], and the engine writes its own memo for the tool
+// the moment it lands (internal/session's askAnswer) — which is what actually
+// stops the asking for the rest of this conversation, for bash as much as for
+// anything else. So this seam is only ever about the NEXT session, and nothing
+// here reaches into a policy the gate is using: two places deciding the same
+// question is how a card and a gate come to disagree about what was answered.
+//
+// NEVER A DENY. It is only ever reached from an allow ([app.answer]), and that
+// is deliberate: n is a one-time no, and a standing never is a line somebody
+// types into the settings sheet on purpose. A surface that turned a keystroke
+// under a countdown into a permanent refusal would be writing policy out of
+// impatience.
+//
+// A FAILED WRITE IS DROPPED, exactly as the rail's is (cmd/aforge's
+// chatv2_rail.go states the reasoning): the answer has already been given, the
+// session already stops asking, and an unwritable profile directory must not put
+// a config error on a line in the middle of somebody's work. What it costs is
+// the receipt — the row says "allowed" instead of "saved", which is the truth.
+func (a *app) rememberAlways() bool {
+	if len(a.asks) == 0 {
+		return false
+	}
+	head := a.asks[0]
+	if head.tool == consentBash {
+		if a.saveBashApproval == nil {
+			return false
+		}
+		command := a.askCommand(head)
+		if command == "" {
+			return false
+		}
+		return a.saveBashApproval(command) == nil
+	}
+	if a.saveApproval == nil {
+		return false
+	}
+	return a.saveApproval(head.tool) == nil
+}
+
+// askCommand is the exact command line a bash question is about.
+//
+// IT READS THE ARGUMENTS AND NEVER THE LINE ON SCREEN. The row's text is a
+// gloss — clipped for a column, sometimes the tool's own name and nothing else
+// — and a rule written from a gloss would be a standing approval for a command
+// that was never run. The arguments are what arrived; when they did not arrive
+// whole (session caps them) they do not parse, this answers empty, and nothing
+// is written at all.
+func (a *app) askCommand(head ask) string {
+	if head.entry < 0 || head.entry >= len(a.entries) {
+		return ""
+	}
+	e := &a.entries[head.entry]
+	if e.kind != entryTool {
+		return ""
+	}
+	return strings.TrimSpace(argString(argsOf(e.detail.Args), "command"))
+}
+
+// remembering reports whether pressing always would actually write something
+// down. It is what decides the offer's WORDS — a card that said "always, this
+// command" on a surface that cannot remember one would be promising a file it
+// is not going to write.
+func (a *app) remembering() bool {
+	if len(a.asks) == 0 {
+		return false
+	}
+	if a.asks[0].tool == consentBash {
+		return a.saveBashApproval != nil
+	}
+	return a.saveApproval != nil
+}
+
+// alwaysWord is the always option's name: what it reaches, in the fewest words
+// that are true.
+//
+// Three spellings and each says exactly what will happen. With nothing wired the
+// answer lasts for this agent's life and the parenthetical says so — that is the
+// card this file drew for a year. With a write seam behind it the answer is
+// PERSISTED, the parenthetical would be a lie, and the object it is persisted
+// against is named instead: the tool, or — for the one tool judged by its
+// arguments — this command.
+func (a *app) alwaysWord() string {
+	if !a.remembering() {
+		return "always, this tool (session)"
+	}
+	if a.asks[0].tool == consentBash {
+		return "always, this command"
+	}
+	return "always, this tool"
 }
 
 // answerWith is [app.answer] with the word the ROW keeps spelled out, and the
@@ -517,7 +638,7 @@ func (a *app) consentOffer(width int) string {
 		}
 		return append(parts, " · ", "[esc]", " cancel")
 	}
-	parts := offer(" always, this tool (session)")
+	parts := offer(" " + a.alwaysWord())
 	if ansi.StringWidth(strings.Join(parts, "")+a.consentClock()) > width {
 		parts = offer(" always")
 	}
@@ -674,10 +795,13 @@ func (a *app) consentSheet(width int) []string {
 	band(consentYes, "allow", true, session.ConsentOnce)
 	band(consentNo, "deny", false, session.ConsentOnce)
 	if head.memo {
-		// The same two spellings the offer line keeps, and for the same reason:
-		// the widening yes is the one answer whose name has to say how far it
-		// reaches, and a name cut off mid-reach says less than the short one.
-		word := "always, this tool"
+		// The same spellings the offer line keeps ([app.alwaysWord]), and for the
+		// same reason: the widening yes is the one answer whose name has to say
+		// how far it reaches, and a name cut off mid-reach says less than the
+		// short one. The sheet drops the parenthetical the line above carries —
+		// a band is a target and reads at a glance — so an unwired surface says
+		// the plain "always, this tool" it always said here.
+		word := strings.TrimSuffix(a.alwaysWord(), " (session)")
 		if ansi.StringWidth(consentBandPad+"["+consentAlways+"] "+word) > width {
 			word = "always"
 		}
