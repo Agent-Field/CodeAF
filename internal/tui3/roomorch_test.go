@@ -1,0 +1,711 @@
+package tui3
+
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/aforge-v2/internal/session"
+)
+
+// ── THE ADAPTIVE RUN'S PAGE ─────────────────────────────────────────────────
+//
+// What these hold shut, in the order a person meets them: the shape (a snapshot
+// becomes layers, and the layers are the launch order), the crystallizing (a
+// node that arrived is marked, once), the drill-in (a chip is a card and a
+// card's needs are doors), the gate (the run is out of fuel and three keys say
+// what happens next), and the steer lane (words go to the planner, and the page
+// says so before the planner has said anything back).
+
+// orchFake is a session with an adaptive run under it: the three doors of
+// [orchAgent], over snapshots a test rewrites between polls.
+//
+// It is a widening of [fakeAgent] rather than a fake of its own for the reason
+// [roomFake] widens [taskFake]: the surface asserts the run doors separately
+// from everything else it needs, so a fake that could not be a plain session
+// would be testing a shape the surface never requires.
+type orchFake struct {
+	*fakeAgent
+	snaps    map[string]orchestrate.Snapshot
+	steered  []string
+	answers  []string
+	steerErr error
+}
+
+func (f *orchFake) OrchestrateSnapshot(id string) (orchestrate.Snapshot, bool) {
+	snap, ok := f.snaps[id]
+	return snap, ok
+}
+
+func (f *orchFake) SteerOrchestrate(id, text string) error {
+	if f.steerErr != nil {
+		return f.steerErr
+	}
+	f.steered = append(f.steered, id+": "+text)
+	return nil
+}
+
+func (f *orchFake) ResolveOrchestrate(id, answer string) (string, error) {
+	f.answers = append(f.answers, id+": "+answer)
+	return "", nil
+}
+
+// orchRun4 is the shape every test below starts from: a plan, two fetches that
+// need it, and a write-up that needs both. One node in each of the three states
+// a run actually shows.
+func orchRun4() orchestrate.Snapshot {
+	return orchestrate.Snapshot{
+		Goal: "answer the retry question",
+		Nodes: []orchestrate.NodeStatus{
+			{Node: orchestrate.Node{ID: "plan", Goal: "decide what to read"},
+				State: orchestrate.Done, Digest: "three RFCs and the client", Cost: 0.02},
+			{Node: orchestrate.Node{ID: "rfcs", Goal: "read the three RFCs", Needs: []string{"plan"}},
+				State: orchestrate.Running, Cost: 0.11},
+			{Node: orchestrate.Node{ID: "client", Goal: "read our client", Needs: []string{"plan"}},
+				State: orchestrate.Queued},
+			{Node: orchestrate.Node{ID: "write", Goal: "write the answer", Needs: []string{"rfcs", "client"}},
+				State: orchestrate.Queued},
+		},
+		Fuel: orchestrate.Fuel{Cap: 2, Spent: 0.87},
+	}
+}
+
+// orchApp opens a page on one run at the wide tier.
+func orchApp(t *testing.T, snap orchestrate.Snapshot) (*app, *orchFake) {
+	t.Helper()
+	agent := &orchFake{
+		fakeAgent: &fakeAgent{model: "deepseek/deepseek-v4-flash"},
+		snaps:     map[string]orchestrate.Snapshot{"r1": snap},
+	}
+	a := newTestApp(agent)
+	a.width, a.height = 140, 30
+	a.openOrchRoom("r1", snap.Goal)
+	a.touch()
+	if a.orchOf() == nil {
+		t.Fatal("the run's page did not open")
+	}
+	return a, agent
+}
+
+// orchPoll drives one poll the way the program loop does.
+func orchPollNow(t *testing.T, a *app) {
+	t.Helper()
+	if a.room == nil {
+		t.Fatal("there is no page to poll")
+	}
+	drive(t, a, orchPollMsg{gen: a.room.gen})
+}
+
+// orchLines is the page as a reader sees it, blank rows dropped: the assertions
+// below are about what is said and in what order, never about the spacing
+// between two things that are both there.
+func orchLines(a *app) []string {
+	var out []string
+	for _, line := range strings.Split(roomText(a), "\n") {
+		if strings.TrimSpace(line) != "" {
+			out = append(out, strings.TrimRight(line, " "))
+		}
+	}
+	return out
+}
+
+func orchLineAt(t *testing.T, a *app, want string) int {
+	t.Helper()
+	for i, line := range orchLines(a) {
+		if strings.Contains(line, want) {
+			return i
+		}
+	}
+	t.Fatalf("the page never says %q:\n%s", want, strings.Join(orchLines(a), "\n"))
+	return -1
+}
+
+// THE SNAPSHOT IS A SHAPE, AND THE SHAPE IS THE LAUNCH ORDER. A node sits one
+// layer below the deepest thing it needs, which is exactly the rule the
+// scheduler launches by — so a person reading the page top to bottom is reading
+// what can run now, what can run next, and what is waiting on both.
+func TestTheGraphLaysItsNodesOutInTopologicalLayers(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+
+	plan := orchLineAt(t, a, "plan")
+	rfcs := orchLineAt(t, a, "rfcs")
+	client := orchLineAt(t, a, "client")
+	write := orchLineAt(t, a, "write")
+	if rfcs != client {
+		t.Fatalf("two nodes with the same needs are on different rows: %d and %d\n%s",
+			rfcs, client, strings.Join(orchLines(a), "\n"))
+	}
+	if !(plan < rfcs && rfcs < write) {
+		t.Fatalf("the layers are out of order (plan %d, frontier %d, write %d):\n%s",
+			plan, rfcs, write, strings.Join(orchLines(a), "\n"))
+	}
+
+	// THE GLYPHS ARE THE STATES, one cell each, and the ramp is readable without
+	// colour: empty, half, solid.
+	page := strings.Join(orchLines(a), "\n")
+	for _, want := range []string{
+		orchGlyphDone + " plan", orchGlyphRunning + " rfcs", orchGlyphQueued + " client",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the graph never draws %q:\n%s", want, page)
+		}
+	}
+}
+
+// AT THE WIDE TIER THE EDGES ARE DRAWN. A stroke under a chip says the layer
+// below needs it; a chip nothing needs gets none.
+func TestTheWideTierDrawsAConnectorUnderEveryNeededChip(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+
+	lines := orchLines(a)
+	at := orchLineAt(t, a, "plan")
+	if at+1 >= len(lines) || !strings.Contains(lines[at+1], "│") {
+		t.Fatalf("no connector under the layer everything needs:\n%s", strings.Join(lines, "\n"))
+	}
+	// The stroke lands under the chip's GLYPH and not under the cursor's lead.
+	glyph := strings.Index(lines[at], orchGlyphDone)
+	if glyph < 0 || strings.Index(lines[at+1], "│") != glyph {
+		t.Fatalf("the connector is not under the chip it belongs to:\n%q\n%q",
+			lines[at], lines[at+1])
+	}
+	// AND THE LAST LAYER HAS NO CONNECTOR: nothing needs the write-up, so there is
+	// nothing under it. A stroke pointing at an empty row would be an edge that
+	// does not exist.
+	last := orchLineAt(t, a, "write")
+	if last+1 < len(lines) && strings.Contains(lines[last+1], "│") {
+		t.Fatalf("a connector hangs off the last layer:\n%q", lines[last+1])
+	}
+}
+
+// THE GRAPH CRYSTALLIZES: an amendment lands, the page grows a chip, and the
+// chip says it is new — for one interval, because the growing is the signal and
+// the word is only the punctuation under it.
+func TestANewNodeIsMarkedForOneIntervalAndThenIsOrdinary(t *testing.T) {
+	a, agent := orchApp(t, orchRun4())
+	if strings.Contains(roomText(a), orchNewWord) {
+		t.Fatalf("a page opened with everything marked new:\n%s", roomText(a))
+	}
+
+	snap := orchRun4()
+	snap.Nodes = append(snap.Nodes, orchestrate.NodeStatus{
+		Node:  orchestrate.Node{ID: "compare", Goal: "compare the two", Needs: []string{"rfcs"}},
+		State: orchestrate.Queued,
+	})
+	agent.snaps["r1"] = snap
+	orchPollNow(t, a)
+
+	page := roomText(a)
+	if !strings.Contains(page, "compare · "+orchNewWord) {
+		t.Fatalf("the node that just arrived is not marked new:\n%s", page)
+	}
+	if strings.Contains(page, "plan · "+orchNewWord) {
+		t.Fatalf("a node that was always there is marked new:\n%s", page)
+	}
+
+	// One more read, nothing added: the marker is spent.
+	orchPollNow(t, a)
+	if strings.Contains(roomText(a), orchNewWord) {
+		t.Fatalf("the new marker outlived its interval:\n%s", roomText(a))
+	}
+	// And the chip is still there, in the layer its needs put it in.
+	if orchLineAt(t, a, "compare") <= orchLineAt(t, a, "rfcs") {
+		t.Fatal("the added node did not settle under the node it needs")
+	}
+}
+
+// THE PLANNER'S NOTES ARE THIN ROWS BETWEEN THE LAYERS: what it said, where the
+// graph grew when it said it.
+func TestPlannerNotesAreDrawnBetweenTheLayers(t *testing.T) {
+	snap := orchRun4()
+	snap.Notes = []string{"the client matters more than the RFCs"}
+	a, _ := orchApp(t, snap)
+
+	note := orchLineAt(t, a, "the client matters more")
+	if note <= orchLineAt(t, a, "plan") || note >= orchLineAt(t, a, "rfcs") {
+		t.Fatalf("the note is not on the boundary it belongs to:\n%s",
+			strings.Join(orchLines(a), "\n"))
+	}
+
+	// A note that arrives on the LANE lands on the page too, without waiting for
+	// the next snapshot to admit it.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+		Kind: session.EventOrchestrateNote, ID: 1, Text: "narrowing to timeouts",
+	}})
+	if !strings.Contains(roomText(a), "narrowing to timeouts") {
+		t.Fatalf("a planner note off the lane never reached the open page:\n%s", roomText(a))
+	}
+}
+
+// THE HEADER CARRIES THE TANK, and it carries it at every width the header is
+// drawn at: a run spends on its own initiative, so the one number that says how
+// much of the person's decision is left cannot be the thing that gets cut.
+func TestTheHeaderCarriesTheGoalTheGaugeAndTheState(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+
+	head := plain(a.roomHead(a.width))
+	for _, want := range []string{"answer the retry question", "$0.87 / $2.00", stateWorking.String()} {
+		if !strings.Contains(head, want) {
+			t.Fatalf("the header is missing %q:\n%q", want, head)
+		}
+	}
+	// Narrow the frame until the goal cannot fit: the gauge survives it.
+	a.width = 52
+	a.touch()
+	head = plain(a.roomHead(a.width))
+	if !strings.Contains(head, "$0.87 / $2.00") {
+		t.Fatalf("the gauge was cut before the goal was:\n%q", head)
+	}
+}
+
+// A CHIP IS A DOOR. Enter opens the card, the card says the four things a person
+// walked in for, and esc comes back to the graph with the shape untouched.
+func TestAChipOpensItsCardAndEscComesBack(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+
+	drive(t, a, key("down")) // the first chip
+	if got := a.orchOf().pick; got.node != "plan" {
+		t.Fatalf("the cursor opened on %+v, want the first chip", got)
+	}
+	drive(t, a, key("enter"))
+	if got := a.orchOf().card; got != "plan" {
+		t.Fatalf("enter opened the card of %q", got)
+	}
+	page := roomText(a)
+	for _, want := range []string{
+		"decide what to read", orchDigestHead, "three RFCs and the client", "$0.02", orchCardBack,
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the card never says %q:\n%s", want, page)
+		}
+	}
+
+	drive(t, a, key("esc"))
+	if a.orchOf().card != "" {
+		t.Fatal("esc did not close the card")
+	}
+	if a.room == nil {
+		t.Fatal("esc out of a card left the page as well")
+	}
+	if !strings.Contains(roomText(a), orchGlyphRunning+" rfcs") {
+		t.Fatalf("the graph did not come back:\n%s", roomText(a))
+	}
+	// One more esc leaves the page altogether, which is the room's own key.
+	drive(t, a, key("esc"))
+	if a.room != nil {
+		t.Fatal("esc on the graph did not leave the page")
+	}
+}
+
+// A CARD'S NEEDS ARE LINKS AND NOT TEXT: "what did this depend on" is answered
+// by GOING there, which is how anybody reads a result backwards.
+func TestACardsNeedsAreNavigable(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+
+	a.orchCardOpen("write")
+	a.touch()
+	page := roomText(a)
+	if !strings.Contains(page, orchNeedsHead) {
+		t.Fatalf("the card has no needs block:\n%s", page)
+	}
+	links := a.orchCardLinks()
+	if len(links) != 2 || links[0].node != "rfcs" || links[1].node != "client" {
+		t.Fatalf("the card's links are %+v, want its two needs", links)
+	}
+
+	drive(t, a, key("down")) // onto the second need
+	drive(t, a, key("enter"))
+	if got := a.orchOf().card; got != "client" {
+		t.Fatalf("following a need opened %q, want client", got)
+	}
+	if !strings.Contains(roomText(a), "read our client") {
+		t.Fatalf("the need's own card did not open:\n%s", roomText(a))
+	}
+}
+
+// A NODE THAT IS ITSELF A RUN EXPANDS INTO ITS OWN SNAPSHOT, and the trail
+// across the top says where you are. Esc comes back out one level.
+func TestANestedRunExpandsAndTheTrailSaysWhereYouAre(t *testing.T) {
+	snap := orchRun4()
+	a, agent := orchApp(t, snap)
+	agent.snaps["rfcs"] = orchestrate.Snapshot{
+		Goal: "read the three RFCs",
+		Nodes: []orchestrate.NodeStatus{
+			{Node: orchestrate.Node{ID: "rfc7231"}, State: orchestrate.Done},
+			{Node: orchestrate.Node{ID: "rfc9110", Needs: []string{"rfc7231"}}, State: orchestrate.Running},
+		},
+		Fuel: orchestrate.Fuel{Cap: 1, Spent: 0.4},
+	}
+
+	a.orchCardOpen("rfcs")
+	a.touch()
+	if !strings.Contains(roomText(a), orchRunHead) {
+		t.Fatalf("a node that is a run does not say so on its card:\n%s", roomText(a))
+	}
+	links := a.orchCardLinks()
+	if len(links) == 0 || links[len(links)-1].run != "rfcs" {
+		t.Fatalf("the card has no link into the nested run: %+v", links)
+	}
+	a.orchOf().link = len(links) - 1
+	drive(t, a, key("enter"))
+
+	if got := a.orchOf().id; got != "rfcs" {
+		t.Fatalf("the page is on run %q, want the nested one", got)
+	}
+	if !strings.Contains(roomText(a), "rfc9110") {
+		t.Fatalf("the inner snapshot is not drawn:\n%s", roomText(a))
+	}
+	head := plain(a.roomHead(a.width))
+	for _, want := range []string{"answer the retry question", "read the three RFCs", "$0.40 / $1.00"} {
+		if !strings.Contains(head, want) {
+			t.Fatalf("the trail or the inner gauge is missing %q:\n%q", want, head)
+		}
+	}
+
+	drive(t, a, key("esc"))
+	if got := a.orchOf().id; got != "r1" {
+		t.Fatalf("esc left the nested run on %q, want the outer one", got)
+	}
+	if a.room == nil {
+		t.Fatal("esc out of a nested run closed the page")
+	}
+}
+
+// ── THE GATE ────────────────────────────────────────────────────────────────
+
+// orchPauseEvent is the session saying a run has spent its tank.
+func orchPause() session.Event {
+	return session.Event{Kind: session.EventOrchestratePause, ID: 1, Text: "$2.00 of $2.00"}
+}
+
+// THE PAUSE RAISES A QUESTION ON THE RUN'S OWN PAGE, and it brings the page with
+// it: a gate nobody can see is a run parked forever.
+func TestThePauseGateRendersAndRoutesEachAnswer(t *testing.T) {
+	for _, one := range []struct {
+		steps int
+		want  string
+	}{
+		{0, orchTopUp},
+		{1, orchFinish},
+		{2, orchStop},
+	} {
+		snap := orchRun4()
+		snap.Paused = true
+		a, agent := orchApp(t, snap)
+		drive(t, a, streamEventMsg{gen: a.gen, ev: orchPause()})
+
+		if a.orchOf() == nil || a.orchOf().gate == nil {
+			t.Fatalf("[%s] the pause raised no gate", one.want)
+		}
+		page := roomText(a)
+		for _, want := range []string{
+			glyphAsk, orchGateLead, "$2.00 of $2.00",
+			orchAnswerWord(orchTopUp), orchAnswerWord(orchFinish), orchAnswerWord(orchStop),
+		} {
+			if !strings.Contains(page, want) {
+				t.Fatalf("[%s] the gate never says %q:\n%s", one.want, want, page)
+			}
+		}
+		// A PAUSED RUN'S UNSTARTED NODES WEAR THE PAUSE: nothing new launches while
+		// the gate is up, so an empty circle would be the wrong fact.
+		if !strings.Contains(page, orchGlyphPaused+" client") {
+			t.Fatalf("[%s] a queued node does not wear the pause:\n%s", one.want, page)
+		}
+		// THE CURSOR IS ON THE QUESTION the moment it is raised: it is the one
+		// thing on the page somebody has to answer.
+		if got := a.orchOf().pick; got.answer != orchTopUp {
+			t.Fatalf("[%s] the cursor is on %+v, want the gate's first answer", one.want, got)
+		}
+		for i := 0; i < one.steps; i++ {
+			drive(t, a, key("down"))
+		}
+		drive(t, a, key("enter"))
+		if len(agent.answers) != 1 || agent.answers[0] != "r1: "+one.want {
+			t.Fatalf("[%s] the gate answered %v, want %q", one.want, agent.answers, one.want)
+		}
+		if a.orchOf().gate != nil {
+			t.Fatalf("[%s] the question is still up after it was answered", one.want)
+		}
+		if !strings.Contains(roomText(a), orchActLead+orchAnswerWord(one.want)) {
+			t.Fatalf("[%s] the page does not say what was answered:\n%s", one.want, roomText(a))
+		}
+	}
+}
+
+// THE GATE CLAIMS NO LETTERS AT ALL, which is the whole reason its answers are
+// rows rather than key chips: it cannot suspend the box the way a modal offer
+// does, so any letter it claimed would be a letter somebody was typing at the
+// planner. This is the test that keeps the two apart.
+func TestTheGateNeverEatsASentenceBeingTyped(t *testing.T) {
+	a, agent := orchApp(t, orchRun4())
+	drive(t, a, streamEventMsg{gen: a.gen, ev: orchPause()})
+
+	for _, r := range "fits" {
+		drive(t, a, key(string(r)))
+	}
+	if got := a.input.String(); got != "fits" {
+		t.Fatalf("the box holds %q — the gate ate the sentence", got)
+	}
+	if len(agent.answers) != 0 {
+		t.Fatalf("typing answered the gate: %v", agent.answers)
+	}
+	if a.orchOf().gate == nil {
+		t.Fatal("the gate came down without being answered")
+	}
+}
+
+// A PRESS ON THE GATE ANSWERS IT TOO, by column, the way every other question on
+// this surface answers a pointer.
+func TestThePauseGateAnswersAPress(t *testing.T) {
+	a, agent := orchApp(t, orchRun4())
+	drive(t, a, streamEventMsg{gen: a.gen, ev: orchPause()})
+
+	rows := a.roomRows(a.bodyWidth())
+	at, x := -1, 1
+	for i, r := range rows {
+		if strings.Contains(plain(r.text), orchAnswerWord(orchFinish)) {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the gate's answers are not on the page:\n%s", roomText(a))
+	}
+	// The row's screen position, resolved the way the frame resolves it.
+	y := a.bodyTop() + (at - a.roomOffsetFor(len(rows), a.viewHeight()))
+	if pad := a.viewHeight() - len(rows); pad > 0 {
+		y += pad
+	}
+	if !a.orchPress(x, y) {
+		t.Fatal("the press landed on no target at all")
+	}
+	if len(agent.answers) != 1 || agent.answers[0] != "r1: "+orchFinish {
+		t.Fatalf("the press answered %v, want finish", agent.answers)
+	}
+}
+
+// ── STEERING ────────────────────────────────────────────────────────────────
+
+// TYPING IN THE PAGE GOES TO THE PLANNER, and the page says so the moment it is
+// accepted — not whenever the next snapshot admits it.
+func TestSteeringARunReachesThePlannerAndIsEchoedAtOnce(t *testing.T) {
+	a, agent := orchApp(t, orchRun4())
+
+	typeLine(t, a, "skip the client, the RFCs are enough")
+	if len(agent.steered) != 1 || agent.steered[0] != "r1: skip the client, the RFCs are enough" {
+		t.Fatalf("the planner heard %v", agent.steered)
+	}
+	if !strings.Contains(roomText(a), orchSteerLead+"skip the client") {
+		t.Fatalf("the page did not echo what was steered:\n%s", roomText(a))
+	}
+	if got := a.input.String(); got != "" {
+		t.Fatalf("the box still holds %q after the words were taken", got)
+	}
+	// And the page does not say it twice once the snapshot catches up.
+	snap := orchRun4()
+	snap.Steer = []string{"skip the client, the RFCs are enough"}
+	agent.snaps["r1"] = snap
+	orchPollNow(t, a)
+	if got := strings.Count(roomText(a), orchSteerLead); got != 1 {
+		t.Fatalf("the steered line is drawn %d times, want once:\n%s", got, roomText(a))
+	}
+}
+
+// A REFUSAL RAISES THE ROOM'S OWN GUARD rather than losing the words or sending
+// them somewhere nobody pointed them (room.go's whole steer-guard law).
+func TestARefusedSteerRaisesTheGuardAndKeepsTheWords(t *testing.T) {
+	a, agent := orchApp(t, orchRun4())
+	agent.steerErr = errors.New("run r1 has finished, there is no planner to talk to")
+
+	typeLine(t, a, "narrow it")
+	if !a.guarding() {
+		t.Fatal("a refused steer raised no question")
+	}
+	if got := a.input.String(); got != "narrow it" {
+		t.Fatalf("the box holds %q — the refusal lost the words", got)
+	}
+}
+
+// ── THE NARROW AND PHONE TIERS ──────────────────────────────────────────────
+
+// UNDER THE WIDE TIER THE EDGES ARE WRITTEN OUT IN WORDS: a connector under a
+// wrapped layer would point at a chip that is no longer above it, and an edge a
+// person cannot see is an edge that is not on the page.
+func TestTheNarrowTierWritesEveryEdgeOutInWords(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+	a.width = 70
+	a.touch()
+
+	page := roomText(a)
+	if strings.Contains(page, "│") {
+		t.Fatalf("the narrow tier is still drawing connectors:\n%s", page)
+	}
+	for _, want := range []string{
+		orchNeedsLead + "plan", orchNeedsLead + "rfcs, client", orchNeedsLead + "—",
+	} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the narrow tier never says %q:\n%s", want, page)
+		}
+	}
+	// One chip per row, so the goal rides the chip's own line.
+	if !strings.Contains(page, "rfcs · read the three RFCs") {
+		t.Fatalf("the narrow tier lost the goals:\n%s", page)
+	}
+}
+
+// AT THE PHONE TIER EVERY CHIP IS THREE ROWS, and all three answer the same
+// press: a finger covers about three rows, and a one-row target opens the node
+// above or below the one somebody meant.
+func TestThePhoneTierGivesEveryChipThreeRows(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+	a.width, a.height = 44, 40
+	a.touch()
+
+	rows := a.roomRows(a.bodyWidth())
+	run := a.orchOf()
+	counts := map[string]int{}
+	for i := range rows {
+		if i >= len(run.spots) {
+			break
+		}
+		for _, spot := range run.spots[i] {
+			if spot.node != "" {
+				counts[spot.node]++
+			}
+		}
+	}
+	for _, id := range []string{"plan", "rfcs", "client", "write"} {
+		if counts[id] < 3 {
+			t.Fatalf("%s answers %d rows at the phone tier, want three:\n%s",
+				id, counts[id], roomText(a))
+		}
+	}
+	// A press anywhere in the target opens that chip, including its last row.
+	at := -1
+	for i := range rows {
+		if i < len(run.spots) && len(run.spots[i]) > 0 && run.spots[i][0].node == "rfcs" {
+			at = i
+		}
+	}
+	y := a.bodyTop() + at - a.roomOffsetFor(len(rows), a.viewHeight())
+	if pad := a.viewHeight() - len(rows); pad > 0 {
+		y += pad
+	}
+	if !a.orchPress(1, y) {
+		t.Fatal("the last row of a phone chip is not pressable")
+	}
+	if got := a.orchOf().card; got != "rfcs" {
+		t.Fatalf("the press opened %q", got)
+	}
+}
+
+// ── THE GOLDENS ─────────────────────────────────────────────────────────────
+//
+// Two widths, written out whole. They are here so that a change to the page's
+// grammar — a glyph, a lead, a gap, an order — has to be made on purpose: the
+// diff of one of these is the change, stated.
+
+func TestTheGraphsGoldenAtTheWideTier(t *testing.T) {
+	snap := orchRun4()
+	snap.Notes = []string{"the client matters more than the RFCs"}
+	a, _ := orchApp(t, snap)
+
+	want := strings.Join([]string{
+		"  ● plan",
+		"  │",
+		"· the client matters more than the RFCs",
+		"  ◐ rfcs     ○ client",
+		"  │          │",
+		"",
+		"  ○ write",
+	}, "\n")
+	if got := strings.TrimRight(roomText(a), "\n"); got != want {
+		t.Fatalf("the wide graph changed:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+func TestTheGraphsGoldenAtThePhoneTier(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+	a.width, a.height = 44, 40
+	a.touch()
+
+	want := strings.Join([]string{
+		"  ● plan",
+		"    decide what to read",
+		"    ↳ needs: —",
+		"",
+		"  ◐ rfcs",
+		"    read the three RFCs",
+		"    ↳ needs: plan",
+		"  ○ client",
+		"    read our client",
+		"    ↳ needs: plan",
+		"",
+		"  ○ write",
+		"    write the answer",
+		"    ↳ needs: rfcs, client",
+	}, "\n")
+	if got := strings.TrimRight(roomText(a), "\n"); got != want {
+		t.Fatalf("the phone graph changed:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
+// A FINISHED RUN PUTS ITS ANSWER ON THE PAGE, under the graph that reached it:
+// the claim, and the chips it cites still above it.
+func TestAFinishedRunDrawsItsSynthesis(t *testing.T) {
+	snap := orchRun4()
+	snap.Done = true
+	snap.Answer = "Retries are capped at three (rfcs), and our client ignores the cap (client)."
+	for i := range snap.Nodes {
+		snap.Nodes[i].State = orchestrate.Done
+	}
+	a, _ := orchApp(t, snap)
+
+	page := roomText(a)
+	for _, want := range []string{orchAnswerHead, "Retries are capped at three (rfcs)"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("a finished run never says %q:\n%s", want, page)
+		}
+	}
+	if !strings.Contains(plain(a.roomHead(a.width)), orchDoneWord) {
+		t.Fatalf("the header does not say the run is done:\n%q", plain(a.roomHead(a.width)))
+	}
+	// The graph is still above it: an answer with no shape under it is a report,
+	// and this page is a place.
+	if strings.Index(page, "plan") > strings.Index(page, orchAnswerHead) {
+		t.Fatalf("the answer is drawn above the graph that reached it:\n%s", page)
+	}
+}
+
+// A RUN THIS SESSION CANNOT SEE SAYS SO, and it still draws what the LANE gave
+// it: the notes and the gate are what a page has before its first poll lands.
+func TestAPageWithNoSnapshotStillSaysWhatTheLaneSaid(t *testing.T) {
+	a, _ := orchApp(t, orchRun4())
+	a.openOrchRoom("nobody", "")
+	a.touch()
+	if !strings.Contains(roomText(a), orchUnknownWord) {
+		t.Fatalf("a page on an unknown run says nothing about it:\n%s", roomText(a))
+	}
+	drive(t, a, streamEventMsg{gen: a.gen, ev: session.Event{
+		Kind: session.EventOrchestrateFuel, Text: "$1.60 of $2.00",
+	}})
+	if !strings.Contains(plain(a.roomHead(a.width)), "$1.60 of $2.00") {
+		t.Fatalf("the lane's own gauge is not on the header:\n%q", plain(a.roomHead(a.width)))
+	}
+}
+
+// A SESSION WITH NO ORCHESTRATOR UNDER IT KEEPS EVERYTHING ELSE and says so in
+// one note — the build guard room.go states for its own doors.
+func TestASessionWithNoRunDoorsOpensNoPage(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.openOrchRoom("r1", "whatever")
+	if a.room != nil {
+		t.Fatal("a page opened on a session with no orchestrator")
+	}
+	// The note wraps at the test frame's width, so the assertion is on the head
+	// of the sentence rather than on where the wrap fell.
+	if !strings.Contains(plain(strings.Join(plainRows(a), "\n")), "adaptive runs unavailable") {
+		t.Fatalf("the surface said nothing about the missing doors:\n%s",
+			strings.Join(plainRows(a), "\n"))
+	}
+}

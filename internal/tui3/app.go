@@ -359,6 +359,13 @@ type (
 		ev  session.Event
 	}
 	roomClosedMsg struct{ gen int }
+	// orchPollMsg is a run's page asking to re-read its run (roomorch.go). An
+	// adaptive run publishes a SNAPSHOT rather than streaming its shape, so the
+	// page that draws the shape has a clock where the others have a lane — and it
+	// carries the room's generation for those lanes' own reason: a tick still in
+	// flight when a page closes must not poll on behalf of the page that
+	// replaced it.
+	orchPollMsg struct{ gen int }
 	// The FOURTH lane, and the only one nobody asked for: one watcher per
 	// RUNNING node, held for as long as the node runs, so the rail can say what
 	// a node is doing and for how long without a person having to walk into its
@@ -752,6 +759,12 @@ type app struct {
 	// was clicked and did nothing when it was pressed would be the worse of the
 	// two defects, so every door parks here and the program loop drains it.
 	roomPump tea.Cmd
+	// orchLive is the adaptive run this session has last heard from, or ""
+	// (roomorch.go). It is the surface's only handle on a run: a run is not a
+	// node, so it is on no roster and has no row, and the three orchestrate event
+	// kinds are what say one exists at all. It is what → opens and what a pause
+	// raises its gate on.
+	orchLive string
 	// think is the reasoning block currently streaming, or -1 (thinking.go).
 	think int
 
@@ -1469,6 +1482,12 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, a.roomEvent(msg.ev)
 
+	case orchPollMsg:
+		// A run's page re-reading its run, four times a second (roomorch.go). The
+		// generation check is inside [app.orchPoll], which is also what re-arms the
+		// clock — a tick for a page that is gone stops rather than reschedules.
+		return a, a.orchPoll(msg.gen)
+
 	case roomClosedMsg:
 		// The node reached its final state, so the lane ended. The room stays
 		// open — a person reading what a task did is not finished reading because
@@ -1787,6 +1806,25 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// a surface that armed the pilot only on the standing lane would leave
 		// every in-turn node unwatched.
 		after = a.taskUpdate(ev)
+
+	case session.EventOrchestrateNote:
+		// One line of what an adaptive run's planner is thinking, between two
+		// completions. A REPORT: it lands on the run's page when one is open and in
+		// the transcript when none is (roomorch.go).
+		a.orchNoteEvent(ev)
+
+	case session.EventOrchestrateFuel:
+		// The tank, and its warning at the 80% mark. A REPORT too, and it never
+		// blocks anything: the gauge it feeds is pinned at the top of the run's own
+		// page.
+		a.orchFuelEvent(ev)
+
+	case session.EventOrchestratePause:
+		// THE RUN HAS SPENT ITS TANK, and this is the one orchestrate kind that is
+		// a QUESTION. It is answered on the run's own page, so raising it brings
+		// that page with it — the command it hands back is the poll that page opens
+		// with (roomorch.go).
+		after = a.orchPauseEvent(ev)
 
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
@@ -2587,6 +2625,14 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 			return a.welcomePress(a.welcomeSlotAt(mark.index))
 		}
 		a.dismissWelcome()
+	}
+	// A RUN'S PAGE ANSWERS FOR ITS OWN ROWS, before the transcript's hit-testing
+	// is asked anything: its rows are chips and links and a gate rather than
+	// blocks, so a press on one is resolved by column against the targets the
+	// layout recorded (roomorch.go). A press that hits none of them falls through
+	// untouched, which keeps the empty parts of the page the way out of the room.
+	if a.orchOpen() && a.orchPress(x, y) {
+		return
 	}
 	r, ok := a.rowAt(y)
 	if !ok {

@@ -136,6 +136,16 @@ type taskRoom struct {
 	// refusal for anything typed after it.
 	done bool
 
+	// orch is set when this page is an ADAPTIVE RUN rather than a node
+	// (roomorch.go): the same room, the same doors, the same geometry, drawing a
+	// graph instead of a transcript. It is a field on this struct rather than a
+	// second kind of page for the reason the page is built out of the
+	// conversation's blocks — everything room.go promises (esc restores the
+	// transcript, the rail stays, the scroll is the room's own, copy mode freezes
+	// what is drawn) has to hold for both, and the only way to guarantee that is
+	// for both to BE a room.
+	orch *orchRun
+
 	// The reader's own position. It is HERE and not on the app because that is
 	// the whole promise of esc: the conversation's scroll is not touched while a
 	// room is open, so returning to it restores nothing because nothing moved.
@@ -996,6 +1006,14 @@ func (a *app) steer() tea.Cmd {
 	if room == nil || line == "" {
 		return nil
 	}
+	// A RUN'S PAGE STEERS THE PLANNER (roomorch.go). Same box, same enter, same
+	// echo of the person's own words on the page they typed them into — the only
+	// thing that changes is which door the sentence goes through, because there
+	// is no worker in a run to talk to: there is a planner, and it reads steering
+	// on its next call.
+	if room.orch != nil {
+		return a.orchSteer()
+	}
 	if room.done {
 		a.raiseGuard(line, "")
 		return nil
@@ -1234,6 +1252,18 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
 	}
+	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
+	// because it has more levels than a room does: esc walks out of a chip's card
+	// and out of a nested run before it walks out of the page at all, and enter
+	// over an empty box opens the chip under the cursor rather than steering
+	// nothing. The recall walk is excluded here for the same reason esc excludes
+	// it below — a state the dismiss key cannot dismiss is a trap — and every key
+	// the page does not take falls through to the two below.
+	if a.room.orch != nil && !a.recalling() {
+		if cmd, taken := a.orchKey(msg); taken {
+			return cmd, true
+		}
+	}
 	switch msg.String() {
 	case "esc":
 		// A recall walk is left first, for the reason input.go leaves it first: a
@@ -1370,6 +1400,15 @@ const navDoubleTap = 600 * time.Millisecond
 // note in the transcript every time somebody taps an arrow key, which is a
 // permanent line in the record about a keystroke that meant nothing.
 func (a *app) navForward() tea.Cmd {
+	// AN ADAPTIVE RUN IS THE FIRST STOP, and it is the only keyboard door onto
+	// one (roomorch.go): a run is not on the roster — it is not a node, it has no
+	// row — so → from the conversation opens the run this session has heard from,
+	// when there is one and nothing else is open. From inside any room the key
+	// goes back to walking the roster, which is what it has always done.
+	if a.room == nil && a.orchLive != "" {
+		a.openOrchRoom(a.orchLive, "")
+		return a.takeRoomPump()
+	}
 	running := a.runningNodes()
 	if len(running) == 0 {
 		return nil
@@ -1562,6 +1601,13 @@ func (a *app) roomHead(width int) string {
 // [app.legendLine]: a hue nested inside a hue ends at the inner one's reset, and
 // the rest of the line would fall back to the terminal's default mid-sentence.
 func (a *app) roomHeadWord(width int) string {
+	// A RUN'S PAGE ANSWERS FOR ITS OWN HEADER (roomorch.go): the three facts under
+	// it are a node's — a state, a clock, a spend — and a run has none of them.
+	// What it has instead is a tank, and the tank is the fact that cannot be left
+	// off this line.
+	if a.orchOpen() {
+		return a.orchHeadWord(width)
+	}
 	node := a.roomNode()
 	word := a.roomMark(node) + " " + a.roomTrail()
 	if node == nil {
@@ -1747,6 +1793,13 @@ func (a *app) roomChip() string {
 	if a.room == nil {
 		return ""
 	}
+	// A RUN'S PAGE WEARS THE RUN'S MARK (roomorch.go). Without this the cluster
+	// took [app.roomMark]'s answer for a node this surface has never seen — the
+	// queued glyph — which would draw a run that is spending money as work that
+	// has not started.
+	if a.room.orch != nil {
+		return a.orchHeadMark() + " " + a.room.title
+	}
 	return a.roomMark(a.roomNode()) + " " + a.room.title
 }
 
@@ -1821,6 +1874,17 @@ func (a *app) roomRows(width int) []row {
 	}
 	if room.rows != nil && room.width == width && !room.dirty {
 		return room.rows
+	}
+	// A RUN'S PAGE IS A GRAPH AND NOT A TRANSCRIPT (roomorch.go). It is branched
+	// here — inside the room's own cache, above the conversation's renderers —
+	// because everything around this line is about a room and nothing about a
+	// list of blocks: the width, the cache, the hover pass and the offset are the
+	// same questions for both pages, and only what fills them differs.
+	if room.orch != nil {
+		out := a.orchRows(width)
+		a.hoverPass(out, width)
+		room.rows, room.width, room.dirty = out, width, false
+		return out
 	}
 	out, closed := a.deckRows(room.deck(), width)
 	if room.done {
@@ -1911,6 +1975,14 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 		return rows
 	}
 	lane := roomSteerLane + a.room.title + roomSteerBack
+	if a.room.orch != nil {
+		// A RUN HAS NO WORKER TO TALK TO, so the box does not offer to steer one:
+		// the sentence goes to the PLANNER, which reads it on its next call
+		// (roomorch.go). The placeholder says whose ear it is for the reason it
+		// names a node out here — the box is the same box either way, and "who is
+		// listening" is the question it exists to answer.
+		lane = orchSteerLane + roomSteerBack
+	}
 	if a.room.done {
 		lane = roomFinishedWord
 	}
