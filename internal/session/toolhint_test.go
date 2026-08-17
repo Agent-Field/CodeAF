@@ -395,6 +395,65 @@ func TestFormingPrecedesAnnouncedAndBegin(t *testing.T) {
 	if collected[announced-1].Kind == EventToolForming && collected[announced-1].Hint != "write out.txt" {
 		t.Fatalf("the last forming hint = %q, want the path gloss", collected[announced-1].Hint)
 	}
+
+	// AND THE ANNOUNCEMENT CARRIES THE SAME ID. It is what closes the pair: a
+	// surface adopts the row it has been drawing since the first fragment, and
+	// the id is the only thing that says which row that is.
+	if collected[announced].CallID != "c-write" {
+		t.Fatalf("the announcement carries CallID %q, want the forming events' id", collected[announced].CallID)
+	}
+}
+
+// TWO WRITES IN ONE BATCH ARE TWO IDS, and each announcement carries its own.
+// This is the case the id is FOR: both calls are `write`, they form
+// interleaved, and a surface pairing announcements by tool name alone has
+// nothing to tell the two rows apart with.
+func TestParallelAnnouncementsCarryTheirOwnCallIDs(t *testing.T) {
+	first := ai.ToolCall{ID: "c-1", Type: "function",
+		Function: ai.ToolCallFunction{Name: "write", Arguments: `{"path":"a.txt","content":"a"}`}}
+	second := ai.ToolCall{ID: "c-2", Type: "function",
+		Function: ai.ToolCallFunction{Name: "write", Arguments: `{"path":"b.txt","content":"b"}`}}
+
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			// Interleaved, as a parallel batch arrives on the wire.
+			emitForming(ctx, 0, "c-1", "write", "")
+			emitForming(ctx, 1, "c-2", "write", "")
+			emitForming(ctx, 0, "c-1", "write", `{"path":"a.txt",`)
+			emitForming(ctx, 1, "c-2", "write", `{"path":"b.txt",`)
+			// The SECOND call is announced first, which the ordering law allows
+			// and which is exactly what an oldest-of-that-tool pairing gets
+			// wrong.
+			emitReady(t, ctx, second)
+			emitReady(t, ctx, first)
+			return callsResponse(first, second), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return textResponse("done"), nil
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, nil)
+	collected := collect(t, mustSubmit(t, agent, "write both files"))
+
+	var announced []Event
+	for _, event := range collected {
+		if event.Kind == EventToolAnnounced {
+			announced = append(announced, event)
+		}
+	}
+	if len(announced) != 2 {
+		t.Fatalf("want two announcements, got %d: %v", len(announced), kinds(collected))
+	}
+	// In the order they were announced, with the ids that were announced — not
+	// the order the rows were drawn in.
+	if announced[0].CallID != "c-2" || announced[1].CallID != "c-1" {
+		t.Fatalf("announcements carry %q then %q, want c-2 then c-1",
+			announced[0].CallID, announced[1].CallID)
+	}
+	if announced[0].Hint != "write b.txt" || announced[1].Hint != "write a.txt" {
+		t.Fatalf("the ids and the glosses disagree: %q/%q",
+			announced[0].Hint, announced[1].Hint)
+	}
 }
 
 // A provider that never forms — every non-streaming endpoint — leaves the turn

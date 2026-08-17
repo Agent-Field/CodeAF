@@ -623,6 +623,14 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	case session.EventReasoning:
 		a.roomThink(ev.Text)
 
+	case session.EventToolForming:
+		// THE NODE'S CALL IS ARRIVING, drawn while it arrives — the same event
+		// the conversation draws from (app.go's [app.formTool]). A room without
+		// this said nothing at all while a node streamed a file out, which is
+		// the exact gap the forming row was built to close, left open in the one
+		// place a person goes BECAUSE they want to watch.
+		a.roomFormTool(ev)
+
 	case session.EventToolAnnounced:
 		a.roomAnnounceTool(ev)
 
@@ -726,13 +734,83 @@ func (a *app) roomCloseLive() {
 	room.live = -1
 }
 
+// roomFormTool draws — and keeps redrawing — the row for a call the node is
+// STILL SPELLING OUT. It is [app.formTool] over the room's list, down to the
+// rule that nothing is parsed: the row holds how much has arrived and the gloss
+// session built from the fields that have closed, never the half-sent JSON.
+//
+// There is no spawn card half here, unlike out in the conversation: a node does
+// not propose tasks to the person standing in its room.
+func (a *app) roomFormTool(ev session.Event) {
+	room := a.room
+	if room == nil {
+		return
+	}
+	at := claimForming(room.entries, ev)
+	if at < 0 {
+		a.roomCloseLive()
+		a.roomAppend(entry{
+			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: room.turn,
+			status: toolForming, callID: ev.CallID, bytes: ev.Bytes,
+		})
+		return
+	}
+	// Every field is taken FORWARD only, for [app.formTool]'s reason: a later
+	// fragment that carried less than the one before it must not un-say what the
+	// row already knows.
+	e := &room.entries[at]
+	e.callID = firstNonEmpty(ev.CallID, e.callID)
+	e.tool = firstNonEmpty(ev.Tool, e.tool)
+	e.text = firstNonEmpty(ev.Hint, e.text)
+	if ev.Bytes > e.bytes {
+		e.bytes = ev.Bytes
+	}
+	a.roomTouched()
+}
+
+// roomDropForming resolves every call the node was still SPELLING OUT when its
+// lane ended. It is [app.dropForming] over the room's list, and it exists for
+// the same reason: a forming row is the one row with no event coming for it —
+// no announcement, no begin, no end — so a node that died mid-call would leave
+// the page pulsing at a stream that is over.
+//
+// The row is RESOLVED, never removed: the node started asking for something and
+// stopped, which is a fact about what happened, and a row that vanished would
+// take it with it.
+func (a *app) roomDropForming() {
+	room := a.room
+	if room == nil {
+		return
+	}
+	now := a.now()
+	for i := range room.entries {
+		if e := &room.entries[i]; e.forming() {
+			e.ended = now
+		}
+	}
+	a.roomTouched()
+}
+
 // roomAnnounceTool draws the row for a call the node has finished asking for.
 // It is [app.announceTool] over the room's list, and it exists for the same
 // reason: the change an edit is ABOUT to make is previewed from the arguments,
 // and the moment that preview is worth anything is the moment before it happens.
+//
+// IT ADOPTS THE FORMING ROW rather than drawing a second one — one call, one
+// line, from the first fragment to the last — and it pairs by the call's id,
+// which session's announcement carries (its loop.go).
 func (a *app) roomAnnounceTool(ev session.Event) {
 	room := a.room
 	if room == nil {
+		return
+	}
+	if at := claimFormed(room.entries, ev); at >= 0 {
+		e := &room.entries[at]
+		e.status = toolQueued
+		e.tool = firstNonEmpty(ev.Tool, e.tool)
+		e.text = firstNonEmpty(ev.Hint, e.text)
+		e.detail.Args = firstNonEmpty(ev.Args, e.detail.Args)
+		a.roomTouched()
 		return
 	}
 	a.roomCloseLive()
@@ -749,7 +827,15 @@ func (a *app) roomBeginTool(ev session.Event) {
 	if room == nil {
 		return
 	}
-	if at := roomClaimAnnounced(room.entries, ev); at >= 0 {
+	at := roomClaimAnnounced(room.entries, ev)
+	if at < 0 {
+		// A call that formed and then began with no announcement between them.
+		// The ordering law says that cannot happen, and a row left pulsing at a
+		// call that is already running would be the page believing the law over
+		// the event in its hand ([app.beginTool] says the same).
+		at = claimFormed(room.entries, ev)
+	}
+	if at >= 0 {
 		e := &room.entries[at]
 		e.status = toolRunning
 		e.began = a.now()

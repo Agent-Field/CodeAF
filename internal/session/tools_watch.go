@@ -28,13 +28,20 @@ package session
 //     baseline delivered as news would be exactly the fifty-line chunk this tool
 //     exists to stop sending.
 //
-//   - IT RIDES THE STEERING LANE. The note is appended by the same
-//     enqueueAmbientNote a job's exit note uses (jobs.go), drained into the
-//     transcript at the next step boundary, read as plain user text. No push, no
-//     new event, no change to any surface: news that arrives while the model is
-//     busy already has a lane, and a second one would be a second ordering rule
-//     and a second way to land inside a tool batch, which every provider
-//     rejects.
+//   - IT RIDES THE STEERING LANE. The note is appended by the same registry
+//     notify a job's exit note uses (jobs.go), drained into the transcript at
+//     the next step boundary, read as plain user text. No push, no new event, no
+//     change to any surface: news that arrives while the model is busy already
+//     has a lane, and a second one would be a second ordering rule and a second
+//     way to land inside a tool batch, which every provider rejects.
+//
+//     AND IT WAKES AN IDLE SESSION, which is the half a watch cannot do without.
+//     The tool exists because the model STOPPED polling, so on an idle session
+//     there is nothing left that will ever come and look: a delta that only
+//     queued would wait for the person to type, which is the poll this replaced,
+//     moved onto them. The wake and its coalescing are agent.go's
+//     ([Agent.enqueueSteering]) — a watch ticking every ten seconds into a
+//     running turn adds lines to it and starts nothing.
 //
 // Two governors, because a timer that never stops is a way to burn a session
 // down. THREE WATCHES AT A TIME, so a model that discovers the tool cannot turn
