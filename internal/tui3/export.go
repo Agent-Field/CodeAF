@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
@@ -142,6 +144,20 @@ func (a *app) exportDone(msg exportedMsg) {
 	}
 	switch {
 	case msg.err == nil:
+		// AN EXPORT IS A DELIVERABLE, so it earns its row in the index a person
+		// finds their work again by (internal/session's artifacts.go). It is
+		// recorded here rather than in the write itself because only a write that
+		// came back clean is a file worth citing, and the failure is silent by
+		// the same contract the row is written under: somebody has just been
+		// handed their document, and news about a lookup file is not something
+		// they can act on.
+		session.RecordArtifact(a.artifactsIndex(), session.Artifact{
+			Path:    msg.path,
+			Session: exportSession(a.file),
+			Title:   filepath.Base(msg.path),
+			Kind:    "export",
+			Created: time.Now(),
+		})
 		a.note("exported · " + short + here)
 	case errors.Is(msg.err, fs.ErrExist):
 		a.note(short + " is already there · /export <path> writes it somewhere else")
@@ -181,6 +197,36 @@ func writeExport(target exportTarget, doc string) (string, error) {
 		return path, err
 	}
 	return path, file.Close()
+}
+
+// artifactsIndex is where the row goes: what the door said, or the product's
+// own file under the state root. The fallback is [Options.Models]'s — a surface
+// nobody wired still records where everything else in the product looks, and
+// AFORGE_HOME moves it with the rest.
+func (a *app) artifactsIndex() string {
+	if index := strings.TrimSpace(a.artifacts); index != "" {
+		return index
+	}
+	return home.Join("v3", session.ArtifactsIndexName)
+}
+
+// exportSession is the conversation the row cites, read off the transcript's
+// own path: a session folder is named for its session (Decision 26), so a
+// transcript.jsonl's parent directory IS the id and nothing has to be opened to
+// learn it.
+//
+// A FLAT-LAYOUT TRANSCRIPT ANSWERS NOTHING. Its name carries a stem rather than
+// an id, and a citation assembled out of a file name is a citation that points
+// at a session nobody can look up — better absent than invented (design-law
+// §EMPTINESS).
+func exportSession(file string) string {
+	if file = strings.TrimSpace(file); file == "" {
+		return ""
+	}
+	if filepath.Base(file) != session.TranscriptName {
+		return ""
+	}
+	return filepath.Base(filepath.Dir(file))
 }
 
 // ── the name on the file ────────────────────────────────────────────────────
