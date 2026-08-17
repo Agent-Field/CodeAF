@@ -249,6 +249,8 @@ needs them and left out otherwise.
 | `add_edge` | draw an edge | `node` (from), `text` (to) |
 | `drop_edge` | remove an edge | `node` (from), `text` (to) |
 | `set_verify` | move the harness's verify rung — or one node's, if you name it | `text`, optional `node` |
+
+`set_verify` moves a rung UP or SIDEWAYS, never down. Lowering a rung is how a review quietly spends the design's safety to buy simplicity, and it is the one change a critic is not allowed to make: if the draft's rung looks too strong, say so in findings and leave it — the person approving the card decides to spend their own safety. Raising a rung is always welcome, with the reason named.
 | `set_dyn` | move the dynamism rung or its budget | `field` (`"ladder"` or `"cap"`), `text` |
 | `set_whitelist` | replace the tool whitelist, comma-separated | `text` |
 | `set_desc` | rewrite `id.desc`, the sentence detection matches on | `text` |
