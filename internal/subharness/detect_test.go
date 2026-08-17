@@ -271,23 +271,23 @@ func TestSeedCuesAreTheGoalsOwnWords(t *testing.T) {
 	for _, goal := range []string{g1, g2, g3} {
 		cues := SeedCues(goal)
 		if len(cues) < seedMin || len(cues) > seedMax {
-			t.Errorf("%q seeded %d cues (%q), want %d to %d", clip(goal), len(cues), cues, seedMin, seedMax)
+			t.Errorf("%q seeded %d cues (%q), want %d to %d", clipTest(goal), len(cues), cues, seedMin, seedMax)
 		}
 		words := tokenize(goal)
 		seen := map[string]bool{}
 		for _, cue := range cues {
 			if seen[cue] {
-				t.Errorf("%q seeded %q twice", clip(goal), cue)
+				t.Errorf("%q seeded %q twice", clipTest(goal), cue)
 			}
 			seen[cue] = true
 			if !holds(words, tokenize(cue)) {
-				t.Errorf("%q seeded %q, which is not a run of words the goal contains", clip(goal), cue)
+				t.Errorf("%q seeded %q, which is not a run of words the goal contains", clipTest(goal), cue)
 			}
 		}
 		// Same goal, same cues, every time.
 		again := SeedCues(goal)
 		if strings.Join(again, "|") != strings.Join(cues, "|") {
-			t.Errorf("%q seeded %q and then %q", clip(goal), cues, again)
+			t.Errorf("%q seeded %q and then %q", clipTest(goal), cues, again)
 		}
 	}
 }
@@ -316,12 +316,12 @@ func TestSeededHarnessIsReachedByTheGoalThatBuiltIt(t *testing.T) {
 		score := Score(Turn{Text: c.goal}, c.entry)
 		if score < Threshold {
 			t.Errorf("%q scored %.3f against the harness it built, under the threshold of %.2f",
-				clip(c.goal), score, Threshold)
+				clipTest(c.goal), score, Threshold)
 		}
 		match, ok := Best(Turn{Text: c.goal}, built)
 		if !ok || match.Entry.Name != c.entry.Name {
 			t.Errorf("%q matched %q at %.3f (ok=%v), want %q",
-				clip(c.goal), match.Entry.Name, match.Score, ok, c.entry.Name)
+				clipTest(c.goal), match.Entry.Name, match.Score, ok, c.entry.Name)
 		}
 	}
 }
@@ -389,7 +389,7 @@ func TestSeedCuesOfAThinGoal(t *testing.T) {
 	}
 }
 
-func clip(text string) string {
+func clipTest(text string) string {
 	if len(text) <= 48 {
 		return text
 	}
