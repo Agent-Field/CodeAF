@@ -3,7 +3,7 @@
 This page is the honest inventory: what aforge can reach, what it refuses, and
 what is simply not there in this build.
 
-## Can you read and write files?
+## Can you read, write, create, delete, rename or move files?
 
 Yes. Three tools do this, and they work on the workspace you started aforge in.
 
@@ -38,6 +38,12 @@ file reads `Could not edit file: <path>. Error code: ENOENT.`
 `read` never asks your permission. `edit` and `write` follow whatever approval
 mode you are in, which asks by default.
 
+There is **no tool that deletes, renames or moves a file**. Those happen through
+`bash`, by running `rm`, `mv` or `rename` like you would yourself — so they are
+governed by the shell rules rather than the file rules, they ask before running
+under the default approval mode, and the most destructive forms of `rm` are on
+the short list of commands that always ask no matter what the settings say.
+
 ## Can you find a file or search the code?
 
 Yes, three ways.
@@ -64,7 +70,7 @@ directory. Default **500 entries**, and at the cap:
 All three are capped at 50KB of output, and all three are pure reads, so none of
 them asks your permission.
 
-## Can you run a command?
+## Can you run a command, run my tests, or build the project?
 
 Yes. The `bash` tool runs a command through `/bin/bash -c` in your workspace,
 with the environment aforge itself was started with.

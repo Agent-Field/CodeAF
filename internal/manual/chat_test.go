@@ -48,6 +48,29 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why is my table cut off", "screen"},
 		{"what is a harness", "saved-shapes-of-work"},
 		{"how do I start aforge", "starting-aforge"},
+
+		// The second wave, added after probing the corpus the way it is
+		// actually queried. Each of these reached the wrong page until the
+		// asker's own words were written into a heading, which is the fix this
+		// test is meant to provoke.
+		{"can you delete files", "what-i-can-do"},
+		{"can you run tests for me", "what-i-can-do"},
+		{"can you start a dev server", "what-i-can-do"},
+		{"how do I see what a background job printed", "what-i-can-do"},
+		{"do you ask before running rm", "permissions"},
+		{"what is yolo mode", "permissions"},
+		{"how do I make it stop asking every time", "permissions"},
+		{"what model is it using right now", "models-and-cost"},
+		{"how do I give it a longer context", "models-and-cost"},
+		{"how do I make it think harder", "models-and-cost"},
+		{"why is it slow over ssh", "running-on-another-machine"},
+		{"does it support markdown tables", "screen"},
+		{"how do I copy text out", "keys"},
+		{"can I turn off the mouse", "keys"},
+		{"can you look at a screenshot I paste", "keys"},
+		{"where do I change settings", "commands"},
+		{"what is openaf", "starting-aforge"},
+		{"can you access my email", "accounts"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

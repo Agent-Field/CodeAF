@@ -1,6 +1,6 @@
 # Models, context, and what it costs
 
-## Which model am I talking to, and how do I switch it
+## Which model am I talking to, which model is it using right now, and how do I switch or change it
 
 The model in use is written in the status line. There are two doors to the picker:
 
@@ -74,7 +74,7 @@ by its id against a narrow list of generation and sidecar words.
 It takes the slug at its word: there is no check that the slug exists in any known list. If
 the slug is not in any list aforge knows, the context window is left alone.
 
-## Reasoning effort
+## Reasoning effort — making the model think harder or faster
 
 Reasoning effort is set in the model picker with **ctrl+t**, on the model under the cursor.
 Each press walks it round: off → low → medium → high → off.
@@ -134,7 +134,7 @@ Two things differ deliberately from the status line on screen:
 
 Over `--host`, the `place` and `file` values are written in full as `machine:/path`.
 
-## How much room the conversation has
+## How much room the conversation has, and giving it a longer context window
 
 The context window is, most specific first: the one the surface set for the model actually in
 use, then the window the session was configured with, then a conservative default of
