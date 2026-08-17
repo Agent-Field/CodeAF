@@ -788,6 +788,18 @@ const (
 	// out afterwards: whose hands the work is going into.
 	taskModelTag      = "model "
 	taskAcceptanceTag = "done when: "
+	// taskBranchPointWord names WHERE THE WORK STARTS FROM, on a proposal whose
+	// node is going to get a worktree of its own.
+	//
+	// It is on the card because of the one surprise the worktree costs
+	// (docs/CHAT-V3.md, Decision 26): the node branches off HEAD, so the edits a
+	// person has open and has not committed are not in the copy it works on, and
+	// nothing they do to their own checkout while it runs reaches it either. That
+	// is cheap to know beforehand and expensive to discover from a merge that
+	// landed on top of work the node never saw. HEAD and branch are git's words
+	// and belong to whoever is running tasks over a repository; there is no
+	// machinery in the sentence a person has to be taught.
+	taskBranchPointWord = "from HEAD — unsaved edits not included"
 	// taskWaitingWord is what stands where the meter would be on a proposal the
 	// engine is holding open indefinitely. A bar with no end to drain toward
 	// would be an animation inventing a deadline nobody set.
@@ -1221,6 +1233,13 @@ func (a *app) taskCardRows(card *taskCard, width int, sel bool) []string {
 			}
 		}
 	}
+	if point := a.taskBranchPoint(); point != "" {
+		// The branch point sits with the assignment and above the answers, because
+		// it is a fact about the work rather than a fact about answering: it is the
+		// last thing read before the eye reaches the options, and the one thing on
+		// the card a person cannot find out afterwards without reading a merge.
+		out = append(out, stem+a.pal.dim(fit(point, room)))
+	}
 	// THE MODELS ROW ONLY EXISTS WHEN THERE IS A CHOICE. One word, one model is
 	// every ordinary proposal, and that model is said on the meta line below —
 	// where it costs no row at all.
@@ -1445,6 +1464,29 @@ func (a *app) taskChip(word string, focus bool) string {
 		return a.pal.askBold("[ " + word + " ]")
 	}
 	return a.pal.dim("[ ") + a.pal.askBold(word[:1]) + a.pal.ask(word[1:]) + a.pal.dim(" ]")
+}
+
+// taskBranchPoint is the branch-point line for this conversation, or nothing at
+// all.
+//
+// THE BRANCH IS THE WHOLE TEST. A node gets a worktree exactly when the
+// workspace is a repository with a commit to branch from (internal/session's
+// prepareTaskTree), and that is precisely what a non-empty branch here means —
+// the probe reads `rev-parse --abbrev-ref HEAD`, which a directory that is not a
+// repository and a repository with no commits both refuse (app.go's gitHead). A
+// workspace with no repository runs the work IN PLACE, in the person's own
+// directory, where there is no branch point to name and nothing is hidden from
+// the node: the card says nothing, which is the honest thing to say.
+//
+// It says nothing over a connection too, because the probe is off there and this
+// machine cannot answer for the other one's checkout (app.go). An unknown
+// renders as NOTHING rather than as a guess; a remote branch point is a wire
+// question for the lane that owns the contract.
+func (a *app) taskBranchPoint() string {
+	if a.branch == "" {
+		return ""
+	}
+	return taskBranchPointWord
 }
 
 // taskMetaWord is the card's dim last line: WHO the work goes to, and the key
