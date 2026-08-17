@@ -69,6 +69,30 @@ func ParseAction(text string) (Action, error) {
 // other tool is judged by name alone.
 const ToolBash = "bash"
 
+// actsInThePersonsName is the tool table that a BLANKET allow cannot switch
+// off, and it is bash.go's critical table for the other kind of damage.
+//
+// What these calls have in common is that they are irreversible OUTSIDE this
+// machine, and irreversible in somebody's own name: a message that has left the
+// mailbox has been read by the person it was addressed to, and a meeting that
+// has landed on a calendar has landed on everybody's. No rollback exists for
+// either, and a person watching a tool run cannot undo one afterwards the way
+// they can undo an edit.
+//
+// A blanket allow — the settings row set to allow, or --yolo — is a statement
+// about the ordinary work of a session: reading, editing, running things here.
+// It cannot vouch for a message it has not seen, exactly as bash.go's allow
+// rule cannot vouch for the rest of a compound line. So the floor holds under
+// the DEFAULT and yields to a rule that NAMES the tool: a person who wrote
+// `gmail_send:allow` said that exact sentence about that exact tool, and the
+// policy is where such a sentence belongs. The remembered "always" answer
+// (internal/session's consent.go) is the same statement made once, in the
+// question itself, and it goes on working unchanged.
+var actsInThePersonsName = map[string]bool{
+	"gmail_send":      true,
+	"calendar_create": true,
+}
+
 // Rule is one bash pattern and the answer it carries. Match is a glob in the
 // restricted dialect documented in bash.go: '*' and literal text, nothing else.
 type Rule struct {
@@ -135,15 +159,20 @@ func (p Policy) CheckBash(command string) Decision {
 }
 
 // base is the answer before any bash-specific reasoning: the tool's own rule
-// if it has one, otherwise the default, otherwise ask.
+// if it has one, otherwise the default, otherwise ask — with the floor under a
+// blanket allow that [actsInThePersonsName] describes.
 func (p Policy) base(tool string) Decision {
 	if action, ok := p.Tools[tool]; ok && action.valid() {
 		return Decision{Action: action, Rule: fmt.Sprintf("tool %q", tool)}
 	}
-	if !p.Default.valid() {
-		return Decision{Action: ActionPrompt, Rule: "default (unset)"}
+	decision := Decision{Action: ActionPrompt, Rule: "default (unset)"}
+	if p.Default.valid() {
+		decision = Decision{Action: p.Default, Rule: "default"}
 	}
-	return Decision{Action: p.Default, Rule: "default"}
+	if decision.Action == ActionAllow && actsInThePersonsName[tool] {
+		return Decision{Action: ActionPrompt, Rule: fmt.Sprintf("%s acts in your name outside this machine", tool)}
+	}
+	return decision
 }
 
 // checkBash walks the patterns in order and then applies the critical table.
