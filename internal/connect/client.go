@@ -44,7 +44,7 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 	// behind it: the key the person pasted goes on every request and that is
 	// the whole of it (key.go).
 	if holder, keyed := plug.(keyService); keyed {
-		return m.keyClient(holder, entry), nil
+		return m.keyClient(holder, service.Name, entry)
 	}
 	credential, err := m.credential(service.ID)
 	if err != nil {

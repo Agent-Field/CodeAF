@@ -35,6 +35,49 @@ An account connected with a key shows as connected and **nothing else**. It does
 not say who you are, because a key does not carry a name and aforge will not
 invent one.
 
+## Or don't paste the key at all
+
+Wherever a box asks you for a key, **the name of an environment variable is an
+answer too**:
+
+> `$STRIPE_KEY`
+
+Write it with the dollar — `$STRIPE_KEY` or `${STRIPE_KEY}` — and aforge stores
+**the name**, not the key. Every call reads the variable again, so:
+
+- The key never enters aforge's file. If your keys already live in your shell,
+  your `.envrc` or a secret manager, they stay there.
+- **Rotating is rotating once.** Change it where it is set and the next call
+  uses the new one. There is nothing here to update.
+- If the variable is not set when aforge reaches for it, it says so and names
+  it — `Stripe reads its key from $STRIPE_KEY, and nothing is set there` — rather
+  than making a call that fails somewhere else for a reason you cannot see.
+
+An account connected this way says so where an account address would be:
+
+> ✓ Stripe                                          from $STRIPE_KEY
+
+That is the one thing a key connection ever says about itself. The name of a
+variable is a fact about your machine; the key is not, and it is never shown.
+
+Everything else about a key is unchanged: a value that is not exactly `$NAME` or
+`${NAME}` is treated as the key itself, so a real key that happens to start with
+a dollar still works.
+
+## Where the key actually is
+
+The box that asks for a key also says **where to get one**, while it is open:
+
+> · Chargebee
+>     Give the domain and then the key, one space between them.
+>   › paste your Chargebee key
+>     find it at apidocs.chargebee.com
+
+It is the vendor's own page, and where the vendor names none, aforge's own note
+of where people find it. It is shown only while the box is open — not on every
+row of a two-hundred-row list, and not after the account is connected, because
+by then you have found it.
+
 Anything that leaves — a message, an invitation — **stops and asks you first**,
 with the recipient and the subject in the question, and it goes only when you
 say so. Reading never asks. Both of those are only where the dials start: what
@@ -43,11 +86,16 @@ next section is how.
 
 ## Connecting one
 
-Two ways in, and they are the same connection:
+Three ways in, and they are the same connection:
 
 - **You start it.** `/connect` lists what can be connected and what already is.
   Pick one and either a browser page opens for you to sign in, or a line opens
   for you to paste the key into.
+- **From the settings page.** `⚙` settings under **Connections** is the same
+  list at rest, and it connects too: enter on a service opens the sign-in, or
+  opens the key box **on the row itself**. It is the same box, and the page
+  stays where it was — the account you just connected gains its tick and opens
+  on what it may do, under your cursor.
 - **Aforge asks.** When the work in front of it needs an account you have not
   connected — you asked about a mail thread it cannot see — it stops and asks:
 
@@ -93,10 +141,11 @@ So each account is a handful of **sentences**, in `⚙` settings under
 **Connections**, and each one carries one of three words:
 
 > ✓ Google                                     jane@example.com
->     read your mail                                        yes
->     send mail as you                                ask first
->     read your calendar                                    yes
->     put things on your calendar                     ask first
+>     read your mail                            yes
+>     send mail as you                          ask first
+>     read your calendar                        yes
+>     put things on your calendar               ask first
+>     disconnect
 
 - **yes** — this runs without asking. It is worth exactly what your own approval
   rule for that tool would be worth, because you wrote it about that sentence.
@@ -123,13 +172,33 @@ give it.
 
 ## Seeing and undoing
 
-`/connect` is also the list. It shows each account, whether it is connected, and
-the address it is connected as, and it is where you disconnect one. What you have
-connected is at the top, flat; everything else is under **the word it is filed
-by** — billing, support, crm, calls & meetings — because a few hundred services
-is a list you search rather than one you read. Typing narrows it, and it narrows
-on the category as well as on the name: `billing` finds Stripe, Chargebee and
-Recurly, none of which contain the word.
+Both lists — `/connect` and the settings page — show each account, whether it is
+connected, and the address it is connected as, and both are where you disconnect
+one. What you have connected is at the top, flat; everything else is under **the
+word it is filed by** — billing, support, crm, calls & meetings — because a few
+hundred services is a list you search rather than one you read. Typing narrows
+it, and it narrows on the category as well as on the name: `billing` finds
+Stripe, Chargebee and Recurly, none of which contain the word.
+
+On the settings page the whole thing is meant to be **read at rest**:
+
+> ✓ Google                                     jane@example.com
+>     yes: read your mail, read your calendar · ask first: send mail as you
+>
+> ✓ Stripe                                          from $STRIPE_KEY
+>     yes: read what is in this account · ask first: act in your name
+>
+> billing
+> · Chargebee                                                    key
+> · Recurly                                                      key
+
+Each account you hold is a block with a line of air over it, and the dim line
+under its name is **what it may do, without opening it** — the same three words
+the rows inside carry, so four accounts can be audited by reading rather than by
+expanding. Under them, what you could connect: one row each, the word saying
+what pressing enter will ask you for (`key` or `sign in`), and the sentence
+about what a service is for shown **only under the row your cursor is on**. Two
+hundred sentences at once is not a catalog, it is a wall.
 
 Disconnecting takes effect immediately: aforge forgets the account on this
 machine, and the next conversation is offered the chance to connect it again like

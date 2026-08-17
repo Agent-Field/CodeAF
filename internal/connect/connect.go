@@ -84,6 +84,34 @@ type Service struct {
 	// A service connected through the browser leaves it empty: it has no one
 	// address, and THE EMPTINESS LAW says an unknown is empty.
 	Address string
+	// KeyAsk is the one instruction a person needs before they can answer the
+	// box, for the handful of services whose answer is not just a key: the
+	// ones whose address carries the person's own workspace, which want the
+	// workspace, a space, and then the key (key.go's [keyPlug.read]).
+	//
+	// EMPTY IS THE ORDINARY CASE and it means "a key, and nothing else" — the
+	// box's own placeholder says that much already, and a second line
+	// repeating it would be a sentence spent teaching somebody what they were
+	// already doing.
+	KeyAsk string
+	// KeyHint is where a person goes to FIND their key: the vendor's own page
+	// with the key on it, or the page of their documentation that says where
+	// it is kept. One short address, and nothing else — no instructions, no
+	// second link, no explanation of what a key is.
+	//
+	// It exists because "paste your Stripe key" is a perfectly clear
+	// instruction that a person cannot follow: they know what is being asked
+	// for and not where it is, and the screen asking them holds the answer.
+	// A surface shows it while the box is OPEN and never before or after
+	// (internal/tui3), which is the emptiness law applied to a link nobody
+	// needs until they are looking for one.
+	//
+	// EMPTY IS ORDINARY. It is empty for every service connected in a browser
+	// — there is no key to go and find — and for any catalog service whose
+	// vendor names no such page. A screen renders nothing for it, never a
+	// search, never a guess: a link to a page that may not exist is worse than
+	// no link at all, because a person follows it.
+	KeyHint string
 	// Category is the one word a catalog of two hundred services is browsed
 	// by — "billing", "crm", "calls & meetings" — filled from catalog
 	// metadata by a later wiring wave. EMPTY IS THE HONEST DEFAULT and every
@@ -104,6 +132,16 @@ type Status struct {
 	// account we do not know is empty, never a placeholder — a screen that
 	// renders nothing is honest, one that renders "unknown" is not.
 	Account string
+	// KeyEnv is the NAME of the environment variable this connection reads
+	// its key from, empty for a key that was pasted whole (keyref.go).
+	//
+	// It is the one thing a key connection has to say about itself, and it is
+	// safe to say: a variable's name is a fact about the person's own machine,
+	// where the key is a fact about their account. A screen shows "from
+	// $STRIPE_KEY" where a pasted key shows nothing at all — because there IS
+	// nothing to show for a pasted key, and a masked row of bullets standing
+	// in for one would be this surface pretending to hold something up.
+	KeyEnv string
 }
 
 // Plug is one connectable service. A plug is a value with no state of its own:
@@ -256,6 +294,7 @@ func (m *Manager) Services() []Status {
 		if record, ok := entries[service.ID]; ok && record.usable() && record.covers(service.Scopes) {
 			status.Connected = true
 			status.Account = record.Account
+			status.KeyEnv = record.KeyEnv
 			if address, err := located(p, record); err == nil {
 				status.Address = address
 			}
