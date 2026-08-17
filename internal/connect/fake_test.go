@@ -46,8 +46,14 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 
 // testManager builds a manager over a fresh profile directory, with a client
 // credential for Google so that the service is on the menu.
+//
+// THE REGISTRY IS NARROWED TO GOOGLE. The catalog (catalog.go) puts hundreds of
+// services on the same registry, and a test about the browser half would
+// otherwise be reasoning about a menu it did not write. The catalog has tests of
+// its own, where the whole list is the subject.
 func testManager(t *testing.T) (*Manager, string) {
 	t.Helper()
+	withPlugs(t, google{})
 	directory := t.TempDir()
 	manager, err := NewManager(directory, map[string]ClientCredential{
 		"google": {ID: "client-id", Secret: "client-secret"},

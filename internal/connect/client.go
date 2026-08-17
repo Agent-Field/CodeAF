@@ -33,16 +33,22 @@ func (m *Manager) Client(ctx context.Context, id string) (*http.Client, error) {
 		return nil, err
 	}
 	service := plug.Service()
-	credential, err := m.credential(service.ID)
-	if err != nil {
-		return nil, err
-	}
 	// The same reading of "connected" every other caller gets, which is what
 	// keeps a client from being handed out for a sign-in that no longer covers
 	// what this build asks for.
 	entry, ok := m.standing(plug)
 	if !ok {
 		return nil, fmt.Errorf("%s is not connected", service.Name)
+	}
+	// A key-connected service has nothing to renew and no client credential
+	// behind it: the key the person pasted goes on every request and that is
+	// the whole of it (key.go).
+	if holder, keyed := plug.(keyService); keyed {
+		return m.keyClient(holder, entry), nil
+	}
+	credential, err := m.credential(service.ID)
+	if err != nil {
+		return nil, err
 	}
 	source := &persisting{
 		base:  m.config(plug, credential).TokenSource(ctx, entry.Keys),
