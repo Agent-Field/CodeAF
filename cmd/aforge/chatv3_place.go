@@ -29,12 +29,9 @@ import (
 // for the conversations it exports, and two spellings of one path would be two
 // indexes with half a person's work in each.
 //
-// STUB(place/layout): the launch assembly sets both from here, beside where it
-// sets Config.Place —
-//
-//	cfg.ArtifactsIndex = artifactsIndexPath()          // session.Config
-//	ArtifactsIndex:     artifactsIndexPath(),          // tui3.Options
-//	ArtifactsIndex:     artifactsIndexPath(),          // remote.Engine, --host
+// The launch assembly sets every carrier from here, beside where it sets
+// Config.Place: session.Config.ArtifactsIndex and tui3.Options.ArtifactsIndex
+// (chatv3.go), and the --host surface's own (chatv3_host.go).
 func artifactsIndexPath() string {
 	return home.Join("v3", session.ArtifactsIndexName)
 }

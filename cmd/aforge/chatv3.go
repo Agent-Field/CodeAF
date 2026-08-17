@@ -208,6 +208,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
 		Models: func() []tui3.Model { return v3Models(models) },
+		// The same deliverables index the session's config carries, so the
+		// surface's /export rows and the session's own land in one file.
+		ArtifactsIndex: artifactsIndexPath(),
 		Fresh: func() (tui3.Agent, string, error) {
 			place, err := v3NextSession(cfg.Place, workspace)
 			if err != nil {
@@ -340,6 +343,10 @@ type v3Launch struct {
 }
 
 func openV3Launch(opts v3Options) (*v3Launch, error) {
+	// Housekeeping, in the background, once per process (chatv3_sweep.go):
+	// every v3 door — chat, resume, engine — assembles through here, so this
+	// is the one line that covers them all.
+	startPlaceSweep()
 	// The same resolution every other surface does: environment and the
 	// profile file, one place, one error message when there is no key.
 	settings, err := config.Load()
@@ -425,6 +432,10 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		// root, which is what note, forget and the dreaming pass have been built
 		// against and reaching nothing for a version.
 		MemoryFile: home.Join("v3", "memory.md"),
+		// The deliverables index the session's own products (a painted picture)
+		// record themselves in — the same file the surface's /export and /files
+		// resolve, spelled once (chatv3_place.go).
+		ArtifactsIndex: artifactsIndexPath(),
 		// The window the model this session STARTS on actually accepts, when
 		// anybody can say so without waiting. Zero keeps session's own
 		// conservative default, and [warmV3Models] corrects it in place the
@@ -486,21 +497,6 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		Place:       found.Place,
 		Bucket:      found.Bucket,
 	}, nil
-}
-
-// prepareOwnedWorkspace makes an owned session's workspace ready to work in.
-//
-// STUB(place/modes): the modes lane lands git init and the work/ dir; until
-// then owned sessions get MkdirAll only.
-func prepareOwnedWorkspace(place session.Place) error {
-	work := place.Work()
-	if work == "" {
-		return nil
-	}
-	if err := os.MkdirAll(work, 0o700); err != nil {
-		return fmt.Errorf("create session workspace: %w", err)
-	}
-	return nil
 }
 
 // v3Connections hands the surface the accounts manager, and keeps a nil a nil.
@@ -1204,8 +1200,13 @@ const v3RecentSessionSlots = 20
 // person may never look at; the one thing it must not do is stop a launch, and
 // "no recent sessions" is a true sentence about a machine whose session
 // directory cannot be read.
+//
+// BOTH SHAPES ARE LISTED, because both are on the disk: a session written
+// before Decision 26 is a flat transcript and one written after it is a
+// folder, and the reader takes the folder's own meta.json as the name and
+// the ordering (internal/session's recentplace.go).
 func v3RecentSessions(bucket string) []tui3.Session {
-	found := session.Recent(bucket, v3RecentSessionSlots)
+	found := session.RecentSessions(bucket, v3RecentSessionSlots)
 	rows := make([]tui3.Session, 0, len(found))
 	for _, summary := range found {
 		rows = append(rows, tui3.Session{

@@ -57,7 +57,7 @@ func (s *server) store(images []session.Image) ([]session.Image, error) {
 		return images, nil
 	}
 	s.state.Lock()
-	workspace, place, index := s.engine.Workspace, s.engine.Place, s.engine.ArtifactsIndex
+	workspace, place := s.engine.Workspace, s.engine.Place
 	s.state.Unlock()
 
 	out := make([]session.Image, 0, len(images))
@@ -73,16 +73,13 @@ func (s *server) store(images []session.Image) ([]session.Image, error) {
 		if err != nil {
 			return nil, err
 		}
-		// A picture that arrived is a picture somebody may want back — it is on
-		// the engine's disk and nowhere on theirs — so it earns its row in the
-		// index the same way a painted one does (session's artifacts.go).
-		session.RecordArtifact(index, session.Artifact{
-			Path:    path,
-			Session: session.PlaceSession(place),
-			Title:   filepath.Base(path),
-			Kind:    "image",
-			Created: time.Now(),
-		})
+		// NO ROW IN THE INDEX. A pasted picture is the person's INPUT, not a
+		// thing the harness made for them, and /files is the list of what was
+		// made (session's artifacts.go): a person who pastes forty screenshots
+		// into a review would find their deliverables buried under their own
+		// clipboard. The file itself still lands and is journaled by path, so
+		// nothing arrived is lost — it just is not cited.
+		//
 		// The bytes ride along rather than being dropped: internal/session
 		// reads them instead of opening the file it is about to be told about,
 		// so the picture is written once and read never.

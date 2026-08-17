@@ -35,9 +35,8 @@ const sweepLogName = "sweep.log"
 // resume` are two entrances to one launch, and a process that came through both
 // should still sweep once.
 //
-// STUB(place/layout): the layout lane owns chatv3.go, so the call sits in
-// main.go's v3 doors for now. It belongs inside openV3Launch, beside the rest of
-// what a v3 launch resolves, and moving it there is one line at the merge.
+// The call sits inside openV3Launch, beside the rest of what a v3 launch
+// resolves, so every door — chat, resume, engine — sweeps without naming it.
 func startPlaceSweep() {
 	sweepOnce.Do(func() { go session.SweepHome(noteSweep) })
 }
