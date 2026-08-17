@@ -103,6 +103,59 @@ func TestResolvePrecedence(t *testing.T) {
 			want:     "session-model",
 		},
 		{
+			// The run's two halves, on one settings file: the planner is the
+			// call that decides what the tank is spent on, a worker is one of
+			// the many small ones that spend it.
+			name: "the planner takes the high tier",
+			src: settings(map[string]string{
+				"tiers.low":  "low-model",
+				"tiers.high": "high-model",
+			}),
+			role:     RolePlanner,
+			fallback: "session-model",
+			want:     "high-model",
+		},
+		{
+			name: "a worker takes the low tier",
+			src: settings(map[string]string{
+				"tiers.low":  "low-model",
+				"tiers.high": "high-model",
+			}),
+			role:     RoleWorker,
+			fallback: "session-model",
+			want:     "low-model",
+		},
+		{
+			name: "a planner pin outranks its tier",
+			src: settings(map[string]string{
+				"roles.planner": "pinned-model",
+				"tiers.high":    "high-model",
+			}),
+			role:     RolePlanner,
+			fallback: "session-model",
+			want:     "pinned-model",
+		},
+		{
+			// An install that never configured a tier runs a whole adaptive run
+			// on the model the person is already talking to, which is where every
+			// one of these calls went before the roles existed.
+			name:     "a worker falls to the session model when no tier is set",
+			src:      settings(map[string]string{}),
+			role:     RoleWorker,
+			fallback: "session-model",
+			want:     "session-model",
+		},
+		{
+			name: "the designer takes the high tier",
+			src: settings(map[string]string{
+				"tiers.low":  "low-model",
+				"tiers.high": "high-model",
+			}),
+			role:     RoleDesigner,
+			fallback: "session-model",
+			want:     "high-model",
+		},
+		{
 			name: "a pin resolves without any tier configured",
 			src: settings(map[string]string{
 				"roles.compaction": "pinned-model",
@@ -220,7 +273,10 @@ func TestRegisteredIsSortedAndComplete(t *testing.T) {
 	Register(Role("advisor"), TierHigh)
 	Register(Role("commit"), TierLow)
 
-	want := []Role{Role("advisor"), Role("commit"), RoleCompaction, RoleTitle}
+	want := []Role{
+		Role("advisor"), Role("commit"), RoleCompaction,
+		RoleDesigner, RolePlanner, RoleTitle, RoleWorker,
+	}
 	for range 5 { // map order varies per iteration; the answer must not
 		got := Registered()
 		if len(got) != len(want) {
@@ -235,8 +291,15 @@ func TestRegisteredIsSortedAndComplete(t *testing.T) {
 }
 
 func TestDefaultAssignment(t *testing.T) {
-	// Disposable prose cheap, the session's memory capable.
-	for role, want := range map[Role]Tier{RoleTitle: TierLow, RoleCompaction: TierHigh} {
+	// Disposable prose cheap, the session's memory capable — and the run's
+	// balance: one careful call deciding what happens, many cheap ones doing it.
+	for role, want := range map[Role]Tier{
+		RoleTitle:      TierLow,
+		RoleCompaction: TierHigh,
+		RolePlanner:    TierHigh,
+		RoleDesigner:   TierHigh,
+		RoleWorker:     TierLow,
+	} {
 		got, ok := TierOf(role)
 		if !ok || got != want {
 			t.Fatalf("TierOf(%q) = %q, %v, want %q, true", role, got, ok, want)
