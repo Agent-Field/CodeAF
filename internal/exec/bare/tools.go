@@ -15,8 +15,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 )
 
 // Tool is the shared interface between this package and the bare executor.
@@ -271,7 +272,7 @@ func newBashTool(cwd string) Tool {
 			cmd := exec.CommandContext(ctx, shell, append(shellArgs, p.Command)...)
 			cmd.Dir = cwd
 			cmd.Env = os.Environ()
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			processgroup.Configure(cmd)
 
 			// Interleave stdout+stderr in arrival order. Setting both
 			// cmd.Stdout and cmd.Stderr to the same writer lets Go's exec
@@ -372,10 +373,7 @@ func killProcessGroup(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return
 	}
-	pgid, err := syscall.Getpgid(cmd.Process.Pid)
-	if err == nil {
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
-	} else {
+	if err := processgroup.Kill(cmd.Process.Pid); err != nil {
 		_ = cmd.Process.Kill()
 	}
 }

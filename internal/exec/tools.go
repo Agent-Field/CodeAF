@@ -14,12 +14,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 	"github.com/Agent-Field/aforge-v2/internal/rtk"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -1420,12 +1420,12 @@ func (t *Toolbox) runShell(ctx context.Context, command string, seconds int, rtk
 	// makes the timeout kill reach grandchildren, and WaitDelay force-closes
 	// the pipes shortly after bash itself is gone for anything that survives —
 	// a stuck tool call must cost its timeout, never the run.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	processgroup.Configure(cmd)
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
 			return os.ErrProcessDone
 		}
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		return processgroup.Kill(cmd.Process.Pid)
 	}
 	cmd.WaitDelay = 3 * time.Second
 	// Collected rather than read whole. A command inside a fifteen-minute call

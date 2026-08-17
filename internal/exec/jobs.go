@@ -12,10 +12,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/guard"
+	"github.com/Agent-Field/aforge-v2/internal/processgroup"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -55,7 +55,7 @@ func jobLogName(leaf string, id int) string {
 // the error is dropped because not every environment permits renicing at all —
 // failing to yield is never a reason to fail the job.
 var setProcessGroupPriority = func(pgid, priority int) {
-	_ = syscall.Setpriority(syscall.PRIO_PGRP, pgid, priority)
+	processgroup.SetPriority(pgid, priority)
 }
 
 type jobState uint8
@@ -172,7 +172,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 		if cmd.Process == nil {
 			return os.ErrProcessDone
 		}
-		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		return processgroup.Kill(cmd.Process.Pid)
 	}
 	cmd.WaitDelay = 3 * time.Second
 	if err := cmd.Start(); err != nil {
@@ -531,7 +531,7 @@ func (r *jobRegistry) markStopped(id int) (pid int, done <-chan struct{}, runnin
 }
 
 func terminateProcessGroup(pid int, done <-chan struct{}) {
-	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	_ = processgroup.Terminate(pid)
 	timer := time.NewTimer(jobTerminateGrace)
 	select {
 	case <-done:
@@ -539,7 +539,7 @@ func terminateProcessGroup(pid int, done <-chan struct{}) {
 		return
 	case <-timer.C:
 	}
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = processgroup.Kill(pid)
 	<-done
 }
 
@@ -547,19 +547,18 @@ func terminateDetachedGroup(pid int) {
 	if !processGroupAlive(pid) {
 		return
 	}
-	_ = syscall.Kill(-pid, syscall.SIGTERM)
+	_ = processgroup.Terminate(pid)
 	deadline := time.Now().Add(jobTerminateGrace)
 	for processGroupAlive(pid) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if processGroupAlive(pid) {
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
+		_ = processgroup.Kill(pid)
 	}
 }
 
 func processGroupAlive(pid int) bool {
-	err := syscall.Kill(-pid, 0)
-	return err == nil || errors.Is(err, syscall.EPERM)
+	return processgroup.Alive(pid)
 }
 
 func (r *jobRegistry) read(id int) Result {
@@ -788,7 +787,7 @@ func (r *jobRegistry) sweptCount() int {
 // survivor unaccounted for.
 func reap(jobs []*backgroundJob) {
 	for _, job := range jobs {
-		_ = syscall.Kill(-job.cmd.Process.Pid, syscall.SIGTERM)
+		_ = processgroup.Terminate(job.cmd.Process.Pid)
 	}
 	deadline := time.NewTimer(jobTerminateGrace)
 	for _, job := range jobs {
@@ -799,7 +798,7 @@ func reap(jobs []*backgroundJob) {
 				select {
 				case <-survivor.done:
 				default:
-					_ = syscall.Kill(-survivor.cmd.Process.Pid, syscall.SIGKILL)
+					_ = processgroup.Kill(survivor.cmd.Process.Pid)
 				}
 			}
 			for _, survivor := range jobs {
