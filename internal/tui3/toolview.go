@@ -244,7 +244,6 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	mark := a.mark(e)
 
 	rail := a.pal.rail(last)
-	railWidth := ansi.StringWidth(rail)
 	nameWidth := ansi.StringWidth(name)
 
 	// The right edge holds the spinner, or the elapsed time that replaces it
@@ -262,12 +261,15 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 		reserve = ansi.StringWidth(counting) + 2
 	}
 	room := width - railWidth - nameWidth - reserve
-	if statWidth := ansi.StringWidth(statPlain) + 2; room-statWidth < 8 {
+	// Measured once and then spent twice: the slot's width decides whether the
+	// stat fits at all, and — when it does — how much of the line it took.
+	statWidth := ansi.StringWidth(statPlain) + 2
+	if room-statWidth < 8 {
 		statPlain, statPainted = "", ""
 	} else {
 		room -= statWidth
 	}
-	target = fit(target, room-1)
+	target, targetWidth := fitWidth(target, room-1)
 
 	// A selected line takes the accent on its rail — no band, no marker
 	// column, nothing that changes the width. Selection is a brightness here,
@@ -285,11 +287,11 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 	used := railWidth + nameWidth
 	if target != "" {
 		line += " " + a.paintTarget(e, target)
-		used += 1 + ansi.StringWidth(target)
+		used += 1 + targetWidth
 	}
 	if statPlain != "" {
 		line += "  " + statPainted
-		used += 2 + ansi.StringWidth(statPlain)
+		used += statWidth
 	}
 	if e.status == toolFailed {
 		line += " " + mark

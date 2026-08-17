@@ -289,7 +289,10 @@ func readLines(output string) count {
 	if strings.TrimSpace(body) == "" {
 		return count{n: 0, capped: capped}
 	}
-	return count{n: len(strings.Split(body, "\n")), capped: capped}
+	// Counted rather than split: the answer is one number, and splitting a
+	// hundred-kilobyte read into a string header per line to take len() of it
+	// allocated the whole listing on every frame the row was on screen.
+	return count{n: strings.Count(body, "\n") + 1, capped: capped}
 }
 
 // matchRe is bare's grep row: "path:line: text". Counting these rather than
