@@ -57,6 +57,11 @@ Rules for the pages themselves:
 - **State limits and refusals.** Someone asking the manual usually wants to know whether
   something is possible; "no, and here is what it says instead" is the most useful answer
   on the page. Never describe half-built machinery as though it worked.
+- **When you make something possible, hunt down the page that says it isn't.** The gates
+  check that a name is *mentioned*, never that the claim around it is true — a tool named
+  in a "what aforge cannot do" section satisfies them perfectly while lying. So a lane that
+  lands a capability greps the corpus for the old denial and removes it in the same change.
+  `generate_image` was documented as impossible right up until the wave that shipped it.
 - The chat's corpus may not use resident vocabulary (`alt+1`, the board, the self page,
   standing watches, front desk). A test enforces this.
 
