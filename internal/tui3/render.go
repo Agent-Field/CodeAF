@@ -1822,13 +1822,27 @@ func wrap(text string, width int) []string {
 // fit truncates to a printable width, or returns nothing at all when there is
 // no room — a one-cell ellipsis in a one-cell gap says less than a space.
 func fit(s string, width int) string {
+	fitted, _ := fitWidth(s, width)
+	return fitted
+}
+
+// fitWidth is fit, and what the result measures.
+//
+// Callers that lay a row out column by column need both, and measuring a
+// string is a grapheme walk — the most expensive thing this surface does per
+// character. fit already measures the string to decide whether it fits, so a
+// caller that then measures the answer itself pays for the same walk twice.
+// Only the truncating branch has to measure again, because ansi.Truncate
+// stops at the last cluster that fits and can land under the budget.
+func fitWidth(s string, width int) (string, int) {
 	if width <= 0 {
-		return ""
+		return "", 0
 	}
-	if ansi.StringWidth(s) <= width {
-		return s
+	if measured := ansi.StringWidth(s); measured <= width {
+		return s, measured
 	}
-	return ansi.Truncate(s, width, glyphMore)
+	cut := ansi.Truncate(s, width, glyphMore)
+	return cut, ansi.StringWidth(cut)
 }
 
 // The meter's alphabet: what is left, and what has been spent. Both are from

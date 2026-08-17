@@ -231,18 +231,39 @@ const capMarker = "… ("
 // truncated listing. It is a notice about the result, not part of it.
 const noticeMarker = "\n\n["
 
+// capEnd and noticeEnd are how each of those two trailers finishes. Both
+// markers open something that runs to the end of the result, so the last few
+// bytes are what says whether the result has one at all.
+const (
+	capEnd    = "more bytes)"
+	noticeEnd = "]"
+)
+
 // outputBody is a tool result with session's display cap and bare's trailing
 // notice block removed, and whether the cap was hit. Every count and every
 // expansion in this file runs over it: they are about the RESULT, and a
 // sentence explaining that the result was shortened is not part of the result.
+//
+// THE SUFFIX IS TESTED FIRST, and that ordering is the whole performance of
+// this function. Both trailers end the result, so a result without the ending
+// cannot have the marker either — and the ending is eleven bytes at a known
+// offset while the marker search is a backward scan of the entire output. This
+// is called for every tool row on every frame, at thirty frames a second, over
+// results that run to hundreds of kilobytes; asking the cheap question first
+// turned it from 29% of the frame into nothing. Both tests are pure, so the
+// answer is the same either way round.
 func outputBody(output string) (string, bool) {
 	text := strings.TrimRight(output, "\n")
 	capped := false
-	if at := strings.LastIndex(text, capMarker); at >= 0 && strings.HasSuffix(text, "more bytes)") {
-		text, capped = text[:at], true
+	if strings.HasSuffix(text, capEnd) {
+		if at := strings.LastIndex(text, capMarker); at >= 0 {
+			text, capped = text[:at], true
+		}
 	}
-	if at := strings.LastIndex(text, noticeMarker); at >= 0 && strings.HasSuffix(text, "]") {
-		text = text[:at]
+	if strings.HasSuffix(text, noticeEnd) {
+		if at := strings.LastIndex(text, noticeMarker); at >= 0 {
+			text = text[:at]
+		}
 	}
 	return strings.TrimRight(text, "\n"), capped
 }
@@ -268,7 +289,10 @@ func readLines(output string) count {
 	if strings.TrimSpace(body) == "" {
 		return count{n: 0, capped: capped}
 	}
-	return count{n: len(strings.Split(body, "\n")), capped: capped}
+	// Counted rather than split: the answer is one number, and splitting a
+	// hundred-kilobyte read into a string header per line to take len() of it
+	// allocated the whole listing on every frame the row was on screen.
+	return count{n: strings.Count(body, "\n") + 1, capped: capped}
 }
 
 // matchRe is bare's grep row: "path:line: text". Counting these rather than

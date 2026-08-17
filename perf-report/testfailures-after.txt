@@ -1,0 +1,37 @@
+--- FAIL: TestHarnessEntriesFromStore (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/cmd/aforge	39.787s
+--- FAIL: TestRenderTerrainStaysUnderTheCap (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/plan	0.612s
+--- FAIL: TestFixtureParity (0.01s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/swepro/internal/permission	0.021s
+--- FAIL: TestFixtures (0.03s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/capability	0.046s
+--- FAIL: TestFixtureParity (0.08s)
+--- FAIL: TestRecencyWeightedMean (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/heftassign	0.088s
+--- FAIL: TestFormatPercentUsesJSRounding (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/loopguard	0.031s
+--- FAIL: TestFixtureParity (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/repomap	0.011s
+--- FAIL: TestRunEmittedScriptRunsTypeScriptWithBun (0.00s)
+--- FAIL: TestRunEmittedScriptRunsBash (0.00s)
+--- FAIL: TestRunEmittedScriptTimeout (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scriptrunner	0.016s
+--- FAIL: TestFixtureParity (0.01s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/sprt	0.020s
+--- FAIL: TestWebSearchProviderAndResponseParity (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool	3.785s
+--- FAIL: TestSettingsSheetIsOneCalmColumnAtEveryWidth (0.00s)
+FAIL
+FAIL	github.com/Agent-Field/aforge-v2/internal/tui	1.331s
+FAIL

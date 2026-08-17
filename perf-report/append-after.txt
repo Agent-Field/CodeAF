@@ -1,0 +1,25 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Agent-Field/aforge-v2/internal/session
+BenchmarkAppendMessage/reply-20         	  221743	      4896 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  223227	      4830 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  211256	      4939 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  242236	      4815 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  208358	      4956 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  215002	      4690 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  229976	      4782 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  213895	      4798 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  255520	      4816 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/reply-20         	  222253	      4838 ns/op	    1251 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   76639	     14463 ns/op	    4347 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   77686	     14332 ns/op	    4345 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   79573	     14889 ns/op	    4345 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   69908	     15320 ns/op	    4341 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   77140	     14471 ns/op	    4345 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   80046	     14375 ns/op	    4344 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   82809	     14860 ns/op	    4346 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   82626	     14705 ns/op	    4347 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   77800	     14335 ns/op	    4348 B/op	       3 allocs/op
+BenchmarkAppendMessage/toolresult-20    	   79201	     13872 ns/op	    4347 B/op	       3 allocs/op
+PASS
+ok  	github.com/Agent-Field/aforge-v2/internal/session	28.095s

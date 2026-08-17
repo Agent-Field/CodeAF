@@ -1,0 +1,185 @@
+{
+  "stripped_bytes": 44105993,
+  "unstripped_bytes": 60590614,
+  "sections": {
+    ".tbss": 16,
+    ".note.go.buildid": 100,
+    ".note.gnu.build-id": 36,
+    ".interp": 27,
+    ".text": 18068804,
+    ".plt": 704,
+    ".rodata": 8355577,
+    ".gopclntab": 14440782,
+    ".gnu.version_r": 64,
+    ".dynsym": 1200,
+    ".rela": 96,
+    ".rela.plt": 1008,
+    ".gnu.version": 100,
+    ".hash": 236,
+    ".dynstr": 723,
+    ".typelink": 50268,
+    ".itablink": 10472,
+    ".go.buildinfo": 8592,
+    ".go.fipsinfo": 120,
+    ".dynamic": 304,
+    ".got.plt": 360,
+    ".go.module": 592,
+    ".got": 32,
+    ".noptrdata": 2798337,
+    ".data": 322914,
+    ".bss": 237592,
+    ".noptrbss": 33707968
+  },
+  "top_packages": [
+    {
+      "pkg": "go:",
+      "bytes": 2819520,
+      "symbols": 1355
+    },
+    {
+      "pkg": "modernc.org/sqlite/lib",
+      "bytes": 1685108,
+      "symbols": 3884
+    },
+    {
+      "pkg": "golang.org/x/text/collate",
+      "bytes": 1266820,
+      "symbols": 50
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/store",
+      "bytes": 679902,
+      "symbols": 887
+    },
+    {
+      "pkg": "runtime",
+      "bytes": 658868,
+      "symbols": 1621
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui3",
+      "bytes": 577928,
+      "symbols": 925
+    },
+    {
+      "pkg": "net/http",
+      "bytes": 456736,
+      "symbols": 1635
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/resident",
+      "bytes": 448544,
+      "symbols": 634
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui2/chat",
+      "bytes": 448144,
+      "symbols": 872
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/head",
+      "bytes": 426272,
+      "symbols": 525
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/session",
+      "bytes": 411440,
+      "symbols": 852
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/codeaf",
+      "bytes": 372240,
+      "symbols": 472
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui",
+      "bytes": 325984,
+      "symbols": 364
+    },
+    {
+      "pkg": "main",
+      "bytes": 319455,
+      "symbols": 602
+    },
+    {
+      "pkg": "type:",
+      "bytes": 309184,
+      "symbols": 1778
+    },
+    {
+      "pkg": "crypto/tls",
+      "bytes": 304981,
+      "symbols": 664
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/exec",
+      "bytes": 300656,
+      "symbols": 485
+    },
+    {
+      "pkg": "github.com/alecthomas/chroma/v2/lexers",
+      "bytes": 293424,
+      "symbols": 130
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool",
+      "bytes": 275136,
+      "symbols": 355
+    },
+    {
+      "pkg": "github.com/modelcontextprotocol/go-sdk/mcp",
+      "bytes": 268656,
+      "symbols": 1422
+    },
+    {
+      "pkg": "golang.org/x/text/encoding/traditionalchinese",
+      "bytes": 233484,
+      "symbols": 21
+    },
+    {
+      "pkg": "github.com/amp-labs/connectors/providers",
+      "bytes": 196648,
+      "symbols": 306
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/plan",
+      "bytes": 190095,
+      "symbols": 302
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient",
+      "bytes": 182408,
+      "symbols": 275
+    },
+    {
+      "pkg": "net",
+      "bytes": 180008,
+      "symbols": 698
+    },
+    {
+      "pkg": "gopkg.in/yaml%2ev3",
+      "bytes": 168550,
+      "symbols": 232
+    },
+    {
+      "pkg": "reflect",
+      "bytes": 166992,
+      "symbols": 572
+    },
+    {
+      "pkg": "github.com/dlclark/regexp2/v2/syntax",
+      "bytes": 166392,
+      "symbols": 276
+    },
+    {
+      "pkg": "slices",
+      "bytes": 160448,
+      "symbols": 486
+    },
+    {
+      "pkg": "github.com/charmbracelet/ultraviolet",
+      "bytes": 149360,
+      "symbols": 419
+    }
+  ]
+}

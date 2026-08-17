@@ -1,0 +1,20 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Agent-Field/aforge-v2/internal/session
+                            │ perf-report/append-before.txt │    perf-report/append-after.txt     │
+                            │            sec/op             │   sec/op     vs base                │
+AppendMessage/reply-20                          5.326µ ± 1%   4.823µ ± 2%   -9.44% (p=0.000 n=10)
+AppendMessage/toolresult-20                     16.14µ ± 2%   14.47µ ± 3%  -10.34% (p=0.000 n=10)
+geomean                                         9.270µ        8.353µ        -9.89%
+
+                            │ perf-report/append-before.txt │     perf-report/append-after.txt     │
+                            │             B/op              │     B/op      vs base                │
+AppendMessage/reply-20                         2.099Ki ± 0%   1.222Ki ± 0%  -41.79% (p=0.000 n=10)
+AppendMessage/toolresult-20                    8.269Ki ± 0%   4.244Ki ± 0%  -48.68% (p=0.000 n=10)
+geomean                                        4.166Ki        2.277Ki       -45.34%
+
+                            │ perf-report/append-before.txt │    perf-report/append-after.txt    │
+                            │           allocs/op           │ allocs/op   vs base                │
+AppendMessage/reply-20                           4.000 ± 0%   3.000 ± 0%  -25.00% (p=0.000 n=10)
+AppendMessage/toolresult-20                      4.000 ± 0%   3.000 ± 0%  -25.00% (p=0.000 n=10)
+geomean                                          4.000        3.000       -25.00%
