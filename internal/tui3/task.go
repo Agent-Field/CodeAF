@@ -190,6 +190,17 @@ type taskNode struct {
 	// present that has passed.
 	tool      string
 	toolBegan time.Time
+	// mending is the one plain line naming the gap the node is closing right
+	// now, as the engine published it (session's TaskNotice.Mending), and it is
+	// empty at every other moment of the node's life.
+	//
+	// THE MACHINERY IS NOT THE SURFACE'S TO MENTION. What puts a line here is a
+	// private round the engine runs on work that came back short, and a person
+	// has no use for the existence of that round — what they have a use for is
+	// the SENTENCE: the node is still going, and this is what is left in it. So
+	// the state stays running (it is running), and this is drawn as the news it
+	// is rather than as a fourth state nobody asked for.
+	mending string
 	// froze is the clock this node's row is drawn against while somebody is
 	// standing in its room, or zero. See [app.taskNow].
 	froze time.Time
@@ -279,19 +290,36 @@ const (
 // The words a node NOBODY COULD JUDGE is drawn with (session's TaskUnverified).
 //
 // It is the third settled state and it is neither of the other two: the run is
-// over, the branch is kept, and the auditor answered with neither verdict word —
-// so the surface must not spend "done" on it and must not spend "failed" on it
-// either. "unverified" is the state's own word, and the sentence beside it says
-// the only two things that are actionable: nothing was found against the work,
-// and it is waiting on a person to say which way it goes.
+// over, the branch is kept, and nothing came back that could call the work
+// finished or call it wrong — so the surface must not spend "done" on it and
+// must not spend "failed" on it either.
+//
+// THE MACHINERY IS NOT THE SURFACE'S TO MENTION. These words used to be the
+// checking apparatus read out loud — "unverified", "auditor inconclusive" — and
+// that is a person being handed this program's internal org chart in place of
+// their answer. Nobody delegating a piece of work asked for a verdict; they
+// asked for the work. So the state is spelled as the only thing about it that is
+// a person's business: it FINISHED, and it is on them to look at it. The
+// identifiers keep their old names because they name a state in the code, and
+// the code is not the surface.
 const (
-	taskUnverifiedWord  = "unverified"
-	taskUnverifiedGloss = "auditor inconclusive"
-	taskUnverifiedWaits = "unverified — waiting on you"
-	// taskBranchKept is [taskStoppedKept] without the stop: an unverified node
-	// wears the same "aborted" merge, and nothing about it stopped.
+	taskUnverifiedWord  = "needs your look"
+	taskUnverifiedGloss = "finished, but needs your look"
+	taskUnverifiedWaits = "finished — look it over"
+	// taskBranchKept is [taskStoppedKept] without the stop: this node wears the
+	// same "aborted" merge, and nothing about it stopped.
 	taskBranchKept = "branch kept"
 )
+
+// taskFinishingWord is what a node says while it is closing a gap in work it has
+// otherwise finished (session's TaskNotice.Mending, carried on [taskNode.mending]).
+//
+// IT IS NOT A STATE AND IT DOES NOT REPLACE ONE. The node is running — the
+// engine says so on every one of these updates — and "finishing" is the surface
+// saying WHICH PART of running this is, in the one word that is true of it from
+// the outside: the work is nearly there and something is being tied off. What is
+// being tied off is the sentence beside it, in the engine's own plain words.
+const taskFinishingWord = "finishing"
 
 // taskAgent is the slice of *session.Agent this file needs, and it is asserted
 // rather than added to [Agent].
@@ -2270,6 +2298,7 @@ func (a *app) railTitle(node *taskNode, title string) string {
 // the branch came home once it has landed.
 //
 //	bash go test ./…             a live call, in its own hue
+//	finishing · adding amp-labs  the gap being closed, while there is one
 //	42s · 9.9k · $0.31 · gpt-5   the telemetry, always, while it runs
 //	merged · $0.42               what it came home as, and what it cost
 //	conflicted · task/fix-nil    the one loud row, and its one handle back
@@ -2303,7 +2332,19 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// question a person opens this column for and cannot ask anywhere else
 		// without leaving the conversation. Between calls the telemetry is the
 		// whole of the under-block, which is what the bare clock used to be.
-		rows := a.railWorking(node, width)
+		//
+		// AND WHILE THE NODE IS FINISHING OFF, THAT LINE IS THE ONE THAT WINS.
+		// A node closing a named gap in work it has otherwise done is the most
+		// specific news this column will ever have about it — "adding amp-labs to
+		// the report" says both that the end is in sight and what the end is
+		// missing — and the call it happens to be inside of while it does that
+		// says neither. So it takes the call's row rather than a third one: the
+		// block is capped at [railUnderRows] and the telemetry underneath is the
+		// standing figure a person is owed at every moment of a run.
+		rows := a.railMending(node, width)
+		if len(rows) == 0 {
+			rows = a.railWorking(node, width)
+		}
 		if len(rows) < railUnderRows {
 			if tele := a.railTelemetry(node, width); tele != "" {
 				rows = append(rows, paint(tele))
@@ -2441,6 +2482,34 @@ func (a *app) railWorking(node *taskNode, width int) []string {
 		line += a.pal.dim(railSep) + tint(clock)
 	}
 	return []string{line}
+}
+
+// railMending is the row a node wears while it is closing a named gap in work it
+// has otherwise finished, or nil when there is no gap being closed.
+//
+//	finishing · adding amp-labs to the report   the whole of it, on a wide column
+//	finishing · adding amp-labs to t…           and the same row, fitted
+//
+// THE WORD IS THE SURFACE'S AND THE SENTENCE IS THE ENGINE'S, which is the same
+// split every other row down here is built on ([taskStoppedKept] states it about
+// a merge word). "finishing" is this column saying which part of running this is;
+// what follows the separator is the engine's own plain line about what is left,
+// kept verbatim, because the whole value of the row is that it is SPECIFIC.
+//
+// IT CUTS RATHER THAN WRAPS. The two rows that wrap down here carry a handle
+// back to work that is off screen — a branch name, a prerequisite's title — and
+// half of one of those is worth nothing; this is a sentence, a person
+// reconstructs a sentence from its front, and the row under it is the telemetry
+// that has to survive too.
+func (a *app) railMending(node *taskNode, width int) []string {
+	if node.mending == "" {
+		return nil
+	}
+	line := fit(taskFinishingWord+railSep+node.mending, width)
+	if line == "" {
+		return nil
+	}
+	return []string{a.pal.dim(line)}
 }
 
 // railTelemetry is the standing row under a running node: how long it has been
@@ -2676,13 +2745,20 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		return nil
 	}
 	if last, seen := a.taskSeen[notice.ID]; seen && last == notice.State {
-		// THE DE-DUP HAS ONE EXCEPTION, and it is the node's SPEND. The pair
-		// above catches the same update arriving on both lanes — those two carry
-		// identical figures — but a node that has spent more since the last event
-		// is news, and the focus header is where it is read (room.go). Anything
-		// that is neither a new state nor a larger bill is the duplicate this
-		// guard exists for.
-		if node := a.tasks[notice.ID]; node == nil || notice.CostUSD <= node.cost {
+		// THE DE-DUP HAS TWO EXCEPTIONS, and both of them are news that arrives
+		// without a state change. The pair above catches the same update arriving
+		// on both lanes — those two carry identical figures and identical text —
+		// but a node that has spent more since the last event is news, and the
+		// focus header is where it is read (room.go).
+		//
+		// AND SO IS THE FINISHING LINE. A node closing a gap in work it has
+		// otherwise finished stays RUNNING for the whole of it (session's
+		// TaskNotice.Mending), so the sentence naming the gap — and the empty
+		// string that takes it away again when the round ends — would be thrown
+		// out by a guard that only ever looked at the state. Anything that is
+		// none of the three is the duplicate this guard exists for.
+		node := a.tasks[notice.ID]
+		if node == nil || (notice.CostUSD <= node.cost && strings.TrimSpace(notice.Mending) == node.mending) {
 			return nil
 		}
 	}
@@ -2742,6 +2818,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	if notice.CostUSD > 0 {
 		node.cost = notice.CostUSD
 	}
+	// THE FINISHING LINE IS COPIED WHOLE, INCLUDING ITS ABSENCE, and it is the
+	// one field on this node that is deliberately not kept when an update stops
+	// carrying it. Everything above is a FACT about the work — a branch, a price,
+	// a model — and a fact does not stop being true because the next event was
+	// quiet about it. This is a report of what is happening RIGHT NOW, and a
+	// surface still saying "finishing · adding the amp-labs section" about a node
+	// that finished that ten seconds ago is a surface reporting a present that
+	// has passed (the same law [taskNode.tool] is held to).
+	node.mending = strings.TrimSpace(notice.Mending)
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.
 	if notice.State == session.TaskRunning && node.began.IsZero() {
