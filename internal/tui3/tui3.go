@@ -105,6 +105,16 @@ type Agent interface {
 	// connect the account it reached for (connect.go). Approving is what opens
 	// the browser; declining is "not now" and is remembered nowhere.
 	ResolveConnect(id string, approve bool)
+	// ResolveConnectKey answers one session.EventConnectAsk that arrived with
+	// NeedsKey: the person pasted a key for the account the agent reached for,
+	// or they backed out and the key is empty (connect.go).
+	//
+	// It is a SECOND method rather than a third argument on the one above,
+	// because the two answers are different shapes: a browser sign-in is a
+	// yes-or-not-now and the yes carries nothing, while this yes IS the secret.
+	// A key never travels through the approval path, and the approval path never
+	// has to carry an empty string for the services that have no key.
+	ResolveConnectKey(id string, key string)
 	// NoteConnected tells the session an account is connected. It is the other
 	// door's other half: a person can open /connect mid-conversation and connect
 	// something the session gave up on, and without this the session would still
