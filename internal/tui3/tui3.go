@@ -190,6 +190,30 @@ type Options struct {
 	// not been told otherwise.
 	ProfileDir string
 
+	// SaveApproval and SaveBashApproval are how the consent card's "always"
+	// outlives the session (consent.go): the first remembers one TOOL's allow,
+	// the second one whole shell COMMAND, both into the person's own profile
+	// rows — the same rows the settings panel edits and the place they undo it.
+	//
+	// They are a pair rather than one call because the two rows are two rows: a
+	// tool is answered by name, and bash is answered by the command line, which
+	// is the whole reason internal/approval has a pattern list at all.
+	//
+	// Nil is a surface that cannot remember, and then the card behaves exactly as
+	// it did before this pair existed: the always key still stops the asking for
+	// the rest of the session (internal/session's memo) and writes nothing. A
+	// test, and a door with no profile, are both that surface.
+	//
+	// THEY RETURN THE WRITE'S ERROR AND THE SURFACE DROPS IT, which is the shape
+	// tui2's SaveRail has with one difference worth stating. There the door drops
+	// it, because nothing on screen is about to make a claim about the disk; here
+	// the row is about to say "saved", so the surface has to know whether that is
+	// true. It is still DROPPED: an unwritable profile directory keeps the
+	// session-scoped always it always had, the answer stands, and nothing about a
+	// config file is put on a line in the middle of somebody's work.
+	SaveApproval     func(tool string) error
+	SaveBashApproval func(command string) error
+
 	// Settings is the registry the panel edits, for a door that can wire the
 	// live seams the registry asks for (the model slots, the divider, today's
 	// spend). Nil builds one here over [Options.ProfileDir] with the two seams
