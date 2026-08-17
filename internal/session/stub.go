@@ -171,7 +171,7 @@ func writeStub(place Place, workspace, text string) (string, error) {
 }
 
 // stubPath is the path the stub line NAMES, and the rule is the one
-// [displayImagePath] follows: a file inside the workspace is named relative to
+// [displayMediaPath] follows: a file inside the workspace is named relative to
 // it, because that is the string the model's own read tool takes and the string
 // the person's shell takes; a file outside it is named absolutely, because a
 // relative path out of the workspace is a path nobody can open.
