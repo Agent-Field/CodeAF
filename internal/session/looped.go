@@ -349,7 +349,7 @@ func (a *Agent) nudgeIfLooping(ctx context.Context, hub *eventHub, ep *episode, 
 // which is the ungated shape a headless caller and the tests run in — and an
 // unset default reads as prompt, exactly as internal/approval reads it.
 func (a *Agent) promptMode() bool {
-	policy := a.config.ApprovalPolicy
+	policy := a.approvalGate()
 	if policy == nil {
 		return false
 	}

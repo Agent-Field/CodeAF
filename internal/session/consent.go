@@ -147,7 +147,7 @@ func (a *Agent) deliverConsent(id uint64, answer consentAnswer) {
 // it is answered before this, in [Agent.approve], because a capability that is
 // off must not produce a question about a call that is never going to run.
 func (a *Agent) decide(call ai.ToolCall) (approval.Decision, bool) {
-	policy := a.config.ApprovalPolicy
+	policy := a.approvalGate()
 	if policy == nil {
 		return approval.Decision{}, false
 	}
