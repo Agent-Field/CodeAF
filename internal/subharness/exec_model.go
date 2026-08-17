@@ -92,6 +92,12 @@ type ModelExecOpts struct {
 	// and where that child's own trace is saved. Nil means this bridge cannot
 	// make calls, and a program that tries says so.
 	Store *Store
+
+	// Model is what THIS RUN was asked to think with: the default model for
+	// every agent.loop node that did not pin one of its own. Empty is the
+	// ordinary run, on the client's model. exec_model_model.go holds the rule
+	// and says why a node's own `model` still wins.
+	Model string
 }
 
 // ModelExec turns a provider client into the executor [Run] wants.
@@ -118,7 +124,7 @@ func ModelExec(c *provider.Client, opts ModelExecOpts) Exec {
 		if node.Kind == KindSubharnessCall && opts.Store == nil {
 			return Result{}, errors.New("subharness.call is not in the exec bridge without a store")
 		}
-		result, err := runner.step(ctx, env.harness(node), &state, node)
+		result, err := runner.step(ctx, env.harness(node), &state, withModel(node, opts.Model))
 		if err == nil && node.Kind == KindHumanGate && opts.Ask == nil {
 			result.Out += " · " + autoGateNote
 		}

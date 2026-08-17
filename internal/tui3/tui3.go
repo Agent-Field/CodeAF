@@ -106,7 +106,12 @@ type Agent interface {
 	// sub-harness the session matched this turn against should take it
 	// (harness.go). True runs it; false is the ordinary turn, which is what the
 	// person typed and what happens if this is never called.
-	ResolveHarness(id uint64, run bool)
+	//
+	// The model is the one the CARD SHOWED, handed back so that what runs is
+	// what the person read. Empty is "whatever the offer carried", which is
+	// every offer that named no model and every surface that draws the row
+	// without one.
+	ResolveHarness(id uint64, run bool, model string)
 	// ResolveConnect answers one session.EventConnectAsk: whether aforge may
 	// connect the account it reached for (connect.go). Approving is what opens
 	// the browser; declining is "not now" and is remembered nowhere.

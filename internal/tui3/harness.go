@@ -52,6 +52,16 @@ type harnessAsk struct {
 	// desc is the entry's own sentence about itself, drawn dim beside the name
 	// when the row has room for it (session.Event's Hint).
 	desc string
+	// model is what the run will ride, when the person's own words chose one —
+	// "research the pricing tiers with opus" (session's harness.go). Empty is
+	// the ordinary offer, which says nothing about models because nothing about
+	// the model is unusual.
+	model string
+	// note is what the session could not do with a model the turn DID name: a
+	// word no model here answers to. Its words are the session's, printed as
+	// they arrived, and it is never a refusal — the row is the same question
+	// either way, and yes still runs the harness.
+	note string
 }
 
 // harnessTap is one pressable answer on the row.
@@ -75,7 +85,10 @@ func (a *app) askHarness(ev session.Event) {
 	if a.pick.open {
 		a.pick.close()
 	}
-	a.harnessAsks = append(a.harnessAsks, harnessAsk{id: ev.ID, name: ev.Text, desc: ev.Hint})
+	a.harnessAsks = append(a.harnessAsks, harnessAsk{
+		id: ev.ID, name: ev.Text, desc: ev.Hint,
+		model: ev.Model, note: ev.ModelNote,
+	})
 	a.follow()
 	a.touch()
 }
@@ -90,6 +103,11 @@ func (a *app) asksHarness() bool { return len(a.harnessAsks) > 0 }
 // changed nothing, and a surface that recorded "you were offered a harness and
 // said no" would be keeping a note about a thing that did not happen — the
 // connect offer's own law, one rung down.
+//
+// THE MODEL THE ROW SHOWED GOES BACK WITH THE ANSWER. The person read "model:
+// opus" and pressed enter, so that is what the answer is about; handing back
+// nothing would leave the surface trusting that the session still remembers the
+// same thing the row was drawn from.
 func (a *app) answerHarness(run bool) {
 	if len(a.harnessAsks) == 0 {
 		return
@@ -97,7 +115,7 @@ func (a *app) answerHarness(run bool) {
 	head := a.harnessAsks[0]
 	a.harnessAsks = a.harnessAsks[1:]
 	if a.agent != nil {
-		a.agent.ResolveHarness(head.id, run)
+		a.agent.ResolveHarness(head.id, run, head.model)
 	}
 	a.touch()
 }
@@ -184,20 +202,27 @@ func (a *app) harnessAskRows(width int) []string {
 	return out
 }
 
-// harnessOffer is the row: the question, the description when it fits, and the
-// two answers.
+// harnessOffer is the row: the question, the model when the turn chose one, the
+// description when it fits, and the two answers.
 //
-// THE ANSWERS ARE NEVER WHAT GETS CUT. The line is assembled longest-first and
-// then shortened by dropping the description, because a row that fits by losing
-// its keys is a question with no visible way to answer it.
+// THE ANSWERS ARE NEVER WHAT GETS CUT, and the MODEL OUTLIVES THE DESCRIPTION.
+// The line is assembled longest-first and shortened a piece at a time: the
+// description goes first because it is context for a name a person can already
+// read, and the model survives one rung longer because it is the one thing on
+// the row that says this run would not be the ordinary one. The keys are never
+// dropped at all — a row that fits by losing them is a question with no visible
+// way to answer it.
 func (a *app) harnessOffer(head harnessAsk, width int) string {
 	question := glyphAsk + ` run harness "` + head.name + `"?`
 	answers := []string{" · ", "[enter]", " run · ", "[esc]", " no"}
 	parts := append([]string{question}, answers...)
-	if head.desc != "" {
-		parts = append([]string{question, " · " + head.desc}, answers...)
-		if harnessRowWidth(parts) > width {
-			parts = append([]string{question}, answers...)
+	// Longest first, then each shorter reading in turn; the last one that fits
+	// wins, and the bare question is what nothing fitting falls through to.
+	for _, middle := range harnessMiddles(head) {
+		wider := append(append([]string{question}, middle...), answers...)
+		if harnessRowWidth(wider) <= width {
+			parts = wider
+			break
 		}
 	}
 	if harnessRowWidth(parts) > width {
@@ -216,6 +241,12 @@ func (a *app) harnessOffer(head harnessAsk, width int) string {
 			out += a.pal.askBold(glyphAsk) + a.pal.ask(part[len(glyphAsk):])
 		case head.desc != "" && part == " · "+head.desc:
 			out += a.pal.dim(part)
+		case part == harnessModelPart(head):
+			// The model is dim beside the question for the reason the description
+			// is: the QUESTION is "run this harness?", and what it will run on is
+			// the answer to a smaller question the person already asked when they
+			// typed it.
+			out += a.pal.dim(part)
 		default:
 			out += a.pal.ask(part)
 		}
@@ -224,6 +255,44 @@ func (a *app) harnessOffer(head harnessAsk, width int) string {
 		return a.pal.hover(out, width)
 	}
 	return out
+}
+
+// harnessMiddles is what sits between the question and its keys, longest
+// reading first: everything, then the model alone, then whichever of the two the
+// offer actually has. An offer that carries neither answers with nothing, which
+// is the bare row every offer drew before a turn could name a model.
+func harnessMiddles(head harnessAsk) [][]string {
+	desc, model := "", harnessModelPart(head)
+	if head.desc != "" {
+		desc = " · " + head.desc
+	}
+	switch {
+	case desc != "" && model != "":
+		return [][]string{{desc, model}, {model}}
+	case model != "":
+		return [][]string{{model}}
+	case desc != "":
+		return [][]string{{desc}}
+	}
+	return nil
+}
+
+// harnessModelPart is the row's model segment, and it is the same string
+// wherever it is read: `· model: opus` when the turn named one this install
+// has, and the session's own note when it named one this install does not.
+//
+// The id sheds its vendor ("anthropic/claude-opus-5" draws as
+// "claude-opus-5"), which is what every other model on this surface does with
+// the same width for the same reason (render.go's [modelBase]) — the vendor is
+// nine cells of a name the person already recognizes without it.
+func harnessModelPart(head harnessAsk) string {
+	if model := modelBase(strings.TrimSpace(head.model)); model != "" {
+		return " · model: " + model
+	}
+	if note := strings.TrimSpace(head.note); note != "" {
+		return " · " + note
+	}
+	return ""
 }
 
 // recordHarnessTaps writes the row's pressable columns: each key chip and the

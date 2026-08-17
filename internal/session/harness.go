@@ -34,6 +34,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -43,7 +44,16 @@ import (
 // the ordinary turn. An id nobody is waiting on — an offer whose turn was
 // interrupted, a second click — is dropped rather than reported, exactly as a
 // late consent answer is.
-func (a *Agent) ResolveHarness(id uint64, run bool) {
+//
+// The model is WHICH MODEL THE ANSWER WAS GIVEN ABOUT, and EMPTY IS THE ONE THE
+// OFFER CARRIED — which is every surface that draws the card as it arrived and
+// hands the answer straight back. A surface that shows the model on the card
+// (tui3's harness.go) returns what it showed, so what runs is what the person
+// read; a word this session cannot resolve falls back to the offer's own model
+// rather than starting a run on a model nobody has. It is resolved through the
+// same matcher the offer's own word went through, so the two cannot disagree
+// about what "opus" means.
+func (a *Agent) ResolveHarness(id uint64, run bool, model string) {
 	a.mu.Lock()
 	answers, waiting := a.harnessAsks[id]
 	if waiting {
@@ -55,7 +65,14 @@ func (a *Agent) ResolveHarness(id uint64, run bool) {
 	}
 	// Buffered to one and read at most once, so this never blocks and never
 	// needs the lock held across it.
-	answers <- run
+	answers <- harnessAnswer{run: run, model: model}
+}
+
+// harnessAnswer is one answer to one offer: whether to run it, and the model the
+// surface was showing when it was answered.
+type harnessAnswer struct {
+	run   bool
+	model string
 }
 
 // routeHarness is the whole of detection's place in a turn, called once from
@@ -71,20 +88,21 @@ func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessag
 	if !ok {
 		return false, false
 	}
-	run, err := a.askHarness(ctx, hub, match)
+	answer, err := a.askHarness(ctx, hub, match)
 	if err != nil {
 		// The turn died under the question — an interrupt, a closed agent. The
 		// turn ends the way every interrupted turn ends, and nothing ran.
 		hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started)})
 		return true, false
 	}
-	if !run {
+	if !answer.run {
 		return false, false
 	}
 
 	entry := match.Entry
-	hub.send(Event{Kind: EventHarnessRun, Text: entry.Name, Hint: entry.Description})
-	report, err := a.config.RunHarness(ctx, entry.Name, match.Turn.Text)
+	model := a.answeredHarnessModel(match, answer.model)
+	hub.send(Event{Kind: EventHarnessRun, Text: entry.Name, Hint: entry.Description, Model: model})
+	report, err := a.config.RunHarness(ctx, entry.Name, match.Turn.Text, model)
 	if err != nil {
 		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{Turns: 1}, started)})
 		return true, false
@@ -109,8 +127,19 @@ func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessag
 type harnessRoute struct {
 	subharness.Match
 	// Turn is what was matched, carried through because the runner is handed
-	// the person's words rather than the id of a message it cannot read.
+	// the person's words rather than the id of a message it cannot read. When
+	// the turn named a model, this is the turn WITHOUT that clause: the run is
+	// asked to do the work, not to read the sentence that chose its model.
 	Turn subharness.Turn
+	// Model is what the person named, resolved to an id this install has.
+	// Empty is the ordinary turn — nobody said — and the run takes whatever
+	// model the surface's own runner is built on.
+	Model string
+	// ModelNote is why a model that WAS named is not in Model: a word no model
+	// here answers to, or one that half the catalog answers to. It rides the
+	// card so the offer can say what it could not do, and it is never a refusal
+	// — the harness still runs, on the default.
+	ModelNote string
 }
 
 // harnessMatch is the detection pass: the cheap refusals, then the score.
@@ -134,15 +163,22 @@ func (a *Agent) harnessMatch(user userMessage) (harnessRoute, bool) {
 	if user.empty() || user.wake || user.authored {
 		return harnessRoute{}, false
 	}
-	turn := subharness.Turn{Text: user.text()}
-	if strings.TrimSpace(turn.Text) == "" {
+	text := user.text()
+	if strings.TrimSpace(text) == "" {
 		return harnessRoute{}, false
 	}
+	// THE MODEL IS READ BEFORE THE SCORE. "research the pricing tiers with
+	// opus" is a sentence about research, and the two words that chose the model
+	// are not evidence about which harness was meant — left in, they are two
+	// more words the cue list has to score around, and a person who names a
+	// model would be quietly making the offer less likely to appear.
+	model, note, text := a.harnessTurnModel(text)
+	turn := subharness.Turn{Text: text}
 	match, ok := subharness.Best(turn, a.config.Harnesses)
 	if !ok {
 		return harnessRoute{}, false
 	}
-	return harnessRoute{Match: match, Turn: turn}, true
+	return harnessRoute{Match: match, Turn: turn, Model: model, ModelNote: note}, true
 }
 
 // askHarness emits one offer and waits for the answer or for the turn to end.
@@ -150,17 +186,17 @@ func (a *Agent) harnessMatch(user userMessage) (harnessRoute, bool) {
 // The wait is on the TURN's context, which is what makes Interrupt work on a
 // pending card, and nothing here holds a.mu across it — the lock Interrupt
 // needs must never be held by something waiting on a person.
-func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRoute) (bool, error) {
+func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRoute) (harnessAnswer, error) {
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
-		return false, errAgentClosed
+		return harnessAnswer{}, errAgentClosed
 	}
 	a.harnessSeq++
 	id := a.harnessSeq
-	answers := make(chan bool, 1)
+	answers := make(chan harnessAnswer, 1)
 	if a.harnessAsks == nil {
-		a.harnessAsks = make(map[uint64]chan bool, 1)
+		a.harnessAsks = make(map[uint64]chan harnessAnswer, 1)
 	}
 	a.harnessAsks[id] = answers
 	a.mu.Unlock()
@@ -172,14 +208,18 @@ func (a *Agent) askHarness(ctx context.Context, hub *eventHub, match harnessRout
 		// The entry's own sentence, so the card can say what saying yes would
 		// get somebody without the surface writing a description of its own.
 		Hint: match.Entry.Description,
+		// And the model the person named, so the card says what yes would run
+		// on — or why the word they used named nothing.
+		Model:     match.Model,
+		ModelNote: match.ModelNote,
 	})
 
 	select {
-	case run := <-answers:
-		return run, nil
+	case answer := <-answers:
+		return answer, nil
 	case <-ctx.Done():
 		a.forgetHarness(id)
-		return false, ctx.Err()
+		return harnessAnswer{}, ctx.Err()
 	}
 }
 
@@ -189,4 +229,221 @@ func (a *Agent) forgetHarness(id uint64) {
 	a.mu.Lock()
 	delete(a.harnessAsks, id)
 	a.mu.Unlock()
+}
+
+// ── WHICH MODEL A RUN RIDES, WHEN THE TURN SAID SO ──────────────────────────
+//
+// A harness offer is raised by what somebody said, so the model one runs on is
+// chosen the same way: "research the pricing tiers with opus" is one sentence
+// carrying two decisions, and the second one is a clause at the end of it. This
+// is the same bargain propose_task already keeps (taskmodel.go) and it shares
+// that file's matcher outright, so a word that means one model to a task means
+// the same model here.
+//
+// THREE RULES HOLD IT TO SOMETHING THAT CANNOT COST A PERSON A TURN.
+//
+//   - IT IS READ AT THE END, AND ONLY THERE. A trailing "with|using|via <word>"
+//     is how a person hangs an aside off a sentence they already finished. The
+//     same words in the middle are ordinary English — "find out what broke with
+//     the new parser" chooses no model — and reading them would turn every
+//     sentence into a place a model name could hide.
+//   - A CLAUSE THAT NAMED NO MODEL IS LEFT WHERE IT WAS. The text is stripped
+//     for scoring and for the runner only when the word RESOLVED. A word that
+//     matched nothing was, on the evidence, not a model at all, and cutting it
+//     off the turn would hand the harness half a sentence on the strength of a
+//     guess.
+//   - IT IS NEVER A REFUSAL. A model nobody here carries leaves the offer
+//     standing and says so on the card, because the person asked for a harness
+//     and the model was the smaller half of what they said.
+const (
+	// harnessModelWords bounds the clause. A model is one word — "opus",
+	// "claude-opus-5", "anthropic/claude-opus-5" — and two or three are what a
+	// person spells one with ("gpt 5 mini"). Past that it is a sentence.
+	harnessModelWords = 3
+)
+
+// harnessModelPreps are the three words a model gets named after. They are the
+// prepositions that take a means and not a subject: "run it with opus" chooses
+// a model and "look into the crash in opus" does not.
+var harnessModelPreps = map[string]bool{"with": true, "using": true, "via": true}
+
+// harnessModelStop are the words that mean the clause is prose. Every one of
+// them is a function word — an article, a conjunction, a pronoun — so the list
+// can never quietly decide that somebody's noun was not a model name: "with the
+// tests passing" is refused because it opens with "the", not because anything
+// here has an opinion about tests.
+var harnessModelStop = map[string]bool{
+	"a": true, "an": true, "and": true, "any": true, "are": true, "as": true,
+	"at": true, "be": true, "both": true, "but": true, "by": true, "each": true,
+	"for": true, "from": true, "her": true, "his": true, "in": true, "into": true,
+	"is": true, "it": true, "its": true, "many": true, "me": true, "more": true,
+	"most": true, "my": true, "no": true, "not": true, "of": true, "on": true,
+	"one": true, "or": true, "our": true, "some": true, "that": true, "the": true,
+	"their": true, "them": true, "these": true, "they": true, "this": true,
+	"those": true, "to": true, "us": true, "was": true, "were": true, "what": true,
+	"which": true, "who": true, "with": true, "you": true, "your": true,
+}
+
+// harnessTurnModel reads one turn's trailing model clause and answers with the
+// three things the offer needs: the model to run on, the note when a named model
+// could not be found, and the text the harness is actually asked to do.
+func (a *Agent) harnessTurnModel(text string) (model, note, rest string) {
+	before, word, ok := splitHarnessModel(text)
+	if !ok {
+		return "", "", text
+	}
+	model, note = a.harnessModel(word)
+	if model == "" {
+		// Nothing was chosen, so nothing was said: the sentence goes on to the
+		// matcher and to the run exactly as it was typed.
+		return "", note, text
+	}
+	return model, "", before
+}
+
+// harnessModel resolves one named word against the models this install has.
+//
+// NOBODY HOLDING A LIST IS NOT A REFUSAL. taskmodel.go states the rule in full:
+// a session with no catalog cannot validate an id, so the word travels as
+// written and the provider answers for it. Everything else is the shared
+// matcher, and only an unambiguous answer wins — a word half the catalog answers
+// to has not named a model, it has named a family.
+func (a *Agent) harnessModel(word string) (model, note string) {
+	available := a.taskModelList()
+	if len(available) == 0 {
+		return word, ""
+	}
+	candidates := matchTaskModel(word, available)
+	switch {
+	case len(candidates) == 1:
+		return candidates[0], ""
+	case len(candidates) == 0:
+		return "", "model " + quoteModel(word) + " not found, running default"
+	default:
+		return "", "model " + quoteModel(word) + " matches several here, running default"
+	}
+}
+
+// answeredHarnessModel is which model the answer settled on: the surface's word
+// when it resolves, and the offer's own model otherwise.
+//
+// A surface that hands back what the card showed lands on the same model it
+// drew, which is the whole point — what ran is what the person read. A surface
+// that hands back nothing, or a word this session cannot place, gets the model
+// the offer was raised with, because an unresolvable answer must not become a
+// run on a model nobody has.
+func (a *Agent) answeredHarnessModel(match harnessRoute, answered string) string {
+	if answered = strings.TrimSpace(answered); answered == "" {
+		return match.Model
+	}
+	if model, _ := a.harnessModel(answered); model != "" {
+		return model
+	}
+	return match.Model
+}
+
+// splitHarnessModel cuts a trailing "with|using|via <model words>" off a turn.
+//
+// It answers the text before the clause and the word inside it, and false for
+// every sentence that has no such clause — which is nearly all of them. The
+// clause has to be the LAST thing in the text, the preposition has to be a whole
+// word, and something has to be left in front of it: "with opus" alone is not a
+// turn asking for a harness, it is a fragment.
+func splitHarnessModel(text string) (rest, word string, ok bool) {
+	words, offsets := textWords(text)
+	// The LAST preposition is the one that carries the clause, so that "compare
+	// the two with opus" reads past nothing and "look into it using the notes
+	// with opus" still lands on the tail.
+	for at := len(words) - 1; at >= 1; at-- {
+		if !harnessModelPreps[strings.ToLower(words[at])] {
+			continue
+		}
+		tail := words[at+1:]
+		if !modelWords(tail) {
+			// A preposition with prose behind it is prose. Nothing earlier in the
+			// sentence can be the clause either — the clause is the END of the
+			// text — so this is the whole answer.
+			return "", "", false
+		}
+		before := strings.TrimRight(text[:offsets[at]], " \t\r\n")
+		if strings.TrimSpace(before) == "" {
+			return "", "", false
+		}
+		return before, strings.Join(tail, " "), true
+	}
+	return "", "", false
+}
+
+// modelWords reports whether a clause's words could spell one model id: a few of
+// them, none of them a function word, every one of them made of the characters
+// an id is written with, and the FIRST of them carrying a letter.
+//
+// The first word is where a model's name is — "gpt 5 mini" is three words and
+// one id — and holding it to a letter is what keeps a quantity out: "with 3
+// sources" is a sentence about sources, and nothing that opens with a number is
+// a model somebody named.
+func modelWords(words []string) bool {
+	if len(words) == 0 || len(words) > harnessModelWords {
+		return false
+	}
+	for _, word := range words {
+		if harnessModelStop[strings.ToLower(word)] || !modelWordShape(word) {
+			return false
+		}
+	}
+	return hasLetter(words[0])
+}
+
+// modelWordShape holds one word to the characters model ids are spelled with:
+// letters, digits, and the separators vendors use. A word carrying a comma, a
+// quote or a question mark is punctuation from the sentence around it, and a
+// sentence is not an id.
+func modelWordShape(word string) bool {
+	for _, r := range word {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-', r == '.', r == '_', r == '/', r == ':', r == '~':
+		default:
+			return false
+		}
+	}
+	return word != ""
+}
+
+func hasLetter(word string) bool {
+	for _, r := range word {
+		if unicode.IsLetter(r) {
+			return true
+		}
+	}
+	return false
+}
+
+// textWords cuts text into words with the byte offset each one starts at. The
+// offsets are what let the clause be cut off the ORIGINAL text: rebuilding the
+// sentence from its words would hand the runner a turn with its own line breaks
+// and spacing quietly rewritten.
+func textWords(text string) ([]string, []int) {
+	var words []string
+	var offsets []int
+	start := -1
+	for at, r := range text {
+		if unicode.IsSpace(r) {
+			if start >= 0 {
+				words = append(words, text[start:at])
+				offsets = append(offsets, start)
+				start = -1
+			}
+			continue
+		}
+		if start < 0 {
+			start = at
+		}
+	}
+	if start >= 0 {
+		words = append(words, text[start:])
+		offsets = append(offsets, start)
+	}
+	return words, offsets
 }
