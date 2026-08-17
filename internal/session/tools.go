@@ -80,7 +80,7 @@ func (a *Agent) belt() []bare.Tool {
 			tools[index] = a.pdfRead(tool)
 		}
 	}
-	tools = append(tools, a.documentTool(), a.jobsTool())
+	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
 	if !a.config.InTask {
 		tools = append(tools, a.watchTool(), a.tasksTool())
 	}
