@@ -184,6 +184,15 @@ var settingReaders = map[string]string{
 	// fill session.Config's TaskRepairRounds — the number task_audit.go's loop
 	// counts its rounds against.
 	KeyTaskRepairRounds: "TaskRepairRoundsAt",
+	// The three throttle rows are read by the v3 door and become
+	// session.Config's TaskParallel, TaskMaxLoad and TaskMinFreeMB — the cap the
+	// frontier gates on and the two machine readings its admission governor asks
+	// about (internal/session's task_run.go and task_pressure.go). Each names its
+	// own accessor rather than the door that calls all three, so a row that stops
+	// being read cannot be proven by its neighbours' call site.
+	KeyTaskParallel:  "TaskParallelAt",
+	KeyTaskMaxLoad:   "TaskMaxLoadAt",
+	KeyTaskMinFreeMB: "TaskMinFreeMBAt",
 	// The task model is read by the v3 door and becomes session.Config.TaskModel,
 	// which a proposal that names no model of its own resolves through
 	// (internal/session's taskmodel.go). It names the accessor the door touches,

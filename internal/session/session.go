@@ -581,6 +581,17 @@ type Config struct {
 	// without a Google account and without a network.
 	connectHub connectHub
 
+	// pacing is how a node hears that its own calls have parked on the
+	// provider's rate limiting, and it is unexported for connectHub's reason: it
+	// is not a caller's choice. The executor sets it on the config it builds for
+	// a node's agent — and for the auditor and the repair workers that stand in
+	// for the same node — and nothing else in this build sets it at all.
+	//
+	// It is a callback rather than a field to poll because the fact it carries
+	// is an EDGE: a call started waiting, a call stopped waiting. Polling it
+	// would mean a clock, and the whole point of the signal is that it is free.
+	pacing func(bool)
+
 	// TaskModel is the model a task runs on when its proposal names none — the
 	// person's task.model row. EMPTY IS THE CONVERSATION'S OWN MODEL, which is
 	// the behaviour every task had before this field existed: a node is the same
@@ -626,6 +637,38 @@ type Config struct {
 	// spends nothing extra, and the DEFAULT of one round is the door's answer
 	// (config.DefaultTaskRepairRounds), read from the person's own settings.
 	TaskRepairRounds int
+
+	// TaskParallel is how many task nodes may RUN AT ONCE, and 0 IS NO LIMIT
+	// (task_run.go's frontier, config.KeyTaskParallel). It is the person's own
+	// number and it is off by default, because the count of nodes was never
+	// what runs out: what runs out is this machine's cores and memory — see
+	// TaskMaxLoad and TaskMinFreeMB below — and the provider's rate limit,
+	// which the adapter already adapts to on its own.
+	//
+	// Zero being both "no limit" and the zero value is deliberate, in
+	// [TaskRepairRounds]'s arrangement: a caller that builds a Config and says
+	// nothing about parallelism gets the ceilings that are really there rather
+	// than a number this package invented for it.
+	TaskParallel int
+
+	// TaskMaxLoad is the one-minute load average PER CORE at or above which the
+	// frontier stops starting new nodes (task_pressure.go,
+	// config.KeyTaskMaxLoad). 0 turns the load check off.
+	//
+	// Per core rather than raw, because the same reading means opposite things
+	// on a two-core laptop and a thirty-two-core workstation, and a person's
+	// setting has to mean one thing on both.
+	TaskMaxLoad float64
+
+	// TaskMinFreeMB is the floor of AVAILABLE memory — the kernel's
+	// MemAvailable, what a new process could actually get — below which the
+	// frontier stops starting new nodes (task_pressure.go,
+	// config.KeyTaskMinFreeMB). 0 turns the memory check off.
+	//
+	// Both of these gate ADMISSION and nothing else. A node that is already
+	// running keeps its worktree and its child agent however loaded the machine
+	// gets, which is what lets pressure drain instead of having to be relieved.
+	TaskMinFreeMB int
 
 	// InTask marks this agent as ONE TASK NODE'S RUNNER (task_run.go) rather
 	// than the conversation. It changes exactly two things, and both are
