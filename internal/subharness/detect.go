@@ -158,6 +158,12 @@ func Score(turn Turn, entry Entry) float64 {
 		}
 	}
 	cued := 1 - miss
+	// A page with no cue list never asked to be found by description: the name
+	// is the whole of its detectability, and folding the description in would
+	// raise cards for turns that named nothing.
+	if len(entry.Cues) == 0 {
+		return cued
+	}
 	// And the description, folded in as one more independent signal at half
 	// weight. (1−cued)×x is the same combination the loop above makes.
 	return cued + (1-cued)*descWeight*overlap(words, entry.Description)
