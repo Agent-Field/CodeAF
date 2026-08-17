@@ -1,0 +1,185 @@
+{
+  "stripped_bytes": 38273289,
+  "unstripped_bytes": 52535375,
+  "sections": {
+    ".tbss": 16,
+    ".note.go.buildid": 100,
+    ".note.gnu.build-id": 36,
+    ".interp": 27,
+    ".text": 15858052,
+    ".plt": 704,
+    ".rodata": 7500665,
+    ".gopclntab": 12239650,
+    ".gnu.version_r": 64,
+    ".dynsym": 1200,
+    ".rela": 96,
+    ".rela.plt": 1008,
+    ".gnu.version": 100,
+    ".hash": 236,
+    ".dynstr": 723,
+    ".typelink": 38412,
+    ".itablink": 8992,
+    ".go.buildinfo": 5088,
+    ".go.fipsinfo": 120,
+    ".dynamic": 304,
+    ".got.plt": 360,
+    ".go.module": 592,
+    ".got": 32,
+    ".noptrdata": 2296449,
+    ".data": 214146,
+    ".bss": 235800,
+    ".noptrbss": 33707456
+  },
+  "top_packages": [
+    {
+      "pkg": "crypto/internal/fips140/drbg",
+      "bytes": 33558096,
+      "symbols": 18
+    },
+    {
+      "pkg": "go:",
+      "bytes": 2552352,
+      "symbols": 1152
+    },
+    {
+      "pkg": "modernc.org/sqlite/lib",
+      "bytes": 1693872,
+      "symbols": 3981
+    },
+    {
+      "pkg": "golang.org/x/text/collate",
+      "bytes": 1260340,
+      "symbols": 34
+    },
+    {
+      "pkg": "runtime",
+      "bytes": 874496,
+      "symbols": 1828
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/store",
+      "bytes": 642210,
+      "symbols": 762
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui3",
+      "bytes": 578445,
+      "symbols": 971
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui2/chat",
+      "bytes": 446272,
+      "symbols": 853
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/resident",
+      "bytes": 441225,
+      "symbols": 601
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/head",
+      "bytes": 420096,
+      "symbols": 535
+    },
+    {
+      "pkg": "net/http",
+      "bytes": 410934,
+      "symbols": 1437
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/session",
+      "bytes": 401320,
+      "symbols": 841
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/codeaf",
+      "bytes": 371736,
+      "symbols": 469
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/tui",
+      "bytes": 353624,
+      "symbols": 419
+    },
+    {
+      "pkg": "main",
+      "bytes": 320183,
+      "symbols": 611
+    },
+    {
+      "pkg": "crypto/tls",
+      "bytes": 302595,
+      "symbols": 663
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/exec",
+      "bytes": 298792,
+      "symbols": 482
+    },
+    {
+      "pkg": "github.com/alecthomas/chroma/v2/lexers",
+      "bytes": 293800,
+      "symbols": 156
+    },
+    {
+      "pkg": "type:",
+      "bytes": 277488,
+      "symbols": 1578
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/tool",
+      "bytes": 273048,
+      "symbols": 377
+    },
+    {
+      "pkg": "github.com/modelcontextprotocol/go-sdk/mcp",
+      "bytes": 204440,
+      "symbols": 877
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/plan",
+      "bytes": 185231,
+      "symbols": 285
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/engine/orclient",
+      "bytes": 179188,
+      "symbols": 269
+    },
+    {
+      "pkg": "gopkg.in/yaml%2ev3",
+      "bytes": 165750,
+      "symbols": 240
+    },
+    {
+      "pkg": "github.com/dlclark/regexp2/v2/syntax",
+      "bytes": 155992,
+      "symbols": 256
+    },
+    {
+      "pkg": "net",
+      "bytes": 142690,
+      "symbols": 532
+    },
+    {
+      "pkg": "github.com/Agent-Field/aforge-v2/internal/swepro/internal/session/scheduler",
+      "bytes": 142353,
+      "symbols": 198
+    },
+    {
+      "pkg": "slices",
+      "bytes": 138272,
+      "symbols": 433
+    },
+    {
+      "pkg": "crypto/internal/fips140/nistec",
+      "bytes": 136500,
+      "symbols": 117
+    },
+    {
+      "pkg": "github.com/charmbracelet/ultraviolet",
+      "bytes": 126016,
+      "symbols": 210
+    }
+  ]
+}

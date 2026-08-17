@@ -1,0 +1,45 @@
+goos: linux
+goarch: arm64
+pkg: github.com/Agent-Field/aforge-v2/internal/tui3
+                           │ perf-report/tui3-render-before.txt │ perf-report/tui3-render-after-outputbody.txt │
+                           │               sec/op               │        sec/op         vs base                │
+FrameIdle/turns=4-20                                54.80µ ± 4%            37.48µ ± 2%  -31.59% (p=0.000 n=10)
+FrameIdle/turns=20-20                               222.7µ ± 4%            144.8µ ± 4%  -34.97% (p=0.000 n=10)
+FrameIdle/turns=60-20                               638.8µ ± 4%            386.7µ ± 2%  -39.47% (p=0.000 n=10)
+FrameStreaming/turns=4-20                           94.81µ ± 3%            76.28µ ± 5%  -19.54% (p=0.000 n=10)
+FrameStreaming/turns=20-20                          262.4µ ± 1%            179.8µ ± 3%  -31.47% (p=0.000 n=10)
+Layout/turns=4-20                                   40.32µ ± 3%            24.44µ ± 4%  -39.39% (p=0.000 n=10)
+Layout/turns=20-20                                  209.0µ ± 2%            128.4µ ± 1%  -38.54% (p=0.000 n=10)
+Layout/turns=60-20                                  610.1µ ± 2%            365.5µ ± 2%  -40.08% (p=0.000 n=10)
+AppendText/deltas=500-20                            378.4µ ± 1%            391.7µ ± 1%   +3.50% (p=0.000 n=10)
+AppendText/deltas=4000-20                           13.47m ± 3%            13.70m ± 3%        ~ (p=0.165 n=10)
+geomean                                             295.5µ                 211.3µ       -28.50%
+
+                           │ perf-report/tui3-render-before.txt │ perf-report/tui3-render-after-outputbody.txt │
+                           │                B/op                │         B/op           vs base               │
+FrameIdle/turns=4-20                               21.77Ki ± 0%            21.75Ki ± 0%       ~ (p=0.138 n=10)
+FrameIdle/turns=20-20                              102.2Ki ± 0%            102.3Ki ± 0%       ~ (p=0.853 n=10)
+FrameIdle/turns=60-20                              275.9Ki ± 0%            275.8Ki ± 0%       ~ (p=0.739 n=10)
+FrameStreaming/turns=4-20                          42.35Ki ± 0%            42.31Ki ± 0%       ~ (p=0.197 n=10)
+FrameStreaming/turns=20-20                         113.1Ki ± 0%            113.1Ki ± 0%       ~ (p=0.393 n=10)
+Layout/turns=4-20                                  14.78Ki ± 0%            14.78Ki ± 0%       ~ (p=0.156 n=10)
+Layout/turns=20-20                                 95.21Ki ± 0%            95.22Ki ± 0%       ~ (p=0.853 n=10)
+Layout/turns=60-20                                 268.8Ki ± 0%            268.5Ki ± 0%  -0.11% (p=0.004 n=10)
+AppendText/deltas=500-20                           785.3Ki ± 0%            785.3Ki ± 0%       ~ (p=0.370 n=10)
+AppendText/deltas=4000-20                          48.25Mi ± 0%            48.25Mi ± 0%       ~ (p=0.516 n=10)
+geomean                                            183.4Ki                 183.4Ki       -0.03%
+
+                           │ perf-report/tui3-render-before.txt │ perf-report/tui3-render-after-outputbody.txt │
+                           │             allocs/op              │      allocs/op       vs base                 │
+FrameIdle/turns=4-20                                 176.0 ± 0%            176.0 ± 0%       ~ (p=1.000 n=10) ¹
+FrameIdle/turns=20-20                                545.0 ± 0%            545.0 ± 0%       ~ (p=1.000 n=10) ¹
+FrameIdle/turns=60-20                               1.465k ± 0%           1.465k ± 0%       ~ (p=1.000 n=10) ¹
+FrameStreaming/turns=4-20                            216.0 ± 0%            216.0 ± 0%       ~ (p=1.000 n=10) ¹
+FrameStreaming/turns=20-20                           584.0 ± 0%            584.0 ± 0%       ~ (p=1.000 n=10) ¹
+Layout/turns=4-20                                    94.00 ± 0%            94.00 ± 0%       ~ (p=1.000 n=10) ¹
+Layout/turns=20-20                                   463.0 ± 0%            463.0 ± 0%       ~ (p=1.000 n=10) ¹
+Layout/turns=60-20                                  1.383k ± 0%           1.383k ± 0%       ~ (p=1.000 n=10) ¹
+AppendText/deltas=500-20                             500.0 ± 0%            500.0 ± 0%       ~ (p=1.000 n=10) ¹
+AppendText/deltas=4000-20                           4.000k ± 0%           4.000k ± 0%       ~ (p=1.000 n=10) ¹
+geomean                                              540.7                 540.7       +0.00%
+¹ all samples are equal
