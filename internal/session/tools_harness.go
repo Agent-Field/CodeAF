@@ -125,8 +125,9 @@ func (a *Agent) buildHarnessTool() bare.Tool {
 			if goal == "" {
 				return "Invalid arguments: build_harness needs a goal — what the harness must do, written for a designer that cannot see this conversation.", true, nil
 			}
-			a.emitHarness(Event{Kind: EventHarnessDesign, Text: goal, Hint: harnessDesigningWord, Model: a.Model()})
-			a.startHarnessDesign(goal, "")
+			model := a.harnessDesignModel("")
+			a.emitHarness(Event{Kind: EventHarnessDesign, Text: goal, Hint: harnessDesigningWord, Model: model})
+			a.startHarnessDesign(goal, model)
 			return "designing a harness for: " + goal +
 				"\nIt takes a minute or two and happens beside this conversation. What comes back is a page the person is shown as a card; nothing is saved unless they approve it, and you will be told what became of it either way. Carry on with the work in front of you rather than waiting.", false, nil
 		},

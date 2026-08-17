@@ -274,6 +274,31 @@ func TestTheDesignerResolvesItsRole(t *testing.T) {
 	}
 }
 
+// AND THE EVENT THAT SAYS A DESIGN HAS STARTED CARRIES THAT SAME MODEL.
+//
+// It is the only thing on screen while the design runs — the turn is over the
+// moment it begins — and the model on it is the RESOLVED one rather than the
+// turn's own word, which is usually empty. An event carrying the word would name
+// a model exactly in the case where the person had already typed it.
+func TestTheDesignStartedEventNamesTheResolvedModel(t *testing.T) {
+	agent, _ := buildAgent(t, designingCompleter(), t.TempDir())
+	agent.config.RolesSource = tierSettings(map[string]string{
+		roles.TierKey(roles.TierHigh): "test/careful-model",
+		roles.TierKey(roles.TierLow):  "test/cheap-model",
+	})
+	lane := agent.HarnessDesigns()
+
+	submitBuild(t, agent)
+
+	started := nextDesign(t, lane)
+	if started.Kind != EventHarnessDesign {
+		t.Fatalf("the lane opened with %v", started.Kind)
+	}
+	if started.Model != "test/careful-model" {
+		t.Fatalf("the design started on %q, want the designer role's model", started.Model)
+	}
+}
+
 // AN INSTALL THAT CONFIGURED NOTHING DESIGNS AS IT ALWAYS DID: the ladder's
 // floor is the session's own model, which is where this call went before the
 // role existed.

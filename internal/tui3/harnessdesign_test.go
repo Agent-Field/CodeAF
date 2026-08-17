@@ -199,6 +199,24 @@ func TestTheDesignLaneDrawsItsNotes(t *testing.T) {
 	}
 }
 
+// AND THE NOTE NAMES THE MODEL WRITING THE PAGE when the session resolved one.
+// A design is two calls on a model the person did not type — the designer role's
+// (internal/roles), which sits high — and while it runs this note is the only
+// thing on screen.
+func TestTheDesignNoteNamesTheModelDesigning(t *testing.T) {
+	_, a := designShown(t, session.Event{
+		Kind:  session.EventHarnessDesign,
+		Text:  "triaging flaky tests",
+		Hint:  "designing",
+		Model: "moonshot/kimi-k3",
+	})
+	a.width = 100
+	got := plain(frame(a))
+	if !strings.Contains(got, "harness · designing with moonshot/kimi-k3 · triaging flaky tests") {
+		t.Fatalf("the design note does not name the model designing:\n%s", got)
+	}
+}
+
 // A SURFACE WITH NO DESIGNER UNDER IT OPENS NO LANE. Every scripted agent in
 // this package is one, and none of them may be made un-representable by a
 // feature they have never heard of.

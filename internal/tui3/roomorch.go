@@ -249,6 +249,12 @@ const (
 	orchCardBack   = "esc · back to the graph"
 	// orchGateLead opens the gate's question.
 	orchGateLead = "out of fuel"
+	// orchPlannerLead names the model the run is thinking with, beside the
+	// gauge. It is spelled out rather than left as a bare model name because a
+	// run's page already has two other models on it in a person's mind — the one
+	// they are talking to and the one the nodes run on — and an unlabelled word
+	// beside a dollar figure reads as a third mystery.
+	orchPlannerLead = "planner: "
 	// orchSteerLane is what the box says it is talking to while a run's page is
 	// open (room.go's [app.roomSteerLaneRows] splices the way out onto it).
 	orchSteerLane = "Steer the planner"
@@ -428,7 +434,7 @@ func (a *app) orchRead() {
 // layouts a second for a run that is thinking.
 func (r *orchRun) changedBy(snap orchestrate.Snapshot) bool {
 	old := r.snap
-	if !r.known || old.Goal != snap.Goal || old.Fuel != snap.Fuel ||
+	if !r.known || old.Goal != snap.Goal || old.Planner != snap.Planner || old.Fuel != snap.Fuel ||
 		old.Paused != snap.Paused || old.Done != snap.Done || old.Stopped != snap.Stopped ||
 		old.Answer != snap.Answer ||
 		len(old.Nodes) != len(snap.Nodes) || len(old.Notes) != len(snap.Notes) ||
@@ -991,6 +997,7 @@ func (a *app) orchRows(width int) []row {
 		return nil
 	}
 	page := &orchPage{}
+	a.orchPlannerRow(page, width)
 	if run.card != "" {
 		a.orchCardRows(page, width)
 	} else {
@@ -1564,8 +1571,17 @@ func (a *app) orchHeadWord(width int) string {
 	if run == nil {
 		return ""
 	}
+	// THE PLANNER IS NAMED IN FRONT OF THE GAUGE, because the two are one fact:
+	// the tank is being spent by a judgement, and with tiers configured that
+	// judgement is a model nobody in this conversation is talking to. At the
+	// PHONE tier it comes off the line first — not dropped, moved — and the page
+	// draws it as a dim row of its own ([app.orchPlannerRow]).
+	parts := []string{run.fuelWord(), a.orchStateWord()}
+	if layoutTier(width) != tierPhone {
+		parts = append([]string{run.plannerWord()}, parts...)
+	}
 	tail := ""
-	for _, part := range []string{run.fuelWord(), a.orchStateWord()} {
+	for _, part := range parts {
 		if part != "" {
 			tail += " · " + part
 		}
@@ -1643,6 +1659,43 @@ func (r *orchRun) fuelWord() string {
 		return dollars(r.snap.Fuel.Spent) + " / " + dollars(r.snap.Fuel.Cap)
 	}
 	return strings.TrimSpace(r.fuel)
+}
+
+// plannerWord names the model this run is thinking with, or "" when no snapshot
+// has said one. It is the RUN's fact and not the session's: the planner is
+// resolved through internal/roles when the run is built, so an install with a
+// high tier set plans on a model that appears nowhere else on this surface.
+func (r *orchRun) plannerWord() string {
+	model := strings.TrimSpace(r.snap.Planner)
+	if model == "" {
+		return ""
+	}
+	return orchPlannerLead + model
+}
+
+// orchPlannerRow is the header's planner segment, moved onto the page at the
+// phone tier.
+//
+// AT FORTY COLUMNS THE HEADER CANNOT HOLD IT — the trail gives way from its own
+// end there and a fourth segment would take the goal with it — and dropping it
+// is not the alternative: the model spending somebody's money is a fact this
+// page says at every width. So it becomes one dim row at the top, above the
+// graph and above a card alike, because it is true of the whole run rather than
+// of anything drawn under it.
+//
+// The tier is read off the WINDOW and not off the page's own width, because the
+// header spans the window (view.go) and this row exists only to catch what the
+// header let go: two widths asking the question separately is how a fact ends up
+// drawn twice on a screen with a roster open, or nowhere on one without.
+func (a *app) orchPlannerRow(page *orchPage, width int) {
+	run := a.orchOf()
+	frame, _ := a.size()
+	if run == nil || layoutTier(frame) != tierPhone {
+		return
+	}
+	if word := run.plannerWord(); word != "" {
+		page.put(a.pal.dim(fit(word, width)))
+	}
 }
 
 // ── the layers ──────────────────────────────────────────────────────────────

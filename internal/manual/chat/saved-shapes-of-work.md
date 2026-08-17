@@ -154,8 +154,9 @@ Two consequences worth knowing:
 - The model may look before it builds: it can list what is saved and tell you a harness that
   already does this exists, which is usually the better answer.
 
-**The turn does not wait.** The design starts, the model says in one line that it did, and
-the surface notes `harness · designing <goal>`. The design runs on the session's own context
+**The turn does not wait.** The design starts beside the conversation, the model says in one line
+that it did, and the surface notes `harness · designing <goal>` — with the designer role's own model
+named on the card when the page comes back. The design runs on the session's own context
 rather than on the turn's, inside a **30-minute** window that covers both the model work
 **and** the wait for your answer to the card.
 

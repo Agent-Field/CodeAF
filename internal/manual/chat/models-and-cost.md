@@ -123,6 +123,30 @@ line: the role's name, the tier answering it, and the model that comes out. As s
 The list is built from what is registered in the running binary, so it is the truth about
 this build rather than a table someone kept up to date.
 
+## Which model is planning my adaptive run — what `planner:` means on that page
+
+An adaptive run's page pins one line at the top, and it names the model doing the thinking
+next to the money it is spending:
+
+```
+◐ main ▸ ship the parser fix · planner: kimi-k3 · $0.87 / $2.00 · working
+```
+
+`planner: <model>` is the model amending the plan after every node — resolved once when the
+run started, from the model you named in the sentence, then the `planner` role's pin, then
+the **careful work** tier, then the model you are talking to. With a tier set it is usually
+*not* the model in the rest of this conversation, which is why the run's own page says it
+rather than leaving you to work it out.
+
+It never changes while a run is going: the ladder is walked once, at the start.
+
+On a narrow screen (**under 60 columns**) the segment comes off that line and is drawn dim
+on the first row of the page instead, above the chips. It is moved, not dropped — what the
+header sheds first is the goal, which you can still read in the conversation.
+
+The nodes under the planner run on the `worker` role, which is a different model and is not
+on this line. `/settings` → Session lists both.
+
 ## Pinning one role to its own model, and unpinning it
 
 In `/settings` → Session, move onto any row of the roles list and press **enter**. That

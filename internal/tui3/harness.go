@@ -255,7 +255,7 @@ func (a *app) designEvent(ev session.Event) tea.Cmd {
 		// The turn is already over — that is the whole arrangement — so this is
 		// the only thing on screen saying that work is happening. It is a note for
 		// the reason the run announcement is one: nobody has to answer it.
-		a.note("harness · designing " + firstLineOf(ev.Text))
+		a.note("harness · " + harnessDesignLead(ev.Model) + firstLineOf(ev.Text))
 	case session.EventHarnessDesignDone:
 		// A QUESTION OUTRANKS A PANEL, on the terms every other question on this
 		// surface states: the block is drawn above the input, and a question drawn
@@ -270,6 +270,24 @@ func (a *app) designEvent(ev session.Event) tea.Cmd {
 		a.note(ev.Text)
 	}
 	return tea.Batch(waitDesign(a.designLane, a.designGen), a.wake())
+}
+
+// harnessDesignLead opens the note a starting design writes, and it NAMES THE
+// MODEL when the session resolved one.
+//
+// A design is two model calls on a model the person did not type: with a high
+// tier configured it is RoleDesigner's and not the one this conversation is on
+// (session's harness_build.go), and this note is the only thing on screen while
+// it runs. So the note says whose judgement is writing the page.
+//
+// With no model on the event the old sentence is left exactly as it was, down to
+// the single space: a separator standing in front of a goal with no fact behind
+// it is punctuation pretending to be information.
+func harnessDesignLead(model string) string {
+	if model = strings.TrimSpace(model); model == "" {
+		return "designing "
+	}
+	return "designing with " + model + " · "
 }
 
 // firstLineOf keeps a note to one row. A goal is a sentence somebody typed and

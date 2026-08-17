@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -547,5 +548,24 @@ func TestHeadlessOnceArmsNoIdleTimer(t *testing.T) {
 	collect(t, mustSubmit(t, agent, "one question, then exit"))
 	if armed, _ := clock.counts(); armed != 0 {
 		t.Fatalf("a --once run armed the idle timer %d times, want 0", armed)
+	}
+}
+
+// THE CONSOLIDATOR IS A ROLE UNDER THE REGISTRY'S OWN NAME
+// ([roles.RoleConsolidate]), which is what makes a pin written as
+// `roles.consolidate: <model>` reach the call this file makes. A role spelled
+// once here and once in the settings sheet would be pinnable under one spelling
+// and resolved under the other, and nothing anywhere would say so.
+func TestTheConsolidatorIsARegisteredLowRole(t *testing.T) {
+	tier, ok := roles.TierOf(roles.RoleConsolidate)
+	if !ok || tier != roles.TierLow {
+		t.Fatalf("consolidate is registered as %q (found %v), want the low tier", tier, ok)
+	}
+	model, err := roles.Resolve(roles.Source(tierSettings(map[string]string{
+		roles.TierKey(roles.TierLow):  "test/cheap-model",
+		roles.TierKey(roles.TierHigh): "test/careful-model",
+	})), roles.RoleConsolidate, "test/model")
+	if err != nil || model != "test/cheap-model" {
+		t.Fatalf("consolidate resolves to %q (%v), want the cheap tier's model", model, err)
 	}
 }
