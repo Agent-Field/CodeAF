@@ -1266,17 +1266,78 @@ func (a *app) ctxSpark() string {
 // because a rate computed over 200ms is a rate computed over the first packet.
 func (a *app) burnSegment() string {
 	if a.state != stateWorking || a.turnBegan.IsZero() {
-		return ""
+		return a.holdBurn("")
 	}
 	elapsed := a.now().Sub(a.turnBegan)
 	if elapsed < time.Second {
-		return ""
+		return a.holdBurn("")
 	}
 	written := a.outputTokens - a.turnOutStart
 	if written <= 0 {
+		return a.holdBurn("")
+	}
+	return a.holdBurn(tokenWord(burnStep(int(float64(written)/elapsed.Seconds()))) + " tok/s")
+}
+
+// ── THE STEADY FIGURE ───────────────────────────────────────────────────────
+//
+// A NUMBER THAT MOVES FASTER THAN IT CAN BE READ IS NOT INFORMATION, IT IS
+// MOTION. The burn rate is recomputed every frame, and unheld it lands on a
+// different figure nearly every one of them: thirty times a second the status
+// line becomes a line the terminal has to be told about again, to show a person
+// digits their eye never resolved. The second and third digits of a token rate
+// are not a fact anybody acts on — "about ninety" is the whole of what the
+// figure says, and it says it whether it was drawn from 88 or from 91.
+//
+// So the DISPLAY is damped and the accounting is not. Every meter behind this
+// line keeps its exact figure; what is held is the string, and it is held in
+// two ways at once: the rate is rounded to a step worth reading, and the shown
+// value is only replaced twice a second. Between replacements the segment is
+// character for character the line it already was, which costs the wire
+// nothing, and the person still watches a live rate — just one that stands
+// still long enough to be read.
+
+// burnHoldFor is how long a shown rate stands before it is allowed to move.
+// Half a second is two updates a second: fast enough that a turn slowing down
+// says so while it is still happening, slow enough that the figure is legible.
+const burnHoldFor = 500 * time.Millisecond
+
+// burnStep rounds a rate to a step a person reads as one number.
+//
+// The two tiers are the same rule stated for two magnitudes: keep about two
+// digits of it. Under a hundred that is steps of five — the difference between
+// 62 and 64 tok/s is a difference nobody is deciding anything on — and above it
+// two significant figures, which is what [tokenWord] would draw anyway by the
+// time the figure reaches thousands.
+func burnStep(rate int) int {
+	if rate <= 0 {
+		return 0
+	}
+	if rate < 100 {
+		return (rate + 2) / 5 * 5
+	}
+	step := 1
+	for left := rate; left >= 100; left /= 10 {
+		step *= 10
+	}
+	return (rate + step/2) / step * step
+}
+
+// holdBurn is the half-second hold: it returns the figure currently on the
+// line, and adopts the new one only when the hold has run out. An empty
+// candidate — the turn ended, or has not earned a rate yet — takes effect at
+// once and clears the hold with it: a rate held past the turn it describes
+// would be the surface reporting on work that has stopped.
+func (a *app) holdBurn(text string) string {
+	if text == "" {
+		a.burnShown, a.burnAt = "", time.Time{}
 		return ""
 	}
-	return tokenWord(int(float64(written)/elapsed.Seconds())) + " tok/s"
+	now := a.now()
+	if a.burnShown == "" || now.Sub(a.burnAt) >= burnHoldFor {
+		a.burnShown, a.burnAt = text, now
+	}
+	return a.burnShown
 }
 
 // etaSegment is the compaction forecast, and it only ever speaks when the

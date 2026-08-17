@@ -171,6 +171,12 @@ func newTestApp(agent Agent) *app {
 	// the terminal the developer happened to be sitting in. The wrapper has a
 	// test of its own that states both forms outright.
 	a.tmux = false
+	// AND IT PINS THE LINK, for the third time for the same reason: [newApp]
+	// reads the environment to decide how often the frame clock turns (link.go),
+	// so a suite run over ssh would step every animation three slots at a time
+	// and a suite run at the machine would step one. The cadence has tests of its
+	// own that state both.
+	a.remote = false
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
