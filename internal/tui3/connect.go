@@ -1,0 +1,571 @@
+package tui3
+
+import (
+	"context"
+	"strings"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/aforge-v2/internal/connect"
+	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
+)
+
+// CONNECTING AN ACCOUNT.
+//
+// The agent reaches for something the person has not connected yet — their
+// calendar, their mail — and the session stops and asks. That question, the
+// browser it opens, and the line that says how it went are this file; the list
+// a person opens on purpose is connectpanel.go beside it.
+//
+// It is drawn in the family the approval question belongs to (consent.go): a
+// bottom-anchored block above the draft, answered with one key, queued when
+// there is more than one. It is deliberately QUIETER than that question, and the
+// difference is what the two are about. An approval question is a call about to
+// run against somebody's machine and it takes the loudest colour on this
+// surface. This is an offer:
+//
+//	? Google
+//	  openaf wants to connect your Google account
+//	  [enter] connect · [esc] not now
+//
+// Four decisions, each the reason a row is shaped the way it is:
+//
+//   - THE SERVICE IS THE HEADING. Not "authorize", not the scopes, not the
+//     provider's product name for its own sign-in — the thing a person owns, in
+//     the word they own it by. The glyph beside it is the one this surface
+//     already spends on a question, so the block reads as a question before it
+//     is read at all.
+//   - ONE LINE OF PURPOSE, DIM. It says who is asking and what for, and it says
+//     it in the sentence a person would use out loud. Every other sentence this
+//     block could have carried — the scopes, the redirect, the word "OAuth" — is
+//     machinery, and machinery on this row is how a person ends up approving
+//     something they did not read.
+//   - TWO ANSWERS AND NO THIRD. There is no "always" here on purpose: an account
+//     is connected once and stays connected, so a widening answer would widen
+//     nothing. Declining is "not now" rather than "no" because it IS not now —
+//     nothing is remembered, and the next time the agent needs the account it
+//     asks again.
+//   - IT QUEUES, oldest first, with what is behind it on screen — for the reason
+//     the approval question queues (consent.go): a person who answers one
+//     question and gets another must have been told it was coming.
+//
+// AFTER THE ANSWER THE BLOCK GOES AND THE TRANSCRIPT SPEAKS. What the session
+// does next is a browser and a wait, and both of those are things that HAPPENED,
+// so they land in the conversation where everything else that happened is
+// ([app.connectAuth] below).
+
+// Connections is the door onto the accounts this profile has connected. It is
+// an interface for the reason [Agent] is one: the surface is driven in a test
+// by a scripted one, and the real engine (internal/connect) is wired at the
+// door.
+//
+// Nil is a surface that cannot manage connections — a headless frame, a test,
+// a build whose door has not wired one — and /connect says so rather than
+// opening an empty list.
+type Connections interface {
+	// Services is every service this build knows about, each with whether this
+	// profile has it and the account it is held as.
+	Services() []connect.Status
+	// BeginAuth starts one sign-in. It may reach the network, so it is called
+	// from a command and never from the model loop.
+	BeginAuth(ctx context.Context, id string) (*connect.Flow, error)
+	// Disconnect forgets one.
+	Disconnect(id string) error
+}
+
+// connAsk is one unanswered offer.
+type connAsk struct {
+	// id is the token [Agent.ResolveConnect] takes back.
+	id string
+	// service is the id the engine knows it by, and name the word a person does.
+	// The name is what every row here draws; the service is what the answer and
+	// the transcript are keyed by.
+	service string
+	name    string
+}
+
+// askConnect takes one session.EventConnectAsk.
+func (a *app) askConnect(ev session.Event) {
+	name := strings.TrimSpace(ev.ServiceName)
+	if name == "" {
+		// A service the session named only by its id. The id is a word a person
+		// half-recognizes ("google"), which is a better heading than nothing at
+		// all — and there is no third rung under it worth drawing.
+		name = strings.TrimSpace(ev.Service)
+	}
+	if name == "" {
+		return
+	}
+	// The typed lists follow the draft, and the draft is suspended while an
+	// offer is up — a list left open under a modal is a list answering keys
+	// nobody is pressing (consent.go says it first).
+	a.closeLists()
+	if a.pick.open {
+		a.pick.close()
+	}
+	// AND THE PANEL GOES. /connect is the same subject asked the other way
+	// round, and a list of services over a question about one of them is two
+	// answers to one question.
+	a.connPanel.close()
+	a.rememberService(ev.Service, name)
+	a.connAsks = append(a.connAsks, connAsk{id: ev.ConnectID, service: ev.Service, name: name})
+	a.follow()
+	a.touch()
+}
+
+// asksConnect reports whether an offer owns the keyboard.
+func (a *app) asksConnect() bool { return len(a.connAsks) > 0 }
+
+// answerConnect resolves the offer at the head of the queue.
+func (a *app) answerConnect(approve bool) {
+	if len(a.connAsks) == 0 {
+		return
+	}
+	head := a.connAsks[0]
+	a.connAsks = a.connAsks[1:]
+	if a.agent != nil {
+		a.agent.ResolveConnect(head.id, approve)
+	}
+	// Nothing is written to the transcript here, in either direction. An
+	// approval's next line is the browser opening, which the session announces
+	// and [app.connectAuth] draws; a decline changed nothing, and a surface that
+	// recorded "you said not now" would be keeping a note about a thing that did
+	// not happen.
+	a.touch()
+}
+
+// dropConnectAsks forgets every unanswered offer. It runs where the approval
+// questions are dropped and for the same reason (app.go's [app.settle]): the
+// turn that raised them is over, so the answers are late.
+func (a *app) dropConnectAsks() {
+	if len(a.connAsks) == 0 {
+		return
+	}
+	a.connAsks = nil
+	a.touch()
+}
+
+// ── the keys ────────────────────────────────────────────────────────────────
+
+// The two answers, as the keys that give them. enter and esc are what the block
+// NAMES, because they are the two keys every overlay on this surface already
+// answers to — an offer is a yes-or-nothing, and this surface's yes is enter.
+//
+// y and n are read silently beside them. They are the letters the approval
+// question uses one row up (consent.go), a hand that has learned them there will
+// reach for them here, and neither can collide with anything while the draft is
+// suspended. They are not on the offer: a line naming four keys for two answers
+// would be teaching the keyboard instead of the choice.
+func (a *app) connectAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if !a.asksConnect() {
+		return nil, false
+	}
+	if msg.String() == "ctrl+c" {
+		// Leaving is never modal, and mid-turn ctrl+c is the interrupt — which
+		// releases the blocked call the honest way.
+		return nil, false
+	}
+	switch msg.String() {
+	case "enter", "y":
+		a.answerConnect(true)
+	case "esc", "n":
+		a.answerConnect(false)
+	}
+	// Everything else does nothing rather than typing into a conversation that
+	// cannot move — the modal rule the approval question states in full.
+	return nil, true
+}
+
+// ── the block ───────────────────────────────────────────────────────────────
+
+// connectOfferRow is where the offer sits inside the block: under the heading
+// and the sentence. The frame needs it to know which row the pointer can be
+// over (view.go).
+const connectOfferRow = 2
+
+// connectAskHeight is how many rows the block takes: the service, the sentence,
+// the offer, and the count of the offers behind it when there are any.
+func (a *app) connectAskHeight() int {
+	if !a.asksConnect() {
+		return 0
+	}
+	if len(a.connAsks) > 1 {
+		return 4
+	}
+	return 3
+}
+
+// connectAskRows draws the block, directly under the approval question's slot
+// and above the draft — which is where this surface puts everything it wants
+// answered.
+func (a *app) connectAskRows(width int) []string {
+	// The targets are rewritten by every layout and by nothing else: a stale
+	// span is a tap that answers about the previous offer.
+	a.connTaps = nil
+	if !a.asksConnect() {
+		return nil
+	}
+	head := a.connAsks[0]
+	out := make([]string, 0, 4)
+	out = append(out, a.pal.askBold(glyphAsk)+" "+a.pal.bold(a.pal.ink(fit(head.name, width-2))))
+	out = append(out, a.pal.dim(fit("  "+connectPurpose(head.name), width)))
+	out = append(out, a.connectOffer(width))
+	if more := len(a.connAsks) - 1; more > 0 {
+		out = append(out, a.pal.dim(fit("  "+itoa(more)+" more", width)))
+	}
+	return out
+}
+
+// connectPurpose is the one quiet sentence: who is asking, and what for. The
+// product names itself from the one constant that holds its name (styles.go), so
+// a rename is a rename and not a search.
+func connectPurpose(name string) string {
+	return product + " wants to connect your " + name + " account"
+}
+
+// connectMark is what the pointer is over on row i of the block, which is the
+// frame's half of the same geometry ([app.chrome]).
+//
+// The offer is the one row of it that is pressable. The heading and the sentence
+// are statements, and a statement that lit up under the pointer would be
+// claiming to be a thing you could press.
+func (a *app) connectMark(i int) chromeRow {
+	if i == connectOfferRow {
+		return chromeRow{kind: chromeConnectAsk, index: i}
+	}
+	return chromeRow{}
+}
+
+// connectOffer is the answers. The whole line takes the question hue and the
+// keys are bold within it, exactly as the approval question's offer is: a person
+// looking for which key to press finds the key, and the sentence around it is
+// there to be recognized rather than read twice.
+func (a *app) connectOffer(width int) string {
+	// Pairs: the words at even indices, the keys — the only bold cells on the
+	// line — at odd ones, which is what [app.recordConnectTaps] reads.
+	parts := []string{"  ", "[enter]", " connect · ", "[esc]", " not now"}
+	line := strings.Join(parts, "")
+	if ansi.StringWidth(line) > width {
+		// Too narrow for both answers spelled out. The line is cut rather than
+		// re-spelled — there is no shorter honest wording for two words — and it
+		// records no targets, because a target under an ellipsis is a press that
+		// answers something a person cannot read.
+		return a.pal.ask(fit(line, width))
+	}
+	a.recordConnectTaps(parts)
+	var out string
+	for i, part := range parts {
+		if i%2 == 1 {
+			out += a.pal.askBold(part)
+			continue
+		}
+		out += a.pal.ask(part)
+	}
+	if a.hoveringConnectAsk() {
+		return a.pal.hover(out, width)
+	}
+	return out
+}
+
+// ── the pointer ─────────────────────────────────────────────────────────────
+
+// connTap is one answer's columns on the offer row. A press inside
+// [span.from, span.to) is that answer, and nothing outside any span answers
+// anything.
+type connTap struct {
+	span    hudSpan
+	approve bool
+}
+
+// recordConnectTaps writes the offer line's columns: every key chip on it, and
+// the word beside it, are one target.
+//
+// THE WORD IS PART OF THE TARGET, for the reason the approval question's is:
+// `[esc]` is five cells, `[esc] not now` is thirteen, and that is the difference
+// between a target a person hits and one they aim at. The separator between the
+// two answers belongs to neither — a press in the gap must not resolve as
+// either.
+func (a *app) recordConnectTaps(parts []string) {
+	taps := make([]connTap, 0, 2)
+	at := 0
+	for i, part := range parts {
+		width := ansi.StringWidth(part)
+		approve, ok := false, false
+		switch part {
+		case "[enter]":
+			approve, ok = true, true
+		case "[esc]":
+			approve, ok = false, true
+		}
+		if !ok {
+			at += width
+			continue
+		}
+		to := at + width
+		if i+1 < len(parts) {
+			to += ansi.StringWidth(strings.TrimSuffix(parts[i+1], " · "))
+		}
+		taps = append(taps, connTap{span: hudSpan{from: at, to: to}, approve: approve})
+		at += width
+	}
+	a.connTaps = taps
+}
+
+// connectPress resolves a click on the block, and reports whether it took it.
+//
+// THE BLOCK SWALLOWS EVERY PRESS IN IT, answer or no answer, for the reason the
+// approval question's does: it is a thing the session is waiting on, and a press
+// that missed the offer and fell through would expand a tool call while somebody
+// was trying to answer a question about their account.
+func (a *app) connectPress(x, y int) bool {
+	if !a.asksConnect() || a.copy.on || a.sheet.open {
+		return false
+	}
+	// THE ROW IS RESOLVED BEFORE THE COLUMN: laying the chrome out is what writes
+	// the spans, and reading them first would be reading where the answers were
+	// drawn on the frame before this one.
+	mark, ok := a.chromeAt(y)
+	if !ok || mark.kind != chromeConnectAsk {
+		return false
+	}
+	for _, tap := range a.connTaps {
+		if !tap.span.holds(x) {
+			continue
+		}
+		a.answerConnect(tap.approve)
+		return true
+	}
+	return true
+}
+
+// hoveringConnectAsk reports whether the pointer is on the offer row.
+func (a *app) hoveringConnectAsk() bool { return a.hot.kind == hoverConnectAsk }
+
+// ── the browser, and what came of it ────────────────────────────────────────
+//
+// Everything below here is a REPORT rather than a question, so it is drawn where
+// the reports are: in the conversation, as one block that opens waiting and
+// settles in place. It is the shape a compaction pass has (render.go's
+// [app.compactRow]) and it is the shape for the same reason — a thing that takes
+// seconds and would otherwise be a silence.
+
+// connectState is where one handshake is.
+type connectState uint8
+
+const (
+	// connectWaiting is the browser being somewhere else. It is the only state
+	// that animates, and the only one that is not cached.
+	connectWaiting connectState = iota
+	connectConnected
+	connectFailed
+)
+
+// connectCard is one sign-in, from the browser opening to the line it leaves
+// behind. It hangs off [entry.conn] for kind entryConnect and nothing else — a
+// POINTER, for the reason a proposal's card is one (app.go): the row and the
+// state a later event writes into it must never be able to disagree.
+type connectCard struct {
+	service string
+	name    string
+	// link is where the sign-in happens, drawn as text under the waiting line so
+	// a person on the far end of an ssh connection can still get there.
+	link    string
+	account string
+	state   connectState
+}
+
+// connectAuth takes one session.EventConnectAuth: the sign-in has started, and
+// it finishes in a browser.
+//
+// THE HANDOFF AND THE LINK ARE NOT AN EITHER-OR. The browser is opened, and the
+// link is written down whether or not that worked — see opener.go for why the
+// second one is not a fallback.
+func (a *app) connectAuth(ev session.Event) {
+	a.openConnectFlow(ev.Service, a.serviceName(ev.Service, ev.ServiceName), ev.AuthURL)
+}
+
+// openConnectFlow is the half both doors share: the session's own
+// EventConnectAuth, and a row pressed in the /connect panel. It opens the
+// browser and puts the waiting block on screen.
+func (a *app) openConnectFlow(service, name, link string) {
+	a.rememberService(service, name)
+	if err := processOpener(link); err != nil {
+		// The platform could not do it. That is not a failed sign-in — the link
+		// under the block is still a way through — so it is said once, dim, and
+		// the block goes up as it would have anyway.
+		a.note(err.Error())
+	}
+	a.closeLive()
+	a.entries = append(a.entries, entry{
+		kind: entryConnect, turn: a.turn,
+		conn: &connectCard{service: service, name: name, link: link, state: connectWaiting},
+	})
+	a.follow()
+	a.touch()
+}
+
+// connectDone takes one session.EventConnectDone and settles the block the
+// browser left open.
+func (a *app) connectDone(ev session.Event) {
+	a.settleConnect(ev.Service, a.serviceName(ev.Service, ev.ServiceName), ev.Account, ev.Failed)
+}
+
+// settleConnect closes the newest unsettled block for a service, and opens a
+// settled one when there is none.
+//
+// The second case is ordinary rather than defensive: a person can finish a
+// sign-in that another window started, and an outcome with no block to land on
+// is still an outcome worth one line.
+func (a *app) settleConnect(service, name, account string, failed bool) {
+	state := connectConnected
+	if failed {
+		state = connectFailed
+	}
+	for i := len(a.entries) - 1; i >= 0; i-- {
+		e := &a.entries[i]
+		if e.kind != entryConnect || e.conn == nil || e.conn.state != connectWaiting {
+			continue
+		}
+		if e.conn.service != service {
+			continue
+		}
+		e.conn.state, e.conn.account = state, strings.TrimSpace(account)
+		if e.conn.name == "" {
+			// The block already knows what this service is CALLED — it was named
+			// when the browser opened — and the outcome event carries only an id.
+			// A name written here would be the id overwriting the word.
+			e.conn.name = name
+		}
+		e.stale = true
+		a.follow()
+		a.touch()
+		return
+	}
+	a.closeLive()
+	a.entries = append(a.entries, entry{
+		kind: entryConnect, turn: a.turn,
+		conn: &connectCard{
+			service: service, name: a.serviceName(service, name),
+			account: strings.TrimSpace(account), state: state,
+		},
+	})
+	a.follow()
+	a.touch()
+}
+
+// rememberService and serviceName are the surface's own memory of what a
+// service is CALLED.
+//
+// The session names one once — on the offer, which is the only event carrying a
+// service's name — and the two that follow it name only the id, because by then
+// the naming has been done. So the word is kept here, keyed by the id every
+// event does carry, and the rungs below it are the id itself and then nothing.
+// A surface that re-asked would have nobody to ask.
+func (a *app) rememberService(service, name string) {
+	service, name = strings.TrimSpace(service), strings.TrimSpace(name)
+	if service == "" || name == "" || name == service {
+		return
+	}
+	if a.connNames == nil {
+		a.connNames = map[string]string{}
+	}
+	a.connNames[service] = name
+}
+
+func (a *app) serviceName(service, given string) string {
+	if given = strings.TrimSpace(given); given != "" {
+		return given
+	}
+	if name := a.connNames[strings.TrimSpace(service)]; name != "" {
+		return name
+	}
+	return strings.TrimSpace(service)
+}
+
+// connectAnimating reports whether a browser is still out there, which is what
+// keeps the paint clock turning while one is (app.go's [app.paint]). It is the
+// one thing this file animates.
+func (a *app) connectAnimating() bool {
+	for i := range a.entries {
+		if e := &a.entries[i]; e.kind == entryConnect && e.conn != nil &&
+			e.conn.state == connectWaiting {
+			return true
+		}
+	}
+	return false
+}
+
+// ── the block in the transcript ─────────────────────────────────────────────
+
+// glyphConnected is the one tick this surface draws, and it is worth saying why
+// it exists at all: there is no success glyph here on purpose (styles.go's D11),
+// because a column of ticks beside tool calls is a column that has to be read to
+// learn nothing.
+//
+// A CONNECTION IS NOT AN OUTCOME, IT IS A STATE. "Connected" and "not connected"
+// are two things a person is scanning a list to tell apart, and telling them
+// apart is the whole job of the row — which is exactly the case the tool column
+// does not have, where quiet already means fine. So the tick earns its place
+// here, and nowhere else.
+const (
+	glyphConnected      = "✓"
+	glyphConnectedASCII = "+"
+)
+
+// connectRows draws one handshake: waiting, connected, or not.
+//
+//	⠋ waiting in your browser…
+//	  https://accounts.google.com/…
+//
+//	✓ Google connected as jane@example.com
+//
+// THE EMPTINESS LAW IS THE ACCOUNT. A connection whose account nobody reported
+// says "Google connected" and stops — there is no parenthetical, no "as
+// (unknown)", nothing standing in for a fact this surface does not have.
+func (a *app) connectRows(e *entry, width int) []string {
+	card := e.conn
+	if card == nil {
+		return nil
+	}
+	switch card.state {
+	case connectWaiting:
+		mark := tokens.Spinner(a.paints / spinnerStep)
+		if a.linear {
+			// A spinner is a claim made thirty times a second, and a surface being
+			// read aloud hears it thirty times a second (toolview.go's objection).
+			mark = glyphRunASCII
+		}
+		out := []string{a.pal.dim(fit(mark+" waiting in your browser…", width))}
+		if card.link == "" {
+			return out
+		}
+		// THE LINK IS WRAPPED AND NEVER CUT. It has no spaces in it, so it breaks
+		// at the frame's width rather than at a word — and a link with its tail
+		// truncated away is a link nobody can use, which is the one thing this
+		// row exists to prevent. The hyperlink is applied to each line after the
+		// layout is done with it: an OSC 8 occupies no cells (opener.go).
+		for _, line := range wrap(card.link, width-2) {
+			out = append(out, a.pal.dim("  "+linkify(line, card.link)))
+		}
+		return out
+
+	case connectFailed:
+		// Honest and quiet. It did not work, nothing was connected, and the
+		// person can ask again — none of which is worth the failure glyph, which
+		// on this surface means a call that broke.
+		mark := a.linearMark(glyphIdle, glyphIdleASCII)
+		return []string{a.pal.dim(fit(mark+" "+card.name+" connection didn't complete", width))}
+	}
+
+	mark := glyphConnected
+	if a.linear {
+		mark = glyphConnectedASCII
+	}
+	line := card.name + " connected"
+	if card.account != "" {
+		line += " as " + card.account
+	}
+	return []string{a.pal.add(mark) + a.pal.dim(fit(" "+line, width-1))}
+}
