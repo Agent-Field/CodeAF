@@ -509,6 +509,13 @@ var OperatorEnvPins = []string{
 	// behind it — that one is always on, because a condition that eats replies
 	// does not get to wait for an operator to opt in.
 	"AFORGE_CHAT_TRACE",
+	// AFORGE_WIRE_LOG names a file the surface appends one line per second of
+	// byte-meter readings to (internal/wirelog): a developer's instrument for
+	// the SSH-smoothness story, with no settings row and no slash command,
+	// because there is no question a person using aforge would ask that it
+	// answers. It is plumbing for the same reason AFORGE_CHAT_TRACE is —
+	// diagnostic output a preference sheet has no business persisting.
+	"AFORGE_WIRE_LOG",
 	// AFORGE_GROWTH_GATE is the growth governor's rollback switch
 	// (internal/resident/grow.go): set to 0 and the governor keeps its three
 	// free checks and never asks the paid satisfaction question. It is
