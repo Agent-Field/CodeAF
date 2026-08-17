@@ -225,6 +225,12 @@ const (
 	// turn (harness.go). It carries the id the answer is handed back with in ID,
 	// the harness's name in Text, and its one-sentence description in Hint.
 	//
+	// Model is the model the turn NAMED — "research this with opus" — resolved
+	// to an id this install has, and empty when nobody said. ModelNote is the
+	// other half of that: a word that named no model here, said in words a
+	// surface prints as it stands. Neither is a refusal; the offer is the same
+	// offer either way.
+	//
 	// It is a QUESTION, and the quietest kind on this list: the turn is held
 	// before its first request until [Agent.ResolveHarness] answers it or the
 	// turn's context dies, and NO is free — the turn the person typed runs
@@ -233,7 +239,8 @@ const (
 	// said they are watching (Config.AskConsent).
 	EventHarnessOffer
 	// EventHarnessRun says the person said yes and the harness named in Text has
-	// the turn. Hint is its description.
+	// the turn. Hint is its description, and Model is what it is running on when
+	// the turn named one.
 	//
 	// It is a REPORT, not a question, and it is what a surface draws instead of
 	// a model thinking: what follows is the harness's report as ordinary text
@@ -361,6 +368,25 @@ type Event struct {
 	// No EventConnectAuth follows a NeedsKey ask, ever: the next thing is
 	// the EventConnectDone that says whether the key was good.
 	NeedsKey bool
+
+	// Model is which model a harness offer would run on, and the one it did run
+	// on: set on EventHarnessOffer and EventHarnessRun, empty everywhere else
+	// and empty on both of those when the turn named no model (harness.go).
+	//
+	// It is a RESOLVED ID and never the person's word — "opus" arrives here as
+	// anthropic/claude-opus-5 — so a surface draws what will actually be sent
+	// rather than what somebody typed.
+	Model string
+
+	// ModelNote is why a model the turn NAMED is not in Model: a word no model
+	// here answers to, a word too many of them answer to. It is set on
+	// EventHarnessOffer alone.
+	//
+	// The words are this package's, on the same terms Rule's are: a note about
+	// a model this session could not find should read the same on every
+	// surface, and a surface that phrased it itself would be writing a sentence
+	// about a catalog it did not consult.
+	ModelNote string
 }
 
 // Usage is token and cost accounting for one turn or the session total.
@@ -556,13 +582,19 @@ type Config struct {
 	Harnesses []subharness.Entry
 
 	// RunHarness runs one harness for one turn and returns its report. The name
-	// is an entry's own Name; the text is the person's words, verbatim.
+	// is an entry's own Name; the text is the person's words, verbatim — less
+	// the clause that chose the model, when they wrote one.
+	//
+	// The model is what the turn asked the run to ride, resolved against
+	// TaskModels (harness.go). EMPTY IS THE ORDINARY CASE and means nobody
+	// said: the runner uses whatever model it was built on, which is what every
+	// run did before a turn could name one.
 	//
 	// NIL IS DETECTION OFF, whatever Harnesses holds, and it is the seam that
 	// keeps the engine out of this package: the conversation decides WHETHER a
 	// harness runs — it is the half a person answers — and the engine decides
 	// what running one means.
-	RunHarness func(ctx context.Context, name string, text string) (string, error)
+	RunHarness func(ctx context.Context, name, text, model string) (string, error)
 
 	// ImageGenModel and ImageGenClient are the image-generation pair the belt's
 	// generate_image tool calls through (tools_image.go): the model that paints,
@@ -919,7 +951,7 @@ type Agent struct {
 	// answered by two methods and neither may be able to answer the other's
 	// question by guessing a number.
 	harnessSeq  uint64
-	harnessAsks map[uint64]chan bool
+	harnessAsks map[uint64]chan harnessAnswer
 
 	// tasks is the work this conversation has handed off: the graph of nodes,
 	// their dependency edges, and the frontier executor that runs them
