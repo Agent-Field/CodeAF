@@ -225,6 +225,11 @@ type attempt struct {
 	raw      string // the last text the model produced, for the retry history
 	rung     string // the salvage rung that made it JSON
 	repaired bool   // a repair turn was spent before it parsed
+	// What the turn cost, the repair turn included. The design stages read the
+	// client's running ledger instead; the adaptive run cannot, because it has
+	// several nodes in flight and a delta would price the wrong call.
+	spent  float64
+	tokens int
 }
 
 // cost is the phrase a stage line adds when the reply was not clean. A clean
@@ -262,7 +267,7 @@ func jsonReply(ctx context.Context, chat *chatClient, history []message, maxToke
 	if err != nil {
 		return subharness.Salvaged{}, attempt{}, err
 	}
-	at := attempt{raw: out.Text}
+	at := attempt{raw: out.Text, spent: out.Cost, tokens: out.Tokens}
 	salvaged, err := subharness.SalvageDetail(out.Text)
 	if err == nil {
 		at.rung = salvaged.Rung
@@ -289,6 +294,8 @@ func jsonReply(ctx context.Context, chat *chatClient, history []message, maxToke
 		MaxTokens:   maxTokens,
 		Temperature: 0,
 	})
+	at.spent += second.Cost
+	at.tokens += second.Tokens
 	if err != nil {
 		return subharness.Salvaged{}, at, err
 	}
