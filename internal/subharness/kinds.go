@@ -103,6 +103,15 @@ func init() {
 			base := def(
 				spec{name: "source", required: true, words: triggerSources},
 				spec{name: "command"},
+				// What a watch watches or how long idle must last, in the words
+				// of whoever hosts that mode. This package insists there is one
+				// and never reads it (trigger.go).
+				spec{name: "spec"},
+				// A hosted trigger's allowed-args whitelist, comma-separated on
+				// the same terms agent.loop's `tools` is. Empty means the command
+				// takes none: an empty whitelist grants nothing, exactly as the
+				// tool whitelist does.
+				spec{name: "args"},
 			)
 			if err := base(f); err != nil {
 				return err

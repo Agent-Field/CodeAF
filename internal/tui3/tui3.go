@@ -48,6 +48,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // Agent is the slice of *session.Agent this surface uses. It is an interface
@@ -244,6 +245,15 @@ type Options struct {
 	// raises — that path runs entirely on session events and the browser, and
 	// needs no handle at all.
 	Connections Connections
+
+	// Harnesses is the sub-harness registry this surface lists under /harness
+	// (harnesspanel.go). Nil is a surface that cannot show them, which is what a
+	// headless frame and a door that has not wired one both are: the command
+	// says so rather than opening an empty list.
+	//
+	// It does NOT disable the harness OFFER (harness.go): that path runs on
+	// session events and the session's own registry, and needs no handle here.
+	Harnesses *subharness.Store
 
 	// RecentSessions is this directory's last conversations, most recent first.
 	// Two surfaces are drawn from it: the welcome box's right column, which

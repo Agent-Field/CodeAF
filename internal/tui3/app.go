@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // frameInterval is the repaint ceiling: at most one frame is BUILT per 33ms,
@@ -507,6 +508,11 @@ type app struct {
 	// where they landed (taskstrip.go's [app.stripRow] and [app.stripPress]).
 	stripSpans []stripSpan
 	stripMore  hudSpan
+	// stripHarn is where the running sub-harness's chip was last drawn, or the
+	// zero span when none is running (harnesspanel.go). It is kept apart from
+	// stripSpans because it opens a different door: a node chip opens that
+	// node's room, and this one opens the registry.
+	stripHarn hudSpan
 	// jumpSpan is where the jump-to-latest chip was last drawn, in columns — the
 	// same bargain again, for a chip that is right-aligned and so knows its own
 	// columns only once the frame has chosen a width (jumpchip.go's
@@ -609,6 +615,12 @@ type app struct {
 	connTaps  []connTap
 	conns     Connections
 	connPanel connectPanel
+	// harn is the sub-harness registry (Options.Harnesses) and harnPanel the
+	// list /harness opens over it (harnesspanel.go). A nil harn is a surface
+	// that cannot show harnesses and says so; nothing about the OFFER depends on
+	// it, because that path runs entirely on session events (harness.go).
+	harn      *subharness.Store
+	harnPanel harnessPanel
 	connNames map[string]string
 	connFlows map[string]*connect.Flow
 	// leftTap is when ← was last pressed over an empty box, and it is the whole
@@ -825,6 +837,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		recentSessions:   opts.RecentSessions,
 		resume:           opts.Resume,
 		conns:            opts.Connections,
+		harn:             opts.Harnesses,
 		live:             -1,
 		sel:              -1,
 		think:            -1,
@@ -1160,9 +1173,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.harnessPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
-			// AND THE CONNECTIONS PANEL TAKES EVERY PRESS WHILE IT IS UP, which
-			// is what modal means for a pointer: a press on a row acts on that
-			// row, and a press anywhere else closes the list (connectpanel.go).
+			// AND THE TWO REGISTRY PANELS TAKE EVERY PRESS WHILE THEY ARE UP,
+			// which is what modal means for a pointer: a press on a row acts on
+			// that row, and a press anywhere else closes the list
+			// (connectpanel.go, harnesspanel.go).
+			if a.harnPanel.open {
+				return a, a.harnessPanelPress(msg.Mouse().Y)
+			}
 			if a.connPanel.open {
 				return a, a.connectPanelPress(msg.Mouse().Y)
 			}
@@ -2727,6 +2744,15 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openConnect()
 		return nil
 
+	case "harness", "harnesses":
+		// The registry, as a list. No argument form, for /connect's reason: a
+		// harness is picked from rows a person recognizes, and a name typed at a
+		// command line is a name that can be typed wrong — while BUILDING one is
+		// a conversation, not a command, and happens in the box above this list
+		// (harnesspanel.go).
+		a.openHarness()
+		return nil
+
 	case "resume":
 		// Two words for one list, the way /settings also answers to /set and
 		// /config: docs/CHAT-V3.md calls this the sessions picker and a person
@@ -2792,7 +2818,7 @@ func (a *app) renew() tea.Cmd {
 	// and a browser still standing open on one of them is a browser nobody is
 	// coming back to (connect.go).
 	a.connAsks, a.connPanel = nil, connectPanel{}
-	a.harnessAsks = nil
+	a.harnessAsks, a.harnPanel = nil, harnessPanel{}
 	a.abandonConnects()
 	a.title = strings.TrimSpace(agent.Title())
 	a.turn = 0
