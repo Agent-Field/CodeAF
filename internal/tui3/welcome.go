@@ -212,6 +212,10 @@ func (a *app) resumeSession(chosen Session) {
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
 	a.asks, a.follows = nil, nil
+	// Same rule as /new: the conversation being replaced takes its offers and
+	// its open sign-ins with it (connect.go).
+	a.connAsks, a.connPanel = nil, connectPanel{}
+	a.abandonConnects()
 	a.turn = 0
 	a.unfolded = map[int]bool{}
 	a.dropHover()

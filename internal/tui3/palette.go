@@ -870,6 +870,8 @@ func (a *app) overlayHeight() int {
 		want = a.pick.height(width)
 	case a.roster.open:
 		want = a.roster.height(width)
+	case a.connPanel.open:
+		want = a.connPanel.height(width)
 	case a.menu.open:
 		want = a.menu.height(width)
 	case a.comp.open:
@@ -882,7 +884,8 @@ func (a *app) overlayHeight() int {
 	// claimed their rows would push the status line off the frame. The two
 	// reserved rows are the status line and one row of conversation — a list
 	// that left neither would be a list that took the screen.
-	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.followHeight(); want > room {
+	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
+		a.followHeight(); want > room {
 		want = room
 	}
 	if want < 0 {
@@ -905,6 +908,8 @@ func (a *app) overlayRows(width, n int) []string {
 		return a.pick.rows(width, n, a.pal, hover, a.reasoningFor)
 	case a.roster.open:
 		return a.roster.rows(width, n, a.pal, hover)
+	case a.connPanel.open:
+		return a.connPanel.draw(width, n, a.pal, hover)
 	case a.menu.open:
 		return a.menu.rows(width, n, a.pal, hover)
 	case a.comp.open:

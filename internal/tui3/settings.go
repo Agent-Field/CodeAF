@@ -271,17 +271,6 @@ var settingUI = map[string]settingMeta{
 		about: "a jina.ai key. It buys nothing but headroom: page fetches already " +
 			"work unauthenticated.",
 	},
-	// STUB(connect): tui branch owns the real rows.
-	config.KeyGoogleOAuthClient: {
-		tab: tabContext, label: "google app id", widget: widgetText,
-		about: "the application id that lets aforge ask to use your Google account. " +
-			"Optional.",
-	},
-	// STUB(connect): tui branch owns the real rows.
-	config.KeyGoogleOAuthSecret: {
-		tab: tabContext, label: "google app secret", widget: widgetText,
-		about: "the secret that goes with the application id above. Both are needed.",
-	},
 
 	// ── Workspace ───────────────────────────────────────────────────────────
 	//
@@ -317,6 +306,24 @@ var settingUI = map[string]settingMeta{
 		tab: tabWorkspace, label: "attribution", widget: widgetToggle,
 		about: "signs the commits and PRs aforge writes for you — one trailer, " +
 			"one footer line.",
+	},
+	// The two rows a Google connection is signed with. They belong on this tab
+	// and not under Providers because they are not about which model answers
+	// what: they are about what aforge may REACH on your behalf, which is the
+	// question this tab already holds.
+	//
+	// Neither of them is where a person connects an account — /connect is, and it
+	// asks nothing but a keypress. These are for somebody signing in through
+	// their own Google project rather than the one aforge ships with, which is a
+	// setting and not a step.
+	config.KeyGoogleOAuthClient: {
+		tab: tabWorkspace, label: "google sign-in id", widget: widgetText,
+		about: "identifies aforge to Google when you connect an account. Blank " +
+			"uses the one aforge ships with.",
+	},
+	config.KeyGoogleOAuthSecret: {
+		tab: tabWorkspace, label: "google sign-in secret", widget: widgetText,
+		about: "the secret that goes with the id above. It is kept masked once saved.",
 	},
 
 	// ── Display ─────────────────────────────────────────────────────────────
