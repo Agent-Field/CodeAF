@@ -813,14 +813,6 @@ type app struct {
 	// their own reading of it is how a panel and a gate come to disagree about
 	// what was answered.
 	//
-	// STUB(lane C): the door side is not wired, because Options (tui3.go) and
-	// cmd/aforge/chatv3.go are not this lane's files. What is needed is one field
-	// `ApplyApprovals func() error` on Options beside SaveApproval and
-	// SaveBashApproval (tui3.go:235-236), one line `applyApprovals:
-	// opts.ApplyApprovals` in [newApp] beside saveBashApproval (app.go:875), and
-	// one line at chatv3.go:321 supplying it — a closure that builds the policy
-	// from settings.ProfileDir the way the session's own boot does and calls
-	// lane A's Agent.SetApprovalPolicy with it.
 	applyApprovals func() error
 
 	// permPanel is the list /permissions opens over the two approval rows the
@@ -913,6 +905,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		settings:         opts.Settings,
 		saveApproval:     opts.SaveApproval,
 		saveBashApproval: opts.SaveBashApproval,
+		applyApprovals:   opts.ApplyApprovals,
 		recentSessions:   opts.RecentSessions,
 		resume:           opts.Resume,
 		conns:            opts.Connections,

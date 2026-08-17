@@ -334,6 +334,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// banked rule answers the very next call instead of the next launch.
 		SaveApproval:     bankToolApproval(agent, workspace, settings.ProfileDir, *yolo),
 		SaveBashApproval: bankBashApproval(agent, workspace, settings.ProfileDir, *yolo),
+		ApplyApprovals:   applyV3Approvals(agent, workspace, settings.ProfileDir, *yolo),
 	})
 }
 

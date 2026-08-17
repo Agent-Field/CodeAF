@@ -235,6 +235,20 @@ type Options struct {
 	SaveApproval     func(tool string) error
 	SaveBashApproval func(command string) error
 
+	// ApplyApprovals is the other direction of the pair above: those two write a
+	// line, this one takes the rows as they now stand and hands them to the gate
+	// the session is already running on. The permissions panel calls it after a
+	// drop, because a line taken back that keeps answering until the next launch
+	// is a line the person is entitled to think they removed.
+	//
+	// It takes nothing on purpose. The config is the record, and a caller that
+	// passed its own reading of it would be handing the gate a second opinion —
+	// which is how a panel and a gate come to disagree about what was answered.
+	//
+	// Nil is a surface whose drops reach the disk and wait for the next session,
+	// and the panel's receipt says so instead of claiming the line is gone.
+	ApplyApprovals func() error
+
 	// Settings is the registry the panel edits, for a door that can wire the
 	// live seams the registry asks for (the model slots, the divider, today's
 	// spend). Nil builds one here over [Options.ProfileDir] with the two seams
