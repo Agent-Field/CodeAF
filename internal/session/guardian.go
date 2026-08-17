@@ -39,6 +39,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
@@ -95,7 +96,7 @@ func (a *Agent) guardianAllows(ctx context.Context, hub *eventHub, call ai.ToolC
 	// own address cannot be called back, and the point of asking about it is that
 	// THEY saw it. The list is internal/approval's, so the gate and the stand-in
 	// cannot drift on which calls it means.
-	if approval.ActsInThePersonsName(call.Function.Name) {
+	if approval.ActsInThePersonsName(call.Function.Name, json.RawMessage(call.Function.Arguments)) {
 		return false
 	}
 	a.mu.Lock()
