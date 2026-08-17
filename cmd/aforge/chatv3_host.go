@@ -439,6 +439,13 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		// is the honest wiring — the card keeps the answer for the session, over
 		// the wire, and its row says "allowed" rather than "saved", which is
 		// exactly what happened (internal/tui3's consent.go).
+		//
+		// SaveModel: the same rule for the same reason. The model this session
+		// opens on next time is resolved where the session is built, which is over
+		// there; writing the choice into THIS machine's profile would change which
+		// model a local conversation starts on because somebody switched models on
+		// a remote one. The switch itself still takes — it goes over the wire like
+		// everything else — it simply does not outlive the session.
 	}
 	// The two things this surface keeps on the person's behalf, resolved the way
 	// the local door resolves them and keyed by the REMOTE workspace — which is
