@@ -779,16 +779,25 @@ func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart) 
 		rememberNote(s.notes, message)
 		s.mu.Unlock()
 	}
-	var text strings.Builder
-	for _, part := range message.Content {
-		if part.Type == "text" {
-			text.WriteString(part.Text)
+	// The single text part is what nearly every message is, and its text is
+	// already the string the line wants; a Builder would copy a whole tool
+	// result to arrive back at it.
+	var text string
+	if len(message.Content) == 1 && message.Content[0].Type == "text" {
+		text = message.Content[0].Text
+	} else {
+		var flattened strings.Builder
+		for _, part := range message.Content {
+			if part.Type == "text" {
+				flattened.WriteString(part.Text)
+			}
 		}
+		text = flattened.String()
 	}
 	s.writeLine(sessionEntry{
 		Type:       "message",
 		Role:       message.Role,
-		Content:    text.String(),
+		Content:    text,
 		ToolCalls:  message.ToolCalls,
 		ToolCallID: message.ToolCallID,
 		Parts:      refs,
