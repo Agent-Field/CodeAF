@@ -12,7 +12,7 @@ import (
 // are about the two ways such a file can betray them: applying when it should
 // not, and — far worse — not applying while looking as though it does.
 
-// projectDir writes one <cwd>/.openaf/config.json and answers with the cwd.
+// projectDir writes one <cwd>/.aforge-v3/config.json and answers with the cwd.
 func projectDir(t *testing.T, rows map[string]any) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -423,5 +423,19 @@ func TestEveryProjectKeyIsARegisteredSettingsRow(t *testing.T) {
 		if _, ok := rows.Row(key); !ok {
 			t.Fatalf("%s may live in a project file but is not a settings row", key)
 		}
+	}
+}
+
+// THE DIRECTORY IS ON THE aforge SCHEME UNTIL THE ONE LATE RENAME. openaf is
+// the product's final name and the rename is its own refactor, at the end
+// (docs/CHAT-V3.md, Decision 26): a directory that had gone ahead of it would
+// be a path people had already committed to their repositories under a name
+// nothing else in the build uses.
+func TestTheProjectLayerReadsTheAforgeDirectory(t *testing.T) {
+	if got, want := ProjectConfigDir, ".aforge-v3"; got != want {
+		t.Fatalf("project settings directory = %q, want %q", got, want)
+	}
+	if got, want := ProjectConfigPath("/repo"), filepath.Join("/repo", ".aforge-v3", "config.json"); got != want {
+		t.Fatalf("project settings path = %q, want %q", got, want)
 	}
 }

@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// The project-local settings layer: <workspace>/.openaf/config.json.
+// The project-local settings layer: <workspace>/.aforge-v3/config.json.
 //
 // It is omp's <repo>/.omp/config.yml in aforge's file format, and it answers the
 // question the profile cannot: which settings belong to the REPOSITORY rather
@@ -59,7 +59,14 @@ import (
 
 const (
 	// ProjectConfigDir is the per-repository settings directory.
-	ProjectConfigDir = ".openaf"
+	//
+	// IT IS ON THE aforge SCHEME AND NOT THE PRODUCT'S FINAL NAME. openaf is
+	// what this will be called, and the rename happens ONCE, at the end, as its
+	// own refactor (docs/CHAT-V3.md, Decision 26 — "One home, one seam, one late
+	// rename"); a single directory that had gone ahead of it would be one name
+	// the rename has to remember not to change, and the migration people write
+	// for their own repositories would be two migrations instead of one.
+	ProjectConfigDir = ".aforge-v3"
 	// ProjectConfigFile is the one file inside it this layer reads.
 	ProjectConfigFile = "config.json"
 )
@@ -117,7 +124,7 @@ type ProjectConfig struct {
 	values map[string]json.RawMessage
 }
 
-// LoadProjectConfig reads <cwd>/.openaf/config.json.
+// LoadProjectConfig reads <cwd>/.aforge-v3/config.json.
 //
 // Absent is empty; unreadable, unparseable, or written in the nested shape is an
 // error naming the path (law 3). Keys this build does not know are kept and
