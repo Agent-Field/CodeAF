@@ -1,0 +1,56 @@
+{
+  "id": {
+    "name": "tui-arch-decision",
+    "desc": "Investigates and recommends whether a Go TUI should adopt an Elm‑like component model or stay with ad‑hoc views.",
+    "author": "designer",
+    "version": 1
+  },
+  "started": "2026-08-17T07:26:20.573376524-04:00",
+  "elapsed": 17911061813,
+  "trail": [
+    {
+      "step": 1,
+      "id": "gather-sides",
+      "kind": "agent.loop",
+      "out": "## Summary of Arguments: Component Model vs Ad-Hoc Views for a Go TUI\n\n### Case for Adopting an Elm-like Component Model\n\n- **Predictable state management** – A single, immutable state tree updated through pure functions (update/message pattern) eliminates race conditions and makes state changes auditable.  \n- **Declarative view composition** – Views become pure functions of state, reducing implicit side effects and making layout logic easier to reason about.  \n- **Separation of concerns** – Clear boundaries between model, update, and view enable isolated testing and easier refactoring.  \n- **Time-travel debugging** – Centralised state and message logging allow replaying user sessions and inspecting state at each step.  \n- **Scalability** – Components can be nested and reused, enforcing consistent patterns across a growing codebase.\n\n### Case for Staying with Ad-Hoc Views\n\n- **Lower up-front complexity** – No need to enforce a strict architecture; teams can write simple event handlers and direct state manipulation, which is idiomatic for small to medium TUIs.  \n- **Minimal boilerplate** – Elm patterns require defining message types, update functions, and view functions for every interaction, even trivial ones.  \n- **Performance overhead** – Frequent re-rendering of the entire view on every state change (even with diffing) can be wasteful in high-frequency terminal updates (e.g., streaming data).  \n- **Flexibility for terminal quirks** – Ad-hoc code can directly optimise for terminal features like alternate screens, raw mode, or resize events without forcing them into a message/update pipeline.  \n- **Team familiarity** – Go developers often prefer simpler patterns (callbacks, closures, direct mutations) and may resist a paradigm borrowed from frontend JavaScript.",
+      "elapsed": 4538766695
+    },
+    {
+      "step": 2,
+      "id": "argue-against",
+      "kind": "agent.loop",
+      "out": "Tentative conclusion: Adopting an Elm‑like component model is the better approach for the Go TUI.\n\nCounterarguments:\n\n1. **Higher up‑front complexity** – Enforcing a strict architecture (messages, update functions, pure views) adds cognitive overhead for small to medium TUIs. Simple event handlers and direct mutation are more idiomatic in Go and get the job done faster.\n\n2. **Boilerplate for trivial interactions** – Every UI element, even a button, requires defining message types, an update case, and a view function. This verbosity slows development and makes simple changes feel heavy.\n\n3. **Performance concerns with full re‑renders** – The model re‑renders the entire view on every state change. In a TUI with high‑frequency updates (e.g., real‑time game clocks or streaming output), diffing overhead can degrade responsiveness compared to targeted ad‑hoc mutations.\n\n4. **Inflexibility with terminal quirks** – Features like alternate screen buffers, raw mode toggling, or resize events don’t map cleanly into a message/update pipeline. Ad‑hoc code can handle these directly without contortions.\n\n5. **Team resistance** – Go developers often prefer minimal abstraction and direct control. Adopting a pattern borrowed from frontend JavaScript may face pushback, slowing adoption and reducing codebase ownership.",
+      "elapsed": 4370672193
+    },
+    {
+      "step": 3,
+      "id": "recommend",
+      "kind": "agent.loop",
+      "out": "Recommendation: Adopt an Elm‑like component model for the Go TUI.  \nThe strongest counterargument—performance degradation from full re‑renders during high‑frequency updates—can be addressed by implementing a selective diffing algorithm that redraws only changed terminal cells, combining it with a rate‑limited update loop (e.g., throttling to ~60 Hz) and leveraging terminal‑specific optimizations like write‑only‑changed‑cells. This preserves the architectural clarity and maintainability of the Elm pattern while meeting real‑time performance requirements.",
+      "elapsed": 6355670940
+    },
+    {
+      "step": 4,
+      "id": "verify-recommendation",
+      "kind": "verify",
+      "out": "verify · passed",
+      "elapsed": 2645921601
+    }
+  ],
+  "edges": [
+    [
+      "gather-sides",
+      "argue-against"
+    ],
+    [
+      "argue-against",
+      "recommend"
+    ],
+    [
+      "recommend",
+      "verify-recommendation"
+    ]
+  ],
+  "status": "ok",
+  "out": "Recommendation: Adopt an Elm‑like component model for the Go TUI.  \nThe strongest counterargument—performance degradation from full re‑renders during high‑frequency updates—can be addressed by implementing a selective diffing algorithm that redraws only changed terminal cells, combining it with a rate‑limited update loop (e.g., throttling to ~60 Hz) and leveraging terminal‑specific optimizations like write‑only‑changed‑cells. This preserves the architectural clarity and maintainability of the Elm pattern while meeting real‑time performance requirements."
+}

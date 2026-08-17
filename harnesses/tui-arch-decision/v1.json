@@ -1,0 +1,67 @@
+{
+  "id": {
+    "name": "tui-arch-decision",
+    "desc": "Investigates and recommends whether a Go TUI should adopt an Elm‑like component model or stay with ad‑hoc views.",
+    "author": "designer",
+    "version": 1
+  },
+  "program": {
+    "nodes": [
+      {
+        "id": "gather-sides",
+        "kind": "agent.loop",
+        "fields": {
+          "brief": "Investigate both sides of the architectural debate for a Go TUI: the case for adopting a component model similar to Elm, and the case for staying with ad‑hoc views.  Summarise the key arguments from each perspective in a balanced way.  Output a clear, structured summary."
+        }
+      },
+      {
+        "id": "argue-against",
+        "kind": "agent.loop",
+        "fields": {
+          "brief": "Based on the summary from the previous step, make a tentative conclusion about which approach (Elm‑style component model or ad‑hoc views) seems better.  Then argue against that conclusion: present the strongest counterarguments you can think of.  Output the tentative conclusion and the counterarguments."
+        }
+      },
+      {
+        "id": "recommend",
+        "kind": "agent.loop",
+        "fields": {
+          "brief": "Produce a final recommendation for whether the Go TUI should adopt a component model like Elm or stay with ad‑hoc views.  Your recommendation must directly address the strongest counterargument from the previous step.  Ensure the recommendation is well‑justified and actionable.  Output only the recommendation as the final answer."
+        }
+      },
+      {
+        "id": "verify-recommendation",
+        "kind": "verify",
+        "fields": {
+          "check": "The recommendation clearly addresses the strongest counterargument from the 'argue-against' step."
+        }
+      }
+    ],
+    "edges": [
+      [
+        "gather-sides",
+        "argue-against"
+      ],
+      [
+        "argue-against",
+        "recommend"
+      ],
+      [
+        "recommend",
+        "verify-recommendation"
+      ]
+    ]
+  },
+  "verify": {
+    "ladder": "report"
+  },
+  "dyn": {
+    "ladder": "fixed"
+  },
+  "tests": [
+    {
+      "name": "default-run",
+      "input": "Decide whether our Go TUI should adopt a component model like Elm or stay with ad‑hoc views.",
+      "expect": "a structured recommendation addressing a counterargument"
+    }
+  ]
+}

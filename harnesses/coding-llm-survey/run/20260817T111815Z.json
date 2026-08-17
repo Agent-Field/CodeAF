@@ -1,0 +1,34 @@
+{
+  "id": {
+    "name": "coding-llm-survey",
+    "desc": "A cited summary of currently-known small open-weight models for coding, with the honest caveat that it reflects a known knowledge cutoff rather than live research.",
+    "author": "designer",
+    "version": 1
+  },
+  "started": "2026-08-17T07:16:33.317132298-04:00",
+  "elapsed": 101983264977,
+  "trail": [
+    {
+      "step": 1,
+      "id": "landscape",
+      "kind": "agent.loop",
+      "out": "**Definition.** \"Small open-weight\" is bounded here at **≤ 8B total parameters** (dense weights; mixture-of-experts flagged separately when total params exceed 8B even if active params are lower). \"Open-weight\" = weights publicly downloadable; license terms vary from Apache-2.0 to custom commercial/restricted licenses and are stated per model.\n\n**Knowledge-cutoff caveat.** This inventory reflects model releases and benchmarks I know through ~Q1 2025. Numbers below are as reported at release in papers, model cards, and vendor blogs; they are not independently re-verified and will drift across re-runs of the same harness. Context lengths and training-data recency are noted where they weaken results.\n\n---\n\n**1. Qwen2.5-Coder (0.5B / 1.5B / 3B / 7B / 14B)** — Developer: Alibaba (Qwen team). Released 2024 (Qwen2.5-Coder family), iterative update 2025. License: Apache-2.0. Coding focus: general code completion, instruction following, code reasoning; default model of choice for many 2024–25 agent loops at small scale. Benchmarks (release reports, pass@1): 7B-Instruct ≈ **93 HumanEval**, ≈ **84 MBPP**; 3B-Instruct lower but still strong for size (release notes claim near-7B-parity on some tasks). Caveats: numbers are on the canonical HumanEval/MBPP splits with little contamination filtering described; 7B and 14B are the most reliable sizes, 0.5B/1.5B fall off sharply on long or multi-file tasks. Context up to ~128K (long-branch instruction mode). The 3B/7B are the sizes most frequently repurposed as base checkpoints by the community.\n\n**2. DeepSeek-Coder (1.3B / 6.7B)** — Developer: DeepSeek. Released 2023 (V1), V2 lite variant 2024. License: V1 under custom \"DeepSeek Model License\" (permissively free for research, commercial use permitted with attribution); V2 switch to Apache-2.0. Coding focus: general code generation, completion, reasoning on code. Benchmarks (release): 6.7B-Instruct ≈ **78 HumanEval**, ≈ **78 MBPP** (V1 report). Caveats: V1 was trained on a 2T-token code-heavy corpus and shows stronger evaluation numbers than the same-size opposition from 2023; 16K context for V1 (longer in V2-Lite); the 6.7B instruct was a leading ≤8B coding model in fall 2023–early 2024 before Qwen2.5-Coder and others overtook it.\n\n**3. StarCoder2 (3B / 7B / 15B)** — Developer: BigCode (ServiceNow + Hugging Face). Released 2024. License: Apache-2.0 (unlike predecessor StarCoder's OpenRAIL-M). Coding focus: multi-language code completion, fill-in-the-middle, and long-context handling. Benchmarks: 7B ≈ **46 HumanEval** base, ≈ **27 MBPP** base (release report; instruct fine-tunes push higher); 3B ≈ **35 HumanEval**. Caveats: 16K context; the base numbers are below the 2024–2025 generation (SFT/RFT variants improve a lot); the models were intentionally de-contaminated less aggressively, so a few numbers may slightly overstate generalization.\n\n**4. Code Llama (7B)** — Developer: Meta. Released 2023. License: Llama 2 (custom, commercial use restrictions for >700M MAU products; not OSI \"open\"). Coding focus: baseline code completion across ~80 languages. Benchmarks (paper, value set): 7B-Instruct ≈ **67 HumanEval** (some runs higher on Python variants); 7B base ≈ **34 HumanEval**. Caveats: 2023-era SFT, short 8K context, weak on long-file or repo-level tasks; supers",
+      "elapsed": 25774630075
+    },
+    {
+      "step": 2,
+      "id": "synthesize",
+      "kind": "agent.loop",
+      "err": "subharness: coding-llm-survey: node \"synthesize\": context canceled",
+      "elapsed": 76208571942
+    }
+  ],
+  "edges": [
+    [
+      "landscape",
+      "synthesize"
+    ]
+  ],
+  "err": "subharness: coding-llm-survey: node \"synthesize\": context canceled",
+  "status": "cancelled"
+}

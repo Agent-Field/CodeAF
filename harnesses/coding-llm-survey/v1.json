@@ -1,0 +1,64 @@
+{
+  "id": {
+    "name": "coding-llm-survey",
+    "desc": "A cited summary of currently-known small open-weight models for coding, with the honest caveat that it reflects a known knowledge cutoff rather than live research.",
+    "author": "designer",
+    "version": 1
+  },
+  "program": {
+    "nodes": [
+      {
+        "id": "landscape",
+        "kind": "agent.loop",
+        "fields": {
+          "brief": "Produce a structured inventory of notable small open-weight LLMs for coding, framed by the run's knowledge cutoff. Define 'small open-weight' explicitly at the top — common working definition is parameter count at or below 8B, but state the chosen bound. For each model include: name, developer, release year, parameter size(s), license, intended coding use, and known benchmark outcomes (HumanEval, MBPP, CodeGolf, or similar) with any caveats such as older training data, short context, or ret-arch. Do not close with a summary; the next node will synthesize sections. Keep each model entry concise so a later step can rewrite freely.",
+          "max_turns": "4"
+        }
+      },
+      {
+        "id": "synthesize",
+        "kind": "agent.loop",
+        "fields": {
+          "brief": "Turn the previous inventory into the final cited summary of the current state of small open-weight LLMs for coding (2026). Build the summary in sections: (1) scope definition of 'small open-weight' as chosen; (2) a landscape of the notable models with sizes, licenses, and known strengths, each claim carrying a reference like [<model, year>] or [<developer, year>]; (3) trends that hold within the knowledge cutoff — for example, distillation of larger models, reasoning-capable small models, agentic/IDE integration, license and commercial-use caveats, short context tradeoffs; (4) a limitations paragraph making explicit that this was produced without live web research, so anything from the most recent period is subject to the training/data cutoff and should be marked 'uncertain'; the summary must not assert 2026 facts as certain. End with a References ledger listing every model mentioned in any earlier section. Every factual claim must carry a citation or the word 'uncertain'.",
+          "max_turns": "4"
+        }
+      },
+      {
+        "id": "shape-verify",
+        "kind": "verify",
+        "fields": {
+          "check": "The output is a summary with the requested shape: it opens by defining 'small open-weight', names specific models with size, license, benchmark, and a citation for each, has a References section, and ends with a limitations paragraph that flags the produced knowledge cutoff and marks 2026 claims as uncertain.",
+          "ladder": "schema"
+        }
+      }
+    ],
+    "edges": [
+      [
+        "landscape",
+        "synthesize"
+      ],
+      [
+        "synthesize",
+        "shape-verify"
+      ]
+    ]
+  },
+  "verify": {
+    "ladder": "schema"
+  },
+  "dyn": {
+    "ladder": "fixed"
+  },
+  "tests": [
+    {
+      "name": "within-cutoff",
+      "input": "What’s the current state of small open-weight coding models?",
+      "expect": "a structured summary: all models listed with sizes/licenses/benchmarks and citations, range defined, limitations stated, and no unsupported post-cutoff claims"
+    },
+    {
+      "name": "no-overclaim",
+      "input": "Tell me about new 2026 releases of small coding LLMs.",
+      "expect": "the answer explicitly reframes the request into a summary of known models and ends by stating it is not able to claim live 2026 facts, marking such claims as uncertain rather than asserting them"
+    }
+  ]
+}
