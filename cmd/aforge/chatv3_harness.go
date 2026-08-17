@@ -47,7 +47,11 @@ import (
 //   - THE MODEL IS THE ONE THE SESSION LAUNCHED ON. /model moves the
 //     conversation, not this client, because the client is built once here and
 //     the session exposes no hook to follow. A node that names its own model
-//     overrides it either way, which is the field that exists for exactly this.
+//     overrides it either way, which is the field that exists for exactly this
+//     — and so does a TURN that named one: "research the pricing tiers with
+//     opus" reaches this file as the run's model, resolved to an id the session
+//     checked against the same catalog the picker draws (its harness.go), and
+//     is handed to the bridge as the default every agent.loop node rides.
 
 // harnessTimeout bounds one node's completion. It matches internal/session's
 // own provider timeout: a harness node is a non-streamed call like the
@@ -98,7 +102,7 @@ func v3HarnessEntries(store *subharness.Store) []subharness.Entry {
 // the entries are: a settings row that cannot build a client is a reason to run
 // the ordinary turn, not a reason to refuse to open a conversation. The session
 // checks this seam for nil before it matches anything (its harness.go).
-func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string) func(ctx context.Context, name, text string) (string, error) {
+func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string) func(ctx context.Context, name, text, runModel string) (string, error) {
 	if store == nil {
 		return nil
 	}
@@ -115,7 +119,7 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 		return nil
 	}
 	tools := v3HarnessTools(workspace)
-	return func(ctx context.Context, name, text string) (string, error) {
+	return func(ctx context.Context, name, text, runModel string) (string, error) {
 		h, err := store.Load(name, 0)
 		if err != nil {
 			return "", err
@@ -125,6 +129,9 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 			RunTool: tools,
 			// No Ask: a gate auto-approves here and the trail says so.
 			Store: store,
+			// What the turn asked this run to think with, empty when it asked
+			// for nothing. A node that pinned its own model still wins.
+			Model: runModel,
 		}))
 		if trace.Id.Name == "" {
 			// The run never started — an invalid page. There is no evidence to
