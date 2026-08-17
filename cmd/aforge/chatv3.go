@@ -399,6 +399,12 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	cfg.TaskModel = config.TaskModelAt(profileDir)
 	cfg.TaskAudit = config.TaskAuditEnabledAt(profileDir)
 	cfg.TaskRepairRounds = config.TaskRepairRoundsAt(profileDir)
+	// How much of the work that leaves this conversation happens at once: the
+	// person's own cap, and the two readings of this machine that hold the next
+	// task back whatever the cap says (internal/session's task_pressure.go).
+	cfg.TaskParallel = config.TaskParallelAt(profileDir)
+	cfg.TaskMaxLoad = config.TaskMaxLoadAt(profileDir)
+	cfg.TaskMinFreeMB = config.TaskMinFreeMBAt(profileDir)
 	cfg.MemoryConsolidation = config.MemoryConsolidationEnabledAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
 	cfg.Connect = v3Connect(profileDir)

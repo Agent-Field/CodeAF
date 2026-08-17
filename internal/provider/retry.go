@@ -32,9 +32,23 @@ const (
 	// pacing us is not a fault. Retry-After raises the wait rather than
 	// bounding it — it is the provider's floor, not its ceiling — so the
 	// ceiling is ours: maxProviderWait.
+	//
+	// IT IS THE PATIENCE OF A WATCHED CALL, and only that. A person is sitting
+	// in front of a conversation's turn, and six attempts is roughly where
+	// waiting stops being kinder than an error they can act on. A call made
+	// under [WithPatientRateLimits] — a task node's, where nobody is watching
+	// and a worktree of work is at stake — is not bounded here at all; see
+	// patience.go for why the two are different answers to the same 429.
 	rateLimitAttempts = 6
 	baseBackoff       = 700 * time.Millisecond
 	maxErrorPeek      = 8 << 10
+	// maxBackoffShift caps the exponent, not the patience. A patient call may
+	// take its hundredth attempt, and `1 << 99` is not a long wait — it is an
+	// overflow, and an overflowed duration is a negative one. Seven doublings
+	// already put the computed delay past maxProviderWait, which is where every
+	// wait lands anyway, so clamping here changes nothing about a bounded call
+	// and makes an unbounded one arithmetic rather than undefined.
+	maxBackoffShift = 8
 	// maxProviderWait caps what a Retry-After may ask for. The header may be an
 	// HTTP date, and a provider that names tomorrow morning is asking a call to
 	// sleep for hours inside a run the user is watching. A minute is already
@@ -59,10 +73,30 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 	// 429 (Retry-After); it outranks our computed backoff for the one attempt
 	// it was issued for, and is then spent.
 	var providerWait time.Duration
+	// Whether this call waits pacing out or gives up on it, and who is told
+	// while it waits (patience.go). Both ride the context because the adapter
+	// underneath is shared by every agent in the process.
+	patient := patientRateLimits(ctx)
+	notice := pacingNoticeFrom(ctx)
+	// parked says this call has already announced that it is waiting on the
+	// provider. It is announced ONCE per call and taken back on EVERY exit —
+	// through, or given up — because a surface left holding "still waiting"
+	// for a call that has landed is worse than one that was never told.
+	parked := false
+	defer func() {
+		if parked && notice != nil {
+			notice(false)
+		}
+	}()
+	attempts := 0
 	// Rate limits get more patience than faults: they are the provider
 	// pacing us, not failing, and abandoning work over pacing is the one
-	// outcome the concurrency doctrine forbids.
-	for attempt := 0; attempt < rateLimitAttempts; attempt++ {
+	// outcome the concurrency doctrine forbids. A patient call takes that to
+	// its conclusion — there is no attempt at which it stops — and every other
+	// class of failure below keeps the short patience it always had, so the
+	// only loop that runs forever is the one the provider is asking for.
+	for attempt := 0; patient || attempt < rateLimitAttempts; attempt++ {
+		attempts = attempt + 1
 		if attempt > 0 {
 			delay := backoffFor(attempt, providerWait)
 			// Spent. It described one moment to come back at, and coming back
@@ -114,6 +148,14 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 		}
 		if rateLimited {
 			providerWait = retryAfter(response)
+			// The park begins on the FIRST 429 this call draws, not on the
+			// first one it decides to wait out: by the time the backoff is
+			// computed the call is already not moving, and that is the fact
+			// anybody watching wants.
+			if !parked && notice != nil {
+				parked = true
+				notice(true)
+			}
 		}
 		// Drain a bounded prefix before closing so the connection can be reused
 		// and the eventual error still says what the provider complained about.
@@ -129,7 +171,10 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 	if lastErr == nil {
 		lastErr = errors.New("request failed")
 	}
-	return nil, fmt.Errorf("after %d attempts: %w", rateLimitAttempts, lastErr)
+	// The count is what this call actually spent rather than the constant it
+	// was bounded by: a patient call has no constant to name, and a fault that
+	// broke out after three attempts never had six.
+	return nil, fmt.Errorf("after %d attempts: %w", attempts, lastErr)
 }
 
 // backoffFor is how long to wait before one retry.
@@ -141,7 +186,16 @@ func (c *Client) send(ctx context.Context, request *ai.Request, body []byte, str
 // The header may be an HTTP date, and a date is how a wait becomes hours: the
 // old code took it literally and applied it, and then went on applying it to
 // every later attempt of the same call.
+//
+// ONE WAIT IS NEVER LONGER THAN maxProviderWait, whatever asked for it — the
+// header, or the doubling. A patient call (patience.go) has no attempt ceiling
+// to keep the exponent small, so the cap is what keeps its waits a minute
+// apart instead of an hour, and it is what makes an interrupt land promptly:
+// the longest a stopped call can still be sitting in a timer is one of these.
 func backoffFor(attempt int, providerWait time.Duration) time.Duration {
+	if attempt > maxBackoffShift {
+		attempt = maxBackoffShift
+	}
 	delay := time.Duration(float64(baseBackoff) * float64(int(1)<<uint(attempt-1)))
 	delay += time.Duration(rand.Int63n(int64(delay / 2)))
 	if providerWait > maxProviderWait {
@@ -149,6 +203,9 @@ func backoffFor(attempt int, providerWait time.Duration) time.Duration {
 	}
 	if providerWait > delay {
 		delay = providerWait
+	}
+	if delay > maxProviderWait {
+		delay = maxProviderWait
 	}
 	return delay
 }
