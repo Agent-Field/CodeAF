@@ -70,8 +70,8 @@ func TestAlwaysOnAPlainToolWritesTheToolsAllow(t *testing.T) {
 	}
 }
 
-// Bash: the press writes the COMMAND LINE, read from the call's arguments and
-// not from the line on screen.
+// Bash: the press opens the second beat, and the LINE is the last thing on it —
+// read from the call's arguments and not from the line on screen.
 func TestAlwaysOnBashWritesTheWholeCommandLine(t *testing.T) {
 	command := `git commit -m "wave 9, the card"`
 	_, a, saved := rememberingApp(t, []session.Event{
@@ -80,6 +80,10 @@ func TestAlwaysOnBashWritesTheWholeCommandLine(t *testing.T) {
 	})
 	typeLine(t, a, "commit it")
 	drive(t, a, key("a"))
+	if len(saved.commands) != 0 {
+		t.Fatalf("the always wrote before the shape was chosen: %v", saved.commands)
+	}
+	drive(t, a, key("3"))
 
 	if len(saved.commands) != 1 || saved.commands[0] != command {
 		t.Fatalf("the write seam was handed %q, want the command whole", saved.commands)
@@ -99,7 +103,7 @@ func TestASavedAlwaysLeavesAReceiptOnTheRow(t *testing.T) {
 	typeLine(t, a, "look")
 	drive(t, a, key("a"))
 
-	if got := plain(frame(a)); !strings.Contains(got, "always · saved — /settings to change") {
+	if got := plain(frame(a)); !strings.Contains(got, "always · saved — /permissions to change") {
 		t.Fatalf("the row does not say what was saved or where to change it:\n%s", got)
 	}
 }

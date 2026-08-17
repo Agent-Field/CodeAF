@@ -241,37 +241,50 @@ func replacePair(raw, name, value string) string {
 	return strings.Join(out, ", ")
 }
 
-// RememberBashApproval appends one WHOLE-LINE allow rule for a command a person
-// has just approved.
+// RememberBashApproval appends one allow rule for the SHAPE a person has just
+// picked on a consent card.
 //
-// Three refusals, and each of them is internal/approval's law rather than this
+// It takes the shape and not the line. The card banks what was CHOSEN
+// (bashshapes.go derives the offer, tui3's consent.go puts it), so the argument
+// here is `git status*` as readily as `git status --short`, and this function
+// asks nothing about which of the two it was handed: a rule is a glob, and the
+// person read the glob before they pressed the key. What it does ask is whether
+// the glob is one worth writing down — [bashShapeHolds] — because a shape that
+// pins nothing down is a row entry that answers for every command there is.
+//
+// Four refusals, and each of them is internal/approval's law rather than this
 // file's caution:
 //
-//   - A COMPOUND LINE CANNOT BE REMEMBERED. An allow rule vouches only for a
+//   - A COMPOUND SHAPE CANNOT BE REMEMBERED. An allow rule vouches only for a
 //     single command it matches whole (bash.go's matching law), so a rule written
 //     for `cd /tmp && rm -rf build` could never fire. Writing it anyway would put
 //     a line in somebody's settings that says they approved something and does
 //     nothing at all.
-//   - A LINE THE ROW ALREADY ALLOWS IS NOT WRITTEN AGAIN, whether the rule that
-//     allows it is this exact line or a broader glob somebody wrote by hand.
-//   - A LINE THE ROW ALREADY DENIES OR ASKS ABOUT IS LEFT ALONE, and the caller
+//   - A SHAPE THAT NAMES NO COMMAND IS NOT A RULE, and neither is one whose only
+//     word is sudo (bashshapes.go states both).
+//   - A SHAPE THE ROW ALREADY ALLOWS IS NOT WRITTEN AGAIN, whether the rule that
+//     allows it is this exact glob or a broader one somebody wrote by hand.
+//   - A SHAPE THE ROW ALREADY DENIES OR ASKS ABOUT IS LEFT ALONE, and the caller
 //     is told. First match wins, so an allow appended after a standing deny is a
 //     rule that never runs; the standing rule is a decision the person made in
 //     the settings sheet, and a keystroke on a card does not overturn it.
 //
-// The command is stored AS THE GLOB IT IS. The dialect has no escape for '*', so
-// a command line containing one is remembered as a pattern with a wildcard in it
-// — `ls *.go` approved is `ls *.go` allowed. That is the honest reading of the
+// A LINE IS STORED AS THE GLOB IT IS. The dialect has no escape for '*', so a
+// command line containing one is remembered as a pattern with a wildcard in it —
+// `ls *.go` approved is `ls *.go` allowed. That is the honest reading of the
 // line the person saw and approved, it stays bounded to a single non-compound
 // command, and the critical-command table still asks about the shapes that
 // destroy a disk whatever this row says.
-func RememberBashApproval(profileDir, line string) error {
-	line = strings.TrimSpace(line)
-	if line == "" {
+func RememberBashApproval(profileDir, match string) error {
+	match = strings.TrimSpace(match)
+	if match == "" {
 		return fmt.Errorf("no command to remember")
 	}
-	if !approval.Vouchable(line) {
+	if !approval.Vouchable(match) {
 		return fmt.Errorf("a compound command cannot be remembered: an allow answers for one whole command")
+	}
+	if !bashShapeHolds(match) {
+		return fmt.Errorf("%q names no command to allow", match)
 	}
 	raw := BashApprovalsAt(profileDir)
 	rules, err := ParseBashApprovals(raw)
@@ -279,14 +292,14 @@ func RememberBashApproval(profileDir, line string) error {
 		return fmt.Errorf("settings row %q: %w", KeyBashApprovals, err)
 	}
 	policy := approval.Policy{BashPatterns: asApprovalRules(rules)}
-	if rule, matched := policy.MatchRule(line); matched {
+	if rule, matched := policy.MatchRule(match); matched {
 		if rule.Action == approval.ActionAllow {
 			return nil
 		}
 		return fmt.Errorf("settings row %q already answers this command with %s (%q)",
 			KeyBashApprovals, rule.Action, rule.Match)
 	}
-	rules = append(rules, BashRule{Match: line, Action: string(approval.ActionAllow)})
+	rules = append(rules, BashRule{Match: match, Action: string(approval.ActionAllow)})
 	return writeBashApprovals(profileDir, FormatBashApprovals(rules))
 }
 

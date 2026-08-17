@@ -1779,8 +1779,17 @@ func (a *app) hintWord() string {
 		// the consent letters below: a card and a consent question cannot be open
 		// at once, and the keys a person needs are the ones on screen (task.go).
 		return taskProposalHint
+	case a.shaping():
+		// The always is part-way answered and the block is on its second beat
+		// (consent.go): the numbers bank a shape and esc puts the question back.
+		return "1-3 shape · esc never mind"
 	case a.asking() || a.awaitingDecision():
-		return "a allow · t always · d deny"
+		// THE KEYS THE BLOCK ACTUALLY DRAWS. This line said "a allow · t always"
+		// for a year after the answers took their own first letters, so the hint
+		// under the box named `a` as allow while the block above it named `a` as
+		// always — one keystroke, two readings, and the wrong one widens a
+		// permission.
+		return "y allow · n deny · a always"
 	case a.railHold:
 		// The roster has the keyboard (ctrl+t, task.go) — the one state on this
 		// surface where the arrows have left the box entirely. It ranks HERE, under
