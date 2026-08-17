@@ -22,11 +22,12 @@ A single line over 50KB is reported, not shown.
 `read` also opens **PDFs** — it extracts the text layer locally and for free,
 with the same line and size caps.
 
+`read` opens **images, audio and video** too, as a description rather than as
+bytes. See "Can you look at an image, listen to audio or watch a video I have on
+disk?" below for what comes back and what it costs.
+
 `read` cannot open a **directory**. It answers
 `Error reading file: read <path>: is a directory`. Use `ls` to list a directory.
-
-`read` cannot open a **picture**, even though its own description says it can.
-The bytes are decoded as text.
 
 `edit` takes a list of replacements. Each `oldText` must appear exactly once,
 and all of them are matched against the original file rather than one after the
@@ -191,6 +192,80 @@ When every rung fails, each is named, e.g.
 Extraction is remembered for the conversation, so paging through a long document
 costs nothing extra.
 
+## Can you look at an image, listen to audio or watch a video I have on disk?
+
+Yes — with `read`. A file is a file, so the same tool that opens a source file
+opens a screenshot, a voice memo or a screen recording. There is no separate
+"look at this" or "transcribe this" tool for a file on disk, and aforge never
+needs to write a script or install a library to decode one.
+
+What comes back is a **description**, not the bytes, and it always says who
+produced it:
+
+| File | Line above the answer | What the answer is |
+| --- | --- | --- |
+| image | `[vision: <model>]` | every piece of text in the picture, transcribed, then the layout and content |
+| audio, transcribed | `[transcript: <model>]` | the speech, exactly |
+| audio, described | `[audio: <model>]` | the sound: genre, mood, instruments, structure |
+| video | `[video: <model>]` | what happens, on-screen text, speech, style |
+
+The formats are **png, jpg, jpeg, webp, gif** · **mp3, wav, m4a, ogg, flac** ·
+**mp4, webm, mov**. A file saved with no extension is recognised from its first
+bytes, so a screenshot pasted as `clipboard` still works.
+
+Limits, refused before anything is sent: **10MB** for an image, **25MB** for
+audio, **64MB** for video —
+`<path> is over the 25MB audio limit`.
+
+The answer is paged like any read — 2000 lines or 50KB, with
+`Use offset=… to continue.` — and it is **remembered for the conversation**, so
+paging through a long transcript costs nothing extra.
+
+When no model is set for a sense, `read` says so instead of showing you binary:
+
+```
+<path> is audio, and this session has no model that can listen to one — set the listening model in settings.
+```
+
+The same sentence exists for an image (`…no model that can look at one — set the
+looking model in settings, or attach the picture to a message.`) and for video
+(`…no model that can watch one — set the watching model in settings.`).
+
+A model that was reached and failed is named:
+`could not look at <path> — <model>: <reason>`.
+
+## Can you transcribe a recording, or tell me what a song sounds like?
+
+Both, and you do not have to say which — `read` works it out.
+
+Reading an audio file climbs a small ladder, and **the ladder picks the sense**:
+
+1. **Transcription first.** The file goes to the transcription endpoint, which
+   is the cheap, purpose-built one. A real transcript stops here, headed
+   `[transcript: <model>]`.
+2. **Listening second.** If the first rung fails, or returns almost nothing, or
+   returns only what a speech recogniser says when there was no speech — a page
+   of `[Music]`, or a bare `you` — the file itself goes to a model that can
+   hear, and the answer is headed `[audio: <model>]`.
+
+That second rung is why "what style is this track?" works: nobody had to decide
+in advance whether the answer was words or music.
+
+Two details worth knowing:
+
+- **A short transcript is kept when there is nothing above it.** If no listening
+  model is set, a four-second recording that transcribes to three words gives
+  you those three words rather than a refusal.
+- **When both rungs fail, both are named**, in the order they were tried:
+  `could not read <path> — <model>: 402 insufficient credits; <model>: no endpoint`.
+- If a transcription model is set but this session was never given a media
+  client to reach it, the sentence says so rather than blaming the settings row
+  that already names one:
+  `<path> is audio, and <model> is set to transcribe it but this session has no media client to reach — set the listening model in settings, which rides the session's own model instead.`
+
+Video has one rung and no ladder: there is nothing cheaper than a model that can
+watch, so `read` either watches the file or says no model can.
+
 ## Can you look at a picture I send you?
 
 **It depends on the model you are using.** Some models read images directly;
@@ -229,8 +304,10 @@ If a turn is already running:
 If the vision model says nothing:
 `session: <seer> returned no answer for the image`
 
-Note that `read` is not the way to open a picture — it decodes the bytes as
-text. Attach it, or use `read_document` for a photograph of a page.
+Attaching is not the only way in. A picture already on disk is opened by `read`
+(see "Can you look at an image, listen to audio or watch a video I have on
+disk?"), which describes the whole thing, and by `read_document`, which is the
+door for a photograph of a page you want extracted as a document.
 
 ## Can you search the web?
 
@@ -335,9 +412,10 @@ Plainly, so you do not have to find out the hard way.
   conversation and nothing further.
 - **It cannot generate images.** There is no image-making tool on the list. It
   can read pictures (see the vision section) but it cannot paint one.
-- **`read` cannot open a picture**, despite what its own description says. Attach
-  the image to a message, or use `read_document`.
 - **`read` cannot list a directory.** It errors. `ls` lists directories.
+- **`read` cannot look at an image, listen to audio or watch a video when no
+  model is set for that sense.** It says which one is missing rather than
+  showing you the bytes.
 - **`grep` needs ripgrep and `find` needs fd** on the machine. Neither is
   downloaded on demand; without them those tools say so and stop.
 - **`bash` in the foreground cannot run longer than 600 seconds.** Anything
