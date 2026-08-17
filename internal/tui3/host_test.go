@@ -180,11 +180,24 @@ func TestSettingsSaysWhoseRowsTheseAre(t *testing.T) {
 	}
 }
 
-func TestTheYoloBadgeIsNeverDrawnFromTheWrongMachinesProfile(t *testing.T) {
+func TestTheYoloBadgeNamesTheEnginesPostureNotThisMachines(t *testing.T) {
+	// This laptop's own profile says "allow" — if approvalPosture ever fell
+	// back to reading it over --host, this is the test that would catch it.
+	local := t.TempDir()
+	if err := os.WriteFile(filepath.Join(local, "config.json"), []byte(`{"tools.approvalMode":"allow"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	a, _ := hostLab(t)
-	a.profileDir = t.TempDir()
+	a.profileDir = local
 	if got := a.approvalPosture(); got != "" {
-		t.Fatalf("approvalPosture = %q over --host, want nothing at all", got)
+		t.Fatalf("approvalPosture = %q over --host, want nothing — this laptop's \"allow\" must not leak into a remote badge", got)
+	}
+
+	// The engine's own posture, carried once on the welcome, is what a remote
+	// badge draws instead.
+	a.hostApproval = "allow"
+	if got := a.approvalPosture(); got != "allow" {
+		t.Fatalf("approvalPosture = %q, want the engine's carried posture %q", got, "allow")
 	}
 }
 

@@ -856,6 +856,10 @@ type app struct {
 	// read once, at construction — see host.go for the whole law.
 	host      string
 	localRoot string
+	// hostApproval is the engine's own tool-approval posture, carried on the
+	// welcome (Options.ApprovalMode) and read only over --host — see
+	// [app.approvalPosture].
+	hostApproval string
 
 	// focused is whether the terminal window has the keyboard, and seenFocus
 	// whether it has ever told us (notify.go). The pair is what decides whether
@@ -920,6 +924,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		agent:            opts.Agent,
 		fresh:            opts.Fresh,
 		host:             host,
+		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
 		workspace:        place,
 		place:            shown,
 		file:             opts.SessionFile,
@@ -3766,24 +3771,21 @@ func readApproval(profileDir string) string {
 	return config.ToolApprovalModeAt(profileDir)
 }
 
-// approvalPosture is [readApproval] asked by this surface, and over a connection
-// it does not ask at all.
+// approvalPosture is [readApproval] asked by this surface, live, for a local
+// session — and the engine's own answer, carried once on the welcome, for a
+// remote one.
 //
-// THIS MACHINE'S PROFILE IS NOT THE SESSION'S POSTURE over --host: the gate that
-// decides whether a tool runs without asking is the ENGINE's, read from the
-// profile on the engine's machine. Both ways of being wrong here are bad, and
-// one of them is dangerous — a YOLO badge drawn from this laptop's settings
-// would be a safety claim about a machine nobody consulted — so the surface says
-// nothing rather than the wrong thing, and the emptiness law draws nothing.
-//
-// STUB: the honest answer is the engine's own posture, and the wire has no door
-// for it (internal/remote's wire.go). With one — a field on the welcome, or a
-// method — this returns the far machine's answer and the badge tells the truth
-// again. Until then a remote session's YOLO goes unannounced, which is stated
-// here so it is a known hole and not a forgotten one.
+// THIS MACHINE'S PROFILE IS NOT THE SESSION'S POSTURE over --host: the gate
+// that decides whether a tool runs without asking is the ENGINE's, read from
+// the profile on the engine's machine. A YOLO badge drawn from this laptop's
+// settings would be a safety claim about a machine nobody consulted, so a
+// remote session reads [app.hostApproval] instead of [readApproval] — the
+// same answer, asked of the right machine (internal/remote's wire.go
+// Welcome.ApprovalMode, set once at boot rather than re-read live, because
+// there is nothing on this side left to re-read).
 func (a *app) approvalPosture() string {
 	if a.hosted() {
-		return ""
+		return a.hostApproval
 	}
 	return readApproval(a.profileDir)
 }

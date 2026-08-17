@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/remote"
 	"github.com/Agent-Field/aforge-v2/internal/session"
@@ -109,6 +110,12 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		SessionFile: transcript,
 		Resumed:     resumed,
 		Note:        notice,
+		// The far half of a remote YOLO badge: this machine's own tool-approval
+		// row, read the same way the local surface reads its own
+		// (internal/tui3's readApproval). Empty when there is no profile
+		// directory to read, which the welcome's omitempty and the badge's
+		// emptiness law both already handle.
+		ApprovalMode: config.ToolApprovalModeAt(launch.Settings.ProfileDir),
 		// The three doors a remote surface reaches through, and every one of
 		// them is a closure the local surface already has by another name: /new,
 		// the resume picker, and the welcome box's list of recent conversations.

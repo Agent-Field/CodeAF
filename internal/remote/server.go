@@ -94,6 +94,14 @@ type Engine struct {
 	// the surface's entry notice.
 	Note string
 
+	// ApprovalMode is this machine's own answer to "does a tool run without
+	// asking", read once at boot off the profile the boot closure resolved
+	// against, and carried unchanged through a session swap (the profile
+	// belongs to the machine, not to the file that happens to be open). It is
+	// what turns the YOLO badge honest again over --host (host.go's approvalPosture,
+	// tui3.go's ApprovalMode option).
+	ApprovalMode string
+
 	// Fresh builds a replacement agent on the same config with a new session
 	// file, and returns it with that file's path. It is what Session.New calls,
 	// and it is the local surface's /new closure by another name. Nil makes the
@@ -256,13 +264,14 @@ func (s *server) welcome() Welcome {
 	s.state.Lock()
 	defer s.state.Unlock()
 	return Welcome{
-		Version:     Version,
-		Workspace:   s.engine.Workspace,
-		SessionFile: s.engine.SessionFile,
-		Resumed:     s.engine.Resumed,
-		Model:       s.agent.Model(),
-		Title:       s.agent.Title(),
-		Note:        s.engine.Note,
+		Version:      Version,
+		Workspace:    s.engine.Workspace,
+		SessionFile:  s.engine.SessionFile,
+		Resumed:      s.engine.Resumed,
+		Model:        s.agent.Model(),
+		Title:        s.agent.Title(),
+		Note:         s.engine.Note,
+		ApprovalMode: s.engine.ApprovalMode,
 	}
 }
 
