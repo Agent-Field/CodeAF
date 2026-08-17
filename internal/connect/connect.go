@@ -269,7 +269,10 @@ func (m *Manager) Services() []Status {
 // at all: a browser service needs the client credential it was configured with,
 // and a key service needs nothing but the person.
 func (m *Manager) offered(service Service) bool {
-	return service.Auth == AuthKey || m.creds[service.ID].ok()
+	// SEAM(mcp): a service that introduces itself to its vendor at connect time
+	// has no client credential for a build to be missing, so it is offered in
+	// every build. See mcp.go's registersItself.
+	return service.Auth == AuthKey || registersItself(service) || m.creds[service.ID].ok()
 }
 
 // Connected reports whether id can be used right now.
