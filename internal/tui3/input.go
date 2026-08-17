@@ -188,6 +188,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// The connect offer is the next rung down, and it is modal for the same
+	// reason at a lower urgency: the session is waiting on this answer too, and
+	// a key that is not one of the two answers is a key that does nothing rather
+	// than a key that types into a conversation that cannot move (connect.go).
+	if cmd, taken := a.connectAskKey(msg); taken {
+		return cmd
+	}
+
 	// The settings panel is the fullscreen overlay, and it is modal for the same
 	// reason the picker is and one more: there is nothing else on the screen to
 	// send a key to (settings.go).
@@ -229,6 +237,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.roster.open && msg.String() != "ctrl+c" {
 		a.resumeKey(msg)
 		return nil
+	}
+
+	// And the connections panel at the same rung again, for the same reasons:
+	// it opens on a COMMAND rather than by typing, so nothing is being written
+	// under it, and esc leaves everything exactly as it was (connectpanel.go).
+	if a.connPanel.open && msg.String() != "ctrl+c" {
+		return a.connectPanelKey(msg)
 	}
 
 	if msg.String() == "ctrl+c" {

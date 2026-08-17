@@ -355,6 +355,12 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	if e.kind == entryTask && e.card != nil && !e.card.settled() {
 		return a.renderEntry(i, e, width)
 	}
+	// AND A SIGN-IN THAT IS STILL WAITING, for the reason both of those are not:
+	// its spinner is a function of the frame (connect.go). It rejoins the cache
+	// the moment it settles, which is the moment it stops moving.
+	if e.kind == entryConnect && e.conn != nil && e.conn.state == connectWaiting {
+		return a.renderEntry(i, e, width)
+	}
 	if e.built && e.width == width && !e.stale {
 		return e.rows
 	}
@@ -410,6 +416,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 
 	case entryCompact:
 		return []string{a.compactRow(e, width)}
+
+	case entryConnect:
+		return a.connectRows(e, width)
 
 	case entryTask:
 		return a.taskCardRows(e.card, width, a.sel == i)
