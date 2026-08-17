@@ -206,6 +206,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 
+	// And the harness offer under that, modal for the same reason at the lowest
+	// urgency of the three: the session is holding a turn — before its first
+	// request — on this one answer (harness.go).
+	if cmd, taken := a.harnessAskKey(msg); taken {
+		return cmd
+	}
+
 	// The settings panel is the fullscreen overlay, and it is modal for the same
 	// reason the picker is and one more: there is nothing else on the screen to
 	// send a key to (settings.go).

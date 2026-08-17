@@ -619,7 +619,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				hub.send(Event{Kind: EventError, Err: guard.Note("session/turn", recovered)})
 			}
 		}()
-		completed = a.runTurn(turnCtx, hub)
+		// The turn's own opening message travels with it, for the one thing that
+		// has to know whether a PERSON started this turn (harness.go): a woken
+		// turn opens empty and reads its note off the steering queue, and a
+		// matcher that went looking in the transcript would score the last thing
+		// somebody typed against a turn they did not start.
+		completed = a.runTurn(turnCtx, hub, user)
 	}()
 	return events
 }

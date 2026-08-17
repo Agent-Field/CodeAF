@@ -906,7 +906,7 @@ func (a *app) overlayHeight() int {
 	// reserved rows are the status line and one row of conversation — a list
 	// that left neither would be a list that took the screen.
 	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.followHeight(); want > room {
+		a.harnessAskHeight() - a.followHeight(); want > room {
 		want = room
 	}
 	if want < 0 {

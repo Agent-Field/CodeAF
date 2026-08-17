@@ -143,9 +143,21 @@ const outputLimit = 4000
 // call, and nobody interrupted and nothing failed. Only that outcome may drain
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
-func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
+func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
 	started := time.Now()
 	var turn Usage
+
+	// BEFORE ANYTHING IS SENT ANYWHERE: is this turn one of the things this
+	// build already knows how to do properly? A sub-harness has no slash
+	// command, so the turn itself is how one is reached, and a strong match
+	// raises one line asking whether that is what was meant (harness.go).
+	//
+	// It is a question and never a routing: the no is free and leaves the
+	// ordinary turn below untouched, and a build with no registry — every
+	// caller today — never reaches past the first nil check.
+	if answered, completed := a.routeHarness(ctx, hub, user, started); answered {
+		return completed
+	}
 
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
