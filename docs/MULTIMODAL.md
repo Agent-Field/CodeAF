@@ -158,3 +158,25 @@ placeholders instead of sending base64 to a model that cannot read it.
 machinery is real and waits on a surface wave), and `generate_music` as a
 separate verb (`speak` carries the endpoint until a music model earns a
 schema of its own).
+
+### Decision 9 — Perception is `read`'s job: a file is a file, in every modality
+
+Decision 20 of CHAT-V3.md refused an `extract_pdf` tool because a belt with
+two hands for one intention makes the model choose, and what it chooses is
+wrong. That law generalizes, and it is the whole answer to "how does the
+model know it can look and listen": the model's most natural instinct — "I
+need to look at this image, I need to hear this recording → read it" —
+must simply work. So `read` sniffs and routes: an image goes to the looking
+model as a full extraction; audio climbs a ladder that tries TRANSCRIPTION
+first and falls to an audio-understanding chat model when the sound is not
+speech (the ladder picks the sense, so "what style is this track" needs no
+endpoint knowledge from the model); video goes to a video-input chat model.
+No new input verbs, no belt growth, no prompt real estate beyond one
+unconditional line on `read` itself — unconditional because the senses ride
+the session's own credentials, exactly as `read_document` does.
+
+The two-door precedent holds: bare `read` is the undirected extraction;
+`view_image` (and `read_document`'s ladder) stay as the directed doors a
+question rides through. Production stays explicit — three verbs, always
+taught by their own descriptions — because making something is a decision
+and sensing something is a reflex.
