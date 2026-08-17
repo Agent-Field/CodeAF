@@ -76,6 +76,17 @@ var commands = []command{
 	// when the turn was wrong. Putting it last, beside /quit, would file "take
 	// back a message" under leaving.
 	{name: "rewind", desc: "take back a message · esc esc", alias: []string{"undo", "back"}},
+	// WHAT HAS ALREADY BEEN ANSWERED, and the way to take one back
+	// (permissions.go). It BELONGS beside /settings and /connect — those two are
+	// "what may this thing do" and "what may it reach", and this is "what has it
+	// already been told it may do without asking" — and it sits down here
+	// instead for the reason /harness does, stated one row below: [menuRows]
+	// shows eight rows at once, position in this table is a claim about
+	// frequency, and putting this at the top of the list would have pushed
+	// /compact into a scroll to make room for a panel a person opens when
+	// something has surprised them. /perms is here because it is what fingers
+	// type; the row shows the whole word.
+	{name: "permissions", desc: "what runs without asking · drop one with d", alias: []string{"perms"}},
 	// THE SHAPES OF WORK THIS CONVERSATION HAS SAVED (harnesspanel.go). It
 	// belongs topically beside /connect — one is what this surface may reach,
 	// the other is what it has learned to do — and it sits here instead for a
@@ -437,6 +448,7 @@ func helpText(file string) string {
 		"← ←            home · the conversation, at the live edge",
 		"ctrl+w         delete the word behind the caret · ctrl+u the line",
 		"ctrl+,         settings",
+		"d              in /permissions: drop the line under the cursor · press it twice",
 	)
 	if file != "" {
 		lines = append(lines, "session · "+file)
