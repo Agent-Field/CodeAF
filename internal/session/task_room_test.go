@@ -240,7 +240,128 @@ func TestTaskRoomClosesWhenTheNodeLands(t *testing.T) {
 	}
 }
 
+// ── THE STEP IN FLIGHT ──────────────────────────────────────────────────────
+//
+// The report: "when I click on a task it seems like it is always starting from
+// the start, and the work is not displayed properly". Half of it is here. A
+// message reaches the journal when it COMPLETES, so a node three paragraphs into
+// an answer has those paragraphs in neither lane — not on disk, and not on a
+// stream that starts the moment somebody subscribes. The page a person walked in
+// on therefore stopped at the last thing that finished and stayed there.
+
+// A WATCHER WHO ARRIVES MID-STEP IS CAUGHT UP ON IT: the reasoning, the reply so
+// far, and the call the model has finished asking for.
+func TestJoiningARunningRoomCatchesUpOnTheStepInFlight(t *testing.T) {
+	room := newTaskRoom()
+	room.publish(Event{Kind: EventThinking})
+	room.publish(Event{Kind: EventReasoning, Text: "the loader never makes the map"})
+	room.publish(Event{Kind: EventTextDelta, Text: "I will fix the loader"})
+	room.publish(Event{Kind: EventTextDelta, Text: " and add a test.\n"})
+	room.publish(Event{Kind: EventToolAnnounced, CallID: "c9", Tool: "edit",
+		Hint: "edit internal/config/load.go", Args: `{"path":"internal/config/load.go"}`})
+
+	caught := takeRoom(t, room.join(), 4)
+	want := []EventKind{EventThinking, EventReasoning, EventTextDelta, EventToolAnnounced}
+	if got := kinds(caught); len(got) != len(want) {
+		t.Fatalf("the catch-up is %v, want %v", got, want)
+	}
+	for i, kind := range want {
+		if caught[i].Kind != kind {
+			t.Fatalf("the catch-up is %v, want %v", kinds(caught), want)
+		}
+	}
+	// THE DELTAS ARRIVE AS ONE PIECE OF TEXT. A surface appends them to the block
+	// it is drawing, so two deltas and their join are the same paragraph.
+	if got := caught[2].Text; got != "I will fix the loader and add a test.\n" {
+		t.Fatalf("the reply so far is %q", got)
+	}
+	if got := caught[1].Text; got != "the loader never makes the map" {
+		t.Fatalf("the reasoning so far is %q", got)
+	}
+	// The announcement is carried WHOLE: its id is what pairs it to a row, and a
+	// surface that got the name without the id cannot tell two parallel edits apart.
+	if caught[3].CallID != "c9" || caught[3].Args == "" {
+		t.Fatalf("the announced call lost its id or its arguments: %+v", caught[3])
+	}
+
+	// AND LIVE CONTINUES WHERE THE CATCH-UP STOPPED — one lane, no gap.
+	stream := room.join()
+	_ = takeRoom(t, stream, 4)
+	room.publish(Event{Kind: EventToolBegin, Tool: "edit"})
+	if got := takeRoom(t, stream, 1); got[0].Kind != EventToolBegin {
+		t.Fatalf("the live event after a catch-up is %v", kinds(got))
+	}
+}
+
+// WHAT THE JOURNAL HAS IS NOT CARRIED. A step ends when its message is written,
+// and internal/session writes the assistant message BEFORE the tool batch runs —
+// so the first begin of a batch settles the answer that made it, and a watcher
+// arriving after that gets nothing rather than a paragraph the page is already
+// drawing off disk.
+func TestTheCatchUpDropsTheStepTheJournalHasWritten(t *testing.T) {
+	room := newTaskRoom()
+	room.publish(Event{Kind: EventReasoning, Text: "checking the loader"})
+	room.publish(Event{Kind: EventTextDelta, Text: "Reading the loader first.\n"})
+	room.publish(Event{Kind: EventToolAnnounced, CallID: "c1", Tool: "read"})
+	room.publish(Event{Kind: EventToolBegin, Tool: "read"})
+
+	if caught := takeRoom(t, room.join(), 0); len(caught) != 0 {
+		t.Fatalf("a step already on disk was replayed: %v", kinds(caught))
+	}
+
+	// The next step accumulates on its own, and the turn ending clears that one
+	// the same way: a node between steps catches nobody up on anything.
+	room.publish(Event{Kind: EventTextDelta, Text: "It never makes the map."})
+	if caught := takeRoom(t, room.join(), 1); len(caught) != 1 {
+		t.Fatalf("the step after the batch was not kept: %v", kinds(caught))
+	}
+	room.publish(Event{Kind: EventTurnDone})
+	if caught := takeRoom(t, room.join(), 0); len(caught) != 0 {
+		t.Fatalf("a finished turn is still catching watchers up: %v", kinds(caught))
+	}
+}
+
+// A ROOM THAT IS OVER CATCHES NOBODY UP. The id is real and the work is done, so
+// the channel closes immediately — the history is the journal, which is the whole
+// of the split this file's header states.
+func TestAClosedRoomCatchesNobodyUp(t *testing.T) {
+	room := newTaskRoom()
+	room.publish(Event{Kind: EventTextDelta, Text: "half a sentence"})
+	room.close()
+
+	if replayed := drainRoom(t, room.join()); len(replayed) != 0 {
+		t.Fatalf("a closed room replayed %d events", len(replayed))
+	}
+}
+
 // ── harness ─────────────────────────────────────────────────────────────────
+
+// takeRoom reads exactly n events off a stream that is still open, and fails if
+// an n+1th is waiting: "what a watcher is handed" is a claim about the whole of
+// what arrives, not about its first few.
+func takeRoom(t *testing.T, stream <-chan Event, n int) []Event {
+	t.Helper()
+	var out []Event
+	for i := 0; i < n; i++ {
+		select {
+		case event, open := <-stream:
+			if !open {
+				t.Fatalf("the stream closed after %d of %d events", len(out), n)
+			}
+			out = append(out, event)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("only %d of %d events arrived: %v", len(out), n, kinds(out))
+		}
+	}
+	select {
+	case event, open := <-stream:
+		if open {
+			t.Fatalf("a %d+1th event arrived: %v", n, event.Kind)
+		}
+	case <-time.After(50 * time.Millisecond):
+	}
+	return out
+}
 
 // watchErr is WatchTask's two returns, so a test can name the error line
 // separately from the channel it is asserting on.

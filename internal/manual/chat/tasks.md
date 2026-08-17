@@ -356,6 +356,32 @@ The task's elapsed clock freezes while you stand in its room. That number exists
 whether you should go and look; being there is the answer. Nothing is stopped, only
 unreported, and it thaws at the value it would have had when you leave.
 
+## Opening a task in the middle of its work — what the room shows
+
+A room opens **at the bottom, on the newest thing**, never at the top: it is showing you
+where the work is now, not replaying it from the start. Leaving with `esc` and coming back,
+or walking from one task to another and back, lands on the same place — each room reads its
+own journal fresh and each keeps its own scroll.
+
+Two lanes fill the page and they meet at one instant. The **journal** is every message the
+task has finished writing. The **live stream** is what happens from the moment you walk in;
+none of the task's history is re-narrated onto it, because a stream that replayed half an
+hour of somebody else's greps before reaching the present would make walking into a task
+mean reading it slowly.
+
+Between those two sits the step the task is **in the middle of**, and you are handed that
+once, on the way in: the reasoning it is spilling right now, the reply it has written so
+far, and any call it has finished asking for and not yet started. Live continues from
+there. So a task caught mid-sentence shows the sentence, rather than the last thing that
+finished and then nothing until the next word lands.
+
+A call the task is **still running** is drawn as running — an unfinished row with no
+duration on it, because nobody has measured one yet — and the row settles in place when the
+call comes back. It carries no clock: the room learns of that call from the file, which
+does not say when it started. If the task ends while a call is still open, the row stops
+animating and keeps the dim mark for something nothing more is coming for; it is not
+marked failed, because nobody watched what became of it.
+
 ## Mentioning a task in the conversation
 
 Type `@` in the draft and a list drops up with task rows above the file rows. The sections

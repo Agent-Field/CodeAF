@@ -432,6 +432,67 @@ func TestThePauseGateRendersAndRoutesEachAnswer(t *testing.T) {
 	}
 }
 
+// A PAUSE OUTLIVES THE EVENT THAT ANNOUNCED IT.
+//
+// The gate is raised by the lane, and a lane is a thing that happens once: a
+// page walked out of and re-opened builds a fresh [orchRun], so a run still
+// sitting on its cap used to come back with "paused" in its header and no
+// question anywhere under it — a run nobody could answer from the surface they
+// were standing on. This is the reopen half of the room's own bug.
+func TestReopeningAPausedRunRaisesTheGateFromTheSnapshot(t *testing.T) {
+	snap := orchRun4()
+	snap.Paused = true
+	snap.Fuel = orchestrate.Fuel{Cap: 2, Spent: 2}
+	a, agent := orchApp(t, snap)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: orchPause()})
+
+	// Out to the conversation and back in — the gesture the report is about.
+	a.closeRoom()
+	a.openOrchRoom("r1", "")
+	a.touch()
+
+	run := a.orchOf()
+	if run == nil || run.gate == nil {
+		t.Fatalf("the re-opened page lost the question a paused run is waiting on:\n%s",
+			roomText(a))
+	}
+	page := roomText(a)
+	// The spend sentence is the run's own, so the re-raised question reads exactly
+	// as the lane's did rather than in the header's "/" form.
+	for _, want := range []string{orchGateLead, "$2.00 of $2.00", orchAnswerWord(orchTopUp),
+		orchAnswerWord(orchFinish), orchAnswerWord(orchStop)} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("the re-raised gate never says %q:\n%s", want, page)
+		}
+	}
+	// It is the SAME question and not a picture of one: the answers route.
+	if got := run.pick; got.answer != orchTopUp {
+		t.Fatalf("the cursor is on %+v, want the gate's first answer", got)
+	}
+	drive(t, a, key("enter"))
+	if len(agent.answers) != 1 || agent.answers[0] != "r1: "+orchTopUp {
+		t.Fatalf("the re-raised gate answered %v", agent.answers)
+	}
+
+	// AND IT IS NOT ASKED TWICE. The tank is topped up on the far side of a poll,
+	// so for one interval the shape still says paused — and a page that re-raised
+	// there would be asking a person to answer what they just answered.
+	orchPollNow(t, a)
+	if a.orchOf().gate != nil {
+		t.Fatalf("the answered gate came back on the next poll:\n%s", roomText(a))
+	}
+	// The run spends again, and then hits the next cap: that IS a new question.
+	agent.snaps["r1"] = orchRun4()
+	orchPollNow(t, a)
+	paused := orchRun4()
+	paused.Paused = true
+	agent.snaps["r1"] = paused
+	orchPollNow(t, a)
+	if a.orchOf().gate == nil {
+		t.Fatalf("the next pause raised no question:\n%s", roomText(a))
+	}
+}
+
 // THE GATE CLAIMS NO LETTERS AT ALL, which is the whole reason its answers are
 // rows rather than key chips: it cannot suspend the box the way a modal offer
 // does, so any letter it claimed would be a letter somebody was typing at the
