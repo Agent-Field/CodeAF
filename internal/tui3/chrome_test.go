@@ -171,7 +171,9 @@ func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	for i := 0; i < len(settingTabs)+3; i++ {
 		drive(t, a, key("right"))
 	}
-	if got := settingTabs[a.sheet.tab]; got != tabProviders {
+	// The last tab is the accounts one (connectcaps.go), which is where the walk
+	// stops rather than wrapping round to the first.
+	if got := settingTabs[a.sheet.tab]; got != tabConnections {
 		t.Fatalf("→ past the last tab landed on %q", got)
 	}
 }
