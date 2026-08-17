@@ -93,6 +93,15 @@ var actsInThePersonsName = map[string]bool{
 	"calendar_create": true,
 }
 
+// ActsInThePersonsName reports whether a call leaves this machine as the person
+// — the table above. It is exported for the one caller that needs the same list
+// for a different reason: internal/session's guardian, which may save somebody a
+// keystroke on a read and must not answer for them about a message going out
+// over their name.
+func ActsInThePersonsName(tool string) bool {
+	return actsInThePersonsName[strings.TrimSpace(tool)]
+}
+
 // Rule is one bash pattern and the answer it carries. Match is a glob in the
 // restricted dialect documented in bash.go: '*' and literal text, nothing else.
 type Rule struct {
