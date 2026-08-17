@@ -248,9 +248,10 @@ func TestReadReportsScannedPDF(t *testing.T) {
 
 // ── pi's law ────────────────────────────────────────────────────────────────
 
-// The description the model reads is pi's, plus one sentence. Both halves
-// matter: the first is why the model keeps its read habits, the second is why
-// it recognizes the scanned result as a known limit.
+// The description the model reads is pi's, plus the two sentences the senses
+// add. All three halves matter: pi's is why the model keeps its read habits,
+// the PDF clause is why it recognizes the scanned result as a known limit, and
+// the senses clause is why it never writes a decoder script.
 func TestReadDescriptionGainsOneSentence(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	tool := beltTool(t, agent, "read")
@@ -258,8 +259,11 @@ func TestReadDescriptionGainsOneSentence(t *testing.T) {
 	if !strings.HasPrefix(tool.Description, "Read the contents of a file.") {
 		t.Fatalf("pi's description should lead: %q", tool.Description)
 	}
-	if !strings.HasSuffix(tool.Description, pdfSentence) {
-		t.Fatalf("the pdf sentence should close it: %q", tool.Description)
+	if !strings.Contains(tool.Description, pdfSentence) {
+		t.Fatalf("the pdf sentence should survive the senses: %q", tool.Description)
+	}
+	if !strings.HasSuffix(tool.Description, senseSentence) {
+		t.Fatalf("the senses sentence should close it: %q", tool.Description)
 	}
 	if !strings.Contains(tool.Description, "truncated to 2000 lines or 50KB") {
 		t.Fatalf("pi's truncation law should survive the wrap: %q", tool.Description)
