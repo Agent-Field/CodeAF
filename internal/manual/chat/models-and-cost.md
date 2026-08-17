@@ -153,6 +153,11 @@ line: the role's name, the tier answering it, and the model that comes out. As s
 The list is built from what is registered in the running binary, so it is the truth about
 this build rather than a table someone kept up to date.
 
+One caveat on `vision`: the **looking** row on the Providers tab is the front door for
+which model sees, and it wins over this role's tier. The `vision` pin is the second rung
+of that ladder — set the looking row for the ordinary case, and pin the role only when
+you want a pin that also binds the older surfaces.
+
 ## Which model is planning my adaptive run — what `planner:` means on that page
 
 An adaptive run's page pins one line at the top, and it names the model doing the thinking
