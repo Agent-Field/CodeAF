@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/catalog"
@@ -516,6 +517,17 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		return nil, err
 	}
 
+	// THE MEDIA PAIR, and it is wired after governance because half of it is
+	// governance's own work: the role pins the resolver reads as its second rung
+	// arrive on cfg.RolesSource one line up (docs/MULTIMODAL.md Decision 5).
+	//
+	// The client is the one endpoint set — /images, /audio/speech, /videos —
+	// and a nil one keeps every generation tool off the belt rather than on it
+	// and failing. The resolver is nil for nobody: it answers "" per modality,
+	// which is the same absence at a finer grain.
+	cfg.Media = v3MediaClient(settings)
+	cfg.MediaModel = v3MediaModel(models, settings.ProfileDir, cfg.RolesSource)
+
 	return &v3Launch{
 		Settings:    settings,
 		Models:      models,
@@ -967,8 +979,21 @@ type v3Catalog interface {
 }
 
 // v3Models is the catalog as the v3 surface wants it: id, window, the three
-// per-token prices and the arena score, in the catalog's own order, and only the
-// models that can hold a conversation.
+// per-token prices and the arena score, THE WHOLE LIST, in the catalog's own
+// order.
+//
+// THE DOOR STOPS STARVING THE PICKERS (docs/MULTIMODAL.md Decision 6). This used
+// to drop every row that answered in anything but text, which read as a
+// reasonable narrowing and was in fact the surface's supply: the settings
+// sheet's drawing row opens a picker over THIS list, so a list with no drawing
+// model in it is a picker that cannot be answered — and the on-disk cache,
+// written from here, carried the same hole to the next launch.
+//
+// So the filtering moves to where the question is asked. Every list that wants
+// chat models applies the chat law itself, at the moment it is drawn:
+// [v3TaskModels] here, [app.modelList] and each slot's own predicate in
+// internal/tui3 (models.go's modelFilter). One list arrives; each reader asks
+// its own question of it.
 //
 // The prices ride along because the surface has to price something the session
 // cannot: what a turn's prompt-cache reads saved, which is cached tokens times
@@ -986,9 +1011,6 @@ func v3Models(models v3Catalog) []tui3.Model {
 	rows := models.ModelsNow()
 	out := make([]tui3.Model, 0, len(rows))
 	for _, row := range rows {
-		if !v3AnswersText(row.OutputModalities) {
-			continue
-		}
 		model := tui3.Model{
 			ID:            row.ID,
 			ContextLength: row.ContextLength,
@@ -1040,7 +1062,14 @@ func v3Models(models v3Catalog) []tui3.Model {
 // written rather than refusing an id it has no list to check.
 func v3TaskModels(models v3Catalog) func() []string {
 	return func() []string {
-		rows := v3Models(models)
+		// THE CHAT LAW IS APPLIED HERE, not at the door. A node is an agent with
+		// the same belt, so a model work can be handed to is a model somebody
+		// could hold a conversation with — and since the door now carries the
+		// whole catalog (Decision 6), this list is where that question gets
+		// asked. It is internal/tui3's own predicate rather than a second copy
+		// of it, so the picker and the task argument cannot come to disagree
+		// about what a chat model is.
+		rows := tui3.ChatModels(v3Models(models))
 		if len(rows) == 0 {
 			return nil
 		}
@@ -1054,12 +1083,17 @@ func v3TaskModels(models v3Catalog) func() []string {
 	}
 }
 
-// v3AnswersText keeps the models a chat surface can actually talk to. The
-// image, speech, music and video rows are real models and belong to other
-// tools; in this list they would be hundreds of names nobody can pick.
+// v3AnswersText is the OUTPUT half of the chat law, asked of a published
+// modality list: text, and nothing but text.
 //
-// A row that declares nothing is KEPT: silence is a row cached before
-// modalities were recorded, not a model that answers in nothing.
+// A row that declares nothing is KEPT, and that is this predicate's own reading
+// of silence rather than a disagreement with the rest of the surface. THE ONE
+// SILENCE LAW (docs/MULTIMODAL.md Decision 6) is about CAPABILITY: an
+// unpublished modality list means text-in/text-out and nothing more — no
+// vision, no drawing, no sound. Text is what silence means, so a silent row
+// answering "yes, text" is that law stated rather than an exception to it, and
+// it is what keeps a cache written before modalities travelled from emptying
+// the model picker.
 func v3AnswersText(outputs []string) bool {
 	if len(outputs) == 0 {
 		return true
@@ -1090,18 +1124,41 @@ func v3AnswersText(outputs []string) bool {
 // read per message rather than a value resolved at boot — a cold cache would
 // otherwise pin "cannot see" onto a session for its whole life, and the answer
 // is wanted at the moment somebody attaches a photo, which is minutes later.
+//
+// AND WHILE THE CATALOG IS COLD IT READS THE DISK CACHE, which never waits
+// either — it is one small file internal/tui3 wrote after a fetch, and it now
+// holds the whole catalog rather than the chat rows alone (Decision 6). Without
+// that rung the FIRST minute of every launch answered "cannot see" for a model
+// that can, so a photo attached in the first minute went as its text placeholder
+// and the person was told to switch to a model with vision while already on one.
+// The file is read at most once per session: it is the same rows for the whole
+// warming window, and re-reading it per message would put I/O on the message
+// path to learn nothing new.
 func v3SeesImages(models v3Catalog) func(string) bool {
+	var once sync.Once
+	var cached []tui3.Model
 	return func(model string) bool {
-		if models == nil {
-			return false
-		}
 		model = strings.TrimSpace(model)
 		if model == "" {
 			return false
 		}
-		for _, row := range models.ModelsNow() {
+		if models != nil {
+			if rows := models.ModelsNow(); len(rows) > 0 {
+				for _, row := range rows {
+					if strings.EqualFold(strings.TrimSpace(row.ID), model) {
+						return v3ReadsImages(row.InputModalities)
+					}
+				}
+				// The catalog HAS answered and does not carry this id — a
+				// hand-typed slug, a model this router never listed. That is a
+				// no on the same terms as an unpublished modality.
+				return false
+			}
+		}
+		once.Do(func() { cached = tui3.CachedModels() })
+		for _, row := range cached {
 			if strings.EqualFold(strings.TrimSpace(row.ID), model) {
-				return v3ReadsImages(row.InputModalities)
+				return v3ReadsImages(row.Input)
 			}
 		}
 		return false
@@ -1110,13 +1167,17 @@ func v3SeesImages(models v3Catalog) func(string) bool {
 
 // v3ReadsImages is the modality test itself.
 //
-// SILENCE IS NO, which is the opposite of what [v3AnswersText] does with it and
-// deliberately so. There, a row that declares nothing is kept because the cost
-// of being wrong is a name missing from a picker. Here the cost of being wrong
-// is a message assembled with a base64 photo in it, sent to a model that cannot
-// read one, and answered with a provider error about a content part — so an
-// unknown modality is a refusal the person can act on ("switch to a model with
-// vision"), which is the honest thing to say when nobody has said otherwise.
+// SILENCE IS NO, and that is THE ONE SILENCE LAW rather than this door's local
+// opinion: an unpublished modality list means text-in/text-out and nothing more
+// (docs/MULTIMODAL.md Decision 6). A media capability is never assumed, only
+// published. internal/tui3's seesImages reads the same silence the same way, so
+// the list a person picks a vision model out of and the gate that decides
+// whether a photo travels cannot disagree about one row.
+//
+// The cost of the law falling this way is stated plainly: a message assembled
+// with a base64 photo in it, sent to a model that cannot read one, comes back as
+// a provider error about a content part, while an unknown modality is a refusal
+// the person can act on ("switch to a model with vision").
 func v3ReadsImages(inputs []string) bool {
 	for _, modality := range inputs {
 		if strings.EqualFold(strings.TrimSpace(modality), "image") {

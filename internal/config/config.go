@@ -112,6 +112,13 @@ const (
 	preferredVideoModel  = "bytedance/seedance-1-5-pro"
 	preferredVisionModel = "qwen/qwen3.5-vl-32b-instruct"
 
+	// preferredPerceptionModel is the remembered name for the two slots that
+	// hand a chat model a sound or a film and read back a sentence about it. It
+	// is one name for both because it is one fact about one model: Gemini Flash
+	// is the widely advertised row that takes audio and video INPUT and still
+	// answers in words, which is exactly the shape both slots ask for.
+	preferredPerceptionModel = "google/gemini-2.5-flash"
+
 	// DefaultPracticeBudgetUSD is the daily carve-out reserved for self-origin
 	// curiosity work. The global rail remains an additional ceiling.
 	DefaultPracticeBudgetUSD = 2.0
@@ -196,11 +203,6 @@ func Load() (Config, error) {
 		BaseURL:           firstNonEmpty(os.Getenv("AFORGE_BASE_URL"), DefaultBaseURL),
 		Model:             firstNonEmpty(os.Getenv("AFORGE_MODEL"), DefaultModel),
 		PlanModel:         strings.TrimSpace(os.Getenv("AFORGE_PLAN_MODEL")),
-		VoiceModel:        firstNonEmpty(os.Getenv("AFORGE_VOICE_MODEL"), DefaultVoiceModel),
-		ImageModel:        strings.TrimSpace(os.Getenv("AFORGE_IMAGE_MODEL")),
-		SpeechModel:       strings.TrimSpace(os.Getenv("AFORGE_SPEECH_MODEL")),
-		MusicModel:        strings.TrimSpace(os.Getenv("AFORGE_MUSIC_MODEL")),
-		VideoModel:        strings.TrimSpace(os.Getenv("AFORGE_VIDEO_MODEL")),
 		Temperature:       DefaultTemperature,
 		MaxTokens:         DefaultMaxTokens,
 		Timeout:           DefaultTimeout,
@@ -236,6 +238,20 @@ func Load() (Config, error) {
 	// in the first place.
 	provider.LoadQuirks(config.ProfileDir)
 	config.VisionModel = VisionModelAt(config.ProfileDir)
+	// THE FIVE CAPABILITY SLOTS ARE ONE KNOB EACH, and this is the older
+	// surfaces' end of it (docs/MULTIMODAL.md Decision 5). They used to read
+	// their environment variable and nothing else, so a model chosen in the
+	// settings sheet was a row nobody read; now both surfaces resolve the same
+	// key through [MediaSlotModelAt], environment first, in the one order every
+	// persisted knob above resolves in.
+	config.ImageModel = MediaSlotModelAt(config.ProfileDir, "image")
+	config.SpeechModel = MediaSlotModelAt(config.ProfileDir, "speech")
+	config.MusicModel = MediaSlotModelAt(config.ProfileDir, "music")
+	config.VideoModel = MediaSlotModelAt(config.ProfileDir, "video")
+	// Voice is the one with a built-in name behind it: transcription runs on a
+	// dedicated endpoint and there is no catalog ladder that reaches it, so an
+	// unset slot keeps the model this build knows works.
+	config.VoiceModel = firstNonEmpty(MediaSlotModelAt(config.ProfileDir, "voice"), DefaultVoiceModel)
 	config.Attribution = AttributionAt(config.ProfileDir)
 	// The context law's knobs, handed to the one package that spends them.
 	// The reserve also floors the wire ceiling: a reasoning pass that thinks
@@ -355,8 +371,47 @@ func ModelCandidates(models *catalog.Catalog, slot string) []catalog.Model {
 			}
 		}
 		return filtered
-	case "voice":
-		return models.ModelsWithOutput("transcription")
+	case "voice", "transcribe":
+		// THE VOCABULARY FIX, and it is ADDITIVE because the old reading was not
+		// wrong so much as alone. This asked only for models publishing an
+		// OUTPUT modality called "transcription" — a real vocabulary that some
+		// providers use and that the catalog's own tests pin — and no row on
+		// OpenRouter has ever carried it, so on the catalog this product
+		// actually reads the voice slot's candidate list was EMPTY, everywhere
+		// it was asked, silently.
+		//
+		// An ear is SOUND IN AND WORDS BACK, which is what those rows do
+		// publish, so that reading is added beside the first rather than in
+		// place of it: a provider that says "transcription" is still taken at
+		// its word, and one that describes the same model in modalities is
+		// finally findable. internal/tui3's hearsSpeech reads the same slot the
+		// same way, so the picker and this list cannot disagree.
+		found := models.ModelsWithOutput("transcription")
+		seen := make(map[string]bool, len(found))
+		for _, candidate := range found {
+			seen[candidate.ID] = true
+		}
+		for _, candidate := range models.ModelsWithInput("audio") {
+			if seen[candidate.ID] {
+				continue
+			}
+			if models.Supports(candidate.ID, "output", "text") {
+				found = append(found, candidate)
+			}
+		}
+		return found
+	case "vision":
+		// The inspection proxy: aforge hands it a picture and reads back a
+		// sentence about one, so image input ALONE is half the question. A
+		// drawing model that reads pictures and answers in pictures passes the
+		// input half and cannot answer "what is in this photo".
+		return chatCandidatesWithInput(models, "image")
+	case "listen":
+		// A chat model that can be handed a sound file, for the perception belt
+		// rather than the transcription endpoint.
+		return chatCandidatesWithInput(models, "audio")
+	case "watch":
+		return chatCandidatesWithInput(models, "video")
 	case "image":
 		return models.ModelsWithOutput("image")
 	case "speech":
@@ -409,6 +464,35 @@ func (c Config) ResolveVisionModel(models *catalog.Catalog, talkModel, workModel
 		return candidates[0].ID
 	}
 	return ""
+}
+
+// chatCandidatesWithInput is the three PERCEPTION slots' shared question: a
+// model that takes this kind of material AND can still hold a conversation
+// about it. The second half is the whole point — a model that takes sound and
+// answers in sound is a speaker, not a listener, and one that takes pictures and
+// answers in pictures is a painter, not a pair of eyes.
+func chatCandidatesWithInput(models *catalog.Catalog, modality string) []catalog.Model {
+	candidates := models.ModelsWithInput(modality)
+	filtered := make([]catalog.Model, 0, len(candidates))
+	for _, candidate := range candidates {
+		if models.Supports(candidate.ID, "output", "text") && !generatesMedia(candidate) {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
+}
+
+// generatesMedia says a row answers in something besides text. It is read
+// alongside a published "text" rather than instead of it, so a row that
+// captions what it draws — ["image","text"] out — is excluded from every
+// perception slot, which is the same reading internal/tui3's chat law applies.
+func generatesMedia(model catalog.Model) bool {
+	for _, output := range model.OutputModalities {
+		if !strings.EqualFold(strings.TrimSpace(output), "text") {
+			return true
+		}
+	}
+	return false
 }
 
 func recognizableTTS(model catalog.Model) bool {

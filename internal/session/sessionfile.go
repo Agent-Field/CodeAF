@@ -181,18 +181,21 @@ func (p journalPart) contentPart() ai.ContentPart {
 }
 
 // placeholder is what the model reads where a picture used to be. It names the
-// path, because the person can often put the file back.
-//
-// A part with NO path says only "image", and that case is the transcript guard's
-// rather than the journal's: a session with no file on disk journaled no
-// reference, so when its transcript is scrubbed for a blind model
-// ([Agent.scrubBlindImagePartsLocked]) there is no path to name. The sentence is
-// the same one either way rather than a second wording for the same fact.
+// path, because the person can often put the file back. The reason clause is
+// the caller's, because the two callers know two different truths: a replay
+// whose file will not open says so, and the transcript guard swapping for a
+// blind model says THAT ([placeholderBecause]) — one sentence shape, the
+// honest reason in it, never "changed or gone" about a file sitting untouched
+// on disk.
 func (p journalPart) placeholder() ai.ContentPart {
+	return p.placeholderBecause("file changed or gone")
+}
+
+func (p journalPart) placeholderBecause(reason string) ai.ContentPart {
 	if path := strings.TrimSpace(p.Path); path != "" {
-		return ai.ContentPart{Type: "text", Text: "[image " + path + " — file changed or gone]"}
+		return ai.ContentPart{Type: "text", Text: "[image " + path + " — " + reason + "]"}
 	}
-	return ai.ContentPart{Type: "text", Text: "[image — file changed or gone]"}
+	return ai.ContentPart{Type: "text", Text: "[image — " + reason + "]"}
 }
 
 // sessionFile is the open journal. Its own mutex keeps a line whole: the agent

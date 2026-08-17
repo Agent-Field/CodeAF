@@ -1416,6 +1416,15 @@ func (s *Settings) spentTodayReceipt() string {
 }
 
 func (s *Settings) modelRow(slot ModelSlot) Setting {
+	// A CAPABILITY SLOT IS A KNOB WITH A READER, and a role slot is a live seam
+	// into a running engine. That is the whole split, and it is why the two are
+	// different rows: the drawing model is a value written down in the profile
+	// and read at the moment something draws (docs/MULTIMODAL.md Decision 5),
+	// while the conversation model is a thing a running session is ON and can
+	// only be asked of the session.
+	if slot.Role == "" {
+		return s.mediaModelRow(slot)
+	}
 	options := s.options
 	row := Setting{
 		Key: ModelSettingKey(slot.Slot), Category: CategoryModels, Kind: SettingModel,
@@ -1449,6 +1458,78 @@ func (s *Settings) modelRow(slot ModelSlot) Setting {
 		return options.ModelCost(modelSlotReading(options, slot))
 	}
 	return row
+}
+
+// mediaModelRow is one of the five capability slots — drawing, speaking,
+// composing, filming, voice — and since the v3 revision its write is ACCEPTED.
+//
+// THE ROW IS THE FRONT DOOR (docs/MULTIMODAL.md Decision 5). The double-knob
+// era, where the sheet held a row nothing read beside an environment variable
+// or a role pin that everything read, is over: the value is written into the
+// profile's config.json under this row's own key, and every resolver that asks
+// which model draws — the v3 use-time resolver, and [Load] for the older
+// surfaces — reads that key back through [MediaSlotModelAt]. One knob, one
+// reader.
+//
+// It carries no [Setting.PrefsField] on purpose. A prefs field means "this row
+// fronts a store the registry does not own", which was true while these rows
+// lived beside the graph and is exactly wrong now: the value is in the file
+// this registry writes, so the provenance chip can and must say so.
+func (s *Settings) mediaModelRow(slot ModelSlot) Setting {
+	dir := s.options.ProfileDir
+	options := s.options
+	row := Setting{
+		Key: ModelSettingKey(slot.Slot), Category: CategoryModels, Kind: SettingModel,
+		Label: slot.Label, Slot: slot.Slot,
+		// An unset capability slot is not a blank: the resolver walks on to the
+		// catalog and picks a model that publishes the capability, so the honest
+		// reading is the same word the looking row has always used.
+		EmptyLabel: "automatic",
+		Hint:       modelSlotHint(slot),
+	}
+	if name, ok := modelSlotEnvDefault(slot.Slot); ok {
+		row.EnvDefault = name
+	}
+	row.read = func() string { return MediaSlotModelAt(dir, slot.Slot) }
+	row.write = func(slug string) error {
+		return writeText(dir, ModelSettingKey(slot.Slot), slug)
+	}
+	row.receipt = func() string {
+		if options.ModelCost == nil {
+			return ""
+		}
+		return options.ModelCost(MediaSlotModelAt(dir, slot.Slot))
+	}
+	return row
+}
+
+// MediaSlotModelAt is ONE CAPABILITY SLOT'S MODEL, in the order every other
+// persisted knob resolves in: the operator's environment variable, then the row
+// the settings sheet wrote into the profile, then nothing.
+//
+// Nothing is the honest last answer rather than a curated name. This function
+// answers "what did a person choose", and the ladder that turns no choice into
+// a working model is the resolver's business (cmd/aforge's chatv3_media.go, and
+// [CandidateMediaModel] behind it) — a default invented here would be a rung
+// the resolver could not tell from a deliberate pin.
+//
+// A slot that is not a capability slot answers nothing at all: "talk" is the
+// conversation, and reading AFORGE_MODEL through this door would let a media
+// resolver quietly take the chat model for a modality it cannot serve.
+func MediaSlotModelAt(profileDir, slot string) string {
+	slot = strings.TrimSpace(slot)
+	if _, media := mediaSlotWords[slot]; !media {
+		return ""
+	}
+	if name, ok := modelSlotEnvDefault(slot); ok {
+		if raw := strings.TrimSpace(os.Getenv(name)); raw != "" {
+			return raw
+		}
+	}
+	if value, ok := persistedString(profileDir, ModelSettingKey(slot)); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
 }
 
 // modelSlotReading asks the ONE source that can answer for this slot. A role

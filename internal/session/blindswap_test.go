@@ -64,13 +64,13 @@ func TestSetModelScrubsImagePartsForAModelThatCannotSee(t *testing.T) {
 		t.Fatalf("%d image parts survived the swap onto a blind model", count)
 	}
 	text := transcriptText(agent)
-	if !strings.Contains(text, "[image "+path+" — file changed or gone]") {
+	if !strings.Contains(text, "[image "+path+" — this model cannot see images]") {
 		t.Fatalf("the placeholder does not name the file:\n%s", text)
 	}
 	if !strings.Contains(text, "what is wrong with this?") {
 		t.Fatalf("the person's own words were lost:\n%s", text)
 	}
-	if strings.Count(text, "— file changed or gone]") != 1 {
+	if strings.Count(text, "— this model cannot see images]") != 1 {
 		t.Fatalf("the picture was replaced more than once:\n%s", text)
 	}
 
@@ -164,7 +164,7 @@ func TestResumingOnABlindModelScrubsTheReplayedPictures(t *testing.T) {
 	if count := countImageParts(resumed); count != 0 {
 		t.Fatalf("%d image parts were replayed onto a blind model", count)
 	}
-	if text := transcriptText(resumed); !strings.Contains(text, "[image "+path+" — file changed or gone]") {
+	if text := transcriptText(resumed); !strings.Contains(text, "[image "+path+" — this model cannot see images]") {
 		t.Fatalf("the resumed transcript does not name the picture:\n%s", text)
 	}
 }
@@ -187,7 +187,7 @@ func TestTheScrubDropsBytesEvenWithNoJournaledPath(t *testing.T) {
 	if count := countImageParts(agent); count != 0 {
 		t.Fatalf("%d image parts survived", count)
 	}
-	if text := transcriptText(agent); !strings.Contains(text, "[image — file changed or gone]") {
+	if text := transcriptText(agent); !strings.Contains(text, "[image — this model cannot see images]") {
 		t.Fatalf("the placeholder is missing:\n%s", text)
 	}
 }

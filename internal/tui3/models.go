@@ -264,6 +264,21 @@ func cleanModalities(values []string) []string {
 // modelFilter is one slot's question, asked of one row.
 type modelFilter func(Model) bool
 
+// KeepForSlot is one settings row's question, asked of a list from outside this
+// package: [config.ModelSettingKey]'s key in, the rows that could answer that
+// slot out.
+//
+// It exists because the door and the surface now share one supply and have to
+// be testable against each other. Since Decision 6 the door hands over the WHOLE
+// catalog and every list narrows it where it is drawn, which means the question
+// "did the drawing slot's picker actually get a drawing model" spans two
+// packages — and the only honest way to ask it is to run a real catalog through
+// the door's own list-builder and then through this. Injecting hand-written rows
+// would test the filter against a fixture rather than against the product.
+func KeepForSlot(models []Model, settingsKey string) []Model {
+	return keepModels(models, filterFor(settingsKey))
+}
+
 // keepModels is the filter applied. It is the only place a list is narrowed.
 func keepModels(models []Model, keep modelFilter) []Model {
 	if keep == nil {
@@ -287,6 +302,15 @@ func keepModels(models []Model, keep modelFilter) []Model {
 // what a row IS and not about where it came from.
 func chatModels(models []Model) []Model { return keepModels(models, chatModel) }
 
+// ChatModels is that same law for the DOOR, which since Decision 6 hands this
+// package the whole catalog and has its own list to narrow: the models a task
+// may be handed to (cmd/aforge's v3TaskModels).
+//
+// It is exported rather than copied because a second spelling of "a model you
+// can talk to" is a second spelling that drifts — the picker would offer a row
+// the task argument refused, or the reverse, and neither surface could say why.
+func ChatModels(models []Model) []Model { return chatModels(models) }
+
 // chatModel is THE GENERAL CHAT LAW, and it is two-sided: a model somebody can
 // hold a conversation with answers in text and reads text. The output side is
 // the older half ([answersText]); the input side ([readsText]) is what keeps a
@@ -297,18 +321,26 @@ func chatModel(model Model) bool { return answersText(model) && readsText(model)
 // seesImages is HALF the vision slot's question ([inspectsImages] is the whole
 // of it): can this model look at a picture.
 //
-// SILENCE FALLS THROUGH, which is the opposite of what the door's own vision
-// gate does with it (cmd/aforge's v3ReadsImages, where the cost of guessing
-// wrong is a photo sent to a model that cannot read one). Here the cost is a
-// name missing from a list somebody is choosing from, and the rows that publish
-// nothing are the cache written before this field travelled — hiding all of
-// them would leave the row unanswerable. The row's own blank still means
-// "aforge picks one that can see", so nothing here has to guess for it.
+// SILENCE IS NO, and it is the SAME no the door's vision gate gives it
+// (cmd/aforge's v3ReadsImages) — THE ONE SILENCE LAW, docs/MULTIMODAL.md
+// Decision 6: an unpublished modality list means text-in/text-out and nothing
+// more, so a media capability is never assumed, only published.
+//
+// This predicate used to read that silence the other way, and the two halves of
+// one feature then disagreed about one row: a silent model was offered in the
+// looking picker as something that could see, chosen, and then refused every
+// photo by the gate that actually decides. A list that offers what the gate
+// will reject is worse than a shorter list.
+//
+// The id-word marks are the last resort, exactly as [makesModality] uses them:
+// a row that published nothing is read by its name, against the narrow
+// vocabulary that means sight and nothing else. And the slot's own blank still
+// means "aforge picks one that can see", so nothing here has to guess for it.
 func seesImages(model Model) bool {
-	if len(model.Input) == 0 {
-		return true
+	if len(model.Input) > 0 {
+		return hasModality(model.Input, "image")
 	}
-	return hasModality(model.Input, "image")
+	return markedID(model.ID, sightMarks)
 }
 
 // inspectsImages is what the VISION SLOT actually asks, and it is [seesImages]
@@ -415,6 +447,13 @@ var (
 	musicMarks  = map[string]bool{"music": true, "lyria": true, "suno": true}
 	videoMarks  = map[string]bool{"video": true, "sora": true, "veo": true, "seedance": true}
 	voiceMarks  = map[string]bool{"asr": true, "stt": true, "whisper": true, "transcribe": true, "transcription": true}
+
+	// sightMarks is the INPUT side's own vocabulary, read only by [seesImages]
+	// and only for a row that published nothing. It is the narrowest table
+	// here on purpose: these are the two words a vendor puts in a slug to say
+	// "this one has eyes", and every other word that might mean sight — multi,
+	// omni, flash — means it often enough to be a guess and not a witness.
+	sightMarks = map[string]bool{"vl": true, "vision": true}
 )
 
 // answersText is the rule for one row, in two rungs.
@@ -550,7 +589,7 @@ func contextWord(tokens int) string {
 // elo 1243", with each part left out when the catalog never said. Empty when
 // nothing is known, which is what a built-in row answers.
 func modelNote(model Model) string {
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 4)
 	if window := contextWord(model.ContextLength); window != "" {
 		parts = append(parts, window)
 	}
@@ -560,7 +599,54 @@ func modelNote(model Model) string {
 	if elo := eloWord(model.ArenaElo); elo != "" {
 		parts = append(parts, elo)
 	}
+	if modalities := ModalityWord(model.Input, model.Output); modalities != "" {
+		parts = append(parts, modalities)
+	}
 	return strings.Join(parts, " · ")
+}
+
+// ModalityWord is what a row can do BESIDES hold a conversation, in the
+// shortest words that stay true: "sees · draws".
+//
+// Since the door stopped narrowing the list (docs/MULTIMODAL.md Decision 6),
+// every picker is a filtered view of one catalog, and a filtered list is only
+// explicable if the rows say what they were filtered ON. Six hundred names with
+// no capability on them is a list where "why is this one here" has no answer on
+// screen.
+//
+// THE EMPTINESS LAW DECIDES WHAT IS SAID: a plain text chat model — text in,
+// text out, the overwhelming majority of every list — says NOTHING NEW, because
+// "reads · writes" on five hundred rows is furniture rather than information. A
+// row that published nothing says nothing either: silence is text-in/text-out by
+// the one silence law, which is exactly the case that earns no words.
+//
+// The input side comes first because it is what a person is usually shopping
+// for — can it see my screenshot — and because a model that both sees and draws
+// reads better forwards than backwards.
+//
+// It is exported for `aforge models`, which draws the same tail beside the same
+// facts (cmd/aforge's models.go). One spelling of "draws", in one place.
+func ModalityWord(input, output []string) string {
+	words := make([]string, 0, 5)
+	if hasModality(input, "image") {
+		words = append(words, "sees")
+	}
+	if hasModality(input, "audio") {
+		words = append(words, "hears")
+	}
+	if hasModality(input, "video") {
+		words = append(words, "watches")
+	}
+	if hasModality(output, "image") {
+		words = append(words, "draws")
+	}
+	if hasModality(output, "speech") || hasModality(output, "audio") || hasModality(output, "music") {
+		words = append(words, "speaks")
+	}
+	if hasModality(output, "video") {
+		words = append(words, "films")
+	}
+	return strings.Join(words, " · ")
 }
 
 // priceWord is what a million tokens cost, prompt then completion:

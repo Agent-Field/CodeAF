@@ -623,9 +623,12 @@ func settingDefaults() map[string]string {
 //
 // The two live seams it wires are the two this surface can honestly answer. The
 // conversation model is the model in the status line, and setting it is the
-// same road /model takes ([app.switchModel]) — one door, one effect. Every
-// other slot is answered somewhere this process cannot reach, and it says WHERE
-// ([app.slotRefusal]) rather than writing a preference nothing here would read.
+// same road /model takes ([app.switchModel]) — one door, one effect. The five
+// capability slots do not come through here at all: they are written down in
+// the profile by the registry itself and read back by the use-time resolver
+// (docs/MULTIMODAL.md Decision 5), which is what makes their writes ACCEPTED
+// rather than refused. What is left is the ROLE slots, answered somewhere this
+// process cannot reach, and they say so ([app.slotRefusal]).
 func (a *app) registry() *config.Settings {
 	if a.settings != nil {
 		return a.settings
@@ -640,7 +643,7 @@ func (a *app) registry() *config.Settings {
 		},
 		SetModel: func(slot, slug string) error {
 			if slot != talkSlot {
-				return a.slotRefusal(slot)
+				return a.slotRefusal()
 			}
 			a.switchModel(slug, 0)
 			return nil
@@ -653,25 +656,21 @@ func (a *app) registry() *config.Settings {
 // talkSlot is the model slot this surface is: the conversation.
 const talkSlot = "talk"
 
-// slotRefusal is what a slot this surface cannot write answers, and it NAMES
-// THE PLACE. The old sentence — "that model is chosen where its session is
-// opened" — is true of the role slots and simply wrong about the five media
-// ones: those are environment slots ([config.Setting.EnvDefault]), and a person
-// told to open a session to change the drawing model has been sent to a door
-// that does not exist. A refusal that cannot say where the value lives is a
-// refusal that leaves somebody stuck, which is the one thing the registry's
-// plain-language rule is for.
-func (a *app) slotRefusal(slot string) error {
-	// A ROLE belongs to a session and a MEDIA slot belongs to the environment,
-	// which is the split [config.ModelSlot] already draws: a capability slot
-	// carries no role. The environment variable is read off the registry row
-	// rather than repeated here, so the sentence cannot name a variable the
-	// registry has since renamed.
-	if media, ok := config.ModelSlotFor(slot); ok && media.Role == "" && a.settings != nil {
-		if row, found := a.settings.Row(config.ModelSettingKey(media.Slot)); found && row.EnvDefault != "" {
-			return fmt.Errorf("%s is set with %s", media.Label, row.EnvDefault)
-		}
-	}
+// slotRefusal is what a slot this surface cannot write answers, and THE ONLY
+// SLOTS LEFT IN IT ARE THE ROLES.
+//
+// The five media slots used to land here, and the refusal they got was the
+// wrong sentence about the wrong thing: "that model is chosen where its session
+// is opened" sent a person looking for a door that did not exist, and the
+// version that named an environment variable was true only because the row
+// itself was dead. Since Decision 5 they are not refused at all — a pick writes
+// the slot key straight into the profile ([config.Settings]'s own model row) and
+// the use-time resolver reads it on the very next picture.
+//
+// What remains is a ROLE bound in the roles table and resolved nowhere on this
+// surface: planning, verification, naming. Those genuinely belong to the session
+// that opens them, and the old sentence is the true one for them.
+func (a *app) slotRefusal() error {
 	return fmt.Errorf("that model is chosen where its session is opened")
 }
 

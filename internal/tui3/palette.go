@@ -746,6 +746,40 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 	return keepModels(BuiltinModels(), keep)
 }
 
+// nonChatWarning is what `/model <slug>` says instead of switching, and it is
+// empty for every slug that may be taken.
+//
+// THE OFFLINE LAW DECIDES WHO IS CHECKED. A slug no list this surface can reach
+// carries is taken AS TYPED, exactly as it always was: the catalog may be cold,
+// a person may be naming a model this build has never listed, and a surface that
+// refused every unfamiliar name would be a surface that stops working the moment
+// the network does. The check is only for a slug the catalog DOES carry, where
+// "this one cannot hold a conversation" is a published fact and not a guess.
+//
+// One sentence, and it says what happens rather than what went wrong: the model
+// is unchanged, which is the thing the person needs to know before they type
+// their next message.
+func (a *app) nonChatWarning(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	for _, model := range a.modelsFor(nil) {
+		if !strings.EqualFold(model.ID, id) {
+			continue
+		}
+		if chatModel(model) {
+			return ""
+		}
+		line := model.ID + " cannot hold a conversation"
+		if words := ModalityWord(model.Input, model.Output); words != "" {
+			line += " — it " + words
+		}
+		return line + ". Still on " + a.model + "."
+	}
+	return ""
+}
+
 // windowFor is the context length this surface knows for a model id, or zero.
 // It is how /model <slug> — which carries no row with it — still tells the
 // session what window it just switched to.

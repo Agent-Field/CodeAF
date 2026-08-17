@@ -10,6 +10,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/router"
+	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
 // runModels prints what the harness has learned about its panel.
@@ -41,6 +42,9 @@ func runModels(args []string) error {
 		if word := reasoningWord(models, settings.Model); word != "" {
 			line += "  " + word
 		}
+		if word := modalityWord(models, settings.Model); word != "" {
+			line += "  " + word
+		}
 		fmt.Println(line)
 	} else {
 		fmt.Println("panel:")
@@ -53,6 +57,9 @@ func runModels(args []string) error {
 				line += fmt.Sprintf("  $%.3f/M out", spec.Price)
 			}
 			if word := reasoningWord(models, spec.Slug); word != "" {
+				line += "  " + word
+			}
+			if word := modalityWord(models, spec.Slug); word != "" {
 				line += "  " + word
 			}
 			fmt.Println(line)
@@ -110,6 +117,24 @@ func reasoningWord(models *catalog.Catalog, slug string) string {
 		return ""
 	}
 	return catalog.ReasoningWord(model, provider.ReasoningMandatory(slug))
+}
+
+// modalityWord is what a slug can do besides write, in the picker's own words:
+// "sees · draws". It is internal/tui3's spelling and not a second one, because a
+// person who reads "draws" on a picker row and "generates images" here has been
+// told about two things by two programs (CLAUDE.md's one-source-of-truth rule).
+//
+// A plain text model says NOTHING, which is the emptiness law and also the
+// reason this reads well: the line is already carrying a price and a reasoning
+// phrase, and a capability tail on every row would be a fourth column that never
+// varies. A slug the catalog has never heard of says nothing either — the same
+// silence as a model with no capabilities, and neither is a claim.
+func modalityWord(models *catalog.Catalog, slug string) string {
+	model, known := models.Model(slug)
+	if !known {
+		return ""
+	}
+	return tui3.ModalityWord(model.InputModalities, model.OutputModalities)
 }
 
 func panelSlugs(panel router.Panel) []string {

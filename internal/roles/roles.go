@@ -72,6 +72,22 @@ const (
 	// under one careful planner — width is where the work happens, and it is
 	// where a run's money actually goes.
 	RoleWorker Role = "worker"
+	// RoleSpeech turns words into sound, and RoleVideo turns them into film.
+	// They complete the set of media pins the v3 use-time resolver reads as its
+	// second rung (docs/MULTIMODAL.md Decision 5), beside RoleImageGen and
+	// RoleVision, so an operator can pin every modality by the same mechanism
+	// rather than three of four.
+	//
+	// THEY ARE PIN NAMES AND ARE DELIBERATELY NOT REGISTERED. Registration
+	// binds a role to a TIER, and a tier is a class of text model: resolving
+	// "speech" through the low tier would hand a text model to an endpoint that
+	// returns audio, which is the wrong answer delivered confidently. A media
+	// role's ladder is the resolver's — slot, pin, catalog, curated name — and
+	// every rung of it is capability-checked, which the tier ladder cannot be.
+	// [Pinned] reads a key and needs no registration, which is exactly the
+	// slice of this package a media resolver wants.
+	RoleSpeech Role = "speech"
+	RoleVideo  Role = "video"
 	// RoleAuditor is the VERIFIED FRONTIER: the read-only judge that decides
 	// whether a piece of finished-looking work is actually finished, against
 	// hard evidence it gathered itself. It sits HIGH and it is the one role
@@ -125,6 +141,7 @@ var DefaultAssignment = map[Role]Tier{
 	RolePlanner:    TierHigh,
 	RoleDesigner:   TierHigh,
 	RoleWorker:     TierLow,
+	RoleRouter:     TierLow,
 }
 
 // ErrUnknownRole is returned by [Resolve] for a role that was never

@@ -36,10 +36,10 @@ func mp4Bytes(padding int) []byte {
 
 // ── the scripted media client ───────────────────────────────────────────────
 
-// scriptedMedia answers the one method the senses call and embeds the interface
+// scriptedEar answers the one method the senses call and embeds the interface
 // for the other three, so a later addition to MediaGenerator does not break
 // every test in this file (media_contract.go says to do exactly this).
-type scriptedMedia struct {
+type scriptedEar struct {
 	MediaGenerator
 
 	mu    sync.Mutex
@@ -48,7 +48,7 @@ type scriptedMedia struct {
 	err   error
 }
 
-func (m *scriptedMedia) Transcribe(_ context.Context, request provider.TranscriptionRequest) (*provider.TranscriptionResponse, error) {
+func (m *scriptedEar) Transcribe(_ context.Context, request provider.TranscriptionRequest) (*provider.TranscriptionResponse, error) {
 	m.mu.Lock()
 	m.calls = append(m.calls, request)
 	m.mu.Unlock()
@@ -59,7 +59,7 @@ func (m *scriptedMedia) Transcribe(_ context.Context, request provider.Transcrip
 	return &provider.TranscriptionResponse{Text: m.text, Usage: &ai.Usage{Cost: &cost}}, nil
 }
 
-func (m *scriptedMedia) count() int {
+func (m *scriptedEar) count() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.calls)
@@ -139,7 +139,7 @@ func TestReadSniffsAnImageWithoutExtension(t *testing.T) {
 // Rung 1 is the transcription endpoint, and a real transcript stops the ladder
 // there: nothing more expensive runs for a voice memo.
 func TestReadTranscribesAudioOnTheFirstRung(t *testing.T) {
-	media := &scriptedMedia{text: "The stand-up is moved to ten past nine tomorrow morning, in the small room."}
+	media := &scriptedEar{text: "The stand-up is moved to ten past nine tomorrow morning, in the small room."}
 	completer := &scriptedCompleter{}
 	agent, workspace := newTestAgent(t, completer, func(config *Config) {
 		config.Media = media
@@ -168,7 +168,7 @@ func TestReadTranscribesAudioOnTheFirstRung(t *testing.T) {
 // Rung 1 failing is not the answer. The ladder climbs, and the model above can
 // hear the file itself.
 func TestAudioLadderClimbsWhenTranscriptionFails(t *testing.T) {
-	media := &scriptedMedia{err: errors.New("402 insufficient credits")}
+	media := &scriptedEar{err: errors.New("402 insufficient credits")}
 	completer := &scriptedCompleter{steps: []step{
 		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
 			return textResponse("Slow acoustic guitar, melancholy, no vocals."), nil
@@ -204,7 +204,7 @@ func TestAudioLadderClimbsWhenTranscriptionFails(t *testing.T) {
 // anybody asked for — and the model never had to choose an endpoint to get past
 // it.
 func TestAudioLadderClimbsPastNoise(t *testing.T) {
-	media := &scriptedMedia{text: strings.Repeat("[Music] ", 20)}
+	media := &scriptedEar{text: strings.Repeat("[Music] ", 20)}
 	completer := &scriptedCompleter{steps: []step{
 		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
 			return textResponse("Uptempo synthwave: arpeggiated bass, gated drums, no speech."), nil
@@ -226,7 +226,7 @@ func TestAudioLadderClimbsPastNoise(t *testing.T) {
 // answer IS the answer. A four-second recording really does transcribe to three
 // words, and a refusal invented by a threshold is worse than a short truth.
 func TestAudioLadderClimbsOnThinAndKeepsItAsTheLastWord(t *testing.T) {
-	media := &scriptedMedia{text: "Yes, done."}
+	media := &scriptedEar{text: "Yes, done."}
 	completer := &scriptedCompleter{steps: []step{
 		func(_ context.Context, _ []ai.Message) (*ai.Response, error) {
 			return textResponse("A short spoken reply: \"Yes, done.\""), nil
@@ -242,7 +242,7 @@ func TestAudioLadderClimbsOnThinAndKeepsItAsTheLastWord(t *testing.T) {
 	}
 
 	// The same thin transcript, with no rung above it.
-	lastWord := &scriptedMedia{text: "Yes, done."}
+	lastWord := &scriptedEar{text: "Yes, done."}
 	alone, workspaceAlone := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Media = lastWord
 		config.MediaModel = senseResolver(map[string]string{"transcribe": "ears/model"})
@@ -259,7 +259,7 @@ func TestAudioLadderClimbsOnThinAndKeepsItAsTheLastWord(t *testing.T) {
 // Every rung named, in the order tried, so the person reading the transcript
 // knows whether to add credit or change a setting.
 func TestAudioFailureNamesEveryRung(t *testing.T) {
-	media := &scriptedMedia{err: errors.New("402 insufficient credits")}
+	media := &scriptedEar{err: errors.New("402 insufficient credits")}
 	completer := &scriptedCompleter{steps: []step{
 		func(_ context.Context, _ []ai.Message) (*ai.Response, error) { return nil, errors.New("no endpoint") },
 	}}
@@ -394,7 +394,7 @@ func TestSensesRefuseAnOversizeFile(t *testing.T) {
 // Paging through a description must be free. The rung runs once per file, and
 // the second read — a page of the same answer — costs nothing.
 func TestSenseMemoMakesPagingFree(t *testing.T) {
-	media := &scriptedMedia{text: strings.Repeat("a line of the transcript\n", 40)}
+	media := &scriptedEar{text: strings.Repeat("a line of the transcript\n", 40)}
 	agent, workspace := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Media = media
 		config.MediaModel = senseResolver(map[string]string{"transcribe": "ears/model"})

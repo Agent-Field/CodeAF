@@ -34,6 +34,70 @@ var bestMediaPreferences = map[string][]string{
 	"speech": {fallbackSpeechModel, preferredSpeechModel},
 	"music":  {"google/lyria-3", preferredMusicModel},
 	"video":  {"google/veo-3.5", preferredVideoModel},
+	// The four PERCEPTION words have preference orders too, and they are read
+	// by [CandidateMediaModel] rather than by [BestMediaModel]: nobody asks a
+	// tool argument for "the best pair of eyes", and the price tie-break the
+	// generation slots fall back on is exactly wrong here — the most expensive
+	// model that can see is not the one a fallback should quietly choose.
+	"vision":     {preferredVisionModel},
+	"voice":      {DefaultVoiceModel},
+	"transcribe": {DefaultVoiceModel},
+	"listen":     {preferredPerceptionModel},
+	"watch":      {preferredPerceptionModel},
+}
+
+// curatedMediaModels is the LAST RUNG of the use-time resolver: the name this
+// build remembers for a modality, for a machine whose catalog has told it
+// nothing (docs/MULTIMODAL.md Decision 5).
+//
+// Every one of these is still capability-checked by the resolver before it is
+// used, and that check survives a cold catalog because internal/catalog's own
+// offline fallbacks publish exactly these capabilities for exactly these ids.
+// Vision and the two perception words are the deliberate exceptions on a cold
+// machine — no offline row publishes image, audio or video INPUT with text back
+// — so those degrade to nothing rather than to a name nobody can vouch for,
+// which is the same posture ResolveVisionModel has always kept.
+var curatedMediaModels = map[string]string{
+	"image":      preferredImageModel,
+	"speech":     preferredSpeechModel,
+	"music":      preferredMusicModel,
+	"video":      preferredVideoModel,
+	"vision":     preferredVisionModel,
+	"voice":      DefaultVoiceModel,
+	"transcribe": DefaultVoiceModel,
+	"listen":     preferredPerceptionModel,
+	"watch":      preferredPerceptionModel,
+}
+
+// CandidateMediaModel is the CATALOG rung of the use-time resolver: the best
+// model the catalog advertises for one modality, by the documented preference
+// order and then by the catalog's own order.
+//
+// It is deliberately not [BestMediaModel]. That one answers a person who typed
+// "best" and falls back to the most expensive advertised row, because price is
+// the only quality signal a catalog row carries and somebody who asked for the
+// best has asked to be spent on. A fallback nobody asked for must not reach for
+// the most expensive thing on the shelf.
+func CandidateMediaModel(models *catalog.Catalog, modality string) string {
+	modality = strings.ToLower(strings.TrimSpace(modality))
+	candidates := ModelCandidates(models, modality)
+	if len(candidates) == 0 {
+		return ""
+	}
+	for _, preferred := range bestMediaPreferences[modality] {
+		for _, candidate := range candidates {
+			if candidate.ID == preferred {
+				return candidate.ID
+			}
+		}
+	}
+	return candidates[0].ID
+}
+
+// FallbackMediaModel is the curated rung, and empty for a modality this build
+// has no remembered name for.
+func FallbackMediaModel(modality string) string {
+	return curatedMediaModels[strings.ToLower(strings.TrimSpace(modality))]
 }
 
 type scoredModel struct {
