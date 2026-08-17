@@ -371,11 +371,10 @@ re-tell the model about work it already read about.
 
 Three places.
 
-**The checkpoint**, one per conversation, at the session journal's own path with the
-extension swapped:
+**The checkpoint**, one per conversation, in the conversation's own folder:
 
 ```
-~/.aforge/v3/sessions/<cwd-with-dashes>/<session>.tasks.json
+~/.aforge/v3/projects/<workspace-with-dashes>/<session id>/tasks.json
 ```
 
 It holds the id counter and, per task in admission order: id, title, summary, brief,
@@ -392,10 +391,10 @@ graph rather than refusing to start.
 A conversation with **no session file on disk** gets no checkpoint at all, and runs tasks
 anyway.
 
-**The project index**, one per workspace, shared by every window open on that directory:
+**The project index**, one per workspace, shared by every window open on that project:
 
 ```
-~/.aforge/v3/sessions/<cwd-with-dashes>/tasks.jsonl
+~/.aforge/v3/projects/<workspace-with-dashes>/tasks.jsonl
 ```
 
 Append-only, one row per landed task: id, name, label, title, status, the first sentence

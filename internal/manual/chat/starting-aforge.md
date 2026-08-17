@@ -50,10 +50,18 @@ permissions page.
 
 ## Where your conversations are kept
 
-Every conversation is written to a file as it happens, under your home directory
-in `.aforge/v3/sessions/`, in a folder named after the directory you were working
-in. That file is what `aforge` reopens when you come back, and what the picker
-lists. Closing the window, or losing the connection, does not lose what was said.
+Every conversation is written to disk as it happens, under your home directory in
+`.aforge/v3/projects/`, in a folder named after the project you were working in
+and a folder of its own inside that. The conversation's own folder holds the
+transcript and everything else the conversation kept. That transcript is what
+`aforge` reopens when you come back, and what the picker lists. Closing the
+window, or losing the connection, does not lose what was said.
+
+Opened inside a project, aforge works in the project and leaves nothing of its
+own in it. Opened where there is no project at all — your home directory, a
+temporary directory, a launcher — it works in a folder of its own instead, so
+scratch files and downloads land somewhere they can be thrown away with the
+conversation.
 
 ## Asking aforge about itself
 
