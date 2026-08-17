@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -736,8 +738,449 @@ func TestTheCatalogIsReadOnceAndNotPerFrame(t *testing.T) {
 	}
 	// An account that CHANGES is the one thing that does re-read it.
 	a.sheet.conn.pending = "stripe"
-	a.connTabSettled("stripe", "Stripe", true)
+	a.connTabSettled("stripe", "Stripe", true, "")
 	if conns.reads == was {
 		t.Fatal("a connected account did not refresh the catalog")
+	}
+}
+
+// ── 7. the key, given on the tab ────────────────────────────────────────────
+//
+// The UX wave's half of this file: a service that wants a key is answered HERE,
+// on the row, in the same box /connect opens (connectcaps.go, connect.go's
+// [keyBoxLines]).
+
+// keyCatalog is a build with one held account and a shelf of key services: one
+// that says where its key lives, one that says nothing, one that wants a domain
+// before the key, and one connected from a named variable.
+var keyCatalog = []connect.Status{
+	{
+		Service:   connect.Service{ID: "google", Name: "Google", Category: "productivity"},
+		Connected: true, Account: "jane@example.com",
+	},
+	{
+		Service: connect.Service{
+			ID: "stripe", Name: "Stripe", Category: "billing", Auth: connect.AuthKey,
+			KeyHint: "https://dashboard.stripe.com/apikeys",
+		},
+		Connected: true, KeyEnv: "STRIPE_KEY",
+	},
+	{Service: connect.Service{
+		ID: "chargebee", Name: "Chargebee", Category: "billing", Auth: connect.AuthKey,
+		Blurb:   "Reach your Chargebee account, with a key you already hold.",
+		KeyAsk:  "Give the domain and then the key, one space between them.",
+		KeyHint: "https://apidocs.chargebee.com",
+	}},
+	{Service: connect.Service{
+		ID: "recurly", Name: "Recurly", Category: "billing", Auth: connect.AuthKey,
+		Blurb: "Reach your Recurly account, with a key you already hold.",
+	}},
+	{Service: connect.Service{
+		ID: "notion", Name: "Notion", Category: "productivity",
+		Blurb: "Notion's own tools, signed in in your browser.",
+	}},
+	{Service: connect.Service{ID: "linear", Name: "Linear", Category: "developer", Blurb: "your issues"}},
+	{Service: connect.Service{ID: "sentry", Name: "Sentry", Category: "developer", Blurb: "your errors"}},
+	{Service: connect.Service{ID: "apollo", Name: "Apollo", Category: "sales & outreach", Auth: connect.AuthKey, Blurb: "your prospects"}},
+	{Service: connect.Service{ID: "hunter", Name: "Hunter", Category: "sales & outreach", Auth: connect.AuthKey, Blurb: "your addresses"}},
+	{Service: connect.Service{ID: "dixa", Name: "Dixa", Category: "support", Auth: connect.AuthKey, Blurb: "your conversations"}},
+	{Service: connect.Service{ID: "freshdesk", Name: "Freshdesk", Category: "support", Auth: connect.AuthKey, Blurb: "your tickets"}},
+}
+
+// keyApp is the tab over that catalog, with nothing expanded.
+func keyApp(t *testing.T) (*app, *fakeConnections) {
+	t.Helper()
+	a, conns := capsApp(t, keyCatalog)
+	a.sheet.conn.expanded = ""
+	a.sheet.build()
+	return a, conns
+}
+
+// onRow puts the cursor on one service's row.
+func onRow(t *testing.T, a *app, service string) {
+	t.Helper()
+	at := serviceRowAt(a, service)
+	if at < 0 {
+		t.Fatalf("the tab drew no row for %s:\n%s", service, strings.Join(sheetLabels(a), "\n"))
+	}
+	a.sheet.cursor = at
+}
+
+// ENTER ON A KEY SERVICE OPENS THE BOX, HERE, and nothing leaves the process:
+// the person has not answered anything yet.
+func TestAKeyServiceOpensItsBoxOnTheTab(t *testing.T) {
+	a, conns := keyApp(t)
+	onRow(t, a, "recurly")
+	drive(t, a, key("enter"))
+
+	if a.sheet.conn.entry == nil || a.sheet.conn.entry.id != "recurly" {
+		t.Fatalf("enter on a key row opened %+v", a.sheet.conn.entry)
+	}
+	if len(conns.began) != 0 {
+		t.Fatalf("a key service opened a browser: %v", conns.began)
+	}
+	if len(conns.keyed) != 0 {
+		t.Fatalf("an unanswered box connected %+v", conns.keyed)
+	}
+	if !sheetHas(a, "paste your Recurly key") {
+		t.Fatalf("the box does not say what to put in it:\n%s", strings.Join(sheetLabels(a), "\n"))
+	}
+	// The sheet stays up and stays on this page.
+	if !a.sheet.open || settingTabs[a.sheet.tab] != tabConnections {
+		t.Fatal("the box took the page away")
+	}
+	// And a browser service still opens a browser from the same key.
+	drive(t, a, key("esc"))
+	onRow(t, a, "notion")
+	drive(t, a, key("enter"))
+	if len(conns.began) != 1 || conns.began[0] != "notion" {
+		t.Fatalf("a browser row began %v", conns.began)
+	}
+	if a.sheet.conn.entry != nil {
+		t.Fatal("a browser row opened a key box")
+	}
+}
+
+// THE KEY IS NEVER ON THE SCREEN, on this surface as on the other two: a bullet
+// each and how many there are.
+func TestTheTabsKeyBoxNeverDrawsTheKey(t *testing.T) {
+	a, _ := keyApp(t)
+	onRow(t, a, "recurly")
+	drive(t, a, key("enter"))
+	drive(t, a, tea.PasteMsg{Content: theKey + "\n"})
+
+	screen := strings.Join(sheetLabels(a), "\n")
+	if strings.Contains(screen, "secret") || strings.Contains(screen, theKey) {
+		t.Fatalf("the key is on the page:\n%s", screen)
+	}
+	if !strings.Contains(screen, "••") {
+		t.Fatalf("the key was not masked at all:\n%s", screen)
+	}
+	// The newline the clipboard brought is dropped rather than kept: the count
+	// is what was pasted, and a space inside a secret is a secret that does not
+	// work.
+	if !strings.Contains(screen, itoa(len(theKey))) {
+		t.Fatalf("the count is not what was pasted:\n%s", screen)
+	}
+	// And the search box did not take a character of it.
+	if a.sheet.query.String() != "" {
+		t.Fatalf("the key reached the search box: %q", a.sheet.query.String())
+	}
+}
+
+// ENTER HANDS THE KEY TO THE ENGINE, and what comes back settles ON THE ROW:
+// the tick, and the account open on what it may do.
+func TestSubmittingAKeyOnTheTabConnectsInPlace(t *testing.T) {
+	a, conns := keyApp(t)
+	conns.caps["recurly"] = []connect.Capability{
+		{ID: "read", Phrase: "read what is in this account"},
+		{ID: "act", Phrase: "act in this account in your name", Acts: true},
+	}
+	onRow(t, a, "recurly")
+	drive(t, a, key("enter"))
+	drive(t, a, tea.PasteMsg{Content: theKey}, key("enter"))
+
+	if len(conns.keyed) != 1 || conns.keyed[0].id != "recurly" || conns.keyed[0].key != theKey {
+		t.Fatalf("the tab handed over %+v", conns.keyed)
+	}
+	if a.sheet.conn.entry != nil {
+		t.Fatal("the box survived the key it asked for")
+	}
+	if !a.sheet.open || settingTabs[a.sheet.tab] != tabConnections {
+		t.Fatal("the sheet walked away from the account it was connecting")
+	}
+	screen := strings.Join(sheetLabels(a), "\n")
+	if !strings.Contains(screen, glyphConnected+" Recurly") {
+		t.Fatalf("the row did not gain its tick:\n%s", screen)
+	}
+	if capRowAt(a, "recurly", "read") < 0 {
+		t.Fatalf("the account it just connected did not open:\n%s", screen)
+	}
+}
+
+// AN EMPTY BOX IS NOT AN ANSWER, and esc backs out of the box before it backs
+// out of anything else — the tab's own rung of the sheet's esc ladder.
+func TestTheTabsKeyBoxBacksOutWithoutConnecting(t *testing.T) {
+	for _, out := range []string{"enter", "esc"} {
+		a, conns := keyApp(t)
+		onRow(t, a, "recurly")
+		drive(t, a, key("enter"))
+		if out == "esc" {
+			drive(t, a, tea.PasteMsg{Content: theKey})
+		}
+		drive(t, a, key(out))
+
+		if len(conns.keyed) != 0 {
+			t.Fatalf("%s connected %+v", out, conns.keyed)
+		}
+		if a.sheet.conn.entry != nil {
+			t.Fatalf("%s left the box open", out)
+		}
+		if !a.sheet.open {
+			t.Fatalf("%s closed the whole sheet", out)
+		}
+		// The cursor is back on the row the box was opened from.
+		if item, ok := a.sheet.current(); !ok || item.conn == nil || item.conn.service != "recurly" {
+			t.Fatalf("%s left the cursor somewhere else", out)
+		}
+	}
+}
+
+// A KEY THE FAR END REFUSED SAYS SO IN THE FAR END'S OWN WORDS, on the foot
+// line — which is the only place a person can read them while a fullscreen
+// sheet is up.
+func TestARefusedKeyOnTheTabSaysWhy(t *testing.T) {
+	a, conns := keyApp(t)
+	conns.keyErr = errConnect("Recurly did not accept that key: 401 Unauthorized")
+	onRow(t, a, "recurly")
+	drive(t, a, key("enter"))
+	drive(t, a, tea.PasteMsg{Content: theKey}, key("enter"))
+
+	if !strings.Contains(a.sheet.msg, "did not accept that key") {
+		t.Fatalf("the refusal was swallowed: %q", a.sheet.msg)
+	}
+	if a.sheet.conn.pending != "" {
+		t.Fatal("the row is still waiting for an answer that landed")
+	}
+}
+
+// WHILE THE KEY IS OUT THE ROW SAYS SO, and it does not claim a browser it
+// never opened.
+func TestAWaitingKeyRowDoesNotClaimABrowser(t *testing.T) {
+	a, _ := keyApp(t)
+	a.sheet.conn.pending, a.sheet.conn.pendingKey = "recurly", true
+	a.sheet.build()
+	at := serviceRowAt(a, "recurly")
+	line := plain(strings.Join(a.sheet.rowLines(a.sheet.items[at], false, false, a.width, a.pal), "\n"))
+	if !strings.Contains(line, checkingWord) {
+		t.Fatalf("the waiting key row says %q", line)
+	}
+	if strings.Contains(line, "browser") {
+		t.Fatalf("a key row talked about a browser: %q", line)
+	}
+}
+
+// ── 8. where to get the key ─────────────────────────────────────────────────
+
+// THE ADDRESS IS DRAWN WHILE THE BOX IS OPEN AND AT NO OTHER TIME.
+func TestTheKeyHintIsShownOnlyWhileTheBoxIsOpen(t *testing.T) {
+	a, _ := keyApp(t)
+	const host = "apidocs.chargebee.com"
+
+	if sheetHas(a, host) {
+		t.Fatalf("the catalog is advertising a settings page:\n%s",
+			strings.Join(sheetLabels(a), "\n"))
+	}
+	onRow(t, a, "chargebee")
+	if sheetHas(a, host) {
+		t.Fatal("the cursor alone drew the address")
+	}
+	drive(t, a, key("enter"))
+	if !sheetHas(a, host) {
+		t.Fatalf("the open box does not say where the key is:\n%s",
+			strings.Join(sheetLabels(a), "\n"))
+	}
+	drive(t, a, key("esc"))
+	if sheetHas(a, host) {
+		t.Fatal("the address outlived the box")
+	}
+}
+
+// A SERVICE THAT SAYS NOTHING DRAWS NOTHING — the emptiness law, on a line that
+// would otherwise be a link to a page nobody vouched for.
+func TestABoxWithNoAddressDrawsNoLine(t *testing.T) {
+	a, _ := keyApp(t)
+	onRow(t, a, "recurly")
+	drive(t, a, key("enter"))
+	if sheetHas(a, "find it at") {
+		t.Fatalf("a service with no address grew one:\n%s",
+			strings.Join(sheetLabels(a), "\n"))
+	}
+	if !sheetHas(a, "paste your Recurly key") {
+		t.Fatal("the box lost its own line with it")
+	}
+}
+
+// AND THE INSTRUCTION STANDS OVER THE BOX for the services that need one, and
+// over no other.
+func TestTheBlankRuleIsSaidOverTheBox(t *testing.T) {
+	a, _ := keyApp(t)
+	onRow(t, a, "chargebee")
+	drive(t, a, key("enter"))
+	if !sheetHas(a, "Give the domain and then the key") {
+		t.Fatalf("the box does not say what it wants:\n%s",
+			strings.Join(sheetLabels(a), "\n"))
+	}
+	drive(t, a, key("esc"))
+	onRow(t, a, "recurly")
+	drive(t, a, key("enter"))
+	if sheetHas(a, "Give the domain") {
+		t.Fatal("a service with no blank was asked for one")
+	}
+}
+
+// THE FOOT LINE IS WHERE THE OTHER ANSWER IS TAUGHT: a variable's name is a key
+// too, and nothing else on the screen could have said so.
+func TestTheFootLineTeachesTheVariable(t *testing.T) {
+	a, _ := keyApp(t)
+	onRow(t, a, "chargebee")
+	drive(t, a, key("enter"))
+	note := a.sheet.footNote()
+	if !strings.Contains(note, "$CHARGEBEE_KEY") || !strings.Contains(note, "paste") {
+		t.Fatalf("the foot line does not teach the two answers: %q", note)
+	}
+	if !strings.Contains(a.sheet.keysLine(), "enter connect") {
+		t.Fatalf("the legend is still the list's: %q", a.sheet.keysLine())
+	}
+}
+
+// ── 9. a key that lives in the environment ──────────────────────────────────
+
+// A CONNECTION READ FROM A VARIABLE SAYS WHICH ONE, where an account would be —
+// and a key pasted whole still says nothing at all.
+func TestAConnectionFromAVariableNamesIt(t *testing.T) {
+	a, _ := keyApp(t)
+	at := serviceRowAt(a, "stripe")
+	line := plain(strings.Join(a.sheet.rowLines(a.sheet.items[at], false, false, a.width, a.pal), "\n"))
+	if !strings.Contains(line, "from $STRIPE_KEY") {
+		t.Fatalf("the row does not say where its key comes from: %q", line)
+	}
+	// THE EMPTINESS LAW: a key pasted whole has nothing to show, and a row of
+	// bullets standing in for it would be this surface pretending to hold
+	// something up.
+	a.sheet.conn.catalog[1].KeyEnv = ""
+	a.sheet.conn.groups = groupConnections(a.sheet.conn.catalog)
+	a.sheet.build()
+	at = serviceRowAt(a, "stripe")
+	line = plain(strings.Join(a.sheet.rowLines(a.sheet.items[at], false, false, a.width, a.pal), "\n"))
+	if strings.Contains(line, "from $") || strings.Contains(line, "•") {
+		t.Fatalf("a pasted key was drawn as something: %q", line)
+	}
+	if !strings.Contains(line, glyphConnected+" Stripe") {
+		t.Fatalf("the row lost its tick: %q", line)
+	}
+}
+
+// ── 10. what the page reads like at rest ────────────────────────────────────
+
+// A CLOSED ACCOUNT SAYS WHAT IT MAY DO, in one line, so nothing has to be
+// opened to be audited — and an OPEN one does not, because the rows under it
+// are the same fact said longer.
+func TestAClosedAccountSummarisesItsAnswers(t *testing.T) {
+	a, _ := keyApp(t)
+	at := serviceRowAt(a, "google")
+	lines := plain(strings.Join(a.sheet.rowLines(a.sheet.items[at], false, false, a.width, a.pal), "\n"))
+	for _, want := range []string{capYesWord + ":", "read your mail", capAskWord + ":", "send mail as you"} {
+		if !strings.Contains(lines, want) {
+			t.Fatalf("the closed account does not say %q:\n%s", want, lines)
+		}
+	}
+	// The words are the tab's own three and nothing is rephrased.
+	if strings.Contains(lines, "reads mail") {
+		t.Fatalf("the summary invented a vocabulary:\n%s", lines)
+	}
+
+	a.sheet.cursor = at
+	drive(t, a, key("enter"))
+	open := plain(strings.Join(a.sheet.rowLines(a.sheet.items[serviceRowAt(a, "google")], false, false, a.width, a.pal), "\n"))
+	if strings.Contains(open, capYesWord+":") {
+		t.Fatalf("an open account is still summarising itself:\n%s", open)
+	}
+}
+
+// AN ACCOUNT IS A BLOCK AND A BLOCK HAS AIR OVER IT — and the blank belongs to
+// no row, so nothing can be pressed on it.
+func TestEachHeldAccountGetsALineOfAir(t *testing.T) {
+	a, _ := keyApp(t)
+	lines, owner := a.sheet.listLines(a.width, a.pal, -1)
+	held := 0
+	for i, line := range lines {
+		if !strings.Contains(plain(line), glyphConnected+" ") {
+			continue
+		}
+		held++
+		if i == 0 {
+			continue
+		}
+		if strings.TrimSpace(plain(lines[i-1])) != "" {
+			t.Fatalf("line %d is an account with no air over it: %q", i, plain(lines[i-1]))
+		}
+		if owner[i-1] != -1 {
+			t.Fatalf("the blank over an account answers to row %d", owner[i-1])
+		}
+	}
+	if held != 2 {
+		t.Fatalf("the page drew %d held accounts, want two", held)
+	}
+}
+
+// THE ANSWERS STAND IN ONE COLUMN: yes and ask first begin in the same place,
+// which is what makes the column scannable without being read.
+func TestTheAnswersBeginInOneColumn(t *testing.T) {
+	a, _ := keyApp(t)
+	onRow(t, a, "google")
+	drive(t, a, key("enter"))
+
+	column := -1
+	for _, id := range []string{"mail-read", "mail-send", "calendar-read", "calendar-write"} {
+		at := capRowAt(a, "google", id)
+		if at < 0 {
+			t.Fatalf("the open account has no %s row", id)
+		}
+		line := plain(a.sheet.rowLines(a.sheet.items[at], false, false, a.width, a.pal)[0])
+		word := capWord(a.sheet.items[at].conn.state)
+		found := strings.Index(line, word)
+		if found < 0 {
+			t.Fatalf("%s does not carry its answer: %q", id, line)
+		}
+		if column < 0 {
+			column = found
+			continue
+		}
+		if found != column {
+			t.Fatalf("%s begins its answer at %d, want %d — the column is ragged:\n%q",
+				id, found, column, line)
+		}
+	}
+}
+
+// THE CATALOG IS QUIET AND THE CURSOR IS WHERE THE DETAIL IS: an available row
+// is a name and one word saying what enter will ask for, and its sentence is
+// drawn under the row a person has stopped on and under no other.
+func TestTheCatalogDrawsItsBlurbUnderTheCursorOnly(t *testing.T) {
+	a, _ := keyApp(t)
+	onRow(t, a, "linear")
+
+	screen := strings.Join(sheetLabels(a), "\n")
+	if !strings.Contains(screen, "your issues") {
+		t.Fatalf("the cursor's row does not explain itself:\n%s", screen)
+	}
+	if strings.Contains(screen, "your errors") || strings.Contains(screen, "your prospects") {
+		t.Fatalf("the catalog is drawing everybody's sentence:\n%s", screen)
+	}
+	// What the other rows carry instead is the word saying what enter will ask
+	// for — the /connect panel's own two tags.
+	if !strings.Contains(screen, keyTag) || !strings.Contains(screen, signInTag) {
+		t.Fatalf("the catalog rows do not say how they connect:\n%s", screen)
+	}
+	// A HELD ACCOUNT EXPLAINS NOTHING. It is connected, which is the whole of
+	// what a person wanted to know.
+	onRow(t, a, "google")
+	if got := connAbout(a.sheet.items[a.sheet.cursor].conn); got != "" {
+		t.Fatalf("a held account explained itself: %q", got)
+	}
+}
+
+// AND A LIST SHORT ENOUGH TO READ KEEPS ITS SENTENCES ON THE ROWS, which is the
+// /connect panel's own rule for the same catalog: the tag is what a person
+// needs at two hundred rows and the sentence is what they need at six.
+func TestAShortListKeepsItsBlurbsOnTheRow(t *testing.T) {
+	a, _ := capsApp(t, twoAccounts)
+	screen := strings.Join(sheetLabels(a), "\n")
+	if !strings.Contains(screen, "your channels") {
+		t.Fatalf("a short list hid its sentences:\n%s", screen)
+	}
+	if strings.Contains(screen, signInTag) {
+		t.Fatalf("a list of two grew catalog tags:\n%s", screen)
 	}
 }

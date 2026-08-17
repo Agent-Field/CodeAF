@@ -322,8 +322,13 @@ supposed to be a separate look.
 - The classic genuine dependency: a synthesis needs the things it synthesises; a
   check needs the thing it checks; a decision needs the options priced.
 
-In your justification you must NAME the pairs: which jobs you found independent
-and put in lanes, and which you found dependent and why the dependency is real.
+DO THIS PAIR BY PAIR, IN WRITING, BEFORE YOU DRAW A SINGLE EDGE. The pair table
+is the `derivation` key of your reply and it is CHECKED against the edges you
+draw (PART THREE). This step is not a paragraph you write afterwards to account
+for a shape you already had — the shape is what the table leaves behind. A
+designer who skips to the topology reliably writes "no parallelization
+opportunity" about three evaluations that never once read each other, and the
+table is what makes that sentence impossible to write by accident.
 
 ## 5. Loops name a condition, a cap, and a measure of progress
 
@@ -412,10 +417,13 @@ tell the on-call engineer."*
   causes is not known until the enumeration runs — but each cause gets the same
   treatment, and one node can do all of them in one brief. Nothing branches. So:
   `fixed`, no cap. Stated, not silent.
-- **Step 4.** Enumerate-causes needs characterise-the-failure's answer: dependent.
-  Derive-observables needs the causes: dependent. Rank needs the observables:
-  dependent. Every pair is genuinely ordered, so nothing goes in lanes. Also
-  stated, because "no parallelism" that is not argued reads as not having looked.
+- **Step 4.** The table, pair by pair, before any edge: characterise→enumerate
+  DEPENDS, the enumeration works from the failure's shape; enumerate→observables
+  DEPENDS, each observable is derived from one cause; observables→rank DEPENDS, the
+  ranking is over the observables; and the three long-range pairs
+  (characterise→observables, characterise→rank, enumerate→rank) DEPEND too, each
+  through the step between them. Six pairs, six DEPENDS, nothing in lanes — and it
+  is the six lines that establish that, not the sentence summarising them.
 - **Step 5.** No loop. Nothing here gets better on a second pass that the verify
   node would not simply pass on the first.
 - **Step 6.** The ranking node's brief must carry the export's own nouns and say
@@ -431,12 +439,51 @@ room.
 
 # PART THREE · THE OUTPUT
 
+## THE DERIVATION, WRITTEN BEFORE THE TOPOLOGY
+
+`derivation` is step 4 as data, and it comes BEFORE the program in your reply
+because it comes before the program in the thinking. List EVERY PAIR of the nodes
+you are about to draw — every pair, not the interesting ones — and mark each:
+
+- `"rel": "depends"` — one of them cannot begin until it has the other's answer.
+  The `why` NAMES THE DATA that flows: "the ranking is over the observables", not
+  "this one goes second".
+- `"rel": "independent"` — no output of either enters the other, in either
+  direction. The `why` is one line saying why none does: "each prices one approach
+  from the goal's own statement".
+
+```json
+"derivation": [
+  {"a": "node-x", "b": "node-y", "rel": "depends", "why": "y is handed x's ranked list"},
+  {"a": "node-y", "b": "node-z", "rel": "independent", "why": "both read the goal; neither reads the other"}
+]
+```
+
+Both fields are node ids from the program below, and every pair needs its `why`.
+n nodes is n(n−1)/2 pairs: four nodes is six lines, five is ten. If that is more
+lines than the design deserves, that is the design telling you it has too many
+nodes.
+
+THEN DRAW THE EDGES TO MATCH, because this is checked, not read:
+
+- A pair marked `independent` where the program runs one into the other — by an
+  edge or by any chain of edges — is a REFUSAL, and the refusal quotes the path.
+  Fix it by drawing the lanes, or by admitting the pair was dependent.
+- Two lanes of the same `parallel.split` do not reach each other. That is what
+  makes `independent` on them true and it is the shape the table is pushing you
+  toward whenever it says `independent`.
+- A pair that names an id the program does not contain is a REFUSAL too. So a
+  table with three evaluations in it and a program with one node that does all
+  three is caught: collapsing the jobs does not remove the pairs, it just makes
+  the design disagree with its own derivation.
+
 Reply with ONE JSON object and NOTHING else — no prose, no code fence:
 
 ```json
 {
   "cues": ["..."],
   "justification": "...",
+  "derivation": [{"a": "slug", "b": "slug", "rel": "depends|independent", "why": "..."}],
   "harness": {
     "id": {"name": "slug", "desc": "one sentence", "author": "designer"},
     "program": {
@@ -462,8 +509,10 @@ paragraphs and with no restating of the goal:
    and any node that sits lower.
 3. **Dynamism rung and budget** — the signal that justifies any rung above `fixed`,
    and how the cap was counted. If `fixed`, say that it is `fixed` on purpose.
-4. **Parallel/sequential** — which pairs of jobs are independent (and are therefore
-   in lanes) and which are genuinely dependent (and are therefore in sequence).
+4. **Parallel/sequential** — what the `derivation` table came out to: how many
+   pairs were independent and what shape that forced, or that every pair was
+   dependent and the program is therefore a line. Do not transcribe the table; it
+   is already in the reply, and a second copy is paid for twice.
 5. **Estimated model calls** — a number, counted: one per `agent.loop` (times its
    rounds if looped, times width if in a lane), one per `verify`, one per condition
    written as a sentence rather than in the condition language. Say the number.

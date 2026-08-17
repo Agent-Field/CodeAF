@@ -85,14 +85,43 @@ var commands = []command{
 	// they will open occasionally. Position in this table is a claim about
 	// frequency; this is the honest one.
 	{name: "harness", desc: "the shapes of work you have saved · what they did", alias: []string{"harnesses"}},
-	// THE TWO DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
+	// THE TWO QUESTIONS THE STATUS LINE IS ALREADY ANSWERING, asked out loud. The
+	// line at the bottom of the frame drops whatever does not fit and a phone-width
+	// frame keeps two of eleven facts (statusdeck.go), so on any surface these are
+	// the commands that say the rest of it — and on a surface with the mouse turned
+	// off they are the only way to the sheet at all.
+	//
+	// They sit HERE, under /harness and above the copy pair, for the reason
+	// /harness sits where it does: position in this table is a claim about
+	// frequency, [menuRows] shows eight rows at once, and a person reads their bill
+	// occasionally while they compact and rewind daily. Neither may push /compact
+	// into a scroll.
+	//
+	// /status is the wider word and goes first, because the spend is one of the
+	// lines it prints: somebody who wanted the money and typed the general word
+	// still gets their answer, while the reverse is not true.
+	{name: "status", desc: "everything the status line knows, one fact per line", alias: []string{"info", "context"}},
+	{name: "cost", desc: "what this conversation has spent, and on what", alias: []string{"usage", "tokens", "spend"}},
+	// THE THREE DOORS ONTO GETTING TEXT OUT, and they sit beside /help because
 	// that is where a person goes with the question they answer. The keys behind
-	// them are the two least discoverable on the surface — nothing on the screen
-	// says either exists — and "why can I not copy this" is the first question
-	// this surface gets asked. /copy is the keyboard's way, /select the mouse's
-	// (copymode.go).
+	// the first two are the least discoverable on the surface — nothing on the
+	// screen says either exists — and "why can I not copy this" is the first
+	// question this surface gets asked. /copy is the keyboard's way, /select the
+	// mouse's (copymode.go).
+	//
+	// /export is the third and it is a different KIND of answer: those two hand
+	// over what is on the screen, and this one writes the whole conversation to a
+	// file somebody can send (export.go). It is last of the three because it is
+	// the one a person reaches for once, at the end.
 	{name: "copy", desc: "read the conversation back and copy from it · ctrl+b"},
 	{name: "select", desc: "drag to select with your mouse · ctrl+s"},
+	// TWO ROWS FOR ONE COMMAND, the way /model has two. A single row carrying
+	// <path> would make the bare form — which is the one nearly everybody wants —
+	// unreachable from the list: [app.runMenu] writes a row that TAKES something
+	// into the draft instead of running it, so choosing it would put "/export "
+	// in the box and wait for a path nobody had in mind.
+	{name: "export", desc: "write this conversation to a file", alias: []string{"save"}},
+	{name: "export", args: "<path>", desc: "…and write it there · tab completes the path"},
 	{name: "help", desc: "this list", alias: []string{"?"}},
 	{name: "quit", desc: "leave", alias: []string{"exit", "q"}},
 }

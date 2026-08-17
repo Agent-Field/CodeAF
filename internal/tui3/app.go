@@ -236,6 +236,21 @@ type entry struct {
 	settled bool
 	mdCut   int
 
+	// tables is which of this answer's markdown tables the person has opened,
+	// by the ordinal they appear in (mdtable.go). Nil means every one of them is
+	// closed, which is what an answer with no table in it stays.
+	//
+	// It is state on the ENTRY rather than on the surface because it belongs to
+	// the block: an answer scrolls, a room is opened and closed, and a table a
+	// person opened has to still be open when they come back to the sentence
+	// they opened it for.
+	tables map[int]bool
+	// feet are the table affordances this block drew, keyed by their index in
+	// its own rows. They are written by the same render that writes [entry.rows]
+	// and cached beside them, because the columns a foot occupies are a fact
+	// about a row that has already been laid out — see [tableFoot].
+	feet map[int]tableFoot
+
 	// card is the proposal this entry draws, for kind entryTask and for nothing
 	// else (task.go). It is a POINTER because the answer lane holds the same
 	// card: a row and the verdict on it must not be able to disagree.
@@ -1039,6 +1054,10 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case draftSaveMsg:
 		return a, a.saveDraft()
+
+	case exportedMsg:
+		a.exportDone(msg)
+		return a, nil
 
 	case tea.MouseWheelMsg:
 		// COPY MODE OWNS THE WHEEL while it is up, because the viewport it froze
@@ -2434,6 +2453,13 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 	if a.linkPress(x, r) {
 		return
 	}
+	// AND THE FOOT UNDER A TABLE THAT WAS CUT IS THE OTHER ONE, resolved here for
+	// the same reason and in the same breath: it is a phrase inside a row of the
+	// model's prose, and the prose around it has no gesture of its own
+	// (mdtable.go's [app.footPress]).
+	if a.footPress(x, r) {
+		return
+	}
 	// AND A CLICK ON A WAITING SIGN-IN COPIES ITS LINK (connect.go). It is read
 	// here, beside the thinking block, because it is the same kind of claim: a
 	// block with one thing to do, doing it wherever it is pressed.
@@ -2710,6 +2736,13 @@ func (a *app) slash(line string) tea.Cmd {
 		}
 		return nil
 
+	case "export":
+		// The other two doors hand over what is on the screen; this one writes
+		// the WHOLE conversation to a file, and the file is written off the loop
+		// (export.go). A path is where it goes; without one it goes to the
+		// workspace under a name this session derives for itself.
+		return a.exportTranscript(rest)
+
 	case "model":
 		// Bare /model is a question — "which ones are there" — and the picker
 		// is the answer. A slug is an instruction, and an instruction that
@@ -2751,6 +2784,18 @@ func (a *app) slash(line string) tea.Cmd {
 		// a conversation, not a command, and happens in the box above this list
 		// (harnesspanel.go).
 		a.openHarness()
+		return nil
+
+	case "status":
+		// The status line's whole list, said in the transcript. It is an ANSWER
+		// rather than a panel: a person who asked a question about their session
+		// wants it where they can scroll back to it, not on a fullscreen sheet they
+		// have to leave before they can act on it (statusnote.go).
+		a.note(a.statusText())
+		return nil
+
+	case "cost":
+		a.note(a.costText())
 		return nil
 
 	case "resume":

@@ -30,9 +30,9 @@ import (
 // image row is therefore tagged "img" and choosing it ATTACHES the file instead
 // of typing it — see attach.go, which owns everything that happens after.
 //
-// The same list answers a command's path argument ("/image shot.png"), opened
-// by tab rather than by "@" and committing the path as text, because there the
-// path IS what the line says.
+// The same list answers a command's path argument ("/image shot.png", "/export
+// notes.md"), opened by tab rather than by "@" and committing the path as text,
+// because there the path IS what the line says.
 
 // THE @ ALSO OFFERS TASKS, AND THEY SIT ABOVE THE FILES. See taskmention.go
 // for the whole of that half — the index it reads, the sections it draws, and
@@ -81,7 +81,7 @@ type completion struct {
 	at    int
 	query string
 	// arg says this completion was opened over a command's PATH ARGUMENT
-	// ([argPrefix]) rather than over an @token. Two things follow from it: the
+	// ([argPrefixes]) rather than over an @token. Two things follow from it: the
 	// chosen path replaces the argument WHOLE, with no '@' kept in front of it,
 	// and an image is written into the line like any other file, because in
 	// "/image shot.png" the path is what the command takes.
@@ -162,8 +162,8 @@ func (c *completion) sync(e *editor) {
 		return
 	}
 	if c.arg {
-		// The line stopped being "/image …": the argument list has nothing left
-		// to complete, and what follows is an ordinary draft.
+		// The line stopped being a command with a path in it: the argument list
+		// has nothing left to complete, and what follows is an ordinary draft.
 		c.open, c.arg = false, false
 	}
 	at, query, ok := atToken(e.value, e.cursor)
@@ -204,25 +204,35 @@ func (c *completion) openArg(e *editor) bool {
 
 func (c *completion) close() { c.open = false }
 
-// argPrefix is the one command that takes a path (attach.go), spelled as it is
-// typed. A second one would make this a list; one is not a list.
-const argPrefix = "/image "
+// argPrefixes are the commands that take a PATH, spelled as they are typed.
+//
+// There was one of them, and the line here said that one is not a list. There
+// are two now — /image, which attaches the file it is given (attach.go), and
+// /export, which writes the conversation to it (export.go) — so it IS a list,
+// and the token below is found by asking each prefix rather than by measuring
+// the only one there was. Every command written here gets the completion; a
+// command that takes a path and is not written here gets nothing, silently,
+// which is the one failure worth watching for.
+var argPrefixes = []string{"/image ", "/export "}
 
 // argToken finds the path argument the caret is standing in: everything after
-// "/image " up to the caret. A path may hold spaces, so the token runs to the
-// caret rather than back to the last one.
+// the command's prefix up to the caret. A path may hold spaces, so the token
+// runs to the caret rather than back to the last one.
 func argToken(value []rune, cursor int) (int, string, bool) {
-	at := len([]rune(argPrefix))
-	if cursor < at || len(value) < at {
-		return 0, "", false
+	for _, prefix := range argPrefixes {
+		at := len([]rune(prefix))
+		if cursor < at || len(value) < at {
+			continue
+		}
+		if !strings.EqualFold(string(value[:at]), prefix) {
+			continue
+		}
+		if strings.ContainsRune(string(value[at:cursor]), '\n') {
+			return 0, "", false
+		}
+		return at, string(value[at:cursor]), true
 	}
-	if !strings.EqualFold(string(value[:at]), argPrefix) {
-		return 0, "", false
-	}
-	if strings.ContainsRune(string(value[at:cursor]), '\n') {
-		return 0, "", false
-	}
-	return at, string(value[at:cursor]), true
+	return 0, "", false
 }
 
 // atToken finds the @-word the caret is standing in: the run back to a space,
