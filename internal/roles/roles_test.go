@@ -275,7 +275,7 @@ func TestRegisteredIsSortedAndComplete(t *testing.T) {
 
 	want := []Role{
 		Role("advisor"), Role("commit"), RoleCompaction,
-		RoleDesigner, RolePlanner, RoleTitle, RoleWorker,
+		RoleDesigner, RolePlanner, RoleRouter, RoleTitle, RoleWorker,
 	}
 	for range 5 { // map order varies per iteration; the answer must not
 		got := Registered()
