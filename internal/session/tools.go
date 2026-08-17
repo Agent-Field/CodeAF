@@ -53,6 +53,13 @@ import (
 // history, searchable, so that work handed off weeks ago is still findable by
 // the model that has to build on it.
 //
+// services and use_service (tools_connect.go) are the accounts the person
+// already has somewhere else. They are the one family on this belt that can
+// GROW it: what an account brings — a mailbox, a calendar — is appended when the
+// account is picked up rather than carried by every conversation that will never
+// touch mail. THE APPEND IS THE ONLY MUTATION THIS SLICE EVER SEES, and
+// connect.go states why nothing may move.
+//
 // A TASK NODE'S BELT IS THIS BELT MINUS THREE. propose_task comes off because
 // there is nobody in a node's world to show a proposal to — decomposition, when
 // it lands, is edges added to the graph by the conversation that owns it, not a
@@ -81,6 +88,7 @@ func (a *Agent) belt() []bare.Tool {
 	tools = append(tools, a.memoryTools()...)
 	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)
+	tools = append(tools, a.connectTools()...)
 	return append(tools, a.imageTools()...)
 }
 

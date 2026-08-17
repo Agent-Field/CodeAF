@@ -106,6 +106,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// [Agent.enqueueSteering]): a dev server that dies at three in the morning is
 	// news the model reads at the next turn, not a reason to start one.
 	agent.jobs = newJobRegistry(config.Workspace, agent.enqueueAmbientNote)
+	// And the accounts seam before the belt for the belt's own reason: the two
+	// connect tools are on it only when there is something behind them, so the
+	// hub has to exist before the tools are assembled (connect.go).
+	agent.connect = newConnectHub(config)
 	agent.tools = agent.belt()
 	definitions, err := toolDefinitions(agent.tools)
 	if err != nil {
