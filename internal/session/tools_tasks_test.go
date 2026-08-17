@@ -245,7 +245,7 @@ func TestTasksToolResolvesAnUnverifiedNode(t *testing.T) {
 	if isError {
 		t.Fatalf("accepting an unverified node failed:\n%s", text)
 	}
-	if !strings.Contains(text, "no auditor verdict") {
+	if !strings.Contains(text, "nobody else's check") {
 		t.Fatalf("the answer hides that nobody verified it:\n%s", text)
 	}
 	if state := graph.node(id).stateNow(); state != TaskDone {
@@ -258,7 +258,7 @@ func TestTasksToolResolvesAnUnverifiedNode(t *testing.T) {
 	}
 	// And a node that is not unverified cannot be resolved.
 	if text, isError := runTool(t, agent, "tasks", fmt.Sprintf(`{"id":%d,"resolve":"refute"}`, id)); !isError ||
-		!strings.Contains(text, "only an unverified task") {
+		!strings.Contains(text, "only a task that needs a look") {
 		t.Fatalf("a done node was resolved a second time:\n%s", text)
 	}
 }

@@ -1016,7 +1016,7 @@ func (a *Agent) ResolveUnverified(id uint64, resolution TaskResolution, why stri
 		return fmt.Errorf("no task %d in this session", id)
 	}
 	if state := node.stateNow(); state != TaskUnverified {
-		return fmt.Errorf("task %d is %s, and only an unverified task is waiting on somebody to decide", id, state)
+		return fmt.Errorf("task %d is %s, and only a task that needs a look is waiting on somebody to decide", id, state)
 	}
 	why = strings.TrimSpace(why)
 	switch resolution {
