@@ -23,7 +23,7 @@ go test ./internal/tui3/ -run XXX -bench . -benchmem -count=10 | benchstat
 
 | | before (`6b1c06b`) | after | delta |
 |---|---|---|---|
-| **binary** (`make build`, `-s -w`) | 44.11 MB | 38.27 MB | **−13.2%** |
+| **binary** (`make build`, `-s -w`) | 44.11 MB | 38.34 MB | **−13.1%** |
 | **first paint** (`aforge chat`, median of 15) | 45.45 ms | 30.71 ms | **−32.4%** |
 | **startup wall** (`--help`, median of 60) | 39.77 ms | 26.78 ms | **−32.7%** |
 | startup wall (p10) | 33.67 ms | 20.78 ms | −38.3% |
@@ -99,7 +99,8 @@ requirement and stops being a linked dependency. Refresh is one command:
 go generate ./internal/connect/ampcatalog
 ```
 
-Binary 44.04 → 38.27 MB, linked packages 687 → 526, RSS −12.4%, wall p10 −19.8%.
+Binary 44.11 → 38.34 MB, linked packages 687 → 526, RSS −12.4%, wall p10 −19.8%.
+(The snapshot itself is 58 KB of embedded JSON, which is in that figure.)
 
 ### 3. `connect` — proof the snapshot took nothing away
 
