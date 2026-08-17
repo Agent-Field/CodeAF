@@ -58,6 +58,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/subharness/prompts"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -251,12 +252,22 @@ func (a *Agent) startHarnessDesign(goal, model string) {
 	}()
 }
 
-// harnessDesignModel is what the design thinks with: the turn's word when it
-// named one this install has, and the session's own model otherwise. It is
-// called with a.mu held.
+// harnessDesignModel is what the design AND ITS REVIEW think with — one model
+// for both, because they are two halves of writing one page.
+//
+// The turn's word wins when it named one this install has, exactly as it does
+// for a run ([orchestrateRoleModel] makes the whole argument). With nothing
+// named it is RoleDesigner's, which sits high: this pair writes a page that is
+// SAVED and picked off a menu by everybody afterwards, so a bad one is a wrong
+// answer with a name on it rather than a wrong answer once. The ladder's floor
+// is the session's own model, so an install with no tiers set designs as it
+// always did. It is called with a.mu held.
 func (a *Agent) harnessDesignModel(named string) string {
 	if named = strings.TrimSpace(named); named != "" {
 		return named
+	}
+	if model, err := roles.Resolve(roles.Source(a.config.RolesSource), roles.RoleDesigner, a.model); err == nil {
+		return model
 	}
 	return a.model
 }

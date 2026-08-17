@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -338,6 +340,177 @@ func TestSteeringReachesThePlanner(t *testing.T) {
 			}
 		case <-deadline:
 			t.Fatalf("steering never reached the planner")
+		}
+	}
+}
+
+// ── the models a run runs on ────────────────────────────────────────────────
+
+// runModels answers like [replier] and remembers WHICH MODEL each kind of call
+// rode. A role resolution is invisible from outside the run except here: it is
+// one option on one request.
+type runModels struct {
+	mu     sync.Mutex
+	answer func(messages []ai.Message) string
+	// seen holds the FIRST model each kind was asked on. A run makes several
+	// calls of each kind and they all ride the same resolution; the first is the
+	// one that cannot have been affected by anything the test did afterwards.
+	seen map[string]string
+}
+
+func (r *runModels) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+	var request ai.Request
+	for _, option := range options {
+		_ = option(&request)
+	}
+	kind := "node"
+	if isPlannerCall(messages) {
+		kind = "planner"
+	}
+	r.mu.Lock()
+	if r.seen == nil {
+		r.seen = map[string]string{}
+	}
+	if _, told := r.seen[kind]; !told {
+		r.seen[kind] = request.Model
+	}
+	answer := r.answer
+	r.mu.Unlock()
+	return textResponse(answer(messages)), nil
+}
+
+func (r *runModels) model(kind string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.seen[kind]
+}
+
+// oneNodeRun is a script for the smallest whole run there is: one node, then
+// the write-up.
+func oneNodeRun(messages []ai.Message) string {
+	asked := lastUserText(messages)
+	switch {
+	case isPlannerCall(messages):
+		if strings.Contains(asked, "nothing yet") {
+			return `{"add":[{"id":"n1","goal":"look at the thing"}]}`
+		}
+		return `{"done":{"brief":"say what was found"}}`
+	case strings.Contains(asked, "Ground every claim"):
+		return "the write-up (n1)"
+	default:
+		return "n1 looked"
+	}
+}
+
+// tierSettings is [roles.Source] as a map literal — the whole seam is a key
+// lookup, so a test needs no profile directory (internal/roles says it first).
+func tierSettings(pairs map[string]string) func(string) (string, bool) {
+	return func(key string) (string, bool) {
+		value, ok := pairs[key]
+		return value, ok
+	}
+}
+
+// A RUN IS TWO PURCHASES AND IT MAKES THEM SEPARATELY: with nothing named on
+// the turn, the planner thinks on RolePlanner's model and a node runs on
+// RoleWorker's — one careful call deciding what happens, cheap ones doing it.
+func TestARunResolvesThePlannerAndTheWorkerRoles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	watch := &runModels{answer: oneNodeRun}
+	agent, _ := newTestAgent(t, watch, func(config *Config) {
+		config.AskConsent = true
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierHigh): "test/careful-model",
+			roles.TierKey(roles.TierLow):  "test/cheap-model",
+		})
+	})
+
+	id, err := agent.RunOrchestrate(context.Background(), "look at the thing", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRun(t, agent, id)
+
+	if got := watch.model("planner"); got != "test/careful-model" {
+		t.Fatalf("the planner thought with %q, want the high tier's model", got)
+	}
+	if got := watch.model("node"); got != "test/cheap-model" {
+		t.Fatalf("a node ran on %q, want the low tier's model", got)
+	}
+}
+
+// A PIN OUTRANKS THE TIER, on the run's calls exactly as on every other
+// auxiliary call: the ladder is internal/roles' and this file adds no rung.
+func TestARunTakesAPlannerPinOverItsTier(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	watch := &runModels{answer: oneNodeRun}
+	agent, _ := newTestAgent(t, watch, func(config *Config) {
+		config.AskConsent = true
+		config.RolesSource = tierSettings(map[string]string{
+			roles.PinKey(roles.RolePlanner): "test/pinned-model",
+			roles.TierKey(roles.TierHigh):   "test/careful-model",
+			roles.TierKey(roles.TierLow):    "test/cheap-model",
+		})
+	})
+
+	id, err := agent.RunOrchestrate(context.Background(), "look at the thing", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRun(t, agent, id)
+
+	if got := watch.model("planner"); got != "test/pinned-model" {
+		t.Fatalf("the planner thought with %q, want the pin", got)
+	}
+	if got := watch.model("node"); got != "test/cheap-model" {
+		t.Fatalf("a pinned planner moved the workers too: %q", got)
+	}
+}
+
+// THE TURN'S OWN WORD OUTRANKS EVERYTHING. "orchestrate the migration with
+// opus" is a person choosing the model for the work they are commissioning, and
+// it takes the whole run — the planner and the nodes both.
+func TestARunOnANamedModelIgnoresTheRoles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	watch := &runModels{answer: oneNodeRun}
+	agent, _ := newTestAgent(t, watch, func(config *Config) {
+		config.AskConsent = true
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierHigh): "test/careful-model",
+			roles.TierKey(roles.TierLow):  "test/cheap-model",
+		})
+	})
+
+	id, err := agent.RunOrchestrate(context.Background(), "look at the thing", "test/named-model", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRun(t, agent, id)
+
+	for _, kind := range []string{"planner", "node"} {
+		if got := watch.model(kind); got != "test/named-model" {
+			t.Fatalf("the %s ran on %q, want the model the turn named", kind, got)
+		}
+	}
+}
+
+// AND AN INSTALL THAT CONFIGURED NOTHING RUNS AS IT ALWAYS DID: no tiers, no
+// pins, and every call in the run goes to the model the person is talking to,
+// which is roles.Resolve's floor and not a failure.
+func TestARunWithNoSettingsFallsToTheSessionModel(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	watch := &runModels{answer: oneNodeRun}
+	agent, _ := newTestAgent(t, watch, func(config *Config) { config.AskConsent = true })
+
+	id, err := agent.RunOrchestrate(context.Background(), "look at the thing", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRun(t, agent, id)
+
+	for _, kind := range []string{"planner", "node"} {
+		if got := watch.model(kind); got != "test/model" {
+			t.Fatalf("the %s ran on %q, want the session's own model", kind, got)
 		}
 	}
 }
