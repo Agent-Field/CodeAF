@@ -192,8 +192,10 @@ The second half of the list, with the exact sentence each one says.
     disk. The success note gains the suffix, exactly:
     ` · on this machine`
 
-And one more, which that list does not yet mention: **building a new sub-harness does not
-work over `--host`.** Running one that already exists does.
+12. **Building a new sub-harness is switched off.** The card that asks whether to keep a
+    finished design arrives on a standing lane a connection does not carry, so the
+    designer is not offered at all over `--host` and aforge says it cannot build one from
+    here. Running a harness that already exists is unaffected.
 
 ## Connecting an account over --host
 

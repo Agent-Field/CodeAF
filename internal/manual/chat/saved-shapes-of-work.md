@@ -334,10 +334,13 @@ Two different things, two different answers.
 the answer travels on the wire like any other, so a remote session can offer a harness and
 run it.
 
-**Building a new one silently does nothing.** Ask for `make a harness for …` over a
-`--host` connection and the far machine will start the design, but the design card has no
-lane to arrive on. Your turn ends with no reply and no card, and the design's 30-minute
-window runs out unanswered. Build the harness on the machine itself.
+**Building a new one is switched off.** Over a `--host` connection aforge does not have
+the designer at all, so asking for `make a harness for …` gets you an answer saying it
+cannot be done from here rather than silence. The reason is that the card asking whether
+to keep the finished page has no way to reach you: the design arrives on a standing lane
+that a remote connection does not carry, so a design left switched on would have run,
+written a page, and asked a question in an empty room. Build the harness while working on
+that machine directly, and it is available to run from anywhere afterwards.
 
 **`/harness` is unavailable over a connection.** The registry belongs to the far machine
 and this build has no door onto it from here, so the command says exactly:
