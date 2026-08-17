@@ -48,6 +48,21 @@ func (c ClientCredential) ok() bool {
 	return strings.TrimSpace(c.ID) != "" && strings.TrimSpace(c.Secret) != ""
 }
 
+// The two ways an account is connected, and there are only two.
+//
+// [AuthBrowser] is a trip through the person's own browser and the service's
+// own sign-in page: they are asked there, by the service, in the service's
+// words, and what comes back is a set of keys aforge renews for itself. Google
+// is one.
+//
+// [AuthKey] is a key the person already holds and pastes once. Nothing opens,
+// nothing renews, and the key is exactly as good as the day it was made. Every
+// service the catalog (catalog.go) brings is one of these.
+const (
+	AuthBrowser = "browser"
+	AuthKey     = "key"
+)
+
 // Service is what one connectable account looks like on a menu, flat strings
 // because that is what gets rendered — not a model of anybody's API.
 type Service struct {
@@ -58,6 +73,17 @@ type Service struct {
 	Name string
 	// Blurb is one short line saying what connecting it buys.
 	Blurb string
+	// Auth is how this one is connected: [AuthBrowser] or [AuthKey].
+	Auth string
+	// Address is the root every call to this service is made against, for
+	// the services connected with a key. A service whose address is not
+	// fully known until it is connected carries the part that is known and
+	// the missing piece as a plain word in angle brackets, which is a thing
+	// a person can read rather than a thing that looks like an address.
+	//
+	// A service connected through the browser leaves it empty: it has no one
+	// address, and THE EMPTINESS LAW says an unknown is empty.
+	Address string
 	// Scopes are the permissions asked for. They are listed here so a
 	// screen can say plainly what it is about to request.
 	Scopes []string
@@ -117,12 +143,35 @@ func Register(p Plug) {
 
 // Registered lists every plug built into this binary, connected or not, in the
 // same order [Manager.Services] uses.
+//
+// TWO PLUGS CANNOT SHARE AN ID, AND THE HAND-WRITTEN ONE WINS. The catalog
+// (catalog.go) brings hundreds of services from somebody else's list, and a
+// service written by hand in this package may one day turn up on that list too.
+// The hand-written plug is the one with a browser trip, named permissions and
+// real tools behind it; the catalog's row for the same service would offer
+// strictly less under the same name, and two rows with one id would make every
+// lookup a coin flip.
 func Registered() []Plug {
 	registryMu.RLock()
 	plugs := append([]Plug(nil), registry...)
 	registryMu.RUnlock()
-	sortPlugs(plugs)
-	return plugs
+
+	held := make(map[string]int, len(plugs))
+	kept := make([]Plug, 0, len(plugs))
+	for _, plug := range plugs {
+		service := plug.Service()
+		at, seen := held[service.ID]
+		if !seen {
+			held[service.ID] = len(kept)
+			kept = append(kept, plug)
+			continue
+		}
+		if kept[at].Service().Auth == AuthKey && service.Auth != AuthKey {
+			kept[at] = plug
+		}
+	}
+	sortPlugs(kept)
+	return kept
 }
 
 // sortPlugs puts the plugs in the order a menu shows them.
@@ -178,22 +227,43 @@ func NewManager(profileDir string, creds map[string]ClientCredential) (*Manager,
 // A service with no client credential is not listed at all. It is not shown
 // greyed out, and it does not appear with an explanation of what to register
 // where: a menu entry that cannot be chosen is a menu entry that wastes the
-// reader's attention.
+// reader's attention. A service connected with a key needs no such credential
+// and is always listed — the person's own key is the whole of what it takes.
+//
+// THE FILE IS READ ONCE HERE. There are hundreds of services on this list and
+// one shared file behind them; asking the file about each service in turn would
+// read it hundreds of times to answer one question.
 func (m *Manager) Services() []Status {
+	entries, err := m.store.load()
+	if err != nil {
+		// A store that has become unreadable reads as nothing connected, for
+		// [Manager.standing]'s reason.
+		entries = map[string]stored{}
+	}
 	out := make([]Status, 0, len(m.plugs))
 	for _, p := range m.plugs {
 		service := p.Service()
-		if !m.creds[service.ID].ok() {
+		if !m.offered(service) {
 			continue
 		}
 		status := Status{Service: service}
-		if record, ok := m.standing(p); ok {
+		if record, ok := entries[service.ID]; ok && record.usable() && record.covers(service.Scopes) {
 			status.Connected = true
 			status.Account = record.Account
+			if address, err := located(p, record); err == nil {
+				status.Address = address
+			}
 		}
 		out = append(out, status)
 	}
 	return out
+}
+
+// offered reports whether this build can put the service in front of a person
+// at all: a browser service needs the client credential it was configured with,
+// and a key service needs nothing but the person.
+func (m *Manager) offered(service Service) bool {
+	return service.Auth == AuthKey || m.creds[service.ID].ok()
 }
 
 // Connected reports whether id can be used right now.
@@ -219,7 +289,7 @@ func (m *Manager) Connected(id string) bool {
 // than letting a screen promise access aforge cannot deliver.
 func (m *Manager) standing(p Plug) (stored, bool) {
 	service := p.Service()
-	if !m.creds[service.ID].ok() {
+	if !m.offered(service) {
 		return stored{}, false
 	}
 	record, ok, err := m.store.get(service.ID)

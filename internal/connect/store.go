@@ -36,13 +36,36 @@ type stored struct {
 	// An entry written before this field existed has none, which is read as
 	// covering nothing. See [stored.covers].
 	Scopes []string `json:"scopes,omitempty"`
+	// Auth says which of the two kinds of connection this entry is:
+	// [AuthKey] for a key the person pasted, absent for the browser kind.
+	//
+	// THE ABSENCE IS THE LEGACY READING. Every entry written before there
+	// was a second kind is a browser connection, and an entry that says
+	// nothing must go on being read as exactly that.
+	Auth string `json:"auth,omitempty"`
+	// Key is the key the person pasted, on an [AuthKey] entry. It is written
+	// here and read back here and goes nowhere else, exactly as Keys is:
+	// never logged, never rendered, never carried in an error.
+	Key string `json:"key,omitempty"`
+	// Blank is the one piece of the service's address the catalog could not
+	// know — a workspace, a domain — as the person gave it. It is kept
+	// rather than the finished address so that a service that moves house
+	// keeps working: the catalog says the shape, this says the piece.
+	Blank string `json:"blank,omitempty"`
 }
 
-// usable reports whether the entry can still do work. An entry with a refresh
-// key can always be revived; one with only an access key works until that key
-// expires; one with neither is a leftover from a half-finished connection and
-// counts as nothing.
+// usable reports whether the entry can still do work.
+//
+// A key entry is usable when there is a key in it and nothing more: there is
+// nothing to renew and nothing to expire, so the only question is whether the
+// person ever gave one. For a browser entry, one with a refresh key can always
+// be revived; one with only an access key works until that key expires; one
+// with neither is a leftover from a half-finished connection and counts as
+// nothing.
 func (s stored) usable() bool {
+	if s.Auth == AuthKey {
+		return strings.TrimSpace(s.Key) != ""
+	}
 	if s.Keys == nil {
 		return false
 	}

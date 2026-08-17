@@ -101,6 +101,12 @@ func (m *Manager) BeginAuth(ctx context.Context, id string) (*Flow, error) {
 		return nil, err
 	}
 	service := plug.Service()
+	if service.Auth == AuthKey {
+		// There is nothing to open. Saying so here rather than starting a
+		// listener nobody will ever be sent to is what keeps a surface from
+		// showing a person a page for an account that never wanted one.
+		return nil, fmt.Errorf("%s is connected with a key, not in a browser", service.Name)
+	}
 	credential, err := m.credential(service.ID)
 	if err != nil {
 		return nil, err
