@@ -502,16 +502,10 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		// allowed to hand over nothing, and does on a build that cannot open a
 		// media client at all.
 		//
-		// The model is the environment slot alone. AFORGE_IMAGE_MODEL is a
-		// deliberate answer to "which model paints"; nothing else here is, so
-		// the empty string is passed on and the session falls through to the
-		// person's own pin (roles.PinKey(roles.RoleImageGen), read through the
-		// RolesSource applyV3Governance fills in below). Resolving a painter
-		// off the catalog instead would put the tool on every belt on the
-		// strength of a guess, and an image request sent to a guessed model is
-		// a 404 the model reads as its own mistake.
-		ImageGenModel:  strings.TrimSpace(settings.ImageModel),
-		ImageGenClient: v3ImageGen(settings),
+		// The media client, on the contract's terms: nil keeps every
+		// generation verb off the belt. The RESOLVER (MediaModel) is wired
+		// after governance lands, because its pin rung reads RolesSource.
+		Media: v3ImageGen(settings),
 	}
 
 	// What this session may do without asking, which model answers its
@@ -570,7 +564,7 @@ func v3TalkModel(asked string, settings config.Config) string {
 // IT RETURNS NO ERROR, for the reason [v3Search] does not. Painting is an
 // accessory; a client that cannot be built is a session with one fewer tool,
 // and no reason a person cannot open a conversation.
-func v3ImageGen(settings config.Config) session.ImageGenerator {
+func v3ImageGen(settings config.Config) session.MediaGenerator {
 	client, err := settings.MediaClient()
 	if err != nil || client == nil {
 		return nil
