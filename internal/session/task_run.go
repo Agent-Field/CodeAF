@@ -264,6 +264,11 @@ type TaskNode struct {
 	// cancel ends this node's run: the deadline's context, cancelled early by
 	// jobs kill or by Close.
 	cancel context.CancelFunc
+	// stopped marks a node a PERSON ended (cancel.go). It is set BEFORE the
+	// context is cut, so that the landing this stop causes already knows whose
+	// decision it was — a flag written afterwards would be a flag the update
+	// announcing the end raced past.
+	stopped bool
 	// room is the node as a PLACE: the child agent somebody can talk to and the
 	// live subscribers watching it work (task_room.go). It is nil until the
 	// first person enters or the runner attaches its child, and it is emptied
@@ -1085,6 +1090,7 @@ func (n *TaskNode) notice() TaskNotice {
 		Merge:     n.merge,
 		Mending:   n.mend,
 		Waiting:   waiting,
+		Stopped:   n.stopped,
 		Model:     n.spec.model,
 		CostUSD:   cost,
 	}
@@ -1175,10 +1181,15 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 func taskNote(notice TaskNotice, transcript string) string {
 	var note strings.Builder
 	verb := "finished"
-	switch notice.State {
-	case TaskFailed:
+	switch {
+	case notice.Stopped:
+		// THE PERSON ENDED IT, and the model must not tell them their work
+		// failed. Nothing was found wrong with it: somebody pressed stop, and the
+		// only honest verb for that is the one they would use themselves.
+		verb = "stopped"
+	case notice.State == TaskFailed:
 		verb = "failed"
-	case TaskUnverified:
+	case notice.State == TaskUnverified:
 		// NOT "failed", and the wording is the whole point of the state: the
 		// model is about to tell the person what happened, and "failed" would
 		// be it reporting a finding nobody made (task_contract.go). It is also

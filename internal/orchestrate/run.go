@@ -88,6 +88,7 @@ func New(goal string, planner Planner, exec Executor, opts Options) *Orchestrato
 		index:   map[string]*NodeStatus{},
 		fuel:    Fuel{Cap: opts.Cap},
 		gate:    make(chan string, 1),
+		halt:    make(chan struct{}),
 	}
 }
 
@@ -115,14 +116,39 @@ type thought struct {
 // planner that answered nonsense, a synthesis that would not come back — is a
 // fact IN the snapshot rather than a reason to lose it.
 func (o *Orchestrator) Run(ctx context.Context) (Snapshot, error) {
+	// EVERY CALL THE RUN MAKES RIDES A CONTEXT OF THE RUN'S OWN, hung off the
+	// caller's. It is what [Orchestrator.Cancel] cuts, and it is the whole reason
+	// a stop can mean "stop spending now": a cancel that only stopped LAUNCHING
+	// would leave four child agents and a planner billing against a tank nobody
+	// is watching any more.
+	work, halt := context.WithCancel(ctx)
+	defer halt()
+	// halted is read ONCE and then dropped, because a closed channel is ready
+	// forever and a select that kept picking it would spin. A nil channel blocks,
+	// which is exactly what a run that has already been cut wants.
+	halted := o.halt
+	if o.wasStopped() {
+		// Stopped before it began: there is no frontier to walk and no partial
+		// trace to write up, and paying for an opening plan nobody will read
+		// would be the first thing the stop was meant to prevent.
+		o.finish("")
+		return o.Snapshot(), nil
+	}
+
 	o.publish()
 	// The opening call is the one moment the run legitimately waits on the
 	// planner: there is no work to overlap it with.
-	opening, err := o.planner.Plan(ctx, o.view())
+	opening, err := o.planner.Plan(work, o.view())
 	if err != nil {
+		if o.wasStopped() {
+			// Cancelled while the opening call was out. The error is the stop
+			// arriving, not a run that failed, and it settles like one.
+			o.finish("")
+			return o.Snapshot(), nil
+		}
 		return o.Snapshot(), fmt.Errorf("orchestrate: the opening plan failed: %w", err)
 	}
-	o.absorb(ctx, thought{amendment: opening})
+	o.absorb(work, thought{amendment: opening})
 
 	var (
 		completions = make(chan completed, o.lanes)
@@ -131,7 +157,7 @@ func (o *Orchestrator) Run(ctx context.Context) (Snapshot, error) {
 		thinking    int
 	)
 	for {
-		running += o.launch(ctx, completions)
+		running += o.launch(work, completions)
 		if o.settled(running, thinking) {
 			break
 		}
@@ -148,10 +174,10 @@ func (o *Orchestrator) Run(ctx context.Context) (Snapshot, error) {
 			// already finished, which is fine: it is amending a frontier, not
 			// approving one.
 			thinking++
-			o.think(ctx, thoughts)
+			o.think(work, thoughts)
 		case landed := <-thoughts:
 			thinking--
-			o.absorb(ctx, landed)
+			o.absorb(work, landed)
 		case answer := <-o.gate:
 			o.openGate(answer)
 			// A RESUMED RUN THINKS ONCE, whatever the frontier looks like.
@@ -160,8 +186,19 @@ func (o *Orchestrator) Run(ctx context.Context) (Snapshot, error) {
 			// pending behind it would answer that decision with a synthesis.
 			if o.worthThinking() {
 				thinking++
-				o.think(ctx, thoughts)
+				o.think(work, thoughts)
 			}
+		case <-halted:
+			// SOMEBODY STOPPED THE RUN. The states were already moved by
+			// [Orchestrator.Cancel] — a pending node stops the instant the key is
+			// pressed — and what is left to do here is cut the work: every node in
+			// flight and every planner call loses its context on this line.
+			//
+			// The loop keeps turning afterwards rather than returning, so that the
+			// cut nodes' completions come home: what they cost is metered, and what
+			// they were is on the snapshot rather than left saying "running".
+			halt()
+			halted = nil
 		case <-ctx.Done():
 			// The window ran out, or the session left. The run SETTLES rather
 			// than simply stopping being read: a snapshot left saying "running"
@@ -171,7 +208,73 @@ func (o *Orchestrator) Run(ctx context.Context) (Snapshot, error) {
 			return o.Snapshot(), ctx.Err()
 		}
 	}
-	return o.synthesize(ctx), nil
+	return o.synthesize(work), nil
+}
+
+// Cancel ends the run on a person's word, and it means STOP SPENDING NOW.
+//
+// It is the harder half of a pair the fuel gate already has one of. "stop" at
+// the gate is a decision taken with nothing in flight — the tank emptied, the
+// running nodes landed, and the question was asked afterwards. This is the same
+// decision taken mid-run, so it has to do the thing the gate never had to: cut
+// the context every node and every planner call is on, and throw away what they
+// had got to. A node's partial output is not a result — it is a half-answer to
+// a question nobody is waiting for any more — so it is dropped rather than
+// digested ([Orchestrator.land]).
+//
+// WHAT IS KEPT IS THE TRACE. Every node that finished keeps its digest, the
+// notes stay, the tank keeps what it metered, and the snapshot says Stopped.
+// What does not happen is the synthesis: it is one more model call, and
+// somebody who has just said stop is not asking to pay for it (see
+// [Orchestrator.synthesize]).
+//
+// A PENDING NODE STOPS INSTANTLY, and it stops IN PLACE — marked [Cancelled],
+// still in the graph — which is where this parts company with the planner's own
+// cancel. An amendment DELETES the node it no longer wants (amend.go's
+// dropLocked), because that is the planner changing its mind about work nobody
+// has seen; this is a person ending work that is on their screen, and a chip
+// that vanished under them would be the run denying it was ever asked for.
+//
+// It is IDEMPOTENT, and cancelling a run that has already settled does nothing
+// at all.
+func (o *Orchestrator) Cancel() {
+	// The halt closes FIRST and exactly once. It is what a run already in flight
+	// is watching, and a second press must never be the press that closes a
+	// closed channel.
+	o.halting.Do(func() { close(o.halt) })
+
+	o.mu.Lock()
+	if o.done || o.stopped {
+		o.mu.Unlock()
+		return
+	}
+	o.stopped = true
+	// A GATE STILL UP IS A QUESTION ABOUT A MOMENT THAT HAS PASSED. The person
+	// answered it by stopping, so it comes down here rather than being left for a
+	// surface to draw over a run that is already over.
+	o.paused = false
+	for _, node := range o.nodes {
+		if node.State == Queued || node.State == Ready {
+			node.State = Cancelled
+		}
+	}
+	o.mu.Unlock()
+
+	o.publish()
+	o.note(StoppedWord)
+}
+
+// StoppedWord is the one sentence this package says about a stopped run,
+// wherever the stop came from. It is exported because the session says it back
+// to the person ([session.Agent.Cancel]) and two spellings of one decision is
+// one spelling too many.
+const StoppedWord = "stopped; what finished is kept"
+
+// wasStopped reports whether somebody has cancelled this run.
+func (o *Orchestrator) wasStopped() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.stopped
 }
 
 // think puts one planner call in flight. The send is guarded because a thought
@@ -210,12 +313,22 @@ func (o *Orchestrator) worthThinking() bool {
 // select with nothing but the gate and the context in it — which is exactly
 // "Run blocks until somebody answers".
 func (o *Orchestrator) settled(running, thinking int) bool {
-	if running > 0 || thinking > 0 {
+	if running > 0 {
 		return false
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.stopped || o.finishing {
+	// A STOPPED RUN DOES NOT WAIT ON ITS PLANNER. Cancel cut the context every
+	// call in flight is on, so a thought still out is one that will never be
+	// delivered — [Orchestrator.think] drops it on ctx.Done — and counting it
+	// would park the loop forever on a goroutine that has already given up.
+	if o.stopped {
+		return true
+	}
+	if thinking > 0 {
+		return false
+	}
+	if o.finishing {
 		return true
 	}
 	if o.paused {
@@ -320,17 +433,28 @@ func (o *Orchestrator) dependsLocked(node *NodeStatus) []NodeStatus {
 // the next planner View, and nothing cascades from it here: what a dead node
 // means for the rest of the graph is a judgement, and judgements are the
 // planner's.
+//
+// A CUT NODE IS NOT A FAILURE AND KEEPS NOTHING. On a stopped run an error is
+// the stop arriving — the context died under the node — so it lands [Cancelled]
+// with its digest dropped, because whatever it managed to say is half an answer
+// to a question nobody is waiting for. A node that finished CLEANLY before the
+// cut reached it keeps its result: it is a fact, exactly as one that finished a
+// second earlier would be.
 func (o *Orchestrator) land(done completed) {
 	o.mu.Lock()
 	node, known := o.index[done.id]
 	if known {
 		node.Cost += done.cost
-		node.Digest = strings.TrimSpace(done.digest)
-		if done.err != nil {
+		switch {
+		case o.stopped && done.err != nil:
+			node.State, node.Digest, node.Err = Cancelled, "", ""
+		case done.err != nil:
 			node.State = Failed
+			node.Digest = strings.TrimSpace(done.digest)
 			node.Err = done.err.Error()
-		} else {
+		default:
 			node.State = Done
+			node.Digest = strings.TrimSpace(done.digest)
 		}
 	}
 	o.mu.Unlock()
@@ -423,6 +547,11 @@ func (o *Orchestrator) Steer(text string) {
 // It refuses an answer to a question nobody asked, and an answer to a question
 // already answered, because both are a surface's bug and neither is something
 // the run can act on quietly.
+//
+// ONE STOP WORD EVERYWHERE. "stop" never travels down the gate's channel: it is
+// [Orchestrator.Cancel], because a run ended at the gate and a run ended from
+// its page are one decision, and two settling paths for one decision is how two
+// runs come to leave two different traces.
 func (o *Orchestrator) Resolve(answer string) error {
 	answer = strings.TrimSpace(strings.ToLower(answer))
 	switch {
@@ -439,6 +568,10 @@ func (o *Orchestrator) Resolve(answer string) error {
 	o.mu.Unlock()
 	if !paused {
 		return fmt.Errorf("orchestrate: this run is not at the gate")
+	}
+	if answer == GateStop {
+		o.Cancel()
+		return nil
 	}
 	select {
 	case o.gate <- answer:
@@ -471,14 +604,15 @@ func (o *Orchestrator) publish() {
 		nodes = append(nodes, *node)
 	}
 	o.snap = Snapshot{
-		Goal:   o.goal,
-		Nodes:  nodes,
-		Fuel:   o.fuel,
-		Notes:  append([]string(nil), o.notes...),
-		Steer:  append([]string(nil), o.steer...),
-		Paused: o.paused,
-		Done:   o.done,
-		Answer: o.answer,
+		Goal:    o.goal,
+		Nodes:   nodes,
+		Fuel:    o.fuel,
+		Notes:   append([]string(nil), o.notes...),
+		Steer:   append([]string(nil), o.steer...),
+		Paused:  o.paused,
+		Done:    o.done,
+		Stopped: o.stopped,
+		Answer:  o.answer,
 	}
 }
 
@@ -528,6 +662,13 @@ type Orchestrator struct {
 	// to one so [Orchestrator.Resolve] never blocks a surface's goroutine, and
 	// a second answer to the same pause is refused rather than queued.
 	gate chan string
+
+	// halt is CLOSED rather than sent on, because a stop is not an answer one
+	// reader takes — it is a fact every part of the run has to see, whether it is
+	// the loop parked on a select or a caller reading [Orchestrator.Cancel]
+	// twice. halting is what makes closing it idempotent.
+	halt    chan struct{}
+	halting sync.Once
 
 	// mu guards everything below. It is never held across a planner call, an
 	// executor call, or a callback: those are the three things that take

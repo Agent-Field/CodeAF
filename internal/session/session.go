@@ -1122,6 +1122,16 @@ type Agent struct {
 	// thing that can tell one the session has left.
 	harnessDesigns map[uint64]context.CancelFunc
 
+	// harnessRuns is the sub-harness RUNS in flight, keyed by the id their
+	// EventHarnessRun carried, and the value is how each one is ended
+	// (cancel.go's beginHarnessRun).
+	//
+	// It is the register a run would otherwise not have. A run happens INSIDE a
+	// turn, on the turn's own context, so nothing outside that turn has a handle
+	// on it — and [Agent.Cancel] is asked to stop work by name from a surface
+	// that is not in the turn. The entry lives for exactly the length of the run.
+	harnessRuns map[uint64]context.CancelFunc
+
 	// tasks is the work this conversation has handed off: the graph of nodes,
 	// their dependency edges, and the frontier executor that runs them
 	// (task_run.go). It is nil until the first proposal is admitted — most

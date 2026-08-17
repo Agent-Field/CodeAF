@@ -114,6 +114,11 @@ const (
 	// frame). It is hoverable by nothing and pressable in one place: the model
 	// segment, whose columns the render records (render.go's [app.identityParts]).
 	chromeStatus
+	// chromeStop is one row of the stop confirmation (stop.go); index is its
+	// position within the card, and the answers are on index 1. It is the guard's
+	// own slot, so the two share a kind's worth of the frame and never a moment
+	// of it.
+	chromeStop
 	// chromeJump is the gap row the jump-to-latest chip is floating on. The row
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).
@@ -376,8 +381,8 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	// to send them (room.go). The two can never be up together — a question the
 	// SESSION is blocked on suspends the box the guard is raised from — so they
 	// share the slot rather than stacking in it.
-	for _, line := range a.guardRows(width) {
-		add(line, chromeRow{})
+	for i, line := range a.guardRows(width) {
+		add(line, a.guardMark(i))
 	}
 	if line := a.followRow(width); line != "" {
 		add(line, chromeRow{})

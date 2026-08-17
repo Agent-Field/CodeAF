@@ -151,6 +151,18 @@ type TaskNotice struct {
 	// starting and a hold ending are both news that arrives without the state
 	// moving, so an update carrying only this is still one a surface folds in.
 	Waiting string
+	// Stopped says a PERSON ended this node ([Agent.Cancel]) rather than the
+	// work ending on its own. It rides beside State rather than replacing it —
+	// a stopped node still settles as `failed`, because nothing merged and its
+	// dependents still cannot be briefed — and it exists because "failed" and
+	// "you stopped it" are different news about the same state: one sends
+	// somebody looking for a fault, and the other is the fault.
+	//
+	// IT IS A FACT OF THIS PROCESS AND NOT OF THE CHECKPOINT. A session resumed
+	// from disk knows the node failed and does not know who ended it, so a
+	// surface reading this draws the stop while it can and falls back to the
+	// failure afterwards.
+	Stopped bool
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
 	// the proposal AND on every update, because it is a fact about the work that

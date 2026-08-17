@@ -77,6 +77,12 @@ func ParseAmendment(raw string) (Amendment, error) {
 
 // absorb applies one planner answer, or says why it did not.
 func (o *Orchestrator) absorb(ctx context.Context, landed thought) {
+	// A STOPPED RUN TAKES NO AMENDMENT. The planner may well have been mid-call
+	// when somebody cancelled, and a node added to a frontier nothing will ever
+	// launch from is a chip a person watches sit there forever.
+	if o.wasStopped() {
+		return
+	}
 	if landed.err != nil {
 		// A planner that could not answer is a NOOP with a line about it. The
 		// frontier is untouched and the run carries on: thought is an amendment
