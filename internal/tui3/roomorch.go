@@ -141,6 +141,12 @@ type orchRun struct {
 
 	// gate is the unanswered pause, or nil.
 	gate *orchGate
+	// answered says the person has given the pause an answer the RUN has not
+	// caught up with yet. It is what keeps the snapshot from raising the question
+	// again in the gap between the answer and the resumption — the tank is topped
+	// up on the far side of a poll, so for one interval the shape still says
+	// paused and the page must not re-ask something already answered.
+	answered bool
 
 	// spots is what each drawn row answers to, by column — the chips on it, the
 	// links inside a card, the gate's three answers. It is written by the layout
@@ -421,6 +427,33 @@ func (a *app) orchRead() {
 		run.gate = nil
 		changed = true
 	}
+	// AND A PAUSE OUTLIVES THE EVENT THAT ANNOUNCED IT.
+	//
+	// The gate is raised by the LANE ([app.orchPauseEvent]), and a lane is a thing
+	// that happens once: a page walked out of and re-opened builds a fresh
+	// [orchRun], so a run still sitting on its cap came back with "paused" in its
+	// header and no question anywhere under it — a run nobody could answer from
+	// the surface they were standing on. The snapshot is the durable half of the
+	// same fact, so the page raises the question from it.
+	//
+	// The three answers only ever needed the run's own id ([app.orchAnswer]), so
+	// a gate rebuilt here is answerable exactly as the lane's is; what it does not
+	// have is the pause's own event id, which nothing reads.
+	if !snap.Paused {
+		// The run is spending again, so the answer has landed and the next pause
+		// is a new question.
+		run.answered = false
+	}
+	if run.gate == nil && !run.answered && snap.Paused && !snap.Done && !snap.Stopped {
+		// THE SPEND SENTENCE IS THE RUN'S OWN ([orchestrate.Fuel.Gauge]), which is
+		// what the lane's event carries too: the gate says "$2.00 of $2.00"
+		// whichever half raised it, rather than the header's "/" form. One
+		// question, one wording.
+		run.gate = &orchGate{text: snap.Fuel.Gauge()}
+		run.card = ""
+		run.pick = orchTarget{answer: orchTopUp}
+		changed = true
+	}
 	if !changed {
 		return
 	}
@@ -623,7 +656,7 @@ func (a *app) orchAnswer(answer string) {
 		a.roomTouched()
 		return
 	}
-	run.gate = nil
+	run.gate, run.answered = nil, true
 	run.acts = append(run.acts, orchAnswerWord(answer))
 	a.room.stick = true
 	a.roomTouched()

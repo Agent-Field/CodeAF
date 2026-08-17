@@ -498,7 +498,8 @@ func (a *app) phoneClock(e *entry) (plain, painted string) {
 	if word := elapsedWord(e); word != "" {
 		return word, a.pal.dim(word)
 	}
-	if e.status != toolRunning || e.began.IsZero() || a.state != stateWorking {
+	if e.status != toolRunning || e.began.IsZero() || !e.ended.IsZero() ||
+		a.state != stateWorking {
 		return "", ""
 	}
 	if limit := toolLimit(e); limit > 0 {
@@ -686,7 +687,13 @@ func (a *app) mark(e *entry) string {
 	case toolConsent:
 		return a.pal.askBold(glyphAsk) // "?" is already the ASCII of itself
 	default:
-		if a.state != stateWorking {
+		// A RESOLVED ROW IS OVER WHATEVER THE SESSION IS DOING. A room's lane
+		// closing settles the calls that were still in the air by stamping the end
+		// and nothing else (room.go's [app.roomResolveUnfinished]), and the page it
+		// settles them on sits under a conversation that may well still be working
+		// — so the state test below cannot be the only one, or a node that landed
+		// ten minutes ago spins for as long as the chat above it is busy.
+		if !e.ended.IsZero() || a.state != stateWorking {
 			// The turn ended with this call unresolved — interrupted, or the
 			// stream closed without a close event. A spinner frozen mid-turn
 			// would claim the call is still alive.
@@ -818,7 +825,11 @@ func (a *app) countUp(e *entry) string {
 // second is the first with at most one token tinted, and two functions deriving
 // that split separately is two chances for the width and the paint to disagree.
 func (a *app) countClock(e *entry) (plain, painted string) {
-	if e.status != toolRunning || e.began.IsZero() || a.state != stateWorking {
+	// The resolved row is stopped here too, on [app.mark]'s reason and in the
+	// same words: an end stamped on a live row is the lane saying nothing more is
+	// coming, and a number climbing under it would be the row insisting otherwise.
+	if e.status != toolRunning || e.began.IsZero() || !e.ended.IsZero() ||
+		a.state != stateWorking {
 		return "", ""
 	}
 	age := countUpWord(a.now().Sub(e.began))
