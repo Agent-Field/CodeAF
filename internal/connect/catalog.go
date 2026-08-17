@@ -36,6 +36,8 @@ import (
 	"strings"
 
 	amp "github.com/amp-labs/connectors/providers"
+
+	"github.com/Agent-Field/aforge-v2/internal/approval"
 )
 
 // blankPattern is the one shape the catalog writes a missing piece of an
@@ -100,11 +102,38 @@ type keyPlug struct {
 	probe probe
 }
 
+// init registers every catalog service as a plug AND as two sentences a person
+// can say yes, ask or off to.
+//
+// ── ONE TOOL, TWO CAPABILITIES ──
+//
+// A key service brings exactly one tool — the raw call (key.go's
+// [Manager.Request]) — and that one tool is both halves of the pair depending on
+// the verb it is handed: a GET reads, and everything else writes at the far end
+// in the person's name. The map below can only point a tool at one capability,
+// so it points at the STRICTER half, and the seam that judges a call picks the
+// other one when the verb is a read (internal/session's consent.go). Pointing at
+// `read` instead would have made the safe answer the one that needs the extra
+// step, which is the wrong way round for a table somebody may read in a hurry.
 func init() {
 	for _, plug := range catalogPlugs() {
+		id := plug.Service().ID
 		Register(plug)
+		RegisterGenericCapabilities(id, map[string]string{serviceRequestTool(id): CapabilityAct})
 	}
 }
+
+// serviceRequestTool is what a key service's one tool is called — its own id and
+// the suffix the consent policy matches these calls on.
+//
+// THE SUFFIX IS READ FROM ITS OWNER rather than spelled again here. Three
+// packages have to agree about this name: internal/session builds it when it
+// arms the tool, internal/approval matches it when it judges a call, and this
+// file declares what it may be used for. Two of them already read the constant;
+// a third spelling of "_request" is a rename waiting to break exactly one of
+// them silently. internal/approval is policy with no dependencies of its own, so
+// naming it here costs this package nothing it did not already have.
+func serviceRequestTool(id string) string { return id + approval.ServiceRequestSuffix }
 
 // catalogPlugs reads the catalog once, at start-up, and turns every service a
 // key opens into a plug of ours. The order is the catalog's names sorted, so
@@ -145,11 +174,15 @@ func catalogPlug(id string, info *amp.ProviderInfo) (*keyPlug, bool) {
 	display := shown(base, hole)
 	return &keyPlug{
 		service: Service{
-			ID:      id,
-			Name:    name,
-			Blurb:   catalogBlurb(name, display, hole),
-			Auth:    AuthKey,
-			Address: display,
+			ID:   id,
+			Name: name,
+			// The word this service is browsed by, from the one place that
+			// knows it: category.go, because the catalog itself says nothing
+			// about what any of these are for.
+			Category: categoryOf(id),
+			Blurb:    catalogBlurb(name, display, hole),
+			Auth:     AuthKey,
+			Address:  display,
 		},
 		base:  base,
 		blank: hole,

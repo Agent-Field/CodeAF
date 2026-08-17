@@ -52,11 +52,17 @@ var googleScopes = []string{
 
 func (google) Service() Service {
 	return Service{
-		ID:     "google",
-		Name:   "Google",
-		Blurb:  "Read and send Gmail; read and manage Calendar.",
-		Auth:   AuthBrowser,
-		Scopes: append([]string(nil), googleScopes...),
+		ID:   "google",
+		Name: "Google",
+		// Mail and a calendar are what a person's day is kept in, which is the
+		// same shelf Coda and Monday sit on. It is filed like every other
+		// service rather than left blank because a browser plug is not a
+		// different KIND of thing on a menu — and an uncategorized row would
+		// land under "other", which is a worse answer than a true one.
+		Category: categoryProductivity,
+		Blurb:    "Read and send Gmail; read and manage Calendar.",
+		Auth:     AuthBrowser,
+		Scopes:   append([]string(nil), googleScopes...),
 	}
 }
 
