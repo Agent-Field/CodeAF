@@ -677,9 +677,9 @@ type Config struct {
 	RunHarness func(ctx context.Context, name, text, model string) (string, error)
 
 	// HarnessStore is where a harness this conversation DESIGNS is written, and
-	// it is the same registry Harnesses was read out of (harness_build.go). A
-	// turn that says "make a harness for X" reaches the designer through it; a
-	// page nobody approved never touches it.
+	// it is the same registry Harnesses was read out of (harness_build.go). The
+	// model's build_harness hand reaches the designer through it (tools_harness.go);
+	// a page nobody approved never touches it.
 	//
 	// NIL IS BUILDING OFF, on exactly the terms RunHarness is detection off — and
 	// the two are checked together, because a harness this session can write and

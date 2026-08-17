@@ -340,6 +340,15 @@ type (
 		ev  session.Event
 	}
 	designLaneClosedMsg struct{ gen int }
+	// orchEventMsg is one event off the STANDING adaptive-run subscription
+	// (the run lane below), which is a lane of its own for the design lane's
+	// reason: a run's notes, its gauge and its fuel gate all arrive long after
+	// the turn that started it ended.
+	orchEventMsg struct {
+		gen int
+		ev  session.Event
+	}
+	orchLaneClosedMsg struct{ gen int }
 	// wokenMsg is one turn THE SESSION STARTED ON ITS OWN, arriving as the
 	// stream it will speak on (followup.go). It is the turn stream's shape and
 	// not the standing lane's: what comes off the wake lane is a channel, and
@@ -672,6 +681,13 @@ type app struct {
 	// outlives the turn that asked for it, exactly as a task node does.
 	designLane <-chan session.Event
 	designGen  int
+	// orchLane is the standing subscription to the ADAPTIVE RUNS this session is
+	// driving (roomorch.go draws them) and orchGen the generation it belongs to.
+	// It is a third standing lane for the design lane's reason and one more: a
+	// run outlives its turn by construction, and the fuel gate — the one event
+	// here that is a question — arrives when there is no turn left to carry it.
+	orchLane <-chan session.Event
+	orchGen  int
 
 	connAsks  []connAsk
 	connTaps  []connTap
@@ -1100,9 +1116,9 @@ func (a *app) Init() tea.Cmd {
 	// task lane, and what the session goes on to SAY about it reaches the
 	// transcript on this one.
 	if a.welcome.animating() {
-		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns())
+		return tea.Batch(a.wake(), a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
 	}
-	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns())
+	return tea.Batch(a.probeGit(), a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
 }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1503,6 +1519,19 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case orchEventMsg:
+		if msg.gen != a.orchGen {
+			return a, nil
+		}
+		return a, a.runEvent(msg.ev)
+
+	case orchLaneClosedMsg:
+		// The agent this lane belonged to is gone, on the other two lanes' terms.
+		if msg.gen == a.orchGen {
+			a.orchLane = nil
+		}
+		return a, nil
+
 	case roomEventMsg:
 		if a.room == nil || msg.gen != a.room.gen {
 			return a, nil
@@ -1834,24 +1863,14 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// every in-turn node unwatched.
 		after = a.taskUpdate(ev)
 
-	case session.EventOrchestrateNote:
-		// One line of what an adaptive run's planner is thinking, between two
-		// completions. A REPORT: it lands on the run's page when one is open and in
-		// the transcript when none is (roomorch.go).
-		a.orchNoteEvent(ev)
-
-	case session.EventOrchestrateFuel:
-		// The tank, and its warning at the 80% mark. A REPORT too, and it never
-		// blocks anything: the gauge it feeds is pinned at the top of the run's own
-		// page.
-		a.orchFuelEvent(ev)
-
-	case session.EventOrchestratePause:
-		// THE RUN HAS SPENT ITS TANK, and this is the one orchestrate kind that is
-		// a QUESTION. It is answered on the run's own page, so raising it brings
-		// that page with it — the command it hands back is the poll that page opens
-		// with (roomorch.go).
-		after = a.orchPauseEvent(ev)
+	case session.EventOrchestrateNote, session.EventOrchestrateFuel, session.EventOrchestratePause:
+		// The three things an adaptive run says. They arrive on the STANDING lane
+		// in every real session — the run outlives the turn that asked for it, so
+		// the session emits them nowhere else — and they are folded here as well
+		// because the fold is one function either way ([app.orchestrateEvent]) and
+		// a surface that read them on one lane only would be a surface that quietly
+		// stopped drawing runs the day a turn carried one.
+		after = a.orchestrateEvent(ev)
 
 	case session.EventTitleChanged:
 		a.setTitle(ev.Text)
@@ -3144,7 +3163,84 @@ func (a *app) renew() tea.Cmd {
 	} else {
 		a.note("new session")
 	}
-	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns())
+	return tea.Batch(a.watchTasks(), a.watchWakes(), a.watchDesigns(), a.watchRuns())
+}
+
+// ── the adaptive-run lane ───────────────────────────────────────────────────
+//
+// THE THIRD STANDING SUBSCRIPTION, and the one without which the run room could
+// never open. A run is not a node: it is on no roster, it has no row, and the
+// three events it sends are the only things that say one exists at all
+// (roomorch.go). They are emitted on a lane of the session's own and never on a
+// turn's stream, because a run outlives the turn that asked for it by
+// construction — and the fuel gate, which is a QUESTION, arrives latest of all.
+
+// runAgent is the slice of *session.Agent this lane needs, asserted rather than
+// added to [Agent] for [designAgent]'s reason: adaptive runs are OPTIONAL, and a
+// scripted agent in this package's tests has never heard of one.
+type runAgent interface {
+	// Orchestrations is the standing subscription: the planner's notes, the
+	// fuel gauge crossing its warning mark, and the gate.
+	Orchestrations() <-chan session.Event
+}
+
+// runner is the agent under this surface, when it drives runs at all.
+func (a *app) runner() (runAgent, bool) {
+	agent, ok := a.agent.(runAgent)
+	return agent, ok
+}
+
+// watchRuns opens the lane and starts pumping it. It is called wherever
+// [app.watchDesigns] is, and for the same reason: the channel belongs to the
+// agent that handed it over, so a replaced conversation gets a new one.
+func (a *app) watchRuns() tea.Cmd {
+	agent, ok := a.runner()
+	if !ok {
+		return nil
+	}
+	a.orchGen++
+	a.orchLane = agent.Orchestrations()
+	return waitRun(a.orchLane, a.orchGen)
+}
+
+// waitRun takes one event off the lane and asks for the next.
+func waitRun(ch <-chan session.Event, gen int) tea.Cmd {
+	return func() tea.Msg {
+		ev, ok := <-ch
+		if !ok {
+			return orchLaneClosedMsg{gen: gen}
+		}
+		return orchEventMsg{gen: gen, ev: ev}
+	}
+}
+
+// runEvent folds one event from the lane in and re-arms the pump.
+func (a *app) runEvent(ev session.Event) tea.Cmd {
+	return tea.Batch(a.orchestrateEvent(ev), waitRun(a.orchLane, a.orchGen), a.wake())
+}
+
+// orchestrateEvent is what an adaptive run's three kinds DO, in one place,
+// because both lanes that can carry them fold them identically.
+func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
+	switch ev.Kind {
+	case session.EventOrchestrateNote:
+		// One line of what the planner is thinking, between two completions, and
+		// the sentence a finished run signs off with. A REPORT: it lands on the
+		// run's page when one is open and in the transcript when none is.
+		a.orchNoteEvent(ev)
+	case session.EventOrchestrateFuel:
+		// The tank, and its warning at the 80% mark. A REPORT too, and it never
+		// blocks anything: the gauge it feeds is pinned at the top of the run's
+		// own page.
+		a.orchFuelEvent(ev)
+	case session.EventOrchestratePause:
+		// THE RUN HAS SPENT ITS TANK, and this is the one orchestrate kind that is
+		// a QUESTION. It is answered on the run's own page, so raising it brings
+		// that page with it — the command handed back is the poll that page opens
+		// with (roomorch.go).
+		return a.orchPauseEvent(ev)
+	}
+	return nil
 }
 
 func (a *app) quit() tea.Cmd {

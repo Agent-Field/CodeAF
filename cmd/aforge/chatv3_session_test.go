@@ -33,7 +33,7 @@ func TestASecondWindowOnALockedSessionStartsANewOne(t *testing.T) {
 		Place:       found.Place,
 	}
 
-	first, firstCfg, notice, err := openV3Agent(cfg, workspace)
+	first, firstCfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
 		t.Fatalf("the first window did not open: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestASecondWindowOnALockedSessionStartsANewOne(t *testing.T) {
 		t.Fatalf("the first window moved its own file to %s", firstCfg.SessionFile)
 	}
 
-	second, secondCfg, notice, err := openV3Agent(cfg, workspace)
+	second, secondCfg, notice, err := openV3Agent(cfg, workspace, v3OpenSession)
 	if err != nil {
 		t.Fatalf("a contended resume must not fail: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestAnOrdinaryFailureIsStillAFailure(t *testing.T) {
 	workspace := t.TempDir()
 	_, _, notice, err := openV3Agent(session.Config{
 		Workspace: workspace, Model: "", APIKey: "k", BaseURL: "https://example.invalid/v1",
-	}, workspace)
+	}, workspace, v3OpenSession)
 	if err == nil {
 		t.Fatal("a session with no model has to fail")
 	}
