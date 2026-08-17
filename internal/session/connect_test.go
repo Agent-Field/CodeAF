@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/connect"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -50,6 +51,101 @@ type fakeHub struct {
 	keyErr error
 	// calls is every raw call an armed tool made, as "METHOD path".
 	calls []string
+
+	// states is what the person has said about a capability, keyed
+	// "service/capability". Empty is nobody having said anything, which reads
+	// as the default the declaration carries — the same emptiness law
+	// internal/connect keeps on disk.
+	states map[string]connect.CapabilityState
+}
+
+// The capability half of the seam, as small as it can be and still true: the
+// sentences internal/connect declares for the two services this fake offers, and
+// which of their tools each sentence owns. It is a copy rather than a call into
+// the real registry for the reason the whole fake is one — every law here has to
+// be provable without a Google account and without a catalog.
+var fakeCapabilities = map[string][]connect.Capability{
+	"google": {
+		{ID: "mail-read", Phrase: "read your mail"},
+		{ID: "mail-send", Phrase: "send mail as you", Acts: true},
+		{ID: "calendar-read", Phrase: "read your calendar"},
+		{ID: "calendar-write", Phrase: "put things on your calendar and invite people", Acts: true},
+	},
+	"stripe": {
+		{ID: connect.CapabilityRead, Phrase: "read what is in this account"},
+		{ID: connect.CapabilityAct, Phrase: "act in this account in your name", Acts: true},
+	},
+}
+
+// fakeTools is which sentence owns which tool. The key account's one tool points
+// at the half that acts, exactly as catalog.go's init points it, so that the
+// verb-split seam is exercised against the shape it will really meet.
+var fakeTools = map[string]map[string]string{
+	"google": {
+		"gmail_search":    "mail-read",
+		"gmail_read":      "mail-read",
+		"gmail_send":      "mail-send",
+		"calendar_list":   "calendar-read",
+		"calendar_create": "calendar-write",
+	},
+	"stripe": {"stripe_request": connect.CapabilityAct},
+}
+
+func (h *fakeHub) Capabilities(service string) []connect.Capability {
+	return append([]connect.Capability(nil), fakeCapabilities[service]...)
+}
+
+func (h *fakeHub) ToolCapability(service, tool string) string {
+	return fakeTools[service][tool]
+}
+
+func (h *fakeHub) CapabilityState(service, capability string) connect.CapabilityState {
+	declared, found := fakeCapability(service, capability)
+	if !found {
+		return connect.StateOff
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if state, said := h.states[service+"/"+capability]; said {
+		return state
+	}
+	if declared.Acts {
+		return connect.StateAsk
+	}
+	return connect.StateYes
+}
+
+func (h *fakeHub) SetCapabilityState(service, capability string, state connect.CapabilityState) error {
+	if _, found := fakeCapability(service, capability); !found {
+		return errors.New(service + " has nothing called " + capability + " it can be used for")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.states == nil {
+		h.states = map[string]connect.CapabilityState{}
+	}
+	h.states[service+"/"+capability] = state
+	return nil
+}
+
+// says is a test turning one capability to one answer, without going through the
+// question that would normally write it.
+func (h *fakeHub) says(service, capability string, state connect.CapabilityState) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.states == nil {
+		h.states = map[string]connect.CapabilityState{}
+	}
+	h.states[service+"/"+capability] = state
+}
+
+func fakeCapability(service, capability string) (connect.Capability, bool) {
+	for _, declared := range fakeCapabilities[service] {
+		if declared.ID == capability {
+			return declared, true
+		}
+	}
+	return connect.Capability{}, false
 }
 
 // keyStatus is the account the fake connects with a key.
@@ -554,16 +650,16 @@ func TestNoteConnectedArmsAndQueuesWithoutWakingTheSession(t *testing.T) {
 // reads as the address it is connected as, an unconnected one as an id to ask
 // for.
 func TestTheServicesListSaysWhatIsConnectedAndWhatIsAvailable(t *testing.T) {
-	available := renderServices([]connectStatus{{ID: "google", Name: "Google", Blurb: "read your mail"}}, "")
+	available := renderServices([]connectStatus{{ID: "google", Name: "Google", Blurb: "read your mail"}}, "", nil)
 	if !strings.Contains(available, "Not connected yet (1)") || !strings.Contains(available, "google") {
 		t.Fatalf("an unconnected row does not offer itself: %q", available)
 	}
-	connected := renderServices([]connectStatus{{ID: "google", Name: "Google", Connected: true, Account: "you@example.test"}}, "")
+	connected := renderServices([]connectStatus{{ID: "google", Name: "Google", Connected: true, Account: "you@example.test"}}, "", nil)
 	if !strings.Contains(connected, "connected as you@example.test") {
 		t.Fatalf("a connected row does not say who: %q", connected)
 	}
 	// THE EMPTINESS LAW: one sentence, never a heading over nothing.
-	empty := renderServices(nil, "")
+	empty := renderServices(nil, "", nil)
 	if strings.Contains(empty, "use_service") || !strings.Contains(empty, "No accounts") {
 		t.Fatalf("an empty list is not one sentence: %q", empty)
 	}
@@ -585,7 +681,7 @@ func TestTheServicesListStaysSmallOverALargeCatalog(t *testing.T) {
 			Blurb: "Reach your Service " + strconv.Itoa(index) + " account at api.example.com, with a key you already hold.",
 		})
 	}
-	whole := renderServices(services, "")
+	whole := renderServices(services, "", nil)
 	if len(whole) > 6*1024 {
 		t.Errorf("the list is %d characters, which is a page and a half of context", len(whole))
 	}
@@ -606,7 +702,7 @@ func TestTheServicesListStaysSmallOverALargeCatalog(t *testing.T) {
 	}
 
 	// A filter searches the same list by name or by id.
-	narrowed := renderServices(services, "service17")
+	narrowed := renderServices(services, "service17", nil)
 	if !strings.Contains(narrowed, "service17,") && !strings.HasSuffix(strings.TrimSpace(narrowed), "service17") {
 		if !strings.Contains(narrowed, "service17") {
 			t.Errorf("the filter found nothing: %q", narrowed)
@@ -616,7 +712,7 @@ func TestTheServicesListStaysSmallOverALargeCatalog(t *testing.T) {
 		t.Errorf("the filter let something else through: %q", narrowed)
 	}
 	// THE EMPTINESS LAW again: a filter that matches nothing says THAT.
-	none := renderServices(services, "nothing-like-this")
+	none := renderServices(services, "nothing-like-this", nil)
 	if !strings.Contains(none, "No account here matches") {
 		t.Errorf("a filter that matches nothing: %q", none)
 	}

@@ -84,6 +84,14 @@ type Capability struct {
 type capabilitySet struct {
 	capabilities []Capability
 	tools        map[string]string
+	// generic marks the read/act pair a service gets for having no sentences
+	// of its own ([RegisterGenericCapabilities]). It exists for one collision:
+	// the catalog brings hundreds of services from somebody else's list, and a
+	// service written by hand in this package may one day turn up on that list
+	// too. [Registered] already settles that collision for plugs — the
+	// hand-written one wins — and this settles it the same way for the
+	// sentences, in whichever order the two inits happen to run.
+	generic bool
 }
 
 var (
@@ -105,6 +113,13 @@ var (
 // tools maps a tool name to the ID of the capability that owns it. Several tools
 // may share one capability; a tool may belong to at most one.
 func RegisterCapabilities(service string, capabilities []Capability, tools map[string]string) {
+	registerCapabilities(service, capabilities, tools, false)
+}
+
+// registerCapabilities is the whole of both doors, with the one flag that
+// separates a declaration somebody wrote from the pair a service gets for
+// having said nothing.
+func registerCapabilities(service string, capabilities []Capability, tools map[string]string, generic bool) {
 	service = normalize(service)
 	if service == "" {
 		panic("connect: register capabilities with empty service id")
@@ -112,6 +127,7 @@ func RegisterCapabilities(service string, capabilities []Capability, tools map[s
 	set := capabilitySet{
 		capabilities: make([]Capability, 0, len(capabilities)),
 		tools:        make(map[string]string, len(tools)),
+		generic:      generic,
 	}
 	declared := make(map[string]bool, len(capabilities))
 	for _, capability := range capabilities {
@@ -141,8 +157,19 @@ func RegisterCapabilities(service string, capabilities []Capability, tools map[s
 
 	capabilityMu.Lock()
 	defer capabilityMu.Unlock()
-	if _, taken := capabilityRegistry[service]; taken {
-		panic("connect: " + service + " declares its capabilities twice")
+	if held, taken := capabilityRegistry[service]; taken {
+		// TWO HAND-WRITTEN DECLARATIONS ARE A MISTAKE and still panic. One of
+		// each is the catalog meeting a plug this package wrote itself, which
+		// is ordinary: the sentences somebody wrote for that service are
+		// strictly better than the read/act pair, so they win and the generic
+		// pair is dropped, whichever arrived first.
+		if !held.generic && !set.generic {
+			panic("connect: " + service + " declares its capabilities twice")
+		}
+		if set.generic {
+			// A generic pair displaces nothing, not even another generic pair.
+			return
+		}
 	}
 	capabilityRegistry[service] = set
 }
@@ -157,8 +184,18 @@ func RegisterCapabilities(service string, capabilities []Capability, tools map[s
 // they get the same two rows and the same three states, and the panel cannot
 // tell them apart from a plug that declared four.
 func RegisterGenericCapabilities(service string, tools map[string]string) {
-	RegisterCapabilities(service, genericCapabilities(), tools)
+	registerCapabilities(service, genericCapabilities(), tools, true)
 }
+
+// The generic pair's two ids, exported because the judging seam has to NAME
+// them: a key service's one raw-call tool is a read or an act depending on the
+// verb it was given, and the wiring that picks the half must say which half in
+// this package's vocabulary rather than in a string of its own. See
+// [RegisterGenericCapabilities] and catalog.go's init.
+const (
+	CapabilityRead = "read"
+	CapabilityAct  = "act"
+)
 
 // genericCapabilities is the read/act pair, phrased WITHOUT a service name
 // because the caller has one and this does not: the panel renders these rows
@@ -166,8 +203,8 @@ func RegisterGenericCapabilities(service string, tools map[string]string) {
 // whole sentence and "read what is in your Notion account" would be a stutter.
 func genericCapabilities() []Capability {
 	return []Capability{
-		{ID: "read", Phrase: "read what is in this account", Acts: false},
-		{ID: "act", Phrase: "act in this account in your name", Acts: true},
+		{ID: CapabilityRead, Phrase: "read what is in this account", Acts: false},
+		{ID: CapabilityAct, Phrase: "act in this account in your name", Acts: true},
 	}
 }
 

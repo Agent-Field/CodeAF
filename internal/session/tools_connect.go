@@ -85,7 +85,7 @@ func (a *Agent) servicesTool() bare.Tool {
 					return "Invalid arguments: " + err.Error(), true, nil
 				}
 			}
-			return renderServices(a.connect.Services(), parsed.Filter), false, nil
+			return renderServices(a.connect.Services(), parsed.Filter, a.connectedFor), false, nil
 		},
 	}
 }
@@ -110,7 +110,18 @@ const servicesLineWidth = 76
 // THE EMPTINESS LAW: a build with nothing to offer says so in one sentence
 // rather than returning a heading over a blank list, and a filter that matches
 // nothing says THAT rather than pretending the list is empty.
-func renderServices(services []connectStatus, filter string) string {
+//
+// ── THE CONNECTED LINE IS WRITTEN FROM THE LIVE ANSWERS ──
+//
+// `connected` answers what one account may be used for RIGHT NOW, which is not
+// always what the plug's own blurb says: Google's line promises reading and
+// sending mail, and somebody who has turned sending off has a build that cannot
+// send. A listing that repeated the blurb would be advertising a hand the model
+// does not have, and the turn that discovers it is a turn spent. So the tail of
+// a connected line comes from `describe`, which is [Agent.connectedFor] in a
+// running session — and a nil one is the blurb, which is what a caller with no
+// capabilities behind it honestly has.
+func renderServices(services []connectStatus, filter string, describe func(connectStatus) string) string {
 	if len(services) == 0 {
 		return "No accounts can be connected to this conversation."
 	}
@@ -127,8 +138,12 @@ func renderServices(services []connectStatus, filter string) string {
 			if account := strings.TrimSpace(service.Account); account != "" {
 				line += " as " + account
 			}
-			if blurb := strings.TrimSpace(service.Blurb); blurb != "" {
-				line += ": " + blurb
+			tail := strings.TrimSpace(service.Blurb)
+			if describe != nil {
+				tail = strings.TrimSpace(describe(service))
+			}
+			if tail != "" {
+				line += ": " + tail
 			}
 			connected = append(connected, line)
 			continue
@@ -224,7 +239,7 @@ func (a *Agent) useService(ctx context.Context, id string) (string, bool, error)
 		// that guessed a name needs to see what there is, and filtering by the
 		// guess is exactly the search that has already failed.
 		return "No account with the id " + strconv.Quote(id) + ". " +
-			renderServices(a.connect.Services(), ""), true, nil
+			renderServices(a.connect.Services(), "", a.connectedFor), true, nil
 	}
 	if service.Connected {
 		return a.armService(service, ""), false, nil
@@ -322,6 +337,17 @@ func (a *Agent) armService(service connectStatus, account string) string {
 		// again in different words.
 		return connected + ", and this build has no tools for it. Do the work without it and say so plainly."
 	}
+	// AND THE OFF ONES ARE NOT HERE. What a person has taken away is absent from
+	// the belt and absent from this sentence, so the model is never told about a
+	// hand it does not have (connectcaps.go).
+	tools = a.liveTools(service.ID, tools)
+	if len(tools) == 0 {
+		// Connected, and the person has turned everything it can do off. It is a
+		// different fact from the one above and it gets a different sentence:
+		// this build HAS the tools, and they are not on offer.
+		return connected + ", and the person has turned off everything it can do. " +
+			"Do the work without it and say so plainly; asking again will not change their answer."
+	}
 	armed, err := a.armFamily(tools)
 	if err != nil {
 		return connected + ", but its tools could not be loaded: " + err.Error()
@@ -398,22 +424,48 @@ const serviceRequestSchemaJSON = `{"type":"object","properties":{"method":{"type
 // IT NAMES THE ADDRESS. The path is relative and nothing here knows the
 // service's own shapes, so the address is the one fact that lets a model line up
 // what it already knows about a service with what it is about to call.
-func serviceRequestDescription(service connectStatus) string {
+//
+// ── AND IT NAMES ONLY THE HALF THE PERSON LEFT ON ──
+//
+// This one tool is two capabilities: reading, and changing something at the far
+// end in the person's name (connectcaps.go). Where one of the two is off the
+// tool is still armed for the other, and the description says so — a sentence
+// promising that `get` reads, to a model whose reads will all be refused, buys
+// exactly one wasted call and a confused turn.
+func serviceRequestDescription(service connectStatus, reads, acts bool) string {
 	line := "Make one call to the person's own " + service.Name + " account."
 	if address := strings.TrimSpace(service.Address); address != "" {
 		line += " Paths are relative to " + address + " — for example /v1/things."
 	}
-	return line + " Follow " + service.Name + "'s own published documentation for paths, parameters and shapes; " +
-		"nothing here knows them, so guessing costs a failed call. Long answers are shortened and say so. " +
-		"get reads; post, put, patch and delete change something in their account, and the person is asked before one goes."
+	line += " Follow " + service.Name + "'s own published documentation for paths, parameters and shapes; " +
+		"nothing here knows them, so guessing costs a failed call. Long answers are shortened and say so. "
+	switch {
+	case reads && acts:
+		return line + "get reads; post, put, patch and delete change something in their account, " +
+			"and the person is asked before one goes."
+	case reads:
+		return line + "get reads, and that is all this account may be used for: " +
+			"the person has turned off changing anything in it, so post, put, patch and delete will not run."
+	default:
+		return line + "post, put, patch and delete change something in their account, and the person is asked " +
+			"before one goes. Reading is turned off for this account, so get will not run."
+	}
 }
 
 func (a *Agent) serviceRequestTool(service connectStatus) bare.Tool {
 	id, name := service.ID, service.Name
 	return bare.Tool{
-		Name:        serviceRequestName(id),
-		Description: serviceRequestDescription(service),
-		Schema:      json.RawMessage(serviceRequestSchemaJSON),
+		Name: serviceRequestName(id),
+		// The two halves are read HERE, when the tool is built, which is the
+		// moment the account is picked up. A person who changes their mind
+		// afterwards changes what the call DOES (the gate answers that on every
+		// call); the sentence in front of the model is the one it was armed
+		// with, because a definition that is rewritten in place invalidates the
+		// prompt cache for the whole conversation behind it (connect.go).
+		Description: serviceRequestDescription(service,
+			a.capabilityAllows(id, connect.CapabilityRead),
+			a.capabilityAllows(id, connect.CapabilityAct)),
+		Schema: json.RawMessage(serviceRequestSchemaJSON),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 			var parsed struct {
 				Method string `json:"method"`

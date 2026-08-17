@@ -37,7 +37,9 @@ invent one.
 
 Anything that leaves — a message, an invitation — **stops and asks you first**,
 with the recipient and the subject in the question, and it goes only when you
-say so. Reading never asks.
+say so. Reading never asks. Both of those are only where the dials start: what
+each account may be used for is yours to set, one sentence at a time, and the
+next section is how.
 
 ## Connecting one
 
@@ -80,13 +82,58 @@ first time it needs to send one it asks you to sign in again, and Google shows
 you exactly what is being asked for. It is the same question as the first time,
 and answering it once is enough.
 
+## What each account may be used for
+
+A connection is one grant — the whole mailbox, the whole calendar — because that
+is the only shape a sign-in has. What you actually want to decide is finer than
+that, and it is not technical: reading your mail is not sending it, and a meeting
+that lands on somebody else's calendar is not a meeting you read about.
+
+So each account is a handful of **sentences**, in `⚙` settings under
+**Connections**, and each one carries one of three words:
+
+> ✓ Google                                     jane@example.com
+>     read your mail                                        yes
+>     send mail as you                                ask first
+>     read your calendar                                    yes
+>     put things on your calendar                     ask first
+
+- **yes** — this runs without asking. It is worth exactly what your own approval
+  rule for that tool would be worth, because you wrote it about that sentence.
+- **ask first** — you are asked before every one, with what is about to happen in
+  the question.
+- **off** — **the hand is not there**. Not refused when it is reached for: the
+  tool never arrives in the conversation at all, and aforge is never told the
+  account can do that. Nothing it plans will be built on it, and you are not
+  asked a question about something you have already answered.
+
+Enter walks the three words and the answer is **saved the moment you change it**.
+It applies to conversations that are already open: turn sending off while aforge
+is drafting a message and the send stops there, with the conversation told
+plainly that you turned it off rather than that something broke.
+
+Reading is `yes` to begin with and anything that acts in your name is `ask first`,
+which is exactly how aforge behaved before these rows existed. Nothing is `off`
+until you say so.
+
+When a question stops you mid-conversation, answering **"always"** is the same
+sentence said in the other room: that capability is set to `yes`, and you will
+find it that way on the settings page. One vocabulary, one answer, two places to
+give it.
+
 ## Seeing and undoing
 
 `/connect` is also the list. It shows each account, whether it is connected, and
-the address it is connected as, and it is where you disconnect one. Disconnecting
-takes effect immediately: aforge forgets the account on this machine, and the
-next conversation is offered the chance to connect it again like the first one
-was.
+the address it is connected as, and it is where you disconnect one. What you have
+connected is at the top, flat; everything else is under **the word it is filed
+by** — billing, support, crm, calls & meetings — because a few hundred services
+is a list you search rather than one you read. Typing narrows it, and it narrows
+on the category as well as on the name: `billing` finds Stripe, Chargebee and
+Recurly, none of which contain the word.
+
+Disconnecting takes effect immediately: aforge forgets the account on this
+machine, and the next conversation is offered the chance to connect it again like
+the first one was.
 
 ## What a key account can do
 
