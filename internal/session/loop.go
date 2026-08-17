@@ -157,6 +157,12 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 	// [warmBatch] for the law that decides what may start early at all.
 	warm := &warmBatch{}
 
+	// forming holds the calls this turn has watched ARRIVE but not yet finish
+	// (toolhint.go). It has the warm batch's lifetime and is emptied in the same
+	// breath for the same reason: a retry's calls are its own, and half of a dead
+	// attempt's arguments describe bytes nobody will ever be sent.
+	forming := &formingBatch{}
+
 	// episode is this turn's CONTROL PLANE (hooks.go): the four named seams and
 	// the state their citizens keep — the loop detector's window (looped.go), the
 	// ledger of what this turn changed (recovery.go). It belongs to the turn and
@@ -196,6 +202,16 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 			// it reaches the transcript, and the person sees which attempt they
 			// are on and what was taken off to get there.
 			hub.send(Event{Kind: EventNotice, Text: event.Delta})
+		case provider.StreamToolCallForming:
+			// The seconds BEFORE the announcement, which the person used to
+			// watch as silence. Nothing here starts anything and nothing here
+			// is parsed as an instruction: the batch decides how often this
+			// call may speak and what it can honestly say about arguments that
+			// are still arriving, and the answer rides as a row that the
+			// announcement below will replace.
+			if formed, speak := forming.note(event); speak {
+				hub.send(formed)
+			}
 		case provider.StreamToolCallReady:
 			// ANNOUNCE FIRST, then decide whether it may start. The order is the
 			// meaning: the person sees every call the moment the model finishes
@@ -240,7 +256,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub) bool {
 		// result or an assistant answer, both legal places for a user message.
 		a.drainSteering()
 
-		response, err := a.completeWithRetry(ctx, model, effort, partial, warm)
+		response, err := a.completeWithRetry(ctx, model, effort, partial, warm, forming)
 		if err != nil {
 			// Interrupt (or the caller's own deadline). Whatever was streamed
 			// before the cut is real work the person watched arrive, so it
@@ -398,7 +414,7 @@ func (a *Agent) sealTurn(turn Usage, started time.Time) Usage {
 // stamp here would be dropped every time and the knob would do nothing. Nothing
 // is stamped when no level is set: an unstamped context is the one shape that
 // leaves the request byte-for-byte what it was.
-func (a *Agent) completeWithRetry(ctx context.Context, model string, effort provider.Effort, partial *partialBuffer, warm *warmBatch) (*ai.Response, error) {
+func (a *Agent) completeWithRetry(ctx context.Context, model string, effort provider.Effort, partial *partialBuffer, warm *warmBatch, forming *formingBatch) (*ai.Response, error) {
 	if effort != provider.EffortNone {
 		ctx = provider.WithConfiguredReasoningEffort(ctx, effort)
 	}
@@ -414,6 +430,11 @@ func (a *Agent) completeWithRetry(ctx context.Context, model string, effort prov
 		// paired with it. The reads that already ran are simply thrown away and
 		// re-run, which is the whole reason only read-only tools may start early.
 		warm.reset()
+		// And the calls that were still arriving when the attempt died. Their
+		// half-read arguments belong to a response nobody will ever be sent, and
+		// a scanner that kept them would gloss the retry's first call with the
+		// dead attempt's path.
+		forming.reset()
 
 		messages := a.snapshot()
 		response, err := a.client.CompleteWithMessages(ctx, messages,
