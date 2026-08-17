@@ -2969,6 +2969,16 @@ func (a *app) slash(line string) tea.Cmd {
 			a.openPicker()
 			return nil
 		}
+		// AND A SLUG THE CATALOG KNOWS IS CHECKED BEFORE IT IS TAKEN. Since the
+		// door carries the whole catalog, "openai/gpt-4o-mini-tts" is a name
+		// this surface can look up and know is a speaker rather than a
+		// conversation — and accepting it would leave somebody talking to a
+		// model that answers in mp3, with the failure arriving a turn later as a
+		// provider error nobody could connect to what they typed.
+		if warning := a.nonChatWarning(rest); warning != "" {
+			a.note(warning)
+			return nil
+		}
 		a.switchModel(rest, 0)
 		return nil
 
