@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -220,6 +221,24 @@ const (
 	// this side an attempt nobody finished and an attempt that broke are the same
 	// fact: nothing is connected.
 	EventConnectDone
+	// EventHarnessOffer asks the person whether one sub-harness should take this
+	// turn (harness.go). It carries the id the answer is handed back with in ID,
+	// the harness's name in Text, and its one-sentence description in Hint.
+	//
+	// It is a QUESTION, and the quietest kind on this list: the turn is held
+	// before its first request until [Agent.ResolveHarness] answers it or the
+	// turn's context dies, and NO is free — the turn the person typed runs
+	// exactly as it would have. A surface that ignores this kind would leave the
+	// turn waiting, which is why the offer is never raised unless somebody has
+	// said they are watching (Config.AskConsent).
+	EventHarnessOffer
+	// EventHarnessRun says the person said yes and the harness named in Text has
+	// the turn. Hint is its description.
+	//
+	// It is a REPORT, not a question, and it is what a surface draws instead of
+	// a model thinking: what follows is the harness's report as ordinary text
+	// and then EventTurnDone, or EventError if the run failed.
+	EventHarnessRun
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -250,7 +269,10 @@ type Event struct {
 	Output string
 
 	// ID names one EventConsentRequest, and is the token a surface hands back
-	// to [Agent.ResolveConsent]. It is zero on every other kind.
+	// to [Agent.ResolveConsent]. It is zero on every other kind but
+	// EventHarnessOffer, whose own id goes back through
+	// [Agent.ResolveHarness] — two lanes, two counters, and one field, because
+	// "which question" is the same question for both of them.
 	ID uint64
 
 	// CallID is the PROVIDER's id for the tool call an EventToolForming or an
@@ -519,6 +541,28 @@ type Config struct {
 	// waits: a catalog that has not resolved answers nil, and a chain with no
 	// fallback simply ends in the diagnosis instead of on another model.
 	NearestModels func(model string) []string
+
+	// Harnesses is this build's sub-harness registry, in the fields a turn is
+	// matched against: name, description, and the cue list the designer froze at
+	// build time (internal/subharness). EMPTY IS DETECTION OFF, which is every
+	// caller that has not loaded a registry, and it is off at the cost of one
+	// length check per turn.
+	//
+	// The whole registry is handed over rather than a path to it for the reason
+	// SessionFile is a path and not a directory this package picks: where the
+	// entries come from is the surface's business, and a package that read
+	// ~/.aforge/harnesses itself would read it from a test and from a task
+	// node's own agent too.
+	Harnesses []subharness.Entry
+
+	// RunHarness runs one harness for one turn and returns its report. The name
+	// is an entry's own Name; the text is the person's words, verbatim.
+	//
+	// NIL IS DETECTION OFF, whatever Harnesses holds, and it is the seam that
+	// keeps the engine out of this package: the conversation decides WHETHER a
+	// harness runs — it is the half a person answers — and the engine decides
+	// what running one means.
+	RunHarness func(ctx context.Context, name string, text string) (string, error)
 
 	// ImageGenModel and ImageGenClient are the image-generation pair the belt's
 	// generate_image tool calls through (tools_image.go): the model that paints,
@@ -857,6 +901,17 @@ type Agent struct {
 	// lives as long as the use_service call blocked on it.
 	connectSeq  uint64
 	connectAsks map[string]connectAsk
+
+	// harnessAsks is the sub-harness offers a person owes an answer to, keyed by
+	// the id the EventHarnessOffer carried, and harnessSeq is what names them
+	// (harness.go). Same machinery as consent's, one lane over: an offer lives
+	// exactly as long as the turn held on it, which is at most one per turn.
+	//
+	// It is its own counter rather than consent's because the two lanes are
+	// answered by two methods and neither may be able to answer the other's
+	// question by guessing a number.
+	harnessSeq  uint64
+	harnessAsks map[uint64]chan bool
 
 	// tasks is the work this conversation has handed off: the graph of nodes,
 	// their dependency edges, and the frontier executor that runs them
