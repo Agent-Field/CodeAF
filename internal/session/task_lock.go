@@ -17,21 +17,40 @@ package session
 // goroutines.
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/Agent-Field/aforge-v2/internal/home"
 )
 
 const (
 	// gitRootLockName is the file every aforge on this machine flocks before it
-	// touches the root repository. It sits with the task worktrees rather than
-	// inside .git, because a repository's toplevel can be a linked worktree whose
-	// .git is a FILE, and because everything else this harness leaves in a
-	// person's repository is already under this one directory.
+	// touches the root repository, in the LEGACY layout. It sits with the task
+	// worktrees rather than inside .git, because a repository's toplevel can be a
+	// linked worktree whose .git is a FILE, and because everything else that
+	// layout left in a person's repository was already under this one directory.
 	gitRootLockName = ".gitroot.lock"
+
+	// gitRootLockDir is where the lock lives once a session keeps its things in a
+	// folder of its own (Decision 26): under the state root, so that NOTHING OF
+	// OURS LIVES IN THE PERSON'S FOLDER. It goes through internal/home, so
+	// AFORGE_HOME moves it with everything else.
+	gitRootLockDir = "locks"
+
+	// gitRootLockStem is how much of the repository path's digest names the lock
+	// file. Sixteen hex characters is sixty-four bits: far past the point where
+	// two of a person's repositories collide, and short enough that the directory
+	// listing is readable. The digest and not the path itself, because a lock file
+	// named after a path would need every separator escaped and would still be
+	// unopenable at the length some checkouts reach.
+	gitRootLockStem = 16
 
 	// gitRootPoll is how often a waiter re-asks for the lock, and gitRootPatience
 	// is how long it asks for before it goes ahead anyway.
@@ -48,7 +67,11 @@ const (
 )
 
 // lockGitRoot claims the root repository for one span of git commands and
-// returns the release. Use it as `defer lockGitRoot(root)()`.
+// returns the release. Use it as `defer lockGitRoot(place, root)()`.
+//
+// THE LOCK IS THE REPOSITORY'S, NOT THE SESSION'S: place decides only WHERE the
+// file sits, and the identity it is keyed on is the repository root every window
+// on that repository resolves to the same string.
 //
 // GOING AHEAD IS ALWAYS BETTER THAN REFUSING. A filesystem that cannot flock at
 // all, a lock file that cannot be created under a read-only checkout, and a
@@ -57,9 +80,9 @@ const (
 // existed. The downside of proceeding is git's own index lock reporting a clean
 // merge as a conflict — which keeps the branch and loses nothing — and the
 // downside of refusing would be a finished node with nowhere to put its work.
-func lockGitRoot(root string) func() {
+func lockGitRoot(place Place, root string) func() {
 	gitRoot.Lock()
-	file := claimGitRoot(root)
+	file := claimGitRoot(place, root)
 	return func() {
 		if file != nil {
 			// The unlock is belt-and-braces, as sessionfile.go's is: closing the
@@ -82,13 +105,9 @@ func lockGitRoot(root string) func() {
 // and stop; a second session merging its own task is ordinary work that has to
 // happen, just not at this instant — so the loser WAITS instead of being told
 // no.
-func claimGitRoot(root string) *os.File {
-	directory := filepath.Join(root, filepath.FromSlash(tasksDirName))
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		return nil
-	}
-	file, err := os.OpenFile(filepath.Join(directory, gitRootLockName), os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
+func claimGitRoot(place Place, root string) *os.File {
+	file := openGitRootLock(place, root)
+	if file == nil {
 		return nil
 	}
 	deadline := time.Now().Add(gitRootPatience)
@@ -109,6 +128,42 @@ func claimGitRoot(root string) *os.File {
 		}
 		time.Sleep(gitRootPoll)
 	}
+}
+
+// openGitRootLock creates the lock file and hands back the open descriptor, or
+// nil when there is nowhere to put one.
+//
+// A SESSION WITH A FOLDER LOCKS OUTSIDE THE PERSON'S REPOSITORY. The legacy
+// layout kept the file with the worktrees under <repo>/.aforge-v3/, which is the
+// litter Decision 26 removes; the folder layout keys the same lock on a digest
+// of the repository root instead and keeps it under the state root. Both windows
+// on one repository still meet on one file, because both derive it from the same
+// resolved root — what they must not do is meet on one file in one layout and on
+// two in the other, which is why the choice is made HERE and from the Place
+// alone, and why the whole product moves layouts at once.
+func openGitRootLock(place Place, root string) *os.File {
+	directory, name := filepath.Join(root, filepath.FromSlash(tasksDirName)), gitRootLockName
+	directoryMode, fileMode := os.FileMode(0o755), os.FileMode(0o644)
+	if strings.TrimSpace(place.Dir) != "" {
+		directory, name = home.Join("v3", gitRootLockDir), gitRootLockFile(root)
+		directoryMode, fileMode = 0o700, 0o600
+	}
+	if err := os.MkdirAll(directory, directoryMode); err != nil {
+		return nil
+	}
+	file, err := os.OpenFile(filepath.Join(directory, name), os.O_CREATE|os.O_RDWR, fileMode)
+	if err != nil {
+		return nil
+	}
+	return file
+}
+
+// gitRootLockFile names one repository's lock: the head of the SHA-256 of its
+// resolved root path, and ".lock" so a person listing the directory can see what
+// they are looking at.
+func gitRootLockFile(root string) string {
+	digest := sha256.Sum256([]byte(filepath.Clean(root)))
+	return hex.EncodeToString(digest[:])[:gitRootLockStem] + ".lock"
 }
 
 // isLockHeld says whether the error means somebody else holds the lock, as

@@ -52,7 +52,7 @@ const workClaimSaid = "added the nil-map guard and a regression test that fails 
 // standing — what [TaskNode.workingCopy] hands back for the nodes above.
 func inPlaceTree(t *testing.T, node *TaskNode, agent *Agent) taskTree {
 	t.Helper()
-	tree, err := node.workingCopy(agent.config.Workspace)
+	tree, err := node.workingCopy(agent.config.Place, agent.config.Workspace)
 	if err != nil {
 		t.Fatalf("workingCopy: %v", err)
 	}

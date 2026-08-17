@@ -87,6 +87,10 @@ func run() error {
 		if v2, rest := wantChatV2(nil, os.Getenv); v2 {
 			return runChatV2(rest)
 		}
+		// Housekeeping, in the background, once (chatv3_sweep.go). It is here
+		// rather than inside the launch only because chatv3.go belongs to another
+		// hand this week.
+		startPlaceSweep()
 		return runChatV3(nil)
 	}
 	switch os.Args[1] {
@@ -100,11 +104,13 @@ func run() error {
 		// On branch chat-v3, `aforge chat` IS v3 (docs/CHAT-V3.md, "Entry and
 		// cutover"). runChat stays reachable through the no-argument path
 		// until v3 reaches parity in substance.
+		startPlaceSweep()
 		return runChatV3(os.Args[2:])
 	case "resume":
 		// The chat surface, opened on the list of conversations this directory
 		// has already had (internal/tui3's resume.go). It is a v3 door only:
 		// the older surfaces have no session files to pick from.
+		startPlaceSweep()
 		return runResumeV3(os.Args[2:])
 	case "engine":
 		// The far half of `aforge chat --host <host>`: the process ssh starts
