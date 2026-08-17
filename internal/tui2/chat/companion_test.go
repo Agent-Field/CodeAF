@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/aforge-v2/internal/store"
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // The companion keys, spelled the way the head spells them. They are literals
