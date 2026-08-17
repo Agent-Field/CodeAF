@@ -27,6 +27,15 @@ type stored struct {
 	// back here and goes nowhere else: it is never logged, never rendered,
 	// and never carried in an error.
 	Keys *oauth2.Token `json:"keys,omitempty"`
+	// Scopes is what the person actually agreed to when these keys were
+	// issued. It is the answer to a question the keys themselves cannot
+	// answer — "may this connection send mail?" — and without it a build
+	// that starts asking for more than the last one did would carry on
+	// using an old permission until the first request failed at the far end.
+	//
+	// An entry written before this field existed has none, which is read as
+	// covering nothing. See [stored.covers].
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 // usable reports whether the entry can still do work. An entry with a refresh
@@ -38,6 +47,37 @@ func (s stored) usable() bool {
 		return false
 	}
 	return strings.TrimSpace(s.Keys.RefreshToken) != "" || strings.TrimSpace(s.Keys.AccessToken) != ""
+}
+
+// covers reports whether what this entry was granted includes everything the
+// service now asks for.
+//
+// A CONNECTION THAT IS SHORT OF A PERMISSION IS NOT A CONNECTION. The person
+// agreed to something narrower than what this build needs — they signed in when
+// aforge could only read their mail, and it can send now — and the honest thing
+// is to put them back through the sign-in they already know rather than to let a
+// tool call fail at the far end with a sentence written by Google.
+//
+// An entry from before permissions were written down covers nothing, for the
+// same reason: what it was granted is unknown, and unknown is not enough.
+// Wanting nothing is covered by anything, which is what a plug that asks for no
+// permissions at all means.
+func (s stored) covers(wanted []string) bool {
+	if len(wanted) == 0 {
+		return true
+	}
+	held := make(map[string]bool, len(s.Scopes))
+	for _, scope := range s.Scopes {
+		if scope = strings.TrimSpace(scope); scope != "" {
+			held[scope] = true
+		}
+	}
+	for _, want := range wanted {
+		if want = strings.TrimSpace(want); want != "" && !held[want] {
+			return false
+		}
+	}
+	return true
 }
 
 // store is the file of connections: a JSON object keyed by service identifier.

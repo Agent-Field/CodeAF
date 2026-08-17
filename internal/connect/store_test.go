@@ -149,6 +149,32 @@ func TestStoredUsable(t *testing.T) {
 	}
 }
 
+func TestStoredCovers(t *testing.T) {
+	wanted := []string{"read", "write"}
+	cases := []struct {
+		name  string
+		entry stored
+		want  bool
+	}{
+		{"nothing recorded", stored{}, false},
+		{"one of the two", stored{Scopes: []string{"read"}}, false},
+		{"both", stored{Scopes: []string{"read", "write"}}, true},
+		{"both and more", stored{Scopes: []string{"write", "extra", "read"}}, true},
+		{"spacing does not count", stored{Scopes: []string{" read ", "write"}}, true},
+		{"something else entirely", stored{Scopes: []string{"paint"}}, false},
+	}
+	for _, c := range cases {
+		if got := c.entry.covers(wanted); got != c.want {
+			t.Errorf("%s: covers = %v, want %v", c.name, got, c.want)
+		}
+	}
+	// A plug that asks for nothing is covered by anything, including by an
+	// entry that recorded nothing at all.
+	if !(stored{}).covers(nil) {
+		t.Error("an empty ask must be covered")
+	}
+}
+
 // TestStoreWritesNoSecretsInPlainKeys guards the shape of the file so that a
 // later change cannot quietly start writing the client secret alongside the
 // account's keys.
