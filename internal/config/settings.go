@@ -142,6 +142,15 @@ var OperatorEnvPins = []string{
 	"AFORGE_MODELS",
 	"AFORGE_REASONING",
 	"AFORGE_EXEC_REASONING",
+	// The three `aforge exec` walls. They are plumbing rather than settings
+	// for the reason the node budget is: they are the ceilings one headless
+	// invocation runs under, set by the harness that made the call, and the
+	// preference the product actually has an opinion about is the daily rail.
+	// A sheet row offering to persist them would be offering to cap a
+	// conversation nobody is holding.
+	"AFORGE_EXEC_TURNS",
+	"AFORGE_EXEC_BUDGET",
+	"AFORGE_EXEC_TIMEOUT",
 	"AFORGE_SPINE_SAMPLES",
 	"AFORGE_MAX_DEPTH",
 	"AFORGE_NODE_BUDGET",

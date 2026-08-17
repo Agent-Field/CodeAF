@@ -125,6 +125,12 @@ func run() error {
 		return runRebuild(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
+	// Three spellings for one question, because three different callers ask it
+	// and none of them should have to know which one this build prefers: the
+	// agentfield Python doctor runs `aforge version`, the Go doctor runs
+	// `aforge --version`, and a person types `-v`.
+	case "version", "--version", "-v":
+		return runVersion()
 	case "-h", "--help", "help":
 		return usage()
 	default:
@@ -162,6 +168,8 @@ const usageText = `aforge — build and revise task graphs
   aforge doctor [--db path]     show the brain, resident, watch, spend, and open counts
   aforge rebuild [--db path] [--yes]  discard every derived table and replay the journal
   aforge why self [--db path]   show today's self-spend receipts
+  aforge version                print the build this binary was cut from
+                                (--version and -v say the same thing)
 
 Workers:
   chat, do and run each take --subharness <name>, which forces every leaf onto
@@ -190,6 +198,11 @@ Environment:
                        runs; see them with ` + "`aforge models`" + `.
   AFORGE_REASONING     planning calls: off (default), low, medium, high
   AFORGE_EXEC_REASONING  executor calls: model default (unset), off, low, medium, high
+  AFORGE_EXEC_TIMEOUT  ` + "`aforge exec`" + ` only: hard wall in seconds when --timeout is
+                       not passed. AFORGE_EXEC_BUDGET and AFORGE_EXEC_TURNS do
+                       the same for --budget and --turns. A flag that was typed
+                       always wins; these exist so a harness can set the walls
+                       once for a campaign instead of on every call.
   AFORGE_MAX_DEPTH     2   how many levels of decomposition
   AFORGE_NODE_BUDGET   60  hard ceiling on total nodes
   AFORGE_DAILY_BUDGET  20.0  daily dollar rail (0 = unlimited)

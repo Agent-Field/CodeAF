@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -30,9 +31,9 @@ func runExec(args []string) error {
 	flags := flag.NewFlagSet("exec", flag.ContinueOnError)
 	workspace := flags.String("w", ".", "workspace directory")
 	system := flags.String("system", "", "working method for the agent")
-	maxTurns := flags.Int("turns", 200, "runaway backstop on agent iterations")
-	maxTokens := flags.Int("budget", 150000, "token budget for the agent")
-	timeout := flags.Int("timeout", 0, "hard wall in seconds (default: scale from the token budget)")
+	maxTurns := flags.Int("turns", 200, "runaway backstop on agent iterations (env AFORGE_EXEC_TURNS)")
+	maxTokens := flags.Int("budget", 150000, "token budget for the agent (env AFORGE_EXEC_BUDGET)")
+	timeout := flags.Int("timeout", 0, "hard wall in seconds (env AFORGE_EXEC_TIMEOUT; default: scale from the token budget)")
 	model := flags.String("model", "", "work model for this run (default AFORGE_MODEL)")
 	planModel := flags.String("plan-model", "", "accepted for headless model-pin parity; exec performs no planning")
 	contextFill := flags.Int("context-fill", 0, "context compaction threshold in percent (default 60)")
@@ -44,6 +45,9 @@ func runExec(args []string) error {
 		"model": true, "plan-model": true, "context-fill": true, "completion-reserve": true,
 		"o": true,
 	})); err != nil {
+		return err
+	}
+	if err := applyExecEnv(flags, os.Getenv, maxTurns, maxTokens, timeout); err != nil {
 		return err
 	}
 	if *maxTurns <= 0 || *maxTokens <= 0 {
@@ -138,6 +142,55 @@ func runExec(args []string) error {
 	}
 	if code := execExitCode(outcome.Stop, outcome.Text); code != 0 {
 		return exitStatus(code)
+	}
+	return nil
+}
+
+// execEnvFallbacks are the three exec walls a wrapper can set once, in the
+// environment, instead of threading onto every invocation — the same way
+// AFORGE_MODEL is set once rather than passed per call. The caller that reached
+// for exec is usually a harness whose per-call arguments are the prompt and the
+// workspace and nothing else; walls belong to the campaign, not to the errand.
+var execEnvFallbacks = []struct {
+	flag     string
+	variable string
+	what     string
+}{
+	{flag: "turns", variable: "AFORGE_EXEC_TURNS", what: "turn cap"},
+	{flag: "budget", variable: "AFORGE_EXEC_BUDGET", what: "token budget"},
+	{flag: "timeout", variable: "AFORGE_EXEC_TIMEOUT", what: "number of seconds"},
+}
+
+// applyExecEnv fills in the walls the caller did not name.
+//
+// A flag that was typed always wins, and "typed" means typed: flag.Visit
+// reports only the flags that actually appeared on the command line, so
+// `--turns 200` is honoured as an explicit choice even though 200 is also the
+// default. That distinction is the whole point — without it, an environment
+// variable could not tell a default apart from a decision, and setting one
+// would silently overrule the caller.
+//
+// A variable that is set but is not a number is an error rather than a shrug.
+// The alternative is a harness that thinks it capped a run at 60 seconds
+// because of a typo it will never see, and measures the wrong thing all night.
+func applyExecEnv(flags *flag.FlagSet, getenv func(string) string, maxTurns, maxTokens, timeout *int) error {
+	typed := make(map[string]bool, 3)
+	flags.Visit(func(f *flag.Flag) { typed[f.Name] = true })
+	targets := map[string]*int{"turns": maxTurns, "budget": maxTokens, "timeout": timeout}
+	for _, fallback := range execEnvFallbacks {
+		target, ok := targets[fallback.flag]
+		if !ok || typed[fallback.flag] {
+			continue
+		}
+		raw := strings.TrimSpace(getenv(fallback.variable))
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			return fmt.Errorf("%s: %q is not a %s", fallback.variable, raw, fallback.what)
+		}
+		*target = value
 	}
 	return nil
 }
