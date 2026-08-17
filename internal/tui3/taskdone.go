@@ -87,8 +87,8 @@ const (
 	doneOutputKey = "ctrl+o output"
 	// The word for a landing nobody could judge is the rail's own
 	// ([taskUnverifiedWord]): one vocabulary for one state, so a person who read
-	// "unverified" on the column does not have to learn a second name for it in
-	// the transcript.
+	// "needs your look" on the column does not have to learn a second name for it
+	// in the transcript.
 	doneSpawnWord = "spawned "
 	// doneFileSuffix and doneFilesSuffix are the changed-file count. Singular
 	// and plural are both spelled because "1 files" is the surface being sloppy
@@ -155,12 +155,13 @@ func (a *app) landedCard(node *taskNode) {
 	if card.failed && card.outcome == "" {
 		card.outcome = taskStoppedWord
 	}
-	// AND THE SAME FOR A LANDING NOBODY COULD JUDGE. The outcome line here is
-	// the auditor's own text — session leads an unverified node's report with
-	// what was said instead of a verdict — and it is kept verbatim for the
-	// reason the failure sentence is. The gloss stands in only for a node that
-	// arrived with no report at all, which would otherwise be a card that says
-	// "unverified" and then nothing about why.
+	// AND THE SAME FOR A LANDING NOBODY COULD JUDGE. The engine leads such a
+	// node's report with a line already in a person's words ("finished, but needs
+	// your look — …"), and it is kept verbatim for the reason the failure
+	// sentence is: it is what a person reads to decide, and this surface is not
+	// the thing that decided it. The gloss stands in only for a node that arrived
+	// with no report at all, which would otherwise be a card that names the state
+	// and then says nothing about why.
 	if card.unverified && card.outcome == "" {
 		card.outcome = taskUnverifiedGloss
 	}
@@ -257,7 +258,7 @@ func (a *app) doneRows(card *taskDone, width int, sel bool) []string {
 //
 //	✓ ◆ Fix nil-map crash · done 4m12s · 3 files (+42 −7)
 //	✗ ▲ Mix audio · failed 2m03s · stopped — branch kept · task/mix
-//	? ● Port the parser · unverified 6m40s · 2 files · branch kept · task/parser
+//	? ● Port the parser · needs your look 6m40s · 2 files · branch kept · task/parser
 //
 // The state mark is the rail's own (task.go's [app.railGlyph] draws the same
 // three), the identity is the one cell that never changes, and everything after
