@@ -82,6 +82,7 @@ jobs:
           go test
           ./cmd/aforge
           ./internal/config
+          ./internal/exec/...
           ./internal/filelock
           ./internal/lease
 
