@@ -159,18 +159,211 @@ func TestTheRoomHeaderSaysFinishingWhileAGapIsBeingClosed(t *testing.T) {
 	}
 }
 
+// ── the waiting line ────────────────────────────────────────────────────────
+
+// heldNotice is the update the engine sends about a node that is not spending
+// its time on the work: the state it was already in, and the one word that says
+// what is holding it (session's TaskNotice.Waiting).
+func heldNotice(why string) session.TaskNotice {
+	return session.TaskNotice{Waiting: why, Model: "openai/gpt-5", CostUSD: 0.31}
+}
+
+// A QUEUED NODE SAYS WHAT IS HOLDING IT, AT EVERY WIDTH. A row that has sat
+// still for four minutes is either stuck or waiting its turn, and those are
+// opposite news wearing the same row — so the column says which, in the engine's
+// own reason, cut from the right so that the word that names the moment always
+// survives.
+func TestAHeldNodeSaysWhatIsHoldingItAtEveryWidth(t *testing.T) {
+	for _, tc := range []struct{ why, full, slim string }{
+		{waitWordMachine, "waiting · machine busy", "waiting · machine b…"},
+		{waitWordSlot, "waiting · slot", "waiting · slot"},
+	} {
+		t.Run(tc.why, func(t *testing.T) {
+			a, _, _ := taskApp(t)
+			drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Write the report", session.TaskQueued,
+				heldNotice(tc.why))})
+			node := a.tasks[7]
+			if node.waiting != tc.why {
+				t.Fatalf("the node carries %q, want %q", node.waiting, tc.why)
+			}
+			for _, w := range []struct {
+				width int
+				want  string
+			}{{underWidth(railCols), tc.full}, {underWidth(railSlimCols), tc.slim}} {
+				rows := a.railUnder(node, w.width)
+				if len(rows) != 1 || plain(rows[0]) != w.want {
+					t.Fatalf("at %d cells the under-block is %q, want one row %q", w.width, rows, w.want)
+				}
+				if got := ansi.StringWidth(plain(rows[0])); got > w.width {
+					t.Fatalf("at %d cells the row is %d cells wide", w.width, got)
+				}
+			}
+			// AND THE COLUMN ITSELF DRAWS IT, at both widths the roster has.
+			for _, width := range []int{200, 110} {
+				a.width = width
+				if roster := rosterText(a, 12); !strings.Contains(roster, taskHeldWord+" · ") {
+					t.Fatalf("the roster at %d columns does not say the node is held:\n%s", width, roster)
+				}
+			}
+			a.width = 200
+
+			// AND IT GOES THE MOMENT THE HOLD DOES. The word is a report of right
+			// now, and the update that stops carrying it is the same state as the one
+			// before it — so it must not be swallowed as a duplicate (task.go's
+			// [app.taskUpdate] de-dup).
+			drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Write the report", session.TaskQueued,
+				session.TaskNotice{Model: "openai/gpt-5", CostUSD: 0.31})})
+			if node.waiting != "" {
+				t.Fatalf("the node still carries %q", node.waiting)
+			}
+			if rows := a.railUnder(node, underWidth(railCols)); len(rows) != 0 {
+				t.Fatalf("the under-block outlived the hold: %q", rows)
+			}
+			if strings.Contains(rosterText(a, 12), taskHeldWord) {
+				t.Fatalf("the roster is still waiting:\n%s", rosterText(a, 12))
+			}
+		})
+	}
+}
+
+// A PACED NODE NEVER CLAIMS A LIVE CALL. While the provider is holding this
+// node's calls back the tool line names a call that has already finished, so the
+// hold takes that row instead and the telemetry keeps the one beneath it: the
+// clock and the bill go on being the clock and the bill.
+func TestAPacedNodeWaitsWhereItsToolLineWouldBe(t *testing.T) {
+	a, _, advance := taskApp(t)
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Write the report", session.TaskRunning,
+		heldNotice(waitWordRate))})
+	node := a.tasks[7]
+	node.tokens = 9_900
+	advance(42 * time.Second)
+	node.tool, node.toolBegan = "bash go test ./...", a.now().Add(-24*time.Second)
+
+	for _, tc := range []struct {
+		width int
+		want  []string
+	}{
+		{underWidth(railCols), []string{"waiting · rate limited", "42s · 9.9k · $0.31 · gpt-5"}},
+		{underWidth(railSlimCols), []string{"waiting · rate limi…", "42s · 9.9k · $0.31"}},
+	} {
+		rows := a.railUnder(node, tc.width)
+		if len(rows) != len(tc.want) {
+			t.Fatalf("at %d cells the under-block is %d rows, want %d:\n%q", tc.width, len(rows), len(tc.want), rows)
+		}
+		for i, want := range tc.want {
+			if got := plain(rows[i]); got != want {
+				t.Fatalf("at %d cells row %d is %q, want %q", tc.width, i, got, want)
+			}
+			if w := ansi.StringWidth(plain(rows[i])); w > tc.width {
+				t.Fatalf("at %d cells row %d is %d cells wide", tc.width, i, w)
+			}
+		}
+	}
+	if roster := rosterText(a, 12); strings.Contains(roster, "go test") {
+		t.Fatalf("a paced node claimed a call that is not happening:\n%s", roster)
+	}
+
+	// AND THE CALL COMES BACK when the wire does, on an update that moves nothing
+	// but the hold.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Write the report", session.TaskRunning,
+		session.TaskNotice{Model: "openai/gpt-5", CostUSD: 0.31})})
+	rows := a.railUnder(node, underWidth(railCols))
+	if len(rows) != railUnderRows || plain(rows[0]) != "bash go test ./... · 24s" {
+		t.Fatalf("the call row did not come back:\n%q", rows)
+	}
+}
+
+// THE DEPENDENCY OUTRANKS THE HOLD, on the one row a queued node gets. Both are
+// true of a node behind other work AND behind a full cap, and only one of them
+// names something a person can act on.
+func TestAWaitingDependencyOutranksTheHoldWord(t *testing.T) {
+	a, _, _ := taskApp(t)
+	drive(t, a,
+		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskRunning, session.TaskNotice{})},
+		streamEventMsg{gen: a.gen, ev: update(2, "Mix audio", session.TaskQueued, session.TaskNotice{
+			DependsOn: []uint64{1}, Waiting: waitWordSlot,
+		})},
+	)
+	node := a.tasks[2]
+	got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n"))
+	if !strings.Contains(got, "waits: Collect sources") {
+		t.Fatalf("the blocked node says %q, want the prerequisite it waits on", got)
+	}
+	if strings.Contains(got, taskHeldWord) {
+		t.Fatalf("the hold word took the row the dependency owns: %q", got)
+	}
+	if word := a.roomStateWord(node); word != "waits: Collect sources" {
+		t.Fatalf("the room header says %q, want the prerequisite", word)
+	}
+
+	// AND THE HOLD IS WHAT IS LEFT once the prerequisite lands: the node is
+	// unblocked, it is still not running, and the row says why.
+	drive(t, a, streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone,
+		session.TaskNotice{Merge: mergeWordMerged})})
+	if got := plain(strings.Join(a.railUnder(node, underWidth(railCols)), "\n")); got != "waiting · slot" {
+		t.Fatalf("the unblocked node says %q, want the hold", got)
+	}
+}
+
+// THE ROOM SAYS THE SAME WORD IN ITS OWN LINE. A person standing inside a node's
+// page and watching nothing move is owed the difference between "this is under
+// way" and "this is waiting its turn", and the header has one line to say it in.
+func TestTheRoomHeaderSaysWaitingWhileANodeIsHeld(t *testing.T) {
+	for _, tc := range []struct {
+		what  string
+		state session.TaskState
+		why   string
+		back  string
+	}{
+		{"a queued node the machine has no room for", session.TaskQueued, waitWordMachine, roomQueuedWord},
+		{"a running node whose calls are paced", session.TaskRunning, waitWordRate, stateWorking.String()},
+	} {
+		t.Run(tc.what, func(t *testing.T) {
+			a, _, _ := taskApp(t)
+			drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Write the report", tc.state, heldNotice(tc.why))})
+			node := a.tasks[7]
+			if got := a.roomStateWord(node); got != taskHeldWord {
+				t.Fatalf("the header calls a held node %q, want %q", got, taskHeldWord)
+			}
+			// The header is asserted through the line a person actually reads: the
+			// trail, the state, the clock and the spend are one sentence and the
+			// state is the second thing in it.
+			a.room = &taskRoom{id: 7, title: "Write the report", unfolded: map[int]bool{}, live: -1, think: -1}
+			head := plain(a.roomHeadWord(120))
+			if !strings.Contains(head, roomCrumbRoot+roomCrumbSep+"Write the report · "+taskHeldWord) {
+				t.Fatalf("the room header is %q", head)
+			}
+
+			// AND IT GOES BACK to whatever the node was doing when the hold clears,
+			// because nothing about the node's state ever moved.
+			node.waiting = ""
+			if got := a.roomStateWord(node); got != tc.back {
+				t.Fatalf("a node with nothing holding it says %q, want %q", got, tc.back)
+			}
+		})
+	}
+}
+
 // ── the sweep ───────────────────────────────────────────────────────────────
 
-// bannedWords is the vocabulary of the machinery that judges finished work, and
-// NONE OF IT IS A PERSON'S BUSINESS. A person delegated a piece of work; what
-// they are owed back is the work, its gaps, or the news that somebody has to
-// look — never the org chart of the thing that decided which. The check is
-// case-insensitive because a shouted verdict is still a verdict.
-var bannedWords = []string{"auditor", "audit", "verdict", "verified", "unverified", "refuted"}
+// bannedWords is the vocabulary of the machinery that judges finished work and
+// of the machinery that decides when it may run, and NONE OF IT IS A PERSON'S
+// BUSINESS. A person delegated a piece of work; what they are owed back is the
+// work, its gaps, the news that somebody has to look, or the plain reason it is
+// waiting — never the org chart of the thing that decided any of it. The check
+// is case-insensitive because a shouted verdict is still a verdict.
+//
+// THE HOLD WORDS ARE HERE FOR THE SAME REASON THE VERDICT WORDS ARE. "the
+// machine is busy" is a fact about the person's own computer and "rate limited"
+// is a fact about the provider they are paying; a scheduler's own nouns for the
+// same two facts are this program describing itself to somebody who asked it for
+// a report.
+var bannedWords = []string{"auditor", "audit", "verdict", "verified", "unverified", "refuted",
+	"throttle", "semaphore", "backoff", "429"}
 
-// landing is one terminal state, as the engine reports it — with the outcome
-// sentence already in a person's words, which is the engine branch's half of
-// this same law.
+// landing is one state a person is shown, as the engine reports it — with the
+// outcome sentence already in a person's words, which is the engine branch's
+// half of this same law.
 type landing struct {
 	what   string
 	state  session.TaskState
@@ -204,6 +397,12 @@ func TestNoTerminalStateEverSpeaksOfTheMachinery(t *testing.T) {
 			Changed: []string{"internal/parse/keys.go", "internal/parse/keys_test.go"},
 		}},
 		{"a node still closing a gap", session.TaskRunning, mendingNotice("adding amp-labs to the report")},
+		// AND THE MOMENTS A NODE IS NOT WORKING AT ALL. A hold is drawn in the
+		// engine's own reason and the engine's own reason is a plain fact about a
+		// machine or a provider — never the name of whatever is keeping the count.
+		{"a node the machine has no room for", session.TaskQueued, heldNotice(waitWordMachine)},
+		{"a node behind the cap", session.TaskQueued, heldNotice(waitWordSlot)},
+		{"a node whose calls are being paced", session.TaskRunning, heldNotice(waitWordRate)},
 	} {
 		t.Run(tc.what, func(t *testing.T) {
 			a, _, _ := taskApp(t)

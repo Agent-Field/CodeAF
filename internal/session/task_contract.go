@@ -147,7 +147,9 @@ type TaskNotice struct {
 	// task.parallel cap holds it), "machine busy" (the admission governor
 	// holds it), "rate limited" (the provider is pacing it). A surface draws
 	// it as the queue telling the truth; the machinery behind it is not the
-	// surface's to name.
+	// surface's to name. Like Mending it is ANNOUNCED ON CHANGE: a hold
+	// starting and a hold ending are both news that arrives without the state
+	// moving, so an update carrying only this is still one a surface folds in.
 	Waiting string
 	// Model is the model this node runs on: the one the proposal named, the
 	// configured task model, or the conversation's own (taskmodel.go). It is on
