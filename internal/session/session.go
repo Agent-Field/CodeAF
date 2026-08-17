@@ -246,6 +246,29 @@ const (
 	// a model thinking: what follows is the harness's report as ordinary text
 	// and then EventTurnDone, or EventError if the run failed.
 	EventHarnessRun
+	// EventHarnessDesign says a turn asked for a sub-harness to be BUILT — "make
+	// a harness for triaging flaky tests" — and the design has started
+	// (harness_build.go). Text is the goal, less the words that asked for it;
+	// Hint is "designing"; Model is what the design is thinking with.
+	//
+	// It is a REPORT and it does not hold the turn: the turn is already over when
+	// it arrives, because designing takes a minute and a conversation held on one
+	// is a conversation nobody can use. Exactly one of EventHarnessDesignDone or
+	// an EventNotice saying why not follows it, on the standing lane
+	// ([Agent.HarnessDesigns]) as well as on the turn's stream.
+	EventHarnessDesign
+	// EventHarnessDesignDone carries a finished design in Harness, with the id
+	// the answer goes back through in ID, the name in Text and the description in
+	// Hint.
+	//
+	// It is a QUESTION — the only one on this list that outlives the turn that
+	// raised it. A surface draws the page (subharness.CardLines is the renderer
+	// every surface shares) and answers through [Agent.ResolveHarness], the same
+	// method an offer is answered with: TRUE SAVES IT into the registry, false
+	// drops it. Nothing is written before that answer, and a surface that ignores
+	// this kind saves nothing — which is the same posture EventHarnessOffer
+	// keeps, one lane over.
+	EventHarnessDesignDone
 )
 
 // Event is one observable thing in a turn. A Submit returns a channel of
@@ -377,6 +400,17 @@ type Event struct {
 	// anthropic/claude-opus-5 — so a surface draws what will actually be sent
 	// rather than what somebody typed.
 	Model string
+
+	// Harness is the page one EventHarnessDesignDone is asking about, and nil on
+	// every other kind. It is the whole harness rather than a rendering of one
+	// because the rendering is shared (subharness.CardLines): a surface draws the
+	// same card the tool prints and the panel lists, and a session that shipped
+	// pre-rendered lines would have made itself the second renderer.
+	//
+	// It is a POINTER so that "no design here" is spelled once, and the value it
+	// points at is this event's own copy — nothing else holds it, and answering
+	// the question is what decides whether it is ever written down.
+	Harness *subharness.Harness
 
 	// ModelNote is why a model the turn NAMED is not in Model: a word no model
 	// here answers to, a word too many of them answer to. It is set on
@@ -595,6 +629,21 @@ type Config struct {
 	// harness runs — it is the half a person answers — and the engine decides
 	// what running one means.
 	RunHarness func(ctx context.Context, name, text, model string) (string, error)
+
+	// HarnessStore is where a harness this conversation DESIGNS is written, and
+	// it is the same registry Harnesses was read out of (harness_build.go). A
+	// turn that says "make a harness for X" reaches the designer through it; a
+	// page nobody approved never touches it.
+	//
+	// NIL IS BUILDING OFF, on exactly the terms RunHarness is detection off — and
+	// the two are checked together, because a harness this session can write and
+	// cannot run would be a page saved into a registry with no engine under it.
+	//
+	// It is the STORE and not a path for the reason Harnesses is a slice: where
+	// the registry lives is the surface's decision, and a package that opened
+	// ~/.aforge/harnesses itself would open it from a test and from a task node's
+	// own agent too.
+	HarnessStore *subharness.Store
 
 	// ImageGenModel and ImageGenClient are the image-generation pair the belt's
 	// generate_image tool calls through (tools_image.go): the model that paints,
@@ -952,6 +1001,25 @@ type Agent struct {
 	// question by guessing a number.
 	harnessSeq  uint64
 	harnessAsks map[uint64]chan harnessAnswer
+
+	// harnessWatchers are the standing subscriptions to the design lane
+	// ([Agent.HarnessDesigns]), and harnessAdded is what this session has
+	// designed and saved since it opened (harness_build.go).
+	//
+	// The watchers exist for taskWatchers' reason, one lane over: a design starts
+	// on a turn and finishes after it, so the card asking whether to keep it has
+	// no hub left to arrive on. The entries exist because Config.Harnesses is a
+	// SNAPSHOT the surface took at launch — a harness saved five minutes ago is
+	// in the store and not in that slice, and detection reads this list beside it
+	// so that a harness this conversation built is reachable from the next
+	// sentence rather than from the next process.
+	harnessWatchers []*eventStream
+	harnessAdded    []subharness.Entry
+	// harnessDesigns is the designs in flight, keyed by the id their card will
+	// carry, and the value is how each one is ended. A design runs on its own
+	// context — the turn that asked for it is over — so [Agent.Close] is the only
+	// thing that can tell one the session has left.
+	harnessDesigns map[uint64]context.CancelFunc
 
 	// tasks is the work this conversation has handed off: the graph of nodes,
 	// their dependency edges, and the frontier executor that runs them

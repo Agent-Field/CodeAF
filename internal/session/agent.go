@@ -912,6 +912,10 @@ func (a *Agent) Close() error {
 		close(lane)
 	}
 	a.wakeLanes = nil
+	// And a harness still being designed is told the same thing: it runs on its
+	// own context precisely because the turn that asked for it ended, so nothing
+	// else here would ever reach it (harness_build.go).
+	a.cancelHarnessDesignsLocked()
 	a.mu.Unlock()
 
 	if cancel != nil {
