@@ -146,6 +146,19 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// and AGENTS.md in the footer are facts about now, not about the
 		// session that wrote the file.
 		agent.messages = append(agent.messages, restored...)
+		// AND THE PICTURES ARE MADE SAFE HERE RATHER THAN IN THE REPLAY. A
+		// session resumed onto a model without vision — the journal remembers
+		// the model it was written on, the person can start it on another — would
+		// otherwise re-send yesterday's base64 to a model that cannot read it,
+		// which is [Agent.SetModel]'s hole through the other door. The scrub is
+		// the same function both doors call, and it is done HERE because
+		// [replaySessionFile] is a pure function of the file: which model this
+		// session will ride, and whether it can see, are facts about the agent,
+		// and threading a capability closure into a file parser would put the
+		// question in the one layer that cannot answer it. No lock is taken for
+		// the reason nothing else in this constructor takes one — the agent is
+		// not reachable yet.
+		agent.scrubBlindImagePartsLocked(agent.model)
 	}
 	// The client is wrapped LAST, once the lineage is known: the wrapper is the
 	// one place every request this agent makes passes through, so it is where
@@ -232,6 +245,14 @@ func (a *Agent) Model() string {
 // the model it started on: runTurn latches the model once at the start and
 // every step and retry of that turn rides the latched value, so a swap made
 // while the agent is working lands at the next Submit.
+//
+// AND IT IS WHERE THE PICTURES ARE MADE SAFE. A conversation carrying attached
+// images carries them as base64 in the live transcript, re-sent on every step
+// of every turn after they arrived; swapping onto a model that cannot see would
+// send them to it with no gate in the way, because no image is being attached
+// this turn. [Agent.scrubBlindImagePartsLocked] states the whole rule and its
+// three deliberate limits — the journal is untouched, the swap is one-way, and a
+// model that CAN see is handed everything unchanged.
 func (a *Agent) SetModel(model string) {
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -239,6 +260,7 @@ func (a *Agent) SetModel(model string) {
 	}
 	a.mu.Lock()
 	a.model = model
+	a.scrubBlindImagePartsLocked(model)
 	a.mu.Unlock()
 }
 
