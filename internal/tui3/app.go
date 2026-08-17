@@ -770,6 +770,10 @@ type app struct {
 	// (draft.go); empty means it is not kept at all.
 	draftFile    string
 	draftPending bool
+	// artifacts is the deliverables index a finished /export records itself in
+	// (export.go). Empty is the door saying nothing, which [app.artifactsIndex]
+	// turns into the product's own path.
+	artifacts string
 	// models is the door's model list, asked for at the moment the picker
 	// opens rather than at boot — a lazily warmed catalog may have arrived in
 	// between, and it must never be waited for. Nil falls through to the cache
@@ -932,6 +936,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		models:           opts.Models,
 		history:          opts.History,
 		draftFile:        opts.DraftFile,
+		artifacts:        opts.ArtifactsIndex,
 		ctxWindow:        opts.ContextWindow,
 		profileDir:       opts.ProfileDir,
 		settings:         opts.Settings,

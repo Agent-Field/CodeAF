@@ -12,8 +12,9 @@ package session
 //
 // ── STUB, DON'T DELETE ──
 //
-// The full bytes are written to .aforge-v3/stubs/<hash>.txt in the workspace
-// BEFORE the message is replaced, and the stub line names that path. A model
+// The full bytes are written to a stubs/<hash>.txt of the session's own
+// (landing.go) BEFORE the message is replaced, and the stub line names that
+// path. A model
 // told where the bytes live can read them back with the tool it already has, so
 // a stub costs a call when the old output turns out to matter and costs nothing
 // the rest of the time. Deleting the text instead would be the one version of
@@ -56,11 +57,6 @@ const (
 	// the result it replaces, and replacing a short result would cost a read to
 	// recover something the model could simply have kept.
 	stubMinBytes = 1500
-
-	// stubDirName is where the bytes go, under the workspace for the reason the
-	// job logs are (jobs.go): the read tool reaches it with a relative path, and
-	// a person can find it after the session is over.
-	stubDirName = ".aforge-v3/stubs"
 
 	// stubMarker opens every stub line and is how an already-stubbed message is
 	// recognized, so a second pass never stubs a stub.
@@ -111,7 +107,7 @@ func (a *Agent) stubOldOutputs() {
 		if len(text) <= stubMinBytes || strings.HasPrefix(strings.TrimSpace(text), stubMarker) {
 			continue
 		}
-		path, err := writeStub(workspace, text)
+		path, err := writeStub(a.config.Place, workspace, text)
 		if err != nil {
 			continue
 		}
@@ -152,27 +148,43 @@ func stubCut(messages []ai.Message) int {
 	return 0
 }
 
-// writeStub files one result's bytes and returns the path to name in the stub,
-// relative to the workspace so the read tool can open it as the model sees it.
+// writeStub files one result's bytes and returns the path to name in the stub.
 //
 // The name is the content's own digest, which makes the write idempotent: the
 // same result stubbed twice — a re-read of the same file, a resumed session
 // stubbing again — is one file on disk, and a file that is already there is left
 // exactly as it is rather than rewritten.
-func writeStub(workspace, text string) (string, error) {
+func writeStub(place Place, workspace, text string) (string, error) {
 	digest := sha256.Sum256([]byte(text))
-	relative := filepath.Join(stubDirName, hex.EncodeToString(digest[:8])+".txt")
-	full := filepath.Join(workspace, relative)
-	if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+	directory := droppingsDir(place, workspace, droppingStubs)
+	full := filepath.Join(directory, hex.EncodeToString(digest[:8])+".txt")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", err
 	}
 	if info, err := os.Stat(full); err == nil && info.Size() == int64(len(text)) {
-		return filepath.ToSlash(relative), nil
+		return stubPath(workspace, full), nil
 	}
 	if err := os.WriteFile(full, []byte(text), 0o600); err != nil {
 		return "", err
 	}
-	return filepath.ToSlash(relative), nil
+	return stubPath(workspace, full), nil
+}
+
+// stubPath is the path the stub line NAMES, and the rule is the one
+// [displayImagePath] follows: a file inside the workspace is named relative to
+// it, because that is the string the model's own read tool takes and the string
+// the person's shell takes; a file outside it is named absolutely, because a
+// relative path out of the workspace is a path nobody can open.
+//
+// Both cases occur now. A session with no folder still stubs into the
+// workspace's dot directory; a session with one stubs into its own logs/, which
+// is somewhere else entirely (landing.go).
+func stubPath(workspace, full string) string {
+	relative, err := filepath.Rel(workspace, full)
+	if err != nil || strings.HasPrefix(relative, "..") {
+		return filepath.ToSlash(full)
+	}
+	return filepath.ToSlash(relative)
 }
 
 // stubLine is what the model reads in place of the result. The byte count is

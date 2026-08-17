@@ -18,7 +18,7 @@ import (
 // this session runs in gets to answer these rows, and what it says beats what
 // the machine says.
 
-// v3Project writes one <workspace>/.openaf/config.json and answers with the
+// v3Project writes one <workspace>/.aforge-v3/config.json and answers with the
 // workspace directory.
 func v3Project(t *testing.T, rows map[string]any) string {
 	t.Helper()
