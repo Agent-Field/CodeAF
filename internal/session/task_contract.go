@@ -153,8 +153,6 @@ type TaskNotice struct {
 	// model, or a node that has not started — and it is NOT the same claim as
 	// "it cost nothing", so a surface draws no figure at all for it.
 	CostUSD float64
-	// STUB — the task/repair-loop branch owns this; at merge its version wins.
-	Mending string
 }
 
 // TaskAnswer is the surface's reply to a proposal. Approved with an empty
