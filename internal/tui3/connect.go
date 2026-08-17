@@ -73,6 +73,20 @@ type Connections interface {
 	BeginAuth(ctx context.Context, id string) (*connect.Flow, error)
 	// Disconnect forgets one.
 	Disconnect(id string) error
+
+	// The three below are what a connected account may DO, which is the
+	// question the settings sheet's Connections tab asks (connectcaps.go). They
+	// are on this interface rather than on a second one for the reason the first
+	// three are on it at all: a surface holds ONE door onto its accounts, and
+	// two doors is two answers to "is this connected".
+
+	// Capabilities is what a service may be asked to do, in the order a screen
+	// lists them. A service with nothing to say answers with nothing.
+	Capabilities(service string) []connect.Capability
+	// CapabilityState is where one of them stands right now.
+	CapabilityState(service, capability string) connect.CapabilityState
+	// SetCapabilityState writes one answer, and says plainly why it could not.
+	SetCapabilityState(service, capability string, state connect.CapabilityState) error
 }
 
 // connAsk is one unanswered offer.

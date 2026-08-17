@@ -63,7 +63,11 @@ const (
 	tabProviders = "Providers"
 )
 
-var settingTabs = []string{tabSession, tabContext, tabWorkspace, tabDisplay, tabProviders}
+// And the sixth, which is not a reading of the registry at all: the accounts
+// this profile has connected and what each of them may do (connectcaps.go). It
+// is last because the five before it are one object read five ways, and a
+// person walking the bar meets the knobs before their accounts.
+var settingTabs = []string{tabSession, tabContext, tabWorkspace, tabDisplay, tabProviders, tabConnections}
 
 // settingWidget is how a row is ANSWERED, which is not quite how it reads.
 // The registry's [config.SettingKind] says what a value is; this says what the
@@ -466,6 +470,12 @@ type sheetItem struct {
 	head string
 	row  config.Setting
 	meta settingMeta
+	// conn is set on the rows of the Connections tab, which are accounts rather
+	// than registry rows (connectcaps.go). It hangs here so that the cursor
+	// walk, the scroll, the pointer and the hover need to know nothing about
+	// them: an item is an item, and only what DRAWS it and what ANSWERS it ask
+	// which kind this one is.
+	conn *connRow
 }
 
 func (i sheetItem) heading() bool { return i.head != "" }
@@ -477,7 +487,13 @@ type sheet struct {
 	tab  int
 
 	registry *config.Settings
-	rows     []config.Setting
+	// conns is the door onto the accounts, for the Connections tab. It is the
+	// surface's own door (app.conns) and not a second one: two readings of "is
+	// this connected" is how a tab and a panel disagree about somebody's mail.
+	conns Connections
+	// conn is what that tab remembers between builds (connectcaps.go).
+	conn connTab
+	rows []config.Setting
 	// defaults is every row's reading on a profile nobody has touched, so a row
 	// that differs from it can be marked. See [settingDefaults].
 	defaults map[string]string
@@ -650,6 +666,7 @@ func (a *app) openSettings() {
 	a.sheet = sheet{
 		open:     true,
 		registry: a.registry(),
+		conns:    a.conns,
 		defaults: settingDefaults(),
 	}
 	a.sheet.rows = a.sheet.registry.Rows()
@@ -674,6 +691,14 @@ func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) !=
 func (s *sheet) build() {
 	s.items = s.items[:0]
 	query := strings.ToLower(strings.TrimSpace(s.query.String()))
+	// THE CONNECTIONS TAB BUILDS ITS OWN ROWS, from the engine rather than from
+	// the registry (connectcaps.go). It is one branch and no second list: what
+	// it appends is [sheetItem]s, so everything downstream of here — the cursor,
+	// the window, the pointer, the hover — is the code that was already there.
+	if s.onConnections() {
+		s.buildConnections()
+		return
+	}
 	if query == "" {
 		for _, row := range s.rows {
 			meta, ok := settingMetaFor(row)
@@ -815,33 +840,43 @@ func (s *sheet) changed(item sheetItem) bool {
 // sheetKey routes one keypress while the panel is up. It reports whether it
 // took the key; only ctrl+c is read before it (input.go), because leaving is
 // never modal.
-func (a *app) sheetKey(msg tea.KeyPressMsg) bool {
+// It hands back a COMMAND as well, for the one row on this sheet whose answer
+// leaves the process: a service on the Connections tab that is not connected
+// yet starts the same browser trip /connect starts, and a sign-in is a thing
+// that reaches the network (connectcaps.go).
+func (a *app) sheetKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if !a.sheet.open {
-		return false
+		return nil, false
 	}
 	s := &a.sheet
 	defer a.touch()
 	switch {
 	case s.edit != nil:
 		a.sheetEditKey(msg)
-		return true
+		return nil, true
 	case s.sel != nil:
 		a.sheetSelectKey(msg)
-		return true
+		return nil, true
 	}
 
 	switch msg.String() {
 	case "esc":
-		// esc backs out one layer at a time: the search first, the panel after.
-		// A key that closed the whole sheet from inside a search would throw
-		// away the only thing on screen the person typed.
+		// esc backs out one layer at a time: the search first, then whatever the
+		// tab on show has standing open — a confirmation, an expanded service —
+		// and the panel after all of it. A key that closed the whole sheet from
+		// inside a search would throw away the only thing on screen the person
+		// typed, and one that closed it over an open account would take the page
+		// away instead of the thing they were looking at.
 		if s.searching() {
 			s.query.reset()
 			s.build()
-			return true
+			return nil, true
+		}
+		if a.connEsc() {
+			return nil, true
 		}
 		a.closeSettings()
-		return true
+		return nil, true
 
 	case "left", "shift+tab":
 		s.tabBy(-1)
@@ -862,7 +897,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) bool {
 		s.cursor = s.clampCursor(len(s.items) - 1)
 
 	case "enter", " ", "space":
-		a.activate()
+		return a.activate(), true
 
 	case "backspace":
 		s.query.deleteBackward()
@@ -880,7 +915,7 @@ func (a *app) sheetKey(msg tea.KeyPressMsg) bool {
 			s.build()
 		}
 	}
-	return true
+	return nil, true
 }
 
 // tabBy switches tabs, clamping rather than wrapping — the same rule every list
@@ -893,16 +928,26 @@ func (s *sheet) tabBy(delta int) {
 	}
 	s.tab = moveCursor(s.tab, delta, len(settingTabs))
 	s.cursor, s.top, s.msg = 0, 0, ""
+	// A confirmation does not survive the page it was asked on: leaving the tab
+	// is as much a way of not answering it as moving off the row is
+	// (connectcaps.go). What stays open is the SERVICE, because coming back to a
+	// tab you left half-read and finding it collapsed is the tab forgetting
+	// where you were.
+	s.conn.armed = false
 	s.build()
 }
 
 // activate is enter on a row: flip it, cycle it, or open the submenu that
-// answers it.
-func (a *app) activate() {
+// answers it — and on the Connections tab, open an account, walk one of its
+// answers, or start a sign-in, which is the one of them that needs a command.
+func (a *app) activate() tea.Cmd {
 	s := &a.sheet
 	item, ok := s.current()
 	if !ok {
-		return
+		return nil
+	}
+	if item.conn != nil {
+		return a.connAct(item.conn)
 	}
 	s.msg = ""
 	switch item.meta.widget {
@@ -916,7 +961,7 @@ func (a *app) activate() {
 	case widgetCycle:
 		choices := item.row.Choices
 		if len(choices) == 0 {
-			return
+			return nil
 		}
 		at := 0
 		for i, choice := range choices {
@@ -959,6 +1004,7 @@ func (a *app) activate() {
 			secret: item.row.Secret, box: box,
 		}
 	}
+	return nil
 }
 
 // applySetting writes one row and keeps whatever the registry said about it.
@@ -1056,12 +1102,13 @@ type sheetHit struct {
 }
 
 // sheetPress is a click inside the panel: a tab word switches tabs, a row
-// selects and answers, anything else does nothing.
-func (a *app) sheetPress(x, y int) {
+// selects and answers, anything else does nothing. It hands back a command for
+// the reason [app.sheetKey] does — a sign-in reaches the network.
+func (a *app) sheetPress(x, y int) tea.Cmd {
 	width, height := a.size()
 	_, hits, _, _ := a.sheetFrame(width, height)
 	if y < 0 || y >= len(hits) {
-		return
+		return nil
 	}
 	switch hit := hits[y]; hit.kind {
 	case sheetHitTabs:
@@ -1071,33 +1118,38 @@ func (a *app) sheetPress(x, y int) {
 			}
 			a.sheet.tab = tab
 			a.sheet.cursor, a.sheet.top, a.sheet.msg = 0, 0, ""
+			a.sheet.conn.armed = false
 			a.sheet.build()
 			a.touch()
 		}
 	case sheetHitRow:
 		// A click selects, and a click on the row already selected answers it.
 		// One press cannot do both: a toggle that flipped the moment a pointer
-		// touched it would change a setting the person was only reading.
+		// touched it would change a setting the person was only reading — and on
+		// the Connections tab it would be an account disconnected by a pointer
+		// that was passing through.
 		if a.sheet.cursor != hit.index {
 			a.sheet.cursor = hit.index
 			a.touch()
-			return
+			return nil
 		}
-		a.activate()
+		cmd := a.activate()
 		a.touch()
+		return cmd
 
 	case sheetHitOption:
 		if a.sheet.sel == nil {
-			return
+			return nil
 		}
 		if a.sheet.sel.pick.cursor != hit.index {
 			a.sheet.sel.pick.cursor = hit.index
 			a.touch()
-			return
+			return nil
 		}
 		a.sheetSelectKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 		a.touch()
 	}
+	return nil
 }
 
 // sheetHover records which row the pointer is over, repainting only when the
@@ -1226,8 +1278,16 @@ func sheetTitle(width int, s *sheet, pal palette) string {
 	left := " " + pal.bold(pal.ink("settings"))
 	plainLeft := " settings"
 	if query := strings.TrimSpace(s.query.String()); query != "" {
-		left += pal.dim("  search · " + query)
-		plainLeft += "  search · " + query
+		// THE BOX IS NAMED FOR WHAT IT DOES ON THE PAGE YOU ARE ON. Everywhere
+		// else it searches the registry across the tabs; on the accounts tab it
+		// narrows the catalog in front of you (connectcaps.go), and a heading
+		// that called that a search would be promising a jump it will not make.
+		word := "search · "
+		if s.onConnections() {
+			word = "filter · "
+		}
+		left += pal.dim("  " + word + query)
+		plainLeft += "  " + word + query
 	}
 	right := "esc close"
 	gap := width - ansi.StringWidth(plainLeft) - len(right) - 1
@@ -1327,7 +1387,14 @@ func (s *sheet) listLines(width int, pal palette, hover int) ([]string, []int) {
 		owner = append(owner, at)
 	}
 	if len(s.items) == 0 {
-		put(pal.dim("  nothing matches"), -1)
+		// The Connections tab has its own two sentences, because "nothing
+		// matches" is an answer about a search and this tab is not searched
+		// (connectcaps.go).
+		word := "nothing matches"
+		if s.onConnections() {
+			word = s.connEmptyWord()
+		}
+		put(pal.dim("  "+word), -1)
 		return lines, owner
 	}
 	for i, item := range s.items {
@@ -1341,7 +1408,11 @@ func (s *sheet) listLines(width int, pal palette, hover int) ([]string, []int) {
 		for _, line := range s.rowLines(item, i == s.cursor, i == hover, width, pal) {
 			put(line, i)
 		}
-		if i != s.cursor {
+		if i != s.cursor || item.conn != nil {
+			// A connection row carries no description under it. What a row of
+			// that tab is about is the row — an account, a phrase, an answer —
+			// and a sentence explaining "read your mail" would be this surface
+			// saying the same thing twice (connectcaps.go).
 			continue
 		}
 		about := item.meta.about
@@ -1390,6 +1461,9 @@ const changedMark = "•"
 // [overlayLines]). The pair stays ONE item to the pointer and to the cursor —
 // [sheet.listLines] hands both lines the same owner.
 func (s *sheet) rowLines(item sheetItem, selected, hovered bool, width int, pal palette) []string {
+	if item.conn != nil {
+		return s.connRowLines(item.conn, selected, hovered, width, pal)
+	}
 	value := item.row.Value()
 	if value == "" {
 		value = "—"
@@ -1457,6 +1531,11 @@ func (s *sheet) filterLine(width int, pal palette) (string, int) {
 // the writes land. It is one sentence and it is the truth people most often
 // want from a settings panel they share between machines.
 func (s *sheet) footNote() string {
+	// The Connections tab writes somewhere else and answers a different
+	// question, so it says its own line (connectcaps.go).
+	if s.onConnections() {
+		return s.connFootNote()
+	}
 	if item, ok := s.current(); ok {
 		if name, pinned := item.row.PinnedBy(); pinned {
 			return "held by " + name + " — unset it to change this here"
@@ -1471,6 +1550,8 @@ func (s *sheet) keysLine() string {
 		return "enter save · empty clears · esc cancel"
 	case s.sel != nil:
 		return "↑↓ move · enter choose · esc cancel · type to filter"
+	case s.onConnections():
+		return s.connKeysLine()
 	default:
 		return "↑↓ move · ←→ tabs · enter change · type to search · esc close"
 	}

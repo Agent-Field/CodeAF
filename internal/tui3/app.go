@@ -1110,8 +1110,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
 			if a.sheet.open {
-				a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
-				return a, nil
+				return a, a.sheetPress(msg.Mouse().X, msg.Mouse().Y)
 			}
 			// The status sheet is modal for the pointer at the same rung and for
 			// the same reason: it is the whole screen, and a press outside its
