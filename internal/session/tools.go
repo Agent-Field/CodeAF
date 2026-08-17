@@ -89,7 +89,15 @@ func (a *Agent) belt() []bare.Tool {
 	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)
 	tools = append(tools, a.connectTools()...)
-	return append(tools, a.imageTools()...)
+	// The media verbs are one family and are appended together: generate_image
+	// paints, speak talks, generate_video films, view_image looks. Each is
+	// absent-not-broken on its own terms — one media client and one resolver
+	// answer for all four, and a machine whose resolver has no model for a
+	// modality simply does not have that verb (media_contract.go).
+	tools = append(tools, a.imageTools()...)
+	tools = append(tools, a.speakTools()...)
+	tools = append(tools, a.videoTools()...)
+	return append(tools, a.viewTools()...)
 }
 
 // toolDefinitions builds the wire form of the belt, carrying each tool's

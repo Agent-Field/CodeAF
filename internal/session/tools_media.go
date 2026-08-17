@@ -49,6 +49,12 @@ const (
 // client, when it wired no resolver, and when the resolver says this machine has
 // no model for this modality — three different absences that mean exactly one
 // thing to the model, which is that it does not have the verb.
+//
+// STUB(media/knob): both fields arrive FILLED from the door — the media client
+// built from the person's key, and the resolver with its four capability-checked
+// rungs (slot → pin → catalog → curated fallback). This belt asks the resolver a
+// word and believes the answer; which rung it came from is the door's business,
+// and nothing here may re-derive one.
 func (a *Agent) mediaHand(modality string) (MediaGenerator, string, bool) {
 	client := a.config.Media
 	if client == nil || a.config.MediaModel == nil {
