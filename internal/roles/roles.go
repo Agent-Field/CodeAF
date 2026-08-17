@@ -47,6 +47,24 @@ const (
 	// RoleImageGen generates images — a different modality entirely; the chat
 	// model never substitutes.
 	RoleImageGen Role = "imagegen"
+	// RolePlanner is the ADAPTIVE RUN'S BRAIN (internal/orchestrate): the call
+	// that reads the goal, the digests of what has finished and the fuel left,
+	// and answers with an amendment to the plan. It is the ONLY call in a run
+	// that sees the run whole, it is made once at the start and once per node
+	// completion, and every node the rest of the run pays for is a node it cut.
+	// A planner that cuts badly spends a whole tank on work nobody wanted, so
+	// it sits high.
+	RolePlanner Role = "planner"
+	// RoleDesigner writes a harness page and reviews it before it is offered
+	// (internal/session's harness_build.go). What it writes is SAVED and run
+	// again by everyone who picks it afterwards, so a bad page is not one wrong
+	// answer, it is a wrong answer with a name on the menu; high.
+	RoleDesigner Role = "designer"
+	// RoleWorker is a node: one small question, a handful of turns, a digest at
+	// the end. Low, because the shape of an adaptive run is many small workers
+	// under one careful planner — width is where the work happens, and it is
+	// where a run's money actually goes.
+	RoleWorker Role = "worker"
 	// RoleAuditor is the VERIFIED FRONTIER: the read-only judge that decides
 	// whether a piece of finished-looking work is actually finished, against
 	// hard evidence it gathered itself. It sits HIGH and it is the one role
@@ -80,9 +98,20 @@ var Tiers = []Tier{TierLow, TierHigh}
 // session's memory — everything before the cut is gone and only the summary
 // survives it — so it goes to the capable one. The asymmetry is about what a
 // bad answer destroys, not about how hard the task reads.
+//
+// THE THREE RUN ROLES ARE ASSIGNED HERE rather than from the files that make
+// their calls, which is the arrangement guardian, vision and the auditor keep.
+// The reason is that ONE RUN IS ALL THREE — a planner, the workers it cuts, and
+// the designer of a page a node may run — and the decision is not any one of
+// their tiers but the BALANCE between them: one careful call that decides what
+// happens, many cheap ones that do it. Split across three files, that balance
+// is three unrelated lines nobody reads together.
 var DefaultAssignment = map[Role]Tier{
 	RoleTitle:      TierLow,
 	RoleCompaction: TierHigh,
+	RolePlanner:    TierHigh,
+	RoleDesigner:   TierHigh,
+	RoleWorker:     TierLow,
 }
 
 // ErrUnknownRole is returned by [Resolve] for a role that was never

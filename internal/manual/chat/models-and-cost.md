@@ -74,6 +74,65 @@ by its id against a narrow list of generation and sidecar words.
 It takes the slug at its word: there is no check that the slug exists in any known list. If
 the slug is not in any list aforge knows, the context window is left alone.
 
+## Which model does the planning, the working and the small calls aforge makes for itself
+
+aforge makes calls you did not type: naming a session, the summary a compaction keeps, the
+safety gate, the check on finished task work, the planner of an adaptive run and the nodes
+under it, the designer of a saved harness page, looking at an image. Each of those is a
+**role**, and every role sits on one of two **tiers** you set once, in `/settings` → Session:
+
+- **small work** — the cheap model, for short things a wrong answer costs a glance.
+- **careful work** — the capable model, for the ones a wrong answer destroys something.
+
+Leave either blank and the roles on it follow the model you are talking to. There is no
+tier for a role to fall through to before that — a fresh install with nothing set makes
+every one of these calls on your own model, which is what it did before tiers existed.
+
+Directly under the **pinned roles** row the panel lists **every registered role**, one per
+line: the role's name, the tier answering it, and the model that comes out. As shipped:
+
+| role | tier | what it is |
+| --- | --- | --- |
+| `title` | small work | the name a session gives itself |
+| `compaction` | careful work | the summary that is all that survives a compaction |
+| `consolidate` | small work | what gets kept out of a session's memory |
+| `guardian` | small work | "is this one tool call plainly safe" |
+| `auditor` | careful work | whether finished-looking task work is actually finished |
+| `planner` | careful work | an adaptive run's plan, amended after every node |
+| `designer` | careful work | writes and reviews a harness page before it is saved |
+| `worker` | small work | one node of an adaptive run |
+| `vision` | careful work | reads images for a model that cannot see them |
+
+The list is built from what is registered in the running binary, so it is the truth about
+this build rather than a table someone kept up to date.
+
+## Pinning one role to its own model, and unpinning it
+
+In `/settings` → Session, move onto any row of the roles list and press **enter**. That
+opens the model picker — the same one `/model` opens, same filter box, same ranking — and
+what you choose is **pinned** to that role alone. The row then reads
+`careful work · <model>  pinned`, and the legend at the foot offers **del unpin**. Press
+**del** on a pinned row to clear it; the role goes back to following its tier.
+
+The picker a role opens asks that role's own question. `vision` offers only models that
+can see; every other role offers the models you can hold a conversation with.
+
+Every pin lives in the one **pinned roles** row, written as
+`planner:openai/gpt-5, worker:openai/gpt-5-mini`. Pinning from the list and typing into
+that row are **the same setting** — a pin you typed by hand shows in the list as pinned,
+and pinning from the list rewrites the row without disturbing the other pins in it.
+
+So the ladder for any role, most specific first: **its pin**, then **its tier's model**,
+then **the model you are talking to**.
+
+Two limits worth knowing:
+
+- A change here lands on the **next session**. The models are resolved once when aforge
+  starts, so that two calls in one conversation cannot answer to different settings.
+- Naming a model in the sentence outranks all of it for that piece of work. `orchestrate
+  the migration with opus` runs the planner *and* every node on opus; `make a harness for
+  triaging flakes with opus` designs on opus. The roles decide only when you named nothing.
+
 ## Reasoning effort — making the model think harder or faster
 
 Reasoning effort is set in the model picker with **ctrl+t**, on the model under the cursor.

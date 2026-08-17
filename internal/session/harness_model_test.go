@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
 // harnessModels is a catalog with ONE row per family, which is what makes
@@ -239,6 +241,46 @@ func TestTheModelClauseIsNotScored(t *testing.T) {
 	}
 	if named.Turn.Text != plain.Turn.Text {
 		t.Fatalf("the scored text was %q, want %q", named.Turn.Text, plain.Turn.Text)
+	}
+}
+
+// ── the designer's own model ────────────────────────────────────────────────
+
+// THE PAIR THAT WRITES A PAGE IS ONE PURCHASE, and with nothing named on the
+// turn it is RoleDesigner's. A harness page is SAVED and picked off a menu by
+// everybody afterwards, so it goes to the careful model rather than to whatever
+// the conversation happens to be sitting on.
+func TestTheDesignerResolvesItsRole(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierHigh): "test/careful-model",
+			roles.TierKey(roles.TierLow):  "test/cheap-model",
+		})
+	})
+	if got := agent.harnessDesignModel(""); got != "test/careful-model" {
+		t.Fatalf("the designer thinks with %q, want the high tier's model", got)
+	}
+	// The turn's own word outranks the role, exactly as it does for a run.
+	if got := agent.harnessDesignModel("anthropic/claude-opus-5"); got != "anthropic/claude-opus-5" {
+		t.Fatalf("a named model became %q", got)
+	}
+	// And a pin outranks the tier.
+	agent.config.RolesSource = tierSettings(map[string]string{
+		roles.PinKey(roles.RoleDesigner): "test/pinned-model",
+		roles.TierKey(roles.TierHigh):    "test/careful-model",
+	})
+	if got := agent.harnessDesignModel(""); got != "test/pinned-model" {
+		t.Fatalf("a pinned designer thinks with %q", got)
+	}
+}
+
+// AN INSTALL THAT CONFIGURED NOTHING DESIGNS AS IT ALWAYS DID: the ladder's
+// floor is the session's own model, which is where this call went before the
+// role existed.
+func TestTheDesignerFallsToTheSessionModel(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	if got := agent.harnessDesignModel(""); got != "test/model" {
+		t.Fatalf("the designer thinks with %q, want the session's own model", got)
 	}
 }
 
