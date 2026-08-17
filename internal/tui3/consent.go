@@ -43,11 +43,12 @@ import (
 //     person who answers one question and gets another one must have been told
 //     it was coming.
 //   - THE WIDENING YES IS WRITTEN DOWN, where the door wired somewhere to write
-//     it ([app.rememberAlways]) — the tool's allow, or the whole command line for
-//     the one tool judged by its arguments. It is the only thing this surface
-//     does that outlives the process, so it is the only thing it prints a receipt
-//     for, and the receipt says where to undo it. The no is never written: a
-//     standing never is a settings edit somebody makes on purpose.
+//     it ([app.rememberAlways]) — the tool's allow, or, for the one tool judged
+//     by its arguments, the SHAPE the person picked out of a second beat (see
+//     [app.always]). It is the only thing this surface does that outlives the
+//     process, so it is the only thing it prints a receipt for, and the receipt
+//     says where to undo it. The no is never written: a standing never is a
+//     settings edit somebody makes on purpose.
 //
 // After an answer the ROW STAYS, annotated dim with what was decided. The
 // transcript is what happened, and "you were asked about this and said yes" is
@@ -71,11 +72,24 @@ type ask struct {
 	// a request whose row is missing gets one (see [app.askConsent]), because a
 	// question about a call nobody can see is a question nobody can answer.
 	entry int
+	// shapes is the second beat, and it is non-empty only while that beat is on
+	// screen: the shapes this always could be banked as, offered by number, with
+	// the command line itself last (internal/config's [config.BashShapes]).
+	//
+	// It lives on the QUESTION rather than beside the queue because it is one
+	// question's unfinished answer. A person part-way through choosing a shape
+	// who is handed the next question in the batch must not find the previous
+	// one's offer still on screen.
+	shapes []string
+	// chosen is the shape they picked, once they have. It is what gets written
+	// down, and it is kept here so the write happens where every other write
+	// happens ([app.rememberAlways]) rather than in the keystroke that picked it.
+	chosen string
 }
 
 // askConsent takes one session.EventConsentRequest.
 func (a *app) askConsent(ev session.Event) {
-	at := a.callAwaiting(ev.Tool)
+	at := a.callAwaiting(ev)
 	if at < 0 {
 		// The row should already exist. When it does not — a surface that
 		// attached mid-batch, a tool whose begin was dropped — the call is drawn
@@ -83,7 +97,7 @@ func (a *app) askConsent(ev session.Event) {
 		a.closeLive()
 		a.entries = append(a.entries, entry{
 			kind: entryTool, tool: ev.Tool, text: ev.Hint, turn: a.turn,
-			status: toolConsent, detail: toolDetail{Args: ev.Args},
+			status: toolConsent, callID: ev.CallID, detail: toolDetail{Args: ev.Args},
 		})
 		at = len(a.entries) - 1
 	}
@@ -198,22 +212,42 @@ func (a *app) askLeft() (time.Duration, bool) {
 	return left, true
 }
 
-// callAwaiting finds the oldest still-running row for a tool — the same rule
-// [app.closeTool] uses, and for the same reason: calls run in parallel and the
-// first one begun is the one a person watching the column expects to be asked
-// about first.
+// callAwaiting finds the row a question is about.
 //
-// A row another question is ALREADY about is skipped. One batch can raise three
-// bash questions at once, and every one of them would otherwise attach to the
-// first bash row on screen — three questions annotating one line and two calls
-// the person never saw asked about.
-func (a *app) callAwaiting(tool string) int {
+// THE CALL'S ID IS THE ANSWER WHEREVER THERE IS ONE. The gate sends it with the
+// question (session's consent.go), the row has been carrying it since its first
+// fragment (app.go's [entry.callID]), and pairing on it is exact. It matters
+// more here than anywhere else on this surface: [app.askCommand] reads the
+// command the always will be REMEMBERED as off the row this walk returns, so a
+// question that landed on the wrong row is a person reading one command and
+// banking a standing rule for another.
+//
+// The walk by NAME below is what is left for a provider that streams no ids —
+// oldest still-running row of that tool, the same rule [app.closeTool] uses,
+// because the first call begun is the one a person watching the column expects
+// to be asked about first. It is a convention rather than a fact, which is why
+// it is second (session's loop.go makes the same argument for the announcement).
+//
+// A row another question is ALREADY about is skipped either way. One batch can
+// raise three bash questions at once, and every one of them would otherwise
+// attach to the first bash row on screen — three questions annotating one line
+// and two calls the person never saw asked about.
+func (a *app) callAwaiting(ev session.Event) int {
 	for i := range a.entries {
 		e := &a.entries[i]
-		if e.kind != entryTool || !e.status.live() || e.tool != tool || e.decision != "" {
+		if e.kind != entryTool || !e.status.live() || e.decision != "" {
 			continue
 		}
 		if a.claimed(i) {
+			continue
+		}
+		if ev.CallID != "" && e.callID != "" {
+			if e.callID == ev.CallID {
+				return i
+			}
+			continue
+		}
+		if e.tool != ev.Tool {
 			continue
 		}
 		return i
@@ -244,6 +278,16 @@ func (a *app) answer(allow bool, scope session.ConsentScope) {
 	word := decisionWord(allow)
 	if allow && scope == session.ConsentToolSession && a.rememberAlways() {
 		word = consentSavedWord
+		if a.asks[0].tool == consentBash {
+			// AND THE SESSION IS TOLD A RULE EXISTS, which is what stops it
+			// writing a memo of its own. The engine's memo is keyed by tool name
+			// alone, so on bash it means "every command", and a card that said
+			// "always, this command" and left that behind would have widened the
+			// session by more than the sentence a person read
+			// (session.ConsentRule). The rule just written is what answers the
+			// next call, and it answers only the calls it matches.
+			scope = session.ConsentRule
+		}
 	}
 	a.answerWith(allow, scope, word)
 }
@@ -253,7 +297,7 @@ func (a *app) answer(allow bool, scope session.ConsentScope) {
 // in the [entry.decision] slot every other answer lands in — because a person
 // who has just changed a setting by pressing a letter has to be told BOTH that
 // it changed and that the change has an address.
-const consentSavedWord = "always · saved — /settings to change"
+const consentSavedWord = "always · saved — /permissions to change"
 
 // consentBash is the one tool whose answer is about its ARGUMENT and not its
 // name. Everywhere else on this block a question is about a tool; here it is
@@ -292,7 +336,13 @@ func (a *app) rememberAlways() bool {
 		if a.saveBashApproval == nil {
 			return false
 		}
-		command := a.askCommand(head)
+		// The shape the person picked in the second beat, and the line itself
+		// where there was no beat to pick in — a command that never arrived
+		// whole, a compound line nothing can be derived from ([app.always]).
+		command := head.chosen
+		if command == "" {
+			command = a.askCommand(head)
+		}
 		if command == "" {
 			return false
 		}
@@ -321,6 +371,107 @@ func (a *app) askCommand(head ask) string {
 		return ""
 	}
 	return strings.TrimSpace(argString(argsOf(e.detail.Args), "command"))
+}
+
+// ── the second beat: what shape is this always ──────────────────────────────
+//
+// PRESSING ALWAYS ON A SHELL COMMAND ASKS ONE MORE THING.
+//
+// The card used to write the line down exactly as it ran, which meant an always
+// pressed on `git status --short` bought silence for that string and nothing
+// else: the same work with one more flag asked again, and the person pressed
+// always forever. What they meant was a SHAPE, and only they know which one. So
+// the offer line becomes, for one keystroke:
+//
+//	always? [1] git status*  ·  [2] git *  ·  [3] just this line  ·  [esc] never mind
+//
+// Three decisions, and each is why this is a beat rather than a guess:
+//
+//   - NOTHING IS WIDENED WITHOUT BEING READ. The shapes are derived from the
+//     line (internal/config's bashshapes.go) and printed in full before any of
+//     them is written. A card that widened an approval on its own would be this
+//     surface deciding a permission on somebody's behalf.
+//   - IT REPLACES THE OFFER, in place, on the row the offer was on. It is the
+//     same question one step further in, not a second block appearing under the
+//     first; the call above it does not move and the keyboard does not change
+//     hands.
+//   - ESC LEAVES THE BEAT AND ANSWERS NOTHING. Everywhere else on this block esc
+//     denies, because the safe reading of "get this off my screen" is no. Here
+//     the thing on screen is a step inside an answer, and backing out of a step
+//     puts the question back — the call is still parked, and the person still
+//     has every answer they had a moment ago.
+//
+// Only bash has a beat. Every other tool's always is about the tool's NAME,
+// which has exactly one shape.
+
+// always is the widening yes: either the answer, or the question that has to be
+// answered before it.
+func (a *app) always() {
+	if len(a.asks) == 0 || a.shaping() {
+		return
+	}
+	if shapes := a.askShapes(a.asks[0]); len(shapes) > 1 {
+		a.asks[0].shapes = shapes
+		a.touch()
+		return
+	}
+	// One shape is not a choice, and none at all is a command nothing can be
+	// derived from. Both answer the way this card always did: the session is
+	// told, and [app.rememberAlways] writes the line if it can.
+	a.answer(true, session.ConsentToolSession)
+}
+
+// askShapes is what a bash always could be banked as, or nothing at all.
+//
+// It reads the arguments through [app.askCommand] and derives from those, so a
+// call whose payload never arrived whole has no shapes and gets no beat — the
+// same silence that seam has always kept about a rule it cannot write honestly.
+func (a *app) askShapes(head ask) []string {
+	if head.tool != consentBash || a.saveBashApproval == nil {
+		return nil
+	}
+	return config.BashShapes(a.askCommand(head))
+}
+
+// shaping reports whether the second beat is on screen. It is what decides
+// which line the block draws where the offer goes, and which keys mean
+// something (render.go's hint reads it too).
+func (a *app) shaping() bool {
+	return len(a.asks) > 0 && len(a.asks[0].shapes) > 0
+}
+
+// pickShape banks the shape at this index and answers the question with it.
+func (a *app) pickShape(index int) {
+	if !a.shaping() {
+		return
+	}
+	head := &a.asks[0]
+	if index < 0 || index >= len(head.shapes) {
+		return
+	}
+	head.chosen = head.shapes[index]
+	head.shapes = nil
+	a.answer(true, session.ConsentToolSession)
+}
+
+// dropShapes takes the beat off and leaves the question exactly as it was.
+func (a *app) dropShapes() {
+	if !a.shaping() {
+		return
+	}
+	a.asks[0].shapes = nil
+	a.touch()
+}
+
+// shapeWord is how one shape reads on the offer. The last one is the line
+// itself ([config.BashShapes] promises that), and it is named for what it does
+// rather than repeated: the command is already on the row above, and printing
+// it twice on two lines is the two-renderings defect this block exists to avoid.
+func shapeWord(shapes []string, index int) string {
+	if index == len(shapes)-1 {
+		return "just this line"
+	}
+	return shapes[index]
 }
 
 // remembering reports whether pressing always would actually write something
@@ -378,8 +529,11 @@ func (a *app) answerWith(allow bool, scope session.ConsentScope, word string) {
 		// The narrow answer goes through the narrow method. They do the same
 		// thing — session's ResolveConsent is ResolveConsentRemember with
 		// ConsentOnce — and saying which one this is at the call site is how the
-		// scope stays a decision rather than a defaulted argument.
-		if scope == session.ConsentToolSession {
+		// scope stays a decision rather than a defaulted argument. Both of the
+		// answers that reach past this call carry their scope through the wide
+		// one: the memo and the banked rule are two different ways of not being
+		// asked again, and the engine reads which from the word it is sent.
+		if scope == session.ConsentToolSession || scope == session.ConsentRule {
 			a.agent.ResolveConsentRemember(head.id, allow, scope)
 		} else {
 			a.agent.ResolveConsent(head.id, allow)
@@ -487,14 +641,30 @@ func (a *app) consentKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	a.pauseAsk()
+	if a.shaping() {
+		// THE BEAT OWNS THE KEYBOARD WHILE IT IS UP, and it owns y and n with
+		// everything else: a person part-way through choosing a shape who pressed
+		// y would be answering a question that is no longer the one on screen.
+		// The numbers pick, esc goes back, and nothing else does anything.
+		switch key := msg.String(); key {
+		case "esc":
+			a.dropShapes()
+		default:
+			if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
+				a.pickShape(int(key[0] - '1'))
+			}
+		}
+		return nil, true
+	}
 	switch msg.String() {
 	case consentYes:
 		a.answer(true, session.ConsentOnce)
 	case consentAlways, "t":
 		// The widening answer, and the ONE key on this block that is refused
-		// when it would do nothing (see [ask.memo]).
+		// when it would do nothing (see [ask.memo]). On bash it opens the second
+		// beat rather than answering ([app.always]).
 		if a.asks[0].memo {
-			a.answer(true, session.ConsentToolSession)
+			a.always()
 		}
 	case consentNo, "d", "esc":
 		a.answer(false, session.ConsentOnce)
@@ -625,6 +795,9 @@ func (a *app) consentCall(head ask, width int) string {
 // the clock is the first thing dropped, because a countdown a person cannot see
 // is still a countdown and an answer they cannot see is not an answer.
 func (a *app) consentOffer(width int) string {
+	if a.shaping() {
+		return a.consentShapes(width)
+	}
 	// Pairs: the words at even indices, the keys — the only bold cells on the
 	// line — at odd ones. The two spellings differ in ONE cell, the always
 	// option's, because it is the only answer whose name has to say how far it
@@ -653,6 +826,16 @@ func (a *app) consentOffer(width int) string {
 	if clock != "" && ansi.StringWidth(line+clock) > width {
 		clock = ""
 	}
+	return a.paintOffer(parts, clock, width)
+}
+
+// paintOffer inks one offer line: the words in the question hue, the keys — the
+// only bold cells on it — inside them, and the clock's tail dim on the end.
+//
+// It is shared by the offer and by the second beat below because the two are
+// one line in two states, and a beat that inked itself differently would read as
+// a different object arriving rather than as the same question going on.
+func (a *app) paintOffer(parts []string, clock string, width int) string {
 	var out string
 	for i, part := range parts {
 		if i%2 == 1 {
@@ -666,6 +849,36 @@ func (a *app) consentOffer(width int) string {
 		return a.pal.hover(out, width)
 	}
 	return out
+}
+
+// consentShapes is the second beat's line, drawn where the offer was: the
+// shapes by number, the line itself last, and the way back out.
+//
+// It degrades the offer's way and for the offer's reason. The escape hatch is
+// the first thing dropped when the shapes will not fit beside it — a person who
+// can see the shapes can still press esc, and a shape they cannot see is a
+// shape they cannot choose.
+func (a *app) consentShapes(width int) string {
+	shapes := a.asks[0].shapes
+	parts := make([]string, 0, len(shapes)*2+3)
+	parts = append(parts, "always? ")
+	for i := range shapes {
+		parts = append(parts, "["+itoa(i+1)+"]", " "+shapeWord(shapes, i)+" · ")
+	}
+	full := append(append([]string{}, parts...), "[esc]", " never mind")
+	if ansi.StringWidth(strings.Join(full, "")) <= width {
+		parts = full
+	} else {
+		// No room for the way out: the last shape's separator would be a middot
+		// with nothing after it.
+		parts[len(parts)-1] = strings.TrimSuffix(parts[len(parts)-1], " · ")
+	}
+	line := strings.Join(parts, "")
+	if ansi.StringWidth(line) > width {
+		return a.pal.ask(fit(line, width))
+	}
+	a.recordShapeTaps(parts)
+	return a.paintOffer(parts, "", width)
 }
 
 // consentClock is the countdown's tail on the offer line — " · 7s", or
@@ -770,7 +983,21 @@ type consentTap struct {
 	row   int
 	allow bool
 	scope session.ConsentScope
+	// shape is which of the head question's [ask.shapes] this target banks, and
+	// it is -1 on every ordinary answer. The two kinds share one list because
+	// they share one row: the beat is drawn where the offer was, and a press
+	// there means whichever of the two is on screen.
+	shape int
 }
+
+const (
+	// noShape is the shape of a target that ANSWERS rather than banks — every
+	// target on the offer line, and the bands on the sheet.
+	noShape = -1
+	// backShape is the beat's way out. It is not an answer and must not be read
+	// as one: pressing it puts the question back exactly as it was.
+	backShape = -2
+)
 
 // consentSheet draws the phone form and records where its answers landed.
 func (a *app) consentSheet(width int) []string {
@@ -784,16 +1011,34 @@ func (a *app) consentSheet(width int) []string {
 	}
 	out = append(out, a.pal.dim(strings.Repeat("─", width)))
 
-	taps := make([]consentTap, 0, 3)
-	band := func(key, word string, allow bool, scope session.ConsentScope) {
+	taps := make([]consentTap, 0, 4)
+	band := func(key, word string, allow bool, scope session.ConsentScope, shape int) {
 		row := len(out)
 		out = append(out, a.consentBand(row, key, word, width))
 		taps = append(taps, consentTap{
-			span: hudSpan{from: 0, to: width}, row: row, allow: allow, scope: scope,
+			span: hudSpan{from: 0, to: width}, row: row, allow: allow, scope: scope, shape: shape,
 		})
 	}
-	band(consentYes, "allow", true, session.ConsentOnce)
-	band(consentNo, "deny", false, session.ConsentOnce)
+	if a.shaping() {
+		// THE BEAT IS BANDS HERE TOO. The line-of-words form replaces the offer
+		// with the shapes; the sheet replaces the answers with them, because on
+		// this tier an answer is a row a thumb lands on and a shape is an answer.
+		for i := range head.shapes {
+			word := shapeWord(head.shapes, i)
+			if room := width - len(consentBandPad) - len("[1] "); ansi.StringWidth(word) > room {
+				word = fit(word, room)
+			}
+			band(itoa(i+1), word, true, session.ConsentToolSession, i)
+		}
+		band("esc", "never mind", false, session.ConsentOnce, backShape)
+		a.askTaps = taps
+		if foot := a.consentFoot(width); foot != "" {
+			out = append(out, foot)
+		}
+		return out
+	}
+	band(consentYes, "allow", true, session.ConsentOnce, noShape)
+	band(consentNo, "deny", false, session.ConsentOnce, noShape)
 	if head.memo {
 		// The same spellings the offer line keeps ([app.alwaysWord]), and for the
 		// same reason: the widening yes is the one answer whose name has to say
@@ -805,7 +1050,7 @@ func (a *app) consentSheet(width int) []string {
 		if ansi.StringWidth(consentBandPad+"["+consentAlways+"] "+word) > width {
 			word = "always"
 		}
-		band(consentAlways, word, true, session.ConsentToolSession)
+		band(consentAlways, word, true, session.ConsentToolSession, noShape)
 	}
 	a.askTaps = taps
 	if foot := a.consentFoot(width); foot != "" {
@@ -861,7 +1106,13 @@ func (a *app) consentTitle(name string, width int) string {
 // rather than cut, because the tail of a command is where the reason to say no
 // usually is.
 func (a *app) consentCommand(command string, width int) []string {
-	command = strings.TrimSpace(command)
+	// SCRUBBED BEFORE IT IS DRAWN. The region is built from the call's arguments
+	// (see [app.consentWords]), which are the model's own text, and a terminal
+	// reads an escape in them as an instruction rather than as a character — one
+	// that can move the cursor onto the answers below and rewrite them. The gate
+	// scrubs the gloss and the arguments at their source (session's loop.go);
+	// this is the byte a surface makes again when it unmarshals one.
+	command = strings.TrimSpace(plainText(command))
 	if command == "" {
 		// A call with no argument — the tool's own name is the whole of it, and
 		// the title above already says it. A blank region would be a row spent
@@ -879,6 +1130,19 @@ func (a *app) consentCommand(command string, width int) []string {
 		out = append(out, a.pal.ink(fit(consentBandPad+line, width)))
 	}
 	return out
+}
+
+// plainText drops the bytes a terminal takes as orders rather than as text. It
+// DROPS rather than escapes, on notify.go's reasoning: there is no escape form
+// that reads better here, and a row with a missing byte says more than a row
+// with a stray backslash in it.
+func plainText(text string) string {
+	return strings.Map(func(r rune) rune {
+		if r < ' ' || r == 0x7f {
+			return -1
+		}
+		return r
+	}, text)
 }
 
 // consentBand is one answer, drawn as a row: the key it also answers to, then
@@ -962,9 +1226,40 @@ func (a *app) recordOfferTaps(parts []string) {
 			to += ansi.StringWidth(strings.TrimSuffix(parts[i+1], " · "))
 		}
 		taps = append(taps, consentTap{
-			span: hudSpan{from: at, to: to}, row: consentOfferRow, allow: allow, scope: scope,
+			span: hudSpan{from: at, to: to}, row: consentOfferRow,
+			allow: allow, scope: scope, shape: noShape,
 		})
 		at += width
+	}
+	a.askTaps = taps
+}
+
+// recordShapeTaps is [app.recordOfferTaps] for the second beat: the same
+// row, the same "the key and its word are one target" bargain, and the numbers
+// banking a shape instead of the letters answering.
+func (a *app) recordShapeTaps(parts []string) {
+	taps := make([]consentTap, 0, len(parts)/2+1)
+	at, shape := 0, 0
+	for i, part := range parts {
+		width := ansi.StringWidth(part)
+		to := at + width
+		if i+1 < len(parts) {
+			to += ansi.StringWidth(strings.TrimSuffix(parts[i+1], " · "))
+		}
+		span := hudSpan{from: at, to: to}
+		at += width
+		switch {
+		case part == "[esc]":
+			taps = append(taps, consentTap{
+				span: span, row: consentOfferRow, scope: session.ConsentOnce, shape: backShape,
+			})
+		case i%2 == 1:
+			taps = append(taps, consentTap{
+				span: span, row: consentOfferRow, allow: true,
+				scope: session.ConsentToolSession, shape: shape,
+			})
+			shape++
+		}
 	}
 	a.askTaps = taps
 }
@@ -997,6 +1292,14 @@ func (a *app) consentPress(x, y int) bool {
 	for _, tap := range a.askTaps {
 		if tap.row != mark.index || !tap.span.holds(x) {
 			continue
+		}
+		switch {
+		case tap.shape == backShape:
+			a.dropShapes()
+			return true
+		case tap.shape >= 0:
+			a.pickShape(tap.shape)
+			return true
 		}
 		if tap.scope == session.ConsentToolSession && !a.asks[0].memo {
 			// The one answer that is refused when it would do nothing, refused

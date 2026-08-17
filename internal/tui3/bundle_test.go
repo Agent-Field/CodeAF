@@ -1943,7 +1943,7 @@ func TestTheHintSlotFollowsTheStateAndIsEmptyAtRest(t *testing.T) {
 	// consent.go reads, which is what makes the hint safe to act on.
 	a.entries = append(a.entries, entry{kind: entryTool, tool: "bash", status: toolConsent})
 	hint := a.hintWord()
-	for _, want := range []string{"a allow", "t always", "d deny"} {
+	for _, want := range []string{"y allow", "n deny", "a always"} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("the consent hint %q is missing %q", hint, want)
 		}
