@@ -403,7 +403,7 @@ func TestFramesJournalRoundTrip(t *testing.T) {
 		t.Fatal("the journal holds the picture's bytes; it must hold a reference")
 	}
 
-	journal, replayed, err := openSessionFile(path, t.TempDir(), "test/model")
+	journal, replayed, err := openSessionFile(path, t.TempDir(), "test/model", "")
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -456,7 +456,7 @@ func TestFramesReplayWithoutTheirFiles(t *testing.T) {
 		t.Fatalf("remove pages: %v", err)
 	}
 
-	journal, replayed, err := openSessionFile(path, workspace, "test/model")
+	journal, replayed, err := openSessionFile(path, workspace, "test/model", "")
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
@@ -476,7 +476,7 @@ func TestFramesReplayWithoutTheirFiles(t *testing.T) {
 // in the order the conversation happened in.
 func TestFramesOverflowJournalRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	journal, _, err := openSessionFile(path, t.TempDir(), "test/model")
+	journal, _, err := openSessionFile(path, t.TempDir(), "test/model", "")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestFramesOverflowJournalRoundTrip(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	reopened, replayed, err := openSessionFile(path, t.TempDir(), "test/model")
+	reopened, replayed, err := openSessionFile(path, t.TempDir(), "test/model", "")
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}

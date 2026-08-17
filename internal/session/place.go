@@ -62,6 +62,18 @@ func (p Place) join(parts ...string) string {
 	return filepath.Join(append([]string{p.Dir}, parts...)...)
 }
 
+// ID is the session's id, which is the folder's own name — the same 16-hex id
+// the transcript header carries and [Meta.ID] records. It is arithmetic on
+// [Place.Dir] like every other method here: the name IS the identity, so a
+// caller holding a folder never has to open a file to learn which session it
+// is. The legacy zero Place answers "".
+func (p Place) ID() string {
+	if strings.TrimSpace(p.Dir) == "" {
+		return ""
+	}
+	return filepath.Base(p.Dir)
+}
+
 // Transcript is the journal, and the flock that guards the session lives on it.
 func (p Place) Transcript() string { return p.join(placeTranscript) }
 

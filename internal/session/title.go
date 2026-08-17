@@ -120,6 +120,10 @@ func (a *Agent) setTitle(title string) {
 	if file != nil {
 		file.appendTitle(title)
 	}
+	// The folder's row says what the journal says. Until now it has carried the
+	// person's opening words as a placeholder (placemeta.go); this is the name
+	// the conversation actually earned.
+	a.stampTitle(title)
 }
 
 // firstExchangeLocked returns the session's opening question and the first
