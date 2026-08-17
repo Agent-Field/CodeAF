@@ -65,10 +65,23 @@ func (a *app) statusText() string {
 		if item.label == deckSegWords[segCost] && a.cost <= 0 {
 			continue
 		}
+		// THE PLACE IS SAID IN FULL HERE, and on a remote session that is the
+		// third difference of medium this function makes. The status line and the
+		// sheet carry an abbreviated path because they are rows in a frame; this
+		// is a note a person reads once and copies out of, and `devbox:/srv/app`
+		// is the thing they would paste into scp or into another terminal. The
+		// abbreviated form would make them reconstruct it.
+		if a.hosted() && item.label == "place" {
+			item.value = a.hostedPath(a.workspace)
+		}
 		items = append(items, item)
 	}
 	if a.file != "" {
-		items = append(items, deckItem{label: "file", value: a.file})
+		// AND THE JOURNAL IS ON WHOSE DISK. A session file is the one path on
+		// this list a person is actively invited to copy, and over a connection it
+		// is the far machine's — so it is named the way they would have to name it
+		// to reach it, rather than as a bare path that looks like one of theirs.
+		items = append(items, deckItem{label: "file", value: a.hostedPath(a.file)})
 	}
 	return labelledLines(items)
 }

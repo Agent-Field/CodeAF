@@ -461,6 +461,15 @@ func (p *connectPanel) draw(width, n int, pal palette, hover int) []string {
 // picker resolves its own: an account connected in another window an hour ago is
 // an account this list has to know about, and asking costs a read.
 func (a *app) openConnect() {
+	// IT STATES THE FACT RATHER THAN GOING MISSING (host.go). The command still
+	// exists, still answers, and answers with the reason: a sign-in opens a
+	// browser and waits on a loopback port, and over --host the browser is here
+	// while the account store is on the other machine. A command that quietly did
+	// nothing would send a person looking for a bug in their terminal.
+	if a.hosted() {
+		a.note(connectRemoteWord)
+		return
+	}
 	if a.conns == nil {
 		a.note(connectUnavailableWord)
 		return

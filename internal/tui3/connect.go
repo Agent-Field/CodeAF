@@ -313,6 +313,15 @@ func (a *app) connectAskKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	switch msg.String() {
 	case "enter", "y":
+		// The one key this block refuses over --host, and it refuses by DOING
+		// NOTHING rather than by answering something else: approving is what opens
+		// the browser, the browser is on the wrong machine, and a yes turned
+		// quietly into a no would be the surface answering a question in somebody
+		// else's name. The row above has already dropped the offer (host.go), so
+		// this catches the muscle memory and the y.
+		if a.hostedBrowserSignIn() {
+			return nil, true
+		}
 		a.answerConnect(true)
 	case "esc", "n":
 		a.answerConnect(false)
@@ -354,7 +363,16 @@ func (a *app) connectAskRows(width int) []string {
 	head := a.connAsks[0]
 	out := make([]string, 0, 4)
 	out = append(out, a.pal.askBold(glyphAsk)+" "+a.pal.bold(a.pal.ink(fit(head.name, width-2))))
-	out = append(out, a.pal.dim(fit("  "+connectPurpose(head.name), width)))
+	// THE SENTENCE IS THE REASON THE BLOCK IS THERE, and over --host the reason
+	// has changed: the session reached for an account and this surface cannot get
+	// one connected, so the row says that instead of asking for something it
+	// cannot deliver (host.go). The offer below it drops to "not now" for the
+	// same reason.
+	sentence := connectPurpose(head.name)
+	if a.hostedBrowserSignIn() {
+		sentence = connectAskRemoteWord
+	}
+	out = append(out, a.pal.dim(fit("  "+sentence, width)))
 	// THE BOX TAKES THE OFFER'S OWN ROW, so the block does not grow, shift or
 	// re-flow under a hand that has just pressed a key on it. The sentence above
 	// stays because it is still the reason the box is there.
@@ -397,6 +415,13 @@ func (a *app) connectOffer(width int) string {
 	// Pairs: the words at even indices, the keys — the only bold cells on the
 	// line — at odd ones, which is what [app.recordConnectTaps] reads.
 	parts := []string{"  ", "[enter]", " connect · ", "[esc]", " not now"}
+	// OVER --HOST THERE IS ONE ANSWER, and the row offers only that one. An
+	// [enter] that could not connect anything would be a key drawn as an
+	// affordance and answering as a failure, which is the exact thing the
+	// sentence above it has just said will not work (host.go).
+	if a.hostedBrowserSignIn() {
+		parts = []string{"  ", "[esc]", " not now"}
+	}
 	line := strings.Join(parts, "")
 	if ansi.StringWidth(line) > width {
 		// Too narrow for both answers spelled out. The line is cut rather than
@@ -788,7 +813,15 @@ func (a *app) connectAuth(ev session.Event) {
 // browser and puts the waiting block on screen.
 func (a *app) openConnectFlow(service, name, link string) {
 	a.rememberService(service, name)
-	if err := processOpener(link); err != nil {
+	if a.hosted() {
+		// A FLOW MINTED ON ANOTHER MACHINE IS NOT OPENED ON THIS ONE. Both doors
+		// into here are closed over --host already (host.go), so this is the belt
+		// and not the braces — but the cost of being wrong is a browser sent to
+		// http://127.0.0.1:<port> on the WRONG localhost, which is either nothing
+		// at all or somebody else's server. The card still goes up with the link
+		// written on it, which is what the card's own link field is for.
+		a.note(connectRemoteWord)
+	} else if err := processOpener(link); err != nil {
 		// The platform could not do it. That is not a failed sign-in — the link
 		// under the block is still a way through — so it is said once, dim, and
 		// the block goes up as it would have anyway.
