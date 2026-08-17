@@ -386,9 +386,13 @@ func hostOptions(client *remote.Client, agent *remote.Agent, dest string, welcom
 		Workspace: welcome.Workspace,
 		// The engine's own journal path, shown with its machine in front of it
 		// wherever the surface shows it (internal/tui3's host.go).
-		SessionFile:   welcome.SessionFile,
-		Resumed:       welcome.Resumed,
-		Notice:        welcome.Note,
+		SessionFile: welcome.SessionFile,
+		Resumed:     welcome.Resumed,
+		Notice:      welcome.Note,
+		// The engine's own tool-approval posture, so the YOLO badge names the
+		// machine that actually decides whether a tool runs unattended
+		// (internal/tui3's app.approvalPosture).
+		ApprovalMode:  welcome.ApprovalMode,
 		ContextWindow: v3Window(models, welcome.Model),
 		Models:        func() []tui3.Model { return v3Models(models) },
 		ProfileDir:    profileDir,

@@ -65,11 +65,13 @@ import "strings"
 //	                  rather than "saved" — which is the truth: the answer holds
 //	                  for this session, on the far machine, and is written down
 //	                  nowhere. consent.go's own comment states that bargain.
-//	the YOLO badge    NOT DRAWN, and the hole is stated rather than papered over:
-//	                  the badge is a safety claim and the posture behind it is the
-//	                  far machine's, which the wire has no door onto. A badge read
-//	                  off this laptop's profile would be a claim about a machine
-//	                  nobody consulted. [app.approvalPosture] carries the STUB.
+//	the YOLO badge    drawn from the FAR machine's posture, carried once on the
+//	                  welcome (internal/remote's wire.go Welcome.ApprovalMode)
+//	                  rather than read off this laptop's profile — a badge read
+//	                  off the wrong machine would be a safety claim about a
+//	                  machine nobody consulted. [app.approvalPosture] is where
+//	                  the two readings — live and local, or carried and remote —
+//	                  meet.
 //	/harness          the registry is the far machine's, and this build has no
 //	                  door onto it, so the door hands none and the command says
 //	                  harnesses are unavailable rather than listing THIS

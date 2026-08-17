@@ -183,6 +183,13 @@ type Options struct {
 	// accounts panel. See host.go.
 	Host string
 
+	// ApprovalMode is the AGENT's own tool-approval posture — "allow" or
+	// empty — asked once at boot rather than a live read, because on a remote
+	// session there is nothing to re-read: it travelled once on the welcome
+	// (internal/remote's wire.go). Empty on a local session; app.approvalPosture
+	// reads the profile directly there instead, live, the way it always has.
+	ApprovalMode string
+
 	// SessionFile is the transcript being written, shown by /help and /new.
 	// Empty means the conversation is memory-only.
 	SessionFile string

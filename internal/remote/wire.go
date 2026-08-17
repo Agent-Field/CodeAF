@@ -101,6 +101,14 @@ type Welcome struct {
 	// Note is a sentence worth showing once — "session open elsewhere, started
 	// a new one" travels here.
 	Note string `json:"note,omitempty"`
+	// ApprovalMode is the engine machine's own answer to "does a tool run
+	// without asking" (internal/config's ToolApprovalModeAt) — "allow" or
+	// empty. A REMOTE YOLO BADGE MUST NAME THE ENGINE'S POSTURE, NOT THIS
+	// LAPTOP'S: the gate that decides whether a tool runs unattended is read
+	// from the profile on the machine that runs it, and drawing the badge from
+	// the surface's own settings would be a safety claim about a machine
+	// nobody consulted.
+	ApprovalMode string `json:"approvalMode,omitempty"`
 }
 
 // SubmitArgs carries Submit and FollowUp.
