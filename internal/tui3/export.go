@@ -103,7 +103,12 @@ func (a *app) exportTranscript(arg string) tea.Cmd {
 	}
 	target := exportTarget{name: exportFileName(a.file, a.title)}
 	if arg = strings.TrimSpace(arg); arg == "" {
-		target.path = filepath.Join(a.workspace, target.name)
+		// [app.pathRoot] and not the workspace, which are the same directory on
+		// every local session and different ones over --host: this write happens
+		// HERE, with this process's own hands, so it lands in a directory this
+		// process can actually reach. host.go states the whole bargain, and
+		// [exportDone] says out loud where the file went.
+		target.path = filepath.Join(a.pathRoot(), target.name)
 	} else {
 		// The same resolution the /image argument gets, and for the same reason:
 		// a path a person types is meant the way they type it — "~" is home, a
@@ -124,11 +129,20 @@ func (a *app) exportTranscript(arg string) tea.Cmd {
 // once and worked on for an hour, so the name this command derives is the same
 // name every time it is typed — and a second /export that silently replaced the
 // first would take a file somebody had already sent somewhere.
+// AND OVER A CONNECTION IT NAMES THE MACHINE. The conversation is on the far
+// machine and the file is on this one, which is the one moment in this surface
+// where those two come apart — so the note says so in words rather than leaving
+// a person to search a remote workspace for a file that is on their laptop
+// (host.go's [exportHereWord] and the STUB beside it).
 func (a *app) exportDone(msg exportedMsg) {
 	short := shortPath(msg.path, a.home, 0)
+	here := ""
+	if a.hosted() {
+		here = exportHereWord
+	}
 	switch {
 	case msg.err == nil:
-		a.note("exported · " + short)
+		a.note("exported · " + short + here)
 	case errors.Is(msg.err, fs.ErrExist):
 		a.note(short + " is already there · /export <path> writes it somewhere else")
 	default:

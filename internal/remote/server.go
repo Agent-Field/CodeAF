@@ -34,18 +34,22 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
 
-// Agent is the slice of *session.Agent an engine serves. It is the union of
-// tui3.Agent and the rewind pair that surface type-asserts for, because a
-// REMOTE SURFACE MUST NOT BE A LESSER SURFACE: whatever the local one can ask
-// its agent, this one answers over the wire, and a method missing here would be
-// a feature that quietly works at home and quietly does not away.
+// WrappedAgent is the slice of *session.Agent an engine serves. It is the
+// union of tui3.Agent and the rewind pair that surface type-asserts for,
+// because a REMOTE SURFACE MUST NOT BE A LESSER SURFACE: whatever the local
+// one can ask its agent, this one answers over the wire, and a method missing
+// here would be a feature that quietly works at home and quietly does not
+// away.
 //
-// It is declared here rather than imported from internal/tui3 for the reason
-// wire.go states about the two halves: the engine knows nothing of the surface
-// package and never will. It is an interface rather than the concrete agent for
-// the reason session.Completer is one — the tests below drive a scripted agent
-// and never open a socket.
-type Agent interface {
+// It is named WrappedAgent rather than Agent because [remote.Agent] is
+// already the OTHER end's name: the client's implementation of tui3.Agent,
+// which a surface holds. This is the engine's own view of the same shape,
+// declared here rather than imported from internal/tui3 for the reason
+// wire.go states about the two halves: the engine knows nothing of the
+// surface package and never will. It is an interface rather than the
+// concrete agent for the reason session.Completer is one — the tests below
+// drive a scripted agent and never open a socket.
+type WrappedAgent interface {
 	Submit(ctx context.Context, text string) (<-chan session.Event, error)
 	SubmitImage(ctx context.Context, text string, images []session.Image) (<-chan session.Event, error)
 	FollowUp(text string) (<-chan session.Event, error)
@@ -77,7 +81,7 @@ type Agent interface {
 // made and everything about how one is spoken to.
 type Engine struct {
 	// Agent is the conversation the surface starts on. Required.
-	Agent Agent
+	Agent WrappedAgent
 	// Workspace is the directory the engine resolved and works in — the answer
 	// to the path the hello asked for, which the welcome carries back.
 	Workspace string
@@ -94,12 +98,12 @@ type Engine struct {
 	// file, and returns it with that file's path. It is what Session.New calls,
 	// and it is the local surface's /new closure by another name. Nil makes the
 	// method fail rather than pretend.
-	Fresh func() (Agent, string, error)
+	Fresh func() (WrappedAgent, string, error)
 
 	// Open builds a replacement agent on the same config pointed at an existing
 	// transcript, and says whether that file was found. It is Session.Open, and
 	// it is the picker's Resume closure by another name.
-	Open func(file string) (Agent, bool, error)
+	Open func(file string) (WrappedAgent, bool, error)
 
 	// Recent lists the conversations this workspace has had. It is the one door
 	// that exists only because the surface is remote: a local one reads the
@@ -146,7 +150,7 @@ type server struct {
 	// state guards everything a session swap moves.
 	state  sync.Mutex
 	engine *Engine
-	agent  Agent
+	agent  WrappedAgent
 	// generation counts the swaps. Every pump remembers the generation it was
 	// born in and goes quiet the moment it is not the current one — see
 	// [server.pump].
@@ -469,7 +473,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if fresh == nil {
 			return nil, errors.New("engine: this engine cannot start a new session")
 		}
-		return s.swap(func() (Agent, string, bool, error) {
+		return s.swap(func() (WrappedAgent, string, bool, error) {
 			next, file, err := fresh()
 			return next, file, false, err
 		})
@@ -485,7 +489,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		if open == nil {
 			return nil, errors.New("engine: this engine cannot open another session")
 		}
-		return s.swap(func() (Agent, string, bool, error) {
+		return s.swap(func() (WrappedAgent, string, bool, error) {
 			next, resumed, err := open(file)
 			return next, file, resumed, err
 		})
@@ -604,7 +608,7 @@ func (s *server) live(generation uint64) bool {
 //
 // The generation moves BEFORE the old agent is closed, so the pumps that are
 // about to see their channels close have already gone quiet.
-func (s *server) swap(build func() (Agent, string, bool, error)) (json.RawMessage, error) {
+func (s *server) swap(build func() (WrappedAgent, string, bool, error)) (json.RawMessage, error) {
 	next, file, resumed, err := build()
 	if err != nil {
 		return nil, err
@@ -630,7 +634,7 @@ func (s *server) swap(build func() (Agent, string, bool, error)) (json.RawMessag
 	return json.Marshal(s.welcome())
 }
 
-func (s *server) current() Agent {
+func (s *server) current() WrappedAgent {
 	s.state.Lock()
 	defer s.state.Unlock()
 	return s.agent

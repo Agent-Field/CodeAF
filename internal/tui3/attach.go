@@ -151,6 +151,14 @@ func (a *app) attachPath(raw string) {
 // resolvePath makes a typed or completed path absolute the way a person means
 // it: "~" is home, a relative name is relative to the directory this
 // conversation is about, and an absolute path is left alone.
+//
+// EVERY PATH THIS FUNCTION RESOLVES IS ON THIS MACHINE, and on a remote session
+// that is what makes the root the local directory rather than the workspace
+// ([app.pathRoot]). The one thing a person types a path for here is a picture,
+// and the picture is on the laptop in front of them — its bytes travel with the
+// message (internal/remote's SubmitImage), so the file never has to exist on the
+// far side. Joining "shot.png" onto the far machine's workspace would name a
+// path that exists on neither machine.
 func (a *app) resolvePath(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "~" || strings.HasPrefix(path, "~/") {
@@ -158,8 +166,8 @@ func (a *app) resolvePath(path string) string {
 			path = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(path, "~"), "/"))
 		}
 	}
-	if !filepath.IsAbs(path) && a.workspace != "" {
-		path = filepath.Join(a.workspace, path)
+	if root := a.pathRoot(); !filepath.IsAbs(path) && root != "" {
+		path = filepath.Join(root, path)
 	}
 	return path
 }

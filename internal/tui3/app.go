@@ -847,6 +847,16 @@ type app struct {
 	// at construction, on the same terms tmux is and for the same reason.
 	remote bool
 
+	// host is the machine the AGENT is on when it is not this one, and it is the
+	// other direction entirely from [app.remote] one line above: that one is
+	// about the terminal reading the frame, this one is about the session
+	// answering it. Empty is an ordinary local conversation. localRoot is this
+	// machine's own directory, which is where a path the person types is
+	// anchored while the workspace belongs to somebody else's disk. Both are
+	// read once, at construction — see host.go for the whole law.
+	host      string
+	localRoot string
+
 	// focused is whether the terminal window has the keyboard, and seenFocus
 	// whether it has ever told us (notify.go). The pair is what decides whether
 	// a finished turn is worth a notification: a person watching the screen does
@@ -883,18 +893,35 @@ type app struct {
 }
 
 func newApp(ctx context.Context, opts Options) *app {
+	host := strings.TrimSpace(opts.Host)
 	place := strings.TrimSpace(opts.Workspace)
-	if place == "" {
+	if place == "" && host == "" {
+		// The cwd is the right fallback for a LOCAL session and a lie for a
+		// remote one: the workspace belongs to the other machine, and a surface
+		// that filled the gap with this machine's directory would be naming a
+		// place the conversation has never been. A remote session with no
+		// workspace draws no place at all, which the emptiness law handles.
 		if cwd, err := os.Getwd(); err == nil {
 			place = cwd
 		}
+	}
+	// THE PLACE CARRIES THE MACHINE (host.go): on a remote session every
+	// rendering of where-you-are reads `devbox:app`, because the connection is
+	// shown as the place and is shown nowhere else.
+	shown := ""
+	if place != "" {
+		shown = filepath.Base(place)
+	}
+	if host != "" && shown != "" {
+		shown = host + ":" + shown
 	}
 	a := &app{
 		ctx:              ctx,
 		agent:            opts.Agent,
 		fresh:            opts.Fresh,
+		host:             host,
 		workspace:        place,
-		place:            filepath.Base(place),
+		place:            shown,
 		file:             opts.SessionFile,
 		resumed:          opts.Resumed,
 		models:           opts.Models,
@@ -929,6 +956,22 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	a.copy.mark = -1
 	a.gitProbe = gitHead
+	if a.hosted() {
+		// THE BRANCH PROBE IS OFF OVER A CONNECTION, and off rather than wrong:
+		// `git` would run HERE, in a directory named by the OTHER machine's path,
+		// and the two outcomes are a blank (the path does not exist locally) and a
+		// lie (it does, and belongs to a different repository). A blank is what an
+		// empty branch already draws, so this costs the legend nothing and can
+		// never put somebody else's branch name under this conversation. A real
+		// remote probe is a wire question and belongs to the lane that owns the
+		// contract, not to a guess made here.
+		a.gitProbe = nil
+		// And this machine's own directory, which is where /image and the
+		// completion walk are anchored while the workspace is elsewhere (host.go).
+		if cwd, err := os.Getwd(); err == nil {
+			a.localRoot = cwd
+		}
+	}
 	if home, err := os.UserHomeDir(); err == nil {
 		a.home = home
 	}
@@ -936,7 +979,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	// ([app.settle]): a person who opens the settings panel and turns the asking
 	// off sees the YOLO segment appear one turn later, which is soon enough for
 	// a fact that only ever changes by hand.
-	a.approval = readApproval(a.profileDir)
+	a.approval = a.approvalPosture()
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	// And the approval countdown, on the same terms (consent.go).
@@ -974,7 +1017,10 @@ func newApp(ctx context.Context, opts Options) *app {
 		a.note(notice)
 	}
 	if a.resumed && a.file != "" {
-		a.note("resumed " + a.file)
+		// The journal is named with its machine on a remote session, for /status's
+		// reason (statusnote.go): a path a person is shown is a path they may go
+		// looking for, and this one is not on their disk.
+		a.note("resumed " + a.hostedPath(a.file))
 	}
 	// The opening line says the two keys the status line has no room for. The
 	// other two — /help and ctrl+o — moved to that line's right end this wave
@@ -1858,7 +1904,7 @@ func (a *app) settle() tea.Cmd {
 	// cleared: what the turn took, what it called, what it cost (timestamps.go).
 	a.stampTurn()
 	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
-	a.approval = readApproval(a.profileDir)
+	a.approval = a.approvalPosture()
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.askWait = a.consentWait()
@@ -2810,7 +2856,7 @@ func (a *app) slash(line string) tea.Cmd {
 		return a.quit()
 
 	case "help":
-		a.note(helpText(a.file))
+		a.note(helpText(a.hostedPath(a.file)))
 		return nil
 
 	case "copy":
@@ -2986,7 +3032,7 @@ func (a *app) renew() tea.Cmd {
 	a.offset, a.stick = 0, true
 	a.touch()
 	if file != "" {
-		a.note("new session · " + file)
+		a.note("new session · " + a.hostedPath(file))
 	} else {
 		a.note("new session")
 	}
@@ -3718,6 +3764,28 @@ func readApproval(profileDir string) string {
 		return ""
 	}
 	return config.ToolApprovalModeAt(profileDir)
+}
+
+// approvalPosture is [readApproval] asked by this surface, and over a connection
+// it does not ask at all.
+//
+// THIS MACHINE'S PROFILE IS NOT THE SESSION'S POSTURE over --host: the gate that
+// decides whether a tool runs without asking is the ENGINE's, read from the
+// profile on the engine's machine. Both ways of being wrong here are bad, and
+// one of them is dangerous — a YOLO badge drawn from this laptop's settings
+// would be a safety claim about a machine nobody consulted — so the surface says
+// nothing rather than the wrong thing, and the emptiness law draws nothing.
+//
+// STUB: the honest answer is the engine's own posture, and the wire has no door
+// for it (internal/remote's wire.go). With one — a field on the welcome, or a
+// method — this returns the far machine's answer and the badge tells the truth
+// again. Until then a remote session's YOLO goes unannounced, which is stated
+// here so it is a known hole and not a forgotten one.
+func (a *app) approvalPosture() string {
+	if a.hosted() {
+		return ""
+	}
+	return readApproval(a.profileDir)
 }
 
 func errText(err error) string {
