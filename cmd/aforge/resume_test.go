@@ -14,21 +14,27 @@ func TestRecentSessionsListsThisDirectorysConversations(t *testing.T) {
 	t.Setenv("HOME", home)
 	workspace := t.TempDir()
 
-	dir, err := v3SessionDir(workspace)
+	bucket, err := v3ProjectDir(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	write := func(name string, lines ...string) string {
-		path := filepath.Join(dir, name)
+	// One folder per conversation, named by its id, with the journal inside it:
+	// the layout the door writes (docs/CHAT-V3.md, Decision 26).
+	write := func(id string, lines ...string) string {
+		folder := filepath.Join(bucket, id)
+		if err := os.MkdirAll(folder, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(folder, "transcript.jsonl")
 		if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return path
 	}
-	older := write("20260815-090102_b7c1.jsonl",
+	older := write("00000000000000a1",
 		`{"type":"session","version":1,"id":"s-1","timestamp":"2026-08-15T09:01:02Z"}`,
 		`{"type":"message","role":"user","content":"why does the box flicker?","timestamp":"2026-08-15T09:01:03Z"}`)
-	newer := write("20260816-150405_a3f2.jsonl",
+	newer := write("00000000000000a2",
 		`{"type":"session","version":1,"id":"s-2","timestamp":"2026-08-16T15:04:05Z"}`,
 		`{"type":"message","role":"user","content":"port the resume picker","timestamp":"2026-08-16T15:04:06Z"}`,
 		`{"type":"message","role":"assistant","content":"done","timestamp":"2026-08-16T15:04:07Z"}`,
@@ -36,10 +42,10 @@ func TestRecentSessionsListsThisDirectorysConversations(t *testing.T) {
 		`{"type":"title","title":"port the resume picker","timestamp":"2026-08-16T15:05:01Z"}`)
 	// Opened and never spoken in — the file a `aforge resume` that was escaped
 	// out of leaves behind. It is not a conversation and not a row.
-	write("20260816-160000_dead.jsonl",
+	write("00000000000000a3",
 		`{"type":"session","version":1,"id":"s-3","timestamp":"2026-08-16T16:00:00Z"}`)
 
-	rows := v3RecentSessions(workspace)
+	rows := v3RecentSessions(bucket)
 	if len(rows) != 2 {
 		t.Fatalf("listed %d rows, want the two conversations: %+v", len(rows), rows)
 	}
@@ -64,7 +70,11 @@ func TestRecentSessionsListsThisDirectorysConversations(t *testing.T) {
 // failing: the answer feeds a picker that says so in words.
 func TestRecentSessionsIsEmptyBeforeTheFirstConversation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	if rows := v3RecentSessions(t.TempDir()); len(rows) != 0 {
+	fresh, err := v3ProjectDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows := v3RecentSessions(fresh); len(rows) != 0 {
 		t.Fatalf("a fresh directory listed %+v", rows)
 	}
 }
