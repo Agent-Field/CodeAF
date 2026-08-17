@@ -47,6 +47,16 @@ type stored struct {
 	// here and read back here and goes nowhere else, exactly as Keys is:
 	// never logged, never rendered, never carried in an error.
 	Key string `json:"key,omitempty"`
+	// KeyEnv is the NAME of the environment variable this connection reads
+	// its key from, where the person named one instead of pasting a key
+	// (keyref.go). An entry carries one or the other and never both, so
+	// nothing anywhere has to read a value to decide which of the two it is.
+	//
+	// It is not a secret and it is the one part of a key connection this
+	// package will say out loud: a screen shows "from $STRIPE_KEY" where a
+	// pasted key shows nothing, because the name of a variable is a fact
+	// about the person's own machine and a key is not.
+	KeyEnv string `json:"keyEnv,omitempty"`
 	// Blank is the one piece of the service's address the catalog could not
 	// know — a workspace, a domain — as the person gave it. It is kept
 	// rather than the finished address so that a service that moves house
@@ -56,15 +66,21 @@ type stored struct {
 
 // usable reports whether the entry can still do work.
 //
-// A key entry is usable when there is a key in it and nothing more: there is
-// nothing to renew and nothing to expire, so the only question is whether the
-// person ever gave one. For a browser entry, one with a refresh key can always
+// A key entry is usable when there is a key in it — or the name of a variable
+// to read one from — and nothing more: there is nothing to renew and nothing to
+// expire, so the only question is whether the person ever gave one. A named
+// variable that is not set counts as usable HERE and refuses at the moment a
+// client is built ([stored.secret]), because "you have not connected this" and
+// "the variable you named is empty" are two different things to be told and
+// only the second one says what to do about it.
+//
+// For a browser entry, one with a refresh key can always
 // be revived; one with only an access key works until that key expires; one
 // with neither is a leftover from a half-finished connection and counts as
 // nothing.
 func (s stored) usable() bool {
 	if s.Auth == AuthKey {
-		return strings.TrimSpace(s.Key) != ""
+		return strings.TrimSpace(s.Key) != "" || strings.TrimSpace(s.KeyEnv) != ""
 	}
 	if s.Keys == nil {
 		return false

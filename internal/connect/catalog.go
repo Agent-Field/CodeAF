@@ -181,6 +181,8 @@ func catalogPlug(id string, info *amp.ProviderInfo) (*keyPlug, bool) {
 			// about what any of these are for.
 			Category: categoryOf(id),
 			Blurb:    catalogBlurb(name, display, hole),
+			KeyAsk:   catalogAsk(hole),
+			KeyHint:  catalogKeyHint(id, info),
 			Auth:     AuthKey,
 			Address:  display,
 		},
@@ -325,6 +327,44 @@ func catalogInput(info *amp.ProviderInfo, name string) (string, string) {
 	return label, ""
 }
 
+// catalogKeyHint is where a person goes to find this service's key.
+//
+// ── THE HAND-WRITTEN LINE WINS, AND THE CATALOG IS THE FLOOR ──
+//
+// The catalog carries the vendor's own docs address for most of these services
+// and says nothing for about thirty of them, so the two are read in the order
+// that answers the person's question best: keyhint.go first, because a line
+// written there is either a page the catalog does not know about or the actual
+// screen the key is on rather than a page describing one; then whatever the
+// catalog has; then nothing at all.
+//
+// THE ADDRESS IS CHECKED BEFORE IT IS SHIPPED. A catalog entry carrying a
+// fragment, a placeholder or something that is not a web address would become a
+// link on a screen that goes nowhere, and a link that goes nowhere is worse than
+// the emptiness it replaced.
+func catalogKeyHint(id string, info *amp.ProviderInfo) string {
+	written := strings.TrimSpace(curatedKeyHint(id))
+	if written == "" {
+		written = strings.TrimSpace(catalogDocs(info))
+	}
+	if !addressable(written) {
+		return ""
+	}
+	return written
+}
+
+// catalogDocs is the vendor's own page about their keys, from whichever half of
+// the catalog entry describes how this service is signed.
+func catalogDocs(info *amp.ProviderInfo) string {
+	if info.ApiKeyOpts != nil && strings.TrimSpace(info.ApiKeyOpts.DocsURL) != "" {
+		return info.ApiKeyOpts.DocsURL
+	}
+	if info.BasicOpts != nil {
+		return info.BasicOpts.DocsURL
+	}
+	return ""
+}
+
 // catalogProbe reads the cheap authenticated check the catalog names, if it
 // names one. Very few do.
 func catalogProbe(info *amp.ProviderInfo) probe {
@@ -355,10 +395,24 @@ func catalogBlurb(name, display string, hole blank) string {
 		line += " at " + host
 	}
 	line += ", with a key you already hold."
-	if hole.name != "" {
-		line += " Give the " + strings.ToLower(hole.label) + " and then the key, one space between them."
+	if ask := catalogAsk(hole); ask != "" {
+		line += " " + ask
 	}
 	return line
+}
+
+// catalogAsk is the instruction a service with a blank in its address needs a
+// person to have read, and nothing at all for the rest.
+//
+// IT IS BUILT HERE AND SPENT TWICE: it is the tail of the blurb on a list, and
+// it is the line a screen puts over the box while somebody is answering it
+// ([Service.KeyAsk]). Two spellings of one instruction is the kind of pair that
+// drifts, and the half that drifts is the half telling somebody what to type.
+func catalogAsk(hole blank) string {
+	if hole.name == "" {
+		return ""
+	}
+	return "Give the " + strings.ToLower(hole.label) + " and then the key, one space between them."
 }
 
 // shown is the address as a person should read it: the blank left as a plain

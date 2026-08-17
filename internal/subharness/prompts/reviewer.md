@@ -3,8 +3,8 @@
 # PART FOUR · YOU ARE NOW THE REVIEWER
 
 The design above has been drafted. Your job is no longer to draft it. Your job is
-to CRITIQUE it against the derivation procedure you were just given, and then hand
-back the version that survives the critique.
+to CRITIQUE it against the derivation procedure you were just given, and then send
+back the smallest patch that answers your own critique — not a new page.
 
 A reviewer who agrees with everything has not reviewed anything. A reviewer who
 rewrites a sound design to show willing has made it worse and spent money doing
@@ -93,36 +93,100 @@ draft either answers or does not.
   cues are all invented four- and five-word phrases has built a harness nobody
   reaches. Replace them with the two- and three-word forms a person actually types.
 
-## Then revise
+## Then patch — you do NOT rewrite the page
 
 Apply the findings that are worth applying. Leave alone what is already right —
-including, when it is the honest verdict, the whole draft. Every change you make
-must trace to a finding you named; a change with no finding behind it is churn.
+including, when it is the honest verdict, the whole draft. Every op you write must
+trace to a finding you named; an op with no finding behind it is churn.
 
-The DAG law, the field spec, the ladders and the caps in PART ONE all still hold.
-A revision that does not validate is worse than no revision.
+**THE LAW OF THIS REPLY: TEXT YOU DO NOT INTEND TO CHANGE MUST NOT APPEAR IN IT.**
+
+You are not handing back the page. You are handing back a list of OPS, and they
+are applied to the draft exactly as it was given to you. A brief you are not
+changing is not copied, not summarised, not "kept for clarity" — it is simply
+absent from your reply, and it survives untouched because of that. This is not a
+formatting preference. A critic that retypes four thousand bytes to change two
+hundred introduces spelling errors into briefs nobody reviewed, and the run that
+follows is worse for the pass that was supposed to improve it.
+
+The corollary: **quote nothing back at me.** Not the draft's JSON, not the node
+you are about to edit, not the field before your change. The op says which node
+and which field; that is the whole address.
+
+### The ops
+
+Every op is one object. `op` is the verb; the other keys are filled as that verb
+needs them and left out otherwise.
+
+| op | what it does | fills |
+|---|---|---|
+| `replace_brief` | rewrite one node's brief | `node`, `text` |
+| `set_field` | write any field of any node; **empty `text` REMOVES the field** | `node`, `field`, `text` |
+| `add_node` | add a node, whole | `node_json` |
+| `drop_node` | remove a node **and every edge that touched it** | `node` |
+| `add_edge` | draw an edge | `node` (from), `text` (to) |
+| `drop_edge` | remove an edge | `node` (from), `text` (to) |
+| `set_verify` | move the harness's verify rung — or one node's, if you name it | `text`, optional `node` |
+| `set_dyn` | move the dynamism rung or its budget | `field` (`"ladder"` or `"cap"`), `text` |
+| `set_whitelist` | replace the tool whitelist, comma-separated | `text` |
+| `set_desc` | rewrite `id.desc`, the sentence detection matches on | `text` |
+
+`node_json` is a whole node in the page's own shape, unknown fields refused:
+`{"id": "slug", "kind": "agent.loop", "fields": {"brief": "..."}}`.
+
+Five things to hold in mind while you write them:
+
+- **The ops are applied in the order you write them, to the ORIGINAL draft.** If
+  you drop a node and then add an edge, the edge is drawn on the page as it stands
+  after the drop.
+- **`drop_node` takes that node's edges with it, so you must re-link what you
+  disconnected.** A program has ONE entry, no unreachable nodes and no cycles, and
+  the result of your patch is held to that law exactly as the draft was.
+- **A whitelist grant that no node uses is a defect**, so a `drop_node` that
+  removed the last user of a tool needs a `set_whitelist` behind it.
+- **One op that names a node nobody declared is skipped and reported; the rest of
+  your patch still lands.** So write the op you mean rather than a safer, vaguer
+  one. But a patch whose RESULT breaks the law is refused whole — the draft goes
+  forward and your turn is wasted.
+
+- **The `tests` block is not patchable in this pass.** If your patch makes one of
+  the draft's expectations wrong — you removed the node whose verdict it names —
+  say so as a QUALITY finding. A finding that names it is worth more than an op
+  you cannot write.
+
+If the honest verdict is that the draft is right, `ops` is `[]`. That is a real
+review outcome and it is cheaper than a change nobody needed.
 
 ## Reply with ONE JSON object and NOTHING else
 
 ```json
 {
-  "speed": ["the finding, and what it costs"],
-  "cost": ["the finding, and what it costs"],
-  "quality": ["the finding, and what it costs"],
-  "calls": {"draft": 0, "revised": 0},
-  "changed": ["what changed — why, naming the finding it answers"],
-  "cues": ["..."],
-  "justification": "the full justification for the REVISED design, in the five parts PART THREE requires",
-  "harness": { "…the whole revised harness page, same shape as the draft…" }
+  "findings": [
+    {"pass": "speed", "text": "the finding, and what it costs"},
+    {"pass": "cost", "text": "..."},
+    {"pass": "quality", "text": "..."}
+  ],
+  "ops": [
+    {"op": "replace_brief", "node": "rank", "text": "the new brief, whole"},
+    {"op": "set_field", "node": "worker", "field": "max_turns", "text": "2"},
+    {"op": "set_dyn", "field": "cap", "text": "3"}
+  ],
+  "calls": {"draft": 0, "revised": 0}
 }
 ```
 
 Rules for the reply:
 
-- A pass that found nothing gets `[]`. Say nothing rather than inventing a finding.
-- `changed` is `[]` if you are keeping the draft as it stands — and then `harness`,
-  `cues` and `justification` are the draft's own, returned verbatim.
+- `findings` is one flat list; each entry says which pass found it — `speed`,
+  `cost` or `quality`. A pass that found nothing contributes no entries. Say
+  nothing rather than inventing a finding.
 - `calls.draft` and `calls.revised` are the counts you made in the COST pass.
-- The whole harness page goes in `harness`, every time, whether or not it changed.
-  A partial page is not a page.
-- No prose outside the object. No code fence. No other keys, at any depth.
+- `cues` and `justification` are OPTIONAL and you include them ONLY if you are
+  changing them. Omitted means the draft's own, kept. If your patch changed the
+  topology, rewrite the `justification` — it is the derivation, and a derivation
+  that describes a shape that is no longer there is worse than none.
+- JSON delimiters and syntax are ASCII: the quotes around every key and every
+  string value are `"` (U+0022), never a typographic quote. Prose may use any
+  character INSIDE a string value.
+- No prose outside the object. No code fence. No other keys, at any depth. No
+  `harness` key — the page is not yours to re-emit.
