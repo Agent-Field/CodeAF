@@ -434,6 +434,10 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "timestamps", widget: widgetCycle,
 		about: "footers puts a receipt under each finished turn; separators only marks the gaps.",
 	},
+	config.KeyWork: {
+		tab: tabDisplay, label: "turn work", widget: widgetCycle,
+		about: "fold completed turn machinery into one worked chip, or keep it open.",
+	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,
 		about: "the model that looks at images. Blank picks one that can see.",
@@ -1500,6 +1504,10 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	if err := item.row.Apply(raw); err != nil {
 		a.sheet.msg = err.Error()
 		return
+	}
+	if item.row.Key == config.KeyWork {
+		a.workMode = config.WorkAt(a.profileDir)
+		a.touch()
 	}
 	a.sheet.msg = ""
 	a.sheet.rows = a.sheet.registry.Rows()

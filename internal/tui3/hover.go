@@ -179,7 +179,7 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			// the pointer was forty cells away from it would be claiming to be
 			// something you could press there (mdtable.go).
 			return hoverAt{kind: hoverTable, entry: r.entry, index: r.foot.table}
-		case r.hit == hitFold:
+		case r.hit == hitFold || r.hit == hitWorkFold:
 			return hoverAt{kind: hoverFold, turn: r.turn}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone:
 			return hoverAt{kind: hoverEntry, entry: r.entry}

@@ -51,6 +51,7 @@ func toolApp(t *testing.T, profile tokens.Profile, batches ...[]session.Event) *
 func toolLineOf(t *testing.T, a *app) string {
 	t.Helper()
 	for _, r := range plainRows(a) {
+		r = strings.TrimLeft(r, " ")
 		if strings.HasPrefix(r, railMid) || strings.HasPrefix(r, railLast) ||
 			strings.HasPrefix(r, railASCII) {
 			return r
@@ -267,6 +268,7 @@ func TestTheDiffExpansionIsCappedAndTheCapLifts(t *testing.T) {
 	}
 	shown := 0
 	for _, r := range plainRows(a) {
+		r = strings.TrimLeft(r, " ")
 		if strings.HasPrefix(r, railCont) && !strings.Contains(r, "more lines") {
 			shown++
 		}
@@ -529,6 +531,7 @@ func TestTheRailTeesThenClosesAndTheExpansionContinuesIt(t *testing.T) {
 	list := plainRows(a)
 	var marked []string
 	for _, r := range list {
+		r = strings.TrimLeft(r, " ")
 		if strings.HasPrefix(r, railMid) || strings.HasPrefix(r, railLast) {
 			marked = append(marked, r[:len(railMid)])
 		}
@@ -541,6 +544,7 @@ func TestTheRailTeesThenClosesAndTheExpansionContinuesIt(t *testing.T) {
 	}
 
 	for _, r := range openFirst(t, a) {
+		r = strings.TrimLeft(r, " ")
 		if strings.HasPrefix(r, railCont) {
 			return
 		}

@@ -389,6 +389,7 @@ func TestAWritePreviewsItsContentUnderTheRail(t *testing.T) {
 
 	var preview []string
 	for _, line := range plainRows(a) {
+		line = strings.TrimLeft(line, " ")
 		if strings.HasPrefix(line, railCont) {
 			preview = append(preview, line)
 		}
@@ -549,6 +550,7 @@ func TestHoverFollowsTheFoldLineAndTheThinkingBlock(t *testing.T) {
 		events = append(events, call("read", `{"path":"a.go"}`, "one")...)
 	}
 	a := toolApp(t, tokens.ANSI256, events)
+	a.toggleLatestWorkfold()
 
 	foldY := screenRowOf(t, a, func(r row) bool { return r.hit == hitFold })
 	drive(t, a, motionAt(foldY))
@@ -575,6 +577,7 @@ func TestHoverFollowsTheFoldLineAndTheThinkingBlock(t *testing.T) {
 	think := newTestApp(agent)
 	think.pal = newPalette(tokens.ANSI256, false)
 	runTurn(t, think, agent, "where is it")
+	think.toggleLatestWorkfold()
 
 	at := thoughtAt(t, think)
 	thoughtY := screenRowOf(t, think, func(r row) bool { return r.entry == at })

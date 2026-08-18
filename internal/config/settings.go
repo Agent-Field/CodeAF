@@ -185,6 +185,8 @@ const (
 	// and it is a CHOICE rather than a bool because "less" and "none" are two
 	// different answers a reader gives for two different reasons.
 	KeyTimestamps = "ui.timestamps"
+	// KeyWork controls whether completed turn machinery starts folded or open.
+	KeyWork = "ui.work"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
 	// before its work may merge (internal/session's task_audit.go). It sits
 	// beside the guardian because both spend a model on the person's behalf:
@@ -420,6 +422,15 @@ const (
 // TimestampModes lists them richest first, which is also the default order the
 // row widens in.
 var TimestampModes = []string{TimestampsFooters, TimestampsSeparators, TimestampsOff}
+
+const (
+	WorkFold = "fold"
+	WorkOpen = "open"
+)
+
+var WorkModes = []string{WorkFold, WorkOpen}
+
+const DefaultWork = WorkFold
 
 // DefaultTimestamps is the footers. When a turn took two minutes and cost four
 // cents, those are facts about work the person paid for, and a transcript that
@@ -1210,6 +1221,13 @@ func (s *Settings) build() []Setting {
 				"ctrl+o on a turn writes its footer's time out in full.",
 			read:  func() string { return TimestampsAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyTimestamps, raw, TimestampModes) },
+		},
+		Setting{
+			Key: KeyWork, Category: CategoryInterface, Kind: SettingChoice,
+			Label: "turn work", Choices: WorkModes,
+			Hint:  "fold rolls completed reasoning, calls, results, and intermediate text into one worked chip. open keeps that work visible. The change applies immediately.",
+			read:  func() string { return WorkAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyWork, raw, WorkModes) },
 		},
 		Setting{
 			Key: KeyTaskAudit, Category: CategorySpending, Kind: SettingChoice,
@@ -2314,6 +2332,19 @@ func TimestampsAt(profileDir string) string {
 		}
 	}
 	return DefaultTimestamps
+}
+
+// WorkAt resolves the completed-work presentation, default fold.
+func WorkAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyWork); ok {
+		value = strings.TrimSpace(strings.ToLower(value))
+		for _, mode := range WorkModes {
+			if value == mode {
+				return value
+			}
+		}
+	}
+	return DefaultWork
 }
 
 // RoutingAt resolves the routing row to its word, default latency. An

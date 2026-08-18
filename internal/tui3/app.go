@@ -436,6 +436,8 @@ type app struct {
 	turn int
 	// unfolded holds the turns whose tool cluster is showing every call.
 	unfolded map[int]bool
+	// workOpen is the ephemeral expansion state of completed-turn workfolds.
+	workOpen map[int]bool
 	// sel is the selected tool entry, or -1. ↑/↓ move it; enter opens it.
 	sel int
 	// hot is what the pointer is over (hover.go). The zero value is nothing.
@@ -505,6 +507,7 @@ type app struct {
 	// Both are timestamps.go's.
 	stamps     map[int]turnStamp
 	timestamps string
+	workMode   string
 	// ctxRing is the last [ctxRingSize] TURN-END context readings, oldest first.
 	// It is the sparkline's data and the compaction ETA's, and it is sampled at
 	// turn end rather than on the frame clock because that is the only moment
@@ -1082,6 +1085,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.approval = a.approvalPosture()
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
+	a.workMode = config.WorkAt(a.profileDir)
 	// And the approval countdown, on the same terms (consent.go).
 	a.askWait = a.consentWait()
 	if a.linear {
@@ -2030,6 +2034,17 @@ func (a *app) event(ev session.Event) tea.Cmd {
 // fade ticks. Both are the whole of this surface's idle wakeup budget — two
 // timers per turn, and nothing at all while nothing is happening.
 func (a *app) settle() tea.Cmd {
+	// Freeze the reader's place before render-time folding removes the work.
+	// Bottom following is already identity-by-edge through stick; a reader above
+	// it keeps the same row by moving the raw offset by the layout's height delta.
+	oldRows := a.visible(a.bodyWidth())
+	oldTotal := len(oldRows)
+	oldOffset := a.offsetFor(oldTotal, a.viewHeight())
+	wasFollowing := a.stick
+	anchor := row{entry: -2}
+	if !wasFollowing && oldOffset >= 0 && oldOffset < len(oldRows) {
+		anchor = oldRows[oldOffset]
+	}
 	a.closeLive()
 	// A turn that streamed nothing but reasoning still ends with a block, and a
 	// block left open would keep a finished thought expanded over the next turn.
@@ -2066,9 +2081,24 @@ func (a *app) settle() tea.Cmd {
 	a.approval = a.approvalPosture()
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
+	a.workMode = config.WorkAt(a.profileDir)
 	a.askWait = a.consentWait()
 	a.follow()
 	a.touch()
+	if !wasFollowing {
+		newRows := a.visible(a.bodyWidth())
+		a.offset = oldOffset + len(newRows) - oldTotal
+		for i, r := range newRows {
+			if anchor.entry >= 0 && r.entry == anchor.entry && r.text == anchor.text {
+				a.offset = i
+				break
+			}
+		}
+		if a.offset < 0 {
+			a.offset = 0
+		}
+		a.stick = false
+	}
 	return tea.Batch(a.probeGit(), fadeTicks())
 }
 
@@ -2798,6 +2828,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.openTool(r.entry)
 	case hitFold:
 		a.unfold(r.turn)
+	case hitWorkFold:
+		a.toggleWorkfold(r.turn)
 	case hitMore:
 		a.showAll(r.entry)
 	case hitTask:
