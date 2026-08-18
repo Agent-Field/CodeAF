@@ -113,10 +113,25 @@ var commands = []command{
 	// bare row is the one nearly everybody wants, and a single row carrying
 	// [query] would make it unreachable from the list ([app.runMenu] puts a row
 	// that TAKES something into the draft instead of running it).
-	{name: "memories", desc: "what is remembered about you across conversations", alias: []string{"memory"}},
+	{name: "memory", desc: "inspect and change what is remembered"},
+	{name: "memory", args: "<query>", desc: "print only the memories matching a word"},
+	{name: "memories", desc: "print what is remembered about you"},
 	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
 	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
 	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
+	// AND WHAT AFORGE WORKS WITH, beside what it knows about you. The four models
+	// it uses on your behalf, answered as one word (crew.go). Two rows for one
+	// command, the way /model and /export have two: the bare form is the listing
+	// nearly everybody wants, and a single row carrying <preset> would make it
+	// unreachable from this list — [app.runMenu] puts a row that TAKES something
+	// into the draft instead of running it.
+	//
+	// It sits here, under the memory rows, because those three are "what does it
+	// know" and this is "what does it think WITH", and because position in this
+	// table is a claim about frequency: a person sets their crew once and then
+	// occasionally regrets it, which is exactly where /memories sits too.
+	{name: "crew", desc: "the four models aforge works with · frugal, balanced or max"},
+	{name: "crew", args: "<preset>", desc: "…set it to one of the three"},
 	// THE TWO QUESTIONS THE STATUS LINE IS ALREADY ANSWERING, asked out loud. The
 	// line at the bottom of the frame drops whatever does not fit and a phone-width
 	// frame keeps two of eleven facts (statusdeck.go), so on any surface these are
