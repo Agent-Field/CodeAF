@@ -76,6 +76,11 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/rewind` | `/undo`, `/back` | — | enters rewind mode (also esc esc) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
+| `/memory` | — | — | opens the memory panel |
+| `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
+| `/memories` | — | — | prints every memory into the conversation |
+| `/remember` | — | `<text>` | keeps one thing across conversations |
+| `/forget` | — | `<query>` | forgets the best matching memory |
 | `/crew` | — | — | prints the three crew presets with yours marked |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |

@@ -163,6 +163,10 @@ type Options struct {
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 
+	// Memory is the durable memory store behind /memory. Nil means the panel is
+	// unavailable; the live door passes the same store it gave the session.
+	Memory MemoryStore
+
 	// Fresh builds a replacement agent on the same Config with a new session
 	// file, and returns it with that file's path. It is what /new calls. Nil
 	// makes /new report that it is unavailable rather than pretending.

@@ -53,15 +53,37 @@ func cursorToRole(t *testing.T, a *app, role roles.Role) {
 	t.Fatalf("the roles section has no row for %q", role)
 }
 
-// tieredSheet is the panel with both tiers set to a model a test can recognise.
+// tieredSheet is the panel ON THE TAB THE CREW LIVES ON, with every class set to
+// a model a test can recognise.
+//
+// It moves the tab explicitly rather than relying on where the panel opens: the
+// crew and the roles under it are Providers rows since the Models section landed
+// (settings.go's [modelsSection]), and a test that read them off the Session tab
+// would be asserting about a screen nobody sees.
 func tieredSheet(t *testing.T) *app {
 	t.Helper()
 	a, _ := sheetApp(t)
 	a.models = func() []Model { return mixedModels }
 	a.openSettings()
+	toProviders(t, a)
 	setRow(t, a, config.KeyTierHighModel, "test/careful-model")
 	setRow(t, a, config.KeyTierLowModel, "test/cheap-model")
+	setRow(t, a, config.KeyTierMastermindModel, "test/thinking-model")
+	setRow(t, a, config.KeyTierReflexModel, "test/reflex-model")
 	return a
+}
+
+// toProviders puts the open panel on the tab the model rows live on.
+func toProviders(t *testing.T, a *app) {
+	t.Helper()
+	for at, title := range settingTabs {
+		if title == tabProviders {
+			a.sheet.tab = at
+			a.sheet.build()
+			return
+		}
+	}
+	t.Fatal("there is no Providers tab")
 }
 
 // EVERY REGISTERED ROLE IS A ROW, and each one says which tier answers it and
@@ -74,7 +96,11 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 		role       roles.Role
 		tier, want string
 	}{
-		{roles.RolePlanner, "careful work", "test/careful-model"},
+		// The two masterminds sit apart from the careful work now: one answer
+		// that decides what every other call does is a different bill from many
+		// short answers that must not be wrong.
+		{roles.RolePlanner, "mastermind", "test/thinking-model"},
+		{roles.RoleDesigner, "mastermind", "test/thinking-model"},
 		{roles.RoleWorker, "small work", "test/cheap-model"},
 		{roles.RoleCompaction, "careful work", "test/careful-model"},
 		{roles.RoleTitle, "small work", "test/cheap-model"},
@@ -103,42 +129,84 @@ func TestTheRolesSectionSaysWhatAnswersEachRole(t *testing.T) {
 	if after == 0 {
 		t.Fatal("the Session tab has no pinned roles row")
 	}
-	if !a.sheet.items[after+1].heading() || a.sheet.items[after+1].head != rolesHead {
+	// THE SECTION IS GROUPED BY CLASS, in Tiers order, so the first heading under
+	// the row is the cheapest class rather than one heading over ten unrelated
+	// roles.
+	if !a.sheet.items[after+1].heading() || !strings.HasPrefix(a.sheet.items[after+1].head, rolesHead) {
 		t.Fatalf("the section does not follow the row it writes: %+v", a.sheet.items[after+1])
 	}
 	if a.sheet.items[after+2].role == nil {
 		t.Fatal("the section's heading is not followed by a role")
 	}
+	var heads []string
+	for _, item := range a.sheet.items {
+		if item.heading() && strings.HasPrefix(item.head, rolesHead) {
+			heads = append(heads, item.head)
+		}
+	}
+	want := []string{
+		rolesHead + " · reflex", rolesHead + " · small work",
+		rolesHead + " · careful work", rolesHead + " · mastermind",
+	}
+	if strings.Join(heads, "|") != strings.Join(want, "|") {
+		t.Fatalf("the class headings read %v, want %v", heads, want)
+	}
 
-	// And it draws as a row of this panel: the role's name, its tier, its model.
+	// And it draws as a row of this panel: the role's name and the model that
+	// answers it. The class is the heading above it and is NOT repeated on the
+	// row — that used to spend the widest column on a word the section already
+	// said, and left the id being the first thing cut.
 	cursorToRole(t, a, roles.RolePlanner)
 	a.touch()
 	screen := plain(frame(a))
-	if !strings.Contains(screen, "planner") || !strings.Contains(screen, "careful work · test/careful-model") {
+	if !strings.Contains(screen, "planner") || !strings.Contains(screen, "test/thinking-model") {
 		t.Fatalf("the planner's row does not say what answers it:\n%s", screen)
 	}
 	// And the one description this panel ever shows — the selected row's — says
-	// where that answer came from and how to change it.
+	// WHAT THE ROLE IS first, then where its answer came from and how to change it.
 	selected, ok := a.sheet.current()
 	if !ok {
 		t.Fatal("the cursor is not on the planner")
 	}
-	if !strings.Contains(selected.meta.about, "follows careful work above") {
+	if !strings.Contains(selected.meta.about, roles.Describe(roles.RolePlanner)) {
+		t.Fatalf("the selected role's line does not say what it is: %q", selected.meta.about)
+	}
+	if !strings.Contains(selected.meta.about, "follows mastermind above") {
 		t.Fatalf("the selected role's line reads %q", selected.meta.about)
 	}
 }
 
-// A ROLE WITH NOTHING SET ANYWHERE FOLLOWS THE CONVERSATION, which is
-// roles.Resolve's floor and not a failure: an install that configured no tiers
-// has every role answering on the model the person is already talking to.
-func TestARoleWithNoTiersFollowsTheConversation(t *testing.T) {
+// A ROLE WHOSE CLASS SHIPS WITH A MODEL ANSWERS ON IT, and a role whose class was
+// CLEARED falls to the conversation — [roles.Resolve]'s floor, and not a failure.
+//
+// The first half is new since the crew landed: all four classes arrive pointed at
+// a model (internal/config's crew.go), because a whole crew following the
+// conversation means the most expensive model in the build answering the cheapest
+// questions in it. The second half is the answer a person can still give.
+func TestARoleFollowsItsShippedClassAndThenTheConversation(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
+	toProviders(t, a)
 
-	for _, role := range []roles.Role{roles.RolePlanner, roles.RoleWorker} {
-		if got := roleItem(t, a, role).model; got != a.model {
-			t.Errorf("%s resolves to %q, want the conversation's own %q", role, got, a.model)
+	for _, c := range []struct {
+		role roles.Role
+		want string
+	}{
+		{roles.RolePlanner, config.DefaultMastermindModel},
+		{roles.RoleWorker, config.DefaultLowModel},
+		{roles.RoleCompaction, config.DefaultHighModel},
+		{roles.RoleReflex, config.DefaultReflexModel},
+	} {
+		if got := roleItem(t, a, c.role).model; got != c.want {
+			t.Errorf("%s resolves to %q, want its class's shipped %q", c.role, got, c.want)
 		}
+	}
+
+	// Cleared on purpose is an ANSWER: the class follows the conversation and so
+	// does every role on it.
+	setRow(t, a, config.KeyTierMastermindModel, "")
+	if got := roleItem(t, a, roles.RolePlanner).model; got != a.model {
+		t.Errorf("with the mastermind cleared, the planner resolves to %q, want %q", got, a.model)
 	}
 }
 
@@ -173,10 +241,10 @@ func TestPinningARoleWritesThePinnedRolesRow(t *testing.T) {
 	if pinned.pin != chosen || pinned.model != chosen {
 		t.Fatalf("the row reads pin %q model %q, want %q for both", pinned.pin, pinned.model, chosen)
 	}
-	// The pin is on the row, and only that row: its tier is untouched, so
-	// everything else under "careful work" still answers there.
-	if got := roleItem(t, a, roles.RoleCompaction).model; got != "test/careful-model" {
-		t.Fatalf("pinning the planner moved the compaction to %q", got)
+	// The pin is on the row, and only that row: its class is untouched, so the
+	// designer beside it still answers on the mastermind model.
+	if got := roleItem(t, a, roles.RoleDesigner).model; got != "test/thinking-model" {
+		t.Fatalf("pinning the planner moved the designer to %q", got)
 	}
 
 	cursorToRole(t, a, roles.RolePlanner)
@@ -196,7 +264,7 @@ func TestPinningARoleWritesThePinnedRolesRow(t *testing.T) {
 	if rowText(row) != "" {
 		t.Fatalf("del left the row reading %q", row.Value())
 	}
-	if unpinned := roleItem(t, a, roles.RolePlanner); unpinned.pin != "" || unpinned.model != "test/careful-model" {
+	if unpinned := roleItem(t, a, roles.RolePlanner); unpinned.pin != "" || unpinned.model != "test/thinking-model" {
 		t.Fatalf("the unpinned planner reads pin %q model %q", unpinned.pin, unpinned.model)
 	}
 }
@@ -243,7 +311,7 @@ func TestSearchingFindsARoleByName(t *testing.T) {
 	}
 
 	found := roleItem(t, a, roles.RolePlanner)
-	if found.model != "test/careful-model" {
+	if found.model != "test/thinking-model" {
 		t.Fatalf("the found row resolves to %q", found.model)
 	}
 	if _, ok := a.sheet.current(); !ok {
