@@ -111,6 +111,9 @@ const (
 	// own housekeeping, and this is the only statement of an outcome a person
 	// delegated ten minutes of work to get.
 	entryDone
+	// entryHarness is one harness design, live and settled, in the transcript.
+	// The same entry changes shape so progress never leaves a dead note behind.
+	entryHarness
 	// entryConnect is ONE SIGN-IN (connect.go): the browser opening, the link
 	// under it for whoever is not sitting at that browser, and the one line it
 	// settles into.
@@ -273,7 +276,8 @@ type entry struct {
 	// else (taskdone.go). Like [entry.card] it is a POINTER, because the card
 	// carries the one piece of state a person can change about it — whether its
 	// full context is showing — and the row and that state must never disagree.
-	done *taskDone
+	done    *taskDone
+	harness *harnessCard
 
 	// The row cache. built distinguishes "no rows yet" from "renders to no
 	// rows", which an empty slice cannot.
@@ -2810,6 +2814,8 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		// the same gesture answering the same question about the same object one
 		// state later (taskdone.go).
 		a.toggleDoneAt(r.entry)
+	case hitHarness:
+		a.harnessCardPress(r.entry, x)
 	case hitChoice, hitModel:
 		// Both rows were offered this click before the body and took it (see
 		// [app.choicePress]); reaching here means the pointer was in a column no
@@ -2958,7 +2964,7 @@ func (a *app) selectTool(delta int) bool {
 		// make the room a mouse-only place. The walk is also what gives ctrl+o
 		// something to act on: the key a card names is spent on the SELECTED card
 		// (taskdone.go's [app.openDone]).
-		if r.hit != hitTool && r.hit != hitTask && r.hit != hitDone {
+		if r.hit != hitTool && r.hit != hitTask && r.hit != hitDone && r.hit != hitHarness {
 			continue
 		}
 		if len(calls) == 0 || calls[len(calls)-1] != r.entry {

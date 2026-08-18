@@ -159,17 +159,32 @@ Two consequences worth knowing:
 - The model may look before it builds: it can list what is saved and tell you a harness that
   already does this exists, which is usually the better answer.
 
-**The turn does not wait, and the design becomes a task.** The design starts beside the
-conversation and the surface notes it in one line:
+**The turn does not wait, and the design becomes a task.** Its live design block appears
+in the ordinary chat feed. Reasoning rolls through its last three lines; partial JSON is
+translated into small facts such as `naming it: research-helper` and `4 steps so far`.
+After ten seconds without a delta it keeps ticking with `thinking · 52s` rather than
+leaving a blank screen. Attempts, draft checking, and truncated-versus-malformed retries
+are named there too.
 
 ```
-harness · designing with claude-opus-5 · triage flaky tests — task 4
+⠿ harness · designing · attempt 1/3
 ```
 
 That number is the whole of what a design gained: it is a real task, with a row on the
 roster, a room you can walk into, a journal, and a stop. See *The design's own task and
 room* below. The design runs inside a **30-minute** window that covers both the model work
 **and** the wait for your answer to the card.
+
+When the page lands, that same live block collapses in place into a fully visible
+architecture card in the feed. It shows the name and purpose, a deterministic ASCII
+diagram of the steps and edges, one plain-language structure point per step, the
+verification law, and allowed tools. Wide layouts draw a linear chain horizontally;
+phone layouts stack it vertically. The card scrolls with the conversation and is never a
+popup or sheet.
+
+The focused card takes `enter` to save, `e` to put an improvement request in the message
+box, and `esc` to drop it. The same three actions are clickable. The card remains in the
+feed after the choice as `saved as <name> v1`, `improvement requested`, or `dropped`.
 
 Under the hood: one design pass, then up to **2 retries** in which a refused design is
 shown the exact sentence it failed on and asked to fix it, then **one** review pass that
@@ -216,8 +231,9 @@ The row's state word is replaced by what the design is actually doing, and it mo
 | `awaiting your look` | the page is written and the save-or-discard card is up |
 | — | it lands, and the settle card says what became of it |
 
-**There is no progress bar and no percentage.** Neither model call reports how far along it
-is, so no number is invented.
+**There is no progress bar and no percentage.** The live block reports only observed
+reasoning, received bytes, recovered names and step counts, elapsed stall time, and the
+real retry phase; it never invents completion.
 
 The settle card is the ordinary one a task lands with, and its outcome line is one of:
 
