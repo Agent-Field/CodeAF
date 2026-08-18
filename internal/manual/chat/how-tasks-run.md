@@ -38,10 +38,18 @@ document engine. It inherits **neither the transcript nor the memory file** — 
 its whole world. If it runs on a **different model from the conversation**, its context
 window is set to 0 rather than reusing a window measured for another model.
 
-**Five tools are missing from its belt:** `propose_task` (a task does not propose more
-work), `watch`, `tasks`, and the settings pair `settings` and `change_setting` — a node
-works in a worktree with nobody watching it, and a permanent change to your machine that
-no transcript ever showed you is exactly what a node must not be able to make.
+**Three tools are missing from its belt:** `watch`, and the settings pair `settings` and
+`change_setting` — a task works in a worktree with nobody watching it, so a watch's news
+would arrive in a conversation it does not have, and a permanent change to your machine
+that no transcript ever showed you is exactly what a task must not be able to make.
+
+**It keeps `propose_task` and `tasks`, as a pair.** A task may hand pieces of its own work
+out when its brief holds parts that do not need each other — at most **5**, and a piece it
+hands out cannot hand out more — and `tasks` is how it then watches them. Inside a task
+both are scoped to its own family: `tasks` lists the pieces it handed out and refuses an id
+outside them with `No task "…" among the pieces you handed out.` Its brief is still its
+whole world; the project's history is not its to read. The tasks page has the whole of it,
+under *When a task splits its own work*.
 
 Approval inside a task is allow-everything, with the critical floor still under it (things
 like `rm -rf /`, `mkfs`, redirecting onto a raw disk, shutdown). When a call hits that

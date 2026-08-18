@@ -76,21 +76,29 @@ import (
 // touch mail. THE APPEND IS THE ONLY MUTATION THIS SLICE EVER SEES, and
 // connect.go states why nothing may move.
 //
-// A TASK NODE'S BELT IS THIS BELT MINUS FIVE. propose_task comes off because
-// there is nobody in a node's world to show a proposal to — decomposition, when
-// it lands, is edges added to the graph by the conversation that owns it, not a
-// second proposal machine inside a worktree — and watch comes off because its
-// whole delivery mechanism is a note arriving in a conversation, and a node has
-// none. tasks comes off for the contract's own reason: a node's brief is its
-// whole world, and a node reading the project's task history is a node reading
-// the conversation it was deliberately given none of. The two settings hands
-// come off for the sharpest version of the same reason: a node runs in a
-// worktree with nobody watching it, so a settings change made there is a
-// permanent change to the person's machine that no transcript ever showed them
-// — and the node was briefed to do one piece of work, not to retune the product
-// around it. The three above come off
-// with them, by their own gates rather than by a check here: a node is handed no
-// registry, no harness runner and no orchestrate runner, so a node can neither
+// A TASK NODE'S BELT IS THIS BELT MINUS THREE, AND MINUS FIVE AT THE FLOOR OF
+// THE TREE. watch comes off because its whole delivery mechanism is a note
+// arriving in a conversation, and a node has none. The two settings hands come
+// off for the sharpest reason there is: a node runs in a worktree with nobody
+// watching it, so a settings change made there is a permanent change to the
+// person's machine that no transcript ever showed them — and the node was
+// briefed to do one piece of work, not to retune the product around it.
+//
+// propose_task and tasks STAY, and they are one pair. A node may hand parts of
+// its own work further out (task.go's fan-out law) — the proposals join the
+// conversation's own graph under the node that made them, so there is no second
+// machine and no second id space — and `tasks` is how the node then watches
+// those children, reads what they found and says a line into one that is going
+// the wrong way. In a node that tool is SCOPED TO ITS OWN FAMILY
+// (tools_tasks.go): a node's brief is still its whole world, and a node
+// rummaging through the project's history would be a node reading the
+// conversation it was deliberately given none of.
+//
+// Both come off together at the floor, by [Agent.mayProposeTask] rather than by
+// a check here: a node standing on taskDepthLimit can have no children, so it is
+// given neither the verb nor the window onto them. The three big machines come
+// off by their own gates for the same kind of reason: a node is handed no
+// registry, no harness runner and no orchestrate runner, so it can neither
 // commission a procedure nor start a run of its own. Everything else a node has
 // is exactly what the conversation has, which is the point: it is the same
 // worker, working somewhere quieter.
@@ -106,7 +114,12 @@ func (a *Agent) belt() []bare.Tool {
 	}
 	tools = append(tools, a.documentTool(), a.jobsTool(), a.manualTool())
 	if !a.config.InTask {
-		tools = append(tools, a.watchTool(), a.tasksTool())
+		tools = append(tools, a.watchTool())
+	}
+	// tasks rides with propose_task: it is the window onto the work this agent
+	// can hand out, so an agent that cannot hand any out is given neither.
+	if a.mayProposeTask() {
+		tools = append(tools, a.tasksTool())
 	}
 	tools = append(tools, a.taskTools()...)
 	tools = append(tools, a.harnessTools()...)

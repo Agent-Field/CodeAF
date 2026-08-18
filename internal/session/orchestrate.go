@@ -785,7 +785,11 @@ func (e *orchestrateExec) Exec(ctx context.Context, node orchestrate.Node, deps 
 	}
 	defer child.Close()
 
-	changed, stopped, runErr := runTaskChild(ctx, child, orchestrateBrief(node, deps, shared),
+	// A RUN'S NODE IS NOT A TASK GRAPH NODE. It has no row in the tasker to hand
+	// a lane back to and no sub-tasks to wait for — this executor is the
+	// scheduler for its own graph — so the holder is nil and runTaskChild's
+	// waiting half never runs (task_run.go).
+	changed, stopped, runErr := runTaskChild(ctx, child, nil, orchestrateBrief(node, deps, shared),
 		dir, taskLimits{maxSteps: orchestrateMaxSteps, noProgress: orchestrateNoProgress}, nil, io.Discard)
 
 	cost := e.spend(child)

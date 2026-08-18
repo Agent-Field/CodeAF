@@ -129,6 +129,26 @@ const (
 	// the same call, and it fires in a minute rather than in thirty.
 	taskMaxSteps   = 200
 	taskNoProgress = 6
+
+	// taskDepthLimit is how many tasks deep the tree may go, and taskFanLimit is
+	// how many sub-tasks ONE node may hand out. They are the two bounds on
+	// decomposition (task.go's fan-out law), and each answers a different way
+	// for it to run away.
+	//
+	// TWO LEVELS, because the third has nothing left to divide. The conversation
+	// grooms a piece of work; that node finds two or three genuinely independent
+	// parts inside it and hands them out; a part of a part is a step, and a step
+	// belongs in the hands that are already holding it. A deeper tree also costs
+	// what nobody sees: every level adds a worktree, an audit and a wait, so the
+	// third level is where fanning out starts being slower than working.
+	//
+	// FIVE CHILDREN, because a node handing out more than that has not
+	// decomposed its work, it has shredded it — and it still has to read every
+	// one of their reports and make one deliverable out of them. The cap is a
+	// REFUSAL the model can read (task.go), not a queue: the answer to "I have
+	// eight parts" is to do some of them, and the refusal says so.
+	taskDepthLimit = 2
+	taskFanLimit   = 5
 )
 
 // The three things a node can be waiting on, spelled once. They are the
@@ -197,6 +217,25 @@ type TaskNode struct {
 	graph     *TaskGraph
 	id        uint64
 	dependsOn []uint64
+	// parent is the node this one was handed out BY, and 0 for the work a
+	// conversation proposed. It is the family seam [TaskNotice.Parent] carries,
+	// and it is not an edge: dependsOn says what must finish first, this says
+	// who asked (task_contract.go states the difference).
+	parent uint64
+	// depth is how many tasks deep this node sits — 1 for the conversation's
+	// own, 2 for a sub-task — and it is what taskDepthLimit bounds.
+	depth int
+	// owner is the agent that RUNS this node: the conversation for a root, and
+	// the PARENT NODE'S OWN AGENT for a sub-task. That is the whole of the
+	// nesting: a sub-task's worktree branches off its parent's worktree and
+	// merges back into it, so a family's work comes home as one branch rather
+	// than as five racing for the person's.
+	//
+	// It is nil for a node rehydrated from a checkpoint — the agent that owned
+	// it died with the process — and for every scripted graph in the tests. Both
+	// fall back to the conversation, which is the only agent still there to run
+	// anything (see [TaskGraph.runner]).
+	owner *Agent
 	// done is closed when the node reaches a final state. It is how a waiter —
 	// a test, a future join — waits without polling.
 	done chan struct{}
@@ -255,6 +294,11 @@ type TaskNode struct {
 	// It is written by the frontier and cleared the moment the node starts or
 	// fails, so a landed node never carries a reason it is waiting.
 	held string
+	// parked says this node has HANDED ITS LANE BACK while it waits on the work
+	// it handed out (see [TaskGraph.park]). It is true only between a parent's
+	// turn ending and its next report arriving, and it is what keeps a family
+	// from deadlocking against the person's own task.parallel cap.
+	parked bool
 	// paced counts this node's calls that are parked on the provider's pacing
 	// (internal/provider's patience.go). A count and not a flag because a node
 	// is an agent and an agent can have more than one call out — a repair round
@@ -356,6 +400,12 @@ type TaskGraph struct {
 	// and the wrong one for a test suite.
 	pollEvery time.Duration
 
+	// claims counts the sub-task slots taken per parent by proposals that have
+	// been made and not yet admitted (see [TaskGraph.claimChild]). It is empty
+	// at rest — every claim is released by the admission it authorized or by the
+	// proposal that came to nothing.
+	claims map[uint64]int
+
 	// run executes one node to completion and calls [TaskGraph.complete] when
 	// it lands. It is a field rather than a method so the graph can be exercised
 	// with a scripted runner — the scheduling law (readiness, the cap, brief
@@ -371,6 +421,11 @@ type TaskGraph struct {
 	// for a graph with no journal behind it — a session with no file, and every
 	// scripted graph in the tests (task_store.go).
 	store *taskStore
+
+	// home is the CONVERSATION whose graph this is: the agent that reports every
+	// node to the surface, and the agent that runs the ones nobody else owns. It
+	// is nil in the scripted graphs the tests build, which replace `run` whole.
+	home *Agent
 }
 
 func newTaskGraph() *TaskGraph {
@@ -382,9 +437,17 @@ func newTaskGraph() *TaskGraph {
 func (a *Agent) graph() *TaskGraph {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// A NODE JOINS THE CONVERSATION'S GRAPH; IT DOES NOT KEEP ONE OF ITS OWN.
+	// One id space, one roster, one cap, one checkpoint — a second graph inside
+	// a worktree would be work the person cannot see, cannot stop and cannot
+	// find afterwards (session.go's Config.tasker).
+	if a.config.tasker != nil {
+		return a.config.tasker
+	}
 	if a.tasks == nil {
 		graph := newTaskGraph()
-		graph.run = a.runTaskNode
+		graph.home = a
+		graph.run = graph.runOwned
 		graph.report = a.reportTaskNode
 		// The two ceilings, resolved once for the life of the session. They are
 		// read off the config rather than off the settings file for the reason
@@ -399,6 +462,35 @@ func (a *Agent) graph() *TaskGraph {
 		a.tasks = graph
 	}
 	return a.tasks
+}
+
+// tasker is the graph this agent's questions about tasks are answered from,
+// WITHOUT BUILDING ONE: its own where it has one, and the conversation's where
+// this agent is a node inside it. Nil is the honest answer for a session that
+// never groomed a task, and every door in this package reads it that way.
+func (a *Agent) tasker() *TaskGraph {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.config.tasker != nil {
+		return a.config.tasker
+	}
+	return a.tasks
+}
+
+// runOwned starts one node on the agent that OWNS it (see [TaskNode.owner]): the
+// conversation for the work it proposed itself, the parent node's own agent for
+// a sub-task. It is the graph's `run` hook, so the scheduler stays one function
+// that knows nothing about who is doing the work.
+func (g *TaskGraph) runOwned(node *TaskNode) { g.runner(node).runTaskNode(node) }
+
+// runner is that agent, with the conversation as the fallback. owner is written
+// once, before the node is ever scheduled, and never again — so it is read here
+// without the graph's lock, exactly as `id` is.
+func (g *TaskGraph) runner(node *TaskNode) *Agent {
+	if node.owner != nil {
+		return node.owner
+	}
+	return g.home
 }
 
 // reserve takes the next id. It is separate from admission because a PROPOSAL
@@ -419,6 +511,9 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		graph:     g,
 		id:        id,
 		dependsOn: spec.dependsOn,
+		parent:    spec.parent,
+		depth:     spec.depth,
+		owner:     spec.owner,
 		done:      make(chan struct{}),
 		spec:      spec,
 		state:     TaskQueued,
@@ -429,6 +524,9 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	}
 	g.nodes[id] = node
 	g.order = append(g.order, id)
+	// The node counts itself from here, so the slot its proposal was holding
+	// goes back (see [TaskGraph.claimChild]).
+	g.releaseChildLocked(spec.parent)
 	g.mu.Unlock()
 
 	// ADMISSION IS A TRANSITION, and it is checkpointed before the frontier turns
@@ -437,6 +535,78 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 	g.checkpoint()
 	g.runFrontier()
 	return node.stateNow()
+}
+
+// claimChild takes one of a parent node's fan-out slots, or says in the model's
+// own terms why there is none left. An empty answer is a slot held.
+//
+// THE CLAIM IS TAKEN BEFORE THE PROPOSAL IS ASKED ABOUT and released by the
+// admission it authorized ([TaskGraph.admit]) or by the proposal that came to
+// nothing ([TaskGraph.releaseChild]). Counting admitted nodes alone would not
+// hold, because a tool batch runs its calls CONCURRENTLY (loop.go) — and a
+// model fanning out emits its propose_task calls in one batch, which is exactly
+// the moment this cap is for. Every one of them would read the same count and
+// every one of them would pass.
+func (g *TaskGraph) claimChild(parent uint64) string {
+	if parent == 0 {
+		// The conversation's own work is not fanned out and is not capped: the
+		// person is watching every proposal go by and can stop any of them.
+		return ""
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	held := g.claims[parent]
+	for _, node := range g.nodes {
+		if node != nil && node.parent == parent {
+			held++
+		}
+	}
+	if held >= taskFanLimit {
+		return fmt.Sprintf("no: you have already handed out %d pieces of this work, which is as many as one task may. Do the rest in your own hands, or finish these and report what is left undone.", taskFanLimit)
+	}
+	if g.claims == nil {
+		g.claims = make(map[uint64]int, 1)
+	}
+	g.claims[parent]++
+	return ""
+}
+
+// releaseChild hands a slot back for a proposal that never became a node — the
+// person declined it, the turn ended under the question, the model named a
+// model this install does not have.
+func (g *TaskGraph) releaseChild(parent uint64) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.releaseChildLocked(parent)
+}
+
+func (g *TaskGraph) releaseChildLocked(parent uint64) {
+	if parent == 0 || g.claims == nil {
+		return
+	}
+	if g.claims[parent] <= 1 {
+		delete(g.claims, parent)
+		return
+	}
+	g.claims[parent]--
+}
+
+// children are the nodes one parent handed out, in admission order. It is what
+// the parent's own agent reads with the `tasks` tool (tools_tasks.go) and what
+// its runner waits on before it lets the node land (see [runTaskChild]).
+func (g *TaskGraph) children(parent uint64) []*TaskNode {
+	if g == nil || parent == 0 {
+		return nil
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	var kids []*TaskNode
+	for _, id := range g.order {
+		if node := g.nodes[id]; node != nil && node.parent == parent {
+			kids = append(kids, node)
+		}
+	}
+	return kids
 }
 
 // runFrontier is the scheduler, and it is the whole of it.
@@ -645,7 +815,12 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 		// have finished work ageing on disk.
 		node.elapsed = time.Since(node.started)
 	}
-	if g.running > 0 {
+	// A PARKED NODE HAS ALREADY GIVEN ITS LANE BACK ([TaskGraph.park]), so
+	// landing it must not give the same one back twice — that would be this node
+	// quietly raising the cap for everybody else.
+	if node.parked {
+		node.parked = false
+	} else if g.running > 0 {
 		g.running--
 	}
 	g.mu.Unlock()
@@ -1082,6 +1257,7 @@ func (n *TaskNode) notice() TaskNotice {
 		ID:        n.id,
 		Title:     n.spec.title,
 		DependsOn: n.dependsOn,
+		Parent:    n.parent,
 		State:     n.state,
 		Elapsed:   elapsed,
 		Report:    n.report,
@@ -1141,12 +1317,35 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
-	a.enqueueSteering(taskNote(notice, taskURI(node.journalPath())))
+	a.deliverTaskNote(node, taskNote(notice, taskURI(node.journalPath())))
 	// SAID ONCE, ACROSS LIVES. The checkpoint records that this node's completion
 	// has been announced, so a session resumed from it restores the node as
 	// history instead of telling the model that finished work has just landed
 	// (task_store.go).
 	node.markNoted()
+}
+
+// deliverTaskNote hands one landed node's news to WHOEVER ASKED FOR THE WORK:
+// the conversation for a task it proposed itself, and the PARENT NODE'S OWN
+// AGENT for a sub-task, whose model is the one that has to fold the piece back
+// into the whole and is the only reader that can.
+//
+// The conversation is the fallback and not a second delivery. A parent that has
+// already landed — stopped, or out of time, with a child still finishing — has
+// no agent left to read anything, and news with nowhere to go belongs in front
+// of the person rather than nowhere. Sending it to both would tell the person's
+// model that work it never commissioned has just finished.
+func (a *Agent) deliverTaskNote(node *TaskNode, note string) {
+	reader := a
+	if node.parent != 0 {
+		if parent := node.graph.node(node.parent); parent != nil {
+			if child := parent.openRoom().speaker(); child != nil && child.takesNotes() {
+				reader = child
+			}
+		}
+	}
+	reader.enqueueSteering(note)
+	reader.postTaskNews()
 }
 
 // taskNote is what the model reads when a node lands: the outcome, the report,
@@ -1308,7 +1507,86 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 	}
 
 	state := a.workTaskNode(ctx, node, listed)
+	// NOTHING OUTLIVES THE WORK IT WAS HANDED OUT FOR. A sub-task's worktree is
+	// branched off its parent's and merges back into it, so a child still
+	// running after its parent has landed is work with nowhere to come home to.
+	// In the ordinary case there is nothing here to stop — the runner above does
+	// not let the node land while a child of it is still going (see
+	// [runTaskChild]) — and this is what answers the parent that was killed or
+	// ran out of time.
+	node.graph.stopChildren(node.id)
 	node.graph.complete(node, state)
+}
+
+// park hands a RUNNING node's lane back while it waits on the work it handed
+// out; unpark takes one again when it goes back to work.
+//
+// A PARENT WAITING ON ITS PIECES IS NOT USING A LANE. It has stopped talking,
+// its worker is idle, and the only thing that can move it is one of its own
+// children finishing. Holding the lane anyway is a deadlock on any machine where
+// the person set task.parallel: the parent holds the slot, the child it is
+// waiting for can never have one, and both sit there until the parent's deadline
+// collects them an hour later.
+//
+// Unpark takes the lane back unconditionally, cap or no cap. The cap governs
+// STARTS ([TaskGraph.runFrontier]) and this node started long ago; making a
+// parent queue for permission to read a report it has already been handed would
+// be the same deadlock with more steps in it.
+func (g *TaskGraph) park(node *TaskNode) {
+	g.mu.Lock()
+	if node.parked || node.state != TaskRunning {
+		g.mu.Unlock()
+		return
+	}
+	node.parked = true
+	if g.running > 0 {
+		g.running--
+	}
+	g.mu.Unlock()
+	// The lane is free NOW, and the piece this parent is waiting for is very
+	// often the node that was queued behind it.
+	g.runFrontier()
+}
+
+func (g *TaskGraph) unpark(node *TaskNode) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !node.parked {
+		return
+	}
+	node.parked = false
+	g.running++
+}
+
+// park and unpark reach [TaskGraph.park] from the node, and they are NIL-SAFE on
+// purpose: [runTaskChild] also drives workers that have no row in this graph at
+// all — an adaptive run's node, whose scheduler is its own — and "hand my lane
+// back" is simply not something those have to do.
+func (n *TaskNode) park() {
+	if n == nil {
+		return
+	}
+	n.graph.park(n)
+}
+
+func (n *TaskNode) unpark() {
+	if n == nil {
+		return
+	}
+	n.graph.unpark(n)
+}
+
+// stopChildren ends every unsettled node one parent handed out, exactly as
+// `jobs kill` ends one ([TaskGraph.stop]): the child's branch is kept, its
+// report says a person's stop did it, and its dependents cascade. A child that
+// has already settled is left alone.
+func (g *TaskGraph) stopChildren(parent uint64) {
+	for _, kid := range g.children(parent) {
+		if kid.stateNow().settled() {
+			continue
+		}
+		_, _ = g.stop(kid.id)
+	}
 }
 
 // workTaskNode does the work and reports the state the node ended in. Every
@@ -1348,7 +1626,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	room := node.openRoom()
 	room.speaking(child)
 
-	changed, stopped, runErr := runTaskChild(ctx, child, node.instruction(), tree.dir, node.limits(), room, log)
+	changed, stopped, runErr := runTaskChild(ctx, child, node, node.instruction(), tree.dir, node.limits(), room, log)
 	report := taskReport(child)
 
 	switch {
@@ -1485,7 +1763,7 @@ func abortedMerge(tree taskTree) string {
 // partial work kept, its branch intact — and the caller is told WHICH threshold
 // fired rather than being left to infer it from a context error that has three
 // possible causes.
-func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, limits taskLimits, room *taskRoom, log io.Writer) ([]string, string, error) {
+func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction, dir string, limits taskLimits, room *taskRoom, log io.Writer) ([]string, string, error) {
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 
@@ -1503,51 +1781,134 @@ func runTaskChild(ctx context.Context, child *Agent, instruction, dir string, li
 		steps    int
 		idle     int
 	)
-	for event := range events {
-		room.publish(event)
-		switch event.Kind {
-		case EventToolBegin:
-			fmt.Fprintf(log, "· %s\n", event.Hint)
-		case EventToolEnd, EventToolFailed:
-			steps++
-			path, wrote := changedPath(event, dir)
-			switch {
-			case wrote && event.Kind == EventToolEnd:
-				idle = 0
-				if !seen[path] {
-					seen[path] = true
-					changed = append(changed, path)
+	drain := func(events <-chan Event) {
+		for event := range events {
+			room.publish(event)
+			switch event.Kind {
+			case EventToolBegin:
+				fmt.Fprintf(log, "· %s\n", event.Hint)
+			case EventToolEnd, EventToolFailed:
+				steps++
+				path, wrote := changedPath(event, dir)
+				switch {
+				case wrote && event.Kind == EventToolEnd:
+					idle = 0
+					if !seen[path] {
+						seen[path] = true
+						changed = append(changed, path)
+					}
+				case taughtSomething(event, seenInfo, dir, &lastDirt):
+					// EXPLORATION IS PROGRESS. A research node may never write
+					// until its final words; a build node may spend its first
+					// dozen steps reading. What stops a node is SPINNING — the
+					// same target again, no new dirt — not the absence of an
+					// edit (PMCoder's "reads saturated", not "reads happened").
+					idle = 0
+				default:
+					idle++
 				}
-			case taughtSomething(event, seenInfo, dir, &lastDirt):
-				// EXPLORATION IS PROGRESS. A research node may never write
-				// until its final words; a build node may spend its first
-				// dozen steps reading. What stops a node is SPINNING — the
-				// same target again, no new dirt — not the absence of an
-				// edit (PMCoder's "reads saturated", not "reads happened").
-				idle = 0
-			default:
-				idle++
+				// Named once. The loop keeps draining after the cancel — the child
+				// is still finishing its batch and closing its stream — and a second
+				// threshold tripping on the way out must not rewrite the reason the
+				// node was stopped.
+				if stopped != "" {
+					continue
+				}
+				switch {
+				case steps >= limits.maxSteps:
+					stopped = fmt.Sprintf("stopped: %d steps and no finish", limits.maxSteps)
+					stop()
+				case idle >= limits.noProgress:
+					stopped = fmt.Sprintf("stopped: %d steps without progress", limits.noProgress)
+					stop()
+				}
+			case EventError:
+				failure = event.Err
 			}
-			// Named once. The loop keeps draining after the cancel — the child
-			// is still finishing its batch and closing its stream — and a second
-			// threshold tripping on the way out must not rewrite the reason the
-			// node was stopped.
-			if stopped != "" {
-				continue
-			}
-			switch {
-			case steps >= limits.maxSteps:
-				stopped = fmt.Sprintf("stopped: %d steps and no finish", limits.maxSteps)
-				stop()
-			case idle >= limits.noProgress:
-				stopped = fmt.Sprintf("stopped: %d steps without progress", limits.noProgress)
-				stop()
-			}
-		case EventError:
-			failure = event.Err
 		}
 	}
+	drain(events)
+
+	// ── THE NODE THAT HANDED PART OF ITS WORK OUT ──
+	//
+	// A parent's turn ends the moment it has nothing left to say, and its
+	// sub-tasks are still working: the belt hands the id back immediately and
+	// tells it not to wait (task.go). So the turn ending is NOT the node ending.
+	// The runner holds it open, and every report that lands re-enters the model
+	// with it — the same turn a landing starts in a conversation, started here
+	// by the one who is reading it ([Agent.resumeTurn]).
+	//
+	// THE WAIT IS ON THE REPORT AND NEVER ON THE STATE. A node is settled a
+	// moment before its news is handed over ([Agent.deliverTaskNote]), and a
+	// waiter watching the state would stop waiting inside that moment and land
+	// its parent on a report nobody read.
+	//
+	// A tripped threshold or a cut context ends this exactly as it ends the
+	// turn above: the children are stopped with the parent (see
+	// [TaskGraph.stopChildren]) and their branches are kept.
+	for stopped == "" && runCtx.Err() == nil {
+		// The generation is taken BEFORE the question, so a report landing
+		// between the two closes the channel this select is about to wait on.
+		news := child.taskNewsWait()
+		owed, working := child.taskNewsOwed(), child.childrenOutstanding()
+		if owed == 0 && !working {
+			break
+		}
+		if owed == 0 {
+			// The lane goes back for exactly as long as the wait lasts
+			// ([TaskGraph.park]).
+			node.park()
+			select {
+			case <-news:
+			case <-runCtx.Done():
+			}
+			node.unpark()
+			continue
+		}
+		next := child.resumeTurn(runCtx)
+		if next == nil {
+			break
+		}
+		drain(next)
+	}
 	return changed, stopped, failure
+}
+
+// childrenOutstanding reports whether any sub-task THIS agent handed out has
+// yet to deliver its report. It is false in a conversation and in a node that
+// never fanned out: neither has a family to be outstanding.
+func (a *Agent) childrenOutstanding() bool {
+	a.mu.Lock()
+	graph, parent := a.config.tasker, a.config.taskID
+	a.mu.Unlock()
+	for _, kid := range graph.children(parent) {
+		if !kid.reported() {
+			return true
+		}
+	}
+	return false
+}
+
+// familyDepth is how many tasks deep this node sits, and 1 is the floor: a node
+// admitted before depth was recorded — a checkpoint from an older build, a
+// scripted graph in a test — is the conversation's own work, which is what
+// depth 1 means.
+func (n *TaskNode) familyDepth() int {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	if n.depth < 1 {
+		return 1
+	}
+	return n.depth
+}
+
+// reported says this node's news has been handed to whoever asked for the work.
+// It is `noted` read from outside, and it is deliberately a fact about the
+// DELIVERY rather than about the state (see the wait in [runTaskChild]).
+func (n *TaskNode) reported() bool {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.noted
 }
 
 // knowledgeTools are the hands on a node's belt (tools.go's [Agent.belt]) that
@@ -1750,7 +2111,14 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 
 // newTaskAgent builds the agent that IS the node: the same package, the same
 // loop, the same hands — a different workspace, a different journal, and a belt
-// with two tools left off (tools.go).
+// with what a node has nobody to use on left off (tools.go).
+//
+// THE FAMILY RIDES ONLY ON THE RUN THAT IS THE NODE. The conversation's graph,
+// this node's id and its depth are what let the node hand part of its own work
+// further out (task.go), and they are handed to the worker with no suffix and
+// to nothing else: a repair round is closing a gap somebody named in work that
+// is already done, and a round that fanned out would be spawning children with
+// no runner left to wait for them.
 //
 // It inherits the conversation's client, window and capabilities because a node
 // is the same worker doing the same job somewhere quieter. It inherits neither
@@ -1763,6 +2131,14 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 // under the graph's lock and this package takes one lock at a time.
 func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent, error) {
 	model := node.model()
+	var (
+		tasker *TaskGraph
+		nodeID uint64
+		depth  int
+	)
+	if suffix == "" {
+		tasker, nodeID, depth = node.graph, node.id, node.familyDepth()
+	}
 	a.mu.Lock()
 	parent := a.config
 	if strings.TrimSpace(model) == "" {
@@ -1837,6 +2213,14 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent,
 		// quieter, must not silently drop to a different engine — or to a paid
 		// one — because it is running in a worktree.
 		DocumentEngine: parent.DocumentEngine,
+		// The person's check on task work travels with the work: a sub-task is
+		// judged by whatever they said should judge a task, and a family that
+		// audited by a different rule than the conversation would be the setting
+		// meaning two things (task_audit.go).
+		TaskAudit: parent.TaskAudit,
+		tasker:    tasker,
+		taskID:    nodeID,
+		taskDepth: depth,
 	}, client)
 }
 

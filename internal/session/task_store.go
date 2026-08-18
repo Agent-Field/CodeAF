@@ -143,6 +143,19 @@ type taskRecord struct {
 	Acceptance string   `json:"acceptance"`
 	DependsOn  []uint64 `json:"depends_on,omitempty"`
 
+	// Parent and Depth are the node's FAMILY: which node handed this work out
+	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
+	// work). They are absent in every checkpoint written before a task could
+	// hand work out, which resumes as the flat graph it was.
+	//
+	// WHAT DOES NOT SURVIVE IS THE OWNER. The agent that ran the parent died
+	// with the process, so a resumed sub-task is run and reported by the
+	// conversation — the only agent left to do either — and its report reaches
+	// the person rather than a model that no longer exists (task_run.go's
+	// [TaskGraph.runner], [Agent.deliverTaskNote]).
+	Parent uint64 `json:"parent,omitempty"`
+	Depth  int    `json:"depth,omitempty"`
+
 	State  TaskState `json:"state"`
 	Report string    `json:"report,omitempty"`
 
@@ -314,6 +327,8 @@ func (n *TaskNode) recordLocked() taskRecord {
 		Brief:       n.spec.brief,
 		Acceptance:  n.spec.acceptance,
 		DependsOn:   dependsOn,
+		Parent:      n.parent,
+		Depth:       n.depth,
 		State:       n.state,
 		Report:      n.report,
 		Claim:       n.claim,
@@ -403,6 +418,13 @@ func decodeTasks(content []byte) (taskDocument, error) {
 			if !seen[dependency] {
 				return taskDocument{}, fmt.Errorf("node %d waits on %d, which is not in this graph", record.ID, dependency)
 			}
+		}
+		// A PARENT IS AN EARLIER NODE, by the same argument the edges are
+		// validated by: ids are minted in admission order, so a node cannot have
+		// been handed out by work that did not exist yet, and a family pointing
+		// forwards is a tree a roster would draw as a cycle.
+		if record.Parent != 0 && !seen[record.Parent] {
+			return taskDocument{}, fmt.Errorf("node %d was handed out by %d, which is not in this graph", record.ID, record.Parent)
 		}
 		seen[record.ID] = true
 		if record.ID > highest {
@@ -619,8 +641,12 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		graph:     graph,
 		id:        record.ID,
 		dependsOn: record.DependsOn,
+		parent:    record.Parent,
+		depth:     record.Depth,
 		done:      make(chan struct{}),
 		spec: taskSpec{
+			parent:     record.Parent,
+			depth:      record.Depth,
 			title:      record.Title,
 			summary:    record.Summary,
 			brief:      record.Brief,

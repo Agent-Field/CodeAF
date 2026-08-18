@@ -365,8 +365,9 @@ func (a *Agent) TaskIndex() []TaskIndexEntry {
 // about the index must not be the thing that gives them a scheduler.
 func (a *Agent) liveTaskRows() []TaskIndexEntry {
 	a.mu.Lock()
-	graph, session := a.tasks, a.sessionID()
+	session := a.sessionID()
 	a.mu.Unlock()
+	graph := a.tasker()
 	if graph == nil {
 		return nil
 	}
