@@ -10,6 +10,93 @@ import (
 	"testing"
 )
 
+func TestMemoryProvenanceNamesItsSourceSessionAndOldEventsRemainUnknown(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "provenance.db"))
+	if _, err := graph.OpenSession("session-source", "Memory work", "chat"); err != nil {
+		t.Fatal(err)
+	}
+	written := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Has provenance", Text: "This came from a named conversation.", SourceSession: "session-source"})
+	sessionID, title, at, err := graph.MemoryProvenance(written.ID)
+	if err != nil || sessionID != "session-source" || title != "Memory work" || at.IsZero() {
+		t.Fatalf("MemoryProvenance = (%q, %q, %v, %v)", sessionID, title, at, err)
+	}
+	legacy := memoryPayload{ID: "mem_legacy", Type: MemoryFact, Scope: MemoryScopeUser,
+		Title: "Legacy", Text: "An old payload has no source fields."}
+	tx, err := graph.db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = appendEvent(tx, legacy.ID, EventMemoryAdd, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	sessionID, title, at, err = graph.MemoryProvenance(legacy.ID)
+	if err != nil || sessionID != "" || title != "" || !at.IsZero() {
+		t.Fatalf("legacy provenance = (%q, %q, %v, %v), want unknown", sessionID, title, at, err)
+	}
+}
+
+func TestRestoreMemoryReturnsOnlyForgottenMemoryAndSurvivesRebuild(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "restore.db"))
+	forgotten := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser, Title: "Restorable", Text: "The amber key opens the archive."})
+	active := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser, Title: "Active", Text: "This remains active."})
+	superseded := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser, Title: "Old", Text: "This is replaced."})
+	if _, err := graph.SupersedeMemory(superseded.ID, Memory{Type: MemoryFact, Scope: MemoryScopeUser, Title: "New", Text: "This is the replacement."}); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.ForgetMemory(forgotten.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := graph.RestoreMemory(forgotten.ID); err != nil {
+		t.Fatal(err)
+	}
+	if hits, err := graph.SearchMemories("amber archive", 5); err != nil || len(hits) != 1 || hits[0].ID != forgotten.ID {
+		t.Fatalf("search restored = (%v, %v)", memoryIDs(hits), err)
+	}
+	if index, err := graph.MemoryIndex(0); err != nil || !containsMemoryStub(index, forgotten.ID) {
+		t.Fatalf("index lacks restored memory: (%+v, %v)", index, err)
+	}
+	for name, id := range map[string]string{"active": active.ID, "superseded": superseded.ID, "unknown": "mem_unknown"} {
+		if err := graph.RestoreMemory(id); !errors.Is(err, ErrInvalid) {
+			t.Errorf("restore %s = %v, want ErrInvalid", name, err)
+		}
+	}
+	if err := graph.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if record, ok, err := graph.MemoryRecord(forgotten.ID); err != nil || !ok || record.Status != MemoryActive {
+		t.Fatalf("restored after rebuild = (%+v, %v, %v)", record, ok, err)
+	}
+}
+
+func TestMemoryIndexRanksOlderUsedMemoryAheadOfNewerUnusedMemory(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "rank.db"))
+	older := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser, Title: "Older", Text: "Used before."})
+	newer := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser, Title: "Newer", Text: "Never used."})
+	if err := graph.BumpMemoryUse([]string{older.ID}); err != nil {
+		t.Fatal(err)
+	}
+	index, err := graph.MemoryIndex(0)
+	if err != nil || len(index) < 2 || index[0].ID != older.ID || index[1].ID != newer.ID {
+		t.Fatalf("ranked index = (%+v, %v)", index, err)
+	}
+}
+
+func containsMemoryStub(index []MemoryStub, id string) bool {
+	for _, stub := range index {
+		if stub.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 // A memory that has been added must be reachable by every route the router
 // has: by words, by scope, by the index it reads every turn, and by id.
 func TestAddedMemoryIsReachableByEveryRoute(t *testing.T) {
@@ -82,7 +169,7 @@ func TestAddedMemoryIsReachableByEveryRoute(t *testing.T) {
 		{ID: pricing.ID, Title: pricing.Title, Type: MemoryDecision, Scope: MemoryScopeProject},
 	}
 	if !reflect.DeepEqual(index, want) {
-		t.Fatalf("MemoryIndex = %+v, want %+v", index, want)
+		t.Fatalf("MemoryIndex among equally unused memories = %+v, want recency order %+v", index, want)
 	}
 
 	// The router asks in the order it decided on, and gets that order back.
@@ -322,7 +409,7 @@ func TestRebuildReproducesMemoriesAndTheirIndex(t *testing.T) {
 }
 
 // Use counts are telemetry, not journaled truth: they move on retrieval and
-// Rebuild deliberately resets them, so nothing downstream may rank on them.
+// Rebuild deliberately resets them, including the index ranking they inform.
 func TestMemoryUseCountsAreTelemetryRebuildResets(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "uses.db"))
 
