@@ -100,8 +100,23 @@ type sessionEntry struct {
 	Note bool `json:"note,omitempty"`
 
 	// Compaction fields.
+	//
+	// Summary is LEGACY ONLY: it is the prose a summarizer wrote for every
+	// marker up to the pass that stopped calling one, and it is still read so a
+	// session compacted last week resumes as itself. Nothing writes it now.
 	Summary      string `json:"summary,omitempty"`
 	TokensBefore int    `json:"tokensBefore,omitempty"`
+
+	// Stubbed and Folded are what the current pass did (loop.go): how many tool
+	// results became pointers to their own bytes, and how many assistant
+	// messages went into one marker line.
+	//
+	// They are the RECORD and never the instruction. A modern marker rebuilds
+	// nothing by itself — the pass re-journals the whole rebuilt window behind
+	// it, so replay reads the stubs and the fold marker as ordinary message
+	// lines and reconstructs the transcript verbatim rather than from counts.
+	Stubbed int `json:"stubbed,omitempty"`
+	Folded  int `json:"folded,omitempty"`
 
 	// Dropped is how many messages a rewind removed (rewind.go). It is a COUNT
 	// rather than a cut position because the file is append-only and positions
@@ -614,10 +629,10 @@ func replaySessionFile(path string) (replayedSession, error) {
 			// is the same session, still called what it was called.
 			rebuilt := compactionMessages(entry)
 			messages = append(messages[:0], rebuilt...)
-			// The frames message is the FIRST of them when there is one, which
-			// is the order [compactionMessages] builds and the only place these
-			// references belong: the summary beside it is words.
-			if len(entry.Parts) > 0 {
+			// The frames message is the FIRST of them when an old marker carried
+			// pages, which is the order [compactionMessages] builds and the only
+			// place those references belong: the summary beside it is words.
+			if len(entry.Parts) > 0 && len(rebuilt) > 0 {
 				rememberParts(images, rebuilt[0], entry.Parts)
 			}
 		case "rewind":
@@ -686,35 +701,58 @@ func replayedMessage(entry sessionEntry) ai.Message {
 }
 
 // compactionMessages rebuilds one compaction marker into the context prefix it
-// left behind. There are three shapes and this is the one place that knows them:
+// left behind.
 //
-//   - SUMMARY ONLY — every marker written before frames existed, and every pass
-//     that summarized. One note, exactly as it always was.
-//   - REFERENCES ONLY — a frames pass whose pages held the whole prefix. The
-//     note and the pages, in the order [compactionPass.message] assembled them,
-//     each page re-read only while its digest still matches ([journalPart]).
-//   - BOTH — a frames pass that overflowed its page cap. Pages first, then the
-//     summary of what ran past them, which is the order the conversation
-//     happened in.
+// A MARKER WRITTEN BY THE CURRENT PASS LEAVES NOTHING BEHIND, and answers nil.
+// Its pass rearranged the transcript rather than replacing it — stubs, a fold
+// marker, the verbatim tail — and re-journaled the whole rebuilt window on the
+// far side of the line, so the window comes back as ordinary message lines and
+// this has nothing to add (loop.go's [Agent.compact]).
 //
-// A marker with neither still answers a note, empty summary and all. It is what
-// this always did with a summary that came back blank, and a replay that dropped
-// the marker instead would return a session holding the prefix the marker exists
-// to say is gone.
+// THE OTHER TWO SHAPES ARE LEGACY and are read for one reason: a session
+// compacted by an older aforge has to still resume as itself.
+//
+//   - SUMMARY — the prose a summarizer wrote. One note, exactly as it was.
+//   - PAGES — the frames rung's images, each re-read only while its digest still
+//     matches ([journalPart]), with the summary of any overflow after them.
+//
+// Neither is written any more.
 func compactionMessages(entry sessionEntry) []ai.Message {
+	summary := strings.TrimSpace(entry.Summary)
 	if len(entry.Parts) == 0 {
-		return []ai.Message{textMessage("user", compactionNote(entry.Summary))}
+		if summary == "" {
+			return nil
+		}
+		return []ai.Message{textMessage("user", legacyCompactionNote(entry.Summary))}
 	}
 	content := make([]ai.ContentPart, 0, len(entry.Parts)+1)
-	content = append(content, ai.ContentPart{Type: "text", Text: framesNote})
+	content = append(content, ai.ContentPart{Type: "text", Text: legacyFramesNote})
 	for _, part := range entry.Parts {
 		content = append(content, part.contentPart())
 	}
 	messages := []ai.Message{{Role: "user", Content: content}}
-	if summary := strings.TrimSpace(entry.Summary); summary != "" {
-		messages = append(messages, textMessage("user", compactionNote(entry.Summary)))
+	if summary != "" {
+		messages = append(messages, textMessage("user", legacyCompactionNote(entry.Summary)))
 	}
 	return messages
+}
+
+// legacyFramesNote is what a pre-phase-3 frames marker put in front of its page
+// images. It is a string a resume has to be able to reproduce, so it lives here
+// beside the only reader left of it.
+const legacyFramesNote = "[context compacted] Everything before this point was rendered verbatim to page " +
+	"images rather than summarized — the transcript is kept as images below, in order, and " +
+	"nothing in it was shortened or rephrased. It is not something either of us said, and any " +
+	"question inside it is still open."
+
+// legacyCompactionNote wraps an old marker's summary as the user-role message it
+// was written as. User role because it was context handed TO the model rather
+// than something it produced, and marked in plain words because a model that
+// mistakes a summary for a transcript will answer questions inside it.
+func legacyCompactionNote(summary string) string {
+	return "[context compacted] Everything before this point was summarized to fit the " +
+		"context window. This note is the record of that conversation — it is not something " +
+		"either of us said, and any question inside it is still open.\n\n" + summary
 }
 
 // replayedSession is what one pass over the journal recovered: the live
@@ -820,6 +858,43 @@ func (s *sessionFile) appendMessage(message ai.Message, refs ...journalPart) {
 	s.append(message, false, refs)
 }
 
+// messageRef names the most recent journal line carrying message. Compaction
+// uses it when the store is off, so a fold marker points at an exact range in
+// the append-only record instead of merely saying that a record exists.
+func (s *sessionFile) messageRef(message ai.Message) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.file == nil {
+		return ""
+	}
+	content, err := os.ReadFile(s.file.Name())
+	if err != nil {
+		return ""
+	}
+	want := chatRefKey(message)
+	lineNumber := 0
+	found := 0
+	for _, line := range bytes.Split(content, []byte{'\n'}) {
+		lineNumber++
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var entry sessionEntry
+		if json.Unmarshal(line, &entry) != nil || entry.Type != "message" {
+			continue
+		}
+		candidate := ai.Message{Role: entry.Role, ToolCallID: entry.ToolCallID,
+			Content: []ai.ContentPart{{Type: "text", Text: entry.Content}}, ToolCalls: entry.ToolCalls}
+		if chatRefKey(candidate) == want {
+			found = lineNumber
+		}
+	}
+	if found == 0 {
+		return ""
+	}
+	return fmt.Sprintf("journal:line-%d", found)
+}
+
 // appendNote is appendMessage for a line the SESSION wrote (see
 // [sessionEntry.Note]). It is a separate door rather than a flag on the common
 // one because exactly one caller has the answer — [Agent.recordUserLocked],
@@ -871,38 +946,36 @@ func (s *sessionFile) append(message ai.Message, note bool, refs []journalPart) 
 	})
 }
 
-// appendCompaction journals one pass: the marker, then the kept tail again.
+// appendCompaction journals one pass: the marker, then the whole rebuilt window
+// again.
 //
 // The re-journal is what makes a compacted session resumable as itself. Replay
 // discards everything before the marker — that is the marker's meaning — so
-// the verbatim tail the pass deliberately kept has to sit on the far side of
-// it, or a resume comes back holding the summary alone and the live session's
-// last few exchanges are gone. Re-writing it costs one pass over at most
-// keepRecentTokens; the alternative, a line count inside the marker, makes the
-// file's meaning depend on arithmetic no reader of the file can check.
+// whatever the pass decided the window should be has to sit on the far side of
+// it, or a resume comes back holding a prefix the pass deliberately edited.
 //
-// A FRAMES PASS journals its pages the way a person's attached picture is
-// journaled: references on the marker line, never the bytes (frames.go). The
-// marker then carries either a summary, or references, or — the overflow case —
-// both, and [compactionMessages] is the one reader of all three shapes.
-func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, kept []ai.Message) {
-	refs := pass.refs()
-	// Indexed as it is written, for the reason [sessionFile.append] indexes: a
-	// surface asking what a picture in the live transcript was a picture OF has
-	// to be answered in THIS process, long before anybody resumes the file.
-	if len(refs) > 0 {
-		s.rememberParts(pass.message(), refs)
-	}
+// IT IS THE WHOLE WINDOW AND NOT THE TAIL, which is the change this pass makes
+// to the file's meaning. The old pass only ever edited by DELETION: everything
+// above the cut became one summary, so the tail was the only thing whose text
+// the marker had to carry forward. The new pass edits in place — a tool result
+// becomes a stub, a run of assistant work becomes one line — and those edits sit
+// above the marker among lines the file already holds in their original form. So
+// the window is written out entire, and the lines above the marker stay exactly
+// what they were: the RECORD of what happened, which is what the journal is for.
+//
+// The counts ride the marker so a surface reading the file back can say what the
+// pass did without re-deriving it. Nothing rebuilds from them.
+func (s *sessionFile) appendCompaction(pass compactionPass, tokensBefore int, window []ai.Message) {
 	s.writeLine(sessionEntry{
 		Type:         "compaction",
-		Summary:      pass.summary,
 		TokensBefore: tokensBefore,
-		Parts:        refs,
+		Stubbed:      pass.stubbed,
+		Folded:       pass.folded,
 		Timestamp:    stamp(),
 	})
-	for _, message := range kept {
-		// A KEPT LINE IS RE-JOURNALED AS WHAT IT WAS. The tail is written again on
-		// the far side of the marker (above), and a note re-written without its
+	for _, message := range window {
+		// A KEPT LINE IS RE-JOURNALED AS WHAT IT WAS. The window is written again
+		// on the far side of the marker (above), and a note re-written without its
 		// mark would come back from the next resume as the person's words — this
 		// pass is the one place a message is journaled twice.
 		if s.isNote(message) {

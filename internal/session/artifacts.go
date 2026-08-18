@@ -7,7 +7,7 @@
 //
 // It is GLOBAL where tasks.jsonl is per-project, because the question it
 // answers — "where is that report from Tuesday" — is a cross-project question.
-// Droppings (logs, stubs, frames) are never recorded here; a row in this file
+// Droppings (logs, stubs) are never recorded here; a row in this file
 // is a claim that a person might want the path back.
 package session
 

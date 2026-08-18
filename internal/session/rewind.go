@@ -92,7 +92,7 @@ type RewindPoint struct {
 // anybody said, and cutting to it would drop a whole resumed conversation while
 // leaving the summary that replaced its beginning. Both exclusions are the ones
 // [Agent.lastTurnStartLocked] already makes; the note is recognized by the
-// marker compactionNote writes, not by guessing at its wording.
+// marker [foldMarker] writes, not by guessing at its wording.
 //
 // A STEP POINT IS ANY OTHER MESSAGE BOUNDARY: after an assistant reply, after a
 // tool result. These are the cuts inside a turn, for a person who wants to keep
@@ -290,7 +290,7 @@ func abs(value int) int {
 // note is context handed TO the model rather than something anybody said, and
 // cutting there would drop a whole resumed conversation while leaving the
 // summary that replaced its beginning. It is recognized by the marker
-// compactionNote writes, not by guessing at its wording.
+// [foldMarker] writes, not by guessing at its wording.
 //
 // A background job's completion line (jobs.go) rides the user role too and is
 // NOT skipped: it is indistinguishable from typed text without inventing a
@@ -313,9 +313,15 @@ func (a *Agent) lastTurnStartLocked() (int, bool) {
 	return 0, false
 }
 
-// isCompactionNote reports whether a user-role message is the summary this
-// package injected rather than something that was said. It matches the marker
-// compactionNote writes (loop.go), which is a string this package controls.
+// isCompactionNote reports whether a user-role message is one THIS PACKAGE
+// injected rather than something that was said.
+//
+// Two markers answer yes, and both are strings this package controls rather than
+// wordings anybody guessed at: the fold marker the current pass writes
+// ([foldMarker]), and the "[context compacted]" note an older aforge's summary
+// arrived under, which a resumed session can still be holding (sessionfile.go's
+// [legacyCompactionNote]).
 func isCompactionNote(text string) bool {
-	return strings.HasPrefix(text, "[context compacted]")
+	return strings.HasPrefix(text, foldMarkerPrefix) ||
+		strings.HasPrefix(text, "[context compacted]")
 }

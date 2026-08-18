@@ -1284,156 +1284,242 @@ var ErrNothingToCompact = errors.New("session: nothing to compact")
 // gets an error for the same reason: it did nothing, and it should say so.
 var ErrCompactionInFlight = errors.New("session: a compaction pass is already running")
 
-// compact runs one pass: cut the transcript at a message boundary, PRESERVE the
-// discarded prefix — as page images when the model can read them, as a summary
-// otherwise (frames.go) — and rebuild as system + that + kept tail. It reports
-// whether the transcript changed.
-func (a *Agent) compact(ctx context.Context, hub *eventHub) (bool, error) {
+// compactionPass is what one pass did, and it is the ONLY thing a pass produces:
+// two counts and, when something was folded, the marker line that stands in its
+// place. There is no summary because there is no summarizer — a pass is a
+// rearrangement of text this session already has (see the file header comment on
+// [Agent.compact]).
+type compactionPass struct {
+	stubbed int
+	folded  int
+	marker  string
+	// stored says the full record went somewhere a later session can still read
+	// it — the store's thread (chatlog.go). It is what makes the difference
+	// between the two announce lines honest.
+	stored bool
+}
+
+func (p compactionPass) empty() bool { return p.stubbed == 0 && p.folded == 0 }
+
+// compact runs one pass, and IT MAKES NO MODEL CALL AT ALL.
+//
+// The old pass paid a summarizer to write prose about the prefix it was about to
+// throw away. It was expensive at the worst moment, it was lossy by
+// construction, and the loss was unrecoverable because the transcript the prose
+// was written from went with it. What replaces it is two mechanical passes over
+// the same messages, in order of how cheap the content is to give up:
+//
+//  1. THE STUB PASS. A tool result the model has already used is a pointer to
+//     its own bytes (stub.go). Nothing is described, nothing is decided, and the
+//     bytes stay readable — in the store's thread, or in this session's logs/.
+//
+//  2. THE FOLD. If the transcript is still over threshold, the oldest ASSISTANT
+//     work is replaced by one marker line naming how much went and where it can
+//     be read. User messages are never folded: a person's own words are the one
+//     thing in a transcript that nothing else can reconstruct.
+//
+// What the model is handed instead of a summary is the STATE CARD, which rides
+// in the system prompt on every turn and is maintained incrementally by the
+// post-turn extractor (card.go). So the cost of knowing what the conversation is
+// about is amortized across the turns that produced it, and the compaction
+// itself is free.
+//
+// The lock is held across the WHOLE pass, which the old one could not do because
+// it was waiting on a provider. That is not a cost, it is the removal of one:
+// the mid-batch race the old pass had to repair — a tool result landing after
+// the cut while the summary was being written — cannot happen when nothing is
+// awaited.
+func (a *Agent) compact(_ context.Context, hub *eventHub) (bool, error) {
 	a.mu.Lock()
 	if a.compacting {
 		a.mu.Unlock()
 		return false, ErrCompactionInFlight
 	}
-	cut := a.cutPointLocked()
-	if cut <= 1 {
-		// Everything fits in the keep-recent tail: there is no prefix to
-		// summarize, and summarizing the tail would discard the live context.
+	a.compacting = true
+	tokensBefore := a.estimateTokensLocked()
+
+	pass := compactionPass{stored: a.chatlog != nil}
+	pass.stubbed = a.stubOldOutputsLocked()
+	if a.estimateTokensLocked() > a.compactThreshold() {
+		pass.folded, pass.marker = a.foldLocked(pass.stored)
+	}
+	a.compacting = false
+
+	if pass.empty() {
+		// Nothing was old enough to stub and nothing was foldable: the whole
+		// transcript is the person's own words and the recent tail, which is
+		// what [ErrNothingToCompact] has always meant.
 		a.mu.Unlock()
 		return false, ErrNothingToCompact
 	}
-	tokensBefore := a.estimateTokensLocked()
-	discarded := make([]ai.Message, cut-1)
-	copy(discarded, a.messages[1:cut])
-	a.compacting = true
-	a.mu.Unlock()
 
-	if hub != nil {
-		hub.send(Event{
-			Kind: EventCompacting,
-			Hint: "compacting ~" + approxTokens(tokensBefore) + " tokens",
-		})
-	}
-
-	pass, err := a.compaction(ctx, discarded)
-
-	a.mu.Lock()
-	a.compacting = false
-	if err != nil || pass.empty() {
-		a.mu.Unlock()
-		if err == nil {
-			err = errors.New("session: summarizer returned nothing")
-		}
-		// The start event promised an end: a failed pass settles its row too,
-		// saying nothing changed — silence would leave "compacting" spinning
-		// over a turn that has already moved on.
-		if hub != nil {
-			hub.send(Event{Kind: EventCompacted, Hint: "compaction failed · context unchanged"})
-		}
-		return false, err
-	}
-	// The lock was released across the summary call, but the transcript is
-	// append-only and no second pass can have run, so anything recorded
-	// meanwhile sits AFTER cut and the index still names the same message.
-	kept := a.messages[cut:]
-	// Those late arrivals are the reason the tail is re-checked here rather
-	// than trusted from cutPointLocked. A pass that starts mid-batch — the
-	// surface's /compact, or an overflow retry — can cut above an assistant's
-	// tool_calls message and have that batch's results land after the cut while
-	// the summary is being written. A tool message with no call above it is a
-	// 400 on this request and on every request after it, so the kept tail drops
-	// its leading orphans; their call is inside the summary now.
-	for len(kept) > 0 && kept[0].Role == "tool" {
-		kept = kept[1:]
-	}
-	rebuilt := make([]ai.Message, 0, 4+len(kept))
-	rebuilt = append(rebuilt, a.messages[0])
-	// Pictures of the older half, then prose about whatever ran past the page
-	// cap: the two are in the order the conversation happened in, and a pass
-	// that took only one rung appends only one of them (see [compactionPass]).
-	if len(pass.frames) > 0 {
-		rebuilt = append(rebuilt, pass.message())
-	}
-	if strings.TrimSpace(pass.summary) != "" {
-		rebuilt = append(rebuilt, textMessage("user", compactionNote(pass.summary)))
-	}
-	// Working state survives the pass VERBATIM, after the summary and before
-	// the kept tail: the summary compresses the trajectory, and the state
-	// block is what the trajectory must never have to be re-read for. It is
-	// injected here and never routed through the summarizer — retrieval must
-	// not re-ingest its own output (state.go's §4 law).
-	if block := a.StateBlock(); block != "" {
-		rebuilt = append(rebuilt, textMessage("user", block))
-	}
-	rebuilt = append(rebuilt, kept...)
-	a.messages = rebuilt
 	// The provider's context figure described the request that is now gone.
 	// Zero sends the estimator back to the content until the next response.
 	a.contextTokens = 0
-	keptTokens := 0
-	for _, message := range kept {
-		keptTokens += messageBytes(message)
-	}
-	keptTokens /= bytesPerToken
+	tokensAfter := a.estimateTokensLocked()
+	// The whole rebuilt window is re-journaled behind the marker, not just the
+	// tail: a stub and a fold are edits to messages the file already holds ABOVE
+	// the marker, and replay discards everything above it. Writing the window is
+	// what makes [replaySessionFile] rebuild the identical transcript instead of
+	// a plausible one (sessionfile.go).
 	if a.file != nil {
-		a.file.appendCompaction(pass, tokensBefore, kept)
+		window := make([]ai.Message, len(a.messages)-1)
+		copy(window, a.messages[1:])
+		a.file.appendCompaction(pass, tokensBefore, window)
 	}
 	a.mu.Unlock()
 
 	if hub != nil {
-		hub.send(Event{
-			Kind: EventCompacted,
-			Hint: fmt.Sprintf("compacted from %s tokens%s, kept last %s",
-				approxTokens(tokensBefore), framesHint(len(pass.frames)), approxTokens(keptTokens)),
-		})
+		hub.send(Event{Kind: EventCompacted, Hint: compactionHint(pass, tokensBefore, tokensAfter)})
 	}
 	return true, nil
 }
 
-// framesHint is what the compaction row says about the rung it took, and it says
-// nothing at all when the pass summarized: the row a person has read a hundred
-// times should not grow a clause to announce that nothing changed.
-func framesHint(pages int) string {
-	switch {
-	case pages == 0:
-		return ""
-	case pages == 1:
-		return " to 1 page image"
-	default:
-		return fmt.Sprintf(" to %d page images", pages)
+// compactionHint is the one dim line the turn after a pass shows, and every
+// clause in it is a real count:
+//
+//	compacted · stubbed 14 tool results · folded 31 messages · nothing lost — full record in the store
+//
+// A clause whose count is zero is not printed at all — the emptiness law. The
+// last clause tells the truth about which floor this session actually has: the
+// store's thread when there is one, and otherwise the session journal, which
+// keeps every original line above the marker and is a smaller promise honestly
+// made.
+func compactionHint(pass compactionPass, before, after int) string {
+	clauses := []string{"compacted"}
+	if pass.stubbed > 0 {
+		clauses = append(clauses, fmt.Sprintf("stubbed %d tool result%s", pass.stubbed, plural(pass.stubbed)))
 	}
+	if pass.folded > 0 {
+		clauses = append(clauses, fmt.Sprintf("folded %d message%s", pass.folded, plural(pass.folded)))
+	}
+	if before > after {
+		clauses = append(clauses, fmt.Sprintf("%s → %s tokens", approxTokens(before), approxTokens(after)))
+	}
+	if pass.stored {
+		clauses = append(clauses, "nothing lost — full record in the store")
+	} else {
+		clauses = append(clauses, "full record in the session journal")
+	}
+	return strings.Join(clauses, " · ")
 }
 
-// compaction is the RUNG SELECTION: the one place that decides how a discarded
-// prefix is preserved.
+// foldLocked replaces the oldest assistant work with one marker line, and
+// reports how many messages went and what the marker says.
 //
-// Frames first when this session's model can read them (frames.go's
-// [Agent.framesChosen]), the summary otherwise — and the summary again when the
-// frames pass could not run for a reason that has nothing to do with the model:
-// no workspace, an unwritable directory, a prefix that rendered to nothing. That
-// fallback is silent by design. A person asked for their context to fit; which
-// rung it fitted on is the machine's problem, and the compaction row already
-// says which one ran.
+// THREE THINGS ARE NEVER FOLDED, and each for its own reason:
 //
-// The decision is made per pass and remembered nowhere. A session that switched
-// to a model with no vision summarizes its next pass while the pages of its last
-// one sit above in the transcript, which is exactly right: those pages were sent
-// to the model that could read them, and a compaction is a decision about the
-// context that is about to be sent, not a mode the session is in.
-func (a *Agent) compaction(ctx context.Context, discarded []ai.Message) (compactionPass, error) {
-	a.mu.Lock()
-	model := a.model
-	a.mu.Unlock()
+//   - message[0], the system prompt, which carries the memory block and the
+//     state card and is rebuilt per turn anyway;
+//   - USER MESSAGES, anywhere, because a person's words are the one part of a
+//     transcript that cannot be reconstructed from anything else — a question
+//     they asked and never got answered has to still be in front of the model;
+//   - the verbatim tail below [Agent.cutPointLocked], which is the work in hand.
+//
+// An assistant message and the tool results answering it go TOGETHER, always. A
+// tool result whose call was folded away is an orphan every provider rejects
+// with a 400 — on this request and on every request after it, because the
+// transcript is append-only — so the walk moves in whole batches and stops on a
+// batch boundary.
+func (a *Agent) foldLocked(stored bool) (int, string) {
+	limit := a.cutPointLocked()
+	target := a.compactThreshold() * bytesPerToken
+	total := 0
+	for _, message := range a.messages {
+		total += messageBytes(message)
+	}
 
-	if a.framesChosen(ctx, model) {
-		if pass, ran, err := a.framesPass(ctx, discarded, a.Title()); ran {
-			return pass, err
+	folded := make(map[int]bool, 16)
+	first, last := -1, -1
+	for index := 1; index < limit && total > target; {
+		if a.messages[index].Role == "user" {
+			index++
+			continue
 		}
+		batch := index + 1
+		for batch < limit && a.messages[batch].Role == "tool" {
+			batch++
+		}
+		// A stub is useful only while its tool call remains in the window. Keep
+		// tool batches intact: folding the assistant call would either orphan the
+		// stub or fold the stub too, defeating the required stubs-plus-folds shape.
+		if len(a.messages[index].ToolCalls) > 0 {
+			keepsStub := false
+			for cursor := index + 1; cursor < batch; cursor++ {
+				if strings.HasPrefix(strings.TrimSpace(messageContentText(a.messages[cursor])), stubMarker) {
+					keepsStub = true
+					break
+				}
+			}
+			if keepsStub {
+				index = batch
+				continue
+			}
+		}
+		for cursor := index; cursor < batch; cursor++ {
+			folded[cursor] = true
+			total -= messageBytes(a.messages[cursor])
+			if first < 0 {
+				first = cursor
+			}
+			last = cursor
+		}
+		index = batch
 	}
-	summary, err := a.summarize(ctx, discarded)
-	if err != nil {
-		return compactionPass{}, err
+	if len(folded) == 0 {
+		return 0, ""
 	}
-	return compactionPass{summary: summary}, nil
+
+	from, to := a.chatlog.ref(a.messages[first]), a.chatlog.ref(a.messages[last])
+	if from == "" && a.file != nil {
+		from = a.file.messageRef(a.messages[first])
+	}
+	if to == "" && a.file != nil {
+		to = a.file.messageRef(a.messages[last])
+	}
+	marker := foldMarker(len(folded), from, to, stored)
+	rebuilt := make([]ai.Message, 0, len(a.messages)-len(folded)+1)
+	rebuilt = append(rebuilt, a.messages[0])
+	for index := 1; index < len(a.messages); index++ {
+		if index == first {
+			// The marker sits where the run it replaces sat, so the order the
+			// conversation happened in survives the fold.
+			rebuilt = append(rebuilt, textMessage("user", marker))
+		}
+		if folded[index] {
+			continue
+		}
+		rebuilt = append(rebuilt, a.messages[index])
+	}
+	a.messages = rebuilt
+	return len(folded), marker
+}
+
+// foldMarkerPrefix opens every fold marker. It is how [isCompactionNote]
+// recognizes a line this package injected rather than something anybody said —
+// a string this package controls, never a guess at wording.
+const foldMarkerPrefix = "[folded "
+
+// foldMarker is the line that stands in for what went. It names the count and
+// the range, because a person reading their own transcript back has to be able
+// to find the part that is not there any more.
+//
+//	[folded 31 messages · store:104..store:189]
+//	[folded 31 messages · full record in the session journal]
+func foldMarker(count int, from, to string, stored bool) string {
+	where := "full record in the session journal"
+	switch {
+	case from != "" && to != "" && from != to:
+		where = from + ".." + to
+	case from != "":
+		where = from
+	case stored:
+		// The store is on but these particular lines never reached it — a post
+		// that failed, or a message recorded before the log opened. Say the
+		// weaker true thing rather than the stronger one.
+		where = "full record in the session journal"
+	}
+	return fmt.Sprintf("%s%d message%s · %s]", foldMarkerPrefix, count, plural(count), where)
 }
 
 // cutPointLocked walks back from the tail until the keep-recent budget is
@@ -1521,100 +1607,8 @@ func approxTokens(tokens int) string {
 	return fmt.Sprintf("~%d", tokens)
 }
 
-// summarizationPrompt is omp's section contract. The three MUSTs at the end
-// are the ones a lossy summary most often breaks and a resumed session most
-// needs: a question the person asked and never got answered, an exact path,
-// and the text of an error.
-const summarizationPrompt = `You are compacting a working session's transcript so it can continue in a smaller context.
-
-Write a summary of the conversation below under exactly these sections:
-
-## Goal
-What the person is trying to achieve, in their terms.
-
-## Constraints & Preferences
-Rules, conventions, and preferences they stated or corrected.
-
-## Progress
-What has been done and what it produced. Cite files by path.
-
-## Key Decisions
-Choices made and the reason each was made, including options rejected.
-
-## Next Steps
-What remains, in order.
-
-## Critical Context
-Anything else without which the work cannot continue.
-
-MUST reproduce any question asked of the person and not yet answered, verbatim.
-MUST preserve exact file paths, symbol names, commands, and error text.
-MUST NOT invent, infer, or soften anything: this is a record, not a report.`
-
-// flattenTranscript flattens a run of messages to the plain text a compaction pass
-// works from: role headers, the text parts, and the tool calls as one line each.
-//
-// It is shared by BOTH rungs, and that is the point of it being a function. The
-// summarizer reads it and the renderer draws it, so what a page shows and what a
-// summary was written from are the same reading of the same messages — a bug in
-// one is a bug in the other rather than a difference between them.
-//
-// Image parts are left out for the reason they always were: what the summarizer
-// receives is text, and a data URL is megabytes of base64 that says nothing. A
-// page of frames inherits that — a screenshot the person attached is already
-// journaled by reference and is not re-photographed here.
-func flattenTranscript(messages []ai.Message) string {
-	var transcript strings.Builder
-	for _, message := range messages {
-		fmt.Fprintf(&transcript, "[%s]\n", message.Role)
-		for _, part := range message.Content {
-			if part.Type == "text" && part.Text != "" {
-				transcript.WriteString(part.Text)
-				transcript.WriteString("\n")
-			}
-		}
-		for _, call := range message.ToolCalls {
-			fmt.Fprintf(&transcript, "[tool call: %s(%s)]\n", call.Function.Name, call.Function.Arguments)
-		}
-		transcript.WriteString("\n")
-	}
-	return transcript.String()
-}
-
-// summarize makes the one summarization call for a run of messages.
-func (a *Agent) summarize(ctx context.Context, discarded []ai.Message) (string, error) {
-	return a.summarizeText(ctx, flattenTranscript(discarded))
-}
-
-// summarizeText is the call itself, over text somebody else flattened. The
-// frames rung reaches it directly with the lines its pages could not hold.
-func (a *Agent) summarizeText(ctx context.Context, transcript string) (string, error) {
-	a.mu.Lock()
-	model := a.model
-	a.mu.Unlock()
-
-	// WithoutStream: the summary is bookkeeping, not something anybody said.
-	// Left on the turn's context it would type itself into the room.
-	// No tools either — the summarizer's only job is to produce text.
-	response, err := a.client.CompleteWithMessages(
-		provider.WithoutStream(ctx),
-		[]ai.Message{
-			textMessage("system", summarizationPrompt),
-			textMessage("user", transcript),
-		},
-		ai.WithModel(model))
-	if err != nil {
-		return "", err
-	}
-	if response == nil {
-		return "", errors.New("session: summarizer returned no response")
-	}
-	a.addAuxiliaryUsage(response)
-	return strings.TrimSpace(response.Text()), nil
-}
-
-// addAuxiliaryUsage folds one auxiliary call — the compaction summary, the
-// session title (title.go) — into the SESSION total only.
+// addAuxiliaryUsage folds one auxiliary call — the session title (title.go), a
+// memory reflex (memory.go) — into the SESSION total only.
 //
 // The person pays for it, so it cannot be free; but no turn asked for it, and
 // charging it to the turn that happened to cross the threshold would make one
@@ -1639,14 +1633,4 @@ func (a *Agent) addAuxiliaryUsage(response *ai.Response) {
 	if usage.Cost != nil {
 		a.usage.CostUSD += *usage.Cost
 	}
-}
-
-// compactionNote wraps the summary as a user-role message. User role because
-// it is context handed TO the model rather than something it produced, and
-// marked in plain words because a model that mistakes a summary for a
-// transcript will answer questions inside it.
-func compactionNote(summary string) string {
-	return "[context compacted] Everything before this point was summarized to fit the " +
-		"context window. This note is the record of that conversation — it is not something " +
-		"either of us said, and any question inside it is still open.\n\n" + summary
 }

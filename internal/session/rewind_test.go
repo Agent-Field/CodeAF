@@ -192,7 +192,7 @@ func TestRewindSkipsTheCompactionNote(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	agent.mu.Lock()
 	agent.messages = append(agent.messages,
-		textMessage("user", compactionNote("## Goal\nship the thing")),
+		textMessage("user", legacyCompactionNote("## Goal\nship the thing")),
 		textMessage("user", "so where were we?"),
 		textMessage("assistant", "here is where we were"))
 	agent.mu.Unlock()
@@ -568,7 +568,7 @@ func TestRewindPointsSkipTheCompactionNote(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	agent.mu.Lock()
 	agent.messages = append(agent.messages,
-		textMessage("user", compactionNote("## Goal\nship the thing")),
+		textMessage("user", legacyCompactionNote("## Goal\nship the thing")),
 		textMessage("user", "so where were we?"),
 		textMessage("assistant", "here is where we were"))
 	agent.mu.Unlock()

@@ -400,12 +400,22 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 			return
 		}
 		found, err := reflex.Extract(ctx, client, userMsg, assistantMsg)
-		if err != nil || found.Mem == 0 {
+		if err != nil {
 			return
 		}
-		// The state delta is read by nothing yet. It is left on the result
-		// rather than plumbed half way, because a working-state feature that
-		// wrote somewhere nobody reads would look landed and be a no-op.
+		// THE STATE DELTA IS SETTLED FIRST, AND SEPARATELY FROM THE MEMORY GATE.
+		// Mem answers whether this exchange held anything worth carrying into
+		// ANOTHER session; the delta answers what it did to THIS one, and those
+		// are different questions — most exchanges that move the work forward
+		// are worth remembering nowhere. The card is what compaction now leans
+		// on, so a delta dropped because mem came back 0 would leave the pass
+		// with nothing to hand the model back (card.go).
+		if found.State != nil {
+			a.mergeStateCard(*found.State)
+		}
+		if found.Mem == 0 {
+			return
+		}
 		_, _ = a.applyCandidate(ctx, client, found)
 	}()
 }
@@ -766,19 +776,52 @@ func (a *Agent) memoryTools() []bare.Tool {
 	}}
 }
 
-// refreshSystemLocked rebuilds message[0] from the base prompt and the memory
-// block this turn was routed. It is called at construction — where the block is
-// empty, or is the one a task node opened with — and again once the router has
-// answered, at the start of every turn.
+// refreshSystemLocked rebuilds message[0] from the base prompt, the memory block
+// this turn was routed, and the state card. It is called at construction — where
+// the block is empty, or is the one a task node opened with — and again once the
+// router has answered, at the start of every turn.
 //
 // message[0] is REPLACED rather than appended to: a.system stays the base, so
-// every refresh renders base + current block instead of stacking one turn's
+// every refresh renders base + current blocks instead of stacking one turn's
 // memories on top of the last one's.
+//
+// THE CARD RIDES AFTER THE MEMORY BLOCK, and the order is the argument for it.
+// Memory is what is true across conversations; the card is what is true in this
+// one. A model reading downward meets the standing facts first and the live
+// situation last, which is the order it needs them in — and it is also the order
+// that keeps the prompt prefix stable for the cache, because the card is the
+// half that moves.
 func (a *Agent) refreshSystemLocked() {
 	if len(a.messages) == 0 {
 		return
 	}
-	a.messages[0] = textMessage("system", a.system+a.memoryText)
+	a.messages[0] = textMessage("system", a.system+a.memoryText+a.cardText)
+}
+
+// refreshCardLocked re-renders the state card into message[0]. It is the card's
+// own door onto [Agent.refreshSystemLocked], called by the post-turn pass once a
+// delta has actually changed something.
+func (a *Agent) refreshCardLocked(text string) {
+	a.cardText = text
+	a.refreshSystemLocked()
+}
+
+// mergeStateCard folds one exchange's delta into the card and, when something
+// actually moved, puts the new block in front of the model.
+//
+// It runs on the post-turn goroutine, which is why the two locks are taken in
+// this order and never together: the card's own lock covers the merge and the
+// file write, and a.mu is taken afterwards for the two assignments alone. The
+// card is readable from a compaction pass, from a resume and from here, and a
+// pass holding a.mu across a file write is the deadlock this package refuses.
+func (a *Agent) mergeStateCard(delta reflex.StateDelta) {
+	if !a.card().merge(delta) {
+		return
+	}
+	text := a.card().text()
+	a.mu.Lock()
+	a.refreshCardLocked(text)
+	a.mu.Unlock()
 }
 
 // waitForMemory gives every background memory pass a bounded moment to land,

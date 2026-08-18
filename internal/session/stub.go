@@ -60,13 +60,19 @@ const (
 
 	// stubMarker opens every stub line and is how an already-stubbed message is
 	// recognized, so a second pass never stubs a stub.
-	stubMarker = "[output stubbed"
+	stubMarker = "[tool"
+
+	// stubOutcomeRunes bounds the one line of the result a stub quotes. Eighty
+	// is a terminal's width: enough for a compiler's first error or a shell's
+	// exit line, short enough that a stub of a 200KB read is still one line.
+	stubOutcomeRunes = 80
 )
 
 // stubOldOutputs replaces the heavy tool results of older turns with pointers to
 // their own bytes. It is called at the end of a COMPLETED turn, before the
 // compaction check, so the check sees the transcript as it will actually be
-// sent.
+// sent — AND AGAIN as the first pass of a compaction (loop.go), which is why the
+// work itself lives in [Agent.stubOldOutputsLocked].
 //
 // A turn that was interrupted or that failed is left alone, and nothing is lost
 // by that: the pass is idempotent and the next completed turn catches up. The
@@ -88,14 +94,25 @@ const (
 // writes are a few hundred kilobytes to a local file at the quietest moment of
 // the turn, after the model has answered and before the next question exists.
 func (a *Agent) stubOldOutputs() {
-	workspace := strings.TrimSpace(a.config.Workspace)
-	if workspace == "" {
-		return
-	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.stubOldOutputsLocked()
+}
 
+// stubOldOutputsLocked is the pass itself, and it reports how many results it
+// replaced — the number the compaction row says out loud.
+//
+// THE POINTER IS THE STORE'S FIRST AND THE FILE'S SECOND. A result already
+// posted to the store's thread (chatlog.go) needs no second copy on disk, and
+// the store id is the better pointer besides: it survives a workspace being
+// deleted, which a dropping does not. A session with no store spills to its own
+// logs/ exactly as this always did, and a session that can do neither leaves the
+// result verbatim — a stub pointing at nothing is the one failure this may not
+// have.
+func (a *Agent) stubOldOutputsLocked() int {
+	workspace := strings.TrimSpace(a.config.Workspace)
 	cut := stubCut(a.messages)
+	stubbed := 0
 	// index 0 is the system message and is not a tool result; starting at 1 says
 	// so out loud rather than relying on the role check below.
 	for index := 1; index < cut; index++ {
@@ -107,9 +124,16 @@ func (a *Agent) stubOldOutputs() {
 		if len(text) <= stubMinBytes || strings.HasPrefix(strings.TrimSpace(text), stubMarker) {
 			continue
 		}
-		path, err := writeStub(a.config.Place, workspace, text)
-		if err != nil {
-			continue
+		pointer := a.chatlog.ref(message)
+		if pointer == "" {
+			if workspace == "" {
+				continue
+			}
+			path, err := writeStub(a.config.Place, workspace, text)
+			if err != nil {
+				continue
+			}
+			pointer = path
 		}
 		// A NEW content slice, never a write into the old one: a request already
 		// in flight holds a shallow copy of this message (see [Agent.snapshot]),
@@ -118,9 +142,31 @@ func (a *Agent) stubOldOutputs() {
 		a.messages[index] = ai.Message{
 			Role:       message.Role,
 			ToolCallID: message.ToolCallID,
-			Content:    []ai.ContentPart{{Type: "text", Text: stubLine(len(text), path)}},
+			Content: []ai.ContentPart{{Type: "text", Text: stubLine(
+				toolNameFor(a.messages, index), text, pointer)}},
+		}
+		stubbed++
+	}
+	return stubbed
+}
+
+// toolNameFor answers which tool produced the result at index, by finding the
+// call it answers in the assistant message above it. Empty is "tool": the name
+// is a courtesy to a reader, and a result whose call was already folded away is
+// still a result worth stubbing.
+func toolNameFor(messages []ai.Message, index int) string {
+	id := messages[index].ToolCallID
+	if id == "" {
+		return ""
+	}
+	for above := index - 1; above > 0; above-- {
+		for _, call := range messages[above].ToolCalls {
+			if call.ID == id {
+				return call.Function.Name
+			}
 		}
 	}
+	return ""
 }
 
 // stubCut is the index the last [stubKeepTurns] turns start at: everything
@@ -187,9 +233,38 @@ func stubPath(workspace, full string) string {
 	return filepath.ToSlash(relative)
 }
 
-// stubLine is what the model reads in place of the result. The byte count is
-// explicit for the reason [capOutput]'s is: a model deciding whether to read the
-// file back needs to know whether it is missing a paragraph or a megabyte.
-func stubLine(size int, path string) string {
-	return fmt.Sprintf("%s — %d bytes · full output: %s]", stubMarker, size, path)
+// stubLine is what the model reads in place of the result: which tool ran, what
+// it said in one line, and where the whole of it can be read back.
+//
+//	[tool: bash · go build ./... — 0 exit · 41208 bytes · full: store:412]
+//
+// All three parts are mechanical — a name lifted off the call, the result's own
+// first line, its own byte count — because THE POINT OF THIS PASS IS THAT NO
+// MODEL RUNS IN IT. The byte count is explicit for the reason [capOutput]'s is:
+// a model deciding whether to fetch the rest needs to know whether it is missing
+// a paragraph or a megabyte.
+func stubLine(tool, text, pointer string) string {
+	if strings.TrimSpace(tool) == "" {
+		tool = "tool"
+	}
+	return fmt.Sprintf("%s: %s · %s · full: %s]", stubMarker, tool, stubOutcome(text), pointer)
+}
+
+// stubOutcome is the one line a result is reduced to: its first non-empty line,
+// bounded, and its size.
+func stubOutcome(text string) string {
+	first := ""
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			first = line
+			break
+		}
+	}
+	if runes := []rune(first); len(runes) > stubOutcomeRunes {
+		first = strings.TrimSpace(string(runes[:stubOutcomeRunes])) + "…"
+	}
+	if first == "" {
+		return fmt.Sprintf("%d bytes", len(text))
+	}
+	return fmt.Sprintf("%s · %d bytes", first, len(text))
 }

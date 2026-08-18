@@ -91,8 +91,9 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// A memory-only session still has ONE lineage; it just has no name on
 		// disk to derive it from. The file-backed case overwrites this below
 		// with the header's id, which survives every resume.
-		cacheKey: sessionCacheKey(NewSessionID()),
+		id: NewSessionID(),
 	}
+	agent.cacheKey = sessionCacheKey(agent.id)
 	// Memory is built before the belt for the same reason the registry is: the
 	// belt carries `remember` only when there is a brain to write into, so the
 	// store has to exist before the tools are assembled (memory.go). The
@@ -147,6 +148,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// today, and a key that changed with the process would ask the router
 		// for a fresh replica and pay to write that whole prefix again.
 		if id := file.ID(); id != "" {
+			agent.id = id
 			agent.cacheKey = sessionCacheKey(id)
 		}
 		// The system message is rendered fresh rather than replayed: the date
@@ -167,11 +169,22 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// not reachable yet.
 		agent.scrubBlindImagePartsLocked(agent.model)
 	}
+	// THE THREAD IS THE SESSION'S OWN ID, and it is minted nowhere: the journal
+	// header already carries one that survives every resume, the folder is named
+	// by the same string, and a memory-only session has the one this constructor
+	// minted for its cache lineage. Deriving a second identity here would give
+	// one conversation two threads the day somebody resumed it (chatlog.go).
+	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.Place)
+	// And the state card is rendered into the first request before any turn has
+	// run: a resumed conversation's card is what it knew yesterday, and a model
+	// that had to wait for the first post-turn pass to be told would answer one
+	// question in the dark (card.go).
+	agent.cardText = agent.stateCardText()
+	agent.refreshSystemLocked()
 	// The client is wrapped LAST, once the lineage is known: the wrapper is the
 	// one place every request this agent makes passes through, so it is where
-	// /compact's extra instruction is spliced in (see [Agent.CompactWithFocus])
-	// and where the prompt-cache key is stamped. Wrapping earlier would have to
-	// read the key through the agent, which is a pointer cycle to save a line.
+	// the prompt-cache key is stamped. Wrapping earlier would have to read the
+	// key through the agent, which is a pointer cycle to save a line.
 	agent.client = sessionCompleter{
 		inner:    client,
 		cacheKey: agent.cacheKey,
@@ -202,6 +215,20 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	agent.opened = true
 	agent.mu.Unlock()
 	return agent, nil
+}
+
+// threadID is the identity this session posts its transcript under — the
+// journal header's id when there is a file, the folder's name when there is a
+// folder, and the one minted for the cache lineage otherwise.
+//
+// The cache key cannot answer it — that is a hash, deliberately, so nothing
+// about a session's id reaches a router's logs — so the id itself is held.
+// No lock: this runs inside the constructor, before the agent is reachable.
+func (a *Agent) threadID() string {
+	if id := strings.TrimSpace(a.id); id != "" {
+		return id
+	}
+	return a.config.Place.ID()
 }
 
 // sessionCacheKey names one session's prompt-cache lineage. It is derived
@@ -780,48 +807,26 @@ func (a *Agent) Compact(ctx context.Context) error {
 	return a.CompactWithFocus(ctx, "")
 }
 
-// CompactWithFocus is Compact with one extra instruction for the summarizer:
-// what this person wants the summary to be careful about, in their words. It is
-// the surface's `/compact keep the API decisions and the failing test` — the
-// summary is lossy by construction, and this is where somebody who knows what
-// matters says which part must survive.
+// CompactWithFocus is Compact, and THE FOCUS IS NOW IGNORED.
 //
-// The focus is appended to the summarization prompt as a final line rather than
-// replacing any of it: the section contract (loop.go) is what makes a summary
-// resumable, and a focus that could overwrite it would let one careless phrase
-// cost the next session its file paths. Empty focus is exactly Compact.
-func (a *Agent) CompactWithFocus(ctx context.Context, focus string) error {
-	_, err := a.compact(withCompactFocus(ctx, focus), nil)
+// It was one extra instruction for the summarizer — `/compact keep the API
+// decisions and the failing test`, a person saying which part of a lossy summary
+// had to survive. There is no summarizer any more (loop.go): a pass stubs tool
+// results and folds assistant work, and neither of those is a judgement anybody
+// can steer. The kept content is the same whatever is typed after /compact —
+// every user message, the recent tail, and the state card — so there is nothing
+// for a focus to protect that is not already protected.
+//
+// The door stays open with its signature unchanged because the surface calls it
+// (internal/tui3), and a person who types the old form gets the pass they asked
+// for rather than an error about a machine that used to exist.
+func (a *Agent) CompactWithFocus(ctx context.Context, _ string) error {
+	_, err := a.compact(ctx, nil)
 	return err
-}
-
-// compactFocusKey names the focus on the context. It travels on the context
-// rather than on the Agent because it belongs to ONE call: a field would have to
-// be set before the pass and cleared after it, and a second pass entering that
-// window — the automatic one, which nobody focused — would summarize under an
-// instruction the person gave to a different pass.
-type compactFocusKey struct{}
-
-func withCompactFocus(ctx context.Context, focus string) context.Context {
-	focus = strings.TrimSpace(focus)
-	if focus == "" {
-		return ctx
-	}
-	return context.WithValue(ctx, compactFocusKey{}, focus)
 }
 
 // sessionCompleter is the Completer every request goes through, and it does two
 // things to them.
-//
-// ── THE FOCUS ──
-//
-// It changes exactly one request: the summarization call made under a context
-// carrying a focus, whose system prompt gains a final "Additional focus:" line.
-// It is a wrapper rather than an argument threaded down to the summarizer
-// because the compaction pass is a closed piece of machinery — threshold, cut,
-// summary, rebuild — and the focus is one sentence of prompt, not a change to
-// how any of that works. A turn's request never carries the key, so a turn is
-// byte-for-byte what it was.
 //
 // ── THE CACHE LINEAGE, AND WHY IT DEVIATES FROM bare ──
 //
@@ -865,9 +870,6 @@ type sessionCompleter struct {
 }
 
 func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
-	if focus, ok := ctx.Value(compactFocusKey{}).(string); ok && focus != "" {
-		messages = withFocusAppended(messages, focus)
-	}
 	ctx = provider.WithCacheKey(ctx, f.cacheKey)
 	if f.patient {
 		ctx = provider.WithPatientRateLimits(ctx)
@@ -876,23 +878,6 @@ func (f sessionCompleter) CompleteWithMessages(ctx context.Context, messages []a
 		ctx = provider.WithPacingNotice(ctx, f.pacing)
 	}
 	return f.inner.CompleteWithMessages(ctx, messages, options...)
-}
-
-// withFocusAppended returns a copy of the request whose system message ends with
-// the focus line. The copy is deep enough to matter: the messages are the
-// agent's own, shared with the transcript, and appending in place would edit the
-// session's system prompt from inside one request.
-func withFocusAppended(messages []ai.Message, focus string) []ai.Message {
-	for index, message := range messages {
-		if message.Role != "system" {
-			continue
-		}
-		copied := make([]ai.Message, len(messages))
-		copy(copied, messages)
-		copied[index] = textMessage("system", messageContentText(message)+"\n\nAdditional focus: "+focus)
-		return copied
-	}
-	return messages
 }
 
 // Close ends the session: an in-flight turn is cancelled and waited for,
@@ -965,6 +950,13 @@ func (a *Agent) Close() error {
 		a.jobs.shutdown(jobShutdownGrace)
 	}
 
+	// The store's copy of the transcript is drained LAST of the writers and
+	// before the file is closed, for the reason the turn is waited for: a
+	// cancelled turn's tail is queued by the wait above, and closing the log
+	// first would drop exactly the lines a compacted resume has nowhere else to
+	// read (chatlog.go).
+	a.chatlog.close()
+
 	if file == nil {
 		return nil
 	}
@@ -982,6 +974,11 @@ func (a *Agent) recordLocked(message ai.Message) {
 	if a.file != nil {
 		a.file.appendMessage(message)
 	}
+	// AND THE STORE GETS IT TOO, when there is one. The journal is what a resume
+	// replays; the store is what survives a compaction, which discards the
+	// journal's pre-cut lines by definition. The call queues and returns
+	// (chatlog.go), so this stays one append under the lock.
+	a.chatlog.post(message)
 }
 
 // recordUserLocked is recordLocked for a message the PERSON sent: the same
@@ -993,6 +990,10 @@ func (a *Agent) recordLocked(message ai.Message) {
 // through recordLocked exactly as before.
 func (a *Agent) recordUserLocked(user userMessage) {
 	a.messages = append(a.messages, user.message)
+	// The store's copy is taken before the journal's early return: a session
+	// with no file still has a conversation worth keeping, and the person's own
+	// words are the last thing that should depend on which layout they opened in.
+	a.chatlog.post(user.message)
 	if a.file == nil {
 		return
 	}
