@@ -104,6 +104,10 @@ func (t stopTarget) question() string {
 const (
 	stopRunNoun  = "run"
 	stopTaskNoun = "task"
+	// stopDesignNoun is the words the session itself uses about this work when it
+	// reports the ending ("harness design stopped; nothing was saved"), kept the
+	// same here so that one act does not have two names.
+	stopDesignNoun = "harness design"
 	// stopRunDetail is internal/orchestrate's own law said to a person: the
 	// contexts of the nodes in flight are cut and the digests of the nodes that
 	// landed are kept.
@@ -111,6 +115,12 @@ const (
 	// stopTaskDetail is task_run.go's abortedMerge said to a person: nothing a
 	// node wrote is thrown away by ending it, and the branch is where it is.
 	stopTaskDetail = "Its work halts; the branch it wrote on is kept."
+	// stopDesignDetail is harness_build.go's own law said to a person: nothing is
+	// written to the registry until somebody approves the card, so a design
+	// stopped before that card loses a draft and nothing else. It is the one
+	// promise on this surface where the answer is "nothing was kept", and it says
+	// so rather than borrowing a reassurance that would not be true.
+	stopDesignDetail = "The page it is writing is dropped; nothing was saved."
 )
 
 // stopCard is one raised confirmation: what it is about, and which answer the
@@ -273,6 +283,26 @@ func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 		}
 	}
 	return stopTarget{}
+}
+
+// designStopTarget is the harness being written that a ✕ on the strip's design
+// chip would end, and the empty target when a press could not be aimed
+// (harness.go).
+//
+// ONE DESIGN OR NONE. Two in flight share one chip — there is no room on that
+// row for two, and no cursor that could pick between them — and a single ✕
+// standing for both would end whichever the surface guessed. So the chip that
+// stands for several offers nothing, and the words on it still say what is
+// happening.
+func designStopTarget(designs []session.HarnessBeingDesigned) stopTarget {
+	if len(designs) != 1 {
+		return stopTarget{}
+	}
+	return stopTarget{
+		id:     session.CancelDesign + ":" + itoa(int(designs[0].ID)),
+		noun:   stopDesignNoun,
+		detail: stopDesignDetail,
+	}
 }
 
 // stopOffered reports whether there is anything here to stop, which is what

@@ -1113,10 +1113,11 @@ type Agent struct {
 	orchestrateWatchers []*eventStream
 
 	// harnessDesigns is the designs in flight, keyed by the id their card will
-	// carry, and the value is how each one is ended. A design runs on its own
-	// context — the turn that asked for it is over — so [Agent.Close] is the only
-	// thing that can tell one the session has left.
-	harnessDesigns map[uint64]context.CancelFunc
+	// carry, and the value is how each one is ended plus the two facts a surface
+	// can honestly draw while it runs ([harnessInFlight]). A design runs on its
+	// own context — the turn that asked for it is over — so [Agent.Close] is the
+	// only thing that can tell one the session has left.
+	harnessDesigns map[uint64]*harnessInFlight
 
 	// harnessRuns is the sub-harness RUNS in flight, keyed by the id their
 	// EventHarnessRun carried, and the value is how each one is ended
