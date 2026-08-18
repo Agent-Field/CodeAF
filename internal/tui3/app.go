@@ -911,6 +911,10 @@ type app struct {
 	// read once, at construction — see host.go for the whole law.
 	host      string
 	localRoot string
+	// owned says the workspace is this session's own work/ directory rather
+	// than a project somebody opened aforge inside of (Options.Owned). It is
+	// read by [app.placeWord] and by nothing else.
+	owned bool
 	// hostApproval is the engine's own tool-approval posture, carried on the
 	// welcome (Options.ApprovalMode) and read only over --host — see
 	// [app.approvalPosture].
@@ -975,6 +979,13 @@ func newApp(ctx context.Context, opts Options) *app {
 	if place != "" {
 		shown = filepath.Base(place)
 	}
+	// AND AN OWNED SESSION IS NAMED, NOT PATHED (host.go's [ownedWord]). The
+	// base name of an owned workspace is the literal word "work", which is the
+	// least informative thing the status line could possibly say about where a
+	// person is.
+	if opts.Owned {
+		shown = ownedWord
+	}
 	if host != "" && shown != "" {
 		shown = host + ":" + shown
 	}
@@ -984,6 +995,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		fresh:            opts.Fresh,
 		host:             host,
 		hostApproval:     strings.TrimSpace(opts.ApprovalMode),
+		owned:            opts.Owned,
 		workspace:        place,
 		place:            shown,
 		file:             opts.SessionFile,

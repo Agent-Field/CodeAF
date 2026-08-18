@@ -172,6 +172,19 @@ type Options struct {
 	// place shown in the status line. Empty takes the process's cwd.
 	Workspace string
 
+	// Owned says the workspace above is the session's OWN work/ directory
+	// rather than a project the person opened aforge inside of — the difference
+	// Decision 26 draws between a borrowed workspace and an owned one.
+	//
+	// It changes one thing, and only one: what the place is CALLED. An owned
+	// workspace lives at ~/.aforge/v3/projects/<encoded>/<session>/work, and a
+	// path like that told the person nothing they wanted to know — it is
+	// aforge's own bookkeeping, shown where they expected to read which project
+	// they were in. So an owned session is named rather than pathed
+	// ([app.placeWord]). Every other use of Workspace is unchanged: it is still
+	// the real directory, and it is what a path completes against.
+	Owned bool
+
 	// Host is the machine the agent is on, when it is not this one: the ssh
 	// destination `aforge chat --host devbox` was given. Empty is a local
 	// session and every line below it is dead code.

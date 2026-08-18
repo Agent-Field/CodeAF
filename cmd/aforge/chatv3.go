@@ -275,8 +275,13 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// SAME manager the belt reaches through (cfg.Connect), so an account
 		// connected on the panel is connected for the model in the same breath
 		// and neither side has to be told about the other.
-		Connections:   v3Connections(cfg.Connect),
-		Workspace:     workspace,
+		Connections: v3Connections(cfg.Connect),
+		Workspace:   workspace,
+		// Whether that workspace is the session's own work/ directory or a
+		// project this was opened inside of (Decision 26). The surface uses it
+		// for one thing: what to CALL the place, because an owned workspace's
+		// path is aforge's bookkeeping rather than an answer to "where am I".
+		Owned:         launch.Place.Owned,
 		SessionFile:   transcript,
 		Resumed:       resumed,
 		Notice:        notice,
