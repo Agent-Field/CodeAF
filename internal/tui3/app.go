@@ -626,6 +626,11 @@ type app struct {
 	// pick is the model overlay (palette.go). Closed, it costs the frame
 	// nothing; open, it owns the keyboard and the bottom of the screen.
 	pick picker
+	// memPanel is /memory's filterable view of the durable memory store.
+	memPanel memoryPanel
+	// memory is the store the panel reads and changes. It is optional because
+	// memory-off sessions must have no capability behind the panel.
+	memory memoryStore
 	// asks are the approval questions waiting for an answer, oldest first
 	// (consent.go). While one is up it owns the keyboard: the draft below is
 	// suspended untouched, exactly as the model picker suspends it.
@@ -1028,6 +1033,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		resume:           opts.Resume,
 		conns:            opts.Connections,
 		harn:             opts.Harnesses,
+		memory:           opts.Memory,
 		live:             -1,
 		sel:              -1,
 		think:            -1,
@@ -3121,12 +3127,15 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openHarness()
 		return nil
 
-	case "memories":
-		// What is remembered about the person, in the transcript (memory.go).
-		// The bare form is the whole list; a word narrows it, which is the one
-		// argument anybody would type — a memory is found by a word that is in
-		// it, never by the id printed beside it.
-		a.runMemories(rest)
+	case "memory", "memories":
+		// Bare is the inspect-and-change panel; a query is the transcript form,
+		// for somebody who wants matching rows to remain scrollable. The plural
+		// alias keeps its older print posture even when it has no query.
+		if rest == "" && name != "memories" {
+			a.openMemory()
+		} else {
+			a.runMemories(rest)
+		}
 		return nil
 
 	case "remember":
@@ -3135,6 +3144,14 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "forget":
 		a.runForget(rest)
+		return nil
+
+	case "crew":
+		// The four models aforge uses on your own behalf, as one word (crew.go).
+		// The bare form is the three presets with yours marked; a word applies
+		// one. An unknown word shows the three and changes nothing, which is the
+		// shape every choice row on this surface refuses in.
+		a.runCrew(rest)
 		return nil
 
 	case "status":
@@ -3484,6 +3501,17 @@ func (a *app) paste(text string) tea.Cmd {
 	if a.pick.open {
 		a.pick.filter.insert(strings.ReplaceAll(text, "\n", " "))
 		a.pick.rank()
+		a.touch()
+		return nil
+	}
+	if a.memPanel.open {
+		flat := strings.ReplaceAll(text, "\n", " ")
+		if a.memPanel.edit != nil {
+			a.memPanel.edit.insert(flat)
+		} else {
+			a.memPanel.filter.insert(flat)
+			a.memPanel.rank()
+		}
 		a.touch()
 		return nil
 	}
