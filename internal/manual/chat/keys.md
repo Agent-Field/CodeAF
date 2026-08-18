@@ -418,10 +418,10 @@ The tasks pages describe what rooms and the roster are for.
 ```
 
 On an adaptive run's page it reads `Stop this run? In-flight nodes halt; partial
-results stay.` The `✕` on the strip's chip for a harness being designed raises the
-same card, reading `Stop this harness design? The page it is writing is dropped;
-nothing was saved.` — that one is the pointer's alone, because `x` is aimed at the
-roster and a design is not on it.
+results stay.` A harness being designed is a task, so `x` on its row reaches it like
+any other — and the card says what is actually true of it: `Stop this task? The page
+it is writing is dropped; nothing was saved.` It has no branch and wrote no files, so
+the reassurance about a kept branch would be pointing at nothing.
 
 **The cursor opens on `keep going`.** `left`/`right` move it, `enter` takes the
 answer under it, `esc` is `keep going`, and every other key does nothing while the

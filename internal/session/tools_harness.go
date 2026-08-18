@@ -38,19 +38,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
-const buildHarnessDescription = "Design a REUSABLE sub-harness: a named, versioned procedure for a shape of work this project will do again — steps, the tools those steps may use, and its own bounds. Saved, it is offered by the turn itself whenever somebody's words match it, so building one is how a good way of working stops depending on anybody remembering it. The goal is what the harness must DO, written for a designer that cannot see this conversation: when the person pointed at something here (\"build a harness for this\", \"…for what we just did\"), write that context into the goal — the files, the checks, the order — because the sentence you pass is the whole brief. It answers immediately and the design happens beside the conversation: two model calls against a long guide, then a card the PERSON approves, and nothing is written to the registry unless they say yes. You will be told what became of it. Call list_harnesses first — a harness that already does this is one to run, not to build. Use it for a recipe worth repeating; for one-off work with many parts use run_adaptive, and for one self-contained piece use propose_task."
+const buildHarnessDescription = "Design a REUSABLE sub-harness: a named, versioned procedure for a shape of work this project will do again — steps, the tools those steps may use, and its own bounds. Saved, it is offered by the turn itself whenever somebody's words match it, so building one is how a good way of working stops depending on anybody remembering it. The goal is what the harness must DO, written for a designer that cannot see this conversation: when the person pointed at something here (\"build a harness for this\", \"…for what we just did\"), write that context into the goal — the files, the checks, the order — because the sentence you pass is the whole brief. It answers immediately with a TASK NUMBER and the design runs as that task: the person can open it, watch the page being written, talk to it, and stop it, and it moves through designing, then awaiting their look, then saved. Nothing is written to the registry unless they approve the card, and you will be told what became of it. Call list_harnesses first — a harness that already does this is one to run, not to build; asking for a CHANGE to one is a new design, so say what the whole harness must do rather than only what is different. Use it for a recipe worth repeating; for one-off work with many parts use run_adaptive, and for one self-contained piece use propose_task."
 
 const buildHarnessSchemaJSON = `{"type":"object","properties":{` +
 	`"goal":{"type":"string","description":"What the harness must do, self-contained. The designer never sees this conversation, so fold in whatever the person's words were pointing at: the work, the files, how a good result is checked."}` +
 	`},"required":["goal"],"additionalProperties":false}`
 
-const listHarnessesDescription = "List the sub-harnesses saved on this machine: each one's name, version and what it is for. Call it before build_harness — a harness that already does the work is one to run rather than design again — and whenever the person asks what shapes of work are saved here. A saved harness has no command that runs it: it is offered by the turn itself when somebody's words match it closely enough, and the person answers that card. So the useful thing to do with a name from this list is to say it in the conversation."
+const listHarnessesDescription = "List the sub-harnesses saved on this machine: each one's name, version and what it is for, and — for the ones this conversation designed — the task their design thread is in. Call it before build_harness — a harness that already does the work is one to run rather than design again — and whenever the person asks what shapes of work are saved here. A saved harness has no command that runs it: it is offered by the turn itself when somebody's words match it closely enough, and the person answers that card. So the useful thing to do with a name from this list is to say it in the conversation."
 
 const listHarnessesSchemaJSON = `{"type":"object","properties":{},"additionalProperties":false}`
 
@@ -102,11 +103,17 @@ func (a *Agent) canOrchestrate() bool {
 
 // buildHarnessTool starts one design and comes straight back.
 //
-// It is [Agent.startHarnessDesign] with an argument, and the whole of what it
-// adds is the announcement: the surface's note that a design is under way
-// (harness_build.go's own lane), which the cue path emitted at the same moment
-// and for the same reason — the turn is about to end with nothing said, so this
-// line is the only thing on screen saying that work is happening.
+// THE DESIGN IS A TASK, which is the whole of what this wrap does with the
+// designer under it (harness_task.go). It admits a node, and the node's body is
+// the same design that was always there: the same two calls against the same
+// guide, the same card, the same registry. What the node adds is everything a
+// task already has — a row with a live phase, a room with the design thread in
+// it, an id, and a stop — for a piece of work that used to happen entirely out
+// of sight.
+//
+// The announcement stays one line, and it now names the node: the turn is about
+// to end with nothing said, so this line is the only thing on screen saying that
+// work is happening, and the number on it is where to go and watch.
 func (a *Agent) buildHarnessTool() bare.Tool {
 	return bare.Tool{
 		Name:        "build_harness",
@@ -125,11 +132,29 @@ func (a *Agent) buildHarnessTool() bare.Tool {
 			if goal == "" {
 				return "Invalid arguments: build_harness needs a goal — what the harness must do, written for a designer that cannot see this conversation.", true, nil
 			}
-			model := a.harnessDesignModel("")
-			a.emitHarness(Event{Kind: EventHarnessDesign, Text: goal, Hint: harnessDesigningWord, Model: model})
-			a.startHarnessDesign(goal, model)
-			return "designing a harness for: " + goal +
-				"\nIt takes a minute or two and happens beside this conversation. What comes back is a page the person is shown as a card; nothing is saved unless they approve it, and you will be told what became of it either way. Carry on with the work in front of you rather than waiting.", false, nil
+			model := a.designerModel("")
+			// THE LINE GOES OUT BEFORE THE NODE DOES. Admitting a design starts it
+			// immediately — it has no dependencies and takes no slot — and a design
+			// that finished quickly would put its card on the lane in front of the
+			// sentence saying a design had started. So the id is minted first, the
+			// announcement carries it, and the node is admitted last
+			// (harness_task.go states the law).
+			id := a.reserveHarnessDesign()
+			a.emitHarness(Event{
+				Kind:  EventHarnessDesign,
+				Text:  goal,
+				Hint:  harnessDesigningWord,
+				Model: model,
+				// Which node to go and watch. It is the only thing a surface can
+				// act on from this event, and it is why the line is worth a
+				// number at all (session.go's EventHarnessDesign).
+				Task: &TaskNotice{ID: id},
+			})
+			a.admitHarnessDesign(id, goal, model)
+			return fmt.Sprintf("task %d is designing a harness for: %s", id, goal) +
+				"\nIt takes a minute or two and runs as that task, beside this conversation: the person can open task " +
+				strconv.FormatUint(id, 10) +
+				" to watch the page being written and to talk to it. What comes back is a page they are shown as a card; nothing is saved unless they approve it, and you will be told what became of it either way. Carry on with the work in front of you rather than waiting.", false, nil
 		},
 	}
 }
@@ -159,6 +184,13 @@ func (a *Agent) listHarnessesTool() bare.Tool {
 				}
 				if desc := strings.TrimSpace(entry.Description); desc != "" {
 					out.WriteString(" · " + desc)
+				}
+				// THE THREAD, WHERE THIS SESSION KNOWS ONE. A harness designed in
+				// this conversation has a room with its whole design story in it,
+				// and the number is how anybody gets there; one designed last week
+				// gets nothing rather than a guess (harness_task.go).
+				if thread := a.harnessThread(entry.Name); thread > 0 {
+					fmt.Fprintf(&out, " · designed in task %d", thread)
 				}
 				out.WriteString("\n")
 			}

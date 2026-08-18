@@ -104,10 +104,6 @@ func (t stopTarget) question() string {
 const (
 	stopRunNoun  = "run"
 	stopTaskNoun = "task"
-	// stopDesignNoun is the words the session itself uses about this work when it
-	// reports the ending ("harness design stopped; nothing was saved"), kept the
-	// same here so that one act does not have two names.
-	stopDesignNoun = "harness design"
 	// stopRunDetail is internal/orchestrate's own law said to a person: the
 	// contexts of the nodes in flight are cut and the digests of the nodes that
 	// landed are kept.
@@ -115,11 +111,11 @@ const (
 	// stopTaskDetail is task_run.go's abortedMerge said to a person: nothing a
 	// node wrote is thrown away by ending it, and the branch is where it is.
 	stopTaskDetail = "Its work halts; the branch it wrote on is kept."
-	// stopDesignDetail is harness_build.go's own law said to a person: nothing is
-	// written to the registry until somebody approves the card, so a design
-	// stopped before that card loses a draft and nothing else. It is the one
-	// promise on this surface where the answer is "nothing was kept", and it says
-	// so rather than borrowing a reassurance that would not be true.
+	// stopDesignDetail is what the same card says over a node that is DESIGNING a
+	// harness (session's harness_task.go). It has no branch and it wrote no
+	// files, and nothing reaches the registry until somebody approves the card —
+	// so the reassurance above would be pointing at work that does not exist, and
+	// this is the honest promise in its place.
 	stopDesignDetail = "The page it is writing is dropped; nothing was saved."
 )
 
@@ -277,32 +273,26 @@ func (a *app) stopTaskTarget(node *taskNode) stopTarget {
 	switch node.state {
 	case session.TaskQueued, session.TaskRunning:
 		return stopTarget{
-			id:     session.CancelTask + ":" + itoa(int(node.id)),
-			noun:   stopTaskNoun,
-			detail: stopTaskDetail,
+			id:   session.CancelTask + ":" + itoa(int(node.id)),
+			noun: stopTaskNoun,
+			// WHAT A STOP KEEPS DEPENDS ON WHAT THE NODE IS. Ordinary work leaves
+			// a branch behind and the card says where it is; a harness being
+			// designed has no worktree and wrote no files, and nothing reaches the
+			// registry until somebody approves the card — so the reassurance would
+			// be pointing at work that does not exist (session's TaskKindHarness).
+			detail: stopDetailFor(node.kind),
 		}
 	}
 	return stopTarget{}
 }
 
-// designStopTarget is the harness being written that a ✕ on the strip's design
-// chip would end, and the empty target when a press could not be aimed
-// (harness.go).
-//
-// ONE DESIGN OR NONE. Two in flight share one chip — there is no room on that
-// row for two, and no cursor that could pick between them — and a single ✕
-// standing for both would end whichever the surface guessed. So the chip that
-// stands for several offers nothing, and the words on it still say what is
-// happening.
-func designStopTarget(designs []session.HarnessBeingDesigned) stopTarget {
-	if len(designs) != 1 {
-		return stopTarget{}
+// stopDetailFor is the second line of the confirmation, chosen by what the node
+// is rather than by what it is doing.
+func stopDetailFor(kind session.TaskKind) string {
+	if kind == session.TaskKindHarness {
+		return stopDesignDetail
 	}
-	return stopTarget{
-		id:     session.CancelDesign + ":" + itoa(int(designs[0].ID)),
-		noun:   stopDesignNoun,
-		detail: stopDesignDetail,
-	}
+	return stopTaskDetail
 }
 
 // stopOffered reports whether there is anything here to stop, which is what

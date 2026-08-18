@@ -20,6 +20,13 @@ was wrong, the answer is to propose the work again.
 You can keep working while a task runs. aforge tells you not to wait for it: its report
 arrives in the conversation when it lands.
 
+**One other thing on the roster is a task, and it is not work in a worktree.** A sub-harness
+being designed runs as a task too — same row, same room, same `x` — with its own phases
+(`designing`, then `awaiting your look`) in place of the states below, and no branch, no
+changed files and no merge, because it writes none. It is admitted without a countdown,
+because the question about a design is the card at the end of it. The page on saved shapes
+of work has it in full.
+
 ## The card that asks whether to run the work
 
 While the model is still writing the proposal, a grey block opens in the transcript and

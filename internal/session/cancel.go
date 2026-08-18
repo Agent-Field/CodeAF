@@ -2,19 +2,22 @@ package session
 
 // STOPPING WORK, WHATEVER KIND IT IS.
 //
-// This session drives four kinds of thing that outlive the sentence that asked
-// for them: a task node in the graph, an adaptive run, a sub-harness run, and a
-// harness being designed. Every one of them already had SOME way to end — a
-// context, a goroutine, a channel — and not one of them had a way a person
-// could reach. `jobs kill` is the model's tool and takes the registry's own
-// numbers; the fuel gate's "stop" only exists once a run has spent its tank;
-// and a design in flight could be ended by closing the session and by nothing
-// else. So the answer to "how do I stop this" was, everywhere on this surface,
-// "say so in words and hope the model does it".
+// This session drives three kinds of thing that outlive the sentence that asked
+// for them: a task node in the graph, an adaptive run, and a sub-harness run.
+// Every one of them already had SOME way to end — a context, a goroutine, a
+// channel — and not one of them had a way a person could reach. `jobs kill` is
+// the model's tool and takes the registry's own numbers, and the fuel gate's
+// "stop" only exists once a run has spent its tank. So the answer to "how do I
+// stop this" was, everywhere on this surface, "say so in words and hope the
+// model does it".
 //
 // [Agent.Cancel] is the one door. It takes an id, works out which kind of work
-// that id names, and ends it — and the four endings differ only in what they
+// that id names, and ends it — and the three endings differ only in what they
 // have to cut.
+//
+// A HARNESS BEING DESIGNED IS NOT A FOURTH KIND. It used to be, and it is a
+// task now (harness_task.go): `task:4` stops it, its own row carries the ✕, and
+// the design settles saying nothing was saved.
 //
 // WHAT A STOP MEANS, EXACTLY. It means STOP SPENDING NOW, and every part of
 // this file bends around that one sentence:
@@ -44,20 +47,20 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
-// The four kinds of work an id can name, spelled as [Agent.Cancel] takes them:
-// `task:7`, `run:2`, `harness:4`, `design:1`.
+// The three kinds of work an id can name, spelled as [Agent.Cancel] takes them:
+// `task:7`, `run:2`, `harness:4`.
 //
-// THE PREFIX IS NOT DECORATION. The four counters that mint these ids are four
+// THE PREFIX IS NOT DECORATION. The counters that mint these ids are separate
 // counters — the graph's, the run register's, the harness lane's — so "7" is a
-// task AND a run AND a design, and a surface handing over a bare number would
-// be asking this file to guess which piece of somebody's work to end. A bare
-// number is read as a TASK and only as a task, because that is the id space
-// every surface on this program already had before any of the others existed.
+// task AND a run AND a harness run, and a surface handing over a bare number
+// would be asking this file to guess which piece of somebody's work to end. A
+// bare number is read as a TASK and only as a task, because that is the id
+// space every surface on this program already had before any of the others
+// existed.
 const (
 	CancelTask    = "task"
 	CancelRun     = "run"
 	CancelHarness = "harness"
-	CancelDesign  = "design"
 )
 
 // Cancel stops one piece of work and answers with the line to show for it.
@@ -88,12 +91,6 @@ func (a *Agent) Cancel(id string) (string, error) {
 			return "", err
 		}
 		return a.cancelHarnessRun(number)
-	case CancelDesign:
-		number, err := cancelNumber(CancelDesign, rest)
-		if err != nil {
-			return "", err
-		}
-		return a.cancelDesign(number)
 	}
 	return "", fmt.Errorf("%q names no kind of work this session can stop", id)
 }
@@ -171,7 +168,18 @@ func (g *TaskGraph) stop(id uint64) (string, error) {
 		// node wrote is on its worktree branch and stays there whatever ends it
 		// (task_run.go's abortedMerge); the branch's actual name arrives on the
 		// landing card, a moment after this line.
-		line = "stopping " + name + " — its branch is kept"
+		//
+		// AND A NODE WITH NO BRANCH DOES NOT PROMISE ONE. A harness being designed
+		// works in no worktree and writes no files (harness_task.go), so the half
+		// of this sentence that says where the work is kept would be pointing at
+		// nothing — and what a person stopping a design wants to know is the other
+		// thing, which is that the registry is untouched.
+		line = "stopping " + name
+		if node.kind == TaskKindHarness {
+			line += " — nothing was saved"
+		} else {
+			line += " — its branch is kept"
+		}
 	case node.state == TaskQueued:
 		node.stopped = true
 		node.state, node.report, node.held = TaskFailed, taskStoppedQueuedWord, ""
@@ -292,27 +300,3 @@ func (a *Agent) cancelHarnessRun(id uint64) (string, error) {
 	cut()
 	return "stopping the harness run; its trail is kept", nil
 }
-
-// ── a harness being designed ────────────────────────────────────────────────
-
-// cancelDesign ends one harness design in flight.
-//
-// IT SAYS SO IN THE TRANSCRIPT ITSELF, which none of the other three has to do.
-// A design that loses its context returns without a word — deliberately, because
-// the ordinary way it loses one is the session closing and there is nobody left
-// to tell (harness_build.go's designHarness). Stopped on purpose there IS
-// somebody, and silence would leave them watching for a card that is never
-// coming.
-func (a *Agent) cancelDesign(id uint64) (string, error) {
-	a.mu.Lock()
-	design := a.harnessDesigns[id]
-	a.mu.Unlock()
-	if design == nil {
-		return "", fmt.Errorf("there is no harness design %d in this session", id)
-	}
-	design.cancel()
-	a.noteHarnessDesign(designStoppedWord)
-	return designStoppedWord, nil
-}
-
-const designStoppedWord = "harness design stopped; nothing was saved"

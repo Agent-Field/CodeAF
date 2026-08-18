@@ -2,14 +2,12 @@ package tui3
 
 import (
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // THE HARNESS OFFER.
@@ -207,6 +205,12 @@ func (a *app) noteHarness(name string) {
 // session, pumped into the program loop with a generation, because a lane from
 // an agent that has been replaced must not put a card on the screen of the
 // conversation that replaced it.
+//
+// IT CARRIES TWO THINGS AND NOT THREE. The announce, and the card. What BECAME
+// of a design used to ride here as a third — a note saying it was saved, dropped
+// or failed — and it does not any more: the design is a task, and a task's
+// ending is a settle card in the transcript with the outcome on it (taskdone.go).
+// A note beside that card would be the same news drawn twice.
 
 // designAgent is the slice of *session.Agent this lane needs, asserted rather
 // than added to [Agent] for [taskAgent]'s reason: the harness designer is
@@ -257,7 +261,13 @@ func (a *app) designEvent(ev session.Event) tea.Cmd {
 		// The turn is already over — that is the whole arrangement — so this is
 		// the only thing on screen saying that work is happening. It is a note for
 		// the reason the run announcement is one: nobody has to answer it.
-		a.note("harness · " + harnessDesignLead(ev.Model) + firstLineOf(ev.Text))
+		//
+		// AND IT NAMES THE TASK, which is the whole of what changed when a design
+		// became a node (session's harness_task.go). The line is one line, and the
+		// number on the end of it is the door: the roster has a row with that id,
+		// pressing it walks into the design's own room, and the id is what a
+		// person says out loud afterwards.
+		a.note("harness · " + harnessDesignLead(ev.Model) + firstLineOf(ev.Text) + designTaskWord(ev.Task))
 	case session.EventHarnessDesignDone:
 		// A QUESTION OUTRANKS A PANEL, on the terms every other question on this
 		// surface states: the block is drawn above the input, and a question drawn
@@ -265,13 +275,22 @@ func (a *app) designEvent(ev session.Event) tea.Cmd {
 		a.closeSettings()
 		a.closeExpand()
 		a.askHarnessDesign(ev)
-	case session.EventNotice:
-		// What became of a design: it failed, it was dropped, it was saved. The
-		// session writes the sentence (harness_build.go) so that every surface says
-		// the same thing about the same outcome.
-		a.note(ev.Text)
 	}
 	return tea.Batch(waitDesign(a.designLane, a.designGen), a.wake())
+}
+
+// designTaskWord is the tail of that note: which task the design is running as.
+//
+// It is EMPTY WHERE THERE IS NO NODE, by the emptiness law and for a real case
+// rather than a defensive one: a surface talking to an older engine, or to one
+// over --host where designing is off entirely, gets an event with nothing on it,
+// and a dangling separator in front of no number is punctuation pretending to be
+// information.
+func designTaskWord(notice *session.TaskNotice) string {
+	if notice == nil || notice.ID == 0 {
+		return ""
+	}
+	return " — task " + itoa(int(notice.ID))
 }
 
 // harnessDesignLead opens the note a starting design writes, and it NAMES THE
@@ -292,166 +311,6 @@ func harnessDesignLead(model string) string {
 	return "designing with " + model + " · "
 }
 
-// ── the row while a harness is being written ────────────────────────────────
-//
-// A DESIGN WAS THE ONE PIECE OF WORK ON THIS SURFACE THAT HAPPENED IN SILENCE.
-// The turn ends the moment it starts (session's harness_build.go), so the
-// conversation goes idle; the note above is one dim line that the next thing
-// anybody types scrolls away; and the card is a minute or two off. From the
-// outside — somebody who asked for a harness and is watching the screen — that
-// is indistinguishable from a program that did nothing.
-//
-// So it takes a place on the strip, which is the row this surface already keeps
-// for what is ALIVE (taskstrip.go), in front of the tasks and beside a running
-// harness:
-//
-//	  ⠙ ◆ designing a harness · triage flaky tests · 1m 12s
-//
-// IT IS NOT A TASK AND ITS ROW DOES NOT PRETEND TO BE ONE. Every other chip on
-// that row is a DOOR: it stands for a node with an id a person can say out loud,
-// a room with its own transcript, a branch and a report, and pressing it walks
-// in. A design has none of those — nothing is written down until somebody
-// approves the card, there is no room to walk into and no number that names it
-// in a sentence — so this chip carries no identity mark keyed to an id, no
-// title of the work's own, and no door. It is a statement, and the strip's press
-// swallows it like every other press on that row.
-//
-// AND IT INVENTS NOTHING. Two model calls against a long guide have no progress
-// to report: there is no percentage, no bar and no step count here, because
-// nothing in this program knows one. The row is the fact that a harness is being
-// written, what it is being written for, and how long that has taken — which is
-// the whole of what anybody knows, and by the emptiness law it is therefore the
-// whole of what is drawn.
-//
-// THE ONE THING IT OFFERS IS THE ONE THING THAT CAN BE DONE. A design in flight
-// can be ended (session's cancel.go), so the chip carries the same ✕ every other
-// piece of live work on this surface is stopped by, raising the same card
-// (stop.go). It is drawn on the chip itself rather than following the roster's
-// cursor the way a task's ✕ does, because the roster's cursor cannot reach a
-// thing that is not on the roster — and a second cursor for one chip would be a
-// keyboard model invented for a row that has no keys.
-//
-// IT IS ASKED FOR AND HELD NOWHERE ([session.Agent.HarnessesBeingDesigned]),
-// which is the bargain the running harness chip makes one file along. That is
-// what makes it CLEAR RELIABLY: the finished card, the failure, the decline, the
-// stop and the window running out all take the row away for the same reason —
-// the session stopped naming that work — and so do /new and a resumed session,
-// because the question is put to whichever agent is under the surface now.
-
-// designLive is the slice of the session this row needs, asserted rather than
-// added to [Agent] for [designAgent]'s reason: the designer is OPTIONAL, and a
-// session that has never heard of one must stay representable. It is also what
-// keeps this row off a remote screen — building a harness is deliberately off
-// over --host (cmd/aforge's engine.go leaves the store nil), so there is never
-// anything for it to name there.
-type designLive interface {
-	// HarnessesBeingDesigned is what this session is still writing, oldest
-	// first.
-	HarnessesBeingDesigned() []session.HarnessBeingDesigned
-}
-
-// designsInFlight is what is being written right now, and nothing at all under a
-// session that cannot design.
-func (a *app) designsInFlight() []session.HarnessBeingDesigned {
-	live, ok := a.agent.(designLive)
-	if !ok {
-		return nil
-	}
-	return live.HarnessesBeingDesigned()
-}
-
-// designingHarness reports whether anything is being written — the cheap half of
-// the question, for the strip's own showing test and the paint clock.
-func (a *app) designingHarness() bool { return len(a.designsInFlight()) > 0 }
-
-// designChipCap is how much of the brief rides on the chip. It is the strip's
-// own title budget, so a goal is cut exactly where a task's title is and the two
-// read as one row.
-const designChipCap = stripTitleCap
-
-// designWord is what the chip calls the work, in the words a person would use
-// about it. The plural is spelled out rather than counted with a "+N", because
-// this is a sentence and not a list.
-func designWord(n int) string {
-	if n == 1 {
-		return "designing a harness"
-	}
-	return "designing " + itoa(n) + " harnesses"
-}
-
-// designChip is the chip for what is being written: the spinner, the harness
-// mark, the words, and — where the row has the cells for them — the goal and the
-// clock. It answers with the painted chip, the CELLS it occupies, and where the
-// ✕ inside it landed, which is the trio the strip's budget and its press are
-// spent in.
-//
-// THE GOAL IS THE FIRST THING DROPPED and the clock outlives it, which is the
-// offer row's law one rung along (see [harnessMiddles]): the brief is context
-// for something the person typed themselves a minute ago, and the elapsed time
-// is the only fact on the chip that is news — it is what answers "is this still
-// moving".
-func (a *app) designChip(designs []session.HarnessBeingDesigned, width, at int) (string, int, hudSpan) {
-	if len(designs) == 0 {
-		return "", 0, hudSpan{}
-	}
-	glyph := a.pal.accent(tokens.Spinner(a.paints / spinnerStep))
-	if a.linear {
-		glyph = a.pal.accent(glyphRunASCII)
-	}
-	mark := a.linearMark(glyphHarness, glyphHarnessASCII)
-	word := designWord(len(designs))
-	head := stripPad + glyph + " " + a.pal.muted(mark) + " " + a.pal.accent(word)
-	cols := stripPadCols + ansi.StringWidth(glyph) + 1 + ansi.StringWidth(mark) + 1 + ansi.StringWidth(word)
-
-	// The ✕ rides only where the frame has cells to spend on a control and only
-	// when there is exactly one design behind it (see [designStopTarget]).
-	stopMark, stopCols := "", 0
-	if layoutTier(width) == tierWide && !designStopTarget(designs).empty() {
-		stopMark = a.linearMark(roomStopMark, roomStopMarkASCII)
-		stopCols = ansi.StringWidth(stopMark) + 1 // the space that separates it from the words
-	}
-	tail := ""
-	for _, reading := range designReadings(designs, a.now()) {
-		if cols+ansi.StringWidth(reading)+stopCols <= width-at {
-			tail = reading
-			break
-		}
-	}
-	cols += ansi.StringWidth(tail) + stopCols
-
-	chip := head + a.pal.dim(tail)
-	if stopMark != "" {
-		chip += " " + a.pal.dim(stopMark)
-	}
-	return chip + stripPad, cols, stripStopSpan(at, cols, stopCols)
-}
-
-// designReadings is what may sit between the words and the chip's right edge,
-// longest first, ending in nothing at all — which is what a frame with no cells
-// to spare draws, and it still says a harness is being written.
-//
-// A design under a second old has no clock (countUpWord's own floor), and more
-// than one in flight has no goal: two briefs behind one set of words would have
-// the chip naming one of them and standing for both. The clock in that case is
-// the OLDEST one's, which is the honest answer to how long this has been going
-// on for.
-func designReadings(designs []session.HarnessBeingDesigned, now time.Time) []string {
-	goal, clock := "", countUpWord(now.Sub(designs[0].Since))
-	if len(designs) == 1 {
-		goal = fit(firstLineOf(designs[0].Goal), designChipCap)
-	}
-	var out []string
-	switch {
-	case goal != "" && clock != "":
-		out = append(out, railSep+goal+railSep+clock, railSep+clock)
-	case goal != "":
-		out = append(out, railSep+goal)
-	case clock != "":
-		out = append(out, railSep+clock)
-	}
-	return append(out, "")
-}
-
 // firstLineOf keeps a note to one row. A goal is a sentence somebody typed and
 // can carry newlines; the note lane is one line.
 func firstLineOf(text string) string {
@@ -460,6 +319,22 @@ func firstLineOf(text string) string {
 	}
 	return strings.TrimSpace(text)
 }
+
+// ── the row a design used to have ───────────────────────────────────────────
+//
+// A DESIGN WAS THE ONE PIECE OF WORK ON THIS SURFACE THAT HAPPENED IN SILENCE,
+// and it had a chip of its own here to answer for that: a spinner, the words
+// "designing a harness", the goal, a clock and a ✕. It was a statement and not a
+// door, because there was nothing to walk into — no room, no transcript, no
+// number a person could say out loud.
+//
+// EVERY ONE OF THOSE EXISTS NOW, so the chip is gone and the design takes an
+// ordinary place on the strip beside the tasks (session's harness_task.go). It
+// has an id, a title that leads with the word "harness", a phase on its row that
+// moves from "designing" to "awaiting your look", a room with the whole design
+// thread in it, and the same ✕ every other node is stopped by. A second chip for
+// the same work would have been the strip drawing it twice, and the one it kept
+// is the one that opens.
 
 // ── the keys ────────────────────────────────────────────────────────────────
 
