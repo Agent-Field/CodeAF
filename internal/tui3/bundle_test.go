@@ -2499,14 +2499,14 @@ func TestTheProposalChoicesAnswerByPointerAndByKey(t *testing.T) {
 // that computed its own columns would be testing a second layout.
 func choiceAt(t *testing.T, a *app, want int) (int, int) {
 	t.Helper()
-	body, pad := a.window(a.bodyWidth(), a.viewHeight())
+	body, _ := a.window(a.bodyWidth(), a.viewHeight())
 	for i, r := range body {
 		if r.hit != hitChoice {
 			continue
 		}
 		for _, span := range a.task.spans {
 			if span.at == want {
-				return span.from, a.bodyTop() + pad + i
+				return span.from, a.bodyTop() + i
 			}
 		}
 	}
@@ -3441,14 +3441,13 @@ func clickRail(t *testing.T, a *app, node int) {
 func openRoomCall(t *testing.T, a *app, want string) bool {
 	t.Helper()
 	rows := a.roomRows(a.bodyWidth())
-	_, pad := a.roomWindow(a.bodyWidth(), a.viewHeight())
 	top := a.bodyTop()
 	offset := a.roomOffsetFor(len(rows), a.viewHeight())
 	for i := offset; i < len(rows); i++ {
 		if rows[i].hit != hitTool || !strings.Contains(plain(rows[i].text), want) {
 			continue
 		}
-		drive(t, a, tea.MouseClickMsg{X: 0, Y: top + pad + i - offset, Button: tea.MouseLeft})
+		drive(t, a, tea.MouseClickMsg{X: 0, Y: top + i - offset, Button: tea.MouseLeft})
 		return true
 	}
 	return false

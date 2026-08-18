@@ -88,7 +88,7 @@ func TestPointerMotionOverTheSameRowLeavesNothingBehind(t *testing.T) {
 // because the mouse moved.
 func TestPointerMotionCrossingRowsMarksOnlyTheTwoItCrossed(t *testing.T) {
 	a := hoverApp(t)
-	body, pad := a.window(a.bodyWidth(), a.viewHeight())
+	body, _ := a.window(a.bodyWidth(), a.viewHeight())
 	var toolRows []int
 	for i, r := range body {
 		if r.hit == hitTool {
@@ -99,8 +99,8 @@ func TestPointerMotionCrossingRowsMarksOnlyTheTwoItCrossed(t *testing.T) {
 		t.Fatalf("the turn drew %d tool rows, want two to cross between", len(toolRows))
 	}
 	first, second := body[toolRows[0]].entry, body[toolRows[1]].entry
-	firstY := a.bodyTop() + pad + toolRows[0]
-	secondY := a.bodyTop() + pad + toolRows[1]
+	firstY := a.bodyTop() + toolRows[0]
+	secondY := a.bodyTop() + toolRows[1]
 
 	drive(t, a, motionAt(firstY))
 	settle(a)

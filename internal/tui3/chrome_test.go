@@ -659,12 +659,16 @@ func TestAClickOnARecentSessionResumesIt(t *testing.T) {
 	a, resumed := welcomeApp(t, fourSessions())
 	a.welcome.step = welcomeFrames
 
-	width, height := a.size()
-	_, marks, _, _ := a.chrome(width)
+	// Asked of the frame rather than computed from it. The welcome box is lifted
+	// out of the chrome block and drawn at the top (view.go's [welcomeLift]), so
+	// a test that worked out the row from the chrome's own length would be
+	// asserting a layout instead of the thing that matters: that the row a
+	// pointer lands on is the session drawn there.
+	_, height := a.size()
 	row := -1
-	for i, mark := range marks {
-		if mark.kind == chromeWelcome && a.welcomeSlotAt(mark.index) == 2 {
-			row = height - len(marks) + i
+	for y := 0; y < height; y++ {
+		if mark, ok := a.chromeAt(y); ok && mark.kind == chromeWelcome && a.welcomeSlotAt(mark.index) == 2 {
+			row = y
 			break
 		}
 	}

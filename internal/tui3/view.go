@@ -217,7 +217,14 @@ func (a *app) frame() (string, int, int) {
 			return strings.Join(lines, "\n"), caretX, caretY
 		}
 	}
-	chrome, _, caretX, caretRow := a.chrome(width)
+	chrome, chromeMarks, caretX, caretRow := a.chrome(width)
+	// The welcome box rides at the top of the frame rather than at the bottom
+	// with the chrome it is built with ([welcomeLift] states why). Splitting it
+	// off here keeps [app.frameOut]'s law intact: what is left is still the tail,
+	// and the caret is still counted back through it.
+	lift := welcomeLift(chromeMarks)
+	lifted := chrome[:lift]
+	chrome = chrome[lift:]
 	// THE FOCUS HEADER IS THE FRAME'S ONE PINNED ROW ABOVE the conversation, and
 	// it spans the WHOLE window for the reason the status row does: it is about
 	// the window — which page this is, and how to leave it — rather than about
@@ -252,6 +259,11 @@ func (a *app) frame() (string, int, int) {
 	// below stays, because the draft is still where this surface types.
 	if a.railFull() {
 		rows = append(rows, a.railRows(view)...)
+		// The lifted rows are still part of this frame's height even here, where
+		// the roster has taken the body: dropping them would draw a window short
+		// of the terminal by exactly the box. [app.chromeAt] does not resolve
+		// them while the roster is up, which is right — the roster is over them.
+		rows = append(rows, lifted...)
 		return a.frameOut(rows, chrome, height, caretX, caretRow)
 	}
 	body, pad := a.bodyRows(a.bodyWidth(), view)
@@ -262,11 +274,27 @@ func (a *app) frame() (string, int, int) {
 		}
 		return ""
 	}
-	for i := 0; i < pad; i++ {
-		rows = append(rows, a.railJoin("", railAt(i)))
-	}
+	// THE CONVERSATION HANGS FROM THE TOP AND THE SLACK FALLS BELOW IT. The
+	// blank rows used to go above, which put a two-line conversation down at the
+	// bottom of an empty screen and made a new session look like the tail of one
+	// that had scrolled away. A person opening aforge reads from the top of the
+	// window like they read everything else, so the first thing said is the
+	// first thing drawn and the emptiness is under it where it costs nothing.
+	//
+	// The chrome is untouched by this and stays the tail ([app.frameOut]): the
+	// draft is still at the bottom of the window, where a terminal has always
+	// put the thing you type into. Only the body moved.
+	//
+	// Once the conversation is longer than the region there is no slack at all —
+	// pad is zero, [app.offsetFor] has already chosen the window that ends at
+	// the newest row, and the frame is exactly what it always was.
 	for i, r := range body {
-		rows = append(rows, a.railJoin(r.text, railAt(pad+i)))
+		rows = append(rows, a.railJoin(r.text, railAt(i)))
+	}
+	// The welcome box, directly under the conversation and above the slack.
+	rows = append(rows, lifted...)
+	for i := 0; i < pad; i++ {
+		rows = append(rows, a.railJoin("", railAt(len(body)+i)))
 	}
 	return a.frameOut(rows, chrome, height, caretX, caretRow)
 }
@@ -463,11 +491,55 @@ func (a *app) statusRow(width int) []string {
 func (a *app) chromeAt(y int) (chromeRow, bool) {
 	width, height := a.size()
 	_, marks, _, _ := a.chrome(width)
-	at := y - (height - len(marks))
-	if at < 0 || at >= len(marks) {
-		return chromeRow{}, false
+	lift := welcomeLift(marks)
+	// The tail is the chrome minus whatever was lifted to the top of the frame,
+	// and it is still the last rows of the window.
+	tail := len(marks) - lift
+	if at := y - (height - tail); at >= 0 && at < tail {
+		return marks[lift+at], true
 	}
-	return marks[at], true
+	// The lifted rows sit directly under the conversation, which is where the
+	// frame drew them. Asking [app.bodyRows] again is what keeps this answer and
+	// the drawn one the same answer.
+	if lift > 0 && !a.railFull() {
+		top := a.bodyTop()
+		if top < 0 {
+			return chromeRow{}, false
+		}
+		body, _ := a.bodyRows(a.bodyWidth(), a.viewHeight())
+		start := top + len(body)
+		if at := y - start; at >= 0 && at < lift {
+			return marks[at], true
+		}
+	}
+	return chromeRow{}, false
+}
+
+// welcomeLift is how many rows at the HEAD of the chrome block are drawn at the
+// top of the frame instead of at the bottom with the rest of it.
+//
+// The welcome box is chrome by construction — it is built, marked and
+// hit-tested with the legend and the draft, and it belongs there because it is
+// what stands in for a conversation rather than part of one. But it is the one
+// piece of chrome that reads as the TOP of the page: a person opening aforge
+// meets the box first and the input second, and a box pinned to the bottom of an
+// empty window put the greeting below a screenful of nothing.
+//
+// So the box alone is lifted, and the slack falls between it and everything
+// under it. It is a lift and not a move because moving it would mean a second
+// copy of the geometry — [app.chromeAt] reads this same count back, so the row a
+// pointer lands on and the row the frame drew cannot disagree.
+//
+// Zero whenever the box is not showing, which is every frame with a conversation
+// in it.
+func welcomeLift(marks []chromeRow) int {
+	lift := 0
+	for i, mark := range marks {
+		if mark.kind == chromeWelcome {
+			lift = i + 1
+		}
+	}
+	return lift
 }
 
 // chromeHeight is how many rows the frame spends below the conversation.
@@ -538,9 +610,11 @@ func (a *app) size() (int, int) {
 //
 // Every geometric question on this surface goes through here — what the frame
 // draws, where the wheel lands, which row a click hit — so a row's position on
-// screen has exactly ONE definition. The padding is why a short conversation
-// sits next to the input, the way a terminal session grows upward, instead of
-// hanging under the top of the screen.
+// screen has exactly ONE definition. The padding is the SLACK under a short
+// conversation: the rows hang from the top of the region and this is what is
+// left over beneath them (the frame states the law and why it changed). It is
+// zero the moment the conversation is longer than the region, which is every
+// interesting case.
 func (a *app) window(width, height int) ([]row, int) {
 	if height <= 0 {
 		return nil, 0
@@ -612,16 +686,20 @@ func (a *app) rowAt(y int) (row, bool) {
 	if a.railFull() {
 		return row{}, false
 	}
+	// The body starts AT the top of its region and the padding falls below it
+	// (see the frame's own note), so a screen row resolves by distance from the
+	// top with nothing to subtract. A pointer on the slack lands past the end of
+	// the row list and gets nothing, which is what it should get.
 	if a.roomOpen() {
-		body, pad := a.roomWindow(a.bodyWidth(), a.viewHeight())
-		at := y - top - pad
+		body, _ := a.roomWindow(a.bodyWidth(), a.viewHeight())
+		at := y - top
 		if at < 0 || at >= len(body) {
 			return row{}, false
 		}
 		return body[at], true
 	}
-	body, pad := a.window(a.bodyWidth(), a.viewHeight())
-	at := y - top - pad
+	body, _ := a.window(a.bodyWidth(), a.viewHeight())
+	at := y - top
 	if at < 0 || at >= len(body) {
 		return row{}, false
 	}

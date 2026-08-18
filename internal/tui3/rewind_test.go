@@ -91,10 +91,10 @@ func saidAt(a *app) string {
 // rewindRowY is the screen row a drawn line landed on, resolved exactly as
 // [app.rowAt] resolves it, so a click built from it is the click a person makes.
 func rewindRowY(a *app, want string) (int, bool) {
-	body, pad := a.window(a.bodyWidth(), a.viewHeight())
+	body, _ := a.window(a.bodyWidth(), a.viewHeight())
 	for i, r := range body {
 		if strings.Contains(plain(r.text), want) {
-			return a.bodyTop() + pad + i, true
+			return a.bodyTop() + i, true
 		}
 	}
 	return 0, false

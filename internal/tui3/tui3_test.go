@@ -273,10 +273,10 @@ func plainRows(a *app) []string {
 // window has a screen row that is not its row-list index.
 func clickHit(t *testing.T, a *app, want hitKind) {
 	t.Helper()
-	body, pad := a.window(a.width, a.viewHeight())
+	body, _ := a.window(a.width, a.viewHeight())
 	for i, r := range body {
 		if r.hit == want {
-			drive(t, a, tea.MouseClickMsg{Y: a.bodyTop() + pad + i, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseClickMsg{Y: a.bodyTop() + i, Button: tea.MouseLeft})
 			return
 		}
 	}
@@ -655,8 +655,8 @@ func TestAClickOpensTheCallUnderIt(t *testing.T) {
 	if at < 0 {
 		t.Fatal("no clickable tool row")
 	}
-	_, pad := a.window(a.width, a.viewHeight())
-	y := a.bodyTop() + pad + at
+
+	y := a.bodyTop() + at
 
 	drive(t, a, tea.MouseClickMsg{Y: y, Button: tea.MouseLeft})
 	body := strings.Join(plainRows(a), "\n")

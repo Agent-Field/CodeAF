@@ -28,10 +28,10 @@ func linkLab(t *testing.T, said string) *app {
 // screen row it landed on. It resolves the y exactly as [app.rowAt] does, so a
 // click built from it is the click a person makes.
 func linkedRow(a *app) (row, int, bool) {
-	body, pad := a.window(a.bodyWidth(), a.viewHeight())
+	body, _ := a.window(a.bodyWidth(), a.viewHeight())
 	for i, r := range body {
 		if len(r.links) > 0 {
-			return r, a.bodyTop() + pad + i, true
+			return r, a.bodyTop() + i, true
 		}
 	}
 	return row{}, 0, false

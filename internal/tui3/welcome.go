@@ -440,6 +440,31 @@ func (a *app) welcomeRows(width int) []string {
 		rightWidth = 0
 	}
 
+	// THE BLOCK IS CENTRED IN THE BOX, not pushed against its left edge. The
+	// right column is given the room it ASKS for rather than everything that is
+	// left, because a sessions column stretched to the far wall is a column with
+	// its content at one end and a hand's width of nothing after it — which is
+	// what made a wide window look like a form somebody had abandoned halfway.
+	//
+	// Measured, never chosen: the wordmark decides the left column and the
+	// longest session name decides the right, so the pair sits in the middle of
+	// whatever window it is drawn in and nothing has to be re-tuned when either
+	// one changes.
+	used := 0
+	for _, line := range right {
+		if w := ansi.StringWidth(ansi.Strip(line)); w > used {
+			used = w
+		}
+	}
+	if used > rightWidth {
+		used = rightWidth
+	}
+	lead := (inner - 2 - leftWidth - used) / 2
+	if lead < 0 {
+		lead = 0
+	}
+	middle := strings.Repeat(" ", lead)
+
 	pad := strings.Repeat(" ", inset)
 	out := make([]string, 0, len(body)+2)
 	out = append(out, pad+pal.dim(boxTop(inner, pal.ascii)))
@@ -448,7 +473,7 @@ func (a *app) welcomeRows(width int) []string {
 		if gap := leftWidth - ansi.StringWidth(ansi.Strip(line)); gap > 0 {
 			cell += strings.Repeat(" ", gap)
 		}
-		row := cell + fitPainted(right[i], rightWidth)
+		row := middle + cell + fitPainted(right[i], used)
 		if gap := inner - 2 - ansi.StringWidth(ansi.Strip(row)); gap > 0 {
 			row += strings.Repeat(" ", gap)
 		}
