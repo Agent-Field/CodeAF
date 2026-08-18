@@ -217,37 +217,54 @@ var settingUI = map[string]settingMeta{
 		about: "the model a task runs on when you have not asked for another. " +
 			"Blank runs it on the model you are talking to.",
 	},
-	// THE TWO TIER ROWS ARE MODEL CHOICES AND ARE ANSWERED AS ONE. They were a
-	// text box for four waves, which meant the only way to name the cheap model
-	// was to type its id from memory — in a panel that already knows every id,
-	// what each one holds, what it costs and how it scores. A row that asks
-	// "which model" and offers a blank line is asking a person to be the
-	// catalog.
+	// THE CREW LIVES ON THE PROVIDERS TAB, with the model it answers under.
+	//
+	// It was on Session for four waves, one tab away from the row that says which
+	// model the conversation is on — so "which model does the planning" and
+	// "which model am I talking to" were two errands on two screens, and a person
+	// comparing them had to remember one while they walked to the other. They are
+	// one question: which model answers what (docs/CHAT-V3.md Decision 6 gives
+	// this tab exactly that job, per-role models included). [modelsSection] is
+	// the order they read in.
+	//
+	// EVERY ONE OF THEM IS A MODEL CHOICE AND IS ANSWERED AS ONE. The tier rows
+	// were a text box for four waves, which meant the only way to name the cheap
+	// model was to type its id from memory — in a panel that already knows every
+	// id, what each one holds, what it costs and how it scores.
+	config.KeyCrew: {
+		tab: tabProviders, label: "crew", widget: widgetCycle,
+		// The one line under this row NAMES ALL THREE OPTIONS AND WHAT EACH ONE IS,
+		// and it is built in [init] from the preset table rather than written here:
+		// a cycle row walks its choices in place, so there is no moment at which a
+		// person is shown three rows to compare — the only place the comparison can
+		// happen is the line they are reading while they press the key.
+	},
+	config.KeyTierReflexModel: {
+		tab: tabProviders, label: "reflex", widget: widgetSelect,
+		about: "near-free · reads every turn — memory, titles, safety",
+	},
 	config.KeyTierLowModel: {
-		tab: tabSession, label: "small work", widget: widgetSelect,
-		about: "the cheap model for the short things aforge writes for itself — " +
-			"session names, labels.",
+		tab: tabProviders, label: "small work", widget: widgetSelect,
+		about: "cheap · does the bulk work — run nodes, digests",
 	},
 	config.KeyTierHighModel: {
-		tab: tabSession, label: "careful work", widget: widgetSelect,
-		about: "the capable model for the small things that must not be wrong — " +
-			"the summary a compaction keeps.",
+		tab: tabProviders, label: "careful work", widget: widgetSelect,
+		about: "careful · checks what must not be wrong — audits, compaction, vision",
 	},
-	// The third tier is the only one that ships pointed at a model, because it
-	// is read TWICE EVERY TURN: routing what a turn should remember and
-	// extracting what it should keep. Blank is still an answer here — it means
-	// the conversation's own model does that work — but it is not the default,
-	// and the row says which model it is rather than "follows the conversation".
-	config.KeyTierReflexModel: {
-		tab: tabSession, label: "reflex", widget: widgetSelect,
-		about: "the near-free model that reads every turn — routing and extraction, " +
-			"never reasoning.",
+	// The fourth class is the one whose value may name a LEVEL as well as a
+	// model, so it is a TEXT box and not a picker: the picker returns an id, and
+	// `moonshotai/kimi-k3:high` is an id with an instruction on it. ctrl+t in the
+	// picker dials the CONVERSATION's effort and lives on the session; this one is
+	// written down and outlives it.
+	config.KeyTierMastermindModel: {
+		tab: tabProviders, label: "mastermind", widget: widgetText,
+		about: "thinks · plans runs and designs harnesses — add :low, :medium or :high",
 	},
 	config.KeyModelRoles: {
-		tab: tabSession, label: "pinned roles", widget: widgetText,
-		about: "exceptions to the two rows above, one per role: title:openai/gpt-5-mini.",
+		tab: tabProviders, label: "pinned roles", widget: widgetText,
+		about: "exceptions to the four rows above, one per role: title:openai/gpt-5-mini.",
 	},
-	// It is a TEXT box and not a select, unlike the two tier rows above it,
+	// It is a TEXT box and not a select, unlike the three class rows on Providers,
 	// because the answer is an ORDER rather than a choice: a picker that returns
 	// one id cannot express "this one, then that one", and a fallback list of one
 	// is most of what makes this row worth having.
@@ -442,6 +459,77 @@ func init() {
 			tab: tabProviders, label: slot.Label, widget: widgetSelect,
 		}
 	}
+	// AND THE ONE SLOT THAT IS NOT A SLOT TO A READER. The registry calls it
+	// "conversation", which is what it binds; a person opening this tab reads a
+	// list of models aforge uses and wants to know which one is theirs. It is the
+	// same row, the same write, the same live seam onto [app.switchModel] — only
+	// the word above the Models section changed.
+	crew := settingUI[config.KeyCrew]
+	crew.about = crewAbout()
+	settingUI[config.KeyCrew] = crew
+
+	talk := settingUI[config.ModelSettingKey(talkSlot)]
+	talk.label = "your model"
+	talk.about = "the model you are talking to. Everything below it is a model aforge " +
+		"uses on your behalf."
+	settingUI[config.ModelSettingKey(talkSlot)] = talk
+}
+
+// crewAbout is the crew row's one line: the four rows it writes, then each preset
+// with its own sentence, then what makes the row read custom. The sentences are
+// [config.CrewLine]'s, so the panel and /crew say the same words about the same
+// thing (internal/config's crew.go holds the table).
+func crewAbout() string {
+	said := make([]string, 0, len(config.CrewPresets))
+	for _, preset := range config.CrewPresets {
+		said = append(said, preset+" — "+config.CrewLine(preset))
+	}
+	// The three options lead, because they are what the keypress chooses between
+	// and the panel gives a row's line the width it has: what gets cut on a narrow
+	// terminal should be the footnote, not the choice.
+	return "the four below, chosen as one word: " + strings.Join(said, "; ") +
+		". Answer one yourself and this reads custom."
+}
+
+// modelsSection is the order the Models rows LEAD the Providers tab in: your
+// model, the crew word, the four classes in [roles.Tiers] order, and then the
+// pins with the roles list hanging off them.
+//
+// It exists because registry order is not reading order. internal/config builds
+// the model slot rows first and the tier rows a hundred lines later, which is the
+// order they were written rather than the order a person meets them — and the
+// crew only makes sense read directly above the four rows it writes. Every other
+// row on the tab follows in registry order, so a row nobody placed here is still
+// reachable rather than dropped ([sheet.build] states that).
+//
+// THE FOUR CLASSES COME FROM [roles.Tiers] and are not listed again here. A fifth
+// tier is one line in that package and no lines in this one, which is the same
+// contract the model slots keep.
+var modelsSection = modelsSectionOrder()
+
+func modelsSectionOrder() []string {
+	order := []string{config.ModelSettingKey(talkSlot), config.KeyCrew}
+	for _, tier := range roles.Tiers {
+		order = append(order, tierSettingKey(tier))
+	}
+	return append(order, config.KeyModelRoles)
+}
+
+// tierSettingKey is the registry row one tier is set by. It is total over
+// [roles.Tiers] and is the ONE place the mapping is written — the panel's tier
+// word, its own roles source and the section order all read it, and a fifth tier
+// with no row here would fail the build's own totality check rather than quietly
+// read the cheap row.
+func tierSettingKey(tier roles.Tier) string {
+	switch tier {
+	case roles.TierHigh:
+		return config.KeyTierHighModel
+	case roles.TierReflex:
+		return config.KeyTierReflexModel
+	case roles.TierMastermind:
+		return config.KeyTierMastermindModel
+	}
+	return config.KeyTierLowModel
 }
 
 // settingMetaFor is the skin for one row, with the registry's own words filled
@@ -734,11 +822,8 @@ func (s *sheet) build() {
 		return
 	}
 	if query == "" {
-		for _, row := range s.rows {
-			meta, ok := settingMetaFor(row)
-			if !ok || meta.tab != settingTabs[s.tab] {
-				continue
-			}
+		for _, row := range s.tabRows() {
+			meta, _ := settingMetaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
 			// set lands in "pinned roles" and nowhere else, so it is drawn
@@ -765,10 +850,11 @@ func (s *sheet) build() {
 			}
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
 		}
-		// A ROLE IS FOUND BY ITS OWN NAME. Somebody searching for "planner" is
-		// not searching for a registry key — the word is not in one — so the
-		// section answers the search itself, under the tab it lives on.
-		if title == tabSession {
+		// A ROLE IS FOUND BY ITS OWN NAME, or by the line that says what it does.
+		// Somebody searching for "planner" is not searching for a registry key —
+		// the word is not in one — so the section answers the search itself, under
+		// the tab it lives on.
+		if title == tabProviders {
 			if matched := s.roleItems(query); len(matched) > 0 {
 				if len(s.items) == start {
 					s.items = append(s.items, sheetItem{head: title})
@@ -789,6 +875,39 @@ func (s *sheet) build() {
 		s.cursor = 0
 	}
 	s.top = 0
+}
+
+// tabRows is this tab's rows in READING order: the keys [modelsSection] leads
+// with, then everything else the registry has for the tab in its own order.
+//
+// A row named in the section order and absent from this tab is skipped, and a row
+// on this tab that nobody named is still emitted — the two halves of "keep every
+// existing row reachable". The lead list is short and the loop is over one tab's
+// rows, so this costs nothing worth measuring on a panel rebuild.
+func (s *sheet) tabRows() []config.Setting {
+	title := settingTabs[s.tab]
+	mine := make([]config.Setting, 0, len(s.rows))
+	for _, row := range s.rows {
+		if meta, ok := settingMetaFor(row); ok && meta.tab == title {
+			mine = append(mine, row)
+		}
+	}
+	led := map[string]bool{}
+	ordered := make([]config.Setting, 0, len(mine))
+	for _, key := range modelsSection {
+		for _, row := range mine {
+			if row.Key == key {
+				ordered = append(ordered, row)
+				led[key] = true
+			}
+		}
+	}
+	for _, row := range mine {
+		if !led[row.Key] {
+			ordered = append(ordered, row)
+		}
+	}
+	return ordered
 }
 
 // settingMatches is the search: the label, the key and the one-line description,
@@ -896,7 +1015,7 @@ func (s *sheet) changed(item sheetItem) bool {
 // THE ROLES SECTION: one row per auxiliary call aforge makes on its own, and
 // which model is answering it today.
 //
-// The two tier rows above it are the setting; this is the READING of it. Before
+// The four class rows above it are the setting; this is the READING of them. Before
 // the section existed, "small work" and "careful work" were two model ids with
 // no way of finding out what actually ran on them — the roles are declared
 // across the binary from init functions (internal/roles' open registry), so
@@ -931,44 +1050,67 @@ type roleRow struct {
 	pin   string
 }
 
-// roleItems is the section: one item per registered role, in the registry's own
-// sorted order, each carrying what it resolves to as the panel currently reads
-// the settings. A query keeps only the roles it matches, and an empty section
-// contributes no heading.
+// roleItems is the section: one item per registered role, GROUPED UNDER ITS
+// CLASS in [roles.Tiers] order, each carrying what it resolves to as the panel
+// currently reads the settings. A query keeps only the roles it matches, and a
+// class with nothing left in it contributes no heading.
+//
+// THE GROUPING IS THE POINT. A flat alphabetical list put `auditor` beside
+// `compaction` and `designer` beside `guardian`, which is four unrelated bills in
+// a row — and the four rows directly above this section are exactly the four
+// classes those roles are answering under. Grouped, the section reads as the
+// answer to the question the tier rows ask: this is what "careful work" bought
+// you. Inside a class the order is the registry's own sorted one, because it is a
+// map filled from init functions and a list that reshuffled per launch is a list
+// nobody trusts.
 func (s *sheet) roleItems(query string) []sheetItem {
 	source := s.rolesSource()
 	var items []sheetItem
-	for _, role := range roles.Registered() {
-		tier, ok := roles.TierOf(role)
-		if !ok {
-			continue
+	for _, tier := range roles.Tiers {
+		started := false
+		for _, role := range roles.Registered() {
+			if got, ok := roles.TierOf(role); !ok || got != tier {
+				continue
+			}
+			row := &roleRow{role: role, tier: tier, tierLabel: s.tierWord(tier)}
+			row.pin, _ = roles.Pinned(source, role)
+			// A ROLE WITH NO MODEL ANYWHERE IS STILL A ROW. Resolve refuses when
+			// the ladder runs out — no pin, no tier, no session model — and the
+			// honest drawing of that is the role's name with nothing beside it,
+			// not a role the panel pretends is not there.
+			//
+			// It resolves through [roles.ResolveCall] and prints the call, so a
+			// class carrying a level says so: the row a person reads is
+			// `kimi-k3:low`, which is the notation the model picker and /status
+			// already spell an effort in.
+			if call, err := roles.ResolveCall(source, role, s.sessionModel); err == nil {
+				row.model = call.String()
+			}
+			if query != "" && !roleMatches(row, query) {
+				continue
+			}
+			if !started {
+				items = append(items, sheetItem{head: rolesHead + " · " + row.tierLabel})
+				started = true
+			}
+			items = append(items, sheetItem{
+				role: row,
+				meta: settingMeta{tab: tabProviders, label: string(role), about: s.roleAbout(row)},
+			})
 		}
-		row := &roleRow{role: role, tier: tier, tierLabel: s.tierWord(tier)}
-		row.pin, _ = roles.Pinned(source, role)
-		// A ROLE WITH NO MODEL ANYWHERE IS STILL A ROW. Resolve refuses when the
-		// ladder runs out — no pin, no tier, no session model — and the honest
-		// drawing of that is the role's name with nothing beside it, not a role
-		// the panel pretends is not there.
-		row.model, _ = roles.Resolve(source, role, s.sessionModel)
-		if query != "" && !roleMatches(row, query) {
-			continue
-		}
-		if items == nil {
-			items = append(items, sheetItem{head: rolesHead})
-		}
-		items = append(items, sheetItem{
-			role: row,
-			meta: settingMeta{tab: tabSession, label: string(role), about: s.roleAbout(row)},
-		})
 	}
 	return items
 }
 
-// roleMatches is the search over a role row: its name and the model answering
-// it, case-folded, substring — [settingMatches] over the two fields a role row
-// actually has.
+// roleMatches is the search over a role row: its name, the line that says what
+// it does, and the model answering it — case-folded, substring, [settingMatches]
+// over the fields a role row actually has.
+//
+// THE DESCRIPTION IS IN IT DELIBERATELY. Nobody looking for the model that reads
+// their images searches for "vision"; they search for "image", and the sentence
+// under the row is where that word is written.
 func roleMatches(row *roleRow, query string) bool {
-	for _, field := range []string{string(row.role), row.model} {
+	for _, field := range []string{string(row.role), roles.Describe(row.role), row.model} {
 		if strings.Contains(strings.ToLower(field), query) {
 			return true
 		}
@@ -977,7 +1119,7 @@ func roleMatches(row *roleRow, query string) bool {
 }
 
 // rolesSource is [roles.Source] over THE PANEL'S OWN READING of the registry —
-// the two tier rows and the pins in "pinned roles".
+// the four class rows and the pins in "pinned roles".
 //
 // The door builds one of these at boot (cmd/aforge's v3RolesSource) and that is
 // the one a running session's calls go through. This one exists because they
@@ -989,12 +1131,11 @@ func (s *sheet) rolesSource() roles.Source {
 	if s.registry == nil {
 		return func(string) (string, bool) { return "", false }
 	}
-	for tier, key := range map[roles.Tier]string{
-		roles.TierReflex: config.KeyTierReflexModel,
-		roles.TierLow:    config.KeyTierLowModel,
-		roles.TierHigh:   config.KeyTierHighModel,
-	} {
-		if row, ok := s.registry.Row(key); ok {
+	// EVERY TIER, DERIVED. It reads [roles.Tiers] through [tierSettingKey] rather
+	// than listing the rows again, so a class added to that package appears in
+	// this reading without anybody remembering this function exists.
+	for _, tier := range roles.Tiers {
+		if row, ok := s.registry.Row(tierSettingKey(tier)); ok {
 			values[roles.TierKey(tier)] = rowText(row)
 		}
 	}
@@ -1019,13 +1160,7 @@ func (s *sheet) rolesSource() roles.Source {
 // rather than spelled again here: a role says "careful work" because that is
 // what the row a person changes to move it is called, and the two cannot drift.
 func (s *sheet) tierWord(tier roles.Tier) string {
-	key := config.KeyTierLowModel
-	switch tier {
-	case roles.TierHigh:
-		key = config.KeyTierHighModel
-	case roles.TierReflex:
-		key = config.KeyTierReflexModel
-	}
+	key := tierSettingKey(tier)
 	if s.registry != nil {
 		if row, ok := s.registry.Row(key); ok {
 			if meta, found := settingMetaFor(row); found {
@@ -1041,10 +1176,19 @@ func (s *sheet) tierWord(tier roles.Tier) string {
 // line says the same two words, and a person who stopped on a row is the one
 // person who wants the sentence.
 func (s *sheet) roleAbout(row *roleRow) string {
-	if row.pin != "" {
-		return "pinned, so it ignores " + row.tierLabel + " above. del clears the pin."
+	// THE ROLE'S OWN LINE COMES FIRST, because "what is this" is the question and
+	// "where did its model come from" is the follow-up. Before the descriptions
+	// landed (internal/roles' Describe), the only thing this line could say about
+	// `auditor` was which row above it to change — which is help for somebody who
+	// already knew what an auditor was.
+	said := roles.Describe(row.role)
+	if said != "" {
+		said += " · "
 	}
-	return "follows " + row.tierLabel + " above. enter pins it to a model of its own."
+	if row.pin != "" {
+		return said + "pinned, so it ignores " + row.tierLabel + " above. del clears the pin."
+	}
+	return said + "follows " + row.tierLabel + " above. enter pins it to a model of its own."
 }
 
 // roleFilter is the question a role's picker asks. Two registered roles are not
@@ -1066,15 +1210,20 @@ func roleFilter(role roles.Role) modelFilter {
 // that answers it. It is [sheet.rowLines]'s shape and [overlayLines]'s row — the
 // same two-line law at [tierPhone], the same band, the same hover.
 func (s *sheet) roleRowLines(row *roleRow, selected, hovered bool, width int, pal palette) []string {
-	value := row.tierLabel
-	// THE EMPTINESS LAW. A role with no model resolved says the tier and stops;
-	// there is no id to print and printing the tier's own blank label under it
+	// THE CLASS IS THE HEADING THIS ROW SITS UNDER, so it is not repeated on the
+	// row. It used to lead the value — "careful work · some/model" on every one of
+	// ten rows — which spent the widest column on a word the section already said
+	// once, and left the id it was there to show being the first thing [fit] cut.
+	//
+	// THE EMPTINESS LAW. A role with no model resolved says nothing beside its
+	// name; there is no id to print, and printing the class's own blank label
 	// would be the panel answering "which model" with a setting.
-	if row.model != "" {
-		value += " · " + row.model
-	}
+	value := row.model
 	if row.pin != "" {
-		value += "  pinned"
+		if value != "" {
+			value += "  "
+		}
+		value += "pinned"
 	}
 	return overlayLines(string(row.role), value, selected, false, hovered, width, pal)
 }
@@ -1276,7 +1425,7 @@ func (a *app) activate() tea.Cmd {
 	}
 	s.msg = ""
 	if item.role != nil {
-		// A ROLE IS A MODEL CHOICE, so it opens the picker the two tier rows open
+		// A ROLE IS A MODEL CHOICE, so it opens the picker the class rows open
 		// and for their reason — a row that asks "which model" and offers a blank
 		// line is asking a person to be the catalog. It opens ON THE PIN and not
 		// on the resolved model: the picker's mark means "this is what this row

@@ -104,9 +104,10 @@ list, every search and every message from that instant.
 
 ## What does remembering cost?
 
-Two calls per message, both on the cheapest of the three model tiers — the
-`reflex` tier, which exists precisely because a call made twice a turn is a
-different economy from one made once a session. Each goes out with a short
+Two calls per message, both on the cheapest of the four crew classes — the
+`reflex` class, which exists precisely because a call made twice a turn is a
+different economy from one made once a session. It ships pointed at
+`nex-agi/nex-n2-mini`. Each goes out with a short
 prompt, a 200-token ceiling and temperature 0, and each is asked to answer in a
 few words of JSON. Neither is allowed to think.
 
@@ -115,8 +116,10 @@ happened to trigger them, exactly as the session's own title and a compaction
 summary are, so `/cost` and `/status` include them without any one message
 reading as three times the price of its neighbours.
 
-You can point that tier at a different model — the `small per-turn work` row in
-`/settings` — or pin the `reflex` role by itself under `pinned roles`.
+You can point that class at a different model — the **reflex** row in
+`/settings` → Providers, or the whole crew in one word with `/crew` — or pin the
+`reflex` role by itself under `pinned roles`. A change is live: the next turn's
+pair uses it.
 
 ## Where is it kept, and does a task see it?
 

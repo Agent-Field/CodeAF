@@ -993,40 +993,137 @@ func v3Memory(profileDir string) *store.Store {
 	return brain
 }
 
-// v3RolesSource is the closure internal/roles reads its ladder through: the two
+// v3RolesSource is the closure internal/roles reads its ladder through: the four
 // tier models under [roles.TierKey], the per-role pins under [roles.PinKey].
 //
-// It is resolved ONCE, at boot, rather than read per call: an auxiliary model
-// that changed under a running session would make two calls in one conversation
-// answer to different settings, and the row itself says a change lands on the
-// next session.
+// IT IS LIVE. It used to be resolved once, at boot, on the argument that two
+// calls in one conversation must not answer to different settings — and the
+// crew is what makes that argument the wrong way round. A person who types
+// `/crew max` because the planner is not thinking hard enough has said something
+// about the run they are about to start, not about the next launch, and a source
+// that made them restart to be heard would be a knob that does nothing on the
+// surface that offers it.
+//
+// The seam is a SNAPSHOT INVALIDATED BY A GENERATION COUNTER
+// ([config.SettingsGeneration]), for reasons the two obvious alternatives fail:
+//
+//   - Re-reading config on every Resolve would put a file read on the path of
+//     every auxiliary call — twice a turn for the reflex pair alone — for a file
+//     that changes once a week. internal/config caches nothing on purpose.
+//   - Invalidating from the settings panel's write hook would only see the
+//     panel. The `change_setting` tool writes the same rows from inside a turn,
+//     and /crew writes four of them at once.
+//
+// A counter bumped by the ONE persisted writer sees all of them, costs an atomic
+// load per call when nothing has moved, and holds the lock only to rebuild. A
+// mid-session change is honored by the NEXT crew call, which is the promise the
+// settings rows now make.
+//
+// What it does not see is stated where the counter is: a config file edited by
+// another process, and the project layer's file at all. Both land on the next
+// launch, which is what every settings row did before this.
 func v3RolesSource(workspace, profileDir string) (func(string) (string, bool), error) {
-	low, err := config.ProjectStringAt(workspace, profileDir, config.KeyTierLowModel)
+	crew := &v3Crew{workspace: workspace, profileDir: profileDir}
+	// The first build happens HERE rather than lazily, so a malformed pins row
+	// still stops the launch with the row named — which is the law this whole
+	// governance block keeps (applyV3Governance says why).
+	if err := crew.rebuild(); err != nil {
+		return nil, err
+	}
+	return crew.read, nil
+}
+
+// v3Crew is the live reading of the four tier rows and the pins.
+type v3Crew struct {
+	workspace, profileDir string
+
+	mu sync.RWMutex
+	// generation is [config.SettingsGeneration] as of the snapshot below. Zero
+	// is impossible after the first build, so there is no "never read" state to
+	// spell separately.
+	generation uint64
+	values     map[string]string
+	// err is the last rebuild's refusal, KEPT AND SERVED rather than swallowed.
+	// A pins row somebody has just broken must not silently un-pin every role —
+	// that would move work onto another model without saying so — so a failed
+	// rebuild keeps serving the last good snapshot and the failure is what the
+	// next settings read will show them.
+	err error
+}
+
+// read is [roles.Source]: one key, and the fast path is an atomic load and a
+// read lock.
+func (c *v3Crew) read(key string) (string, bool) {
+	if config.SettingsGeneration() != c.generationNow() {
+		// A rebuild that fails leaves the old snapshot in place, so the error is
+		// dropped here on purpose: this is the resolution path, and the honest
+		// answer to "which model" is the last one that parsed.
+		_ = c.rebuild()
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	value, ok := c.values[key]
+	if !ok || strings.TrimSpace(value) == "" {
+		return "", false
+	}
+	return value, true
+}
+
+func (c *v3Crew) generationNow() uint64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.generation
+}
+
+// rebuild reads the rows and replaces the snapshot. It reads BEFORE taking the
+// write lock so a slow disk cannot hold a concurrent turn's resolution.
+func (c *v3Crew) rebuild() error {
+	generation := config.SettingsGeneration()
+	values, err := c.snapshot()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// The generation moves either way. A rebuild that refused must not be
+	// retried on every single call — that would put a file read back on the hot
+	// path, which is the thing this seam exists to avoid — so the refusal is
+	// recorded and the next write is what triggers another attempt.
+	c.generation, c.err = generation, err
+	if err != nil {
+		return err
+	}
+	c.values = values
+	return nil
+}
+
+// snapshot is one reading of every key the ladder can ask for.
+func (c *v3Crew) snapshot() (map[string]string, error) {
+	// THE TWO PROJECT-LAYER TIERS. A repository may say which model does the
+	// bulk work and which one checks it (config.ProjectKeys), because that is a
+	// fact about the work in it.
+	low, err := config.ProjectStringAt(c.workspace, c.profileDir, config.KeyTierLowModel)
 	if err != nil {
 		return nil, err
 	}
-	high, err := config.ProjectStringAt(workspace, profileDir, config.KeyTierHighModel)
+	high, err := config.ProjectStringAt(c.workspace, c.profileDir, config.KeyTierHighModel)
 	if err != nil {
 		return nil, err
 	}
-	// THE THIRD TIER, and the reason it is worth its own arm: the two calls that
-	// ride it are made TWICE EVERY TURN (internal/reflex), so a reflex resolving
-	// to the conversation's model is not thrift misconfigured, it is the most
-	// expensive model in the build answering the cheapest question in it. The
-	// panel's own reader already maps all three (internal/tui3's rolesSource);
-	// this is the one a running session's calls actually go through.
+	// AND THE TWO READ FROM THE PROFILE ALONE. [config.ProjectKeys] does not
+	// carry either row, so asking the project layer for one is an error rather
+	// than a fall-through.
 	//
-	// IT IS READ FROM THE PROFILE AND NOT THROUGH THE PROJECT LAYER, which its
-	// two neighbours are. That is not an omission: [config.ProjectKeys] does not
-	// carry this row, so asking the project layer for it is an error rather than
-	// a fall-through — and the row ships pointed at a model, which is a default
-	// only [config.TierModelAt] applies.
+	// The reflex tier: the two calls that ride it are made TWICE EVERY TURN
+	// (internal/reflex), so a reflex resolving to the conversation's model is not
+	// thrift misconfigured, it is the most expensive model in the build answering
+	// the cheapest question in it. The mastermind tier: it plans adaptive runs
+	// and designs saved harnesses, and a repository that could point it at a
+	// model would be spending a visitor's credit on the run it asked for.
 	values := map[string]string{
-		roles.TierKey(roles.TierReflex): config.TierModelAt(profileDir, config.ModelTierReflex),
-		roles.TierKey(roles.TierLow):    low,
-		roles.TierKey(roles.TierHigh):   high,
+		roles.TierKey(roles.TierReflex):     config.TierModelAt(c.profileDir, config.ModelTierReflex),
+		roles.TierKey(roles.TierMastermind): config.TierModelAt(c.profileDir, config.ModelTierMastermind),
+		roles.TierKey(roles.TierLow):        low,
+		roles.TierKey(roles.TierHigh):       high,
 	}
-	text, err := config.ProjectStringAt(workspace, profileDir, config.KeyModelRoles)
+	text, err := config.ProjectStringAt(c.workspace, c.profileDir, config.KeyModelRoles)
 	if err != nil {
 		return nil, err
 	}
@@ -1040,13 +1137,7 @@ func v3RolesSource(workspace, profileDir string) (func(string) (string, bool), e
 			values[roles.PinKey(roles.Role(role))] = model
 		}
 	}
-	return func(key string) (string, bool) {
-		value, ok := values[key]
-		if !ok || strings.TrimSpace(value) == "" {
-			return "", false
-		}
-		return value, true
-	}, nil
+	return values, nil
 }
 
 // v3Catalog is the ONE question this door asks a model catalog, and it is a

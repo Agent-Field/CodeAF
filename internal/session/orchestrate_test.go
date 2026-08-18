@@ -420,8 +420,9 @@ func TestARunResolvesThePlannerAndTheWorkerRoles(t *testing.T) {
 	agent, _ := newTestAgent(t, watch, func(config *Config) {
 		config.AskConsent = true
 		config.RolesSource = tierSettings(map[string]string{
-			roles.TierKey(roles.TierHigh): "test/careful-model",
-			roles.TierKey(roles.TierLow):  "test/cheap-model",
+			roles.TierKey(roles.TierMastermind): "test/brain-model",
+			roles.TierKey(roles.TierHigh):       "test/careful-model",
+			roles.TierKey(roles.TierLow):        "test/cheap-model",
 		})
 	})
 
@@ -431,8 +432,8 @@ func TestARunResolvesThePlannerAndTheWorkerRoles(t *testing.T) {
 	}
 	waitForRun(t, agent, id)
 
-	if got := watch.model("planner"); got != "test/careful-model" {
-		t.Fatalf("the planner thought with %q, want the high tier's model", got)
+	if got := watch.model("planner"); got != "test/brain-model" {
+		t.Fatalf("the planner thought with %q, want the mastermind tier's model", got)
 	}
 	if got := watch.model("node"); got != "test/cheap-model" {
 		t.Fatalf("a node ran on %q, want the low tier's model", got)
@@ -660,8 +661,9 @@ func TestARunsSnapshotNamesThePlannersModel(t *testing.T) {
 	agent, _ := newTestAgent(t, watch, func(config *Config) {
 		config.AskConsent = true
 		config.RolesSource = tierSettings(map[string]string{
-			roles.TierKey(roles.TierHigh): "test/careful-model",
-			roles.TierKey(roles.TierLow):  "test/cheap-model",
+			roles.TierKey(roles.TierMastermind): "test/brain-model",
+			roles.TierKey(roles.TierHigh):       "test/careful-model",
+			roles.TierKey(roles.TierLow):        "test/cheap-model",
 		})
 	})
 
@@ -674,11 +676,11 @@ func TestARunsSnapshotNamesThePlannersModel(t *testing.T) {
 	// named the planner only after the first node landed would be blank for the
 	// whole minute somebody is watching to see what they bought.
 	snap, known := agent.OrchestrateSnapshot(id)
-	if !known || snap.Planner != "test/careful-model" {
+	if !known || snap.Planner != "test/brain-model" {
 		t.Fatalf("a run that has not planned yet says %q", snap.Planner)
 	}
 	waitForRun(t, agent, id)
-	if snap, _ := agent.OrchestrateSnapshot(id); snap.Planner != "test/careful-model" {
-		t.Fatalf("a finished run says %q, want the high tier's model", snap.Planner)
+	if snap, _ := agent.OrchestrateSnapshot(id); snap.Planner != "test/brain-model" {
+		t.Fatalf("a finished run says %q, want the mastermind tier's model", snap.Planner)
 	}
 }

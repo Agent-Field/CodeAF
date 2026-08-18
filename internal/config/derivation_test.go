@@ -200,6 +200,16 @@ var settingReaders = map[string]string{
 	KeyTaskModel:     "TaskModelAt",
 	KeyTierLowModel:  "TierKey",
 	KeyTierHighModel: "TierKey",
+	// The mastermind row names the TIER rather than the shared spelling, for the
+	// reason the reflex row below does: naming TierKey a third time would let the
+	// low row prove this one. cmd/aforge's crew source and internal/tui3's
+	// settings skin both reach it by this name.
+	KeyTierMastermindModel: "TierMastermind",
+	// The crew row is the four tier rows answered as one word, and what reads it
+	// is /crew (internal/tui3's crew.go) — the row's own reader, named here
+	// rather than the writer, because a row that could be set and never read
+	// would be exactly the dial-wired-to-nothing this table exists to catch.
+	KeyCrew: "CrewAt",
 	// The reflex row names the ROLE that reaches it rather than TierKey, which
 	// its two neighbours share: internal/reflex resolves [roles.RoleReflex] and
 	// nothing else lands on this key, so naming the shared spelling a third
