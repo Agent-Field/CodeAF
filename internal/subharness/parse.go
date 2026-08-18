@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -30,6 +31,75 @@ func Decode(data []byte) (Harness, error) {
 		return Harness{}, fmt.Errorf("subharness: decode: %w", err)
 	}
 	return h.Normalize(), nil
+}
+
+// integerOrString admits the one harmless liberty a person or designer takes
+// when writing a page by hand. Keeping the coercion here leaves every other
+// type strict, and Encode still has one canonical spelling for integers.
+func integerOrString(data json.RawMessage, field string) (int, error) {
+	var number int
+	if err := json.Unmarshal(data, &number); err == nil {
+		return number, nil
+	}
+	var word string
+	if err := json.Unmarshal(data, &word); err != nil {
+		return 0, fmt.Errorf("%s must be an integer or an integer string", field)
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(word))
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer or an integer string, got %q", field, word)
+	}
+	return value, nil
+}
+
+// UnmarshalJSON accepts a hand-written string for the identity's integer while
+// preserving the page's refusal of fields this version does not know.
+func (id *Id) UnmarshalJSON(data []byte) error {
+	var page struct {
+		Name    string          `json:"name"`
+		Desc    string          `json:"desc,omitempty"`
+		Author  string          `json:"author,omitempty"`
+		Version json.RawMessage `json:"version"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&page); err != nil {
+		return err
+	}
+	version := 0
+	if len(page.Version) != 0 {
+		var err error
+		version, err = integerOrString(page.Version, "id.version")
+		if err != nil {
+			return err
+		}
+	}
+	*id = Id{Name: page.Name, Desc: page.Desc, Author: page.Author, Version: version}
+	return nil
+}
+
+// UnmarshalJSON gives the dynamism budget the same narrow hand-written form as
+// version without making the rest of the page permissive.
+func (dyn *Dyn) UnmarshalJSON(data []byte) error {
+	var page struct {
+		Ladder string          `json:"ladder"`
+		Cap    json.RawMessage `json:"cap,omitempty"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&page); err != nil {
+		return err
+	}
+	cap := 0
+	if len(page.Cap) != 0 {
+		var err error
+		cap, err = integerOrString(page.Cap, "dyn.cap")
+		if err != nil {
+			return err
+		}
+	}
+	*dyn = Dyn{Ladder: page.Ladder, Cap: cap}
+	return nil
 }
 
 // Encode writes a page: indented, newline-terminated, and with HTML escaping
