@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // THE OTHER HALF OF THE HARNESS OFFER.
@@ -29,12 +30,12 @@ import (
 // workspace — and neither performs a network request to be built.
 //
 // WHAT A YES ACTUALLY GETS. The program is walked by internal/subharness's own
-// runner over the model bridge (its exec_model.go): each agent.loop is one
-// completion, each tool.call is one of the four wire tools below, each verify
-// and each free-text condition is one small judgement, and the walk — the
-// branch law, the loop's rounds, the dynamism budget — is the package's,
-// unchanged. The run's trace is saved beside the harness and the trail comes
-// back as the turn's answer.
+// runner over the model bridge (its exec_model.go): an agent.loop with tools is
+// the provider's bounded tool loop and one without them is one completion; each
+// tool.call is one of the seven bare tools below; each verify and each free-text
+// condition is one small judgement; and the walk — the branch law, the loop's
+// rounds, the dynamism budget — is the package's, unchanged. The run's trace is
+// saved beside the harness and the trail comes back as the turn's answer.
 //
 // TWO THINGS ARE NOT WIRED, and they are absences rather than gaps:
 //
@@ -118,15 +119,16 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 	if err != nil {
 		return nil
 	}
-	tools := v3HarnessTools(workspace)
+	tools := v3HarnessToolBridges(workspace)
 	return func(ctx context.Context, name, text, runModel string) (string, error) {
 		h, err := store.Load(name, 0)
 		if err != nil {
 			return "", err
 		}
 		trace, runErr := subharness.Run(ctx, h, subharness.ModelExec(client, subharness.ModelExecOpts{
-			Harness: h,
-			RunTool: tools,
+			Harness:  h,
+			RunTool:  tools.Run,
+			Toolbelt: tools.Belt,
 			// No Ask: a gate auto-approves here and the trail says so.
 			Store: store,
 			// What the turn asked this run to think with, empty when it asked
@@ -197,19 +199,34 @@ func harnessFinalOut(trace subharness.Trace) string {
 // generation, which are things a conversation reaches for and not things a
 // saved procedure should inherit by accident. A harness names the tools it
 // wants on its whitelist, and this is the set those names can resolve to.
-func v3HarnessTools(workspace string) func(ctx context.Context, tool, args string) (string, error) {
+type v3HarnessToolBridge struct {
+	Run  func(ctx context.Context, tool, args string) (string, error)
+	Belt subharness.Toolbelt
+}
+
+// v3HarnessToolBridges builds both argument doors over ONE registry. A fixed
+// tool.call keeps the page-friendly sentence grammar below; an agent.loop
+// already writes the schema's structured object. Both become the same raw JSON
+// payload before [bare.Tool.Execute], so there is one execution path and one
+// meaning for failure.
+func v3HarnessToolBridges(workspace string) v3HarnessToolBridge {
 	belt := map[string]bare.Tool{}
+	var defs []ai.ToolDefinition
 	for _, tool := range bare.AllTools(workspace) {
 		belt[tool.Name] = tool
+		var parameters map[string]any
+		// These are the package's pinned schema literals. If one ever stops being
+		// JSON, omitting its parameters makes the wire defect visible in tests
+		// without making chat startup a new error-returning operation.
+		_ = json.Unmarshal(tool.Schema, &parameters)
+		defs = append(defs, ai.ToolDefinition{Type: "function", Function: ai.ToolFunction{
+			Name: tool.Name, Description: tool.Description, Parameters: parameters,
+		}})
 	}
-	return func(ctx context.Context, name, args string) (string, error) {
+	execute := func(ctx context.Context, name string, payload json.RawMessage) (string, error) {
 		tool, ok := belt[name]
 		if !ok {
 			return "", fmt.Errorf("there is no tool named %q on this surface", name)
-		}
-		payload, err := harnessToolArgs(name, args)
-		if err != nil {
-			return "", err
 		}
 		text, failed, err := tool.Execute(ctx, payload)
 		if err != nil {
@@ -226,6 +243,30 @@ func v3HarnessTools(workspace string) func(ctx context.Context, tool, args strin
 		}
 		return text, nil
 	}
+	return v3HarnessToolBridge{
+		Run: func(ctx context.Context, name, args string) (string, error) {
+			payload, err := harnessToolArgs(name, args)
+			if err != nil {
+				return "", err
+			}
+			return execute(ctx, name, payload)
+		},
+		Belt: subharness.Toolbelt{
+			Defs: defs,
+			Call: func(ctx context.Context, name string, args map[string]any) (string, error) {
+				payload, err := json.Marshal(args)
+				if err != nil {
+					return "", fmt.Errorf("encode %s arguments: %w", name, err)
+				}
+				return execute(ctx, name, payload)
+			},
+		},
+	}
+}
+
+// v3HarnessTools keeps the fixed-argument bridge as a small, testable surface.
+func v3HarnessTools(workspace string) func(ctx context.Context, tool, args string) (string, error) {
+	return v3HarnessToolBridges(workspace).Run
 }
 
 // harnessToolPrimary is the one field a tool's arguments collapse to when a

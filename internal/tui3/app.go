@@ -562,12 +562,6 @@ type app struct {
 	// where they landed (taskstrip.go's [app.stripRow] and [app.stripPress]).
 	stripSpans []stripSpan
 	stripMore  hudSpan
-	// stripMoreRow is the strip row the overflow mark landed on, and stripFolds
-	// the fold chips of a tree the strip could not draw whole. Both exist
-	// because the strip stopped being one row the moment tasks got children
-	// (taskstrip.go's [app.stripRows]): a span alone no longer names a place.
-	stripMoreRow int
-	stripFolds   []stripFold
 	// stripHarn is where the running sub-harness's chip was last drawn, or the
 	// zero span when none is running (harnesspanel.go). It is kept apart from
 	// stripSpans because it opens a different door: a node chip opens that
@@ -699,6 +693,12 @@ type app struct {
 	// it, because that path runs entirely on session events (harness.go).
 	harn      *subharness.Store
 	harnPanel harnessPanel
+	// harnPick is the filtering list "/harness " opens over that same registry,
+	// and harnChip the name it was answered with — the one harness the next
+	// message will run, held in the tray above the box rather than in the draft
+	// (harnesspick.go).
+	harnPick  harnessPick
+	harnChip  string
 	connNames map[string]string
 	connFlows map[string]*connect.Flow
 	// leftTap is when ← was last pressed over an empty box, and it is the whole
@@ -751,19 +751,28 @@ type app struct {
 	taskSeen  map[uint64]session.TaskState
 	taskLane  <-chan session.Event
 	taskGen   int
-	// THE ROSTER'S OWN THREE FACTS (task.go's rail). railOpen holds the groups a
-	// person has folded AGAINST their default — nil is the design as shipped, and
-	// an absent key is a group that has never been touched, which is why this is a
-	// map and not a bitfield. railTop is the window's offset into the roster's
-	// line list, resolved by the same [listTop] every other list on this surface
-	// scrolls with. railWhere is the focused row, named by (group, id) rather than
-	// by index because work moves between groups while nobody is looking, and
-	// railHold says the roster has been GIVEN the keyboard (ctrl+t) — without it
-	// there is no cursor, and every key still belongs to the draft.
-	railOpen  map[railGroup]bool
-	railTop   int
-	railWhere railSpot
-	railHold  bool
+	// THE ROSTER'S OWN FACTS (task.go's rail). railOpen holds the FAMILIES a
+	// person has folded or opened AGAINST their default — nil is the design as
+	// shipped, and an absent key is a family nobody has touched, which is why this
+	// is a map keyed by node id and not a flag on the node. railTop is the
+	// window's offset into the roster's line list, resolved by the same [listTop]
+	// every other list on this surface scrolls with. railWhere is the focused row,
+	// named by id rather than by index because a fold takes rows out from under a
+	// cursor while nobody is looking, and railHold says the roster has been GIVEN
+	// the keyboard (ctrl+t) — without it there is no cursor, and every key still
+	// belongs to the draft.
+	//
+	// railWide is the third width tier, asked for with w and sticky until it is
+	// asked for again. railCramped is what earns the offer of it: the last layout
+	// cut a title with its own indent, and it is written where that is discovered
+	// ([app.railEntryRows]) and read by the footer, the way [app.railTop] is
+	// written by the window it resolves.
+	railOpen    map[uint64]bool
+	railTop     int
+	railWhere   railSpot
+	railHold    bool
+	railWide    bool
+	railCramped bool
 
 	// pilots are the watchers on the nodes that are running right now, keyed by
 	// id, and pilotGen the counter each one takes its generation from (task.go).
@@ -1408,6 +1417,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if a.connPanel.open {
 				return a, a.connectPanelPress(msg.Mouse().Y)
+			}
+			// AND THE HARNESS PICKER TAKES A PRESS ON ITS OWN ROWS AND NOTHING
+			// ELSE, because it is not modal: it hangs under a draft somebody is
+			// still typing, so a press anywhere else is a press on whatever is
+			// there (harnesspick.go).
+			if cmd, took := a.harnessPickPress(msg.Mouse().Y); took {
+				return a, cmd
 			}
 			// A chip is the one thing below the conversation a click can take
 			// off, and it is the one thing down there that needs the COLUMN as
@@ -2475,6 +2491,17 @@ func (a *app) setTitle(title string) {
 // a lock and possibly a provider, and the Update loop is not a place to wait.
 func (a *app) submit(text string) tea.Cmd {
 	agent, ctx := a.agent, a.ctx
+	return a.submitting(text, func() (<-chan session.Event, error) { return agent.Submit(ctx, text) })
+}
+
+// submitting is that body with the CALL left to the caller: everything a
+// message does to this surface — the transcript line, the turn number, the
+// clock, the stream it waits on — happens here once, and what differs between
+// the doors onto it is one method on the seam.
+//
+// The second door is a picked harness, which is a turn in every respect except
+// which function starts it (harnesspick.go's [app.runPickedHarness]).
+func (a *app) submitting(text string, start func() (<-chan session.Event, error)) tea.Cmd {
 	a.closeLive()
 	a.turn++
 	// A new turn drops the selection: the calls it was pointing into belong to
@@ -2492,7 +2519,7 @@ func (a *app) submit(text string) tea.Cmd {
 	a.follow()
 	a.touch()
 	return tea.Batch(func() tea.Msg {
-		ch, err := agent.Submit(ctx, text)
+		ch, err := start()
 		return submittedMsg{ch: ch, err: err}
 	}, a.wake())
 }
@@ -3182,6 +3209,10 @@ func (a *app) renew() tea.Cmd {
 	// coming back to (connect.go).
 	a.connAsks, a.connPanel = nil, connectPanel{}
 	a.harnessAsks, a.harnPanel = nil, harnessPanel{}
+	// And the picked harness goes with them: a chip is a choice made about the
+	// next message of THIS conversation, and a fresh session has no next message
+	// of that one (harnesspick.go).
+	a.harnPick, a.harnChip = harnessPick{}, ""
 	a.abandonConnects()
 	a.title = strings.TrimSpace(agent.Title())
 	a.turn = 0
@@ -3491,6 +3522,15 @@ func (a *app) paste(text string) tea.Cmd {
 // falls through to the editor, which is the whole difference between these two
 // overlays and the modal model picker: the person is still typing a sentence.
 func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// The harness picker answers for itself, because the keys it takes are its
+	// own: the browse row is a commit that opens a panel rather than one that
+	// writes a chip, and enter on a filter that matched nothing leaves the typed
+	// line alone (harnesspick.go).
+	if a.harnPick.open {
+		if cmd, taken := a.harnessPickKey(msg); taken {
+			return cmd, true
+		}
+	}
 	if !a.menu.open && !a.comp.open {
 		return nil, false
 	}
@@ -3546,6 +3586,15 @@ func (a *app) syncLists() tea.Cmd {
 	a.menu.sync(a.input.String())
 	if a.menu.open {
 		a.comp.close()
+		a.harnPick.close()
+		return nil
+	}
+	// AND THE HARNESS PICKER IS THE THIRD OF THEM, asked after the command list
+	// and before the completion for the reason the command list closes at all: a
+	// space ends the choosing of a command and begins its argument, and for this
+	// one command the argument has a list of its own (harnesspick.go).
+	if a.syncHarnessPick() {
+		a.comp.close()
 		return nil
 	}
 	was := a.comp.open
@@ -3562,6 +3611,7 @@ func (a *app) syncLists() tea.Cmd {
 func (a *app) closeLists() {
 	a.menu.close()
 	a.comp.close()
+	a.harnPick.close()
 }
 
 // ── the context meter ───────────────────────────────────────────────────────

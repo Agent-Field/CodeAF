@@ -21,14 +21,25 @@ import (
 //
 // It is deliberately the SMALL implementation, and the smallness is the design:
 //
-//   - AN agent.loop IS ONE COMPLETION, not a loop. A real loop needs tool
-//     schemas, a belt, and a transcript, and the moment this file grew one
-//     there would be two session loops in the binary — the thing the whole
-//     sub-harness design exists to avoid (registry.go: the library-in-binary).
-//     So the node's brief and what its predecessors produced go up as one
-//     request, and `max_turns` is stated to the worker as the effort it was
-//     budgeted rather than spent as rounds. A harness that needs the real loop
-//     is run by the session, which has one.
+//   - AN agent.loop IS ONE COMPLETION WHEN THE STEP HAS NO TOOLS, AND A REAL
+//     BOUNDED TOOL LOOP WHEN IT HAS SOME. A step that names no tools has nothing
+//     to do between requests, so its brief and what its predecessors produced go
+//     up as one request and `max_turns` is stated to the worker as the effort it
+//     was budgeted rather than spent as rounds. A step that NAMES tools is handed
+//     them and actually runs them. The other reading — telling a worker "you
+//     cannot call them here, say what you would run" — is what this file used to
+//     do, and it produced runs where every node answered with a command nobody
+//     executed and a report that was honest about nothing.
+//
+//     THAT IS STILL NOT A SECOND SESSION LOOP, and the distinction is the whole
+//     reason it may live here. The rounds are the provider client's own
+//     ([provider.Client.ExecuteToolCallLoop]), which the adapter already carries
+//     over its own transport: send the belt, dispatch what the model asked for,
+//     feed the result back, stop at a text answer or at the ceiling. What this
+//     file adds is a message pair, an intersection with the whitelist and a
+//     dispatcher — no transcript, no compaction, no consent lane, no second
+//     implementation of any of them (registry.go: the library-in-binary). A
+//     harness that needs those is run by the session, which has them.
 //   - EVERY JUDGEMENT IS A SEPARATE, TINY CALL. A verify asks one question and
 //     wants one word back; a free-text condition asks one question and wants
 //     yes or no. Neither is given the run's whole history to reason over — they
@@ -76,8 +87,97 @@ const callClip = 1200
 // when the caller named no default either.
 const modelMaxTurns = 8
 
+// modelCallsPerTurn is how many tool calls a step may spend for each turn it was
+// budgeted, and it exists because the two ceilings measure different things. A
+// turn is one round trip; a turn may carry several tool calls at once, and an
+// endpoint that batches three reads into one round trip has not spent three
+// turns. Three per turn is the ratio at which the call ceiling stops being the
+// binding limit for ordinary work while still bounding the pathological case —
+// a model that asks for twenty greps in one breath — at a number a person
+// reading the trace can multiply in their head.
+const modelCallsPerTurn = 3
+
+// modelToolOutput is the one key a dispatched tool's text travels under between
+// [Toolbelt.Call] and the provider's loop, which speaks in maps. It is unwrapped
+// again by [loopToolPrompts] before the model sees it.
+const modelToolOutput = "output"
+
 // autoGateNote is what the trail says about a gate nobody was there to answer.
 const autoGateNote = "nobody was there to ask, so it carried on"
+
+// Toolbelt is the LOOP half of tool access: the definitions an agent.loop may be
+// offered, and where the arguments the MODEL wrote go when it asks for one.
+//
+// IT IS ONE FIELD BECAUSE IT IS ONE CAPABILITY. Definitions with no dispatcher
+// is a belt that can be advertised and never run; a dispatcher with no
+// definitions is a belt nothing can ask for. Either half on its own is a bridge
+// that lies to the model about what it can reach, so they arrive together or not
+// at all — and a zero Toolbelt is the same honest absence a nil
+// [ModelExecOpts.RunTool] already is: the step is told its tools are named and
+// not callable, and makes one completion.
+//
+// IT IS NOT [ModelExecOpts.RunTool] AND DOES NOT REPLACE IT. A tool.call is the
+// FIXED half of the library (kinds.go) — its arguments are the page's own and no
+// model ever touches them — so it keeps its own closure with its own fixed-string
+// signature. A surface wires both to the same execution path, which is what makes
+// a tool reached from a loop and a tool reached from a tool.call the same tool.
+type Toolbelt struct {
+	// Defs is every tool this surface can run, in the shape the wire wants. A
+	// node is offered only the ones it named; the rest never leave this struct.
+	Defs []ai.ToolDefinition
+
+	// Call runs one of them on the arguments the model wrote, and answers with
+	// the tool's own text — the same thing RunTool answers with. An error is the
+	// tool refusing, and the loop hands it back to the model rather than failing
+	// the node, because reacting to a tool that said no is what a loop is FOR.
+	Call func(ctx context.Context, tool string, args map[string]any) (string, error)
+}
+
+// offer is the intersection: the definitions for the tools this node named, in
+// the order the node named them, and nothing else.
+//
+// A HALF-WIRED BELT OFFERS NOTHING. Missing definitions, a missing dispatcher, or
+// a node whose named tools resolve to no definition at all all come back empty,
+// which [modelEnv.Loop] reads as "not callable here" and says so in the prompt.
+func (b Toolbelt) offer(names []string) []ai.ToolDefinition {
+	if len(b.Defs) == 0 || b.Call == nil {
+		return nil
+	}
+	var offered []ai.ToolDefinition
+	for _, name := range names {
+		for _, def := range b.Defs {
+			if def.Function.Name == name {
+				offered = append(offered, def)
+				break
+			}
+		}
+	}
+	return offered
+}
+
+// toolWords names what is actually on the wire, which is what the prompt must
+// say — a step told it can call something the belt never carried would spend its
+// turns asking for it.
+func toolWords(offered []ai.ToolDefinition) string {
+	names := make([]string, 0, len(offered))
+	for _, def := range offered {
+		names = append(names, def.Function.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// named reports whether a tool was among the ones this step was offered. It is
+// checked again at dispatch because the list on the wire is a REQUEST and not a
+// guarantee: an endpoint that echoes a name nobody offered must reach the tool
+// no more than a node that never named it would.
+func named(offered []ai.ToolDefinition, tool string) bool {
+	for _, def := range offered {
+		if def.Function.Name == tool {
+			return true
+		}
+	}
+	return false
+}
 
 // ModelExecOpts is everything the bridge cannot do with a model alone.
 type ModelExecOpts struct {
@@ -92,6 +192,11 @@ type ModelExecOpts struct {
 	// than returning nothing: a program that asked to run the suite and was
 	// quietly told "" would go on to verify that "" looks fine.
 	RunTool func(ctx context.Context, tool, args string) (string, error)
+
+	// Toolbelt is what an agent.loop that NAMES tools is handed. A zero one is a
+	// surface that can run a tool.call and not a tool loop, and a node under it
+	// is told as much rather than being offered a belt that goes nowhere.
+	Toolbelt Toolbelt
 
 	// Ask puts a human.gate's question to a person and returns what they typed.
 	// Nil is nobody there — see the note at the top of this file.
@@ -164,6 +269,7 @@ func ModelExec(c *provider.Client, opts ModelExecOpts) Exec {
 type modelEnv struct {
 	client   *provider.Client
 	runTool  func(ctx context.Context, tool, args string) (string, error)
+	belt     Toolbelt
 	ask      func(ctx context.Context, question string) (string, error)
 	maxTurns int
 	// harness is the ONE program this bridge runs. A called harness gets its own
@@ -200,6 +306,7 @@ func newModelEnv(c *provider.Client, opts ModelExecOpts) *modelEnv {
 	return &modelEnv{
 		client:   c,
 		runTool:  opts.RunTool,
+		belt:     opts.Toolbelt,
 		ask:      opts.Ask,
 		maxTurns: turns,
 		harness:  h,
@@ -254,18 +361,30 @@ func (m *modelState) out(id string) string {
 
 // ── the kinds ───────────────────────────────────────────────────────────────
 
-// Loop is one completion against the node's brief, oriented by what led into
-// it. See the file header for why it is one call and not a loop.
+// Loop is the node's brief worked through, oriented by what led into it: one
+// completion when the step was given no tools, and a bounded tool loop when it
+// was. See the file header for why the second one is not a second session loop.
 func (m *modelEnv) Loop(ctx context.Context, node Node, input string) (string, error) {
 	brief := node.Fields.Get("brief")
 	if brief == "" {
 		return "", fmt.Errorf("node %q has no brief to work from", node.Id)
 	}
+	// allowed is the whitelist held at the moment it would be USED, so what
+	// comes back is already the node's tools ∩ the harness's — the offer below
+	// narrows that again to the ones this surface can actually run.
 	tools, err := m.allowed(node, "tools")
 	if err != nil {
 		return "", err
 	}
-	said, err := m.say(ctx, node.Fields.Get("model"), loopSystem, m.loopPrompt(node, brief, tools, input))
+	offered := m.belt.offer(tools)
+	prompt := m.loopPrompt(node, brief, tools, input, offered)
+
+	var said string
+	if len(offered) > 0 {
+		said, err = m.work(ctx, node, prompt, offered)
+	} else {
+		said, err = m.say(ctx, node.Fields.Get("model"), loopSystem, prompt)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -274,6 +393,93 @@ func (m *modelEnv) Loop(ctx context.Context, node Node, input string) (string, e
 	}
 	m.state.record(node, said)
 	return said, nil
+}
+
+// work is the loop half of an agent.loop: the same two messages [modelEnv.say]
+// would have sent, plus the belt, run over the provider client's own bounded
+// loop ([provider.Client.ExecuteToolCallLoop]).
+//
+// WHAT COMES BACK IS THE STEP'S ANSWER AND NOT ITS TRANSCRIPT. Both ceilings
+// end at a call the client makes with no tools on it, so the model always gets
+// a turn in which to say what it found — and that text is the node's output,
+// which is the only thing the steps after it will read (exec.go).
+func (m *modelEnv) work(ctx context.Context, node Node, user string, offered []ai.ToolDefinition) (string, error) {
+	if m.client == nil {
+		return "", errors.New("this surface has no model to think with")
+	}
+	var options []ai.Option
+	// The same law as say's: an empty model is the client's own.
+	if model := node.Fields.Get("model"); model != "" {
+		options = append(options, ai.WithModel(model))
+	}
+	turns := node.Fields.Int("max_turns", m.maxTurns)
+	response, _, err := m.client.ExecuteToolCallLoop(
+		provider.WithoutStream(ctx),
+		[]ai.Message{
+			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: loopSystem}}},
+			{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: user}}},
+		},
+		offered,
+		ai.ToolCallConfig{
+			MaxTurns:     turns,
+			MaxToolCalls: turns * modelCallsPerTurn,
+			PromptConfig: loopToolPrompts(),
+		},
+		m.dispatch(node, offered),
+		options...,
+	)
+	if err != nil {
+		return "", err
+	}
+	if response == nil {
+		return "", errors.New("the model answered with nothing at all")
+	}
+	return strings.TrimSpace(response.Text()), nil
+}
+
+// dispatch is where the arguments the MODEL wrote reach the surface's tools.
+//
+// THE OFFER IS CHECKED AGAIN HERE, and it is not belt-and-braces. What went up
+// is a list of tools the model MAY ask for; what comes back is a name a remote
+// endpoint chose, and a name nobody offered — a hallucinated verb, a tool from
+// another node's list, a whitelist the page never granted — must reach the same
+// nowhere a node that never named it would. The refusal goes back to the model
+// as a tool result rather than failing the node, because a worker that asked
+// for something it does not have should hear so and carry on.
+func (m *modelEnv) dispatch(node Node, offered []ai.ToolDefinition) ai.CallFunc {
+	return func(ctx context.Context, tool string, args map[string]any) (map[string]any, error) {
+		if !named(offered, tool) || !m.harness.Allows(tool) {
+			return nil, fmt.Errorf("node %q was not given a tool named %q", node.Id, tool)
+		}
+		if m.belt.Call == nil {
+			return nil, fmt.Errorf("this surface cannot run %q", tool)
+		}
+		out, err := m.belt.Call(ctx, tool, args)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{modelToolOutput: clip(out, modelClip)}, nil
+	}
+}
+
+// loopToolPrompts is the one thing this file changes about how the provider's
+// loop talks to the model: a tool's own text goes back as ITSELF.
+//
+// The default formatter marshals the result map, so a belt that answered with
+// prose would have it JSON-quoted — `{"output":"total 4\ndrwx…"}` — and every
+// step reading a directory listing would be reading escape sequences. Unwrapping
+// the one key [Toolbelt.Call]'s answer travelled under puts the tool's words back
+// on the wire unchanged. Everything else is the SDK's default wording, which is
+// what a model has been told for the life of this harness.
+func loopToolPrompts() *ai.PromptConfig {
+	prompts := ai.DefaultPromptConfig()
+	prompts.ToolResultFormatter = func(_ string, result map[string]any) any {
+		if text, ok := result[modelToolOutput].(string); ok {
+			return text
+		}
+		return result
+	}
+	return &prompts
 }
 
 // Tool is the whitelisted call, made verbatim. The arguments are the node's own
@@ -421,6 +627,7 @@ func (m *modelEnv) call(ctx context.Context, node Node, state *State) (Result, e
 	trace, childErr := Run(ctx, child, ModelExec(m.client, ModelExecOpts{
 		Harness:         child,
 		RunTool:         m.runTool,
+		Toolbelt:        m.belt,
 		Ask:             m.ask,
 		MaxTurnsDefault: m.maxTurns,
 		Store:           m.store,
@@ -516,19 +723,37 @@ const condSystem = "You are answering one question about a procedure that is run
 	"or NO on the first line and nothing else. If what you were shown does not settle it, answer NO."
 
 // loopPrompt is the brief, the tools it was given, and what led into it.
-func (m *modelEnv) loopPrompt(node Node, brief, tools, input string) string {
+//
+// IT SAYS ONLY WHAT IS TRUE OF THIS RUN. The two halves below are the two
+// shapes an agent.loop actually has, and a step told the wrong one wastes its
+// whole budget: a worker handed a callable belt but told it cannot call
+// anything will describe a command instead of running it, and a worker told to
+// call a tool this surface never wired will spend its turns asking for one.
+// So the sentence is chosen by what is on the wire — `offered` — and never by
+// what the page merely named.
+func (m *modelEnv) loopPrompt(node Node, brief string, tools []string, input string, offered []ai.ToolDefinition) string {
 	var page strings.Builder
 	page.WriteString("Step: " + node.Id + "\n\n" + brief + "\n")
-	if tools != "" {
-		// Named, not handed over: this bridge makes one call and cannot run a
-		// tool mid-answer. Saying which tools the step was given is what lets a
-		// worker answer "run the suite and read it" with the command it would
-		// have run, which the tool.call after it can then actually make.
-		page.WriteString("\nTools this step was given: " + tools +
+	turns := node.Fields.Int("max_turns", m.maxTurns)
+	switch {
+	case len(offered) > 0:
+		page.WriteString("\nTools you can call in this step: " + toolWords(offered) +
+			". Call them — what they answer comes back to you, and you keep going until you " +
+			"have the result.\n")
+		page.WriteString(fmt.Sprintf("\nEffort budgeted: up to %d turns of calling tools. Your LAST "+
+			"answer is the only thing the steps after you read, so the result belongs in it.\n", turns))
+	case len(tools) > 0:
+		// Named, not handed over: this surface was built with no belt behind
+		// it, so the step really cannot run anything. Saying which tools it was
+		// given is what lets a worker answer "run the suite and read it" with
+		// the command it would have run, which the tool.call after it can then
+		// actually make.
+		page.WriteString("\nTools this step was given: " + strings.Join(tools, ", ") +
 			". You cannot call them here — say what you would run and what you would look for.\n")
+		page.WriteString(fmt.Sprintf("\nEffort budgeted: %d turns' worth, in ONE answer.\n", turns))
+	default:
+		page.WriteString(fmt.Sprintf("\nEffort budgeted: %d turns' worth, in ONE answer.\n", turns))
 	}
-	page.WriteString(fmt.Sprintf("\nEffort budgeted: %d turns' worth, in ONE answer.\n",
-		node.Fields.Int("max_turns", m.maxTurns)))
 	if came := m.leadingIn(node, input); came != "" {
 		page.WriteString("\nWhat the steps before this one produced:\n" + came)
 	}
@@ -732,22 +957,23 @@ func detail(note string) string {
 // ── the call ────────────────────────────────────────────────────────────────
 
 // allowed reads a comma-separated tool field and holds it to the harness's
-// whitelist. Validate already refused a page that names a tool the harness does
-// not allow; this is the same law at the moment it would be USED, which is
-// where it has to hold for a program that reached this node down a road nobody
-// validated.
-func (m *modelEnv) allowed(node Node, field string) (string, error) {
+// whitelist, answering with the names in the order the node wrote them.
+// Validate already refused a page that names a tool the harness does not allow;
+// this is the same law at the moment it would be USED, which is where it has to
+// hold for a program that reached this node down a road nobody validated.
+//
+// IT REFUSES RATHER THAN NARROWS. A node asking for a tool its harness never
+// whitelisted is a page that means something other than what it says, and
+// quietly handing it the subset that IS allowed would run a step nobody wrote.
+func (m *modelEnv) allowed(node Node, field string) ([]string, error) {
 	names := splitList(node.Fields.Get(field))
-	if len(names) == 0 {
-		return "", nil
-	}
 	h := m.harness
 	for _, name := range names {
 		if !h.Allows(name) {
-			return "", fmt.Errorf("node %q hands out %q, which is not on the whitelist", node.Id, name)
+			return nil, fmt.Errorf("node %q hands out %q, which is not on the whitelist", node.Id, name)
 		}
 	}
-	return strings.Join(names, ", "), nil
+	return names, nil
 }
 
 // say is the one outbound call in this file. It never streams: nobody is
