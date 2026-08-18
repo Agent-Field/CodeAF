@@ -71,6 +71,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I change settings", "commands"},
 		{"what is openaf", "starting-aforge"},
 		{"can you access my email", "accounts"},
+
+		// The third wave: aforge changing a person's own settings for them.
+		// Both halves have to reach a page — that it can, and the rows where
+		// it will not — because the second is the answer somebody gets when
+		// they ask for the first and are refused.
+		{"can you change my settings", "what-i-can-do"},
+		{"set my daily budget to 5", "what-i-can-do"},
+		{"why won't you change my approval mode", "permissions"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
