@@ -165,8 +165,9 @@ one two-round loop is a number nobody chose.
 
 ## The tools that exist here
 
-The whitelist may contain ONLY these, spelled exactly. There is no web, no
-filesystem, no shell:
+The whitelist may contain ONLY these, spelled exactly. THIS LIST IS THE WHOLE
+WORLD a node can reach; a verb that is not on it does not exist here, whatever
+you know about tools by those names elsewhere:
 
 ```
 «tools»
@@ -324,8 +325,10 @@ supposed to be a separate look.
 
 DO THIS PAIR BY PAIR, IN WRITING, BEFORE YOU DRAW A SINGLE EDGE. The pair table
 is the `derivation` key of your reply and it is CHECKED against the edges you
-draw (PART THREE). This step is not a paragraph you write afterwards to account
-for a shape you already had — the shape is what the table leaves behind. A
+draw (PART THREE) — so what you write there is a claim about the SHAPE, and a
+pair you reasoned was independent and then drew in a line is written `depends`.
+This step is not a paragraph you write afterwards to account for a shape you
+already had — the shape is what the table leaves behind. A
 designer who skips to the topology reliably writes "no parallelization
 opportunity" about three evaluations that never once read each other, and the
 table is what makes that sentence impossible to write by accident.
@@ -445,17 +448,30 @@ room.
 because it comes before the program in the thinking. List EVERY PAIR of the nodes
 you are about to draw — every pair, not the interesting ones — and mark each:
 
-- `"rel": "depends"` — one of them cannot begin until it has the other's answer.
-  The `why` NAMES THE DATA that flows: "the ranking is over the observables", not
-  "this one goes second".
-- `"rel": "independent"` — no output of either enters the other, in either
-  direction. The `why` is one line saying why none does: "each prices one approach
-  from the goal's own statement".
+THE TWO WORDS ARE ABOUT THE TOPOLOGY YOU ARE ABOUT TO DRAW, not about which node
+reads which. That distinction is where designs are lost, so it is spelled out:
+
+- `"rel": "depends"` — one of the two is DOWNSTREAM of the other: some chain of
+  edges runs from one to the other, so the second cannot begin until the first has
+  finished. The `why` NAMES THE DATA that flows: "the ranking is over the
+  observables", not "this one goes second".
+- `"rel": "independent"` — NEITHER IS DOWNSTREAM OF THE OTHER: no chain of edges
+  runs either way, and the two could sit in separate lanes. The `why` is one line
+  saying why nothing has to flow: "each prices one approach from the goal's own
+  statement".
+
+DOWNSTREAM IS TRANSITIVE, AND THAT IS THE TRAP. A node at the end of a chain is
+downstream of EVERYTHING in that chain, including the parts whose output it never
+looks at. Draw `gather -> summarise -> check` and the pair `gather`/`check` is
+`depends`, even though `check` only ever reads the summary — because `check`
+cannot start until `gather` has finished. Marking that pair `independent` because
+"the checker only looks at the summary" is the single most common refusal this
+guide sees. If two jobs are in one line, every pair in that line is `depends`.
 
 ```json
 "derivation": [
   {"a": "node-x", "b": "node-y", "rel": "depends", "why": "y is handed x's ranked list"},
-  {"a": "node-y", "b": "node-z", "rel": "independent", "why": "both read the goal; neither reads the other"}
+  {"a": "node-y", "b": "node-z", "rel": "independent", "why": "separate lanes of one split; no chain of edges runs either way"}
 ]
 ```
 
@@ -476,6 +492,42 @@ THEN DRAW THE EDGES TO MATCH, because this is checked, not read:
   table with three evaluations in it and a program with one node that does all
   three is caught: collapsing the jobs does not remove the pairs, it just makes
   the design disagree with its own derivation.
+
+## YOUR THINKING AND YOUR ANSWER COME OUT OF THE SAME BUDGET
+
+Reason IN THE REPLY, not at length before it. The `derivation` table and the
+`justification` are where the pair-by-pair work belongs — they are the record of
+it, they are read, and they are paid for once. A long private deliberation before
+the first character of JSON is paid for too, and it is paid for out of the room
+the page itself needs: a design that spends the whole budget thinking comes back
+EMPTY, which is an attempt spent for nothing.
+
+So: settle the jobs, write the table, write the page. If you find yourself
+weighing a fourth architecture, you already have your answer — the guide asks for
+the smallest shape that does the work.
+
+## READ YOUR OWN REPLY AGAINST THIS LIST BEFORE YOU SEND IT
+
+Every line here is checked by a machine, and every one of them is a refusal that
+costs you the whole attempt. They are cheap to check and they are the ones that
+actually get missed:
+
+1. **A rung above `accept` has at least one `verify` node in the program.** Say
+   `invariants` and there must be a node of kind `verify` after the work. If you
+   did not draw one, either draw it or say `accept`. `human` needs a `human.gate`
+   as well.
+2. **No node names a rung above the harness's own.**
+3. **`fixed` carries no `dyn.cap`** — omit it or write 0. Every rung above `fixed`
+   carries one, 1..«max_dyn_cap».
+4. **No pair marked `independent` has a chain of edges running either way.** Walk
+   the edges, not your intentions. A line of three nodes has three `depends` pairs
+   and no independent ones.
+5. **Every id in `derivation` is a node in `program.nodes`**, and every pair of
+   drawn nodes appears exactly once.
+6. **The whitelist names only tools from the list above**, and only tools some node
+   actually uses.
+7. **Every `verify` node has a `check`** that says what is being checked.
+8. **No `id.version`, and no key anywhere that is not in the shape below.**
 
 Reply with ONE JSON object and NOTHING else — no prose, no code fence:
 

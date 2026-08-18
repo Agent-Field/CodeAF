@@ -214,8 +214,31 @@ A design must pass validation and a lint before it can be offered to you. The li
 - **fewer than two cues** — with one cue "the entry would be unreachable by anything but
   its own name".
 
-A refused design is shown the sentence it failed on and gets up to two attempts to fix it.
-Malformed JSON gets a free salvage attempt and then one repair turn.
+A refused design is shown the sentence it failed on and gets up to two attempts to fix it —
+its own page and the exact refusal, so it repairs what it wrote rather than guessing again.
+
+Malformed JSON gets a free salvage attempt (a code fence, prose around the object,
+typographic quotes, a trailing comma) and then one repair turn. **A reply that was cut off
+buys no repair turn at all.** Half an object cannot be repaired into a whole one without
+inventing the rest, so a design that ran out of its completion budget mid-page is told
+`your reply stopped in the middle: it ran out of completion budget before the JSON object
+was closed` and asked for a SMALLER harness — fewer steps, shorter briefs — on the next
+attempt.
+
+## Why a harness design keeps failing
+
+Almost always it is one of two laws the page broke, and both are refusals with a sentence
+you can read on the failure note:
+
+- **A rung above `accept` with nothing that could do the checking.** A design that claims
+  its output was checked needs a checking step in the program to have done it.
+- **Two steps called independent that the program runs one into the other.** A step at the
+  end of a line runs after everything earlier in that line, including the parts whose
+  output it never reads.
+
+Both are recoverable: the second attempt is usually the one that lands. A design that fails
+all three attempts says so — `harness design failed: no valid design in 3 attempts` — and
+the goal is worth trying again, or worth saying in fewer parts.
 
 ## The save-or-discard card
 
