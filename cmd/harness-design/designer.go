@@ -64,9 +64,10 @@ import (
 // vocabulary into the page would produce a page that cannot be read back. The
 // envelope is the seam until the package grows one.
 type design struct {
-	Cues          []string        `json:"cues"`
-	Justification string          `json:"justification"`
-	Harness       json.RawMessage `json:"harness"`
+	Cues          []string                `json:"cues"`
+	Justification string                  `json:"justification"`
+	Derivation    []subharness.Derivation `json:"derivation,omitempty"`
+	Harness       json.RawMessage         `json:"harness"`
 }
 
 // finding is one thing the critic found, and which of the three passes found it.
@@ -103,7 +104,7 @@ type revision struct {
 // critic did not restate is the draft's own. The harness is carried separately
 // because a patched page is not a page the critic wrote.
 func (r revision) design(draft design) design {
-	out := design{Cues: draft.Cues, Justification: draft.Justification}
+	out := design{Cues: draft.Cues, Justification: draft.Justification, Derivation: draft.Derivation}
 	if len(r.Cues) > 0 {
 		out.Cues = r.Cues
 	}
@@ -317,7 +318,7 @@ func designOnce(ctx context.Context, chat *chatClient, history []message, maxTok
 	}
 	var envelope design
 	if err := strict(salvaged.JSON, &envelope); err != nil {
-		return design{}, subharness.Harness{}, at, fmt.Errorf("your reply is not the envelope: %w. Reply with ONE JSON object with exactly the keys cues, justification, harness", err)
+		return design{}, subharness.Harness{}, at, fmt.Errorf("your reply is not the envelope: %w. Reply with ONE JSON object with exactly the keys cues, justification, derivation, harness", err)
 	}
 	h, err := accept(envelope)
 	return envelope, h, at, err
@@ -340,7 +341,12 @@ func reviewOnce(ctx context.Context, chat *chatClient, history []message, maxTok
 	}
 	revised, results, err := subharness.ApplyReport(draftHarness, envelope.Ops)
 	if err == nil {
-		err = check(revised, envelope.design(draft))
+		// The draft's table, narrowed to the nodes the patch left standing — the
+		// critic never restates it, and a pair about a node it dropped is a claim
+		// about a page that no longer exists (subharness.PairsWithin).
+		patched := envelope.design(draft)
+		patched.Derivation = subharness.PairsWithin(revised, patched.Derivation)
+		err = check(revised, patched)
 	} else {
 		err = fmt.Errorf("your ops produced a page that is refused: %w", err)
 	}
@@ -390,13 +396,26 @@ func accept(envelope design) (subharness.Harness, error) {
 	return h, check(h, envelope)
 }
 
-// check is the law both stages are held to: Validate, then the lint this rig has
-// that Validate does not.
+// check is the law both stages are held to: Validate, the derivation table, then
+// the lint this rig has that Validate does not.
+//
+// THE TABLE IS CHECKED HERE OR IT IS CHECKED NOWHERE. It arrived in the envelope
+// as `derivation` and it is the one piece of the reply that the PAGE cannot
+// carry, so a rig that decoded it and did not hold it to the edges would be
+// measuring a design the shipped surface would refuse (internal/session's
+// checkHarness does hold it). That drift is not hypothetical: this struct had no
+// `derivation` field at all while the shared guide asked for one, and `strict`
+// refuses unknown fields — so every reply the guide asked for was thrown out
+// here as "not the envelope", and this rig measured nothing for as long as that
+// was true.
 func check(h subharness.Harness, d design) error {
 	if err := subharness.Validate(h); err != nil {
 		return err
 	}
-	return lint(h, d, availableTools)
+	if err := subharness.CheckDerivation(h, d.Derivation); err != nil {
+		return err
+	}
+	return lint(h, d, beltInUse())
 }
 
 // lint is the law this rig has that Validate does not, and every line of it is a

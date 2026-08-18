@@ -40,6 +40,12 @@
 //	OPENROUTER_API_KEY=… go run ./cmd/harness-design -goal "your own sentence"
 //	                     -model deepseek/deepseek-v4-flash -design-only -review=false
 //	OPENROUTER_API_KEY=… go run ./cmd/harness-design -orchestrate -goal all -fuel 1.50
+//	OPENROUTER_API_KEY=… go run ./cmd/harness-design -repro 5 -belt chat
+//	                     -model deepseek/deepseek-v4-pro -goal "…"
+//
+// AND A THIRD, WHICH IS AN INSTRUMENT RATHER THAN A QUESTION. `-repro N` runs
+// stage 1 N times and tallies what refused it — see repro.go, and the reason it
+// had to exist.
 package main
 
 import (
@@ -129,15 +135,22 @@ type rig struct {
 
 func main() {
 	var (
-		which        = flag.String("goal", "all", "g1|g2|g3|c1|c2|c3|all|easy|hard, or a goal of your own in quotes")
-		model        = flag.String("model", "deepseek/deepseek-v4-flash", "the OpenRouter model that designs, reviews and runs")
-		storeDir     = flag.String("store", "harnesses", "where pages and run traces land")
-		retries      = flag.Int("retries", 2, "how many times a failed design or review is fed its own error back")
-		review       = flag.Bool("review", true, "run stage 1.5, the design review")
-		designOnly   = flag.Bool("design-only", false, "stop after stage 2")
-		gate         = flag.String("gate", "approve", "what the absent person says at a human.gate: approve|decline|intervene")
-		maxTurns     = flag.Int("max-turns", 4, "the clamp on one agent.loop's rounds, whatever the page asked for")
-		designTokens = flag.Int("design-tokens", 8000, "the design turn's completion budget; a spiraling model fails fast instead of streaming for minutes")
+		which      = flag.String("goal", "all", "g1|g2|g3|c1|c2|c3|all|easy|hard, or a goal of your own in quotes")
+		model      = flag.String("model", "deepseek/deepseek-v4-flash", "the OpenRouter model that designs, reviews and runs")
+		storeDir   = flag.String("store", "harnesses", "where pages and run traces land")
+		retries    = flag.Int("retries", 2, "how many times a failed design or review is fed its own error back")
+		review     = flag.Bool("review", true, "run stage 1.5, the design review")
+		designOnly = flag.Bool("design-only", false, "stop after stage 2")
+		gate       = flag.String("gate", "approve", "what the absent person says at a human.gate: approve|decline|intervene")
+		maxTurns   = flag.Int("max-turns", 4, "the clamp on one agent.loop's rounds, whatever the page asked for")
+		// 8000 was measured against models that answer straight, and it is the
+		// number that made this pipeline look broken. Rendered against the CHAT's
+		// belt, deepseek-v4-flash spent the WHOLE of it thinking and answered
+		// with nothing — twice in three attempts — which is the failure
+		// openrouter.go names and which reads to a person as "the design keeps
+		// failing". It matches internal/session's harnessDesignTokens on purpose:
+		// a rig whose budget is half the shipped one measures a different program.
+		designTokens = flag.Int("design-tokens", 16000, "the design turn's completion budget; a reasoning model draws its thinking from this too")
 		// 6000 was the budget when the critic had three checklists to run. It has
 		// two duties as well now, and on a reasoning model the thinking is drawn
 		// from this same budget: a hard draft came back three times at
@@ -157,6 +170,13 @@ func main() {
 		nodeTokens  = flag.Int("node-tokens", 4000, "one node's completion budget — a node that hits it loses the DIGEST it writes last")
 		maxParallel = flag.Int("max-parallel", 8, "the clamp on how many nodes this rig will have in flight at once")
 		fuelGate    = flag.String("fuel-gate", "finish", "what the absent person answers when the tank empties: finish|stop")
+
+		// THE REPRODUCTION is a third mode, and it is the one that exists because
+		// this binary went blind (repro.go). It runs stage 1 and nothing else, N
+		// times, against the belt a CHAT hands a harness — so a refusal a person
+		// hits in conversation can be counted here rather than argued about.
+		repro = flag.Int("repro", 0, "run the design stage this many times and tally what refused it, instead of the stages")
+		belt  = flag.String("belt", "rig", "whose tools the guide is rendered against: rig (three that cannot fail) or chat (what a conversation hands a harness)")
 	)
 	flag.Parse()
 
@@ -186,16 +206,35 @@ func main() {
 		die("no goal to run")
 	}
 
+	tools, err := beltNamed(*belt, ".")
+	if err != nil {
+		die(err.Error())
+	}
+	// THE CHAT BELT IS RENDERED, NEVER RUN. Its tools are pi's real read, write
+	// and bash over this machine, and stage 3 executing them would be the rig
+	// editing the repository it is measuring. So the belt that reproduces a chat
+	// is allowed only where nothing runs.
+	if *repro == 0 && !*designOnly && !sameBelt(tools, availableTools) {
+		die("-belt chat is design-only: pass -repro N or -design-only, because stage 3 would run those tools for real")
+	}
+
 	// The briefs are rendered BEFORE the first request, because a guide whose
 	// placeholders have drifted from this binary's machinery should cost nothing
 	// and stop everything (prompts.Render) rather than reach a model.
-	designer, err := designerSystem(availableTools)
+	designer, err := designerSystem(tools)
 	if err != nil {
 		die("the designer guide will not render: " + err.Error())
 	}
-	reviewer, err := reviewSystem(availableTools)
+	reviewer, err := reviewSystem(tools)
 	if err != nil {
 		die("the reviewer guide will not render: " + err.Error())
+	}
+
+	// The repro branches here: it has the guide it needs and wants none of the
+	// store, the review or the run.
+	if *repro > 0 {
+		fmt.Printf("harness-design · repro · model %s · belt %s · %d trials\n", *model, *belt, *repro)
+		os.Exit(reproMode(ctx, newChatClient(key, *model), designer, chosen, *repro, *designTokens, *temp, *retries))
 	}
 
 	r := &rig{
