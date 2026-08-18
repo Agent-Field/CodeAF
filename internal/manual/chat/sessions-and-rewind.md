@@ -346,9 +346,9 @@ the kernel releases it when the holding process dies, however it dies. There is 
 and no staleness check: after a crash the next launch opens the file again.
 
 **Closing cleanly** — `/quit`, `ctrl+c`, or any other road out — disarms the idle timer,
-drops queued follow-ups, closes the wake lanes, cancels any harness design still in flight,
-cancels the turn with a grace wait, shuts down background jobs, and finally syncs and closes
-the journal, releasing the lock. Calling it twice is safe, and a session that returns by any
+drops queued follow-ups, closes the wake lanes, cancels the turn with a grace wait, shuts
+down background jobs — which is where a task still running ends, a harness still being
+designed among them — and finally syncs and closes the journal, releasing the lock. Calling it twice is safe, and a session that returns by any
 other road still flushes the file.
 
 **A dropped connection**, when the session is running on another machine, loses nothing that

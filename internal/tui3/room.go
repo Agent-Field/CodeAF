@@ -1829,6 +1829,14 @@ func (a *app) roomPath() []string {
 func (a *app) roomStateWord(node *taskNode) string {
 	switch node.state {
 	case session.TaskRunning:
+		// A NODE IN A NAMED PHASE SAYS THE PHASE, and it outranks both of the
+		// clauses below. "designing" and "awaiting your look" are what this work
+		// IS at this moment (session's TaskNotice.Doing) — a header that said
+		// "working" over a card waiting on the person would be the one line on the
+		// page spent on the least specific thing on it.
+		if node.doing != "" {
+			return node.doing
+		}
 		// A NODE CLOSING A GAP IS FINISHING, AND THE HEADER SAYS SO. It is still
 		// running — the engine has not moved it and neither does this — but a
 		// person standing in the room of work that is nearly home is owed the

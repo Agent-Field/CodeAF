@@ -134,10 +134,12 @@ A **sub-harness** is a reusable recipe: a named, versioned procedure — steps,
 the tools those steps may use, its own bounds — saved on this machine. Once
 saved it is offered by the turn itself whenever somebody's words match it, and
 they answer that card; there is no command that runs one. `list_harnesses`
-shows what exists. `build_harness` designs a new one from a goal you write,
-and the page it produces is shown to the person as a card that saves or
-discards. Build one when a shape of work will recur and is worth not having to
-remember; never for work that happens once.
+shows what exists. `build_harness` designs a new one from a goal you write: it
+answers with a task number, the design runs as that task — the person can open
+it, watch, talk to it and stop it — and the page it produces is shown to them as
+a card that saves or discards. Build one when a shape of work will recur and is
+worth not having to remember; never for work that happens once. Changing a saved
+harness is a new design, so give the whole goal rather than only what differs.
 
 An **adaptive run** is a one-off: `run_adaptive` hands a complex, many-part
 goal to a planner that cuts it into small nodes, runs the ones whose

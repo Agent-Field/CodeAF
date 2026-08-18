@@ -272,27 +272,13 @@ func TestCancelEndsAHarnessRunWhileItIsInFlight(t *testing.T) {
 	}
 }
 
-// A DESIGN SAYS SO IN THE TRANSCRIPT, because the design's own goroutine goes
-// quiet when its context dies and silence is the one answer that leaves a person
-// watching for a card that is never coming.
-func TestCancelEndsAHarnessDesignAndSaysSo(t *testing.T) {
+// A DESIGN IS NOT A KIND OF ITS OWN ANY MORE, and the id space it used to have
+// answers to nothing: a harness being designed is a TASK (harness_task.go), so
+// `task:4` is the one way to end one and `design:4` names nothing at all.
+func TestADesignIsStoppedAsTheTaskItIs(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
-	ctx, cut := context.WithCancel(context.Background())
-	agent.mu.Lock()
-	agent.harnessDesigns = map[uint64]*harnessInFlight{5: {cancel: cut, goal: buildGoal, since: time.Now()}}
-	agent.mu.Unlock()
-
-	line, err := agent.Cancel("design:5")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if line != designStoppedWord {
-		t.Fatalf("the line a person is shown reads %q", line)
-	}
-	select {
-	case <-ctx.Done():
-	case <-time.After(5 * time.Second):
-		t.Fatalf("the design's context was never cut")
+	if _, err := agent.Cancel("design:5"); err == nil {
+		t.Fatal("design: still names a kind of work this session can stop")
 	}
 }
 

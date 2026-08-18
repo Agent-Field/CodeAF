@@ -201,7 +201,13 @@ type TaskNode struct {
 	// a test, a future join — waits without polling.
 	done chan struct{}
 
-	spec  taskSpec
+	spec taskSpec
+	// kind is what sort of node this is ([TaskKind]), settled at admission from
+	// the spec and never touched again. It is a FIELD rather than a question put
+	// to the spec because a node restored from a checkpoint has no spec worth
+	// asking — the design it was written from is gone, and the kind is the one
+	// word its history still needs (task_store.go).
+	kind  TaskKind
 	brief string
 	state TaskState
 	// report, changed, branch, worktree and merge are the node's leavings,
@@ -277,6 +283,19 @@ type TaskNode struct {
 	// journal is where this node's transcript was written, recorded when its
 	// child agent was built. It is the node's history, and it outlives the room.
 	journal string
+	// doing is the PHASE a node of a named kind is in, in that kind's own plain
+	// words — "designing", "awaiting your look" — and "" for an ordinary task,
+	// which has no phases and whose state word is the whole truth about it
+	// (harness_task.go).
+	//
+	// IT IS A REPLACEMENT AND NOT A DECORATION, which is the one thing that makes
+	// it different from mend and held below. Those two are said BESIDE "running",
+	// because a node closing a gap or waiting on a slot is running and a surface
+	// that spent the state word on either would be hiding the state. A harness
+	// being designed is running too, but "running" is a word about the machinery
+	// and "designing" is a word about the work — so the surface draws this
+	// INSTEAD, and the state underneath is unchanged.
+	doing string
 	// mend is the gap a repair round is closing right now, in plain words, and ""
 	// at every other moment (task_audit.go's repairNode). It is the ONLY thing
 	// the repair loop puts on the wire while it runs: the node is still running,
@@ -421,6 +440,7 @@ func (g *TaskGraph) admit(id uint64, spec taskSpec) TaskState {
 		dependsOn: spec.dependsOn,
 		done:      make(chan struct{}),
 		spec:      spec,
+		kind:      spec.kind(),
 		state:     TaskQueued,
 	}
 	g.mu.Lock()
@@ -487,6 +507,13 @@ func (g *TaskGraph) runFrontier() {
 		hold := ""
 		switch {
 		case !ready:
+		// A NODE THAT TAKES NO SLOT IS HELD BY NEITHER CEILING, and it is the one
+		// case that has to come before both of them ([taskSpec.takesSlot] makes
+		// the whole argument). The two ceilings model a node as an agent with a
+		// checkout and a build; a design is two model calls and a person reading
+		// a card, and queueing one behind a full machine would be a harness
+		// nobody can start because the machine is busy running tasks.
+		case !node.takesSlot():
 		case g.limit > 0 && g.running >= g.limit:
 			hold = waitingSlot
 		case busy:
@@ -513,7 +540,9 @@ func (g *TaskGraph) runFrontier() {
 		// The hold is lifted by the start itself, so the running update this
 		// node is about to send carries no reason to be waiting.
 		node.held = ""
-		g.running++
+		if node.takesSlot() {
+			g.running++
+		}
 		starting = append(starting, node)
 	}
 	g.mu.Unlock()
@@ -645,7 +674,11 @@ func (g *TaskGraph) complete(node *TaskNode, state TaskState) {
 		// have finished work ageing on disk.
 		node.elapsed = time.Since(node.started)
 	}
-	if g.running > 0 {
+	// The slot goes back to whoever took one. A node that never took one — a
+	// design (see [TaskNode.takesSlot]) — must not hand one back, or it would be
+	// quietly raising the cap for everybody else, which is the same fault
+	// [TaskGraph.resettle] refuses one function down.
+	if g.running > 0 && node.takesSlot() {
 		g.running--
 	}
 	g.mu.Unlock()
@@ -1081,6 +1114,7 @@ func (n *TaskNode) notice() TaskNotice {
 	return TaskNotice{
 		ID:        n.id,
 		Title:     n.spec.title,
+		Kind:      n.kind,
 		DependsOn: n.dependsOn,
 		State:     n.state,
 		Elapsed:   elapsed,
@@ -1088,6 +1122,7 @@ func (n *TaskNode) notice() TaskNotice {
 		Changed:   changed,
 		Branch:    n.branch,
 		Merge:     n.merge,
+		Doing:     n.doing,
 		Mending:   n.mend,
 		Waiting:   waiting,
 		Stopped:   n.stopped,
@@ -1141,7 +1176,23 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 		return
 	}
 	a.recordTaskIndex(node)
-	a.enqueueSteering(taskNote(notice, taskURI(node.journalPath())))
+	note := taskNote(notice, taskURI(node.journalPath()))
+	// WHETHER IT IS WORTH A TURN OF ITS OWN depends on whether anybody is waiting
+	// for a sentence about it. An ordinary task was handed off and forgotten: it
+	// lands minutes later on a silent session, and the answer the person asked
+	// for is the model's paragraph about it, so the note WAKES one
+	// ([Agent.enqueueSteering] makes the whole argument).
+	//
+	// A DESIGN IS THE OTHER CASE. It ends the moment the person answers its card
+	// — they are at the keyboard, they just decided, and the settle card is
+	// already on screen saying what became of it — so a turn started here would be
+	// the model reading their own answer back to them. The note is ambient: real,
+	// carried, and read by whatever they say next (harness_task.go).
+	if notice.Kind == TaskKindHarness {
+		a.enqueueAmbientNote(note)
+	} else {
+		a.enqueueSteering(note)
+	}
 	// SAID ONCE, ACROSS LIVES. The checkpoint records that this node's completion
 	// has been announced, so a session resumed from it restores the node as
 	// history instead of telling the model that finished work has just landed
@@ -1307,7 +1358,15 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 		defer listed.settle(0)
 	}
 
-	state := a.workTaskNode(ctx, node, listed)
+	// WHICH BODY THIS NODE HAS. Everything above and below is the same for both
+	// kinds — the deadline, the job row, the settle — and the middle is what a
+	// node of this spec IS: a worker in a worktree, or a sub-harness being
+	// written in a room (harness_task.go).
+	work := a.workTaskNode
+	if node.spec.design != nil {
+		work = a.designHarnessNode
+	}
+	state := work(ctx, node, listed)
 	node.graph.complete(node, state)
 }
 
@@ -1814,7 +1873,15 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent,
 		// that is pacing them (agent.go's sessionCompleter), and this is how the
 		// node hears about it while it happens: a card that would otherwise show
 		// a task working says it is waiting instead.
-		pacing:         node.pacing,
+		pacing: node.pacing,
+		// AND A DESIGN THREAD IS A ROOM RATHER THAN A WORKER, which is the one
+		// place the two node kinds want different agents. A worker's turns belong
+		// to the runner driving it, so a line steered at it lands in the turn it
+		// is already in; a design thread spends most of its life with no turn
+		// running at all — the page is written, the card is up, and the person is
+		// reading it — so a line steered at it has to START one or it is a
+		// question nothing ever answers (agent.go's wakeLocked, harness_task.go).
+		roomThread:     node.kind == TaskKindHarness,
 		SupportsImages: parent.SupportsImages,
 		RolesSource:    parent.RolesSource,
 		SearchProvider: parent.SearchProvider,

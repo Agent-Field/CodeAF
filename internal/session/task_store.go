@@ -188,6 +188,19 @@ type taskRecord struct {
 	// Interrupted says this node was RUNNING when a session ended and that a
 	// recovery has consumed that fact. It is the consume-once receipt.
 	Interrupted bool `json:"interrupted,omitempty"`
+
+	// Kind is what sort of node this was ([TaskKind]), and empty is the ordinary
+	// one: work in a worktree. It is on the record for ONE reader — the recovery
+	// that has to say what an interrupted node left behind — because the two
+	// kinds leave behind different things, and a harness design told "it had not
+	// got as far as a working copy" would be a sentence about machinery it was
+	// never going to have (see [interrupt]).
+	//
+	// A RESUMED DESIGN IS NEVER RE-RUN. It was running when the session ended and
+	// a recovery turns it into a failed node before the graph holds it, so nothing
+	// here has to rebuild the goal it was designing from — the node is history,
+	// and this is the one word its history needs.
+	Kind TaskKind `json:"kind,omitempty"`
 }
 
 // taskDocument is the file: a type tag, a version, the id counter, and the
@@ -327,6 +340,7 @@ func (n *TaskNode) recordLocked() taskRecord {
 		ElapsedMS:   elapsed.Milliseconds(),
 		Noted:       n.noted,
 		Interrupted: n.interrupted,
+		Kind:        n.kind,
 	}
 }
 
@@ -632,6 +646,7 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		},
 		state:       record.State,
 		report:      record.Report,
+		kind:        record.Kind,
 		claim:       record.Claim,
 		changed:     record.Changed,
 		branch:      record.Branch,
@@ -661,6 +676,16 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	// The completion note is owed: nobody ever announced this node, because
 	// nothing was alive to announce it.
 	record.Noted = false
+
+	if record.Kind == TaskKindHarness {
+		// A DESIGN HAS NOTHING ON DISK TO POINT AT, ever: no worktree, no branch,
+		// no files, and nothing reaches the registry until somebody approves the
+		// card (harness_task.go). Everything below is about work that was left
+		// somewhere, so all of it would be a sentence about machinery this node
+		// was never going to have.
+		record.Report = "session ended while this harness was being designed; nothing was saved"
+		return record, ""
+	}
 
 	if record.Merge == mergeInPlace {
 		// There was no repository to branch from, so its edits are already in the
