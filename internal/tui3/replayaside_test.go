@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -28,6 +29,7 @@ func TestAReplayedAsideIsTheSurfacesOwnLaneAndNotThePersons(t *testing.T) {
 	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab"})
 	a.width, a.height = 80, 24
 	a.pal = newPalette(tokens.ANSI256, false)
+	a.workMode = config.WorkOpen
 	a.touch()
 
 	got := plain(frame(a))

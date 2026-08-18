@@ -55,7 +55,7 @@ func TestTheStreamingThoughtShowsOnlyItsLastThreeLines(t *testing.T) {
 		t.Fatalf("want a header and %d lines, got %d rows:\n%s",
 			thoughtLive, len(block), strings.Join(plainRows(a), "\n"))
 	}
-	if head := plain(block[0].text); !strings.HasPrefix(head, glyphThought+" thinking · ") {
+	if head := strings.TrimLeft(plain(block[0].text), " "); !strings.HasPrefix(head, glyphThought+" thinking · ") {
 		t.Fatalf("the header is wrong: %q", head)
 	}
 	body := make([]string, 0, thoughtLive)
@@ -189,7 +189,7 @@ func TestTheThoughtTokenCounterAccumulatesAndSurvivesTheCollapse(t *testing.T) {
 		t.Fatalf("the counter reads %q, want %q", got, "20 tok")
 	}
 	head := plain(thoughtBlockRows(t, a)[0].text)
-	if head != glyphThought+" thinking · 20 tok · ctrl+e" {
+	if strings.TrimLeft(head, " ") != glyphThought+" thinking · 20 tok · ctrl+e" {
 		t.Fatalf("the live header reads %q", head)
 	}
 
@@ -199,7 +199,7 @@ func TestTheThoughtTokenCounterAccumulatesAndSurvivesTheCollapse(t *testing.T) {
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: text(session.EventReasoning, strings.Repeat("c", 40))},
 		frameMsg{})
-	if head := plain(thoughtBlockRows(t, a)[0].text); head != glyphThought+" thinking · 30 tok · ctrl+e" {
+	if head := plain(thoughtBlockRows(t, a)[0].text); strings.TrimLeft(head, " ") != glyphThought+" thinking · 30 tok · ctrl+e" {
 		t.Fatalf("the counter did not accumulate: %q", head)
 	}
 

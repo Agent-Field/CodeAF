@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
@@ -31,11 +32,12 @@ import (
 type hitKind uint8
 
 const (
-	hitNone hitKind = iota
-	hitTool         // a tool call: click expands that call inline
-	hitFold         // the "N earlier tool calls" line: click expands the turn
-	hitMore         // the "… N more lines" foot of a capped expansion: click lifts the cap
-	hitTask         // a task proposal (task.go): click opens its brief
+	hitNone     hitKind = iota
+	hitTool             // a tool call: click expands that call inline
+	hitFold             // the "N earlier tool calls" line: click expands the turn
+	hitWorkFold         // one completed turn's folded machinery
+	hitMore             // the "… N more lines" foot of a capped expansion: click lifts the cap
+	hitTask             // a task proposal (task.go): click opens its brief
 	// hitDone is a landed task's card (taskdone.go): click opens its full
 	// context, enter opens the node's room, ctrl+o is the key the card itself
 	// names. It is a hit of its own rather than another hitTask because the two
@@ -112,14 +114,20 @@ const toolWindow = 3
 // page that ran the clock would draw the conversation's receipts against a
 // node's turns and report figures nobody measured.
 type deck struct {
-	entries  []entry
-	unfolded map[int]bool
-	clock    bool
+	entries     []entry
+	unfolded    map[int]bool
+	workOpen    map[int]bool
+	clock       bool
+	runningTurn int
 }
 
 // conversation is the deck the transcript draws.
 func (a *app) conversation() deck {
-	return deck{entries: a.entries, unfolded: a.unfolded, clock: true}
+	running := 0
+	if a.state == stateWorking {
+		running = a.turn
+	}
+	return deck{entries: a.entries, unfolded: a.unfolded, workOpen: a.workOpen, clock: true, runningTurn: running}
 }
 
 // bodyDeck is the deck the BODY REGION is drawing right now — the room's page
@@ -198,6 +206,7 @@ func (a *app) layout(width int) []row {
 // four rules exist to prevent.
 func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	es := d.entries
+	folds := deriveWorkfolds(es, d.runningTurn)
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it
@@ -228,6 +237,15 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	}
 	for i := 0; i < len(es); i++ {
 		e := &es[i]
+		if f, ok := folds[i]; ok {
+			open := a.workMode == config.WorkOpen || d.workOpen[f.turn]
+			out = append(out, row{text: workIndent(width) + a.pal.dim(a.workfoldLabel(f)), entry: -1, hit: hitWorkFold, turn: f.turn})
+			if !open {
+				i = f.answer - 1
+				wasCluster, wasBlock = false, false
+				continue
+			}
+		}
 		if e.turn != walk.turn {
 			// The turn before this one is over: its receipt, and then the mark
 			// that says how long ago that was. Both are drawn HERE — at the seam
@@ -339,6 +357,15 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	// with. A turn still running has no stamp yet, so this draws nothing until
 	// the moment it settles — which is exactly when the figures become true.
 	clock(-1)
+	// THE INDENT LAW is applied after layout so every kind of machinery,
+	// including expanded details and synthetic fold rows, obeys one rule.
+	if workIndent(width) != "" {
+		for i := range out {
+			if rowIsWork(out[i], es, folds) && !strings.HasPrefix(ansi.Strip(out[i].text), "  ") {
+				out[i].text = "  " + out[i].text
+			}
+		}
+	}
 	return out, wasCluster || wasBlock
 }
 
@@ -362,7 +389,7 @@ func (a *app) isHot(r row) bool {
 	case hoverEntry:
 		return r.entry >= 0 && r.entry == a.hot.entry
 	case hoverFold:
-		return r.hit == hitFold && r.turn == a.hot.turn
+		return (r.hit == hitFold || r.hit == hitWorkFold) && r.turn == a.hot.turn
 	}
 	return false
 }

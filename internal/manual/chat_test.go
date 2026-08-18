@@ -95,6 +95,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you change my settings", "what-i-can-do"},
 		{"set my daily budget to 5", "what-i-can-do"},
 		{"why won't you change my approval mode", "permissions"},
+		{"what does the indented part mean", "keys"},
+		{"how do I see what aforge did", "keys"},
+		{"how do I keep everything expanded", "keys"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

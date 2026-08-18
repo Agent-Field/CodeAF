@@ -43,6 +43,7 @@ func toolAppAt(t *testing.T, width int, batches ...[]session.Event) *app {
 func toolRowAt(t *testing.T, a *app) string {
 	t.Helper()
 	for _, r := range plainRows(a) {
+		r = strings.TrimLeft(r, " ")
 		if strings.HasPrefix(r, railMid) || strings.HasPrefix(r, railLast) ||
 			strings.HasPrefix(r, railASCII) {
 			return r

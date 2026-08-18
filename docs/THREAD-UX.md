@@ -17,6 +17,23 @@ and every piece of *work* renders not as stream bubbles but as a **living
 card**: one card per job, updating in place, docked while active, settling
 into the thread where it was born when it completes.
 
+## The v3 stream law — answers flush, work indented and folded
+
+In the live v3 chat, flush-left is said to the person and a two-column gutter
+means work done on their behalf. The current trailing assistant block is the
+answer and remains flush; if a later tool call arrives, that block is
+reclassified as intermediate work on the next render. Thinking, calls, results,
+expanded details, tool-window fold lines, and intermediate assistant text all
+share the gutter. Under the existing 60-column phone floor the gutter is zero.
+
+Thinking still collapses on the first non-reasoning event. When a successful
+turn settles with both work and a trailing answer, the entire work section then
+collapses one level further into a single `▸ worked … · ctrl+e` chip. Opening the
+turn restores the thinking chip and three-call window exactly as they were; it
+does not flatten their bounded disclosure. Questions, failures, and work with no
+answer remain visible. The fold is derived from the entries, not journaled, so
+replayed conversations and task rooms obey the same rule.
+
 ## Decision 1 — The stream is attention; the card is state
 
 Two kinds of content, two behaviors:

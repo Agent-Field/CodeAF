@@ -488,7 +488,7 @@ func TestCopyModeYanksTheMarkedSpan(t *testing.T) {
 	}
 
 	payload := yank(t, a)
-	if payload != "· bravo\n· charlie" {
+	if payload != "  · bravo\n  · charlie" {
 		t.Fatalf("the yank carried %q", payload)
 	}
 	if a.copy.mark >= 0 {
@@ -496,7 +496,7 @@ func TestCopyModeYanksTheMarkedSpan(t *testing.T) {
 	}
 	// v again with no mark set copies the cursor's line alone.
 	a.copy.at = rowWith(t, a, "delta")
-	if got := yank(t, a); got != "· delta" {
+	if got := yank(t, a); got != "  · delta" {
 		t.Fatalf("an unmarked yank carried %q", got)
 	}
 }
@@ -572,7 +572,7 @@ func TestCopyModeTakesTheBlockUnderTheCursorAndYanksItClean(t *testing.T) {
 	drive(t, a, key("a"))
 	drive(t, a, key("a"))
 	got := yank(t, a)
-	if !strings.HasPrefix(got, "Use fmt:") || !strings.HasSuffix(got, "That is all.") {
+	if !strings.HasPrefix(strings.TrimLeft(got, " "), "Use fmt:") || !strings.HasSuffix(got, "  That is all.") {
 		t.Fatalf("the second press did not widen to the answer: %q", got)
 	}
 	if strings.Contains(got, tokens.GlyphCodeGutter) {

@@ -42,6 +42,7 @@ func expansionOf(t *testing.T, a *app) []string {
 	t.Helper()
 	var body []string
 	for _, r := range openFirst(t, a) {
+		r = strings.TrimLeft(r, " ")
 		if stem, cut := strings.CutPrefix(r, railCont); cut {
 			body = append(body, stem)
 			continue

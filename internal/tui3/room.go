@@ -119,6 +119,7 @@ type taskRoom struct {
 	// conversation's list: a turn number means nothing outside the list it counts
 	// (render.go's [deck]).
 	unfolded map[int]bool
+	workOpen map[int]bool
 	// turn counts the page's turns — the node's first instruction, then every
 	// line steered into it. It is what groups a tool cluster and what ctrl+o
 	// folds, exactly as [app.turn] is out in the conversation.
@@ -171,7 +172,11 @@ type taskRoom struct {
 // live fields rather than a copy: the row cache each entry carries is written
 // through it.
 func (r *taskRoom) deck() deck {
-	return deck{entries: r.entries, unfolded: r.unfolded}
+	running := 0
+	if r.lane != nil && !r.done {
+		running = r.turn
+	}
+	return deck{entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen, runningTurn: running}
 }
 
 // The words the room says of itself.

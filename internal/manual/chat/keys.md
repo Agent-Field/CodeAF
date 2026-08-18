@@ -657,6 +657,33 @@ count is an estimate at 4 bytes per token.
 **Reasoning is never written to the session file.** A resumed conversation shows the
 answers, not the thinking.
 
+## What does the indented part mean?
+
+Flush-left text is said to you: your messages and aforge's trailing answer. Text with a
+two-column gutter is work done on your behalf: thinking, tool calls and their details or
+results, and assistant text that was followed by another call. Below 60 columns the
+gutter disappears and the dim treatment carries the same distinction.
+
+## How do I see what aforge did?
+
+When a successful turn has work and a trailing answer, the finished work collapses to
+one indented chip between your message and the answer, such as
+`▸ worked 47s · thought 6s · 6 tool calls · ctrl+e`. Its figures are the whole turn's
+elapsed time, the thinking block's time when there was one, and the real call count.
+
+Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
+no transcript cursor, so the key chooses the latest completed turn's work in the page
+currently on screen. Opening restores the existing bounded views: thinking remains its
+own chip and only the latest 3 tool calls show until those are opened separately.
+Questions, approval prompts, failure lines, text-only turns, and work with no trailing
+answer are never hidden. Fold state belongs to this window; resumed sessions derive
+fresh closed chips from their saved entries.
+
+## How do I keep everything expanded?
+
+Set `ui.work` to `open` to keep completed work visible. `fold` is the default. The row
+live-applies on the next render; work stays indented in either mode.
+
 ## Things this page does not cover
 
 - **Slash commands** — what `/image`, `/export`, `/select`, `/copy`, `/model`,

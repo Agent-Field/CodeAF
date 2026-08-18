@@ -50,7 +50,7 @@ func TestAResumedSessionReplaysItsTail(t *testing.T) {
 	got := plain(frame(a))
 	for _, want := range []string{
 		"› what does bar.go do?", // the person's own words, with the glyph
-		"╰─▶ read foo/bar.go",    // a call, on the rail, quiet and finished
+		"▸ worked",               // completed machinery is folded on replay
 		"it parses",              // through renderMarkdown
 		"nothing else.",
 		"⚭ compacted 12 messages", // a note is a divider

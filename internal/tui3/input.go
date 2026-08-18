@@ -578,8 +578,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// nothing typed it opens the model's thinking (thinking.go), and with a
 		// sentence in the box it is end-of-line, where the caret is what the hand
 		// meant. `end` is always end-of-line, so nothing is unreachable.
-		if msg.String() == "ctrl+e" && a.input.empty() && a.toggleLatestThought() {
-			return nil
+		if msg.String() == "ctrl+e" && a.input.empty() {
+			if a.toggleLatestWorkfold() || a.toggleLatestThought() {
+				return nil
+			}
 		}
 		a.input.end()
 		a.touch()
