@@ -107,8 +107,7 @@ func (a *Agent) tasksTool() bare.Tool {
 				if strings.TrimSpace(parsed.Resolve) != "" {
 					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
 				}
-				rows := SearchTaskIndex(a.taskRows(), parsed.Query, parsed.Limit)
-				return taskRowsText(rows, parsed.Query), false, nil
+				return taskRowsTextLimit(a.taskRows(), parsed.Query, parsed.Limit), false, nil
 			}
 			return a.oneTask(token, parsed)
 		},
@@ -346,26 +345,106 @@ func capitalized(text string) string {
 // taskRowsText is the answer, and it is written for a reader that has to decide
 // what to open next.
 //
-// THREE LINES PER TASK, and the third is the pair of URIs. The row says what the
-// work was and what it came to; the URIs say where to go for the rest. That
-// split is the whole discipline of this index — a tool that returned reports in
-// full would put a session's worth of task prose into a context window over one
-// question about last Tuesday.
+// ROOTS KEEP THEIR FULL ROW. Children sit under their root in one line because
+// the root's transcript names the family; a queried child also carries its own
+// URI so the caller can go straight to the matching work. With no query a
+// family is collapsed to its node count.
 func taskRowsText(rows []TaskIndexEntry, query string) string {
-	if len(rows) == 0 {
+	return taskRowsTextLimit(rows, query, taskSearchLimit)
+}
+
+func taskRowsTextLimit(rows []TaskIndexEntry, query string, limit int) string {
+	query = strings.TrimSpace(query)
+	matches := SearchTaskIndex(rows, query, limit)
+	if len(matches) == 0 {
 		if strings.TrimSpace(query) == "" {
 			return "No tasks have run in this project yet."
 		}
 		return fmt.Sprintf("No task matches %q. Try fewer words, or call tasks with no query to see the most recent ones.", strings.TrimSpace(query))
 	}
+	byKey := make(map[string]TaskIndexEntry, len(rows))
+	children := make(map[string][]TaskIndexEntry)
+	for _, entry := range rows {
+		key := taskFamilyKey(entry.SessionID, entry.ID)
+		byKey[key] = entry
+		if entry.Parent != "" {
+			parent := taskFamilyKey(entry.SessionID, entry.Parent)
+			children[parent] = append(children[parent], entry)
+		}
+	}
+
+	// A query returns matching rows, but a matching child is read in the family
+	// it belongs to. Roots are inserted once, immediately before their hits.
+	var display []TaskIndexEntry
+	seen := make(map[string]bool, len(matches))
+	for _, entry := range matches {
+		if entry.Parent != "" {
+			parentKey := taskFamilyKey(entry.SessionID, entry.Parent)
+			if root, ok := byKey[parentKey]; ok {
+				if !seen[parentKey] {
+					display = append(display, root)
+					seen[parentKey] = true
+				}
+				if query == "" {
+					continue
+				}
+			}
+		}
+		key := taskFamilyKey(entry.SessionID, entry.ID)
+		if !seen[key] {
+			display = append(display, entry)
+			seen[key] = true
+		}
+	}
+
 	var out strings.Builder
-	for at, entry := range rows {
+	for at, entry := range display {
 		if at > 0 {
 			out.WriteString("\n")
 		}
+		_, parentPresent := byKey[taskFamilyKey(entry.SessionID, entry.Parent)]
+		if entry.Parent != "" && parentPresent {
+			out.WriteString(taskChildRowText(entry, query != ""))
+			continue
+		}
 		out.WriteString(taskRowText(entry))
+		if query == "" {
+			if count := len(children[taskFamilyKey(entry.SessionID, entry.ID)]); count > 0 {
+				fmt.Fprintf(&out, "  … %s under it — tasks %s for the family\n", taskNodeCount(count), entry.ID)
+			}
+		}
 	}
 	return out.String()
+}
+
+func taskFamilyKey(session, id string) string { return session + "\x00" + id }
+
+func taskNodeCount(count int) string {
+	if count == 1 {
+		return "1 node"
+	}
+	return strconv.Itoa(count) + " nodes"
+}
+
+func taskChildRowText(entry TaskIndexEntry, withURI bool) string {
+	parts := []string{entry.Title, entry.Status}
+	if word := taskWhenWord(entry); word != "" {
+		parts = append(parts, word)
+	}
+	out := "  " + strings.Join(parts, " · ") + "\n"
+	if withURI {
+		var where []string
+		if entry.ArtifactURI != "" {
+			where = append(where, "artifact "+entry.ArtifactURI)
+		}
+		if entry.TranscriptURI != "" {
+			where = append(where, "transcript "+entry.TranscriptURI)
+		}
+		if len(where) > 0 {
+			out += "    " + strings.Join(where, " · ") + "\n"
+		}
+	}
+	return out
 }
 
 // taskRowText is one task, in the shape a person would read out.

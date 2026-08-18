@@ -6,8 +6,8 @@ package session
 // task_store.go keeps ONE conversation's graph, beside that conversation's
 // journal, and it is right to: a graph is a live thing with a frontier and a
 // scheduler, and it belongs to the session that turns it. This file keeps the
-// other half — the flat, finished record of every node this PROJECT has ever
-// run, in one append-only file the whole directory shares.
+// other half — the compact record of every task family and landed node this
+// PROJECT has ever run, in one append-only file the whole directory shares.
 //
 // The two are not the same fact and neither can stand in for the other. Ask
 // "what is running" and the answer is the graph. Ask "what did we do about the
@@ -27,11 +27,12 @@ package session
 //
 // ── THREE RULES ──
 //
-//   - JSONL, APPEND-ONLY, ONE ROW PER LANDED NODE. Not a JSON document like the
-//     checkpoint: the checkpoint is rewritten whole after every transition and
-//     is one conversation's, while this is written once per node, forever,
-//     by every window open on the directory. An append is the one write two
-//     processes can make to the same file without a coordinator.
+//   - JSONL, APPEND-ONLY, ONE ROW PER RUN ROOT AND LANDED NODE. Not a JSON
+//     document like the checkpoint: the checkpoint is rewritten whole after
+//     every transition and is one conversation's, while this is written once
+//     per indexed row, forever, by every window open on the directory. An
+//     append is the one write two processes can make to the same file without
+//     a coordinator.
 //   - A BAD LINE IS SKIPPED, NEVER FATAL. Two processes appending can, in the
 //     limit, interleave a large row; a half-written line then costs exactly one
 //     task's row. Refusing to complete an "@" because of it would cost the
@@ -107,6 +108,10 @@ type TaskIndexEntry struct {
 	// It is a string because it is a handle a person types and a model quotes,
 	// not a number anything does arithmetic on.
 	ID string `json:"id"`
+	// Parent is the id of the family root inside this session, or empty for a
+	// root. It is additive: rows written before families entered the index
+	// decode as roots, which is exactly what they were.
+	Parent string `json:"parent,omitempty"`
 	// Name is the slug an "@" mention resolves: the title, kebab-cased
 	// ([TaskSlug]). Two tasks may share one — a project that fixed the same
 	// crash twice — and the newest wins, because "the nil-map task" said out
@@ -402,6 +407,17 @@ func (a *Agent) recordTaskIndex(node *TaskNode) {
 	if entry.EndedAt.IsZero() {
 		entry.EndedAt = time.Now()
 	}
+	a.recordTaskIndexEntry(entry)
+}
+
+// recordTaskIndexEntry is the one append door for every kind of task row. A
+// regular task reaches it through [Agent.recordTaskIndex]; an adaptive run has
+// no TaskNode, so its completion seam supplies the same citation directly.
+func (a *Agent) recordTaskIndexEntry(entry TaskIndexEntry) {
+	path := a.config.taskIndexFile()
+	if path == "" || strings.TrimSpace(entry.Title) == "" {
+		return
+	}
 	appendTaskIndex(path, entry)
 }
 
@@ -413,6 +429,7 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 	}
 	entry := TaskIndexEntry{
 		ID:           strconv.FormatUint(n.id, 10),
+		Parent:       taskIndexParent(n.parent),
 		Name:         TaskSlug(n.spec.title),
 		Label:        taskLabel(n.spec.title),
 		Title:        strings.TrimSpace(n.spec.title),
@@ -450,6 +467,13 @@ func (n *TaskNode) indexEntryLocked(session string) TaskIndexEntry {
 		entry.EndedAt = time.Now()
 	}
 	return entry
+}
+
+func taskIndexParent(parent uint64) string {
+	if parent == 0 {
+		return ""
+	}
+	return strconv.FormatUint(parent, 10)
 }
 
 // taskArtifactURI names where the node's work IS, preferring the thing a person
