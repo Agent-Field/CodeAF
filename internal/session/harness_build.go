@@ -58,6 +58,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
@@ -375,7 +376,11 @@ type harnessRevision struct {
 // THE HISTORY IS KEPT ACROSS ATTEMPTS. A designer shown its own refused page AND
 // the validator's exact sentence is being asked to repair what it wrote; one
 // shown only the error is being asked to guess again.
-func (a *Agent) designPage(ctx context.Context, goal, model string) (subharness.Harness, []string, error) {
+func (a *Agent) designPage(ctx context.Context, goal, model string, designID ...uint64) (subharness.Harness, []string, error) {
+	id := uint64(0)
+	if len(designID) > 0 {
+		id = designID[0]
+	}
 	designer, reviewer, err := a.harnessBriefs()
 	if err != nil {
 		return subharness.Harness{}, nil, err
@@ -390,7 +395,7 @@ func (a *Agent) designPage(ctx context.Context, goal, model string) (subharness.
 	)
 	for tries := 0; ; tries++ {
 		var raw string
-		draft, page, raw, err = a.designHarnessOnce(ctx, history, model)
+		draft, page, raw, err = a.designHarnessOnce(ctx, history, model, goal, tries+1, id)
 		if err == nil {
 			break
 		}
@@ -400,6 +405,11 @@ func (a *Agent) designPage(ctx context.Context, goal, model string) (subharness.
 		if tries >= harnessDesignRetries {
 			return subharness.Harness{}, nil, fmt.Errorf("no valid design in %d attempts: %w", tries+1, err)
 		}
+		reason := "malformed draft"
+		if strings.Contains(err.Error(), "ran out of completion budget") || strings.Contains(err.Error(), "stopped in the middle") {
+			reason = "truncated draft"
+		}
+		a.emitHarness(Event{Kind: EventHarnessProgress, ID: id, Goal: goal, Phase: "designing", Attempt: tries + 1, Attempts: harnessDesignRetries + 1, Hint: "retrying · " + reason})
 		// THE REFUSED PAGE GOES BACK WITH THE REFUSAL, but only when there IS
 		// one. A model that spent its whole budget thinking answered with
 		// nothing, and an empty assistant turn is a message with no content in
@@ -416,7 +426,7 @@ func (a *Agent) designPage(ctx context.Context, goal, model string) (subharness.
 	// patch loses its turn and the draft goes forward: the page in hand already
 	// passed the whole law, and refusing it because the improvement failed would
 	// throw away a good design over an optional second opinion.
-	if revised, cues, ok := a.reviewHarnessOnce(ctx, goal, draft, page, reviewer, model); ok {
+	if revised, cues, ok := a.reviewHarnessOnce(ctx, goal, draft, page, reviewer, model, id); ok {
 		return revised, cues, nil
 	}
 	return page, draft.Cues, nil
@@ -425,8 +435,19 @@ func (a *Agent) designPage(ctx context.Context, goal, model string) (subharness.
 // designHarnessOnce asks for one design and answers with it decoded, the raw
 // text it came in (for the retry history), and the error the model is going to
 // be shown.
-func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, model string) (harnessDesign, subharness.Harness, string, error) {
-	data, raw, err := a.harnessJSON(ctx, history, model, harnessDesignTokens)
+func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, model string, live ...any) (harnessDesign, subharness.Harness, string, error) {
+	goal, attempt := "", 1
+	if len(live) > 0 {
+		goal, _ = live[0].(string)
+	}
+	if len(live) > 1 {
+		attempt, _ = live[1].(int)
+	}
+	id := uint64(0)
+	if len(live) > 2 {
+		id, _ = live[2].(uint64)
+	}
+	data, raw, err := a.harnessJSON(ctx, history, model, harnessDesignTokens, harnessProgressCall{id: id, goal: goal, phase: "designing", attempt: attempt, attempts: harnessDesignRetries + 1})
 	if err != nil {
 		return harnessDesign{}, subharness.Harness{}, raw, err
 	}
@@ -446,7 +467,7 @@ func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, mod
 //
 // The critic is shown the draft AS JSON rather than as the card, because it is
 // patching a page and the node ids its ops name are on that page.
-func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnessDesign, page subharness.Harness, reviewer, model string) (subharness.Harness, []string, bool) {
+func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnessDesign, page subharness.Harness, reviewer, model string, designID ...uint64) (subharness.Harness, []string, bool) {
 	encoded, err := subharness.Encode(page)
 	if err != nil {
 		return subharness.Harness{}, nil, false
@@ -461,7 +482,11 @@ func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnes
 			"Review it and reply with your findings and the ops that answer them.",
 		}, "\n\n")),
 	}
-	data, _, err := a.harnessJSON(ctx, history, model, harnessReviewTokens)
+	id := uint64(0)
+	if len(designID) > 0 {
+		id = designID[0]
+	}
+	data, _, err := a.harnessJSON(ctx, history, model, harnessReviewTokens, harnessProgressCall{id: id, goal: goal, phase: "reviewing", attempt: 1, attempts: 1})
 	if err != nil {
 		return subharness.Harness{}, nil, false
 	}
@@ -519,8 +544,8 @@ func harnessCues(draft harnessDesign, revised harnessRevision) []string {
 // a reply that never finished. A repair turn cannot put back text a model never
 // emitted, so a cut-off reply skips it and is answered with the truth instead
 // (see below).
-func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model string, maxTokens int) ([]byte, string, error) {
-	raw, cut, err := a.harnessComplete(ctx, history, model, maxTokens, harnessDesignTemp)
+func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model string, maxTokens int, progress harnessProgressCall) ([]byte, string, error) {
+	raw, cut, err := a.harnessComplete(ctx, history, model, maxTokens, harnessDesignTemp, progress)
 	if err != nil {
 		return nil, "", err
 	}
@@ -553,7 +578,7 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 			"\n\nReply with ONLY the corrected JSON — the same content, nothing added, nothing dropped, no prose, no code fence. "+
 			"JSON delimiters and syntax are ASCII: every key and string value is wrapped in \" (U+0022). Prose inside a string value stays exactly as it is."),
 	}
-	second, cut, err := a.harnessComplete(ctx, repair, model, maxTokens, 0)
+	second, cut, err := a.harnessComplete(ctx, repair, model, maxTokens, 0, progress)
 	if err != nil {
 		return nil, raw, err
 	}
@@ -592,24 +617,120 @@ func harnessRanOut(raw string) string {
 		"Design a SMALLER harness — fewer nodes, shorter briefs, a justification of a few tight sentences — and close the object."
 }
 
-// harnessComplete is one non-streamed call on the session's own client. It
-// reports the text and whether the answer was CUT OFF at the token ceiling.
+// harnessComplete is one call on the session's own client. It reports the
+// text and whether the answer was CUT OFF at the token ceiling.
 //
-// WithoutStream for the compaction summary's reason: this is work beside the
-// conversation, and left on the turn's stream it would type a page of JSON into
-// the room. No tools either — the designer's only job is to answer.
+// The stream is OBSERVED, never rendered ([provider.WithStreamObserver]): the
+// person's chat would otherwise type a page of JSON into itself. What the
+// observer feeds is the live design card — reasoning lines, step counts, and
+// the stall clock — so the wait is never a blank spinner. No tools either:
+// the designer's only job is to answer.
 //
 // The truncation is read through internal/store's own classifier rather than by
 // comparing finish_reason strings here: the vocabulary an endpoint uses for
 // "you hit the ceiling" is already known in one place, and a second reading of
 // it would be a second answer to the same question.
-func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, model string, maxTokens int, temperature float64) (string, bool, error) {
+type harnessProgressCall struct {
+	id                uint64
+	goal, phase       string
+	attempt, attempts int
+}
+
+// harnessProgress holds the private stream long enough to turn a flood of
+// deltas into a calm card update. The model's JSON remains private; only a
+// name, a step count, byte count, and the recent reasoning cross the lane.
+type harnessProgress struct {
+	mu               sync.Mutex
+	a                *Agent
+	call             harnessProgressCall
+	content, thought string
+	last, sent       time.Time
+}
+
+func (p *harnessProgress) add(kind provider.StreamEventKind, delta string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.last = time.Now()
+	if kind == provider.StreamReasoning {
+		p.thought += delta
+	} else if kind == provider.StreamDelta {
+		p.content += delta
+	}
+	p.emit(false)
+}
+
+func (p *harnessProgress) emit(stalled bool) {
+	now := time.Now()
+	if !stalled && !p.sent.IsZero() && now.Sub(p.sent) < 300*time.Millisecond {
+		return
+	}
+	p.sent = now
+	tail := p.thought
+	if len(tail) > 500 {
+		tail = tail[len(tail)-500:]
+	}
+	hint := harnessPartialHint(p.content)
+	if p.call.phase == "reviewing" && hint == "thinking" {
+		hint = "checking the draft"
+	}
+	p.a.emitHarness(Event{Kind: EventHarnessProgress, ID: p.call.id, Goal: p.call.goal, Phase: p.call.phase,
+		Attempt: p.call.attempt, Attempts: p.call.attempts, ThoughtTail: tail,
+		Hint: hint, Bytes: len(p.content), Stalled: stalled})
+}
+
+func harnessPartialHint(raw string) string {
+	if at := strings.Index(raw, `"name"`); at >= 0 {
+		rest := raw[at+len(`"name"`):]
+		if colon := strings.IndexByte(rest, ':'); colon >= 0 {
+			rest = strings.TrimSpace(rest[colon+1:])
+			if strings.HasPrefix(rest, `"`) {
+				if end := strings.Index(rest[1:], `"`); end >= 0 {
+					return "naming it: " + rest[1:1+end]
+				}
+			}
+		}
+	}
+	if n := strings.Count(raw, `"kind"`); n > 0 {
+		return fmt.Sprintf("%d steps so far", n)
+	}
+	if len(raw) > 0 {
+		return fmt.Sprintf("receiving · %.1f KB", float64(len(raw))/1024)
+	}
+	return "thinking"
+}
+
+func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, model string, maxTokens int, temperature float64, call harnessProgressCall) (string, bool, error) {
+	progress := &harnessProgress{a: a, call: call, last: time.Now()}
+	streamCtx := provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
+		if event.Kind == provider.StreamDelta || event.Kind == provider.StreamReasoning {
+			progress.add(event.Kind, event.Delta)
+		}
+	})
+	done := make(chan struct{})
+	go func() {
+		tick := time.NewTicker(time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+				progress.mu.Lock()
+				stalled := time.Since(progress.last) >= 10*time.Second
+				if stalled {
+					progress.emit(true)
+				}
+				progress.mu.Unlock()
+			}
+		}
+	}()
 	response, err := a.client.CompleteWithMessages(
-		provider.WithoutStream(ctx),
+		streamCtx,
 		messages,
 		ai.WithModel(model),
 		ai.WithMaxTokens(maxTokens),
 		ai.WithTemperature(temperature))
+	close(done)
 	if err != nil {
 		return "", false, err
 	}

@@ -143,6 +143,7 @@ func (a *Agent) buildHarnessTool() bare.Tool {
 			id := a.reserveHarnessDesign()
 			a.emitHarness(Event{
 				Kind:  EventHarnessDesign,
+				ID:    id,
 				Text:  goal,
 				Hint:  harnessDesigningWord,
 				Model: model,
