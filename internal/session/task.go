@@ -117,6 +117,19 @@ type taskSpec struct {
 	// did not name one and the defaults apply (task_run.go).
 	maxSteps   int
 	noProgress int
+	// design is set on the one node this session admits that is NOT a piece of
+	// work handed to a child in a worktree: a sub-harness being written
+	// (harness_task.go). It is nil on every ordinary task, and where it is set
+	// [Agent.runTaskNode] hands the node to the designer's body instead of the
+	// worker's — same graph, same room, same stop, a different middle.
+	//
+	// IT IS NOT IN THE CHECKPOINT, deliberately. A design node restored from
+	// disk was RUNNING when the session ended, and a resume turns a running node
+	// into a failed one before the graph ever holds it (task_store.go's
+	// interrupt) — so there is nothing to re-enter, and a spec that claimed
+	// otherwise would be a node the frontier tried to design again with the
+	// registry already untouched.
+	design *harnessDesignSpec
 }
 
 // taskTools is the belt's task family — one tool, and only in a conversation.

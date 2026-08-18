@@ -26,14 +26,15 @@ package session
 //     front of it, and the goal it passes is a brief it wrote rather than the
 //     tail of a sentence. Nothing below this line changed with it: the same job,
 //     the same card, the same registry.
-//   - THE TURN DOES NOT WAIT. A design is two model calls against a
-//     twenty-five-thousand-token guide, and it is followed by a QUESTION nobody
-//     may be at the keyboard for. Held in the turn loop that would be a
-//     conversation frozen for a minute on work the person can watch happen; so
-//     the turn ends the moment the design starts, and the card arrives on the
-//     standing lane ([Agent.HarnessDesigns]) whenever it is ready. That is the
-//     same arrangement a task node's landing already uses (task_run.go), for the
-//     same reason.
+//   - THE TURN DOES NOT WAIT, AND THE DESIGN IS A TASK. A design is two model
+//     calls against a twenty-five-thousand-token guide, and it is followed by a
+//     QUESTION nobody may be at the keyboard for. Held in the turn loop that
+//     would be a conversation frozen for a minute on work the person can watch
+//     happen; so the turn ends the moment the design starts. WHERE it happens
+//     is the work graph: harness_task.go admits a node whose body is this file,
+//     so the design has a row, a room, a journal, an id and a stop, and the card
+//     still arrives on the standing lane ([Agent.HarnessDesigns]) whenever it is
+//     ready.
 //   - NOTHING IS SAVED WITHOUT AN ANSWER. What comes back is a PAGE, drawn as
 //     the card every surface shares (subharness.CardLines), and the registry is
 //     untouched until somebody says yes. A design nobody answered is a design
@@ -55,7 +56,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -73,7 +73,9 @@ const (
 	// wait for an answer to the card. It is long because the second half is a
 	// person — a card raised while somebody is at lunch is still worth answering
 	// when they come back — and it is bounded at all because a goroutine parked
-	// on a question nobody will ever answer is a goroutine parked forever.
+	// on a question nobody will ever answer is a goroutine parked forever. The
+	// design node takes it off its own deadline (harness_task.go), which is an
+	// hour and is the wrong shape of bound for a question.
 	harnessDesignWindow = 30 * time.Minute
 
 	// harnessDesignRetries is how many times a refused design is handed its own
@@ -105,61 +107,18 @@ const (
 // event's own text is the goal and a surface draws it as a note.
 const harnessDesigningWord = "designing"
 
-// ── the job ─────────────────────────────────────────────────────────────────
+// ── who writes it ───────────────────────────────────────────────────────────
 
-// harnessInFlight is one design this session has not finished: how it is ended,
-// and the two things a surface can honestly say about it while it runs.
-//
-// THE GOAL AND THE CLOCK ARE THE WHOLE OF IT. There is no progress here to
-// report and none is invented — a design is two model calls and neither one
-// says how far along it is — so what a person can be told is that a harness is
-// being written, what it is being written for, and how long that has been
-// going on.
-type harnessInFlight struct {
-	cancel context.CancelFunc
-	// goal is the brief the design was started from, exactly as the turn wrote
-	// it.
-	goal string
-	// since is when the writing began.
-	since time.Time
-	// asked is true once the page is written and the card is up. The job is
-	// still registered — it is not over until somebody answers, and until then
-	// it is still this session's to cancel — but the WRITING is over, and the
-	// writing is the only part of it a person has nothing else on screen about.
-	asked bool
-}
-
-// startHarnessDesign puts one design in flight and returns immediately.
-//
-// The context is the SESSION's and not the turn's, deliberately: the turn is
-// about to end and its context with it, and a design cancelled by the very turn
-// that asked for it would never produce anything. It is registered so that
-// [Agent.Close] can end it — a design still thinking when the session leaves has
-// nowhere to deliver.
-func (a *Agent) startHarnessDesign(goal, model string) {
-	ctx, cancel := context.WithTimeout(context.Background(), harnessDesignWindow)
+// designerModel is [Agent.harnessDesignModel] with the lock taken, for the
+// caller that needs the answer BEFORE the design starts (tools_harness.go's
+// build_harness, whose note names the model). The two are one function
+// deliberately: a second ladder written out here is a second answer to "who
+// designs this", and the whole point of asking early is that the note and the
+// design agree.
+func (a *Agent) designerModel(named string) string {
 	a.mu.Lock()
-	if a.closed {
-		a.mu.Unlock()
-		cancel()
-		return
-	}
-	// ONE ID NAMES THE WHOLE JOB, minted from the offer lane's counter because
-	// the card at the end of it is answered through [Agent.ResolveHarness] — the
-	// same method, the same map, one question shape.
-	a.harnessSeq++
-	id := a.harnessSeq
-	if a.harnessDesigns == nil {
-		a.harnessDesigns = make(map[uint64]*harnessInFlight, 1)
-	}
-	a.harnessDesigns[id] = &harnessInFlight{cancel: cancel, goal: goal, since: time.Now()}
-	model = a.harnessDesignModel(model)
-	a.mu.Unlock()
-
-	go func() {
-		defer a.endHarnessDesign(id)
-		a.designHarness(ctx, id, goal, model)
-	}()
+	defer a.mu.Unlock()
+	return a.harnessDesignModel(named)
 }
 
 // harnessDesignModel is what the design AND ITS REVIEW think with — one model
@@ -172,17 +131,6 @@ func (a *Agent) startHarnessDesign(goal, model string) {
 // answer with a name on it rather than a wrong answer once. The ladder's floor
 // is the session's own model, so an install with no tiers set designs as it
 // always did. It is called with a.mu held.
-// designerModel is [Agent.harnessDesignModel] with the lock taken, for the one
-// caller that needs the answer BEFORE the design goroutine exists
-// ([Agent.routeHarnessBuild]'s event). The two are one function deliberately: a
-// second ladder written out here is a second answer to "who designs this", and
-// the whole point of asking early is that the note and the design agree.
-func (a *Agent) designerModel(named string) string {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return a.harnessDesignModel(named)
-}
-
 func (a *Agent) harnessDesignModel(named string) string {
 	if named = strings.TrimSpace(named); named != "" {
 		return named
@@ -191,125 +139,6 @@ func (a *Agent) harnessDesignModel(named string) string {
 		return model
 	}
 	return a.model
-}
-
-// endHarnessDesign forgets one finished job.
-//
-// IT IS THE ONE EXIT, and that is what a surface leans on. Every way a design
-// can end — the page refused, the card answered either way, the window running
-// out, the session leaving, somebody stopping it — runs this deferred line, so
-// [Agent.HarnessesBeingDesigned] cannot go on reporting work that is over.
-func (a *Agent) endHarnessDesign(id uint64) {
-	a.mu.Lock()
-	design := a.harnessDesigns[id]
-	delete(a.harnessDesigns, id)
-	a.mu.Unlock()
-	if design != nil {
-		design.cancel()
-	}
-}
-
-// cancelHarnessDesigns ends every design in flight. It is called from
-// [Agent.Close] with a.mu held.
-func (a *Agent) cancelHarnessDesignsLocked() {
-	for _, design := range a.harnessDesigns {
-		design.cancel()
-	}
-	a.harnessDesigns = nil
-}
-
-// HarnessBeingDesigned is one harness this session is writing right now: the
-// token that stops it, what it was asked for, and when it started.
-//
-// THE ID IS THE ONE [Agent.Cancel] TAKES, minted with `design:` in front of it
-// by whoever is asking (cancel.go's CancelDesign), because the number on its own
-// names a task and a run and a harness run as well.
-type HarnessBeingDesigned struct {
-	ID    uint64
-	Goal  string
-	Since time.Time
-}
-
-// HarnessesBeingDesigned is what the designer is working on at this instant:
-// one entry per harness still being written, oldest first.
-//
-// IT IS ASKED RATHER THAN ANNOUNCED, and that is the whole reason it exists
-// beside the lane ([Agent.HarnessDesigns]). The lane is the news — a design
-// started, here is the card, here is what became of it — and news is enough for
-// a transcript, which only ever adds a line. A surface drawing PRESENCE has the
-// harder job: it has to take the row away again, on every ending, including the
-// two that say nothing at all. A design whose window ran out and a design whose
-// session left both return without a word, deliberately, because the ordinary
-// reason for either is that nobody is left to be told ([Agent.designHarness]) —
-// so a row driven by events alone would still be turning a spinner for work that
-// ended twenty minutes ago. A row driven by this question is right on every
-// frame it is drawn.
-//
-// A DESIGN WAITING ON ITS CARD IS NOT IN THE ANSWER. The job is still
-// registered and still stoppable, but the writing is done and the card is on
-// screen saying so; a row beside it would be the surface claiming the same work
-// twice.
-func (a *Agent) HarnessesBeingDesigned() []HarnessBeingDesigned {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([]HarnessBeingDesigned, 0, len(a.harnessDesigns))
-	for id, design := range a.harnessDesigns {
-		if design.asked {
-			continue
-		}
-		out = append(out, HarnessBeingDesigned{ID: id, Goal: design.goal, Since: design.since})
-	}
-	// The ids are minted in order, so oldest first is by id — and an order at all
-	// is what keeps a row from swapping places under the eye on a map's own
-	// whim.
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
-}
-
-// designHarness is the whole job: design, review, ask, save.
-//
-// EVERY EXIT SAYS SOMETHING. A design that failed, a page that was declined, a
-// save that would not write — each one ends in a line on the lane and a note in
-// the transcript, because the person asked for a harness and silence is the one
-// answer that leaves them wondering whether anything is still happening.
-func (a *Agent) designHarness(ctx context.Context, id uint64, goal, model string) {
-	page, cues, err := a.designPage(ctx, goal, model)
-	if err != nil {
-		if ctx.Err() != nil {
-			// The session left, or the window ran out. Nobody is there to be told.
-			return
-		}
-		a.noteHarnessDesign("harness design failed: " + err.Error())
-		return
-	}
-	answer, err := a.askHarnessDesign(ctx, id, page, model)
-	if err != nil {
-		return
-	}
-	if !answer.run {
-		a.noteHarnessDesign(fmt.Sprintf("harness %q was designed and not saved", page.Id.Name))
-		return
-	}
-	saved, err := a.saveHarness(page, cues)
-	if err != nil {
-		a.noteHarnessDesign(fmt.Sprintf("harness %q could not be saved: %v", page.Id.Name, err))
-		return
-	}
-	a.noteHarnessDesign(fmt.Sprintf("harness %q v%d saved", saved.Id.Name, saved.Id.Version))
-}
-
-// noteHarnessDesign says one thing about a design, in the two places it belongs.
-//
-// TWO LANES, ONE SENTENCE, and they answer to two different readers. The event
-// is for the PERSON — a dim line on the surface, now, about work they watched
-// start. The ambient note is for the MODEL: the next thing said in this
-// conversation happens after a harness was saved, and a session that did not
-// know would answer as though it had not been. It is ambient rather than a wake
-// (agent.go) because nobody is owed a sentence about it — the card already said
-// what happened.
-func (a *Agent) noteHarnessDesign(text string) {
-	a.emitHarness(Event{Kind: EventNotice, Text: text})
-	a.enqueueAmbientNote(text)
 }
 
 // emitHarness puts one design event in front of whoever is watching.
@@ -374,12 +203,6 @@ func (a *Agent) askHarnessDesign(ctx context.Context, id uint64, page subharness
 		a.harnessAsks = make(map[uint64]chan harnessAnswer, 1)
 	}
 	a.harnessAsks[id] = answers
-	// THE WRITING ENDS HERE, one line before the card that says so. From this
-	// moment the job is a QUESTION and not work in progress, and anything drawing
-	// "a harness is being written" has to stop ([Agent.HarnessesBeingDesigned]).
-	if design := a.harnessDesigns[id]; design != nil {
-		design.asked = true
-	}
 	a.mu.Unlock()
 
 	// The page travels by pointer and this is its only copy: nothing else holds

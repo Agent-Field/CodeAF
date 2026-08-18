@@ -88,7 +88,7 @@ func TestTheReviewPassPatchesTheDraft(t *testing.T) {
 	}
 	// And the cues it rewrote are the ones the entry is registered with.
 	agent.ResolveHarness(done.ID, true, "")
-	designNote(t, lane)
+	designOutcome(t, agent)
 	entry, _ := entryNamed(agent.harnessRegistry(), "flake-triage")
 	if len(entry.Cues) != 4 {
 		t.Fatalf("the entry kept the draft's cues: %v", entry.Cues)
@@ -105,9 +105,9 @@ func TestAnApprovedDesignIsSavedAndDetectableAtOnce(t *testing.T) {
 	done := designDone(t, lane)
 	agent.ResolveHarness(done.ID, true, "")
 
-	note := designNote(t, lane)
-	if !strings.Contains(note, `"flake-triage" v1 saved`) {
-		t.Fatalf("the save said %q", note)
+	report := designOutcome(t, agent)
+	if !strings.Contains(report, `"flake-triage" v1 saved`) {
+		t.Fatalf("the design landed saying %q", report)
 	}
 	saved, err := subharness.At(dir).Load("flake-triage", 0)
 	if err != nil {
@@ -142,7 +142,7 @@ func TestAHarnessBuiltHereIsOfferedByTheVeryNextTurn(t *testing.T) {
 	submitBuild(t, agent)
 	done := designDone(t, lane)
 	agent.ResolveHarness(done.ID, true, "")
-	designNote(t, lane)
+	designOutcome(t, agent)
 
 	events, err := agent.Submit(context.Background(), "chase a flake in the render tests")
 	if err != nil {
@@ -168,8 +168,8 @@ func TestADeclinedDesignIsNotSaved(t *testing.T) {
 	done := designDone(t, lane)
 	agent.ResolveHarness(done.ID, false, "")
 
-	if note := designNote(t, lane); !strings.Contains(note, "not saved") {
-		t.Fatalf("the decline said %q", note)
+	if report := designOutcome(t, agent); !strings.Contains(report, "not saved") {
+		t.Fatalf("the decline landed saying %q", report)
 	}
 	if names, _ := subharness.At(dir).Names(); len(names) != 0 {
 		t.Fatalf("a declined design was written: %v", names)
@@ -179,9 +179,10 @@ func TestADeclinedDesignIsNotSaved(t *testing.T) {
 	}
 }
 
-// A DESIGN THAT NEVER PARSED SAYS SO. The person asked for a harness and
-// silence is the one answer that leaves them wondering.
-func TestADesignThatWillNotParseEndsInANote(t *testing.T) {
+// A DESIGN THAT NEVER PARSED SAYS SO, AND ITS TASK FAILS. The person asked for a
+// harness and silence is the one answer that leaves them wondering; what they
+// get instead is a settle card with the reason on it.
+func TestADesignThatWillNotParseFailsSayingWhy(t *testing.T) {
 	// Every reply is prose, so salvage fails, the repair turn fails, and the two
 	// retries after it fail the same way.
 	agent, _ := buildAgent(t, &scriptedCompleter{}, t.TempDir())
@@ -191,19 +192,22 @@ func TestADesignThatWillNotParseEndsInANote(t *testing.T) {
 	if started := nextDesign(t, lane); started.Kind != EventHarnessDesign {
 		t.Fatalf("the lane opened with %v", started.Kind)
 	}
-	note := designNote(t, lane)
-	if !strings.HasPrefix(note, "harness design failed:") || !strings.Contains(note, "attempts") {
-		t.Fatalf("the failure said %q", note)
+	node := designNode(t, agent)
+	report := designOutcome(t, agent)
+	if !strings.HasPrefix(report, "the design failed:") || !strings.Contains(report, "attempts") {
+		t.Fatalf("the failure said %q", report)
+	}
+	if state := node.stateNow(); state != TaskFailed {
+		t.Fatalf("a design that never parsed settled as %q", state)
 	}
 }
 
-// ── what is being written right now ─────────────────────────────────────────
+// ── the design as a task ────────────────────────────────────────────────────
 
-// A SESSION SAYS WHICH HARNESSES IT IS WRITING, because a design has no turn to
-// live on, no card until it is finished and no id a person can open a room on —
-// so a surface that wants to show that something is happening has nothing else
-// to ask.
-func TestASessionSaysWhichHarnessItIsWriting(t *testing.T) {
+// A SESSION SAYS WHICH TASK IS WRITING A HARNESS, and it says it the way it says
+// everything else about work in flight: a node on the roster, with a phase on it
+// in the words a person would use.
+func TestADesignRunsAsATaskWithAPhaseOnIt(t *testing.T) {
 	// The design turn is held open, so the whole test happens while the page is
 	// being written.
 	held := make(chan struct{})
@@ -216,62 +220,243 @@ func TestASessionSaysWhichHarnessItIsWriting(t *testing.T) {
 	}}
 	agent, _ := buildAgent(t, completer, t.TempDir())
 	lane := agent.HarnessDesigns()
-	began := time.Now()
 	submitBuild(t, agent)
 
-	writing := agent.HarnessesBeingDesigned()
-	if len(writing) != 1 {
-		t.Fatalf("the session is writing %d harnesses, want one", len(writing))
+	node := designNode(t, agent)
+	if !strings.Contains(node.title(), buildGoal) {
+		t.Fatalf("the design's row is called %q", node.title())
 	}
-	if writing[0].Goal != buildGoal {
-		t.Fatalf("the design is being written for %q", writing[0].Goal)
+	waitForPhase(t, node, harnessPhaseDesigning)
+	if state := node.stateNow(); state != TaskRunning {
+		t.Fatalf("a design being written is %q", state)
 	}
-	if writing[0].ID == 0 {
-		t.Fatal("the design carries no id, so nothing could stop it")
+	// AND IT IS ENTERABLE WHILE IT WRITES. The room is what a person walks into,
+	// and the journal is where the thread is kept; both exist from before the
+	// first model call so that arriving early finds a place rather than nothing.
+	if journal := agent.TaskJournal(node.id); journal == "" {
+		t.Fatal("the design has no journal, so its thread is nowhere")
 	}
-	if writing[0].Since.Before(began) {
-		t.Fatalf("the design started at %v, before the turn that asked for it", writing[0].Since)
+	if _, err := agent.WatchTask(node.id); err != nil {
+		t.Fatalf("the design's room could not be entered: %v", err)
 	}
 
-	// THE CARD IS THE END OF THE WRITING. From here the page exists and the
-	// question about it is on screen; a row still saying "designing" would be the
-	// surface claiming the same work twice.
+	// THE CARD IS THE SECOND PHASE. The page exists, the question about it is on
+	// screen, and a row still saying "designing" would be claiming work that is
+	// over.
 	close(held)
 	done := designDone(t, lane)
-	if writing := agent.HarnessesBeingDesigned(); len(writing) != 0 {
-		t.Fatalf("the card is up and the session still says it is writing %+v", writing)
-	}
+	waitForPhase(t, node, harnessPhaseAsking)
 	agent.ResolveHarness(done.ID, false, "")
-	waitForNoDesigns(t, agent)
+	designOutcome(t, agent)
 }
 
-// AND A DESIGN THAT FAILED IS NOT BEING WRITTEN EITHER. Failure is the ending
-// with the least on screen — no card, one dim line — and it is the one a row
-// left standing would be lying about for the longest.
-func TestAFailedDesignIsNoLongerBeingWritten(t *testing.T) {
-	agent, _ := buildAgent(t, &scriptedCompleter{}, t.TempDir())
+// AND ITS NODE TAKES NO SLOT. The concurrency ceiling is about workers with
+// checkouts and builds; a design is two calls and a card on somebody's screen,
+// and one held behind a busy machine would be a page nobody can write because
+// tasks are running.
+func TestADesignDoesNotSpendAConcurrencySlot(t *testing.T) {
+	agent, _ := buildAgent(t, designingCompleter(), t.TempDir())
+	agent.graph().limit = 1
+	agent.graph().running = 1
+
+	lane := agent.HarnessDesigns()
+	submitBuild(t, agent)
+	done := designDone(t, lane)
+	agent.ResolveHarness(done.ID, false, "")
+	designOutcome(t, agent)
+}
+
+// A PERSON CAN TALK TO THE DESIGN AND IS ANSWERED, which is what makes the node a
+// thread rather than a receipt. The line goes in the room's own door, a turn runs
+// for it, and what that turn says comes back out of the room — with the page in
+// the context that wrote it.
+//
+// THE CARD IS UP WHILE THIS HAPPENS, which is the moment that matters: the design
+// spends most of its life there, waiting on a person, and a thread that could only
+// be talked to while the page was being written would be a thread nobody could
+// reach.
+func TestASteeredLineIsAnsweredInTheDesignRoom(t *testing.T) {
+	agent, _ := buildAgent(t, designingCompleter(), t.TempDir())
 	lane := agent.HarnessDesigns()
 	submitBuild(t, agent)
 
-	if note := designNote(t, lane); !strings.HasPrefix(note, "harness design failed:") {
-		t.Fatalf("the failure said %q", note)
+	done := designDone(t, lane)
+	node := designNode(t, agent)
+	waitForPhase(t, node, harnessPhaseAsking)
+
+	// Subscribed BEFORE the line is sent: the room replays nothing, so a watcher
+	// that joined afterwards would be watching for an answer already given.
+	watching, err := agent.WatchTask(node.id)
+	if err != nil {
+		t.Fatalf("the design's room could not be entered: %v", err)
 	}
-	waitForNoDesigns(t, agent)
+	if err := agent.SteerTask(node.id, "would this work for the nightly build?"); err != nil {
+		t.Fatalf("the design's room refused a line: %v", err)
+	}
+	waitForTurn(t, watching)
+
+	// THE PAGE IS THE THREAD'S WORKING CONTEXT. It was recorded before anybody
+	// could say anything, so whatever answered is answering with the harness in
+	// front of it — and the person's own line is in the thread beside it.
+	thread := threadText(t, node)
+	if !strings.Contains(thread, "flake-triage") {
+		t.Fatalf("the design thread does not hold the page: %q", thread)
+	}
+	if !strings.Contains(thread, "nightly build") {
+		t.Fatalf("the person's line never reached the thread: %q", thread)
+	}
+
+	agent.ResolveHarness(done.ID, false, "")
+	designOutcome(t, agent)
 }
 
-// waitForNoDesigns waits for the register to empty. The line on the lane is
-// written by the job and the register is emptied by the defer under it, so the
-// two are one instant apart and a test that read the register on the same line
-// would be reading a race rather than the law.
-func waitForNoDesigns(t *testing.T, agent *Agent) {
+// waitForTurn drains a room until the turn it is watching ends.
+func waitForTurn(t *testing.T, watching <-chan Event) {
+	t.Helper()
+	for {
+		select {
+		case event, open := <-watching:
+			if !open {
+				t.Fatal("the design's room closed before the line was answered")
+			}
+			if event.Kind == EventTurnDone {
+				return
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("nothing came back out of the design's room")
+		}
+	}
+}
+
+// AND STOPPING ONE IS STOPPING A TASK. `design:` names nothing now; the node's
+// own id does, and what it settles saying is that the registry is untouched.
+func TestStoppingADesignIsStoppingItsTask(t *testing.T) {
+	held := make(chan struct{})
+	defer close(held)
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			select {
+			case <-held:
+			case <-ctx.Done():
+			}
+			return nil, ctx.Err()
+		},
+	}}
+	agent, _ := buildAgent(t, completer, t.TempDir())
+	submitBuild(t, agent)
+
+	node := designNode(t, agent)
+	waitForPhase(t, node, harnessPhaseDesigning)
+	line, err := agent.Cancel("task:" + itoa64(node.id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(line, "nothing was saved") {
+		t.Fatalf("the stop promised %q, which is a branch a design never had", line)
+	}
+	if report := designOutcome(t, agent); report != designStoppedWord {
+		t.Fatalf("the stopped design settled saying %q", report)
+	}
+	if state := node.stateNow(); state != TaskFailed {
+		t.Fatalf("a stopped design settled as %q", state)
+	}
+}
+
+// THE ANNOUNCE IS ALWAYS IN FRONT OF THE CARD, and it names the node the card
+// belongs to. Admitting a design starts it at once — no dependencies, no slot to
+// wait for — so a design this fast would put its page on the lane before the
+// sentence explaining where it came from, and a person would be asked to save a
+// harness nothing had said was being written.
+func TestTheDesignAnnounceLeadsItsCard(t *testing.T) {
+	agent, _ := buildAgent(t, designingCompleter(), t.TempDir())
+	lane := agent.HarnessDesigns()
+	submitBuild(t, agent)
+
+	started := nextDesign(t, lane)
+	if started.Kind != EventHarnessDesign {
+		t.Fatalf("the lane opened with %v, before anything said a design had started", started.Kind)
+	}
+	if started.Task == nil || started.Task.ID == 0 {
+		t.Fatal("the announce names no task, so there is nowhere for a person to go")
+	}
+	if node := designNode(t, agent); node.id != started.Task.ID {
+		t.Fatalf("the announce named task %d and the design is task %d", started.Task.ID, node.id)
+	}
+
+	done := designDone(t, lane)
+	agent.ResolveHarness(done.ID, false, "")
+	designOutcome(t, agent)
+}
+
+// designNode is the one design node in this session's graph, waited for: the
+// tool admits it and the frontier starts it on a goroutine, so a test reading
+// the graph on the next line would be reading a race.
+func designNode(t *testing.T, agent *Agent) *TaskNode {
+	t.Helper()
+	graph := agent.graph()
+	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
+		graph.mu.Lock()
+		var found *TaskNode
+		for _, id := range graph.order {
+			if node := graph.nodes[id]; node != nil && node.spec.design != nil {
+				found = node
+			}
+		}
+		graph.mu.Unlock()
+		if found != nil {
+			return found
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("this session admitted no design node")
+	return nil
+}
+
+// waitForPhase waits for one node to publish a named phase.
+func waitForPhase(t *testing.T, node *TaskNode, phase string) {
 	t.Helper()
 	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
-		if len(agent.HarnessesBeingDesigned()) == 0 {
+		node.graph.mu.Lock()
+		doing := node.doing
+		node.graph.mu.Unlock()
+		if doing == phase {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("the session is still writing %+v", agent.HarnessesBeingDesigned())
+	node.graph.mu.Lock()
+	doing := node.doing
+	node.graph.mu.Unlock()
+	t.Fatalf("the design is %q, want %q", doing, phase)
+}
+
+// designOutcome waits for the design node to land and answers with the report
+// its settle card carries.
+func designOutcome(t *testing.T, agent *Agent) string {
+	t.Helper()
+	node := designNode(t, agent)
+	select {
+	case <-node.done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the design never landed")
+	}
+	report, _, _, _ := node.leavings()
+	return report
+}
+
+// threadText is everything written into the design's own thread so far, read
+// off the agent standing in its room.
+func threadText(t *testing.T, node *TaskNode) string {
+	t.Helper()
+	child := node.openRoom().speaker()
+	if child == nil {
+		t.Fatal("nobody is in the design's room")
+	}
+	var said []string
+	for _, entry := range child.Transcript() {
+		said = append(said, entry.Text)
+	}
+	return strings.Join(said, "\n")
 }
 
 // ── the fixtures ────────────────────────────────────────────────────────────
@@ -361,16 +546,6 @@ func designDone(t *testing.T, lane <-chan Event) Event {
 			return event
 		case EventNotice:
 			t.Fatalf("the design ended in a note instead of a card: %q", event.Text)
-		}
-	}
-}
-
-// designNote reads past everything to the next thing said in words.
-func designNote(t *testing.T, lane <-chan Event) string {
-	t.Helper()
-	for {
-		if event := nextDesign(t, lane); event.Kind == EventNotice {
-			return event.Text
 		}
 	}
 }

@@ -308,13 +308,6 @@ func (a *app) stripShowing() bool {
 	if _, running := a.runningHarness(); running {
 		return true
 	}
-	// AND SO DOES A HARNESS BEING WRITTEN (harness.go). It is the one piece of
-	// work on this surface with no turn under it at all — the turn ended the
-	// moment the design started — so without this row a person who asked for a
-	// harness watches an idle screen for a minute or two.
-	if a.designingHarness() {
-		return true
-	}
 	for _, id := range a.taskOrder {
 		if node := a.tasks[id]; node != nil && node.state == session.TaskRunning {
 			return true
@@ -386,7 +379,6 @@ func (a *app) stripNodes() []*taskNode {
 func (a *app) stripRows(width int) []string {
 	a.stripSpans, a.stripFolds = nil, nil
 	a.stripMore, a.stripMoreRow, a.stripHarn = hudSpan{}, 0, hudSpan{}
-	a.stripDesignStop = hudSpan{}
 	if !a.stripShowing() || width <= 0 {
 		return nil
 	}
@@ -484,20 +476,6 @@ func (a *app) stripFlatRow(width int, nodes []*taskNode) string {
 	if name, running := a.runningHarness(); running {
 		lead, leadCols = a.harnessChip(name)
 		a.stripHarn = hudSpan{from: 0, to: leadCols}
-	}
-	if designs := a.designsInFlight(); len(designs) > 0 {
-		gap, gapCols := "", 0
-		if leadCols > 0 {
-			gap, gapCols = stripGap, stripGapCols
-		}
-		chip, cols, stop := a.designChip(designs, width, leadCols+gapCols)
-		lead, leadCols = lead+gap+chip, leadCols+gapCols+cols
-		if stop.to <= width {
-			// A ✕ past the frame's edge is a button the cut took away, and a span
-			// that outlived it would end work from a cell nobody can see
-			// ([app.stripRecord] keeps the same rule for a node's chip).
-			a.stripDesignStop = stop
-		}
 	}
 	if len(nodes) == 0 {
 		return lead
@@ -1018,14 +996,6 @@ func (a *app) stripPress(x, y int) (tea.Cmd, bool) {
 	// looked at (harnesspanel.go). It rides the live row and nothing else.
 	if row == 0 && a.stripHarn.holds(x) {
 		a.openHarness()
-		return nil, true
-	}
-	// A DESIGN'S CHIP HAS NO DOOR AND ONE BUTTON (harness.go). There is nothing to
-	// walk into — no room, no page, no registry entry until somebody approves the
-	// card — so the ✕ is the only column on it that answers, and the rest of the
-	// chip is swallowed by the row like every other press that landed on nothing.
-	if row == 0 && a.stripDesignStop.holds(x) {
-		a.raiseStop(designStopTarget(a.designsInFlight()))
 		return nil, true
 	}
 	for _, chip := range a.stripSpans {
