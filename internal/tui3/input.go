@@ -225,6 +225,9 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if cmd, taken := a.harnessAskKey(msg); taken {
 		return cmd
 	}
+	if a.harnessCardKey(msg) {
+		return nil
+	}
 
 	// The settings panel is the fullscreen overlay, and it is modal for the same
 	// reason the picker is and one more: there is nothing else on the screen to

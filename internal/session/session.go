@@ -264,6 +264,13 @@ const (
 	// an EventNotice saying why not follows it, on the standing lane
 	// ([Agent.HarnessDesigns]) as well as on the turn's stream.
 	EventHarnessDesign
+	// EventHarnessProgress reports one live snapshot of a harness design call.
+	// It is display-only: partial JSON and reasoning never enter the transcript.
+	// Goal names the request; Phase is designing or reviewing; Attempt and
+	// Attempts size the retry ladder. ThoughtTail is the recent reasoning, Hint
+	// is the best meaning recovered from partial JSON, Bytes is content received,
+	// and Stalled says no delta has arrived for ten seconds.
+	EventHarnessProgress
 	// EventHarnessDesignDone carries a finished design in Harness, with the id
 	// the answer goes back through in ID, the name in Text and the description in
 	// Hint.
@@ -361,6 +368,16 @@ type Event struct {
 	// length of ArgsText, carried as its own field so a surface can show progress
 	// ("write · 4.2 KB") without measuring text it may have chosen not to keep.
 	Bytes int
+
+	// Harness progress fields ride on EventHarnessProgress alone. They are flat
+	// because the event is already the transport envelope and every field is a
+	// short fact a surface may independently omit.
+	Goal        string
+	Phase       string
+	Attempt     int
+	Attempts    int
+	ThoughtTail string
+	Stalled     bool
 
 	// Task carries one EventTaskProposal or EventTaskUpdate's payload
 	// (task_contract.go). It is nil on every other kind, and the ID inside it
