@@ -168,6 +168,41 @@ improvement, not the draft.
 The whole path is off unless there is a runner, a store, **and** an interactive screen to
 answer the card on.
 
+## What you see while a harness is being designed
+
+The turn that asked for a harness ends the moment the design starts, so the conversation
+goes quiet. While the page is being written, aforge draws it on the activity strip — the
+pinned row under the header that says what is alive:
+
+```
+  ⠙ ◆ designing a harness · triage flaky tests · 1m 12s
+```
+
+Three facts, and there is nothing else honest to put there: that a harness is being
+written, the goal it is being written for, and how long that has taken so far. **There is
+no progress bar and no percentage.** A design is two model calls against a long guide and
+neither of them reports how far along it is, so no number is invented. On a narrow frame
+the goal is dropped first and the clock outlives it; on a very narrow one the words stand
+alone. A dim line in the conversation, `harness · designing <goal>`, says the same thing
+once when it starts.
+
+**It is not a task, and the row does not pretend to be one.** There is no id, no room to
+walk into, no branch and no report — nothing is written down anywhere until you approve the
+card — so the chip is not a door. Pressing its words does nothing rather than opening
+something, and it is not on the roster (`ctrl+t`), which is a list of rooms.
+
+**The `✕` on it stops the design**, on frames 120 columns and wider. It raises the same
+confirmation card everything else on this screen is stopped by, reading `Stop this harness
+design? The page it is writing is dropped; nothing was saved.` with the cursor on
+`keep going`. Two designs at once are counted as `designing 2 harnesses` and carry no `✕`:
+one button standing for two jobs would end whichever aforge guessed.
+
+The row clears itself at **every** ending — the save-or-discard card arriving, a failure, a
+discard, a stop, or the 30-minute window running out — because the surface asks the session
+what it is writing on every frame rather than remembering. It never survives `/new` or
+resuming another session, and it can never appear over `--host`, where building a harness
+is switched off.
+
 ## What a design can be refused for
 
 A design must pass validation and a lint before it can be offered to you. The lint refuses:
