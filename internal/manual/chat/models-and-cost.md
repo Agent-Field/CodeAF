@@ -167,7 +167,10 @@ say rather than the default.
 - **balanced** — kimi-k3 thinks, deepseek works
 - **max** — kimi-k3 everywhere, thinks longer
 
-`/crew` prints all three with yours marked; `/crew max` sets it and confirms in one line.
+`/crew` opens all three as a chooser with yours marked. ↑ / ctrl+p and ↓ / ctrl+n move;
+enter applies and esc cancels. If the four classes make a custom crew, no row is marked and
+the footer says picking one puts all four back. `/crew max` still sets it directly and
+confirms in one line.
 The **crew** row in `/settings` → Providers is the same thing: enter or space walks it
 frugal → balanced → max.
 

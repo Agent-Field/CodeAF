@@ -8,17 +8,24 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
-// /crew, FROM THE FOUR SIDES A PERSON MEETS IT: the listing, applying one, a word
+// /crew, FROM THE FOUR SIDES A PERSON MEETS IT: the chooser, applying one, a word
 // that is not one of the three, and the reading over a crew somebody assembled
 // themselves.
 
 // The bare form is the three presets with yours marked, each naming the four
-// models it would set.
-func TestCrewListsTheThreePresetsWithYoursMarked(t *testing.T) {
+// models it would set, and opens on the current one.
+func TestCrewOpensTheThreePresetsOnYours(t *testing.T) {
 	a, _ := sheetApp(t)
+	a.width = 240
 	a.slash("/crew")
 
-	text := lastNote(t, a)
+	if !a.crewPick.open {
+		t.Fatal("bare /crew did not open the chooser")
+	}
+	if a.crewPick.cursor != 1 {
+		t.Fatalf("the cursor opened on row %d, want balanced at 1", a.crewPick.cursor)
+	}
+	text := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
 	for _, preset := range config.CrewPresets {
 		if !strings.Contains(text, preset) {
 			t.Errorf("the listing does not mention %q:\n%s", preset, text)
@@ -48,6 +55,48 @@ func TestCrewListsTheThreePresetsWithYoursMarked(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("the listing does not use the row's own word %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestCrewChooserAppliesAndCloses(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.openSettings()
+	toProviders(t, a)
+	a.slash("/crew")
+	a.crewPickerKey(key("down"))
+	a.crewPickerKey(key("enter"))
+
+	if a.crewPick.open {
+		t.Fatal("enter left the crew chooser open")
+	}
+	if got := config.CrewAt(dir); got != config.CrewMax {
+		t.Fatalf("enter applied %q, want max", got)
+	}
+	if got := lastNote(t, a); !strings.Contains(got, "crew → max") {
+		t.Fatalf("the chooser noted %q", got)
+	}
+	refreshed := false
+	for _, row := range a.sheet.rows {
+		if row.Key == config.KeyCrew && row.Value() == config.CrewMax {
+			refreshed = true
+		}
+	}
+	if !refreshed {
+		t.Fatal("the open settings rows were not refreshed to max")
+	}
+}
+
+func TestCrewChooserEscChangesNothing(t *testing.T) {
+	a, dir := sheetApp(t)
+	a.slash("/crew")
+	drive(t, a, key("down"))
+	drive(t, a, key("esc"))
+
+	if a.crewPick.open {
+		t.Fatal("esc left the crew chooser open")
+	}
+	if got := config.CrewAt(dir); got != config.CrewBalanced {
+		t.Fatalf("esc changed the crew to %q", got)
 	}
 }
 
@@ -106,12 +155,12 @@ func TestCrewReadsCustomOverAHandSetClass(t *testing.T) {
 		t.Fatalf("a hand-set class left the crew reading %q", got)
 	}
 	a.slash("/crew")
-	text := lastNote(t, a)
+	text := plain(strings.Join(a.overlayRows(a.width, a.overlayHeight()), "\n"))
 	if !strings.Contains(text, "none of the three") {
-		t.Fatalf("the listing does not say the crew is nobody's preset:\n%s", text)
+		t.Fatalf("the chooser does not say the crew is nobody's preset:\n%s", text)
 	}
-	if !strings.Contains(text, "/crew balanced puts all four back") {
-		t.Fatalf("the listing does not say how to put it back:\n%s", text)
+	if !strings.Contains(text, "picking one puts all four back") {
+		t.Fatalf("the chooser does not say how to put it back:\n%s", text)
 	}
 	if strings.Contains(text, "· "+config.CrewBalanced) {
 		t.Fatalf("balanced is marked over a custom crew:\n%s", text)

@@ -81,7 +81,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/memories` | — | — | prints every memory into the conversation |
 | `/remember` | — | `<text>` | keeps one thing across conversations |
 | `/forget` | — | `<query>` | forgets the best matching memory |
-| `/crew` | — | — | prints the three crew presets with yours marked |
+| `/crew` | — | — | opens the three-preset crew chooser |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
@@ -576,8 +576,9 @@ those four choices answered in one word.
 /crew
 ```
 
-prints the three presets, yours marked with a `·`, each with its own line and the four
-models it would set:
+opens a three-row chooser. Yours is marked with a `·`; each row has its own line and a dim
+second line naming the four models it would set. ↑ / ctrl+p and ↓ / ctrl+n move, **enter**
+applies the row, and **esc** closes the chooser without changing anything:
 
 ```
   frugal — deepseek everywhere · pennies a day
@@ -609,11 +610,10 @@ relaunch, and no waiting for the next session.
 A word that is not one of the three changes nothing and prints the three:
 `/crew cheap` answers `/crew cheap · not one of the three` and then the listing.
 
-If you have answered one of the four rows yourself, the listing ends with
+If you have answered one of the four rows yourself, no preset is marked and the chooser ends with
 
 ```
-yours is none of the three — crew → custom · brain openai/gpt-5 · hands …
-/crew balanced puts all four back
+yours is none of the three — picking one puts all four back
 ```
 
 What each of the four classes funds, and how to set one of them on its own, is on the models
