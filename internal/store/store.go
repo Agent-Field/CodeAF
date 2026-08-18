@@ -700,6 +700,9 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(memoriesSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize memories schema: %w", err))
 	}
+	if err := migrateMemoriesSchema(db); err != nil {
+		return closeOnError(fmt.Errorf("migrate memories schema: %w", err))
+	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
 	}

@@ -638,6 +638,13 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		}
 		return applyMemoryForget(tx, payload, event.Seq)
 
+	case EventMemoryRestore:
+		var payload memoryRestorePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyMemoryRestore(tx, payload, event.Seq)
+
 	case EventScopeAliased:
 		var payload scopeAliasedPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {

@@ -464,6 +464,18 @@ func TestAnExchangeWithNothingInItWritesNothing(t *testing.T) {
 	}
 }
 
+func TestExtractedMemoryCarriesTheSessionID(t *testing.T) {
+	script := &reflexScript{route: `{"inject":[],"cmd":null}`, extract: `{"mem":1,"type":"preference","scope":"user","title":"Prefers tabs","text":"Prefers tabs in Go.","tags":[]}`}
+	agent, brain := brainAgent(t, script, nil)
+	sessionID := agent.memorySourceSession()
+	collect(t, mustSubmit(t, agent, "I prefer tabs in Go"))
+	_ = agent.Close()
+	kept, err := brain.ListMemories("", 10)
+	if err != nil || len(kept) != 1 || kept[0].SourceSession != sessionID || kept[0].SourceSeq == 0 {
+		t.Fatalf("extracted memory = (%+v, %v), want source session %q", kept, err, sessionID)
+	}
+}
+
 func TestAFailedExtractionBreaksNothingAndWritesNothing(t *testing.T) {
 	script := &reflexScript{route: `{"inject":[],"cmd":null}`, extractErr: errors.New("provider is down"), answer: "here you go"}
 	agent, brain := brainAgent(t, script, nil)

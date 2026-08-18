@@ -120,6 +120,18 @@ func newMemoryBrain(s *store.Store) *memoryBrain { return &memoryBrain{store: s}
 // than about a setting: the door opens no store when memory is off.
 func (a *Agent) remembers() bool { return a.memory != nil && a.memory.store != nil }
 
+// memorySourceSession is the journal header id attached to a memory write. A
+// test or embedded session without a journal still has the stable session name
+// used everywhere else for lineage.
+func (a *Agent) memorySourceSession() string {
+	if id := a.journalID(); id != "" {
+		return id
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.sessionID()
+}
+
 // reflexClient is this session's own client pinned to the reflex model, or nil
 // when the ladder cannot name one.
 //
@@ -267,10 +279,11 @@ func (a *Agent) runMemoryCommand(hub *eventHub, cmd reflex.Cmd) {
 	switch cmd.Name {
 	case "remember":
 		memory, err := a.memory.store.AddMemory(store.Memory{
-			Type:  memoryTypeOf(cmd.Arg),
-			Scope: store.MemoryScopeUser,
-			Title: memoryTitleFrom(cmd.Arg),
-			Text:  cmd.Arg,
+			Type:          memoryTypeOf(cmd.Arg),
+			Scope:         store.MemoryScopeUser,
+			Title:         memoryTitleFrom(cmd.Arg),
+			Text:          cmd.Arg,
+			SourceSession: a.memorySourceSession(),
 		})
 		if err != nil {
 			return
@@ -443,11 +456,12 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 		return store.Memory{}, errors.New("session: a memory with no text says nothing")
 	}
 	fresh := store.Memory{
-		Type:  candidate.Type,
-		Scope: candidate.Scope,
-		Title: strings.TrimSpace(candidate.Title),
-		Text:  candidate.Text,
-		Tags:  candidate.Tags,
+		Type:          candidate.Type,
+		Scope:         candidate.Scope,
+		Title:         strings.TrimSpace(candidate.Title),
+		Text:          candidate.Text,
+		Tags:          candidate.Tags,
+		SourceSession: a.memorySourceSession(),
 	}
 	if fresh.Title == "" {
 		fresh.Title = memoryTitleFrom(candidate.Text)
@@ -487,7 +501,7 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 		if decided.TargetID == "" {
 			return store.Memory{}, nil
 		}
-		if err := a.memory.store.UpdateMemory(decided.TargetID, fresh.Title, fresh.Text, fresh.Tags); err != nil {
+		if err := a.memory.store.UpdateMemoryFromSession(decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession); err != nil {
 			return store.Memory{}, err
 		}
 		return store.Memory{ID: decided.TargetID, Title: fresh.Title, Text: fresh.Text}, nil
@@ -553,6 +567,7 @@ func (a *Agent) RememberScoped(text, scope string) (string, error) {
 		memory, err := a.memory.store.AddMemory(store.Memory{
 			Type: candidate.Type, Scope: candidate.Scope,
 			Title: candidate.Title, Text: candidate.Text,
+			SourceSession: a.memorySourceSession(),
 		})
 		if err != nil {
 			return "", err
@@ -589,7 +604,7 @@ func (a *Agent) forgetMatching(query string) (string, error) {
 	if len(found) == 0 {
 		return "", nil
 	}
-	if err := a.memory.store.ForgetMemory(found[0].ID); err != nil {
+	if err := a.memory.store.ForgetMemoryFromSession(found[0].ID, a.memorySourceSession()); err != nil {
 		return "", err
 	}
 	return found[0].Title, nil
@@ -682,10 +697,11 @@ func (a *Agent) importMemoryFile(hub *eventHub) {
 	imported := 0
 	for _, line := range lines {
 		if _, err := a.memory.store.AddMemory(store.Memory{
-			Type:  store.MemoryFact,
-			Scope: store.MemoryScopeUser,
-			Title: memoryTitleFrom(line),
-			Text:  line,
+			Type:          store.MemoryFact,
+			Scope:         store.MemoryScopeUser,
+			Title:         memoryTitleFrom(line),
+			Text:          line,
+			SourceSession: a.memorySourceSession(),
 		}); err == nil {
 			imported++
 		}

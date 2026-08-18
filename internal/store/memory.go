@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -46,6 +47,8 @@ const (
 	// audit; every view and every search excludes it from the moment this
 	// lands.
 	EventMemoryForget EventKind = "memory_forget"
+	// EventMemoryRestore returns one forgotten memory to the active views.
+	EventMemoryRestore EventKind = "memory_restore"
 )
 
 // The five kinds of thing worth remembering across sessions. They are separate
@@ -104,12 +107,14 @@ type Memory struct {
 	// incremented by the router as it hands memories to a model, which happens
 	// far more often than anything else here and would otherwise write one
 	// event per read into an append-only journal. Rebuild therefore resets it
-	// to zero, exactly as it does the notebook's use counters, and nothing
-	// ranks on it — a number the journal cannot reproduce may inform a person
-	// reading the table, never a retrieval deciding what a model sees.
-	UseCount   int
-	CreatedSeq int64
-	UpdatedSeq int64
+	// to zero, exactly as it does the notebook's use counters. The router index
+	// deliberately ranks on this live hygiene signal; after a rebuild every row
+	// begins tied and recency breaks that tie.
+	UseCount      int
+	CreatedSeq    int64
+	UpdatedSeq    int64
+	SourceSession string
+	SourceSeq     int64
 }
 
 // MemoryStub is one line of the router's index: enough to decide whether a
@@ -137,8 +142,10 @@ CREATE TABLE IF NOT EXISTS memories (
     tags        TEXT NOT NULL DEFAULT '[]',
     status      TEXT NOT NULL DEFAULT 'active',
     use_count   INTEGER NOT NULL DEFAULT 0,
-    created_seq INTEGER NOT NULL,
-    updated_seq INTEGER NOT NULL
+    created_seq    INTEGER NOT NULL,
+    updated_seq    INTEGER NOT NULL,
+    source_session TEXT NOT NULL DEFAULT '',
+    source_seq     INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS memories_status_updated ON memories (status, updated_seq DESC);
 CREATE INDEX IF NOT EXISTS memories_status_scope ON memories (status, scope, updated_seq DESC);
@@ -150,28 +157,54 @@ CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
 );
 `
 
+func migrateMemoriesSchema(db *sql.DB) error {
+	for _, column := range []struct{ name, declaration string }{
+		{"source_session", `ALTER TABLE memories ADD COLUMN source_session TEXT NOT NULL DEFAULT ''`},
+		{"source_seq", `ALTER TABLE memories ADD COLUMN source_seq INTEGER NOT NULL DEFAULT 0`},
+	} {
+		found, err := tableHasColumn(db, "memories", column.name)
+		if err != nil {
+			return err
+		}
+		if !found {
+			if _, err := db.Exec(column.declaration); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 type memoryPayload struct {
-	ID    string   `json:"id"`
-	Type  string   `json:"type"`
-	Scope string   `json:"scope"`
-	Title string   `json:"title"`
-	Text  string   `json:"text"`
-	Tags  []string `json:"tags,omitempty"`
+	ID            string   `json:"id"`
+	Type          string   `json:"type"`
+	Scope         string   `json:"scope"`
+	Title         string   `json:"title"`
+	Text          string   `json:"text"`
+	Tags          []string `json:"tags,omitempty"`
+	SourceSession string   `json:"source_session,omitempty"`
 }
 
 type memoryUpdatePayload struct {
-	ID    string   `json:"id"`
-	Title string   `json:"title"`
-	Text  string   `json:"text"`
-	Tags  []string `json:"tags,omitempty"`
+	ID            string   `json:"id"`
+	Title         string   `json:"title"`
+	Text          string   `json:"text"`
+	Tags          []string `json:"tags,omitempty"`
+	SourceSession string   `json:"source_session,omitempty"`
 }
 
 type memorySupersedePayload struct {
-	OldID string        `json:"old_id"`
-	New   memoryPayload `json:"new"`
+	OldID         string        `json:"old_id"`
+	New           memoryPayload `json:"new"`
+	SourceSession string        `json:"source_session,omitempty"`
 }
 
 type memoryForgetPayload struct {
+	ID            string `json:"id"`
+	SourceSession string `json:"source_session,omitempty"`
+}
+
+type memoryRestorePayload struct {
 	ID string `json:"id"`
 }
 
@@ -202,6 +235,10 @@ func NewMemoryID() string {
 // left it empty, status active, both sequences set to the event that created
 // it.
 func (s *Store) AddMemory(m Memory) (Memory, error) {
+	return s.addMemory(m, m.SourceSession)
+}
+
+func (s *Store) addMemory(m Memory, sourceSession string) (Memory, error) {
 	payload, err := memoryPayloadFrom(m)
 	if err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
@@ -209,6 +246,7 @@ func (s *Store) AddMemory(m Memory) (Memory, error) {
 	if payload.ID == "" {
 		payload.ID = NewMemoryID()
 	}
+	payload.SourceSession = strings.TrimSpace(sourceSession)
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
@@ -236,6 +274,7 @@ func (s *Store) AddMemory(m Memory) (Memory, error) {
 		ID: payload.ID, Type: payload.Type, Scope: payload.Scope,
 		Title: payload.Title, Text: payload.Text, Tags: payload.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
+		SourceSession: payload.SourceSession, SourceSeq: memorySourceSeq(payload.SourceSession, seq),
 	}, nil
 }
 
@@ -244,6 +283,11 @@ func (s *Store) AddMemory(m Memory) (Memory, error) {
 // wants SupersedeMemory: the whole point of an update is that the router's
 // existing pointers to this id stay valid.
 func (s *Store) UpdateMemory(id, title, text string, tags []string) error {
+	return s.UpdateMemoryFromSession(id, title, text, tags, "")
+}
+
+// UpdateMemoryFromSession records which conversation supplied the correction.
+func (s *Store) UpdateMemoryFromSession(id, title, text string, tags []string, sourceSession string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("update memory: %w: id is required", ErrInvalid)
@@ -258,7 +302,7 @@ func (s *Store) UpdateMemory(id, title, text string, tags []string) error {
 	}
 	defer tx.Rollback()
 
-	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags}
+	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags, SourceSession: strings.TrimSpace(sourceSession)}
 	seq, _, err := appendEvent(tx, id, EventMemoryUpdate, payload)
 	if err != nil {
 		return fmt.Errorf("update memory: %w", err)
@@ -302,7 +346,8 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	if exists != 0 {
 		return Memory{}, fmt.Errorf("supersede memory: %w: %q already exists", ErrInvalid, fresh.ID)
 	}
-	payload := memorySupersedePayload{OldID: oldID, New: fresh}
+	fresh.SourceSession = strings.TrimSpace(m.SourceSession)
+	payload := memorySupersedePayload{OldID: oldID, New: fresh, SourceSession: fresh.SourceSession}
 	seq, _, err := appendEvent(tx, fresh.ID, EventMemorySupersede, payload)
 	if err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
@@ -317,6 +362,7 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 		ID: fresh.ID, Type: fresh.Type, Scope: fresh.Scope,
 		Title: fresh.Title, Text: fresh.Text, Tags: fresh.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
+		SourceSession: fresh.SourceSession, SourceSeq: memorySourceSeq(fresh.SourceSession, seq),
 	}, nil
 }
 
@@ -325,6 +371,11 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 // person expects to have had an effect, and a silent success on a row that was
 // already gone is the store agreeing with something that did not happen.
 func (s *Store) ForgetMemory(id string) error {
+	return s.ForgetMemoryFromSession(id, "")
+}
+
+// ForgetMemoryFromSession records the conversation that issued the tombstone.
+func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("forget memory: %w: id is required", ErrInvalid)
@@ -335,7 +386,7 @@ func (s *Store) ForgetMemory(id string) error {
 	}
 	defer tx.Rollback()
 
-	payload := memoryForgetPayload{ID: id}
+	payload := memoryForgetPayload{ID: id, SourceSession: strings.TrimSpace(sourceSession)}
 	seq, _, err := appendEvent(tx, id, EventMemoryForget, payload)
 	if err != nil {
 		return fmt.Errorf("forget memory: %w", err)
@@ -345,6 +396,32 @@ func (s *Store) ForgetMemory(id string) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("forget memory: %w", err)
+	}
+	return nil
+}
+
+// RestoreMemory returns a forgotten memory to the active views. Superseded
+// memories remain retired because their replacement is still the store's truth.
+func (s *Store) RestoreMemory(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("restore memory: %w: id is required", ErrInvalid)
+	}
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return fmt.Errorf("restore memory: %w", err)
+	}
+	defer tx.Rollback()
+	payload := memoryRestorePayload{ID: id}
+	seq, _, err := appendEvent(tx, id, EventMemoryRestore, payload)
+	if err != nil {
+		return fmt.Errorf("restore memory: %w", err)
+	}
+	if err := applyMemoryRestore(tx, payload, seq); err != nil {
+		return fmt.Errorf("restore memory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("restore memory: %w", err)
 	}
 	return nil
 }
@@ -440,17 +517,19 @@ func (s *Store) ListMemories(scope string, limit int) ([]Memory, error) {
 }
 
 // MemoryIndex is the router's whole view of what is remembered: one title-sized
-// line per active memory, newest-touched first.
+// line per active memory, most-used first and newest-touched within a tie.
 //
 // It is a separate read from ListMemories rather than a projection of it
 // because it is the one read that happens every turn. Carrying five hundred
 // bodies to render five hundred titles is how a memory store becomes the most
 // expensive thing in the loop.
 func (s *Store) MemoryIndex(limit int) ([]MemoryStub, error) {
+	// THE INDEX IS A RANKING, NOT A CHRONOLOGY. Memories that have proved useful
+	// lead; updated sequence only settles equal-use rows.
 	statement := `
 		SELECT id, title, type, scope FROM memories
 		WHERE status = ?
-		ORDER BY updated_seq DESC, id`
+		ORDER BY use_count DESC, updated_seq DESC, id`
 	args := []any{MemoryActive}
 	if limit > 0 {
 		statement += ` LIMIT ?`
@@ -532,13 +611,44 @@ func (s *Store) MemoryRecord(id string) (Memory, bool, error) {
 	return memories[0], true, nil
 }
 
+// MemoryProvenance names the conversation and journal instant that last wrote
+// a memory. Old events carry no source, which is unknown provenance rather than
+// an error.
+func (s *Store) MemoryProvenance(id string) (sessionID, sessionTitle string, writtenAt time.Time, err error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", "", time.Time{}, nil
+	}
+	var timestamp string
+	err = s.db.QueryRow(`
+		SELECT m.source_session, COALESCE(s.title, ''), COALESCE(e.ts, '')
+		FROM memories m
+		LEFT JOIN sessions s ON s.id = m.source_session
+		LEFT JOIN events e ON e.seq = m.source_seq
+		WHERE m.id = ?`, id).Scan(&sessionID, &sessionTitle, &timestamp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", time.Time{}, nil
+	}
+	if err != nil {
+		return "", "", time.Time{}, fmt.Errorf("memory provenance: %w", err)
+	}
+	if timestamp != "" {
+		writtenAt, err = parseTime(timestamp)
+		if err != nil {
+			return "", "", time.Time{}, fmt.Errorf("memory provenance: %w", err)
+		}
+	}
+	return sessionID, sessionTitle, writtenAt, nil
+}
+
 // queryMemories is the single reader every memory read goes through, so no two
 // of them can come to disagree about how a row decodes.
 func (s *Store) queryMemories(where string, args []any, order string, limit int) ([]Memory, error) {
 	statement := `
 		SELECT memories.id, memories.type, memories.scope, memories.title,
 		       memories.text, memories.tags, memories.status, memories.use_count,
-		       memories.created_seq, memories.updated_seq
+		       memories.created_seq, memories.updated_seq,
+		       memories.source_session, memories.source_seq
 		FROM memories ` + where
 	if order != "" {
 		statement += ` ORDER BY ` + order
@@ -558,7 +668,7 @@ func (s *Store) queryMemories(where string, args []any, order string, limit int)
 		var tags string
 		if err := rows.Scan(&memory.ID, &memory.Type, &memory.Scope, &memory.Title,
 			&memory.Text, &tags, &memory.Status, &memory.UseCount,
-			&memory.CreatedSeq, &memory.UpdatedSeq); err != nil {
+			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(tags), &memory.Tags); err != nil {
@@ -580,10 +690,10 @@ func applyMemoryAdd(tx *sql.Tx, payload memoryPayload, seq int64) error {
 		return err
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO memories (id, type, scope, title, text, tags, status, use_count, created_seq, updated_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+		INSERT INTO memories (id, type, scope, title, text, tags, status, use_count, created_seq, updated_seq, source_session, source_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
 		payload.ID, payload.Type, payload.Scope, payload.Title, payload.Text,
-		tags, MemoryActive, seq, seq); err != nil {
+		tags, MemoryActive, seq, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq)); err != nil {
 		return err
 	}
 	return refreshMemoryFTS(tx, payload.ID)
@@ -595,9 +705,9 @@ func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64) error
 		return err
 	}
 	result, err := tx.Exec(`
-		UPDATE memories SET title = ?, text = ?, tags = ?, updated_seq = ?
+		UPDATE memories SET title = ?, text = ?, tags = ?, updated_seq = ?, source_session = ?, source_seq = ?
 		WHERE id = ? AND status = ?`,
-		payload.Title, payload.Text, tags, seq, payload.ID, MemoryActive)
+		payload.Title, payload.Text, tags, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq), payload.ID, MemoryActive)
 	if err != nil {
 		return err
 	}
@@ -613,9 +723,9 @@ func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64) error
 
 func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64) error {
 	result, err := tx.Exec(`
-		UPDATE memories SET status = ?, updated_seq = ?
+		UPDATE memories SET status = ?, updated_seq = ?, source_session = ?, source_seq = ?
 		WHERE id = ? AND status = ?`,
-		MemorySuperseded, seq, payload.OldID, MemoryActive)
+		MemorySuperseded, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq), payload.OldID, MemoryActive)
 	if err != nil {
 		return err
 	}
@@ -634,9 +744,9 @@ func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64)
 
 func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64) error {
 	result, err := tx.Exec(`
-		UPDATE memories SET status = ?, updated_seq = ?
+		UPDATE memories SET status = ?, updated_seq = ?, source_session = ?, source_seq = ?
 		WHERE id = ? AND status <> ?`,
-		MemoryForgotten, seq, payload.ID, MemoryForgotten)
+		MemoryForgotten, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq), payload.ID, MemoryForgotten)
 	if err != nil {
 		return err
 	}
@@ -646,6 +756,29 @@ func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64) error
 	}
 	if changed != 1 {
 		return fmt.Errorf("%w: nothing to forget under %q", ErrInvalid, payload.ID)
+	}
+	return refreshMemoryFTS(tx, payload.ID)
+}
+
+func memorySourceSeq(sourceSession string, seq int64) int64 {
+	if strings.TrimSpace(sourceSession) == "" {
+		return 0
+	}
+	return seq
+}
+
+func applyMemoryRestore(tx *sql.Tx, payload memoryRestorePayload, seq int64) error {
+	result, err := tx.Exec(`UPDATE memories SET status = ?, updated_seq = ? WHERE id = ? AND status = ?`,
+		MemoryActive, seq, payload.ID, MemoryForgotten)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("%w: restore targets missing or non-forgotten memory %q", ErrInvalid, payload.ID)
 	}
 	return refreshMemoryFTS(tx, payload.ID)
 }
