@@ -497,10 +497,10 @@ func motionAt(y int) tea.MouseMotionMsg { return tea.MouseMotionMsg{Y: y} }
 // screenRowOf finds the screen line one visible conversation row was drawn on.
 func screenRowOf(t *testing.T, a *app, want func(row) bool) int {
 	t.Helper()
-	body, pad := a.window(a.width, a.viewHeight())
+	body, _ := a.window(a.width, a.viewHeight())
 	for i, r := range body {
 		if want(r) {
-			return a.bodyTop() + pad + i
+			return a.bodyTop() + i
 		}
 	}
 	t.Fatalf("no visible row matches:\n%s", strings.Join(plainRows(a), "\n"))
@@ -656,10 +656,10 @@ func TestHoverRepaintsOnlyWhenTheAnswerChanges(t *testing.T) {
 		"first line", "first line\nsecond line\nthird line\n\nCommand exited with code 1"))
 
 	var ys []int
-	body, pad := a.window(a.width, a.viewHeight())
+	body, _ := a.window(a.width, a.viewHeight())
 	for i, r := range body {
 		if r.hit == hitTool && r.entry >= 0 {
-			ys = append(ys, a.bodyTop()+pad+i)
+			ys = append(ys, a.bodyTop()+i)
 		}
 	}
 	if len(ys) < 3 {

@@ -100,11 +100,11 @@ func TestClickingAModelPicksItRatherThanOpeningTheBrief(t *testing.T) {
 
 	// The layout is what writes the row and its targets, so the frame is taken
 	// first and the columns are read off it — one layout, one set of targets.
-	body, pad := a.window(a.width, a.viewHeight())
+	body, _ := a.window(a.width, a.viewHeight())
 	y := -1
 	for i, r := range body {
 		if r.hit == hitModel {
-			y = a.bodyTop() + pad + i
+			y = a.bodyTop() + i
 			break
 		}
 	}

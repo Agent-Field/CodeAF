@@ -414,10 +414,10 @@ func thoughtAt(t *testing.T, a *app) int {
 // clickEntry drives a left click on the first visible row of one entry.
 func clickEntry(t *testing.T, a *app, entry int) {
 	t.Helper()
-	body, pad := a.window(a.width, a.viewHeight())
+	body, _ := a.window(a.width, a.viewHeight())
 	for i, r := range body {
 		if r.entry == entry {
-			drive(t, a, tea.MouseClickMsg{Y: a.bodyTop() + pad + i, Button: tea.MouseLeft})
+			drive(t, a, tea.MouseClickMsg{Y: a.bodyTop() + i, Button: tea.MouseLeft})
 			return
 		}
 	}

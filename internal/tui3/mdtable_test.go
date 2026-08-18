@@ -58,10 +58,10 @@ func footAt(rows []string) (int, string) {
 // it landed on — resolved exactly as [app.rowAt] does, so a click built from it
 // is the click a person makes.
 func footRow(a *app) (row, int, bool) {
-	body, pad := a.window(a.bodyWidth(), a.viewHeight())
+	body, _ := a.window(a.bodyWidth(), a.viewHeight())
 	for i, r := range body {
 		if r.foot.span.pressable() {
-			return r, a.bodyTop() + pad + i, true
+			return r, a.bodyTop() + i, true
 		}
 	}
 	return row{}, 0, false
