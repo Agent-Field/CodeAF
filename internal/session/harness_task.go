@@ -205,7 +205,7 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	child.record(textMessage("user", harnessThreadOpening(goal, model)))
 
 	node.doingNow(harnessPhaseDesigning)
-	page, cues, err := a.designPage(ctx, goal, model)
+	page, cues, err := a.designPage(ctx, goal, model, node.id)
 	if err != nil {
 		fmt.Fprintf(log, "design failed: %v\n", err)
 		return a.landHarnessNode(node, child, harnessDesignEnding(ctx, node, "the design failed: "+err.Error()), TaskFailed)
@@ -219,7 +219,7 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	// the page, and a node that settled here would take its own room away one
 	// moment before the person needed it.
 	node.doingNow(harnessPhaseAsking)
-	answer, err := a.askHarnessDesign(ctx, a.harnessAskID(), page, model)
+	answer, err := a.askHarnessDesign(ctx, node.id, page, model)
 	if err != nil {
 		return a.landHarnessNode(node, child, harnessDesignEnding(ctx, node, "the design ended before it was answered"), TaskFailed)
 	}

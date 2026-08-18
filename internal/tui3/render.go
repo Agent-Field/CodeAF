@@ -42,6 +42,7 @@ const (
 	// blocks answer the same gestures with different things — one is a question
 	// that can still be answered, the other is a record that cannot.
 	hitDone
+	hitHarness
 	// hitChoice is the proposal's choices row, and it is the one hit on this
 	// surface that needs the COLUMN as well as the row: three answers share one
 	// line, so which of them was pressed is a question about x (app.go's
@@ -269,6 +270,18 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 			i = end - 1
 			continue
 		}
+		if e.kind == entryHarness {
+			gap()
+			for _, text := range a.harnessFeedRows(e.harness, width, a.selected(i)) {
+				hit := hitNone
+				if strings.Contains(text, "[enter] save") {
+					hit = hitHarness
+				}
+				out = append(out, row{text: text, entry: i, hit: hit})
+			}
+			wasCluster, wasBlock = false, true
+			continue
+		}
 
 		rows := a.entryRows(d, i, width)
 		if len(rows) == 0 {
@@ -459,6 +472,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 
 	case entryTask:
 		return a.taskCardRows(e.card, width, a.sel == i)
+
+	case entryHarness:
+		return a.harnessFeedRows(e.harness, width, a.sel == i)
 
 	case entryNote:
 		body := wrap(e.text, width-2)
