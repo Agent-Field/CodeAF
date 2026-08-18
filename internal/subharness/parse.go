@@ -52,6 +52,43 @@ func integerOrString(data json.RawMessage, field string) (int, error) {
 	return value, nil
 }
 
+// UnmarshalJSON accepts the one liberty a designer takes with a node's
+// arguments: scalars spelled the JSON way - "max_turns": 6 rather than "6".
+// Numbers and booleans are coerced to their canonical string form, so the map
+// stays strings on the wire and Encode keeps one spelling. Objects, arrays,
+// and null are refused with the field named.
+func (f *Fields) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	fields := make(Fields, len(raw))
+	for name, value := range raw {
+		switch trimmed := bytes.TrimSpace(value); {
+		case len(trimmed) == 0:
+			return fmt.Errorf("fields.%s must be a string, number, or boolean", name)
+		case trimmed[0] == '"':
+			var word string
+			if err := json.Unmarshal(trimmed, &word); err != nil {
+				return fmt.Errorf("fields.%s: %w", name, err)
+			}
+			fields[name] = word
+		case trimmed[0] == '-' || trimmed[0] >= '0' && trimmed[0] <= '9':
+			var number json.Number
+			if err := json.Unmarshal(trimmed, &number); err != nil {
+				return fmt.Errorf("fields.%s: %w", name, err)
+			}
+			fields[name] = number.String()
+		case string(trimmed) == "true" || string(trimmed) == "false":
+			fields[name] = string(trimmed)
+		default:
+			return fmt.Errorf("fields.%s must be a string, number, or boolean", name)
+		}
+	}
+	*f = fields
+	return nil
+}
+
 // UnmarshalJSON accepts a hand-written string for the identity's integer while
 // preserving the page's refusal of fields this version does not know.
 func (id *Id) UnmarshalJSON(data []byte) error {

@@ -106,6 +106,30 @@ func TestNumericIntegersStillDecodeOnAPage(t *testing.T) {
 	}
 }
 
+// A designer that round-trips a page writes fields the JSON way: 6, not "6".
+// The coercion keeps the wire's string law while refusing what a field cannot
+// be.
+func TestNodeFieldsAdmitHandWrittenScalars(t *testing.T) {
+	h, err := Decode([]byte(`{"id":{"name":"x","version":1},"program":{"nodes":[{"id":"n","kind":"k","fields":{"max_turns":6,"stream":true,"brief":" go "}}]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := h.Program.Nodes[0].Fields
+	if fields.Get("max_turns") != "6" || fields.Get("stream") != "true" || fields.Get("brief") != "go" {
+		t.Fatalf("scalars decoded to %v", fields)
+	}
+}
+
+func TestANodeFieldThatIsNotAScalarIsRefusedWithItsName(t *testing.T) {
+	for _, value := range []string{`{"a":1}`, `[1]`, `null`} {
+		page := `{"id":{"name":"x","version":1},"program":{"nodes":[{"id":"n","kind":"k","fields":{"bad":` + value + `}}]}}`
+		_, err := Decode([]byte(page))
+		if err == nil || !strings.Contains(err.Error(), "fields.bad") {
+			t.Errorf("field value %s was not refused with its name: %v", value, err)
+		}
+	}
+}
+
 func TestInvalidDynamismCapNamesItsField(t *testing.T) {
 	for _, cap := range []string{`"many"`, `2.5`} {
 		_, err := Decode([]byte(`{"id":{"name":"x","version":1},"dyn":{"ladder":"width","cap":` + cap + `}}`))
