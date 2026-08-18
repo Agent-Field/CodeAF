@@ -1148,7 +1148,7 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		said:  make(map[string]TaskState, 8),
 	}
 	a.emitTaskUpdate(TaskNotice{
-		ID: family.root, Title: family.title, State: TaskRunning, Model: family.model,
+		ID: family.root, Run: family.run, Title: family.title, State: TaskRunning, Model: family.model,
 	})
 	a.mu.Lock()
 	session := a.sessionID()
@@ -1191,6 +1191,8 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 		}
 		f.agent.emitTaskUpdate(TaskNotice{
 			ID:      id,
+			Run:     f.run,
+			Node:    node.ID,
 			Parent:  f.root,
 			Title:   clip(firstLine(node.Goal), hintLimit),
 			State:   state,
@@ -1257,7 +1259,10 @@ func (f *orchestrateFamily) claim(node string, state TaskState) (uint64, bool) {
 // called off. A node that already settled is left alone.
 func (f *orchestrateFamily) retire(live map[string]bool) {
 	f.mu.Lock()
-	var gone []uint64
+	var gone []struct {
+		node string
+		id   uint64
+	}
 	for node, id := range f.ids {
 		if live[node] {
 			continue
@@ -1265,12 +1270,17 @@ func (f *orchestrateFamily) retire(live map[string]bool) {
 		switch f.said[node] {
 		case TaskQueued, TaskRunning:
 			f.said[node] = TaskFailed
-			gone = append(gone, id)
+			gone = append(gone, struct {
+				node string
+				id   uint64
+			}{node: node, id: id})
 		}
 	}
 	f.mu.Unlock()
-	for _, id := range gone {
-		f.agent.emitTaskUpdate(TaskNotice{ID: id, Parent: f.root, State: TaskFailed, Stopped: true})
+	for _, row := range gone {
+		f.agent.emitTaskUpdate(TaskNotice{
+			ID: row.id, Run: f.run, Node: row.node, Parent: f.root, State: TaskFailed, Stopped: true,
+		})
 	}
 }
 
@@ -1285,7 +1295,7 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 	}
 	f.upsert(snap.Nodes)
 	notice := TaskNotice{
-		ID: f.root, Title: f.title, State: TaskDone, Model: f.model,
+		ID: f.root, Run: f.run, Title: f.title, State: TaskDone, Model: f.model,
 		Report:  strings.TrimSpace(snap.Answer),
 		CostUSD: snap.Fuel.Spent,
 	}

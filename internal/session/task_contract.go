@@ -107,6 +107,10 @@ type TaskNotice struct {
 	// ID is the proposal's token: a surface hands it back to
 	// [Agent.ResolveTask]. On updates it names the node the update is about.
 	ID uint64
+	// Run names the adaptive run this row belongs to. Empty means ordinary work.
+	Run string
+	// Node names the adaptive node inside Run. THE RUN'S OWN ROW HAS NO NODE.
+	Node string
 	// Title is the one-line name of the work ("Fix the nil-map crash").
 	Title string
 	// Kind is what sort of node this is, and "" is the ordinary one: work in a
