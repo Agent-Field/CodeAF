@@ -17,6 +17,8 @@ import (
 type harnessCard struct {
 	id                         uint64
 	goal, phase, hint, thought string
+	model                      string
+	task                       uint64
 	attempt, attempts, bytes   int
 	stalled                    bool
 	began                      time.Time
@@ -37,7 +39,11 @@ func (a *app) harnessCardOf(id uint64) (*harnessCard, int) {
 
 func (a *app) beginHarnessCard(ev session.Event) {
 	a.closeLive()
-	a.entries = append(a.entries, entry{kind: entryHarness, turn: a.turn, harness: &harnessCard{id: ev.ID, goal: ev.Text, phase: "designing", hint: "thinking", began: time.Now()}})
+	c := &harnessCard{id: ev.ID, goal: ev.Text, phase: "designing", hint: "thinking", model: ev.Model, began: time.Now()}
+	if ev.Task != nil {
+		c.task = ev.Task.ID
+	}
+	a.entries = append(a.entries, entry{kind: entryHarness, turn: a.turn, harness: c})
 	a.follow()
 	a.touch()
 }
@@ -45,7 +51,7 @@ func (a *app) beginHarnessCard(ev session.Event) {
 func (a *app) progressHarnessCard(ev session.Event) {
 	c, i := a.harnessCardOf(ev.ID)
 	if c == nil {
-		a.beginHarnessCard(session.Event{ID: ev.ID, Text: ev.Goal})
+		a.beginHarnessCard(ev)
 		c, i = a.harnessCardOf(ev.ID)
 	}
 	c.goal, c.phase, c.hint, c.thought = ev.Goal, ev.Phase, ev.Hint, ev.ThoughtTail
@@ -58,7 +64,7 @@ func (a *app) progressHarnessCard(ev session.Event) {
 func (a *app) finishHarnessCard(ev session.Event) {
 	c, i := a.harnessCardOf(ev.ID)
 	if c == nil {
-		a.beginHarnessCard(session.Event{ID: ev.ID, Text: ev.Text})
+		a.beginHarnessCard(ev)
 		c, i = a.harnessCardOf(ev.ID)
 	}
 	page := *ev.Harness
@@ -75,6 +81,17 @@ func (a *app) harnessFeedRows(c *harnessCard, width int, selected bool) []string
 	}
 	if c.page == nil {
 		head := "⠿ harness · " + c.phase
+		switch {
+		case c.model != "" && c.goal != "":
+			head += " with " + c.model + " · " + c.goal
+		case c.model != "":
+			head += " with " + c.model
+		case c.goal != "":
+			head += " " + c.goal
+		}
+		if c.task != 0 {
+			head += fmt.Sprintf(" — task %d", c.task)
+		}
 		if c.attempts > 1 {
 			head += fmt.Sprintf(" · attempt %d/%d", c.attempt, c.attempts)
 		}
