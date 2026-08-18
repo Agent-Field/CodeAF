@@ -200,7 +200,12 @@ var settingReaders = map[string]string{
 	KeyTaskModel:     "TaskModelAt",
 	KeyTierLowModel:  "TierKey",
 	KeyTierHighModel: "TierKey",
-	KeyModelRoles:    "PinKey",
+	// The reflex row names the ROLE that reaches it rather than TierKey, which
+	// its two neighbours share: internal/reflex resolves [roles.RoleReflex] and
+	// nothing else lands on this key, so naming the shared spelling a third
+	// time would let the low row prove this one.
+	KeyTierReflexModel: "RoleReflex",
+	KeyModelRoles:      "PinKey",
 	// The three web-search rows are read by the v3 door, which turns them into
 	// the [search.Options] it resolves the session's pair from
 	// (cmd/aforge/chatv3.go's v3SearchOptions). Each names its own reader

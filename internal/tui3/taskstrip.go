@@ -205,11 +205,13 @@ const (
 // ── THE PARENT SEAM ─────────────────────────────────────────────────────────
 //
 // These two are the whole of what the tree reads. The parent is filled from the
-// engine's own updates (session's TaskNotice.Parent, written by the family an
-// adaptive run registers itself as — its orchestrate.go): a run takes one row
-// and every node it cuts takes a row under it. A session that has never run
-// anything adaptive answers "" and false to both, which is the flat row,
-// unchanged — and that is what keeps this a seam rather than a rewrite.
+// engine's own updates (session's TaskNotice.Parent), and TWO KINDS OF WORK FILL
+// IT: an adaptive run, which takes one row with a row under it for every node it
+// cuts (session's orchestrate.go), and a TASK THAT SPLIT ITS OWN BRIEF, whose
+// pieces are registered under it (session's task.go). Neither is anything to
+// this package: a family is a family. A session that has run neither answers ""
+// and false to both, which is the flat row, unchanged — and that is what keeps
+// this a seam rather than a rewrite.
 //
 // Paused has no publisher yet: nothing on TaskNotice says a run is standing at
 // its fuel gate, so the ⏸ is drawn from a fact this surface cannot currently be

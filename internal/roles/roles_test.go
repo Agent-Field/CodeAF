@@ -156,6 +156,40 @@ func TestResolvePrecedence(t *testing.T) {
 			want:     "high-model",
 		},
 		{
+			// The reflex role takes its OWN tier and not the low one, which is
+			// the whole reason the third tier exists: the low model is cheap for
+			// a call made once a session and is not cheap for one made twice a
+			// turn.
+			name: "reflex takes the reflex tier, not the low one",
+			src: settings(map[string]string{
+				"tiers.reflex": "reflex-model",
+				"tiers.low":    "low-model",
+				"tiers.high":   "high-model",
+			}),
+			role:     RoleReflex,
+			fallback: "session-model",
+			want:     "reflex-model",
+		},
+		{
+			name: "a reflex pin outranks its tier",
+			src: settings(map[string]string{
+				"roles.reflex": "pinned-model",
+				"tiers.reflex": "reflex-model",
+			}),
+			role:     RoleReflex,
+			fallback: "session-model",
+			want:     "pinned-model",
+		},
+		{
+			// A cleared reflex row is a person saying "use what I am talking
+			// to", and the ladder's floor is what says it.
+			name:     "reflex falls to the session model when its tier is blank",
+			src:      settings(map[string]string{"tiers.reflex": ""}),
+			role:     RoleReflex,
+			fallback: "session-model",
+			want:     "session-model",
+		},
+		{
 			name: "a pin resolves without any tier configured",
 			src: settings(map[string]string{
 				"roles.compaction": "pinned-model",
@@ -275,7 +309,7 @@ func TestRegisteredIsSortedAndComplete(t *testing.T) {
 
 	want := []Role{
 		Role("advisor"), Role("commit"), RoleCompaction,
-		RoleDesigner, RolePlanner, RoleRouter, RoleTitle, RoleWorker,
+		RoleDesigner, RolePlanner, RoleReflex, RoleRouter, RoleTitle, RoleWorker,
 	}
 	for range 5 { // map order varies per iteration; the answer must not
 		got := Registered()
@@ -299,6 +333,11 @@ func TestDefaultAssignment(t *testing.T) {
 		RolePlanner:    TierHigh,
 		RoleDesigner:   TierHigh,
 		RoleWorker:     TierLow,
+		// The per-turn pair is the third tier's only tenant, and it is the
+		// assignment that would be silently wrong: reflex on the low tier is a
+		// cheap model called twice a turn, which reads as thrift and bills as a
+		// habit.
+		RoleReflex: TierReflex,
 	} {
 		got, ok := TierOf(role)
 		if !ok || got != want {

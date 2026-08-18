@@ -96,6 +96,16 @@ const (
 	// mistakes nobody downstream can see to correct. Registered from
 	// internal/session/task_audit.go, which owns the call.
 	RoleAuditor Role = "auditor"
+	// RoleReflex is the per-turn pair: the pre-turn router that reads the
+	// message you just typed and answers which remembered lines belong in this
+	// turn, and the post-turn extractor that reads the exchange and answers
+	// whether anything in it is worth keeping. Both answer in a few words of
+	// JSON, both run every single turn, and neither is allowed to think — which
+	// is why they are their own tier rather than the low one. Registered here
+	// with the built-ins because the tier IS the role's whole design, and a
+	// reflex role assigned anywhere else would be the same mistake as putting
+	// the reflex model on the high tier.
+	RoleReflex Role = "reflex"
 	// RoleRouter is the sidecar judge that reviews a tool-less answer and asks
 	// whether it should have been work (an adaptive run, a task). It sits LOW:
 	// it reads one turn and answers one cheap question, and a wrong "no" costs
@@ -105,20 +115,30 @@ const (
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
-// are deliberately not. Two settings is a decision someone can hold in their
+// are deliberately not. Three settings is a decision someone can hold in their
 // head — a tier per feature is the per-feature knob this package exists to
-// avoid.
+// avoid — and the third was added only because a call made TWICE EVERY TURN is
+// a different economy from a call made once a session, not because a feature
+// wanted a knob.
 type Tier string
 
 const (
+	// TierReflex is the cheapest of all: a model small enough to read EVERY
+	// TURN. The two calls on it — the router that decides which memories a turn
+	// needs, the extractor that decides whether the turn is worth remembering —
+	// run whether or not anybody asked, twice per exchange, for the whole life
+	// of a conversation. That rhythm is the tier: a model here is chosen for
+	// costing near nothing per call rather than for being good at anything, and
+	// no role that has to REASON belongs on it.
+	TierReflex Tier = "reflex"
 	// TierLow is the cheap, fast model.
 	TierLow Tier = "low"
 	// TierHigh is the capable, expensive one.
 	TierHigh Tier = "high"
 )
 
-// Tiers lists every tier, low first, for a settings surface to render.
-var Tiers = []Tier{TierLow, TierHigh}
+// Tiers lists every tier, cheapest first, for a settings surface to render.
+var Tiers = []Tier{TierReflex, TierLow, TierHigh}
 
 // DefaultAssignment is the tier each built-in role starts on.
 //
@@ -142,6 +162,7 @@ var DefaultAssignment = map[Role]Tier{
 	RoleDesigner:   TierHigh,
 	RoleWorker:     TierLow,
 	RoleRouter:     TierLow,
+	RoleReflex:     TierReflex,
 }
 
 // ErrUnknownRole is returned by [Resolve] for a role that was never
@@ -201,7 +222,7 @@ func Register(role Role, tier Tier) {
 	if strings.TrimSpace(string(role)) == "" {
 		panic("roles: register with empty role")
 	}
-	if tier != TierLow && tier != TierHigh {
+	if tier != TierReflex && tier != TierLow && tier != TierHigh {
 		panic(fmt.Sprintf("roles: register %q with unknown tier %q", role, tier))
 	}
 	registryMu.Lock()

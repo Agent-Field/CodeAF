@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,6 +18,25 @@ import (
 //
 //go:embed prompts/system.md
 var systemPrompt string
+
+// taskPrompt is what a TASK NODE is told on top of it: that nobody is there,
+// and how to decide whether a step of its brief is one it does or one it hands
+// further out (task.go's fan-out law).
+//
+// It is appended and not substituted. A node is the same worker doing the same
+// job somewhere quieter (task_run.go), so it reads the same house rules about
+// deliverables, grounding and background work; what it needs extra is the part
+// no conversation has, which is this.
+//
+//go:embed prompts/task.md
+var taskPrompt string
+
+// fanLimitToken is the one thing the page above cannot spell for itself. THE
+// NUMBER A MODEL REASONS WITH MUST BE THE NUMBER THE CODE ENFORCES, and a page
+// that typed it would be the second place it lives (task.go's schema states the
+// law and the drift it cost). So the page names the token and this substitutes
+// the constant.
+const fanLimitToken = "FAN_LIMIT"
 
 // agentsFileLimit bounds how much of a project's AGENTS.md rides in the system
 // prompt. 8KiB is a page of house rules; a file larger than that is
@@ -31,9 +51,19 @@ const agentsFileName = "AGENTS.md"
 // renderSystem builds the final system prompt: the embedded prompt plus the
 // project footer — the facts that are true of this machine, this workspace and
 // today, none of which can be embedded.
-func renderSystem(workspace string) string {
+func renderSystem(config Config) string {
+	workspace := config.Workspace
 	var out strings.Builder
 	out.WriteString(strings.TrimRight(systemPrompt, "\n"))
+
+	// A node that may hand work out is told how to decide; a node standing on
+	// the floor of the tree is not, because it has no propose_task to decide
+	// with and a prompt promising one is a prompt that lies (the law is in
+	// CLAUDE.md and the belt is built from the same predicate).
+	if config.mayFanOut() {
+		out.WriteString("\n\n")
+		out.WriteString(strings.ReplaceAll(strings.TrimRight(taskPrompt, "\n"), fanLimitToken, strconv.Itoa(taskFanLimit)))
+	}
 
 	out.WriteString("\n\n# Project\n")
 	fmt.Fprintf(&out, "- Workstation: %s/%s\n", runtime.GOOS, runtime.GOARCH)
