@@ -496,7 +496,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		// backspace takes the last picture off it (attach.go). It is the same
 		// gesture as deleting a character, applied to the only thing left to
 		// delete, so nothing new has to be learned to undo an attachment.
-		if len(a.input.value) == 0 && a.dropChip() {
+		// A PICKED HARNESS IS THE LAST THING BEHIND THE CARET, after the
+		// pictures: the tray is read right to left, which is the direction this
+		// key deletes in and the order the row is drawn in (harnesspick.go).
+		if len(a.input.value) == 0 && (a.dropChip() || a.dropHarnessChip()) {
 			return a.edited()
 		}
 		a.input.deleteBackward()
@@ -618,8 +621,19 @@ func (a *app) enter() tea.Cmd {
 	a.dropDraft()
 	if strings.HasPrefix(line, "/") {
 		// A command with a tray full is still a command: /image adds a second
-		// picture rather than sending the first (attach.go).
+		// picture rather than sending the first (attach.go). A picked harness
+		// waits through it for the same reason — a slash is a thing said to this
+		// surface, and the request is a thing said to the harness.
 		return a.slash(line)
+	}
+	// A PICKED HARNESS TAKES THE SENTENCE, and it takes it whole: the person
+	// chose the shape of the work off a list and then said what the work is, so
+	// this runs that harness on exactly those words and nothing detects anything
+	// (harnesspick.go). An empty box with a chip in the tray never reaches here —
+	// the tray's own hint says to type the request, and enter on nothing is the
+	// no-op it always was.
+	if a.harnChip != "" {
+		return a.runPickedHarness(line)
 	}
 	// EVERY "@task" IN THE SENTENCE GROWS ITS FOOTNOTE HERE, and here is after
 	// the line has been remembered: what ↑ brings back is what the person typed,

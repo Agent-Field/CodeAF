@@ -71,15 +71,14 @@ func TestAStripChipIsPaddedAndItsPaddingOpensTheRoom(t *testing.T) {
 	}
 }
 
-// OPEN IS A BAND AND FOCUSED IS AN UNDERLINE, and they are two marks because
-// they answer two questions: which room the body is drawing, and where the
-// roster's cursor is standing. A chip may wear both and both stay legible.
-func TestTheOpenChipIsBandedAndTheFocusedChipIsUnderlined(t *testing.T) {
+// THE OPEN ROOM'S CHIP IS BANDED, AND IT IS THE ROW'S ONLY MARK. The band is
+// what makes this a tab bar rather than a list of doors; the roster's cursor is
+// not on it, because the strip and the roster are never on screen together
+// (taskstrip.go's [app.stripShowing]).
+func TestTheOpenChipIsBandedAndTheStripCarriesNoCursor(t *testing.T) {
 	a, _, _ := roomApp(t)
-	// A frame WIDE enough for the roster to be a column: under railSlimFloor the
-	// roster opens over the whole frame and stands the strip down (task.go), so
-	// there would be no row on screen to carry a cursor at all.
-	a.width = 200
+	// A frame with NO roster on it, which is the only frame this row is drawn on.
+	a.width = 80
 	a.touch()
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Write the auth tests",
 		session.TaskRunning, session.TaskNotice{})})
@@ -87,7 +86,7 @@ func TestTheOpenChipIsBandedAndTheFocusedChipIsUnderlined(t *testing.T) {
 	band := "\x1b[48;5;" + itoa(int(hueBand.idx)) + "m"
 	const underline = "\x1b[4m"
 
-	// Nothing open, nobody holding the keyboard: a row of dim chips and no marks.
+	// Nothing open: a row of dim chips and no marks.
 	if row := a.stripRow(a.width); strings.Contains(row, band) || strings.Contains(row, underline) {
 		t.Fatalf("an idle strip wore a mark:\n%q", row)
 	}
@@ -98,41 +97,19 @@ func TestTheOpenChipIsBandedAndTheFocusedChipIsUnderlined(t *testing.T) {
 	if !strings.Contains(row, band) {
 		t.Fatalf("the open room's chip is not banded:\n%q", row)
 	}
-	if strings.Contains(row, underline) {
-		t.Fatalf("an open chip wore the focus mark with nobody holding the keys:\n%q", row)
-	}
 
-	// AND THE ROSTER'S CURSOR TAKES THE UNDERLINE, on whichever chip it is
-	// standing on — here the OTHER node, so the two marks are on the row at once
-	// and on different chips.
-	a.railHold, a.railWhere = true, railSpot{id: 7}
-	row = a.stripRow(a.width)
-	if !strings.Contains(row, band) || !strings.Contains(row, underline) {
-		t.Fatalf("the open chip and the focused chip are not both marked:\n%q", row)
+	// AND THE ROSTER'S CURSOR NEVER REACHES THIS ROW. Asking for the roster on a
+	// frame this narrow raises it over the body, which stands the strip down.
+	a.railTake(true)
+	if !a.railFull() {
+		t.Fatal("ctrl+t did not raise the roster over the body")
 	}
-	// The band belongs to node 9 and the underline to node 7: the underline opens
-	// before the banded chip's first cell.
-	var open, focus stripSpan
-	for _, span := range a.stripSpans {
-		switch span.id {
-		case 9:
-			open = span
-		case 7:
-			focus = span
-		}
+	if row := a.stripRow(a.width); row != "" {
+		t.Fatalf("the strip drew under the roster it opens:\n%q", row)
 	}
-	if !focus.span.pressable() || !open.span.pressable() || focus.span.from == open.span.from {
-		t.Fatalf("the two nodes are not two chips: focus=%+v open=%+v", focus, open)
-	}
-	if bandAt, underAt := strings.Index(row, band), strings.Index(row, underline); //
-	(underAt > bandAt) != (focus.span.from > open.span.from) {
-		t.Fatalf("the focus mark landed on the open chip:\n%q", row)
-	}
-
-	// The keys go back to the draft and the cursor goes with them.
-	a.railHold = false
+	a.railTake(false)
 	if row := a.stripRow(a.width); strings.Contains(row, underline) {
-		t.Fatalf("the focus mark outlived the roster's hold on the keyboard:\n%q", row)
+		t.Fatalf("the strip drew a cursor of its own:\n%q", row)
 	}
 }
 

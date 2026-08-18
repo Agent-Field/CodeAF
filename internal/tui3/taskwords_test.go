@@ -407,14 +407,11 @@ func TestNoTerminalStateEverSpeaksOfTheMachinery(t *testing.T) {
 		t.Run(tc.what, func(t *testing.T) {
 			a, _, _ := taskApp(t)
 			drive(t, a, streamEventMsg{gen: a.gen, ev: update(7, "Port the parser", tc.state, tc.notice)})
-			// The card opens onto everything behind it, and every group opens so
-			// that the sweep reads rows rather than headings.
+			// The card opens onto everything behind it, and the roster draws every
+			// node it has — one node with no family around it is one flat row.
 			if card := a.doneCardAt(len(a.entries) - 1); card != nil {
 				card.open = true
 				a.touch()
-			}
-			for g := railGroup(0); g < railGroupCount; g++ {
-				a.railSetOpen(g, true)
 			}
 			seen := strings.ToLower(taskText(a) + "\n" + rosterText(a, 20))
 			// A SWEEP OVER AN EMPTY SCREEN PASSES EVERYTHING, so the screen is

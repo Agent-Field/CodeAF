@@ -1621,36 +1621,87 @@ func (a *app) goHome() {
 // closing the room, which would make the column a person aims at to switch rooms
 // the column that throws them out.
 //
-// A HEADING IS THE OTHER TARGET, and it is the fold rather than a door: the
-// pointer gets the same two acts the keyboard has (task.go's [app.railKey]), so
-// a hundred and forty-eight parked nodes are one click away whichever hand a
-// person reached with. The press moves the roster's cursor to what was pressed
-// but does NOT take the keyboard: clicks focus what was clicked, and the draft
-// is where this surface types.
+// A ROW IS A DOOR AND ITS GLYPH CELL IS A FOLD. Anywhere on a node's row opens
+// that node's room, which is what every row of this column has always done; the
+// one cell that means something else is the STATE CELL of a family root, where a
+// press folds the family instead — and that is the same cell the pointer reveals
+// a ▾ or ▸ in, so the affordance and the target are the same two columns
+// (task.go's [app.railEntryRows]). A folded root's ▸ +N is the other half of it:
+// the count is what says there is something hidden, so pressing the count opens
+// it.
+//
+// The press moves the roster's cursor to what was pressed but does NOT take the
+// keyboard: clicks focus what was clicked, and the draft is where this surface
+// types.
+//
 // OVER THE BODY IT IS THE OTHER WAY ROUND: the roster has the whole width, so
 // the question stops being about x and becomes about y — a press inside the body
 // region is the roster's, and the pinned rows above it (the header, the strip)
 // are not, because those are drawn by somebody else and answer for themselves
 // (view.go's [app.topHeight]).
 func (a *app) railPress(x, y int) (tea.Cmd, bool) {
-	switch {
-	case a.railFull():
-		top := a.bodyTop()
-		if top < 0 || y < top || y >= top+a.viewHeight() {
-			return nil, false
-		}
-	case !a.railShowing() || x < a.bodyWidth():
+	if !a.railAt(x, y) {
 		return nil, false
 	}
-	if e, ok := a.railEntryAt(y); ok {
-		a.railWhere = railSpotOf(e)
-		if e.node == nil {
-			a.railToggle(e.group)
-			return nil, true
-		}
+	line, ok := a.railLineAt(y)
+	if !ok {
+		return nil, true
+	}
+	// THE FOOTER'S ONE OFFER IS PRESSABLE, because a hint that names a key and
+	// cannot be pressed is a hint that is only for one of the two hands
+	// (task.go's [app.railFootRows]).
+	if line.hint {
+		a.railWiden(true)
+		return nil, true
+	}
+	e, ok := a.railEntryAt(y)
+	if !ok || e.node == nil {
+		return nil, true
+	}
+	a.railWhere = railSpotOf(e)
+	at := x - a.railLeft() - ansi.StringWidth(railSeam)
+	switch {
+	case e.root && line.badge.holds(at):
+		a.railSetOpen(e.node, true)
+	case e.root && line.glyph.holds(at):
+		a.railToggle(e.node)
+	default:
 		a.openRoomFor(e.node.id, e.node.title)
 	}
 	return a.takeRoomPump(), true
+}
+
+// railAt reports whether a pointer at these coordinates is over the roster. It
+// is the press's guard and the hover's alike (hover.go), because a column that
+// answered a click it would not light under the pointer is a column that
+// disagrees with itself about what it is.
+func (a *app) railAt(x, y int) bool {
+	switch {
+	case a.railFull():
+		top := a.bodyTop()
+		return top >= 0 && y >= top && y < top+a.viewHeight()
+	case !a.railShowing() || x < a.bodyWidth():
+		return false
+	}
+	return true
+}
+
+// railLeft is the screen column the roster's own lines start at: the frame's
+// left edge where it is drawn over the body, and the far side of the
+// conversation where it is a column.
+func (a *app) railLeft() int {
+	if a.railFull() {
+		return 0
+	}
+	return a.bodyWidth()
+}
+
+// railHoverNode is which node the pointer is over, or nil (hover.go).
+func (a *app) railHoverNode(x, y int) *taskNode {
+	if !a.railAt(x, y) {
+		return nil
+	}
+	return a.railNodeAt(y)
 }
 
 // ── THE FOCUS HEADER ────────────────────────────────────────────────────────

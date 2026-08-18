@@ -45,10 +45,10 @@ func TestARoomPinsAFocusHeader(t *testing.T) {
 	}
 	// AND IT COSTS THE PAGE ITS ROW, in the one number every geometric question
 	// resolves through — a header the scrolling did not know about would push
-	// the room's last row under the input box. The strip is the other pinned row
-	// and it is up here too (the node is running), so the body starts under both
-	// (taskstrip.go, view.go's [app.topHeight]).
-	if a.headHeight() != 1 || a.stripHeight() != 1 || a.bodyTop() != 2 {
+	// the room's last row under the input box. It is the ONLY pinned row here:
+	// the roster is standing on a frame this wide, and the strip stands down
+	// wherever it is (taskstrip.go, view.go's [app.topHeight]).
+	if a.headHeight() != 1 || a.stripHeight() != 0 || a.bodyTop() != 1 {
 		t.Fatalf("the pinned rows are drawn but not budgeted: head=%d strip=%d top=%d",
 			a.headHeight(), a.stripHeight(), a.bodyTop())
 	}
@@ -115,20 +115,20 @@ func TestTheRailIsStillTheDoorUnderTheHeader(t *testing.T) {
 	a, _, _ := roomApp(t)
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(9, "Mix the audio",
 		session.TaskRunning, session.TaskNotice{})})
-	// THE ROSTER IS NEWEST-FIRST INSIDE A GROUP (task.go), so node 9 is the first
-	// running row and node 7 the second. Which is which is not what this test
-	// owns — it owns the OFFSET — but naming them in the roster's own order is
-	// what keeps it about that.
+	// TWO FAMILIES OF ONE, EQUALLY URGENT, so the column is in the order the
+	// session admitted them (task.go): node 7 first, node 9 under it. Which is
+	// which is not what this test owns — it owns the OFFSET — but naming them in
+	// the roster's own order is what keeps it about that.
 	clickRail(t, a, 0)
-	if a.room == nil || a.room.id != 9 {
-		t.Fatalf("the first rail row did not open node 9: %+v", a.room)
+	if a.room == nil || a.room.id != 7 {
+		t.Fatalf("the first rail row did not open node 7: %+v", a.room)
 	}
-	// Node 7 is drawn under node 9, and the header is above both: a click on the
+	// Node 9 is drawn under node 7, and the header is above both: a click on the
 	// rail's second row has to land a row further down the screen than it did
 	// before the room opened.
 	clickRail(t, a, 1)
-	if a.room == nil || a.room.id != 7 {
-		t.Fatalf("the second rail row did not open node 7 through the header: %+v", a.room)
+	if a.room == nil || a.room.id != 9 {
+		t.Fatalf("the second rail row did not open node 9 through the header: %+v", a.room)
 	}
 }
 
