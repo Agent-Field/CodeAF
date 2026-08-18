@@ -1765,6 +1765,8 @@ func (a *app) hintWord() string {
 		return "drag to select · any key ends it"
 	case a.pick.open:
 		return "enter switch · esc"
+	case a.crewPick.open:
+		return "↑↓ · enter apply · esc"
 	case a.roster.open:
 		return "enter open · esc"
 	case a.shelf.open:

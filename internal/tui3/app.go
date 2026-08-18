@@ -626,6 +626,9 @@ type app struct {
 	// pick is the model overlay (palette.go). Closed, it costs the frame
 	// nothing; open, it owns the keyboard and the bottom of the screen.
 	pick picker
+	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
+	// model picker because it has no filter and every item always takes two lines.
+	crewPick crewPicker
 	// memPanel is /memory's filterable view of the durable memory store.
 	memPanel memoryPanel
 	// memory is the store the panel reads and changes. It is optional because

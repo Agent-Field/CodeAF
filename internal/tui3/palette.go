@@ -950,6 +950,8 @@ func (a *app) overlayHeight() int {
 	switch {
 	case a.pick.open:
 		want = a.pick.height(width)
+	case a.crewPick.open:
+		want = a.crewPick.height()
 	case a.memPanel.open:
 		want = a.memPanel.height(width)
 	case a.roster.open:
@@ -998,6 +1000,8 @@ func (a *app) overlayRows(width, n int) []string {
 	switch {
 	case a.pick.open:
 		return a.pick.rows(width, n, a.pal, hover, a.reasoningFor)
+	case a.crewPick.open:
+		return a.crewPick.rows(width, n, a.pal, hover, a)
 	case a.memPanel.open:
 		return a.memPanel.rows(width, n, a.pal, hover)
 	case a.roster.open:

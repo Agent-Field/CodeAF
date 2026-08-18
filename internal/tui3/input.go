@@ -262,6 +262,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.pickerKey(msg)
 		return nil
 	}
+	if a.crewPick.open && msg.String() != "ctrl+c" {
+		a.crewPickerKey(msg)
+		return nil
+	}
 	if a.memPanel.open && msg.String() != "ctrl+c" {
 		a.memoryKey(msg)
 		return nil

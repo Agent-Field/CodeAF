@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 
+	"charm.land/bubbletea/v2"
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
@@ -17,9 +18,8 @@ import (
 // person in the panel opens a sheet, walks a tab bar, finds a row and presses a
 // key three times.
 //
-// The bare form is a LISTING AND NOT A PICKER. There are three answers, each is
-// four model ids, and the thing a person actually wants to see before choosing is
-// what the four would become — which is a table, not a list of rows to walk.
+// The bare form is a three-row chooser. Each row keeps the comparison the old
+// listing supplied: its sentence first and the four class models underneath.
 //
 // EVERY WRITE GOES THROUGH [config.ApplyCrew], the same function the panel's row
 // writes through. A second writer here is how a command and a panel end up
@@ -29,7 +29,9 @@ import (
 func (a *app) runCrew(arg string) {
 	arg = strings.ToLower(strings.TrimSpace(arg))
 	if arg == "" {
-		a.note(a.crewListing())
+		a.closeLists()
+		a.crewPick.start(config.CrewAt(a.profileDir))
+		a.touch()
 		return
 	}
 	if _, ok := config.CrewModels(arg); !ok {
@@ -40,7 +42,13 @@ func (a *app) runCrew(arg string) {
 		a.note("/crew " + arg + " · not one of the three\n\n" + a.crewListing())
 		return
 	}
-	if err := config.ApplyCrew(a.profileDir, arg); err != nil {
+	a.applyCrew(arg)
+}
+
+// applyCrew is the ONE path from either /crew form to the profile write, the
+// settings refresh and the person-facing summary.
+func (a *app) applyCrew(preset string) {
+	if err := config.ApplyCrew(a.profileDir, preset); err != nil {
 		a.note("could not set the crew · " + err.Error())
 		return
 	}
@@ -49,6 +57,108 @@ func (a *app) runCrew(arg string) {
 	// through re-reads on its next call (cmd/aforge's v3RolesSource).
 	a.refreshSettings()
 	a.note(config.CrewSummary(a.profileDir))
+}
+
+// crewPicker is the fixed, bottom-anchored chooser opened by bare /crew. Its
+// zero value is closed, like [picker], and its cursor is an index into
+// [config.CrewPresets].
+type crewPicker struct {
+	open    bool
+	cursor  int
+	current string
+}
+
+func (p *crewPicker) start(current string) {
+	*p = crewPicker{open: true, current: current}
+	for i, preset := range config.CrewPresets {
+		if preset == current {
+			p.cursor = i
+			return
+		}
+	}
+}
+
+func (p *crewPicker) close() { *p = crewPicker{} }
+
+func (p *crewPicker) move(delta int) {
+	p.cursor = (p.cursor + delta + len(config.CrewPresets)) % len(config.CrewPresets)
+}
+
+func (p *crewPicker) height() int {
+	if !p.open {
+		return 0
+	}
+	height := len(config.CrewPresets) * 2
+	if p.current == config.CrewCustom {
+		height++
+	}
+	return height
+}
+
+// rows uses the model picker's bottom-overlay row vocabulary, but always gives
+// the models their own dim line: with three fixed choices, comparison matters
+// more than fitting a fourth choice that does not exist.
+func (p *crewPicker) rows(width, n int, pal palette, hover int, a *app) []string {
+	if !p.open || n <= 0 {
+		return nil
+	}
+	out := make([]string, 0, p.height())
+	for i, preset := range config.CrewPresets {
+		models, _ := config.CrewModels(preset)
+		parts := make([]string, 0, len(roles.Tiers))
+		for _, tier := range roles.Tiers {
+			parts = append(parts, strings.TrimSpace(a.crewClassWord(tier))+" "+models[string(tier)])
+		}
+		selected := i == p.cursor
+		hovered := hover == len(out) || hover == len(out)+1
+		lead := "  "
+		if preset == p.current {
+			lead = "· "
+		} else if selected {
+			lead = "› "
+		}
+		label := preset + " — " + config.CrewLine(preset)
+		if preset == p.current {
+			label = pal.accent(label)
+		} else if selected {
+			label = pal.ink(label)
+		} else {
+			label = pal.dim(label)
+		}
+		head := lead + fit(label, width-2)
+		tail := "    " + fit(strings.Join(parts, " · "), width-4)
+		tail = pal.dim(tail)
+		switch {
+		case selected:
+			head, tail = pal.band(head, width), pal.band(tail, width)
+		case hovered:
+			head, tail = pal.hover(head, width), pal.hover(tail, width)
+		}
+		out = append(out, head, tail)
+	}
+	if p.current == config.CrewCustom {
+		out = append(out, pal.dim("yours is none of the three — picking one puts all four back"))
+	}
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
+func (a *app) crewPickerKey(msg tea.KeyPressMsg) {
+	switch msg.String() {
+	case "esc":
+		a.crewPick.close()
+	case "enter":
+		preset := config.CrewPresets[a.crewPick.cursor]
+		a.crewPick.close()
+		a.applyCrew(preset)
+	case "up", "ctrl+p":
+		a.crewPick.move(-1)
+	case "down", "ctrl+n":
+		a.crewPick.move(1)
+	}
+	a.touch()
 }
 
 // crewListing is the three presets, the current one marked, each with its own
