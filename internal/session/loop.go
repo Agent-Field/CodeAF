@@ -923,6 +923,9 @@ var glossField = map[string]string{
 	"use_service":  "service",
 	"gmail_search": "query",
 	"gmail_read":   "id",
+	// The settings read is the row it went to look at, and a call with no key
+	// at all is the whole sheet, which reads honestly as its bare name.
+	"settings": "key",
 }
 
 // glossFields is [glossField] for the calls where ONE argument is not enough to
@@ -936,6 +939,13 @@ var glossField = map[string]string{
 var glossFields = map[string][]string{
 	"gmail_send":      {"to", "subject"},
 	"calendar_create": {"title", "start"},
+	// A settings change needs BOTH, and this is the one entry here where the
+	// second field is not a nicety. change_setting goes to the person through
+	// the approval gate, and this line is the headline of the card they answer
+	// with one key: "change_setting" alone would be a question about nothing,
+	// and the whole of what they are agreeing to is which row and what it
+	// becomes.
+	"change_setting": {"key", "value"},
 }
 
 // gloss renders one call as a person-readable line: the tool name and the one

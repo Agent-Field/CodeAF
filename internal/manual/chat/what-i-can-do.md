@@ -460,6 +460,59 @@ When the manual has nothing on a topic, the answer is:
 **Looking something up never asks your permission and records nothing.** It is a
 read, like `grep` — no journal line, no cost, no trace in the conversation.
 
+## Can you change my aforge settings for me, or tell me what a preference is set to?
+
+Yes to both, and a change is permanent. Ask in your own words — "use
+`deepseek/deepseek-v4-pro` for planning", "set my daily budget to 5", "stop
+drawing timestamps" — and aforge does it rather than telling you where the panel
+is.
+
+Two tools, because reading your configuration and rewriting it are different
+acts and you get to answer them separately.
+
+`settings` reads. With no arguments it lists every row of the settings registry
+— the same rows `/settings` shows, in the same four categories — one line each,
+as `key · label · what it reads now`. Give it a `key` and it reads that one row
+in full: what the row takes, what it governs, its current value, and whether
+aforge may change it. Give it a `search` word and it lists only the rows whose
+key, label or description mention it. **Reading never asks your permission**, the
+way `manual` and `grep` do not: credential rows read masked — eight bullets and
+the last four characters — through the registry itself, so there is nothing here
+a question would be protecting.
+
+`change_setting` writes one row. It takes that row's exact `key` and the new
+`value` as text; an empty value clears the row back to its default. A row holding
+a **list** — `models.roles`, `tools.approval`, `models.fallbacks` — is replaced
+whole and never appended to, exactly as typing into that row in the panel is, so
+aforge reads it first and writes the complete list back. The write
+goes through the registry's own validation into your profile's `config.json` —
+the same file, the same validation and the same wording as the panel — so the
+change survives a restart and is there in `/settings` next time you open it.
+**It asks you first**, like `edit` and `write`. Changing your configuration is an
+act, not a read.
+
+You are told on screen what moved. A dim line lands in the transcript:
+
+```
+settings · daily budget · $10 → $5
+```
+
+A key the registry does not have is never written. It comes back as
+`No setting is called "…". Did you mean daily_budget_usd, plan_consent_usd?`,
+naming the near misses. And there is no way around the tool: a value typed into
+`config.json` with `write` or `edit` skips the validation, and aforge is told not
+to do it.
+
+**Some rows are refused on purpose** — the tool gate and the shell rules, the
+spend rails, the machine ceilings, the check on task work, the attribution
+trailer, and every credential row. The permissions page lists them exactly. A
+model that could widen its own restraints would not have any.
+
+Both tools are absent inside a running task, along with `propose_task`, `watch`
+and `tasks`. A task node works in a worktree with nobody watching it, and a
+permanent change to your machine that no transcript ever showed you is the one
+thing this pair must not be able to make.
+
 ## What aforge cannot do
 
 Plainly, so you do not have to find out the hard way.
@@ -468,7 +521,11 @@ Plainly, so you do not have to find out the hard way.
   memory in this build. The tools that would write one — `note` and `forget` —
   are not on the list at all, so asking aforge to remember something for next
   time will not work. Working state kept with `track` survives a resume of *this*
-  conversation and nothing further.
+  conversation and nothing further. **A setting is the one thing that outlasts a
+  conversation**, and it is not memory: `change_setting` writes a row of your
+  configuration into your profile, and every later conversation reads it because
+  that is what a setting is. Asking for a preference works; asking to be
+  remembered does not.
 - **It cannot make media without a model for it.** `generate_image`, `speak` and
   `generate_video` are each on the list only when this machine has a model for
   that kind of media; when there is none, the tool is absent rather than present
@@ -495,5 +552,7 @@ Plainly, so you do not have to find out the hard way.
 
 What does survive: the transcript itself, which is written to the session file
 and replayed when you resume; the working state recorded with `track` and
-`commit`, kept in a file beside that session file; and anything written to disk
-by `write`, `edit` or a command you ran.
+`commit`, kept in a file beside that session file; **a setting changed with
+`change_setting`**, which is written into your profile's `config.json` and read
+by every conversation after it; and anything written to disk by `write`, `edit`
+or a command you ran.

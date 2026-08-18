@@ -747,6 +747,37 @@ func (s Setting) Value() string {
 	return value
 }
 
+// Accepts is what this row will take, in the words its own writer refuses in.
+//
+// It lives here rather than in the surfaces because it is the WRITER'S sentence
+// read forwards: "that's not a dollar amount" and "an amount in dollars" are one
+// fact, and a caller that spelled the second for itself would drift from the
+// first the day a parser widened. A panel with a picker never asks; a tool
+// putting the row in front of a model that has to type a value does, and it is
+// the difference between one call and three.
+func (s Setting) Accepts() string {
+	switch s.Kind {
+	case SettingModel:
+		return "a model id, like anthropic/claude-opus-5"
+	case SettingDollars:
+		return "an amount in dollars, like 5 or 2.50"
+	case SettingDuration:
+		return "a length of time, like 20m or 4h, or 0"
+	case SettingPercent:
+		return "a percentage"
+	case SettingCount:
+		return "a whole number"
+	case SettingBool:
+		return "on or off"
+	case SettingChoice:
+		return "one of: " + strings.Join(s.Choices, ", ")
+	}
+	if s.EmptyLabel != "" {
+		return "text, or blank for " + s.EmptyLabel
+	}
+	return "text"
+}
+
 // PinnedBy names the environment variable holding this row read-only.
 func (s Setting) PinnedBy() (string, bool) {
 	if s.Env == "" {

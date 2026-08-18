@@ -233,6 +233,12 @@ Half the rows are this surface's own — the mouse, the timestamps, the draft �
 genuinely apply to what you are looking at. The other half govern the conversation, and
 the conversation reads them from the profile on the far machine. Change those over there.
 
+**Asking aforge to change a setting goes the other way.** `settings` and `change_setting`
+run inside the session, which is on the far machine, so they read and write **that**
+machine's profile — which is the profile the conversation actually obeys. So over a
+connection the two doors land in two different files: the panel edits this laptop, and
+asking edits the machine the work is on.
+
 ## Approvals over --host
 
 **Approvals are read from the far machine's own settings, not from the laptop you are

@@ -38,8 +38,10 @@ document engine. It inherits **neither the transcript nor the memory file** — 
 its whole world. If it runs on a **different model from the conversation**, its context
 window is set to 0 rather than reusing a window measured for another model.
 
-**Three tools are missing from its belt:** `propose_task` (a task does not propose more
-work), `watch`, and `tasks`.
+**Five tools are missing from its belt:** `propose_task` (a task does not propose more
+work), `watch`, `tasks`, and the settings pair `settings` and `change_setting` — a node
+works in a worktree with nobody watching it, and a permanent change to your machine that
+no transcript ever showed you is exactly what a node must not be able to make.
 
 Approval inside a task is allow-everything, with the critical floor still under it (things
 like `rm -rf /`, `mkfs`, redirecting onto a raw disk, shutdown). When a call hits that

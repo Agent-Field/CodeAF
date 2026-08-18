@@ -458,6 +458,13 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		// record themselves in — the same file the surface's /export and /files
 		// resolve, spelled once (chatv3_place.go).
 		ArtifactsIndex: artifactsIndexPath(),
+		// The profile whose config.json /settings writes, handed over so the
+		// conversation can read the person's settings back and change one for
+		// them (internal/session's tools_settings.go). It is the SAME directory
+		// the panel edits (internal/tui3's registry) and the same one every row
+		// above was resolved out of, so a change made by asking and a change made
+		// by hand are one change to one file.
+		ProfileDir: settings.ProfileDir,
 		// The window the model this session STARTS on actually accepts, when
 		// anybody can say so without waiting. Zero keeps session's own
 		// conservative default, and [warmV3Models] corrects it in place the
@@ -906,12 +913,25 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 //     at all (internal/session's tools_manual.go). A person who asks "what can
 //     you do" and is answered with a permission prompt has been asked to
 //     approve the program looking up its own documentation.
+//   - settings, which reads the person's own settings rows back through the
+//     registry (internal/session's tools_settings.go). It is manual's shape one
+//     file over — the answer to "what is my daily budget" is a lookup, and the
+//     credential rows read MASKED through the registry itself
+//     ([config.Setting.Secret]), so there is nothing here a prompt would be
+//     protecting.
 //
 // commit is DELIBERATELY NOT HERE, and it is the interesting half of the split.
 // It is the fifth hand on the same working state, but it is the only one that
 // declares a tracked subgoal FINISHED, and a session that can mark its own work
 // done without anyone being asked is a session that can talk itself into done.
 // The other four record and read; this one makes a claim.
+//
+// change_setting is NOT HERE FOR THE SAME REASON, harder. Changing somebody's
+// configuration is an ACT and not a read — it writes a file that outlives the
+// conversation — so it goes to the person like edit and write do. That split is
+// the whole argument for the settings pair being two tools rather than one with
+// actions: a rule is written per tool name, so one tool could not have been
+// free to read and asked about to write.
 //
 // Nothing on this list acts outside this machine, so internal/approval's floor
 // under calls made in the person's name is untouched by every entry on it — as
@@ -921,7 +941,7 @@ func v3BuiltinApprovals() map[string]any {
 		"read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
 		"jobs": "allow",
 		"note": "allow", "track": "allow", "recall": "allow", "forget": "allow",
-		"manual": "allow",
+		"manual": "allow", "settings": "allow",
 	}
 }
 

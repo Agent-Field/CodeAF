@@ -61,6 +61,14 @@ import (
 // — and each is absent where its machinery is (no registry, no runner, nobody
 // watching to answer the card or the fuel gate).
 //
+// settings and change_setting (tools_settings.go) are the person's own
+// configuration: the sheet read back by its registry keys, and one row of it
+// written permanently into the profile through the registry's own validated
+// write. They are two tools rather than one with actions because the approval
+// gate keys on the tool NAME, and reading a person's settings and rewriting them
+// must not share one answer. They are absent together where there is no profile
+// directory to read.
+//
 // services and use_service (tools_connect.go) are the accounts the person
 // already has somewhere else. They are the one family on this belt that can
 // GROW it: what an account brings — a mailbox, a calendar — is appended when the
@@ -68,14 +76,19 @@ import (
 // touch mail. THE APPEND IS THE ONLY MUTATION THIS SLICE EVER SEES, and
 // connect.go states why nothing may move.
 //
-// A TASK NODE'S BELT IS THIS BELT MINUS THREE. propose_task comes off because
+// A TASK NODE'S BELT IS THIS BELT MINUS FIVE. propose_task comes off because
 // there is nobody in a node's world to show a proposal to — decomposition, when
 // it lands, is edges added to the graph by the conversation that owns it, not a
 // second proposal machine inside a worktree — and watch comes off because its
 // whole delivery mechanism is a note arriving in a conversation, and a node has
 // none. tasks comes off for the contract's own reason: a node's brief is its
 // whole world, and a node reading the project's task history is a node reading
-// the conversation it was deliberately given none of. The three above come off
+// the conversation it was deliberately given none of. The two settings hands
+// come off for the sharpest version of the same reason: a node runs in a
+// worktree with nobody watching it, so a settings change made there is a
+// permanent change to the person's machine that no transcript ever showed them
+// — and the node was briefed to do one piece of work, not to retune the product
+// around it. The three above come off
 // with them, by their own gates rather than by a check here: a node is handed no
 // registry, no harness runner and no orchestrate runner, so a node can neither
 // commission a procedure nor start a run of its own. Everything else a node has
@@ -100,6 +113,7 @@ func (a *Agent) belt() []bare.Tool {
 	tools = append(tools, a.memoryTools()...)
 	tools = append(tools, a.stateTools()...)
 	tools = append(tools, a.searchTools()...)
+	tools = append(tools, a.settingsTools()...)
 	tools = append(tools, a.connectTools()...)
 	// The media verbs are one family and are appended together: generate_image
 	// paints, speak talks, generate_video films, view_image looks. Each is

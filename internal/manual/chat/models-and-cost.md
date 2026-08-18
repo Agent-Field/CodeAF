@@ -198,6 +198,13 @@ Every pin lives in the one **pinned roles** row, written as
 that row are **the same setting** — a pin you typed by hand shows in the list as pinned,
 and pinning from the list rewrites the row without disturbing the other pins in it.
 
+**A third door: just ask.** "Use `deepseek/deepseek-v4-pro` for planning and for designing
+harnesses" is a sentence aforge acts on — it looks the row up with `settings` and writes it
+with `change_setting`, into the same `models.roles` row, after asking you. The two tier
+rows (`models.tiers.high`, `models.tiers.low`) and the pins are all writable that way; only
+the role **slots** on the Providers tab are not, because those are bindings the running
+session holds rather than values in your profile.
+
 So the ladder for any role, most specific first: **its pin**, then **its tier's model**,
 then **the model you are talking to**.
 

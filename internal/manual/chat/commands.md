@@ -618,18 +618,28 @@ A terminal too short to draw the whole panel keeps its head and its foot.
 
 ## Where settings are saved
 
-Every change you make in the settings panel goes through the settings registry and is
+Every change made in the settings panel goes through the settings registry and is
 **saved to your global profile**.
 
+So does a change you ask aforge for. There are **two doors onto one file**: the panel,
+and the `change_setting` tool aforge reaches when you say "set my daily budget to 5" or
+"use a different model for planning". Both go through the same registry, take the same
+validation, refuse in the same words, and land in the same `config.json` — so a row you
+change by asking is a row you find changed in the panel, and the reverse. `settings` is
+the read beside it, listing every row by the key `change_setting` names. Which rows
+aforge refuses to change for you, and why, is on the permissions page.
+
 The project layer, `<workspace>/.openaf/config.json`, is deliberately not writable from
-the panel. The foot line says so:
+the panel — or from `change_setting`, which writes your profile only. The foot line says
+so:
 
 ```
 saved to your profile · a project's own .openaf/config.json is a hand edit
 ```
 
-So a value you set here follows you between projects, and a value a project sets for
-itself has to be edited by hand in that file.
+So a value set here follows you between projects, and a value a project sets for itself
+has to be edited by hand in that file. When a project answers the same row, a write
+through `change_setting` says so rather than reporting a change that is not in force.
 
 Over `--host`, opening the panel first notes:
 
