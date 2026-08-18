@@ -132,3 +132,27 @@ func TestEveryRowSaysWhatItAccepts(t *testing.T) {
 		}
 	}
 }
+
+// A ROLE NOBODY RECOGNISES FAILS SILENTLY FOREVER, which is why this row
+// validates the name and the model slug beside it does not. A pin written
+// against a misspelled role is stored, reads back exactly as typed, shows in
+// the panel, and is consulted by nothing — the only evidence being work that
+// keeps coming out on the wrong model. The settings pair made it likely: a
+// person picks the role off the list printed above the row, a model guesses.
+func TestARolePinRefusesAnUnknownRoleAndNamesTheRealOnes(t *testing.T) {
+	profile := t.TempDir()
+	if err := writeModelRoles(profile, "harness_designer:some/model"); err == nil {
+		t.Fatal("a pin against a role that does not exist was accepted")
+	} else {
+		if !strings.Contains(err.Error(), "harness_designer") {
+			t.Errorf("the refusal does not say back the word that was wrong: %v", err)
+		}
+		if !strings.Contains(err.Error(), "designer") || !strings.Contains(err.Error(), "planner") {
+			t.Errorf("the refusal does not name the roles there are: %v", err)
+		}
+	}
+	// And the real names land, including the two this feature was asked for.
+	if err := writeModelRoles(profile, "designer:deepseek/deepseek-v4-pro, planner:deepseek/deepseek-v4-pro"); err != nil {
+		t.Fatalf("the real role names were refused: %v", err)
+	}
+}

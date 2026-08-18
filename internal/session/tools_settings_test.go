@@ -72,10 +72,15 @@ func profileJSON(t *testing.T, profile string) map[string]any {
 
 // The absence law, both halves. A session with no profile has nothing to read or
 // write, and a task node must not be able to change the person's machine at all.
-func TestTheSettingsPairIsAbsentWithoutAProfileAndInsideATask(t *testing.T) {
-	unprofiled := &Agent{config: Config{Workspace: t.TempDir()}}
-	if tools := unprofiled.settingsTools(); len(tools) != 0 {
-		t.Errorf("a session with no profile directory carries %d settings tools", len(tools))
+func TestTheSettingsPairIsAbsentInsideATaskAndPresentWithTheDefaultProfile(t *testing.T) {
+	// AN EMPTY PROFILE DIRECTORY IS THE ORDINARY ONE. AFORGE_PROFILE_DIR is
+	// unset on very nearly every machine, and every reader treats "" as the
+	// default location — so a session with no explicit profile is the common
+	// case, not a broken one, and it carries the pair. Gating on it once turned
+	// this feature off for everybody who had not set that variable.
+	ordinary := &Agent{config: Config{Workspace: t.TempDir()}}
+	if tools := ordinary.settingsTools(); len(tools) != 2 {
+		t.Errorf("a session on the default profile carries %d settings tools, want 2", len(tools))
 	}
 	node := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir(), InTask: true}}
 	if tools := node.settingsTools(); len(tools) != 0 {

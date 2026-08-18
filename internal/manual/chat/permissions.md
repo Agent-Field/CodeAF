@@ -36,7 +36,7 @@ When more than one question is queued a `N more` line appears. Questions are
 answered oldest first, and each gets its own countdown when it reaches the
 front. While a question is up your draft is suspended and the typed lists close.
 
-## Why am I being asked — the dim line under the offer
+## Why did it ask my permission before running that — the dim line under the offer
 
 The dim line beneath the offer is the rule that produced the question, in the
 rules' own words. It can read:
