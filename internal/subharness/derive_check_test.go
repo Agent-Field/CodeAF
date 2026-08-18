@@ -198,3 +198,67 @@ func TestPathBetweenIsDirected(t *testing.T) {
 		t.Errorf("one lane reaches another: %q", strings.Join(path, "->"))
 	}
 }
+
+// ── the table, narrowed to a patched page ───────────────────────────────────
+
+// A CRITIC'S drop_node MUST NOT COST IT THE WHOLE REVIEW. The draft's table is
+// what the patched page is checked against, so a pair naming the node the patch
+// deleted is a claim about a page that no longer exists.
+func TestPairsWithinDropsPairsAboutNodesThatAreGone(t *testing.T) {
+	pairs := []Derivation{
+		{A: "a", B: "b", Rel: RelDepends, Why: "b reads a"},
+		{A: "a", B: "c", Rel: RelDepends, Why: "c is downstream of a"},
+		{A: "b", B: "c", Rel: RelDepends, Why: "c reads b"},
+	}
+	patched := lineOf("a", "c")
+	kept := PairsWithin(patched, pairs)
+	if len(kept) != 1 || kept[0].A != "a" || kept[0].B != "c" {
+		t.Fatalf("the narrowed table is %v", kept)
+	}
+	if err := CheckDerivation(patched, kept); err != nil {
+		t.Fatalf("the narrowed table refuses the page it was narrowed to: %v", err)
+	}
+}
+
+// IT IS NOT A WAY AROUND THE CHECK. Every pair over nodes that SURVIVED is still
+// held to every edge.
+func TestPairsWithinStillRefusesAContradictionAmongSurvivors(t *testing.T) {
+	page := lineOf("a", "b", "c")
+	pairs := []Derivation{
+		{A: "a", B: "gone", Rel: RelDepends, Why: "about a node that was dropped"},
+		{A: "a", B: "c", Rel: RelIndependent, Why: "c only ever reads b"},
+	}
+	kept := PairsWithin(page, pairs)
+	if len(kept) != 1 {
+		t.Fatalf("the narrowed table is %v", kept)
+	}
+	if err := CheckDerivation(page, kept); err == nil {
+		t.Fatal("a pair that survived the narrowing was not held to the edges")
+	}
+}
+
+// An EMPTY result is an absent table, which makes no claim at all.
+func TestPairsWithinKeepsNothingWhenNothingSurvives(t *testing.T) {
+	page := lineOf("a", "b")
+	kept := PairsWithin(page, []Derivation{{A: "x", B: "y", Rel: RelDepends, Why: "both gone"}})
+	if kept != nil {
+		t.Fatalf("the narrowed table is %v", kept)
+	}
+	if err := CheckDerivation(page, kept); err != nil {
+		t.Fatalf("an empty table was held to something: %v", err)
+	}
+}
+
+// lineOf is a page of agent.loop nodes wired end to end.
+func lineOf(ids ...string) Harness {
+	page := Harness{Id: Id{Name: "line", Desc: "a line"}}
+	for at, id := range ids {
+		page.Program.Nodes = append(page.Program.Nodes, Node{
+			Id: id, Kind: KindAgentLoop, Fields: Fields{"brief": "do a thing"},
+		})
+		if at > 0 {
+			page.Program.Edges = append(page.Program.Edges, Edge{ids[at-1], id})
+		}
+	}
+	return page
+}

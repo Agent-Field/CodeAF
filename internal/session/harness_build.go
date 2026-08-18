@@ -63,6 +63,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/subharness/prompts"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -87,7 +88,28 @@ const (
 	// never re-emits the page, but on a reasoning model its thinking comes out of
 	// the same budget — a critic that cannot afford its own answer is the most
 	// expensive kind of nothing, because the design is already paid for.
-	harnessDesignTokens = 8000
+	//
+	// THE DESIGN BUDGET IS THE CRITIC'S LESSON, LEARNED TWICE. 8000 was measured
+	// against a model that answers straight, and the page it has to write is only
+	// about fifteen hundred tokens. But the guide's own PART TWO orders the pair
+	// table walked "PAIR BY PAIR, IN WRITING, BEFORE YOU DRAW A SINGLE EDGE" —
+	// that is a request for long thinking, and on a reasoning model the thinking
+	// is metered from this same number. Ceiling reached, a reasoning model comes
+	// back EMPTY: the content is null, the whole completion went into the
+	// thinking, and the attempt is spent for nothing. The rig has named that
+	// failure for a while (cmd/harness-design's openrouter.go) and it was
+	// measured again here — deepseek-v4-flash, rendered against this belt,
+	// answering with nothing twice in three attempts.
+	//
+	// HEADROOM IS NOT THE WHOLE ANSWER, and the number should not be raised
+	// again without measuring. A model determined to deliberate will use whatever
+	// it is given, and the room bought here is also latency: a design turn is
+	// bounded by the session's own providerTimeout, so a budget large enough to
+	// fund an unbounded deliberation buys a transport timeout instead of a page.
+	// The other half of the fix is in the guide, which now says plainly that the
+	// thinking and the answer come out of one budget and the derivation belongs
+	// IN the reply.
+	harnessDesignTokens = 16000
 	harnessReviewTokens = 10000
 
 	// harnessDesignTemp is the design turn's temperature. Low, not zero: this is
@@ -525,8 +547,14 @@ func (a *Agent) designPage(ctx context.Context, goal, model string) (subharness.
 		if tries >= harnessDesignRetries {
 			return subharness.Harness{}, nil, fmt.Errorf("no valid design in %d attempts: %w", tries+1, err)
 		}
+		// THE REFUSED PAGE GOES BACK WITH THE REFUSAL, but only when there IS
+		// one. A model that spent its whole budget thinking answered with
+		// nothing, and an empty assistant turn is a message with no content in
+		// it — noise at best, and refused outright by some endpoints.
+		if strings.TrimSpace(raw) != "" {
+			history = append(history, textMessage("assistant", raw))
+		}
 		history = append(history,
-			textMessage("assistant", raw),
 			textMessage("user", "That harness was REFUSED:\n\n"+err.Error()+
 				"\n\nFix exactly that and reply with the whole envelope again — one JSON object, no prose."))
 	}
@@ -600,7 +628,11 @@ func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnes
 	// The patched page passes the SAME gauntlet the draft did — a review is not a
 	// way around the law — and the derivation is the draft's, because the critic
 	// does not restate the table.
+	//
+	// PRUNED TO THE PAGE IT NOW DESCRIBES, though, and that is not a loosening —
+	// subharness.PairsWithin makes the whole argument.
 	patched := draft
+	patched.Derivation = subharness.PairsWithin(revised, draft.Derivation)
 	patched.Cues = harnessCues(draft, envelope)
 	if strings.TrimSpace(envelope.Justification) != "" {
 		patched.Justification = envelope.Justification
@@ -627,16 +659,34 @@ func harnessCues(draft harnessDesign, revised harnessRevision) []string {
 //
 // The order is cheapest-first. subharness.Salvage costs nothing and fixes the
 // code fence, the prose around the object, the typographic quotes and the
-// trailing comma; what it cannot fix is a reply cut off mid-object. For those a
-// REPAIR turn is still an order of magnitude cheaper than re-reading the guide.
+// trailing comma; for what it cannot fix, a REPAIR turn is still an order of
+// magnitude cheaper than re-reading the guide.
+//
+// EXCEPT FOR ONE THING, and it is the one this pipeline kept losing designs to:
+// a reply that never finished. A repair turn cannot put back text a model never
+// emitted, so a cut-off reply skips it and is answered with the truth instead
+// (see below).
 func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model string, maxTokens int) ([]byte, string, error) {
-	raw, err := a.harnessComplete(ctx, history, model, maxTokens, harnessDesignTemp)
+	raw, cut, err := a.harnessComplete(ctx, history, model, maxTokens, harnessDesignTemp)
 	if err != nil {
 		return nil, "", err
 	}
 	salvaged, salvageErr := subharness.SalvageDetail(raw)
 	if salvageErr == nil {
 		return salvaged.JSON, raw, nil
+	}
+
+	// A REPLY THAT RAN OUT OF BUDGET IS NOT A DELIMITER PROBLEM, and this is the
+	// one place the two are told apart. The salvage ladder's complaint about a
+	// truncated object reads exactly like its complaint about a stray brace, and
+	// the repair turn below is written to believe it: told "this did not parse",
+	// a repairer handed half an object will close the braces and hand back a
+	// page with nodes that were never written — a design made up by the pass that
+	// was meant to be transcribing. So a cut-off reply skips the repair entirely
+	// and goes to the retry loop with the truth on it, where the model can write
+	// a SMALLER page instead of a shorter one.
+	if cut {
+		return nil, raw, errors.New(harnessRanOut(raw))
 	}
 
 	// THE REPAIR TURN CARRIES NO GUIDE. It is not a second attempt at the design
@@ -650,9 +700,12 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 			"\n\nReply with ONLY the corrected JSON — the same content, nothing added, nothing dropped, no prose, no code fence. "+
 			"JSON delimiters and syntax are ASCII: every key and string value is wrapped in \" (U+0022). Prose inside a string value stays exactly as it is."),
 	}
-	second, err := a.harnessComplete(ctx, repair, model, maxTokens, 0)
+	second, cut, err := a.harnessComplete(ctx, repair, model, maxTokens, 0)
 	if err != nil {
 		return nil, raw, err
+	}
+	if cut {
+		return nil, second, errors.New(harnessRanOut(second))
 	}
 	salvaged, err = subharness.SalvageDetail(second)
 	if err != nil {
@@ -661,12 +714,43 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 	return salvaged.JSON, second, nil
 }
 
-// harnessComplete is one non-streamed call on the session's own client.
+// harnessRanOut is what a design that hit the completion ceiling is told, and it
+// is handed to the model verbatim through the retry loop. There are TWO ways to
+// hit that ceiling and they want opposite answers, so they are told apart here.
+//
+// A REASONING MODEL THAT RAN OUT OF ROOM ANSWERS WITH NOTHING AT ALL. The
+// content comes back null, the whole completion having gone into the thinking,
+// and the reply reads exactly like a refusal unless it is named — which is the
+// diagnosis the development rig has carried for a while (cmd/harness-design's
+// openrouter.go) and this surface did not, so a person watching a chat saw three
+// attempts fail on "the reply is not JSON" about a reply that was never written.
+// There is nothing for the model to do about that one: it did not write too
+// much, it thought too long, and the answer is the budget above.
+//
+// A reply that arrived and STOPPED is the other one, and that one the model can
+// act on: it wrote a page too big for the room it had.
+func harnessRanOut(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return "your reply came back empty with the completion budget spent: the whole of it went into thinking and none into the answer. " +
+			"Answer more directly — reach the JSON object sooner and reason inside the justification rather than before it."
+	}
+	return "your reply stopped in the middle: it ran out of completion budget before the JSON object was closed. " +
+		"This is not a punctuation problem and re-sending the same page will hit the same wall. " +
+		"Design a SMALLER harness — fewer nodes, shorter briefs, a justification of a few tight sentences — and close the object."
+}
+
+// harnessComplete is one non-streamed call on the session's own client. It
+// reports the text and whether the answer was CUT OFF at the token ceiling.
 //
 // WithoutStream for the compaction summary's reason: this is work beside the
 // conversation, and left on the turn's stream it would type a page of JSON into
 // the room. No tools either — the designer's only job is to answer.
-func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, model string, maxTokens int, temperature float64) (string, error) {
+//
+// The truncation is read through internal/store's own classifier rather than by
+// comparing finish_reason strings here: the vocabulary an endpoint uses for
+// "you hit the ceiling" is already known in one place, and a second reading of
+// it would be a second answer to the same question.
+func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, model string, maxTokens int, temperature float64) (string, bool, error) {
 	response, err := a.client.CompleteWithMessages(
 		provider.WithoutStream(ctx),
 		messages,
@@ -674,15 +758,23 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 		ai.WithMaxTokens(maxTokens),
 		ai.WithTemperature(temperature))
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if response == nil {
-		return "", errors.New("the designer answered with nothing")
+		return "", false, errors.New("the designer answered with nothing")
 	}
 	// The design is spent on the person's account like every other auxiliary
 	// call (title.go, guardian.go): it is not a turn, and it is not free.
 	a.addAuxiliaryUsage(response)
-	return response.Text(), nil
+	return response.Text(), harnessCutOff(response), nil
+}
+
+// harnessCutOff reports whether a completion ended because it ran out of room.
+// The call is never streamed, so an endpoint that says nothing at all is being
+// terse rather than dropping — which is exactly the distinction
+// [store.ClassifyEnd] draws.
+func harnessCutOff(response *ai.Response) bool {
+	return store.ClassifyEnd(provider.FinishReason(response), false) == store.EndLength
 }
 
 // harnessStrict reads an envelope the way a page is read from disk: unknown

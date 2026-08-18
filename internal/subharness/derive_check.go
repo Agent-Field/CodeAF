@@ -35,18 +35,26 @@ import (
 	"strings"
 )
 
-// The two words a pair may be marked with. `depends` is "this one cannot begin
-// until it has that one's answer"; `independent` is "no data flows between them
-// in either direction".
+// The two words a pair may be marked with, and they are about the TOPOLOGY
+// rather than about which node reads which: `depends` is "one of the two is
+// downstream of the other"; `independent` is "neither is downstream of the
+// other, so they could sit in separate lanes".
+//
+// The distinction is worth the sentence because it is where designs are lost. A
+// check at the end of a chain reads only the summary in front of it and is still
+// downstream of the gathering three steps back — the check below asks
+// reachability, so that pair is `depends`, and a designer reasoning from "does
+// it read the output" writes `independent` and is refused. The guide
+// (prompts/designer.md, PART THREE) is written to say it the way this reads it.
 const (
 	RelDepends     = "depends"
 	RelIndependent = "independent"
 )
 
 // Derivation is one pair of planned nodes and the designer's verdict on whether
-// data flows between them. A and B are node ids in the program the same envelope
-// carries; Why is the one line that makes the verdict an argument rather than an
-// assertion — the data that flows, or the reason none does.
+// one runs downstream of the other. A and B are node ids in the program the same
+// envelope carries; Why is the one line that makes the verdict an argument rather
+// than an assertion — the data that flows, or the reason none has to.
 type Derivation struct {
 	A   string `json:"a"`
 	B   string `json:"b"`
@@ -121,6 +129,35 @@ func CheckDerivation(h Harness, pairs []Derivation) error {
 		}
 	}
 	return nil
+}
+
+// PairsWithin is a derivation table narrowed to the pairs the given program can
+// still be held to: every pair both of whose ids are nodes it contains.
+//
+// IT EXISTS FOR THE REVIEW PASS AND FOR NOTHING ELSE. A critic patches a draft
+// with ops and never restates the table, so the DRAFT's table is what the
+// patched page is checked against — and the ordinary patch, dropping a node that
+// earned nothing (OpDropNode), leaves that table naming a job the page no longer
+// has. Held as it stands, the table refuses the page and the whole review is
+// thrown away by the designer's own homework about an earlier draft.
+//
+// This is not a way around the check. A pair that is dropped names a node that
+// does not exist, and [CheckDerivation] already holds that a pair NOT in the
+// table makes no claim at all; every pair over nodes that survived the patch is
+// still checked against every edge. Nil out means no claim, which is what an
+// absent table has always meant.
+func PairsWithin(h Harness, pairs []Derivation) []Derivation {
+	var kept []Derivation
+	for _, pair := range pairs {
+		if _, found := h.Program.Node(strings.TrimSpace(pair.A)); !found {
+			continue
+		}
+		if _, found := h.Program.Node(strings.TrimSpace(pair.B)); !found {
+			continue
+		}
+		kept = append(kept, pair)
+	}
+	return kept
 }
 
 func whyWanted(rel string) string {
