@@ -1682,7 +1682,7 @@ func (a *app) legendLeft(width, hard int) string {
 // abbreviation is still this machine's home, which is why a remote path rarely
 // collapses to `~`: it is the far machine's home and nobody here knows it.
 func (a *app) legendPath(hard int) string {
-	return a.hostedPath(shortPath(a.workspace, a.home, hard))
+	return a.hostedPath(a.placeWord(shortPath(a.workspace, a.home, hard)))
 }
 
 // legendRight is the hint slot: the state's own keys when it has any, the

@@ -108,6 +108,28 @@ import "strings"
 // hosted reports whether the session under this surface is on another machine.
 func (a *app) hosted() bool { return a.host != "" }
 
+// ownedWord is what an owned session's place is called instead of its path.
+//
+// It is the product's own name because that is the honest answer to "where am
+// I": nowhere in particular, in aforge's own space. A person who opened a
+// terminal in a project sees the project; a person who opened one anywhere else
+// used to see ~/.aforge/v3/projects/-home-someone/9f3c…/work, which is a true
+// path and a useless sentence.
+const ownedWord = "aforge"
+
+// placeWord is the place as it should be READ: the workspace's own name when
+// the session borrowed a project, and [ownedWord] when it owns its workspace.
+//
+// The path is not shortened away here — [shortPath] still does that, and does it
+// on a path worth reading. This is the prior question of whether there is a path
+// worth reading at all.
+func (a *app) placeWord(path string) string {
+	if a.owned {
+		return ownedWord
+	}
+	return path
+}
+
 // hostedPath is a path as it should be READ: on a remote session, the machine
 // and then the path, so a person copying it knows whose disk it is on.
 //

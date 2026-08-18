@@ -74,6 +74,14 @@ func (a *app) statusText() string {
 		if a.hosted() && item.label == "place" {
 			item.value = a.hostedPath(a.workspace)
 		}
+		// AND AN OWNED SESSION SAYS WHERE IT ACTUALLY IS, here and nowhere else.
+		// The frame calls it "aforge" because the path is bookkeeping a person
+		// did not ask to read (host.go's [ownedWord]) — but this note is the one
+		// surface whose whole job is the full truth, and "where did my files go"
+		// is exactly the question somebody opens it to answer.
+		if a.owned && !a.hosted() && item.label == "place" {
+			item.value = a.workspace
+		}
 		items = append(items, item)
 	}
 	if a.file != "" {

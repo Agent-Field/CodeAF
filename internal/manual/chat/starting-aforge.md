@@ -48,6 +48,33 @@ and writes, and it is shown in the status line so you can always tell.
 and anything that acts in your name still ask, whatever the setting says. See the
 permissions page.
 
+## Which folder does aforge work in, and where do my files go
+
+It depends on where you started it, and there are exactly two cases.
+
+**You started it inside a project.** Aforge borrows that directory. Its tools read
+and write your repository, exactly where you are standing, and the status line
+and the legend show that directory's name — `app`, `my-site` — so you can always
+tell which project this conversation is about.
+
+**You started it anywhere else** — your home directory, a temp folder, a
+launcher with no directory in mind. Then the conversation gets a workspace of
+its own, inside its session folder, and anything it writes lands there instead
+of scattered across wherever you happened to be. In that case the place reads
+simply:
+
+```
+aforge
+```
+
+That word means "no project — this conversation has its own space". The real
+path exists and is not a secret; it is just aforge's own bookkeeping, and
+showing it where you look to answer "which project am I in" told you nothing.
+Type `/status` and the `place` line gives you the full path to copy.
+
+An owned workspace of that kind is quietly made into a git repository, so work
+done there has undo history like work done anywhere else.
+
 ## Where your conversations are kept
 
 Every conversation is written to disk as it happens, under your home directory in
