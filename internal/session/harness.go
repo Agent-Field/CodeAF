@@ -32,6 +32,8 @@ package session
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 	"unicode"
@@ -84,6 +86,14 @@ type harnessAnswer struct {
 // harness ran and its report is in the transcript, or it failed, or the turn
 // was interrupted while the question was up.
 func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessage, started time.Time) (bool, bool) {
+	// A HARNESS THE PERSON PICKED THEMSELVES IS READ FIRST, and it skips both
+	// halves of the question below: they chose the name off a list and then typed
+	// the request, so there is nothing to detect and nothing to ask
+	// ([Agent.RunHarnessRequest]). Everything AFTER the question is the same code
+	// either way — that is the point of the split.
+	if picked, ok := a.takeHarnessPick(); ok {
+		return a.runHarnessRoute(ctx, hub, picked, started)
+	}
 	// BUILDING ONE IS NOT READ HERE, and it used to be: a cue ahead of this line
 	// caught "make a harness for triaging flaky tests" so that a matcher would not
 	// offer to RUN the harness that already triages flaky tests. Commissioning one
@@ -104,9 +114,24 @@ func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessag
 	if !answer.run {
 		return false, false
 	}
+	// The model the SURFACE answered with, folded back onto the route, so that
+	// what runs below cannot disagree with what the card showed.
+	match.Model = a.answeredHarnessModel(match, answer.model)
+	return a.runHarnessRoute(ctx, hub, match, started)
+}
 
-	entry := match.Entry
-	model := a.answeredHarnessModel(match, answer.model)
+// runHarnessRoute is everything a harness run does AFTER the decision to run it
+// — announced, executed, recorded, and the turn sealed — and it reports on
+// [Agent.routeHarness]'s own terms.
+//
+// It is its own function because there are two doors onto it and only one of
+// them asks a question: a matched turn somebody said yes to, and a harness
+// somebody picked out of a list themselves. A second copy of this for the second
+// door would be a run that landed in the transcript one way here and another way
+// there, which is the drift the whole file is written against.
+func (a *Agent) runHarnessRoute(ctx context.Context, hub *eventHub, route harnessRoute, started time.Time) (bool, bool) {
+	entry := route.Entry
+	model := route.Model
 	// THE RUN IS PUT ON THE REGISTER BEFORE IT IS ANNOUNCED, and the id it gets
 	// is the id the event carries: a run somebody can see on screen is a run
 	// somebody may want to stop, and [Agent.Cancel] can only reach one it can
@@ -115,7 +140,7 @@ func (a *Agent) routeHarness(ctx context.Context, hub *eventHub, user userMessag
 	runCtx, runID, ended := a.beginHarnessRun(ctx)
 	defer ended()
 	hub.send(Event{Kind: EventHarnessRun, ID: runID, Text: entry.Name, Hint: entry.Description, Model: model})
-	report, err := a.config.RunHarness(runCtx, entry.Name, match.Turn.Text, model)
+	report, err := a.config.RunHarness(runCtx, entry.Name, route.Turn.Text, model)
 	if err != nil {
 		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{Turns: 1}, started)})
 		return true, false
@@ -236,6 +261,114 @@ func harnessNamed(entries []subharness.Entry, name string) bool {
 		}
 	}
 	return false
+}
+
+// ── THE OTHER DOOR: A HARNESS SOMEBODY PICKED OUT OF A LIST ─────────────────
+//
+// Everything above this line is DETECTION: a sentence is scored, a card is
+// raised, and a person answers it. That is the road for somebody who did not
+// know the registry had the thing they were describing.
+//
+// This is the road for somebody who does. The surface has a picker on
+// `/harness ` (tui3's harnesspick.go): the harness is chosen from a list, it
+// sits in a chip above the message box, and the next thing typed is the
+// request. Nothing about that needs matching or asking — the choice IS the
+// answer — so this skips exactly those two steps and nothing else. The run is
+// registered so it can be stopped, announced with the same event, and its
+// report recorded as an assistant turn, because it goes through the same
+// [Agent.runHarnessRoute] the offer's yes goes through.
+
+// RunHarnessRequest runs one named harness on one request and streams the turn
+// it becomes.
+//
+// It is a TURN and not a side channel: the request is recorded as the person's
+// message, the report as the answer, and the events are the ones every surface
+// already draws. So it refuses what Submit refuses — a closed agent, a turn
+// already in flight, a session past its spend rail — rather than starting a
+// second conversation beside the first.
+//
+// THE DETECTION REFUSALS DO NOT APPLY. A name that scores nothing, a turn that
+// mentions no cue, a description nobody wrote well: none of it is read here.
+// The person named the harness, and a matcher's opinion about a choice already
+// made would be this surface overruling them.
+//
+// The model is the same clause the offer carries — a word this install can
+// place, or empty for whatever the runner is built on. A word that resolves to
+// nothing runs the default rather than refusing, which is the offer's law too.
+func (a *Agent) RunHarnessRequest(ctx context.Context, name, text, model string) (<-chan Event, error) {
+	name = strings.TrimSpace(name)
+	text = strings.TrimSpace(text)
+	switch {
+	case name == "":
+		return nil, errors.New("session: no harness was named")
+	case text == "":
+		return nil, errors.New("session: empty message")
+	}
+	// The registry and the model are resolved BEFORE the lock, because both read
+	// seams the surface handed over and neither may be called with a.mu held.
+	entry, found := harnessEntry(a.harnessRegistry(), name)
+	if !found {
+		return nil, fmt.Errorf("session: no harness named %q", name)
+	}
+	if model != "" {
+		model, _ = a.harnessModel(model)
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return nil, errors.New("session: agent is closed")
+	}
+	// A PICKED HARNESS NEVER STEERS. A plain message typed into a running turn
+	// lands inside it (agent.go's Submit); a harness run cannot, because it does
+	// not use the model this turn is talking to — so the honest answer is that
+	// there is nowhere to put it yet.
+	if a.running {
+		return nil, errors.New("session: a turn is already running")
+	}
+	if a.config.RunHarness == nil {
+		return nil, errors.New("session: harnesses are unavailable here")
+	}
+	if err := a.railBlockLocked(); err != nil {
+		return refusedStream(err), nil
+	}
+	// The route is left where the turn will find it rather than passed down
+	// through startTurnLocked: the turn is started by the ONE function every
+	// turn is started by, and a second parameter on that function for a thing
+	// one caller in twenty uses would be a signature the other nineteen read
+	// past (see [Agent.takeHarnessPick]).
+	a.harnessPick = &harnessRoute{
+		Match: subharness.Match{Entry: entry},
+		Turn:  subharness.Turn{Text: text},
+		Model: model,
+	}
+	return a.startTurnLocked(ctx, userText(text), nil), nil
+}
+
+// takeHarnessPick is the turn collecting what [Agent.RunHarnessRequest] left
+// for it, at most once: a picked harness is one run of one harness, and a route
+// still sitting here at the next turn would be the harness taking a sentence
+// nobody pointed at it.
+func (a *Agent) takeHarnessPick() (harnessRoute, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	picked := a.harnessPick
+	a.harnessPick = nil
+	if picked == nil {
+		return harnessRoute{}, false
+	}
+	return *picked, true
+}
+
+// harnessEntry finds one entry by name, case-insensitively — a name typed back
+// or clicked out of a list is the same harness whatever case it arrived in.
+func harnessEntry(entries []subharness.Entry, name string) (subharness.Entry, bool) {
+	for _, entry := range entries {
+		if strings.EqualFold(entry.Name, name) {
+			return entry, true
+		}
+	}
+	return subharness.Entry{}, false
 }
 
 // askHarness emits one offer and waits for the answer or for the turn to end.

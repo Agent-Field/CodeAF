@@ -181,7 +181,7 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	// somebody in it rather than an empty one. It works in the session's own
 	// directory because a design writes no files: there is nothing to isolate,
 	// so there is no worktree and no branch to bring home.
-	child, err := a.newTaskAgent(a.config.Workspace, node, "")
+	child, err := a.newTaskAgent(ctx, a.config.Workspace, node, "")
 	if err != nil {
 		node.finish("the design could not be started: "+err.Error(), nil, "", "")
 		return TaskFailed

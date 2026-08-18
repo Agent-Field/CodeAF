@@ -173,6 +173,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		return completed
 	}
 
+	// AND THE LAST THING BEFORE THE FIRST REQUEST: which of the things this
+	// person has had aforge remember bear on what they just said (memory.go).
+	// It is one small call on the reflex tier against an index of titles, it
+	// happens here rather than in [Agent.startTurnLocked] because that runs with
+	// a.mu held, and everything about it fails open — an empty block is a turn
+	// exactly as it would have been.
+	a.refreshMemory(ctx, hub, user.text())
+
 	// partial accumulates what the model has streamed for the CURRENT step.
 	// It is the transcript's answer for an interrupted step, where no response
 	// ever comes back.
@@ -352,6 +360,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// the person is not kept waiting on a title, and the event still has
 			// a stream to land on (title.go).
 			a.maybeTitle(ctx, hub)
+			// AND THE EXCHANGE IS READ FOR ANYTHING WORTH KEEPING, off this
+			// goroutine entirely and on the session's own lifetime rather than
+			// the turn's (memory.go). Nobody is waiting for it, nothing it finds
+			// reaches this turn, and it says nothing whatever happens to it.
+			a.learnFromTurn(user.text(), response.Text())
 			return true
 		}
 

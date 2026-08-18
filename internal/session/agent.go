@@ -94,11 +94,18 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		cacheKey: sessionCacheKey(NewSessionID()),
 	}
 	// Memory is built before the belt for the same reason the registry is: the
-	// belt carries note and forget only when there is a file to write, so the
-	// store has to exist before the tools are assembled (memory.go).
-	if strings.TrimSpace(config.MemoryFile) != "" {
-		agent.memory = newMemoryStore(config.MemoryFile)
+	// belt carries `remember` only when there is a brain to write into, so the
+	// store has to exist before the tools are assembled (memory.go). The
+	// background lifetime is minted with it, because a pass started by the first
+	// turn has to have somewhere to be cancelled from.
+	if config.Memory != nil {
+		agent.memory = newMemoryBrain(config.Memory)
+		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
 	}
+	// And the block a task node was OPENED with, if it was opened with one: the
+	// parent routed it at the spawn seam and handed it down here, because a node
+	// has no turn of its own to route against (task_run.go).
+	agent.memoryText = config.memoryBrief
 	// The registry is built before the belt because the belt closes over it:
 	// bash's background path and the jobs tool are both views onto this one
 	// object, and it is the agent's own steering queue they report into.
@@ -430,12 +437,6 @@ func (a *Agent) Submit(ctx context.Context, text string) (<-chan Event, error) {
 		return nil, errors.New("session: agent is closed")
 	}
 	if a.running {
-		// A steering message means the person is here, so the idle pass stands
-		// down (memory_consolidate.go). Nothing can be armed while a turn is
-		// running — the arming happens at a turn's end — so this is a no-op
-		// today; it is written because the law is "anything the person says
-		// disarms it", not "a turn start disarms it".
-		a.disarmIdle()
 		// Steering. The message is queued rather than appended here because
 		// the transcript's tail is mid-tool-batch: a user message spliced
 		// between an assistant's tool_calls and their results is a shape every
@@ -546,15 +547,18 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
 	a.running = true
-	// A turn is the person being back, so the idle consolidation timer stands
-	// down before anything else happens (memory_consolidate.go). It is disarmed
-	// BEFORE the memory block is re-read below, so a turn cannot open on a file
-	// a pass is about to be armed against.
-	a.disarmIdle()
-	// The memory block is re-read here, at the start of every turn, so a note
-	// written by the last turn is in front of the model for this one and a
-	// person who edited the file by hand is obeyed without a restart
-	// (memory.go). It is one 4KiB read per turn, not per step.
+	// The system message is rebuilt here so a turn never opens carrying the
+	// memories of the one before it. WHAT THIS TURN NEEDS is routed inside the
+	// turn goroutine instead ([Agent.refreshMemory], called from the loop): that
+	// is a provider call, and this runs with a.mu held.
+	//
+	// ONLY AN AGENT THAT CAN ROUTE CLEARS THE BLOCK. A task node was handed its
+	// memories once, at the spawn seam, by the conversation that had the store
+	// (memory.go's memoryBrief); it has nothing to replace them with, and
+	// clearing them on its first turn would take away the one thing it was given.
+	if a.remembers() {
+		a.memoryText = ""
+	}
 	a.refreshSystemLocked()
 	hub := newEventHub()
 	a.hub = hub
@@ -626,15 +630,6 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 				// (see [Agent.nextFollowUpLocked]): a drain must never resurrect a
 				// turn somebody stopped. A person who interrupted gets the note in
 				// their transcript and silence, which is what they asked for.
-			} else {
-				// THE TURN HAS SETTLED, and nothing is queued behind it: this is
-				// the one moment a session is idle. Arm the consolidation
-				// countdown (memory_consolidate.go). Under the same lock as the
-				// drain, so a Submit cannot slip between the two and find a
-				// timer armed against a session that is working again — and in
-				// the else branch, because a follow-up starting is a session
-				// that was never idle at all.
-				a.armIdleLocked()
 			}
 			a.mu.Unlock()
 		}()
@@ -923,10 +918,10 @@ func (a *Agent) Close() error {
 		return nil
 	}
 	a.closed = true
-	// Nothing dreams after the lights go out: a timer that fired after Close
-	// would consolidate against a journal that is already shut, and the
-	// process is leaving anyway (memory_consolidate.go).
-	a.disarmIdle()
+	// No memory pass outlives the session. The cancel is what stops one waiting
+	// on a provider; the wait below is what lets one that is already writing
+	// reach the store (memory.go).
+	memoryStop := a.memoryStop
 	file := a.file
 	cancel := a.cancel
 	done := a.done
@@ -946,6 +941,9 @@ func (a *Agent) Close() error {
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
 
+	if memoryStop != nil {
+		a.waitForMemory(memoryStop)
+	}
 	if cancel != nil {
 		cancel()
 	}
@@ -1139,11 +1137,6 @@ func (a *Agent) enqueueNote(note userMessage) {
 	if a.closed {
 		return
 	}
-	// News arriving is the session being in use, even when the news is the
-	// session's own: the turn that drains this queue will read the memory file,
-	// and a consolidation pass firing into that moment would swap it underneath
-	// a turn that is about to start (memory_consolidate.go).
-	a.disarmIdle()
 	a.steering = append(a.steering, note)
 	if note.wake {
 		// A turn already running is the coalescing case and needs nothing done:

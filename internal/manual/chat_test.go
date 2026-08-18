@@ -72,6 +72,18 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what is openaf", "starting-aforge"},
 		{"can you access my email", "accounts"},
 
+		// The fourth wave, and it is the one this build most needs to answer
+		// out of a page rather than out of the model's imagination: aforge
+		// carrying something from one conversation into the next. Every one of
+		// these is a question somebody asks the first time they notice it
+		// happening, and the honest answers — what is kept, who decides, and how
+		// to empty it — are all on one page.
+		{"how do I see what you remember about me", "what-i-remember"},
+		{"how do I make you forget something", "what-i-remember"},
+		{"can you remember my preferences for next time", "what-i-remember"},
+		{"what happened to my memory.md file", "what-i-remember"},
+		{"how do I turn memory off", "what-i-remember"},
+
 		// The third wave: aforge changing a person's own settings for them.
 		// Both halves have to reach a page — that it can, and the rows where
 		// it will not — because the second is the answer somebody gets when

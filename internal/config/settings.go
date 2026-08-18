@@ -164,10 +164,14 @@ const (
 	// beside the guardian because both spend a model on the person's behalf:
 	// the guardian to answer, the auditor to check.
 	KeyTaskAudit = "task.audit"
-	// KeyMemoryConsolidation is whether memory.md consolidates itself at
-	// idle (internal/session's memory_consolidate.go).
-	KeyMemoryConsolidation = "memory.consolidation"
-	KeyModelRoles          = "models.roles"
+	// KeyMemoryEnabled is whether this build remembers anything across
+	// conversations at all (internal/session's memory.go): the pre-turn router
+	// that decides which remembered lines a turn needs, the post-turn pass that
+	// decides whether the exchange held anything worth keeping, and the
+	// `remember` tool the model reaches for. Off is a conversation that starts
+	// knowing nothing about you, and that makes not one extra call.
+	KeyMemoryEnabled = "memory.enabled"
+	KeyModelRoles    = "models.roles"
 	// KeyModelFallbacks is the ordered list of models a conversation moves to
 	// when no endpoint serving the one it is on will accept the request at all
 	// (internal/provider's endpoints.go). Comma-separated slugs, first tried
@@ -397,18 +401,18 @@ var TimestampModes = []string{TimestampsFooters, TimestampsSeparators, Timestamp
 const DefaultTimestamps = TimestampsFooters
 
 const (
-	MemoryConsolidationOff = "off"
-	MemoryConsolidationOn  = "on"
+	MemoryOff = "off"
+	MemoryOn  = "on"
 )
 
-// MemoryConsolidationModes lists them, on first — the default: consolidation
-// runs only at idle, on a changed file, past twenty facts, ten minutes apart
-// — the gates already make it rare, and a memory that never consolidates
-// only ever grows.
-var MemoryConsolidationModes = []string{MemoryConsolidationOn, MemoryConsolidationOff}
+// MemoryModes lists them, on first — which is the default. A colleague who
+// forgot every preference you stated the moment you closed the window would be
+// one you had to brief again every morning, and the calls that carry this are
+// the cheapest the surface makes.
+var MemoryModes = []string{MemoryOn, MemoryOff}
 
-// DefaultMemoryConsolidation is on.
-const DefaultMemoryConsolidation = MemoryConsolidationOn
+// DefaultMemory is on.
+const DefaultMemory = MemoryOn
 
 // The routing row's three answers. They are spelled here rather than imported
 // from internal/provider for the reason [DocumentEngines] is: a settings key's
@@ -1168,14 +1172,15 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyTaskAudit, raw, TaskAuditModes) },
 		},
 		Setting{
-			Key: KeyMemoryConsolidation, Category: CategoryPractice, Kind: SettingChoice,
-			Label: "memory consolidation", Choices: MemoryConsolidationModes,
-			Hint: "when on, memory.md quietly consolidates itself when the session has been " +
-				"idle for thirty seconds: duplicates merge, superseded facts drop, times and " +
-				"versions are kept character-for-character. It runs only on a changed file, " +
-				"past twenty facts, ten minutes apart. On is the default; off, memory only grows.",
-			read:  func() string { return MemoryConsolidationAt(dir) },
-			write: func(raw string) error { return writeChoice(dir, KeyMemoryConsolidation, raw, MemoryConsolidationModes) },
+			Key: KeyMemoryEnabled, Category: CategoryPractice, Kind: SettingChoice,
+			Label: "memory", Choices: MemoryModes,
+			Hint: "when on, aforge carries a handful of things across conversations: what you " +
+				"asked it to remember, preferences you stated, corrections you made. A small " +
+				"model decides before each message which of them bear on it, and after each " +
+				"answer whether anything new is worth keeping. Off remembers nothing and makes " +
+				"neither call. On is the default; /memories lists what is kept.",
+			read:  func() string { return MemoryAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyMemoryEnabled, raw, MemoryModes) },
 		},
 		// The countdown sits with the two consent rows and the guardian because
 		// it answers their question in the other currency: those say what
@@ -2265,20 +2270,22 @@ func TaskAuditEnabledAt(profileDir string) bool {
 	return TaskAuditAt(profileDir) == TaskAuditOn
 }
 
-// MemoryConsolidationAt resolves the consolidation row to its word, default on.
-func MemoryConsolidationAt(profileDir string) string {
-	if value, ok := persistedString(profileDir, KeyMemoryConsolidation); ok {
+// MemoryAt resolves the memory row to its word, default on.
+func MemoryAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyMemoryEnabled); ok {
 		if value = strings.TrimSpace(value); value != "" {
 			return value
 		}
 	}
-	return DefaultMemoryConsolidation
+	return DefaultMemory
 }
 
-// MemoryConsolidationEnabledAt is [MemoryConsolidationAt] as the bool the
-// session's Config takes.
-func MemoryConsolidationEnabledAt(profileDir string) bool {
-	return MemoryConsolidationAt(profileDir) == MemoryConsolidationOn
+// MemoryEnabledAt is [MemoryAt] as the bool the v3 door reads before it opens a
+// brain at all: memory off is a session handed no store, which is what makes
+// "no block and no calls" a property of the wiring rather than a branch every
+// caller has to remember (internal/session's memory.go states the law).
+func MemoryEnabledAt(profileDir string) bool {
+	return MemoryAt(profileDir) == MemoryOn
 }
 
 // ToolApprovalsAt resolves the per-tool exceptions as the person wrote them.

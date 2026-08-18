@@ -98,7 +98,7 @@ func TestEverySecretRowIsGuardedByItsFlagAlone(t *testing.T) {
 // settings tool nobody could use.
 func TestOrdinaryPreferencesAreSelfService(t *testing.T) {
 	ordinary := []string{
-		KeyTimestamps, KeyMouse, KeyRailState, KeyMemoryConsolidation,
+		KeyTimestamps, KeyMouse, KeyRailState, KeyMemoryEnabled,
 		KeyTierLowModel, KeyTierHighModel, KeyModelRoles, KeyModelFallbacks,
 		KeyTaskModel, KeyRouting, KeyVisionModel, KeyDocumentEngine,
 		KeySearchProvider, KeyHistoryEnabled, KeyDraftPersist,

@@ -21,15 +21,16 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/search"
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/aforge-v2/internal/tui3"
 )
 
 // runChatV3 is the v3 door: one session agent over this directory, and the
-// linear surface that shows it. It opens no graph database, claims no
-// residency and starts no runner — the tasker attaches later (docs/CHAT-V3.md
-// milestone V3-1), and until it does, pretending to boot it would only buy the
-// person a slower start and a rail full of nothing.
+// linear surface that shows it. It claims no residency and starts no runner;
+// the ONE thing it opens of the graph database is the person's memories
+// (milestone V3-1, [v3Memory]), because those are the only rows in it a
+// conversation has any business reading.
 func runChatV3(args []string) error { return openChatV3("chat", args, false) }
 
 // runResumeV3 is `aforge resume`: the same door, opened on the session picker.
@@ -150,6 +151,14 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// only model it can be about: --reasoning names a strength, not a model, and
 	// the level is kept per model from here on (internal/session's agent.go).
 	agent.SetReasoning(level)
+	// THE BRAIN CLOSES AFTER THE SESSION DOES, and that is what this ordering
+	// buys: the agent's own Close waits for a memory pass still writing
+	// (internal/session's memory.go), and a store shut before that wait would be
+	// a write into a closed database. Deferred calls run last-in-first-out, so
+	// this one — registered FIRST — runs last.
+	if cfg.Memory != nil {
+		defer func() { _ = cfg.Memory.Close() }()
+	}
 	// Close is the surface's to call — /quit and ctrl+c both go through it —
 	// but a Run that returns by any other road must still flush the file.
 	defer func() { _ = agent.Close() }()
@@ -455,10 +464,16 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		// workspace, which is the seam's honest answer for a legacy flat
 		// session.
 		WorktreeRoot: found.Place.Trees(),
-		// The durable memory, finally wired: one file per person under the state
-		// root, which is what note, forget and the dreaming pass have been built
-		// against and reaching nothing for a version.
-		MemoryFile: home.Join("v3", "memory.md"),
+		// The durable memory, on the store this time (internal/session's
+		// memory.go). It is opened once, here, because where a person's state
+		// lives is the door's decision — and it is opened AT ALL only when the
+		// memory row is on, which is what makes "memory off makes no calls" a
+		// fact about the wiring instead of a branch every caller has to keep.
+		Memory: v3Memory(settings.ProfileDir),
+		// And the file the old memory lived in, carried into the store on the
+		// first turn and then renamed out of the way. It is named here rather
+		// than derived down there for the reason every other path is.
+		MemoryImport: home.Join("v3", "memory.md"),
 		// The deliverables index the session's own products (a painted picture)
 		// record themselves in — the same file the surface's /export and /files
 		// resolve, spelled once (chatv3_place.go).
@@ -718,7 +733,6 @@ func applyV3Governance(cfg session.Config, profileDir string, yolo bool) (sessio
 	cfg.TaskParallel = config.TaskParallelAt(profileDir)
 	cfg.TaskMaxLoad = config.TaskMaxLoadAt(profileDir)
 	cfg.TaskMinFreeMB = config.TaskMinFreeMBAt(profileDir)
-	cfg.MemoryConsolidation = config.MemoryConsolidationEnabledAt(profileDir)
 	cfg.SearchProvider, cfg.SearchFetcher = v3Search(profileDir)
 	cfg.Connect = v3Connect(profileDir)
 	// How this session chooses among the endpoints serving its model. The word
@@ -909,8 +923,8 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 //   - jobs, whose list and output are reads of processes the person already
 //     started. Its kill is not on the floor: it inherits the blanket mode,
 //     which asks.
-//   - The agent's own bookkeeping — note, track, recall and forget. These write
-//     to and read from the notes and working state it keeps for itself
+//   - The agent's own bookkeeping — remember, track and recall. These write to
+//     and read from the memories and working state it keeps for itself
 //     (internal/session's memory.go and state.go); no hand outside this process
 //     reads them, and asking somebody to approve the agent writing itself a
 //     reminder is asking about the wrong thing.
@@ -944,10 +958,39 @@ func v3Policy(workspace, profileDir string, yolo bool) (*approval.Policy, error)
 func v3BuiltinApprovals() map[string]any {
 	return map[string]any{
 		"read": "allow", "grep": "allow", "find": "allow", "ls": "allow",
-		"jobs": "allow",
-		"note": "allow", "track": "allow", "recall": "allow", "forget": "allow",
+		"jobs":     "allow",
+		"remember": "allow", "track": "allow", "recall": "allow",
 		"manual": "allow", "settings": "allow",
 	}
+}
+
+// v3Memory opens the person's brain for this conversation, or hands over
+// nothing.
+//
+// NOTHING IS A COMPLETE ANSWER HERE, and it is two different answers spelled
+// the same way on purpose. Memory turned off in the settings opens no store at
+// all, which is what makes "no block and no calls" a property of the wiring
+// rather than a branch in every caller (internal/session's memory.go states the
+// law). A store that would not open — a locked file, a disk with nothing left,
+// a database an older build wrote — is the SAME answer, said once on stderr:
+// a person who typed `aforge` wanted a conversation, and refusing them one
+// because a memory file is unhappy would be losing the whole product to the
+// least of its parts.
+//
+// It is the same graph.db every other surface in this binary opens
+// ([defaultChatDB]). Memories are the person's, not a conversation's, and a
+// second file beside it would be a second set of them that nothing else could
+// read.
+func v3Memory(profileDir string) *store.Store {
+	if !config.MemoryEnabledAt(profileDir) {
+		return nil
+	}
+	brain, err := store.Open(defaultChatDB())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "memory is off for this session: "+err.Error())
+		return nil
+	}
+	return brain
 }
 
 // v3RolesSource is the closure internal/roles reads its ladder through: the two
@@ -966,9 +1009,22 @@ func v3RolesSource(workspace, profileDir string) (func(string) (string, bool), e
 	if err != nil {
 		return nil, err
 	}
+	// THE THIRD TIER, and the reason it is worth its own arm: the two calls that
+	// ride it are made TWICE EVERY TURN (internal/reflex), so a reflex resolving
+	// to the conversation's model is not thrift misconfigured, it is the most
+	// expensive model in the build answering the cheapest question in it. The
+	// panel's own reader already maps all three (internal/tui3's rolesSource);
+	// this is the one a running session's calls actually go through.
+	//
+	// IT IS READ FROM THE PROFILE AND NOT THROUGH THE PROJECT LAYER, which its
+	// two neighbours are. That is not an omission: [config.ProjectKeys] does not
+	// carry this row, so asking the project layer for it is an error rather than
+	// a fall-through — and the row ships pointed at a model, which is a default
+	// only [config.TierModelAt] applies.
 	values := map[string]string{
-		roles.TierKey(roles.TierLow):  low,
-		roles.TierKey(roles.TierHigh): high,
+		roles.TierKey(roles.TierReflex): config.TierModelAt(profileDir, config.ModelTierReflex),
+		roles.TierKey(roles.TierLow):    low,
+		roles.TierKey(roles.TierHigh):   high,
 	}
 	text, err := config.ProjectStringAt(workspace, profileDir, config.KeyModelRoles)
 	if err != nil {

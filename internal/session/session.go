@@ -30,6 +30,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/search"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -561,17 +562,23 @@ type Config struct {
 	// through internal/home so AFORGE_HOME moves it with everything else.
 	ArtifactsIndex string
 
-	// MemoryFile is the durable memory: one file of lines the model keeps with
-	// the note tool and drops with forget (memory.go), rendered into the system
-	// prompt as a <memory> block and re-read at the start of every turn. Empty
-	// is memory OFF — no file, and no note or forget on the belt.
+	// Memory is the brain this session remembers into (memory.go): the store's
+	// event-sourced memories, routed into the prompt before a turn and written
+	// after one. NIL IS MEMORY OFF — no <memory> block, no reflex call, and no
+	// `remember` on the belt, so the model does not have the verb.
 	//
-	// It is the caller's path rather than a path this package derives, for the
-	// reason SessionFile is: where a person's state lives is the surface's
-	// decision, and a package that picked ~/.aforge/v3/memory.md itself would
-	// write there from a test, a subharness leaf, and a second window of the
-	// same session alike.
-	MemoryFile string
+	// It is the caller's store rather than one this package opens, for the
+	// reason SessionFile is a path rather than a directory: where a person's
+	// state lives is the surface's decision, and the door is also where the
+	// memory.enabled row is read. A door that turns memory off hands nothing
+	// here, which is what makes "no calls" structural.
+	Memory *store.Store
+
+	// MemoryImport is the legacy memory.md this session carries into the store
+	// on its first turn, once, before it is renamed to memory.md.imported
+	// (memory.go). Empty imports nothing, which is every caller but the v3 door
+	// and every machine that has already been through it.
+	MemoryImport string
 
 	// ApprovalPolicy decides whether a tool call runs, asks, or is refused
 	// (internal/approval, gated in consent.go). NIL ALLOWS EVERYTHING, which is
@@ -605,11 +612,7 @@ type Config struct {
 	// finished node merges on its own report — faster and cheaper, and
 	// 'done' stops meaning 'proven'. The config row (task.audit) defaults on.
 	TaskAudit bool
-	// MemoryConsolidation gates the idle dreaming pass
-	// (memory_consolidate.go). The config row (memory.consolidation)
-	// defaults on.
-	MemoryConsolidation bool
-	Guardian            bool
+	Guardian  bool
 
 	// ProfileDir is the person's profile directory — the one holding the
 	// config.json that /settings writes (internal/config's settings registry).
@@ -936,6 +939,15 @@ type Config struct {
 	//
 	// It is private for InTask's reason: no surface sets it, the executor does.
 	roomThread bool
+	// memoryBrief is the <memory> block a task node OPENS WITH: the parent
+	// routed it against this node's brief at the spawn seam, because a node has
+	// no turn of its own to route against and no store of its own to route into
+	// (memory.go, task_run.go's newTaskAgent).
+	//
+	// It is private for roomThread's reason: no surface sets it, the executor
+	// does — and a node is handed the WORDS rather than the store, so a family
+	// of eight nodes cannot become eight writers on one brain.
+	memoryBrief string
 	// The three rows below are the TASK FAMILY'S, and like InTask the executor
 	// is the only writer: they are what lets a node hand PART of its own work
 	// further out (task.go's fan-out law).
@@ -1020,11 +1032,23 @@ type Agent struct {
 	// contend for the lock Interrupt has to be able to take at any moment.
 	jobs *jobRegistry
 
-	// memory is the durable-notes file (memory.go), nil when Config.MemoryFile
-	// is empty. Like jobs it sits outside mu and holds its own lock: its writers
-	// are tool calls running in parallel inside a batch, and its one reader is
-	// the per-turn prompt refresh.
-	memory *memoryStore
+	// memory is the brain (memory.go), nil when Config.Memory is. Like jobs it
+	// sits outside mu and holds its own lock: its writer is a post-turn goroutine
+	// that outlives the turn that started it, and its reader is the pre-turn
+	// router.
+	memory *memoryBrain
+
+	// memoryCtx is the lifetime of every background memory pass, and memoryJobs
+	// counts the ones still running. They are the [jobRegistry]'s bargain in
+	// miniature: Close cancels the context so nothing waits on a provider, and
+	// waits on the group so a write already in flight reaches the store.
+	//
+	// The context is written once at construction and the cancel is called once
+	// by Close; both are read under mu, because the one thing that must be
+	// atomic is "closed, therefore no new job" (see [Agent.startMemoryJob]).
+	memoryCtx  context.Context
+	memoryStop context.CancelFunc
+	memoryJobs sync.WaitGroup
 
 	// stateStore is the BPE working state (state.go): the beliefs and progress
 	// records that live OUTSIDE the transcript so a compaction cannot lose them.
@@ -1059,11 +1083,17 @@ type Agent struct {
 	// sessions.
 	reasoning map[string]provider.Effort
 	messages  []ai.Message
-	usage     Usage
-	running   bool
-	cancel    context.CancelFunc
-	steering  []userMessage
-	closed    bool
+	// memoryText is the <memory> block message[0] currently carries: what the
+	// router asked for at the start of this turn, or the block a task node was
+	// opened with (memory.go). It is under mu because it is rendered into the
+	// transcript's first message, and it is REPLACED per turn rather than
+	// appended to — a turn's memories are that turn's.
+	memoryText string
+	usage      Usage
+	running    bool
+	cancel     context.CancelFunc
+	steering   []userMessage
+	closed     bool
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding
@@ -1149,6 +1179,12 @@ type Agent struct {
 	// question by guessing a number.
 	harnessSeq  uint64
 	harnessAsks map[uint64]chan harnessAnswer
+
+	// harnessPick is a harness the PERSON chose rather than one a matcher
+	// offered, left here by [Agent.RunHarnessRequest] for the turn it just
+	// started to collect (harness.go). It is a hand-off between two halves of
+	// one call and never state: the turn takes it, clears it, and runs it.
+	harnessPick *harnessRoute
 
 	// routeTurns counts the turns this session has finished and routeOffered is
 	// the one the route judge last raised a card on (route_judge.go). They are the

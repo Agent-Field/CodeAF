@@ -96,6 +96,21 @@ var commands = []command{
 	// they will open occasionally. Position in this table is a claim about
 	// frequency; this is the honest one.
 	{name: "harness", desc: "the shapes of work you have saved · what they did", alias: []string{"harnesses"}},
+	// WHAT IT KNOWS ABOUT YOU, and the two ways to change it. They sit beside
+	// /harness because they answer the neighbouring question — one is what this
+	// conversation has learned to DO, these are what it has been told about YOU
+	// — and they are three rows rather than one because a person arrives with
+	// one of three errands: seeing the list, adding to it, or dropping something
+	// off it.
+	//
+	// /memories has the bare form and the narrowed one, the way /model does: the
+	// bare row is the one nearly everybody wants, and a single row carrying
+	// [query] would make it unreachable from the list ([app.runMenu] puts a row
+	// that TAKES something into the draft instead of running it).
+	{name: "memories", desc: "what is remembered about you across conversations", alias: []string{"memory"}},
+	{name: "memories", args: "<query>", desc: "…only the ones matching a word"},
+	{name: "remember", args: "<text>", desc: "keep one thing across conversations"},
+	{name: "forget", args: "<query>", desc: "drop what is remembered about something"},
 	// THE TWO QUESTIONS THE STATUS LINE IS ALREADY ANSWERING, asked out loud. The
 	// line at the bottom of the frame drops whatever does not fit and a phone-width
 	// frame keeps two of eleven facts (statusdeck.go), so on any surface these are

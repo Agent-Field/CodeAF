@@ -34,8 +34,12 @@ A task is the same agent you talk to, with the same tools, in a quieter place.
 
 It inherits the conversation's provider client, context window, image support, roles
 source, search provider and fetcher, **connected accounts**, image-generation model and
-document engine. It inherits **neither the transcript nor the memory file** — the brief is
-its whole world. If it runs on a **different model from the conversation**, its context
+document engine. It inherits **not the transcript** — the brief is its whole world. The
+one thing it is given of what aforge remembers about you is the handful of lines its own
+brief needs: the conversation asks the router once, against that brief, and puts the
+answer at the top of the task's instructions (what-i-remember). The task itself never
+writes a memory — a family of eight tasks would be eight writers on one brain, each blind
+to the others. If it runs on a **different model from the conversation**, its context
 window is set to 0 rather than reusing a window measured for another model.
 
 **Three tools are missing from its belt:** `watch`, and the settings pair `settings` and

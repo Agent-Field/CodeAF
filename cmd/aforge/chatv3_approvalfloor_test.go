@@ -71,13 +71,13 @@ func TestBankingOneRuleLeavesTheOtherToolsAllowed(t *testing.T) {
 func TestAWrittenRuleBeatsTheFloorForTheToolItNames(t *testing.T) {
 	dir := v3Profile(t, map[string]any{
 		"tools.approvalMode": "prompt",
-		"tools.approval":     "read:prompt, forget:deny",
+		"tools.approval":     "read:prompt, remember:deny",
 	})
 	policy := gateOf(t, dir)
 	wantAction(t, policy, "read", `{"path":"x"}`, approval.ActionPrompt)
-	wantAction(t, policy, "forget", `{}`, approval.ActionDeny)
+	wantAction(t, policy, "remember", `{}`, approval.ActionDeny)
 	// And naming those two said nothing at all about the rest of the floor.
-	for _, tool := range []string{"grep", "find", "ls", "jobs", "note", "track", "recall"} {
+	for _, tool := range []string{"grep", "find", "ls", "jobs", "track", "recall"} {
 		wantAction(t, policy, tool, `{}`, approval.ActionAllow)
 	}
 }
@@ -87,7 +87,7 @@ func TestAWrittenRuleBeatsTheFloorForTheToolItNames(t *testing.T) {
 // tracked subgoal finished.
 func TestTheAgentsOwnBookkeepingDoesNotAskAndCommitStillDoes(t *testing.T) {
 	policy := gateOf(t, v3Profile(t, map[string]any{"tools.approvalMode": "prompt"}))
-	for _, tool := range []string{"note", "track", "recall", "forget"} {
+	for _, tool := range []string{"remember", "track", "recall"} {
 		wantAction(t, policy, tool, `{}`, approval.ActionAllow)
 	}
 	wantAction(t, policy, "commit", `{"id":"b1"}`, approval.ActionPrompt)
