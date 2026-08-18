@@ -798,7 +798,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 			// unguarded, a model that starts drafting the whole work inside
 			// its reply gets truncated, the truncation is accepted as final,
 			// and the run reports done with nothing on disk.
-			if finishOf(response) == "length" {
+			if store.ClassifyEnd(finishOf(response), false) == store.EndLength {
 				messages = append(messages,
 					ai.Message{Role: "assistant", Content: text(response.Text())},
 					ai.Message{Role: "user", Content: text(
@@ -872,7 +872,7 @@ func (l *Linear) Run(ctx context.Context, task Task) (returned *Outcome, runErr 
 		// earlier calls in a cut-off batch were written by a model that was
 		// planning all of them together, and re-issuing them as a set keeps that
 		// plan intact instead of half-applying it.
-		if finishOf(response) == "length" {
+		if store.ClassifyEnd(finishOf(response), false) == store.EndLength {
 			for _, call := range calls {
 				outcome.ToolCalls++
 				labels[call.ID] = callLabel(call)

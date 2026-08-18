@@ -223,6 +223,62 @@ func (r replier) CompleteWithMessages(_ context.Context, messages []ai.Message, 
 	return textResponse(r(messages)), nil
 }
 
+// truncationReplier reproduces the failed writer-node shape: the planner makes
+// one node, then that node repeatedly emits prose whose provider stop says it
+// was cut off before the intended tool call could materialize.
+type truncationReplier struct {
+	mu        sync.Mutex
+	nodeCalls int
+	seenNote  bool
+}
+
+func (r *truncationReplier) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+	asked := lastUserText(messages)
+	if isPlannerCall(messages) {
+		if strings.Contains(asked, "nothing yet") {
+			return textResponse(`{"add":[{"id":"n1","goal":"write the final report","write_scope":["report.md"]}]}`), nil
+		}
+		return textResponse(`{"done":{"brief":"report the incomplete writer node honestly"}}`), nil
+	}
+	if strings.Contains(asked, "WHAT THE WORK BEFORE YOU FOUND") {
+		return textResponse("The writer node ended at the output limit and did not finish."), nil
+	}
+	if strings.HasPrefix(asked, "First message:") {
+		return textResponse(`{"work":false,"why":"the node was already work"}`), nil
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.nodeCalls++
+	if strings.Contains(asked, "cut off at the output limit") {
+		r.seenNote = true
+	}
+	response := textResponse("Now I have the raw files. Let me write the report.")
+	response.Choices[0].FinishReason = "length"
+	return response, nil
+}
+
+func TestAdaptiveNodeContinuesCutOffTextAndStopsHonestlyAtTheBound(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	completer := &truncationReplier{}
+	agent, _ := newTestAgent(t, completer, func(config *Config) { config.AskConsent = true })
+
+	id, err := agent.RunOrchestrate(context.Background(), "write the report", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := waitForRun(t, agent, id)
+	if completer.nodeCalls != 1+truncationContinuations {
+		t.Fatalf("writer calls = %d, want initial plus %d bounded continuations", completer.nodeCalls, truncationContinuations)
+	}
+	if !completer.seenNote {
+		t.Fatal("the writer never saw the note explaining that its reply was cut off")
+	}
+	if len(snap.Nodes) != 1 || !strings.Contains(snap.Nodes[0].Digest, "INCOMPLETE: the node's final reply was cut off at the output limit") {
+		t.Fatalf("the node digest hid the truncation: %+v", snap.Nodes)
+	}
+}
+
 // THE WHOLE RUN, from the goal to the write-up: the planner adds a node, the
 // node runs as a child agent in this package's own loop, its digest reaches
 // the planner, and the planner's done plan becomes the synthesis.

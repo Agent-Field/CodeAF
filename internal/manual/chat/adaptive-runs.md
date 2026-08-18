@@ -178,6 +178,20 @@ run. Each node's transcript is a real session journal under
 
 Nodes run **4 at a time**, and one gives up after 60 steps or 6 steps with no progress.
 
+## What happens when a run node's reply is cut off at the output limit
+
+A text-only reply is normally how an adaptive-run node finishes. If the provider says
+that reply was cut off at its output-token limit, aforge does **not** accept the fragment
+as finished work. It tells the node that the reply was cut off and asks it to continue in
+smaller parts, using tool calls to save a large deliverable when writing is in scope and
+keeping its final report short.
+
+That continuation is bounded: the node gets two continuation attempts. If all three
+replies end at the output limit, the node stops instead of spending forever. Its digest
+begins `INCOMPLETE: the node's final reply was cut off at the output limit after two
+continuation attempts.` The planner reads that warning with the fragment, so it can treat
+the node as unfinished rather than mistaking the prose for a completed deliverable.
+
 ## When a run is the wrong tool
 
 - Work that can be done in the conversation is done in the conversation.

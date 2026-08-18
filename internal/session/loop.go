@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/guard"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -23,6 +24,15 @@ import (
 // (baseDelayMs=2000 * 2**(attempt-1)).
 const maxRetries = 3
 const retryBaseDelay = 2 * time.Second
+
+// truncationContinuations gives a cut-off answer two chances to finish in
+// smaller pieces. The bound matters because a model that ignores the note can
+// otherwise turn one bad output ceiling into an unbounded, silent spend.
+const truncationContinuations = 2
+
+const truncationContinuationNote = "Your last reply was cut off at the output limit. " +
+	"Continue the work in smaller parts. Use tool calls to save any large deliverable " +
+	"when writing is in scope, and keep the final report short."
 
 // ── retry classification (pi-ai compat, verbatim from internal/exec/bare) ───
 
@@ -280,6 +290,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// further, and retrying it forever would burn a summary call per attempt.
 	overflowCompacted := false
 
+	// A text-only answer normally closes the turn. A length stop is not an
+	// answer, though: it is the provider saying that the answer did not fit, so
+	// this count keeps that exceptional continuation both useful and bounded.
+	truncations := 0
+
 	for {
 		// The cancel check comes BEFORE the drain: steering typed in the
 		// instant before an interrupt must not be spliced into a transcript
@@ -338,6 +353,14 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 			// than at the top of the next iteration is what keeps an interrupt
 			// arriving during the tool batch from recording it a second time.
 			partial.reset()
+			if store.ClassifyEnd(provider.FinishReason(response), true) == store.EndLength {
+				truncations++
+				if truncations <= truncationContinuations {
+					a.record(ai.Message{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: truncationContinuationNote}}})
+					continue
+				}
+				a.markTurnTruncated()
+			}
 			// `pre-decision` (hooks.go): the last chance to shape what the model
 			// will be sent next. Its one citizen today is the stubbing pass, which
 			// runs BEFORE the compaction check, and the order is the whole economy

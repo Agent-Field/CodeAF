@@ -574,6 +574,7 @@ func (u userMessage) text() string { return messageContentText(u.message) }
 // writes it (see [Agent.wakeLocked]).
 func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *eventStream, extra ...*eventStream) <-chan Event {
 	a.running = true
+	a.lastTurnTruncated = false
 	// The system message is rebuilt here so a turn never opens carrying the
 	// memories of the one before it. WHAT THIS TURN NEEDS is routed inside the
 	// turn goroutine instead ([Agent.refreshMemory], called from the loop): that
@@ -1019,6 +1020,22 @@ func (a *Agent) record(message ai.Message) {
 	a.mu.Lock()
 	a.recordLocked(message)
 	a.mu.Unlock()
+}
+
+// markTurnTruncated preserves the provider's stop reason after the response
+// itself has gone. Node reports need this fact, while ordinary transcript
+// messages deliberately contain only what the participants said.
+func (a *Agent) markTurnTruncated() {
+	a.mu.Lock()
+	a.lastTurnTruncated = true
+	a.mu.Unlock()
+}
+
+// turnTruncated is the reporting side of [Agent.markTurnTruncated].
+func (a *Agent) turnTruncated() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastTurnTruncated
 }
 
 // snapshot copies the messages slice for one provider request. The copy is
