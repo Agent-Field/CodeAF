@@ -581,15 +581,15 @@ second line naming the four models it would set. ↑ / ctrl+p and ↓ / ctrl+n m
 applies the row, and **esc** closes the chooser without changing anything:
 
 ```
-  frugal — deepseek everywhere · pennies a day
+  frugal — qwen handles careful work · pennies a day
     reflex        nex-agi/nex-n2-mini
     small work    deepseek/deepseek-v4-flash
-    careful work  deepseek/deepseek-v4-pro
-    mastermind    deepseek/deepseek-v4-pro
-· balanced — kimi-k3 thinks, deepseek works
+    careful work  qwen/qwen3.8-27b
+    mastermind    qwen/qwen3.8-27b
+· balanced — kimi-k3 thinks, qwen checks
     reflex        nex-agi/nex-n2-mini
     small work    deepseek/deepseek-v4-flash
-    careful work  deepseek/deepseek-v4-pro
+    careful work  qwen/qwen3.8-27b
     mastermind    moonshotai/kimi-k3:low
   max — kimi-k3 everywhere, thinks longer
     reflex        nex-agi/nex-n2-mini
@@ -601,7 +601,7 @@ applies the row, and **esc** closes the chooser without changing anything:
 `/crew frugal`, `/crew balanced` or `/crew max` sets it, and confirms in one line:
 
 ```
-crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks deepseek-v4-pro
+crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b
 ```
 
 **The change is live.** The next call aforge makes on its own uses the new crew — no

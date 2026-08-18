@@ -506,7 +506,7 @@ var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierHigh, ModelTie
 const (
 	DefaultReflexModel = "nex-agi/nex-n2-mini"
 	DefaultLowModel    = "deepseek/deepseek-v4-flash"
-	DefaultHighModel   = "deepseek/deepseek-v4-pro"
+	DefaultHighModel   = "qwen/qwen3.8-27b"
 	// The mastermind ships with a LEVEL on it, which no other tier does. The
 	// balanced crew's whole shape is "one model that thinks, cheaper ones that
 	// work", and a mastermind with no level asked for is the thinking half not

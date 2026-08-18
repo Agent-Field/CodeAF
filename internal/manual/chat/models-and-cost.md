@@ -141,13 +141,17 @@ preset:
 | --- | --- |
 | reflex | `nex-agi/nex-n2-mini` |
 | small work | `deepseek/deepseek-v4-flash` |
-| careful work | `deepseek/deepseek-v4-pro` |
+| careful work | `qwen/qwen3.8-27b` |
 | mastermind | `moonshotai/kimi-k3:low` |
 
 They are all open-source models, and none of them is the model you are talking to. A crew
 that followed your conversation would put the most expensive model in the build on the
 cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
 agreed to.
+
+The careful class's `qwen/qwen3.8-27b` is vision-capable, so the shipped crew can fund the
+vision role as well as text checks. Its OpenRouter rates are $0.45/M input tokens and
+$3.20/M output tokens, with a 262k-token context window.
 
 **Clearing a row is still an answer.** A class you empty on purpose reads
 `follows the conversation`, and every role on it runs on the model you are talking to. That
@@ -160,11 +164,11 @@ say rather than the default.
 | --- | --- | --- | --- |
 | reflex | `nex-n2-mini` | `nex-n2-mini` | `nex-n2-mini` |
 | small work | `deepseek-v4-flash` | `deepseek-v4-flash` | `deepseek-v4-pro` |
-| careful work | `deepseek-v4-pro` | `deepseek-v4-pro` | `kimi-k3` |
-| mastermind | `deepseek-v4-pro` | `kimi-k3:low` | `kimi-k3:high` |
+| careful work | `qwen3.8-27b` | `qwen3.8-27b` | `kimi-k3` |
+| mastermind | `qwen3.8-27b` | `kimi-k3:low` | `kimi-k3:high` |
 
-- **frugal** — deepseek everywhere · pennies a day
-- **balanced** — kimi-k3 thinks, deepseek works
+- **frugal** — qwen handles careful work · pennies a day
+- **balanced** — kimi-k3 thinks, qwen checks
 - **max** — kimi-k3 everywhere, thinks longer
 
 `/crew` opens all three as a chooser with yours marked. ↑ / ctrl+p and ↓ / ctrl+n move;

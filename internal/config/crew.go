@@ -67,13 +67,13 @@ var crewModels = map[string]map[string]string{
 	CrewFrugal: {
 		ModelTierReflex:     "nex-agi/nex-n2-mini",
 		ModelTierLow:        "deepseek/deepseek-v4-flash",
-		ModelTierHigh:       "deepseek/deepseek-v4-pro",
-		ModelTierMastermind: "deepseek/deepseek-v4-pro",
+		ModelTierHigh:       "qwen/qwen3.8-27b",
+		ModelTierMastermind: "qwen/qwen3.8-27b",
 	},
 	CrewBalanced: {
 		ModelTierReflex:     "nex-agi/nex-n2-mini",
 		ModelTierLow:        "deepseek/deepseek-v4-flash",
-		ModelTierHigh:       "deepseek/deepseek-v4-pro",
+		ModelTierHigh:       "qwen/qwen3.8-27b",
 		ModelTierMastermind: "moonshotai/kimi-k3:low",
 	},
 	CrewMax: {
@@ -88,8 +88,8 @@ var crewModels = map[string]map[string]string{
 // prints beside each option and what the settings chooser shows under it — the
 // same words in both places, because they are one sentence about one thing.
 var crewLines = map[string]string{
-	CrewFrugal:   "deepseek everywhere · pennies a day",
-	CrewBalanced: "kimi-k3 thinks, deepseek works",
+	CrewFrugal:   "qwen handles careful work · pennies a day",
+	CrewBalanced: "kimi-k3 thinks, qwen checks",
 	CrewMax:      "kimi-k3 everywhere, thinks longer",
 }
 
@@ -173,7 +173,7 @@ func writeCrew(profileDir, raw string) error {
 
 // CrewSummary is the one line a crew change confirms itself with:
 //
-//	crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks deepseek-v4-pro
+//	crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks qwen3.8-27b
 //
 // The three names are the classes a person actually asked about — what thinks,
 // what works, what checks — and the reflex model is deliberately absent: it is
