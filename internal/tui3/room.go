@@ -1665,6 +1665,13 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	if !a.railAt(x, y) {
 		return nil, false
 	}
+	// THE SEAM IS THE COLUMN'S HANDLE. It answers before rows do because the
+	// same two cells run through node rows and the footer alike: grabbing the
+	// handle changes the column, never opens whatever happens to sit behind it.
+	if a.railSeamAt(x, y) {
+		a.railWiden(!a.railWide)
+		return nil, true
+	}
 	line, ok := a.railLineAt(y)
 	if !ok {
 		return nil, true
@@ -1673,7 +1680,7 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// cannot be pressed is a hint that is only for one of the two hands
 	// (task.go's [app.railFootRows]).
 	if line.hint {
-		a.railWiden(true)
+		a.railWiden(!a.railWide)
 		return nil, true
 	}
 	e, ok := a.railEntryAt(y)
@@ -1688,9 +1695,22 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	case e.root && line.glyph.holds(at):
 		a.railToggle(e.node)
 	default:
-		a.openRoomFor(e.node.id, e.node.title)
+		if e.node.run != "" {
+			a.openOrchRoom(e.node.run, e.node.node)
+		} else {
+			a.openRoomFor(e.node.id, e.node.title)
+		}
 	}
 	return a.takeRoomPump(), true
+}
+
+// railSeamAt reports whether a pointer is on the visible two-cell handle.
+func (a *app) railSeamAt(x, y int) bool {
+	if !a.railAt(x, y) || a.railFull() {
+		return false
+	}
+	left := a.railLeft()
+	return x >= left && x < left+ansi.StringWidth(railSeam)
 }
 
 // railAt reports whether a pointer at these coordinates is over the roster. It

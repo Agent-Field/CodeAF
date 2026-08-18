@@ -175,6 +175,10 @@ type taskNode struct {
 	// run anything adaptive, which is every session until one does.
 	parent string
 	paused bool
+	// run and node name this row's door inside an adaptive run. A root carries
+	// only run; a child carries both, so the same door opens the run's page at
+	// the card this row represents. Empty is an ordinary task, unchanged.
+	run, node string
 	// stopped says a PERSON ended this node rather than the work ending on its
 	// own (session's TaskNotice.Stopped). It rides beside the state rather than
 	// replacing it — a stopped node still settles as failed — and it is what the
@@ -1822,11 +1826,11 @@ const (
 	// keyboard (render.go's [app.hintWord]) — the keys [app.railKey] takes,
 	// quoted from the handler rather than authored twice.
 	railHoldHint = "↑↓ move · →← tree · enter open · w wide · esc"
-	// railWideHint is the one contextual line the footer grows, and only while a
-	// title is being cut by its own indent. It names the key and says what the
-	// key is for, because a bare "w" in a column of counts is a keystroke nobody
-	// would risk pressing.
-	railWideHint = "w · widen for the tree"
+	// The footer names both answers the handle can give. A bare "w" in a column
+	// of counts is a keystroke nobody would risk pressing, and a handle whose
+	// return trip is not named is only half an affordance.
+	railWideHint   = "w · click seam — widen"
+	railNarrowHint = "w · click seam — narrow"
 )
 
 // railGroup is what a node is DOING, which is the only thing the roster sorts
@@ -2510,6 +2514,8 @@ func (a *app) railRows(height int) []string {
 	seam := a.pal.dim(railSeam)
 	if a.railFull() {
 		seam = strings.Repeat(" ", ansi.StringWidth(railSeam))
+	} else if a.hoveringRailSeam() {
+		seam = a.pal.hover(a.pal.accent(railSeam), ansi.StringWidth(railSeam))
 	}
 	room := a.railRoom()
 	entries := a.railEntries()
@@ -2793,7 +2799,11 @@ func (a *app) railEnter() tea.Cmd {
 		return nil
 	}
 	node := entries[at].node
-	a.openRoomFor(node.id, node.title)
+	if node.run != "" {
+		a.openOrchRoom(node.run, node.node)
+	} else {
+		a.openRoomFor(node.id, node.title)
+	}
 	return a.takeRoomPump()
 }
 
@@ -2856,7 +2866,11 @@ func (a *app) railFootRows(width, height int) ([]string, int) {
 			segs = append(segs, itoa(n)+" "+railGroupWords[g])
 		}
 	}
-	offer := a.railOffersWide() && ansi.StringWidth(railWideHint) <= width
+	hintText := railWideHint
+	if a.railWide {
+		hintText = railNarrowHint
+	}
+	offer := a.railOffersResize() && ansi.StringWidth(hintText) <= width
 	if len(segs) == 0 && !offer {
 		return nil, -1
 	}
@@ -2877,20 +2891,20 @@ func (a *app) railFootRows(width, height int) ([]string, int) {
 	hint := -1
 	if offer && len(out)+1 < height {
 		hint = len(out)
-		out = append(out, a.pal.dim(railWideHint))
+		out = append(out, a.pal.dim(hintText))
 	}
 	return out, hint
 }
 
-// railOffersWide reports whether the widen hint has anything to offer: a title
-// the indent cut on the frame just laid out, a column that is not already wide,
-// and a frame with the columns to lend.
-func (a *app) railOffersWide() bool {
-	if a.railWide || !a.railCramped {
+// railOffersResize reports whether the footer should name the handle. A cut
+// title earns the offer on its own; focus and the pointer make it visible while
+// a person is already acting on the roster. The frame still has the final say.
+func (a *app) railOffersResize() bool {
+	width, _ := a.size()
+	if width < railFloor || a.railFull() {
 		return false
 	}
-	width, _ := a.size()
-	return width >= railFloor && !a.railFull()
+	return a.railCramped || a.railHold || a.hoveringRailArea()
 }
 
 // railSigma opens the footer's first line, and it is the whole of what makes the
@@ -3839,6 +3853,15 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// parent's own id spelled the way [stripKey] spells a node's.
 	if notice.Parent != 0 {
 		node.parent = itoa(int(notice.Parent))
+	}
+	// THE RUN DOOR IS KEPT AND NEVER UNSET. Belonging to an adaptive run and
+	// the node's place inside it are facts for the row's whole life; an update
+	// quiet about either one has not turned it back into an ordinary task.
+	if notice.Run != "" {
+		node.run = notice.Run
+	}
+	if notice.Node != "" {
+		node.node = notice.Node
 	}
 	if notice.Branch != "" {
 		node.branch = notice.Branch

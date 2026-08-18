@@ -3400,7 +3400,9 @@ func clickRail(t *testing.T, a *app, node int) {
 	if at < 0 {
 		t.Fatalf("the roster has no node row %d", node)
 	}
-	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: at, Button: tea.MouseLeft})
+	// The press lands on the row's first TEXT cell: the two cells before it are
+	// the seam, which is the column's resize handle now (room.go's railPress).
+	drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + ansi.StringWidth(railSeam), Y: at, Button: tea.MouseLeft})
 }
 
 // openRoomCall clicks the page's row carrying this text, the way a person opens
