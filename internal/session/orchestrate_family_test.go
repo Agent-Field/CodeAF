@@ -48,7 +48,7 @@ func node(id, goal string, state orchestrate.State) orchestrate.NodeStatus {
 // the tasker's.
 func TestARunRegistersItsNodesAsAFamily(t *testing.T) {
 	agent, updates := familyAgent(t)
-	family := agent.newOrchestrateFamily("audit the pricing code", "cheap/model")
+	family := agent.newOrchestrateFamily("audit the pricing code", "cheap/model", "run-pricing")
 
 	family.upsert([]orchestrate.NodeStatus{
 		node("n1", "read the tariff table", orchestrate.Running),
@@ -66,6 +66,9 @@ func TestARunRegistersItsNodesAsAFamily(t *testing.T) {
 	if root.Title != "audit the pricing code" || root.State != TaskRunning || root.Model != "cheap/model" {
 		t.Fatalf("the run's row is %+v", root)
 	}
+	if root.Run != "run-pricing" || root.Node != "" {
+		t.Fatalf("the run's identity is run=%q node=%q", root.Run, root.Node)
+	}
 	for _, kid := range notices[1:] {
 		if kid.Parent != root.ID {
 			t.Fatalf("node row %d hangs off %d, want the run %d", kid.ID, kid.Parent, root.ID)
@@ -73,6 +76,12 @@ func TestARunRegistersItsNodesAsAFamily(t *testing.T) {
 		if kid.ID == root.ID {
 			t.Fatal("a node took the run's own id")
 		}
+		if kid.Run != "run-pricing" || kid.Node == "" {
+			t.Fatalf("the node's identity is run=%q node=%q", kid.Run, kid.Node)
+		}
+	}
+	if notices[1].Node != "n1" || notices[2].Node != "n2" {
+		t.Fatalf("the node identities published are %q / %q", notices[1].Node, notices[2].Node)
 	}
 	if notices[1].State != TaskRunning || notices[2].State != TaskQueued {
 		t.Fatalf("the states published are %s / %s", notices[1].State, notices[2].State)
@@ -160,7 +169,7 @@ func TestAFailedNodesRowSaysWhatStoppedIt(t *testing.T) {
 // that no longer exists.
 func TestAPlannerCancelSettlesTheRowItLeftBehind(t *testing.T) {
 	agent, updates := familyAgent(t)
-	family := agent.newOrchestrateFamily("audit the pricing code", "")
+	family := agent.newOrchestrateFamily("audit the pricing code", "", "run-pricing")
 	family.upsert([]orchestrate.NodeStatus{
 		node("n1", "read the tariff table", orchestrate.Running),
 		node("n2", "read the invoice writer", orchestrate.Queued),
@@ -175,6 +184,9 @@ func TestAPlannerCancelSettlesTheRowItLeftBehind(t *testing.T) {
 	}
 	if notices[0].State != TaskFailed || !notices[0].Stopped {
 		t.Fatalf("the cancelled row is %+v, want a stopped one", notices[0])
+	}
+	if notices[0].Run != "run-pricing" || notices[0].Node != "n2" {
+		t.Fatalf("the cancelled row's identity is run=%q node=%q", notices[0].Run, notices[0].Node)
 	}
 	// And it is said once: the node stays gone, and the row stays settled.
 	family.upsert([]orchestrate.NodeStatus{node("n1", "read the tariff table", orchestrate.Running)})
@@ -214,7 +226,7 @@ func TestTheRunsRowSettlesTheWayTheRunDid(t *testing.T) {
 	} {
 		t.Run(want.name, func(t *testing.T) {
 			agent, updates := familyAgent(t)
-			family := agent.newOrchestrateFamily("audit the pricing code", "")
+			family := agent.newOrchestrateFamily("audit the pricing code", "", "run-pricing")
 			familyNotices(t, updates)
 
 			family.settle(want.snap, want.err)
@@ -226,10 +238,22 @@ func TestTheRunsRowSettlesTheWayTheRunDid(t *testing.T) {
 			if row.ID != family.root || row.Parent != 0 {
 				t.Fatalf("the ending landed on row %d (parent %d)", row.ID, row.Parent)
 			}
+			if row.Run != "run-pricing" || row.Node != "" {
+				t.Fatalf("the ending's identity is run=%q node=%q", row.Run, row.Node)
+			}
 			if row.State != want.state || row.Stopped != want.stopped || row.Report != want.report {
 				t.Fatalf("the run's last row is %+v", row)
 			}
 		})
+	}
+}
+
+func TestOrchestrateNodeJournalAnswersOnlyForKnownWork(t *testing.T) {
+	agent, _ := familyAgent(t)
+	for _, tc := range [][2]string{{"", "n1"}, {"run-pricing", ""}, {"no-such-run", "n1"}} {
+		if got, ok := agent.OrchestrateNodeJournal(tc[0], tc[1]); ok || got != "" {
+			t.Fatalf("%q/%q produced journal %q, %v", tc[0], tc[1], got, ok)
+		}
 	}
 }
 
