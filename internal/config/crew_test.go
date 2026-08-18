@@ -37,6 +37,40 @@ func TestTheShippedTierDefaultsAreExactlyTheBalancedCrew(t *testing.T) {
 	}
 }
 
+func TestCrewPresetsNameTheApprovedModels(t *testing.T) {
+	want := map[string]map[string]string{
+		CrewFrugal: {
+			ModelTierReflex:     "nex-agi/nex-n2-mini",
+			ModelTierLow:        "deepseek/deepseek-v4-flash",
+			ModelTierHigh:       "qwen/qwen3.8-27b",
+			ModelTierMastermind: "qwen/qwen3.8-27b",
+		},
+		CrewBalanced: {
+			ModelTierReflex:     "nex-agi/nex-n2-mini",
+			ModelTierLow:        "deepseek/deepseek-v4-flash",
+			ModelTierHigh:       "qwen/qwen3.8-27b",
+			ModelTierMastermind: "moonshotai/kimi-k3:low",
+		},
+		CrewMax: {
+			ModelTierReflex:     "nex-agi/nex-n2-mini",
+			ModelTierLow:        "deepseek/deepseek-v4-pro",
+			ModelTierHigh:       "moonshotai/kimi-k3",
+			ModelTierMastermind: "moonshotai/kimi-k3:high",
+		},
+	}
+	for preset, expected := range want {
+		got, ok := CrewModels(preset)
+		if !ok {
+			t.Fatalf("there is no %s preset", preset)
+		}
+		for _, tier := range ModelTiers {
+			if got[tier] != expected[tier] {
+				t.Errorf("%s sets %s to %q, want %q", preset, tier, got[tier], expected[tier])
+			}
+		}
+	}
+}
+
 // Every preset names every class, and every model in it is a whole slug. A
 // preset with a gap in it would write a blank into a tier row, which means
 // "follow the conversation" — the opposite of choosing a crew.
