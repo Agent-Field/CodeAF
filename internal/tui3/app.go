@@ -632,6 +632,8 @@ type app struct {
 	// crewPick is the three-row /crew chooser (crew.go). It is separate from the
 	// model picker because it has no filter and every item always takes two lines.
 	crewPick crewPicker
+	// taskPick is /task's two-row answer after the sizing call found useful parallel work.
+	taskPick taskChooser
 	// memPanel is /memory's filterable view of the durable memory store.
 	memPanel memoryPanel
 	// memory is the store the panel reads and changes. It is optional because
@@ -1674,6 +1676,33 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case compactedMsg:
 		if msg.err != nil {
 			a.note("compact failed: " + msg.err.Error())
+		}
+		return a, nil
+
+	case taskSizedMsg:
+		a.settleSizing()
+		door, ok := a.agent.(taskCommandAgent)
+		if !msg.parallel || !ok {
+			if !ok {
+				a.note("could not start the task · this session has no task door")
+				return a, nil
+			}
+			return a, a.startTaskDoor(door, "single", msg.brief, "")
+		}
+		a.closeLists()
+		hint := strings.Join(msg.parts, " · ")
+		if msg.why != "" {
+			hint += " · " + msg.why
+		}
+		a.taskPick = taskChooser{open: true, brief: msg.brief, hint: hint, parts: msg.parts, why: msg.why, planner: door.TaskPlannerModel()}
+		a.touch()
+		return a, nil
+
+	case taskStartedMsg:
+		if msg.err != nil {
+			a.note("could not start the task · " + msg.err.Error())
+		} else {
+			a.note(msg.kind + " task " + msg.id + " started · " + msg.title)
 		}
 		return a, nil
 
@@ -3189,6 +3218,9 @@ func (a *app) slash(line string) tea.Cmd {
 		a.runCrew(rest)
 		return nil
 
+	case "task":
+		return a.runTaskCommand(rest)
+
 	case "status":
 		// The status line's whole list, said in the transcript. It is an ANSWER
 		// rather than a panel: a person who asked a question about their session
@@ -3681,6 +3713,7 @@ func (a *app) closeLists() {
 	a.menu.close()
 	a.comp.close()
 	a.harnPick.close()
+	a.taskPick.close()
 }
 
 // ── the context meter ───────────────────────────────────────────────────────

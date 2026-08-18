@@ -6,10 +6,21 @@ A task is one self-contained piece of work handed off to run on its own while th
 conversation carries on. It works from a written brief alone — it never sees the
 conversation — in its own copy of the repository, and it reports back when it lands.
 
-You do not start one directly. You ask for the work in words, and the model grooms it and
-calls its `propose_task` tool. You then get a card asking whether the work should go. The
+You can ask for the work in words, and the model grooms it and calls its `propose_task`
+tool. You then get a card asking whether the work should go. The
 model's window onto work that is running or already landed is its `tasks` tool; that is
 also the door it uses to steer a task or to settle one, when you say so in conversation.
+
+You can also start one directly with `/task <brief>`. That form asks a small sizing judge
+“can this parallelize?” and only surfaces the judge when its answer is yes. A yes opens a
+two-row chooser with `adaptive` recommended and `single` below it; the adaptive row shows
+the proposed parts and planner model. Arrow keys move and enter starts the chosen shape.
+Esc means “just do it” and starts single rather than cancelling the work. A no, timeout,
+or unreadable answer starts single in silence after `sizing it up…` disappears.
+
+`/task solo <brief>` skips the judge and starts single. `/task adaptive <brief>` also skips
+the judge and starts the planner run. These direct forms use the brief exactly as the work
+request, so include the relevant files, constraints, and checks.
 
 Every task carries a title, a short summary, the brief, and a done-condition — the command
 that must pass, the behaviour that must hold, the output that must appear. The brief and
