@@ -138,9 +138,13 @@ const harnessDesigningWord = "designing"
 // designs this", and the whole point of asking early is that the note and the
 // design agree.
 func (a *Agent) designerModel(named string) string {
+	return a.designerCall(named).model
+}
+
+func (a *Agent) designerCall(named string) roleRequest {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.harnessDesignModel(named)
+	return a.harnessDesignCall(named)
 }
 
 // harnessDesignModel is what the design AND ITS REVIEW think with — one model
@@ -154,13 +158,39 @@ func (a *Agent) designerModel(named string) string {
 // is the session's own model, so an install with no tiers set designs as it
 // always did. It is called with a.mu held.
 func (a *Agent) harnessDesignModel(named string) string {
+	return a.harnessDesignCall(named).model
+}
+
+func (a *Agent) harnessDesignCall(named string) roleRequest {
 	if named = strings.TrimSpace(named); named != "" {
-		return named
+		return roleRequest{model: named}
 	}
-	if model, err := roles.Resolve(roles.Source(a.config.RolesSource), roles.RoleDesigner, a.model); err == nil {
-		return model
+	if call, err := roles.ResolveCall(roles.Source(a.config.RolesSource), roles.RoleDesigner, a.model); err == nil {
+		return newRoleRequest(call)
 	}
-	return a.model
+	return roleRequest{model: a.model}
+}
+
+// roleRequest is the provider-facing half of a resolved role call. Invalid or
+// empty effort remains absent, preserving the old request context exactly.
+type roleRequest struct {
+	model  string
+	effort provider.Effort
+}
+
+func newRoleRequest(call roles.Call) roleRequest {
+	effort, ok := provider.ParseEffort(call.Effort)
+	if !ok {
+		effort = provider.EffortNone
+	}
+	return roleRequest{model: call.Model, effort: effort}
+}
+
+func (r roleRequest) context(ctx context.Context) context.Context {
+	if r.effort == provider.EffortNone {
+		return ctx
+	}
+	return provider.WithConfiguredReasoningEffort(ctx, r.effort)
 }
 
 // emitHarness puts one design event in front of whoever is watching.

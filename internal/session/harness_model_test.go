@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 )
 
@@ -272,6 +273,42 @@ func TestTheDesignerResolvesItsRole(t *testing.T) {
 	})
 	if got := agent.harnessDesignModel(""); got != "test/pinned-model" {
 		t.Fatalf("a pinned designer thinks with %q", got)
+	}
+}
+
+func TestTheDesignerCarriesTierEffortAndRejectsCallerGarbage(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierMastermind): "test/brain-model:low",
+		})
+	})
+	call := agent.harnessDesignCall("")
+	if call.model != "test/brain-model" || call.effort != provider.EffortLow {
+		t.Fatalf("designer call = %#v, want brain-model at low", call)
+	}
+	garbage := newRoleRequest(roles.Call{Model: "test/brain-model", Effort: "maximum"})
+	if got := provider.ReasoningEffortFrom(garbage.context(context.Background())); got != provider.EffortNone {
+		t.Fatalf("garbage effort reached context as %q", got)
+	}
+}
+
+func TestHarnessDesignRequestsCarryTierEffort(t *testing.T) {
+	completer := designingCompleter()
+	agent, _ := buildAgent(t, completer, t.TempDir())
+	agent.config.RolesSource = tierSettings(map[string]string{
+		roles.TierKey(roles.TierMastermind): "test/brain-model:low",
+	})
+	lane := agent.HarnessDesigns()
+	submitBuild(t, agent)
+	_ = nextDesign(t, lane)
+	_ = nextDesign(t, lane)
+	completer.mu.Lock()
+	defer completer.mu.Unlock()
+	if len(completer.models) == 0 || completer.models[0] != "test/brain-model" {
+		t.Fatalf("design model = %v, want suffix-free brain-model", completer.models)
+	}
+	if len(completer.efforts) == 0 || completer.efforts[0] != provider.EffortLow {
+		t.Fatalf("design efforts = %v, want low", completer.efforts)
 	}
 }
 

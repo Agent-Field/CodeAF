@@ -132,7 +132,8 @@ func (a *Agent) buildHarnessTool() bare.Tool {
 			if goal == "" {
 				return "Invalid arguments: build_harness needs a goal — what the harness must do, written for a designer that cannot see this conversation.", true, nil
 			}
-			model := a.designerModel("")
+			call := a.designerCall("")
+			model := call.model
 			// THE LINE GOES OUT BEFORE THE NODE DOES. Admitting a design starts it
 			// immediately — it has no dependencies and takes no slot — and a design
 			// that finished quickly would put its card on the lane in front of the
@@ -150,7 +151,7 @@ func (a *Agent) buildHarnessTool() bare.Tool {
 				// number at all (session.go's EventHarnessDesign).
 				Task: &TaskNotice{ID: id},
 			})
-			a.admitHarnessDesign(id, goal, model)
+			a.admitHarnessDesign(id, goal, call)
 			return fmt.Sprintf("task %d is designing a harness for: %s", id, goal) +
 				"\nIt takes a minute or two and runs as that task, beside this conversation: the person can open task " +
 				strconv.FormatUint(id, 10) +

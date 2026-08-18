@@ -30,10 +30,11 @@ import (
 type step func(ctx context.Context, messages []ai.Message) (*ai.Response, error)
 
 type scriptedCompleter struct {
-	mu     sync.Mutex
-	steps  []step
-	seen   [][]ai.Message
-	models []string
+	mu      sync.Mutex
+	steps   []step
+	seen    [][]ai.Message
+	models  []string
+	efforts []provider.Effort
 }
 
 func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
@@ -50,6 +51,7 @@ func (s *scriptedCompleter) CompleteWithMessages(ctx context.Context, messages [
 	copy(snapshot, messages)
 	s.seen = append(s.seen, snapshot)
 	s.models = append(s.models, request.Model)
+	s.efforts = append(s.efforts, provider.ReasoningEffortFrom(ctx))
 	var next step
 	if index < len(s.steps) {
 		next = s.steps[index]
