@@ -2,8 +2,8 @@ package session
 
 // BPE working state: what is TRUE right now, and what is OPEN.
 //
-// The session already had experience memory — note and forget, one durable file
-// of standing facts across sessions (memory.go) — and nothing else. Everything a
+// The session already had experience memory — a handful of standing facts about
+// the person, carried across sessions (memory.go) — and nothing else. Everything a
 // turn learned about the work in front of it lived in exactly one place: the
 // transcript. That is the whole problem this file exists for. A transcript is
 // the one structure compaction destroys, so every compaction pass had to

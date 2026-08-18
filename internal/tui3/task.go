@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -1702,42 +1703,46 @@ func countdownWord(d time.Duration) string {
 // So the column keeps EVERY node the session has admitted, and it survives
 // hundreds of them by four mechanisms and no new scroll machinery:
 //
-//   - ATTENTION FIRST, AND ATTENTION MEANS A DEMAND. Five groups, in the order a
-//     person needs them — what is waiting on a decision of theirs, what is
-//     running, what is waiting for a slot, what is parked behind other work,
-//     what is over — and newest first inside each, because the node you just
-//     started is the node you are watching. This is the one law the old rail
-//     stated and this file now overturns ("a list that reordered itself would
-//     move the row a person is watching"): at three rows admission order IS the
-//     shape, and at three hundred it is a haystack. The order is stable in the
-//     way that matters — a row moves when its STATE moves, which is the one
-//     event a person is watching for anyway.
+//   - IT IS A FOREST AND NOT FIVE BUCKETS. The column used to open with five
+//     state headings — needs you, running, idle, parked, done — and file every
+//     node under one of them, which scattered ONE run across four sections: the
+//     root under `running`, its finished cuts under `done`, the one that
+//     conflicted at the top of the column, and nothing on screen saying they
+//     were the same piece of work. A shape is the news an adaptive run makes
+//     (internal/orchestrate spawns as it learns), and the state of a single node
+//     inside it is a detail. So a family is drawn WHOLE, under its own root, in
+//     the order the session admitted it — and a node that belongs to no family
+//     is the flat row it has always been.
 //
-//     The leading group holds ONLY the work that will not move without a person:
-//     a landing nobody could judge, and work that finished on a branch that
-//     never came home. A plain failure is not one of those — the engine has
-//     already spent its repair rounds on it by the time it lands — so it is
-//     settled news and it goes in the fold with the rest of the record. That
-//     argument is made in full at [app.railGroupOf], and it is the reason this
-//     group can be the one group that never folds.
-//   - THE TAIL IS FOLDED, AND THE INCOMPLETE WORK IS AT THE FRONT OF IT.
-//     `parked` and `done` open closed, one heading each with its population on
-//     it: a hundred and forty-eight settled nodes are a fact, not a hundred and
-//     forty-eight rows. Inside `done`, 8.1.7's finalized-list clause holds — the
-//     nodes that did not come off claim the slots first ([railFinalOrder]) —
-//     because a fold a person opens is a fold they are searching.
+//     What the headings sorted, the ORDER of the families still says: a family
+//     stands where its most urgent member puts it ([app.railUrgency]), so work
+//     that is waiting on a person is at the top of the column and a settled run
+//     is at the bottom, whole, one row deep.
+//   - FOLDING IS THE PERSON'S, PER FAMILY, AND IT HAS A DEFAULT WORTH HAVING. A
+//     family with anything live in it opens; a family that is entirely settled —
+//     or entirely parked — opens as one row wearing the worst thing that
+//     happened under it and a count of what it is standing for. The map is the
+//     person's correction of that default and it sticks ([app.railShut]).
 //   - THE COLUMN IS A WINDOW. What shows is a slice of the line list around the
 //     focus, taken by [listTop] — the same function the model picker and the two
 //     typed lists scroll with, because a second scroller on this surface would be
 //     a second set of off-by-ones.
 //   - THE FOOTER SAYS THE WHOLE. What the window cannot show — the spend, the
-//     weight, the count of everything folded away — is one dim block at the
-//     bottom of the column.
+//     weight, the count of every state the forest has folded into a shape — is
+//     one dim block at the bottom of the column, in the group vocabulary the
+//     headings used to carry.
 //
 // THE KEYBOARD IS ASKED FOR, NEVER TAKEN (ctrl+t, esc to give it back). The
 // draft is this surface's rest state and a map that stole keys from it would
 // make typing a thing you check before you do — see the marker law at
 // [app.railRows].
+//
+// AND THE COLUMN WIDENS ON DEMAND (w). A tree spends three cells a level, and
+// three levels of indent inside thirty columns is a list of first words. The
+// wide tier is a third width the person asks for and never a width the surface
+// takes: it is charged against the conversation like the other two, and the one
+// piece of chrome that says it exists is a hint that appears only while a title
+// is actually being cut by its own indent ([app.railFootRows]).
 
 const (
 	// railCols is the whole charge a full rail makes on the frame: the seam,
@@ -1746,6 +1751,13 @@ const (
 	// railSlimCols is the charge under a narrower frame: the same column,
 	// tighter.
 	railSlimCols = 24
+	// railWideCols is the charge of a column a person has ASKED to widen (w,
+	// [app.railKey]). Forty-six is thirty plus five levels of indent, which is
+	// deeper than any run this surface has drawn — the point of the tier is that
+	// a tree stops eating its own names, not that it can nest forever. It is
+	// charged against the conversation exactly like the other two, which is why
+	// it is a key and not a default.
+	railWideCols = 46
 	// railFloor is the frame a FULL rail takes. Under it the conversation
 	// would be reading at ninety columns to keep a column of titles on screen.
 	railFloor = 120
@@ -1764,8 +1776,15 @@ const (
 	railMarkASCII = "> "
 )
 
-// The disclosure marks a group heading wears, and their ASCII stand-ins: closed
+// The disclosure marks a family root wears, and their ASCII stand-ins: closed
 // points at what it is hiding, open points down at what it showed.
+//
+// THEY ARE DRAWN UNDER THE POINTER AND NOWHERE ELSE (see [app.railEntryRows]).
+// A triangle on every root at rest is a column of widgets; a triangle that
+// appears in the glyph cell the moment the pointer is over the row is the
+// affordance arriving exactly when there is a hand to use it. What a FOLDED
+// family shows at rest is its count instead — there is something hidden, and a
+// count is the one thing a person cannot discover by hovering.
 const (
 	glyphShut      = "▸"
 	glyphShutASCII = ">"
@@ -1773,15 +1792,38 @@ const (
 	glyphOpenASCII = "v"
 )
 
-// What a heading offers the keyboard, said on the heading itself and only when
-// it is focused (see [app.railHeading]).
+// The tree's connectors and the three cells each level of it costs.
+//
+// THEY ARE NOT [railMid] AND [railLast], and the difference is what the arrow
+// means. The transcript's fold hangs DETAIL off a row — "here is what is inside
+// this call" — and an arrow pointing into it is the right mark for that. A
+// roster tree hangs WORK off work, sibling beside sibling, and the plain elbow
+// is what every tree a person has ever read is drawn with.
+//
+// The stand-ins are the linear tier's law (styles.go): a shape that means
+// something gets a spelling that means the same thing out loud.
 const (
-	railOpenHint = "enter/→ expand"
-	railFoldHint = "enter/← collapse"
+	treeBranch      = "├─ "
+	treeLast        = "└─ "
+	treeStem        = "│  "
+	treeVoid        = "   "
+	treeBranchASCII = "|- "
+	treeLastASCII   = "`- "
+	treeStemASCII   = "|  "
+	treeIndentCols  = 3
+)
+
+// What the keyboard offers while the roster holds it.
+const (
 	// railHoldHint is what the legend's hint slot says while the roster has the
-	// keyboard (render.go's [app.hintWord]) — the same six keys [app.railKey]
-	// takes, quoted from the handler rather than authored twice.
-	railHoldHint = "↑↓ move · →← fold · enter open · esc"
+	// keyboard (render.go's [app.hintWord]) — the keys [app.railKey] takes,
+	// quoted from the handler rather than authored twice.
+	railHoldHint = "↑↓ move · →← tree · enter open · w wide · esc"
+	// railWideHint is the one contextual line the footer grows, and only while a
+	// title is being cut by its own indent. It names the key and says what the
+	// key is for, because a bare "w" in a column of counts is a keystroke nobody
+	// would risk pressing.
+	railWideHint = "w · widen for the tree"
 )
 
 // railGroup is what a node is DOING, which is the only thing the roster sorts
@@ -1896,64 +1938,72 @@ func taskUndelivered(node *taskNode) bool {
 	return false
 }
 
-// railShut reports whether a group is drawn as its heading alone.
+// railShut reports whether a family is drawn as its root alone.
 //
-// The default is the design and the map is the person's correction of it, which
-// is why this is not a plain bool per group: a group nobody has touched must
-// follow the default even after its population changes underneath it.
-func (a *app) railShut(g railGroup) bool {
-	if open, said := a.railOpen[g]; said {
+// THE DEFAULT IS THE DESIGN AND THE MAP IS THE PERSON'S CORRECTION OF IT, which
+// is why this is not a plain bool per node: a family nobody has touched must
+// follow the default even as the work under it moves. A family with anything
+// live in it — running, waiting on a person, or waiting for a slot — is open,
+// because that is the shape somebody is watching; a family that has entirely
+// settled, or that is entirely parked behind other work, is one row with a count
+// on it.
+func (a *app) railShut(node *taskNode) bool {
+	if open, said := a.railOpen[node.id]; said {
 		return !open
 	}
-	return g == railParked || g == railDone
+	return !a.railKinLive(node)
 }
 
-// railSetOpen folds a group open or closed.
-func (a *app) railSetOpen(g railGroup, open bool) {
-	if a.railOpen == nil {
-		a.railOpen = map[railGroup]bool{}
-	}
-	if a.railShut(g) == !open {
+// railSetOpen folds one family open or closed.
+func (a *app) railSetOpen(node *taskNode, open bool) {
+	if node == nil {
 		return
 	}
-	a.railOpen[g] = open
+	if a.railOpen == nil {
+		a.railOpen = map[uint64]bool{}
+	}
+	if a.railShut(node) == !open {
+		return
+	}
+	a.railOpen[node.id] = open
 	a.touch()
 }
 
-// railToggle is what enter on a heading does.
-func (a *app) railToggle(g railGroup) { a.railSetOpen(g, a.railShut(g)) }
+// railToggle is what a press on a root's glyph cell does.
+func (a *app) railToggle(node *taskNode) { a.railSetOpen(node, a.railShut(node)) }
 
-// railEntry is one navigable thing in the roster: a group's heading, or a node
-// under an open one.
+// railEntry is one navigable row of the roster: a node, and where in its family
+// it hangs.
 type railEntry struct {
-	group railGroup
-	// node is the node this row is about, or nil on a heading.
 	node *taskNode
-	// count is a heading's population, and it is carried on the entry rather
-	// than recounted at paint time so the heading and the footer cannot disagree
-	// about how many nodes are folded behind one line.
-	count int
+	// stems is the ancestry as the connectors need it: one entry per level, true
+	// where that level's node still has siblings to come. Its length is the
+	// node's depth, so a root's is empty and a root has no connector.
+	stems []bool
+	// root says this node HEADS a family — it has children, so it is the one row
+	// in the family that folds. A node that belongs to no family is not a root:
+	// it is the flat row this column has always drawn.
+	root bool
+	// folded says this root is standing for its whole subtree, and hidden is how
+	// many nodes it is standing for. Both are zero on every other row.
+	folded bool
+	hidden int
 }
 
-// railSpot names an entry by IDENTITY rather than by index, and it is what the
+// railSpot names a row by IDENTITY rather than by index, and it is what the
 // focus is stored as.
 //
-// An index would be a cursor that jumps: a node landing moves it between groups,
-// a heading folding takes a hundred and forty-eight rows out from under it, and
-// both of those happen while nobody is touching the keyboard. A (group, id) pair
-// survives all of it, and when the thing it names is genuinely gone the fallback
-// is its heading — which is where its rows went.
-type railSpot struct {
-	group railGroup
-	// id is the node's, or zero for the group's heading.
-	id uint64
-}
+// An index would be a cursor that jumps: work landing reorders the families, a
+// fold takes a subtree out from under it, and both happen while nobody is
+// touching the keyboard. An id survives all of it, and when the node it names is
+// genuinely gone the walk clamps rather than teleporting.
+type railSpot struct{ id uint64 }
 
 func railSpotOf(e railEntry) railSpot {
 	if e.node == nil {
-		return railSpot{group: e.group}
+		return railSpot{}
 	}
-	return railSpot{group: e.group, id: e.node.id}
+	return railSpot{id: e.node.id}
 }
 
 // railMembers buckets every node this session has admitted, NEWEST FIRST inside
@@ -2013,22 +2063,199 @@ func railFinalOrder(nodes []*taskNode) []*taskNode {
 	return out
 }
 
-// railEntries is the roster's row model: every non-empty group's heading, and
-// the nodes of the groups that are open.
+// ── THE FOREST ──────────────────────────────────────────────────────────────
+
+// railTwig is one node of a family as the roster holds it: the node and the
+// children the session admitted under it.
+//
+// It is a shape of its own rather than a flat list of (node, depth) pairs
+// because every question the column asks is about a SUBTREE — is anything under
+// this live, what is the worst thing that happened in it, how many rows is it
+// standing for — and a depth-tagged list answers those by scanning forward for
+// the next row at the same depth, which is a tree with its structure taken out
+// and then guessed back.
+type railTwig struct {
+	node *taskNode
+	kids []*railTwig
+}
+
+// railKin buckets every node this session has admitted by its parent's key, and
+// indexes them all by their own.
+//
+// It walks [app.taskOrder], so a parent's children come out in the order the
+// session met them — the one order a family is allowed to use, because any other
+// one moves a row a person is watching for a reason they cannot see. The
+// alphabet is the parent seam's ([taskNode.ParentID] and [stripKey],
+// taskstrip.go): an orchestrate node id is a string, and "" is an honest
+// "nobody spawned this".
+func (a *app) railKin() (kids map[string][]*taskNode, byKey map[string]*taskNode) {
+	byKey = make(map[string]*taskNode, len(a.taskOrder))
+	for _, id := range a.taskOrder {
+		if node := a.tasks[id]; node != nil {
+			byKey[stripKey(node)] = node
+		}
+	}
+	for _, id := range a.taskOrder {
+		node := a.tasks[id]
+		if node == nil {
+			continue
+		}
+		up := node.ParentID()
+		if up == "" || up == stripKey(node) || byKey[up] == nil {
+			continue
+		}
+		if kids == nil {
+			kids = map[string][]*taskNode{}
+		}
+		kids[up] = append(kids[up], node)
+	}
+	return kids, byKey
+}
+
+// railRootOf walks up to the head of a node's family.
+//
+// The visited set is not defensive tidiness: the parent is written by an adapter
+// this package does not own ([taskNode.ParentID]), and a cycle in it would be a
+// frame that never returns rather than a frame that looks wrong.
+func railRootOf(node *taskNode, byKey map[string]*taskNode) *taskNode {
+	seen := map[string]bool{}
+	for {
+		key := stripKey(node)
+		if seen[key] {
+			return node
+		}
+		seen[key] = true
+		up := byKey[node.ParentID()]
+		if up == nil {
+			return node
+		}
+		node = up
+	}
+}
+
+// railGrow builds one family, depth first, in the order the session met it. The
+// visited set carries the same law [railRootOf] states.
+func railGrow(node *taskNode, kids map[string][]*taskNode, seen map[string]bool) *railTwig {
+	key := stripKey(node)
+	twig := &railTwig{node: node}
+	if seen[key] {
+		return twig
+	}
+	seen[key] = true
+	for _, kid := range kids[key] {
+		twig.kids = append(twig.kids, railGrow(kid, kids, seen))
+	}
+	return twig
+}
+
+// count is every node under this twig, its own row not included — what a folded
+// root has to say it is standing for.
+func (t *railTwig) count() int {
+	n := 0
+	for _, kid := range t.kids {
+		n += 1 + kid.count()
+	}
+	return n
+}
+
+// railForest is every family this session has, each in the order it was
+// admitted, and the roots in the order the column draws them.
+//
+// A FAMILY STANDS WHERE ITS MOST URGENT MEMBER PUTS IT. The headings are gone
+// and this is what replaced them: the work that will not move without a person
+// is at the top of the column, then what is running, then what is waiting, then
+// what is parked, then what is over — the same five words the footer counts in,
+// applied to a whole run rather than to one node of it. Ties are broken by the
+// root's own arrival order, which is the order [app.taskOrder] is already in, so
+// two settled runs never trade places while nobody is looking.
+func (a *app) railForest() []*railTwig {
+	kids, byKey := a.railKin()
+	seen, grown := map[string]bool{}, map[string]bool{}
+	var trees []*railTwig
+	for _, id := range a.taskOrder {
+		node := a.tasks[id]
+		if node == nil {
+			continue
+		}
+		root := railRootOf(node, byKey)
+		key := stripKey(root)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		trees = append(trees, railGrow(root, kids, grown))
+	}
+	// A STABLE SORT AND NOT A COMPARISON ON ARRIVAL. The slice is already in root
+	// arrival order, so stability IS the tie-break — spelling the tie out in the
+	// comparison would be the same law written twice.
+	sort.SliceStable(trees, func(i, j int) bool {
+		return a.railTreeUrgency(trees[i]) < a.railTreeUrgency(trees[j])
+	})
+	return trees
+}
+
+// railTreeUrgency is the family's place in the column: the most urgent thing in
+// it, in the group order this file already sorts by ([railGroup]'s constants are
+// that order).
+func (a *app) railTreeUrgency(t *railTwig) railGroup {
+	worst := a.railGroupOf(t.node)
+	for _, kid := range t.kids {
+		if g := a.railTreeUrgency(kid); g < worst {
+			worst = g
+		}
+	}
+	return worst
+}
+
+// railKinLive reports whether anything in this node's family is still moving or
+// still waiting on somebody: it is the fold's default, and it is asked of the
+// root ([app.railShut]).
+func (a *app) railKinLive(node *taskNode) bool {
+	kids, _ := a.railKin()
+	return a.railTwigLive(railGrow(node, kids, map[string]bool{}))
+}
+
+func (a *app) railTwigLive(t *railTwig) bool {
+	switch a.railGroupOf(t.node) {
+	case railAttention, railRunning, railIdle:
+		return true
+	}
+	if t.node.Paused() {
+		return true
+	}
+	for _, kid := range t.kids {
+		if a.railTwigLive(kid) {
+			return true
+		}
+	}
+	return false
+}
+
+// railEntries is the roster's row model: every family, whole, under its own
+// root, with the folded ones standing at one row each.
 func (a *app) railEntries() []railEntry {
-	members := a.railMembers()
-	out := make([]railEntry, 0, len(a.taskOrder)+int(railGroupCount))
-	for g := railGroup(0); g < railGroupCount; g++ {
-		if len(members[g]) == 0 {
-			continue
-		}
-		out = append(out, railEntry{group: g, count: len(members[g])})
-		if a.railShut(g) {
-			continue
-		}
-		for _, node := range members[g] {
-			out = append(out, railEntry{group: g, node: node, count: len(members[g])})
-		}
+	out := make([]railEntry, 0, len(a.taskOrder))
+	for _, tree := range a.railForest() {
+		out = a.railWalk(out, tree, nil)
+	}
+	return out
+}
+
+// railWalk lays one family out, depth first.
+func (a *app) railWalk(out []railEntry, t *railTwig, stems []bool) []railEntry {
+	e := railEntry{node: t.node, stems: stems, root: len(t.kids) > 0}
+	if e.root && a.railShut(t.node) {
+		e.folded, e.hidden = true, t.count()
+		return append(out, e)
+	}
+	out = append(out, e)
+	for i, kid := range t.kids {
+		// The stack is COPIED down rather than appended to in place: one backing
+		// array shared between two siblings is the second sibling drawing the
+		// first one's stems.
+		next := make([]bool, len(stems), len(stems)+1)
+		copy(next, stems)
+		out = a.railWalk(out, kid, append(next, i < len(t.kids)-1))
 	}
 	return out
 }
@@ -2045,6 +2272,18 @@ func railColsFor(width int) int {
 	return 0
 }
 
+// railColumns is [railColsFor] with the person's own answer folded in: a column
+// somebody widened (w) takes [railWideCols], and only where the frame was
+// already lending a full one. The floors are the frame's and the tier is the
+// person's — a terminal that cannot afford thirty columns cannot afford
+// forty-six either.
+func (a *app) railColumns(width int) int {
+	if a.railWide && width >= railFloor {
+		return railWideCols
+	}
+	return railColsFor(width)
+}
+
 // railShowing reports whether the frame has a roster on it right now.
 //
 // ONE NODE RAISES IT AND NOTHING PUTS IT AWAY but /new. The old rail left when
@@ -2053,7 +2292,7 @@ func railColsFor(width int) int {
 // that vanished the moment the work finished would be a record of nothing.
 func (a *app) railShowing() bool {
 	width, _ := a.size()
-	if railColsFor(width) == 0 {
+	if a.railColumns(width) == 0 {
 		return false
 	}
 	return len(a.taskOrder) > 0
@@ -2086,7 +2325,7 @@ func (a *app) railFull() bool {
 		return false
 	}
 	width, _ := a.size()
-	return railColsFor(width) == 0
+	return a.railColumns(width) == 0
 }
 
 // railStanding reports whether the roster is on the frame in either shape.
@@ -2099,7 +2338,7 @@ func (a *app) railRoom() int {
 	if a.railFull() {
 		return width - ansi.StringWidth(railSeam)
 	}
-	return railColsFor(width) - ansi.StringWidth(railSeam)
+	return a.railColumns(width) - ansi.StringWidth(railSeam)
 }
 
 // railWidth is what the rail costs the conversation, in columns.
@@ -2108,7 +2347,7 @@ func (a *app) railWidth() int {
 		return 0
 	}
 	width, _ := a.size()
-	return railColsFor(width)
+	return a.railColumns(width)
 }
 
 // bodyWidth is the conversation's own width, and it is what EVERY geometric
@@ -2135,20 +2374,30 @@ type railLine struct {
 	// head says this is the entry's FIRST line, which is the one a marker goes
 	// on: a two-line node with two markers would read as two nodes.
 	head bool
+	// glyph is the row's STATE CELL in the column's own coordinates, and badge
+	// the ▸ +N a folded root wears. They are written at LAYOUT and read by the
+	// click, which is the bargain the strip's chips make (taskstrip.go): the
+	// geometry is recorded where it is decided, because a hit-test that
+	// recomputed it would be measuring a row the frame has not drawn.
+	glyph hudSpan
+	badge hudSpan
+	// hint says this line is the footer's widen offer, which is pressable and
+	// belongs to no entry.
+	hint bool
 }
 
 // railLines renders every entry, in order. It is the unwindowed list, and the
 // window is taken out of it by [app.railView].
-func (a *app) railLines(entries []railEntry, focus, width int) []railLine {
+func (a *app) railLines(entries []railEntry, width int) []railLine {
 	out := make([]railLine, 0, len(entries)+len(entries)/2)
 	for i := range entries {
-		e := entries[i]
-		if e.node == nil {
-			out = append(out, railLine{text: a.railHeading(e, i == focus, width), entry: i, head: true})
-			continue
-		}
-		for j, text := range a.railNodeRows(e.node, width) {
-			out = append(out, railLine{text: text, entry: i, head: j == 0})
+		rows, glyph, badge := a.railEntryRows(entries[i], width)
+		for j, text := range rows {
+			line := railLine{text: text, entry: i, head: j == 0}
+			if j == 0 {
+				line.glyph, line.badge = glyph, badge
+			}
+			out = append(out, line)
 		}
 	}
 	return out

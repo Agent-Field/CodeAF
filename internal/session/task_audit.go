@@ -784,7 +784,7 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	node.mending(mendingLine(verdict.evidence))
 	defer node.mending("")
 
-	child, err := a.newTaskAgent(tree.dir, node, fmt.Sprintf("-repair%d", round))
+	child, err := a.newTaskAgent(ctx, tree.dir, node, fmt.Sprintf("-repair%d", round))
 	if err != nil {
 		fmt.Fprintf(log, "repair %d: could not start a worker: %v\n", round, err)
 		return nil, ""

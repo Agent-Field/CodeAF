@@ -133,10 +133,8 @@ func whyPhrase(call ai.ToolCall, result string) string {
 		return withTarget("looked for files matching", arguments.String("pattern"))
 	case "jobs":
 		return withTarget("jobs", arguments.String("action"))
-	case "note":
-		return withTarget("remembered", arguments.String("fact"))
-	case "forget":
-		return withTarget("forgot", arguments.String("pattern"))
+	case "remember":
+		return withTarget("remembered", arguments.String("text"))
 	default:
 		// A tool this build does not know — the workforce verbs, when they
 		// attach — is still a thing that happened, and the name is the honest

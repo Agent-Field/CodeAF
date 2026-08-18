@@ -170,10 +170,10 @@ var settingUI = map[string]settingMeta{
 		about: "each task's work is checked over before it merges. " +
 			"Off merges on the task's own word.",
 	},
-	config.KeyMemoryConsolidation: {
-		tab: tabSession, label: "memory consolidation", widget: widgetCycle,
-		about: "memory quietly tidies itself when the session sits idle. " +
-			"Off, it only ever grows.",
+	config.KeyMemoryEnabled: {
+		tab: tabSession, label: "memory", widget: widgetCycle,
+		about: "a few things are carried from one conversation to the next. " +
+			"Off, each one starts knowing nothing about you.",
 	},
 	// The countdown sits under the gate rows for the same reason the guardian
 	// does: it is not a fourth approval mode but the OTHER clock in the room —

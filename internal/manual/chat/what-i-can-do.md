@@ -400,6 +400,10 @@ capability is missing, it is missing — you will not get a tool that pretends.
 Yes, in two ways: the transcript itself, and three tools that hold working state
 **outside** the transcript so a compaction cannot lose it.
 
+(Carrying something into a *later* conversation is a different mechanism and has
+its own page — `remember`, `/remember`, `/memories` and `/forget` are on
+what-i-remember.)
+
 **`track`** records one item. Arguments: `text` (required), `kind` (required —
 `belief` for something true in the workspace now, `progress` for a subgoal
 opened and not finished), `evidence` (**required** — it must name what actually
@@ -519,15 +523,13 @@ pieces and nothing else.
 
 Plainly, so you do not have to find out the hard way.
 
-- **It does not remember anything between conversations.** There is no durable
-  memory in this build. The tools that would write one — `note` and `forget` —
-  are not on the list at all, so asking aforge to remember something for next
-  time will not work. Working state kept with `track` survives a resume of *this*
-  conversation and nothing further. **A setting is the one thing that outlasts a
-  conversation**, and it is not memory: `change_setting` writes a row of your
-  configuration into your profile, and every later conversation reads it because
-  that is what a setting is. Asking for a preference works; asking to be
-  remembered does not.
+- **It does not carry a conversation into the next one.** The transcript stays
+  where it was written; a new session opens on an empty screen and knows nothing
+  about what was said in the last one. What it *does* carry is a handful of
+  durable lines — a preference you stated, something you asked it to remember —
+  and only those; see the what-i-remember page for what is kept and how to read
+  it. Working state recorded with `track` survives a resume of *this*
+  conversation and nothing further.
 - **It cannot make media without a model for it.** `generate_image`, `speak` and
   `generate_video` are each on the list only when this machine has a model for
   that kind of media; when there is none, the tool is absent rather than present
@@ -554,7 +556,9 @@ Plainly, so you do not have to find out the hard way.
 
 What does survive: the transcript itself, which is written to the session file
 and replayed when you resume; the working state recorded with `track` and
-`commit`, kept in a file beside that session file; **a setting changed with
-`change_setting`**, which is written into your profile's `config.json` and read
-by every conversation after it; and anything written to disk by `write`, `edit`
-or a command you ran.
+`commit`, kept in a file beside that session file; **anything remembered**, with
+the `remember` tool or `/remember` or by asking, which is kept per person and
+read by every conversation after this one (see what-i-remember); **a setting
+changed with `change_setting`**, which is written into your profile's
+`config.json` and read by every conversation after it; and anything written to
+disk by `write`, `edit` or a command you ran.

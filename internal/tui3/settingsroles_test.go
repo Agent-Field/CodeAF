@@ -294,13 +294,14 @@ func TestTheRolesSectionListsEveryRegisteredRole(t *testing.T) {
 	}
 }
 
-// THE DREAMING PASS IS ONE OF THEM, and it follows the cheap tier: it is one
-// call over fifty short lines while nobody is waiting, made again the next idle
-// minute if it went wrong.
-func TestTheConsolidateRoleFollowsTheCheapTier(t *testing.T) {
+// THE PER-TURN PAIR IS ONE OF THEM, and it is the row that would be silently
+// wrong: the router and the extractor run twice every turn (internal/reflex), so
+// a reflex resolving anywhere but its own tier reads as thrift and bills as a
+// habit.
+func TestTheReflexRoleFollowsItsOwnTier(t *testing.T) {
 	a := tieredSheet(t)
-	row := roleItem(t, a, roles.RoleConsolidate)
-	if row.tier != roles.TierLow || row.model != "test/cheap-model" {
-		t.Fatalf("consolidate resolves as %q on %q, want the cheap tier's model", row.model, row.tier)
+	row := roleItem(t, a, roles.RoleReflex)
+	if row.tier != roles.TierReflex {
+		t.Fatalf("reflex resolves on %q, want its own tier", row.tier)
 	}
 }

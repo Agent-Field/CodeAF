@@ -669,8 +669,8 @@ The tabs, in order:
 
 **Session** — what this conversation may run, spend, and which models answer the small
 calls it makes for itself. Rows include "ask before running", "tool exceptions", "shell
-command rules", "guardian", "approval countdown", "check task work", "memory
-consolidation", "task countdown", "task repair rounds", "tasks at once", "busy machine",
+command rules", "guardian", "approval countdown", "check task work", "memory",
+"task countdown", "task repair rounds", "tasks at once", "busy machine",
 "memory floor", "task model", "small work", "careful work", "pinned roles", "fallback
 models", "session ceiling". Under "pinned roles" it also carries the **roles** list — one
 row per auxiliary call aforge makes for itself, saying which tier and which model answers
@@ -726,7 +726,7 @@ and its ctrl+t effort knob is true here too.
 
 The **roles** list sits on the Session tab, directly under "pinned roles". Each row is one
 auxiliary call aforge makes on its own — `title`, `compaction`, `guardian`, `auditor`,
-`planner`, `designer`, `worker`, `vision`, `consolidate` — drawn as
+`planner`, `designer`, `worker`, `vision`, `reflex` — drawn as
 `<role>    <tier> · <model>`, with `pinned` after it when that role has a model of its own.
 
 - **enter** opens the model picker and pins the role to what you choose.

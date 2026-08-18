@@ -3088,6 +3088,22 @@ func (a *app) slash(line string) tea.Cmd {
 		a.openHarness()
 		return nil
 
+	case "memories":
+		// What is remembered about the person, in the transcript (memory.go).
+		// The bare form is the whole list; a word narrows it, which is the one
+		// argument anybody would type — a memory is found by a word that is in
+		// it, never by the id printed beside it.
+		a.runMemories(rest)
+		return nil
+
+	case "remember":
+		a.runRemember(rest)
+		return nil
+
+	case "forget":
+		a.runForget(rest)
+		return nil
+
 	case "status":
 		// The status line's whole list, said in the transcript. It is an ANSWER
 		// rather than a panel: a person who asked a question about their session

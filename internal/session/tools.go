@@ -32,8 +32,8 @@ import (
 // where the bill is), jobs is added
 // beside it to look
 // at what was started and watch beside that to be TOLD instead of looking
-// (tools_jobs.go, tools_watch.go), note and forget carry the session's durable memory
-// (memory.go) when there is a file to keep it in, track, commit and recall hold
+// (tools_jobs.go, tools_watch.go), remember carries the person's durable memory
+// (memory.go) when there is a store to keep it in, track, commit and recall hold
 // the working state a compaction must not lose (state.go — the same file's three
 // records, unconditional because every session compacts), and web_search and web_fetch
 // reach outside the machine (tools_search.go) when a back end was wired, and

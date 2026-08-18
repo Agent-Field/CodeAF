@@ -172,9 +172,9 @@ var settingReaders = map[string]string{
 	// (internal/provider's endpoints.go). It names the parser the door touches,
 	// because that is the only call site and the accessor alone would not prove
 	// the list ever reaches a request.
-	KeyModelFallbacks:      "ParseModelFallbacks",
-	KeyTaskAudit:           "TaskAuditEnabledAt",
-	KeyMemoryConsolidation: "MemoryConsolidationEnabledAt",
+	KeyModelFallbacks: "ParseModelFallbacks",
+	KeyTaskAudit:      "TaskAuditEnabledAt",
+	KeyMemoryEnabled:  "MemoryEnabledAt",
 	// The task countdown names the field it becomes on the far side —
 	// session.Config's TaskAutoApproveSeconds, which task.go reads when it puts
 	// a deadline on a proposal — for the reason the spend rail names its own:

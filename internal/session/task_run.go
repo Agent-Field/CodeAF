@@ -1661,7 +1661,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	node.setTree(tree)
 	fmt.Fprintf(log, "task %d · %s\nworking in %s\n", node.id, node.title(), tree.dir)
 
-	child, err := a.newTaskAgent(tree.dir, node, "")
+	child, err := a.newTaskAgent(ctx, tree.dir, node, "")
 	if err != nil {
 		node.finish("could not start the task: "+err.Error(), nil, tree.branch, tree.merge)
 		return TaskFailed
@@ -2186,7 +2186,16 @@ func (a *Agent) foldTaskUsage(node *TaskNode, child *Agent) {
 // THE MODEL IS THE NODE'S OWN, and the conversation's only when the node has
 // none (taskmodel.go). It is read BEFORE this takes a.mu, because the spec lives
 // under the graph's lock and this package takes one lock at a time.
-func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent, error) {
+//
+// AND THE ONE THING IT DOES INHERIT OF WHAT THE PERSON IS REMEMBERED TO WANT:
+// the same pre-turn router the conversation runs, asked against this node's
+// brief instead of a typed message (memory.go). It travels as WORDS in the
+// node's system prompt and never as the store itself — a family of eight nodes
+// must not be eight writers on one brain — and it is routed here, before the
+// child exists, because a node has no turn of its own to route against. No
+// store, no reflex, or a router that answered nothing: the node opens with
+// exactly the prompt it always did.
+func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, suffix string) (*Agent, error) {
 	model := node.model()
 	var (
 		tasker *TaskGraph
@@ -2229,6 +2238,7 @@ func (a *Agent) newTaskAgent(dir string, node *TaskNode, suffix string) (*Agent,
 	}
 
 	return newAgent(Config{
+		memoryBrief:    a.memoryBlock(ctx, node.assembledBrief()),
 		Workspace:      dir,
 		Model:          model,
 		APIKey:         parent.APIKey,

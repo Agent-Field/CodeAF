@@ -148,7 +148,6 @@ line: the role's name, the tier answering it, and the model that comes out. As s
 | --- | --- | --- |
 | `title` | small work | the name a session gives itself |
 | `compaction` | careful work | the summary that is all that survives a compaction |
-| `consolidate` | small work | what gets kept out of a session's memory |
 | `guardian` | small work | "is this one tool call plainly safe" |
 | `auditor` | careful work | whether finished-looking task work is actually finished |
 | `planner` | careful work | an adaptive run's plan, amended after every node |
@@ -160,11 +159,13 @@ line: the role's name, the tier answering it, and the model that comes out. As s
 The list is built from what is registered in the running binary, so it is the truth about
 this build rather than a table someone kept up to date.
 
-One caveat on `reflex`: **nothing in this build calls it yet.** The tier, the row and the
-role are real and the model resolves through the same ladder as every other role — but the
-per-turn routing and extraction it exists for are not wired into the conversation, so
-setting this row changes nothing you can see today. It is here so the setting is in place
-before the calls are, not because aforge is already reading your turns twice.
+One thing about `reflex`: it is the only role called **twice on every message** — once
+before, to pick which remembered lines belong in this one, and once after, to decide
+whether the exchange held anything worth keeping (what-i-remember). That is why it has a
+tier of its own rather than sharing "small work", and why it is the one row where a large
+model is an expensive mistake rather than a preference. Both calls are folded into the
+session's total, not into the message that triggered them, so `/cost` includes them
+without any one message reading as three times the price of its neighbours.
 
 One caveat on `vision`: the **looking** row on the Providers tab is the front door for
 which model sees, and it wins over this role's tier. The `vision` pin is the second rung
