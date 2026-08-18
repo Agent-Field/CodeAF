@@ -95,7 +95,13 @@ var commands = []command{
 	// /compact, which people reach for daily, into a scroll to make room for one
 	// they will open occasionally. Position in this table is a claim about
 	// frequency; this is the honest one.
-	{name: "harness", desc: "the shapes of work you have saved · what they did", alias: []string{"harnesses"}},
+	// The other words are here because a sub-harness and a harness are the same
+	// thing under two names (docs/SUBHARNESS.md), and a person who learned the
+	// longer one should not have to find out which half of it this build chose.
+	// Every one of them opens the same panel bare, and the same picker with a
+	// space after it (harnesspick.go).
+	{name: "harness", desc: "the shapes of work you have saved · a space picks one to run",
+		alias: []string{"harnesses", "subharness", "sub"}},
 	// WHAT IT KNOWS ABOUT YOU, and the two ways to change it. They sit beside
 	// /harness because they answer the neighbouring question — one is what this
 	// conversation has learned to DO, these are what it has been told about YOU

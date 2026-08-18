@@ -176,6 +176,10 @@ you know about tools by those names elsewhere:
 An empty whitelist grants nothing, which is the honest answer for a goal whose
 work is all reasoning. Do not whitelist a tool no node uses.
 
+An `agent.loop` may call the tools named in its `tools` field while it works;
+that field must be a subset of the whitelist. A `tool.call` instead runs one
+tool once with the fixed arguments written on the page.
+
 IF THE GOAL WANTS SOMETHING YOU CANNOT REACH — sources on the live web, a repo to
 read, a benchmark to execute — the harness must do the best honest thing with what
 it has, and its verification rung MUST NOT promise what no node here could check.
@@ -565,8 +569,10 @@ paragraphs and with no restating of the goal:
    pairs were independent and what shape that forced, or that every pair was
    dependent and the program is therefore a line. Do not transcribe the table; it
    is already in the reply, and a second copy is paid for twice.
-5. **Estimated model calls** — a number, counted: one per `agent.loop` (times its
-   rounds if looped, times width if in a lane), one per `verify`, one per condition
-   written as a sentence rather than in the condition language. Say the number.
+5. **Estimated model calls** — a number, counted: one per tool-free `agent.loop`;
+   up to `max_turns` plus its final answer for an `agent.loop` with tools (times
+   its rounds if looped, times width if in a lane); one per `verify`; one per
+   condition written as a sentence rather than in the condition language. Say
+   the number.
 
 A justification that does not contain all five is an incomplete answer.

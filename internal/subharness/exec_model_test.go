@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // modelServer is a provider endpoint with a script behind it: each reply is
@@ -19,27 +20,37 @@ import (
 // wording. Every request it saw is kept, which is how the prompt-building half
 // of the bridge is asserted.
 type modelServer struct {
-	mu    sync.Mutex
-	seen  []string
-	rules []modelRule
-	http  *httptest.Server
+	mu     sync.Mutex
+	seen   []string
+	bodies []map[string]any
+	rules  []modelRule
+	used   []int
+	http   *httptest.Server
 }
 
 type modelRule struct {
-	when, say string
+	when, say  string
+	tool, args string
+	toolCalls  int
 }
 
 func newModelServer(t *testing.T, rules ...modelRule) *modelServer {
 	t.Helper()
-	server := &modelServer{rules: rules}
+	server := &modelServer{rules: rules, used: make([]int, len(rules))}
 	server.http = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var raw map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		encoded, _ := json.Marshal(raw)
 		var body struct {
 			Messages []struct {
 				Role    string          `json:"role"`
 				Content json.RawMessage `json:"content"`
 			} `json:"messages"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.Unmarshal(encoded, &body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -52,20 +63,34 @@ func newModelServer(t *testing.T, rules ...modelRule) *modelServer {
 
 		server.mu.Lock()
 		server.seen = append(server.seen, asked)
+		server.bodies = append(server.bodies, raw)
 		answer := "said nothing in particular"
-		for _, rule := range server.rules {
+		var callTool, callArgs string
+		for at, rule := range server.rules {
 			if strings.Contains(asked, rule.when) {
 				answer = rule.say
+				if _, offered := raw["tools"]; offered && rule.tool != "" && server.used[at] < rule.toolCalls {
+					callTool, callArgs = rule.tool, rule.args
+					server.used[at]++
+				}
 				break
 			}
 		}
 		server.mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
+		message := map[string]any{"role": "assistant", "content": answer}
+		if callTool != "" {
+			message["content"] = nil
+			message["tool_calls"] = []any{map[string]any{
+				"id": "call-1", "type": "function",
+				"function": map[string]any{"name": callTool, "arguments": callArgs},
+			}}
+		}
 		reply, _ := json.Marshal(map[string]any{
 			"choices": []any{map[string]any{
 				"index":   0,
-				"message": map[string]any{"role": "assistant", "content": answer},
+				"message": message,
 			}},
 		})
 		_, _ = w.Write(reply)
@@ -101,6 +126,137 @@ func (s *modelServer) calls() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.seen)
+}
+
+func testTool(name string) ai.ToolDefinition {
+	return ai.ToolDefinition{Type: "function", Function: ai.ToolFunction{
+		Name: name, Description: "test " + name,
+		Parameters: map[string]any{"type": "object"},
+	}}
+}
+
+func (s *modelServer) offered(at int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if at >= len(s.bodies) {
+		return nil
+	}
+	raw, _ := s.bodies[at]["tools"].([]any)
+	var names []string
+	for _, entry := range raw {
+		tool, _ := entry.(map[string]any)
+		function, _ := tool["function"].(map[string]any)
+		name, _ := function["name"].(string)
+		names = append(names, name)
+	}
+	return names
+}
+
+// TestModelExecAgentLoopRunsTools pins the whole bridge: the structured call
+// reaches the dispatcher, its answer returns in the transcript, and only the
+// model's final words become the node's output.
+func TestModelExecAgentLoopRunsTools(t *testing.T) {
+	server := newModelServer(t, modelRule{
+		when: "inspect it", say: "the suite is green", tool: "bash",
+		args: `{"command":"go test ./..."}`, toolCalls: 1,
+	})
+	h := Harness{Id: Id{Name: "worker", Version: 1}, Whitelist: []string{"bash"}, Verify: Verify{Ladder: VerifyAccept}}
+	var called string
+	exec := ModelExec(server.client(t), ModelExecOpts{Harness: h, Toolbelt: Toolbelt{
+		Defs: []ai.ToolDefinition{testTool("bash")},
+		Call: func(_ context.Context, name string, args map[string]any) (string, error) {
+			called = fmt.Sprintf("%s %v", name, args["command"])
+			return "PASS from the tool", nil
+		},
+	}})
+	result, err := exec(context.Background(), Node{Id: "work", Kind: KindAgentLoop, Fields: Fields{
+		"brief": "inspect it", "tools": "bash",
+	}})
+	if err != nil {
+		t.Fatalf("loop: %v", err)
+	}
+	if called != "bash go test ./..." {
+		t.Fatalf("dispatch got %q", called)
+	}
+	if result.Out != "the suite is green" || !server.asked("PASS from the tool") {
+		t.Fatalf("output %q, tool result reached provider %v", result.Out, server.asked("PASS from the tool"))
+	}
+}
+
+func TestModelExecAgentLoopToolOffer(t *testing.T) {
+	server := newModelServer(t, modelRule{when: "use one", say: "done"})
+	h := Harness{Id: Id{Name: "worker", Version: 1}, Whitelist: []string{"read", "bash"}, Verify: Verify{Ladder: VerifyAccept}}
+	exec := ModelExec(server.client(t), ModelExecOpts{Harness: h, Toolbelt: Toolbelt{
+		Defs: []ai.ToolDefinition{testTool("read"), testTool("bash")},
+		Call: func(context.Context, string, map[string]any) (string, error) { return "ok", nil },
+	}})
+	if _, err := exec(context.Background(), Node{Id: "work", Kind: KindAgentLoop, Fields: Fields{
+		"brief": "use one", "tools": "bash",
+	}}); err != nil {
+		t.Fatalf("subset loop: %v", err)
+	}
+	if got := server.offered(0); len(got) != 1 || got[0] != "bash" {
+		t.Fatalf("offered %v, want only bash", got)
+	}
+
+	badHarness := h
+	badHarness.Whitelist = []string{"read"}
+	bad := ModelExec(server.client(t), ModelExecOpts{Harness: badHarness, Toolbelt: Toolbelt{
+		Defs: []ai.ToolDefinition{testTool("read"), testTool("bash")},
+		Call: func(context.Context, string, map[string]any) (string, error) { return "ok", nil },
+	}})
+	if _, err := bad(context.Background(), Node{Id: "work", Kind: KindAgentLoop, Fields: Fields{
+		"brief": "use one", "tools": "bash",
+	}}); err == nil || !strings.Contains(err.Error(), "whitelist") {
+		t.Fatalf("off-whitelist error %v", err)
+	}
+}
+
+func TestModelExecAgentLoopWithoutToolsIsOneCompletion(t *testing.T) {
+	server := newModelServer(t, modelRule{when: "just think", say: "thought"})
+	h := Harness{Id: Id{Name: "thinker", Version: 1}, Verify: Verify{Ladder: VerifyAccept}}
+	result, err := ModelExec(server.client(t), ModelExecOpts{Harness: h})(context.Background(),
+		Node{Id: "work", Kind: KindAgentLoop, Fields: Fields{"brief": "just think"}})
+	if err != nil || result.Out != "thought" {
+		t.Fatalf("result (%q, %v)", result.Out, err)
+	}
+	if server.calls() != 1 || len(server.offered(0)) != 0 {
+		t.Fatalf("calls %d, offered %v", server.calls(), server.offered(0))
+	}
+}
+
+func TestModelExecAgentLoopRespectsTurnCeiling(t *testing.T) {
+	server := newModelServer(t, modelRule{
+		when: "keep looking", say: "final at the ceiling", tool: "read",
+		args: `{"path":"notes.md"}`, toolCalls: 99,
+	})
+	h := Harness{Id: Id{Name: "bounded", Version: 1}, Whitelist: []string{"read"}, Verify: Verify{Ladder: VerifyAccept}}
+	called := 0
+	result, err := ModelExec(server.client(t), ModelExecOpts{Harness: h, Toolbelt: Toolbelt{
+		Defs: []ai.ToolDefinition{testTool("read")},
+		Call: func(context.Context, string, map[string]any) (string, error) { called++; return "more", nil },
+	}})(context.Background(), Node{Id: "work", Kind: KindAgentLoop, Fields: Fields{
+		"brief": "keep looking", "tools": "read", "max_turns": "2",
+	}})
+	if err != nil || result.Out != "final at the ceiling" {
+		t.Fatalf("result (%q, %v)", result.Out, err)
+	}
+	if called != 2 || server.calls() != 3 {
+		t.Fatalf("dispatched %d times across %d calls, want 2 plus one final call", called, server.calls())
+	}
+}
+
+func TestModelExecAgentLoopNamedToolsWithoutBelt(t *testing.T) {
+	server := newModelServer(t, modelRule{when: "describe it", say: "I would read it"})
+	h := Harness{Id: Id{Name: "legacy", Version: 1}, Whitelist: []string{"read"}, Verify: Verify{Ladder: VerifyAccept}}
+	result, err := ModelExec(server.client(t), ModelExecOpts{Harness: h})(context.Background(),
+		Node{Id: "work", Kind: KindAgentLoop, Fields: Fields{"brief": "describe it", "tools": "read"}})
+	if err != nil || result.Out != "I would read it" {
+		t.Fatalf("result (%q, %v)", result.Out, err)
+	}
+	if server.calls() != 1 || len(server.offered(0)) != 0 || !server.asked("You cannot call them here") {
+		t.Fatalf("calls %d, offered %v, prompt %v", server.calls(), server.offered(0), server.seen)
+	}
 }
 
 // TestModelExecStraight is the whole bridge on the ordinary program: a loop
