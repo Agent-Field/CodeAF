@@ -97,22 +97,29 @@ tasks finishing at once are serialized, so a merge is never lost.
 
 ## How long a task gets before it is stopped
 
-Two clocks.
+Two clocks, and neither is a hard stop.
 
-**One hour for the whole task.** The run, every correction round and every check inside it
-share one deadline of 60 minutes. On expiry the task lands failed with the report
-`ran out of time`, the task's own last words underneath, and its branch kept.
+**One hour per checkpoint.** The run, every correction round and every check inside it
+share a 60-minute interval — but when it fires, a second look at the evidence decides what
+happens next. Working toward the brief: the task gets another hour, up to five in all
+(5 hours is the hard backstop, and a healthy task never meets it). Circling: it is told to
+land now — one final turn to write the deliverable from what it already has — and only
+then is it stopped, with the threshold and the evidence in the report.
 
 **Five minutes for a check.** Each second look at finished work is bounded at 5 minutes.
-It hangs off the task's own deadline, so `jobs kill` ends it too. A check that burned its
+It hangs off the task's own clock, so `jobs kill` ends it too. A check that burned its
 whole five minutes is not retried.
 
-There are two step limits as well, both of which stop a task that is going nowhere:
+There are two step limits as well, and they work the same way — checkpoints, not killers:
 
-| Limit | Default | Report when it fires |
-| --- | --- | --- |
-| `max_steps` — finished tool calls | 200 | `stopped: 200 steps and no finish` |
-| `no_progress` — calls in a row that change and teach nothing | 6 | `stopped: 6 steps without progress` |
+| Limit | Per checkpoint | Backstop | Report when it finally stops |
+| --- | --- | --- | --- |
+| `max_steps` — finished tool calls | 200 | 1000 (200 × 5) | `stopped: 200 steps and no finish` |
+| `no_progress` — calls in a row that change and teach nothing | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
+
+At a `max_steps` checkpoint the same second look runs: progress buys another 200 steps, up
+to the 1000-step backstop. Whatever stops the work, the landing turn runs first — the task
+writes up what it has — so nothing is ever lost mid-flight.
 
 The `no_progress` counter resets on a successful `edit` or `write`, on a read-only call at
 a target the task has not aimed at before (`read`, `read_document`, `ls`, `grep`, `find`,
@@ -435,8 +442,9 @@ Endings are checked in a fixed order, and the first match wins:
 | 1 | No working copy could be made | `could not prepare a working copy: <err>` |
 | 2 | The worker would not start | `could not start the task: <err>` |
 | 3 | A step limit fired | `stopped: 200 steps and no finish` or `stopped: 6 steps without progress` |
-| 4 | The hour ran out | `ran out of time` |
-| 5 | You stopped it (`jobs kill`, closing the session) | `stopped before it finished` |
+| 4 | The checkpoints ran out | `ran out of time` |
+| 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
+| 5b | The session closed or detached | paused — it resumes, it is not failed |
 | 6 | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
 | 8 | Nobody could say | `finished, but needs your look — …` |
@@ -488,11 +496,12 @@ and their reports are put in front of it when it starts. Ids can only point back
 or class of model for this work. Left out, the task runs on `task.model` if set, otherwise
 on whatever model the conversation is on at that moment.
 
-**`max_steps`** — how many finished tool calls the work is worth before it is stopped as
-stuck. Default **200**. On the limit the worker is cancelled and the task lands failed with
-`stopped: 200 steps and no finish`, the number being the limit that was in force. A
-negative value answers `Invalid arguments: max_steps cannot be negative`. Zero or absent
-means the default.
+**`max_steps`** — how many finished tool calls make one checkpoint. Default **200**. At a
+checkpoint a second look at the evidence decides: progress buys another 200 (up to 1000 in
+all), circling gets a landing turn — the task writes the deliverable from what it has —
+and only then a stop with `stopped: 200 steps and no finish`, the number being the
+checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
+be negative`. Zero or absent means the default.
 
 **`no_progress`** — how many tool calls in a row may teach nothing and change nothing
 before the task is stopped as spinning. Default **6**. On the limit the report is

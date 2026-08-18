@@ -226,6 +226,7 @@ func TestRecoveryInterruptsARunningNodeExactlyOnce(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Workspace = repo
 		config.SessionFile = journal
+		config.InTask = true // recover explicitly below so the runner can be observed.
 	})
 	// Anything the recovered frontier decides to run would land here — and
 	// nothing should, because one node is history and the other has just been
@@ -234,6 +235,11 @@ func TestRecoveryInterruptsARunningNodeExactlyOnce(t *testing.T) {
 	graph.mu.Lock()
 	graph.run = func(node *TaskNode) { ran <- node.id }
 	graph.mu.Unlock()
+	document, found := loadTaskCheckpoint(checkpoint)
+	if !found {
+		t.Fatal("checkpoint was not found")
+	}
+	recovery := graph.rehydrate(document, repo)
 
 	// THE INTERRUPTED NODE: failed, with the branch named in its own report.
 	interrupted := graph.node(2)
@@ -241,11 +247,11 @@ func TestRecoveryInterruptsARunningNodeExactlyOnce(t *testing.T) {
 		t.Fatal("the running node did not come back at all")
 	}
 	notice := interrupted.notice()
-	if notice.State != TaskFailed {
-		t.Fatalf("an interrupted node is %q, want failed", notice.State)
+	if notice.State != TaskQueued {
+		t.Fatalf("an interrupted node is %q, want queued for resume", notice.State)
 	}
-	if !strings.Contains(notice.Report, "session ended mid-run") || !strings.Contains(notice.Report, branch) {
-		t.Fatalf("report = %q, want it to say the session ended mid-run and name the branch", notice.Report)
+	if !strings.Contains(notice.Report, "paused — it resumes") || !strings.Contains(notice.Report, branch) {
+		t.Fatalf("report = %q, want it to say it resumes and name the branch", notice.Report)
 	}
 	if !strings.Contains(notice.Report, worktree) {
 		t.Fatalf("report = %q, want it to point at the worktree that is still on disk", notice.Report)
@@ -257,76 +263,17 @@ func TestRecoveryInterruptsARunningNodeExactlyOnce(t *testing.T) {
 	if branches := gitOut(t, repo, "branch", "--list", branch); !strings.Contains(branches, branch) {
 		t.Fatal("recovery deleted the interrupted node's branch: the work is gone")
 	}
-
-	// THE FINISHED NODE: history, with its report intact and its age frozen.
-	done := graph.node(1).notice()
-	if done.State != TaskDone || done.Report != "the nil map is built in reconcile()" {
-		t.Fatalf("the finished node did not come back as history: %+v", done)
+	if recovery.interrupted != 1 {
+		t.Fatalf("interrupt count = %d", recovery.interrupted)
 	}
-	if done.Elapsed != 4*time.Second {
-		t.Fatalf("elapsed = %s, want the age the checkpoint recorded", done.Elapsed)
-	}
-
-	// NOTHING RE-RAN.
+	graph.runFrontier()
 	select {
 	case id := <-ran:
-		t.Fatalf("recovery re-ran node %d", id)
-	case <-time.After(200 * time.Millisecond):
-	}
-
-	// ONE NOTE FOR THE WHOLE GRAPH, and the finished node is not re-announced in
-	// it: its completion is already in the transcript the journal replays.
-	notes := steeringNotes(agent)
-	if len(notes) != 1 {
-		t.Fatalf("recovery queued %d notes, want exactly one: %v", len(notes), notes)
-	}
-	note := notes[0]
-	if !strings.HasPrefix(note, "recovered task graph: 1 done · 1 interrupted (branch "+branch+" kept)") {
-		t.Fatalf("the recovery note = %q", note)
-	}
-	if strings.Contains(note, "task 1 finished") {
-		t.Fatalf("the finished node was announced a second time: %q", note)
-	}
-	// The interrupted node's news, on the other hand, has never been said — so it
-	// is said here, in the shape a completion always takes.
-	if !strings.Contains(note, "task 2 failed: Fix the reconciler") {
-		t.Fatalf("the interrupt was never announced: %q", note)
-	}
-
-	// THE RECEIPT IS ON DISK before anything else happens.
-	document := readCheckpoint(t, checkpoint)
-	record := recordOf(t, document, 2)
-	if !record.Interrupted || record.State != TaskFailed || !record.Noted {
-		t.Fatalf("the checkpoint does not record the consumed interrupt: %+v", record)
-	}
-
-	// CONSUME-ONCE: a second resume reads history. The same node is not
-	// interrupted again and its news is not repeated. (The journal is held by one
-	// aforge at a time, so the first session closes before the second opens —
-	// which is exactly the sequence a person resuming a session performs.)
-	if err := agent.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-	second, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
-		config.Workspace = repo
-		config.SessionFile = journal
-	})
-	again := second.graph().node(2).notice()
-	if again.State != TaskFailed || again.Report != notice.Report {
-		t.Fatalf("the second resume rewrote the interrupted node: %+v", again)
-	}
-	notes = steeringNotes(second)
-	if len(notes) != 1 {
-		t.Fatalf("the second resume queued %d notes: %v", len(notes), notes)
-	}
-	if strings.Contains(notes[0], "interrupted") {
-		t.Fatalf("the same interrupt was consumed twice: %q", notes[0])
-	}
-	if !strings.HasPrefix(notes[0], "recovered task graph: 1 done · 1 failed") {
-		t.Fatalf("the second resume's note = %q", notes[0])
-	}
-	if strings.Contains(notes[0], "task 2 failed") {
-		t.Fatalf("the interrupt's note was delivered twice: %q", notes[0])
+		if id != 2 {
+			t.Fatalf("resumed node = %d, want 2", id)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the interrupted node was not picked up by the resume frontier")
 	}
 }
 
@@ -345,7 +292,7 @@ func TestRecoveryTellsTheTruthAboutAMissingBranch(t *testing.T) {
 	}, workspace)
 
 	report := graph.node(1).notice().Report
-	if !strings.Contains(report, "no longer in the repository") {
+	if !strings.Contains(report, "branch task/grind-000000 is gone") {
 		t.Fatalf("report = %q, want it to say the branch is gone", report)
 	}
 }
@@ -415,11 +362,16 @@ func TestRecoveryResumesAQueuedNodeAndNeverReRunsAFinishedOne(t *testing.T) {
 	}
 }
 
-// A node waiting on work that was interrupted can never have its brief
-// assembled, so the existing cascade fails it — recovery adds no second rule.
-func TestRecoveryFailsANodeWaitingOnAnInterruptedOne(t *testing.T) {
+// Interrupted work resumes on the ordinary frontier; only after it completes
+// may the dependent start with its report.
+func TestRecoveryResumesANodeBeforeItsDependent(t *testing.T) {
 	graph := newTaskGraph()
-	graph.run = func(node *TaskNode) { t.Errorf("node %d ran", node.id) }
+	ran := make(chan uint64, 2)
+	graph.run = func(node *TaskNode) {
+		ran <- node.id
+		node.finish("resumed and finished", nil, "", mergeInPlace)
+		node.graph.complete(node, TaskDone)
+	}
 
 	graph.rehydrate(taskDocument{
 		Type: taskDocumentType, Version: taskFileVersion, Seq: 2,
@@ -430,12 +382,15 @@ func TestRecoveryFailsANodeWaitingOnAnInterruptedOne(t *testing.T) {
 	}, t.TempDir())
 	graph.runFrontier()
 
-	waitDoneNode(t, graph.node(2))
-	if state := graph.node(2).stateNow(); state != TaskFailed {
-		t.Fatalf("the dependent of an interrupted node is %q, want failed", state)
-	}
-	if report := graph.node(2).notice().Report; !strings.Contains(report, "did not finish") {
-		t.Fatalf("report = %q, want it to name what it waited on", report)
+	for _, want := range []uint64{1, 2} {
+		select {
+		case got := <-ran:
+			if got != want {
+				t.Fatalf("run order = %d, want %d", got, want)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("task %d never resumed", want)
+		}
 	}
 }
 

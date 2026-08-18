@@ -681,6 +681,13 @@ type Config struct {
 	// behaviour every caller had before this field existed.
 	SupportsParameter func(model, parameter string) (bool, bool)
 
+	// TaskProgressCheck is the test seam for leash checkpoints. Production uses
+	// the node's ordinary read-only checker; a test may answer deterministically.
+	TaskProgressCheck func(brief string, evidence []string) (working bool, reason string)
+	// TaskDeadline overrides one checkpoint interval. Zero keeps the one-hour
+	// production interval and lets deadline behavior be tested without an hour.
+	TaskDeadline time.Duration
+
 	// ModelFallbacks are the models a turn moves to, in order, when no endpoint
 	// serving this session's model will accept the request's shape at all
 	// (internal/provider's endpoints.go). It is the person's own models.fallbacks
@@ -1133,10 +1140,10 @@ type Agent struct {
 	// from a.system plus the two of them rather than appended to.
 	cardText string
 	usage    Usage
-	running    bool
-	cancel     context.CancelFunc
-	steering   []userMessage
-	closed     bool
+	running  bool
+	cancel   context.CancelFunc
+	steering []userMessage
+	closed   bool
 	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
 	// that no request has carried yet, and taskNews is the generation channel
 	// closed each time one lands. They exist for one reader — the runner holding

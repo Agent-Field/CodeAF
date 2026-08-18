@@ -168,6 +168,7 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	design := node.spec.design
 	goal, model := design.goal, design.model
 	ctx = (roleRequest{model: model, effort: design.effort}).context(ctx)
+	processCtx := ctx
 	// THE DESIGN'S OWN WINDOW, taken off the node's hour-long leash. Both halves
 	// of this job are bounded by it — the writing and the wait for an answer —
 	// and it is shorter than a node's deadline because the second half is a card
@@ -210,6 +211,9 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	node.doingNow(harnessPhaseDesigning)
 	page, cues, err := a.designPage(ctx, goal, model, node.id)
 	if err != nil {
+		if processCtx.Err() != nil && !node.stoppedByPerson() {
+			return a.pauseHarnessNode(node, child)
+		}
 		fmt.Fprintf(log, "design failed: %v\n", err)
 		return a.landHarnessNode(node, child, harnessDesignEnding(ctx, node, "the design failed: "+err.Error()), TaskFailed)
 	}
@@ -224,6 +228,9 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	node.doingNow(harnessPhaseAsking)
 	answer, err := a.askHarnessDesign(ctx, node.id, page, model)
 	if err != nil {
+		if processCtx.Err() != nil && !node.stoppedByPerson() {
+			return a.pauseHarnessNode(node, child)
+		}
 		return a.landHarnessNode(node, child, harnessDesignEnding(ctx, node, "the design ended before it was answered"), TaskFailed)
 	}
 	if !answer.run {
@@ -246,6 +253,14 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	// (see [Agent.harnessThread]).
 	a.rememberHarnessThread(saved.Id.Name, node.id)
 	return a.landHarnessNode(node, child, harnessSavedWord(saved), TaskDone)
+}
+
+func (a *Agent) pauseHarnessNode(node *TaskNode, child *Agent) TaskState {
+	const report = "paused — it resumes"
+	child.record(textMessage("assistant", report))
+	node.doingNow("")
+	node.finish(report, nil, "", "")
+	return ""
 }
 
 // landHarnessNode settles the node and closes the thread with the same sentence.

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -753,6 +754,45 @@ func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 	}
 }
 
+// A surface owns the Submit context and the subscription, never the task. A
+// replacement subscription sees the landing after the original surface leaves.
+func TestTaskOutlivesSurfaceDetachAndReattachSeesLanding(t *testing.T) {
+	repo := newTestRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	started, release := make(chan struct{}), make(chan struct{})
+	completer := &routedCompleter{
+		parent: []step{proposeCall("Keep working", "finish after the surface leaves"), finalText("handed off")},
+		child: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(started)
+			select {
+			case <-release:
+				return textResponse("finished after detach"), nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.AskConsent = false
+		config.TaskAudit = false
+	})
+	surfaceCtx, detach := context.WithCancel(context.Background())
+	events, err := agent.Submit(surfaceCtx, "hand this off")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go collect(t, events)
+	waitSignal(t, started, "the task to start")
+	detach()
+	rejoined := agent.TaskUpdates()
+	close(release)
+	notice := awaitTaskState(t, rejoined, 1, TaskDone)
+	if !strings.Contains(notice.Report, "finished after detach") {
+		t.Fatalf("reattached surface saw report %q", notice.Report)
+	}
+}
+
 // A KILL KEEPS THE WORK. `jobs kill` cancels the node, and its branch and
 // worktree are left exactly where they are — the point of the branch is that
 // stopping a task never throws anything away.
@@ -810,6 +850,37 @@ func TestKilledTaskKeepsItsBranch(t *testing.T) {
 	}
 	if branches := gitOut(t, repo, "branch", "--list", notice.Branch); !strings.Contains(branches, notice.Branch) {
 		t.Fatal("killing a task deleted its branch: the work is gone")
+	}
+}
+
+func TestCloseJournalsAnInflightTaskAsResumableNotFailed(t *testing.T) {
+	repo := newTestRepo(t)
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	started := make(chan struct{})
+	completer := &routedCompleter{
+		parent: []step{proposeCall("Long task", "keep working"), finalText("handed off")},
+		child: []step{func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			close(started)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = repo
+		config.SessionFile = journal
+		config.AskConsent = false
+	})
+	collect(t, mustSubmit(t, agent, "start it"))
+	waitSignal(t, started, "the task to enter its provider call")
+	if err := agent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	record := recordOf(t, readCheckpoint(t, taskCheckpointPath(journal)), 1)
+	if record.State != TaskRunning || strings.Contains(record.Report, "failed") {
+		t.Fatalf("close checkpoint = %+v, want a resumable running interrupt", record)
+	}
+	if !strings.Contains(record.Report, "paused — it resumes") {
+		t.Fatalf("close report = %q, want the resume promise", record.Report)
 	}
 }
 
@@ -1706,7 +1777,7 @@ func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
 				Title: "Grind", Summary: "s", Brief: "spin\n" + taskBriefMark,
 				Acceptance: "a", NoProgress: 50, MaxSteps: 2,
 			},
-			want: "stopped: 2 steps and no finish",
+			want: "stopped at 2-step checkpoint: still circling",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -1717,10 +1788,15 @@ func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
 			// more look at a directory. Fifty entries is far past either
 			// threshold, so the test proves the threshold ends it rather than
 			// the script running out.
-			spin := make([]step, 50)
-			for index := range spin {
-				spin[index] = lsCall(fmt.Sprintf("call-%d", index))
+			steps := testCase.arguments.MaxSteps
+			if testCase.arguments.NoProgress+1 < steps {
+				steps = testCase.arguments.NoProgress + 1
 			}
+			spin := make([]step, 0, steps+1)
+			for index := 0; index < steps; index++ {
+				spin = append(spin, lsCall(fmt.Sprintf("call-%d", index)))
+			}
+			spin = append(spin, finalText("landed from what I had"))
 			completer := &routedCompleter{
 				parent: []step{
 					func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -1733,6 +1809,8 @@ func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
 			agent, _ := newTestAgent(t, completer, func(config *Config) {
 				config.AskConsent = false
 				config.TaskAutoApproveSeconds = 0
+				config.TaskAudit = false
+				config.TaskProgressCheck = func(string, []string) (bool, string) { return false, "still circling" }
 			})
 			graph := agent.graph()
 
@@ -1780,6 +1858,76 @@ func TestTaskThresholdsDefaultAndOverride(t *testing.T) {
 	})
 	if _, problem := parseTaskArguments(arguments); !strings.Contains(problem, "max_steps cannot be negative") {
 		t.Fatalf("a negative max_steps was accepted: %q", problem)
+	}
+}
+
+func TestTaskSpawnSwapsANoToolsModelBeforeItsFirstCall(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Model = "no-tools"
+		config.RolesSource = tierSettings(map[string]string{roles.TierKey(roles.TierLow): "worker-with-tools"})
+		config.SupportsParameter = func(model, parameter string) (bool, bool) {
+			if parameter != "tools" {
+				return false, false
+			}
+			return model != "no-tools", true
+		}
+	})
+	graph := agent.graph()
+	graph.run = func(*TaskNode) {}
+	id := graph.reserve()
+	graph.admit(id, taskSpec{title: "t", brief: "b", acceptance: "a", model: "no-tools"})
+	node := graph.node(id)
+	child, err := agent.newTaskAgent(context.Background(), t.TempDir(), node, "")
+	if err != nil {
+		t.Fatalf("spawn refused the usable fallback: %v", err)
+	}
+	defer child.Close()
+	if child.model != "worker-with-tools" {
+		t.Fatalf("task model = %q, want worker-tier fallback", child.model)
+	}
+	if !strings.Contains(node.notice().Mending, "no-tools") || !strings.Contains(node.notice().Mending, "worker-with-tools") {
+		t.Fatalf("the model swap was not named: %+v", node.notice())
+	}
+}
+
+func TestStepCheckpointExtendsFourTimesThenLands(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	arguments, _ := json.Marshal(taskArguments{Title: "Long", Summary: "s", Brief: "keep going\n" + taskBriefMark, Acceptance: "a", MaxSteps: 1, NoProgress: 20})
+	spin := []step{
+		lsCall("one"), lsCall("two"), lsCall("three"), lsCall("four"), lsCall("five"),
+		finalText("the active turn drained"),
+		finalText("landed from the evidence already gathered"),
+	}
+	completer := &routedCompleter{parent: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-task", "propose_task", string(arguments)), nil
+		},
+		finalText("handed off"),
+	}, child: spin}
+	checks := 0
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = false
+		config.TaskProgressCheck = func(string, []string) (bool, string) { checks++; return true, "still advancing" }
+	})
+	collect(t, mustSubmit(t, agent, "do the long task"))
+	node := agent.graph().node(1)
+	waitDoneNode(t, node)
+	if checks != 5 {
+		t.Fatalf("progress checks = %d, want four renewals and the final capped check", checks)
+	}
+	if report := node.notice().Report; !strings.Contains(report, "used all 4 extensions") {
+		t.Fatalf("report = %q, want the named extension cap", report)
+	}
+	completer.mu.Lock()
+	asked := fmt.Sprint(completer.childRequests)
+	for _, request := range completer.childRequests {
+		for _, message := range request {
+			asked += "\n" + messageText(message)
+		}
+	}
+	completer.mu.Unlock()
+	if !strings.Contains(asked, "LAND NOW") {
+		t.Fatalf("child was never given the landing turn: %q", asked)
 	}
 }
 
