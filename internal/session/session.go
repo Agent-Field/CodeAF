@@ -1128,6 +1128,11 @@ type Agent struct {
 	// sessions.
 	reasoning map[string]provider.Effort
 	messages  []ai.Message
+	// lastTurnTruncated is the honest handoff from the model loop to headless
+	// node reporters. The finish reason is response metadata and is not part of
+	// the transcript, so without this bit a digest can only repeat the cut-off
+	// prose and falsely make the node look complete.
+	lastTurnTruncated bool
 	// memoryText is the <memory> block message[0] currently carries: what the
 	// router asked for at the start of this turn, or the block a task node was
 	// opened with (memory.go). It is under mu because it is rendered into the

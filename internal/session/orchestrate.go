@@ -985,6 +985,14 @@ func orchestrateBrief(node orchestrate.Node, deps []orchestrate.NodeStatus, shar
 // because "what changed" is the half a report most often leaves out.
 func orchestrateDigest(child *Agent, changed []string) string {
 	digest := clip(firstLines(lastSaid(child), orchestrateDigestLines), orchestrateDigestBytes)
+	if child.turnTruncated() {
+		stopped := fmt.Sprintf("INCOMPLETE: the node's final reply was cut off at the output limit after %d continuation attempts.", truncationContinuations)
+		if digest == "" {
+			digest = stopped
+		} else {
+			digest = stopped + "\n" + digest
+		}
+	}
 	if len(changed) == 0 {
 		return digest
 	}
