@@ -248,17 +248,18 @@ func TestTheModelClauseIsNotScored(t *testing.T) {
 
 // THE PAIR THAT WRITES A PAGE IS ONE PURCHASE, and with nothing named on the
 // turn it is RoleDesigner's. A harness page is SAVED and picked off a menu by
-// everybody afterwards, so it goes to the careful model rather than to whatever
-// the conversation happens to be sitting on.
+// everybody afterwards, so it goes to the mastermind model rather than to
+// whatever the conversation happens to be sitting on.
 func TestTheDesignerResolvesItsRole(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.RolesSource = tierSettings(map[string]string{
-			roles.TierKey(roles.TierHigh): "test/careful-model",
-			roles.TierKey(roles.TierLow):  "test/cheap-model",
+			roles.TierKey(roles.TierMastermind): "test/brain-model",
+			roles.TierKey(roles.TierHigh):       "test/careful-model",
+			roles.TierKey(roles.TierLow):        "test/cheap-model",
 		})
 	})
-	if got := agent.harnessDesignModel(""); got != "test/careful-model" {
-		t.Fatalf("the designer thinks with %q, want the high tier's model", got)
+	if got := agent.harnessDesignModel(""); got != "test/brain-model" {
+		t.Fatalf("the designer thinks with %q, want the mastermind tier's model", got)
 	}
 	// The turn's own word outranks the role, exactly as it does for a run.
 	if got := agent.harnessDesignModel("anthropic/claude-opus-5"); got != "anthropic/claude-opus-5" {
@@ -283,8 +284,9 @@ func TestTheDesignerResolvesItsRole(t *testing.T) {
 func TestTheDesignStartedEventNamesTheResolvedModel(t *testing.T) {
 	agent, _ := buildAgent(t, designingCompleter(), t.TempDir())
 	agent.config.RolesSource = tierSettings(map[string]string{
-		roles.TierKey(roles.TierHigh): "test/careful-model",
-		roles.TierKey(roles.TierLow):  "test/cheap-model",
+		roles.TierKey(roles.TierMastermind): "test/brain-model",
+		roles.TierKey(roles.TierHigh):       "test/careful-model",
+		roles.TierKey(roles.TierLow):        "test/cheap-model",
 	})
 	lane := agent.HarnessDesigns()
 
@@ -294,7 +296,7 @@ func TestTheDesignStartedEventNamesTheResolvedModel(t *testing.T) {
 	if started.Kind != EventHarnessDesign {
 		t.Fatalf("the lane opened with %v", started.Kind)
 	}
-	if started.Model != "test/careful-model" {
+	if started.Model != "test/brain-model" {
 		t.Fatalf("the design started on %q, want the designer role's model", started.Model)
 	}
 }

@@ -77,9 +77,10 @@ went past. Once you have answered, it is not asked twice while the run catches u
 
 ## Watching a run and steering it
 
-A run does take a row on the roster and on the strip, with its nodes drawn under it as a
-tree — see *A run's nodes on the roster* below. Those rows are a picture of the run, not
-tasks: the run's own **page** is where a node is read and where the run is steered. Press
+A run takes a root row on the roster, with its nodes drawn under it as a tree — see *A
+run's nodes on the roster* below. On narrow frames its live members take ordinary chips in
+the strip's single flat row; the strip does not draw the tree. Those rows and chips are a
+picture of the run, not tasks: the run's own **page** is where a node is read and where the run is steered. Press
 **→** over an empty message box with no room open and the page opens — that is the only
 keyboard door onto it, and a paused run brings its own page up when it asks its question.
 
@@ -98,16 +99,19 @@ When no page is open, the planner's notes land in the conversation as dim lines 
 ## A run's nodes on the roster
 
 A run registers itself with the same machinery tasks use, so the work shows up where you
-already look for work: **one row for the run**, and **one row per node** hanging under it.
-The strip along the top of the frame draws the family as a tree, one row per node, with the
-elbows in the chip row:
+already look for work: **one root row for the run**, and **one row per node** hanging under
+it. The roster keeps the family whole and draws three-cell tree connectors:
 
 ```
  ⠋ audit the pricing code
-├── ✓ read the tariff table
-├── ⠋ read the invoice writer
-└── ◌ write up what disagrees
+├─ ✓ read the tariff table
+├─ ⠋ read the invoice writer
+└─ ◌ write up what disagrees
 ```
+
+The family's fold behaves like every other roster family: live families start open;
+settled or parked-only families start folded with an aggregate glyph and `▸ +N` badge on
+the root. The fullscreen roster below the column's width floor draws this same tree.
 
 The states are the ones every other row on the roster speaks: a node waiting on its
 prerequisites or on a lane is **queued**, a node working is **running**, and a node that

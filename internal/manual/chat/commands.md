@@ -76,6 +76,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/rewind` | `/undo`, `/back` | — | enters rewind mode (also esc esc) |
 | `/permissions` | `/perms` | — | lists what runs without asking; `d` drops a line |
 | `/harness` | `/harnesses` | — | lists the saved shapes of work and what they did |
+| `/crew` | — | — | prints the three crew presets with yours marked |
+| `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
@@ -560,6 +562,58 @@ session**, because the registry lives on the far machine. The second is drawn as
 panel's only row, and it is also what a registry that cannot be read at all shows, rather
 than an error.
 
+## /crew — the four models aforge works with
+
+aforge makes calls you did not type, and they do not all want the same model. `/crew` is
+those four choices answered in one word.
+
+```
+/crew
+```
+
+prints the three presets, yours marked with a `·`, each with its own line and the four
+models it would set:
+
+```
+  frugal — deepseek everywhere · pennies a day
+    reflex        nex-agi/nex-n2-mini
+    small work    deepseek/deepseek-v4-flash
+    careful work  deepseek/deepseek-v4-pro
+    mastermind    deepseek/deepseek-v4-pro
+· balanced — kimi-k3 thinks, deepseek works
+    reflex        nex-agi/nex-n2-mini
+    small work    deepseek/deepseek-v4-flash
+    careful work  deepseek/deepseek-v4-pro
+    mastermind    moonshotai/kimi-k3:low
+  max — kimi-k3 everywhere, thinks longer
+    reflex        nex-agi/nex-n2-mini
+    small work    deepseek/deepseek-v4-pro
+    careful work  moonshotai/kimi-k3
+    mastermind    moonshotai/kimi-k3:high
+```
+
+`/crew frugal`, `/crew balanced` or `/crew max` sets it, and confirms in one line:
+
+```
+crew → balanced · brain kimi-k3:low · hands deepseek-v4-flash · checks deepseek-v4-pro
+```
+
+**The change is live.** The next call aforge makes on its own uses the new crew — no
+relaunch, and no waiting for the next session.
+
+A word that is not one of the three changes nothing and prints the three:
+`/crew cheap` answers `/crew cheap · not one of the three` and then the listing.
+
+If you have answered one of the four rows yourself, the listing ends with
+
+```
+yours is none of the three — crew → custom · brain openai/gpt-5 · hands …
+/crew balanced puts all four back
+```
+
+What each of the four classes funds, and how to set one of them on its own, is on the models
+page.
+
 ## /connect — your connected accounts
 
 `/connect` (or `/connections`) opens the connected-accounts panel, where you pick a
@@ -667,14 +721,15 @@ Refusals inside the panel, exactly as written:
 
 The tabs, in order:
 
-**Session** — what this conversation may run, spend, and which models answer the small
-calls it makes for itself. Rows include "ask before running", "tool exceptions", "shell
-command rules", "guardian", "approval countdown", "check task work", "memory",
-"task countdown", "task repair rounds", "tasks at once", "busy machine",
-"memory floor", "task model", "small work", "careful work", "pinned roles", "fallback
-models", "session ceiling". Under "pinned roles" it also carries the **roles** list — one
-row per auxiliary call aforge makes for itself, saying which tier and which model answers
-it. Those rows come from the running binary rather than the settings registry.
+**Session** — what this conversation may run and spend. Rows include "ask before running",
+"tool exceptions", "shell command rules", "guardian", "approval countdown",
+"check task work", "memory", "task countdown", "task repair rounds", "tasks at once",
+"busy machine", "memory floor", "task model", "fallback models", "session ceiling".
+
+The four models aforge uses on your behalf are **not** here — they are on Providers, with
+the row that says which model you are talking to. They used to be on this tab, one tab away
+from it, which made "which model does the planning" and "which model am I talking to" two
+errands on two screens.
 
 **Context** — what a model carries. Rows: "compact at", "answer room", "working set",
 "context reuse", "searching", "exa key", "jina key".
@@ -692,9 +747,28 @@ There is no "chat width" row here. The task roster is a fixed column whose width
 frame decides — full, slim, or drawn over the conversation on a narrow terminal — so
 there is no share of the frame to set, and a row that could only refuse is not shown.
 
-**Providers** — which model answers what. Rows: "looking", "reading", "routing", plus one
-row per model slot added automatically from the settings registry: drawing, speaking,
-composing, filming, voice, and the conversation slot.
+**Providers** — which model answers what. It leads with the **Models section**, in this
+order:
+
+1. **your model** — the model you are talking to. It is the conversation slot, and picking
+   here is the same road `/model` takes.
+2. **crew** — the four below, chosen as one word: `frugal`, `balanced`, `max`. It is a cycle
+   row: enter or space walks it. Answer any of the four yourself and it reads `custom`.
+3. **reflex** — `near-free · reads every turn — memory, titles, safety`
+4. **small work** — `cheap · does the bulk work — run nodes, digests`
+5. **careful work** — `careful · checks what must not be wrong — audits, compaction, vision`
+6. **mastermind** — `thinks · plans runs and designs harnesses — add :low, :medium or :high`
+7. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
+   aforge makes for itself, grouped under its class. Those rows come from the running binary
+   rather than the settings registry.
+
+Then the rest of the tab: "looking", "reading", "routing", and one row per capability slot
+added automatically from the settings registry — drawing, speaking, composing, filming,
+voice.
+
+The first three of the four classes are **select** rows and open the model picker. The
+**mastermind** row is a **text** box instead, because its value may carry a thinking level
+(`moonshotai/kimi-k3:high`) and a picker hands back a bare id.
 
 **Connections** — the accounts this profile has connected and what each may do. Its rows
 come from the engine rather than the settings registry.
@@ -724,16 +798,26 @@ and its ctrl+t effort knob is true here too.
 
 ## The roles rows in settings — pinning a role, and del to unpin
 
-The **roles** list sits on the Session tab, directly under "pinned roles". Each row is one
-auxiliary call aforge makes on its own — `title`, `compaction`, `guardian`, `auditor`,
-`planner`, `designer`, `worker`, `vision`, `reflex` — drawn as
-`<role>    <tier> · <model>`, with `pinned` after it when that role has a model of its own.
+The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
+one auxiliary call aforge makes on its own — `title`, `compaction`, `guardian`, `auditor`,
+`planner`, `designer`, `worker`, `router`, `vision`, `reflex` — drawn as
+`<role>    <model>`, with `pinned` after it when that role has a model of its own.
+
+The rows are **grouped under their class**, in the same order the four class rows are drawn
+above them: `roles · reflex`, `roles · small work`, `roles · careful work`,
+`roles · mastermind`. The class is the heading, so it is not repeated on every row — which
+leaves the widest part of the row for the model id it is there to show.
+
+Stop on a row and the line under the list says **what that role is** and where its answer
+came from: `the plan that steers an adaptive run · follows mastermind above. enter pins it
+to a model of its own.`
 
 - **enter** opens the model picker and pins the role to what you choose.
 - **del** on a pinned row clears the pin. The legend says `del unpin` while you are on one,
   and del does nothing on any other row of the sheet.
-- Typing filters these rows too: they answer to their own names, which are in no settings
-  key.
+- Typing filters these rows too: they answer to their own names and to the line that says
+  what they do — neither of which is in any settings key. Searching for `image` finds
+  `vision`, whose description mentions it.
 
 Every pin is written into the "pinned roles" registry row and nowhere else, so the list and
 that text box are one setting seen two ways. What each role does and how the tiers work is

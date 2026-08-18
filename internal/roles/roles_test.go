@@ -105,15 +105,19 @@ func TestResolvePrecedence(t *testing.T) {
 		{
 			// The run's two halves, on one settings file: the planner is the
 			// call that decides what the tank is spent on, a worker is one of
-			// the many small ones that spend it.
-			name: "the planner takes the high tier",
+			// the many small ones that spend it. They are on DIFFERENT TIERS and
+			// no longer on adjacent ones — the deciding call moved to the
+			// mastermind tier, which is what makes "one careful call, many cheap
+			// ones" a price a person can actually set.
+			name: "the planner takes the mastermind tier",
 			src: settings(map[string]string{
-				"tiers.low":  "low-model",
-				"tiers.high": "high-model",
+				"tiers.low":        "low-model",
+				"tiers.high":       "high-model",
+				"tiers.mastermind": "mastermind-model",
 			}),
 			role:     RolePlanner,
 			fallback: "session-model",
-			want:     "high-model",
+			want:     "mastermind-model",
 		},
 		{
 			name: "a worker takes the low tier",
@@ -146,14 +150,43 @@ func TestResolvePrecedence(t *testing.T) {
 			want:     "session-model",
 		},
 		{
-			name: "the designer takes the high tier",
+			// THE DESIGNER IS A MASTERMIND AND NOT A CAREFUL WORKER. What it
+			// writes is saved and run again by everybody who picks it
+			// afterwards, so its tier is the one that thinks rather than the one
+			// that checks.
+			name: "the designer takes the mastermind tier",
+			src: settings(map[string]string{
+				"tiers.low":        "low-model",
+				"tiers.high":       "high-model",
+				"tiers.mastermind": "mastermind-model",
+			}),
+			role:     RoleDesigner,
+			fallback: "session-model",
+			want:     "mastermind-model",
+		},
+		{
+			// And a mastermind tier nobody set falls straight to the session
+			// model, NOT to the careful one. A tier is not a ladder of tiers:
+			// the rungs are the pin, the tier, and the conversation.
+			name: "the planner falls to the session model when the mastermind tier is unset",
 			src: settings(map[string]string{
 				"tiers.low":  "low-model",
 				"tiers.high": "high-model",
 			}),
-			role:     RoleDesigner,
+			role:     RolePlanner,
 			fallback: "session-model",
-			want:     "high-model",
+			want:     "session-model",
+		},
+		{
+			// A tier value may carry a level, and the level is not part of the
+			// id: the ladder hands back the model alone, so a caller with no way
+			// to send an effort sends a request that is byte-for-byte what it
+			// was.
+			name:     "a level on a tier value does not reach the model id",
+			src:      settings(map[string]string{"tiers.mastermind": "moonshotai/kimi-k3:low"}),
+			role:     RolePlanner,
+			fallback: "session-model",
+			want:     "moonshotai/kimi-k3",
 		},
 		{
 			// The reflex role takes its OWN tier and not the low one, which is
@@ -330,9 +363,11 @@ func TestDefaultAssignment(t *testing.T) {
 	for role, want := range map[Role]Tier{
 		RoleTitle:      TierLow,
 		RoleCompaction: TierHigh,
-		RolePlanner:    TierHigh,
-		RoleDesigner:   TierHigh,
-		RoleWorker:     TierLow,
+		// The two masterminds. They were on the high tier beside the compaction
+		// summary, which made one figure answer two different bills.
+		RolePlanner:  TierMastermind,
+		RoleDesigner: TierMastermind,
+		RoleWorker:   TierLow,
 		// The per-turn pair is the third tier's only tenant, and it is the
 		// assignment that would be silently wrong: reflex on the low tier is a
 		// cheap model called twice a turn, which reads as thrift and bills as a

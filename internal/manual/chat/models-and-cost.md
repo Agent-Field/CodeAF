@@ -121,54 +121,122 @@ A slug the catalog has never carried is still **taken at its word**, exactly as 
 aforge may be offline, or you may be naming a model this build has never listed. In that
 case the context window is left alone.
 
-## Which model does the planning, the working and the small calls aforge makes for itself
+## The crew — which models aforge uses on my behalf, and /crew
 
 aforge makes calls you did not type: naming a session, the summary a compaction keeps, the
 safety gate, the check on finished task work, the planner of an adaptive run and the nodes
 under it, the designer of a saved harness page, looking at an image. Each of those is a
-**role**, and every role sits on one of three **tiers** you set once, in `/settings` →
-Session:
+**role**, and every role sits on one of four **classes** — the **crew** — which you set in
+`/settings` → Providers, or in one word with `/crew`:
 
-- **reflex** — the near-free model for work that happens every single turn.
-- **small work** — the cheap model, for short things a wrong answer costs a glance.
-- **careful work** — the capable model, for the ones a wrong answer destroys something.
+- **reflex** — near-free · reads every turn — memory, titles, safety.
+- **small work** — cheap · does the bulk work — run nodes, digests.
+- **careful work** — careful · checks what must not be wrong — audits, compaction, vision.
+- **mastermind** — thinks · plans runs and designs harnesses.
 
-Leave any of them blank and the roles on it follow the model you are talking to. There is
-no tier for a role to fall through to before that — a fresh install with nothing set makes
-every one of these calls on your own model, which is what it did before tiers existed.
+**All four arrive with a model already in them**, and the four together are the `balanced`
+preset:
 
-**reflex** is the one row that arrives with a model already in it, `nex-agi/nex-n2-mini`,
-because a call made twice a turn is a different bill from a call made once a session.
-Clearing the row is still allowed and still means "use the model I am talking to".
+| class | as shipped |
+| --- | --- |
+| reflex | `nex-agi/nex-n2-mini` |
+| small work | `deepseek/deepseek-v4-flash` |
+| careful work | `deepseek/deepseek-v4-pro` |
+| mastermind | `moonshotai/kimi-k3:low` |
 
-Directly under the **pinned roles** row the panel lists **every registered role**, one per
-line: the role's name, the tier answering it, and the model that comes out. As shipped:
+They are all open-source models, and none of them is the model you are talking to. A crew
+that followed your conversation would put the most expensive model in the build on the
+cheapest questions in it — a call made twice every turn on a frontier model is a bill nobody
+agreed to.
 
-| role | tier | what it is |
+**Clearing a row is still an answer.** A class you empty on purpose reads
+`follows the conversation`, and every role on it runs on the model you are talking to. That
+is the only way to say "use my model for this", and it is deliberately something you have to
+say rather than the default.
+
+### The three presets
+
+| | frugal | balanced | max |
+| --- | --- | --- | --- |
+| reflex | `nex-n2-mini` | `nex-n2-mini` | `nex-n2-mini` |
+| small work | `deepseek-v4-flash` | `deepseek-v4-flash` | `deepseek-v4-pro` |
+| careful work | `deepseek-v4-pro` | `deepseek-v4-pro` | `kimi-k3` |
+| mastermind | `deepseek-v4-pro` | `kimi-k3:low` | `kimi-k3:high` |
+
+- **frugal** — deepseek everywhere · pennies a day
+- **balanced** — kimi-k3 thinks, deepseek works
+- **max** — kimi-k3 everywhere, thinks longer
+
+`/crew` prints all three with yours marked; `/crew max` sets it and confirms in one line.
+The **crew** row in `/settings` → Providers is the same thing: enter or space walks it
+frugal → balanced → max.
+
+**The crew row is not stored — it is worked out from the four.** Answer any one of the four
+rows yourself and the crew row reads `custom`, because that is what is true. `/crew balanced`
+puts all four back in one write.
+
+### The roles under each class
+
+Directly under the **pinned roles** row the panel lists **every registered role**, grouped
+under the class answering it, saying which model comes out. As shipped:
+
+| role | class | what it is |
 | --- | --- | --- |
+| `reflex` | reflex | reads every turn for memory — routing and keeping |
 | `title` | small work | the name a session gives itself |
-| `compaction` | careful work | the summary that is all that survives a compaction |
-| `guardian` | small work | "is this one tool call plainly safe" |
-| `auditor` | careful work | whether finished-looking task work is actually finished |
-| `planner` | careful work | an adaptive run's plan, amended after every node |
-| `designer` | careful work | writes and reviews a harness page before it is saved |
 | `worker` | small work | one node of an adaptive run |
+| `guardian` | small work | is this one tool call plainly safe |
+| `router` | small work | which surface a request belongs to |
+| `compaction` | careful work | the summary that survives a compaction |
+| `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |
-| `reflex` | reflex | the per-turn memory pair — see below |
+| `planner` | mastermind | the plan that steers an adaptive run |
+| `designer` | mastermind | writes and reviews a harness page |
 
 The list is built from what is registered in the running binary, so it is the truth about
-this build rather than a table someone kept up to date.
+this build rather than a table someone kept up to date. Stop on a row and the line under the
+list is that role's own description followed by which class it follows.
+
+**`planner` and `designer` are the mastermind's two roles**, and they used to sit on careful
+work beside the compaction summary — which made one model id answer two unrelated bills.
+The careful calls are many and short; these two are few, and each one decides what all the
+other calls do. A planner that cuts badly spends a whole run on work nobody wanted; a
+designer that writes badly puts a wrong answer on the menu with a name on it.
+
+## Asking a class to think harder — a level on a class value
+
+A class value may carry a thinking level as well as a model:
+
+```
+moonshotai/kimi-k3:high
+```
+
+`:low`, `:medium` and `:high` are the three, and the shipped **mastermind** carries `:low`.
+The level is not part of the model id — it travels as its own request option, exactly as
+the picker's **ctrl+t** effort does — so the id sent to the provider is
+`moonshotai/kimi-k3` and the thinking is asked for separately.
+
+- **Any of the four class rows takes one**, though the mastermind is the one it is for.
+- **Any other suffix is refused**, in words: *"off" is not a thinking level. Add `low`, `medium`,
+  `high` to a model id, or leave the level off*. It is a different request shape — it asks the
+  provider to suppress thinking outright — and some endpoints refuse it. `:max`, `:none`,
+  `:xhigh` and the other near-misses are refused the same way.
+- Where a level is set, the role rows print it after the id, `kimi-k3:low`, which is the
+  same notation the model picker and `/status` use.
+
+The **mastermind** row is a text box rather than a picker for exactly this reason: a picker
+hands back a bare id, and this row's value may be an id with an instruction on it.
 
 One thing about `reflex`: it is the only role called **twice on every message** — once
 before, to pick which remembered lines belong in this one, and once after, to decide
 whether the exchange held anything worth keeping (what-i-remember). That is why it has a
-tier of its own rather than sharing "small work", and why it is the one row where a large
+class of its own rather than sharing "small work", and why it is the one row where a large
 model is an expensive mistake rather than a preference. Both calls are folded into the
 session's total, not into the message that triggered them, so `/cost` includes them
 without any one message reading as three times the price of its neighbours.
 
-One caveat on `vision`: the **looking** row on the Providers tab is the front door for
-which model sees, and it wins over this role's tier. The `vision` pin is the second rung
+One caveat on `vision`: the **looking** row further down the Providers tab is the front door
+for which model sees, and it wins over this role's class. The `vision` pin is the second rung
 of that ladder — set the looking row for the ordinary case, and pin the role only when
 you want a pin that also binds the older surfaces.
 
@@ -183,9 +251,9 @@ next to the money it is spending:
 
 `planner: <model>` is the model amending the plan after every node — resolved once when the
 run started, from the model you named in the sentence, then the `planner` role's pin, then
-the **careful work** tier, then the model you are talking to. With a tier set it is usually
-*not* the model in the rest of this conversation, which is why the run's own page says it
-rather than leaving you to work it out.
+the **mastermind** class, then the model you are talking to. Since the mastermind ships with
+a model in it, this is usually *not* the model in the rest of this conversation, which is why
+the run's own page says it rather than leaving you to work it out.
 
 It never changes while a run is going: the ladder is walked once, at the start.
 
@@ -193,16 +261,16 @@ On a narrow screen (**under 60 columns**) the segment comes off that line and is
 on the first row of the page instead, above the chips. It is moved, not dropped — what the
 header sheds first is the goal, which you can still read in the conversation.
 
-The nodes under the planner run on the `worker` role, which is a different model and is not
-on this line. `/settings` → Session lists both.
+The nodes under the planner run on the `worker` role, which sits on **small work** — a
+different model, and not on this line. `/settings` → Providers lists both.
 
 ## Pinning one role to its own model, and unpinning it
 
-In `/settings` → Session, move onto any row of the roles list and press **enter**. That
+In `/settings` → Providers, move onto any row of the roles list and press **enter**. That
 opens the model picker — the same one `/model` opens, same filter box, same ranking — and
 what you choose is **pinned** to that role alone. The row then reads
-`careful work · <model>  pinned`, and the legend at the foot offers **del unpin**. Press
-**del** on a pinned row to clear it; the role goes back to following its tier.
+`<model>  pinned`, and the legend at the foot offers **del unpin**. Press
+**del** on a pinned row to clear it; the role goes back to following its class.
 
 The picker a role opens asks that role's own question. `vision` offers only models that
 can see; every other role offers the models you can hold a conversation with.
@@ -214,18 +282,20 @@ and pinning from the list rewrites the row without disturbing the other pins in 
 
 **A third door: just ask.** "Use `deepseek/deepseek-v4-pro` for planning and for designing
 harnesses" is a sentence aforge acts on — it looks the row up with `settings` and writes it
-with `change_setting`, into the same `models.roles` row, after asking you. The two tier
-rows (`models.tiers.high`, `models.tiers.low`) and the pins are all writable that way; only
-the role **slots** on the Providers tab are not, because those are bindings the running
-session holds rather than values in your profile.
+with `change_setting`, into the same `models.roles` row, after asking you. The four class
+rows (`models.tiers.reflex`, `models.tiers.low`, `models.tiers.high`,
+`models.tiers.mastermind`), the crew word (`models.crew`) and the pins are all writable that
+way; only the role **slots** further down the Providers tab are not, because those are
+bindings the running session holds rather than values in your profile.
 
-So the ladder for any role, most specific first: **its pin**, then **its tier's model**,
+So the ladder for any role, most specific first: **its pin**, then **its class's model**,
 then **the model you are talking to**.
 
-Two limits worth knowing:
+Two things worth knowing:
 
-- A change here lands on the **next session**. The models are resolved once when aforge
-  starts, so that two calls in one conversation cannot answer to different settings.
+- **A change is live.** The next call aforge makes on its own uses it — whether you changed
+  it in the panel, with `/crew`, or by asking. It used to land on the next session, and it no
+  longer does. A turn already in flight finishes on what it started with.
 - Naming a model in the sentence outranks all of it for that piece of work. `orchestrate
   the migration with opus` runs the planner *and* every node on opus; `make a harness for
   triaging flakes with opus` designs on opus. The roles decide only when you named nothing.

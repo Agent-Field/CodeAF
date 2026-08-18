@@ -9,9 +9,14 @@ may use, and its own bounds.
 You build one by asking for it in a sentence. You keep it by approving a card. Afterwards
 it lives on disk and shows up in a list.
 
-**There is no slash command that runs one.** Running is offered by the turn itself: you
-type what you want, and if your words match a saved harness closely enough, aforge asks
-whether to run it instead of answering the ordinary way. `/harness` lists what you have.
+**Sub-harness and harness are the same word.** `/harness`, `/harnesses`, `/subharness` and
+`/sub` all reach the same list.
+
+**There are two ways to run one.** aforge offers one by itself when what you typed matches
+a saved harness closely enough — that is the road for somebody who does not know the
+registry has the thing they are describing. And you can pick one yourself: type `/harness `
+with a space, choose it from the list that opens, and then type the request. See *Picking a
+harness yourself* below. `/harness` with nothing after it lists what you have.
 
 Three rules govern that offer:
 
@@ -354,9 +359,55 @@ wins over the in-memory one of the same name.
 Refusals from the store name themselves: a name that is not a short slug, a save that asks
 for a version other than the next one, a version past the cap, and `subharness: not found`.
 
+## Picking a harness yourself — running a subharness on purpose
+
+Type `/harness` **with a space after it** and a filtering list opens under the box, latest
+first — the harness that ran most recently at the top, and one that has never run sorted by
+when its page was written. Keep typing and it narrows. `/subharness ` and `/sub ` open
+exactly the same list.
+
+```
+◆ triage-flake     chase a flaky test · 2h ago
+◆ review-diff      read a diff · never run
+  Browse the registry →
+```
+
+| Key | What it does |
+| --- | --- |
+| `↑` / `↓`, also `ctrl+p` / `ctrl+n` | move |
+| `pgup` / `pgdown` | move by a page |
+| `enter`, or a click on a row | pick that harness |
+| `esc` | close the list and leave what you typed alone |
+
+The last row is always `Browse the registry →`, which opens the card panel below.
+
+**What you picked becomes a chip above the message box**, with the name cut to 24 cells if
+it is long, and a dim hint beside it:
+
+```
+⚙ triage-flake ✕  — type the request · enter runs it
+```
+
+Then type the request and press `enter`. **That harness runs on exactly those words**, with
+no matching and no offer card — you already said which one you meant, so nothing asks you
+again.
+
+Limits worth knowing:
+
+- **One chip at a time.** Picking a second harness replaces the first.
+- **Take it off** by clicking the `✕`, or with `backspace` on an empty box.
+- **The chip clears when the message is sent**, so the next thing you type is an ordinary
+  turn again. It is also cleared by `/new`.
+- `enter` with a chip and an empty box does nothing — the hint is telling you what is
+  missing.
+- The filtering is over the name and the description. Cues are not on the page (see *Why it
+  stopped offering after a restart*), so they cannot be searched here either.
+- No registry wired here: `harnesses are unavailable here`.
+
 ## /harness — the list of what you have
 
-Type `/harness` or `/harnesses`. Both open the same panel.
+Type `/harness` or `/harnesses` with nothing after them. Both open the same panel, and so
+do `/subharness` and `/sub`. (A space after the word opens the picker above instead.)
 
 A short list opens under the message box, at most **10** lines:
 
@@ -388,8 +439,8 @@ one. The transcript is where prose lives and can be scrolled and copied.
 
 Limits:
 
-- **No argument form.** You pick a harness from rows you recognise. Typing a name after
-  `/harness` is not a thing this build does.
+- **The panel takes no argument.** A name typed after `/harness` is a filter for the picker
+  above, not an instruction to this panel.
 - No registry wired here: `harnesses are unavailable here`.
 - An empty registry: `no harnesses are registered yet — build one in the conversation`.
 - A registry that cannot be read at all draws the empty list rather than an error.
@@ -411,8 +462,8 @@ What follows from that:
   alone never reaches the threshold.
 
 So if a harness used to be offered when you described the work, and now it is not, nothing
-is broken and nothing was lost. Name it, and it will be offered. Or open `/harness` and run
-it from the list.
+is broken and nothing was lost. Name it, and it will be offered. Or type `/harness ` with a
+space, pick it out of the list, and run it on purpose.
 
 ## Things that are not available in this build
 
@@ -422,9 +473,6 @@ They are listed here so you do not go looking for them:
 - **The running-harness chip.** The activity strip can draw a chip for a harness that is
   currently running, and clicking it would open the panel. No real session provides the
   chip with anything to draw, so it never appears. `/harness` is the way in.
-- **A hosted `/harness <name>` trigger.** The harness machinery can offer a command-line
-  trigger of the form `/harness <name>`, but nothing in this build mounts it. `/harness` is
-  the panel and only the panel, with no argument form.
 
 Two behaviours are absences rather than bugs, and are stated outright in the code:
 

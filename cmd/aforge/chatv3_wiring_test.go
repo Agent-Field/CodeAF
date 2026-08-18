@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 )
@@ -104,8 +105,22 @@ func TestAnEmptyProfileGatesEverythingAndFollowsTheSessionModel(t *testing.T) {
 	if got := cfg.ApprovalPolicy.Check("read", json.RawMessage(`{"path":"x"}`)); got.Action != approval.ActionAllow {
 		t.Fatalf("a fresh install asked about a read: %s", got)
 	}
-	// And every auxiliary call rides the model the person already has.
+	// And every auxiliary call rides THE CLASS IT SHIPS ON rather than the model
+	// the person is talking to. That changed when the crew landed
+	// (internal/config's crew.go): a whole crew following the conversation means
+	// the most expensive model in the build answering the cheapest questions in it.
 	model, err := roles.Resolve(cfg.RolesSource, roles.RoleTitle, "session/model")
+	if err != nil || model != config.DefaultLowModel {
+		t.Fatalf("the title role resolved to %q (%v), want its class's %q", model, err, config.DefaultLowModel)
+	}
+	// The floor is still there and is still the conversation's model — it is what
+	// a class somebody CLEARED falls to.
+	cleared, err := applyV3Governance(session.Config{Model: "session/model"},
+		v3Profile(t, map[string]any{"models.tiers.low": ""}), false)
+	if err != nil {
+		t.Fatalf("a cleared class has to boot: %v", err)
+	}
+	model, err = roles.Resolve(cleared.RolesSource, roles.RoleTitle, "session/model")
 	if err != nil || model != "session/model" {
 		t.Fatalf("the floor resolved to %q (%v)", model, err)
 	}

@@ -115,11 +115,13 @@ const (
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
-// are deliberately not. Three settings is a decision someone can hold in their
+// are deliberately not. Four settings is a decision someone can hold in their
 // head — a tier per feature is the per-feature knob this package exists to
-// avoid — and the third was added only because a call made TWICE EVERY TURN is
-// a different economy from a call made once a session, not because a feature
-// wanted a knob.
+// avoid — and each one past the first two was added only because a CALL RHYTHM
+// differs, never because a feature wanted a knob: the reflex tier because a call
+// made twice every turn is a different bill from a call made once a session, the
+// mastermind tier because a call whose answer decides what every other call does
+// is a different bill again.
 type Tier string
 
 const (
@@ -135,10 +137,35 @@ const (
 	TierLow Tier = "low"
 	// TierHigh is the capable, expensive one.
 	TierHigh Tier = "high"
+	// TierMastermind is the one tier that is not an economy at all. Two roles
+	// sit on it — the planner that decides what an adaptive run does next, and
+	// the designer that writes a harness page everybody afterwards runs — and
+	// what they have in common is that ONE ANSWER SHAPES ALL THE OTHER CALLS.
+	// A planner that cuts badly spends a whole tank on work nobody wanted; a
+	// designer that writes badly puts a wrong answer on the menu with a name on
+	// it. Both were on the high tier, beside the compaction summary and the
+	// auditor, which made a person choosing "the capable model" choose one
+	// figure for two very different bills: the careful calls are many and short,
+	// the mastermind's are few and worth thinking about. Separating them is what
+	// lets the shipped crew spend on thinking exactly where thinking pays.
+	TierMastermind Tier = "mastermind"
 )
 
 // Tiers lists every tier, cheapest first, for a settings surface to render.
-var Tiers = []Tier{TierReflex, TierLow, TierHigh}
+var Tiers = []Tier{TierReflex, TierLow, TierHigh, TierMastermind}
+
+// known reports whether a tier is one this package has. It reads [Tiers] rather
+// than a switch, so a fifth tier is one line in that list and not a second list
+// somebody has to remember to widen — the mistake that would otherwise show up
+// as a register-time panic on a tier the settings surface is already drawing.
+func known(tier Tier) bool {
+	for _, candidate := range Tiers {
+		if candidate == tier {
+			return true
+		}
+	}
+	return false
+}
 
 // DefaultAssignment is the tier each built-in role starts on.
 //
@@ -158,8 +185,8 @@ var Tiers = []Tier{TierReflex, TierLow, TierHigh}
 var DefaultAssignment = map[Role]Tier{
 	RoleTitle:      TierLow,
 	RoleCompaction: TierHigh,
-	RolePlanner:    TierHigh,
-	RoleDesigner:   TierHigh,
+	RolePlanner:    TierMastermind,
+	RoleDesigner:   TierMastermind,
 	RoleWorker:     TierLow,
 	RoleRouter:     TierLow,
 	RoleReflex:     TierReflex,
@@ -198,12 +225,42 @@ func PinKey(role Role) string { return pinPrefix + string(role) }
 // TierKey is the settings key holding a tier's model.
 func TierKey(tier Tier) string { return tierPrefix + string(tier) }
 
+// roleDescriptions is the plain line under each built-in role's name.
+//
+// IT COVERS ROLES THIS PACKAGE DOES NOT REGISTER — guardian, auditor, vision
+// are declared from internal/session's own inits, which say a role and a tier
+// and nothing else. A description is what a PERSON reads on a settings row, and
+// the settings surface is nowhere near those files; asking each owner to pass a
+// sentence it never had would have left the three most-asked-about roles blank.
+// A package that does pass one to [Register] overwrites its entry here, which is
+// the same last-one-wins rule the tier assignment keeps.
+var roleDescriptions = map[Role]string{
+	RolePlanner:    "the plan that steers an adaptive run",
+	RoleDesigner:   "writes and reviews a harness page",
+	RoleAuditor:    "whether finished-looking work is actually finished",
+	RoleCompaction: "the summary that survives a compaction",
+	RoleWorker:     "one node of an adaptive run",
+	RoleTitle:      "the name a session gives itself",
+	RoleGuardian:   "is this one tool call plainly safe",
+	RoleRouter:     "which surface a request belongs to",
+	RoleReflex:     "reads every turn for memory — routing and keeping",
+	RoleVision:     "reads images for a model that cannot see them",
+}
+
 var (
 	registryMu sync.RWMutex
 	registry   = map[Role]Tier{}
+	// descriptions is seeded from [roleDescriptions] and then written by
+	// [Register]. It is separate from the registry map because a description
+	// belongs to a role whether or not this build registered it: the guardian's
+	// line is written here and its tier is written in internal/session.
+	descriptions = map[Role]string{}
 )
 
 func init() {
+	for role, description := range roleDescriptions {
+		descriptions[role] = description
+	}
 	for role, tier := range DefaultAssignment {
 		Register(role, tier)
 	}
@@ -218,16 +275,37 @@ func init() {
 // A repeat registration overwrites, last one wins. That is what lets a surface
 // retune a built-in — moving titles to the high tier for a run, say — without
 // editing this file, which is the same reason the role registry is open.
-func Register(role Role, tier Tier) {
+//
+// The optional description is the role IN A PERSON'S WORDS, printed under its
+// name in the settings list. It is variadic rather than a second function or a
+// wider signature because every existing call site is an init in another package
+// that says only "this role, this tier", and a role whose owner has not written
+// a line yet is better than a build that will not compile. The built-ins fill
+// theirs from [roleDescriptions] below; a package registering its own role
+// passes one here.
+func Register(role Role, tier Tier, description ...string) {
 	if strings.TrimSpace(string(role)) == "" {
 		panic("roles: register with empty role")
 	}
-	if tier != TierReflex && tier != TierLow && tier != TierHigh {
+	if !known(tier) {
 		panic(fmt.Sprintf("roles: register %q with unknown tier %q", role, tier))
 	}
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	registry[role] = tier
+	if len(description) > 0 && strings.TrimSpace(description[0]) != "" {
+		descriptions[role] = strings.TrimSpace(description[0])
+	}
+}
+
+// Describe is the role in a sentence a person reads — "the plan that steers an
+// adaptive run", not "planner". A role nobody wrote a line for answers the
+// empty string, which a surface renders as nothing (THE EMPTINESS LAW) rather
+// than as the role's own name said twice.
+func Describe(role Role) string {
+	registryMu.RLock()
+	defer registryMu.RUnlock()
+	return descriptions[role]
 }
 
 // Registered lists every role, sorted. Sorted because the registry is a map
@@ -275,20 +353,38 @@ func TierOf(role Role) (Tier, bool) {
 // setting in a UI usually writes an empty string, and falling through to the
 // next rung is what "cleared" plainly means.
 func Resolve(src Source, role Role, sessionDefault string) (string, error) {
+	call, err := ResolveCall(src, role, sessionDefault)
+	return call.Model, err
+}
+
+// ResolveCall is [Resolve] with the effort kept: the same ladder, answered as
+// the two halves a request actually needs.
+//
+// It exists because a tier value may carry a level — `moonshotai/kimi-k3:low` —
+// and the two halves travel to different places. The id goes in the request's
+// model field; the level is a separate request option, and a caller that pasted
+// the whole string into the model field would be asking the provider for a model
+// whose name has a colon in it. So the split happens ONCE, here, on the way out
+// of the ladder, and [Resolve] is this function with the level dropped — which
+// is the correct behaviour for every caller that has no way to send one.
+func ResolveCall(src Source, role Role, sessionDefault string) (Call, error) {
 	tier, ok := TierOf(role)
 	if !ok {
-		return "", fmt.Errorf("%w: %q", ErrUnknownRole, role)
+		return Call{}, fmt.Errorf("%w: %q", ErrUnknownRole, role)
 	}
-	if model, ok := read(src, PinKey(role)); ok {
-		return model, nil
+	if value, ok := read(src, PinKey(role)); ok {
+		return call(value), nil
 	}
-	if model, ok := read(src, TierKey(tier)); ok {
-		return model, nil
+	if value, ok := read(src, TierKey(tier)); ok {
+		return call(value), nil
 	}
+	// THE SESSION MODEL IS NOT SPLIT. It is the id a running conversation is on,
+	// and whatever effort that conversation was dialled to belongs to the person
+	// who typed into it, not to an errand this package is routing.
 	if model := strings.TrimSpace(sessionDefault); model != "" {
-		return model, nil
+		return Call{Model: model}, nil
 	}
-	return "", fmt.Errorf("%w for role %q", ErrNoModel, role)
+	return Call{}, fmt.Errorf("%w for role %q", ErrNoModel, role)
 }
 
 // Pinned reports a role's explicit pin — rung 1 of the ladder on its own, for
@@ -308,6 +404,91 @@ func TierModel(src Source, tier Tier) (string, bool) {
 // half-built writer would mean two places that know how a pin is stored. The
 // settings writer wave owns them, and writes through [PinKey] and [TierKey] so
 // the two halves cannot name a key differently.
+
+// ── effort, carried on a tier value ────────────────────────────────────────
+//
+// A tier value may name a level as well as a model: `moonshotai/kimi-k3:low` is
+// "the mastermind is kimi-k3, and ask it to think a little". It is one string
+// rather than a fifth settings row per tier because the level is not a separate
+// decision — nobody sets an effort for a tier without setting the model, and a
+// row that could hold a level for a model nobody chose would be a knob wired to
+// a blank. The notation is the SURFACE'S OWN, already read by the model picker's
+// ctrl+t and printed after an id on the picker row and the /status model line.
+
+// Efforts lists the levels a tier value may carry, cheapest first.
+//
+// They are STRINGS HERE and not internal/provider's Effort, for the reason the
+// settings keys are strings: this package imports nothing of the surface, and a
+// level is a word somebody typed into a config file. The caller that puts the
+// word on a request is the one that owns the adapter's type.
+//
+// "off" is deliberately not one of them. It is a different request — it asks a
+// provider to suppress the thinking pass outright, which some endpoints refuse
+// — and a tier value is a thing a person writes once and forgets, which is the
+// wrong place for a knob that can fail on the wire.
+var Efforts = []string{"low", "medium", "high"}
+
+// Call is one resolved auxiliary call: which model answers it, and how hard it
+// was asked to think. The effort is empty for a value that named none, which is
+// every value that has ever been written until somebody writes a suffix — and
+// empty means SEND NOTHING, leaving the request byte-for-byte what it was.
+type Call struct {
+	Model  string
+	Effort string
+}
+
+// String is the call as the surface spells it — the id, and the level after a
+// colon when there is one. It is the notation the picker row and /status already
+// use, so a settings list can print a resolved call without inventing a second
+// way to say the same thing.
+func (c Call) String() string {
+	if c.Model == "" || c.Effort == "" {
+		return c.Model
+	}
+	return c.Model + ":" + c.Effort
+}
+
+// SplitEffort separates a tier value into the model id and the level it carries.
+//
+// A value with no colon, and a value whose text after the last colon is not one
+// of [Efforts], is A MODEL ID AND NOTHING ELSE. That is not leniency: model ids
+// carry their own suffixes (`…/model:free`, `…:nitro`, `…:thinking`), and a
+// function that treated every colon as an effort would quietly break every one
+// of them. Only the three words this package knows are levels are read as levels.
+//
+// So this function never refuses anything, and it is not the validator. A person
+// who wrote `:of` for `:off` has written a model id no provider serves, and the
+// only place that can say so in a sentence is the settings row they wrote it in
+// (internal/config's ValidateTierValue). This is the reader; that is the gate.
+func SplitEffort(value string) (string, string) {
+	value = strings.TrimSpace(value)
+	at := strings.LastIndex(value, ":")
+	if at <= 0 {
+		return value, ""
+	}
+	suffix := strings.ToLower(strings.TrimSpace(value[at+1:]))
+	if !ValidEffort(suffix) {
+		return value, ""
+	}
+	return strings.TrimSpace(value[:at]), suffix
+}
+
+// ValidEffort reports whether a word is one of [Efforts].
+func ValidEffort(word string) bool {
+	word = strings.ToLower(strings.TrimSpace(word))
+	for _, effort := range Efforts {
+		if effort == word {
+			return true
+		}
+	}
+	return false
+}
+
+// call is [SplitEffort] as a [Call].
+func call(value string) Call {
+	model, effort := SplitEffort(value)
+	return Call{Model: model, Effort: effort}
+}
 
 // read is one rung of the ladder: a lookup that treats a nil source, a missing
 // key and a blank value alike.

@@ -11,21 +11,20 @@ import (
 //
 // The settings panel builds a source of its own for what is on screen
 // (internal/tui3's rolesSource); this is the one every actual call resolves
-// against, and the two had drifted: the panel mapped all three tiers and the
+// against, and the two had drifted: the panel mapped all the tiers and the
 // door mapped two, so a reflex — a call made TWICE EVERY TURN — resolved to the
 // conversation's own model on every machine. That is not thrift misconfigured;
 // it is the most expensive model in the build answering the cheapest question
 // in it.
-func TestTheDoorsRoleLadderCarriesAllThreeTiers(t *testing.T) {
+func TestTheDoorsRoleLadderCarriesEveryTier(t *testing.T) {
 	dir := t.TempDir()
 	source, err := v3RolesSource(t.TempDir(), dir)
 	if err != nil {
 		t.Fatalf("v3RolesSource: %v", err)
 	}
 
-	// An untouched profile: the reflex row ships pointed at a model, which its
-	// two neighbours do not, so this is the one tier that resolves to something
-	// other than the conversation's model on a fresh install.
+	// An untouched profile: every class ships pointed at a model (the crew, in
+	// internal/config's crew.go), so nothing here resolves to the conversation.
 	reflex, err := roles.Resolve(roles.Source(source), roles.RoleReflex, "vendor/conversation")
 	if err != nil {
 		t.Fatalf("resolving the reflex role: %v", err)
@@ -60,10 +59,29 @@ func TestTheDoorsRoleLadderCarriesAllThreeTiers(t *testing.T) {
 		t.Fatalf("the reflex role resolves to %q after the tier was pinned to vendor/tiny", reflex)
 	}
 
-	// The two tiers that were already wired still are: this arm added a rung, it
-	// did not move one.
-	if model, err := roles.Resolve(roles.Source(source), roles.RoleTitle, "vendor/conversation"); err != nil || model != "vendor/conversation" {
-		t.Fatalf("the title role resolves to %q (%v) on an unset low tier, want the conversation's model", model, err)
+	// EVERY CLASS IS WIRED, each to its own shipped model. The failure this holds
+	// shut is a class the door forgot: a role on it would resolve to the
+	// conversation's model, which is the mistake the reflex arm was added for.
+	for _, c := range []struct {
+		role roles.Role
+		want string
+	}{
+		{roles.RoleTitle, config.DefaultLowModel},
+		{roles.RoleCompaction, config.DefaultHighModel},
+		// The mastermind's value carries a level, and Resolve hands back the id
+		// alone — a colon in a model field is a request for a model nobody serves.
+		{roles.RolePlanner, "moonshotai/kimi-k3"},
+		{roles.RoleDesigner, "moonshotai/kimi-k3"},
+	} {
+		model, err := roles.Resolve(roles.Source(source), c.role, "vendor/conversation")
+		if err != nil || model != c.want {
+			t.Errorf("the %s role resolves to %q (%v), want its class's %q", c.role, model, err, c.want)
+		}
+	}
+	// And the level reaches the caller as its own half.
+	call, err := roles.ResolveCall(roles.Source(source), roles.RolePlanner, "vendor/conversation")
+	if err != nil || call.Effort != "low" {
+		t.Fatalf("the planner resolved to %+v (%v), want the shipped level", call, err)
 	}
 }
 

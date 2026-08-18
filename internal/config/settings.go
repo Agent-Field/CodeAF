@@ -145,6 +145,32 @@ const (
 	// — a person who never opens the sheet gets the cheap thing, and a person
 	// who clears the row gets the conversation's own model, deliberately.
 	KeyTierReflexModel = "models.tiers.reflex"
+	// KeyTierMastermindModel is the fourth tier and the only one whose model is
+	// chosen for THINKING rather than for a price. Two roles ride it — the
+	// planner that amends an adaptive run's plan after every node, and the
+	// designer that writes a harness page everybody afterwards runs — and both
+	// were on the careful-work tier beside the compaction summary, which made one
+	// figure answer two unrelated bills: the careful calls are many and short,
+	// these are few and decide what all the other calls do.
+	//
+	// It is the one row whose value may carry a LEVEL as well as a model
+	// (`moonshotai/kimi-k3:low`), because it is the one row where how hard the
+	// model thinks is the point. Every tier row accepts the notation —
+	// [ValidateTierValue] is the same gate on all four — but this is the one the
+	// shipped crew writes it into.
+	KeyTierMastermindModel = "models.tiers.mastermind"
+	// KeyCrew is the four tiers answered as ONE DECISION. Nobody arrives wanting
+	// to name four model ids; they arrive wanting to spend pennies, or to spend
+	// what it takes. So the row takes one word — frugal, balanced, max — and
+	// writes all four tier rows from it.
+	//
+	// IT IS NOT STORED. The row's reading is DERIVED from the four live tier
+	// values: they match a preset and it says so, or they do not and it says
+	// custom. A stored word would be a claim about four other rows that anybody
+	// could falsify by editing one of them, and a settings sheet that told you
+	// "balanced" over a hand-pinned tier would be lying in the one place a person
+	// went to check.
+	KeyCrew = "models.crew"
 	// KeyMouse is whether the surface reports the mouse at all. Off is the
 	// default because an alt-screen app that reports the mouse OWNS every
 	// drag: the terminal's native text selection dies the moment reporting
@@ -444,13 +470,38 @@ const (
 	ModelTierHigh = "high"
 	// ModelTierReflex is the per-turn tier ([roles.TierReflex]).
 	ModelTierReflex = "reflex"
+	// ModelTierMastermind is the thinking tier ([roles.TierMastermind]).
+	ModelTierMastermind = "mastermind"
 )
 
-// DefaultReflexModel is what the reflex tier runs on until somebody says
-// otherwise: a bare OpenRouter id, spelled once here and read by every caller
+// ModelTiers lists the four tier words in the order a settings surface renders
+// them, cheapest first. It is [roles.Tiers] spelled as the words on disk, and
+// [tierKeyFor] is total over it.
+var ModelTiers = []string{ModelTierReflex, ModelTierLow, ModelTierHigh, ModelTierMastermind}
+
+// THE SHIPPED CREW. All four tiers arrive pointed at a model, and the four
+// together are exactly the `balanced` preset (crew.go) — which is what makes the
+// crew row read "balanced" on a profile nobody has touched instead of reading
+// "custom" about its own defaults.
+//
+// Each is a bare OpenRouter id, spelled ONCE here and read by every caller
 // through [TierModelAt], so the model this build considers near-free is one
 // string rather than a figure repeated in a row, a resolver and a page.
-const DefaultReflexModel = "nex-agi/nex-n2-mini"
+//
+// Blank is still an answer on every one of them: a row a person emptied on
+// purpose reads empty and the roles on it follow the model the person is talking
+// to, which is [roles.Resolve]'s floor. UNSET and CLEARED are different answers
+// here, and that distinction is the whole mechanism ([TierModelAt] says how).
+const (
+	DefaultReflexModel = "nex-agi/nex-n2-mini"
+	DefaultLowModel    = "deepseek/deepseek-v4-flash"
+	DefaultHighModel   = "deepseek/deepseek-v4-pro"
+	// The mastermind ships with a LEVEL on it, which no other tier does. The
+	// balanced crew's whole shape is "one model that thinks, cheaper ones that
+	// work", and a mastermind with no level asked for is the thinking half not
+	// actually thinking.
+	DefaultMastermindModel = "moonshotai/kimi-k3:low"
+)
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
 var DocumentEngines = []string{"auto", "local", "free", "ocr"}
@@ -1287,30 +1338,26 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return formatDuration(resolvedDuration(BriefAfterAt(dir))) },
 			write: func(raw string) error { return writeDuration(dir, KeyBriefAfter, raw) },
 		},
-		// The tiers are what a person actually configures for the small calls
-		// aforge makes on its own — the name it gives a session, the summary a
-		// compaction writes (internal/roles). Two rows, not one per feature: a
-		// new small call joins a tier and needs no row of its own.
+		// THE CREW, AND THEN THE FOUR CLASSES IN IT. The tiers are what a person
+		// actually configures for the calls aforge makes on its own — the name it
+		// gives a session, the summary a compaction writes, the plan an adaptive
+		// run steers by (internal/roles). Four rows, not one per feature: a new
+		// call joins a class and needs no row of its own.
+		//
+		// The crew row comes FIRST because it is the only one most people will
+		// ever touch: one word writes all four (crew.go). The four below it are
+		// what that word wrote, and each is answerable on its own — which is what
+		// turns the crew reading to "custom".
 		Setting{
-			Key: KeyTierLowModel, Category: CategoryModels, Kind: SettingText,
-			Label: "small work", EmptyLabel: "follows the conversation",
-			Hint: "the cheap model for the short things aforge writes for itself — session names, " +
-				"labels. Leave it blank and they ride the model you are talking to.",
-			read:  func() string { return TierModelAt(dir, ModelTierLow) },
-			write: func(raw string) error { return writeText(dir, KeyTierLowModel, raw) },
+			Key: KeyCrew, Category: CategoryModels, Kind: SettingChoice,
+			Label: "crew", Choices: CrewPresets,
+			Hint: "the four models aforge works with, chosen as one: `frugal` is deepseek " +
+				"everywhere and pennies a day, `balanced` has kimi-k3 think while deepseek " +
+				"works, `max` puts kimi-k3 everywhere and lets it think longer. Change one of " +
+				"the four rows below and this reads `custom`.",
+			read:  func() string { return CrewAt(dir) },
+			write: func(raw string) error { return writeCrew(dir, raw) },
 		},
-		Setting{
-			Key: KeyTierHighModel, Category: CategoryModels, Kind: SettingText,
-			Label: "careful work", EmptyLabel: "follows the conversation",
-			Hint: "the capable model for the small things that must not be wrong — the summary a " +
-				"compaction keeps, which is all that survives the cut.",
-			read:  func() string { return TierModelAt(dir, ModelTierHigh) },
-			write: func(raw string) error { return writeText(dir, KeyTierHighModel, raw) },
-		},
-		// The third tier is the one that ships with a model in it, for the
-		// reason its key states: it is read every turn, twice, and "follows the
-		// conversation" would put a reasoning model on a job that is two words
-		// of JSON.
 		Setting{
 			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,
 			Label: "reflex", EmptyLabel: "follows the conversation",
@@ -1318,13 +1365,42 @@ func (s *Settings) build() []Setting {
 				"lines this turn needs and whether the exchange is worth keeping. Routing and " +
 				"extraction, never reasoning. Blank makes it follow the model you are talking to.",
 			read:  func() string { return TierModelAt(dir, ModelTierReflex) },
-			write: func(raw string) error { return writeText(dir, KeyTierReflexModel, raw) },
+			write: func(raw string) error { return writeTierModel(dir, ModelTierReflex, raw) },
+		},
+		Setting{
+			Key: KeyTierLowModel, Category: CategoryModels, Kind: SettingText,
+			Label: "small work", EmptyLabel: "follows the conversation",
+			Hint: "the cheap model that does the bulk of the work — the nodes of an adaptive " +
+				"run, session names, digests. Leave it blank and they ride the model you are " +
+				"talking to.",
+			read:  func() string { return TierModelAt(dir, ModelTierLow) },
+			write: func(raw string) error { return writeTierModel(dir, ModelTierLow, raw) },
+		},
+		Setting{
+			Key: KeyTierHighModel, Category: CategoryModels, Kind: SettingText,
+			Label: "careful work", EmptyLabel: "follows the conversation",
+			Hint: "the capable model for the things that must not be wrong — the check on " +
+				"finished task work, the summary a compaction keeps, reading an image.",
+			read:  func() string { return TierModelAt(dir, ModelTierHigh) },
+			write: func(raw string) error { return writeTierModel(dir, ModelTierHigh, raw) },
+		},
+		// The fourth tier is the one whose value may name a LEVEL as well as a
+		// model, because it is the one class of call where how hard the model
+		// thinks is the point rather than the price.
+		Setting{
+			Key: KeyTierMastermindModel, Category: CategoryModels, Kind: SettingText,
+			Label: "mastermind", EmptyLabel: "follows the conversation",
+			Hint: "the model that plans adaptive runs and designs saved harnesses — the one " +
+				"answer that decides what every other call does. Add `:low`, `:medium` or " +
+				"`:high` to ask it to think that hard: `moonshotai/kimi-k3:high`.",
+			read:  func() string { return TierModelAt(dir, ModelTierMastermind) },
+			write: func(raw string) error { return writeTierModel(dir, ModelTierMastermind, raw) },
 		},
 		Setting{
 			Key: KeyModelRoles, Category: CategoryModels, Kind: SettingText,
 			Label: "pinned roles", EmptyLabel: "none",
-			Hint: "exceptions to the two rows above, one per role: `title:openai/gpt-5-mini`. " +
-				"A role not named here follows its tier.",
+			Hint: "exceptions to the four rows above, one per role: `title:openai/gpt-5-mini`. " +
+				"A role not named here follows its class.",
 			read:  func() string { return ModelRolesAt(dir) },
 			write: func(raw string) error { return writeModelRoles(dir, raw) },
 		},
@@ -2323,28 +2399,59 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 // TierModelAt resolves the model one auxiliary tier runs on. Empty means the
 // tier follows the session's own model, which is internal/roles' floor.
 //
-// The reflex tier is the one that answers with a model nobody chose. UNSET and
-// CLEARED are different answers there, and only there: a profile that has never
-// held the key gets [DefaultReflexModel], because a per-turn call on whatever
-// model the conversation runs is a bill nobody agreed to; a row a person
-// emptied on purpose reads empty and follows the conversation like the other
-// two, because refusing to let someone turn it off would make the default a
-// rule.
+// UNSET AND CLEARED ARE DIFFERENT ANSWERS, on all four tiers. A profile that has
+// never held the key gets this build's own choice for that class of work
+// ([DefaultReflexModel] and its three neighbours), because a person who never
+// opened the sheet should not have the whole crew answering on the most
+// expensive model in the build — which is what following the conversation means
+// once there is a mastermind tier in it. A row somebody emptied ON PURPOSE reads
+// empty and follows the conversation, because refusing to let them turn it off
+// would make a default into a rule.
+//
+// The reflex tier was the first row written this way, for the reason its key
+// still states: a call made twice a turn is a bill nobody agreed to. The other
+// three joined it when the crew landed, and the four defaults together are one
+// preset rather than four opinions (crew.go).
+//
+// The value may carry a level (`moonshotai/kimi-k3:low`) and IS RETURNED WHOLE.
+// Splitting is [roles.SplitEffort]'s job at the point of resolution, because a
+// settings surface wants the string the person wrote and a request wants the two
+// halves apart.
 func TierModelAt(profileDir, tier string) string {
-	key := KeyTierLowModel
-	switch tier {
-	case ModelTierHigh:
-		key = KeyTierHighModel
-	case ModelTierReflex:
-		key = KeyTierReflexModel
-	}
+	key := tierKeyFor(tier)
 	if value, ok := persistedString(profileDir, key); ok {
 		return strings.TrimSpace(value)
 	}
-	if tier == ModelTierReflex {
-		return DefaultReflexModel
+	return defaultTierModel(tier)
+}
+
+// tierKeyFor is the settings key one tier word writes. It is total over
+// [ModelTiers] and degrades to the low row, which is what an unknown word has
+// always resolved to here.
+func tierKeyFor(tier string) string {
+	switch tier {
+	case ModelTierHigh:
+		return KeyTierHighModel
+	case ModelTierReflex:
+		return KeyTierReflexModel
+	case ModelTierMastermind:
+		return KeyTierMastermindModel
 	}
-	return ""
+	return KeyTierLowModel
+}
+
+// defaultTierModel is what a tier answers on a profile that has never held its
+// key. The four together are the balanced crew.
+func defaultTierModel(tier string) string {
+	switch tier {
+	case ModelTierReflex:
+		return DefaultReflexModel
+	case ModelTierHigh:
+		return DefaultHighModel
+	case ModelTierMastermind:
+		return DefaultMastermindModel
+	}
+	return DefaultLowModel
 }
 
 // ModelRolesAt resolves the per-role pins as the person wrote them.

@@ -93,8 +93,12 @@ func TestEveryProjectRowResolvesProjectOverProfileOverDefault(t *testing.T) {
 	}{
 		{KeyToolApprovalMode, "deny", "allow", DefaultToolApprovalMode},
 		{KeyToolApprovals, "bash:deny", "bash:allow", ""},
-		{KeyTierLowModel, "project/cheap", "profile/cheap", ""},
-		{KeyTierHighModel, "project/capable", "profile/capable", ""},
+		// The two tier rows ARRIVE WITH A MODEL IN THEM since the crew landed
+		// (crew.go), so their built-in reading is this build's own choice for
+		// that class of work rather than nothing. The ladder is unchanged: the
+		// repository's answer, then the person's, then the shipped one.
+		{KeyTierLowModel, "project/cheap", "profile/cheap", DefaultLowModel},
+		{KeyTierHighModel, "project/capable", "profile/capable", DefaultHighModel},
 		{KeyModelRoles, "title:project/title", "title:profile/title", ""},
 	} {
 		got, err := ProjectStringAt(project, profile, row.key)
