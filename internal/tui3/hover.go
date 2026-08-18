@@ -79,6 +79,14 @@ const (
 	// the disclosure triangle a family root reveals in its glyph cell, which is
 	// the whole of the column's fold affordance at rest.
 	hoverRail
+	// hoverRailArea is the roster's non-node space. The rail remains one
+	// pointer target even between rows, because its footer offer follows the
+	// hand across the whole column.
+	hoverRailArea
+	// hoverRailSeam is the two-cell resize handle at the rail's left edge.
+	// It is separate from the row behind it so the handle can light without
+	// painting that node as a door.
+	hoverRailSeam
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is the other narrow target, and it is a kind of its own rather
@@ -167,8 +175,14 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 	// resolves it first: the two are drawn side by side, so which one the pointer
 	// is over is a question about x — and every row of the transcript answers to
 	// the same y as the roster row beside it (room.go's [app.railPress]).
+	if a.railSeamAt(x, y) {
+		return hoverAt{kind: hoverRailSeam}
+	}
 	if node := a.railHoverNode(x, y); node != nil {
 		return hoverAt{kind: hoverRail, id: node.id}
+	}
+	if a.railAt(x, y) {
+		return hoverAt{kind: hoverRailArea}
 	}
 	if r, ok := a.rowAt(y); ok {
 		switch {
@@ -257,6 +271,14 @@ func (a *app) hoveringChoices() bool { return a.hot.kind == hoverChoices }
 func (a *app) hoveringRail(node *taskNode) bool {
 	return node != nil && a.hot.kind == hoverRail && a.hot.id == node.id
 }
+
+// hoveringRailArea reports whether the pointer is anywhere over the roster.
+func (a *app) hoveringRailArea() bool {
+	return a.hot.kind == hoverRail || a.hot.kind == hoverRailArea || a.hot.kind == hoverRailSeam
+}
+
+// hoveringRailSeam reports whether the pointer is over the resize handle.
+func (a *app) hoveringRailSeam() bool { return a.hot.kind == hoverRailSeam }
 
 // hoveringOverlay reports whether the pointer is on this row of the open list.
 func (a *app) hoveringOverlay(index int) bool {

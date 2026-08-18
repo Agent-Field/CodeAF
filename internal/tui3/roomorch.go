@@ -365,6 +365,14 @@ func (a *app) openOrchRoom(id, goal string) {
 	a.sel = -1
 	a.dropHover()
 	a.orchRead()
+	// A SECOND ARGUMENT THAT NAMES A NODE IS A DOOR TO THAT CARD. Existing
+	// callers also pass the run's goal here, so only a node present in the first
+	// snapshot changes the page's focus; everything else remains its title.
+	if run.known {
+		if _, ok := orchNodeOf(run.snap, goal); ok {
+			a.orchCardOpen(goal)
+		}
+	}
 	a.touch()
 	a.roomPump = tea.Batch(orchTick(a.room.gen), a.wake())
 }
