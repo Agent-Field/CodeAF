@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -355,10 +356,11 @@ type runModels struct {
 	// seen holds the FIRST model each kind was asked on. A run makes several
 	// calls of each kind and they all ride the same resolution; the first is the
 	// one that cannot have been affected by anything the test did afterwards.
-	seen map[string]string
+	seen   map[string]string
+	effort map[string]provider.Effort
 }
 
-func (r *runModels) CompleteWithMessages(_ context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
+func (r *runModels) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	var request ai.Request
 	for _, option := range options {
 		_ = option(&request)
@@ -370,13 +372,21 @@ func (r *runModels) CompleteWithMessages(_ context.Context, messages []ai.Messag
 	r.mu.Lock()
 	if r.seen == nil {
 		r.seen = map[string]string{}
+		r.effort = map[string]provider.Effort{}
 	}
 	if _, told := r.seen[kind]; !told {
 		r.seen[kind] = request.Model
+		r.effort[kind] = provider.ReasoningEffortFrom(ctx)
 	}
 	answer := r.answer
 	r.mu.Unlock()
 	return textResponse(answer(messages)), nil
+}
+
+func (r *runModels) reasoning(kind string) provider.Effort {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.effort[kind]
 }
 
 func (r *runModels) model(kind string) string {
@@ -437,6 +447,59 @@ func TestARunResolvesThePlannerAndTheWorkerRoles(t *testing.T) {
 	}
 	if got := watch.model("node"); got != "test/cheap-model" {
 		t.Fatalf("a node ran on %q, want the low tier's model", got)
+	}
+}
+
+func TestARunCarriesTheTierEffortToPlannerRequests(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	watch := &runModels{answer: oneNodeRun}
+	agent, _ := newTestAgent(t, watch, func(config *Config) {
+		config.AskConsent = true
+		config.RolesSource = tierSettings(map[string]string{
+			roles.TierKey(roles.TierMastermind): "test/brain-model:low",
+			roles.TierKey(roles.TierLow):        "test/cheap-model",
+		})
+	})
+	id, err := agent.RunOrchestrate(context.Background(), "look at the thing", "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForRun(t, agent, id)
+	if got := watch.model("planner"); got != "test/brain-model" {
+		t.Fatalf("planner model = %q, want suffix-free model", got)
+	}
+	if got := watch.reasoning("planner"); got != provider.EffortLow {
+		t.Fatalf("planner effort = %q, want low", got)
+	}
+}
+
+func TestARunLeavesEffortAbsentWithoutASuffixAndForNamedModels(t *testing.T) {
+	for _, tc := range []struct{ name, named string }{
+		{name: "plain tier"},
+		{name: "named model", named: "test/named-model"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			watch := &runModels{answer: oneNodeRun}
+			agent, _ := newTestAgent(t, watch, func(config *Config) {
+				config.AskConsent = true
+				config.RolesSource = tierSettings(map[string]string{
+					roles.TierKey(roles.TierMastermind): "test/brain-model:low",
+					roles.TierKey(roles.TierLow):        "test/cheap-model",
+				})
+			})
+			if tc.named == "" {
+				agent.config.RolesSource = tierSettings(map[string]string{roles.TierKey(roles.TierMastermind): "test/brain-model", roles.TierKey(roles.TierLow): "test/cheap-model"})
+			}
+			id, err := agent.RunOrchestrate(context.Background(), "look at the thing", tc.named, 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitForRun(t, agent, id)
+			if got := watch.reasoning("planner"); got != provider.EffortNone {
+				t.Fatalf("planner effort = %q, want no context stamp", got)
+			}
+		})
 	}
 }
 

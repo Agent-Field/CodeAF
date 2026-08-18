@@ -134,9 +134,10 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// planner is made once per completion and decides what everything else
 	// costs; a node is one small question and there are many of them. Two roles,
 	// resolved once here, so neither half has to ask again.
-	plannerModel := orchestrateRoleModel(source, roles.RolePlanner, named, session)
-	planner := &orchestratePlanner{agent: a, model: plannerModel}
-	worker := &orchestrateExec{agent: a, model: orchestrateRoleModel(source, roles.RoleWorker, named, session), id: id}
+	plannerCall := orchestrateRoleCall(source, roles.RolePlanner, named, session)
+	plannerModel := plannerCall.model
+	planner := &orchestratePlanner{agent: a, call: plannerCall}
+	worker := &orchestrateExec{agent: a, call: orchestrateRoleCall(source, roles.RoleWorker, named, session), id: id}
 	// THE RUN TAKES A ROW ON THE ROSTER BEFORE ITS FIRST NODE DOES, so that the
 	// tree has a root to hang the family off from the moment the run exists
 	// (the family section at the foot of this file).
@@ -207,13 +208,20 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 // programming error nobody in a running orchestration can fix, and no model
 // anywhere, which is the case where there is nothing better to answer with.
 func orchestrateRoleModel(source func(key string) (string, bool), role roles.Role, named, session string) string {
+	return orchestrateRoleCall(source, role, named, session).model
+}
+
+// orchestrateRoleCall keeps the effort half of the role resolution until the
+// request is made. A named model and the session floor carry no effort because
+// [roles.ResolveCall] deliberately gives neither one a tier's setting.
+func orchestrateRoleCall(source func(key string) (string, bool), role roles.Role, named, session string) roleRequest {
 	if named != "" {
-		return named
+		return roleRequest{model: named}
 	}
-	if model, err := roles.Resolve(roles.Source(source), role, session); err == nil {
-		return model
+	if call, err := roles.ResolveCall(roles.Source(source), role, session); err == nil {
+		return newRoleRequest(call)
 	}
-	return session
+	return roleRequest{model: session}
 }
 
 // orchestration is one run as the session holds it: the engine, and the one
@@ -554,7 +562,7 @@ func (a *Agent) announceOrchestrate(id, goal, model string, capDollars float64) 
 type orchestratePlanner struct {
 	agent *Agent
 	orch  *orchestrate.Orchestrator
-	model string
+	call  roleRequest
 }
 
 // Plan is one call, salvaged, with the ONE repair turn this pipeline allows —
@@ -610,10 +618,11 @@ func (p *orchestratePlanner) think(ctx context.Context, messages []ai.Message) (
 // because a planner that did not meter would be spending money the gauge never
 // sees.
 func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (string, error) {
+	ctx = p.call.context(ctx)
 	response, err := p.agent.client.CompleteWithMessages(
 		provider.WithoutStream(ctx),
 		messages,
-		ai.WithModel(p.model),
+		ai.WithModel(p.call.model),
 		ai.WithMaxTokens(orchestratePlanTokens),
 		ai.WithTemperature(orchestratePlanTemp))
 	if err != nil {
@@ -623,7 +632,7 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 		return "", errors.New("the planner answered with nothing")
 	}
 	p.agent.addAuxiliaryUsage(response)
-	p.orch.Charge(orchestrateCost(response, p.model))
+	p.orch.Charge(orchestrateCost(response, p.call.model))
 	return response.Text(), nil
 }
 
@@ -762,7 +771,7 @@ THE RULES:
 // session's own loop and hands.
 type orchestrateExec struct {
 	agent *Agent
-	model string
+	call  roleRequest
 	id    string
 }
 
@@ -837,7 +846,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	a := e.agent
 	a.mu.Lock()
 	parent := a.config
-	model := e.model
+	model := e.call.model
 	if strings.TrimSpace(model) == "" {
 		model = a.model
 	}
@@ -851,7 +860,7 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	journal := orchestrateJournalPath(a.sessionID(), e.id, node.ID)
 	a.mu.Unlock()
 
-	return newAgent(Config{
+	child, err := newAgent(Config{
 		Workspace:      dir,
 		Model:          model,
 		APIKey:         parent.APIKey,
@@ -873,6 +882,13 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 		MediaModel:     parent.MediaModel,
 		DocumentEngine: parent.DocumentEngine,
 	}, client)
+	if err != nil {
+		return nil, err
+	}
+	if e.call.effort != provider.EffortNone {
+		child.SetReasoning(string(e.call.effort))
+	}
+	return child, nil
 }
 
 // spend is what one node's agent cost, and it folds that spend into the
@@ -890,7 +906,7 @@ func (e *orchestrateExec) spend(child *Agent) float64 {
 	if used.CostUSD > 0 {
 		return used.CostUSD
 	}
-	return orchestrate.MeterCall(used.Input, used.Output, e.model)
+	return orchestrate.MeterCall(used.Input, used.Output, e.call.model)
 }
 
 // orchestrateBrief is a node's whole world: its goal, what its prerequisites

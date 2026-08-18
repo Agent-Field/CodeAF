@@ -61,6 +61,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
@@ -68,8 +69,9 @@ import (
 // designer is given, and the model that writes it. It rides on [taskSpec] and
 // is what tells [Agent.runTaskNode] which body this node has.
 type harnessDesignSpec struct {
-	goal  string
-	model string
+	goal   string
+	model  string
+	effort provider.Effort
 }
 
 // The three phases a design node publishes on [TaskNotice.Doing], in the words a
@@ -140,14 +142,14 @@ func (a *Agent) reserveHarnessDesign() uint64 { return a.graph().reserve() }
 // other node's ([TaskNode]), and they are filled honestly even though no auditor
 // will ever read them: they are what the room's header and the project index
 // show, and a node whose brief said nothing would be a row nobody can place.
-func (a *Agent) admitHarnessDesign(id uint64, goal, model string) {
+func (a *Agent) admitHarnessDesign(id uint64, goal string, call roleRequest) {
 	a.graph().admit(id, taskSpec{
 		title:      harnessNodeTitle(goal),
 		summary:    "Design a reusable sub-harness for: " + firstLine(goal),
 		brief:      goal,
 		acceptance: "a page the person approves, saved into this machine's harness registry",
-		model:      model,
-		design:     &harnessDesignSpec{goal: goal, model: model},
+		model:      call.model,
+		design:     &harnessDesignSpec{goal: goal, model: call.model, effort: call.effort},
 	})
 }
 
@@ -165,6 +167,7 @@ func (a *Agent) admitHarnessDesign(id uint64, goal, model string) {
 func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	design := node.spec.design
 	goal, model := design.goal, design.model
+	ctx = (roleRequest{model: model, effort: design.effort}).context(ctx)
 	// THE DESIGN'S OWN WINDOW, taken off the node's hour-long leash. Both halves
 	// of this job are bounded by it — the writing and the wait for an answer —
 	// and it is shorter than a node's deadline because the second half is a card
