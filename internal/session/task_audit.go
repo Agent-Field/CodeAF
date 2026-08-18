@@ -804,7 +804,7 @@ func (a *Agent) repairNode(ctx context.Context, node *TaskNode, tree taskTree, v
 	room.speaking(child)
 	defer room.speaking(spoke)
 
-	changed, stopped, runErr := runTaskChild(ctx, child, node, repairInstruction(node, verdict), tree.dir, node.limits(), room, log)
+	changed, stopped, runErr := runTaskChild(ctx, child, node, repairInstruction(node, verdict), tree.dir, a.taskLimits(node), room, log)
 	switch {
 	case stopped != "":
 		fmt.Fprintf(log, "repair %d: %s\n", round, stopped)

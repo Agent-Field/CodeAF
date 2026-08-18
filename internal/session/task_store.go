@@ -697,7 +697,9 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 // work on a branch that is gone is worse than no report: it is the harness
 // telling somebody their work is safe when it is not.
 func interrupt(record taskRecord, workspace string) (taskRecord, string) {
-	record.State = TaskFailed
+	// A process exit pauses work; it does not make a finding about it. Put the
+	// node back on the ordinary frontier so the next session resumes it once.
+	record.State = TaskQueued
 	record.Interrupted = true
 	// The completion note is owed: nobody ever announced this node, because
 	// nothing was alive to announce it.
@@ -709,7 +711,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// card (harness_task.go). Everything below is about work that was left
 		// somewhere, so all of it would be a sentence about machinery this node
 		// was never going to have.
-		record.Report = "session ended while this harness was being designed; nothing was saved"
+		record.Report = "paused — it resumes"
 		return record, ""
 	}
 
@@ -717,7 +719,7 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 		// There was no repository to branch from, so its edits are already in the
 		// person's tree — calling that "aborted" would say work was thrown away
 		// that is sitting in front of them.
-		record.Report = "session ended mid-run; it worked directly in the workspace, so whatever it wrote is in your tree"
+		record.Report = "paused — it resumes; whatever it wrote is in your tree"
 		return record, ""
 	}
 	record.Merge = mergeAborted
@@ -725,13 +727,13 @@ func interrupt(record taskRecord, workspace string) (taskRecord, string) {
 	branch := strings.TrimSpace(record.Branch)
 	switch {
 	case branch == "":
-		record.Report = "session ended mid-run; it had not got as far as a working copy"
+		record.Report = "paused — it resumes"
 		return record, ""
 	case !branchOnDisk(workspace, branch):
-		record.Report = "session ended mid-run; its branch " + branch + " is no longer in the repository"
+		record.Report = "paused — its previous branch " + branch + " is gone, so it resumes in a fresh working copy"
 		return record, ""
 	}
-	report := "session ended mid-run; branch " + branch + " kept"
+	report := "paused — it resumes; branch " + branch + " kept"
 	if worktree := strings.TrimSpace(record.Worktree); worktree != "" {
 		if _, err := os.Stat(worktree); err == nil {
 			report += ", its worktree is at " + worktree

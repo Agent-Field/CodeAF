@@ -85,6 +85,7 @@ import (
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
 	"github.com/Agent-Field/aforge-v2/internal/home"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -129,6 +130,9 @@ const (
 	// the same call, and it fires in a minute rather than in thirty.
 	taskMaxSteps   = 200
 	taskNoProgress = 6
+	// Four renewals plus the original allowance make five equal budgets: 1000
+	// steps or five hours by default, and five times a wire max_steps value.
+	taskMaxExtensions = 4
 
 	// taskDepthLimit is how many tasks deep the tree may go, and taskFanLimit is
 	// how many sub-tasks ONE node may hand out. They are the two bounds on
@@ -908,6 +912,18 @@ func (n *TaskNode) stateNow() TaskState {
 	return n.state
 }
 
+func (n *TaskNode) wasStopped() bool {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.stopped
+}
+
+func (n *TaskNode) markStopped() {
+	n.graph.mu.Lock()
+	n.stopped = true
+	n.graph.mu.Unlock()
+}
+
 // model is the id this node runs on, and "" for a node admitted before anybody
 // chose one — a checkpoint written by an older build, a scripted graph in a
 // test. Its caller reads that emptiness as "the conversation's own".
@@ -957,7 +973,16 @@ func (n *TaskNode) limits() taskLimits {
 	return taskLimits{
 		maxSteps:   thresholdOr(n.spec.maxSteps, taskMaxSteps),
 		noProgress: thresholdOr(n.spec.noProgress, taskNoProgress),
+		deadline:   taskDeadline,
 	}
+}
+
+func (a *Agent) taskLimits(node *TaskNode) taskLimits {
+	limits := node.limits()
+	if a.config.TaskDeadline > 0 {
+		limits.deadline = a.config.TaskDeadline
+	}
+	return limits
 }
 
 // taskLimits is what stops a node short of its deadline. Both are counted in
@@ -971,6 +996,8 @@ type taskLimits struct {
 	// target the node has not looked at before all reset it to zero. What it
 	// catches is the spin: the same query, the same file, the same nothing.
 	noProgress int
+	// deadline is one checkpoint interval, renewed in the same-sized unit.
+	deadline time.Duration
 }
 
 // thresholdOr reads a wire value that may be absent. Zero and negative both
@@ -1543,14 +1570,17 @@ func (a *Agent) TaskUpdates() <-chan Event {
 // the node was marked running before this started, and [TaskGraph.complete] at
 // the end frees the slot and turns the frontier.
 func (a *Agent) runTaskNode(node *TaskNode) {
-	ctx, cancel := context.WithTimeout(context.Background(), taskDeadline)
+	// A NODE BELONGS TO THE PROCESS, NOT THE SURFACE. Detaching a renderer ends
+	// no context here. Close and an explicit stop reach this cancel through the
+	// job registry; time is checked only between completed turns below.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	node.setCancel(cancel)
 
 	// The node is a JOB, from the registry every other piece of background work
 	// comes from: one id space, one row in `jobs list`, one `jobs kill`, one
 	// death at Close. What differs is the middle, which is this function.
-	listed, err := a.jobs.startTask(node.id, node.title(), cancel)
+	listed, err := a.jobs.startTask(node.id, node.title(), cancel, node.markStopped)
 	if err == nil {
 		defer listed.settle(0)
 	}
@@ -1564,6 +1594,11 @@ func (a *Agent) runTaskNode(node *TaskNode) {
 		work = a.designHarnessNode
 	}
 	state := work(ctx, node, listed)
+	if state == "" {
+		// Close interrupted this process-owned run. Keep TaskRunning in the
+		// checkpoint; recovery turns it back into queued work and resumes it.
+		return
+	}
 	// NOTHING OUTLIVES THE WORK IT WAS HANDED OUT FOR. A sub-task's worktree is
 	// branched off its parent's and merges back into it, so a child still
 	// running after its parent has landed is work with nowhere to come home to.
@@ -1651,7 +1686,11 @@ func (g *TaskGraph) stopChildren(parent uint64) {
 // get a working copy has to be able to say so to the person who asked for it.
 func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) TaskState {
 	log := taskLog(listed)
-	tree, err := prepareTaskTree(a.config.Place, a.config.Workspace, a.journalID(), node.id, node.title())
+	tree, resumed := node.resumeTree(a.config.Place, a.config.Workspace)
+	var err error
+	if !resumed {
+		tree, err = prepareTaskTree(a.config.Place, a.config.Workspace, a.journalID(), node.id, node.title())
+	}
 	if err != nil {
 		node.finish("could not prepare a working copy: "+err.Error(), nil, "", "")
 		return TaskFailed
@@ -1683,7 +1722,7 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	room := node.openRoom()
 	room.speaking(child)
 
-	changed, stopped, runErr := runTaskChild(ctx, child, node, node.instruction(), tree.dir, node.limits(), room, log)
+	changed, stopped, runErr := runTaskChild(ctx, child, node, node.instruction(), tree.dir, a.taskLimits(node), room, log)
 	report := taskReport(child)
 
 	switch {
@@ -1695,12 +1734,15 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		fmt.Fprintf(log, "%s\n", stopped)
 		node.finish(withReport(stopped, report), changed, tree.branch, abortedMerge(tree))
 		return TaskFailed
-	case ctx.Err() == context.DeadlineExceeded:
-		node.finish(withReport("ran out of time", report), changed, tree.branch, abortedMerge(tree))
-		return TaskFailed
 	case ctx.Err() != nil:
-		node.finish(withReport("stopped before it finished", report), changed, tree.branch, abortedMerge(tree))
-		return TaskFailed
+		if node.wasStopped() {
+			node.finish(withReport("stopped", report), changed, tree.branch, abortedMerge(tree))
+			return TaskFailed
+		}
+		// Lifecycle cancellation is an interruption, never a finding about the
+		// work. The running checkpoint is deliberately left resumable.
+		node.finish(withReport("paused — it resumes", report), changed, tree.branch, abortedMerge(tree))
+		return ""
 	case runErr != nil:
 		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, abortedMerge(tree))
 		return TaskFailed
@@ -1759,6 +1801,27 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// here says it a second time in the harness's own vocabulary.
 	node.finish(withReport(verdict.doneOutcome(), withReport(report, detail)), changed, tree.branch, merge)
 	return TaskDone
+}
+
+// resumeTree reuses the durable working copy after a process interruption.
+func (n *TaskNode) resumeTree(place Place, workspace string) (taskTree, bool) {
+	n.graph.mu.Lock()
+	dir, branch, merge, interrupted := n.worktree, n.branch, n.merge, n.interrupted
+	n.graph.mu.Unlock()
+	if !interrupted || strings.TrimSpace(dir) == "" {
+		return taskTree{}, false
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return taskTree{}, false
+	}
+	if merge == mergeInPlace {
+		return taskTree{dir: dir, merge: mergeInPlace}, true
+	}
+	root, ok := repositoryRoot(workspace)
+	if !ok {
+		return taskTree{}, false
+	}
+	return taskTree{dir: dir, root: root, branch: branch, place: place}, true
 }
 
 // withReport joins the runner's own sentence and the child's words, dropping
@@ -1821,6 +1884,9 @@ func abortedMerge(tree taskTree) string {
 // fired rather than being left to infer it from a context error that has three
 // possible causes.
 func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction, dir string, limits taskLimits, room *taskRoom, log io.Writer) ([]string, string, error) {
+	if limits.deadline <= 0 {
+		limits.deadline = taskDeadline
+	}
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 
@@ -1829,15 +1895,47 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		return nil, "", err
 	}
 	var (
-		changed  []string
-		seen     = map[string]bool{}
-		seenInfo = map[string]bool{}
-		lastDirt string
-		failure  error
-		stopped  string
-		steps    int
-		idle     int
+		changed    []string
+		seen       = map[string]bool{}
+		seenInfo   = map[string]bool{}
+		lastDirt   string
+		failure    error
+		stopped    string
+		steps      int
+		idle       int
+		extensions int
+		deadline   = time.Now().Add(limits.deadline)
+		evidence   []string
 	)
+	checkpoint := func(threshold string) bool {
+		if node == nil {
+			stopped = "stopped at " + threshold
+			stop()
+			return false
+		}
+		owner := node.owner
+		if owner == nil {
+			owner = node.graph.home
+		}
+		if owner == nil {
+			stopped = "stopped at " + threshold
+			stop()
+			return false
+		}
+		working, reason := owner.taskProgress(ctx, node, dir, evidence, log)
+		if working && extensions < taskMaxExtensions {
+			extensions++
+			deadline = deadline.Add(limits.deadline)
+			fmt.Fprintf(log, "checkpoint: working — renewed %d of %d\n", extensions, taskMaxExtensions)
+			return true
+		}
+		if working {
+			reason = "the work used all 4 extensions"
+		}
+		stopped = fmt.Sprintf("stopped at %s: %s", threshold, strings.TrimSpace(reason))
+		stop()
+		return false
+	}
 	drain := func(events <-chan Event) {
 		for event := range events {
 			room.publish(event)
@@ -1846,6 +1944,10 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				fmt.Fprintf(log, "· %s\n", event.Hint)
 			case EventToolEnd, EventToolFailed:
 				steps++
+				evidence = append(evidence, event.Tool+" "+strings.TrimSpace(event.Args))
+				if len(evidence) > 24 {
+					evidence = evidence[len(evidence)-24:]
+				}
 				path, wrote := changedPath(event, dir)
 				switch {
 				case wrote && event.Kind == EventToolEnd:
@@ -1872,9 +1974,10 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 					continue
 				}
 				switch {
-				case steps >= limits.maxSteps:
-					stopped = fmt.Sprintf("stopped: %d steps and no finish", limits.maxSteps)
-					stop()
+				case steps >= limits.maxSteps*(extensions+1):
+					checkpoint(fmt.Sprintf("%d-step checkpoint", limits.maxSteps*(extensions+1)))
+				case !time.Now().Before(deadline):
+					checkpoint("deadline checkpoint")
 				case idle >= limits.noProgress:
 					stopped = fmt.Sprintf("stopped: %d steps without progress", limits.noProgress)
 					stop()
@@ -1885,6 +1988,36 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		}
 	}
 	drain(events)
+	if stopped != "" && ctx.Err() == nil {
+		// THE LANDING TURN happens after the active request has drained. It is a
+		// fresh turn so no request is killed mid-flight; the instruction forbids
+		// exploration and permits only writing the deliverable already in hand.
+		landing := "LAND NOW. Write the deliverable or final summary from what you already have. Do no new exploration. Do not call tools except write or edit when needed to save the deliverable."
+		child.armMu.Lock()
+		oldTools, oldDefinitions := child.tools, child.definitions
+		child.tools = nil
+		for _, tool := range oldTools {
+			if tool.Name == "write" || tool.Name == "edit" {
+				child.tools = append(child.tools, tool)
+			}
+		}
+		child.definitions, _ = toolDefinitions(child.tools)
+		child.armMu.Unlock()
+		if events, err := child.Submit(ctx, landing); err == nil {
+			for event := range events {
+				room.publish(event)
+				if event.Kind == EventToolEnd {
+					if path, wrote := changedPath(event, dir); wrote && !seen[path] {
+						seen[path] = true
+						changed = append(changed, path)
+					}
+				}
+			}
+		}
+		child.armMu.Lock()
+		child.tools, child.definitions = oldTools, oldDefinitions
+		child.armMu.Unlock()
+	}
 
 	// ── THE NODE THAT HANDED PART OF ITS WORK OUT ──
 	//
@@ -1929,6 +2062,39 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		drain(next)
 	}
 	return changed, stopped, failure
+}
+
+func (a *Agent) taskProgress(ctx context.Context, node *TaskNode, dir string, evidence []string, log io.Writer) (bool, string) {
+	if check := a.config.TaskProgressCheck; check != nil {
+		return check(node.instruction(), append([]string(nil), evidence...))
+	}
+	auditor, err := a.newAuditAgent(dir, node)
+	if err != nil {
+		return false, "the progress check could not start: " + err.Error()
+	}
+	defer func() { _ = auditor.Close(); a.foldTaskUsage(node, auditor) }()
+	auditor.mu.Lock()
+	auditor.system = `You are checking the progress of running work, read-only. Decide only whether the recent evidence and working copy show movement toward the brief or repeated motion without new information. Answer in at most four lines. The first word must be WORKING or CIRCLING, followed by concrete evidence. WORKING means the leash should be renewed; CIRCLING means it should land now.`
+	auditor.mu.Unlock()
+	question := "Decide whether this running task is still WORKING TOWARD THE BRIEF or CIRCLING. Read the working copy if useful. Recent evidence:\n" + strings.Join(evidence, "\n") + "\n\nBrief:\n" + node.instruction() + "\n\nAnswer WORKING or CIRCLING first, then concise evidence."
+	events, err := auditor.Submit(ctx, question)
+	if err != nil {
+		return false, "the progress check could not be asked: " + err.Error()
+	}
+	for event := range events {
+		if event.Kind == EventToolBegin {
+			fmt.Fprintf(log, "checkpoint · %s\n", event.Hint)
+		}
+	}
+	said := strings.TrimSpace(lastSaid(auditor))
+	upper := strings.ToUpper(firstLine(said))
+	if strings.HasPrefix(upper, "WORKING") {
+		return true, said
+	}
+	if said == "" {
+		said = "the progress check returned no evidence"
+	}
+	return false, said
 }
 
 // childrenOutstanding reports whether any sub-task THIS agent handed out has
@@ -2209,6 +2375,27 @@ func (a *Agent) newTaskAgent(ctx context.Context, dir string, node *TaskNode, su
 	parent := a.config
 	if strings.TrimSpace(model) == "" {
 		model = a.model
+	}
+	// A TASK WITHOUT TOOLS CANNOT START. The catalog's supported-parameter row
+	// is the same capability fact the picker filters on. Swap once to the
+	// worker tier; if that is the same incapable model, refuse here rather than
+	// spending a request to discover it mid-run.
+	if parent.SupportsParameter != nil {
+		if supported, known := parent.SupportsParameter(model, "tools"); known && !supported {
+			fallback, resolveErr := roles.Resolve(roles.Source(parent.RolesSource), roles.RoleWorker, a.model)
+			if resolveErr != nil || strings.EqualFold(strings.TrimSpace(fallback), strings.TrimSpace(model)) {
+				a.mu.Unlock()
+				return nil, fmt.Errorf("model %s does not support tool use, and the worker tier resolves to the same model", model)
+			}
+			if ok, fallbackKnown := parent.SupportsParameter(fallback, "tools"); fallbackKnown && !ok {
+				a.mu.Unlock()
+				return nil, fmt.Errorf("model %s and worker-tier fallback %s do not support tool use", model, fallback)
+			}
+			node.graph.mu.Lock()
+			node.mend = "model " + model + " has no tools; using " + fallback
+			node.graph.mu.Unlock()
+			model = fallback
+		}
 	}
 	window := parent.ContextWindow
 	if !strings.EqualFold(strings.TrimSpace(model), strings.TrimSpace(a.model)) {

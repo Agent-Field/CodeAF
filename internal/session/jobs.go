@@ -137,6 +137,9 @@ type job struct {
 	// stop ends a watch's timer loop. It is nil for a bash job, whose end is a
 	// signal to a process group instead. See [job.signal].
 	stop func()
+	// explicitStop marks a task stop requested through `jobs kill`. Shutdown
+	// deliberately does not call it: process exit pauses task work for resume.
+	explicitStop func()
 	// done is closed once the job is final — the process reaped, or the watch
 	// loop returned — and the status fields are settled. It is how a killer
 	// waits without polling.
@@ -412,7 +415,7 @@ func (r *jobRegistry) start(command string) (*job, error) {
 // carries the report, the changed files and the merge outcome, and it is sent
 // by the executor (see [Agent.reportTaskNode]); a second line here saying "job
 // 3 exited 0" would be the registry narrating what the node just explained.
-func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFunc) (*job, error) {
+func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFunc, explicit ...func()) (*job, error) {
 	started, err := r.newJob(title, jobKindTask)
 	if err != nil {
 		return nil, err
@@ -420,6 +423,9 @@ func (r *jobRegistry) startTask(id uint64, title string, cancel context.CancelFu
 	started.label = fmt.Sprintf("task %d", id)
 	started.detail = title
 	started.stop = cancel
+	if len(explicit) > 0 {
+		started.explicitStop = explicit[0]
+	}
 	r.add(started)
 	return started, nil
 }
@@ -509,6 +515,9 @@ func (r *jobRegistry) kill(id int) (string, bool) {
 	if !target.requestKill() {
 		info := target.info()
 		return fmt.Sprintf("Job %d already %s.", id, statusText(info)), true
+	}
+	if target.explicitStop != nil {
+		target.explicitStop()
 	}
 	target.signal(syscall.SIGTERM)
 	if !waitDone(target.done, jobTermGrace) {
