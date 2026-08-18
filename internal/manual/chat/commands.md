@@ -83,6 +83,9 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/forget` | — | `<query>` | forgets the best matching memory |
 | `/crew` | — | — | opens the three-preset crew chooser |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
+| `/task` | — | `<brief>` | sizes the work, then starts it or offers adaptive versus single |
+| `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
+| `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/cost` | `/usage`, `/tokens`, `/spend` | — | prints what this conversation has spent, and on what |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
@@ -566,6 +569,16 @@ The first is what you get with no registry wired — a headless frame, and **eve
 session**, because the registry lives on the far machine. The second is drawn as the
 panel's only row, and it is also what a registry that cannot be read at all shows, rather
 than an error.
+
+## /task — start work you can walk away from
+
+`/task <brief>` starts work directly from the words after the command; the brief does not
+pass through the conversation model. aforge briefly shows `sizing it up…`. If the work is
+meaningfully parallel, a two-choice list opens with adaptive recommended. Otherwise one
+task starts silently. A bare `/task` prints its one-line usage.
+
+`/task solo <brief>` starts one worker immediately. `/task adaptive <brief>` starts an
+adaptive run with a planner immediately. Both explicit forms skip sizing altogether.
 
 ## /crew — the four models aforge works with
 

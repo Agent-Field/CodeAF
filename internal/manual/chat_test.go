@@ -40,6 +40,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can I run this on my dev box over ssh", "running-on-another-machine"},
 		{"how many tasks can run at once", "tasks"},
 		{"how do I stop a running task", "tasks"},
+		{"how do I start a task", "tasks"},
+		{"can aforge parallelize my task", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
 		{"what does this conversation cost", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},

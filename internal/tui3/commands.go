@@ -132,6 +132,9 @@ var commands = []command{
 	// occasionally regrets it, which is exactly where /memories sits too.
 	{name: "crew", desc: "the four models aforge works with · frugal, balanced or max"},
 	{name: "crew", args: "<preset>", desc: "…set it to one of the three"},
+	{name: "task", args: "<brief>", desc: "start work you can walk away from"},
+	{name: "task", args: "solo <brief>", desc: "…with one worker and no planner"},
+	{name: "task", args: "adaptive <brief>", desc: "…with a planner and parallel parts"},
 	// THE TWO QUESTIONS THE STATUS LINE IS ALREADY ANSWERING, asked out loud. The
 	// line at the bottom of the frame drops whatever does not fit and a phone-width
 	// frame keeps two of eleven facts (statusdeck.go), so on any surface these are
