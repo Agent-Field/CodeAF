@@ -418,7 +418,10 @@ The tasks pages describe what rooms and the roster are for.
 ```
 
 On an adaptive run's page it reads `Stop this run? In-flight nodes halt; partial
-results stay.`
+results stay.` The `✕` on the strip's chip for a harness being designed raises the
+same card, reading `Stop this harness design? The page it is writing is dropped;
+nothing was saved.` — that one is the pointer's alone, because `x` is aimed at the
+roster and a design is not on it.
 
 **The cursor opens on `keep going`.** `left`/`right` move it, `enter` takes the
 answer under it, `esc` is `keep going`, and every other key does nothing while the

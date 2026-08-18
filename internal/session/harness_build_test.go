@@ -197,6 +197,83 @@ func TestADesignThatWillNotParseEndsInANote(t *testing.T) {
 	}
 }
 
+// ── what is being written right now ─────────────────────────────────────────
+
+// A SESSION SAYS WHICH HARNESSES IT IS WRITING, because a design has no turn to
+// live on, no card until it is finished and no id a person can open a room on —
+// so a surface that wants to show that something is happening has nothing else
+// to ask.
+func TestASessionSaysWhichHarnessItIsWriting(t *testing.T) {
+	// The design turn is held open, so the whole test happens while the page is
+	// being written.
+	held := make(chan struct{})
+	completer := &scriptedCompleter{steps: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			<-held
+			return textResponse(designReply), nil
+		},
+		func(context.Context, []ai.Message) (*ai.Response, error) { return textResponse(reviewReply), nil },
+	}}
+	agent, _ := buildAgent(t, completer, t.TempDir())
+	lane := agent.HarnessDesigns()
+	began := time.Now()
+	submitBuild(t, agent)
+
+	writing := agent.HarnessesBeingDesigned()
+	if len(writing) != 1 {
+		t.Fatalf("the session is writing %d harnesses, want one", len(writing))
+	}
+	if writing[0].Goal != buildGoal {
+		t.Fatalf("the design is being written for %q", writing[0].Goal)
+	}
+	if writing[0].ID == 0 {
+		t.Fatal("the design carries no id, so nothing could stop it")
+	}
+	if writing[0].Since.Before(began) {
+		t.Fatalf("the design started at %v, before the turn that asked for it", writing[0].Since)
+	}
+
+	// THE CARD IS THE END OF THE WRITING. From here the page exists and the
+	// question about it is on screen; a row still saying "designing" would be the
+	// surface claiming the same work twice.
+	close(held)
+	done := designDone(t, lane)
+	if writing := agent.HarnessesBeingDesigned(); len(writing) != 0 {
+		t.Fatalf("the card is up and the session still says it is writing %+v", writing)
+	}
+	agent.ResolveHarness(done.ID, false, "")
+	waitForNoDesigns(t, agent)
+}
+
+// AND A DESIGN THAT FAILED IS NOT BEING WRITTEN EITHER. Failure is the ending
+// with the least on screen — no card, one dim line — and it is the one a row
+// left standing would be lying about for the longest.
+func TestAFailedDesignIsNoLongerBeingWritten(t *testing.T) {
+	agent, _ := buildAgent(t, &scriptedCompleter{}, t.TempDir())
+	lane := agent.HarnessDesigns()
+	submitBuild(t, agent)
+
+	if note := designNote(t, lane); !strings.HasPrefix(note, "harness design failed:") {
+		t.Fatalf("the failure said %q", note)
+	}
+	waitForNoDesigns(t, agent)
+}
+
+// waitForNoDesigns waits for the register to empty. The line on the lane is
+// written by the job and the register is emptied by the defer under it, so the
+// two are one instant apart and a test that read the register on the same line
+// would be reading a race rather than the law.
+func waitForNoDesigns(t *testing.T, agent *Agent) {
+	t.Helper()
+	for until := time.Now().Add(5 * time.Second); time.Now().Before(until); {
+		if len(agent.HarnessesBeingDesigned()) == 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("the session is still writing %+v", agent.HarnessesBeingDesigned())
+}
+
 // ── the fixtures ────────────────────────────────────────────────────────────
 
 const buildGoal = "triaging flaky tests"

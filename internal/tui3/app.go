@@ -573,6 +573,12 @@ type app struct {
 	// stripSpans because it opens a different door: a node chip opens that
 	// node's room, and this one opens the registry.
 	stripHarn hudSpan
+	// stripDesignStop is where the ✕ on the chip of a harness being designed
+	// landed, or the zero span when there is none to press (harness.go). It is
+	// the ONLY span that chip records: a design has no room, no page and no
+	// registry entry yet, so ending it is the one thing a press on it can
+	// honestly do.
+	stripDesignStop hudSpan
 	// jumpSpan is where the jump-to-latest chip was last drawn, in columns — the
 	// same bargain again, for a chip that is right-aligned and so knows its own
 	// columns only once the frame has chosen a width (jumpchip.go's

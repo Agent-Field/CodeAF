@@ -305,12 +305,12 @@ func (a *Agent) cancelHarnessRun(id uint64) (string, error) {
 // coming.
 func (a *Agent) cancelDesign(id uint64) (string, error) {
 	a.mu.Lock()
-	cut := a.harnessDesigns[id]
+	design := a.harnessDesigns[id]
 	a.mu.Unlock()
-	if cut == nil {
+	if design == nil {
 		return "", fmt.Errorf("there is no harness design %d in this session", id)
 	}
-	cut()
+	design.cancel()
 	a.noteHarnessDesign(designStoppedWord)
 	return designStoppedWord, nil
 }

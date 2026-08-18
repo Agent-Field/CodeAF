@@ -3395,6 +3395,13 @@ func (a *app) tasksAnimating() bool {
 	if !a.railStanding() && !a.stripShowing() {
 		return false
 	}
+	// A HARNESS BEING WRITTEN IS A SPINNER AND A CLOCK WITH NO NODE UNDER THEM
+	// (harness.go). It is the one thing the strip draws that this loop over the
+	// roster cannot see, and without it the row would freeze at whatever frame the
+	// design started on — a still photograph of work in progress.
+	if a.designingHarness() {
+		return true
+	}
 	// A ROSTER FULL OF SETTLED WORK IS A STILL PICTURE. The column stands for the
 	// whole session now, so "is anything on it moving" is a question about the
 	// running nodes and not about the list's length — otherwise a session that

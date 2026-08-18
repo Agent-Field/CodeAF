@@ -279,7 +279,7 @@ func TestCancelEndsAHarnessDesignAndSaysSo(t *testing.T) {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
 	ctx, cut := context.WithCancel(context.Background())
 	agent.mu.Lock()
-	agent.harnessDesigns = map[uint64]context.CancelFunc{5: cut}
+	agent.harnessDesigns = map[uint64]*harnessInFlight{5: {cancel: cut, goal: buildGoal, since: time.Now()}}
 	agent.mu.Unlock()
 
 	line, err := agent.Cancel("design:5")
