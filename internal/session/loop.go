@@ -210,11 +210,22 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// lines below that used to call a mechanism directly.
 	episode := a.newEpisode()
 
-	// toolCtx is the turn's context WITHOUT the observer installed below. An
-	// early tool must run under the turn's cancellation and nothing else; giving
-	// it a context pointed back at the stream it was started from would be a
-	// loop, and reading the reassigned ctx from inside the closure would be a
-	// second reader of a variable the loop writes.
+	// toolCtx is the turn's context WITHOUT the observer installed below. EVERY
+	// TOOL RUNS ON IT — the batch below as well as the early start — because a
+	// tool must run under the turn's cancellation and nothing else. Giving an
+	// early tool a context pointed back at the stream it was started from would
+	// be a loop, and reading the reassigned ctx from inside the closure would be
+	// a second reader of a variable the loop writes.
+	//
+	// The batch was handed the observed context for a long time, and it cost two
+	// things at once. A tool that asks a model something — view_image, sense,
+	// read_document — took the STREAMING path without meaning to, which on this
+	// adapter carries no total deadline by design (internal/provider's
+	// transport.go), so a provider that went quiet mid-answer hung the tool and
+	// with it the batch, and the call was journaled with no result forever. And
+	// its answer, which is a tool result and not the room's reply, was typed
+	// into the transcript in the chat model's voice — the very thing
+	// [provider.WithoutStream] exists to prevent.
 	toolCtx := ctx
 
 	ctx = provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
@@ -372,7 +383,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		partial.reset()
 		usedTools = true
 
-		results := a.runToolsWarm(ctx, episode, calls, hub, warm)
+		results := a.runToolsWarm(toolCtx, episode, calls, hub, warm)
 
 		// Results append in the order the calls were issued, never in the
 		// order they finished: the pairing with tool_call_id is by id, but the
@@ -777,6 +788,31 @@ func (a *Agent) runTools(ctx context.Context, calls []ai.ToolCall, hub *eventHub
 // AN EARLY START CHANGES NEITHER: a call that is already running is waited for
 // here, in its slot, and its begin is emitted with the rest of the batch. The
 // person watches the same turn they always did.
+//
+// ── A TOOL CALL THAT STARTS ALWAYS ENDS JOURNALED ──
+//
+// One way (a result) or another (an error), because the alternative is not a
+// failure the person can read: runTurn records one tool message per call after
+// this returns, so a call that never comes back leaves the assistant's
+// instruction on the record with nothing answering it, and the surface draws
+// that — honestly — as a row still running, for the rest of the session
+// (internal/tui3's room.go).
+//
+// Three things hold the law here, and each of them is load-bearing. Every slot
+// is SEEDED with a panic result before the goroutine that fills it, so a fault
+// cannot leave the zero value, which reads as an empty success. Every goroutine
+// carries guard.Recover, so a panicking tool unwinds into its seeded slot
+// instead of the process. And wg.Done is deferred OUTERMOST, so a faulted tool
+// still releases the batch.
+//
+// What none of them can hold is a tool that simply never returns: this function
+// waits for its batch, and it must, because the transcript's next step cannot
+// be assembled with a hole in it. SO EVERY TOOL THAT WAITS ON SOMETHING OUTSIDE
+// THIS PROCESS BOUNDS ITS OWN WAITING — the shell tools by their timeout
+// argument (tools_jobs.go), a watch tick by watchMaxTickTimeout
+// (tools_watch.go), a connect question by connectAskTimeout (connect.go), a
+// look at a picture by viewLookWindow (tools_view.go). A new tool that blocks
+// without a bound of its own is the one way left to break this.
 func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCall, hub *eventHub, warm *warmBatch) []toolResult {
 	for _, call := range calls {
 		hub.send(Event{
