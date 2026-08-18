@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/ctxbudget"
+	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
@@ -2509,11 +2511,46 @@ func writeToolApprovals(profileDir, raw string) error {
 // writeModelRoles is [writeToolApprovals] for the role pins. The model name is
 // not validated against the catalog: a person configuring a model they have not
 // pulled yet is early, not wrong, and the call that uses it will say so.
+//
+// THE ROLE NAME IS VALIDATED, and that half is not the same bargain at all. A
+// model slug nobody recognises fails loudly at the call that uses it; a ROLE
+// nobody recognises fails silently forever — the pin is stored, it reads back
+// exactly as it was typed, the panel shows it, and not one call ever consults
+// it. `harness_designer:some/model` is a sentence about nothing, and the only
+// evidence is work that keeps coming out on the wrong model.
+//
+// It became worth refusing when the settings pair landed
+// (internal/session's tools_settings.go): a person choosing this row in the
+// panel is reading the list of roles printed directly above it, while a model
+// writing the row is guessing the name — and it guessed `harness_designer` the
+// first time it was asked.
 func writeModelRoles(profileDir, raw string) error {
-	if _, err := ParseModelRoles(raw); err != nil {
+	pins, err := ParseModelRoles(raw)
+	if err != nil {
 		return err
 	}
+	known := map[string]bool{}
+	for _, role := range roles.Registered() {
+		known[string(role)] = true
+	}
+	for name := range pins {
+		if known[strings.ToLower(strings.TrimSpace(name))] {
+			continue
+		}
+		return fmt.Errorf("%q is not a role. The roles are: %s", name, strings.Join(roleNames(), ", "))
+	}
 	return writeText(profileDir, KeyModelRoles, raw)
+}
+
+// roleNames is the registered roles as a sorted list of plain words, for the
+// refusal above to name them all rather than make somebody go looking.
+func roleNames() []string {
+	names := make([]string, 0, len(roles.Registered()))
+	for _, role := range roles.Registered() {
+		names = append(names, string(role))
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Writers. Each validates in plain language, then persists atomically through

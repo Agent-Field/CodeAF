@@ -71,24 +71,24 @@ const settingsSchemaJSON = `{"type":"object","properties":{"key":{"type":"string
 
 const changeSettingSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"The row's exact registry key, as the settings tool lists it"},"value":{"type":"string","description":"The new value as text. Empty clears the row back to its default."}},"required":["key","value"],"additionalProperties":false}`
 
-// settingsTools is the pair, or nothing at all.
+// settingsTools is the pair, or nothing at all inside a task node.
 //
-// NOTHING AT ALL is the absence law (docs/CHAT-V3.md, and every conditional
-// family in tools.go): with no profile directory there is no config.json to read
-// or write, and a settings tool that answered every call with the same refusal
-// would be worse than no settings tool — a model told it can change a setting
-// plans a whole reply around one. A headless --once and every test that builds a
-// bare Config get the belt they had before this file.
-//
-// AND NOT INSIDE A TASK NODE, however the node's profile directory is set. The
+// NOT INSIDE A TASK NODE, however the node's profile directory is set. The
 // node's agent is a copy of the conversation's config (task_run.go), so this is
 // the gate that keeps a worktree worker out of the person's settings: a node
 // runs with nobody watching, its notes reach no transcript, and a permanent
 // change to the person's machine that they never saw made is the one outcome
 // this pair must not be able to produce.
 func (a *Agent) settingsTools() []bare.Tool {
+	// THE EMPTY PROFILE DIRECTORY IS THE ORDINARY ONE, and gating on it turned
+	// this pair off for very nearly everybody. Config.ProfileDir carries
+	// AFORGE_PROFILE_DIR, which almost nobody sets, and every reader below it
+	// treats "" as "the default location" — config.BudgetConfigPath("") answers
+	// ~/.aforge/config.json, which is the same file /settings has always
+	// written. So an empty string is not "there is no profile", it is "the
+	// profile where it always is", and the tools belong on the belt either way.
 	dir := strings.TrimSpace(a.config.ProfileDir)
-	if dir == "" || a.config.InTask {
+	if a.config.InTask {
 		return nil
 	}
 	// One registry, built once and shared by both hands. Every row reads its
