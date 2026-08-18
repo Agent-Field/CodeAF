@@ -86,6 +86,35 @@ func TestAnUnknownFieldOnAPageIsRefused(t *testing.T) {
 	}
 }
 
+func TestHandWrittenIntegerStringsDecodeOnAPage(t *testing.T) {
+	h, err := Decode([]byte(`{"id":{"name":"x","version":"+7"},"dyn":{"ladder":"width","cap":" 3 "}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Id.Version != 7 || h.Dyn.Cap != 3 {
+		t.Fatalf("integer strings decoded to version %d and cap %d", h.Id.Version, h.Dyn.Cap)
+	}
+}
+
+func TestNumericIntegersStillDecodeOnAPage(t *testing.T) {
+	h, err := Decode([]byte(`{"id":{"name":"x","version":7},"dyn":{"ladder":"width","cap":3}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Id.Version != 7 || h.Dyn.Cap != 3 {
+		t.Fatalf("numeric integers decoded to version %d and cap %d", h.Id.Version, h.Dyn.Cap)
+	}
+}
+
+func TestInvalidDynamismCapNamesItsField(t *testing.T) {
+	for _, cap := range []string{`"many"`, `2.5`} {
+		_, err := Decode([]byte(`{"id":{"name":"x","version":1},"dyn":{"ladder":"width","cap":` + cap + `}}`))
+		if err == nil || !strings.Contains(err.Error(), "dyn.cap") {
+			t.Errorf("cap %s was not refused with its field named: %v", cap, err)
+		}
+	}
+}
+
 // Silence means the timid rung on both ladders: believe the output, decide
 // nothing.
 func TestAnOmittedRungMeansTheLeastOfItsLadder(t *testing.T) {
