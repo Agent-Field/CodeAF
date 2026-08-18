@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"reflect"
 	"strings"
 	"time"
 
@@ -70,6 +71,9 @@ type orchAgent interface {
 	// OrchestrateSnapshot is the page's poll: the run's latest published shape,
 	// or false when this session knows no such run.
 	OrchestrateSnapshot(id string) (orchestrate.Snapshot, bool)
+	// OrchestrateNodeJournal resolves a published node's session journal when it
+	// exists. A node that has not started has no journal and answers false.
+	OrchestrateNodeJournal(runID, nodeID string) (string, bool)
 	// SteerOrchestrate appends one steering note. The planner sees it on its
 	// next call, and steering outranks the plan.
 	SteerOrchestrate(id, text string) error
@@ -121,6 +125,13 @@ type orchRun struct {
 	// cursor over that card's navigable needs.
 	card string
 	link int
+
+	// transcript is the node journal descended into from its card. It is another
+	// level of this page, not another room: esc returns to the card and the room's
+	// own scroll remains private from the main conversation.
+	transcript string
+	journal    []entry
+	journalSet bool
 
 	// crumbs are the runs walked OUT of on the way in here, outermost first: a
 	// node that is itself a nested run expands into its own snapshot, and esc
@@ -187,10 +198,11 @@ type orchGate struct {
 // orchSpot is one pressable span of one drawn row. Exactly one of node and
 // answer is set: a chip or a link goes somewhere, an answer resolves the gate.
 type orchSpot struct {
-	span   hudSpan
-	node   string
-	run    string // set when the spot descends INTO a nested run
-	answer string
+	span       hudSpan
+	node       string
+	run        string // set when the spot descends INTO a nested run
+	transcript string
+	answer     string
 }
 
 // orchPage is a page under construction: the rows, and what each row answers
@@ -395,6 +407,11 @@ func (a *app) orchRead() {
 	snap, ok := doors.OrchestrateSnapshot(run.id)
 	if !ok {
 		return
+	}
+	if run.transcript != "" {
+		if node, found := orchNodeOf(snap, run.transcript); found && node.State == orchestrate.Running {
+			a.orchReadTranscript()
+		}
 	}
 	// THE FIRST READ MARKS NOTHING. "New" means "this arrived while you were
 	// watching", and a page that opened with every chip wearing the word would be
@@ -735,6 +752,11 @@ func (a *app) orchKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// run it was opened from, and only when there is neither does the room's
 		// own esc get the key and close the page.
 		switch {
+		case run.transcript != "":
+			run.transcript, run.journal, run.journalSet = "", nil, false
+			a.room.offset = 0
+			a.roomTouched()
+			return nil, true
 		case run.card != "":
 			run.card, run.link = "", 0
 			a.roomTouched()
@@ -874,12 +896,68 @@ func (a *app) orchOpenPick() tea.Cmd {
 		return nil
 	}
 	link := links[run.link]
+	if link.transcript != "" {
+		a.orchOpenTranscript(link.transcript)
+		return nil
+	}
 	if link.run != "" {
 		a.orchDescend(link.run)
 		return a.takeRoomPump()
 	}
 	a.orchCardOpen(link.node)
 	return nil
+}
+
+// orchOpenTranscript descends from a node card into that node's work. The card
+// remains named so esc reveals precisely the place the reader came from.
+func (a *app) orchOpenTranscript(node string) {
+	run := a.orchOf()
+	if run == nil || node == "" {
+		return
+	}
+	run.transcript, run.journalSet = node, false
+	a.orchReadTranscript()
+	a.room.stick, a.room.offset = true, 0
+	a.roomTouched()
+}
+
+// orchReadTranscript reads evidence, never an error state. A node which has not
+// started simply has no file yet and its page says so.
+func (a *app) orchReadTranscript() {
+	run := a.orchOf()
+	doors, ok := a.orchDoors()
+	if run == nil || run.transcript == "" || !ok {
+		return
+	}
+	var next []entry
+	if path, found := doors.OrchestrateNodeJournal(run.id, run.transcript); found {
+		next, _ = readRoomJournalTail(path, a.pal, 0)
+	}
+	if run.journalSet && reflect.DeepEqual(run.journal, next) {
+		return
+	}
+	run.journal, run.journalSet = next, true
+	if a.room != nil {
+		a.room.dirty, a.room.stick = true, true
+	}
+}
+
+const orchTranscriptTail = 400
+
+func (a *app) orchTranscriptRows(page *orchPage, width int) {
+	run := a.orchOf()
+	if run == nil || !run.journalSet || len(run.journal) == 0 {
+		page.put(a.pal.dim(fit("no transcript yet", width)))
+		return
+	}
+	rows, _ := a.deckRows(deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}}, width)
+	if omitted := len(rows) - orchTranscriptTail; omitted > 0 {
+		page.put(a.pal.dim(fit("… "+itoa(omitted)+" earlier lines", width)))
+		rows = rows[omitted:]
+	}
+	for _, line := range rows {
+		page.put(line.text)
+	}
 }
 
 // orchCardOpen puts one node's card up, with the cursor at the top of its links.
@@ -913,6 +991,7 @@ func (a *app) orchDescend(id string) {
 	run.snap, run.known = orchestrate.Snapshot{}, false
 	run.seen, run.fresh = map[string]bool{}, map[string]bool{}
 	run.pick, run.card, run.link = orchTarget{}, "", 0
+	run.transcript, run.journal, run.journalSet = "", nil, false
 	run.notes, run.fuel, run.steered, run.acts, run.gate = nil, "", nil, nil, nil
 	a.room.stick, a.room.offset = true, 0
 	a.orchRead()
@@ -938,6 +1017,7 @@ func (a *app) orchAscend() {
 	// The card comes back too. A person who walked into a nested run from a chip's
 	// card came from a place, and esc is "back", not "back to the top".
 	run.card, run.pick, run.link = back.card, back.pick, 0
+	run.transcript, run.journal, run.journalSet = "", nil, false
 	run.notes, run.fuel, run.steered, run.acts, run.gate = nil, "", nil, nil, nil
 	a.room.stick, a.room.offset = true, 0
 	a.orchRead()
@@ -971,6 +1051,8 @@ func (a *app) orchPress(x, y int) bool {
 			a.orchAnswer(spot.answer)
 		case spot.run != "":
 			a.orchDescend(spot.run)
+		case spot.transcript != "":
+			a.orchOpenTranscript(spot.transcript)
 		case spot.node != "":
 			a.orchCardOpen(spot.node)
 		}
@@ -1030,6 +1112,11 @@ func (a *app) orchRows(width int) []row {
 		return nil
 	}
 	page := &orchPage{}
+	if run.transcript != "" {
+		a.orchTranscriptRows(page, width)
+		run.spots = page.spots
+		return page.rows
+	}
 	a.orchPlannerRow(page, width)
 	if run.card != "" {
 		a.orchCardRows(page, width)
@@ -1336,8 +1423,9 @@ func orchHas(list []string, text string) bool {
 // orchLink is one navigable thing on a card: another node, or the run this node
 // is.
 type orchLink struct {
-	node string
-	run  string
+	node       string
+	run        string
+	transcript string
 }
 
 // orchCardLinks is what the open card's cursor walks: its needs that this
@@ -1365,6 +1453,7 @@ func (a *app) orchCardLinks() []orchLink {
 	if a.orchNested(node.ID) {
 		out = append(out, orchLink{run: node.ID})
 	}
+	out = append(out, orchLink{transcript: node.ID})
 	return out
 }
 
@@ -1464,6 +1553,14 @@ func (a *app) orchCardRows(page *orchPage, width int) {
 			page.put("", spot)
 			page.put("", spot)
 		}
+	}
+	picked := len(links) > 0 && links[len(links)-1].transcript == node.ID && run.link == len(links)-1
+	word := a.orchLead(picked) + "transcript · enter opens it"
+	spot := orchSpot{span: hudSpan{from: 0, to: width}, transcript: node.ID}
+	page.put(a.pal.accent(fit(word, width)), spot)
+	if layoutTier(width) == tierPhone {
+		page.put("", spot)
+		page.put("", spot)
 	}
 	page.put("")
 	page.put(a.pal.dim(fit(orchCardBack, width)))
@@ -1627,6 +1724,9 @@ func (a *app) orchHeadWord(width int) string {
 	trail += roomCrumbSep + orchCrumbWord(run.goal, run.id)
 	if run.card != "" {
 		trail += roomCrumbSep + run.card
+	}
+	if run.transcript != "" {
+		trail += roomCrumbSep + "transcript"
 	}
 	// The trail is what gives way, from its own end: the room a person is in is
 	// the one they can least afford to lose off the line.

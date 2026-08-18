@@ -154,6 +154,11 @@ type taskRoom struct {
 	// for both to BE a room.
 	orch *orchRun
 
+	// harnessProgress is the design lane's one evolving thought inside the
+	// design node's room. It is display-only: no journal line is minted for live
+	// telemetry, and the next event replaces this string in place.
+	harnessProgress string
+
 	// The reader's own position. It is HERE and not on the app because that is
 	// the whole promise of esc: the conversation's scroll is not touched while a
 	// room is open, so returning to it restores nothing because nothing moved.
@@ -454,6 +459,13 @@ type journalPart struct {
 // mints the path), and a room that refused to open because a file was not there
 // would be refusing to show the live work as well.
 func readRoomJournal(path string, pal palette) ([]entry, int) {
+	return readRoomJournalTail(path, pal, roomTail)
+}
+
+// readRoomJournalTail lets another bounded page choose its own rendered-line
+// window. A non-positive block limit keeps every block; the caller still owns
+// its final line cap after wrapping.
+func readRoomJournalTail(path string, pal palette, limit int) ([]entry, int) {
 	lines := readJournalLines(path)
 	// The results, indexed by the call each one answered. A result with no id is
 	// skipped rather than kept under "", for the reason session's own index skips
@@ -529,10 +541,15 @@ func readRoomJournal(path string, pal palette) ([]entry, int) {
 					},
 				})
 			}
+
+		case "thinking", "reasoning":
+			if text != "" {
+				out = append(out, entry{kind: entryThinking, text: text, turn: turn, settled: true})
+			}
 		}
 	}
-	if len(out) > roomTail {
-		out = out[len(out)-roomTail:]
+	if limit > 0 && len(out) > limit {
+		out = out[len(out)-limit:]
 	}
 	return out, turn
 }
@@ -2095,6 +2112,10 @@ func (a *app) roomRows(width int) []row {
 		return out
 	}
 	out, closed := a.deckRows(room.deck(), width)
+	if room.harnessProgress != "" && !room.done {
+		out = append(out, row{text: a.pal.dim(fit(room.harnessProgress, width)), entry: -1})
+		closed = false
+	}
 	if room.done {
 		// THE FOOT. A room on a node that has landed says so once, at the bottom,
 		// where the next thing would have appeared — which is the place a person

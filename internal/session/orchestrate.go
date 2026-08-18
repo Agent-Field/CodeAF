@@ -141,7 +141,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// THE RUN TAKES A ROW ON THE ROSTER BEFORE ITS FIRST NODE DOES, so that the
 	// tree has a root to hang the family off from the moment the run exists
 	// (the family section at the foot of this file).
-	family := a.newOrchestrateFamily(goal, plannerModel)
+	family := a.newOrchestrateFamily(goal, plannerModel, id)
 	run := orchestrate.New(goal, planner, worker, orchestrate.Options{
 		Cap:   capDollars,
 		Lanes: orchestrateLanes,
@@ -269,6 +269,37 @@ func (a *Agent) OrchestrateSnapshot(id string) (orchestrate.Snapshot, bool) {
 		return orchestrate.Snapshot{}, false
 	}
 	return live.run.Snapshot(), true
+}
+
+// OrchestrateNodeJournal is the transcript door behind one published run node.
+// The registry supplies the session identity and the snapshot supplies the
+// node: neither a guessed path nor a file left by another run is evidence that
+// this session knows the work. A machine with no home keeps the node in memory,
+// on the same terms [orchestrateJournalPath] uses when it creates the worker.
+func (a *Agent) OrchestrateNodeJournal(runID, nodeID string) (string, bool) {
+	live, known := a.orchestration(strings.TrimSpace(runID))
+	if !known {
+		return "", false
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	found := false
+	for _, node := range live.run.Snapshot().Nodes {
+		if node.ID == nodeID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", false
+	}
+	path := orchestrateJournalPath(a.sessionID(), strings.TrimSpace(runID), nodeID)
+	if path == "" {
+		return "", false
+	}
+	if _, err := os.Stat(path); err != nil {
+		return "", false
+	}
+	return path, true
 }
 
 // SteerOrchestrate appends one steering note; the planner sees it on its next
@@ -1085,6 +1116,7 @@ func (c Config) WorktreePath(jobID string) string {
 // for a note is a roster nobody can read.
 type orchestrateFamily struct {
 	agent *Agent
+	run   string
 	root  uint64
 	title string
 	// model is the planner's, drawn on the run's own row: it is the judgement the
@@ -1101,9 +1133,14 @@ type orchestrateFamily struct {
 // planner call so the roster shows the run from the moment somebody asked for
 // it — a run that appeared only once a node landed would be a minute of a
 // person watching nothing happen.
-func (a *Agent) newOrchestrateFamily(goal, planner string) *orchestrateFamily {
+func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orchestrateFamily {
+	var run string
+	if len(runID) > 0 {
+		run = runID[0]
+	}
 	family := &orchestrateFamily{
 		agent: a,
+		run:   strings.TrimSpace(run),
 		root:  a.graph().reserve(),
 		title: clip(firstLine(goal), hintLimit),
 		model: strings.TrimSpace(planner),
@@ -1113,7 +1150,29 @@ func (a *Agent) newOrchestrateFamily(goal, planner string) *orchestrateFamily {
 	a.emitTaskUpdate(TaskNotice{
 		ID: family.root, Title: family.title, State: TaskRunning, Model: family.model,
 	})
+	a.mu.Lock()
+	session := a.sessionID()
+	a.mu.Unlock()
+	indexTitle := strings.TrimSpace(goal)
+	a.recordTaskIndexEntry(TaskIndexEntry{
+		ID:            strconv.FormatUint(family.root, 10),
+		Name:          TaskSlug(indexTitle),
+		Label:         taskLabel(indexTitle),
+		Title:         indexTitle,
+		Status:        string(TaskRunning),
+		EndedAt:       time.Now(),
+		SessionID:     session,
+		TranscriptURI: orchestrateFamilyURI(session, family.run),
+	})
 	return family
+}
+
+func orchestrateFamilyURI(session, run string) string {
+	path := orchestrateJournalPath(session, run, "node")
+	if path == "" {
+		return ""
+	}
+	return taskURI(filepath.Dir(path))
 }
 
 // upsert is [orchestrate.Options.OnNodes]: the crystallized graph, every time
@@ -1139,8 +1198,34 @@ func (f *orchestrateFamily) upsert(nodes []orchestrate.NodeStatus) {
 			Report:  orchestrateNodeReport(node),
 			CostUSD: node.Cost,
 		})
+		if state.settled() {
+			f.recordNode(id, node, state)
+		}
 	}
 	f.retire(live)
+}
+
+// recordNode is the adaptive scheduler's landing seam. OnNodes can publish a
+// node many times, but claim admits one transition only, so a settled state
+// reaches the append-only index exactly once.
+func (f *orchestrateFamily) recordNode(id uint64, node orchestrate.NodeStatus, state TaskState) {
+	f.agent.mu.Lock()
+	session := f.agent.sessionID()
+	f.agent.mu.Unlock()
+	title := strings.TrimSpace(node.Goal)
+	f.agent.recordTaskIndexEntry(TaskIndexEntry{
+		ID:            strconv.FormatUint(id, 10),
+		Parent:        strconv.FormatUint(f.root, 10),
+		Name:          TaskSlug(title),
+		Label:         taskLabel(title),
+		Title:         title,
+		Status:        string(state),
+		Outcome:       taskOutcome(orchestrateNodeReport(node)),
+		Cost:          node.Cost,
+		EndedAt:       time.Now(),
+		SessionID:     session,
+		TranscriptURI: taskURI(orchestrateJournalPath(session, f.run, node.ID)),
+	})
 }
 
 // claim is the id for one node and whether this state is news. The mint and the
