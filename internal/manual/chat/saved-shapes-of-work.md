@@ -154,10 +154,16 @@ Two consequences worth knowing:
 - The model may look before it builds: it can list what is saved and tell you a harness that
   already does this exists, which is usually the better answer.
 
-**The turn does not wait.** The design starts beside the conversation, the model says in one line
-that it did, and the surface notes `harness · designing <goal>` — with the designer role's own model
-named on the card when the page comes back. The design runs on the session's own context
-rather than on the turn's, inside a **30-minute** window that covers both the model work
+**The turn does not wait, and the design becomes a task.** The design starts beside the
+conversation and the surface notes it in one line:
+
+```
+harness · designing with claude-opus-5 · triage flaky tests — task 4
+```
+
+That number is the whole of what a design gained: it is a real task, with a row on the
+roster, a room you can walk into, a journal, and a stop. See *The design's own task and
+room* below. The design runs inside a **30-minute** window that covers both the model work
 **and** the wait for your answer to the card.
 
 Under the hood: one design pass, then up to **2 retries** in which a refused design is
@@ -168,40 +174,80 @@ improvement, not the draft.
 The whole path is off unless there is a runner, a store, **and** an interactive screen to
 answer the card on.
 
-## What you see while a harness is being designed
+## The design's own task and room — where do I watch a harness being designed
 
-The turn that asked for a harness ends the moment the design starts, so the conversation
-goes quiet. While the page is being written, aforge draws it on the activity strip — the
-pinned row under the header that says what is alive:
+**A harness being designed is a task.** Asking for one admits a node to the same work graph
+`propose_task` uses, so everything the roster already does works on it:
 
 ```
-  ⠙ ◆ designing a harness · triage flaky tests · 1m 12s
+◆ 4 harness · triage flaky tests
+    designing
 ```
 
-Three facts, and there is nothing else honest to put there: that a harness is being
-written, the goal it is being written for, and how long that has taken so far. **There is
-no progress bar and no percentage.** A design is two model calls against a long guide and
-neither of them reports how far along it is, so no number is invented. On a narrow frame
-the goal is dropped first and the clock outlives it; on a very narrow one the words stand
-alone. A dim line in the conversation, `harness · designing <goal>`, says the same thing
-once when it starts.
+| What | Where |
+| --- | --- |
+| the row | the activity strip, and the roster on `ctrl+t` |
+| the room | press the row, or open it from the roster; `esc` comes back out |
+| the thread | the room's journal, kept on disk with the rest of the session's tasks |
+| stopping it | `x` on its row, or the `✕` — the same card everything else is stopped by |
+| the number | `task 4`, which is what you and aforge both call it afterwards |
 
-**It is not a task, and the row does not pretend to be one.** There is no id, no room to
-walk into, no branch and no report — nothing is written down anywhere until you approve the
-card — so the chip is not a door. Pressing its words does nothing rather than opening
-something, and it is not on the roster (`ctrl+t`), which is a list of rooms.
+**It is admitted without a countdown**, unlike an ordinary task. There is no "redirect or
+wave it off" window in front of it, because the question about a design is at the *end*: the
+page is shown to you as a card and nothing is written to the registry unless you approve it.
+One decision, asked once.
 
-**The `✕` on it stops the design**, on frames 120 columns and wider. It raises the same
-confirmation card everything else on this screen is stopped by, reading `Stop this harness
-design? The page it is writing is dropped; nothing was saved.` with the cursor on
-`keep going`. Two designs at once are counted as `designing 2 harnesses` and carry no `✕`:
-one button standing for two jobs would end whichever aforge guessed.
+**It spends no concurrency slot.** `task.parallel` and the machine-load governor are about
+workers with a checkout and a build; a design is two model calls and a card sitting on your
+screen. A design is never queued behind a busy machine.
 
-The row clears itself at **every** ending — the save-or-discard card arriving, a failure, a
-discard, a stop, or the 30-minute window running out — because the surface asks the session
-what it is writing on every frame rather than remembering. It never survives `/new` or
-resuming another session, and it can never appear over `--host`, where building a harness
-is switched off.
+### The three phases
+
+The row's state word is replaced by what the design is actually doing, and it moves twice:
+
+| Phase | What is happening |
+| --- | --- |
+| `designing` | the page is being written — two model calls against a long guide |
+| `awaiting your look` | the page is written and the save-or-discard card is up |
+| — | it lands, and the settle card says what became of it |
+
+**There is no progress bar and no percentage.** Neither model call reports how far along it
+is, so no number is invented.
+
+The settle card is the ordinary one a task lands with, and its outcome line is one of:
+
+```
+harness "triage-flake" v1 saved
+harness "triage-flake" was designed and not saved
+harness "triage-flake" could not be saved: <err>
+the design failed: <err>
+harness design stopped; nothing was saved
+```
+
+A saved design's card reads `v1` even for a first version, because "v1" is the news that it
+is the first of them. A design that failed settles as a failed task; one you declined settles
+as **done**, because you were asked and you answered — nothing went wrong.
+
+### Talking to a design — improving a harness later
+
+The room's message box talks to the design, not to the conversation. What is in that thread
+is the brief it was given and the page it wrote, so it can answer questions about the harness
+with the harness in front of it: why it chose two steps, what a step does, whether it would
+fit some other work.
+
+**It cannot save a revision from in there.** Writing a page is the designer's job, and a
+revision is a new design — ask for one the same way you asked for the first, and it gets a
+task and a thread of its own, landing as the next version of the same name. The thread says
+so rather than implying otherwise.
+
+Steering only reaches a design **while it is running** — which is both phases above,
+including the long one where the card is waiting on you. After it lands, the room is the
+history: the whole design thread, readable, with the outcome at the bottom of it. `list_harnesses`
+names the task each harness this session designed was designed in, so "the flake-triage
+thread" is a number you can go to.
+
+**Over `--host` none of this exists**, because building a harness is switched off there
+entirely.
 
 ## What a design can be refused for
 
@@ -264,16 +310,15 @@ under a fullscreen panel is an answer nobody can reach.
 run offer, a design card is **not** swept away when the turn settles: it outlives its turn
 on purpose.
 
-Every ending says something, both as a dim note in the transcript and as an ambient note to
-the model, so the next thing said in the conversation happens after aforge knows what
-became of it:
+Every ending says something. It is the design task's own settle card in the transcript —
+the outcome lines are listed under *The design's own task and room* above — and the same
+sentence reaches the model as an ambient note, so the next thing said in the conversation
+happens after aforge knows what became of it.
 
-```
-harness design failed: <err>
-harness "triage-flake" was designed and not saved
-harness "triage-flake" could not be saved: <err>
-harness "triage-flake" v2 saved
-```
+**It is ambient and does not start a turn.** You are at the keyboard, you just answered the
+card, and the card already says what happened; a model turn reading your own answer back to
+you would be the same news a third time. An ordinary task's landing *does* wake a turn,
+because nobody is standing there for it.
 
 ## Where harnesses are stored
 

@@ -214,6 +214,23 @@ type taskNode struct {
 	// present that has passed.
 	tool      string
 	toolBegan time.Time
+	// kind is what sort of node this is (session's TaskNotice.Kind), and "" is
+	// the ordinary one: work in a worktree. It is written once, from the first
+	// update that names it, and never cleared — it is the one fact about a node
+	// that is true before it starts and after it lands, and it is what keeps a
+	// card from promising a branch to a node that could never have one.
+	kind session.TaskKind
+	// doing is the phase this node is in, in its own kind's plain words —
+	// "designing", "awaiting your look" — and empty for an ordinary task, which
+	// has no phases (session's TaskNotice.Doing).
+	//
+	// IT REPLACES THE STATE WORD RATHER THAN SITTING BESIDE IT, which is the one
+	// thing that separates it from the two fields below. A node that is mending
+	// or waiting is RUNNING and the surface says so; a harness being designed is
+	// running too, and "running" is this package's word for it while "designing"
+	// is the person's. So the phase takes the word, and the state underneath is
+	// untouched.
+	doing string
 	// mending is the one plain line naming the gap the node is closing right
 	// now, as the engine published it (session's TaskNotice.Mending), and it is
 	// empty at every other moment of the node's life.
@@ -243,25 +260,28 @@ type taskNode struct {
 	froze time.Time
 }
 
-// taskLive is everything a node is saying about its PRESENT: the gap it is
-// closing, and the hold it is under. They are the two fields the engine sends
-// without moving the node's state (session's TaskNotice.Mending and .Waiting),
-// which makes them the two the de-dup has to look at by hand, and they are one
-// comparable value so that it asks ONE question about them rather than a clause
-// per field — and so the third of them, when there is one, joins the law in a
-// single place instead of three.
-type taskLive struct{ mending, waiting string }
+// taskLive is everything a node is saying about its PRESENT: the phase it is in,
+// the gap it is closing, and the hold it is under. They are the three fields the
+// engine sends without moving the node's state (session's TaskNotice.Doing,
+// .Mending and .Waiting), which makes them the three the de-dup has to look at
+// by hand, and they are one comparable value so that it asks ONE question about
+// them rather than a clause per field. The phase joined the other two here
+// exactly as this comment said the third would — in one place, not three.
+type taskLive struct{ doing, mending, waiting string }
 
 // taskLiveLines is what an update says about the node's present, trimmed.
 func taskLiveLines(notice *session.TaskNotice) taskLive {
 	return taskLive{
+		doing:   strings.TrimSpace(notice.Doing),
 		mending: strings.TrimSpace(notice.Mending),
 		waiting: strings.TrimSpace(notice.Waiting),
 	}
 }
 
 // liveLines is what the node is already saying about its present.
-func (n *taskNode) liveLines() taskLive { return taskLive{mending: n.mending, waiting: n.waiting} }
+func (n *taskNode) liveLines() taskLive {
+	return taskLive{doing: n.doing, mending: n.mending, waiting: n.waiting}
+}
 
 // spawnedAt is when this node's work started, in wall-clock: the moment it
 // began running, or — for a node that failed before it ever ran — the moment
@@ -2761,7 +2781,17 @@ func (a *app) railUnder(node *taskNode, width int) []string {
 		// the wire, and of the two the first is the one a person came to this
 		// column for; the hold only ever displaces the row that would otherwise be
 		// false.
-		rows := a.railMending(node, width)
+		//
+		// AND A NAMED PHASE OUTRANKS ALL THREE. A node of a kind that names its
+		// own moments — a harness being designed, which is "designing" and then
+		// "awaiting your look" (session's TaskNotice.Doing) — is saying the most
+		// specific true thing there is about it, and the rows below would each
+		// say something less: a call it is inside of, a hold that is not holding
+		// it, or a clock. It takes the row for [railDoing]'s reason.
+		rows := a.railDoing(node, width)
+		if len(rows) == 0 {
+			rows = a.railMending(node, width)
+		}
 		if len(rows) == 0 {
 			rows = a.railWaiting(node, width)
 		}
@@ -2914,6 +2944,26 @@ func (a *app) railWorking(node *taskNode, width int) []string {
 		line += a.pal.dim(railSep) + tint(clock)
 	}
 	return []string{line}
+}
+
+// railDoing is the row a node wears while it is in a phase of its own kind's
+// naming, or nil for the ordinary node, which has no phases.
+//
+//	designing                                a harness page being written
+//	awaiting your look                       and the card that page ended on
+//
+// IT IS THE PHASE ALONE, with no word in front of it, and that is what makes it
+// different from the two rows under it. "finishing · adding amp-labs" and
+// "waiting · machine busy" are each a word this surface chose followed by the
+// engine's reason, because the node is running and the surface is saying which
+// part of running that is. A phase is not part of running — it IS what this node
+// is doing, in the only vocabulary it has — so a prefix would be the surface
+// explaining a plain English word with a second plain English word.
+func (a *app) railDoing(node *taskNode, width int) []string {
+	if node.doing == "" {
+		return nil
+	}
+	return []string{a.pal.dim(fit(node.doing, width))}
 }
 
 // railMending is the row a node wears while it is closing a named gap in work it
@@ -3222,11 +3272,13 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 		//
 		// AND SO IS EVERY LINE THAT REPORTS THE PRESENT. A node closing a gap in
 		// work it has otherwise finished stays RUNNING for the whole of it
-		// (session's TaskNotice.Mending), and a node held behind a slot or paced
-		// by its provider stays exactly where it was for the whole of THAT
-		// (TaskNotice.Waiting) — so the sentence naming the gap, the word naming
-		// the hold, and the empty strings that take either of them away again
-		// would all be thrown out by a guard that only ever looked at the state.
+		// (session's TaskNotice.Mending); a node held behind a slot or paced by
+		// its provider stays exactly where it was for the whole of THAT
+		// (TaskNotice.Waiting); and a harness moving from "designing" to
+		// "awaiting your look" is running through both (TaskNotice.Doing) — so
+		// the sentence naming the gap, the word naming the hold, the phase, and
+		// the empty strings that take any of them away again would all be thrown
+		// out by a guard that only ever looked at the state.
 		// The exception is written as one comparison over those live lines rather
 		// than as a clause per field, because they are one kind of thing: what is
 		// true of this node RIGHT NOW. Anything that is none of that is the
@@ -3317,7 +3369,12 @@ func (a *app) taskUpdate(ev session.Event) tea.Cmd {
 	// node the machine let through a minute ago — is a surface reporting a
 	// present that has passed (the same law [taskNode.tool] is held to).
 	live := taskLiveLines(notice)
-	node.mending, node.waiting = live.mending, live.waiting
+	node.doing, node.mending, node.waiting = live.doing, live.mending, live.waiting
+	// The kind is a FACT and is kept the way the branch and the price above are:
+	// an update that says nothing about it has not changed it.
+	if notice.Kind != "" {
+		node.kind = notice.Kind
+	}
 	// The clock is anchored ONCE, from the age the update reported, so the row
 	// counts on the frame tick instead of standing still between events.
 	if notice.State == session.TaskRunning && node.began.IsZero() {
@@ -3394,13 +3451,6 @@ func (a *app) tasksAnimating() bool {
 	// reason to keep the paint clock alive (taskstrip.go, [app.railFull]).
 	if !a.railStanding() && !a.stripShowing() {
 		return false
-	}
-	// A HARNESS BEING WRITTEN IS A SPINNER AND A CLOCK WITH NO NODE UNDER THEM
-	// (harness.go). It is the one thing the strip draws that this loop over the
-	// roster cannot see, and without it the row would freeze at whatever frame the
-	// design started on — a still photograph of work in progress.
-	if a.designingHarness() {
-		return true
 	}
 	// A ROSTER FULL OF SETTLED WORK IS A STILL PICTURE. The column stands for the
 	// whole session now, so "is anything on it moving" is a question about the

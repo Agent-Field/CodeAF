@@ -251,6 +251,13 @@ const (
 	// (harness_build.go). Text is the goal, less the words that asked for it;
 	// Hint is "designing"; Model is what the design is thinking with.
 	//
+	// TASK NAMES THE NODE IT RUNS AS, and it is the only field on this kind a
+	// surface can act on. A design is a task now (harness_task.go): it has an id
+	// a person can say out loud, a room they can walk into, and a stop. So the
+	// one line this event draws names it — "harness · designing X — task 4" —
+	// and everything else about the design's life arrives on the task lane, not
+	// this one. Only ID is filled.
+	//
 	// It is a REPORT and it does not hold the turn: the turn is already over when
 	// it arrives, because designing takes a minute and a conversation held on one
 	// is a conversation nobody can use. Exactly one of EventHarnessDesignDone or
@@ -913,6 +920,23 @@ type Config struct {
 	// sets it on the config it builds for a node and nowhere else.
 	InTask bool
 
+	// roomThread says this agent is a node somebody TALKS TO rather than a
+	// worker a runner drives, and it is set on exactly one kind of node: the
+	// thread a sub-harness is designed in (harness_task.go).
+	//
+	// It changes one thing. An InTask agent never starts a turn of its own —
+	// its turns belong to the runner, and a worker waking inside a worktree
+	// would be a second conversation nobody asked for ([Agent.wakeLocked]) — and
+	// that is exactly wrong for a thread whose whole life is somebody arriving
+	// and saying something. A design thread spends most of its time with no turn
+	// running: the page is written, the card is up, and the person is reading
+	// it. So a line steered into it here STARTS one, and everything else InTask
+	// means — no propose_task, a refusal instead of a question, patience with a
+	// provider that is pacing it — is left exactly as it is.
+	//
+	// It is private for InTask's reason: no surface sets it, the executor does.
+	roomThread bool
+
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
 	// journaled usage, so the rail is exact rather than an estimate, and a turn
@@ -1118,25 +1142,27 @@ type Agent struct {
 	// sentence rather than from the next process.
 	harnessWatchers []*eventStream
 	harnessAdded    []subharness.Entry
+	// harnessThreads is the task each harness this session designed was designed
+	// IN, keyed by the harness's name (harness_task.go). It is what lets the
+	// build tool point a later sentence about that harness at a room rather than
+	// at nothing.
+	//
+	// IT IS THIS PROCESS'S MEMORY AND NOT THE REGISTRY'S. A harness somebody
+	// designed last week has a thread on disk and this session has never heard of
+	// it, so the honest answer for one of those is no number at all — the
+	// alternative is a surface offering a door onto a room that is not there.
+	harnessThreads map[string]uint64
 	// orchestrations are the adaptive runs this session is driving, keyed by
 	// the run id, and orchestrateSeq is what names them (orchestrate.go). The
 	// watchers are the standing subscription those runs report on
 	// ([Agent.Orchestrations]).
 	//
-	// They are harnessDesigns' machinery one lane over and for its reason: a
-	// run outlives the turn that asked for it, so the gate it raises when the
+	// A run outlives the turn that asked for it, so the gate it raises when the
 	// fuel runs out has no hub to arrive on — and [Agent.Close] is the only
 	// thing that can tell a run in flight that the session has left.
 	orchestrateSeq      uint64
 	orchestrations      map[string]*orchestration
 	orchestrateWatchers []*eventStream
-
-	// harnessDesigns is the designs in flight, keyed by the id their card will
-	// carry, and the value is how each one is ended plus the two facts a surface
-	// can honestly draw while it runs ([harnessInFlight]). A design runs on its
-	// own context — the turn that asked for it is over — so [Agent.Close] is the
-	// only thing that can tell one the session has left.
-	harnessDesigns map[uint64]*harnessInFlight
 
 	// harnessRuns is the sub-harness RUNS in flight, keyed by the id their
 	// EventHarnessRun carried, and the value is how each one is ended

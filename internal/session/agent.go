@@ -939,13 +939,10 @@ func (a *Agent) Close() error {
 		close(lane)
 	}
 	a.wakeLanes = nil
-	// And a harness still being designed is told the same thing: it runs on its
-	// own context precisely because the turn that asked for it ended, so nothing
-	// else here would ever reach it (harness_build.go).
-	a.cancelHarnessDesignsLocked()
-	// And an adaptive run, for the identical reason and on the identical terms:
-	// it holds a context of its own precisely because its turn ended, so this
-	// is the only thing that can reach it (orchestrate.go).
+	// And an adaptive run: it holds a context of its own precisely because its
+	// turn ended, so this is the only thing that can reach it (orchestrate.go).
+	// A harness being designed needs nothing here — it is a task now, and the
+	// job round below cuts it with every other node (harness_task.go).
 	a.cancelOrchestrationsLocked()
 	a.mu.Unlock()
 
@@ -1167,7 +1164,10 @@ func (a *Agent) enqueueNote(note userMessage) {
 //   - the session is closed: nothing drains after Close.
 //   - InTask: this agent is one task node's runner (session.go's Config), whose
 //     turns belong to the runner that drives it. A node starting a turn of its
-//     own would be a second conversation inside a worktree.
+//     own would be a second conversation inside a worktree. THE ONE EXCEPTION
+//     is a node that is a ROOM and not a worker — the thread a sub-harness is
+//     designed in (harness_task.go) — which is a conversation by construction
+//     and whose steering has no turn to land in unless it starts one.
 //   - the session is not open yet: recovery settles nodes inside New, and a turn
 //     started there speaks to nobody (see [newAgent]).
 //   - the spend rail: a turn that starts must be one the session can pay for,
@@ -1180,7 +1180,7 @@ func (a *Agent) enqueueNote(note userMessage) {
 // the queue is empty and the thing to answer is the last message. A third caller
 // would have to establish the same fact before calling.
 func (a *Agent) wakeLocked() bool {
-	if a.running || a.closed || a.config.InTask || !a.opened {
+	if a.running || a.closed || (a.config.InTask && !a.config.roomThread) || !a.opened {
 		return false
 	}
 	if err := a.railBlockLocked(); err != nil {

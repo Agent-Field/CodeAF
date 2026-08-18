@@ -3,10 +3,8 @@ package tui3
 import (
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -184,20 +182,34 @@ func TestTheDesignCardSurvivesTheTurnEnding(t *testing.T) {
 	}
 }
 
-// THE LANE ALSO CARRIES WORDS: a design starting, and what became of one. Both
-// are notes, because neither is a question.
-func TestTheDesignLaneDrawsItsNotes(t *testing.T) {
-	_, a := designShown(t,
-		session.Event{Kind: session.EventHarnessDesign, Text: "triaging flaky tests", Hint: "designing"},
-		session.Event{Kind: session.EventNotice, Text: `harness "flake-triage" v1 saved`},
-	)
+// THE LANE ALSO CARRIES THE ANNOUNCE, and the announce NAMES THE TASK: one line,
+// with the number that opens the design's own room on the end of it.
+func TestTheDesignLaneNamesTheTaskItStarted(t *testing.T) {
+	_, a := designShown(t, session.Event{
+		Kind: session.EventHarnessDesign, Text: "triaging flaky tests", Hint: "designing",
+		Task: &session.TaskNotice{ID: 4},
+	})
+	a.width = 100
+	got := plain(frame(a))
+	if !strings.Contains(got, "harness · designing triaging flaky tests — task 4") {
+		t.Fatalf("the announce does not name the task:\n%s", got)
+	}
+}
+
+// AND AN ANNOUNCE WITH NO NODE ON IT SAYS NOTHING EXTRA. An older engine, or one
+// over --host where designing is off, sends no task — and a separator standing
+// in front of no number is punctuation pretending to be information.
+func TestTheDesignAnnounceWithNoTaskDrawsNoTail(t *testing.T) {
+	_, a := designShown(t, session.Event{
+		Kind: session.EventHarnessDesign, Text: "triaging flaky tests", Hint: "designing",
+	})
 	a.width = 100
 	got := plain(frame(a))
 	if !strings.Contains(got, "harness · designing triaging flaky tests") {
-		t.Fatalf("the design starting was never drawn:\n%s", got)
+		t.Fatalf("the announce was never drawn:\n%s", got)
 	}
-	if !strings.Contains(got, `harness "flake-triage" v1 saved`) {
-		t.Fatalf("the outcome was never drawn:\n%s", got)
+	if strings.Contains(got, "— task") {
+		t.Fatalf("the announce invented a task:\n%s", got)
 	}
 }
 
@@ -219,183 +231,99 @@ func TestTheDesignNoteNamesTheModelDesigning(t *testing.T) {
 	}
 }
 
-// ── the row while it is being written ───────────────────────────────────────
+// ── the design as a node ────────────────────────────────────────────────────
+//
+// A design used to have a chip of its own on the strip, because it had nothing
+// else: no id, no room, no row. It is a task now (session's harness_task.go), so
+// what is tested here is that it wears the ordinary furniture correctly — the
+// phase in place of the state word, and a stop that does not promise a branch.
 
-// THE ASSERTION IS REAL, and it is stated here because an optional interface
-// nothing implements is a feature that silently never happens — which is what
-// became of the running-harness chip beside this one (harnesspanel.go's
-// [harnessLive] has no such line, and no session provides it).
-var _ designLive = (*session.Agent)(nil)
-
-// writingAgent is a session that is in the middle of writing harnesses.
-type writingAgent struct {
-	*fakeAgent
-	writing []session.HarnessBeingDesigned
-	// stopped is every id this session was asked to end, in order — the door the
-	// chip's ✕ reaches (session's cancel.go).
-	stopped []string
-}
-
-func (w *writingAgent) HarnessesBeingDesigned() []session.HarnessBeingDesigned { return w.writing }
-
-func (w *writingAgent) Cancel(id string) (string, error) {
-	w.stopped = append(w.stopped, id)
-	return "harness design stopped; nothing was saved", nil
-}
-
-// designingApp is a surface watching one design that started a minute and a
-// half ago, on a frame wide enough for the whole chip.
-func designingApp(t *testing.T, writing ...session.HarnessBeingDesigned) (*writingAgent, *app) {
+// designingNode is one node on the roster as the engine publishes a design:
+// running, its phase named, and its kind saying what it is.
+func designingNode(t *testing.T, phase string) *app {
 	t.Helper()
-	agent := &writingAgent{fakeAgent: &fakeAgent{model: "m"}, writing: writing}
-	a := newTestApp(agent)
+	a := newTestApp(&fakeAgent{model: "m"})
 	a.width, a.height = 120, 30
-	now := time.Now()
-	a.clock = func() time.Time { return now }
-	for at := range agent.writing {
-		agent.writing[at].Since = now.Add(-90 * time.Second)
-	}
-	return agent, a
+	a.taskUpdate(session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{
+		ID:    4,
+		Title: "harness · " + designedGoal,
+		Kind:  session.TaskKindHarness,
+		State: session.TaskRunning,
+		Doing: phase,
+	}})
+	return a
 }
 
-func harnessBeingWritten(id uint64) session.HarnessBeingDesigned {
-	return session.HarnessBeingDesigned{ID: id, Goal: designedGoal}
-}
-
-// designedGoal is a brief that fits the chip's own budget whole, so a test
-// reading the row is reading the words and not the cut.
+// designedGoal is a brief that fits the strip's own budget whole, so a test
+// reading a row is reading the words and not the cut.
 const designedGoal = "triage flaky tests"
 
-// A HARNESS BEING WRITTEN RAISES THE STRIP AND SAYS SO IN WORDS. It is the one
-// piece of work here with no turn under it: the turn ended the moment the design
-// started, so without this row the screen says nothing at all for a minute or
-// two.
-func TestTheStripSaysAHarnessIsBeingDesigned(t *testing.T) {
-	_, a := designingApp(t, harnessBeingWritten(3))
+// A DESIGN TAKES AN ORDINARY PLACE ON THE STRIP, and the strip rises for it the
+// way it rises for any running node.
+func TestADesignRaisesTheStripAsATask(t *testing.T) {
+	a := designingNode(t, "designing")
 	if !a.stripShowing() {
 		t.Fatal("a harness being designed did not raise the strip")
 	}
-	row := plain(a.stripRow(a.width))
-	for _, want := range []string{"designing a harness", designedGoal, "1m 30s"} {
-		if !strings.Contains(row, want) {
-			t.Fatalf("the row is missing %q: %q", want, row)
-		}
+	if row := plain(a.stripRow(a.width)); !strings.Contains(row, "harness") {
+		t.Fatalf("the strip does not name the design: %q", row)
 	}
-	// AND THE CLOCK KEEPS TURNING FOR IT. Nothing else on this surface is moving
-	// — no node is running and no stream is open — so the spinner and the count
-	// would freeze at the frame the design started on.
+	// AND THE CLOCK KEEPS TURNING FOR IT. Nothing else on this surface is moving,
+	// so the spinner would freeze at the frame the design started on.
 	if !a.tasksAnimating() {
 		t.Fatal("the paint clock stopped while a harness was being designed")
 	}
 }
 
-// AND IT GOES AWAY THE MOMENT THE SESSION STOPS NAMING THE WORK, which is every
-// ending at once: the card, the failure, the decline, the stop and the window
-// running out. The row is asked for from the agent on every frame and held
-// nowhere, so there is no ending it can miss.
-func TestTheStripDropsTheDesignAtEveryEnding(t *testing.T) {
-	agent, a := designingApp(t, harnessBeingWritten(3))
-	if !a.stripShowing() {
-		t.Fatal("a harness being designed did not raise the strip")
-	}
-	agent.writing = nil
-	if a.stripShowing() {
-		t.Fatal("the strip stayed up after the design ended")
-	}
-	if row := a.stripRow(a.width); row != "" {
-		t.Fatalf("the strip drew a row for nothing: %q", row)
-	}
-	if a.tasksAnimating() {
-		t.Fatal("the paint clock kept turning for a design that had ended")
-	}
-	// AND A SURFACE WHOSE AGENT CANNOT DESIGN AT ALL never had one — which is
-	// every remote session, where building a harness is switched off.
-	plain := newTestApp(&fakeAgent{model: "m"})
-	plain.width, plain.height = 120, 30
-	if plain.designingHarness() || plain.stripShowing() {
-		t.Fatal("a session with no designer drew a design")
-	}
-}
-
-// THE CHIP OFFERS THE ONE THING THAT CAN BE DONE ABOUT IT, and it is not a door.
-// There is no room to walk into and nothing written down, so the ✕ is the only
-// column on it that answers a press.
-func TestTheDesignChipOffersStoppingAndNoDoor(t *testing.T) {
-	_, a := designingApp(t, harnessBeingWritten(3))
-	a.stripRow(a.width) // the layout is what records the columns
-	if a.stripDesignStop.to <= a.stripDesignStop.from {
-		t.Fatalf("the chip recorded no ✕ to press: %+v", a.stripDesignStop)
-	}
-	// A press on the words is swallowed by the row and opens nothing.
-	if _, took := a.stripPress(a.stripDesignStop.from-4, a.headHeight()); !took {
-		t.Fatal("the strip did not take the press")
-	}
-	if a.stopping() || a.harnPanel.open || a.roomOpen() {
-		t.Fatal("pressing the chip's words did something")
-	}
-	if _, took := a.stripPress(a.stripDesignStop.from, a.headHeight()); !took {
-		t.Fatal("the strip did not take the press on the ✕")
-	}
-	if !a.stopping() {
-		t.Fatal("the ✕ raised no card")
-	}
-	if got, want := a.stop.target.question(), "Stop this harness design? "+stopDesignDetail; got != want {
-		t.Fatalf("the card asks %q, want %q", got, want)
-	}
-	if got, want := a.stop.target.id, session.CancelDesign+":3"; got != want {
-		t.Fatalf("the card would stop %q, want %q", got, want)
+// THE PHASE IS THE STATE WORD. "running" is this program's word for what a
+// design is doing and "designing" is the person's, so the row and the room's
+// header both say the second one.
+func TestADesignsPhaseIsWhatTheSurfaceSays(t *testing.T) {
+	for _, phase := range []string{"designing", "awaiting your look"} {
+		a := designingNode(t, phase)
+		node := a.tasks[4]
+		if node == nil {
+			t.Fatal("the design never reached the roster")
+		}
+		if got := a.roomStateWord(node); got != phase {
+			t.Fatalf("the room header says %q, want %q", got, phase)
+		}
+		rows := a.railUnder(node, 60)
+		if len(rows) == 0 || !strings.Contains(plain(rows[0]), phase) {
+			t.Fatalf("the rail row does not say %q: %q", phase, plain(strings.Join(rows, " / ")))
+		}
+		// AND IT DOES NOT WEAR "finishing · " OR "waiting · " IN FRONT OF IT. Those
+		// are this surface's words for which part of running a node is in; a phase
+		// is not part of running, it is what the node is doing, so the row opens
+		// with the phase itself.
+		if got := plain(rows[0]); !strings.HasPrefix(got, phase) {
+			t.Fatalf("the phase was prefixed with a word about running: %q", got)
+		}
 	}
 }
 
-// AND ANSWERING IT REACHES THE SESSION'S OWN DOOR, with the id spelled the way
-// that door takes it — a bare number there names a task.
-func TestStoppingTheDesignFromTheChipReachesTheSession(t *testing.T) {
-	agent, a := designingApp(t, harnessBeingWritten(3))
-	a.stripRow(a.width)
-	if _, took := a.stripPress(a.stripDesignStop.from, a.headHeight()); !took {
-		t.Fatal("the strip did not take the press on the ✕")
+// STOPPING A DESIGN PROMISES WHAT IS ACTUALLY TRUE OF IT. An ordinary node's
+// card says the branch it wrote on is kept; a design has no branch and wrote no
+// files, and what a person stopping one needs to know is that the registry is
+// untouched.
+func TestStoppingADesignDoesNotPromiseABranch(t *testing.T) {
+	a := designingNode(t, "designing")
+	target := a.stopTaskTarget(a.tasks[4])
+	if target.empty() {
+		t.Fatal("a running design cannot be stopped")
 	}
-	// The cursor opens on "keep going", which is where every stop card opens it.
-	drive(t, a, key("left"), key("enter"))
-	if len(agent.stopped) != 1 || agent.stopped[0] != session.CancelDesign+":3" {
-		t.Fatalf("the session was asked to stop %v", agent.stopped)
+	if target.id != session.CancelTask+":4" {
+		t.Fatalf("the stop is aimed at %q", target.id)
 	}
-	if a.stopping() {
-		t.Fatal("the card stayed up after it was answered")
+	if target.detail != stopDesignDetail {
+		t.Fatalf("the card says %q", target.detail)
 	}
-}
-
-// TWO AT ONCE ARE COUNTED AND OFFER NOTHING. One ✕ standing for two designs
-// would end whichever the surface guessed.
-func TestTwoDesignsAreCountedAndCannotBeStoppedFromTheChip(t *testing.T) {
-	_, a := designingApp(t, harnessBeingWritten(3), harnessBeingWritten(4))
-	row := plain(a.stripRow(a.width))
-	if !strings.Contains(row, "designing 2 harnesses") {
-		t.Fatalf("the row does not count them: %q", row)
-	}
-	if strings.Contains(row, designedGoal) {
-		t.Fatalf("the row named one brief for two designs: %q", row)
-	}
-	if a.stripDesignStop.pressable() {
-		t.Fatalf("a ✕ was drawn for two designs: %+v", a.stripDesignStop)
-	}
-}
-
-// A NARROW FRAME GIVES UP THE BRIEF AND KEEPS THE FACT. The goal is context for
-// a sentence the person typed a minute ago; that a harness is being written at
-// all is the whole reason the row exists.
-func TestANarrowDesignChipKeepsTheWords(t *testing.T) {
-	_, a := designingApp(t, harnessBeingWritten(3))
-	a.width = 34
-	row := plain(a.stripRow(a.width))
-	if !strings.Contains(row, "designing a harness") {
-		t.Fatalf("the narrow row lost the words: %q", row)
-	}
-	if strings.Contains(row, "triage") {
-		t.Fatalf("the narrow row kept the brief: %q", row)
-	}
-	if ansi.StringWidth(row) > a.width {
-		t.Fatalf("the row is %d cells wide on a %d-cell frame: %q", ansi.StringWidth(row), a.width, row)
+	// And an ordinary node is untouched by any of this.
+	a.taskUpdate(session.Event{Kind: session.EventTaskUpdate, Task: &session.TaskNotice{
+		ID: 5, Title: "Fix the crash", State: session.TaskRunning,
+	}})
+	if got := a.stopTaskTarget(a.tasks[5]).detail; got != stopTaskDetail {
+		t.Fatalf("an ordinary task's card says %q", got)
 	}
 }
 

@@ -29,6 +29,24 @@ import "time"
 // steering lane a background job's exit uses. The node's brief is its whole
 // world: it never reads this session.
 
+// TaskKind is WHAT SORT of work a node is, and the empty string is the ordinary
+// one this whole file is written about: a piece of work handed to a child agent
+// in a worktree of its own.
+//
+// IT IS NOT A STATE AND IT NEVER CHANGES. A node is admitted as one kind and
+// settles as that kind; what moves is [TaskState] underneath it. The reason a
+// surface needs it at all is that the two kinds are honestly different objects
+// to draw — one has a branch, files it changed and a merge, and the other has
+// none of those and could never have them — so a card that promised "the branch
+// it wrote on is kept" over a design would be pointing at work that does not
+// exist.
+type TaskKind string
+
+// TaskKindHarness is a sub-harness being designed (harness_task.go): no
+// worktree, no branch, no files, and a page that reaches the registry only if
+// the person approves the card at the end of it.
+const TaskKindHarness TaskKind = "harness"
+
 // TaskState is where one node is in its life.
 type TaskState string
 
@@ -91,6 +109,10 @@ type TaskNotice struct {
 	ID uint64
 	// Title is the one-line name of the work ("Fix the nil-map crash").
 	Title string
+	// Kind is what sort of node this is, and "" is the ordinary one: work in a
+	// worktree. It is on the proposal AND on every update, because it is the one
+	// fact about a node that is true before it starts and after it lands.
+	Kind TaskKind
 
 	// ── proposal fields (EventTaskProposal) ─────────────────────────────
 
@@ -147,6 +169,19 @@ type TaskNotice struct {
 	// kept), "inplace" (a non-git workspace ran in the person's tree), or ""
 	// while running.
 	Merge string
+	// Doing is the PHASE a running node of a named kind is in, in that kind's
+	// own plain words — "designing", "awaiting your look" for a sub-harness
+	// being written (harness_task.go) — and "" for an ordinary task, which has
+	// no phases.
+	//
+	// A SURFACE DRAWS IT INSTEAD OF THE STATE WORD, which is what separates it
+	// from Mending and Waiting below: those two are said BESIDE "running",
+	// because the node is running and hiding that would hide the state. This
+	// one IS the state, said in the vocabulary of the work rather than of the
+	// machinery — "designing" is what a person would call it, and "running" is
+	// what this package calls it. Like the two below it is ANNOUNCED ON CHANGE:
+	// a phase moving is news that arrives without the state moving.
+	Doing string
 	// Mending is the gap being closed while a repair round runs, one plain
 	// line ("adding amp-labs to the report"), and "" at every other moment.
 	// A surface draws it as the task simply still working; the machinery
