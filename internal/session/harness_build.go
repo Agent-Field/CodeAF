@@ -906,10 +906,7 @@ func (a *Agent) harnessMachinery() map[string]string {
 		belt = append(belt, fmt.Sprintf("%-6s %s", tool.Name, clip(firstLine(tool.Description), harnessToolAbout)))
 	}
 	return map[string]string{
-		"max_turns":      strconv.Itoa(subharness.MaxTurns),
-		"max_rounds":     strconv.Itoa(subharness.MaxRounds),
-		"default_rounds": strconv.Itoa(subharness.DefaultRounds),
-		"max_width":      strconv.Itoa(subharness.MaxWidth),
+		"kinds":          strings.TrimRight(subharness.Catalog(), "\n"),
 		"max_nodes":      strconv.Itoa(subharness.MaxNodes),
 		"max_id_bytes":   strconv.Itoa(subharness.MaxIdBytes),
 		"max_dyn_cap":    strconv.Itoa(subharness.MaxDynCap),

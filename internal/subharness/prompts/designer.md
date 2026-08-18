@@ -52,42 +52,7 @@ An unknown field is an error, not an ignored typo. Fields listed as required mus
 be present and non-blank.
 
 ```
-agent.loop      a worker's turn, oriented by a brief
-                brief      REQUIRED. What this node is for, in enough words that
-                           somebody who read only this node could do the job.
-                tools      optional, comma-separated, a SUBSET of the whitelist
-                model      optional
-                max_turns  optional integer, 1..«max_turns»
-tool.call       one whitelisted tool with fixed arguments
-                tool       REQUIRED, must be on the whitelist
-                args       optional; the literal {{input}} means the previous
-                           step's output
-verify          a check at a rung of the ladder
-                ladder     optional; empty means the harness's own rung. It may
-                           name a LOWER rung, never a higher one.
-                check      what is checked, as a sentence a judge can act on
-human.gate      a stop until a person answers
-                ask        REQUIRED, the question
-branch          one successor, chosen at runtime
-                when       REQUIRED, a condition (see below)
-loop.until      THIS node again — a re-reading of its own condition — until the
-                condition holds. It does NOT re-run the nodes before it. See
-                step 5: rework is a branch, not a loop.
-                until      REQUIRED, a condition
-                max_rounds optional integer, 1..«max_rounds» (default «default_rounds»)
-parallel.split  the point where independent lanes open
-                width      REQUIRED integer, 1..«max_width»
-                over       optional, what the lanes are over
-parallel.join   the lanes gathered back into one thread
-                mode       optional: all (default, a barrier) | any | first
-subharness.call another registered harness
-                name       REQUIRED, another harness's name
-                version    optional integer; 0/absent means its head
-trigger         what starts a run. Declarative: it does nothing itself.
-                source     REQUIRED: hosted | idle | watch | source.command
-                command    REQUIRED when source is source.command
-                spec       optional, what a watch watches or how long idle is
-                args       optional, a hosted command's allowed-argument list
+«kinds»
 ```
 
 ## The DAG law
