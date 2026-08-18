@@ -228,6 +228,7 @@ func (a *app) designEvent(ev session.Event) tea.Cmd {
 		a.beginHarnessCard(ev)
 	case session.EventHarnessProgress:
 		a.progressHarnessCard(ev)
+		a.progressHarnessRoom(ev)
 	case session.EventHarnessDesignDone:
 		a.askHarnessDesign(ev)
 	}

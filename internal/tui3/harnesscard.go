@@ -61,6 +61,32 @@ func (a *app) progressHarnessCard(ev session.Event) {
 	a.touch()
 }
 
+// progressHarnessRoom gives a design's own room the same live edge as its feed
+// card. The feed card owns the mapping from a design call to its task node; an
+// unknown node or a closed room therefore has nowhere honest to draw and is a
+// no-op. This row is never appended to entries, so it can never reach a journal.
+func (a *app) progressHarnessRoom(ev session.Event) {
+	c, _ := a.harnessCardOf(ev.ID)
+	if c == nil || c.task == 0 || a.tasks[c.task] == nil || a.room == nil || a.room.id != c.task {
+		return
+	}
+	parts := []string{"harness · " + firstNonEmpty(ev.Phase, "designing")}
+	if ev.Attempts > 1 {
+		parts = append(parts, fmt.Sprintf("attempt %d/%d", ev.Attempt, ev.Attempts))
+	}
+	tail := strings.TrimSpace(ev.ThoughtTail)
+	if tail != "" {
+		tail = firstLineOf(tail)
+	} else {
+		tail = strings.TrimSpace(ev.Hint)
+	}
+	if tail != "" {
+		parts = append(parts, tail)
+	}
+	a.room.harnessProgress = strings.Join(parts, " · ")
+	a.roomTouched()
+}
+
 func (a *app) finishHarnessCard(ev session.Event) {
 	c, i := a.harnessCardOf(ev.ID)
 	if c == nil {

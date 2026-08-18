@@ -31,6 +31,12 @@ type orchFake struct {
 	steered  []string
 	answers  []string
 	steerErr error
+	journals map[string]string
+}
+
+func (f *orchFake) OrchestrateNodeJournal(runID, nodeID string) (string, bool) {
+	path, ok := f.journals[runID+":"+nodeID]
+	return path, ok
 }
 
 func (f *orchFake) OrchestrateSnapshot(id string) (orchestrate.Snapshot, bool) {
@@ -309,8 +315,8 @@ func TestACardsNeedsAreNavigable(t *testing.T) {
 		t.Fatalf("the card has no needs block:\n%s", page)
 	}
 	links := a.orchCardLinks()
-	if len(links) != 2 || links[0].node != "rfcs" || links[1].node != "client" {
-		t.Fatalf("the card's links are %+v, want its two needs", links)
+	if len(links) != 3 || links[0].node != "rfcs" || links[1].node != "client" || links[2].transcript != "write" {
+		t.Fatalf("the card's links are %+v, want its two needs and transcript", links)
 	}
 
 	drive(t, a, key("down")) // onto the second need
@@ -343,10 +349,10 @@ func TestANestedRunExpandsAndTheTrailSaysWhereYouAre(t *testing.T) {
 		t.Fatalf("a node that is a run does not say so on its card:\n%s", roomText(a))
 	}
 	links := a.orchCardLinks()
-	if len(links) == 0 || links[len(links)-1].run != "rfcs" {
+	if len(links) < 2 || links[len(links)-2].run != "rfcs" {
 		t.Fatalf("the card has no link into the nested run: %+v", links)
 	}
-	a.orchOf().link = len(links) - 1
+	a.orchOf().link = len(links) - 2
 	drive(t, a, key("enter"))
 
 	if got := a.orchOf().id; got != "rfcs" {

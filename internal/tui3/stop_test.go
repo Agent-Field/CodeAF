@@ -50,6 +50,12 @@ func (f *stopFake) OrchestrateSnapshot(id string) (orchestrate.Snapshot, bool) {
 	}
 	return f.orch.OrchestrateSnapshot(id)
 }
+func (f *stopFake) OrchestrateNodeJournal(runID, nodeID string) (string, bool) {
+	if f.orch == nil {
+		return "", false
+	}
+	return f.orch.OrchestrateNodeJournal(runID, nodeID)
+}
 func (f *stopFake) SteerOrchestrate(id, text string) error { return f.orch.SteerOrchestrate(id, text) }
 func (f *stopFake) ResolveOrchestrate(id, answer string) (string, error) {
 	return f.orch.ResolveOrchestrate(id, answer)
