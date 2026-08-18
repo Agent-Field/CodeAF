@@ -55,6 +55,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -106,6 +107,28 @@ const harnessDesigningWord = "designing"
 
 // ── the job ─────────────────────────────────────────────────────────────────
 
+// harnessInFlight is one design this session has not finished: how it is ended,
+// and the two things a surface can honestly say about it while it runs.
+//
+// THE GOAL AND THE CLOCK ARE THE WHOLE OF IT. There is no progress here to
+// report and none is invented — a design is two model calls and neither one
+// says how far along it is — so what a person can be told is that a harness is
+// being written, what it is being written for, and how long that has been
+// going on.
+type harnessInFlight struct {
+	cancel context.CancelFunc
+	// goal is the brief the design was started from, exactly as the turn wrote
+	// it.
+	goal string
+	// since is when the writing began.
+	since time.Time
+	// asked is true once the page is written and the card is up. The job is
+	// still registered — it is not over until somebody answers, and until then
+	// it is still this session's to cancel — but the WRITING is over, and the
+	// writing is the only part of it a person has nothing else on screen about.
+	asked bool
+}
+
 // startHarnessDesign puts one design in flight and returns immediately.
 //
 // The context is the SESSION's and not the turn's, deliberately: the turn is
@@ -127,9 +150,9 @@ func (a *Agent) startHarnessDesign(goal, model string) {
 	a.harnessSeq++
 	id := a.harnessSeq
 	if a.harnessDesigns == nil {
-		a.harnessDesigns = make(map[uint64]context.CancelFunc, 1)
+		a.harnessDesigns = make(map[uint64]*harnessInFlight, 1)
 	}
-	a.harnessDesigns[id] = cancel
+	a.harnessDesigns[id] = &harnessInFlight{cancel: cancel, goal: goal, since: time.Now()}
 	model = a.harnessDesignModel(model)
 	a.mu.Unlock()
 
@@ -171,23 +194,76 @@ func (a *Agent) harnessDesignModel(named string) string {
 }
 
 // endHarnessDesign forgets one finished job.
+//
+// IT IS THE ONE EXIT, and that is what a surface leans on. Every way a design
+// can end — the page refused, the card answered either way, the window running
+// out, the session leaving, somebody stopping it — runs this deferred line, so
+// [Agent.HarnessesBeingDesigned] cannot go on reporting work that is over.
 func (a *Agent) endHarnessDesign(id uint64) {
 	a.mu.Lock()
-	cancel := a.harnessDesigns[id]
+	design := a.harnessDesigns[id]
 	delete(a.harnessDesigns, id)
 	a.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if design != nil {
+		design.cancel()
 	}
 }
 
 // cancelHarnessDesigns ends every design in flight. It is called from
 // [Agent.Close] with a.mu held.
 func (a *Agent) cancelHarnessDesignsLocked() {
-	for _, cancel := range a.harnessDesigns {
-		cancel()
+	for _, design := range a.harnessDesigns {
+		design.cancel()
 	}
 	a.harnessDesigns = nil
+}
+
+// HarnessBeingDesigned is one harness this session is writing right now: the
+// token that stops it, what it was asked for, and when it started.
+//
+// THE ID IS THE ONE [Agent.Cancel] TAKES, minted with `design:` in front of it
+// by whoever is asking (cancel.go's CancelDesign), because the number on its own
+// names a task and a run and a harness run as well.
+type HarnessBeingDesigned struct {
+	ID    uint64
+	Goal  string
+	Since time.Time
+}
+
+// HarnessesBeingDesigned is what the designer is working on at this instant:
+// one entry per harness still being written, oldest first.
+//
+// IT IS ASKED RATHER THAN ANNOUNCED, and that is the whole reason it exists
+// beside the lane ([Agent.HarnessDesigns]). The lane is the news — a design
+// started, here is the card, here is what became of it — and news is enough for
+// a transcript, which only ever adds a line. A surface drawing PRESENCE has the
+// harder job: it has to take the row away again, on every ending, including the
+// two that say nothing at all. A design whose window ran out and a design whose
+// session left both return without a word, deliberately, because the ordinary
+// reason for either is that nobody is left to be told ([Agent.designHarness]) —
+// so a row driven by events alone would still be turning a spinner for work that
+// ended twenty minutes ago. A row driven by this question is right on every
+// frame it is drawn.
+//
+// A DESIGN WAITING ON ITS CARD IS NOT IN THE ANSWER. The job is still
+// registered and still stoppable, but the writing is done and the card is on
+// screen saying so; a row beside it would be the surface claiming the same work
+// twice.
+func (a *Agent) HarnessesBeingDesigned() []HarnessBeingDesigned {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	out := make([]HarnessBeingDesigned, 0, len(a.harnessDesigns))
+	for id, design := range a.harnessDesigns {
+		if design.asked {
+			continue
+		}
+		out = append(out, HarnessBeingDesigned{ID: id, Goal: design.goal, Since: design.since})
+	}
+	// The ids are minted in order, so oldest first is by id — and an order at all
+	// is what keeps a row from swapping places under the eye on a map's own
+	// whim.
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
 }
 
 // designHarness is the whole job: design, review, ask, save.
@@ -298,6 +374,12 @@ func (a *Agent) askHarnessDesign(ctx context.Context, id uint64, page subharness
 		a.harnessAsks = make(map[uint64]chan harnessAnswer, 1)
 	}
 	a.harnessAsks[id] = answers
+	// THE WRITING ENDS HERE, one line before the card that says so. From this
+	// moment the job is a QUESTION and not work in progress, and anything drawing
+	// "a harness is being written" has to stop ([Agent.HarnessesBeingDesigned]).
+	if design := a.harnessDesigns[id]; design != nil {
+		design.asked = true
+	}
 	a.mu.Unlock()
 
 	// The page travels by pointer and this is its only copy: nothing else holds
