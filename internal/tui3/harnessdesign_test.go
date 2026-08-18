@@ -258,16 +258,28 @@ func designingNode(t *testing.T, phase string) *app {
 // reading a row is reading the words and not the cut.
 const designedGoal = "triage flaky tests"
 
-// A DESIGN TAKES AN ORDINARY PLACE ON THE STRIP, and the strip rises for it the
-// way it rises for any running node.
-func TestADesignRaisesTheStripAsATask(t *testing.T) {
+// A DESIGN TAKES AN ORDINARY PLACE ON THE ROSTER, which rises for it the way it
+// rises for any running node — and on the narrow frame where there is no roster,
+// the strip carries it instead (taskstrip.go).
+func TestADesignTakesAnOrdinaryPlaceOnTheRoster(t *testing.T) {
 	a := designingNode(t, "designing")
+	if !a.railShowing() || a.stripShowing() {
+		t.Fatalf("a harness being designed did not reach the roster: rail=%v strip=%v",
+			a.railShowing(), a.stripShowing())
+	}
+	if rail := plain(strings.Join(a.railRows(12), "\n")); !strings.Contains(rail, "harness") {
+		t.Fatalf("the roster does not name the design:\n%s", rail)
+	}
+	a.width = 80
+	a.touch()
 	if !a.stripShowing() {
-		t.Fatal("a harness being designed did not raise the strip")
+		t.Fatal("a narrow frame lost the design's only door")
 	}
 	if row := plain(a.stripRow(a.width)); !strings.Contains(row, "harness") {
 		t.Fatalf("the strip does not name the design: %q", row)
 	}
+	a.width = 120
+	a.touch()
 	// AND THE CLOCK KEEPS TURNING FOR IT. Nothing else on this surface is moving,
 	// so the spinner would freeze at the frame the design started on.
 	if !a.tasksAnimating() {

@@ -215,13 +215,12 @@ the task's row on the roster.
 The head is what happened. The muted line under it is what came of it, in the task's own
 first sentence, quoted because they are its words and not aforge's.
 
-- **`done`** — a tick, muted. It goes to the `done` group on the roster.
-- **`failed`** — a cross, in the bad hue, drawn with the word `failed`. It also goes to
-  `done`, not to `needs you`: by the time you see the word it is settled news. Inside the
-  `done` fold, work that came back short claims the first slots.
-- **`needs your look`** — a `?` in the warn hue. It goes to the `needs you` group. The `?`
-  is deliberately neither a tick nor a cross: it claims neither a finding nor a judgement
-  nobody made.
+- **`done`** — a tick, muted. It is settled work on the roster.
+- **`failed`** — a cross, in the bad hue, drawn with the word `failed`. It is settled too,
+  not work that needs you: by the time you see the word it is news, not a decision.
+- **`needs your look`** — a `?` in the warn hue. Its family rises above running work on
+  the roster. The `?` is deliberately neither a tick nor a cross: it claims neither a
+  finding nor a judgement nobody made.
 
 After the name the card carries the span, the file count, and how the branch came home:
 `merged`, `inplace`, `conflicted · <branch>`, `stopped — branch kept · <branch>`, or
@@ -245,20 +244,18 @@ The strip is one row under the pinned header — a tab bar of doors into live wo
 ```
 
 It appears only while something is running, and goes away the moment nothing is. It needs a
-frame at least 24 columns wide and 6 rows tall, and it is not drawn while the roster is
-open over the whole frame.
+frame at least 24 columns wide and 6 rows tall. It is the narrow-frame door: wherever the
+roster stands — as the right column or open over the whole frame — the strip stands down.
 
 Order: running first, then work that needs you, then idle. Parked and finished work never
 appear on it — the strip is the live set, the roster is the history.
 
 A chip carries one glyph and the name cut to 18 cells, and nothing else: no clock, no
-spend, no tool name. The glyph is the task's state where there is one worth drawing
-(spinner, `✓`, `✗`, `?`) and its own identity mark while it is queued. The room you are
-standing in takes a colour band; the chip the roster's cursor is on takes an underline. A
-chip can wear both.
+spend, no tool name, no tree connector, no cursor mark, and no stop button. The room you
+are standing in takes a colour band. The strip is one flat row even when a task has
+children; the roster is where the family tree is drawn.
 
-The strip is pointer-only and adds no keys of its own — its cursor is the roster's cursor,
-read rather than owned.
+The strip is pointer-only and adds no keys or cursor of its own.
 
 - Click a chip to walk into that task's room. Click the chip of the room you are already in
   to close it.
@@ -279,10 +276,16 @@ It appears as soon as one task exists, at a frame width of 100 columns or more �
 wide from 120 up, a slim 24 columns from 100 to 119. Under 100 columns there is no column,
 and `ctrl+t` opens the same roster over the body instead.
 
-Five groups, in this order: `needs you`, `running`, `idle`, `parked`, `done`. Newest first
-inside each. `parked` and `done` open closed, as one heading each with its population on it
-(`▸ parked 148`). `needs you` is the one group with no fold. An empty group draws no
-heading.
+The roster is a forest. Each root task is followed by its whole family, with children
+joined by three-cell connectors (`├─ `, `└─ `, `│  `). Families are ordered by their most
+urgent member: needs you, running, idle, parked, then done. There are no state-group
+headings. The footer keeps those totals as counts, such as
+`2 need you · 3 running · 12 done`.
+
+Folding belongs to each node. Families with a running, needs-you, or idle member start
+open. Settled families and families containing only parked work start folded to their
+root; the root then carries the family's aggregate state glyph and a `▸ +N` badge for the
+hidden descendants.
 
 A task's row opens with two glyphs answering two questions: its state, which changes, and
 its own identity mark, which never does. Then the name, then its id as `#7`, dim, at the far
@@ -293,7 +296,7 @@ came home. `conflicted · task/fix-nil` in the bad hue is the one loud row on th
 There is no subtitle here. The column is a presence list; the proposal card and the landing
 card both carry the sentence.
 
-At the bottom, up to three dim lines: `Σ $1.42 · 312k tok`, `3 running · 1 needs you`,
+At the bottom, up to three dim lines: `Σ $1.42 · 312k tok`, `1 need you · 3 running`,
 `148 parked · 12 done`. The `Σ` is the whole session's spend — it already contains every
 task in the column plus the conversation, so there is deliberately no per-task share. Zero
 figures are left out entirely, because zero means "nobody published a price", never "free".
@@ -305,27 +308,28 @@ rest state, so a person who starts typing is typing, not navigating.
 
 | key | what it does |
 | --- | --- |
-| `↑` `↓` | move, headings included |
-| `→` | expand the focused row's group |
-| `←` | collapse it; from a task, close its group and land on its heading |
-| `enter` | fold a heading, or open a task's room |
+| `↑` `↓` | walk the visible tree |
+| `→` | open a folded family, or step to the first child |
+| `←` | fold an open family, or jump to the parent row |
+| `enter` | open the task's room |
+| `w` | toggle the wider 46-column tree |
 | `esc` or `ctrl+t` | give the keyboard back |
 
-The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`, and
-the focused heading says `— enter/→ expand` or `— enter/← collapse` when there is room.
+The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`.
+When depth has forced a title to be cut, the footer adds `w · widen for the tree`; that
+hint is clickable as well as available from the keyboard.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with no
 tasks at all `ctrl+t` falls through rather than being swallowed.
 
-The cursor follows the work, not the row: it is held as a group plus an id, so a task that
-lands carries the cursor into its new group instead of leaving it on a row that moved. If
-the task went somewhere folded, the cursor lands on its new heading.
+The cursor follows the task, not the row, when families reorder or fold around it.
 
-With the pointer: click a row to open that task's room, click the open room's row again to
-close it, click a heading to fold or unfold it. A click that hits no task still belongs to
-the column and does nothing — the column you aim at to switch rooms must not be the column
-that throws you out. A click moves the cursor but does not hand the roster the keyboard.
+With the pointer, a row takes the hover background step. On a family root, only hovering
+the glyph cell reveals its disclosure triangle (`▾` open, `▸` folded). Click that glyph
+cell or the root's `▸ +N` badge to toggle the family; click its title to open the room.
+A click that hits no task still belongs to the column and does nothing. A click moves the
+cursor but does not hand the roster the keyboard.
 
 ## Walking into a task's room
 
@@ -477,9 +481,10 @@ task's own proposals begin the moment they are made. What you see instead is the
 
 Where they show up:
 
-- **the strip along the top** draws the family: the parent on its own row with its pieces
-  indented under it, and the family stays whole while any member of it is live.
-- **the roster** lists every one of them as an ordinary row, with its own id and state.
+- **the strip along the top** keeps one flat row of live chips on narrow frames; it does
+  not draw the family tree.
+- **the roster** draws the whole family together, with each piece joined to its parent by
+  tree connectors and carrying its own id and state.
 - **the parent's room** shows the `propose_task` calls as they are made, and the parent's
   own words when the reports come back.
 
@@ -525,7 +530,7 @@ same time.
 The setting `task.parallel` exists for anyone who wants a number anyway — settings panel
 (`ctrl+,` or `/settings`), category "spending". Blank means no limit. A cap is a queue and
 never a refusal: work past the cap waits and starts when a slot frees, and while it waits
-its roster row reads `waiting · slot` under the `parked` heading.
+its roster row reads `waiting · slot`; a parked-only family starts folded.
 
 What actually runs out is the machine, not a count of tasks. Two real ceilings hold new
 starts instead:
@@ -609,8 +614,8 @@ The cursor opens on `keep going` — the destructive answer is never under the k
 press to dismiss a question. `left`/`right` move, `enter` takes, `esc` is `keep going`.
 There is no bypass key: the card is always asked.
 
-With a pointer: the `✕` at the right end of a room's pinned header, and — on a wide
-terminal — the `✕` on the strip chip the roster's cursor is on. Both raise the same card.
+With a pointer, the `✕` at the right end of a room's pinned header raises the same card.
+Strip chips do not carry a stop button.
 
 **What stopping does.** A task that is RUNNING has its worker cut off where it stands: the
 turn it was in the middle of ends, and the task settles as `stopped`. A task still QUEUED
@@ -633,7 +638,7 @@ What else you can do yourself, on a task that is running:
 
 | what | how |
 | --- | --- |
-| see it | its strip chip, its roster row, its room, an inline `task 7` link |
+| see it | its roster row, its room, an inline `task 7` link, or its strip chip on a narrow frame |
 | see what it is doing this second | the roster row's tool line, or its room, live |
 | see what it is costing | the roster's telemetry row, the room's focus header, the `Σ` |
 | walk into it | click it, `enter` on it, or `→` over an empty box |
@@ -660,8 +665,8 @@ Nothing is thrown away: on every ending except a clean merge the branch is kept 
 
 Some work lands with `needs your look`: it finished, but nobody could say whether it holds.
 It is neither done nor failed. Nothing has merged, the branch is kept, and anything waiting
-on it stays waiting until somebody decides. On the roster it sits at the top, under
-`needs you`, and its row reads `finished — look it over`.
+on it stays waiting until somebody decides. Its family rises to the top of the roster, and
+its row reads `finished — look it over`.
 
 Read it first. Its room holds the whole of it, and its landing card expands to the changed
 files, the branch, the model, the cost, the done-condition and the report.
@@ -674,10 +679,10 @@ When it is settled, the task re-settles into `done` or `failed` — a state it h
 in — so a second landing card is drawn. The decision is an event, and the card is the record
 of it.
 
-The `needs you` group holds only work that will not move without you: a landing nobody
-could judge, and finished work still sitting on a branch that never came home. Work that
-ran in your own tree, or that ended before there was a branch, is not undelivered — it is
-over, and it goes in the `done` fold.
+The `need you` footer count covers only work that will not move without you: a landing
+nobody could judge, and finished work still sitting on a branch that never came home.
+Work that ran in your own tree, or that ended before there was a branch, is not
+undelivered — it is over, and its settled family starts folded.
 
 ## Stopping an adaptive run
 

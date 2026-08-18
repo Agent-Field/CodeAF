@@ -71,6 +71,14 @@ const (
 	// narrower than the row they are drawn on, which is why [app.hoverTarget] is
 	// asked the COLUMN as well as the row.
 	hoverJump
+	// hoverRail is a node row of the roster, and the identity it carries is the
+	// NODE's (task.go). Every row of that column is a door into a node's room, so
+	// every row of it reacts — which is this file's own law read the other way
+	// round: the set that lights is the set [app.press] acts on, and in the
+	// roster that is all of it. What the hover buys beyond the background step is
+	// the disclosure triangle a family root reveals in its glyph cell, which is
+	// the whole of the column's fold affordance at rest.
+	hoverRail
 	// hoverTable is the foot under a markdown table that was cut (mdtable.go);
 	// entry is the answer it belongs to and index is which of that answer's
 	// tables. It is the other narrow target, and it is a kind of its own rather
@@ -88,6 +96,11 @@ type hoverAt struct {
 	entry int
 	turn  int
 	index int
+	// id is the roster node the pointer is over, and it is a field of its own
+	// because a node id is not an index into anything this file can renumber: the
+	// column re-sorts its families as work moves, and a hover stored as a row of
+	// it would follow the sort instead of following the work.
+	id uint64
 }
 
 // setHover takes one pointer position and records what is under it.
@@ -149,6 +162,13 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 			}
 		}
 		return hoverAt{}
+	}
+	// THE ROSTER IS ASKED BEFORE THE CONVERSATION, for the reason [app.press]
+	// resolves it first: the two are drawn side by side, so which one the pointer
+	// is over is a question about x — and every row of the transcript answers to
+	// the same y as the roster row beside it (room.go's [app.railPress]).
+	if node := a.railHoverNode(x, y); node != nil {
+		return hoverAt{kind: hoverRail, id: node.id}
 	}
 	if r, ok := a.rowAt(y); ok {
 		switch {
@@ -232,6 +252,11 @@ func (a *app) hoveringFold(turn int) bool {
 
 // hoveringChoices reports whether the pointer is on the consent offer.
 func (a *app) hoveringChoices() bool { return a.hot.kind == hoverChoices }
+
+// hoveringRail reports whether the pointer is on this node's roster row.
+func (a *app) hoveringRail(node *taskNode) bool {
+	return node != nil && a.hot.kind == hoverRail && a.hot.id == node.id
+}
 
 // hoveringOverlay reports whether the pointer is on this row of the open list.
 func (a *app) hoveringOverlay(index int) bool {

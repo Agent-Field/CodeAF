@@ -63,18 +63,9 @@ func stopApp(t *testing.T) (*app, *stopFake) {
 	agent := &stopFake{roomFake: room}
 	base.agent = agent
 	base.railTake(true)
-	base.railWhere = railSpot{group: a7Group(base), id: 7}
+	base.railWhere = railSpot{id: 7}
 	base.touch()
 	return base, agent
-}
-
-// a7Group is whichever group the running node landed in, so the cursor is a
-// real position in the roster rather than a guess about its layout.
-func a7Group(a *app) railGroup {
-	if node := a.tasks[7]; node != nil {
-		return a.railGroupOf(node)
-	}
-	return railRunning
 }
 
 // stopText is the chrome as a reader sees it.
@@ -278,41 +269,25 @@ func stopCardRow(a *app) (int, bool) {
 	return 0, false
 }
 
-// THE FOCUSED STRIP CHIP CARRIES A ✕ AT THE WIDE TIER, and pressing it asks to
-// stop that work rather than walking into its room — the mark sits inside the
-// door, so it has to be resolved before it.
-func TestTheFocusedChipCarriesAStopMarkAtTheWideTier(t *testing.T) {
+// THE STRIP CARRIES NO ✕ AND NO CURSOR ANY MORE, and neither is a loss: the row
+// is only ever on screen where the roster is NOT (taskstrip.go's
+// [app.stripShowing]), so a mark drawn from the roster's own cursor would be a
+// mark that can never be true. The button a pointer stops work with is the
+// room's own header, at every width (room.go).
+func TestTheStripCarriesNoStopMarkWhereTheRosterStands(t *testing.T) {
 	a, _ := stopApp(t)
 	a.width, a.height = 140, 30
 	a.touch()
-	row := a.stripRow(a.width)
-	if !strings.Contains(plain(row), roomStopMark) {
-		t.Fatalf("the focused chip carries no ✕:\n%s", plain(row))
+	if a.stripShowing() {
+		t.Fatalf("the strip stood up beside the roster")
 	}
-	var chip stripSpan
-	for _, span := range a.stripSpans {
-		if span.id == 7 {
-			chip = span
-		}
+	if row := plain(a.stripRow(a.width)); strings.Contains(row, roomStopMark) || row != "" {
+		t.Fatalf("the strip drew a row over the roster:\n%q", row)
 	}
-	if !chip.stop.pressable() {
-		t.Fatalf("the ✕ was drawn but answers to no columns")
-	}
-	drive(t, a, press(chip.stop.to-1, a.headHeight()))
-	if !a.stopping() {
-		t.Fatalf("the chip's ✕ raised nothing")
-	}
-	if a.roomOpen() {
-		t.Fatalf("the ✕ walked into the room it sits in")
-	}
-
-	// AND IT IS THE WIDE TIER'S ALONE: below it the cells are not there to
-	// spend, and the room's own header carries the same button at every width.
-	a.dropStop()
-	a.width = 100
-	a.touch()
-	if strings.Contains(plain(a.stripRow(a.width)), roomStopMark) {
-		t.Fatalf("a narrow strip spent cells on a ✕:\n%s", plain(a.stripRow(a.width)))
+	// AND THE ROOM'S HEADER STILL HAS IT, which is where a pointer ends work.
+	a.openRoom(7, "Fix the nil-map crash")
+	if !strings.Contains(plain(a.roomHead(a.bodyWidth())), roomStopMark) {
+		t.Fatalf("the room's header lost its ✕:\n%q", plain(a.roomHead(a.bodyWidth())))
 	}
 }
 

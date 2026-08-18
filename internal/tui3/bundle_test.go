@@ -916,7 +916,9 @@ func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
 	a.models = func() []Model { return modalityCatalog }
 	a.openSettings()
 
-	// The two tiers sit on the Session tab, where the panel opens.
+	// The classes sit on the Providers tab, with the model they answer under
+	// (settings.go's [modelsSection]).
+	toProviders(t, a)
 	for _, row := range []string{config.KeyTierLowModel, config.KeyTierHighModel} {
 		cursorTo(t, a, row)
 		if got := a.sheet.items[a.sheet.cursor].meta.widget; got != widgetSelect {
@@ -944,10 +946,7 @@ func TestTheTierRowsAndTheVisionRowAreAnsweredByThePicker(t *testing.T) {
 		t.Fatalf("the small-work row reads %q after the picker chose", got)
 	}
 
-	// The vision row is a picker too, over on Providers.
-	for i := 0; i < 4; i++ {
-		drive(t, a, key("right"))
-	}
+	// The looking row is a picker too, further down the same tab.
 	cursorTo(t, a, config.KeyVisionModel)
 	drive(t, a, key("enter"))
 	if a.sheet.sel == nil {
@@ -962,18 +961,16 @@ func TestEachSlotFiltersTheModelsByWhatItNeeds(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.models = func() []Model { return modalityCatalog }
 	a.openSettings()
+	toProviders(t, a)
 
 	cursorTo(t, a, config.KeyTierHighModel)
 	drive(t, a, key("enter"))
 	chat := []string{"anthropic/claude-sonnet-4.5", "vendor/blind-chat", "moonshotai/kimi-k3"}
 	if got := pickedIDs(a.sheet.sel); strings.Join(got, ",") != strings.Join(chat, ",") {
-		t.Fatalf("a tier row offers %v, want the models you can talk to %v", got, chat)
+		t.Fatalf("a class row offers %v, want the models you can talk to %v", got, chat)
 	}
 	drive(t, a, key("esc"))
 
-	for i := 0; i < 4; i++ {
-		drive(t, a, key("right"))
-	}
 	cursorTo(t, a, config.KeyVisionModel)
 	drive(t, a, key("enter"))
 	// The slot is an inspection proxy — a picture in, a sentence back — so the
@@ -2644,14 +2641,14 @@ func TestTheRailStandsWhileWorkIsAliveAndGoesWhenItLands(t *testing.T) {
 		t.Fatalf("the rail read the engine's own word for a stopped node:\n%s", rail)
 	}
 
-	// A node whose branch CAME HOME has said everything it has to say in the
-	// transcript, so it leaves the rail the moment it lands — and with the last
-	// node gone, so does the rail.
+	// A node whose branch CAME HOME keeps its row: the column is the session's
+	// record of its own work now, and "where did that task go" is the commonest
+	// question asked of it. What it stops saying is anything more than its name.
 	drive(t, a, streamEventMsg{gen: a.gen, ev: update(8, "Mix audio", session.TaskDone, session.TaskNotice{
 		Elapsed: 8 * time.Second, Merge: mergeWordMerged,
 	})})
-	if strings.Contains(plain(strings.Join(a.railRows(12), "\n")), "Mix audio") {
-		t.Fatal("a merged node stayed on the rail")
+	if !strings.Contains(plain(strings.Join(a.railRows(12), "\n")), "Mix audio") {
+		t.Fatal("a merged node left the roster's record")
 	}
 	if !a.railShowing() {
 		t.Fatal("the rail left while two kept branches were still on it")
@@ -2757,14 +2754,13 @@ func TestTheRailNamesWhatABlockedNodeWaitsOn(t *testing.T) {
 			DependsOn: []uint64{1},
 		})},
 	)
-	// A blocked node is a PARKED node, and parked opens folded (task.go) — so the
-	// sentence is one keystroke down, on the group that is hiding it.
+	// A NODE WITH NO FAMILY AROUND IT IS THE FLAT ROW THIS COLUMN ALWAYS DREW, and
+	// the sentence under it is the only place the surface says what is in the way
+	// (task.go's [app.railSaysMore]).
 	rail := plain(strings.Join(a.railRows(10), "\n"))
-	if strings.Contains(rail, "Mix audio") {
-		t.Fatalf("the parked group came up expanded:\n%s", rail)
+	if !strings.Contains(rail, "Mix audio") {
+		t.Fatalf("the blocked node is not on the roster:\n%s", rail)
 	}
-	a.railSetOpen(railParked, true)
-	rail = plain(strings.Join(a.railRows(10), "\n"))
 	if !strings.Contains(rail, "waits: Collect sources") {
 		t.Fatalf("a blocked node does not say what it waits on:\n%s", rail)
 	}
@@ -2936,20 +2932,20 @@ func TestTheRailIsChargedAgainstTheConversationOnly(t *testing.T) {
 				t.Fatalf("at %d columns frame row %d is %d wide:\n%q", tc.width, i, w, line)
 			}
 		}
-		// The roster opens with its first group's heading and the node under it
-		// (task.go), and the whole column starts under the task strip, which is up
-		// because the node is running (taskstrip.go). The slim rail fits the title
-		// to its column, so the assertion reads the prefix both widths keep.
+		// The roster opens on the node itself — there are no headings any more, and
+		// a session of one node is one family of one (task.go). The slim rail fits
+		// the title to its column, so the assertion reads the prefix both widths
+		// keep.
 		top := a.bodyTop()
-		if tc.rail && !strings.Contains(lines[top], railGroupWords[railRunning]) {
-			t.Fatalf("at %d columns the roster's first heading is not on row %d:\n%q", tc.width, top, lines[top])
+		if tc.rail && !strings.Contains(lines[top], "Fix the nil-map") {
+			t.Fatalf("at %d columns the roster's first row is not the node:\n%q", tc.width, lines[top])
 		}
-		if tc.rail && !strings.Contains(lines[top+1], "Fix the nil-map") {
-			t.Fatalf("at %d columns the running node is not under its heading:\n%q", tc.width, lines[top+1])
+		// AND THE STRIP IS THE ROW ABOVE IT ONLY WHERE THERE IS NO ROSTER: the two
+		// answer the same question, and the wide frame answers it in the column.
+		if tc.rail && top != 0 {
+			t.Fatalf("at %d columns the strip drew over the roster: top=%d", tc.width, top)
 		}
-		// AND THE STRIP IS THE ROW ABOVE IT, at every one of these widths — the
-		// rail's breakpoint is not the strip's, which is the whole point of it.
-		if !strings.Contains(lines[0], "Fix the nil-map") {
+		if !tc.rail && !strings.Contains(lines[0], "Fix the nil-map") {
 			t.Fatalf("at %d columns the task strip is not the frame's first row:\n%q", tc.width, lines[0])
 		}
 		// The status row is the whole window's, so it is never under the rail.
@@ -2978,10 +2974,11 @@ func rosterText(a *app, height int) string {
 	return plain(strings.Join(a.railRows(height), "\n"))
 }
 
-// ATTENTION FIRST, AND THE TAIL FOLDED. The five groups come in the order a
-// person needs them, each with its population on it, and the two groups that
-// accumulate open closed — a settled node is a fact, not a row.
-func TestTheRosterGroupsByAttentionAndFoldsItsTail(t *testing.T) {
+// URGENCY FIRST, AND THE WHOLE SESSION ON ONE COLUMN. The headings are gone —
+// each family is drawn whole under its own root — and what they used to sort is
+// now the ORDER: a family stands where its most urgent member puts it, and the
+// footer still counts the session in the five words the headings wore.
+func TestTheRosterOrdersItsFamiliesByUrgencyAndCountsTheWhole(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{
@@ -2995,52 +2992,48 @@ func TestTheRosterGroupsByAttentionAndFoldsItsTail(t *testing.T) {
 			Report: "the tests did not build", Merge: mergeWordAborted, Branch: "task/render",
 		})},
 		streamEventMsg{gen: a.gen, ev: update(5, "Cut the trailer", session.TaskQueued, session.TaskNotice{})},
-		// A FAILURE THAT KEPT NOTHING IS NOT A DEMAND, so it is in the fold with
-		// the rest of the record rather than at the top of the column
-		// (task.go's [app.railGroupOf]).
+		// A FAILURE THAT KEPT NOTHING IS NOT A DEMAND, so it stands with the record
+		// at the bottom of the column rather than at the top (task.go's
+		// [app.railGroupOf]).
 		streamEventMsg{gen: a.gen, ev: update(6, "Trim silence", session.TaskFailed, session.TaskNotice{
 			Report: "the tests did not build",
 		})},
 	)
 	a.cost, a.tokens = 1.42, 312_000
-	rail := rosterText(a, 20)
+	rail := rosterText(a, 24)
 
-	// The order of the headings IS the design: what is asking, what is running,
-	// what is waiting for a slot, what is parked behind other work, what is over.
+	// The order IS the design: what is asking, what is running, what is waiting
+	// for a slot, what is parked behind other work, what is over.
 	at := -1
-	for _, want := range []railGroup{railAttention, railRunning, railIdle, railParked, railDone} {
-		found := strings.Index(rail, railGroupWords[want])
+	for _, want := range []string{"Render titles", "Fix the nil-map", "Cut the trailer", "Mix audio",
+		"Collect sources", "Trim silence"} {
+		found := strings.Index(rail, want)
 		if found < 0 {
-			t.Fatalf("the roster has no %q group:\n%s", railGroupWords[want], rail)
+			t.Fatalf("the roster has no %q row:\n%s", want, rail)
 		}
 		if found < at {
-			t.Fatalf("the %q group is out of order:\n%s", railGroupWords[want], rail)
+			t.Fatalf("%q is out of order:\n%s", want, rail)
 		}
 		at = found
 	}
-	// Every group says how many it holds, and the two folded ones say it with
-	// their rows behind the count rather than under it.
-	for _, want := range []string{
-		glyphBad + " " + plain(a.taskMark(identFor(4))) + " Render titles",
-		glyphOpen + " " + railGroupWords[railAttention] + " 1",
-		"Fix the nil-map", "Cut the trailer",
-		glyphShut + " " + railGroupWords[railParked] + " 1",
-		glyphShut + " " + railGroupWords[railDone] + " 2",
-	} {
-		if !strings.Contains(rail, want) {
-			t.Fatalf("the roster is missing %q:\n%s", want, rail)
+	// NO HEADINGS AT ALL. The five words live in the footer now, where they are
+	// counts of the whole session rather than sections of the column.
+	for g := railGroup(0); g < railGroupCount; g++ {
+		if strings.Contains(rail, glyphOpen+" "+railGroupWords[g]) ||
+			strings.Contains(rail, glyphShut+" "+railGroupWords[g]) {
+			t.Fatalf("the roster still draws the %q heading:\n%s", railGroupWords[g], rail)
 		}
 	}
-	for _, folded := range []string{"Mix audio", "Collect sources", "Trim silence"} {
-		if strings.Contains(rail, folded) {
-			t.Fatalf("%q is drawn under a folded group:\n%s", folded, rail)
-		}
+	// TWO GLYPHS OPEN A ROW WITH NO FAMILY AROUND IT: the state, then the node's
+	// own identity cell (taskident.go).
+	if !strings.Contains(rail, glyphBad+" "+plain(a.taskMark(identFor(4)))+" Render titles") {
+		t.Fatalf("the flat row lost one of its two glyphs:\n%s", rail)
 	}
 	// THE ID IS META: the title leads the row and the handle trails it, dim.
 	if !strings.Contains(rail, "#2") || strings.Contains(rail, "#2 Fix") {
 		t.Fatalf("the node's id is not the trailing meta of its row:\n%s", rail)
 	}
-	// AND THE FOOTER SAYS THE WHOLE, folded rows included.
+	// AND THE FOOTER SAYS THE WHOLE, in the group vocabulary.
 	for _, want := range []string{railSigma + "$1.42", "312k tok", "1 running", "1 needs you",
 		"1 parked", "2 done"} {
 		if !strings.Contains(rail, want) {
@@ -3049,11 +3042,11 @@ func TestTheRosterGroupsByAttentionAndFoldsItsTail(t *testing.T) {
 	}
 }
 
-// A FOLDED GROUP OPENS FROM EITHER HAND, and its heading is the door: enter and
-// → open it, ← and enter close it again, and a click on the heading does what
-// the keyboard does.
-func TestTheRosterFoldsFromTheKeyboardAndThePointer(t *testing.T) {
-	a, _, _ := taskApp(t)
+// THE KEYBOARD IS ASKED FOR, NEVER TAKEN, and what it lands on is a row of work:
+// ctrl+t hands the roster the keys, the marker says where the cursor is, enter
+// opens that node's room, and esc gives the keys back to the box.
+func TestTheRosterTakesTheKeyboardOnlyWhenItIsHandedIt(t *testing.T) {
+	a, _, _ := roomApp(t)
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskDone, session.TaskNotice{
 			Merge: mergeWordMerged,
@@ -3076,24 +3069,22 @@ func TestTheRosterFoldsFromTheKeyboardAndThePointer(t *testing.T) {
 	if !strings.Contains(rosterText(a, 16), railMark) {
 		t.Fatalf("the focused row has no marker:\n%s", rosterText(a, 16))
 	}
-	// Down to the done heading — two rows past the running group's own — and
-	// open it. A heading is navigable and opens no room; it folds.
-	drive(t, a, key("down"), key("down"), key("right"))
-	if !strings.Contains(rosterText(a, 16), "Collect sources") {
-		t.Fatalf("→ did not open the folded group:\n%s", rosterText(a, 16))
+	// The cursor opens on the first row, and the first row is the oldest of the
+	// two running nodes — equal urgency, so the column is in admission order (the
+	// session opened with node 7 running).
+	if a.railWhere.id != 7 {
+		t.Fatalf("the cursor opened on %+v, want the first running node", a.railWhere)
 	}
-	if a.roomOpen() {
-		t.Fatal("a heading opened a room")
-	}
-	drive(t, a, key("left"))
-	if strings.Contains(rosterText(a, 16), "Collect sources") {
-		t.Fatalf("← did not close the group again:\n%s", rosterText(a, 16))
+	drive(t, a, key("down"))
+	if a.railWhere.id != 2 {
+		t.Fatalf("↓ walked to %+v, want the second running node", a.railWhere)
 	}
 
 	// Typing still reaches the box while the roster holds the arrows: only the
-	// six keys it named are taken.
-	drive(t, a, key("x"))
-	if a.input.String() != "x" {
+	// keys it named are taken. ("x" is not one to test with — it is the stop
+	// key, and it is aimed at whatever the roster's cursor is standing on.)
+	drive(t, a, key("z"))
+	if a.input.String() != "z" {
 		t.Fatalf("a letter did not reach the draft: %q", a.input.String())
 	}
 	// esc gives the keyboard back, and the cursor goes with it.
@@ -3102,17 +3093,16 @@ func TestTheRosterFoldsFromTheKeyboardAndThePointer(t *testing.T) {
 		t.Fatal("esc did not hand the keyboard back to the box")
 	}
 
-	// The pointer's half: a press on a folded heading opens it, and does not
+	// The pointer's half: a press on a row is that node's door, and it does not
 	// take the keyboard on its way past.
-	before := a.railShut(railDone)
 	for y := a.bodyTop(); y < a.bodyTop()+a.viewHeight(); y++ {
-		if e, ok := a.railEntryAt(y); ok && e.node == nil && e.group == railDone {
-			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth(), Y: y, Button: tea.MouseLeft})
+		if node := a.railNodeAt(y); node != nil && node.id == 1 {
+			drive(t, a, tea.MouseClickMsg{X: a.bodyWidth() + 4, Y: y, Button: tea.MouseLeft})
 			break
 		}
 	}
-	if a.railShut(railDone) == before {
-		t.Fatal("a click on a heading did not fold it")
+	if !a.roomOpen() || a.room.id != 1 {
+		t.Fatalf("a press on a roster row did not open its room: open=%v", a.roomOpen())
 	}
 	if a.railHold {
 		t.Fatal("a click took the keyboard away from the box")
@@ -3136,12 +3126,10 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 			t.Fatalf("roster row %d is %d cells wide, want at most %d:\n%q", i, w, railCols, line)
 		}
 	}
-	// Newest first inside the group, under the group's own heading.
-	if !strings.Contains(plain(rows[0]), railGroupWords[railRunning]+" 300") {
-		t.Fatalf("the heading does not carry the population:\n%q", rows[0])
-	}
-	if !strings.Contains(plain(rows[1]), "node 300") {
-		t.Fatalf("the newest node is not the group's first row:\n%q", rows[1])
+	// Three hundred families of one, all equally urgent, so the column is in the
+	// order the session admitted them.
+	if !strings.Contains(plain(rows[0]), "node 1") {
+		t.Fatalf("the first row is not the first node the session met:\n%q", rows[0])
 	}
 
 	// Twenty rows down is past the window, so the window moves.
@@ -3150,10 +3138,10 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 		drive(t, a, key("down"))
 	}
 	rail := rosterText(a, 12)
-	if !strings.Contains(rail, "node 281") || !strings.Contains(rail, railMark) {
+	if !strings.Contains(rail, "node 21") || !strings.Contains(rail, railMark) {
 		t.Fatalf("the window did not follow the cursor down:\n%s", rail)
 	}
-	if strings.Contains(rail, "node 300") {
+	if strings.Contains(rail, "node 1 ") {
 		t.Fatalf("the window did not move at all:\n%s", rail)
 	}
 	// And the footer still counts the whole roster rather than the window.
@@ -3162,9 +3150,10 @@ func TestTheRosterWindowsHundredsOfNodesAroundItsFocus(t *testing.T) {
 	}
 }
 
-// THE CURSOR SURVIVES THE WORK MOVING UNDER IT. A node that lands changes group,
-// and the focus follows it there rather than snapping to the top of the column.
-func TestTheRostersCursorFollowsANodeThatChangesGroup(t *testing.T) {
+// THE CURSOR SURVIVES THE WORK MOVING UNDER IT. A node that lands moves its
+// whole family up the column, and the focus stays on the node rather than on the
+// row number it happened to be standing at.
+func TestTheRostersCursorFollowsANodeThatChangesUrgency(t *testing.T) {
 	a, _, _ := taskApp(t)
 	drive(t, a,
 		streamEventMsg{gen: a.gen, ev: update(1, "Collect sources", session.TaskRunning, session.TaskNotice{})},
@@ -3173,7 +3162,7 @@ func TestTheRostersCursorFollowsANodeThatChangesGroup(t *testing.T) {
 		key("down"), // the newest running node
 	)
 	if a.railWhere.id != 2 {
-		t.Fatalf("the cursor is on %+v, want the newest running node", a.railWhere)
+		t.Fatalf("the cursor is on %+v, want the second running node", a.railWhere)
 	}
 	// It finishes with its branch kept, which is the one outcome that needs a
 	// person — so the row moves to the top group, and the cursor moves with it.
@@ -3182,11 +3171,12 @@ func TestTheRostersCursorFollowsANodeThatChangesGroup(t *testing.T) {
 	entries := a.railEntries()
 	at := a.railFocusIndex(entries)
 	if at < 0 || entries[at].node == nil || entries[at].node.id != 2 {
-		t.Fatalf("the cursor did not follow the node into its new group: %+v", entries)
+		t.Fatalf("the cursor did not follow the node: %+v", entries)
 	}
-	if entries[at].group != railAttention {
-		t.Fatalf("a node with a kept branch is in %q, want %q",
-			railGroupWords[entries[at].group], railGroupWords[railAttention])
+	// AND THE ROW ITSELF MOVED: a kept branch is the one outcome that needs a
+	// person, so it is the top of the column now (task.go's [app.railGroupOf]).
+	if at != 0 {
+		t.Fatalf("the node with a kept branch is at row %d, want the top of the column", at)
 	}
 }
 
@@ -3253,34 +3243,20 @@ func TestAPlainFailureIsFiledAsNewsAndNotAsADemand(t *testing.T) {
 		}
 	}
 
-	// AND THE HEADINGS SAY WHAT THEY HOLD: three things to do, three things to
-	// know, and the second three behind one folded line.
-	rail := rosterText(a, 20)
-	for _, want := range []string{
-		glyphOpen + " " + railGroupWords[railAttention] + " 3",
-		glyphShut + " " + railGroupWords[railDone] + " 3",
-		"3 needs you", "3 done",
-	} {
+	// AND THE FOOTER SAYS WHAT THE SESSION HOLDS: three things to do, three things
+	// to know, in the words the headings used to wear.
+	rail := rosterText(a, 24)
+	for _, want := range []string{"3 needs you", "3 done"} {
 		if !strings.Contains(rail, want) {
 			t.Fatalf("the roster is missing %q:\n%s", want, rail)
 		}
 	}
-	for _, folded := range []string{"Render titles", "Write the auth", "Collect sources"} {
-		if strings.Contains(rail, folded) {
-			t.Fatalf("%q stands on top of the column instead of in the fold:\n%s", folded, rail)
+	// The three demands lead the column and the record follows them, whole.
+	demands := strings.Index(rail, "Cut the trailer")
+	for _, news := range []string{"Render titles", "Write the auth", "Collect sources"} {
+		if at := strings.Index(rail, news); at < 0 || at < demands {
+			t.Fatalf("%q stands above the work that needs a person:\n%s", news, rail)
 		}
-	}
-
-	// And when the fold opens, the failures are the rows it opens on.
-	a.railSetOpen(railDone, true)
-	for _, entry := range a.railEntries() {
-		if entry.group != railDone || entry.node == nil {
-			continue
-		}
-		if entry.node.id != 6 {
-			t.Fatalf("the fold opens on node %d, want the newest incomplete one", entry.node.id)
-		}
-		break
 	}
 }
 

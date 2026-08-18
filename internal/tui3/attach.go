@@ -189,12 +189,25 @@ func chipLabels(chips []chip, pal palette) []string {
 // chipStrip is the tray as one row, dim: the attachments are a fact about the
 // message being written, not a thing being said, and the surface says what it
 // is doing in the same voice it says everything else about itself.
+//
+// A PICKED HARNESS RIDES THE SAME ROW, first (harnesspick.go). It is the same
+// kind of fact — something the next message carries besides its words — and the
+// tray is the one place this surface keeps those. Its own cell is INK rather
+// than dim, because it is the one thing up here that changes what enter does.
 func (a *app) chipStrip(width int) string {
-	if len(a.chips) == 0 {
+	cells := a.harnessTrayCells()
+	labels := chipLabels(a.chips, a.pal)
+	if len(cells) == 0 && len(labels) == 0 {
 		return ""
 	}
-	labels := chipLabels(a.chips, a.pal)
-	painted := make([]string, 0, len(labels))
+	painted := make([]string, 0, len(cells)+len(labels))
+	for at, cell := range cells {
+		if at == 0 {
+			painted = append(painted, a.pal.ink(cell))
+			continue
+		}
+		painted = append(painted, a.pal.dim(cell))
+	}
 	for _, label := range labels {
 		painted = append(painted, a.pal.dim(label))
 	}
@@ -222,7 +235,8 @@ func chipAt(labels []string, x int) int {
 // input block starts. The tray is that block's first row (input.go), so it is
 // the input block's start and nothing else has to be known.
 func (a *app) chipPress(x, y int) bool {
-	if len(a.chips) == 0 || a.sheet.open || a.pick.open {
+	cells := a.harnessTrayCells()
+	if (len(a.chips) == 0 && len(cells) == 0) || a.sheet.open || a.pick.open {
 		return false
 	}
 	width, height := a.size()
@@ -231,7 +245,19 @@ func (a *app) chipPress(x, y int) bool {
 	if at < 0 || y != height-len(rows)+at {
 		return false
 	}
-	i := chipAt(chipLabels(a.chips, a.pal), x-len(inputPad))
+	column := x - len(inputPad)
+	// THE HARNESS CELL IS ASKED FIRST BECAUSE IT IS DRAWN FIRST, and the
+	// pictures start after it — the offset is computed from the same cells the
+	// row was built from, so what is drawn and what a click resolves against
+	// cannot disagree (harnesspick.go).
+	if len(cells) > 0 {
+		if chipAt(cells, column) == 0 {
+			a.dropHarnessChip()
+			return true
+		}
+		column -= harnessTrayWidth(cells)
+	}
+	i := chipAt(chipLabels(a.chips, a.pal), column)
 	if i < 0 {
 		return false
 	}

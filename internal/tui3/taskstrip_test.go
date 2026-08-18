@@ -8,7 +8,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
-	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
 
 // stripText is the strip as a reader sees it, laid out at the frame's width.
@@ -17,12 +16,11 @@ func stripText(a *app) string {
 	return plain(a.stripRow(width))
 }
 
-// THE STRIP IS THE DOOR THAT SURVIVES A NARROW FRAME. The rail is thirty columns
-// and the first thing a hundred-column terminal gives up; the strip is one row
-// and it is drawn at every width there is a running node, which is the whole
-// point — under [railSlimFloor] it is the only thing on screen that leads into
-// running work.
-func TestTheTaskStripStandsAtEveryWidthWhileWorkRuns(t *testing.T) {
+// THE STRIP IS THE DOOR THAT SURVIVES A NARROW FRAME, AND ONLY THAT. The roster
+// is a hundred columns of frame away and it holds every node with the shape of
+// every run in it; under that breakpoint there is no column to lend, and this
+// row is the only thing on screen that leads into running work.
+func TestTheTaskStripStandsWhereTheRosterCannot(t *testing.T) {
 	a, _, _ := taskApp(t)
 	if stripText(a) != "" {
 		t.Fatalf("an empty session drew a strip:\n%q", stripText(a))
@@ -32,36 +30,51 @@ func TestTheTaskStripStandsAtEveryWidthWhileWorkRuns(t *testing.T) {
 		streamEventMsg{gen: a.gen, ev: update(7, "Fix the nil-map crash", session.TaskRunning, session.TaskNotice{})},
 		streamEventMsg{gen: a.gen, ev: update(8, "Write the auth tests", session.TaskQueued, session.TaskNotice{})},
 	)
-	// WIDE: the rail is up as well, and the strip is still the frame's first row
-	// — the two answer different questions, and a person watching one node does
-	// not want to read a column to find it.
-	for _, width := range []int{200, 80} {
+	// WIDE: the roster is up, so the strip is not. A tab row above a column
+	// listing the same work is a row of conversation spent on an index.
+	for _, width := range []int{200, 120, 100} {
+		a.width = width
+		a.touch()
+		if !a.railShowing() {
+			t.Fatalf("at %d columns the roster is not standing", width)
+		}
+		if a.stripShowing() || stripText(a) != "" || a.bodyTop() != 0 {
+			t.Fatalf("at %d columns the strip drew over the roster:\n%q", width, stripText(a))
+		}
+	}
+
+	// NARROW: no column to lend, so the row is the door.
+	for _, width := range []int{99, 80, 44} {
 		a.width = width
 		a.touch()
 		if !a.stripShowing() || a.stripHeight() != 1 {
 			t.Fatalf("at %d columns nothing raised the strip over a running node", width)
 		}
 		text := stripText(a)
-		for _, want := range []string{"Fix the nil-map", "Write the auth"} {
-			if !strings.Contains(text, want) {
-				t.Fatalf("at %d columns the strip is missing %q:\n%q", width, want, text)
+		if width >= 80 {
+			for _, want := range []string{"Fix the nil-map", "Write the auth"} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("at %d columns the strip is missing %q:\n%q", width, want, text)
+				}
 			}
-		}
-		// THE CHIP IS A GLYPH AND A NAME: the state's glyph while it runs, the
-		// node's own identity cell where the state has nothing to say (taskstrip.go).
-		if !strings.Contains(text, plain(a.taskMark(identFor(8)))+" Write the auth") {
-			t.Fatalf("at %d columns the queued chip lost its identity cell:\n%q", width, text)
 		}
 		if w := ansi.StringWidth(text); w > width {
 			t.Fatalf("the strip is %d cells wide on a %d-column frame:\n%q", w, width, text)
 		}
-		// It is the frame's first row, and the body starts under it.
 		if got := plain(strings.Split(frame(a), "\n")[0]); !strings.Contains(got, "Fix the nil-map") {
 			t.Fatalf("at %d columns the strip is not the frame's first row:\n%q", width, got)
 		}
 		if a.bodyTop() != 1 {
 			t.Fatalf("at %d columns the strip is drawn but not budgeted: top=%d", width, a.bodyTop())
 		}
+	}
+
+	// THE CHIP IS A GLYPH AND A NAME: the state's glyph while it runs, the node's
+	// own identity cell where the state has nothing to say (taskstrip.go).
+	a.width = 80
+	a.touch()
+	if !strings.Contains(stripText(a), plain(a.taskMark(identFor(8)))+" Write the auth") {
+		t.Fatalf("the queued chip lost its identity cell:\n%q", stripText(a))
 	}
 
 	// AND IT GOES WHEN THE WORK DOES. The roster keeps the record; a permanent
@@ -75,6 +88,48 @@ func TestTheTaskStripStandsAtEveryWidthWhileWorkRuns(t *testing.T) {
 	if a.bodyTop() != 0 {
 		t.Fatalf("the strip kept its row after it stopped drawing: top=%d", a.bodyTop())
 	}
+}
+
+// THE STRIP IS ONE ROW, WHATEVER THE WORK IS SHAPED LIKE. Families are the
+// roster's business (task.go): this row is the live set, packed across one line,
+// and a node with children under it is a chip like any other.
+func TestTheStripIsOneRowWhateverTheWorkIsShapedLike(t *testing.T) {
+	a, _, _ := taskApp(t)
+	a.width = 80
+	a.touch()
+	for i := uint64(1); i <= 3; i++ {
+		a.taskUpdate(update(i, "node number "+itoa(int(i)), session.TaskRunning, session.TaskNotice{}))
+	}
+	rows := stripLines(a)
+	if len(rows) != 1 || a.stripHeight() != 1 {
+		t.Fatalf("a flat session drew %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
+	}
+	a.tasks[2].parent = itoa(1)
+	rows = stripLines(a)
+	if len(rows) != 1 {
+		t.Fatalf("a family grew the strip to %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
+	}
+	for _, want := range []string{"node number 1", "node number 2", "node number 3"} {
+		if !strings.Contains(rows[0], want) {
+			t.Fatalf("the row dropped %q once the work had a shape:\n%q", want, rows[0])
+		}
+	}
+	for _, chip := range a.stripSpans {
+		if chip.span.to > a.width {
+			t.Fatalf("chip %d runs off the frame: %+v", chip.id, chip.span)
+		}
+	}
+}
+
+// stripLines is the strip as a reader sees it, row by row.
+func stripLines(a *app) []string {
+	width, _ := a.size()
+	rows := a.stripRows(width)
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = plain(row)
+	}
+	return out
 }
 
 // WHAT THE ROW CANNOT HOLD IT COUNTS. The overflow mark is budgeted for BEFORE
@@ -184,7 +239,7 @@ func TestTheRosterOpensOverTheBodyOnANarrowFrame(t *testing.T) {
 		}
 	}
 	body := strings.Join(lines[a.bodyTop():a.bodyTop()+a.viewHeight()], "\n")
-	for _, want := range []string{railGroupWords[railRunning], "Fix the nil-map", "Write the auth"} {
+	for _, want := range []string{"Fix the nil-map", "Write the auth"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the roster over the body is missing %q:\n%s", want, body)
 		}
@@ -206,271 +261,6 @@ func TestTheRosterOpensOverTheBodyOnANarrowFrame(t *testing.T) {
 	}
 	if !a.stripShowing() {
 		t.Fatal("the strip did not come back when the roster went away")
-	}
-}
-
-// ── THE ROSTER TREE ─────────────────────────────────────────────────────────
-
-// stripKin hands a node to a parent, in the alphabet the seam speaks
-// (taskstrip.go's [taskNode.ParentID]).
-func stripKin(a *app, parent uint64, kids ...uint64) {
-	for _, id := range kids {
-		a.tasks[id].parent = itoa(int(parent))
-	}
-}
-
-// stripRun plants one adaptive run: a root the person started, and the tree its
-// planner spawned under it.
-//
-//	1 Ship the port        running
-//	├── 2 Read the law     done
-//	├── 3 Write the tree   running
-//	│   └── 4 Cut goldens  queued
-//	└── 5 Wire the seam    queued
-func stripRun(a *app) {
-	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
-	a.taskUpdate(update(2, "Read the law", session.TaskDone, session.TaskNotice{}))
-	a.taskUpdate(update(3, "Write the tree", session.TaskRunning, session.TaskNotice{}))
-	a.taskUpdate(update(4, "Cut the goldens", session.TaskQueued, session.TaskNotice{}))
-	a.taskUpdate(update(5, "Wire the seam", session.TaskQueued, session.TaskNotice{}))
-	stripKin(a, 1, 2, 3, 5)
-	stripKin(a, 3, 4)
-	// The spinner is on the frame clock (tokens.Spinner), so a golden has to say
-	// which frame it was taken on.
-	a.paints = 0
-}
-
-// stripLines is the strip as a reader sees it, row by row.
-func stripLines(a *app) []string {
-	width, _ := a.size()
-	rows := a.stripRows(width)
-	out := make([]string, len(rows))
-	for i, row := range rows {
-		out[i] = plain(row)
-	}
-	return out
-}
-
-// A FAMILY IS A TREE AND THE CONNECTORS ARE IN THE CHIP ROW. One row per task,
-// children indented under the thing that spawned them, and the connectors drawn
-// where the eye already is rather than in a gutter beside it.
-//
-// This is the WIDE golden. It is a byte comparison on purpose: a tree is
-// alignment, and a test that only asked "does it contain ├──" would pass on a
-// tree whose second level had drifted a cell.
-func TestTheStripDrawsAFamilyAsATreeAtTheWideTier(t *testing.T) {
-	a, _, _ := taskApp(t)
-	stripRun(a)
-	if layoutTier(a.width) != tierWide {
-		t.Fatalf("%d columns is not the wide tier", a.width)
-	}
-	want := []string{
-		" ⠋ Ship the port ",
-		"├── ✓ Read the law ",
-		"├── ⠋ Write the tree ",
-		"│   └── ◌ Cut the goldens ",
-		"└── ◌ Wire the seam ",
-	}
-	got := stripLines(a)
-	if len(got) != len(want) {
-		t.Fatalf("the tree is %d rows, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("row %d is\n\t%q\nwant\n\t%q\nwhole tree:\n%s", i, got[i], want[i], strings.Join(got, "\n"))
-		}
-	}
-	// AND THE STRIP IS AS TALL AS THE TREE IT DREW. A frame that budgeted one row
-	// for five puts the conversation's last line under the input box (view.go).
-	if a.stripHeight() != len(want) || a.bodyTop() != len(want) {
-		t.Fatalf("the tree drew %d rows and the frame budgeted %d (bodyTop %d)",
-			len(want), a.stripHeight(), a.bodyTop())
-	}
-	frameRows := strings.Split(plain(frame(a)), "\n")
-	for i := range want {
-		if frameRows[i] != want[i] {
-			t.Fatalf("the frame's row %d is %q, want %q", i, frameRows[i], want[i])
-		}
-	}
-	// THE GLYPH COLUMN READS DOWN, which is what the four-cell grid buys: every
-	// chip on a level opens at the same column as its siblings.
-	at := map[uint64]int{}
-	for _, chip := range a.stripSpans {
-		at[chip.id] = chip.span.from
-	}
-	if at[1] != 0 || at[2] != stripElbowCols || at[3] != stripElbowCols || at[5] != stripElbowCols {
-		t.Fatalf("the first level is not one grid step in: %v", at)
-	}
-	if want := stripIndentCols + stripElbowCols; at[4] != want {
-		t.Fatalf("the grandchild opens at column %d, want %d", at[4], want)
-	}
-}
-
-// A TREE ROW IS A DOOR LIKE EVERY OTHER CHIP, and the row is now half the
-// answer: a press has two coordinates where it used to have one.
-func TestPressingATreeRowOpensThatNodesRoom(t *testing.T) {
-	a, _, _ := roomApp(t)
-	a.width = 80 // no rail: the strip is the only way in
-	a.touch()
-	stripRun(a)
-
-	rows := stripLines(a)
-	var chip stripSpan
-	for _, span := range a.stripSpans {
-		if span.id == 4 {
-			chip = span
-		}
-	}
-	// This session has a loose node of its own, so the live row leads and the
-	// family hangs under it — which is exactly the geometry the press has to
-	// resolve through.
-	if chip.row >= len(rows) || !strings.Contains(rows[chip.row], "Cut the goldens") {
-		t.Fatalf("the grandchild's chip says row %d:\n%s", chip.row, strings.Join(rows, "\n"))
-	}
-	drive(t, a, tea.MouseClickMsg{X: chip.span.from + 1, Y: a.headHeight() + chip.row, Button: tea.MouseLeft})
-	if !a.roomOpen() || a.room.id != 4 {
-		t.Fatalf("a press on a tree row did not open its node's room: open=%v", a.roomOpen())
-	}
-	// AND THE SAME COLUMN ON A DIFFERENT ROW IS A DIFFERENT DOOR. A strip that
-	// resolved a press by its column alone would open the grandchild from
-	// anywhere down the tree.
-	drive(t, a, key("esc"))
-	var sibling stripSpan
-	for _, span := range a.stripSpans {
-		if span.id == 5 {
-			sibling = span
-		}
-	}
-	drive(t, a, tea.MouseClickMsg{X: sibling.span.from + 1, Y: a.headHeight() + sibling.row, Button: tea.MouseLeft})
-	if !a.roomOpen() || a.room.id != 5 {
-		t.Fatalf("the press landed on room %v rather than the sibling it was over", a.room)
-	}
-	// The open room's chip wears the band, down a tree exactly as along the row.
-	if !strings.Contains(a.stripRow(a.width), sgr256(hueAccent)) {
-		t.Fatalf("the open room's chip is not picked out:\n%q", a.stripRow(a.width))
-	}
-}
-
-// THE PHONE KEEPS EVERY STEM AND SPENDS ON THE NAMES. The indent is the only
-// thing carrying the shape and it costs four cells; a name is expensive and it
-// is one keystroke away in the room.
-func TestTheStripDrawsTheTreeAtThePhoneTier(t *testing.T) {
-	a, _, _ := taskApp(t)
-	a.width = 44
-	stripRun(a)
-	if layoutTier(a.width) != tierPhone {
-		t.Fatalf("%d columns is not the phone tier", a.width)
-	}
-	// The phone's row budget is four, so the deepest leaf folds into its parent.
-	want := []string{
-		" ⠋ Ship the po… ",
-		"├── ✓ Read the law ",
-		"├── ⠋ Write the t…  ▸ +1",
-		"└── ◌ Wire the se… ",
-	}
-	got := stripLines(a)
-	if len(got) != len(want) {
-		t.Fatalf("the phone tree is %d rows, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("phone row %d is\n\t%q\nwant\n\t%q\nwhole tree:\n%s", i, got[i], want[i], strings.Join(got, "\n"))
-		}
-	}
-	for i, row := range got {
-		if w := ansi.StringWidth(row); w > a.width {
-			t.Fatalf("row %d is %d cells wide on a %d-column frame:\n%q", i, w, a.width, row)
-		}
-	}
-	// THE FOLD MARK IS A DOOR TO THE ROSTER, which is where every row is.
-	if len(a.stripFolds) != 1 {
-		t.Fatalf("the fold recorded %d chips to press", len(a.stripFolds))
-	}
-	fold := a.stripFolds[0]
-	drive(t, a, tea.MouseClickMsg{X: fold.span.from, Y: a.headHeight() + fold.row, Button: tea.MouseLeft})
-	if !a.railHold || !a.railFull() {
-		t.Fatalf("the fold mark did not open the roster: hold=%v full=%v", a.railHold, a.railFull())
-	}
-}
-
-// THE FOLD NEVER HIDES WHAT IS MOVING. It gives up the deepest leaf it is
-// allowed to, and a node that is running, that failed, or that is held at the
-// fuel gate is never one of them — nor is any ancestor it hangs from, because a
-// row hanging from nothing is not a tree.
-func TestTheFoldGivesUpDepthAndNeverLiveWork(t *testing.T) {
-	a, _, _ := taskApp(t)
-	a.width, a.height = 200, 24
-	// A root with six children, and a seventh generation under one of them, so
-	// the tree is well over the six-row budget however it is folded.
-	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
-	for i := uint64(2); i <= 9; i++ {
-		a.taskUpdate(update(i, "node number "+itoa(int(i)), session.TaskDone, session.TaskNotice{}))
-	}
-	stripKin(a, 1, 2, 3, 4, 5, 6, 7, 8)
-	stripKin(a, 8, 9)
-	// Three of them are work nobody may hide: one running, one failed, one held
-	// at the gate.
-	a.taskUpdate(update(3, "node number 3", session.TaskRunning, session.TaskNotice{}))
-	a.taskUpdate(update(5, "node number 5", session.TaskFailed, session.TaskNotice{}))
-	a.tasks[7].paused = true
-	a.paints = 0
-
-	rows := strings.Join(stripLines(a), "\n")
-	if got := len(stripLines(a)); got > a.stripBudget() {
-		t.Fatalf("the tree folded to %d rows on a budget of %d:\n%s", got, a.stripBudget(), rows)
-	}
-	for _, want := range []string{
-		tokens.Spinner(0) + " node number 3", // running
-		glyphBad + " node number 5",          // failed
-		glyphPaused + " node number 7",       // held at the gate
-	} {
-		if !strings.Contains(rows, want) {
-			t.Fatalf("the fold hid live work — %q is gone:\n%s", want, rows)
-		}
-	}
-	// The deepest row went first: node 9 hung under node 8, and it is the finest
-	// work on the tree.
-	if strings.Contains(rows, "node number 9") {
-		t.Fatalf("the fold took a shallow row before the deepest one:\n%s", rows)
-	}
-	// And what it took is counted where it was taken from.
-	if !strings.Contains(rows, stripFoldMark+"+") {
-		t.Fatalf("the fold took rows and counted none of them:\n%s", rows)
-	}
-	if len(a.stripFolds) == 0 {
-		t.Fatalf("the fold chips recorded no columns to press")
-	}
-}
-
-// A SESSION WITH NO FAMILIES IS THE ROW IT HAS ALWAYS BEEN. The tree costs a
-// flat session nothing — not a row, not a cell, not a byte — which is the whole
-// reason it could be added to a pinned surface at all.
-func TestAFlatSessionIsStillOneRow(t *testing.T) {
-	a, _, _ := taskApp(t)
-	for i := uint64(1); i <= 3; i++ {
-		a.taskUpdate(update(i, "node number "+itoa(int(i)), session.TaskRunning, session.TaskNotice{}))
-	}
-	rows := stripLines(a)
-	if len(rows) != 1 || a.stripHeight() != 1 {
-		t.Fatalf("a flat session drew %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
-	}
-	for _, chip := range a.stripSpans {
-		if chip.row != 0 {
-			t.Fatalf("a flat session's chip landed on row %d: %+v", chip.row, chip)
-		}
-	}
-	// AND A NODE IN A FAMILY LEAVES THE FLAT ROW. One chip up top and the same
-	// chip down the tree is one node claiming to be two.
-	stripKin(a, 1, 2)
-	rows = stripLines(a)
-	if len(rows) != 3 {
-		t.Fatalf("a family of two under one loose node is %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
-	}
-	if !strings.Contains(rows[0], "node number 3") || strings.Contains(rows[0], "node number 2") {
-		t.Fatalf("the live row still carries a node the tree drew:\n%q", rows[0])
-	}
-	if !strings.Contains(rows[1], "node number 1") || !strings.Contains(rows[2], "node number 2") {
-		t.Fatalf("the family is not under its root:\n%s", strings.Join(rows, "\n"))
 	}
 }
 
@@ -518,10 +308,10 @@ func TestASpawnCardClickOpensTheNodesRoom(t *testing.T) {
 // THE PARENT SEAM IS FILLED BY THE ENGINE, not by this surface. An adaptive run
 // registers itself with the tasker — one row for the run, one per node, each
 // carrying the run's id as its parent (internal/session's orchestrate.go) — and
-// the tree above is drawn from exactly that. The goldens plant kinship by hand
-// because they are about the DRAWING; this is the test that the drawing is
-// reachable from a real session at all.
-func TestARunsNodesReachTheTreeThroughTheirNotices(t *testing.T) {
+// the roster's forest is drawn from exactly that (task.go's [app.railKin]). The
+// goldens over there plant kinship by hand because they are about the DRAWING;
+// this is the test that the drawing is reachable from a real session at all.
+func TestARunsNodesReachTheForestThroughTheirNotices(t *testing.T) {
 	a, _, _ := taskApp(t)
 	a.taskUpdate(update(1, "Ship the port", session.TaskRunning, session.TaskNotice{}))
 	a.taskUpdate(update(2, "Read the law", session.TaskRunning, session.TaskNotice{Parent: 1}))
@@ -533,19 +323,9 @@ func TestARunsNodesReachTheTreeThroughTheirNotices(t *testing.T) {
 	if got := a.tasks[1].ParentID(); got != "" {
 		t.Fatalf("the run's own row hangs off %q, want a root", got)
 	}
-	rows := stripLines(a)
-	want := []string{
-		" ⠋ Ship the port ",
-		"├── ⠋ Read the law ",
-		"└── ◌ Write the tree ",
-	}
-	if len(rows) != len(want) {
-		t.Fatalf("the run drew %d rows, want %d:\n%s", len(rows), len(want), strings.Join(rows, "\n"))
-	}
-	for i := range want {
-		if rows[i] != want[i] {
-			t.Fatalf("row %d is\n\t%q\nwant\n\t%q\nwhole tree:\n%s", i, rows[i], want[i], strings.Join(rows, "\n"))
-		}
+	kids, byKey := a.railKin()
+	if len(kids[stripKey(a.tasks[1])]) != 2 || railRootOf(a.tasks[3], byKey) != a.tasks[1] {
+		t.Fatalf("the run's nodes did not reach the forest: %v", kids)
 	}
 	// AND KINSHIP IS KEPT. A later update that says nothing about the parent has
 	// not changed who spawned the work.
