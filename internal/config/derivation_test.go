@@ -115,6 +115,7 @@ func TestEveryRowIsGroupedNamedAndReadable(t *testing.T) {
 // wave apiece — so what is named here is the thing the reader touches, not the
 // spelling of the key.
 var settingReaders = map[string]string{
+	KeyWork:           "workMode",
 	KeyDailyBudget:    "DailyBudgetUSD",
 	KeyPlanConsent:    "PlanConsentUSD",
 	KeyPracticeBudget: "PracticeBudgetUSD",
