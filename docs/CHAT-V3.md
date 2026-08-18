@@ -95,7 +95,7 @@ The substitution table:
 | Tool inventory (read/edit/write/bash/grep/glob/lsp/task/todo/…) | the v3 belt: read, bash, edit, write, grep, glob, todo + `task`, `change`, `stop` + graph reads (`board`, `open`, `recall`) + `ask`, `say` |
 | Delegation gates (subagents) | commissioning doctrine: substantial/durable/consequential work goes to the tasker verbatim in the user's words; one ask one task; iterate on live work through `change`, never a duplicate commission |
 | Internal URLs (skill://, agent://, omp://…) | dropped; graph reads are tools, not URL schemes |
-| Skills & rules, memory (retain/recall) | the notebook (`note`/`forget`) and `recall` over the store — aforge's existing equivalents |
+| Skills & rules, memory (retain/recall) | routed durable memories, reflex extraction, and `/memory` inspection over the store |
 | Workflow 1–6, Delivery contract, Critical | kept near-verbatim — this is the pi quality bar the user wants in the session |
 | project-prompt footer (workstation, context files, cwd, date) | kept; context files = AGENTS.md discovery as in omp |
 
@@ -1033,8 +1033,8 @@ three would be the one place this ladder robs somebody.
 
 ## Decision 22 — BPE working state: what is true and what is open, outside the trajectory
 
-**The session had experience memory and no working state.** `note`/`forget`
-(Decision 2's memory file) carry standing facts across sessions; everything a
+**The session had experience memory and no working state.** The routed memory
+store carries standing facts across sessions; everything a
 turn learned about the work in front of it — which file matters, which subgoal
 is half-done, which command proves the build green — lived in exactly one
 place, the transcript. That is the one structure compaction destroys, so every
@@ -1043,7 +1043,7 @@ pass had to **rediscover the plot from the summary it had just written**.
 The fix is the research's BPE abstraction (harness-research-notes.md §4,
 EvoHarness-RL): harness state is **Belief** (true in the workspace right now),
 **Progress** (a subgoal: open, blocked, done) and **Experience** — and
-Experience is already `note`/`forget`, so it is not duplicated. Beliefs and
+Experience is already durable memory, so it is not duplicated. Beliefs and
 progress become **records held outside the transcript** (`internal/session/state.go`),
 written by three tools beside the existing two: `track(text, kind, evidence)`,
 `commit(id)` (progress → done, belief → stale), `recall()`.
@@ -1064,7 +1064,7 @@ another version, or holds a record without evidence is **dropped whole with one
 log line** — never fatal: a corrupt bookkeeping file must not cost anyone their
 conversation, and a half-loaded state is a state nobody wrote.
 
-The seam is `Agent.StateBlock()`: the records as one bracketed block —
+The seam is the state card: the records as one bracketed block —
 `[state] …` then `beliefs:`, `open:`, `done:`, newest first, capped at 40 lines
 with finished work squeezed first — which the compaction pass injects into the
 **rebuilt** transcript right after the summary note. The pass then hands the
@@ -1079,36 +1079,19 @@ todo list is a plan the person reads, and work big enough to decompose belongs
 to the workforce (Decision 19). These records are the model's own working state,
 sized for surviving a compaction, and no surface draws them.
 
-## Decision 23 — Dreaming: memory consolidates at idle, conservatively, times verbatim
+## Decision 23 — Routed memory: reflex extraction, provenance and direct control
 
-**A memory file only grows, so something has to prune it — and that something
-runs when nobody is talking.** `note` appends and `forget` removes on request,
-which means duplicates, superseded facts and contradictions accumulate until
-4KiB of them rides every request of every turn. The pass that fixes it is
-MindMemOS's *dreaming* (`harness-research-notes.md` §4): consolidate **at idle**,
-not at a capacity limit — 30 seconds after a turn settles, disarmed by a new
-turn, a steering note or `Close`, and never armed in a headless `--once` run or
-inside a task node, because a one-shot process is about to exit and dreaming is
-for a session that stays alive. The provider call holds **no agent lock**; the
-only locked moment is the swap, and the swap is a `rename`. A person who types
-while their memory is being consolidated waits for nothing.
+Memory is an event-sourced block in the store, not an ever-growing `memory.md`
+prompt. Before a turn, the reflex model routes a title-only index and injects
+only relevant full rows. After a turn, reflex extraction settles a durable
+candidate against nearby memories as add, update, supersede or skip. The
+`/memory` panel exposes the result directly: search, scope, full text, use count,
+provenance, edit, forget, and one-deep undo.
 
-**Two laws make it safe to run unattended.** The consolidator may only MERGE
-near-duplicates (the merged line keeps the oldest date or attribution —
-provenance survives) and DROP what a later fact supersedes; a result longer than
-its input is refused outright, because "the model summarized my preferences into
-something I never said" is the one failure with no recovery. And **time is
-special-cased**, on Sleeping Agent's measurement that temporal expressions
-survive gist compression at ~3% against ~8% for entities — dates are what a
-summarizer drops first. So the prompt states that any fact containing a time
-expression (a date, a duration, a version number, "since Tuesday") is copied
-CHARACTER-FOR-CHARACTER and that two facts whose merge would reword a time are
-not merged, and a mechanical check refuses any result carrying a time the input
-never spelled that way. Guards: once per ten minutes, only when the file's hash
-changed, never under ~20 facts. Every refusal, every provider error, every
-timeout leaves `memory.md` byte-for-byte as it was; a pass that lands writes one
-journal line — `memory consolidated: 41 → 33 facts` — of an entry type no replay
-reads, so it is a record for the person and never context for the model.
+The state card separately preserves working beliefs and progress. Compaction is
+a zero-LLM transcript rearrangement: it retains the state card and bounded
+conversation material without asking a summarizer to invent a new account of
+either.
 
 ## Decision 25 — The session chases speed and checks that it got it
 
@@ -1256,9 +1239,9 @@ constants-change plus a boot migration, not an excavation.
 found under `v3/sessions/<ws>/` is folded into a session folder named by its
 header id; its sidecars and its `v3/tasks/<session>/` journals move with it. A
 file that will not parse stays where it is with one log line — a corrupt old
-session must not cost anyone their new one. `Config.MemoryFile` is finally
-wired (`~/.aforge/v3/memory.md`) in the same wave: the note/forget/dreaming
-machinery has been built and dead for a version.
+session must not cost anyone their new one. The legacy
+`~/.aforge/v3/memory.md` is imported once into the routed store and renamed out
+of the way; later inspection and control is through `/memory`.
 
 ## Milestones
 

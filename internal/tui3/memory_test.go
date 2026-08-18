@@ -4,8 +4,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/store"
 )
 
 // rememberingAgent is a fakeAgent that also has a brain — the optional
@@ -66,11 +68,72 @@ func (r *rememberingAgent) Memories(query string) ([]session.MemoryLine, error) 
 	return found, nil
 }
 
+type panelMemoryStore struct {
+	rows      []store.Memory
+	origins   map[string]memoryOrigin
+	updated   []string
+	forgotten []string
+	restored  []string
+}
+
+func (s *panelMemoryStore) ListMemories(scope string, limit int) ([]store.Memory, error) {
+	var rows []store.Memory
+	for _, row := range s.rows {
+		if row.Status == store.MemoryForgotten || scope != "" && row.Scope != scope {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+func (s *panelMemoryStore) UpdateMemory(id, title, text string, tags []string) error {
+	s.updated = append(s.updated, text)
+	for i := range s.rows {
+		if s.rows[i].ID == id {
+			s.rows[i].Text = text
+		}
+	}
+	return nil
+}
+func (s *panelMemoryStore) ForgetMemory(id string) error {
+	s.forgotten = append(s.forgotten, id)
+	for i := range s.rows {
+		if s.rows[i].ID == id {
+			s.rows[i].Status = store.MemoryForgotten
+		}
+	}
+	return nil
+}
+func (s *panelMemoryStore) RestoreMemory(id string) error {
+	s.restored = append(s.restored, id)
+	for i := range s.rows {
+		if s.rows[i].ID == id {
+			s.rows[i].Status = store.MemoryActive
+		}
+	}
+	return nil
+}
+func (s *panelMemoryStore) MemoryProvenance(id string) (string, string, time.Time, error) {
+	origin := s.origins[id]
+	return "session", origin.title, origin.at, nil
+}
+
+func memoryPanelApp(t *testing.T, rows []store.Memory) (*app, *panelMemoryStore) {
+	t.Helper()
+	agent := &rememberingAgent{}
+	for _, row := range rows {
+		agent.kept = append(agent.kept, session.MemoryLine{ID: row.ID, Title: row.Title, Text: row.Text})
+	}
+	memory := &panelMemoryStore{rows: rows, origins: map[string]memoryOrigin{}}
+	a := newApp(t.Context(), Options{Agent: agent, Workspace: "/tmp/lab", Memory: memory})
+	return a, memory
+}
+
 // ── the table ───────────────────────────────────────────────────────────────
 
 func TestTheThreeMemoryCommandsAreOnTheList(t *testing.T) {
 	help := helpText("")
-	for _, name := range []string{"memories", "remember", "forget"} {
+	for _, name := range []string{"memory", "remember", "forget"} {
 		var found bool
 		for _, c := range commands {
 			found = found || c.name == name
@@ -82,8 +145,8 @@ func TestTheThreeMemoryCommandsAreOnTheList(t *testing.T) {
 			t.Fatalf("/%s is not in /help", name)
 		}
 	}
-	if got := canonicalCommand("memory"); got != "memories" {
-		t.Fatalf("/memory ran as /%s", got)
+	if got := canonicalCommand("memories"); got != "memories" {
+		t.Fatalf("/memories ran as /%s", got)
 	}
 	if err := checkCommands(commands); err != nil {
 		t.Fatalf("the table stopped being a table: %v", err)
@@ -213,6 +276,131 @@ func TestWithoutABrainAllThreeSayMemoryIsOff(t *testing.T) {
 				t.Fatalf("%s answered %q", line, text)
 			}
 		}
+	}
+}
+
+func TestBareMemoryOpensPanelAndQueryPrints(t *testing.T) {
+	a, _ := memoryPanelApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Type: store.MemoryPreference, Scope: store.MemoryScopeUser}})
+	a.slash("/memory")
+	if !a.memPanel.open {
+		t.Fatal("bare /memory did not open the panel")
+	}
+	if got := plain(frame(a)); !strings.Contains(got, "uses neovim") {
+		t.Fatalf("panel did not list memory:\n%s", got)
+	}
+	a.memPanel.close()
+	a.slash("/memory vim")
+	if a.memPanel.open {
+		t.Fatal("/memory <query> opened the panel")
+	}
+	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
+		t.Fatalf("print posture said %q", got)
+	}
+	a.slash("/memories vim")
+	if got := lastNote(t, a); !strings.Contains(got, "uses neovim") {
+		t.Fatalf("alias said %q", got)
+	}
+	a.slash("/memories")
+	if a.memPanel.open || !strings.Contains(lastNote(t, a), "uses neovim") {
+		t.Fatal("bare /memories stopped using the print posture")
+	}
+}
+
+func TestMemoryPanelEmptyOffFilterAndEscape(t *testing.T) {
+	a, _ := memoryPanelApp(t, nil)
+	a.slash("/memory")
+	if got := plain(frame(a)); !strings.Contains(got, "nothing is remembered here") {
+		t.Fatalf("empty panel:\n%s", got)
+	}
+	drive(t, a, key("esc"))
+	if a.memPanel.open {
+		t.Fatal("esc did not close the memory panel")
+	}
+
+	off := newTestApp(&rememberingAgent{off: true})
+	off.slash("/memory")
+	if got := lastNote(t, off); got != "memory is off · turn it on under /settings" {
+		t.Fatalf("off note was %q", got)
+	}
+
+	rows := []store.Memory{
+		{ID: "m1", Title: "terminal editor", Text: "uses neovim", Scope: store.MemoryScopeUser},
+		{ID: "m2", Title: "deploys", Text: "deploys Fridays", Scope: store.MemoryScopeProject},
+	}
+	a, _ = memoryPanelApp(t, rows)
+	a.slash("/memory")
+	typeInto(t, a, "nvm")
+	if memory, ok := a.memPanel.choice(); !ok || memory.ID != "m1" {
+		t.Fatalf("fuzzy filter chose %#v, %v", memory, ok)
+	}
+}
+
+func TestMemoryExpandProvenanceEditAndCancel(t *testing.T) {
+	a, memory := memoryPanelApp(t, []store.Memory{{ID: "m1", Title: "uses neovim", Text: "uses neovim daily", Tags: []string{"editor"}, UseCount: 7, Scope: store.MemoryScopeUser}})
+	memory.origins["m1"] = memoryOrigin{title: "Editor setup", at: time.Now().Add(-2 * time.Hour)}
+	a.slash("/memory")
+	drive(t, a, key("enter"))
+	if got := plain(frame(a)); !strings.Contains(got, "in 'Editor setup'") || !strings.Contains(got, "tags · editor") {
+		t.Fatalf("expanded row:\n%s", got)
+	}
+	drive(t, a, key("enter"))
+	if a.memPanel.edit == nil || a.memPanel.edit.String() != "uses neovim daily" {
+		t.Fatal("edit was not preloaded")
+	}
+	drive(t, a, key("ctrl+u"))
+	typeInto(t, a, "uses helix")
+	drive(t, a, key("esc"))
+	if len(memory.updated) != 0 {
+		t.Fatal("esc wrote the edit")
+	}
+	drive(t, a, key("enter"))
+	drive(t, a, key("ctrl+u"))
+	typeInto(t, a, "uses helix")
+	drive(t, a, key("enter"))
+	if len(memory.updated) != 1 || memory.updated[0] != "uses helix" {
+		t.Fatalf("updates were %v", memory.updated)
+	}
+
+	a.memPanel.expanded = ""
+	memory.origins["m1"] = memoryOrigin{at: time.Now().Add(-time.Hour)}
+	a.memPanel.origins["m1"] = memory.origins["m1"]
+	drive(t, a, key("enter"))
+	if got := plain(frame(a)); !strings.Contains(got, "learned") || !strings.Contains(got, "ago") {
+		t.Fatalf("unknown provenance:\n%s", got)
+	}
+}
+
+func TestMemoryForgetUndoIsOneDeepAndScopeCycles(t *testing.T) {
+	a, memory := memoryPanelApp(t, []store.Memory{
+		{ID: "m1", Title: "uses neovim", Text: "uses neovim", Scope: store.MemoryScopeUser},
+		{ID: "m2", Title: "release branch", Text: "release is main", Scope: store.MemoryScopeProject},
+	})
+	a.slash("/memory")
+	drive(t, a, key("delete"))
+	if len(memory.forgotten) != 1 || !strings.Contains(a.memPanel.footer, "forgot 'uses neovim' — u to undo") {
+		t.Fatalf("forget state: %v %q", memory.forgotten, a.memPanel.footer)
+	}
+	drive(t, a, key("u"))
+	if len(memory.restored) != 1 {
+		t.Fatalf("restore calls %v", memory.restored)
+	}
+	drive(t, a, key("delete"))
+	drive(t, a, key("delete"))
+	drive(t, a, key("u"))
+	if len(memory.restored) != 2 || memory.restored[1] != "m2" {
+		t.Fatalf("one-deep restore calls %v", memory.restored)
+	}
+
+	// Reload the two rows, then tab narrows all to user and project in order.
+	memory.rows[0].Status, memory.rows[1].Status = store.MemoryActive, store.MemoryActive
+	a.memPanel.start(memory.rows)
+	drive(t, a, key("tab"))
+	if got, _ := a.memPanel.choice(); got.Scope != store.MemoryScopeUser {
+		t.Fatalf("user scope chose %#v", got)
+	}
+	drive(t, a, key("tab"))
+	if got, _ := a.memPanel.choice(); got.Scope != store.MemoryScopeProject {
+		t.Fatalf("project scope chose %#v", got)
 	}
 }
 

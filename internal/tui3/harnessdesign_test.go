@@ -239,6 +239,32 @@ func TestASessionWithNoDesignerOpensNoLane(t *testing.T) {
 	}
 }
 
+func TestHarnessCardKeysSaveImproveAndDrop(t *testing.T) {
+	for _, tc := range []struct {
+		key, word string
+		run       bool
+	}{{"enter", "saved as research-helper v1", true}, {"e", "improvement requested", false}, {"esc", "dropped", false}} {
+		t.Run(tc.key, func(t *testing.T) {
+			agent := &designingAgent{fakeAgent: &fakeAgent{model: "m"}}
+			a := newTestApp(agent)
+			p := designedPage()
+			a.finishHarnessCard(session.Event{ID: 9, Harness: &p})
+			a.sel = len(a.entries) - 1
+			a.harnessCardKey(tea.KeyPressMsg{Code: []rune(tc.key)[0], Text: tc.key})
+			c := a.entries[a.sel].harness
+			if c.state != tc.word {
+				t.Fatalf("state %q", c.state)
+			}
+			if len(agent.answers) != 1 || agent.answers[0].run != tc.run {
+				t.Fatalf("answer %+v", agent.answers)
+			}
+			if tc.key == "e" && !strings.Contains(a.input.String(), "Improve harness research-helper") {
+				t.Fatalf("draft %q", a.input.String())
+			}
+		})
+	}
+}
+
 func TestHarnessDiagramGoldens(t *testing.T) {
 	shapes := map[string]subharness.Harness{
 		"linear":  designedPage(),

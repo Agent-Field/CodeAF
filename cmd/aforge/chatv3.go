@@ -208,6 +208,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 
 	return tui3.Run(context.Background(), tui3.Options{
 		Agent:  agent,
+		Memory: cfg.Memory,
 		Output: wire,
 		// The sub-harness registry under the state root, which is where every
 		// window on this machine writes and reads them: /harness is a list of

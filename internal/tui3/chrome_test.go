@@ -148,13 +148,18 @@ func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	if got := settingTabs[a.sheet.tab]; got != tabSession {
 		t.Fatalf("the panel opened on %q, want %q", got, tabSession)
 	}
-	for _, want := range []string{"ask before running", "session ceiling", "small work"} {
+	for _, want := range []string{"ask before running", "session ceiling"} {
 		if !sheetHas(a, want) {
 			t.Fatalf("the Session tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
 		}
 	}
 	if sheetHas(a, "compact at") {
 		t.Fatal("a Context row is showing on the Session tab")
+	}
+	// THE CREW IS ON PROVIDERS, with the model it answers under — one tab, one
+	// question (settings.go's [modelsSection] says why it moved).
+	if sheetHas(a, "small work") {
+		t.Fatal("a crew row is showing on the Session tab")
 	}
 
 	drive(t, a, key("right"))
@@ -187,15 +192,26 @@ func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 func TestTheSettingsSearchFiltersAcrossEveryTab(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
-	// "model" is deliberately a word that lives on two tabs: the tier rows on
-	// Session and the slots on Providers.
+	// "model" is deliberately a word that lives on two tabs: the task model and
+	// the fallback chain on Session, the crew and the slots on Providers.
 	for _, r := range "model" {
 		drive(t, a, key(string(r)))
 	}
 
-	shown := sheetLabels(a)
-	joined := strings.Join(shown, "\n")
-	for _, want := range []string{tabSession, tabProviders, "small work", "conversation"} {
+	// The assertion is over the ITEMS and not the drawn frame: the panel shows
+	// sixteen rows and a cross-tab search for a common word matches more than
+	// that, so a frame check would be asserting about the scroll position rather
+	// than about the filter.
+	var items []string
+	for _, item := range a.sheet.items {
+		if item.heading() {
+			items = append(items, item.head)
+			continue
+		}
+		items = append(items, item.meta.label)
+	}
+	joined := strings.Join(items, "\n")
+	for _, want := range []string{tabSession, tabProviders, "small work", "your model"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("the search dropped %q:\n%s", want, joined)
 		}

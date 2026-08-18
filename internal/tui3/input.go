@@ -262,6 +262,10 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.pickerKey(msg)
 		return nil
 	}
+	if a.memPanel.open && msg.String() != "ctrl+c" {
+		a.memoryKey(msg)
+		return nil
+	}
 
 	// And the session picker is modal at the same rung, for the same reasons: it
 	// takes the input line's place, it holds its own filter, and esc leaves the
@@ -679,6 +683,12 @@ func (a *app) inputBlock(width int) ([]string, int, int) {
 	}
 	if a.pick.open {
 		return draftBlock(&a.pick.filter, a.pal, width, 1, pickerHint)
+	}
+	if a.memPanel.open {
+		if a.memPanel.edit != nil {
+			return draftBlock(a.memPanel.edit, a.pal, width, 1, memoryEditHint)
+		}
+		return draftBlock(&a.memPanel.filter, a.pal, width, 1, memoryFilterHint)
 	}
 	if a.roster.open {
 		return draftBlock(&a.roster.filter, a.pal, width, 1, resumeHint)

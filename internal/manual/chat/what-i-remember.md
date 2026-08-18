@@ -8,11 +8,13 @@ made, a decision that still binds. It is **not** a copy of the transcript — th
 conversation itself is not carried anywhere, and a new session starts with an
 empty screen.
 
-Three commands are the whole of what you can do to it by hand:
+The memory commands have two postures:
 
-- `/memories` — everything remembered, newest first, one per line. It also
-  answers to `/memory`.
-- `/memories <query>` — only the ones matching a word.
+- `/memory` — open the memory panel.
+- `/memory <query>` or `/memories <query>` — print only matching memories into
+  the conversation.
+- `/memories` — print every memory into the conversation, preserving its older
+  list posture.
 - `/remember <text>` — keep one thing.
 - `/forget <query>` — drop the one thing that best matches.
 
@@ -21,8 +23,39 @@ default; off, nothing is carried, nothing is written, and neither of the two
 calls below is made. With it off, all three commands answer:
 
 ```
-memory is off for this session · turn it on under /settings
+memory is off · turn it on under /settings
 ```
+
+## How do I see what aforge remembers about me?
+
+Open `/memory`. Its twelve-row list starts with the most recently updated
+memories. Type to filter title, text and tags; the same prefix, substring
+and fuzzy subsequence ranking as the model picker is applied to the list loaded
+when the panel opened. A `*` marks a memory used at least five times. Press tab
+to cycle the scope shown: all, user, project, env, then all again.
+
+Enter expands the selected memory to show its full text, tags, use count, age,
+and where it came from. Esc returns to the list; esc from the list closes the
+panel. `/memory <query>` prints matching lines into the conversation.
+
+## How do I edit a memory?
+
+In `/memory`, press enter to expand a row, then enter again (or `e`) to edit.
+The edit line is preloaded with the complete memory text. Enter saves it; esc
+cancels without changing anything. The title and tags stay as they were.
+
+## How do I forget a memory and undo forgetting one?
+
+In the `/memory` list, delete (or ctrl+d) forgets the selected row immediately.
+The footer says `forgot '<title>' — u to undo`; press `u` to restore it. Undo is
+one-deep: only the most recent forget in this panel session can be restored.
+
+## Where did a memory come from, and who says so?
+
+Expand it with enter. The provenance line reads `learned <age> in '<session
+title>'` when the source conversation is known. Older rows without provenance
+say `learned <age> ago`. Provenance answers “says who?”: memory is inspectable,
+forgetting is one key, and an accidental forget has one undo.
 
 ## How does it decide what to put in front of the model?
 
@@ -58,7 +91,7 @@ because something already says it. That is what keeps telling aforge the same
 preference in three sessions from leaving three near-identical lines behind.
 
 Nothing about this is announced. There is no card and no line in the transcript
-when a memory is written by this pass; `/memories` is how you see what it did.
+when a memory is written by this pass; `/memory` is how you see what it did.
 
 ## Can you remember this for me?
 

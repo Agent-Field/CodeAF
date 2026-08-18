@@ -83,6 +83,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can you remember my preferences for next time", "what-i-remember"},
 		{"what happened to my memory.md file", "what-i-remember"},
 		{"how do I turn memory off", "what-i-remember"},
+		{"how do I see what aforge remembers", "what-i-remember"},
+		{"how do I edit a memory", "what-i-remember"},
+		{"how do I undo forgetting one", "what-i-remember"},
+		{"where did a memory come from", "what-i-remember"},
 
 		// The third wave: aforge changing a person's own settings for them.
 		// Both halves have to reach a page — that it can, and the rows where
