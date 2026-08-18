@@ -58,62 +58,111 @@ func init() {
 		Name:   KindAgentLoop,
 		Desc:   "a session loop oriented by a brief, a model, and a slice of the whitelist",
 		MinDyn: DynFixed,
-		Valid: def(
-			spec{name: "brief", required: true},
-			spec{name: "model"},
+		Specs: []spec{
+			{name: "brief", required: true, about: "what this node is for, in enough words that somebody who read only this node could do the job"},
+			{name: "model", about: "the model to run; empty means the session's own"},
 			// A comma-separated slice of the harness whitelist. Validate holds
 			// it to that whitelist; the kind only holds its shape.
-			spec{name: "tools"},
-			spec{name: "max_turns", max: MaxTurns},
-		),
+			{name: "tools", about: "comma-separated, a SUBSET of the whitelist"},
+			{name: "max_turns", max: MaxTurns, about: "how many turns the loop may take"},
+		},
 	})
 	Register(Kind{
 		Name:   KindToolCall,
 		Desc:   "one whitelisted tool, called with fixed arguments",
 		MinDyn: DynFixed,
-		Valid: def(
-			spec{name: "tool", required: true},
-			spec{name: "args"},
-		),
+		Specs: []spec{
+			{name: "tool", required: true, about: "must be on the whitelist"},
+			{name: "args", about: "the literal {{input}} means the previous step's output"},
+		},
 	})
 	Register(Kind{
 		Name:   KindVerify,
 		Desc:   "a check at a rung of the verification ladder",
 		MinDyn: DynFixed,
-		Valid: def(
+		Specs: []spec{
 			// Empty means the harness's own rung. A node may name a different
 			// one; Validate refuses a node that reaches above the harness.
-			spec{name: "ladder", words: verifyLadder},
-			spec{name: "check"},
-		),
+			{name: "ladder", words: verifyLadder, about: "empty means the harness's own rung; it may name a LOWER rung, never a higher one"},
+			{name: "check", about: "what is checked, as a sentence a judge can act on"},
+		},
 	})
 	Register(Kind{
 		Name:   KindHumanGate,
 		Desc:   "a stop, with a question, until a person answers",
 		MinDyn: DynFixed,
-		Valid: def(
-			spec{name: "ask", required: true},
-		),
+		Specs: []spec{
+			{name: "ask", required: true, about: "the question"},
+		},
 	})
+	Register(Kind{
+		Name:   KindBranch,
+		Desc:   "one successor, chosen at runtime by a reading",
+		MinDyn: DynBranch,
+		Specs: []spec{
+			{name: "when", required: true, about: "a condition (see below)"},
+		},
+	})
+	Register(Kind{
+		Name:   KindLoopUntil,
+		Desc:   "the same node again until a condition holds, bounded by rounds",
+		MinDyn: DynBranch,
+		Specs: []spec{
+			{name: "until", required: true, about: "a condition"},
+			{name: "max_rounds", max: MaxRounds, def: DefaultRounds, about: "how many re-readings are allowed"},
+		},
+	})
+	Register(Kind{
+		Name:   KindParallelSplit,
+		Desc:   "fan out to a runtime-chosen width, bounded",
+		MinDyn: DynWidth,
+		Specs: []spec{
+			{name: "width", required: true, max: MaxWidth, about: "how many lanes may open"},
+			{name: "over", about: "what the lanes are over"},
+		},
+	})
+	Register(Kind{
+		Name:   KindParallelJoin,
+		Desc:   "gather a split back into one thread",
+		MinDyn: DynWidth,
+		Specs: []spec{
+			{name: "mode", words: joinModes, about: "default all is a barrier: every incoming edge must have run"},
+		},
+	})
+	Register(Kind{
+		Name:   KindSubharnessCall,
+		Desc:   "another sub-harness, at a version pointer",
+		MinDyn: DynRecursive,
+		Specs: []spec{
+			{name: "name", required: true, about: "another harness's name"},
+			// 0, the default, means whatever the head pointer is at call time.
+			// A pinned integer means that page and only that page.
+			{name: "version", max: MaxVersion, about: "0 or absent means its head"},
+		},
+	})
+	// The trigger's specs are named because its law is the specs plus one
+	// conditional: declaring them twice would be the drift this file exists
+	// to prevent.
+	triggerSpecs := []spec{
+		{name: "source", required: true, words: triggerSources, about: "what starts the run"},
+		{name: "command", about: "the shell command whose output is the reading; REQUIRED when source is source.command"},
+		// What a watch watches or how long idle must last, in the words
+		// of whoever hosts that mode. This package insists there is one
+		// and never reads it (trigger.go).
+		{name: "spec", about: "what a watch watches or how long idle must last"},
+		// A hosted trigger's allowed-args whitelist, comma-separated on
+		// the same terms agent.loop's `tools` is. Empty means the command
+		// takes none: an empty whitelist grants nothing, exactly as the
+		// tool whitelist does.
+		{name: "args", about: "a hosted command's allowed-argument list"},
+	}
 	Register(Kind{
 		Name:   KindTrigger,
 		Desc:   "what starts a run: hosted, idle, watch, or a source command",
 		MinDyn: DynFixed,
+		Specs:  triggerSpecs,
 		Valid: func(f Fields) error {
-			base := def(
-				spec{name: "source", required: true, words: triggerSources},
-				spec{name: "command"},
-				// What a watch watches or how long idle must last, in the words
-				// of whoever hosts that mode. This package insists there is one
-				// and never reads it (trigger.go).
-				spec{name: "spec"},
-				// A hosted trigger's allowed-args whitelist, comma-separated on
-				// the same terms agent.loop's `tools` is. Empty means the command
-				// takes none: an empty whitelist grants nothing, exactly as the
-				// tool whitelist does.
-				spec{name: "args"},
-			)
-			if err := base(f); err != nil {
+			if err := def(triggerSpecs...)(f); err != nil {
 				return err
 			}
 			if f.Get("source") == TriggerCommand && f.Get("command") == "" {
@@ -121,50 +170,5 @@ func init() {
 			}
 			return nil
 		},
-	})
-	Register(Kind{
-		Name:   KindBranch,
-		Desc:   "one successor, chosen at runtime by a reading",
-		MinDyn: DynBranch,
-		Valid: def(
-			spec{name: "when", required: true},
-		),
-	})
-	Register(Kind{
-		Name:   KindLoopUntil,
-		Desc:   "the same node again until a condition holds, bounded by rounds",
-		MinDyn: DynBranch,
-		Valid: def(
-			spec{name: "until", required: true},
-			spec{name: "max_rounds", max: MaxRounds},
-		),
-	})
-	Register(Kind{
-		Name:   KindParallelSplit,
-		Desc:   "fan out to a runtime-chosen width, bounded",
-		MinDyn: DynWidth,
-		Valid: def(
-			spec{name: "width", required: true, max: MaxWidth},
-			spec{name: "over"},
-		),
-	})
-	Register(Kind{
-		Name:   KindParallelJoin,
-		Desc:   "gather a split back into one thread",
-		MinDyn: DynWidth,
-		Valid: def(
-			spec{name: "mode", words: joinModes},
-		),
-	})
-	Register(Kind{
-		Name:   KindSubharnessCall,
-		Desc:   "another sub-harness, at a version pointer",
-		MinDyn: DynRecursive,
-		Valid: def(
-			spec{name: "name", required: true},
-			// 0, the default, means whatever the head pointer is at call time.
-			// A pinned integer means that page and only that page.
-			spec{name: "version", max: MaxVersion},
-		),
 	})
 }

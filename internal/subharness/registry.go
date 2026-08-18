@@ -243,12 +243,16 @@ func (h Harness) Allows(tool string) bool {
 }
 
 // Kind is one registered node kind. MinDyn is the lowest dynamism rung a
-// harness may declare and still contain this kind; Valid is the kind's own law
-// over its fields.
+// harness may declare and still contain this kind; Specs are the kind's fields
+// as DATA — the validator is built from them and the designer's guide is
+// rendered from them, so the law the model is told and the law the page is
+// held to cannot drift apart. Valid is the kind's own law over its fields;
+// nil means the specs are the whole law and Register builds it.
 type Kind struct {
 	Name   string
 	Desc   string
 	MinDyn string
+	Specs  []spec
 	Valid  func(Fields) error
 }
 
@@ -257,9 +261,14 @@ type Kind struct {
 // library declares itself.
 var kinds = map[string]Kind{}
 
-// Register adds a node kind. It panics on a duplicate or a malformed rung
-// because both are programmer errors in this package's own init, discovered at
-// process start rather than at the first parse.
+// kindOrder is the registry in declaration order, which is the order the
+// catalog teaches in — [Kinds] sorts, the catalog does not.
+var kindOrder []string
+
+// Register adds a node kind. It panics on a duplicate, a malformed rung, or a
+// kind with neither specs nor a law of its own, because all three are
+// programmer errors in this package's own init, discovered at process start
+// rather than at the first parse.
 func Register(k Kind) {
 	if k.Name == "" {
 		panic("subharness: node kind with no name")
@@ -270,7 +279,14 @@ func Register(k Kind) {
 	if DynRung(k.MinDyn) < 0 {
 		panic("subharness: node kind " + k.Name + " wants dynamism rung " + k.MinDyn)
 	}
+	if k.Valid == nil {
+		if len(k.Specs) == 0 {
+			panic("subharness: node kind " + k.Name + " declares no fields and no law")
+		}
+		k.Valid = def(k.Specs...)
+	}
 	kinds[k.Name] = k
+	kindOrder = append(kindOrder, k.Name)
 }
 
 // Lookup finds a registered kind.
@@ -300,10 +316,15 @@ func rung(ladder []string, word string) int {
 
 // spec is one field's law inside a kind: whether it must be present, the cap
 // if it is an integer, and the closed set of words if it is one of those.
+// about is the one line that tells a designer what the field is FOR; the
+// catalog renders it, so the guide's prose is written here, beside the law it
+// describes. def is the default an integer field takes when the page omits it.
 type spec struct {
 	name     string
+	about    string
 	required bool
 	max      int
+	def      int
 	words    []string
 }
 
