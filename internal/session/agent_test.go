@@ -671,34 +671,23 @@ func TestConcurrentSteeringSubmitsAllStream(t *testing.T) {
 // ── (e) compaction ──────────────────────────────────────────────────────────
 
 func TestCompactionRebuildsTranscript(t *testing.T) {
-	long := strings.Repeat("context that will not fit. ", 40)
+	long := strings.Repeat("working through the parser. ", 40)
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
 			return &ai.Response{Choices: []ai.Choice{{Message: ai.Message{
 				Role:    "assistant",
-				Content: []ai.ContentPart{{Type: "text", Text: "short reply"}},
+				Content: []ai.ContentPart{{Type: "text", Text: long}},
 			}}}}, nil
-		},
-		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-			// The summarizer call: system + the flattened discarded prefix,
-			// and no tools.
-			if len(messages) != 2 || messages[0].Role != "system" {
-				t.Errorf("summarizer request = %v, want system+user", rolesOf(messages))
-			}
-			if !strings.Contains(messageText(messages[1]), "context that will not fit") {
-				t.Errorf("summarizer did not receive the discarded prefix")
-			}
-			return textResponse("## Goal\nfit the window"), nil
 		},
 	}}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
-		// A 200-token window puts the threshold below zero and the keep-recent
-		// tail at 50 tokens, so one long message is already too much.
+		// A 200-token window puts the threshold at 100 and the keep-recent tail
+		// at 50, so one long reply is already too much.
 		config.ContextWindow = 200
 		config.CompactEnabled = true
 	})
 
-	collected := collect(t, mustSubmit(t, agent, long))
+	collected := collect(t, mustSubmit(t, agent, "start"))
 
 	var compacted *Event
 	for i := range collected {
@@ -709,84 +698,69 @@ func TestCompactionRebuildsTranscript(t *testing.T) {
 	if compacted == nil {
 		t.Fatalf("no EventCompacted; events = %v", kinds(collected))
 	}
-	if !strings.HasPrefix(compacted.Hint, "compacted from ~") {
+	if !strings.HasPrefix(compacted.Hint, "compacted · ") || !strings.Contains(compacted.Hint, "folded 1 message") {
 		t.Fatalf("compaction hint = %q", compacted.Hint)
 	}
 
 	agent.mu.Lock()
 	messages := agent.messages
 	agent.mu.Unlock()
-	if got, want := rolesOf(messages), []string{"system", "user", "assistant"}; !equalStrings(got, want) {
-		t.Fatalf("compacted transcript = %v, want system/summary/tail", got)
+	if got, want := rolesOf(messages), []string{"system", "user", "user"}; !equalStrings(got, want) {
+		t.Fatalf("compacted transcript = %v, want system/question/marker", got)
 	}
 	if messageText(messages[0]) != "SYSTEM" {
 		t.Fatalf("system message was rewritten: %q", messageText(messages[0]))
 	}
-	summary := messageText(messages[1])
-	if !strings.Contains(summary, "[context compacted]") || !strings.Contains(summary, "fit the window") {
-		t.Fatalf("summary note = %q", summary)
+	// THE PERSON'S OWN WORDS SURVIVE. Nothing else in a transcript can be
+	// reconstructed from anywhere, so nothing else is protected this way.
+	if messageText(messages[1]) != "start" {
+		t.Fatalf("the question was folded away: %q", messageText(messages[1]))
 	}
-	if strings.Contains(summary, "context that will not fit") {
-		t.Fatal("the summarized prefix survived verbatim")
-	}
-	if messageText(messages[2]) != "short reply" {
-		t.Fatalf("kept tail = %q, want the last assistant message", messageText(messages[2]))
+	marker := messageText(messages[2])
+	if !strings.HasPrefix(marker, foldMarkerPrefix) || strings.Contains(marker, "working through the parser") {
+		t.Fatalf("fold marker = %q", marker)
 	}
 
-	// The summary call is the session's cost, not the turn's: the person asked
-	// one question and must not read it as three times the price of its
-	// neighbours. The first step's response carried no usage at all, so every
-	// token here is the summarizer's.
+	// AND NO MODEL RAN IN IT. One request was made — the turn's own — and the
+	// pass that followed it cost nothing at all.
+	if got := completer.requests(); got != 1 {
+		t.Fatalf("requests = %d, want the turn's one and no compaction call", got)
+	}
 	final := collected[len(collected)-1]
 	if final.Kind != EventTurnDone {
 		t.Fatalf("last event = %v, want EventTurnDone", final.Kind)
 	}
-	if final.Usage.Input != 0 || final.Usage.Output != 0 {
-		t.Fatalf("turn usage = %+v, want the summarizer's tokens kept off the turn", final.Usage)
-	}
-	if session := agent.Usage(); session.Input != 10 || session.Output != 5 {
-		t.Fatalf("session usage = %+v, want the summarizer's 10/5 folded in", session)
-	}
-	if session := agent.Usage(); session.Turns != 0 {
-		t.Fatalf("session Turns = %d, want the summary not counted as a turn", session.Turns)
+	if session := agent.Usage(); session.Input != 0 || session.Output != 0 {
+		t.Fatalf("session usage = %+v, want a compaction that bought nothing", session)
 	}
 }
 
-// A compaction pass with a mid-batch cut must not leave the kept tail starting
-// on a tool result: its assistant tool_calls message went into the summary, and
-// an orphaned result is a 400 on this request and every request after it.
-func TestCompactionDropsOrphanedToolResultsFromKeptTail(t *testing.T) {
-	var agent *Agent
-	completer := &scriptedCompleter{steps: []step{
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			// The summarizer runs with the agent lock released. This is the
-			// in-flight batch landing while it works: the results of the very
-			// call the cut is about to summarize away.
-			agent.record(ai.Message{
-				Role:       "tool",
-				ToolCallID: "c1",
-				Content:    []ai.ContentPart{{Type: "text", Text: "the file"}},
-			})
-			return textResponse("## Goal\nfit the window"), nil
-		},
-	}}
-	agent, _ = newTestAgent(t, completer, func(config *Config) {
+// A fold takes an assistant message and the results answering it TOGETHER. A
+// tool result whose call went is an orphan every provider rejects with a 400 —
+// on this request and on every request after it, because the transcript is
+// append-only.
+func TestCompactionFoldsAToolBatchWhole(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.ContextWindow = 200
-		config.CompactEnabled = true
 	})
 
-	// A transcript whose whole tail is one over-budget assistant message with
-	// tool calls: the cut lands at the end, so everything appended during the
-	// summary becomes the kept tail.
 	agent.mu.Lock()
-	agent.messages = append(agent.messages, ai.Message{
-		Role:    "assistant",
-		Content: []ai.ContentPart{{Type: "text", Text: strings.Repeat("looking at the file. ", 40)}},
-		ToolCalls: []ai.ToolCall{{
-			ID: "c1", Type: "function",
-			Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"a.go"}`},
-		}},
-	})
+	agent.messages = append(agent.messages,
+		textMessage("user", "read them"),
+		ai.Message{
+			Role:    "assistant",
+			Content: []ai.ContentPart{{Type: "text", Text: strings.Repeat("looking at the file. ", 40)}},
+			ToolCalls: []ai.ToolCall{{
+				ID: "c1", Type: "function",
+				Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"a.go"}`},
+			}},
+		},
+		ai.Message{
+			Role:       "tool",
+			ToolCallID: "c1",
+			Content:    []ai.ContentPart{{Type: "text", Text: "package a"}},
+		},
+		textMessage("assistant", "done"))
 	agent.mu.Unlock()
 
 	compacted, err := agent.compact(context.Background(), nil)
@@ -794,8 +768,16 @@ func TestCompactionDropsOrphanedToolResultsFromKeptTail(t *testing.T) {
 		t.Fatalf("compact = %v, %v; want a pass that ran", compacted, err)
 	}
 
-	if got, want := transcriptRoles(agent), []string{"system", "user"}; !equalStrings(got, want) {
-		t.Fatalf("compacted transcript = %v, want %v — the orphaned tool result must be dropped", got, want)
+	agent.mu.Lock()
+	messages := agent.messages
+	agent.mu.Unlock()
+	for _, message := range messages {
+		if message.Role == "tool" {
+			t.Fatalf("an orphaned tool result survived the fold: %v", rolesOf(messages))
+		}
+	}
+	if got, want := rolesOf(messages), []string{"system", "user", "user", "assistant"}; !equalStrings(got, want) {
+		t.Fatalf("folded transcript = %v, want %v", got, want)
 	}
 }
 
@@ -810,7 +792,7 @@ func TestCompactBelowTheFloorReportsNothingToCompact(t *testing.T) {
 		t.Fatalf("Compact = %v, want ErrNothingToCompact", err)
 	}
 	if got := completer.requests(); got != 1 {
-		t.Fatalf("requests = %d, want 1 — a short transcript must not summarize", got)
+		t.Fatalf("requests = %d, want 1 — a short transcript must not compact", got)
 	}
 }
 

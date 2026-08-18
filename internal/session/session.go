@@ -1018,10 +1018,16 @@ type Agent struct {
 	// It is written once at construction and read without a lock.
 	connect connectHub
 	file    *sessionFile
+	// id is this session's identity: the journal header's id when there is a
+	// file, and a fresh one when the conversation lives only in memory. It is
+	// fixed at construction and never written after, so it needs no lock, and
+	// it is what the chat log posts its thread under (chatlog.go).
+	id string
+
 	// cacheKey is this session's prompt-cache lineage, stamped on every request
-	// by [sessionCompleter]. It is fixed at construction — derived from the
-	// session file's id, or from a fresh one when the conversation lives only in
-	// memory — and is never written after, so it needs no lock.
+	// by [sessionCompleter]. It is derived from [Agent.id] — a hash, so nothing
+	// about the session's own id reaches a router's logs — fixed at construction
+	// and never written after, so it needs no lock either.
 	cacheKey string
 
 	// jobs is the background-command registry (jobs.go): the processes bash
@@ -1050,6 +1056,13 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
+	// chatlog is the LOSSLESS FLOOR under compaction (chatlog.go): every message
+	// of this conversation posted into the store's thread as it lands, so that a
+	// stub and a fold point at text somebody can still read. It is nil when there
+	// is no store, which is memory off, and it sits outside mu holding its own
+	// lock for the reason memory does — its writer outlives the turn.
+	chatlog *chatJournal
+
 	// stateStore is the BPE working state (state.go): the beliefs and progress
 	// records that live OUTSIDE the transcript so a compaction cannot lose them.
 	// It is built on first use through [Agent.state] — the belt closes over the
@@ -1061,6 +1074,14 @@ type Agent struct {
 	// compaction pass that must not need the session lock to render a block.
 	stateOnce  sync.Once
 	stateStore *stateStore
+
+	// cardOnce / cardStore are the STATE CARD (card.go): what the work is for
+	// and where it stands, folded in by the post-turn extractor and rendered
+	// into every system prompt. It is built on first use for stateStore's
+	// reason, and holds its own lock for the same one — its writer is the
+	// post-turn goroutine, which outlives the turn that started it.
+	cardOnce  sync.Once
+	cardStore *cardStore
 
 	// docs is the OCR rung: the document parser read_document calls through and
 	// the per-document memo that makes paging a scan free (tools_doc.go). It is
@@ -1089,7 +1110,12 @@ type Agent struct {
 	// transcript's first message, and it is REPLACED per turn rather than
 	// appended to — a turn's memories are that turn's.
 	memoryText string
-	usage      Usage
+	// cardText is the <state> block message[0] currently carries (card.go). It
+	// sits under mu beside memoryText and for the same reason: both are
+	// rendered into the transcript's first message, and message[0] is rebuilt
+	// from a.system plus the two of them rather than appended to.
+	cardText string
+	usage    Usage
 	running    bool
 	cancel     context.CancelFunc
 	steering   []userMessage

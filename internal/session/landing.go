@@ -6,12 +6,12 @@ package session
 //
 // It exists as one file because it is one decision. place.go says what a
 // session folder CONTAINS; this says which of those directories each writer
-// reaches for, and it says it once so that jobs.go, stub.go, frames.go,
+// reaches for, and it says it once so that jobs.go, stub.go,
 // tools_image.go and internal/remote cannot drift into five answers.
 //
 // ── DROPPINGS GO IN THE FOLDER, DELIVERABLES GO WHERE THE PERSON WILL LOOK ──
 //
-// A dropping — a job log, a stubbed tool result, a compaction page — is
+// A dropping — a job log, a stubbed tool result — is
 // re-creatable, carries the sweep's 7-day TTL, and is never something anybody
 // asked for. It belongs beside the transcript that explains what it was for, so
 // that deleting a session is removing one folder (docs/CHAT-V3.md, Decision 26)
@@ -45,9 +45,8 @@ const droppingsLegacyDir = ".aforge-v3"
 // places, so a person who learned where job logs live in one layout can find
 // them in the other.
 const (
-	droppingJobs   = "jobs"
-	droppingStubs  = "stubs"
-	droppingFrames = "frames"
+	droppingJobs  = "jobs"
+	droppingStubs = "stubs"
 )
 
 // droppingsDir names the directory one kind of dropping lands in.

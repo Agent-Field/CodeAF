@@ -135,39 +135,6 @@ func TestStubBytesKeepTheLegacyPathWithoutAFolder(t *testing.T) {
 	}
 }
 
-// A compaction page is a dropping as well, and its journal reference is
-// absolute in both layouts because a RESUME opens it from wherever it stands.
-func TestFramePagesFollowTheSessionFolder(t *testing.T) {
-	pages, err := renderFrames("a session", []string{"the first half"}, framesMaxPages)
-	if err != nil {
-		t.Fatalf("renderFrames: %v", err)
-	}
-	workspace := t.TempDir()
-	place := newPlace(t, false)
-
-	ref, err := writeFrame(place, workspace, pages[0])
-	if err != nil {
-		t.Fatalf("writeFrame: %v", err)
-	}
-	if filepath.Dir(filepath.FromSlash(ref.Path)) != filepath.Join(place.Logs(), "frames") {
-		t.Fatalf("page landed at %q, want it under %q", ref.Path, place.Logs())
-	}
-	if _, err := os.Stat(filepath.FromSlash(ref.Path)); err != nil {
-		t.Fatalf("the journal names a page with nothing at it: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(workspace, ".aforge-v3")); !os.IsNotExist(err) {
-		t.Fatalf("the session littered the workspace: %v", err)
-	}
-
-	legacy, err := writeFrame(Place{}, workspace, pages[0])
-	if err != nil {
-		t.Fatalf("writeFrame: %v", err)
-	}
-	if want := filepath.Join(workspace, ".aforge-v3", "frames"); filepath.Dir(filepath.FromSlash(legacy.Path)) != want {
-		t.Fatalf("page landed at %q, want it under %q", legacy.Path, want)
-	}
-}
-
 // ── deliverables ────────────────────────────────────────────────────────────
 
 // A BORROWED session paints into its own artifacts/ and never into the

@@ -138,17 +138,16 @@ func TestSessionFileResumesAfterCompaction(t *testing.T) {
 }
 
 // The resumed transcript must EQUAL the live one after a compaction pass. The
-// marker means "discard everything above me", so a kept tail journaled only
-// above it is a tail the resume throws away.
+// marker means "discard everything above me", so a window journaled only above
+// it is a window the resume throws away — and the pass now EDITS the messages
+// above the marker (stubs, folds) rather than only deleting them, which is why
+// the whole window is written back and not just the tail.
 func TestSessionFileResumeEqualsLiveAfterCompaction(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "session.jsonl")
-	long := strings.Repeat("context that will not fit. ", 40)
+	long := strings.Repeat("thinking about the parser. ", 40)
 	writer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("short reply"), nil
-		},
-		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return textResponse("## Goal\nfit the window"), nil
+			return textResponse(long), nil
 		},
 	}}
 	live, workspace := newTestAgent(t, writer, func(config *Config) {
@@ -156,12 +155,12 @@ func TestSessionFileResumeEqualsLiveAfterCompaction(t *testing.T) {
 		config.CompactEnabled = true
 		config.SessionFile = path
 	})
-	collect(t, mustSubmit(t, live, long))
+	collect(t, mustSubmit(t, live, "go"))
 
 	live.mu.Lock()
 	want := append([]ai.Message(nil), live.messages...)
 	live.mu.Unlock()
-	if len(want) != 3 || !strings.Contains(messageText(want[1]), "[context compacted]") {
+	if len(want) != 3 || !strings.HasPrefix(messageText(want[2]), foldMarkerPrefix) {
 		t.Fatalf("the live transcript did not compact: %v", rolesOf(want))
 	}
 	if err := live.Close(); err != nil {
@@ -335,7 +334,7 @@ func TestSessionFileJournalsToolCallsAndCompaction(t *testing.T) {
 			Function: ai.ToolCallFunction{Name: "read", Arguments: `{"path":"a.go"}`},
 		}},
 	})
-	journal.appendCompaction(compactionPass{summary: "## Goal\nsomething"}, 42000, []ai.Message{
+	journal.appendCompaction(compactionPass{stubbed: 2, folded: 7}, 42000, []ai.Message{
 		textMessage("user", "the kept tail"),
 	})
 	if err := journal.Close(); err != nil {
@@ -344,7 +343,7 @@ func TestSessionFileJournalsToolCallsAndCompaction(t *testing.T) {
 
 	lines := readLines(t, path)
 	if len(lines) != 4 {
-		t.Fatalf("lines = %d, want header + message + compaction + the re-journaled tail", len(lines))
+		t.Fatalf("lines = %d, want header + message + compaction + the re-journaled window", len(lines))
 	}
 	var entry sessionEntry
 	if err := json.Unmarshal([]byte(lines[1]), &entry); err != nil {
@@ -358,11 +357,12 @@ func TestSessionFileJournalsToolCallsAndCompaction(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[2]), &marker); err != nil {
 		t.Fatalf("compaction line: %v", err)
 	}
-	if marker.Type != "compaction" || marker.TokensBefore != 42000 || !strings.Contains(marker.Summary, "something") {
+	if marker.Type != "compaction" || marker.TokensBefore != 42000 ||
+		marker.Stubbed != 2 || marker.Folded != 7 || marker.Summary != "" {
 		t.Fatalf("compaction entry = %+v", marker)
 	}
-	// The kept tail is re-journaled AFTER the marker: replay discards
-	// everything above it, so a tail written only above it is a tail lost.
+	// The window is re-journaled AFTER the marker: replay discards everything
+	// above it, so a window written only above it is a window lost.
 	var tail sessionEntry
 	if err := json.Unmarshal([]byte(lines[3]), &tail); err != nil {
 		t.Fatalf("tail line: %v", err)

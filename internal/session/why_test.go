@@ -143,37 +143,25 @@ func TestWhyBeforeAnythingHappened(t *testing.T) {
 
 // ── compaction focus ────────────────────────────────────────────────────────
 
-// /compact <text> is a person saying which part of the conversation must
-// survive the summary. It has to reach the summarizer's own prompt — appended
-// to the section contract, never replacing it.
-func TestCompactFocusReachesTheSummarizer(t *testing.T) {
-	completer := &scriptedCompleter{steps: []step{
-		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-			if len(messages) != 2 || messages[0].Role != "system" {
-				t.Errorf("summarizer request = %v, want system+user", rolesOf(messages))
-				return textResponse("## Goal\nx"), nil
-			}
-			prompt := messageText(messages[0])
-			if !strings.Contains(prompt, "Additional focus: keep the API decisions and the failing test") {
-				t.Errorf("the focus never reached the summarizer:\n%s", prompt)
-			}
-			if !strings.HasPrefix(prompt, summarizationPrompt) {
-				t.Errorf("the focus replaced the section contract:\n%s", prompt)
-			}
-			return textResponse("## Goal\nfit the window"), nil
-		},
-	}}
+// `/compact keep the API decisions` used to be a person telling the summarizer
+// which part of a lossy summary had to survive. There is no summarizer now
+// (loop.go), so the focus reaches nothing — and the pass has to run ANYWAY, and
+// has to make no provider call while it does. A person who typed the old form is
+// owed the compaction they asked for, not an error about a machine that used to
+// exist.
+func TestCompactWithFocusStillCompactsAndCallsNoModel(t *testing.T) {
+	completer := &scriptedCompleter{}
 	agent := compactableAgent(t, completer)
 
 	if err := agent.CompactWithFocus(context.Background(), "keep the API decisions and the failing test"); err != nil {
 		t.Fatalf("CompactWithFocus: %v", err)
 	}
-	if got := completer.requests(); got != 1 {
-		t.Fatalf("requests = %d, want the one summary call", got)
+	if got := completer.requests(); got != 0 {
+		t.Fatalf("requests = %d, want a compaction that costs nothing", got)
 	}
 
-	// The focus belongs to that one call: the session's own system message is
-	// untouched, so the next turn is byte-for-byte what it was.
+	// And the session's own system message is untouched: the focus had nowhere
+	// to leak to, and the next turn is byte-for-byte what it was.
 	agent.mu.Lock()
 	system := messageText(agent.messages[0])
 	agent.mu.Unlock()
@@ -182,26 +170,13 @@ func TestCompactFocusReachesTheSummarizer(t *testing.T) {
 	}
 }
 
-// Compact is CompactWithFocus with nothing to add, and a summary taken without
-// a focus must carry no extra line at all.
-func TestCompactWithoutFocusIsUnchanged(t *testing.T) {
-	completer := &scriptedCompleter{steps: []step{
-		func(_ context.Context, messages []ai.Message) (*ai.Response, error) {
-			if prompt := messageText(messages[0]); prompt != summarizationPrompt {
-				t.Errorf("summarizer prompt changed without a focus:\n%s", prompt)
-			}
-			return textResponse("## Goal\nfit the window"), nil
-		},
-	}}
-	agent := compactableAgent(t, completer)
-
-	if err := agent.Compact(context.Background()); err != nil {
-		t.Fatalf("Compact: %v", err)
-	}
-}
-
 // compactableAgent is a session whose transcript is already over its window: a
-// tiny window, one long message, and one short one to keep as the tail.
+// tiny window, one long ASSISTANT message for the fold to take, and one short
+// one to keep as the tail.
+//
+// The assistant role is the point. A person's words are never folded (loop.go's
+// [Agent.foldLocked]), so a transcript of one long user message has nothing a
+// compaction may touch and reports ErrNothingToCompact — correctly.
 func compactableAgent(t *testing.T, completer Completer) *Agent {
 	t.Helper()
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
@@ -209,7 +184,8 @@ func compactableAgent(t *testing.T, completer Completer) *Agent {
 	})
 	agent.mu.Lock()
 	agent.messages = append(agent.messages,
-		textMessage("user", strings.Repeat("context that will not fit. ", 40)),
+		textMessage("user", "get on with it"),
+		textMessage("assistant", strings.Repeat("context that will not fit. ", 40)),
 		textMessage("assistant", "short reply"))
 	agent.mu.Unlock()
 	return agent

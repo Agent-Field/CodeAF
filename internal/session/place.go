@@ -30,6 +30,7 @@ import (
 const (
 	placeTranscript   = "transcript.jsonl"
 	placeState        = "state.json"
+	placeCard         = "card.json"
 	placeTasks        = "tasks.json"
 	placeMeta         = "meta.json"
 	placeNodeJournals = "tasks"
@@ -80,6 +81,14 @@ func (p Place) Transcript() string { return p.join(placeTranscript) }
 // State is the BPE working-state file (Decision 22).
 func (p Place) State() string { return p.join(placeState) }
 
+// Card is the state card: what the work is FOR and where it stands, maintained
+// by the post-turn extractor and rendered into every system prompt (card.go).
+// It sits beside state.json rather than inside it because the two are written
+// by different hands — the model's own `track`/`commit` tools fill state.json,
+// nobody's tool fills this — and a file one of them corrupted would cost the
+// other its record.
+func (p Place) Card() string { return p.join(placeCard) }
+
 // Tasks is the live graph checkpoint (Decision 19).
 func (p Place) Tasks() string { return p.join(placeTasks) }
 
@@ -90,7 +99,7 @@ func (p Place) MetaPath() string { return p.join(placeMeta) }
 // beside the conversation that commissioned them, not in a parallel tree.
 func (p Place) NodeJournals() string { return p.join(placeNodeJournals) }
 
-// Logs holds the droppings — job logs, stubs, frames. Everything in it is
+// Logs holds the droppings — job logs and stubbed tool results. Everything in it is
 // re-creatable and carries the sweep's 7-day TTL; nothing in it is a
 // deliverable.
 func (p Place) Logs() string { return p.join(placeLogs) }

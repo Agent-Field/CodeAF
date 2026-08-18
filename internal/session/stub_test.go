@@ -264,7 +264,7 @@ func TestStubDoesNothingWithoutAWorkspaceToWriteTo(t *testing.T) {
 // stubPathIn pulls the artifact path out of a stub line.
 func stubPathIn(t *testing.T, line string) string {
 	t.Helper()
-	_, tail, found := strings.Cut(line, "full output: ")
+	_, tail, found := strings.Cut(line, "full: ")
 	if !found {
 		t.Fatalf("the stub names no path: %q", line)
 	}
