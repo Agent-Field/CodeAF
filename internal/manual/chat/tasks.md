@@ -118,6 +118,11 @@ gate — it is your window to redirect the work or wave it off before it starts.
 The default window is 5 seconds. It is the setting `task.autoapprove_seconds`, under
 `task.` in the "spending" category of the settings panel (`ctrl+,` or `/settings`).
 
+**This is one of the rows aforge will not change for you.** It decides how long you get
+before work starts on its own, so `change_setting` refuses it and points you back at
+`/settings`. Same for `task.parallel` below, and for the whole approval and spending
+family — the permissions page lists them.
+
 Set that window to 0 and there is no clock at all: no bar is drawn and the row reads
 `waiting on you`. The card then waits until you answer it, however long that takes.
 

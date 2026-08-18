@@ -604,6 +604,25 @@ type Config struct {
 	MemoryConsolidation bool
 	Guardian            bool
 
+	// ProfileDir is the person's profile directory — the one holding the
+	// config.json that /settings writes (internal/config's settings registry).
+	// It is what the settings and change_setting tools are a door onto
+	// (tools_settings.go): the model can read the person's settings back and
+	// change one permanently, by the row's own registry key and through the
+	// row's own validated write.
+	//
+	// EMPTY KEEPS BOTH TOOLS OFF THE BELT, on the absence law every conditional
+	// family here states: a settings tool with no profile behind it would answer
+	// every call with the same refusal, and a model told it can change a setting
+	// will plan a whole reply around one. A headless --once, a task node and
+	// every test get exactly what they had before this field existed.
+	//
+	// It is the caller's path rather than one this package derives, for the
+	// reason SessionFile is: where a person's state lives is the surface's
+	// decision, and a package that resolved ~/.aforge itself would write there
+	// from a test.
+	ProfileDir string
+
 	// RolesSource reads one auxiliary-model setting for internal/roles: the
 	// keys are roles.PinKey and roles.TierKey. Nil is a fresh install with no
 	// settings file, and every auxiliary call then rides the session's own

@@ -15,7 +15,11 @@ import (
 // chat unable to say it has an ability it demonstrably has, so the build fails
 // here instead.
 func TestTheManualMentionsEveryToolOnTheBelt(t *testing.T) {
-	agent := &Agent{config: Config{Workspace: t.TempDir()}}
+	// THE PROFILE DIRECTORY IS HANDED OVER SO THE GATE CAN SEE THE WHOLE BELT.
+	// The settings pair is conditional on it (tools_settings.go), and a gate
+	// that built the belt without one would let a conditional tool ship with no
+	// page — green, and wrong in exactly the way this test exists to catch.
+	agent := &Agent{config: Config{Workspace: t.TempDir(), ProfileDir: t.TempDir()}}
 	tools := agent.belt()
 	if len(tools) == 0 {
 		t.Fatal("the belt is empty")

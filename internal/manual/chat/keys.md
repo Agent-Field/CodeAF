@@ -626,6 +626,10 @@ and the consent countdown.
 So if you turn the mouse off, or turn timestamps on, mid-turn, the change takes hold
 **one turn later**. Nothing is wrong; the surface has not re-read the setting yet.
 
+This holds however the row was changed — in the panel, or by asking aforge to do it with
+`change_setting`. The row is written straight away and the transcript says so; the screen
+picks it up when the turn ends.
+
 With `ui.mouse` off, every drag belongs to your terminal permanently, and `ctrl+s` has
 nothing to hand over.
 
