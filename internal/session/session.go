@@ -913,6 +913,29 @@ type Config struct {
 	// sets it on the config it builds for a node and nowhere else.
 	InTask bool
 
+	// The three rows below are the TASK FAMILY'S, and like InTask the executor
+	// is the only writer: they are what lets a node hand PART of its own work
+	// further out (task.go's fan-out law).
+	//
+	// tasker is THE CONVERSATION'S GRAPH, handed down rather than copied. A node
+	// that proposes work adds a node to the graph the person is already
+	// watching — one id space, one roster, one cap, one checkpoint — which is
+	// what "decomposition is edges added to this graph" was always going to mean
+	// (task_contract.go). It is nil in every conversation, which builds its own,
+	// and nil in every OTHER agent this package runs inside a node: an auditor
+	// and an adaptive run's worker are handed none, so neither has the verb.
+	tasker *TaskGraph
+	// taskID is the id of the node this agent IS, and 0 in a conversation. A
+	// proposal made here is registered under it ([TaskNotice.Parent]), which is
+	// what draws the family on the roster and what scopes the `tasks` tool to
+	// this node's own children.
+	taskID uint64
+	// taskDepth is how many tasks deep this agent sits: 0 in the conversation, 1
+	// in a task the conversation proposed, 2 in a sub-task of that one.
+	// taskDepthLimit is the floor, and an agent standing on it is handed no
+	// propose_task at all (tools.go) — absent, not refusing.
+	taskDepth int
+
 	// SpendRailUSD stops a session that has spent this much. 0 is off. The
 	// check happens BEFORE a turn starts (rail.go) and reads the session's own
 	// journaled usage, so the rail is exact rather than an estimate, and a turn
@@ -1018,6 +1041,14 @@ type Agent struct {
 	cancel    context.CancelFunc
 	steering  []userMessage
 	closed    bool
+	// taskNotes counts the reports this agent's OWN sub-tasks have handed over
+	// that no request has carried yet, and taskNews is the generation channel
+	// closed each time one lands. They exist for one reader — the runner holding
+	// a task node open while its children work (task_run.go's [runTaskChild]) —
+	// and they are zero and nil in every conversation, which has no runner and
+	// wakes for itself ([Agent.postTaskNews]).
+	taskNotes int
+	taskNews  chan struct{}
 	// done is closed when the in-flight turn has recorded its last message,
 	// non-nil exactly while running. Close waits on it so a cancelled turn's
 	// tail reaches the journal before the file does.

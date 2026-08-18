@@ -19,12 +19,15 @@ package session
 // its wire discipline. So `tasks` sits on the belt beside `jobs`, and reads the
 // same way.
 //
-// A NODE DOES NOT GET IT. A task's own agent has a journal under
-// ~/.aforge/v3/tasks/<session>/, not under the project's session directory, so
-// the index it would read is the empty one beside its own transcript — and,
-// more to the point, a node's brief is its whole world by contract
-// (task_contract.go). A node rummaging through the project's history is a node
-// reading the conversation it was deliberately given none of.
+// A NODE GETS IT SCOPED TO ITS OWN FAMILY, and never wider. A node's brief is
+// its whole world by contract (task_contract.go), so a node rummaging through
+// the project's history is a node reading the conversation it was deliberately
+// given none of. What a node DOES have a right to is the work it handed out
+// itself (task.go's fan-out law): the pieces it split off, how they are going,
+// what they found, and one line into one that is going the wrong way. So inside
+// a node every op here answers about its own children and about nothing else —
+// the search lists them, an id outside them is refused by name, and a node that
+// handed nothing out gets an empty list rather than the project's.
 
 import (
 	"context"
@@ -104,7 +107,7 @@ func (a *Agent) tasksTool() bare.Tool {
 				if strings.TrimSpace(parsed.Resolve) != "" {
 					return "Invalid arguments: resolve needs an id — it settles one task that needs a look, not a search", true, nil
 				}
-				rows := SearchTaskIndex(a.TaskIndex(), parsed.Query, parsed.Limit)
+				rows := SearchTaskIndex(a.taskRows(), parsed.Query, parsed.Limit)
 				return taskRowsText(rows, parsed.Query), false, nil
 			}
 			return a.oneTask(token, parsed)
@@ -147,9 +150,14 @@ func taskToken(raw json.RawMessage) string {
 // talks to a worker that is still there, resolve decides about work that is
 // over. A call carrying both means the second, and `say` is its reason.
 func (a *Agent) oneTask(token string, parsed tasksArguments) (string, bool, error) {
-	rows := a.TaskIndex()
+	rows := a.taskRows()
 	entry, found := LookupTask(rows, token)
 	if !found {
+		if a.config.taskID != 0 {
+			// Scoped, so the miss is a different fact: the id may well name real
+			// work, and what it does not name is anything this node handed out.
+			return fmt.Sprintf("No task %q among the pieces you handed out. Call tasks with no arguments to see them; work you did not ask for is not yours to read from here.", token), true, nil
+		}
 		return fmt.Sprintf("No task %q in this project. Call tasks with no arguments to see the most recent ones.", token), true, nil
 	}
 	id, here := a.thisSessionTask(entry)
@@ -218,6 +226,31 @@ func taskWhereWord(entry TaskIndexEntry) string {
 		return entry.TranscriptURI
 	}
 	return "nowhere this session can point at"
+}
+
+// taskRows is what this tool answers from: the project's whole index in a
+// conversation, and in a node ONLY THE CHILDREN IT HANDED OUT ITSELF.
+//
+// The scope is applied here, at the one door, rather than in each of the three
+// ops: a search, a read, a steer and a resolve are four things to do with a
+// task, and "which tasks can this agent see" is one answer for all of them.
+func (a *Agent) taskRows() []TaskIndexEntry {
+	parent := a.config.taskID
+	if parent == 0 {
+		return a.TaskIndex()
+	}
+	a.mu.Lock()
+	session := a.sessionID()
+	a.mu.Unlock()
+	kids := a.tasker().children(parent)
+	rows := make([]TaskIndexEntry, 0, len(kids))
+	for _, kid := range kids {
+		kid.graph.mu.Lock()
+		rows = append(rows, kid.indexEntryLocked(session))
+		kid.graph.mu.Unlock()
+	}
+	sortTaskIndex(rows)
+	return rows
 }
 
 // thisSessionTask resolves a row to a node of THIS session's graph. A row from

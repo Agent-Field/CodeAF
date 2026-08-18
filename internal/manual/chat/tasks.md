@@ -20,6 +20,9 @@ was wrong, the answer is to propose the work again.
 You can keep working while a task runs. aforge tells you not to wait for it: its report
 arrives in the conversation when it lands.
 
+A task can also break its own brief into smaller tasks when it finds independent parts in
+it, and those are drawn as a family under it — see *When a task splits its own work*.
+
 ## The card that asks whether to run the work
 
 While the model is still writing the proposal, a grey block opens in the transcript and
@@ -361,7 +364,7 @@ writes one note in the conversation: `room unavailable — this session has no t
 | `ctrl+b` | freezes the transcript | freezes the room's own rows |
 | scroll position | the conversation's | the room's own, kept separately |
 | attachments | the tray sends pictures | a room's box sends words only |
-| proposals | drawn as cards | never — a task does not propose work to you |
+| proposals | drawn as cards | never — a task's own pieces start without asking you |
 
 The focus header is one accent line pinned at the top:
 `─ ⠙ main ▸ Fix the nil-map crash · running · 2m12s · $0.04 ──── esc/←← main ─`. It carries
@@ -453,6 +456,59 @@ more.
 Unknown tokens are left alone in silence — `@santosh` is a person, `@internal/x.go` is a
 path. A task mentioned twice gets one block. A slug pasted whole and submitted in the same
 beat resolves against what is already in memory, so it may stay the plain word you typed.
+
+## When a task splits its own work — sub-tasks, nested tasks, children
+
+A task can hand pieces of its own work further out. If its brief turns out to hold two or
+three parts that do not need each other — different files, different subsystems, nothing
+half-finished passing between them — it proposes each part as a task of its own and keeps
+the coordination for itself. The parts run at the same time instead of one after another.
+
+Nothing asks you about those. **A sub-task starts without a card:** the countdown card is
+how a person redirects work, and there is nobody inside a worktree to show one to, so a
+task's own proposals begin the moment they are made. What you see instead is the tree.
+
+Where they show up:
+
+- **the strip along the top** draws the family: the parent on its own row with its pieces
+  indented under it, and the family stays whole while any member of it is live.
+- **the roster** lists every one of them as an ordinary row, with its own id and state.
+- **the parent's room** shows the `propose_task` calls as they are made, and the parent's
+  own words when the reports come back.
+
+Each piece works in a copy of the repository taken from its **parent's** copy, and its
+branch merges back into the parent's — so a family's work comes home as the parent's work,
+in one merge, not as three branches racing for yours.
+
+A parent never lands while a piece of it is still running. Its own turn may end long
+before; the task stays open, each report is put in front of it as it arrives, and only then
+is the parent's work checked and merged. If you stop a parent, its unfinished pieces are
+stopped with it and their branches are kept.
+
+## How deep tasks nest, and how many pieces one task may hand out
+
+Two hard bounds, and they behave differently on purpose.
+
+**Depth: two levels.** The conversation proposes a task; that task may propose pieces; a
+piece may not. The tool is simply not on a second-level task's belt — it does not have the
+verb, so it cannot try and be told no.
+
+**Fan-out: five pieces per task.** A task that asks for a sixth gets its call answered
+with:
+
+> no: you have already handed out 5 pieces of this work, which is as many as one task may.
+> Do the rest in your own hands, or finish these and report what is left undone.
+
+It reads that as an instruction and does the rest itself.
+
+Neither bound is a setting. They are there because the third level and the sixth piece cost
+more than they save: every piece pays for its own copy of the repository, its own check and
+its own wait, so past a few of them fanning out is slower than working. A task is told the
+same thing in its own words — split only what is genuinely independent, and never shard
+work that fits in its own hands.
+
+`task.parallel` still applies to the whole session: pieces queue behind it exactly as
+top-level tasks do.
 
 ## How many tasks run at once
 
