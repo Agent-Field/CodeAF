@@ -249,6 +249,13 @@ func (a *app) frame() (string, int, int) {
 	rows := make([]string, 0, height)
 	if head != "" {
 		rows = append(rows, head)
+		// AND THE FAMILY UNDER IT, dim, where this node has one: who handed the
+		// work out and what it handed out itself, which is the fact the roster's
+		// tree carries in its shape and this page had no shape to carry it in
+		// (room.go's [app.roomKinRows]). They ride with the header rather than
+		// with the page because they are true of the page as a whole, and a fact
+		// that scrolls away is only true at the top.
+		rows = append(rows, a.roomKinRows(width)...)
 	}
 	rows = append(rows, strip...)
 	// THE ROSTER TAKES THE BODY WHOLE on a frame with no columns to lend it: the
@@ -733,8 +740,8 @@ func (a *app) viewHeight() int {
 func (a *app) topHeight() int { return a.headHeight() + a.stripHeight() }
 
 // headHeight is what the pinned focus header costs the body region: one row
-// while a room is open on a frame with the height to spare, and nothing
-// otherwise (room.go).
+// while a room is open on a frame with the height to spare, the kin rows under
+// it where there are any, and nothing otherwise (room.go).
 //
 // It is subtracted HERE, in the number every geometric question resolves
 // through, rather than at the frame — a header the frame drew and the scrolling
@@ -746,7 +753,14 @@ func (a *app) headHeight() int {
 	if a.room == nil || a.breathingRows() == 0 {
 		return 0
 	}
-	return 1
+	// THE KIN ROWS ARE PART OF THE PINNED REGION AND ARE CHARGED FOR HERE, for
+	// exactly the reason the header's own row is: they are drawn above the body
+	// by the frame, and rows the scrolling has not subtracted push the room's
+	// last row under the input box. They are asked at the frame's OWN width,
+	// which is the width [app.view] hands the header, so the count here and the
+	// rows drawn there can never disagree (room.go's [app.roomKinRows]).
+	width, _ := a.size()
+	return 1 + len(a.roomKinRows(width))
 }
 
 func (a *app) page() int {
