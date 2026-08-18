@@ -38,7 +38,7 @@ Three gates fail the build if you forget:
 | --- | --- |
 | `internal/tui3/manual_test.go` | every slash command **and every alias**, spelled with its leading slash, appears somewhere in the corpus |
 | `internal/session/manual_test.go` | every tool on the belt appears by its exact registered name |
-| `internal/manual/chat_test.go` | 46 real questions, in a person's own words, each still reach the page that answers them |
+| `internal/manual/chat_test.go` | 49 real questions, in a person's own words, each still reach the page that answers them |
 
 The failure message names the exact missing string.
 

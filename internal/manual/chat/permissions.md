@@ -358,10 +358,20 @@ underneath whatever you wrote:
 - **`manual`**, which reads pages compiled into this binary and touches no disk
   at all. Asking you to approve aforge looking up its own documentation would be
   asking about the wrong thing.
+- **`settings`**, which reads your own settings rows back through the registry.
+  It is `manual` one file over: "what is my daily budget" is a lookup, and the
+  credential rows read masked, so a question would be protecting nothing.
 
 **`commit` is deliberately not on it.** It is the one bookkeeping tool that
 declares a tracked subgoal finished, and a session that can mark its own work
 done without anyone being asked is a session that can talk itself into done.
+
+**`change_setting` is deliberately not on it either**, and for the same reason
+one step further out. Changing your configuration writes a file that outlives
+the conversation, so it goes to you like `edit` and `write` do. That split is why
+the settings pair is two tools rather than one with a read action and a write
+action: a rule is written per **tool name**, so a single tool could not have been
+free to read and asked about to write.
 
 A rule you write about one of these tools still wins for that tool. What the
 floor removes is only the silent part: a rule written about one tool now says
@@ -369,6 +379,58 @@ nothing whatsoever about any other.
 
 Nothing on this list acts outside this machine, so it changes neither of the two
 floors above.
+
+## The settings aforge refuses to change for you
+
+aforge can change your settings when you ask — `settings` reads the rows,
+`change_setting` writes one permanently into your profile. Some rows it will not
+write, however you ask, and the reason is the plainest one there is: **a model
+that can widen its own restraints has none.** It does not take bad intent, only
+a short road — asked to stop being interrupted, the shortest thing to reach for
+is the approval mode, and you would have lost the gate without ever deciding to.
+
+The refusal names the row and points here:
+
+```
+"ask before running" (tools.approvalMode) decides what I may do without asking you first, so it is not mine to change. Open /settings and change it yourself.
+```
+
+The whole list, by settings key:
+
+- **What may run without asking you** — `tools.approvalMode`,
+  `tools.approval`, `tools.bashPatterns`, `approval.guardian`,
+  `approval.timeout_seconds`, `task.autoapprove_seconds`. The gate, the two rule
+  rows, the model that answers in your place, and the two clocks that answer when
+  you do not.
+- **What may be spent without asking you** — `daily_budget_usd`,
+  `plan_consent_usd`, `practice_budget_usd`, `session.spendRailUSD`,
+  `task.repair_rounds`, `working_set_tokens`, `context_reuse_pct`. The last three
+  are rails too: each is a number that multiplies what one piece of unattended
+  work costs.
+- **How hard this machine may be worked** — `task.parallel`, `task.max_load`,
+  `task.min_free_mb`.
+- **Whether aforge's own work is checked** — `task.audit`. A session that can
+  switch off the auditor can call anything done.
+- **How work that leaves this machine is signed** — `attribution`.
+- **Your credentials** — `search.exaKey`, `search.jinaKey`,
+  `google_oauth_secret`, and `google_oauth_client`, which is useless without the
+  secret beside it. These restrain nothing; they are refused because a key
+  overwritten with something a model invented is a working account broken in a
+  way nothing on screen can show you.
+
+Everything else is fair game: which model does what, how the screen draws, how
+long the room stays quiet, where a search goes, which model draws your pictures.
+
+Two rows are refused for a different reason, and it is not safety. The
+conversation's own model (`model.talk`) is changed with `/model`, and the other
+role slots — `model.plan`, `model.work`, `model.verify`, `model.scribe` — are
+bindings the running session holds rather than values in your profile, so
+neither `change_setting` nor the panel can write them. To send aforge's own
+auxiliary calls somewhere, set `models.tiers.high`, `models.tiers.low`, or pin
+one role in `models.roles`.
+
+A row your environment has pinned refuses like it does everywhere else:
+`<label> is set by <NAME>`.
 
 ## When nobody is watching
 
