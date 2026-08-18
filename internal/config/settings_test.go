@@ -732,6 +732,51 @@ func TestMaskCredentialHidesTheKeyAndItsLength(t *testing.T) {
 // The three throttle rows read their defaults, take a person's answer, and hand
 // it back to the accessor the session door calls — which is the whole of what a
 // settings row has to do.
+// THE REFLEX ROW SHIPS POINTED AT A MODEL, which no other tier row does, and
+// the two answers a person can give it are different from each other: never
+// touching it is the near-free default, emptying it on purpose is "follow the
+// conversation".
+func TestTheReflexTierShipsWithAModelAndCanStillBeCleared(t *testing.T) {
+	dir := t.TempDir()
+	row := mustRow(t, registry(t, dir), KeyTierReflexModel)
+
+	if got := TierModelAt(dir, ModelTierReflex); got != DefaultReflexModel {
+		t.Fatalf("an untouched profile resolves the reflex tier to %q, want %q", got, DefaultReflexModel)
+	}
+	if got := row.Value(); got != DefaultReflexModel {
+		t.Fatalf("the reflex row reads %q in an untouched profile, want %q", got, DefaultReflexModel)
+	}
+	// Its neighbours are unchanged: they still follow the conversation.
+	if got := TierModelAt(dir, ModelTierLow); got != "" {
+		t.Fatalf("the low tier resolves %q in an untouched profile, want nothing", got)
+	}
+	if got := TierModelAt(dir, ModelTierHigh); got != "" {
+		t.Fatalf("the high tier resolves %q in an untouched profile, want nothing", got)
+	}
+
+	if err := row.Apply("vendor/tiny"); err != nil {
+		t.Fatal(err)
+	}
+	if got := TierModelAt(dir, ModelTierReflex); got != "vendor/tiny" {
+		t.Fatalf("the reflex tier resolves %q after a person wrote vendor/tiny", got)
+	}
+	if got := mustRow(t, registry(t, dir), KeyTierReflexModel).Value(); got != "vendor/tiny" {
+		t.Fatalf("the reflex row reads %q on the next launch", got)
+	}
+
+	// Cleared is an ANSWER: the row goes back to its empty label and the tier
+	// falls to internal/roles' floor, the model the person is talking to.
+	if err := row.Apply(""); err != nil {
+		t.Fatalf("clearing the reflex row: %v", err)
+	}
+	if got := TierModelAt(dir, ModelTierReflex); got != "" {
+		t.Fatalf("a cleared reflex row resolves %q, want nothing", got)
+	}
+	if got := mustRow(t, registry(t, dir), KeyTierReflexModel).Value(); got != "follows the conversation" {
+		t.Fatalf("a cleared reflex row reads %q, want its empty label", got)
+	}
+}
+
 func TestTheTaskThrottleRowsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	rows := registry(t, dir)

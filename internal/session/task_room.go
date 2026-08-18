@@ -135,9 +135,7 @@ func (a *Agent) TaskJournal(id uint64) string {
 // about tasks does not need: a session that never groomed one answers every
 // door in this file with "no such task", which is the truth.
 func (a *Agent) taskNode(id uint64) *TaskNode {
-	a.mu.Lock()
-	graph := a.tasks
-	a.mu.Unlock()
+	graph := a.tasker()
 	if graph == nil {
 		return nil
 	}

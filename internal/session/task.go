@@ -12,9 +12,26 @@ package session
 // proposal is a node, the countdown is how the node is admitted, the worktree is
 // how it is isolated, and its report is what its dependents will read.
 //
-// What ships here is the degenerate graph — one node, no edges — and every
-// piece of it is the graph's own. depends_on exists on the wire and is honoured
-// by the executor; the model just never has a sibling to name yet.
+// depends_on exists on the wire and is honoured by the executor, so a
+// conversation that grooms two pieces of work can say which waits for which.
+//
+// ── AND A TASK MAY HAND PART OF ITS OWN WORK OUT ──
+//
+// This tool is on a NODE'S belt too, and the node's proposals join the
+// conversation's own graph under the node that made them (session.go's
+// Config.tasker). That is the fan-out law: a step with two or three genuinely
+// INDEPENDENT parts is faster as three nodes in three worktrees than as one
+// model doing them in order, and the coordination — reading the reports,
+// folding them into one deliverable — stays with the node that split the work.
+// Work that is sequential, or that shares heavy context, is not split at all:
+// the parts would each pay for a worktree, an audit and a wait to save nothing.
+//
+// TWO BOUNDS, AND THEY ARE DIFFERENT KINDS OF THING. The DEPTH cap is absence:
+// a node standing on taskDepthLimit is handed no propose_task at all, because a
+// capability that cannot work is left off the belt rather than made to refuse
+// (tools.go). The FAN cap is a REFUSAL the model reads and acts on
+// ([TaskGraph.claimChild]) — it has already been given its slots, and the answer
+// to a fourth part is to do it in its own hands.
 //
 // ── THE PROPOSAL IS THE CONSENT, AND IT HAS A CLOCK ──
 //
@@ -48,7 +65,11 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
-const taskDescription = "Hand ONE self-contained piece of work to a task that runs on its own, outside this conversation, in its own copy of the repository. Use it when the work would flood the conversation — a long build-and-fix loop, a mechanical sweep across many files, a rewrite whose only interesting moment is the result — or when it simply wants a clean context of its own. Do NOT use it for a quick read, a question you can answer here, or anything that needs the back-and-forth of this conversation: a task cannot ask you anything once it starts. THE BRIEF IS THE TASK'S WHOLE WORLD. It never sees this conversation, so write it as if for a colleague joining today: the goal, the files and symbols involved, the conventions and constraints you have learned here, what has already been tried, and how to check the work. The person is shown the title and summary with a short countdown to redirect or wave it off; silence starts it. You get the id back immediately and the task's report arrives here when it lands, so keep working — never wait for it."
+// taskDescription is what the model reads before it calls. THE FAN CAP IS
+// INTERPOLATED for taskSchemaJSON's reason: a number a model reasons with must
+// be the number the code enforces, and the two drift the moment they are typed
+// twice.
+var taskDescription = "Hand ONE self-contained piece of work to a task that runs on its own, outside this conversation, in its own copy of the repository. Use it when the work would flood the conversation — a long build-and-fix loop, a mechanical sweep across many files, a rewrite whose only interesting moment is the result — or when it simply wants a clean context of its own. Do NOT use it for a quick read, a question you can answer here, or anything that needs the back-and-forth of this conversation: a task cannot ask you anything once it starts. THE BRIEF IS THE TASK'S WHOLE WORLD. It never sees this conversation, so write it as if for a colleague joining today: the goal, the files and symbols involved, the conventions and constraints you have learned here, what has already been tried, and how to check the work. The person is shown the title and summary with a short countdown to redirect or wave it off; silence starts it. You get the id back immediately and the task's report arrives here when it lands, so keep working — never wait for it. A TASK MAY CALL THIS TOO, for parts of its own work that are genuinely independent of each other: up to " + strconv.Itoa(taskFanLimit) + " of them, one level deep, each registered under the task that asked for it. Split a step only when its parts do not need each other — sequential parts, and parts that share heavy context, are faster done in your own hands."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -130,19 +151,32 @@ type taskSpec struct {
 	// otherwise would be a node the frontier tried to design again with the
 	// registry already untouched.
 	design *harnessDesignSpec
+	// parent, depth and owner are THE FAMILY this proposal was made in, and they
+	// are the whole of what nesting adds to the spec: 0, 0 and nil for the work
+	// a conversation grooms, and the proposing node's id, its depth plus one and
+	// its own agent for a sub-task. [TaskNode] carries the same three and says
+	// what each is for.
+	parent uint64
+	depth  int
+	owner  *Agent
 }
 
-// taskTools is the belt's task family — one tool, and only in a conversation.
+// taskTools is the belt's task family — one tool, in the conversation and in
+// every node that is not standing on the floor of the tree.
 //
-// A NODE DOES NOT PROPOSE. Not because nesting is forbidden but because there
-// is nobody in a node's world to show a proposal to and no countdown that means
-// anything there: decomposition, when it lands, is EDGES ADDED TO THIS GRAPH by
-// the conversation that owns it, not a second proposal machine running inside a
-// worktree. The exclusion is one line here rather than a rule the node has to
-// be told about in its prompt (tools.go builds the node's belt from the same
-// function this one is on).
+// A NODE'S PROPOSAL IS NOT A SECOND MACHINE. It reserves an id from the
+// conversation's own sequence, admits into the conversation's own graph, and
+// runs under the same cap and the same checkpoint; what makes it a sub-task is
+// one field, the parent it is registered under. There is nobody in a worktree to
+// show a proposal to, so the countdown simply expires and the work starts —
+// which is what an unwatched proposal already did before nesting existed
+// ([Agent.askTask]).
+//
+// AT THE FLOOR THE TOOL IS ABSENT, NOT REFUSING. A node at taskDepthLimit has
+// nothing left worth handing out, so it is not given the verb — the law every
+// conditional family on this belt is built on (tools.go).
 func (a *Agent) taskTools() []bare.Tool {
-	if a.config.InTask {
+	if !a.mayProposeTask() {
 		return nil
 	}
 	return []bare.Tool{{
@@ -151,6 +185,25 @@ func (a *Agent) taskTools() []bare.Tool {
 		Schema:      json.RawMessage(taskSchemaJSON),
 		Execute:     a.proposeTask,
 	}}
+}
+
+// mayProposeTask says whether propose_task belongs on this agent's belt: always
+// in a conversation, and in a node only when it was handed the conversation's
+// graph to admit into and is not standing on the floor of the tree.
+//
+// The graph is what the orchestrate run's workers and the auditor are NOT handed
+// (task_run.go's newTaskAgent), which is how they end up without the verb
+// without anybody writing a second rule about them.
+func (a *Agent) mayProposeTask() bool {
+	return !a.config.InTask || a.config.mayFanOut()
+}
+
+// mayFanOut is the same question asked of a CONFIG, before there is an agent to
+// ask: [renderSystem] decides whether to tell this worker how to split its work
+// at construction, and the belt and the prompt must not disagree about whether
+// it can.
+func (c Config) mayFanOut() bool {
+	return c.InTask && c.tasker != nil && c.taskDepth < taskDepthLimit
 }
 
 // proposeTask is the tool's whole life: validate, ask, and admit.
@@ -175,7 +228,25 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	}
 	spec.model, spec.modelOptions = choice.model, choice.options
 
+	// WHOSE WORK THIS IS. In a conversation the three are zero and this is a
+	// root; in a node they are the node, its depth and its own agent, and they
+	// are what make the proposal a sub-task rather than a second root
+	// (task_run.go's [TaskNode]).
+	spec.parent, spec.depth, spec.owner = a.config.taskID, a.config.taskDepth+1, a
 	graph := a.graph()
+	// THE SLOT IS TAKEN BEFORE THE QUESTION and handed back by everything that
+	// is not an admission, so a batch of proposals cannot walk through the fan
+	// cap together ([TaskGraph.claimChild]).
+	if refusal := graph.claimChild(spec.parent); refusal != "" {
+		return refusal, true, nil
+	}
+	admitted := false
+	defer func() {
+		if !admitted {
+			graph.releaseChild(spec.parent)
+		}
+	}()
+
 	id := graph.reserve()
 	answer, err := a.askTask(ctx, id, spec)
 	if err != nil {
@@ -218,6 +289,7 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	}
 
 	state := graph.admit(id, spec)
+	admitted = true
 	// THE MODEL IS NAMED BACK ONLY WHEN IT WAS ASKED FOR. A word resolves to an
 	// id and a shortlist is settled by somebody else, so the one thing the model
 	// cannot know after this call is what its own argument came to; a task that

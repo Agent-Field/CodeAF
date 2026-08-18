@@ -82,7 +82,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	}
 	system := config.System
 	if strings.TrimSpace(system) == "" {
-		system = renderSystem(config.Workspace)
+		system = renderSystem(config)
 	}
 	agent := &Agent{
 		config: config,
@@ -1040,6 +1040,13 @@ func (a *Agent) snapshot() []ai.Message {
 func (a *Agent) drainSteering() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// THIS DRAIN IS THE ONE THAT ANSWERS. It runs immediately before the next
+	// request (loop.go), so anything on the queue is in front of the model from
+	// here — which is precisely what a task node's runner is waiting to be true
+	// of its sub-tasks' reports (see [Agent.postTaskNews]). The turn's END drain
+	// deliberately does not clear it: those notes reached the transcript and no
+	// request.
+	a.taskNotes = 0
 	landed, _ := a.drainSteeringLocked()
 	return landed
 }
@@ -1146,6 +1153,81 @@ func (a *Agent) enqueueNote(note userMessage) {
 	}
 }
 
+// takesNotes reports whether this agent can still read anything it is handed. A
+// closed one drops every note silently ([Agent.enqueueNote]), which is right —
+// nothing drains after Close — so a caller CHOOSING between two readers has to
+// ask first, or it will choose the one that is not listening
+// ([Agent.deliverTaskNote]).
+func (a *Agent) takesNotes() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.closed
+}
+
+// postTaskNews records that one of this agent's OWN sub-tasks has handed over
+// its report, and releases whoever is waiting to hear it.
+//
+// A NODE'S TURNS ARE ITS RUNNER'S TO START, which is why this is not a wake:
+// [Agent.wakeLocked] declines inside a task and must, because a node starting
+// turns of its own would be a second conversation inside a worktree with nobody
+// reading it. So a child's report is COUNTED here, and the runner that is
+// already holding the parent open re-enters the model with it (task_run.go's
+// [runTaskChild]). The count is cleared by the drain that puts those notes into
+// a request ([Agent.drainSteering]), so "outstanding" means what it says.
+func (a *Agent) postTaskNews() {
+	a.mu.Lock()
+	a.taskNotes++
+	if a.taskNews != nil {
+		close(a.taskNews)
+		a.taskNews = nil
+	}
+	a.mu.Unlock()
+}
+
+// taskNewsWait is the generation a runner takes BEFORE it asks whether anything
+// is outstanding. Holding the channel first is what closes the gap between the
+// question and the wait: a report that lands in it closes this channel, so the
+// wait returns immediately instead of missing the news it was waiting for.
+func (a *Agent) taskNewsWait() <-chan struct{} {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.taskNews == nil {
+		a.taskNews = make(chan struct{})
+	}
+	return a.taskNews
+}
+
+// taskNewsOwed reports how many sub-task reports this agent has been handed
+// that no request has carried yet.
+func (a *Agent) taskNewsOwed() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.taskNotes
+}
+
+// resumeTurn starts one turn on what is ALREADY on the steering queue and hands
+// back its stream, for the one caller whose turns are driven from outside: a
+// task node's runner, re-entering the model with its sub-tasks' reports.
+//
+// It is [Agent.wakeLocked] with the wake taken out. Same empty opening message
+// — what the turn is about is on the queue and the loop's first drain records
+// it — and the same refusals, minus the two that only make sense for a
+// conversation: there is no rail on a node (its spend is the session's, and the
+// session's rail was checked when the work was proposed) and no wake lane to
+// hand a stream to, because the caller is holding it.
+//
+// A nil answer means there is no turn to have: the agent is closed, or one is
+// already running, which for a runner means the child is still working and the
+// notes will land in it at a step boundary.
+func (a *Agent) resumeTurn(ctx context.Context) <-chan Event {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.running || !a.opened {
+		return nil
+	}
+	return a.startTurnLocked(ctx, userMessage{}, nil)
+}
+
 // wakeLocked starts a turn for what is waiting on the steering queue, with a.mu
 // held, and reports whether one began.
 //
@@ -1168,6 +1250,10 @@ func (a *Agent) enqueueNote(note userMessage) {
 //     is a node that is a ROOM and not a worker — the thread a sub-harness is
 //     designed in (harness_task.go) — which is a conversation by construction
 //     and whose steering has no turn to land in unless it starts one.
+//     own would be a second conversation inside a worktree. A node WITH
+//     SUB-TASKS still has to be re-entered when one of them reports, and it is —
+//     through [Agent.resumeTurn], by the runner, which is the same turn started
+//     by somebody who is reading it.
 //   - the session is not open yet: recovery settles nodes inside New, and a turn
 //     started there speaks to nobody (see [newAgent]).
 //   - the spend rail: a turn that starts must be one the session can pay for,

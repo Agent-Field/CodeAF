@@ -136,6 +136,15 @@ const (
 	KeyConsentTimeout = "approval.timeout_seconds"
 	KeyTierLowModel   = "models.tiers.low"
 	KeyTierHighModel  = "models.tiers.high"
+	// KeyTierReflexModel is the third tier, and the only one with a model in it
+	// out of the box. It is read TWICE A TURN by the routing and extraction
+	// calls the reflex tier exists for (internal/reflex), which is a rhythm no
+	// other auxiliary call has: a model that costs a tenth of a cent a call is
+	// free on the low tier and is real money here. So the row ships pointed at
+	// a model that costs near nothing rather than at "follows the conversation"
+	// — a person who never opens the sheet gets the cheap thing, and a person
+	// who clears the row gets the conversation's own model, deliberately.
+	KeyTierReflexModel = "models.tiers.reflex"
 	// KeyMouse is whether the surface reports the mouse at all. Off is the
 	// default because an alt-screen app that reports the mouse OWNS every
 	// drag: the terminal's native text selection dies the moment reporting
@@ -429,7 +438,15 @@ const DefaultRouting = RoutingLatency
 const (
 	ModelTierLow  = "low"
 	ModelTierHigh = "high"
+	// ModelTierReflex is the per-turn tier ([roles.TierReflex]).
+	ModelTierReflex = "reflex"
 )
+
+// DefaultReflexModel is what the reflex tier runs on until somebody says
+// otherwise: a bare OpenRouter id, spelled once here and read by every caller
+// through [TierModelAt], so the model this build considers near-free is one
+// string rather than a figure repeated in a row, a resolver and a page.
+const DefaultReflexModel = "nex-agi/nex-n2-mini"
 
 // DocumentEngines are the four rungs AFORGE_DOC_ENGINE accepts.
 var DocumentEngines = []string{"auto", "local", "free", "ocr"}
@@ -1284,6 +1301,19 @@ func (s *Settings) build() []Setting {
 				"compaction keeps, which is all that survives the cut.",
 			read:  func() string { return TierModelAt(dir, ModelTierHigh) },
 			write: func(raw string) error { return writeText(dir, KeyTierHighModel, raw) },
+		},
+		// The third tier is the one that ships with a model in it, for the
+		// reason its key states: it is read every turn, twice, and "follows the
+		// conversation" would put a reasoning model on a job that is two words
+		// of JSON.
+		Setting{
+			Key: KeyTierReflexModel, Category: CategoryModels, Kind: SettingText,
+			Label: "reflex", EmptyLabel: "follows the conversation",
+			Hint: "the near-free model that reads every turn — it decides which remembered " +
+				"lines this turn needs and whether the exchange is worth keeping. Routing and " +
+				"extraction, never reasoning. Blank makes it follow the model you are talking to.",
+			read:  func() string { return TierModelAt(dir, ModelTierReflex) },
+			write: func(raw string) error { return writeText(dir, KeyTierReflexModel, raw) },
 		},
 		Setting{
 			Key: KeyModelRoles, Category: CategoryModels, Kind: SettingText,
@@ -2285,13 +2315,27 @@ func ParseToolApprovals(raw string) (map[string]string, error) {
 
 // TierModelAt resolves the model one auxiliary tier runs on. Empty means the
 // tier follows the session's own model, which is internal/roles' floor.
+//
+// The reflex tier is the one that answers with a model nobody chose. UNSET and
+// CLEARED are different answers there, and only there: a profile that has never
+// held the key gets [DefaultReflexModel], because a per-turn call on whatever
+// model the conversation runs is a bill nobody agreed to; a row a person
+// emptied on purpose reads empty and follows the conversation like the other
+// two, because refusing to let someone turn it off would make the default a
+// rule.
 func TierModelAt(profileDir, tier string) string {
 	key := KeyTierLowModel
-	if tier == ModelTierHigh {
+	switch tier {
+	case ModelTierHigh:
 		key = KeyTierHighModel
+	case ModelTierReflex:
+		key = KeyTierReflexModel
 	}
 	if value, ok := persistedString(profileDir, key); ok {
 		return strings.TrimSpace(value)
+	}
+	if tier == ModelTierReflex {
+		return DefaultReflexModel
 	}
 	return ""
 }

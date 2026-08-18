@@ -1135,7 +1135,7 @@ func TestAgentsFileTruncationKeepsRunesWhole(t *testing.T) {
 	if got != strings.Repeat("a", agentsFileLimit-1) {
 		t.Fatalf("truncation kept %d bytes, want the cut backed off to the rune boundary", len(got))
 	}
-	if strings.Contains(renderSystem(workspace), "�") {
+	if strings.Contains(renderSystem(Config{Workspace: workspace}), "�") {
 		t.Fatal("the rendered prompt carries a replacement character")
 	}
 }

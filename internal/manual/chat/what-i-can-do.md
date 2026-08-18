@@ -508,10 +508,12 @@ spend rails, the machine ceilings, the check on task work, the attribution
 trailer, and every credential row. The permissions page lists them exactly. A
 model that could widen its own restraints would not have any.
 
-Both tools are absent inside a running task, along with `propose_task`, `watch`
-and `tasks`. A task node works in a worktree with nobody watching it, and a
-permanent change to your machine that no transcript ever showed you is the one
-thing this pair must not be able to make.
+Both tools are absent inside a running task, along with `watch`. A task node
+works in a worktree with nobody watching it, and a permanent change to your
+machine that no transcript ever showed you is the one thing this pair must not be
+able to make. `propose_task` and `tasks` are NOT absent there: a task may hand
+pieces of its own work out, two levels deep at most, and `tasks` shows it those
+pieces and nothing else.
 
 ## What aforge cannot do
 

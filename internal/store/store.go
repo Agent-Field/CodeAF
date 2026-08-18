@@ -693,6 +693,13 @@ func Open(path string) (*Store, error) {
 	if _, err := db.Exec(scopeAliasesSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize scope aliases schema: %w", err))
 	}
+	// Memories and their index are created together, and both with IF NOT
+	// EXISTS: there is no backfill to do because there is no older shape of
+	// this table to read from, and a store opened before the feature existed
+	// simply has no memories yet.
+	if _, err := db.Exec(memoriesSchema); err != nil {
+		return closeOnError(fmt.Errorf("initialize memories schema: %w", err))
+	}
 	if _, err := db.Exec(retrospectiveSchema); err != nil {
 		return closeOnError(fmt.Errorf("initialize retrospective schema: %w", err))
 	}

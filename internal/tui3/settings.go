@@ -233,6 +233,16 @@ var settingUI = map[string]settingMeta{
 		about: "the capable model for the small things that must not be wrong — " +
 			"the summary a compaction keeps.",
 	},
+	// The third tier is the only one that ships pointed at a model, because it
+	// is read TWICE EVERY TURN: routing what a turn should remember and
+	// extracting what it should keep. Blank is still an answer here — it means
+	// the conversation's own model does that work — but it is not the default,
+	// and the row says which model it is rather than "follows the conversation".
+	config.KeyTierReflexModel: {
+		tab: tabSession, label: "reflex", widget: widgetSelect,
+		about: "the near-free model that reads every turn — routing and extraction, " +
+			"never reasoning.",
+	},
 	config.KeyModelRoles: {
 		tab: tabSession, label: "pinned roles", widget: widgetText,
 		about: "exceptions to the two rows above, one per role: title:openai/gpt-5-mini.",
@@ -980,8 +990,9 @@ func (s *sheet) rolesSource() roles.Source {
 		return func(string) (string, bool) { return "", false }
 	}
 	for tier, key := range map[roles.Tier]string{
-		roles.TierLow:  config.KeyTierLowModel,
-		roles.TierHigh: config.KeyTierHighModel,
+		roles.TierReflex: config.KeyTierReflexModel,
+		roles.TierLow:    config.KeyTierLowModel,
+		roles.TierHigh:   config.KeyTierHighModel,
 	} {
 		if row, ok := s.registry.Row(key); ok {
 			values[roles.TierKey(tier)] = rowText(row)
@@ -1009,8 +1020,11 @@ func (s *sheet) rolesSource() roles.Source {
 // what the row a person changes to move it is called, and the two cannot drift.
 func (s *sheet) tierWord(tier roles.Tier) string {
 	key := config.KeyTierLowModel
-	if tier == roles.TierHigh {
+	switch tier {
+	case roles.TierHigh:
 		key = config.KeyTierHighModel
+	case roles.TierReflex:
+		key = config.KeyTierReflexModel
 	}
 	if s.registry != nil {
 		if row, ok := s.registry.Row(key); ok {

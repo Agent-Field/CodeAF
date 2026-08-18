@@ -126,14 +126,20 @@ case the context window is left alone.
 aforge makes calls you did not type: naming a session, the summary a compaction keeps, the
 safety gate, the check on finished task work, the planner of an adaptive run and the nodes
 under it, the designer of a saved harness page, looking at an image. Each of those is a
-**role**, and every role sits on one of two **tiers** you set once, in `/settings` → Session:
+**role**, and every role sits on one of three **tiers** you set once, in `/settings` →
+Session:
 
+- **reflex** — the near-free model for work that happens every single turn.
 - **small work** — the cheap model, for short things a wrong answer costs a glance.
 - **careful work** — the capable model, for the ones a wrong answer destroys something.
 
-Leave either blank and the roles on it follow the model you are talking to. There is no
-tier for a role to fall through to before that — a fresh install with nothing set makes
+Leave any of them blank and the roles on it follow the model you are talking to. There is
+no tier for a role to fall through to before that — a fresh install with nothing set makes
 every one of these calls on your own model, which is what it did before tiers existed.
+
+**reflex** is the one row that arrives with a model already in it, `nex-agi/nex-n2-mini`,
+because a call made twice a turn is a different bill from a call made once a session.
+Clearing the row is still allowed and still means "use the model I am talking to".
 
 Directly under the **pinned roles** row the panel lists **every registered role**, one per
 line: the role's name, the tier answering it, and the model that comes out. As shipped:
@@ -149,9 +155,16 @@ line: the role's name, the tier answering it, and the model that comes out. As s
 | `designer` | careful work | writes and reviews a harness page before it is saved |
 | `worker` | small work | one node of an adaptive run |
 | `vision` | careful work | reads images for a model that cannot see them |
+| `reflex` | reflex | the per-turn memory pair — see below |
 
 The list is built from what is registered in the running binary, so it is the truth about
 this build rather than a table someone kept up to date.
+
+One caveat on `reflex`: **nothing in this build calls it yet.** The tier, the row and the
+role are real and the model resolves through the same ladder as every other role — but the
+per-turn routing and extraction it exists for are not wired into the conversation, so
+setting this row changes nothing you can see today. It is here so the setting is in place
+before the calls are, not because aforge is already reading your turns twice.
 
 One caveat on `vision`: the **looking** row on the Providers tab is the front door for
 which model sees, and it wins over this role's tier. The `vision` pin is the second rung

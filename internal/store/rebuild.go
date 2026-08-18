@@ -96,6 +96,12 @@ func (s *Store) Rebuild() error {
 	if _, err := tx.Exec(`DELETE FROM facts_fts`); err != nil {
 		return fmt.Errorf("rebuild facts index: %w", err)
 	}
+	if _, err := tx.Exec(`DELETE FROM memories_fts`); err != nil {
+		return fmt.Errorf("rebuild memory index: %w", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM memories`); err != nil {
+		return fmt.Errorf("rebuild memories: %w", err)
+	}
 	if _, err := tx.Exec(`DELETE FROM retrospective_watermark`); err != nil {
 		return fmt.Errorf("rebuild retrospective watermark: %w", err)
 	}
@@ -603,6 +609,34 @@ func replayEvent(tx *sql.Tx, event Event) error {
 			return err
 		}
 		return applyQuestionPracticeCompleted(tx, payload, event.Seq)
+
+	case EventMemoryAdd:
+		var payload memoryPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyMemoryAdd(tx, payload, event.Seq)
+
+	case EventMemoryUpdate:
+		var payload memoryUpdatePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyMemoryUpdate(tx, payload, event.Seq)
+
+	case EventMemorySupersede:
+		var payload memorySupersedePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyMemorySupersede(tx, payload, event.Seq)
+
+	case EventMemoryForget:
+		var payload memoryForgetPayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return err
+		}
+		return applyMemoryForget(tx, payload, event.Seq)
 
 	case EventScopeAliased:
 		var payload scopeAliasedPayload

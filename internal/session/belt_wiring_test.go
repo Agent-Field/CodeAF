@@ -79,8 +79,14 @@ func TestEachBigHandIsAbsentWhenItsSeamIs(t *testing.T) {
 			drop: func(config *Config) { config.AskConsent = false },
 		},
 		{
-			name: "inside a task node",
-			gone: []string{"propose_task"},
+			// A NODE WITH NO GRAPH TO ADMIT INTO. A task may hand pieces of its
+			// own work out (task.go's fan-out law) and does it by admitting into
+			// the CONVERSATION's graph, so an agent inside a task that was handed
+			// none — an adaptive run's worker, an auditor — has no verb at all.
+			// The floor of the tree is the other half, and task_nest_test.go pins
+			// it beside the prompt that has to agree with it.
+			name: "inside a task node with no graph to admit into",
+			gone: []string{"propose_task", "tasks"},
 			drop: func(config *Config) { config.InTask = true },
 		},
 	} {
