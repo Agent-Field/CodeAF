@@ -1724,6 +1724,13 @@ func (a *app) railPress(x, y int) (tea.Cmd, bool) {
 	// THE FOOTER'S ONE OFFER IS PRESSABLE, because a hint that names a key and
 	// cannot be pressed is a hint that is only for one of the two hands
 	// (task.go's [app.railFootRows]).
+	// AND THE LAST LINE IS THE COLUMN'S DOOR, for the same reason one rung up: a
+	// line that names ctrl+g and cannot be clicked is an affordance for one of the
+	// two hands (task.go's [railStowHint]).
+	if line.stow {
+		a.railStow(true)
+		return nil, true
+	}
 	if line.hint {
 		a.railWiden(!a.railWide)
 		return nil, true

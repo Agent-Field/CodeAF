@@ -78,6 +78,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+,` | Open the settings panel |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
+| `ctrl+g` | Close the task roster's column, or bring it back. Remembered for the next session. With no roster on the frame it does nothing |
 | `ctrl+e` | Empty box: open or close the latest completed turn's `▸ worked` chip, or the most recent thinking block when there is no chip. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only |
@@ -392,6 +393,14 @@ All of these are modal: while one is up, every chord except `ctrl+c` belongs to 
 back · `up`/`down` move · `right`/`left` fold and unfold the group · `enter` opens
 that row's room. Its hint reads `↑↓ move · →← fold · enter open · esc`.
 
+**`ctrl+g` closes the roster's column, and opens it again.** It works from the message
+box, from inside a room, and while the roster holds the keyboard — it is the one key
+here you do not have to ask for the roster first to use. Closing it hands the keyboard
+back to the box. The choice is written to your profile as `ui.task_column`, so the next
+session opens the way you left it, and `ctrl+t` counts as asking for the column back.
+The key falls through and does nothing when there is no roster on the frame to close:
+no tasks at all, or a frame under 100 columns where nothing has raised the overlay.
+
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for
 copying, not the conversation's · `pgup`/`pgdown` page · `up`/`down` scroll, but only
@@ -619,7 +628,7 @@ answer:
 | `ctrl+k` | Not bound |
 | `ctrl+r` | Not bound |
 | `ctrl+v` | Not bound. Paste with your terminal's own paste; aforge reads bracketed paste |
-| `ctrl+g`, `ctrl+x`, `ctrl+y`, `ctrl+z` | Not bound |
+| `ctrl+x`, `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 
 A key that is not bound falls through to "does this key carry text". If it carries

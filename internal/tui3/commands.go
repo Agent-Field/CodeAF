@@ -494,6 +494,7 @@ func helpText(file string) string {
 		"ctrl+q         ask this after the current turn instead of into it",
 		"ctrl+e         open the model's thinking, streaming or finished",
 		"ctrl+t         the task roster · ↑↓ move · →← fold · enter opens · esc leaves",
+		"ctrl+g         close the roster's column, or bring it back · remembered",
 		"ctrl+l         back to the latest · the chip above the box says so too",
 		"→ ←            over an empty box: into a running task, and back out",
 		"← ←            home · the conversation, at the live edge",
