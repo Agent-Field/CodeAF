@@ -672,12 +672,17 @@ one indented chip between your message and the answer, such as
 elapsed time, the thinking block's time when there was one, and the real call count.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
-no transcript cursor, so the key chooses the latest completed turn's work in the page
-currently on screen. Opening restores the existing bounded views: thinking remains its
+no transcript cursor, so the key chooses the latest completed turn's work in the
+conversation. Opening restores the existing bounded views: thinking remains its
 own chip and only the latest 3 tool calls show until those are opened separately.
 Questions, approval prompts, failure lines, text-only turns, and work with no trailing
 answer are never hidden. Fold state belongs to this window; resumed sessions derive
 fresh closed chips from their saved entries.
+
+**The chip is the conversation's alone.** A task's room, and a node's transcript inside an
+adaptive run's page, never fold their work: those pages are the machinery, and a chip there
+would hide the only thing on them. So in a room `ctrl+e` over an empty box opens the
+thinking block, and `ui.work` changes nothing.
 
 ## How do I keep everything expanded?
 

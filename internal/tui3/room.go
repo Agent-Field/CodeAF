@@ -64,6 +64,16 @@ import (
 // What a room still owns is what a room IS: which node, where the reader is in
 // it, and the two doors — steering in, esc out.
 //
+// WITH ONE THING THE CONVERSATION DOES THAT A ROOM MUST NOT: FOLD THE WORK
+// AWAY. Out in the thread a finished turn's machinery collapses to
+// "▸ worked · 10 tool calls · ctrl+e", because the person asked a question and
+// what they were owed is the answer. In here that same rule ate the page: a
+// node's life is one long turn ending in a report, so the moment it stopped
+// running everything it had said and done went behind the chip and the only
+// thing left was the report — the exact thing somebody opens a room to see past.
+// [taskRoom.deck] therefore says [deck.showsWork], and workfold.go states the
+// law where the chips are derived.
+//
 // ── THE DOORS ARE ASSERTED, NEVER REQUIRED ──
 //
 // [taskRoomAgent] is a SECOND interface rather than three more methods on
@@ -181,7 +191,13 @@ func (r *taskRoom) deck() deck {
 	if r.lane != nil && !r.done {
 		running = r.turn
 	}
-	return deck{entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen, runningTurn: running}
+	// showsWork is the room's whole reason for existing, said to the renderer:
+	// this page is the machinery, so none of it collapses into a chip
+	// (workfold.go's [app.deckFolds]).
+	return deck{
+		entries: r.entries, unfolded: r.unfolded, workOpen: r.workOpen,
+		showsWork: true, runningTurn: running,
+	}
 }
 
 // The words the room says of itself.
@@ -746,6 +762,16 @@ func (a *app) roomEvent(ev session.Event) tea.Cmd {
 	case session.EventCompacted:
 		a.roomCloseLive()
 		a.roomSettleCompaction(firstNonEmpty(ev.Hint, "compacted"))
+
+	case session.EventTurnDone:
+		// THE STEP IS FINISHED AND ON DISK — the same event internal/session's
+		// [taskCatchup] takes as the signal to drop what it was holding. The
+		// block the node was writing is therefore over, and settling it here is
+		// what stops the NEXT step's first word from being appended to the last
+		// step's last paragraph. A design felt this hardest: its draft and the
+		// revision the review pass writes are two replies on one lane, and
+		// without this they arrived as one unbroken wall of JSON.
+		a.roomCloseLive()
 
 	case session.EventError:
 		a.roomNote("error: " + errText(ev.Err))
