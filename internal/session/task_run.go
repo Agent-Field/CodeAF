@@ -1503,7 +1503,17 @@ func taskNote(notice TaskNotice, transcript string) string {
 	case mergeConflicted:
 		note.WriteString("\nits branch " + notice.Branch + " did not merge cleanly and was kept — merge it yourself when you are ready")
 	case mergeAborted:
-		note.WriteString("\nit was stopped; its branch " + notice.Branch + " was kept")
+		// WHAT IT MADE IS ON THAT BRANCH, and saying so is the difference
+		// between a person going to look and a person assuming an ending they
+		// were told nothing about threw the work away ([keptWork]). The shorter
+		// sentence is for a node that left nothing: offering to merge an empty
+		// branch would send them after work that does not exist.
+		if len(notice.Changed) > 0 {
+			note.WriteString("\nit was stopped; what it made is committed on its branch " +
+				notice.Branch + ", which was kept — merge that branch to take the work")
+		} else {
+			note.WriteString("\nit was stopped; its branch " + notice.Branch + " was kept")
+		}
 	case mergeInPlace:
 		note.WriteString("\nit worked directly in the workspace: there was no repository to branch")
 	}
@@ -1732,11 +1742,17 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	// threshold that fired.
 	case stopped != "":
 		fmt.Fprintf(log, "%s\n", stopped)
-		node.finish(withReport(stopped, report), changed, tree.branch, abortedMerge(tree))
+		// A THRESHOLD IS NOT A REASON TO LOSE THE WORK. The landing turn has
+		// already run and whatever the node made is on disk; keptWork puts it on
+		// the node's branch and hands back the names, so the person is told what
+		// exists and where instead of being told only that it stopped.
+		merge, changed := keptWork(tree, node.title(), changed)
+		node.finish(withReport(stopped, report), changed, tree.branch, merge)
 		return TaskFailed
 	case ctx.Err() != nil:
 		if node.wasStopped() {
-			node.finish(withReport("stopped", report), changed, tree.branch, abortedMerge(tree))
+			merge, changed := keptWork(tree, node.title(), changed)
+			node.finish(withReport("stopped", report), changed, tree.branch, merge)
 			return TaskFailed
 		}
 		// Lifecycle cancellation is an interruption, never a finding about the
@@ -1744,7 +1760,8 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		node.finish(withReport("paused — it resumes", report), changed, tree.branch, abortedMerge(tree))
 		return ""
 	case runErr != nil:
-		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, abortedMerge(tree))
+		merge, changed := keptWork(tree, node.title(), changed)
+		node.finish(withReport("it ended with an error: "+runErr.Error(), report), changed, tree.branch, merge)
 		return TaskFailed
 	}
 
@@ -1775,7 +1792,8 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 	verdict := outcome.verdict
 	switch {
 	case ctx.Err() != nil:
-		node.finish(withReport("stopped while its work was being checked", report), changed, tree.branch, abortedMerge(tree))
+		merge, changed := keptWork(tree, node.title(), changed)
+		node.finish(withReport("stopped while its work was being checked", report), changed, tree.branch, merge)
 		return TaskFailed
 	case !verdict.answered:
 		// NOBODY COULD SAY. Not done — nothing merges on an answer nobody gave —
@@ -1783,13 +1801,15 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 		// The node's own claim is kept UNDER the non-answer: whoever is asked to
 		// resolve this needs both halves, what the work says it did and what the
 		// checker said instead of an answer (task_contract.go's TaskUnverified).
-		node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, abortedMerge(tree))
+		merge, changed := keptWork(tree, node.title(), changed)
+		node.finish(withReport(verdict.lookOutcome(), report), changed, tree.branch, merge)
 		return TaskUnverified
 	case !verdict.verified:
 		// INCOMPLETE, WITH EVERY ROUND'S GAPS. The node's own claim is dropped
 		// exactly as it was before: somebody looked at the work and said what is
 		// missing, and that answers the claim.
-		node.finish(gapsOutcome(outcome.gaps), changed, tree.branch, abortedMerge(tree))
+		merge, changed := keptWork(tree, node.title(), changed)
+		node.finish(gapsOutcome(outcome.gaps), changed, tree.branch, merge)
 		return TaskFailed
 	}
 
@@ -1844,11 +1864,42 @@ func withReport(lead, tail string) string {
 // that ran in place has nothing to abort: its edits are already in the person's
 // tree, and calling that "aborted" would say work was thrown away that is
 // sitting in front of them.
+//
+// It is for the two endings whose work is ALREADY where this mark says it is: a
+// paused node, which resumes in the same worktree and commits when it finally
+// comes home, and a verdict landing on a node that settled once already
+// (task_audit.go's landAudit), whose branch was committed then. Every ending
+// that settles work for the FIRST time goes through [keptWork] instead, which
+// makes the same mark after making it true.
 func abortedMerge(tree taskTree) string {
 	if tree.merge == mergeInPlace {
 		return mergeInPlace
 	}
 	return mergeAborted
+}
+
+// keptWork is abortedMerge for a node that has SETTLED without merging —
+// stopped at a threshold, killed, errored, or turned back at the gate — and it
+// is the difference between a promise and a fact.
+//
+// THE REPORT SAYS "ITS BRANCH WAS KEPT", SO THE BRANCH HAS TO HOLD THE WORK.
+// Nothing but [taskTree.comeHome] used to commit, and comeHome is exactly what
+// these endings skip — so a node that produced two real files was landed with a
+// sentence naming a branch that had nothing on it, its work sitting untracked
+// in a worktree directory nobody named. The commit here is the whole repair:
+// the branch now holds what the node made, `git merge` on it works, and the
+// files come back BY NAME to be told to the person, including the ones no
+// argument ever named ([commitTaskWork]).
+//
+// IT STILL DOES NOT MERGE, and that is deliberate and unchanged. Only work that
+// was checked reaches the person's branch (the gate in [Agent.workTaskNode]);
+// "not proven" is not "throw it away", and it is not "land it either" — the
+// person is told where it is and brings it home themselves.
+func keptWork(tree taskTree, title string, changed []string) (string, []string) {
+	if tree.merge == mergeInPlace || tree.root == "" || strings.TrimSpace(tree.dir) == "" {
+		return abortedMerge(tree), changed
+	}
+	return mergeAborted, alsoChanged(changed, commitTaskWork(tree.dir, title))
 }
 
 // runTaskChild submits the brief, consumes the node's own events internally,
@@ -1870,13 +1921,14 @@ func abortedMerge(tree taskTree) string {
 //
 // THE STEP IS ONE FINISHED TOOL CALL, and it is the only unit available from
 // out here: the child's model round-trips are inside its own loop, and this
-// side of the wall sees the calls they produce. PROGRESS is either half of the
-// job — a SUCCESSFUL edit or write (EventToolEnd and not EventToolFailed,
-// because an edit whose oldText did not match changed nothing and a node
-// repeating it is the exact spin the counter exists to catch), or a step that
-// TAUGHT the node something it did not know ([taughtSomething]). What the
-// counter kills is the third thing: the same call again, changing nothing,
-// learning nothing.
+// side of the wall sees the calls they produce. PROGRESS is any of the three
+// halves of the job — a SUCCESSFUL call to a hand that saves a file
+// ([savingTools], on EventToolEnd and never EventToolFailed, because an edit
+// whose oldText did not match changed nothing and a node repeating it is the
+// exact spin the counter exists to catch), a step that left the worktree
+// different from how it found it ([worktreeMoved]), or a step that TAUGHT the
+// node something it did not know ([taughtSomething]). What the counter kills is
+// the fourth thing: the same call again, changing nothing, learning nothing.
 //
 // The cancel is this function's own, hung off the node's context, so tripping a
 // threshold ends the child the way `jobs kill` does — a cancelled turn, its
@@ -1948,20 +2000,32 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 				if len(evidence) > 24 {
 					evidence = evidence[len(evidence)-24:]
 				}
+				// ALL THREE QUESTIONS ARE ASKED OF EVERY STEP, and each is
+				// asked before any of them is read, because two of them RECORD
+				// as they answer. The worktree fingerprint has to be refreshed
+				// on the step that moved it whichever question noticed, or the
+				// next step inherits a stale one and reads somebody else's dirt
+				// as its own; the target has to be recorded even on a step that
+				// was already progress for another reason, or the same call can
+				// be spent twice. A short-circuiting `switch` did both wrong.
+				moved := worktreeMoved(dir, &lastDirt)
+				learned := taughtSomething(event, seenInfo)
 				path, wrote := changedPath(event, dir)
+				saved := wrote && event.Kind == EventToolEnd
+				if saved && !seen[path] {
+					seen[path] = true
+					changed = append(changed, path)
+				}
 				switch {
-				case wrote && event.Kind == EventToolEnd:
-					idle = 0
-					if !seen[path] {
-						seen[path] = true
-						changed = append(changed, path)
-					}
-				case taughtSomething(event, seenInfo, dir, &lastDirt):
-					// EXPLORATION IS PROGRESS. A research node may never write
-					// until its final words; a build node may spend its first
-					// dozen steps reading. What stops a node is SPINNING — the
-					// same target again, no new dirt — not the absence of an
-					// edit (PMCoder's "reads saturated", not "reads happened").
+				// EXPLORATION IS PROGRESS, and so is PRODUCTION. A research
+				// node may never write until its final words; a build node may
+				// spend its first dozen steps reading; a node making pictures
+				// paints, looks at what it painted, and paints again without
+				// ever calling edit or write. What stops a node is SPINNING —
+				// the same target again, no new file, no new dirt — not the
+				// absence of an edit (PMCoder's "reads saturated", not "reads
+				// happened").
+				case saved, moved, learned:
 					idle = 0
 				default:
 					idle++
@@ -2142,61 +2206,61 @@ func (n *TaskNode) reported() bool {
 // It is the whole read-only half of the belt and not a shortlist, which is the
 // point: the counter used to name six of them, and every other look at the
 // world counted as a stall — so a node that read a scanned page, asked after
-// the build it started, or recalled its own working state was punished for
-// exploring. When a hand is added to belt(), it belongs here or it belongs to
-// the paragraph below, and one of the two is always true.
+// the build it started, LOOKED AT A PICTURE IT HAD JUST MADE, or recalled its
+// own working state was punished for exploring. When a hand is added to belt(),
+// it belongs here or it belongs to [savingTools], and one of the two is almost
+// always true; a hand that is neither is caught by the worktree anyway
+// ([worktreeMoved]) on any step where it actually left something behind.
 //
-// What is deliberately ABSENT: edit and write (they are counted as the diff
-// they are, one branch up), note, forget, track and commit (a node writing its
-// own memory again is not learning anything), and generate_image (it produces,
-// it does not inform). bash is absent because it is BOTH, and is handled on its
-// own below.
+// What is deliberately ABSENT: every hand in [savingTools] (they are counted as
+// the file they saved, one branch up), and note, forget, track, commit and
+// change_setting (a node writing its own memory or its own settings again is
+// not learning anything). bash is absent because it is BOTH, and is handled on
+// its own below.
 var knowledgeTools = map[string]bool{
-	"read":          true,
-	"read_document": true,
-	"ls":            true,
-	"grep":          true,
-	"find":          true,
-	"web_search":    true,
-	"web_fetch":     true,
-	"jobs":          true,
-	"recall":        true,
+	"read":           true,
+	"read_document":  true,
+	"ls":             true,
+	"grep":           true,
+	"find":           true,
+	"web_search":     true,
+	"web_fetch":      true,
+	"jobs":           true,
+	"recall":         true,
+	"view_image":     true,
+	"manual":         true,
+	"tasks":          true,
+	"settings":       true,
+	"list_harnesses": true,
+	"services":       true,
+	"gmail_read":     true,
+	"gmail_search":   true,
+	"calendar_list":  true,
 }
 
-// taughtSomething reports whether one call advanced the node's KNOWLEDGE rather
-// than its diff: a knowledge tool aimed at a target it has not aimed at before
-// (the same search retried is not new information, and SUCCESS is not required
-// — a new target that failed still taught the node that it failed), or a bash
-// that left new dirt in the worktree or ran a command the node had not run. The
-// seen map keys tool+target so re-reading one file while reading another new one
-// still counts exactly once.
+// taughtSomething reports whether one call advanced the node's KNOWLEDGE: a
+// knowledge tool, or a bash, aimed at a target it has not aimed at before. The
+// same search retried is not new information, and SUCCESS is not required — a
+// new target that failed still taught the node that it failed. The seen map
+// keys tool+target so re-reading one file while reading another new one still
+// counts exactly once.
+//
+// BASH IS BOTH HANDS and is admitted here on the knowledge half alone. `go
+// build` writes, `go test ./...`, `git log` and `rg` do not, and the tool name
+// says nothing about which one this was — so a command the node has never run
+// counts as the world answering a question it has never asked, and the writing
+// half of the same call is answered by the worktree, one caller up
+// ([worktreeMoved]), which asks it of every hand rather than of this one.
+//
+// It RECORDS AS IT ANSWERS, so the caller must ask it on every step and never
+// behind a short-circuit: a call that was already progress for some other
+// reason must not also be spendable as a fresh target the next time it is made.
 //
 // The judgement is made on the CALL and never on the result: [Event.Output] is
 // a display copy, capped, and a counter that read it would be deciding a node's
 // life from bytes that were truncated for a person's screen.
-func taughtSomething(event Event, seen map[string]bool, dir string, lastDirt *string) bool {
-	if event.Tool == "bash" {
-		// BASH IS BOTH HANDS. `go build` writes, `go test ./...`, `git log` and
-		// `rg` do not, and the tool name says nothing about which one this was.
-		// So both are asked: new dirt in the worktree is the diff moving, and a
-		// command the node has never run is the world answering a question it
-		// has never asked. Only the same command again, changing nothing, is
-		// the spin — which is the same law every other tool here is read by,
-		// and it is what a workspace that is not a repository (worktreeDirt is
-		// "" forever) is now judged by instead of by nothing at all.
-		//
-		// The novelty is recorded first, and unconditionally: a command that
-		// dirtied the tree must not also be spendable as a fresh target the
-		// next time it is run.
-		fresh := freshTarget(event, seen)
-		dirt := worktreeDirt(dir)
-		if dirt != *lastDirt {
-			*lastDirt = dirt
-			return true
-		}
-		return fresh
-	}
-	if !knowledgeTools[event.Tool] {
+func taughtSomething(event Event, seen map[string]bool) bool {
+	if event.Tool != "bash" && !knowledgeTools[event.Tool] {
 		return false
 	}
 	return freshTarget(event, seen)
@@ -2233,12 +2297,44 @@ func argField(args, field string) string {
 	return value
 }
 
-// worktreeDirt is the worktree's dirty fingerprint: the sorted porcelain
-// listing hashed, so a bash that creates, modifies or deletes a file reads
-// as progress while one that only inspects does not. A non-git directory
-// answers "" — stable, so it never moves the counter either way.
+// worktreeMoved reports whether this step left the worktree different from how
+// the step before it left it, and records the new fingerprint either way.
+//
+// IT IS ASKED OF EVERY HAND AND NOT ONLY OF BASH, which is the backstop under
+// the two lists above: a hand nobody classified — a service call that saves a
+// report, a harness that writes itself, a tool added next month — is still
+// judged by the one thing that cannot be argued with, which is whether there is
+// something in the tree now that was not there a step ago. Without it a node
+// whose whole job was producing files could be killed for having produced them
+// with the wrong verb.
+//
+// A non-git directory answers "" forever — stable, so it never moves the
+// counter either way, and such a node is judged on novelty alone.
+func worktreeMoved(dir string, last *string) bool {
+	dirt := worktreeDirt(dir)
+	if dirt == *last {
+		return false
+	}
+	*last = dirt
+	return true
+}
+
+// worktreeDirt is the worktree's dirty fingerprint: the porcelain listing
+// hashed, so a step that creates, modifies or deletes a file reads as progress
+// while one that only inspects does not.
+//
+// TWO FLAGS CARRY THE WHOLE OF ITS ACCURACY. `--untracked-files=all` names each
+// new file rather than the directory holding it — without it a node that wrote
+// marketing/first.png and then marketing/second.png saw the identical line
+// "?? marketing/" both times and its second file read as a stall, which is
+// exactly the shape of work that makes many files in one new folder. The
+// exclude drops the harness's own droppings: a background job writes its log
+// under .aforge-v3 while the node works (jobs.go), and a tree that dirties
+// itself on a timer would make every step look like progress forever — the same
+// exclusion [stageTaskWork] makes for the same reason.
 func worktreeDirt(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain",
+		"--untracked-files=all", "--", ".", ":(exclude)"+aforgeDroppings).Output()
 	if err != nil {
 		return ""
 	}
@@ -2246,13 +2342,47 @@ func worktreeDirt(dir string) string {
 	return string(sum[:8])
 }
 
-// changedPath reads the file one edit or write touched, workspace-relative.
+// aforgeDroppings is the one directory under a node's worktree that is the
+// harness's and never the node's work: job logs, saved pictures a session keeps
+// for itself, anything this program leaves behind while the node works. Named
+// once because two places have to agree about it — the fingerprint above and
+// the index [stageTaskWork] builds — and a disagreement would mean a node
+// judged as working on files that never reach its branch.
+const aforgeDroppings = ".aforge-v3"
+
+// savingTools are the hands that PUT A FILE ON DISK at a path the call itself
+// names. They are the producing half of the belt, and the counterpart to
+// [knowledgeTools]: a successful call to one of them moved the node's diff, and
+// the file it names is one of the files the person is told about afterwards.
+//
+// It is not just edit and write, and that is the correction. A node making
+// pictures paints with generate_image, a node making a voiceover writes a wav
+// with speak, and both of them used to be read as a node touching nothing —
+// so a session that spent a minute generating two real files and looking at
+// them was stopped as spinning and told it had made "6 steps without progress".
+// Producing IS the work for that node; it simply spells it with a different
+// verb.
+//
+// A call that saved something under a name it did NOT give — generate_image
+// with no path, which lands under a timestamped name of its own — is not
+// nameable from the arguments and is not listed here as a file. It is still
+// progress: the worktree noticed it ([worktreeMoved]), and what it left behind
+// is picked up by name when the node's work is committed ([commitTaskWork]).
+var savingTools = map[string]bool{
+	"edit":           true,
+	"write":          true,
+	"generate_image": true,
+	"generate_video": true,
+	"speak":          true,
+}
+
+// changedPath reads the file one saving call touched, workspace-relative.
 //
 // It reads the CALL's arguments rather than the result because that is where
 // the path is: the tools answer with a sentence about what they did, and the
 // arguments are the record of what was asked (see [Event.Args]).
 func changedPath(event Event, dir string) (string, bool) {
-	if event.Tool != "edit" && event.Tool != "write" {
+	if !savingTools[event.Tool] {
 		return "", false
 	}
 	var fields struct {
@@ -2711,7 +2841,7 @@ func (t taskTree) comeHome(title string) (string, string) {
 	if t.merge == mergeInPlace || t.root == "" {
 		return mergeInPlace, ""
 	}
-	commitTaskWork(t.dir, title)
+	_ = commitTaskWork(t.dir, title)
 
 	defer lockGitRoot(t.place, t.root)()
 	if out, err := git(t.root, "merge", "--no-edit", t.branch); err != nil {
@@ -2746,13 +2876,37 @@ func (t taskTree) comeHome(title string) (string, string) {
 // no git identity still commits and the person's own config is not touched.
 // "nothing to commit" is not a failure — a node that only read is a node with
 // an empty branch, and an empty branch merges cleanly.
-func commitTaskWork(dir, title string) {
+//
+// It ANSWERS WITH THE FILES IT COMMITTED, read off the index it just built,
+// because the index is the only complete account of what a node left behind: a
+// hand that saved a file under a name it chose for itself is in there, and no
+// argument the model wrote ever said that name ([savingTools]). A node whose
+// branch never comes home is told about its work out of this list.
+func commitTaskWork(dir, title string) []string {
 	if !stageTaskWork(dir) {
-		return
+		return nil
 	}
+	saved := stagedPaths(dir)
 	_, _ = git(dir,
 		"-c", "user.name=aforge", "-c", "user.email=aforge@localhost",
 		"commit", "--no-verify", "-m", "task: "+clip(firstLine(title), 72))
+	return saved
+}
+
+// stagedPaths is what the index holds that HEAD does not: the node's whole
+// change, by name, repo-relative and already slash-separated by git.
+func stagedPaths(dir string) []string {
+	out, err := git(dir, "diff", "--cached", "--name-only")
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, line := range strings.Split(out, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			paths = append(paths, line)
+		}
+	}
+	return paths
 }
 
 // stageTaskWork puts everything the node wrote into the worktree's index, and
@@ -2774,7 +2928,7 @@ func stageTaskWork(dir string) bool {
 	if _, err := git(dir, "add", "-A"); err != nil {
 		return false
 	}
-	_, _ = git(dir, "reset", "--quiet", "--", ".aforge-v3")
+	_, _ = git(dir, "reset", "--quiet", "--", aforgeDroppings)
 	return true
 }
 
