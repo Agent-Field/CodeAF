@@ -1005,11 +1005,14 @@ func TestAuditVerifiesAChangeThatPassesItsTest(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q", notice.State, notice.Report)
 	}
-	// THE EVIDENCE LEADS, AND THE MACHINERY IS NOT THERE. The state says done;
-	// what the report adds is what was run and what was seen (task_audit.go's
-	// vocabulary law).
-	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
-		t.Fatalf("the evidence does not lead the report: %q", notice.Report)
+	// THE WORK'S OWN ACCOUNT LEADS, AND THE MACHINERY IS NOT THERE. The state
+	// says done; what the report adds under the account is what was run and what
+	// was seen (task_audit.go's vocabulary law).
+	if !strings.HasPrefix(notice.Report, "Wrote greet.go and greet_test.go.") {
+		t.Fatalf("the node's own account does not lead the report: %q", notice.Report)
+	}
+	if !strings.Contains(notice.Report, "go test ./... ok") {
+		t.Fatalf("the evidence was lost from the report: %q", notice.Report)
 	}
 	if !strings.Contains(notice.Report, "Wrote greet.go") {
 		t.Fatalf("the node's own words were lost from the report: %q", notice.Report)
@@ -1252,7 +1255,7 @@ func TestAuditRetryRecoversAVerdict(t *testing.T) {
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q — the retry's verdict was not read", notice.State, notice.Report)
 	}
-	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
+	if !strings.Contains(notice.Report, "go test ./... ok") {
 		t.Fatalf("report = %q, want the second attempt's evidence", notice.Report)
 	}
 	if notice.Merge != mergeMerged {
@@ -1424,7 +1427,7 @@ func TestReauditingAnUnverifiedNodeLandsItsVerdict(t *testing.T) {
 	}
 	notice := awaitTaskState(t, updates, 1, TaskDone)
 
-	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
+	if !strings.Contains(notice.Report, "go test ./... ok") {
 		t.Fatalf("report = %q, want the re-audit's evidence", notice.Report)
 	}
 	if notice.Merge != mergeMerged {

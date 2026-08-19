@@ -73,6 +73,13 @@ running task. Its step-by-step log is the job log, at
 When a task lands, its **report** is its final assistant message, cut to the first **3
 non-empty lines**, each clipped to **300 characters**.
 
+A task is told to make those lines the **substance** of the work — what it found or made,
+the key findings, the decisions it took, with every file named by its full path — and not
+the evidence trail. "`git diff` shows a staged new file", test output, staging and branch
+status and step counts are proof it did the work, and they stay in the task's journal.
+On a finished task the report leads with the task's own account, and what the second look
+checked it on stands under that.
+
 The landing note arrives at a step boundary, exactly like a background job's exit. Its
 first line carries the task's transcript URI:
 
@@ -97,6 +104,25 @@ the identity `aforge <aforge@localhost>`, then merged into your branch with
 `git merge --no-edit`. The merge is attempted whatever your tree looks like — a dirty
 checkout is normal. On success the worktree is removed and the branch is deleted. Two
 tasks finishing at once are serialized, so a merge is never lost.
+
+## What aforge says in the chat when a task lands, and the full path to the file
+
+Nobody typed the landing note, so aforge answers it as if you had asked for the work
+directly: what it writes next is **the answer itself** — the findings, the summary of what
+was made, what it changes.
+
+The card the landing writes into the conversation already says the task finished, how long
+it took, how many files it touched and where the branch went, so aforge does not say that
+again, and it does not grade the deliverable. "In good shape", "solid", "genuinely non-trivial" are sentences *about* the
+work in place of the work, and so is narrating what it did to get there.
+
+When the report is too thin to answer from, aforge reads the deliverable and answers out of
+what is in it. The message is the answer; the file is the deep dive.
+
+**Every file aforge names you is named by its full absolute path** — after a task and
+everywhere else in the conversation. A relative path like `research/notes.md` is one you
+would have to work out a root for, and a task that ran in its own copy of the repository
+makes even that a guess.
 
 ## How long a task gets before it is stopped
 
@@ -229,7 +255,8 @@ Every task ends in exactly one of three states, and the words are the same every
 read them.
 
 **Finished.** `task 7 finished: <title>`. The second look held. The branch merges into
-yours, and the report leads with the evidence, alone — no lead word at all.
+yours, and the report leads with the task's own account of the work, with what it was
+checked on under it — no lead word at all.
 
 **Failed.** `task 7 failed: <title>`. Somebody looked and made a finding, or a limit
 fired. The branch is kept. Anything waiting on it fails with it.
