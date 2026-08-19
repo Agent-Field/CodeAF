@@ -362,6 +362,13 @@ Refusals, in its own words:
 - Too big: `<path> is over the 10MB image limit`
 - The looking model failed: `<model> could not look at <path>: <reason>`
 - It said nothing: `<model> returned no answer for <path>`
+- It never answered at all:
+  `<model> did not answer about <path> within 10m 0s — try again, or ask about a smaller picture`
+
+**One look gets ten minutes**, and then the tool answers without it. A model that
+takes the picture and goes quiet used to leave the row running for the rest of
+the conversation; now the window runs out and you get the line above instead.
+Press esc and the look stops on the same beat everything else does.
 
 **When no looking model can be reached, the tool is not there at all** — it is
 left off the toolbelt rather than offered and made to refuse. Ask for a picture

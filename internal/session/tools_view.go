@@ -38,6 +38,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -48,6 +49,23 @@ import (
 // image" alone comes back as a caption where the caller wanted the text on the
 // error dialog.
 const viewImageDefaultQuestion = "Describe this image precisely: subject, composition, any text verbatim, and anything that looks wrong or malformed."
+
+// viewLookWindow is how long ONE look may take before the tool answers without
+// it. IT IS THE WHOLE REASON THIS TOOL CANNOT HANG: a call that starts always
+// ends journaled, and the completion below was the one path out of this
+// function that could return neither a result nor an error — the turn's context
+// carries no deadline of its own, so a provider that accepted the request and
+// then went quiet left the row running for the rest of the session (the surface
+// draws a journaled call with no result as still-running, internal/tui3's
+// room.go, and it is right to).
+//
+// It is [providerTimeout] rather than a second number: the look is one
+// non-streamed completion on this session's client, which is exactly what that
+// constant already bounds.
+//
+// It is a var only so the tests can run the clock out in a millisecond, the way
+// connect.go's own waits are. NOTHING IN A BUILD WRITES IT.
+var viewLookWindow = providerTimeout
 
 // The description TEACHES, by Decision 8: capability is not something a model
 // should discover by failing. It names the uses that are otherwise invisible —
@@ -130,7 +148,17 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 	if question == "" {
 		question = viewImageDefaultQuestion
 	}
-	response, err := a.client.CompleteWithMessages(ctx, []ai.Message{{
+	// The look is bounded here and streamed nowhere ([viewLookWindow]).
+	// WithoutStream for the reason the title, the guardian and the compaction
+	// summary use it (internal/provider's stream.go): this answer is a TOOL
+	// RESULT and not the room's reply, so it must not be typed into the
+	// transcript in the chat model's voice — and it is also what puts the call
+	// on the client bounded in total rather than on the stream client, which by
+	// design carries no total deadline at all (internal/provider's
+	// transport.go).
+	look, stopLooking := context.WithTimeout(provider.WithoutStream(ctx), viewLookWindow)
+	defer stopLooking()
+	response, err := a.client.CompleteWithMessages(look, []ai.Message{{
 		Role: "user",
 		Content: []ai.ContentPart{
 			{Type: "text", Text: question},
@@ -148,6 +176,13 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 		a.addAuxiliaryUsage(response)
 	}
 	if err != nil {
+		// The window running out is its own answer, and it is told apart from
+		// the person's interrupt by the caller's context still being alive: a
+		// model that stopped answering is something this model can act on, while
+		// "context deadline exceeded" is a Go sentence about nothing it can see.
+		if look.Err() != nil && ctx.Err() == nil {
+			return seer + " did not answer about " + shown + " within " + taskSpanWord(viewLookWindow) + " — try again, or ask about a smaller picture", true, nil
+		}
 		// The cause reaches the model verbatim, bounded to a line: "try
 		// something else" is only actionable when the refusal names what went
 		// wrong, and an API error can carry a whole HTML page.
