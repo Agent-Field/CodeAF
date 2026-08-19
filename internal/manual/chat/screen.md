@@ -101,7 +101,10 @@ then the plain rule. Below width **70** the branch and the hint slot are dropped
 outright.
 
 While a task room is open the left says exactly `room · esc/←← main`, and the path and
-branch are not drawn.
+branch are not drawn. The pinned header at the top of the frame says the same thing in
+its own words, `esc/← main`, and unlike the legend it answers to a press: click it and
+you are back in the conversation. Clicking the page itself does not leave a room — a
+press on empty space does nothing here as it does everywhere.
 
 ## The status line at the bottom
 
@@ -1072,6 +1075,12 @@ A hovered conversation row gets a background band padded to the full width. A ho
 fold line brightens its arrow. A hovered table foot, and the jump-to-latest chip, go
 **accent** rather than taking a background — a highlighted rectangle would be the one
 boxed thing on a surface with no boxes.
+
+**Selected beats hovered.** A row that is already the thing you are looking at — the
+roster row and the strip chip of the room you are standing in, the cursor row of an
+open list — wears the selection band, which is the hover background one step louder,
+and the pointer moving over it changes nothing. The two cannot both be drawn, and "you
+are here" is the one still true when the pointer leaves.
 
 There is no hover at all in the screen-reader tier. Terminals below ANSI256 get no hover
 background either, because there is no weight that means "under the pointer".

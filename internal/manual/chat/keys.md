@@ -486,8 +486,12 @@ copying, not the conversation's · `pgup`/`pgdown` page · `up`/`down` scroll, b
 over an empty message box. `left` is deliberately **not** taken here — it falls
 through to the message box's back-navigation.
 
-A click on empty space does nothing anywhere else, but inside a room it is the way
-out.
+**A click inside the room's page does not leave it.** A press that lands on nothing —
+a blank row, the gap beside a paragraph, the slack under a short transcript — does
+nothing at all, exactly as it does in the conversation. Leaving is `esc` and `←`, and
+the pinned header at the top of the page names both: `esc/← main`. That header row is
+also a button — press it anywhere along its width and you are back in the conversation
+— except the `✕` at its right end, which asks to stop the work instead.
 
 **Inside a harness design's room, while its card is waiting on you**, two more chords
 appear above the message box: `ctrl+k` saves the design and `ctrl+x` drops it, and both
@@ -549,18 +553,22 @@ Only the left button acts. A press is resolved in this order:
 6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
    the right end of a room's pinned header. On a phone-width terminal the `✕`'s hit
    box is three rows tall, because a finger is about that wide.
-7. Task strip chips, then the rail column, then a proposal's choices row. On a wide
+7. A room's **pinned header**, which is the pointer's way back to the conversation.
+   The whole row answers, both ends of it, because the row says `esc/← main` and a
+   row that named the exits and did nothing when pressed would be dead. The dim
+   family lines under it are facts, not doors, and do nothing.
+8. Task strip chips, then the rail column, then a proposal's choices row. On a wide
    terminal the strip chip the roster's cursor is on carries a `✕` of its own, and
    pressing it asks to stop that work instead of opening its room.
-8. The model name in the status row, which opens the model picker. A press elsewhere
+9. The model name in the status row, which opens the model picker. A press elsewhere
    on the status row falls through. On a narrow terminal the whole two-row deck
    answers.
-9. A message of yours **waiting** for the answer to finish, in the block above the
+10. A message of yours **waiting** for the answer to finish, in the block above the
    box — a click anywhere along its line takes that message back into the box to be
    edited, and the block loses it. The whole line answers, because nothing shares it.
    A press on the dim line under the block does nothing: that line is a statement,
    not a message.
-10. The body: an inline **task link** inside prose, which is the one mouse-only target
+11. The body: an inline **task link** inside prose, which is the one mouse-only target
    on the surface; a cut markdown table's foot; a waiting sign-in, where a click
    copies its link; a thinking block, clickable over its whole height; a tool row,
    which opens its expansion, or the full-frame sheet on a narrow terminal; the
@@ -568,9 +576,11 @@ Only the left button acts. A press is resolved in this order:
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context.
 
-**A click on empty space does nothing** — there is no empty-space gesture — except
-inside a room, where it is the way out. **A click in copy mode acts on nothing**,
-because the rows there are a frozen snapshot.
+**A click on empty space does nothing, anywhere** — there is no empty-space gesture on
+this surface, and that includes inside a room: a press on a blank row of a task's page
+is not the way out and never closes it. The way out of a room is `esc`, `←`, or a press
+on the pinned header that names them. **A click in copy mode acts on nothing**, because
+the rows there are a frozen snapshot.
 
 **Hover** raises the row under the pointer one step in background and brightens its
 marker. Rows that answer to nothing do not react. There is no hover in copy mode, on
