@@ -50,6 +50,13 @@ package session
 // The page is in its context, so "why did it choose two steps?" and "would this
 // work for the nightly build?" are questions it can actually answer.
 //
+// AND THE JOURNAL HOLDS MORE THAN THAT TRANSCRIPT DOES, which is the one place
+// the two part company. Everything the designer writes goes into the room as it
+// streams and into the node's journal as each call finishes ([designSeat]), so
+// the room reads back tomorrow as the discussion it was — while none of it is
+// put in front of the thread, because a draft that was replaced is a wrong
+// answer waiting to be given ([Agent.journalOnly]).
+//
 // WHAT IT CANNOT DO IS SAVE A SECOND VERSION, and the thread says so rather
 // than implying otherwise. Writing a page is the designer's job and the
 // designer is entered through build_harness; a revision is therefore a new
@@ -58,6 +65,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -72,6 +80,97 @@ type harnessDesignSpec struct {
 	goal   string
 	model  string
 	effort provider.Effort
+}
+
+// ── WHO IS WATCHING THE PAGE BEING WRITTEN ──────────────────────────────────
+
+// designSeat is the design's place in the world, carried down to the model call
+// itself: the node's number, the room somebody can be standing in while the page
+// is written, and the thread whose journal is the permanent record of it.
+//
+// It is threaded all the way to harness_build.go's harnessComplete because that
+// is the only place the two things a watcher needs are produced — the stream,
+// delta by delta, and the assembled reply at the end of it. Nothing above that
+// call has either.
+//
+// A ZERO SEAT IS A DESIGN NOBODY IS WATCHING: a caller with no node, and every
+// test of the design ladder. Each method below is written to do nothing in that
+// case rather than to need a guard at the call site.
+type designSeat struct {
+	// id is the node's number, and it is the same number the live design block
+	// in the chat is keyed by ([Agent.emitHarness]). One design, one id.
+	id uint64
+	// room is the live lane a person in the room is reading, and thread is the
+	// child whose journal that room's HISTORY is read back out of when somebody
+	// opens the design again later (internal/tui3's readRoomJournal).
+	room   *taskRoom
+	thread *Agent
+}
+
+// says tees one streamed chunk of the designer's reply into the room, in the two
+// kinds a worker's room is already filled with — task_run.go's runTaskChild
+// publishes exactly these, and this is what makes a design room the same kind of
+// place as a worker's.
+//
+// THE TWO READERS OF THIS STREAM WANT OPPOSITE THINGS AND BOTH ARE RIGHT. The
+// conversation gets one throttled status line and never the page itself, because
+// a chat that typed a page of JSON into itself would bury the conversation it is
+// (harness_build.go's harnessProgress). A person who walked INTO the design's
+// room went there to watch: a room that showed one scrolling line for two
+// minutes and then a finished card is indistinguishable from a program that did
+// nothing, which is the exact complaint this answers.
+func (s designSeat) says(kind provider.StreamEventKind, delta string) {
+	if s.room == nil || delta == "" {
+		return
+	}
+	switch kind {
+	case provider.StreamDelta:
+		s.room.publish(Event{Kind: EventTextDelta, Text: delta})
+	case provider.StreamReasoning:
+		s.room.publish(Event{Kind: EventReasoning, Text: delta})
+	}
+}
+
+// wrote closes one design call: the whole reply goes into the node's journal,
+// and the room is told that it is on disk.
+//
+// THE JOURNAL IS WHAT THE ROOM IS READ OUT OF AFTERWARDS. The deltas [designSeat.says]
+// published are the live lane only — they exist for whoever was subscribed at
+// that instant — so without this line a design opened tomorrow would show the
+// page and none of the writing of it: the same gap the live stream just closed,
+// one day later.
+//
+// It is JOURNALED and not recorded, and [Agent.journalOnly] states both reasons.
+//
+// THE EVENT BEHIND IT IS WHAT THE ROOM'S CATCH-UP IS WAITING TO BE TOLD
+// (task_room.go's taskCatchup.record): the reply is on disk now, so the next
+// person through the door is handed it once, off the file, rather than a second
+// time off the step in flight. It carries no usage deliberately — a design's
+// calls are billed to the conversation that asked for it and never to this node
+// ([Agent.designHarnessNode] says why) — and a turn that priced nothing is one
+// the roster's own fold ignores (internal/tui3's pilotEvent).
+func (s designSeat) wrote(text string) {
+	if s.thread != nil && strings.TrimSpace(text) != "" {
+		s.thread.journalOnly(textMessage("assistant", text))
+	}
+	s.room.publish(Event{Kind: EventTurnDone})
+}
+
+// broke ends a design call that never answered. The room says what happened and
+// drops the half-written reply it was holding: nothing is coming to finish it,
+// and nothing was written to disk for the next person to read it off.
+//
+// A CANCELLED CALL IS NOT NEWS IN HERE. There are two ways a design's context
+// ends — somebody pressed ✕, or the design's own window ran out — and this build
+// already has a sentence for each of them, in the words a person would use
+// ([harnessDesignEnding], and the settle card under it). "error: context
+// canceled" would be a third account of the same event, in the vocabulary of the
+// runtime, arriving one moment before the room closes anyway.
+func (s designSeat) broke(err error) {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return
+	}
+	s.room.publish(Event{Kind: EventError, Err: err})
 }
 
 // The three phases a design node publishes on [TaskNotice.Doing], in the words a
@@ -209,7 +308,11 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	child.record(textMessage("user", harnessThreadOpening(goal, model)))
 
 	node.doingNow(harnessPhaseDesigning)
-	page, cues, err := a.designPage(ctx, goal, model, node.id)
+	// AND THE DESIGNER WRITES INTO THIS ROOM, which is the whole of what the seat
+	// is for: the room to stream into while it thinks and drafts, and the thread
+	// whose journal keeps that discussion after the card has scrolled away
+	// ([designSeat]).
+	page, cues, err := a.designPage(ctx, goal, model, designSeat{id: node.id, room: room, thread: child})
 	if err != nil {
 		if processCtx.Err() != nil && !node.stoppedByPerson() {
 			return a.pauseHarnessNode(node, child)

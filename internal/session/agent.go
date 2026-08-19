@@ -1038,6 +1038,34 @@ func (a *Agent) turnTruncated() bool {
 	return a.lastTurnTruncated
 }
 
+// journalOnly writes one message into this agent's journal WITHOUT putting it in
+// front of the model.
+//
+// It is the door for something a person has to be able to READ BACK and the
+// model must not be asked to reason from. Today that is one thing: the replies a
+// harness designer streams into its own node's room, so that reopening a design
+// tomorrow shows the writing of the page and not only the page (harness_task.go's
+// designSeat). Two separate reasons keep those lines out of the transcript, and
+// either alone would be enough.
+//
+//   - THE TRANSCRIPT IS THE THREAD'S BRIEF. The design thread already holds the
+//     page that was actually written; a superseded draft beside it is a model
+//     being invited to answer "what does step three do" out of the version that
+//     was thrown away.
+//   - AND A MESSAGE APPENDED MID-TURN IS AN ILLEGAL TRANSCRIPT. These lines land
+//     while somebody may be talking to this same agent in the room, and an
+//     assistant message that arrives between a tool call and its result is a
+//     request the provider refuses. Nothing rebuilds a conversation out of the
+//     journal here — a node's journal path is minted fresh for each life of the
+//     node (task_run.go's taskJournalPath) and is never resumed — so the file
+//     takes the line with no such ordering to break.
+func (a *Agent) journalOnly(message ai.Message) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.file != nil {
+		a.file.appendMessage(message)
+	}
+}
 // snapshot copies the messages slice for one provider request. The copy is
 // shallow and the elements are immutable once recorded, so this costs one
 // slice header per step and buys a request that cannot be mutated underneath

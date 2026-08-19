@@ -376,11 +376,7 @@ type harnessRevision struct {
 // THE HISTORY IS KEPT ACROSS ATTEMPTS. A designer shown its own refused page AND
 // the validator's exact sentence is being asked to repair what it wrote; one
 // shown only the error is being asked to guess again.
-func (a *Agent) designPage(ctx context.Context, goal, model string, designID ...uint64) (subharness.Harness, []string, error) {
-	id := uint64(0)
-	if len(designID) > 0 {
-		id = designID[0]
-	}
+func (a *Agent) designPage(ctx context.Context, goal, model string, seat designSeat) (subharness.Harness, []string, error) {
 	designer, reviewer, err := a.harnessBriefs()
 	if err != nil {
 		return subharness.Harness{}, nil, err
@@ -395,7 +391,7 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, designID ...
 	)
 	for tries := 0; ; tries++ {
 		var raw string
-		draft, page, raw, err = a.designHarnessOnce(ctx, history, model, goal, tries+1, id)
+		draft, page, raw, err = a.designHarnessOnce(ctx, history, model, goal, tries+1, seat)
 		if err == nil {
 			break
 		}
@@ -409,7 +405,7 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, designID ...
 		if strings.Contains(err.Error(), "ran out of completion budget") || strings.Contains(err.Error(), "stopped in the middle") {
 			reason = "truncated draft"
 		}
-		a.emitHarness(Event{Kind: EventHarnessProgress, ID: id, Goal: goal, Phase: "designing", Attempt: tries + 1, Attempts: harnessDesignRetries + 1, Hint: "retrying · " + reason})
+		a.emitHarness(Event{Kind: EventHarnessProgress, ID: seat.id, Goal: goal, Phase: "designing", Attempt: tries + 1, Attempts: harnessDesignRetries + 1, Hint: "retrying · " + reason})
 		// THE REFUSED PAGE GOES BACK WITH THE REFUSAL, but only when there IS
 		// one. A model that spent its whole budget thinking answered with
 		// nothing, and an empty assistant turn is a message with no content in
@@ -426,7 +422,7 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, designID ...
 	// patch loses its turn and the draft goes forward: the page in hand already
 	// passed the whole law, and refusing it because the improvement failed would
 	// throw away a good design over an optional second opinion.
-	if revised, cues, ok := a.reviewHarnessOnce(ctx, goal, draft, page, reviewer, model, id); ok {
+	if revised, cues, ok := a.reviewHarnessOnce(ctx, goal, draft, page, reviewer, model, seat); ok {
 		return revised, cues, nil
 	}
 	return page, draft.Cues, nil
@@ -435,19 +431,13 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, designID ...
 // designHarnessOnce asks for one design and answers with it decoded, the raw
 // text it came in (for the retry history), and the error the model is going to
 // be shown.
-func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, model string, live ...any) (harnessDesign, subharness.Harness, string, error) {
-	goal, attempt := "", 1
-	if len(live) > 0 {
-		goal, _ = live[0].(string)
-	}
-	if len(live) > 1 {
-		attempt, _ = live[1].(int)
-	}
-	id := uint64(0)
-	if len(live) > 2 {
-		id, _ = live[2].(uint64)
-	}
-	data, raw, err := a.harnessJSON(ctx, history, model, harnessDesignTokens, harnessProgressCall{id: id, goal: goal, phase: "designing", attempt: attempt, attempts: harnessDesignRetries + 1})
+//
+// The goal, the attempt and the seat are carried for the WATCHERS and for
+// nothing else: the goal and the attempt name this call on the live design block
+// in the chat, and the seat is the room and journal the reply itself goes to
+// ([designSeat]).
+func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, model, goal string, attempt int, seat designSeat) (harnessDesign, subharness.Harness, string, error) {
+	data, raw, err := a.harnessJSON(ctx, history, model, harnessDesignTokens, harnessProgressCall{seat: seat, goal: goal, phase: "designing", attempt: attempt, attempts: harnessDesignRetries + 1})
 	if err != nil {
 		return harnessDesign{}, subharness.Harness{}, raw, err
 	}
@@ -467,7 +457,7 @@ func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, mod
 //
 // The critic is shown the draft AS JSON rather than as the card, because it is
 // patching a page and the node ids its ops name are on that page.
-func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnessDesign, page subharness.Harness, reviewer, model string, designID ...uint64) (subharness.Harness, []string, bool) {
+func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnessDesign, page subharness.Harness, reviewer, model string, seat designSeat) (subharness.Harness, []string, bool) {
 	encoded, err := subharness.Encode(page)
 	if err != nil {
 		return subharness.Harness{}, nil, false
@@ -482,11 +472,10 @@ func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnes
 			"Review it and reply with your findings and the ops that answer them.",
 		}, "\n\n")),
 	}
-	id := uint64(0)
-	if len(designID) > 0 {
-		id = designID[0]
-	}
-	data, _, err := a.harnessJSON(ctx, history, model, harnessReviewTokens, harnessProgressCall{id: id, goal: goal, phase: "reviewing", attempt: 1, attempts: 1})
+	// THE REVIEW IS WATCHED EXACTLY AS THE DESIGN IS. It is the same seat, so the
+	// critique streams into the same room and lands in the same journal, and a
+	// person who saw the draft written sees what the second pass made of it.
+	data, _, err := a.harnessJSON(ctx, history, model, harnessReviewTokens, harnessProgressCall{seat: seat, goal: goal, phase: "reviewing", attempt: 1, attempts: 1})
 	if err != nil {
 		return subharness.Harness{}, nil, false
 	}
@@ -620,18 +609,26 @@ func harnessRanOut(raw string) string {
 // harnessComplete is one call on the session's own client. It reports the
 // text and whether the answer was CUT OFF at the token ceiling.
 //
-// The stream is OBSERVED, never rendered ([provider.WithStreamObserver]): the
-// person's chat would otherwise type a page of JSON into itself. What the
-// observer feeds is the live design card — reasoning lines, step counts, and
-// the stall clock — so the wait is never a blank spinner. No tools either:
-// the designer's only job is to answer.
+// The stream is OBSERVED, never rendered into the CONVERSATION
+// ([provider.WithStreamObserver]): the person's chat would otherwise type a page
+// of JSON into itself. What the observer feeds the chat is the live design card
+// — reasoning lines, step counts, and the stall clock — so the wait is never a
+// blank spinner. No tools either: the designer's only job is to answer.
+//
+// THE DESIGN'S OWN ROOM IS THE OTHER READER, and it gets the whole stream
+// unthrottled ([designSeat.says]). The two are not in tension: a feed somebody
+// is holding a conversation in wants one line that stays a line, and a room
+// somebody walked into to WATCH wants the writing itself.
 //
 // The truncation is read through internal/store's own classifier rather than by
 // comparing finish_reason strings here: the vocabulary an endpoint uses for
 // "you hit the ceiling" is already known in one place, and a second reading of
 // it would be a second answer to the same question.
 type harnessProgressCall struct {
-	id                uint64
+	// seat is who is watching this call: the node's id, its room, its journal.
+	// The id is not repeated beside it — one design has one number, and a second
+	// copy of it is a number that can disagree with itself.
+	seat              designSeat
 	goal, phase       string
 	attempt, attempts int
 }
@@ -673,7 +670,7 @@ func (p *harnessProgress) emit(stalled bool) {
 	if p.call.phase == "reviewing" && hint == "thinking" {
 		hint = "checking the draft"
 	}
-	p.a.emitHarness(Event{Kind: EventHarnessProgress, ID: p.call.id, Goal: p.call.goal, Phase: p.call.phase,
+	p.a.emitHarness(Event{Kind: EventHarnessProgress, ID: p.call.seat.id, Goal: p.call.goal, Phase: p.call.phase,
 		Attempt: p.call.attempt, Attempts: p.call.attempts, ThoughtTail: tail,
 		Hint: hint, Bytes: len(p.content), Stalled: stalled})
 }
@@ -704,6 +701,10 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 	streamCtx := provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
 		if event.Kind == provider.StreamDelta || event.Kind == provider.StreamReasoning {
 			progress.add(event.Kind, event.Delta)
+			// AND THE SAME CHUNK GOES STRAIGHT INTO THE DESIGN'S ROOM, whole and
+			// unthrottled, which is the one thing the throttled card above cannot
+			// be: a room is where somebody went to watch this happen.
+			call.seat.says(event.Kind, event.Delta)
 		}
 	})
 	done := make(chan struct{})
@@ -732,15 +733,25 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 		ai.WithTemperature(temperature))
 	close(done)
 	if err != nil {
+		call.seat.broke(err)
 		return "", false, err
 	}
 	if response == nil {
-		return "", false, errors.New("the designer answered with nothing")
+		empty := errors.New("the designer answered with nothing")
+		call.seat.broke(empty)
+		return "", false, empty
 	}
 	// The design is spent on the person's account like every other auxiliary
 	// call (title.go, guardian.go): it is not a turn, and it is not free.
 	a.addAuxiliaryUsage(response)
-	return response.Text(), harnessCutOff(response), nil
+	text := response.Text()
+	// THE REPLY IS THE ROOM'S HISTORY, and this is where it becomes one. A cut-off
+	// or unparseable reply is written down exactly like a good one: it is what the
+	// designer actually said, it is what the retry loop is about to answer, and a
+	// journal that kept only the attempts that worked would explain nothing about
+	// the design that took four of them.
+	call.seat.wrote(text)
+	return text, harnessCutOff(response), nil
 }
 
 // harnessCutOff reports whether a completion ended because it ran out of room.
