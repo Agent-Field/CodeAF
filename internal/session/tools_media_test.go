@@ -188,6 +188,21 @@ func dataURLBytes(t *testing.T, url string) []byte {
 	return decoded
 }
 
+// referenceURL is the same reading, one envelope out: it insists on the
+// image_url wrapper every generation endpoint validates — a bare data URL is
+// refused with "expected object, received string" — and hands back the URL
+// inside it.
+func referenceURL(t *testing.T, reference provider.ImageReference) string {
+	t.Helper()
+	if reference.Type != "image_url" {
+		t.Fatalf("reference type = %q, want image_url", reference.Type)
+	}
+	if reference.ImageURL.URL == "" {
+		t.Fatal("reference carried an empty image_url.url")
+	}
+	return reference.ImageURL.URL
+}
+
 // THE MANUAL LAW, for the verbs a bare session does not carry.
 //
 // internal/session/manual_test.go walks the belt of an agent with nothing wired,

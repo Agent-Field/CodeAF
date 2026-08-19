@@ -123,7 +123,10 @@ func (a *Agent) generateVideoTool(client MediaGenerator, model string) bare.Tool
 			if refusal != "" {
 				return "Invalid arguments: frame " + refusal, true, nil
 			}
-			styles, refusal := a.videoReferences(parsed.ReferencePaths)
+			// A style reference is the envelope WITHOUT a frame type, which is
+			// how the wire tells a look from a keyframe — so it is exactly what
+			// the shared builder makes, with nothing added.
+			styles, refusal := a.mediaReferences(parsed.ReferencePaths)
 			if refusal != "" {
 				return "Invalid arguments: reference " + refusal, true, nil
 			}
@@ -153,38 +156,19 @@ func (a *Agent) generateVideoTool(client MediaGenerator, model string) bare.Tool
 	}
 }
 
-// videoFrames turns the frame paths into the wire's first/last frame envelopes.
-func (a *Agent) videoFrames(paths []string) ([]provider.VideoImageReference, string) {
+// videoFrames turns the frame paths into the wire's first/last frame envelopes:
+// the same envelope [Agent.mediaReferences] builds for every other endpoint,
+// with the one slot only a video has filled in.
+func (a *Agent) videoFrames(paths []string) ([]provider.ImageReference, string) {
 	frameTypes := [videoFrameLimit]string{"first_frame", "last_frame"}
-	frames := make([]provider.VideoImageReference, 0, len(paths))
-	for index, path := range paths {
-		dataURL, refusal := a.mediaReference(path)
-		if refusal != "" {
-			return nil, refusal
-		}
-		frames = append(frames, provider.VideoImageReference{
-			Type:      "image_url",
-			ImageURL:  provider.VideoImageURL{URL: dataURL},
-			FrameType: frameTypes[index],
-		})
+	frames, refusal := a.mediaReferences(paths)
+	if refusal != "" {
+		return nil, refusal
+	}
+	for index := range frames {
+		frames[index].FrameType = frameTypes[index]
 	}
 	return frames, ""
-}
-
-// videoReferences turns the style paths into the same envelope WITHOUT a frame
-// type, which is how the wire tells a look from a keyframe.
-func (a *Agent) videoReferences(paths []string) ([]provider.VideoImageReference, string) {
-	references := make([]provider.VideoImageReference, 0, len(paths))
-	for _, path := range paths {
-		dataURL, refusal := a.mediaReference(path)
-		if refusal != "" {
-			return nil, refusal
-		}
-		references = append(references, provider.VideoImageReference{
-			Type: "image_url", ImageURL: provider.VideoImageURL{URL: dataURL},
-		})
-	}
-	return references, ""
 }
 
 // renderVideo is the job's whole middle: wait for the provider, land the bytes,

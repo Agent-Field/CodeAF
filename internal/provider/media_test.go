@@ -54,6 +54,66 @@ func TestMediaClientUsesVerifiedImageAndSpeechWireShapes(t *testing.T) {
 	}
 }
 
+// The image endpoint validates input_references as an array of OBJECTS, and it
+// says so by refusing the whole render: a bare data URL comes back as
+// `{"expected":"object","code":"invalid_type","path":["input_references",0]}`
+// and nothing is drawn. Text-to-image never touches the field, so the break was
+// invisible until somebody asked for an edit of a picture they already had.
+//
+// This test reads the BYTES ON THE WIRE rather than the Go struct, because the
+// struct is exactly what was wrong: the shape has to be pinned where the
+// endpoint reads it.
+func TestImageReferencesRideAsObjectsOnTheWire(t *testing.T) {
+	var body map[string]any
+	client := handlerClient(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_ = json.NewDecoder(request.Body).Decode(&body)
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(writer, `{"data":[{"b64_json":"aW1hZ2U=","media_type":"image/png"}]}`)
+	}))
+	media, err := NewMediaClient(Config{APIKey: "media-key", BaseURL: "https://openrouter.example/api/v1", HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := media.GenerateImage(context.Background(), ImageRequest{
+		Model: "paint/model", Prompt: "now in colour",
+		InputReferences: []ImageReference{NewImageReference("data:image/png;base64,c2tldGNo")},
+	}); err != nil {
+		t.Fatalf("GenerateImage: %v", err)
+	}
+
+	references, _ := body["input_references"].([]any)
+	if len(references) != 1 {
+		t.Fatalf("input_references = %+v, want one entry", body["input_references"])
+	}
+	envelope, isObject := references[0].(map[string]any)
+	if !isObject {
+		t.Fatalf("input_references[0] = %T (%v), want an object — a string is refused with "+
+			"\"expected object, received string\"", references[0], references[0])
+	}
+	if envelope["type"] != "image_url" {
+		t.Fatalf("reference type = %v, want image_url", envelope["type"])
+	}
+	url, _ := envelope["image_url"].(map[string]any)
+	if url == nil || url["url"] != "data:image/png;base64,c2tldGNo" {
+		t.Fatalf("reference image_url = %+v", envelope["image_url"])
+	}
+	// A frame type is the VIDEO endpoint's slot alone; an image reference must
+	// not carry an empty one into a request that has no notion of frames.
+	if _, present := envelope["frame_type"]; present {
+		t.Fatalf("image reference carried a frame_type: %+v", envelope)
+	}
+
+	// And a request with no references does not send the key at all, so a plain
+	// text-to-image call still reaches models that reject an empty array.
+	body = nil
+	if _, err := media.GenerateImage(context.Background(), ImageRequest{Model: "paint/model", Prompt: "a harbor"}); err != nil {
+		t.Fatalf("GenerateImage without references: %v", err)
+	}
+	if _, present := body["input_references"]; present {
+		t.Fatalf("a reference-free request still sent input_references: %+v", body)
+	}
+}
+
 func TestMusicUsesSpeechEndpointWithoutVoice(t *testing.T) {
 	client := handlerClient(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/audio/speech" {
@@ -134,9 +194,9 @@ func TestGenerateVideoSubmitsPollsAndDownloadsWithoutSleeping(t *testing.T) {
 	}
 	response, err := media.GenerateVideo(context.Background(), VideoRequest{
 		Model: "motion/model", Prompt: "a quiet harbor", Duration: 8, Resolution: "720p", AspectRatio: "16:9",
-		FrameImages: []VideoImageReference{
-			{Type: "image_url", ImageURL: VideoImageURL{URL: "data:image/png;base64,Zmlyc3Q="}, FrameType: "first_frame"},
-			{Type: "image_url", ImageURL: VideoImageURL{URL: "data:image/png;base64,bGFzdA=="}, FrameType: "last_frame"},
+		FrameImages: []ImageReference{
+			{Type: "image_url", ImageURL: ImageReferenceURL{URL: "data:image/png;base64,Zmlyc3Q="}, FrameType: "first_frame"},
+			{Type: "image_url", ImageURL: ImageReferenceURL{URL: "data:image/png;base64,bGFzdA=="}, FrameType: "last_frame"},
 		},
 	})
 	if err != nil || string(response.Video) != "mp4 bytes" || response.Usage == nil || response.Usage.Cost == nil || *response.Usage.Cost != 1.25 {

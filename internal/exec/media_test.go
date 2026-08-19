@@ -134,8 +134,11 @@ func TestGenerateImageWritesReadableNamesReferencesAndUsage(t *testing.T) {
 	if _, ok := space.Locate(want); !ok || !strings.Contains(result.Content, filepath.ToSlash(want)) {
 		t.Fatalf("generated image missing: %q", result.Content)
 	}
+	// The reference rides in the image_url ENVELOPE, not as a bare string: the
+	// endpoint refuses a plain data URL with "expected object, received string".
 	if fake.imageRequest.AspectRatio != "16:9" || len(fake.imageRequest.InputReferences) != 1 ||
-		!strings.HasPrefix(fake.imageRequest.InputReferences[0], "data:image/png;base64,") {
+		fake.imageRequest.InputReferences[0].Type != "image_url" ||
+		!strings.HasPrefix(fake.imageRequest.InputReferences[0].ImageURL.URL, "data:image/png;base64,") {
 		t.Fatalf("image request = %+v", fake.imageRequest)
 	}
 	if got := space.Artifacts("7"); len(got) != 1 || got[0] != want {

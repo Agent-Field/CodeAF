@@ -118,13 +118,16 @@ func (t *Toolbox) generateImage(ctx context.Context, args map[string]any) Result
 		return errorf("no image-generation model is available")
 	}
 	references := stringsArg(args, "reference_paths")
-	encoded := make([]string, 0, len(references))
+	// The wire takes the image_url envelope and not a bare data URL: a plain
+	// string is refused by the endpoint as "expected object, received string",
+	// which is why every reference is built by [provider.NewImageReference].
+	encoded := make([]provider.ImageReference, 0, len(references))
 	for _, path := range references {
 		dataURL, refusal := t.workspaceImageDataURL(path)
 		if refusal != "" {
 			return errorf("reference %s", refusal)
 		}
-		encoded = append(encoded, dataURL)
+		encoded = append(encoded, provider.NewImageReference(dataURL))
 	}
 	if t.media.BeforeSpend != nil {
 		if err := t.media.BeforeSpend(ctx, 0); err != nil {
@@ -283,16 +286,14 @@ func (t *Toolbox) generateVideo(ctx context.Context, args map[string]any) Result
 	}
 
 	references := stringsArg(args, "reference_paths")
-	frames := make([]provider.VideoImageReference, 0, min(2, len(references)))
-	styles := make([]provider.VideoImageReference, 0, max(0, len(references)-2))
+	frames := make([]provider.ImageReference, 0, min(2, len(references)))
+	styles := make([]provider.ImageReference, 0, max(0, len(references)-2))
 	for index, path := range references {
 		dataURL, refusal := t.workspaceImageDataURL(path)
 		if refusal != "" {
 			return errorf("reference %s", refusal)
 		}
-		reference := provider.VideoImageReference{
-			Type: "image_url", ImageURL: provider.VideoImageURL{URL: dataURL},
-		}
+		reference := provider.NewImageReference(dataURL)
 		switch index {
 		case 0:
 			reference.FrameType = "first_frame"
