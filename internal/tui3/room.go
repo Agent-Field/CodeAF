@@ -375,6 +375,41 @@ func waitRoom(ch <-chan session.Event, gen int) tea.Cmd {
 // asks a geometric question about the transcript asks this first.
 func (a *app) roomOpen() bool { return a.room != nil }
 
+// roomStandingOn reports whether this node's row is the door to the page that is
+// on screen right now — "you are in here", asked of one row.
+//
+// IT IS THE ONE ANSWER BOTH LISTS OF THE WORK READ. The strip marks the chip of
+// the room a person is standing in (taskstrip.go) and the roster now marks the
+// row (task.go's [app.railRows]), and a surface where the tab bar and the column
+// could disagree about which door you went through would be a surface with two
+// answers to a question that has one.
+//
+// A RUN'S PAGE IS NOT A NODE'S, and it is matched by the door rather than by the
+// id: [app.openOrchRoom] builds its room with id zero on purpose, so everything
+// keyed on the id reads zero and marks nothing. What a run's rows carry instead
+// is the run they belong to and, on a child, the node inside it — the same pair
+// [app.railPress] opens the page with — so the row that lights is the row whose
+// press would land exactly where the reader already is.
+//
+// Nothing at all while no room is open, which is the emptiness law said about a
+// highlight: a mark for "where you are" on a surface you have not gone anywhere
+// on is a mark that means nothing.
+func (a *app) roomStandingOn(node *taskNode) bool {
+	if a.room == nil || node == nil {
+		return false
+	}
+	if run := a.orchOf(); run != nil {
+		if node.run == "" || node.run != run.id {
+			return false
+		}
+		// The run's page opens on the graph and descends into one node's card, so
+		// the row standing for the page is the root while no card is open and the
+		// child whose name the card carries once one is (roomorch.go).
+		return node.node == run.card
+	}
+	return node.id != 0 && a.room.id == node.id
+}
+
 // openRoomFor opens the room of the node with this id, or closes it when it is
 // already the room on screen. It is what BOTH doors resolve to — the rail click
 // and the transcript walk — so a second press on either is always the way back.
@@ -1901,6 +1936,36 @@ func (a *app) roomHead(width int) string {
 		return line
 	}
 	return a.pal.accent(fit(left, width))
+}
+
+// roomBackPress answers a press on the pinned header, and reports whether it
+// took it. The header IS the way out for the pointer.
+//
+// THE WHOLE ROW IS THE TARGET, not just the "esc/← main" at its right end. The
+// row is one line tall and about nine cells of it are the microcopy; asking a
+// person to land a pointer on those nine is asking them to aim at a label, and
+// the two things that share this row — the trail and the way out — are both
+// about leaving. The ✕ is the exception and it is claimed one rung earlier
+// (stop.go's [app.stopMarkPress]), because ending work and leaving the page you
+// were watching it on are opposite gestures and the expensive one wins the cells
+// it is drawn on.
+//
+// THE KIN ROWS UNDER IT ARE NOT PART OF THIS. They are dim telemetry about the
+// node's family ([app.roomKinRows]), and a press on a fact is not a press on a
+// door — it does nothing, exactly as a press on any other row that answers to
+// nothing does ([app.press]).
+//
+// It is read from the frame's OWN row numbering — the header is the first row of
+// a room's frame, always, because [app.view] draws it first and the geometry
+// charges [app.headHeight] for it — rather than through [app.chromeAt], which
+// resolves the block at the BOTTOM of the window and has never had a row up here
+// to answer for.
+func (a *app) roomBackPress(y int) bool {
+	if !a.roomOpen() || a.headHeight() == 0 || y != 0 {
+		return false
+	}
+	a.closeRoom()
+	return true
 }
 
 // roomHeadWord is the header's left: the node's mark, the trail, and the three

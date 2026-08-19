@@ -2598,12 +2598,37 @@ func (a *app) railRows(height int) []string {
 			lead = a.pal.accent(a.linearMark(railMark, railMarkASCII))
 		}
 		text := line.text
-		// EVERY NODE ROW TAKES THE HOVER STEP, because every node row answers to a
-		// click — the whole row is that node's door (hover.go's own law). It is
-		// applied here rather than inside the row's render for the reason the
+		// THE ROW WHOSE DOOR YOU WALKED THROUGH WEARS THE SELECTION BAND, which is
+		// what makes this column a map of where you are rather than a list of what
+		// exists: a person standing inside a node's page could read the page's own
+		// header for its name, and then had to read it, because nothing in the
+		// roster beside it said which of these rows they were behind.
+		//
+		// It is [palette.band] and not a new mark — the same background the strip
+		// puts on the chip of the room a person is standing in (taskstrip.go's
+		// [app.stripChip]), and the same one every selected row on this surface
+		// wears (palette.go). It covers EVERY line of the entry, not just its head:
+		// a node's row is two lines tall when it has something to say under its
+		// title, and a band on half of it would read as a row cut in two.
+		//
+		// AND EVERY NODE ROW TAKES THE HOVER STEP, because every node row answers
+		// to a click — the whole row is that node's door (hover.go's own law). It
+		// is applied here rather than inside the row's render for the reason the
 		// transcript applies it in its layout pass: one place knows where the
 		// pointer is, and no renderer has to remember it exists.
-		if line.entry >= 0 && line.entry < len(entries) && a.hoveringRail(entries[line.entry].node) {
+		//
+		// SELECTED OUTRANKS HOVERED, which is the law the overlay's rows already
+		// state: the two backgrounds cannot nest — each closes with SGR 49 — and
+		// of the two facts, "you are in here" is the one that is still true when
+		// the pointer moves away.
+		var node *taskNode
+		if line.entry >= 0 && line.entry < len(entries) {
+			node = entries[line.entry].node
+		}
+		switch {
+		case a.roomStandingOn(node):
+			text = a.pal.band(text, room)
+		case node != nil && a.hoveringRail(node):
 			text = a.hoverRow(text, room)
 		}
 		out[i] = lead + text
@@ -3400,8 +3425,19 @@ func railModelWord(node *taskNode) string {
 // railTitle paints an already-fitted title. The cut happens at the call site
 // because that is where the id's cells are measured out of it ([app.railNodeRows]):
 // a title fitted here and trimmed there would be a row measured twice.
+//
+// THE ROOM A PERSON IS STANDING IN LEADS THE COLUMN, in the accent and bold —
+// which is the strip's own law for the same fact said one row up
+// (taskstrip.go's [app.stripTitle]), because the strip and the roster are the
+// two lists of the same work and a person who learned the mark on one has
+// learned it on the other. It is the TEXT half of that mark; the row's band is
+// the other ([app.railRows]), and this half is the one a sixteen-colour
+// terminal still gets.
 func (a *app) railTitle(node *taskNode, title string) string {
-	if node.state == session.TaskRunning {
+	switch {
+	case a.roomStandingOn(node):
+		return a.pal.bold(a.pal.accent(title))
+	case node.state == session.TaskRunning:
 		return a.pal.ink(title)
 	}
 	return a.pal.muted(title)

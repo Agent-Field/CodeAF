@@ -380,6 +380,15 @@ end — and the id stands down when the name would be left under 12 cells. Under
 most two more: what it is doing, what is holding it, what it waits on, or how its branch
 came home. `conflicted · task/fix-nil` in the bad hue is the one loud row on the column.
 
+**The row of the room you are standing in is picked out.** Walk into a task — from the
+roster, a strip chip, a spawn card or a `task 7` link — and that task's row in the column
+takes a colour band across its whole width, every line of it, with its title in the accent
+and bold. It is the same mark the strip puts on the chip of the room you are in, so the two
+lists of the work never disagree about which door you went through. It follows you: opening
+another task's room moves it, and `esc` back to the conversation clears it. With no room
+open no row is marked at all. On a terminal with no background colours the accent title is
+what is left of it.
+
 There is no subtitle here. The column is a presence list; the proposal card and the landing
 card both carry the sentence.
 
@@ -475,6 +484,10 @@ Pressing the same door again is always the way back out.
 Ways out: `esc` leaves and restores the conversation's scroll exactly. `←` over an empty box
 steps back one level. `←` twice within 600 ms goes home — out of everything, at the live
 edge, nothing selected. `/new` closes any open room, because a task dies with its session.
+With the pointer, the room's own pinned header is the way back: it reads `esc/← main` and
+the whole row answers to a press. **Clicking inside the page does not leave it** — a press
+on a blank row, or on prose with nothing behind it, does nothing at all, the same as it
+does in the conversation.
 
 What refuses to open: a proposal whose task has had no update yet (the id is real, but a
 room on it would be an empty page with nothing coming), and a queued task by way of `→`
@@ -486,6 +499,8 @@ writes one note in the conversation: `room unavailable — this session has no t
 | | the main thread | inside a room |
 | --- | --- | --- |
 | what the body draws | the conversation | that task's transcript |
+| its row on the roster | nothing is marked | that task's row wears a colour band and an accent title |
+| clicking empty space | nothing | nothing — leaving is `esc`, `←`, or the pinned header |
 | what `enter` does | sends to the model, or holds the message above the box while a turn is running | **steers the task** — never held |
 | box placeholder | the draft prompt | `Steer <title>… (esc: main)` |
 | pinned top line | none | the focus header, and the family lines under it |
@@ -502,6 +517,14 @@ The focus header is an accent line pinned at the top:
 the state glyph, a trail that always names `main` as the root, then the state word, the
 clock, the spend and the model — each dropped when nobody published it. It is pinned
 because a fact that scrolls away is only true at the top of the page.
+
+**The header is a button as well as a line.** Press it anywhere along its width and you
+are back in the conversation, which is the pointer's version of the `esc/← main` it
+prints. The one exception is the `✕` at its right end, which asks to stop the work
+instead. Every kind of room draws this header — a task's page, a sub-harness design, an
+adaptive run's graph, a run node's transcript — so the way out is always named and always
+pressable. It is dropped only on a terminal too short or narrower than 12 columns to draw
+it, where `esc` still leaves.
 
 Under it, dim and indented, come up to three more pinned lines saying where this task sits
 in its family — see *Who started this task, and what it handed out*.
