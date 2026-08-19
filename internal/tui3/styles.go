@@ -660,6 +660,33 @@ func (p palette) band(s string, width int) string {
 	return p.background(s, width, p.ramp.band)
 }
 
+// chip paints an INLINE chip: a background behind exactly the cells the text
+// already occupies, with the accent ink on top of it. It is what a recognized
+// slash command wears, in the message box and in the sent message alike
+// (slashchip.go).
+//
+// It is [palette.background] with the padding left out, and the missing padding
+// is the law rather than an omission: the composer counts the caret's column off
+// the draft's own runes, so a chip that added so much as a space would put the
+// caret in the wrong column on every row that held one.
+//
+// The tint is the SELECTED ROW's ([hueBand]) and not a seventh colour. A
+// background on this surface is not a role — the two there are say "the pointer
+// is here" and "you are here", neither of which is a kind of thing — so a run of
+// cells lifted off the page reads as "this is not prose" wherever it appears,
+// and a slash command is exactly that.
+//
+// Below the 256 rung there is no background to draw and what is left is the
+// accent's own weight: a command reads as bold where it cannot read as a tinted
+// run, which is the same trade the person's own words already make (render.go).
+func (p palette) chip(s string) string {
+	if s == "" {
+		return s
+	}
+	// Width zero, so [palette.background] pads nothing.
+	return p.background(p.accent(s), 0, p.ramp.band)
+}
+
 // background is the one place this file draws a background: the row padded to
 // the full width, wrapped in the colour, closed with SGR 49. A terminal below
 // ANSI256 gets the row back untouched — there is no weight that means "this

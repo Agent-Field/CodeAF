@@ -339,31 +339,97 @@ const menuRows = 8
 // menu is the command list's whole state. The zero value is closed.
 type menu struct {
 	open bool
+	// at is the rune index of the '/' this list is filtering under. It used to
+	// be implicit — the list only ever opened on a draft whose first character
+	// was a slash, so the answer was always zero — and it is written down now
+	// that a slash anywhere in a sentence opens it (see [menu.sync]).
+	at int
 	// hits are indexes into commands, in rank order.
 	hits   []int
 	score  []int
 	cursor int
 	top    int
+	// sealed says a token has been ANSWERED and the list must stay out of it,
+	// and sealAt is which one — the rune index its '/' sits at. Two gestures set
+	// it, and they are the same gesture from the list's side: esc, which is a
+	// person saying they meant the word rather than the list, and a row chosen
+	// mid-sentence, whose answer the list would otherwise reopen on top of.
+	//
+	// It is the completion's `done` under another name (files.go) and it is kept
+	// as a POSITION rather than as text because a command is a word a person
+	// keeps typing after: "/task" dismissed and then continued into "/tasks of
+	// the day" is still the same token, and the list may not come back for it.
+	sealed bool
+	sealAt int
 }
 
-// sync opens, narrows or closes the list from what is in the draft. It is
+// sync opens, narrows or closes the list from the draft and the caret. It is
 // called after every edit, and it is the ONLY thing that opens this overlay:
 // there is no key for it, because the key is "/".
-func (m *menu) sync(line string) {
-	if !strings.HasPrefix(line, "/") || strings.ContainsAny(line, " \n") {
+//
+// ── A SLASH ANYWHERE, NOT ONLY AT THE HEAD OF THE LINE ──
+//
+// This used to ask one question of the whole line — does it start with "/" and
+// hold no space — which meant the list could only ever be reached by starting a
+// message with it. A person half a sentence in who wanted to know what commands
+// exist had to throw the sentence away to find out.
+//
+// So it asks the same question the "@" list asks instead ([slashToken]): the
+// caret is standing in a word, and that word begins with a slash. The dampers
+// that keep a PATH from dragging this open on every keystroke are three, and all
+// three are here rather than spread around the surface:
+//
+//   - A '/' with a non-space in front of it opens nothing. That is the token
+//     rule, and it is what makes "/Users/santosh" one candidate rather than two.
+//   - A filter that matches NOTHING closes the list. The word being matched is
+//     the whole run to the next space — "Users/santosh", "tmp/aforge" — so a
+//     path drops out within a couple of keystrokes and stays out; a backspace
+//     back into a word that does match brings it straight back.
+//   - A space closes it, because the word the caret is in stops being the slash
+//     word — which is the rule that has always closed this list, restated.
+//
+// And esc seals the token outright ([menu.dismiss]), for the person who meant
+// the word and does not want to be asked again about it.
+func (m *menu) sync(e *editor) {
+	at, query, ok := slashToken(e.value, e.cursor)
+	if !ok {
 		m.close()
 		return
 	}
-	needle := strings.ToLower(line[1:])
-	was := m.open
-	m.open = true
-	m.rank(needle)
+	if m.sealed && m.sealAt == at {
+		// Answered already. The list stays down without forgetting why, so that
+		// the next keystroke inside this same word does not reopen it.
+		m.open = false
+		return
+	}
+	was := m.open && m.at == at
+	m.open, m.at = true, at
+	m.rank(strings.ToLower(query))
+	if len(m.hits) == 0 {
+		// NOTHING MATCHED, so there is nothing to be offered. It drew no rows in
+		// this state before ([menu.height] returns none), and being closed as
+		// well is what stops a path from holding an invisible overlay open
+		// underneath a sentence — and what lets esc, ↑ and ↓ mean what they
+		// ordinarily mean again.
+		m.open = false
+		return
+	}
 	if !was {
 		m.cursor, m.top = 0, 0
 	}
 }
 
+// close is the full reset, the seal included: the draft this list was filtering
+// has been sent, or an overlay took the box, and there is no word left to stay
+// out of.
 func (m *menu) close() { *m = menu{} }
+
+// dismiss is close plus the memory of which token was dismissed. See [menu.sync]
+// for what the seal buys and [app.dismissLists] for who presses it.
+func (m *menu) dismiss(at int) {
+	m.close()
+	m.sealed, m.sealAt = true, at
+}
 
 // rank filters by SUBSTRING over the command's name, prefix first — the same
 // rule the model picker uses, for the same reason: the score is the offset the
@@ -442,27 +508,56 @@ func (m *menu) rows(width, n int, pal palette, hover int) []string {
 
 // runMenu is enter while the command list is up: the row under the cursor wins.
 //
-// A row that TAKES something is written into the draft instead of run — "/model
-// <slug>" with no slug is not a command anybody meant, and putting "/model "
-// in the box with the caret after it is the surface finishing the person's
-// sentence rather than guessing at it.
+// WHAT IT DOES WITH THE ROW DEPENDS ON WHERE THE TOKEN IS, and the rule is the
+// submit rule read backwards. [app.enter] sends a draft to [app.slash] when its
+// FIRST character is a slash and never otherwise, so:
+//
+//   - The token opens the draft and is all of it. This is a command being
+//     chosen, and it behaves exactly as it always has — the row runs, or, if it
+//     TAKES something, "/model " goes into the box with the caret after it,
+//     because "/model <slug>" with no slug is not a command anybody meant.
+//   - Anything else — a slash word inside a sentence, or a command whose
+//     argument is already typed — is a MENTION. The token is replaced with the
+//     command's word, the caret parks after it, and NOTHING RUNS. A list that
+//     ran a command from the middle of a sentence would be running something
+//     the same line submitted by hand would not.
+//
+// Either way the list stops offering: a mention seals its own token, so the
+// answer this just wrote does not have the list reopen on top of it.
 func (a *app) runMenu() tea.Cmd {
 	chosen, ok := a.menu.choice()
 	if !ok {
 		return nil
 	}
-	a.menu.close()
-	if chosen.args != "" {
-		a.input.setText("/" + chosen.name + " ")
+	e := &a.input
+	// The token's start is CLAMPED to the draft as it stands. The lists follow
+	// edits and not caret moves, so there are gestures — a history recall, a
+	// draft restored under an open list — that can leave this index pointing
+	// past the end of a draft that has since got shorter, and an index into a
+	// slice is not a thing to be optimistic about.
+	at := min(max(a.menu.at, 0), len(e.value))
+	end := tokenEnd(e.value, at)
+	word := "/" + chosen.name
+	if at != 0 || strings.TrimSpace(string(e.value[end:])) != "" {
+		head := append([]rune(nil), e.value[:at]...)
+		tail := append([]rune(nil), e.value[end:]...)
+		e.value = append(append(head, []rune(word)...), tail...)
+		e.cursor = at + len([]rune(word))
+		a.menu.dismiss(at)
 		return a.edited()
 	}
-	a.input.reset()
+	a.menu.close()
+	if chosen.args != "" {
+		e.setText(word + " ")
+		return a.edited()
+	}
+	e.reset()
 	// It goes into the recall list exactly as if it had been typed out and
 	// entered, because from the person's side it was: the list is a shortcut
 	// for typing, not a second door with different rules (see [app.enter]).
-	a.remember("/" + chosen.name)
+	a.remember(word)
 	a.dropDraft()
-	return a.slash("/" + chosen.name)
+	return a.slash(word)
 }
 
 // helpText renders the same table the list draws, plus the two keys that have

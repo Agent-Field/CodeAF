@@ -806,8 +806,9 @@ Four rungs, detected once from what your terminal says it can do:
   tint.
 - **NoColor** — no escape sequences at all, weight included.
 
-Backgrounds — the hover band and the selection band — are drawn only at ANSI256 and
-above. There is no weight that means "this row".
+Backgrounds — the hover band, the selection band, and the chip behind a recognized slash
+command — are drawn only at ANSI256 and above. There is no weight that means "this row",
+so a slash command falls back to bold and a hovered row to nothing.
 
 If a colour on this surface could be described as "bright", it is wrong.
 
@@ -829,6 +830,12 @@ whole value is that seeing it anywhere means one thing.
 Hue carries identity; weight carries markdown. Your message is accent whole behind its
 own glyph, and nothing the model writes is ever painted accent. On a 16-colour terminal
 that accent degrades to bold, which is the only marker left there.
+
+One thing inside your own words is painted differently: a slash command aforge
+recognizes — `/task`, `/compact`, `/clear` — wears a **chip**, the selection band's tint
+behind the letters of the command, in the message box and in the sent message alike. A
+background is not a role on this surface, so a lifted run of cells reads as "this is not
+prose" wherever it turns up. Nothing the model writes is ever chipped.
 
 Six mid-tone hues form a separate identity ring, spent on exactly one cell: the glyph at
 the head of a task row. No role ever paints that column, so a ring hue cannot be misread
