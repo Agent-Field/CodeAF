@@ -155,7 +155,9 @@ There are two step limits as well, and they work the same way — checkpoints, n
 
 At a `max_steps` checkpoint the same second look runs: progress buys another 200 steps, up
 to the 1000-step backstop. Whatever stops the work, the landing turn runs first — the task
-writes up what it has — so nothing is ever lost mid-flight.
+writes up what it has — so nothing is ever lost mid-flight. And a task stopped this way is
+still checked against its acceptance afterwards: if the work holds it lands finished and
+merges, and the `stopped:` line never reaches you.
 
 ## What counts as progress, and what gets a task stopped as stuck
 
@@ -188,6 +190,38 @@ progress: a task writing its own memory again has not learned anything.
 Failure matters for saving and not for learning. A `generate_image` that came back with an
 API error saved no file, so a task calling it repeatedly and getting the same error is
 stuck and is stopped — which is what the counter is for.
+
+Being stopped as stuck is **not** a verdict on the deliverable: a stopped task is still
+checked against its acceptance, and when the check passes it lands finished and merges with
+the `stopped:` line gone. The section below is that whole rule.
+
+## A task stopped as stuck that had already finished its work
+
+Being stopped is a statement about the **trajectory**, never about the deliverable. One of
+these really happened: a task wrote all six of the stories it was asked for, spent six steps
+re-reading them to be sure, and was stopped with `stopped: 6 steps without progress` — the
+same target twice is exactly the spin the counter is for. Its own landing turn then said the
+six files were written and the work was done. You saw ✗ failed and a kept branch next to a
+report saying it had finished.
+
+So a stopped task is still judged on its work. After the landing turn writes up what it has,
+the same check a task that finished on its own gets is run — the same acceptance, the same
+worktree, the same read-only checker.
+
+**If the work holds:** the task lands **finished**, its branch **merges** into yours, and
+`stopped: 6 steps without progress` is nowhere in what you read. The report is the task's own
+account of the work with what it was checked on under it, exactly as any finished task's is.
+A limit that fired is not news about a deliverable that is sitting there.
+
+**If it does not hold, or there was nobody to ask:** nothing changes. The report leads with
+the limit that fired, the task's own last words stand under it, the branch is kept with the
+work committed onto it, and nothing merges.
+
+**One look, and no correction round.** A stopped task gets a single check — never the
+`task.repair_rounds` worker a task that finished on its own can earn, because a second worker
+in the worktree is paying twice for the run the limit has just ended. With `task.audit` off,
+or with no acceptance to judge against, there is nobody to ask and the task simply stays
+stopped.
 
 ## How aforge knows a task really finished
 
@@ -258,8 +292,10 @@ read them.
 yours, and the report leads with the task's own account of the work, with what it was
 checked on under it — no lead word at all.
 
-**Failed.** `task 7 failed: <title>`. Somebody looked and made a finding, or a limit
-fired. The branch is kept. Anything waiting on it fails with it.
+**Failed.** `task 7 failed: <title>`. Somebody looked and made a finding — or a limit fired
+and the work did not hold when it was checked afterwards. The branch is kept. Anything
+waiting on it fails with it. A limit firing on its own is no longer enough: work that was
+stopped and then held lands under *finished* above.
 
 **Needs your look.** `task 7 needs your look: <title>`. Nobody could look, or nobody would
 say. The task is neither done nor failed: nothing merges, the branch is kept, and nothing
@@ -280,9 +316,11 @@ tries in a row got nothing, the first line is prefixed
 On every ending except a clean merge, the branch is **kept and named**. This is true
 without exception:
 
-- a task **stopped at a step limit or for lack of progress** keeps its branch — and what it
-  made is **committed onto that branch** before it lands, so `git merge task/…` really
-  brings the files over. The landing note names them under `changed:` and offers the merge;
+- a task **stopped at a step limit or for lack of progress** whose work did not hold keeps
+  its branch — and what it made is **committed onto that branch** before it lands, so
+  `git merge task/…` really brings the files over. The landing note names them under
+  `changed:` and offers the merge. (If the check passes, that task merges instead and there
+  is no branch left to offer.);
 - a task that ran out of time keeps its branch;
 - a task you killed with `jobs kill` keeps its branch, and the partial work with it;
 - a task whose work was found incomplete keeps its branch, exactly as a killed one does.
@@ -532,7 +570,7 @@ Endings are checked in a fixed order, and the first match wins:
 | --- | --- | --- |
 | 1 | No working copy could be made | `could not prepare a working copy: <err>` |
 | 2 | The worker would not start | `could not start the task: <err>` |
-| 3 | A step limit fired | `stopped: 200 steps and no finish` or `stopped: 6 steps without progress` |
+| 3 | A step limit fired **and the work did not hold when it was checked** | `stopped: 200 steps and no finish` or `stopped: 6 steps without progress` |
 | 4 | The checkpoints ran out | `ran out of time` |
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
 | 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
@@ -541,6 +579,10 @@ Endings are checked in a fixed order, and the first match wins:
 | 8 | Nobody could say | `finished, but needs your look — …` |
 | 9 | Gaps left after the correction rounds | `incomplete — …` |
 | 10 | Otherwise | done: the evidence first, then the task's words |
+
+Row 3 is checked before it is written down: a task that hit a limit is judged against its
+acceptance one more time, and if the work holds it lands **done** at row 10 instead, merged,
+with no `stopped:` line anywhere in the report.
 
 In rows 3 to 7 the task's **own last words are kept underneath** the one-line reason, and
 the branch is kept — with the work committed onto it. A task that was stopped mid-flight
