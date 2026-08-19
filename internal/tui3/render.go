@@ -487,7 +487,15 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 			if i == 0 {
 				lead = a.pal.accent(a.pal.youGlyph())
 			}
-			out = append(out, lead+a.pal.accent(line))
+			// AND A RECOGNIZED SLASH COMMAND KEEPS ITS CHIP AFTER IT IS SENT
+			// (slashchip.go). The box is where a person learns that this surface
+			// knows the word, and a message that dropped the mark on its way into
+			// the transcript would take the fact back the moment it mattered — a
+			// conversation scrolled back through is the only record of what was
+			// asked for. Every row of a wrapped message opens at a boundary: the
+			// wrap breaks on spaces, and a word too long to break on one is not a
+			// command either.
+			out = append(out, lead+paintCommands(line, a.pal, a.pal.accent, true))
 		}
 		return out
 

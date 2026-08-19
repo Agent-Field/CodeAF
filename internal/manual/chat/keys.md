@@ -132,6 +132,12 @@ multi-line editor rather than a single-line field.
   breaks at the last space before the edge, and mid-word only when the line offers no
   space.
 
+A **slash command you type into the box is highlighted as you type it** — `/task`,
+`/compact`, `/clear` get a tinted background behind the word, so a real command looks
+different from ordinary text and a typo like `/tsak` does not. The highlight is drawn in
+your sent message too. It adds no characters and no cells; see "Slash commands are drawn
+as chips" in the commands page for the whole of it.
+
 **Pasted text lands as one edit** with its newlines intact — it never submits line by
 line. Bracketed paste is on. CRLF and bare CR become LF at the door.
 
@@ -307,8 +313,8 @@ follows what you type. Only these keys are taken from you:
 |---|---|
 | `up` / `ctrl+p` | Move the list cursor up |
 | `down` / `ctrl+n` | Move the list cursor down |
-| `esc` | Close the list. It does **not** interrupt a running turn |
-| `enter` | Command list: run the highlighted command; if nothing matched, the line is sent as typed. `@` list: insert the highlighted task or file; if nothing is picked, the line is sent |
+| `esc` | Close the list. For the command list it also **seals that word** — the list does not reopen on the next letter of it. It does **not** interrupt a running turn |
+| `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted task or file; if nothing is picked, the line is sent |
 | `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/image ` or `/export ` |
 | `enter`, with an argument completion open | Closes the list and runs the line **as typed**. Your path is never swapped for the top-ranked row |
 

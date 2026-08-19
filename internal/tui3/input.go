@@ -816,7 +816,15 @@ func draftBlock(e *editor, pal palette, width, maxRows int, hint string) ([]stri
 			// same two cells, so the rows do not shift under the caret.
 			lead = pal.dim(glyphMore + " ")
 		}
-		out = append(out, lead+pal.ink(string(e.value[segments[i].from:segments[i].to])))
+		// A RECOGNIZED SLASH COMMAND IS CHIPPED AS IT IS TYPED (slashchip.go).
+		// The boundary question is asked of the DRAFT and not of the row,
+		// because a row is a soft-wrapped slice of it: [wrapLine] breaks after a
+		// space where it can, but a word longer than the box breaks mid-word, and
+		// a row that opens in the middle of "cmd/aforge" does not open a token.
+		at := segments[i].from
+		boundary := at == 0 || e.value[at-1] == ' ' || e.value[at-1] == '\n'
+		row := string(e.value[at:segments[i].to])
+		out = append(out, lead+paintCommands(row, pal, pal.ink, boundary))
 	}
 	return out, ansi.StringWidth(prompt) + caretColumn, caretRow - top
 }
