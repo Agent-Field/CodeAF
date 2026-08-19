@@ -423,3 +423,46 @@ func TestADraftPageRunsStraightOffDisk(t *testing.T) {
 		t.Fatal("running a page that is not there came back clean")
 	}
 }
+
+// A RUN IS WATCHABLE. Every entry the trace keeps is shown to the watcher as it
+// lands, in the same order and with the same contents — a live row and the card
+// read back afterwards are two views of one list, never two lists.
+func TestRunWatchedShowsEveryStepAsItLands(t *testing.T) {
+	runner := &script{}
+	var seen []Trail
+	trace, err := RunWatched(context.Background(), linear(), runner.exec, func(step Trail) {
+		seen = append(seen, step)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) == 0 || len(seen) != len(trace.Trail) {
+		t.Fatalf("watched %d steps, the trail kept %d", len(seen), len(trace.Trail))
+	}
+	for i, step := range seen {
+		if step != trace.Trail[i] {
+			t.Fatalf("step %d was watched as %+v and kept as %+v", i, step, trace.Trail[i])
+		}
+	}
+}
+
+// THE STEP A RUN DIES ON IS WATCHED TOO, which is the one worth seeing: the
+// report only arrives afterwards, and a failure the live rows never mentioned
+// would be a run that went quiet and then said it was broken.
+func TestRunWatchedShowsTheFailingStep(t *testing.T) {
+	runner := &script{fail: map[string]error{"check": errors.New("the diff did not apply")}}
+	var seen []Trail
+	trace, err := RunWatched(context.Background(), linear(), runner.exec, func(step Trail) {
+		seen = append(seen, step)
+	})
+	if err == nil {
+		t.Fatal("a failing node did not end the run")
+	}
+	if len(seen) != len(trace.Trail) {
+		t.Fatalf("watched %d steps, the trail kept %d", len(seen), len(trace.Trail))
+	}
+	last := seen[len(seen)-1]
+	if last.Id != "check" || last.Err == "" {
+		t.Fatalf("the failing step was watched as %+v", last)
+	}
+}

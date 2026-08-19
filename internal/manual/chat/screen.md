@@ -823,8 +823,9 @@ that list exists whoever is reading it. Only the hover is dropped.
 **The "still working" ellipsis.** When a turn is running and nothing else on screen is
 moving, two spaces then a pulsing ellipsis cycles `·` → `··` → `···` in accent, about
 300ms a step. After the stream has said nothing for **10 seconds**, ` · still working`
-is appended in dim. It is suppressed entirely while text is actively streaming and while
-any tool call is spinning — two answers to "is this alive?" is one too many. It says
+is appended in dim. It is suppressed entirely while text is actively streaming, while
+any tool call is spinning, and while a sub-harness run has a step on the row under it
+(see *Saved shapes of work*) — two answers to "is this alive?" is one too many. It says
 "still working" and never "retrying": this screen does not know whether the session is
 retrying, only that the stream has been silent.
 

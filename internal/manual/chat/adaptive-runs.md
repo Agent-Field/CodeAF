@@ -81,13 +81,17 @@ A run takes a root row on the roster, with its nodes drawn under it as a tree �
 run's nodes on the roster* below. On narrow frames its live members take ordinary chips in
 the strip's single flat row; the strip does not draw the tree. Those rows and chips are a
 picture of the run, not tasks: the run's own **page** is where a node is read and where the run is steered. Press
-**→** over an empty message box with no room open and the page opens — that is the only
-keyboard door onto it, and a paused run brings its own page up when it asks its question.
+**→** over an empty message box with no room open and the page opens, or press the run's
+row — or any of its nodes' rows — on the roster; a paused run brings its own page up when
+it asks its question.
 
 The page is the graph: nodes as chips in layers, the planner's notes as thin lines between
 them, and the fuel gauge pinned in the header (`$0.87 / $2.00`), which is never dropped at
-any width. It re-reads the run four times a second. `esc` leaves; the conversation is
-untouched.
+any width. **A planner's note is shown whole**, wrapped across as many lines as it takes
+and hanging under its `· ` bullet — it is the planner's own sentence about what it just
+decided, and half of one says nothing. What gets cut at a narrow width is the picture: a
+chip, a glyph, the goal in the header. The page re-reads the run four times a second. `esc`
+leaves; the conversation is untouched.
 
 **Type a sentence with the page open and it goes to the planner**, which sees it on its next
 call. Steering outranks the plan. It is talk to the planner, not a new goal: what it cannot
@@ -120,16 +124,39 @@ before anything started — settles as **stopped**, because nothing went wrong w
 nobody made a finding about it. The row carries the node's own spend, and a landed node's
 row carries its digest.
 
-Two things these rows deliberately do **not** do.
+**These rows write nothing into the conversation.** A landing card is how work *you*
+decided on reports back; a run's nodes are cut by its planner and there can be a dozen of
+them, so a card each would bury the answer under the workings of it. The run's own write-up
+is the one thing that lands in the conversation.
 
-- **They write nothing into the conversation.** A landing card is how work *you* decided on
-  reports back; a run's nodes are cut by its planner and there can be a dozen of them, so a
-  card each would bury the answer under the workings of it. The run's own write-up is the
-  one thing that lands in the conversation.
-- **They are not doors.** Pressing a node's row does not walk into a task's room — there is
-  no task behind it, and the room opens finished saying `no task N in this session`. Read
-  and steer nodes on the run's page (**→**), or open a node's transcript directly at
-  `~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`.
+**They are doors, and they open onto the run rather than onto a task.** There is no task
+behind a node, so pressing one never walks into a task's room. Press a node's row — `enter`
+with the roster focused, or click it — and the run's own page opens with that node's card
+already up. The run's root row opens the same page at the graph.
+
+## Opening a node — seeing its chat, its thinking and its tool calls
+
+A node's card is one press from the graph: move to its chip and `enter`, or press the
+node's row on the roster. The card carries the node's goal, what it needed, its digest when
+it has landed, and its error when it failed.
+
+The last line on the card is `transcript · enter opens it`, and that is the node's own
+conversation — the same rendering a task's room uses. You get the instruction the node was
+given, what it said back, what it thought, and every tool call it made, with a call's
+arguments and its output opening under it. A call the node has not got an answer to yet is
+drawn as still running, because the journal records the asking before the result.
+
+A node that is still working streams into that view: the page re-reads its journal on the
+same four-times-a-second poll that redraws the graph, and reads once more after the node
+stops, so the closing lines land whichever way the two race. `esc` walks back to the card,
+`esc` again to the graph, `esc` again out of the run.
+
+A node that has not started has no journal yet, and the page says `no transcript yet`
+rather than showing an error. Only a long transcript is trimmed, and it says how much:
+`… N earlier lines` sits at the top of what is kept.
+
+The file itself is a real session journal at
+`~/.aforge/v3/runs/<session>/<run>/<node>.jsonl`, so `read` opens it like any other.
 
 ## Being asked whether that should have been work
 

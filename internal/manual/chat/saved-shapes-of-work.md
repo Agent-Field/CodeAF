@@ -118,6 +118,31 @@ free-text condition is one small judgement. A single step's completion gives up 
 The trace is saved beside the harness. The turn's answer is the run card, then what the
 run produced, then a line reading `trace · <path>`.
 
+## Watching a harness run — seeing the steps while it works
+
+A run takes minutes, and you can watch it. Under the `harness · <name>` line, **one row
+shows the step that just finished** — the same row the card read back afterwards prints:
+
+```
+harness · triage-flake
+  ✓ 2   gather       agent.loop     read the changelog · 4.1s
+```
+
+The mark, the step number, the id, the kind, and then what the step left behind — or, when
+it went wrong, what went wrong with it, marked `✗`. A failing step is the last one you see,
+because the run ends on it.
+
+**The row is replaced, never stacked.** Only the step happening now is on it. The report
+that lands when the run is over carries the whole trail, so keeping every step in the
+conversation would be that trail written out twice — and it would ride in every later
+request forever. Nothing about a live step is written down: it is on the screen and
+nowhere else.
+
+While that row is up, the ellipsis that means "still working" is not — a step landing every
+few seconds already says the run is alive, and two answers to one question is one too many.
+The row goes away with the turn, by which time the report is on screen saying what every
+step did.
+
 **A failed run still reports.** The trail is the one thing worth having when a harness went
 wrong: the card's head reads `name · v1 · failed` and the failing step is marked `✗`.
 

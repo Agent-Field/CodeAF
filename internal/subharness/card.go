@@ -250,21 +250,7 @@ func RunLines(t Trace) []string {
 	}
 	lines := []string{head, ""}
 	for _, step := range t.Trail {
-		mark := "✓"
-		if step.Err != "" {
-			mark = "✗"
-		}
-		row := fmt.Sprintf("%s %-3d %-12s %-14s", mark, step.Step, step.Id, step.Kind)
-		detail := []string{}
-		if step.Err != "" {
-			detail = append(detail, step.Err)
-		} else if step.Out != "" {
-			detail = append(detail, clipDetail(firstLine(step.Out)))
-		}
-		if step.Elapsed > 0 {
-			detail = append(detail, step.Elapsed.Round(time.Millisecond).String())
-		}
-		lines = append(lines, strings.TrimRight(row+" "+strings.Join(detail, " · "), " "))
+		lines = append(lines, StepLine(step))
 	}
 	if t.Spent > 0 {
 		lines = append(lines, "", fmt.Sprintf("spent  %d of the dynamism budget", t.Spent))
@@ -274,6 +260,32 @@ func RunLines(t Trace) []string {
 
 // RunCard is [RunLines] as one block of text.
 func RunCard(t Trace) string { return strings.Join(RunLines(t), "\n") }
+
+// StepLine is one executed step as a person reads it: the mark, the number, the
+// id, the kind, and then what it left behind or what went wrong with it.
+//
+// It is exported because a surface watching a run LIVE ([RunWatched]) draws the
+// same step the card draws when the trace is read back afterwards, and two
+// renderings of one step would let the live row and the report disagree about
+// what happened — which is the drift [RunLines] itself is written against, one
+// column set over.
+func StepLine(step Trail) string {
+	mark := "✓"
+	if step.Err != "" {
+		mark = "✗"
+	}
+	row := fmt.Sprintf("%s %-3d %-12s %-14s", mark, step.Step, step.Id, step.Kind)
+	detail := []string{}
+	if step.Err != "" {
+		detail = append(detail, step.Err)
+	} else if step.Out != "" {
+		detail = append(detail, clipDetail(firstLine(step.Out)))
+	}
+	if step.Elapsed > 0 {
+		detail = append(detail, step.Elapsed.Round(time.Millisecond).String())
+	}
+	return strings.TrimRight(row+" "+strings.Join(detail, " · "), " ")
+}
 
 // letter is an arm's label on the card and in an error: a, b, c…
 func letter(at int) string {
