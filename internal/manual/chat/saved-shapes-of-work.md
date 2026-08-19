@@ -393,7 +393,8 @@ The review read the draft and changed <N> things:
 The review read the draft and left it as written.
 ```
 
-The first is followed by the findings themselves, as bullets.
+The first is followed by the findings themselves, as bullets; a review that changed
+exactly one says `thing`, not `things`.
 
 **The finished page** lands as `The page is written.`, then the card in its fenced block,
 and last the line saying nothing has been kept yet:
