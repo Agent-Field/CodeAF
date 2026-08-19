@@ -122,6 +122,8 @@ func (a *app) startFollow() tea.Cmd {
 	}
 	a.state = stateWorking
 	a.lastDelta = time.Now()
+	// The turn is open and the first request is out with nothing back from it.
+	a.awaited = time.Now()
 	// The generation is bumped for the same reason [app.adopt] bumps it: the
 	// stream that just closed may still have messages in flight, and they belong
 	// to a turn that is over.

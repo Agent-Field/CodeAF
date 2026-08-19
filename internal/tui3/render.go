@@ -575,6 +575,86 @@ const stillWorking = 10 * time.Second
 // stillWorkingWord is the suffix.
 const stillWorkingWord = " · still working"
 
+// ── THE WAIT FOR THE FIRST BYTE ─────────────────────────────────────────────
+//
+//	···                                                    under four seconds
+//	··· waiting for kimi-k3 · 12s                          past them
+//	··· waiting for kimi-k3 · 47s · nothing has come back yet
+//
+// THE DEFECT THIS FIXES: [stillWorking] above is measured from [app.lastDelta],
+// which is the last thing the stream SAID — so it describes a turn that spoke
+// and then stopped. The state a person actually complains about is the other
+// one: a request went out and the provider has not yet produced a first byte,
+// for twenty seconds, for a minute. Nothing is streaming, no call is spinning,
+// and the pulse claims exactly as much at second one as at second fifty. From
+// where the person sits that is indistinguishable from a hung program.
+//
+// WHAT THE LINE IS ALLOWED TO CLAIM is bounded by what the surface can see, and
+// the surface cannot see the wire. It knows a request went out ([app.awaited]),
+// it knows the stream has said nothing since, and it knows which model the
+// conversation is pointed at. So it says exactly that and no more: not
+// "retrying", not "the network is slow", not "the model is thinking" — the
+// surface does not know any of those and two of them are frequently false.
+//
+// IT NEVER RUNS UNDER A CALL. A tool that is executing has its own spinner and
+// its own count-up (toolview.go), and [app.ellipsis] has already stood the
+// pulse down for it — a second clock on the same wait would be the surface
+// timing a `go test` and calling it a provider.
+const (
+	// waitingGrace is how long a request may be outstanding before the surface
+	// puts a clock on it. A FAST PROVIDER MUST NEVER SHOW ONE: a first token
+	// commonly lands in one or two seconds, and a figure that appears and
+	// vanishes on every ordinary turn is chrome that trains the eye to ignore
+	// it — so the grace sits above the ordinary case rather than at it.
+	waitingGrace = 4 * time.Second
+	// waitingLong is when the wait stops being ordinary. Past thirty seconds a
+	// person is no longer waiting, they are deciding whether to interrupt, and
+	// the honest thing to give them for that decision is the plain fact.
+	waitingLong = 30 * time.Second
+)
+
+const (
+	// waitForWord opens the line when the model is known, waitBareWord when it is
+	// not — the emptiness law: an unknown name renders as nothing rather than as
+	// an empty slot after "waiting for".
+	waitForWord  = " waiting for "
+	waitBareWord = " waiting"
+	// waitLongWord is the escalation, and it is a statement of fact rather
+	// than an alarm: the request is out, and the answer is that nothing has
+	// arrived. It deliberately does not say whose fault that is.
+	waitLongWord = " · nothing has come back yet"
+)
+
+// waitingWords is the dim tail on the pulse while a model request is
+// outstanding and the stream has said nothing at all against it, or "" when
+// there is nothing to say — no turn running, a call spinning, the stream
+// already speaking, or a wait still inside its grace.
+//
+// NOTHING NEW TICKS FOR IT. The frame clock already redraws while a turn runs —
+// it is what turns the pulse — so the count-up is a function of the time at
+// paint, in the spelling every other live clock on this surface uses
+// ([countUpWord], toolview.go), and costs the surface no wakeup of its own.
+func (a *app) waitingWords() string {
+	if a.state != stateWorking || a.awaited.IsZero() || a.running() {
+		return ""
+	}
+	waited := time.Since(a.awaited)
+	if waited < waitingGrace {
+		return ""
+	}
+	word := waitBareWord
+	if name := modelBase(a.model); name != "" {
+		word = waitForWord + name
+	}
+	if clock := countUpWord(waited); clock != "" {
+		word += " · " + clock
+	}
+	if waited >= waitingLong {
+		word += waitLongWord
+	}
+	return word
+}
+
 // pulse is the ellipsis frame — or the still one, in the linear tier, where an
 // animation is a word repeated forever.
 func (a *app) pulse() string {
@@ -596,6 +676,13 @@ func (a *app) ellipsis() (string, bool) {
 		return "", false
 	}
 	line := a.pal.accent("  " + a.pulse())
+	// THE WAIT OUTRANKS THE SILENCE, and only one of the two is ever on the
+	// line. They are two ways of saying the same thing — nothing is arriving —
+	// and the wait is the more specific of them: it names what is being waited
+	// on and how long for, where "still working" only says that something is.
+	if tail := a.waitingWords(); tail != "" {
+		return line + a.pal.dim(tail), true
+	}
 	if a.silentFor() >= stillWorking {
 		line += a.pal.dim(stillWorkingWord)
 	}

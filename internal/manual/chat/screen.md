@@ -835,7 +835,9 @@ is appended in dim. It is suppressed entirely while text is actively streaming, 
 any tool call is spinning, and while a sub-harness run has a step on the row under it
 (see *Saved shapes of work*) — two answers to "is this alive?" is one too many. It says
 "still working" and never "retrying": this screen does not know whether the session is
-retrying, only that the stream has been silent.
+retrying, only that the stream has been silent. When the reply has not started at all —
+a request is out and nothing has come back — the more specific waiting line below
+replaces this suffix instead of sitting beside it.
 
 **The compaction mark.** A compaction is drawn while it runs and left as a rule once it
 lands, so the conversation never silently loses its middle. Running, it reads
@@ -843,6 +845,46 @@ lands, so the conversation never silently loses its middle. Running, it reads
 spinners, dim, with a count-up. Settled, it becomes a centred rule:
 `───── ⚭ compacted from ~84k tokens · took 6s ─────`. The duration is dropped under one
 second. It is never painted the question hue, because nobody is being asked anything.
+
+## Why the reply is slow to start, why it says "waiting for" a model, and whether it is stuck
+
+Between you pressing enter and the model's first word there is a gap, and it is sometimes
+long — twenty seconds, a minute. A pulsing ellipsis claims exactly as much at second one
+as at second fifty, so past a few seconds it starts saying what it is waiting on.
+
+For the first **4 seconds** the line is the bare ellipsis. A fast reply never shows a
+clock. Past 4 seconds it grows a dim tail naming the model and counting up:
+
+```
+  ··· waiting for kimi-k3 · 12s
+```
+
+Past **30 seconds** it says the plain fact outright:
+
+```
+  ··· waiting for kimi-k3 · 47s · nothing has come back yet
+```
+
+The model is its **basename**, the way the status deck's chip spells it — `kimi-k3`, not
+`moonshot/kimi-k3`. When there is no model name to show, the line reads `waiting · 12s`.
+
+**What it claims, and what it does not.** It claims only that a request went out and the
+stream has said nothing since. It never says "retrying", "the network is slow", or "the
+model is thinking" — this screen cannot see the wire and does not pretend to. So
+`waiting for kimi-k3 · 47s` is not a report that anything is broken. It is aforge saying
+it is still there and still waiting, which is the one thing a bare ellipsis could not tell
+you apart from a hung program.
+
+**Is it stuck? Is it frozen?** A clock that is counting up means the program is alive and
+painting; a clock that has stopped means it is not. Nothing here kills the request on your
+behalf and there is no cancel-and-ask-again — the wait runs until the answer starts, the
+session's own retries resolve it, or you stop it. `esc` interrupts the turn.
+
+**It never runs under a tool call.** A tool that is executing has its own spinner and its
+own count-up, and the ellipsis stands down for it entirely. This clock is only for the
+window between a request going out and the stream first speaking, so after a three-minute
+`go test` the request that follows starts the clock at zero rather than inheriting the
+call's runtime.
 
 ## The dim line under a finished turn
 
