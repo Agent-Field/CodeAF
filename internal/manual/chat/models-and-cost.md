@@ -411,6 +411,29 @@ since the last response is already visible to the threshold.
 
 An unknown window has no threshold at all.
 
+## The most tokens one request can carry — the 256,000-token ceiling
+
+**Whatever a model claims, this conversation never carries more than 256,000 tokens into a
+single request.** That is a hard ceiling, twice the 128,000 default, and the threshold above
+is worked out from the smaller of it and the model's own window. On a model claiming
+1,310,720 tokens, compaction therefore fires at **217,600**, not at 1,114,112.
+
+It exists because the claim is published by the provider and a published number can be
+enormous. A session on `~deepseek/deepseek-v4-flash-latest` — a row claiming 1.3M tokens —
+grew to 386,309 tokens with compaction checked after every step and never once firing, and
+what came back at that size was the model's own template turned inside out rather than an
+answer.
+
+A model with a real 200,000 or 400,000-token window is not affected: only a claim above
+256,000 is clamped. What the status line reports is still the model's own window, because
+that line is describing the model.
+
+**A request that would not fit is never sent.** Immediately before each request goes out,
+a transcript already past the ceiling is compacted first — and unlike the ordinary pass,
+this one runs **even when automatic compaction is switched off**. Fitting is not a
+preference. Nothing is truncated and nothing of yours is dropped; it is the same pass
+`/compact` runs, and every message you typed survives it.
+
 **Accuracy note.** aforge also carries a shared context-budget package with a 60%-fill rule,
 a 160k working set and a 250% reuse law. **That package is not used by this chat.** Its
 consumer is the sub-harness leaf sizing elsewhere in aforge. The chat's own law is the one
@@ -469,10 +492,13 @@ A pass can decline: `session: nothing to compact` (everything already fits in th
 
 When the conversation gets too long to fit, nothing is lost and nothing stops: the oldest
 part of it is summarized away and the recent tail is kept, which is what compaction is.
-Three ways a pass starts:
+Four ways a pass starts:
 
 - **Automatically**, after any step where the estimate is over the threshold. A failed pass is
   not a failed turn.
+- **Just before a request that would not fit**, when the transcript is already past the
+  256,000-token ceiling. This one runs **even when automatic compaction is switched off** —
+  the switch governs headroom, and fitting is not headroom.
 - **On a context-overflow error from the provider**, once per turn. This one runs **even when
   automatic compaction is switched off** — the switch governs the automatic pass, not the
   recovery from a request the provider has already refused. Overflow errors are never retried.
