@@ -502,7 +502,8 @@ writes one note in the conversation: `room unavailable — this session has no t
 | its row on the roster | nothing is marked | that task's row wears a colour band and an accent title |
 | clicking empty space | nothing | nothing — leaving is `esc`, `←`, or the pinned header |
 | what `enter` does | sends to the model, or holds the message above the box while a turn is running | **steers the task** — never held |
-| box placeholder | the draft prompt | `Steer <title>… (esc: main)` |
+| the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
+| box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top line | none | the focus header, and the family lines under it |
 | legend word | the workspace path and branch | `room · esc/←← main` |
 | the model on the status row | the conversation's model | `task <the task's model>` |

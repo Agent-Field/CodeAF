@@ -2490,7 +2490,16 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if a.room == nil || len(rows) == 0 || !a.input.empty() || a.pick.open || a.awaitingTask() {
 		return rows
 	}
+	// THE SEGMENT IN FRONT OF THE PROMPT ALREADY NAMES THE NODE ([app.roomLead]),
+	// so the placeholder stops naming it: `⠙ Ship the port › Steer Ship the port…`
+	// is one name read twice on one line. Where the frame is too narrow for the
+	// segment the placeholder goes back to carrying the name itself, because
+	// something on the row has to.
+	lead := a.roomLead(width)
 	lane := roomSteerLane + a.room.title + roomSteerBack
+	if lead != "" {
+		lane = roomSteerHere + roomSteerBack
+	}
 	if a.room.orch != nil {
 		// A RUN HAS NO WORKER TO TALK TO, so the box does not offer to steer one:
 		// the sentence goes to the PLANNER, which reads it on its next call
@@ -2502,8 +2511,83 @@ func (a *app) roomSteerLaneRows(rows []string, width int) []string {
 	if a.room.done {
 		lane = roomFinishedWord
 	}
-	room := width - ansi.StringWidth(prompt)
+	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
 	out := append([]string(nil), rows...)
-	out[0] = a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
+	out[0] = lead + a.pal.dim(prompt) + a.pal.dim(fit(lane, room))
 	return out
+}
+
+// ── THE COMPOSER SAYS WHERE THE WORDS GO ────────────────────────────────────
+//
+//	⠙ Ship the port › fix the flake in the loader
+//
+// A ROOM USED TO STOP SAYING ANYTHING THE MOMENT YOU TYPED. The placeholder
+// named the node — and a placeholder is the one thing in a box that disappears
+// the instant somebody uses it, so the row that said "these words are going to a
+// worktree somewhere else" said it only to people who had not started. Everything
+// else on the frame that knew was somewhere the eye was not: the header at the
+// top, the legend under the transcript, the status line at the bottom.
+//
+// So the box itself carries the room, as one segment in front of its prompt: the
+// node's state cell and the node's name, lifted off the page on the selection
+// tint and painted in the state's own hue ([app.taskStateInk] — the hue the
+// roster paints the same node's glyph with, so the row that is banded in the
+// column and the name in front of the caret are the same colour for the same
+// reason). It is where a person's eye already is, it is there whether the box is
+// empty or full, and it is gone the moment there is no room — the emptiness law:
+// there is no segment in the conversation, not a dim one and not an empty one.
+//
+// IT IS A SEGMENT AND NOT A ROW. A row above the box would be a row taken off
+// the transcript on every frame of every room, for a fact three cells can carry.
+const (
+	// roomLeadCap is the most of a node's name the segment spends, and it is the
+	// strip's cap said again for the same reason: past about three words a title
+	// stops identifying the work and starts being a sentence.
+	roomLeadCap = stripTitleCap
+	// roomLeadWordFloor is the least of a name worth drawing. Under this the
+	// segment is dropped whole rather than shown as an ellipsis with a letter in
+	// front of it, and the placeholder goes back to naming the node.
+	roomLeadWordFloor = 6
+	// roomLeadTyping is how much of the box the segment may never take: what is
+	// left has to be a box somebody can see a sentence in.
+	roomLeadTyping = 24
+	// roomLeadPad is the air inside the segment, one cell each side, so the tint
+	// reads as a chip rather than as a highlighted word.
+	roomLeadPad = " "
+	// roomSteerHere is the placeholder where the segment is already carrying the
+	// name: what the box does, without saying the node twice.
+	roomSteerHere = "Steer this task"
+)
+
+// roomLead is the composer's room segment, painted, or "" when there is no room
+// open or no width to spend on one. width is the box's own width — what
+// [app.inputBlock] is laying out into — because the segment is charged to the
+// box and to nothing else.
+func (a *app) roomLead(width int) string {
+	if a.room == nil {
+		return ""
+	}
+	node := a.roomNode()
+	glyph := a.roomMark(node)
+	// The box as it would be without a segment, less what the segment's own
+	// furniture costs: two pads, the glyph, and the space after it.
+	space := width - ansi.StringWidth(prompt) - roomLeadTyping -
+		ansi.StringWidth(glyph) - 1 - 2*ansi.StringWidth(roomLeadPad)
+	if space > roomLeadCap {
+		space = roomLeadCap
+	}
+	if space < roomLeadWordFloor {
+		return ""
+	}
+	title := fit(strings.TrimSpace(a.room.title), space)
+	if title == "" {
+		return ""
+	}
+	// A run's page has no node and so no state to be in; its segment is dim,
+	// which is what this surface says with when nobody has published anything.
+	ink := a.pal.dim
+	if node != nil {
+		ink = a.taskStateInk(node)
+	}
+	return a.pal.tint(roomLeadPad+glyph+" "+title+roomLeadPad, ink)
 }

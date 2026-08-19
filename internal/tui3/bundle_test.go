@@ -3635,12 +3635,19 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	clickRail(t, a, 0)
 
-	// The box says who it is talking to.
+	// The box says who it is talking to. The NAME is on the segment in front of
+	// the prompt (room.go's [app.roomLead]) rather than inside the placeholder,
+	// because a placeholder is gone the moment somebody types and the name has to
+	// outlive that — and it is the NAME the rail and the cards name the node by
+	// (taskident.go). The placeholder is left saying what the box does and which
+	// key leaves.
 	block, _, _, _ := a.chrome(a.width)
-	// The lane names the node by the NAME the rail and the cards name it by
-	// (taskident.go), and it names the key back.
-	if !strings.Contains(plain(strings.Join(block, "\n")), roomSteerLane+"Fix the nil-map"+roomSteerBack) {
-		t.Fatalf("the box does not offer the steering lane:\n%s", plain(strings.Join(block, "\n")))
+	lane := plain(strings.Join(block, "\n"))
+	if !strings.Contains(lane, "Fix the nil-map") {
+		t.Fatalf("the box does not name the node it is talking to:\n%s", lane)
+	}
+	if !strings.Contains(lane, roomSteerHere+roomSteerBack) {
+		t.Fatalf("the box does not offer the steering lane:\n%s", lane)
 	}
 
 	a.input.setText("the config lives under etc/")
