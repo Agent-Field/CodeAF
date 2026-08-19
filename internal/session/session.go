@@ -704,6 +704,13 @@ type Config struct {
 	// TaskDeadline overrides one checkpoint interval. Zero keeps the one-hour
 	// production interval and lets deadline behavior be tested without an hour.
 	TaskDeadline time.Duration
+	// HarnessDesignWindow overrides how long a sub-harness design is given to
+	// WRITE ITS PAGE (harness_build.go's harnessDesignWindow). Zero keeps the
+	// half-hour production window. It bounds the writing only — the card that
+	// follows waits on the person for as long as they take — and it is settable
+	// for TaskDeadline's reason: what happens at the end of the window is worth a
+	// test, and half an hour is not a thing a test can wait for.
+	HarnessDesignWindow time.Duration
 
 	// ModelFallbacks are the models a turn moves to, in order, when no endpoint
 	// serving this session's model will accept the request's shape at all
