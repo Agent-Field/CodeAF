@@ -68,6 +68,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
@@ -267,14 +268,17 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	design := node.spec.design
 	goal, model := design.goal, design.model
 	ctx = (roleRequest{model: model, effort: design.effort}).context(ctx)
-	processCtx := ctx
-	// THE DESIGN'S OWN WINDOW, taken off the node's hour-long leash. Both halves
-	// of this job are bounded by it — the writing and the wait for an answer —
-	// and it is shorter than a node's deadline because the second half is a card
-	// on somebody's screen: half an hour of nobody answering is a person who is
-	// not coming back, and a goroutine parked on that question is parked forever
-	// (harness_build.go's harnessDesignWindow).
-	ctx, cut := context.WithTimeout(ctx, harnessDesignWindow)
+	// THE CLOCK IS ON THE WRITING AND ON NOTHING ELSE, and this line is the whole
+	// of what this node's lifecycle learned the hard way. The window used to cover
+	// both halves of the job — the page being written AND the card waiting for an
+	// answer — so a design that wrote its page in ten minutes and then sat on
+	// somebody's screen was collected at thirty and reported as "the design ran
+	// out of time before it finished; nothing was saved". Both clauses were false:
+	// it had finished, and the page it finished was in the room. A card is a
+	// question on a person's screen and a person is not a step that can be timed
+	// out; what ends the waiting is their answer, their ✕, or the process closing
+	// (harness_build.go's harnessDesignWindow says the same from the other side).
+	writing, cut := context.WithTimeout(ctx, a.harnessWritingWindow())
 	defer cut()
 	log := taskLog(listed)
 	fmt.Fprintf(log, "task %d · %s\ndesigning with %s\n", node.id, node.title(), model)
@@ -312,29 +316,40 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	// is for: the room to stream into while it thinks and drafts, and the thread
 	// whose journal keeps that discussion after the card has scrolled away
 	// ([designSeat]).
-	page, cues, err := a.designPage(ctx, goal, model, designSeat{id: node.id, room: room, thread: child})
+	page, cues, err := a.designPage(writing, goal, model, designSeat{id: node.id, room: room, thread: child})
 	if err != nil {
-		if processCtx.Err() != nil && !node.stoppedByPerson() {
+		if ctx.Err() != nil && !node.stoppedByPerson() {
 			return a.pauseHarnessNode(node, child)
 		}
 		fmt.Fprintf(log, "design failed: %v\n", err)
-		return a.landHarnessNode(node, child, harnessDesignEnding(ctx, node, "the design failed: "+err.Error()), TaskFailed)
+		return a.landHarnessNode(node, child, harnessDesignEnding(writing, node, "the design failed: "+err.Error()), TaskFailed)
 	}
 	child.record(textMessage("assistant", harnessPageThread(page)))
 	fmt.Fprintf(log, "page written: %s\n", page.Id.Name)
+	// THE WRITING IS OVER, SO ITS CLOCK IS OVER. Cutting it here rather than
+	// leaving it to the deferred call is what makes the sentence above true: from
+	// this line on there is no timer anywhere in this node, and no ending it could
+	// reach can say the design ran out of time — because a page exists.
+	cut()
 
 	// THE CARD, on the same lane and answered by the same method it always was
 	// (harness_build.go's askHarnessDesign). The node stays running under it,
 	// because it is: the work is not over until somebody says what to do with
 	// the page, and a node that settled here would take its own room away one
-	// moment before the person needed it.
+	// moment before the person needed it — the room being where they can ask the
+	// design about the page they are being shown.
 	node.doingNow(harnessPhaseAsking)
 	answer, err := a.askHarnessDesign(ctx, node.id, page, model)
 	if err != nil {
-		if processCtx.Err() != nil && !node.stoppedByPerson() {
-			return a.pauseHarnessNode(node, child)
-		}
-		return a.landHarnessNode(node, child, harnessDesignEnding(ctx, node, "the design ended before it was answered"), TaskFailed)
+		// TWO THINGS END THIS WAIT WITHOUT AN ANSWER, and neither of them is the
+		// design failing: a person pressed ✕, or the session closed under the card.
+		// The page was written either way, so the report says what became of the
+		// page rather than pretending the work never happened, and this node
+		// SETTLES instead of pausing — a design has no goal on its checkpoint to
+		// resume from, and there is nobody left to answer a card whose process is
+		// gone (task_store.go's interrupt says the same).
+		fmt.Fprintf(log, "card unanswered: %s\n", page.Id.Name)
+		return a.landHarnessNode(node, child, harnessCardEnding(node, page), TaskDone)
 	}
 	if !answer.run {
 		// A DECLINE IS NOT A FAILURE. The person was asked and they answered,
@@ -395,14 +410,46 @@ func (a *Agent) landHarnessNode(node *TaskNode, child *Agent, report string, sta
 
 // harnessDesignEnding is the report for a design that did not reach a card:
 // the reason, or — when a person ended it — their own word for it.
-func harnessDesignEnding(ctx context.Context, node *TaskNode, reason string) string {
+//
+// THE CONTEXT IT IS HANDED IS THE WRITING'S, and it is the only one that may be
+// asked, because "it ran out of time" is a true sentence about writing a page and
+// was never a true sentence about a card. A design that reached a page never
+// comes through here at all ([Agent.designHarnessNode]); [harnessCardEnding] is
+// what speaks for that one.
+func harnessDesignEnding(writing context.Context, node *TaskNode, reason string) string {
 	if node.stoppedByPerson() {
 		return designStoppedWord
 	}
-	if ctx.Err() != nil {
+	if writing.Err() != nil {
 		return "the design ran out of time before it finished; nothing was saved"
 	}
 	return reason
+}
+
+// harnessCardEnding is the report for a design whose page was written and whose
+// card was never answered — a person's ✕, or the session closing under it.
+//
+// IT NAMES THE PAGE, because the page is the fact the person needs: the design
+// did its work, and what did not happen is the keeping of it. Nothing here can
+// say the design failed or ran out of time; the only clock this node ever had
+// stopped when the page was written.
+func harnessCardEnding(node *TaskNode, page subharness.Harness) string {
+	if node.stoppedByPerson() {
+		return designStoppedWord
+	}
+	return fmt.Sprintf("harness %q was designed; the card went unanswered, so nothing was saved", page.Id.Name)
+}
+
+// harnessWritingWindow is how long this session gives the writing of one page,
+// which is [harnessDesignWindow] unless the person's config named another. The
+// override exists for the same reason Config.TaskDeadline's does: the behaviour
+// at the end of the window is worth a test, and half an hour is not a thing a
+// test can wait for.
+func (a *Agent) harnessWritingWindow() time.Duration {
+	if window := a.config.HarnessDesignWindow; window > 0 {
+		return window
+	}
+	return harnessDesignWindow
 }
 
 // harnessSavedWord is the settle card's line: the name, the version it landed

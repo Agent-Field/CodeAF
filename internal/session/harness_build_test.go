@@ -328,6 +328,106 @@ func waitForTurn(t *testing.T, watching <-chan Event) {
 	}
 }
 
+// ── the clock is on the writing, and on nothing else ────────────────────────
+
+// A PAGE THAT IS WRITTEN OUTLIVES THE DESIGN'S WINDOW, and it is the bug this
+// pair of tests exists for: a design that wrote its page in ten minutes and then
+// waited for somebody to come back from lunch was collected at thirty and
+// reported as "the design ran out of time before it finished; nothing was saved"
+// — while the card was still drawn in the feed and the page was still in the
+// room. Reading a card is not a step that can be timed out.
+func TestAWrittenPageOutlivesTheDesignsWindow(t *testing.T) {
+	const window = 300 * time.Millisecond
+	dir := t.TempDir()
+	agent, _ := newTestAgent(t, designingCompleter(), func(config *Config) {
+		buildConfig(config, dir)
+		config.HarnessDesignWindow = window
+	})
+	lane := agent.HarnessDesigns()
+	submitBuild(t, agent)
+
+	done := designDone(t, lane)
+	node := designNode(t, agent)
+	waitForPhase(t, node, harnessPhaseAsking)
+
+	// Well past the window the writing had, which is the whole point: the person
+	// went away and came back, and the card is still theirs to answer.
+	time.Sleep(2 * window)
+	if state := node.stateNow(); state != TaskRunning {
+		t.Fatalf("the design settled as %q while its card was still up", state)
+	}
+	agent.ResolveHarness(done.ID, true, "")
+
+	report := designOutcome(t, agent)
+	if !strings.Contains(report, `"flake-triage" v1 saved`) {
+		t.Fatalf("a design answered after its window landed saying %q", report)
+	}
+	if state := node.stateNow(); state != TaskDone {
+		t.Fatalf("a design whose page was saved settled as %q", state)
+	}
+	if _, err := subharness.At(dir).Load("flake-triage", 0); err != nil {
+		t.Fatalf("the page the card saved is not in the registry: %v", err)
+	}
+}
+
+// AND THE WINDOW STILL COLLECTS A DESIGN THAT NEVER WROTE ONE. The clock is not
+// gone; it is where it belongs. A designer that never answers is a node holding a
+// room open over nothing, and "it ran out of time and nothing was saved" is the
+// true sentence about that one.
+func TestADesignThatNeverWritesAPageRunsOutOfTime(t *testing.T) {
+	held := make(chan struct{})
+	defer close(held)
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			select {
+			case <-held:
+			case <-ctx.Done():
+			}
+			return nil, ctx.Err()
+		},
+	}}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		buildConfig(config, t.TempDir())
+		config.HarnessDesignWindow = 200 * time.Millisecond
+	})
+	submitBuild(t, agent)
+
+	node := designNode(t, agent)
+	report := designOutcome(t, agent)
+	if report != "the design ran out of time before it finished; nothing was saved" {
+		t.Fatalf("a design that never wrote a page landed saying %q", report)
+	}
+	if state := node.stateNow(); state != TaskFailed {
+		t.Fatalf("a design that ran out of time settled as %q", state)
+	}
+}
+
+// AND A CARD NOBODY EVER ANSWERS SAYS SO IN THOSE WORDS. The session closing
+// under a card is the one ending left that reaches no answer, and what a person
+// needs from it is that the page was written and that the registry is untouched —
+// not a fault, and never a clock.
+func TestACardNobodyAnsweredSaysThePageWasWritten(t *testing.T) {
+	agent, _ := buildAgent(t, designingCompleter(), t.TempDir())
+	lane := agent.HarnessDesigns()
+	submitBuild(t, agent)
+
+	designDone(t, lane)
+	node := designNode(t, agent)
+	waitForPhase(t, node, harnessPhaseAsking)
+	agent.Close()
+
+	report := designOutcome(t, agent)
+	if !strings.Contains(report, `harness "flake-triage" was designed`) || !strings.Contains(report, "nothing was saved") {
+		t.Fatalf("an unanswered card landed saying %q", report)
+	}
+	if strings.Contains(report, "out of time") || strings.Contains(report, "failed") {
+		t.Fatalf("a design that wrote its page was reported as %q", report)
+	}
+	if state := node.stateNow(); state != TaskDone {
+		t.Fatalf("a design that wrote its page settled as %q", state)
+	}
+}
+
 // AND STOPPING ONE IS STOPPING A TASK. `design:` names nothing now; the node's
 // own id does, and what it settles saying is that the registry is untouched.
 func TestStoppingADesignIsStoppingItsTask(t *testing.T) {
