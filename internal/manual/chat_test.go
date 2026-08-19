@@ -43,6 +43,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I start a task", "tasks"},
 		{"can aforge parallelize my task", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// Written from a real run: a task that generated two images was landed
+		// as "6 steps without progress" and the person had to go and find the
+		// files themselves. Both halves are questions they then ask.
+		{"why did my task stop for no progress", "how-tasks-run"},
+		{"does generating an image count as progress", "how-tasks-run"},
+		{"where did the files go when my task was stopped", "how-tasks-run"},
 		{"what does this conversation cost", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},
 		{"what happens when the conversation gets too long", "models-and-cost"},

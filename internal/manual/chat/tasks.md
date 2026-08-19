@@ -675,8 +675,9 @@ turn it was in the middle of ends, and the task settles as `stopped`. A task sti
 is dropped instantly, reads `stopped before it started`, and anything waiting on it is
 told its prerequisite will never finish. Either way:
 
-- **its branch is kept.** Nothing it wrote is thrown away; the landing card names the
-  branch, exactly as it does for every other early ending.
+- **its branch is kept, with its work on it.** Nothing it wrote is thrown away: whatever
+  reached disk is committed onto the branch, and the landing card names the branch and the
+  files, exactly as it does for every other early ending.
 - **what it spent is what it spent.** The figure freezes where it was.
 - **it is not a failure.** The roster draws `⊘` rather than the failure cross, the room's
   header reads `stopped`, and the model is told the task was *stopped* — so nobody goes
@@ -712,7 +713,10 @@ the work again with your instruction; `m` leaves the room and sends your words t
 unwrapped; `esc` cancels and leaves your words exactly where they are in the box.
 
 Whenever a task stops for any reason it wears `stopped — branch kept` and its branch name.
-Nothing is thrown away: on every ending except a clean merge the branch is kept and named.
+Nothing is thrown away: on every ending except a clean merge the branch is kept and named,
+and what the task made is committed onto that branch before it lands — so the files it
+produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
+never done for you, because only work that was checked reaches your branch.
 
 ## Answering a task that needs your look
 

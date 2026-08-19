@@ -83,7 +83,8 @@ where the branch went:
 
 - `its branch task/… merged into yours`
 - `its branch task/… did not merge cleanly and was kept — merge it yourself when you are ready`
-- `it was stopped; its branch task/… was kept`
+- `it was stopped; what it made is committed on its branch task/…, which was kept — merge that branch to take the work`
+- `it was stopped; its branch task/… was kept` (when it made nothing)
 - `it worked directly in the workspace: there was no repository to branch`
 
 The task's own tool rows never enter the chat. They go to its journal and its room only.
@@ -115,17 +116,43 @@ There are two step limits as well, and they work the same way — checkpoints, n
 | Limit | Per checkpoint | Backstop | Report when it finally stops |
 | --- | --- | --- | --- |
 | `max_steps` — finished tool calls | 200 | 1000 (200 × 5) | `stopped: 200 steps and no finish` |
-| `no_progress` — calls in a row that change and teach nothing | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
+| `no_progress` — calls in a row that teach nothing, save nothing and leave nothing new in the worktree | 6 | 6 (this one fires) | `stopped: 6 steps without progress` |
 
 At a `max_steps` checkpoint the same second look runs: progress buys another 200 steps, up
 to the 1000-step backstop. Whatever stops the work, the landing turn runs first — the task
 writes up what it has — so nothing is ever lost mid-flight.
 
-The `no_progress` counter resets on a successful `edit` or `write`, on a read-only call at
-a target the task has not aimed at before (`read`, `read_document`, `ls`, `grep`, `find`,
-`web_search`, `web_fetch`, `jobs`, `recall` — a failed one still counts as learning), and
-on a `bash` that either left new changes in the worktree or ran a command not run before.
-`note`, `forget`, `track`, `commit` and `generate_image` are deliberately not progress.
+## What counts as progress, and what gets a task stopped as stuck
+
+The `no_progress` counter resets on any one of three things, and only fires when a step is
+none of them:
+
+**It saved a file.** A successful `edit`, `write`, `generate_image`, `generate_video` or
+`speak` — every hand that puts a file on disk at a path the call names. Making a picture is
+working; a task asked for two marketing images that generates them, looks at them and
+generates them again has never called `edit` in its life, and is not stuck.
+
+**It changed the worktree.** Any step at all — whatever tool it was — that left the task's
+working copy different from how the step before it found it. This is the backstop under
+everything else, so a tool nobody classified still counts when it actually produced
+something. Job logs under `.aforge-v3` are excluded: the harness's own droppings are not
+the task's work.
+
+**It learned something.** A read-only call aimed at a target the task has not aimed at
+before — `read`, `read_document`, `ls`, `grep`, `find`, `web_search`, `web_fetch`, `jobs`,
+`recall`, `view_image`, `manual`, `tasks`, `settings`, `list_harnesses`, `services`,
+`gmail_read`, `gmail_search`, `calendar_list` — or a `bash` running a command not run
+before. A failed one still counts as learning: finding out that something does not work is
+finding something out.
+
+So what actually fires the counter is **the same call again, changing nothing and teaching
+nothing** — the same search six times, the same failing edit retried, a command already
+run. `note`, `forget`, `track`, `commit` and `change_setting` are deliberately not
+progress: a task writing its own memory again has not learned anything.
+
+Failure matters for saving and not for learning. A `generate_image` that came back with an
+API error saved no file, so a task calling it repeatedly and getting the same error is
+stuck and is stopped — which is what the counter is for.
 
 ## How aforge knows a task really finished
 
@@ -217,6 +244,9 @@ tries in a row got nothing, the first line is prefixed
 On every ending except a clean merge, the branch is **kept and named**. This is true
 without exception:
 
+- a task **stopped at a step limit or for lack of progress** keeps its branch — and what it
+  made is **committed onto that branch** before it lands, so `git merge task/…` really
+  brings the files over. The landing note names them under `changed:` and offers the merge;
 - a task that ran out of time keeps its branch;
 - a task you killed with `jobs kill` keeps its branch, and the partial work with it;
 - a task whose work was found incomplete keeps its branch, exactly as a killed one does.
@@ -452,7 +482,10 @@ Endings are checked in a fixed order, and the first match wins:
 | 10 | Otherwise | done: the evidence first, then the task's words |
 
 In rows 3 to 7 the task's **own last words are kept underneath** the one-line reason, and
-the branch is kept.
+the branch is kept — with the work committed onto it. A task that was stopped mid-flight
+still hands over the files it produced: they are listed under `changed:` and the branch is
+offered for you to merge. What is never done for you is the merge itself, because only work
+that was checked reaches your branch.
 
 What you read on a failure is `task 7 failed: <title>`, the report, the changed files, and
 the line saying the branch was kept. Anything waiting on that task fails with it — the
@@ -509,9 +542,10 @@ and only then a stop with `stopped: 200 steps and no finish`, the number being t
 checkpoint that was in force. A negative value answers `Invalid arguments: max_steps cannot
 be negative`. Zero or absent means the default.
 
-**`no_progress`** — how many tool calls in a row may teach nothing and change nothing
-before the task is stopped as spinning. Default **6**. On the limit the report is
-`stopped: 6 steps without progress`. A negative value answers
+**`no_progress`** — how many tool calls in a row may teach nothing, save nothing and leave
+nothing new in the worktree before the task is stopped as spinning. Default **6**. On the
+limit the report is `stopped: 6 steps without progress`, the landing turn runs, and what
+the task made is committed onto its kept branch. A negative value answers
 `Invalid arguments: no_progress cannot be negative`.
 
 Both step limits are recorded in the checkpoint, so they survive a restart along with the
