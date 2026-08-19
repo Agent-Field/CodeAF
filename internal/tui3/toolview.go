@@ -1179,6 +1179,27 @@ func (a *app) detailBody(e *entry, width int) ([]string, int) {
 		}
 		body, more := a.cap(e, said, bashWindow)
 		return append(head, body...), more
+	case "generate_image":
+		// THE PICTURE IS THE WHOLE ANSWER, and the line under it already says
+		// everything this call's result says — where the file is and how big it
+		// is. Printing the result underneath as well would be the expansion
+		// answering one question twice (imagepreview.go).
+		if picture, drawn := a.pictureRows(e, width); drawn {
+			return picture, 0
+		}
+	case "view_image":
+		// A LOOK HAS TWO HALVES and they are both worth the rows: the picture,
+		// so a person can see what was looked at, and under it what the looking
+		// model said about it — which is the only thing this call actually
+		// returned, and the reason it was made.
+		if picture, drawn := a.pictureRows(e, width); drawn {
+			said := a.plainRows(resultText(e.detail.Output), width)
+			if len(said) == 0 {
+				return picture, 0
+			}
+			body, more := a.cap(e, said, listWindow)
+			return append(picture, body...), more
+		}
 	case "grep", "find", "ls":
 		return a.cap(e, a.plainRows(resultText(e.detail.Output), width), listWindow)
 	}
