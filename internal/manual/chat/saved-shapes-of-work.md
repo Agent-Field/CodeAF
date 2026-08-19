@@ -328,6 +328,32 @@ opening the design tomorrow shows the writing of the page and not only the page.
 re-narrated when you walk in: you are handed the reply being typed right now, and the rest
 is read off the file, exactly as it works for a worker.
 
+## What happens to a design being written when aforge closes or restarts
+
+**A design does not resume.** Every other kind of task that was running when a session
+ended comes back queued and is picked up once; a design is the one exception, and it comes
+back **failed**, saying:
+
+```
+the design did not finish before aforge closed; nothing was saved
+```
+
+That is the literal truth rather than a soft ending. Nothing reaches the harness registry
+until you approve the save-or-discard card, so a design cut off while it was still writing
+left nothing behind to continue from — no page, no half-saved entry, no worktree, no
+branch. The design room and its thread stay on disk and are still readable; there is just
+nothing in the registry.
+
+The recovered-graph line counts it apart from resumable work, because it is not resumable:
+
+```
+recovered task graph: 2 done · 1 design did not finish (nothing saved) · 1 waiting
+```
+
+**Ask for the same harness again and it is designed from the start.** That is one more
+design's worth of model calls; there is no partial page to pick up. If designs keep running
+out before they finish, ask for a smaller harness — fewer steps, shorter briefs.
+
 ## What a design can be refused for
 
 A design must pass validation and a lint before it can be offered to you. The lint refuses:

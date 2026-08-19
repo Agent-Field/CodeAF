@@ -144,12 +144,14 @@ type taskSpec struct {
 	// [Agent.runTaskNode] hands the node to the designer's body instead of the
 	// worker's — same graph, same room, same stop, a different middle.
 	//
-	// IT IS NOT IN THE CHECKPOINT, deliberately. A design node restored from
-	// disk was RUNNING when the session ended, and a resume turns a running node
-	// into a failed one before the graph ever holds it (task_store.go's
-	// interrupt) — so there is nothing to re-enter, and a spec that claimed
-	// otherwise would be a node the frontier tried to design again with the
-	// registry already untouched.
+	// IT IS NOT IN THE CHECKPOINT, deliberately, and task_store.go's [interrupt]
+	// is what makes that safe rather than a hole: a design node restored from
+	// disk was RUNNING when the session ended, and a resume settles it FAILED
+	// before the graph ever holds it, so there is nothing to re-enter. That line
+	// and this one are one decision. If a design were ever put back on the
+	// frontier instead, the next session would hand it to an ordinary worker in a
+	// worktree with the designer's brief as its task — real money spent on work
+	// nobody asked for — because this is the only field that says otherwise.
 	design *harnessDesignSpec
 	// parent, depth and owner are THE FAMILY this proposal was made in, and they
 	// are the whole of what nesting adds to the spec: 0, 0 and nil for the work

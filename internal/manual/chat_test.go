@@ -100,6 +100,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does the indented part mean", "keys"},
 		{"how do I see what aforge did", "keys"},
 		{"how do I keep everything expanded", "keys"},
+
+		// The fifth wave: work that went wrong quietly. Every one of these is
+		// asked with a screen full of something that looks finished and is not —
+		// a row still saying "running" long after anything was, a worker that
+		// announced a file it never wrote, the same brief sent out again and
+		// again — and the honest answer has to come off a page, because the
+		// model's own account of what happened is exactly what was wrong.
+		{"why does my run still say running", "adaptive-runs"},
+		{"does an adaptive run survive a restart", "adaptive-runs"},
+		{"what happens to a run if aforge restarts", "adaptive-runs"},
+		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
+		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
+		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
+		{"does a design resume after a restart", "saved-shapes-of-work"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)
