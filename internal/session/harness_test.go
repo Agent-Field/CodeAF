@@ -35,7 +35,7 @@ func harnessAgent(t *testing.T, completer Completer, run func(name, text, model 
 		// the session's own seam for it, exactly as a task's `model` is
 		// (taskmodel.go).
 		config.TaskModels = func() []string { return testModels }
-		config.RunHarness = func(_ context.Context, name, text, model string) (string, error) {
+		config.RunHarness = func(_ context.Context, name, text, model string, _ func(subharness.Trail)) (string, error) {
 			atomic.AddInt32(&ran, 1)
 			return run(name, text, model)
 		}
@@ -177,11 +177,11 @@ func TestHarnessSilentWhenUnwired(t *testing.T) {
 		}, false},
 		{"runner but no registry", func(c *Config) {
 			c.AskConsent = true
-			c.RunHarness = func(context.Context, string, string, string) (string, error) { return "", nil }
+			c.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, error) { return "", nil }
 		}, false},
 		{"wired, but nobody is watching", func(c *Config) {
 			c.Harnesses = []subharness.Entry{researchEntry}
-			c.RunHarness = func(context.Context, string, string, string) (string, error) {
+			c.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, error) {
 				return "", errors.New("a headless run must never be asked")
 			}
 		}, false},
@@ -339,5 +339,105 @@ func TestHarnessOfferInterrupted(t *testing.T) {
 	agent.mu.Unlock()
 	if waiting != 0 {
 		t.Fatalf("%d offers left waiting", waiting)
+	}
+}
+
+// A RUN IS WATCHED WHILE IT HAPPENS. Between the announcement and the report is
+// the whole of a run that takes minutes, and until the step lane existed a
+// person watching had the harness's name and then silence.
+func TestHarnessRunReportsEachStepAsItLands(t *testing.T) {
+	completer := &scriptedCompleter{}
+	steps := []subharness.Trail{
+		{Step: 1, Id: "gather", Kind: subharness.KindAgentLoop, Out: "read the changelog", Elapsed: time.Second},
+		{Step: 2, Id: "check", Kind: subharness.KindVerify, Err: "the diff did not apply"},
+	}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = true
+		config.Harnesses = []subharness.Entry{researchEntry}
+		config.TaskModels = func() []string { return testModels }
+		config.RunHarness = func(_ context.Context, _, _, _ string, step func(subharness.Trail)) (string, error) {
+			for _, one := range steps {
+				step(one)
+			}
+			return "the report", nil
+		}
+	})
+
+	events, err := agent.Submit(context.Background(), harnessTurn)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	collected := drainAnsweringHarness(t, agent, events, true)
+
+	announced, ok := firstOfKind(collected, EventHarnessRun)
+	if !ok {
+		t.Fatalf("the run was never announced; events: %v", kinds(collected))
+	}
+	var got []subharness.Trail
+	for _, event := range collected {
+		if event.Kind != EventHarnessStep {
+			continue
+		}
+		if event.Step == nil {
+			t.Fatalf("a step arrived carrying nothing: %+v", event)
+		}
+		// THE STEP NAMES ITS RUN, which is what lets a surface tell one run's
+		// rows from another's and what [Agent.Cancel] names the same run by.
+		if event.ID != announced.ID {
+			t.Fatalf("step %d belongs to run %d, the announcement was %d", event.Step.Step, event.ID, announced.ID)
+		}
+		got = append(got, *event.Step)
+	}
+	if len(got) != len(steps) {
+		t.Fatalf("%d steps reached the surface, the run took %d", len(got), len(steps))
+	}
+	for i, step := range got {
+		if step != steps[i] {
+			t.Fatalf("step %d arrived as %+v, the walk reported %+v", i, step, steps[i])
+		}
+	}
+	// AND EVERY STEP ARRIVES BEFORE THE REPORT DOES. A row that landed after the
+	// card would be the surface saying "now doing this" about work that is over.
+	firstStep, report := -1, -1
+	for i, event := range collected {
+		if event.Kind == EventHarnessStep && firstStep < 0 {
+			firstStep = i
+		}
+		if event.Kind == EventTextDelta && report < 0 {
+			report = i
+		}
+	}
+	if firstStep < 0 || report < 0 || firstStep > report {
+		t.Fatalf("the steps did not precede the report; events: %v", kinds(collected))
+	}
+}
+
+// NOTHING A STEP SAYS IS WRITTEN DOWN. The report carries the whole trail, so a
+// step recorded beside it would be that trail in the transcript twice — and it
+// would ride in every later request forever.
+func TestHarnessRunStepsAreNeverRecorded(t *testing.T) {
+	completer := &scriptedCompleter{}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = true
+		config.Harnesses = []subharness.Entry{researchEntry}
+		config.TaskModels = func() []string { return testModels }
+		config.RunHarness = func(_ context.Context, _, _, _ string, step func(subharness.Trail)) (string, error) {
+			step(subharness.Trail{Step: 1, Id: "gather", Kind: subharness.KindAgentLoop, Out: "a step nobody keeps"})
+			return "the report", nil
+		}
+	})
+
+	events, err := agent.Submit(context.Background(), harnessTurn)
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	drainAnsweringHarness(t, agent, events, true)
+
+	for _, message := range agent.messages {
+		for _, part := range message.Content {
+			if strings.Contains(part.Text, "a step nobody keeps") {
+				t.Fatalf("a live step was recorded into the transcript: %q", part.Text)
+			}
+		}
 	}
 }

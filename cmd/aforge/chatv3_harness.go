@@ -103,7 +103,7 @@ func v3HarnessEntries(store *subharness.Store) []subharness.Entry {
 // the entries are: a settings row that cannot build a client is a reason to run
 // the ordinary turn, not a reason to refuse to open a conversation. The session
 // checks this seam for nil before it matches anything (its harness.go).
-func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string) func(ctx context.Context, name, text, runModel string) (string, error) {
+func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string) func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, error) {
 	if store == nil {
 		return nil
 	}
@@ -120,12 +120,16 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 		return nil
 	}
 	tools := v3HarnessToolBridges(workspace)
-	return func(ctx context.Context, name, text, runModel string) (string, error) {
+	return func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, error) {
 		h, err := store.Load(name, 0)
 		if err != nil {
 			return "", err
 		}
-		trace, runErr := subharness.Run(ctx, h, subharness.ModelExec(client, subharness.ModelExecOpts{
+		// THE WALK IS WATCHED, so the session can say what the run is doing while
+		// it does it. The step handed on is the trail's own entry — the same one
+		// the card below is rendered from — and the session decides what a surface
+		// is told about it; nothing here shapes it (internal/session's harness.go).
+		trace, runErr := subharness.RunWatched(ctx, h, subharness.ModelExec(client, subharness.ModelExecOpts{
 			Harness:  h,
 			RunTool:  tools.Run,
 			Toolbelt: tools.Belt,
@@ -134,7 +138,7 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 			// What the turn asked this run to think with, empty when it asked
 			// for nothing. A node that pinned its own model still wins.
 			Model: runModel,
-		}))
+		}), step)
 		if trace.Id.Name == "" {
 			// The run never started — an invalid page. There is no evidence to
 			// keep and nothing to report but why.

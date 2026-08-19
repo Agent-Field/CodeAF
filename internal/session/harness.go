@@ -140,7 +140,14 @@ func (a *Agent) runHarnessRoute(ctx context.Context, hub *eventHub, route harnes
 	runCtx, runID, ended := a.beginHarnessRun(ctx)
 	defer ended()
 	hub.send(Event{Kind: EventHarnessRun, ID: runID, Text: entry.Name, Hint: entry.Description, Model: model})
-	report, err := a.config.RunHarness(runCtx, entry.Name, route.Turn.Text, model)
+	// EACH STEP IS SAID AS IT LANDS. Between the announcement above and the
+	// report below is the whole of the run — minutes of it — and until this
+	// existed a person watching had the harness's name and then silence. The
+	// send is synchronous with the walk, which is exactly what makes the row on
+	// screen the step that is actually finishing.
+	report, err := a.config.RunHarness(runCtx, entry.Name, route.Turn.Text, model, func(step subharness.Trail) {
+		hub.send(Event{Kind: EventHarnessStep, ID: runID, Text: entry.Name, Step: &step})
+	})
 	if err != nil {
 		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{Turns: 1}, started)})
 		return true, false

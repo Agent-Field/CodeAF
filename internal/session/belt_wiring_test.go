@@ -30,7 +30,7 @@ func v3ShapedAgent(t *testing.T) *Agent {
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.AskConsent = true
 		config.HarnessStore = subharness.At(t.TempDir())
-		config.RunHarness = func(context.Context, string, string, string) (string, error) {
+		config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, error) {
 			return "", nil
 		}
 		config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {
@@ -94,7 +94,7 @@ func TestEachBigHandIsAbsentWhenItsSeamIs(t *testing.T) {
 			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 				config.AskConsent = true
 				config.HarnessStore = subharness.At(t.TempDir())
-				config.RunHarness = func(context.Context, string, string, string) (string, error) {
+				config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, error) {
 					return "", nil
 				}
 				config.OrchestrateRunner = func(context.Context, string, string, float64) (string, error) {

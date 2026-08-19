@@ -247,6 +247,16 @@ const (
 	// a model thinking: what follows is the harness's report as ordinary text
 	// and then EventTurnDone, or EventError if the run failed.
 	EventHarnessRun
+	// EventHarnessStep is one step of a running sub-harness, the instant it
+	// lands: Step is the walk's own trail entry (subharness.RunWatched) and ID is
+	// the run it belongs to — the id EventHarnessRun carried.
+	//
+	// It is a REPORT and it is DISPLAY-ONLY. A run takes minutes, and between the
+	// announcement and the report there was nothing on screen saying which part of
+	// it was happening. Nothing here is recorded: the report that follows carries
+	// the whole trail (subharness.RunCard), so a step kept in the transcript would
+	// be the same news written down twice.
+	EventHarnessStep
 	// EventHarnessDesign says a turn asked for a sub-harness to be BUILT — "make
 	// a harness for triaging flaky tests" — and the design has started
 	// (harness_build.go). Text is the goal, less the words that asked for it;
@@ -379,6 +389,13 @@ type Event struct {
 	Attempts    int
 	ThoughtTail string
 	Stalled     bool
+
+	// Step is one finished step of a RUNNING sub-harness, on EventHarnessStep
+	// alone and nil on every other kind. It is the walk's own trail entry rather
+	// than a copy of the parts of it a surface might want, so the row drawn while
+	// the run happens and the row on the card read back afterwards are rendered
+	// from one fact (subharness.StepLine).
+	Step *subharness.Trail
 
 	// Task carries one EventTaskProposal or EventTaskUpdate's payload
 	// (task_contract.go). It is nil on every other kind, and the ID inside it
@@ -727,7 +744,14 @@ type Config struct {
 	// keeps the engine out of this package: the conversation decides WHETHER a
 	// harness runs — it is the half a person answers — and the engine decides
 	// what running one means.
-	RunHarness func(ctx context.Context, name, text, model string) (string, error)
+	//
+	// step is where the engine reports each step as it lands, and it is what
+	// makes a run something a person can WATCH rather than wait out: the report
+	// only exists when the whole thing is over. It is never nil, so a runner
+	// calls it without checking; a runner with nothing to report simply never
+	// does. Calling it BLOCKS the run for as long as the send takes, which is
+	// why what is behind it is one hub send and nothing else.
+	RunHarness func(ctx context.Context, name, text, model string, step func(subharness.Trail)) (string, error)
 
 	// HarnessStore is where a harness this conversation DESIGNS is written, and
 	// it is the same registry Harnesses was read out of (harness_build.go). The
