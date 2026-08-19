@@ -86,6 +86,11 @@ with the path, the file size and the model, e.g.
 you asked for a particular voice, because a voice the model does not have is a
 failed generation rather than a near miss.
 
+With no speech model set in `/settings` → Providers, the default is
+`fish-audio/s1`, falling back to `hexgrad/kokoro-82m` and then
+`openai/gpt-4o-mini-tts` on a catalog that does not advertise it. A model you
+set yourself wins over all three.
+
 There is no duration in the result: nothing here opens the mp3 to measure it, and
 a guessed length would be worse than none. Play the file to hear it — aforge
 cannot listen to audio.
@@ -107,6 +112,10 @@ told in a note at the next step:
 `job 3 finished: .aforge-v3/video/20260817-143001-a-ferry-at-dawn.mp4 — 4.2MB of mp4 video, filmed on <model>`.
 A render that fails says so the same way: `job 3 failed: video generation timed
 out (<model>); no video was saved`. Nothing waits for it and nothing polls it.
+
+With no video model set in `/settings` → Providers, the default is
+`bytedance/seedance-2.0-mini`, falling back to `bytedance/seedance-1-5-pro` on a
+catalog that does not advertise it. A model you set yourself wins over both.
 
 Arguments: `prompt` (required), `duration` in seconds, `aspect_ratio`,
 `frame_paths`, `reference_paths`, `path`.
