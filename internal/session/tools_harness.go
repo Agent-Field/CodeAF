@@ -45,7 +45,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 )
 
-const buildHarnessDescription = "Design a REUSABLE sub-harness: a named, versioned procedure for a shape of work this project will do again — steps, the tools those steps may use, and its own bounds. Saved, it is offered by the turn itself whenever somebody's words match it, so building one is how a good way of working stops depending on anybody remembering it. The goal is what the harness must DO, written for a designer that cannot see this conversation: when the person pointed at something here (\"build a harness for this\", \"…for what we just did\"), write that context into the goal — the files, the checks, the order — because the sentence you pass is the whole brief. It answers immediately with a TASK NUMBER and the design runs as that task: the person can open it, watch the page being written, talk to it, and stop it, and it moves through designing, then awaiting their look, then saved. Nothing is written to the registry unless they approve the card, and you will be told what became of it. Call list_harnesses first — a harness that already does this is one to run, not to build; asking for a CHANGE to one is a new design, so say what the whole harness must do rather than only what is different. Use it for a recipe worth repeating; for one-off work with many parts use run_adaptive, and for one self-contained piece use propose_task."
+const buildHarnessDescription = "Design a REUSABLE sub-harness: a named, versioned procedure for a shape of work this project will do again — steps, the tools those steps may use, and its own bounds. Saved, it is offered by the turn itself whenever somebody's words match it, so building one is how a good way of working stops depending on anybody remembering it. The goal is what the harness must DO, written for a designer that cannot see this conversation: when the person pointed at something here (\"build a harness for this\", \"…for what we just did\"), write that context into the goal — the files, the checks, the order — because the sentence you pass is the whole brief. It answers immediately with a TASK NUMBER and the design runs as that task: the person can open it, watch the page being written, talk to it, and stop it, and it moves through designing, then awaiting their look, then saved. Nothing is written to the registry unless they approve the card, and you will be told what became of it. Call list_harnesses first — a harness that already does this is one to run, not to build; asking for a CHANGE to a harness that is already SAVED is a new design, so say what the whole harness must do rather than only what is different. A design that is still on its card is not: the person changes that one by saying so in the design's own room and it is rewritten in place, so never start a second design because they want the first one altered. Use it for a recipe worth repeating; for one-off work with many parts use run_adaptive, and for one self-contained piece use propose_task."
 
 const buildHarnessSchemaJSON = `{"type":"object","properties":{` +
 	`"goal":{"type":"string","description":"What the harness must do, self-contained. The designer never sees this conversation, so fold in whatever the person's words were pointing at: the work, the files, how a good result is checked."}` +
@@ -76,7 +76,7 @@ var runAdaptiveSchemaJSON = fmt.Sprintf(`{"type":"object","properties":{`+
 // a model that has the first two without the third builds a second harness for
 // work this machine already knows how to do.
 func (a *Agent) harnessTools() []bare.Tool {
-	var tools []bare.Tool
+	tools := a.designThreadTools()
 	if a.canDesignHarness() {
 		tools = append(tools, a.buildHarnessTool(), a.listHarnessesTool())
 	}
@@ -99,6 +99,72 @@ func (a *Agent) canDesignHarness() bool {
 // halfway and stays there.
 func (a *Agent) canOrchestrate() bool {
 	return a.config.OrchestrateRunner != nil && a.config.AskConsent
+}
+
+// ── THE HAND A DESIGN'S OWN THREAD HAS ──────────────────────────────────────
+//
+// build_harness above is the conversation's hand: it commissions a page. This is
+// the hand INSIDE one of those designs, and there is exactly one of it.
+//
+// The design's room is a place a person stands in front of a page they have just
+// read. What they say there is one of two things — a question about the page, or
+// a change to it — and until this tool existed the thread could only ever do the
+// first. Asked for a change it said, correctly and uselessly, that a revision was
+// a new design and they should go and ask for one: a person looking at a draft,
+// in the draft's own room, told to leave and start over. So the second thing they
+// say is a verb now, and the deciding of which of the two they said is the
+// model's, made once, with the page and the whole conversation in front of it —
+// the same law the two hands above are written to (this file's header).
+//
+// IT COMMITS NOTHING, which is the bargain every hand in this file keeps. A
+// rewrite ends in another card, and the registry is untouched until the person
+// approves one.
+
+const reviseDesignDescription = "The person wants the PAGE CHANGED. Call this with the change stated completely, and the harness is written again with their change in it: the card in front of them comes down, the designer rewrites the whole page, and a new card is raised for them to approve. Call it the moment they ask for something to be different — \"add a step that runs the linter\", \"drop the second check\", \"this should work over the whole repo, not one package\" — including when they say it sideways (\"this wouldn't catch a flake in a subpackage\", \"I don't think two steps is enough\"). Do NOT call it to answer a QUESTION: \"why two steps?\" and \"would this fit the nightly build?\" are answered here, from the page, and calling this on one of them throws away a draft the person was happy with. State the change WHOLE, in their own words plus whatever they were pointing at — the designer cannot see this room and rewrites the entire page from your one sentence. Nothing is saved by calling this, and nothing ever is until the person approves a card; it works only while their card is up, and says so if it is not."
+
+const reviseDesignSchemaJSON = `{"type":"object","properties":{` +
+	`"change":{"type":"string","description":"What the harness must do differently, stated completely and in the person's own terms. The designer sees only this sentence and the page it is rewriting, so carry what they said and what they were pointing at when they said it."}` +
+	`},"required":["change"],"additionalProperties":false}`
+
+// designThreadTools is that one hand, and nothing at all in every agent that is
+// not a design's thread.
+//
+// The gate is the door itself being nil rather than a question asked about the
+// config, and that is the absent-not-broken law at its sharpest: a thread told it
+// can rewrite a page it has no design behind it would offer the person a rewrite
+// every time, and be refused every time.
+func (a *Agent) designThreadTools() []bare.Tool {
+	revise := a.config.reviseDesign
+	if revise == nil {
+		return nil
+	}
+	return []bare.Tool{{
+		Name:        "revise_design",
+		Description: reviseDesignDescription,
+		Schema:      json.RawMessage(reviseDesignSchemaJSON),
+		Execute: func(_ context.Context, args json.RawMessage) (string, bool, error) {
+			var parsed struct {
+				Change string `json:"change"`
+			}
+			if len(args) > 0 {
+				if err := json.Unmarshal(args, &parsed); err != nil {
+					return "Invalid arguments: " + err.Error(), true, nil
+				}
+			}
+			change := strings.TrimSpace(parsed.Change)
+			if change == "" {
+				return "Invalid arguments: revise_design needs the change — what the harness must do differently, stated completely, because the designer rewrites the whole page from it.", true, nil
+			}
+			if err := revise(change); err != nil {
+				// The door's own sentence, kept. "This design is not waiting on an
+				// answer right now" and "a change to this page is already being
+				// made" are different facts about what to do next, and a flattened
+				// "could not revise" would throw away the half that says which.
+				return "That change did not reach the designer: " + err.Error(), true, nil
+			}
+			return "The change went to the designer and the card has come down. The page is being written again now — the person watches that happen in this room, a new card is raised when it is ready, and nothing reaches the registry unless they approve that one. Say in a line what you asked for, and wait.", false, nil
+		},
+	}}
 }
 
 // buildHarnessTool starts one design and comes straight back.

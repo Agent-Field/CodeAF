@@ -416,6 +416,13 @@ through to the message box's back-navigation.
 A click on empty space does nothing anywhere else, but inside a room it is the way
 out.
 
+**Inside a harness design's room, while its card is waiting on you**, two more chords
+appear above the message box: `ctrl+k` saves the design and `ctrl+x` drops it, and both
+are clickable. They are chords rather than letters because `esc` and `enter` are already
+spoken for and a bare letter would stop being a letter you can type — and they are bound
+only while that row is up. Every other key still goes to the message box, which is where
+you say what you want changed instead. The saved-shapes pages describe the row in full.
+
 **`x` asks to stop the work.** It is taken on the roster's focused row and inside a
 room or an adaptive run's page, and only over an empty message box — the moment there
 is a sentence in the box it is the letter `x`. It never stops anything by itself: it
@@ -631,10 +638,11 @@ answer:
 |---|---|
 | `shift+enter` | Not bound. Use `alt+enter` or `ctrl+j` to open a new line |
 | `ctrl+d` | Not bound |
-| `ctrl+k` | Not bound |
+| `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Not bound |
 | `ctrl+v` | Not bound. Paste with your terminal's own paste; aforge reads bracketed paste |
-| `ctrl+x`, `ctrl+y`, `ctrl+z` | Not bound |
+| `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
+| `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 
 A key that is not bound falls through to "does this key carry text". If it carries

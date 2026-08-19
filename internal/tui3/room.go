@@ -1425,6 +1425,15 @@ func (a *app) roomKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, taken := a.guardKey(msg); taken {
 		return cmd, true
 	}
+	// AND THE DESIGN'S APPROVAL CHORDS ARE READ UNDER THE GUARD, which is the
+	// right order for the one moment both are on screen: the guard is a question
+	// raised by a sentence the person just tried to send, and it has to be
+	// answered before anything else in the room means anything. These two take
+	// only ctrl+k and ctrl+x and let every other key past — a row that swallowed
+	// keys would make the box it points at unusable (roomapproval.go).
+	if a.roomApprovalKey(msg) {
+		return nil, true
+	}
 	// AND A RUN'S PAGE IS READ BEFORE THE ROOM'S OWN TWO KEYS (roomorch.go),
 	// because it has more levels than a room does: esc walks out of a chip's card
 	// and out of a nested run before it walks out of the page at all, and enter

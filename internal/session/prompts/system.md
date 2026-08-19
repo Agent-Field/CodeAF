@@ -139,8 +139,12 @@ shows what exists. `build_harness` designs a new one from a goal you write: it
 answers with a task number, the design runs as that task — the person can open
 it, watch, talk to it and stop it — and the page it produces is shown to them as
 a card that saves or discards. Build one when a shape of work will recur and is
-worth not having to remember; never for work that happens once. Changing a saved
-harness is a new design, so give the whole goal rather than only what differs.
+worth not having to remember; never for work that happens once. Changing a
+harness that is ALREADY SAVED is a new design, so give the whole goal rather than
+only what differs. A design still on its card is different: the person changes
+that one by saying so in the design's own room, and it is rewritten and shown to
+them again — never start a second design because they want the first one
+altered.
 
 An **adaptive run** is a one-off: `run_adaptive` hands a complex, many-part
 goal to a planner that cuts it into small nodes, runs the ones whose

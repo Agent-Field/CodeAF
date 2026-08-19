@@ -222,7 +222,7 @@ func TestTheThreadReasonsFromAPageTheRoomNeverDraws(t *testing.T) {
 	submitBuild(t, agent)
 	done := designDone(t, lane)
 	node := designNode(t, agent)
-	waitForPhase(t, node, harnessPhaseAsking)
+	waitForPhase(t, node, HarnessPhaseAsking)
 
 	child := node.openRoom().speaker()
 	if child == nil {
@@ -240,7 +240,7 @@ func TestTheThreadReasonsFromAPageTheRoomNeverDraws(t *testing.T) {
 	if !strings.Contains(told.String(), `"flake-triage"`) {
 		t.Fatalf("the thread cannot see the page it is meant to answer from: %q", told.String())
 	}
-	if !strings.Contains(told.String(), "Your job in this thread") {
+	if !strings.Contains(told.String(), "ANSWER QUESTIONS about this harness") {
 		t.Fatalf("the thread was never told what it is for: %q", told.String())
 	}
 
@@ -248,7 +248,7 @@ func TestTheThreadReasonsFromAPageTheRoomNeverDraws(t *testing.T) {
 	// every surface uses, and the instructions the thread was given are gone from
 	// it too — a person walking in reads their own sentence and the card.
 	shown := threadText(t, node)
-	if strings.Contains(shown, `"nodes"`) || strings.Contains(shown, "Your job in this thread") {
+	if strings.Contains(shown, `"nodes"`) || strings.Contains(shown, "ANSWER QUESTIONS about this harness") {
 		t.Fatalf("the room drew what only the model was meant to read: %q", shown)
 	}
 	if !strings.Contains(shown, "Design a reusable sub-harness for this:") {

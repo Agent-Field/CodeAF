@@ -1933,6 +1933,16 @@ var railGroupWords = [railGroupCount]string{"needs you", "running", "idle", "par
 func (a *app) railGroupOf(node *taskNode) railGroup {
 	switch node.state {
 	case session.TaskRunning:
+		// EXCEPT FOR THE ONE PIECE OF RUNNING WORK THAT IS NOT RUNNING. A harness
+		// design at "awaiting your look" has finished everything a machine can do
+		// for it: the page is written and the only remaining step is somebody
+		// saying whether to keep it ([taskAwaitsPerson]). Counted as running it
+		// made the roster's foot say "1 running" about a card that had been sitting
+		// on screen for ten minutes waiting on the person reading that line — and
+		// left the tally that exists to say "something needs you" saying nothing.
+		if taskAwaitsPerson(node) {
+			return railAttention
+		}
 		return railRunning
 	case session.TaskUnverified:
 		// ATTENTION, AND IT IS THE PLAINEST CASE OF IT ON THIS COLUMN. An
@@ -1963,6 +1973,31 @@ func (a *app) railGroupOf(node *taskNode) railGroup {
 // sitting somewhere a person can go and get. A node that ran in the person's own
 // tree, or one that ended before there was ever a branch, wears no name here and
 // has left nothing behind — so it is not undelivered, it is simply over.
+// taskAwaitsPerson reports whether this node's only remaining step is a
+// PERSON'S. It is the other half of [taskUndelivered]: both name work the
+// machine has finished and cannot take further, and both belong in the tally
+// that says how many things need somebody.
+//
+// TODAY IT IS EXACTLY ONE THING, and it is written narrowly on purpose. A
+// harness design holds its node open while its card waits to be answered, which
+// is right — the work genuinely is not over, the room has to stay open, the stop
+// has to keep working — but its STATE is the machinery's word for it, and the
+// state is `running` for the same span in which nothing is running. The phase is
+// the honest fact, so the phase is what this asks, against the engine's own
+// constant (session's HarnessPhaseAsking): the string is spelled once, over
+// there, because a second copy of it here is the copy that would drift.
+//
+// It is deliberately not a general "is the phase a waiting one" test. Phases are
+// a kind's own vocabulary and only this kind has one; a surface that guessed at
+// the meaning of phases it had never been told about would file the next kind's
+// rows wrong the day it landed.
+func taskAwaitsPerson(node *taskNode) bool {
+	return node != nil &&
+		node.kind == session.TaskKindHarness &&
+		node.state == session.TaskRunning &&
+		node.doing == session.HarnessPhaseAsking
+}
+
 func taskUndelivered(node *taskNode) bool {
 	switch node.merge {
 	case mergeWordConflicted, mergeWordAborted:
@@ -3838,6 +3873,15 @@ func (a *app) railGlyph(node *taskNode) string {
 	if mark, stopped := a.stoppedGlyph(node); stopped {
 		return mark
 	}
+	// AND NOTHING SPINS WHILE IT IS WAITING ON YOU. A spinner is this surface's
+	// one promise that something is happening this instant, and a design at
+	// "awaiting your look" is the one running row where nothing is
+	// ([taskAwaitsPerson]). It wears the same ? the other kind of finished-and-
+	// waiting work wears, in the same warn hue, because it is the same ask: the
+	// machine has done its part and the next move is yours.
+	if taskAwaitsPerson(node) {
+		return a.pal.warn(glyphUnverified)
+	}
 	switch node.state {
 	case session.TaskDone:
 		return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
@@ -4122,8 +4166,13 @@ func (a *app) tasksAnimating() bool {
 	// running nodes and not about the list's length — otherwise a session that
 	// finished its work an hour ago would still be repainting a spinner-less
 	// column thirty times a second.
+	//
+	// AND A DESIGN WAITING ON YOU IS A STILL PICTURE TOO, for the same reason
+	// exactly: its row wears the ? rather than the spinner now
+	// ([taskAwaitsPerson]), so a card that sits unanswered over lunch is no
+	// longer an hour of repaints for a row that never changes.
 	for _, node := range a.tasks {
-		if node != nil && node.state == session.TaskRunning {
+		if node != nil && node.state == session.TaskRunning && !taskAwaitsPerson(node) {
 			return true
 		}
 	}
