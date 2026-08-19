@@ -19,11 +19,53 @@ What `enter` does depends on what is in the box:
   sent.
 - An empty box with nothing selected: nothing happens.
 
-While a turn is running, plain `enter` steers the running turn — your words land
-inside it at its next step boundary. `ctrl+q` instead queues the message to run
-*after* the current turn; an empty box does nothing. Until its turn starts, a dim
-row above the box reads `  after yield · N`. If the queueing fails, aforge notes
-`follow-up failed: <error>`.
+While a turn is running, plain `enter` **holds** the message instead of sending it —
+see "Typing while an answer is still coming" below. `ctrl+q` instead hands the message
+to the session there and then, to run *after* the current turn; an empty box does
+nothing. Until its turn starts, a dim row above the box reads `  after yield · N`. If
+the queueing fails, aforge notes `follow-up failed: <error>`.
+
+## Typing while an answer is still coming — interrupting and steering
+
+Typing is never blocked. The box works normally while an answer streams.
+
+`enter` while a turn is running does **not** send. The message is held on the surface
+and drawn in its own block directly above the box, in your own hue, with a dim line
+under it:
+
+```
+› do much more of a deep research please
+  waits for this answer · esc stops and sends · ↑ or click to edit
+```
+
+It is not written into the conversation and it is never drawn inside the streaming
+reply. The box is cleared, so you can keep typing.
+
+| What you do | What happens |
+|---|---|
+| the answer finishes | the waiting message sends itself as an ordinary new turn |
+| several are waiting | one per finished turn, oldest first, in the order you typed them |
+| `esc` | stops the answer and sends the waiting message immediately |
+| `↑` over an empty box | takes the newest waiting message back into the box to edit |
+| click the block | takes **that** message back into the box to edit |
+| `enter` again | holds the edited sentence again |
+
+Attachments in the tray go with the held message, and come back on the tray if you take
+it back. `/`-commands are **not** held: a slash command is something you said to this
+surface rather than to the model, and it runs at once.
+
+**Limits.** `esc` with nothing waiting is exactly the plain interrupt it always was.
+The held message is dropped, with a note — `1 waiting message dropped` or `N waiting
+messages dropped` — if the conversation is replaced under it by `/new` or by opening a
+session from the welcome box. Inside a **task room** `enter` steers the node instead
+and nothing is held; that is the room's own key (see the room section below).
+
+**Why it waits rather than going straight in.** The session can take a message into a
+running turn, but only at a *step boundary* — before the next model request. A turn
+whose last request has already gone out has no boundary left, so a message pushed into
+it would land in the transcript with nothing coming to answer it. Waiting for the turn
+to end means the message always gets a reply, and it is what makes the message editable
+until it goes.
 
 ## Interrupting a running turn — how to stop it
 
@@ -37,9 +79,13 @@ What happens:
 2. Any queued follow-ups are dropped, and aforge says so — `1 queued message
    dropped`, or `N queued messages dropped`.
 3. `interrupted` stays as the status word until the next turn starts.
+4. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
+   immediately as the next turn. That is the whole difference `esc` makes while
+   something is waiting.
 
 **What the screen says.** While a turn runs, the right end of the row under the
-message box reads exactly `esc interrupt`. On the very first frame of a session the
+message box reads exactly `esc interrupt` — or `esc stops and sends` while a message of
+yours is waiting for the answer to finish. On the very first frame of a session the
 conversation carries the note `esc or ctrl+c interrupts`.
 
 **Limits.** Interrupting does nothing at all when no turn is running. `esc` reaches
@@ -61,10 +107,12 @@ These apply with no overlay up, no room open, and no mode on.
 | `enter` | Send the message. Empty box with attachments still sends; empty box with a tool row selected opens that row |
 | `alt+enter` | Open a new line in the message |
 | `ctrl+j` | Same as `alt+enter` |
-| `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn |
+| `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
 | `esc` `esc` | Two presses inside a short window open rewind mode |
 | `ctrl+c` | Turn running: interrupt. Nothing running: quit aforge |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
+| `enter` while a turn runs | Hold the message above the box until the answer finishes |
+| `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
 
 `shift+enter` is not bound. Use `alt+enter` or `ctrl+j` to open a line.
 
@@ -178,6 +226,9 @@ that has moved on. There is nothing to press; it is automatic.
 prompts you typed before, newest first. `down` walks forward again toward your live
 draft. `esc` cancels the walk and restores your own sentence exactly as you left it.
 
+- **A message waiting for the answer is read first.** With an empty box and something
+  waiting above it, `up` takes that message back into the box to be edited instead of
+  walking your history. Only once nothing is waiting does `up` walk the history again.
 - Your live draft is stashed on the way in, and comes back on `esc` or on walking
   forward past the newest entry.
 - Walking past the oldest entry stays put rather than emptying the box.
@@ -475,7 +526,12 @@ Only the left button acts. A press is resolved in this order:
 8. The model name in the status row, which opens the model picker. A press elsewhere
    on the status row falls through. On a narrow terminal the whole two-row deck
    answers.
-9. The body: an inline **task link** inside prose, which is the one mouse-only target
+9. A message of yours **waiting** for the answer to finish, in the block above the
+   box — a click anywhere along its line takes that message back into the box to be
+   edited, and the block loses it. The whole line answers, because nothing shares it.
+   A press on the dim line under the block does nothing: that line is a statement,
+   not a message.
+10. The body: an inline **task link** inside prose, which is the one mouse-only target
    on the surface; a cut markdown table's foot; a waiting sign-in, where a click
    copies its link; a thinking block, clickable over its whole height; a tool row,
    which opens its expansion, or the full-frame sheet on a narrow terminal; the

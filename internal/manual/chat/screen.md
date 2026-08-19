@@ -5,8 +5,9 @@
 aforge draws one screen in a fixed order every frame. From the top: the pinned room
 header (only while a task room is open), the task strip, the conversation, a breathing
 gap, the rule with the legend in it, the approval question, the connect offer, the
-sub-harness offer, the steer guard, the follow-up row, another gap, the draft box where
-you type, any open list (picker, menu, completion), and the status line last.
+sub-harness offer, the steer guard, the follow-up row, any message waiting for the
+answer to finish, another gap, the draft box where you type, any open list (picker,
+menu, completion), and the status line last.
 
 Beside the conversation, on the right, the task roster's column — the right-hand bar,
 sidebar, task panel, whatever you call it — takes 30 columns (24 on a narrower frame)
@@ -83,7 +84,8 @@ and is never cut along with the path (`devbox:~/code/app`).
 The right is a hint slot. It says `/ commands` when nothing else needs it, and names
 the keys that work right now when a state has keys of its own — for example
 `y allow · n deny · a always` while a question is up, `esc interrupt` while a turn is
-running, or `↑↓ · enter · esc` while a list is open. Idle, it is empty and falls back
+running, `esc stops and sends` while a message of yours is waiting for the answer to
+finish, or `↑↓ · enter · esc` while a list is open. Idle, it is empty and falls back
 to `/ commands`.
 
 One line in that slot is not about the next keystroke: `ctrl+g tasks`, which appears
@@ -435,6 +437,54 @@ whole block is rendered at once.
 The offer to open a wide table is only drawn on the settled render. A half-arrived table
 has columns that will still move, and offering to open something still being written is
 a promise this screen cannot keep.
+
+## My message appeared in the middle of the reply — a message never lands mid-stream
+
+It cannot any more. A message of yours is never drawn inside a streaming answer, never
+splits a reply into two blocks, and is never interleaved with the paragraph being
+written. The rule holds in the conversation and in a task room's own page alike:
+whatever is still streaming stays one contiguous block, and your line goes **after** it.
+
+There was a defect here. Pressing `enter` while an answer was streaming used to cut the
+reply in two and wedge your sentence between the halves, so it read as though the model
+had quoted you mid-thought. Two things fixed it. Your line now always goes below the
+block that is still being written, whatever put it there — and plain `enter` no longer
+sends into a running answer at all: it **waits**. See "A message you typed while the
+answer was still coming" below.
+
+## A message you typed while the answer was still coming (the waiting block)
+
+Press `enter` while a turn is running and your message is **held**, not sent. It is
+drawn in its own block directly above the message box — under everything that has
+happened, above the box you typed it in — in your own accent hue, with the same `›`
+glyph your messages wear in the conversation. Under it sits one dim line:
+
+```
+› do much more of a deep research please
+  waits for this answer · esc stops and sends · ↑ or click to edit
+```
+
+The dim line trims from the right on a narrow terminal: the last piece goes first, then
+the middle, and the narrowest frame keeps `waits for this answer` alone. With more than
+one message waiting the first piece is counted — `2 wait for this answer` — and with
+exactly one it is not counted at all.
+
+What happens to it:
+
+- **When the answer finishes**, it sends itself as an ordinary new turn and appears in
+  the conversation as a normal message of yours. Several waiting messages go **one per
+  finished turn**, oldest first, in the order you typed them.
+- **`esc`** stops the answer and sends it immediately.
+- **`↑` over an empty box**, or a **click on the block**, takes it back into the box to
+  be edited. `enter` then holds the edited sentence again.
+- The box is cleared the moment you press `enter`, so you can keep typing. Attachments
+  in the tray go with the held message and come back on the tray if you take it back.
+- If the conversation is replaced under it — `/new`, opening a session from the welcome
+  box — the waiting messages are dropped and aforge says so: `1 waiting message dropped`
+  or `N waiting messages dropped`.
+
+While something is waiting, the hint slot in the legend reads `esc stops and sends`
+instead of `esc interrupt`.
 
 ## Markdown at phone width
 

@@ -415,7 +415,7 @@ writes one note in the conversation: `room unavailable — this session has no t
 | | the main thread | inside a room |
 | --- | --- | --- |
 | what the body draws | the conversation | that task's transcript |
-| what `enter` does | sends to the model | **steers the task** |
+| what `enter` does | sends to the model, or holds the message above the box while a turn is running | **steers the task** — never held |
 | box placeholder | the draft prompt | `Steer <title>… (esc: main)` |
 | pinned top line | none | the focus header, and the family lines under it |
 | legend word | the workspace path and branch | `room · esc/←← main` |
