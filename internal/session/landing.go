@@ -69,23 +69,32 @@ func ImagesDir(place Place, workspace string) string {
 	return deliverablesDir(place, workspace, imageDirectory)
 }
 
-// AudioDir is where a spoken file lands when nobody named a path, and VideoDir
-// is where a rendered one does. They are [ImagesDir] with a different legacy
-// leaf and NOTHING else, because the law is about the kind of thing the file is
-// and not about its format: a deliverable is a deliverable whether it is looked
-// at, listened to, or watched (tools_speak.go, tools_video.go).
+// AudioDir is where a spoken file lands when nobody named a path, MusicDir is
+// where a composed one does, and VideoDir is where a rendered one does. They are
+// [ImagesDir] with a different legacy leaf and NOTHING else, because the law is
+// about the kind of thing the file is and not about its format: a deliverable is
+// a deliverable whether it is looked at, listened to, or watched (tools_speak.go,
+// tools_music.go, tools_video.go).
 func AudioDir(place Place, workspace string) string {
 	return deliverablesDir(place, workspace, audioDirectory)
+}
+
+// MusicDir is AudioDir's own leaf rather than a share of it: two mp3s made by
+// two different models for two different purposes are two kinds of deliverable,
+// and a person listening back through a session's takes of a theme should not
+// have to pick them out of its voiceovers (tools_music.go).
+func MusicDir(place Place, workspace string) string {
+	return deliverablesDir(place, workspace, musicDirectory)
 }
 
 func VideoDir(place Place, workspace string) string {
 	return deliverablesDir(place, workspace, videoDirectory)
 }
 
-// deliverablesDir is the one ladder all three climb: the owned workspace, then
+// deliverablesDir is the one ladder all four climb: the owned workspace, then
 // the borrowed session's own artifacts/, then the legacy dot directory. It is
-// one function rather than three copies for the reason this whole file exists —
-// three copies of a three-rung ladder is three chances for a rung to move.
+// one function rather than four copies for the reason this whole file exists —
+// four copies of a three-rung ladder is four chances for a rung to move.
 func deliverablesDir(place Place, workspace, legacy string) string {
 	if work := place.Work(); work != "" {
 		return work

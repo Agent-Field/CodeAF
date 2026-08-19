@@ -27,6 +27,17 @@ import (
 type MediaGenerator interface {
 	GenerateImage(ctx context.Context, request provider.ImageRequest) (*provider.ImageResponse, error)
 	Speak(ctx context.Context, request provider.SpeechRequest) (*provider.SpeechResponse, error)
+
+	// GenerateMusic is the composing lane, and it is a METHOD OF ITS OWN rather
+	// than Speak with a music model in it. The two are not one endpoint wearing
+	// two hats: speech posts to /audio/speech, music has no media endpoint at
+	// all on the router and is composed through streaming chat completions
+	// asking for an audio modality back (internal/provider/music.go). A caller
+	// that sent a composition brief to Speak would get 404s from a lane that
+	// looks like it should work, which is what it did before this method
+	// existed.
+	GenerateMusic(ctx context.Context, request provider.MusicRequest) (*provider.MusicResponse, error)
+
 	GenerateVideo(ctx context.Context, request provider.VideoRequest) (*provider.VideoResponse, error)
 
 	// Transcribe is the senses wave's addition (tools_sense.go): audio in,
@@ -39,7 +50,7 @@ type MediaGenerator interface {
 	Transcribe(ctx context.Context, request provider.TranscriptionRequest) (*provider.TranscriptionResponse, error)
 }
 
-// The four words [Config.MediaModel] takes, and the ONLY four it takes. They
+// The five words [Config.MediaModel] takes, and the ONLY five it takes. They
 // are the same words the settings slots and internal/exec/media.go's leaf tools
 // use, so one vocabulary serves the picker, the resolver, and the belt — a
 // resolver asked for "images" or "tts" would answer "" and take a verb off the
@@ -47,9 +58,17 @@ type MediaGenerator interface {
 const (
 	modalityImage  = "image"
 	modalitySpeech = "speech"
-	modalityVideo  = "video"
+	// modalityMusic is the COMPOSING slot, and it is a word of its own rather
+	// than a second reading of speech: the settings sheet has carried a
+	// "composing" row and an AFORGE_MUSIC_MODEL since long before anything on
+	// this belt read it, and a person who picked Lyria there meant Lyria to make
+	// the music and gpt-4o-mini-tts to keep making the voiceovers. The two share
+	// an ENDPOINT (/audio/speech — internal/exec/media.go's generateMusic has
+	// always ridden it) and nothing else.
+	modalityMusic = "music"
+	modalityVideo = "video"
 	// modalityVision is the LOOKING slot, which no generation verb here reads —
-	// view_image does (the sight lane owns it), and it is named here so the four
+	// view_image does (the sight lane owns it), and it is named here so the five
 	// words live in one place.
 	modalityVision = "vision"
 )

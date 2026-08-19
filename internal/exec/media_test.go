@@ -65,15 +65,19 @@ func (c *visionWireCapture) client(t *testing.T) *provider.Client {
 type fakeMediaProvider struct {
 	imageCalls     int
 	speechCalls    int
+	musicCalls     int
 	videoCalls     int
 	imageRequest   provider.ImageRequest
 	speechRequest  provider.SpeechRequest
+	musicRequest   provider.MusicRequest
 	videoRequest   provider.VideoRequest
 	imageResponse  *provider.ImageResponse
 	speechResponse *provider.SpeechResponse
+	musicResponse  *provider.MusicResponse
 	videoResponse  *provider.VideoResponse
 	imageErr       error
 	speechErr      error
+	musicErr       error
 	videoErr       error
 }
 
@@ -87,6 +91,12 @@ func (f *fakeMediaProvider) Speak(_ context.Context, request provider.SpeechRequ
 	f.speechCalls++
 	f.speechRequest = request
 	return f.speechResponse, f.speechErr
+}
+
+func (f *fakeMediaProvider) GenerateMusic(_ context.Context, request provider.MusicRequest) (*provider.MusicResponse, error) {
+	f.musicCalls++
+	f.musicRequest = request
+	return f.musicResponse, f.musicErr
 }
 
 func (f *fakeMediaProvider) GenerateVideo(_ context.Context, request provider.VideoRequest) (*provider.VideoResponse, error) {
@@ -192,29 +202,45 @@ func TestMediaToolsAreRegisteredAndHonorTheSpendGate(t *testing.T) {
 	}
 	music := tools.Execute(context.Background(), "generate_music", `{"prompt":"harbor song"}`)
 	video := tools.Execute(context.Background(), "generate_video", `{"prompt":"harbor motion"}`)
-	if !music.IsError || !video.IsError || fake.imageCalls != 0 || fake.speechCalls != 0 || fake.videoCalls != 0 {
-		t.Fatalf("generation escaped gate: image=%d speech=%d video=%d music=%+v video_result=%+v",
-			fake.imageCalls, fake.speechCalls, fake.videoCalls, music, video)
+	if !music.IsError || !video.IsError || fake.imageCalls != 0 || fake.speechCalls != 0 ||
+		fake.musicCalls != 0 || fake.videoCalls != 0 {
+		t.Fatalf("generation escaped gate: image=%d speech=%d music=%d video=%d music_result=%+v video_result=%+v",
+			fake.imageCalls, fake.speechCalls, fake.musicCalls, fake.videoCalls, music, video)
 	}
 }
 
-func TestGenerateMusicWritesMP3WithoutVoiceAndRecordsHeaderUsage(t *testing.T) {
-	cost := 0.04
-	fake := &fakeMediaProvider{speechResponse: &provider.SpeechResponse{Audio: []byte("music"), Usage: &ai.Usage{Cost: &cost}}}
+// MUSIC IS ITS OWN LANE, and this test is what says so on the wire.
+//
+// generate_music sent its brief to Speak — /audio/speech — for as long as it
+// existed, and there is no music behind that endpoint: every call this tool ever
+// made failed. The fix is a request of its own
+// ([provider.MediaClient.GenerateMusic], streaming chat completions), and what
+// this pins is that the composing verb reaches THAT method with the music slot's
+// model and never the speaking one.
+func TestGenerateMusicComposesOnItsOwnLaneAndNeverThroughSpeech(t *testing.T) {
+	cost := 0.08
+	fake := &fakeMediaProvider{musicResponse: &provider.MusicResponse{
+		Audio: []byte("music"), Format: "mp3", Usage: &ai.Usage{Cost: &cost},
+	}}
 	tools, space := mediaToolbox(t, fake, fakeModalities{})
-	result := tools.Execute(context.Background(), "generate_music", `{"prompt":"Glass Bells at Dawn","format":"mp3"}`)
+	result := tools.Execute(context.Background(), "generate_music", `{"prompt":"Glass Bells at Dawn"}`)
 	if result.IsError || result.Usage.Calls != 1 || result.Usage.Cost != cost {
 		t.Fatalf("music result = %+v", result)
 	}
-	if fake.speechRequest.Model != "music/model" || fake.speechRequest.Voice != "" || fake.speechRequest.ResponseFormat != "mp3" {
-		t.Fatalf("music request = %+v", fake.speechRequest)
+	if fake.musicCalls != 1 || fake.musicRequest.Model != "music/model" || fake.musicRequest.Prompt != "Glass Bells at Dawn" {
+		t.Fatalf("music request = %+v (calls %d)", fake.musicRequest, fake.musicCalls)
+	}
+	// The speaking lane is untouched: a composition brief that reached
+	// /audio/speech is the bug this replaced.
+	if fake.speechCalls != 0 {
+		t.Fatalf("a composition brief was sent to the speech endpoint (%d calls)", fake.speechCalls)
 	}
 	if _, ok := space.Locate(filepath.Join("media", "glass-bells-at-dawn.mp3")); !ok {
 		t.Fatal("music file was not written")
 	}
 
-	fake.speechResponse = nil
-	fake.speechErr = errors.New("provider detail")
+	fake.musicResponse = nil
+	fake.musicErr = errors.New("provider detail")
 	failed := tools.Execute(context.Background(), "generate_music", `{"prompt":"failure"}`)
 	if !failed.IsError || failed.Usage != (Usage{}) || !strings.Contains(failed.Content, "music generation failed") || strings.Contains(failed.Content, "provider detail") {
 		t.Fatalf("failed music = %+v", failed)
@@ -493,6 +519,7 @@ func TestMediaModelArgumentReadsAllThreeSpellingsAndKeepsTheRail(t *testing.T) {
 		return &fakeMediaProvider{
 			imageResponse:  &provider.ImageResponse{Data: []provider.GeneratedImage{{Base64: base64.StdEncoding.EncodeToString([]byte("png")), MediaType: "image/png"}}},
 			speechResponse: &provider.SpeechResponse{Audio: []byte("sound"), Usage: &ai.Usage{Cost: &cost}},
+			musicResponse:  &provider.MusicResponse{Audio: []byte("song"), Format: "mp3", Usage: &ai.Usage{Cost: &cost}},
 			videoResponse:  &provider.VideoResponse{Video: []byte("video"), Usage: &ai.Usage{Cost: &cost}},
 		}
 	}
@@ -535,8 +562,11 @@ func TestMediaModelArgumentReadsAllThreeSpellingsAndKeepsTheRail(t *testing.T) {
 			}
 			served := fake.imageRequest.Model
 			switch test.tool {
-			case "speak", "generate_music":
+			case "speak":
 				served = fake.speechRequest.Model
+			case "generate_music":
+				// Its own request type, because it is its own endpoint.
+				served = fake.musicRequest.Model
 			case "generate_video":
 				served = fake.videoRequest.Model
 			}
