@@ -458,6 +458,12 @@ What you read on a failure is `task 7 failed: <title>`, the report, the changed 
 the line saying the branch was kept. Anything waiting on that task fails with it — the
 cascade walks one layer per scheduling pass.
 
+**This table is about tasks that do work in a working copy.** A `harness` task — a
+sub-harness being designed — has none of that machinery and its own short list of endings
+instead: it can run out of time only while the page is being *written*, and a card left
+unanswered settles it **done** rather than failed. Ask the manual about designing a harness
+for that list.
+
 ## What propose_task needs from you
 
 `propose_task` is how the model moves a self-contained piece of work out of the

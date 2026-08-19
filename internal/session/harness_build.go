@@ -71,13 +71,19 @@ import (
 )
 
 const (
-	// harnessDesignWindow bounds one whole design job: both model calls AND the
-	// wait for an answer to the card. It is long because the second half is a
-	// person — a card raised while somebody is at lunch is still worth answering
-	// when they come back — and it is bounded at all because a goroutine parked
-	// on a question nobody will ever answer is a goroutine parked forever. The
-	// design node takes it off its own deadline (harness_task.go), which is an
-	// hour and is the wrong shape of bound for a question.
+	// harnessDesignWindow bounds THE WRITING OF ONE PAGE — the design turn, the
+	// retries under it, and the review pass — and nothing after that. It is
+	// generous because a long guide read by a reasoning model is slow, and it is
+	// bounded at all because a model call that never answers would otherwise hold
+	// the node open forever.
+	//
+	// IT DOES NOT COVER THE CARD, and it used to, which was a bug with a person on
+	// the other end of it: a design that wrote its page in ten minutes and then
+	// waited for somebody to come back from lunch was collected at thirty minutes
+	// and reported as having run out of time with nothing saved, while the page sat
+	// finished in its own room. A card is a question on somebody's screen, and the
+	// only things that may end one are their answer, their ✕, and the process
+	// closing (harness_task.go's designHarnessNode).
 	harnessDesignWindow = 30 * time.Minute
 
 	// harnessDesignRetries is how many times a refused design is handed its own
@@ -242,9 +248,16 @@ func (a *Agent) HarnessDesigns() <-chan Event {
 // askHarnessDesign raises the preview card and waits for the answer.
 //
 // It is [Agent.askHarness] with one difference and it is the whole difference of
-// this file: the wait is on the DESIGN's context rather than a turn's, because
-// there is no turn. The id was minted when the job started, so the question a
-// surface answers is the job a person watched begin.
+// this file: the wait is on the DESIGN NODE's own context rather than a turn's,
+// because there is no turn. The id was minted when the job started, so the
+// question a surface answers is the job a person watched begin.
+//
+// THE CONTEXT IT IS GIVEN CARRIES NO CLOCK, and the caller is written to keep it
+// that way (harness_task.go's designHarnessNode). A deadline here is a deadline
+// on a person reading a card, and when it fired it took the answer channel with
+// it: the card stayed drawn in the feed, its `enter` did nothing, and the page —
+// written, valid, minutes of model time — was gone. The wait ends when they
+// answer, when they stop the node, or when the session closes.
 func (a *Agent) askHarnessDesign(ctx context.Context, id uint64, page subharness.Harness, model string) (harnessAnswer, error) {
 	answers := make(chan harnessAnswer, 1)
 	a.mu.Lock()

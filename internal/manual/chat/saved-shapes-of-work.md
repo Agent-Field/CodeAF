@@ -197,8 +197,9 @@ are named there too.
 
 That number is the whole of what a design gained: it is a real task, with a row on the
 roster, a room you can walk into, a journal, and a stop. See *The design's own task and
-room* below. The design runs inside a **30-minute** window that covers both the model work
-**and** the wait for your answer to the card.
+room* below. **Writing** the page runs inside a **30-minute** window — the design turn, its
+retries, and the review pass. The card that follows has **no clock at all**: it waits on you
+for as long as you take.
 
 When the page lands, that same live block collapses in place into a fully visible
 architecture card in the feed. It shows the name and purpose, a deterministic ASCII
@@ -252,8 +253,8 @@ The row's state word is replaced by what the design is actually doing, and it mo
 
 | Phase | What is happening |
 | --- | --- |
-| `designing` | the page is being written — two model calls against a long guide |
-| `awaiting your look` | the page is written and the save-or-discard card is up |
+| `designing` | the page is being written — two model calls against a long guide, inside a 30-minute window |
+| `awaiting your look` | the page is written and the save-or-discard card is up — no clock runs here |
 | — | it lands, and the settle card says what became of it |
 
 **There is no progress bar and no percentage.** The live block reports only observed
@@ -265,14 +266,21 @@ The settle card is the ordinary one a task lands with, and its outcome line is o
 ```
 harness "triage-flake" v1 saved
 harness "triage-flake" was designed and not saved
+harness "triage-flake" was designed; the card went unanswered, so nothing was saved
 harness "triage-flake" could not be saved: <err>
 the design failed: <err>
+the design ran out of time before it finished; nothing was saved
 harness design stopped; nothing was saved
 ```
 
 A saved design's card reads `v1` even for a first version, because "v1" is the news that it
 is the first of them. A design that failed settles as a failed task; one you declined settles
-as **done**, because you were asked and you answered — nothing went wrong.
+as **done**, because you were asked and you answered — nothing went wrong. So does one whose
+card you never got to: the page was written, and not keeping it is not a fault.
+
+**"Ran out of time" is only ever about the writing.** It is the 30-minute window on the two
+model calls, and a design that reached a page can never land on that line — see *Why a design
+timed out even though the page was there* below.
 
 ### Talking to a design — improving a harness later
 
@@ -364,6 +372,29 @@ you can read on the failure note:
 Both are recoverable: the second attempt is usually the one that lands. A design that fails
 all three attempts says so — `harness design failed: no valid design in 3 attempts` — and
 the goal is worth trying again, or worth saying in fewer parts.
+
+## Why a design timed out even though the page was there — how long a design card waits
+
+**A design card waits as long as you do.** There is no timeout on it, no expiry, and nothing
+sweeps it. Go to lunch, come back an hour later, press `enter`: the harness is saved as `v1`
+and the design's task settles `harness "triage-flake" v1 saved`, exactly as it would have a
+second after the page landed. The only clock in a design is the 30-minute one on **writing**
+the page, and it stops the moment the page exists.
+
+It did not always. A design used to be given one 30-minute window for the whole job — the
+writing *and* your answer — so a design that wrote its page in ten minutes and then waited
+for you was killed at thirty and reported as `the design ran out of time before it finished;
+nothing was saved`. Both halves of that sentence were false: it had finished, and the page
+was sitting in its room. Worse, the card stayed drawn in the feed with nothing behind it —
+pressing `enter` on it did nothing at all, and the page was gone. If you have an old session
+whose harness task says it ran out of time, that is what you are looking at; the page is not
+recoverable from it, and asking for the harness again is the way back.
+
+**What can end a waiting card**, then, is only: your answer; `x` on its row or the `✕`,
+which settles it `harness design stopped; nothing was saved`; or aforge closing, which
+settles it `harness "triage-flake" was designed; the card went unanswered, so nothing was
+saved`. That last one is a **done** task, not a failed one — the design did its work, and
+you simply never got to it. Nothing reaches the registry in either case.
 
 ## The save-or-discard card
 
