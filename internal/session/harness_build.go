@@ -61,7 +61,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -917,34 +916,42 @@ character INSIDE a string value: an em-dash in a brief is content and stays.
 // harnessMachinery is every value the guide leaves a hole for: this package's
 // caps, both ladders, and the tool belt a harness may actually reach HERE.
 //
-// The belt is the wire tools (internal/exec/bare) and not the session's own,
-// which is the same set a run resolves its tool.call nodes against
-// (cmd/aforge's chatv3_harness.go). It is the model's belt that is excluded, and
-// deliberately: notes, jobs, connected accounts and image generation are things
-// a conversation reaches for, not things a saved procedure should inherit by
-// accident.
+// The belt is [HarnessBelt] — the wire tools plus whichever media verbs this
+// machine has models for — and it is the SAME CALL the run resolves its nodes
+// against (cmd/aforge's chatv3_harness.go). harness_belt.go states what is
+// excluded and why, and why the three lists that used to answer this
+// independently are now one.
+//
+// The name column is sized from the belt rather than fixed at six, because
+// generate_image is thirteen characters and a fixed width turns the list the
+// designer reads into a ragged one the moment a media verb is present.
 func (a *Agent) harnessMachinery() map[string]string {
-	tools := bare.AllTools(a.config.Workspace)
+	tools := HarnessBelt(a.config.Workspace, a.harnessSeams())
+	width := 0
+	for _, tool := range tools {
+		if len(tool.Name) > width {
+			width = len(tool.Name)
+		}
+	}
 	belt := make([]string, 0, len(tools))
 	for _, tool := range tools {
-		belt = append(belt, fmt.Sprintf("%-6s %s", tool.Name, clip(firstLine(tool.Description), harnessToolAbout)))
+		belt = append(belt, fmt.Sprintf("%-*s %s", width, tool.Name, clip(firstLine(tool.Description), harnessToolAbout)))
 	}
 	return map[string]string{
-		"kinds":          strings.TrimRight(subharness.Catalog(), "\n"),
-		"max_nodes":      strconv.Itoa(subharness.MaxNodes),
-		"max_id_bytes":   strconv.Itoa(subharness.MaxIdBytes),
-		"max_dyn_cap":    strconv.Itoa(subharness.MaxDynCap),
-		"verify_ladder":  strings.Join(subharness.VerifyLadder(), " < "),
-		"dyn_ladder":     strings.Join(subharness.DynLadder(), " < "),
-		"tools":          strings.Join(belt, "\n"),
+		"kinds":         strings.TrimRight(subharness.Catalog(), "\n"),
+		"max_nodes":     strconv.Itoa(subharness.MaxNodes),
+		"max_id_bytes":  strconv.Itoa(subharness.MaxIdBytes),
+		"max_dyn_cap":   strconv.Itoa(subharness.MaxDynCap),
+		"verify_ladder": strings.Join(subharness.VerifyLadder(), " < "),
+		"dyn_ladder":    strings.Join(subharness.DynLadder(), " < "),
+		"tools":         strings.Join(belt, "\n"),
 	}
 }
 
-// harnessToolNames is the belt as a set, for the lint.
+// harnessToolNames is the belt as a set, for the lint. It is the SAME belt the
+// guide above was written from, which is the property that matters: a lint that
+// refused a name the designer had just been offered was the failure mode
+// harness_belt.go exists to close.
 func (a *Agent) harnessToolNames() map[string]bool {
-	names := map[string]bool{}
-	for _, tool := range bare.AllTools(a.config.Workspace) {
-		names[tool.Name] = true
-	}
-	return names
+	return HarnessBeltNames(a.config.Workspace, a.harnessSeams())
 }

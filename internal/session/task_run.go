@@ -84,6 +84,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -2056,16 +2057,19 @@ func runTaskChild(ctx context.Context, child *Agent, node *TaskNode, instruction
 		// THE LANDING TURN happens after the active request has drained. It is a
 		// fresh turn so no request is killed mid-flight; the instruction forbids
 		// exploration and permits only writing the deliverable already in hand.
-		landing := "LAND NOW. Write the deliverable or final summary from what you already have. Do no new exploration. Do not call tools except write or edit when needed to save the deliverable."
+		//
+		// THE LANDING BELT IS [savingTools] AND NOT A PAIR OF NAMES. A node
+		// whose deliverable is a picture, a piece of music or a video saves it
+		// with the verb that makes it, and a landing pass that admitted only
+		// write and edit took that verb away at the one moment the node was
+		// being ordered to produce — see [landingInstruction] for what the node
+		// then said. The instruction is generated FROM the belt, so a media verb
+		// the machine does not have is neither offered nor named.
 		child.armMu.Lock()
 		oldTools, oldDefinitions := child.tools, child.definitions
-		child.tools = nil
-		for _, tool := range oldTools {
-			if tool.Name == "write" || tool.Name == "edit" {
-				child.tools = append(child.tools, tool)
-			}
-		}
+		child.tools = landingBelt(oldTools)
 		child.definitions, _ = toolDefinitions(child.tools)
+		landing := landingInstruction(child.tools)
 		child.armMu.Unlock()
 		if events, err := child.Submit(ctx, landing); err == nil {
 			for event := range events {
@@ -2368,12 +2372,62 @@ const aforgeDroppings = ".aforge-v3"
 // nameable from the arguments and is not listed here as a file. It is still
 // progress: the worktree noticed it ([worktreeMoved]), and what it left behind
 // is picked up by name when the node's work is committed ([commitTaskWork]).
+//
+// IT IS ALSO THE LANDING BELT. The turn that lands a stopped node is allowed
+// exactly these hands and no others ([runTaskChild]'s LAND NOW pass), because
+// "save what you already have" and "this call saves something" are the same
+// question asked twice — and reading it off one map is what stops the two
+// answers drifting apart, which is exactly what happened when the landing pass
+// spelled out `write` and `edit` by hand (design-law §ONE SOURCE OF TRUTH).
 var savingTools = map[string]bool{
 	"edit":           true,
 	"write":          true,
 	"generate_image": true,
+	"generate_music": true,
 	"generate_video": true,
 	"speak":          true,
+}
+
+// landingBelt is the belt a node keeps for its LAND NOW turn: [savingTools] and
+// nothing else, in the order the node already had them so the model sees the
+// same list minus the hands it is being told not to reach for.
+func landingBelt(tools []bare.Tool) []bare.Tool {
+	kept := make([]bare.Tool, 0, len(savingTools))
+	for _, tool := range tools {
+		if savingTools[tool.Name] {
+			kept = append(kept, tool)
+		}
+	}
+	return kept
+}
+
+// landingInstruction names the hands the landing belt actually carries, so the
+// sentence and the belt cannot disagree.
+//
+// The old wording said "except write or edit" while the node's deliverable was
+// sometimes a picture, and a node that had spent its whole life painting was
+// told in one breath to save its deliverable and that it could not use the verb
+// that saves one. It answered, truthfully and uselessly, "I have no image
+// tooling available now."
+func landingInstruction(tools []bare.Tool) string {
+	names := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		names = append(names, tool.Name)
+	}
+	return "LAND NOW. Write the deliverable or final summary from what you already have. " +
+		"Do no new exploration. Do not call tools except " + englishList(names) +
+		" when needed to save the deliverable."
+}
+
+// englishList joins names the way a sentence does: "a", "a or b", "a, b or c".
+func englishList(names []string) string {
+	switch len(names) {
+	case 0:
+		return "none"
+	case 1:
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
 }
 
 // changedPath reads the file one saving call touched, workspace-relative.

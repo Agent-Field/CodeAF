@@ -22,6 +22,12 @@ const (
 type MediaProvider interface {
 	GenerateImage(context.Context, provider.ImageRequest) (*provider.ImageResponse, error)
 	Speak(context.Context, provider.SpeechRequest) (*provider.SpeechResponse, error)
+	// GenerateMusic is its own lane and not Speak with a music model in it.
+	// This tool sent composition briefs to /audio/speech for as long as it has
+	// existed, and that endpoint has no music behind it — the router composes
+	// through streaming chat completions instead
+	// (internal/provider/music.go). Every call generate_music made failed.
+	GenerateMusic(context.Context, provider.MusicRequest) (*provider.MusicResponse, error)
 	GenerateVideo(context.Context, provider.VideoRequest) (*provider.VideoResponse, error)
 }
 
@@ -229,13 +235,6 @@ func (t *Toolbox) generateMusic(ctx context.Context, args map[string]any) Result
 	if prompt == "" {
 		return errorf("generate_music needs prompt")
 	}
-	format := strings.ToLower(strings.TrimSpace(stringArg(args, "format")))
-	if format == "" {
-		format = "mp3"
-	}
-	if format != "mp3" {
-		return errorf("generate_music format must be mp3")
-	}
 	model, refused := t.mediaModel(modalityMusic, t.media.MusicModel, args)
 	if refused != "" {
 		return errorf("%s", refused)
@@ -248,13 +247,13 @@ func (t *Toolbox) generateMusic(ctx context.Context, args map[string]any) Result
 			return errorf("music generation paused at the daily budget — approve it in chat to continue")
 		}
 	}
-	response, err := t.media.Provider.Speak(ctx, provider.SpeechRequest{
-		Model: model, Input: prompt, ResponseFormat: format,
+	response, err := t.media.Provider.GenerateMusic(ctx, provider.MusicRequest{
+		Model: model, Prompt: prompt,
 	})
 	if err != nil || response == nil || len(response.Audio) == 0 {
 		return errorf("music generation failed — try another prompt or music model")
 	}
-	relative, full, pathErr := t.nextMediaPath(prompt, 0, ".mp3")
+	relative, full, pathErr := t.nextMediaPath(prompt, 0, musicExtension(response.Format))
 	if pathErr != nil || os.WriteFile(full, response.Audio, 0o644) != nil {
 		return errorf("could not save the generated music")
 	}
@@ -262,6 +261,20 @@ func (t *Toolbox) generateMusic(ctx context.Context, args map[string]any) Result
 	return Result{
 		Content: "♪ " + filepath.ToSlash(relative) + "\nGenerated music for " + oneLine(prompt, 100) + " on " + model + ".",
 		Usage:   mediaUsage(response.Usage),
+	}
+}
+
+// musicExtension is what a composed clip is saved as: the format the provider
+// named, or mp3 when it named none. The old code took an mp3-or-refuse `format`
+// argument, which promised a choice the endpoint never offered.
+func musicExtension(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "":
+		return ".mp3"
+	case "mpeg", "mpga":
+		return ".mp3"
+	default:
+		return "." + strings.ToLower(strings.TrimSpace(format))
 	}
 }
 

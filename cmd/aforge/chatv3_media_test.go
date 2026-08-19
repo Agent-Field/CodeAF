@@ -198,6 +198,11 @@ func TestTheMediaResolverStillAnswersOnAnOfflineCatalog(t *testing.T) {
 	for _, test := range []struct{ modality, want string }{
 		{"image", "krea/krea-2-medium-turbo"},
 		{"speech", "fish-audio/s1"},
+		// COMPOSING IS ITS OWN WORD and answers on a cold machine like the
+		// other three: the offline catalog publishes Lyria with a "music"
+		// output, so the curated rung is capability-checked and taken rather
+		// than passed over.
+		{"music", "google/lyria-3-pro-preview"},
 		{"video", "bytedance/seedance-2.0-mini"},
 	} {
 		if got := resolve(test.modality); got != test.want {
@@ -223,10 +228,32 @@ func TestTheMediaResolverInventsNothingOnACatalogWithNoCapableRow(t *testing.T) 
 	models := mediaCatalogFor(t, `
 		{"id":"moonshotai/kimi-k3","architecture":{"input_modalities":["text"],"output_modalities":["text"]}}`)
 	resolve := v3MediaModel(models, t.TempDir(), nil)
-	for _, modality := range []string{"image", "speech", "video", "vision", "transcribe", "listen", "watch"} {
+	for _, modality := range []string{"image", "speech", "music", "video", "vision", "transcribe", "listen", "watch"} {
 		if got := resolve(modality); got != "" {
 			t.Fatalf("%s resolved to %q on a catalog with no capable row", modality, got)
 		}
+	}
+}
+
+// SPEECH AND MUSIC ARE TWO QUESTIONS, and a catalog that can answer one must not
+// be read as answering the other.
+//
+// They ride one endpoint's worth of vocabulary — internal/catalog aliases the
+// provider's broad "audio" onto both words — so the tempting shortcut is to let
+// a TTS row serve the composing slot. It cannot: a text-to-speech model asked
+// for a piece of music pronounces the brief. A row that publishes only "speech"
+// therefore answers the speaking slot and leaves the composing verb OFF the
+// belt, which is the honest absence.
+func TestASpeechModelDoesNotAnswerTheComposingSlot(t *testing.T) {
+	mediaEnvOff(t)
+	models := mediaCatalogFor(t, `
+		{"id":"vendor/only-a-voice","architecture":{"input_modalities":["text"],"output_modalities":["speech"]}}`)
+	resolve := v3MediaModel(models, t.TempDir(), nil)
+	if got := resolve("speech"); got != "vendor/only-a-voice" {
+		t.Fatalf("the speaking slot resolved to %q, want the TTS row", got)
+	}
+	if got := resolve("music"); got != "" {
+		t.Fatalf("the composing slot resolved to %q on a catalog with only a TTS row", got)
 	}
 }
 

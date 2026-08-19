@@ -1,9 +1,10 @@
 package session
 
 // The scripted media client every generation test drives, and the two helpers
-// that wire it: one fake for all three verbs, because there is one contract for
-// all three (media_contract.go) and a test that stubbed each endpoint separately
-// could not notice a verb reaching for the wrong one.
+// that wire it: one fake for all four verbs, because there is one contract for
+// all four (media_contract.go) and a test that stubbed each endpoint separately
+// could not notice a verb reaching for the wrong one — which is precisely the
+// bug generate_music shipped with, composing through the speech endpoint.
 
 import (
 	"context"
@@ -27,10 +28,11 @@ import (
 // "the tool returned before the render finished" is asserted as a fact rather
 // than as a race the test usually wins.
 type scriptedMedia struct {
-	mu     sync.Mutex
-	seen   []provider.ImageRequest
-	spoken []provider.SpeechRequest
-	filmed []provider.VideoRequest
+	mu       sync.Mutex
+	seen     []provider.ImageRequest
+	spoken   []provider.SpeechRequest
+	composed []provider.MusicRequest
+	filmed   []provider.VideoRequest
 
 	// the painting half
 	base64    string
@@ -43,6 +45,13 @@ type scriptedMedia struct {
 	audio      []byte
 	speechErr  error
 	speechCost *ai.Usage
+
+	// the composing half, which is a lane of its own and not the speaking one
+	// under another model (media_contract.go)
+	music       []byte
+	musicFormat string
+	musicErr    error
+	musicCost   *ai.Usage
 
 	// the filming half
 	video     []byte
@@ -83,6 +92,16 @@ func (p *scriptedMedia) Speak(_ context.Context, request provider.SpeechRequest)
 	return &provider.SpeechResponse{Audio: p.audio, Usage: p.speechCost}, nil
 }
 
+func (p *scriptedMedia) GenerateMusic(_ context.Context, request provider.MusicRequest) (*provider.MusicResponse, error) {
+	p.mu.Lock()
+	p.composed = append(p.composed, request)
+	p.mu.Unlock()
+	if p.musicErr != nil {
+		return nil, p.musicErr
+	}
+	return &provider.MusicResponse{Audio: p.music, Format: p.musicFormat, Usage: p.musicCost}, nil
+}
+
 func (p *scriptedMedia) GenerateVideo(ctx context.Context, request provider.VideoRequest) (*provider.VideoResponse, error) {
 	p.mu.Lock()
 	p.filmed = append(p.filmed, request)
@@ -119,6 +138,21 @@ func (p *scriptedMedia) speech(index int) provider.SpeechRequest {
 	return p.spoken[index]
 }
 
+func (p *scriptedMedia) composition(index int) provider.MusicRequest {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if index >= len(p.composed) {
+		return provider.MusicRequest{}
+	}
+	return p.composed[index]
+}
+
+func (p *scriptedMedia) speeches() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.spoken)
+}
+
 func (p *scriptedMedia) film(index int) provider.VideoRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -142,7 +176,7 @@ func mediaModels(pairs map[string]string) func(string) string {
 }
 
 // newMediaAgent wires a session with the whole media belt: one client, and a
-// resolver answering for all three modalities.
+// resolver answering for all four generation modalities.
 func newMediaAgent(t *testing.T, media *scriptedMedia, mutate func(*Config)) (*Agent, string) {
 	t.Helper()
 	return newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
@@ -150,6 +184,7 @@ func newMediaAgent(t *testing.T, media *scriptedMedia, mutate func(*Config)) (*A
 		config.MediaModel = mediaModels(map[string]string{
 			modalityImage:  "paint/model",
 			modalitySpeech: "talk/model",
+			modalityMusic:  "compose/model",
 			modalityVideo:  "film/model",
 		})
 		if mutate != nil {
@@ -206,15 +241,16 @@ func referenceURL(t *testing.T, reference provider.ImageReference) string {
 // THE MANUAL LAW, for the verbs a bare session does not carry.
 //
 // internal/session/manual_test.go walks the belt of an agent with nothing wired,
-// so it never sees a conditional tool: generate_image, speak and generate_video
-// are all absent there by the absence law, and a media verb could land with no
-// page and pass the gate. This is the same gate over a belt that HAS them.
+// so it never sees a conditional tool: generate_image, speak, generate_music and
+// generate_video are all absent there by the absence law, and a media verb could
+// land with no page and pass the gate. This is the same gate over a belt that
+// HAS them.
 func TestTheManualMentionsEveryMediaToolOnTheBelt(t *testing.T) {
 	agent, _ := newMediaAgent(t, &scriptedMedia{}, nil)
 	carried := 0
 	for _, tool := range agent.tools {
 		switch tool.Name {
-		case "generate_image", "speak", "generate_video":
+		case "generate_image", "speak", "generate_music", "generate_video":
 			carried++
 		default:
 			continue
@@ -223,7 +259,81 @@ func TestTheManualMentionsEveryMediaToolOnTheBelt(t *testing.T) {
 			t.Errorf("no chat manual page mentions the %s tool — add it to internal/manual/chat/", tool.Name)
 		}
 	}
-	if carried != 3 {
-		t.Fatalf("a fully wired media belt carries %d of the three generation verbs", carried)
+	if carried != 4 {
+		t.Fatalf("a fully wired media belt carries %d of the four generation verbs", carried)
+	}
+}
+
+// ── the composing verb ──────────────────────────────────────────────────────
+
+// MUSIC IS ITS OWN LANE, pinned at the session's own belt.
+//
+// The temptation is to spell music as speak with a different model in it — the
+// two make audio, the two land an mp3 — and that is exactly what the resident's
+// leaf tool did until this wave. There is no music behind /audio/speech, so
+// every call it made failed. What this holds is that generate_music reaches
+// [MediaGenerator.GenerateMusic] with the MUSIC slot's model, sends the brief as
+// the prompt, and never touches the speaking endpoint.
+func TestGenerateMusicComposesOnItsOwnLaneAndNeverThroughSpeak(t *testing.T) {
+	cost := 0.08
+	media := &scriptedMedia{music: []byte("a song's worth of bytes"), musicFormat: "mp3", musicCost: &ai.Usage{Cost: &cost}}
+	agent, workspace := newMediaAgent(t, media, nil)
+
+	result, isError := runTool(t, agent, "generate_music", `{"prompt":"A calm solo piano loop, 90bpm"}`)
+	if isError {
+		t.Fatalf("generate_music = %q", result)
+	}
+	if got := media.composition(0); got.Model != "compose/model" || got.Prompt != "A calm solo piano loop, 90bpm" {
+		t.Fatalf("music request = %+v", got)
+	}
+	if media.speeches() != 0 {
+		t.Fatalf("a composition brief was sent to the speaking endpoint (%d calls)", media.speeches())
+	}
+	// The file is real, and the sentence names it.
+	if !strings.Contains(result, ".mp3") || !strings.Contains(result, "composed by compose/model") {
+		t.Fatalf("music result = %q", result)
+	}
+	written := filepath.Join(workspace, filepath.FromSlash(strings.Fields(result)[0]))
+	data, readErr := os.ReadFile(written)
+	if readErr != nil || string(data) != "a song's worth of bytes" {
+		t.Fatalf("music file at %s = %q err=%v", written, data, readErr)
+	}
+}
+
+// THE ABSENCE LAW, per modality. A machine with a speech model and no music
+// model speaks and does not compose — and the reverse — because the two verbs
+// ask the resolver different words (media_contract.go).
+func TestTheComposingAndSpeakingVerbsAreAbsentIndependently(t *testing.T) {
+	for _, want := range []struct {
+		name    string
+		wired   map[string]string
+		carries string
+		lacks   string
+	}{
+		{"a speech model and no music model", map[string]string{modalitySpeech: "talk/model"}, "speak", "generate_music"},
+		{"a music model and no speech model", map[string]string{modalityMusic: "compose/model"}, "generate_music", "speak"},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+				config.Media = &scriptedMedia{}
+				config.MediaModel = mediaModels(want.wired)
+			})
+			if !hasTool(agent, want.carries) {
+				t.Fatalf("%s is not on the belt, so the model does not have the verb", want.carries)
+			}
+			if hasTool(agent, want.lacks) {
+				t.Fatalf("%s is on the belt with no model behind it — absent-not-broken", want.lacks)
+			}
+		})
+	}
+}
+
+// And with no client at all, neither exists however many models are named.
+func TestNoMediaClientLeavesTheComposingVerbOff(t *testing.T) {
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.MediaModel = mediaModels(map[string]string{modalityMusic: "compose/model"})
+	})
+	if hasTool(agent, "generate_music") {
+		t.Fatal("generate_music is on the belt with no media client behind it")
 	}
 }
