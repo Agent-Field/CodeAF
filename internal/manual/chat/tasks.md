@@ -18,11 +18,15 @@ You can also start one directly with `/task <brief>`. That form asks a small siz
 two-row chooser with `adaptive` recommended and `single` below it; the adaptive row shows
 the proposed parts and planner model. Arrow keys move and enter starts the chosen shape.
 Esc means “just do it” and starts single rather than cancelling the work. A no, timeout,
-or unreadable answer starts single in silence after `sizing it up…` disappears.
+or unreadable answer starts single in silence after `sizing it up…` disappears. Whether
+you are asked at all is the `starting a task` setting, below.
 
 `/task solo <brief>` skips the judge and starts single. `/task adaptive <brief>` also skips
-the judge and starts the planner run. These direct forms use the brief exactly as the work
-request, so include the relevant files, constraints, and checks.
+the judge and starts the planner run.
+
+**Every `/task` has its brief shaped before the work starts.** Your words are kept word for
+word and a fuller brief is written around them — the constraints this kind of work needs,
+what was decided on your behalf, and what done means. It is the next section.
 
 Every task carries a title, a short summary, the brief, and a done-condition — the command
 that must pass, the behaviour that must hold, the output that must appear. The brief and
@@ -42,6 +46,73 @@ of work has it in full.
 
 A task can also break its own brief into smaller tasks when it finds independent parts in
 it, and those are drawn as a family under it — see *When a task splits its own work*.
+
+## Why my task's brief is longer than what I typed — the brief is shaped
+
+A task you start with `/task` does not go out as the sentence you typed. Between the
+command and the work, one model call reads your words and writes the brief the worker is
+actually given: your request quoted word for word, then the things a worker alone with the
+job needs settled — what kind of work this is, who the output is for and what makes it good
+to them, the ways this particular kind of work goes wrong and the conditions that forbid
+them, anything ambiguous decided one way with the assumption stated. It also writes a
+separate done-condition that somebody other than the worker could check.
+
+So the brief in the task's room really is longer than what you typed, and **the room is
+showing you the truth** — that is the brief the worker read. Nothing shorter was sent and
+nothing was kept back.
+
+`shaping the brief…` is the note on screen while that call runs. It waits up to 25 seconds.
+
+**If shaping cannot run, your words go as-is.** No model resolved for it, a timeout, an
+answer that was not readable — the task starts with exactly your sentence and the plain
+done-condition `Complete the brief and report the result and checks run.`, which is what
+`/task` did before shaping existed. It is never a reason for your task to be refused, held
+up, or lost.
+
+The call is billed the way aforge's other calls-you-did-not-type are: to the session, not to
+a turn. It runs on the `shaper` role, which follows the careful-work model.
+
+## Does aforge change my task, or rewrite what I asked for?
+
+No. The shaping pass adds around your words; it never replaces them.
+
+Your sentence is carried separately from anything a model wrote, under the heading
+`WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS`, followed by the line *“This is the message
+this work came out of. Where anything below reads differently from it, their words are what
+was asked for.”* That is a rule the worker reads: where the shaped brief and your sentence
+disagree, yours wins. So a shaper that overreached is overruled by the document itself.
+
+Two more things stay yours. **The title on the roster is made from the words you typed**, not
+from the shaped brief — the row reads as the thing you asked for. And the short summary
+beside it is the first line of what you typed.
+
+What shaping is allowed to do is settle what you left open — which file, which format, how
+long, which of two readings — and it must say in the brief that it decided, so you can see
+it in the room. What it is told not to do is invent scope you did not ask for.
+
+The same guidance reaches briefs the conversation model writes with `propose_task`, but as
+part of that tool rather than as a second call: it already has the whole conversation, so
+nothing needs to be re-read for it.
+
+## Stopping the adaptive-or-single question — making adaptive or single the default
+
+The chooser that asks “this parallelizes — how should it run?” can be answered once and for
+all. `/settings` → Session → **starting a task**, or the `task.start` row:
+
+- **ask** — the default, and today's behaviour: the sizing call runs, and the two-row
+  chooser opens only when it finds parts that could run at the same time.
+- **adaptive** — never asks. Parts found, the adaptive run starts straight away; nothing to
+  split, one worker starts, because a planner over work with no independent parts in it is
+  an extra model deciding nothing.
+- **single** — never asks and never goes adaptive. The sizing call is not made at all, since
+  its only purpose was the question you have already answered.
+
+`/task solo <brief>` and `/task adaptive <brief>` always mean what they say, whatever the row
+is set to.
+
+**Choosing `single` closes nothing off.** A single worker can still break its own brief into
+smaller tasks when it finds genuinely independent parts in it — see *When a task splits its
+own work* — so the setting decides who plans, not whether work can ever run in pieces.
 
 ## The card that asks whether to run the work
 
