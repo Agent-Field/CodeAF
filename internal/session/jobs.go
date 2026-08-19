@@ -52,6 +52,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 )
 
 const (
@@ -471,10 +473,52 @@ func (r *jobRegistry) finish(done *job, code int, note string) {
 	r.notify(note)
 }
 
+// adopt takes over a foreground bash process that is ALREADY RUNNING and makes
+// it a job (promote.go states the whole design).
+//
+// It is [jobRegistry.start] with the fork already done: same job shell around
+// it, same log file, same row, same kill, same death at Close. Two things are
+// different and both are consequences of the process being somebody else's
+// first.
+//
+// The OUTPUT is redirected rather than captured from the beginning: bare has
+// been accumulating it into a rolling tail, and [bare.BashCall.Attach] replays
+// that tail into this job's sink before pointing the stream at it. So the log
+// opens with what the person was already watching, and continues without a gap.
+//
+// The WAIT is not this registry's, because Go permits exactly one per command
+// and bare's is already in flight. The exit code arrives on a channel instead,
+// and [jobRegistry.settleExit] does everything it would have done after a Wait
+// of its own. THIS IS STILL THE ONLY REAPER: nothing in bare decides a job is
+// over, notes an exit, or writes a status word.
+func (r *jobRegistry) adopt(taken *bare.BashCall) (*job, error) {
+	started, err := r.newJob(taken.Command(), jobKindBash)
+	if err != nil {
+		return nil, err
+	}
+	// The process, its group and its pid are unchanged by the adoption — bash
+	// started it with Setpgid, so a kill still reaches the whole tree exactly as
+	// it does for a job this registry forked itself.
+	started.cmd = taken.Process()
+	taken.Attach(started.sink)
+	r.add(started)
+
+	// The receive happens INSIDE the goroutine: written as an argument it would
+	// be evaluated here, and the adoption would block until the process exited.
+	go func() { r.settleExit(started, <-taken.Exit()) }()
+	return started, nil
+}
+
 // reap waits on one process and, unless the death was asked for, drops a note
 // on the steering queue.
 func (r *jobRegistry) reap(watched *job) {
-	code := waitExitCode(watched.cmd.Wait())
+	r.settleExit(watched, waitExitCode(watched.cmd.Wait()))
+}
+
+// settleExit is what happens the moment a process's exit code is known, however
+// it became known: the job is made final, and unless the death was asked for a
+// note goes on the steering queue.
+func (r *jobRegistry) settleExit(watched *job, code int) {
 	requested := watched.settle(code)
 
 	if requested || r.notify == nil {

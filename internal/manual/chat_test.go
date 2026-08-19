@@ -100,6 +100,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does the indented part mean", "keys"},
 		{"how do I see what aforge did", "keys"},
 		{"how do I keep everything expanded", "keys"},
+
+		// The fifth wave: long-running commands. A person meets these at the
+		// exact moment a build outruns its bound, so the answer has to be the
+		// page and not the model's memory of what timeouts usually do.
+		{"my command timed out was the work lost", "what-i-can-do"},
+		{"does a command get killed when it takes too long", "what-i-can-do"},
+		{"how do I send a running command to the background", "keys"},
+		{"what does ctrl+g do", "keys"},
+		{"tell me when the build stops changing", "what-i-can-do"},
+		{"how do I know when something has finished", "what-i-can-do"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

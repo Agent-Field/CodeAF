@@ -241,6 +241,19 @@ func (a *app) toolLine(e *entry, i int, last bool, width int) string {
 			statPainted += a.pal.dim(" · " + e.decision)
 		}
 	}
+	// And what the person DID to the call while it ran: a foreground command
+	// sent to the background with ctrl+g says which job it became
+	// (background.go). It rides the same slot for the same reason — dim,
+	// trailing, about the call rather than in it — and it is last, because it is
+	// the most recent thing to have happened to the row.
+	if e.bg != "" {
+		if statPlain == "" {
+			statPlain, statPainted = e.bg, a.pal.dim(e.bg)
+		} else {
+			statPlain += " · " + e.bg
+			statPainted += a.pal.dim(" · " + e.bg)
+		}
+	}
 	mark := a.mark(e)
 
 	rail := a.pal.rail(last)

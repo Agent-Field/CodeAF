@@ -65,6 +65,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `esc` `esc` | Two presses inside a short window open rewind mode |
 | `ctrl+c` | Turn running: interrupt. Nothing running: quit aforge |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
+| `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
 
 `shift+enter` is not bound. Use `alt+enter` or `ctrl+j` to open a line.
 
@@ -614,11 +615,41 @@ answer:
 | `ctrl+k` | Not bound |
 | `ctrl+r` | Not bound |
 | `ctrl+v` | Not bound. Paste with your terminal's own paste; aforge reads bracketed paste |
-| `ctrl+g`, `ctrl+x`, `ctrl+y`, `ctrl+z` | Not bound |
+| `ctrl+x`, `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 
 A key that is not bound falls through to "does this key carry text". If it carries
 text it types; if it does not, nothing happens.
+
+## ctrl+g — send the running command to the background without killing it
+
+While a foreground `bash` command is running, `ctrl+g` hands it to the background
+instead of waiting for it. **Nothing is killed and nothing is run again**: the
+command keeps going as a job, the row gains a dim `job 3` beside its other
+trailing marks, and the turn carries straight on. Read it as "go on" — let the
+command run and get on with the work.
+
+This is the key for the moment you realise `go test ./...` is going to take nine
+minutes. The alternatives are `esc`, which stops the turn and throws the run
+away, and waiting.
+
+Afterwards it is an ordinary job: ask aforge to list them, tail one, or kill one,
+and it is killed with everything else when the session closes. The command's log
+file is named in the call's own result, which you can read by opening the row.
+
+**The key is absent whenever it cannot work**, and absent means it does nothing
+at all rather than telling you it cannot:
+
+- nothing is running
+- the running call is not `bash` — a `read` or a `write` has no process to hand over
+- the running `bash` asked for the background already, so it was a job from the start
+- the row has already been sent away
+
+When more than one command is running at once, `ctrl+g` takes **the one that has
+been running longest**, which is the one you are waiting on.
+
+`ctrl+b` is copy mode and `esc` interrupts; neither changes. `ctrl+g` was
+previously unbound.
 
 ## A settings change lands one turn later
 
