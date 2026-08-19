@@ -67,6 +67,28 @@ it would land in the transcript with nothing coming to answer it. Waiting for th
 to end means the message always gets a reply, and it is what makes the message editable
 until it goes.
 
+## I typed while it was working — did my message get lost?
+
+No. There are two moments, and both end in an answer.
+
+**Early in the turn**, your words land at the turn's next step boundary — between
+one tool batch and the next request — so the model reads them as part of the turn
+it is already in, and answers them there.
+
+**In the last seconds of a turn** — while the final reply is streaming, or while
+aforge is naming the session and doing its tail work — there is no step boundary
+left, because the turn's last request has already gone out. Your message still
+lands in the conversation, in your own words, and aforge then starts one more turn
+by itself to answer it. You see your line, a pause, and then a reply. You do not
+have to type it again.
+
+The same is true of a task or a background job that finishes in that window: its
+note lands and aforge speaks about it rather than leaving it sitting there.
+
+The one thing that is not answered is a message you queued with `ctrl+q` for a
+turn you then **interrupted**. A drain never restarts a turn you stopped, so those
+are dropped — press `enter` again to send it.
+
 ## Interrupting a running turn — how to stop it
 
 Press `esc` or `ctrl+c`. While a turn is running, both do the same thing: the turn
