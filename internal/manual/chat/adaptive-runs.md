@@ -184,6 +184,36 @@ messages, on turns that called tools, and in any session with no screen to answe
 (`--once`, a task node). If the judge cannot be reached, or answers with anything that is
 not the small JSON object it was asked for, nothing is said at all.
 
+## What a run's planner and its nodes are told — does the run see what I said?
+
+Yes, and every node of it does too.
+
+**The planner** is asked once at the start and once per landing. What it reads, in order:
+your own message under the heading `WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS` and the
+line saying their words win where anything disagrees; then `THE GOAL:` — the goal the run
+was started with; then anything you have steered it with since (which outranks its plan);
+then what is done, the frontier, and the fuel gauge. The verbatim part is taken by aforge
+from the conversation, not written by any model, so a planner cannot paraphrase away a
+requirement it never had to copy.
+
+**Every node** opens on one message, and it begins with the same two things — your words,
+then the run's goal under `THE WORK` — followed by
+`YOUR PART OF IT, and the whole of what you are answerable for:` and the node's own goal
+from the planner. Then its prerequisites' digests, its write scope or the read-only line,
+and the ask for a short report.
+
+That is deliberate: the planner cuts each node's goal out of its own reading of the run, and
+a node that could see only that reading has no way to notice a requirement the reading
+dropped. Both copies are bounded so a run does not pay for them once per node — your message
+at 6000 bytes, the run's goal at 2000, each cut marked with `…`.
+
+A run started with no person behind it — one resumed, one a test scripted — simply has no
+verbatim part, and no heading over nothing.
+
+The goal itself carries the rest of the contract, because a run has no separate deliverable
+or acceptance field: what must exist at the end and how it is checked are written into the
+goal, whose first line is also the run's title on the roster and in its room header.
+
 ## What a run's workers may touch
 
 Each node is a child agent working in your workspace, and two bounds are put on it.

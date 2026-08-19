@@ -1159,6 +1159,17 @@ type Agent struct {
 	// sessions.
 	reasoning map[string]provider.Effort
 	messages  []ai.Message
+	// personAsk is the last thing THE PERSON typed, kept apart from the
+	// transcript because the transcript cannot answer the question. Every user
+	// message in a.messages is user-role, including the ones the session wrote
+	// itself — a task landing, a job exiting — and the bit that says who spoke
+	// (userMessage.wake, .authored) does not survive the append. So the answer is
+	// recorded where the message is recorded, by [Agent.rememberAskLocked].
+	//
+	// It is what work handed out of this conversation carries as the person's own
+	// words (task_brief.go), and it is deliberately the WHOLE message rather than
+	// a summary of it.
+	personAsk string
 	// lastTurnTruncated is the honest handoff from the model loop to headless
 	// node reporters. The finish reason is response metadata and is not part of
 	// the transcript, so without this bit a digest can only repeat the cut-off

@@ -195,9 +195,11 @@ const (
 //
 // ── THE GOAL CONTRACT: spec IS FROZEN AT ADMISSION ──
 //
-// NOTHING IN THIS FILE WRITES spec.brief OR spec.acceptance AFTER admit. Not
-// the frontier, not the runner, not the auditor, not a redirect that arrives
-// late. The node's goal is settled the moment [TaskGraph.admit] takes it, and
+// NOTHING IN THIS FILE WRITES spec.request, spec.brief, spec.deliverable OR
+// spec.acceptance AFTER admit — the four parts of what the node is told
+// (task_brief.go). Not the frontier, not the runner, not the auditor, not a
+// redirect that arrives late. The node's goal is settled the moment
+// [TaskGraph.admit] takes it, and
 // every reader downstream — the instruction the child is given, the acceptance
 // the auditor judges against, the report a dependent inherits — reads THAT text
 // and no other.
@@ -948,12 +950,28 @@ func (n *TaskNode) title() string {
 	return n.spec.title
 }
 
-// instruction is what the child agent is asked: the assembled brief, and the
-// done-condition it is finished against, named as such.
+// instruction is what the child agent is asked, and it is a DOCUMENT rather
+// than a sentence: the person's own request, then the work, then what to
+// produce, then what done means (task_brief.go composes it, and is the only
+// place that decides the order).
+//
+// The node never sees the conversation, so this is everything it will ever know
+// about why it exists. That is why the person's words are in it: a brief is one
+// account of the job written by a model that heard another one, and a worker
+// holding both can tell when they have come apart.
 func (n *TaskNode) instruction() string {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
-	return n.brief + "\n\nAcceptance: " + n.spec.acceptance
+	return composeBrief(n.spec.request, n.brief, n.spec.deliverable, n.spec.acceptance)
+}
+
+// request is the person's own words, frozen with the rest of the spec. It is
+// read by [Agent.taskRequest] so that a sub-task a node hands out inherits the
+// sentence that started the family rather than the paraphrase in the middle.
+func (n *TaskNode) request() string {
+	n.graph.mu.Lock()
+	defer n.graph.mu.Unlock()
+	return n.spec.request
 }
 
 // acceptance is the frozen contract, read by the auditor. It is deliberately
