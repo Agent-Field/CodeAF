@@ -625,11 +625,20 @@ func TestGenerateImageCarriesReferencesAndTheFrame(t *testing.T) {
 	if len(request.InputReferences) != 1 {
 		t.Fatalf("the request carried %d references, want 1", len(request.InputReferences))
 	}
-	if !bytes.Equal(dataURLBytes(t, request.InputReferences[0]), pngOfSize(t, 3, 2)) {
+	// The envelope is the point: input_references is an array of objects on the
+	// wire, and the bare data URL this used to send was refused outright with
+	// "expected object, received string" (provider.NewImageReference, and
+	// TestImageReferencesRideAsObjectsOnTheWire pins the JSON itself).
+	carried := referenceURL(t, request.InputReferences[0])
+	if !bytes.Equal(dataURLBytes(t, carried), pngOfSize(t, 3, 2)) {
 		t.Fatal("the reference did not carry the file's own bytes")
 	}
-	if !strings.HasPrefix(request.InputReferences[0], "data:image/png;base64,") {
-		t.Fatalf("reference %q is not a png data URL", request.InputReferences[0][:32])
+	if !strings.HasPrefix(carried, "data:image/png;base64,") {
+		t.Fatalf("reference %q is not a png data URL", carried[:32])
+	}
+	// A frame type is the video endpoint's slot; an image reference has none.
+	if request.InputReferences[0].FrameType != "" {
+		t.Fatalf("image reference carried a frame type %q", request.InputReferences[0].FrameType)
 	}
 	// The frame arguments are passed through untouched — this belt does not
 	// second-guess a shape the image model spells its own way.
@@ -645,7 +654,7 @@ func TestGenerateImageCarriesReferencesAndTheFrame(t *testing.T) {
 		t.Fatalf("passing back the returned path failed: %s", second)
 	}
 	if refs := painter.request(1).InputReferences; len(refs) != 1 ||
-		!bytes.Equal(dataURLBytes(t, refs[0]), first) {
+		!bytes.Equal(dataURLBytes(t, referenceURL(t, refs[0])), first) {
 		t.Fatal("the second call did not carry the first render as its reference")
 	}
 }

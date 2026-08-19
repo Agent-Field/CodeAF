@@ -28,14 +28,20 @@ const (
 var ErrVideoTimeout = errors.New("video generation timed out")
 
 // ImageRequest is OpenRouter's non-streaming image generation request.
+//
+// InputReferences carries the SAME envelope the video endpoint takes and not a
+// bare URL, because that is what /api/v1/images validates against: a plain
+// string comes back as `{"expected":"object","path":["input_references",0]}`
+// with the whole render refused. One reference type for both endpoints, so the
+// shape cannot drift out of step in one of them again.
 type ImageRequest struct {
-	Model           string   `json:"model"`
-	Prompt          string   `json:"prompt"`
-	N               int      `json:"n,omitempty"`
-	Size            string   `json:"size,omitempty"`
-	AspectRatio     string   `json:"aspect_ratio,omitempty"`
-	OutputFormat    string   `json:"output_format"`
-	InputReferences []string `json:"input_references,omitempty"`
+	Model           string           `json:"model"`
+	Prompt          string           `json:"prompt"`
+	N               int              `json:"n,omitempty"`
+	Size            string           `json:"size,omitempty"`
+	AspectRatio     string           `json:"aspect_ratio,omitempty"`
+	OutputFormat    string           `json:"output_format"`
+	InputReferences []ImageReference `json:"input_references,omitempty"`
 }
 
 type GeneratedImage struct {
@@ -60,28 +66,37 @@ type SpeechResponse struct {
 	Usage *ai.Usage
 }
 
-// VideoImageReference is the OpenRouter image-ref envelope shared by first /
-// last frames and style references. FrameType is omitted for style refs.
-type VideoImageReference struct {
-	Type      string        `json:"type"`
-	ImageURL  VideoImageURL `json:"image_url"`
-	FrameType string        `json:"frame_type,omitempty"`
+// ImageReference is the OpenRouter image-ref envelope, and it is ONE envelope
+// for every endpoint that takes a picture as input: the image endpoint's
+// input_references, and the video endpoint's first / last frames and style
+// references. FrameType is a video-only slot and is omitted everywhere else.
+type ImageReference struct {
+	Type      string            `json:"type"`
+	ImageURL  ImageReferenceURL `json:"image_url"`
+	FrameType string            `json:"frame_type,omitempty"`
 }
 
-type VideoImageURL struct {
+type ImageReferenceURL struct {
 	URL string `json:"url"`
 }
 
 type VideoRequest struct {
-	Model           string                `json:"model"`
-	Prompt          string                `json:"prompt"`
-	Duration        int                   `json:"duration,omitempty"`
-	Resolution      string                `json:"resolution,omitempty"`
-	AspectRatio     string                `json:"aspect_ratio,omitempty"`
-	FrameImages     []VideoImageReference `json:"frame_images,omitempty"`
-	InputReferences []VideoImageReference `json:"input_references,omitempty"`
-	GenerateAudio   *bool                 `json:"generate_audio,omitempty"`
-	Seed            *int                  `json:"seed,omitempty"`
+	Model           string           `json:"model"`
+	Prompt          string           `json:"prompt"`
+	Duration        int              `json:"duration,omitempty"`
+	Resolution      string           `json:"resolution,omitempty"`
+	AspectRatio     string           `json:"aspect_ratio,omitempty"`
+	FrameImages     []ImageReference `json:"frame_images,omitempty"`
+	InputReferences []ImageReference `json:"input_references,omitempty"`
+	GenerateAudio   *bool            `json:"generate_audio,omitempty"`
+	Seed            *int             `json:"seed,omitempty"`
+}
+
+// NewImageReference is the one place the envelope is built, so no caller has to
+// remember that the type word is "image_url" and that the URL lives one level
+// down. Every reference on every endpoint goes through here.
+func NewImageReference(url string) ImageReference {
+	return ImageReference{Type: "image_url", ImageURL: ImageReferenceURL{URL: url}}
 }
 
 type VideoResponse struct {

@@ -257,6 +257,96 @@ func TestViewImageAnswersWhenTheSeerNeverDoes(t *testing.T) {
 	}
 }
 
+// ── the row a person watches ────────────────────────────────────────────────
+
+// The tool returning is only half of "the look ended". What a person watches is
+// the EVENT, and a look whose row never closes is the same complaint whether the
+// tool hung or the ending was never announced — so this drives a whole turn and
+// reads the stream, on both endings.
+//
+// A successful look ends on EventToolEnd carrying the answer, and a look that
+// never comes back ends on EventToolFailed carrying the refusal. Neither waits
+// for the turn: both are sent as soon as the batch this call is in finishes,
+// which for a single-call batch is the moment the tool returns.
+func TestViewImageEndsItsRowOnBothEndings(t *testing.T) {
+	restore := viewLookWindow
+	viewLookWindow = 20 * time.Millisecond
+	t.Cleanup(func() { viewLookWindow = restore })
+
+	for _, testCase := range []struct {
+		name  string
+		look  step
+		kind  EventKind
+		wants string
+	}{
+		{
+			name: "the seer answers",
+			look: func(context.Context, []ai.Message) (*ai.Response, error) {
+				return textResponse("a bar chart with the legend cut off"), nil
+			},
+			kind:  EventToolEnd,
+			wants: "seen by vendor/slot-eyes: a bar chart with the legend cut off",
+		},
+		{
+			// The stalled provider: it holds the call until the window above it
+			// gives up. The row still closes, and it closes with a sentence.
+			name: "the seer never answers",
+			look: func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			},
+			kind:  EventToolFailed,
+			wants: "vendor/slot-eyes did not answer about chart.png within ",
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			completer := &scriptedCompleter{steps: []step{
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					return toolResponse("call-look", "view_image", `{"path":"chart.png"}`), nil
+				},
+				testCase.look,
+				func(context.Context, []ai.Message) (*ai.Response, error) {
+					return textResponse("that is what it says"), nil
+				},
+			}}
+			agent, workspace := newTestAgent(t, completer, withSlot(map[string]string{"vision": "vendor/slot-eyes"}))
+			writeImage(t, workspace, "chart.png", "PHOTOBYTES")
+
+			collected := collect(t, mustSubmit(t, agent, "what does the chart say?"))
+
+			begin, began := firstOfKind(collected, EventToolBegin)
+			if !began || begin.Tool != "view_image" {
+				t.Fatalf("no view_image began: %v", kinds(collected))
+			}
+			ended, ok := firstOfKind(collected, testCase.kind)
+			if !ok {
+				t.Fatalf("the look's row never closed: %v", kinds(collected))
+			}
+			if ended.Tool != "view_image" {
+				t.Fatalf("the closing event is for %q", ended.Tool)
+			}
+			if !strings.Contains(ended.Output, testCase.wants) {
+				t.Fatalf("closing output = %q, want %q in it", ended.Output, testCase.wants)
+			}
+			// And the model was told the same thing on the record, so the row and
+			// the transcript cannot disagree about whether the look happened.
+			agent.mu.Lock()
+			transcript := append([]ai.Message(nil), agent.messages...)
+			agent.mu.Unlock()
+			answered := false
+			for _, message := range transcript {
+				if message.Role == "tool" && message.ToolCallID == "call-look" &&
+					strings.Contains(messageText(message), testCase.wants) {
+					answered = true
+				}
+			}
+			if !answered {
+				t.Fatalf("the look's call was left unanswered in the transcript: %v", rolesOf(transcript))
+			}
+		})
+	}
+}
+
 // And the window is the one already written down. A second number here would be
 // a second answer to "how long may one completion take" (agent.go).
 func TestViewLookWindowIsTheProviderTimeout(t *testing.T) {

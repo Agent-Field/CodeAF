@@ -30,6 +30,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/Agent-Field/aforge-v2/internal/provider"
 )
 
 // mediaStampFormat is the sortable half of a generated file's name, and
@@ -105,21 +107,27 @@ func (a *Agent) mediaReference(path string) (string, string) {
 	return "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(data), ""
 }
 
-// mediaReferences resolves a whole list and stops at the FIRST one it cannot
-// read. A partial set is worse than a refusal: a model that asked for three
-// references and silently got two would be told its picture combined three
-// things when it combined two.
-func (a *Agent) mediaReferences(paths []string) ([]string, string) {
+// mediaReferences resolves a whole list into the WIRE ENVELOPE every generation
+// endpoint takes ([provider.NewImageReference]) and stops at the FIRST one it
+// cannot read. A partial set is worse than a refusal: a model that asked for
+// three references and silently got two would be told its picture combined
+// three things when it combined two.
+//
+// The envelope is not decoration. A bare data URL string was what this sent
+// until the image endpoint refused every image-to-image call with "expected
+// object, received string" — text-to-image kept working, so the break was
+// invisible until someone asked for an edit of their own last render.
+func (a *Agent) mediaReferences(paths []string) ([]provider.ImageReference, string) {
 	if len(paths) == 0 {
 		return nil, ""
 	}
-	encoded := make([]string, 0, len(paths))
+	encoded := make([]provider.ImageReference, 0, len(paths))
 	for _, path := range paths {
 		dataURL, refusal := a.mediaReference(path)
 		if refusal != "" {
 			return nil, refusal
 		}
-		encoded = append(encoded, dataURL)
+		encoded = append(encoded, provider.NewImageReference(dataURL))
 	}
 	return encoded, ""
 }
