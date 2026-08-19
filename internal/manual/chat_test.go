@@ -120,6 +120,23 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
 		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
 		{"does a design resume after a restart", "saved-shapes-of-work"},
+
+		// The sixth wave, and it is written from one real report: a person
+		// generated a book cover, got a row of text saying
+		// `book/cover.jpg — 768×1376 jpeg, 776.9KB`, and could neither see the
+		// picture nor find the file — the path was relative to a directory they
+		// were not standing in. Pictures now draw themselves under the row, and
+		// the path is absolute where they cannot. Both halves of what that
+		// person then asked have to land on a page.
+		{"why don't I see the image", "screen"},
+		{"where did my generated image go", "screen"},
+		{"you only gave me text, where is the picture", "screen"},
+		// These two are asked ABOUT THE PICTURE rather than about the screen, so
+		// the making page is the right answer and says the same thing: the image
+		// draws itself under the row, and the path it names is whole.
+		{"can I see the picture you made without opening the row",
+			"making-pictures-audio-and-video"},
+		{"how do I find the file for the image you generated", "making-pictures-audio-and-video"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

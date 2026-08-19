@@ -180,7 +180,7 @@ func (a *Agent) generateImageTool(client MediaGenerator, model string) bare.Tool
 				Kind:    "image",
 				Created: time.Now(),
 			})
-			return describeGeneratedImage(a.config.Workspace, path, data, model), false, nil
+			return describeGeneratedImage(path, data, model), false, nil
 		},
 	}
 }
@@ -210,8 +210,12 @@ func imageExtension(mediaType string) string {
 // format the standard library cannot decode — webp — reports its size in bytes
 // alone rather than a guessed geometry, which is [design-law §EMPTINESS] applied
 // to a number: better absent than invented.
-func describeGeneratedImage(workspace, path string, data []byte, model string) string {
-	shown := displayMediaPath(workspace, path)
+//
+// The path is WHOLE ([picturePathInResult]), because this line is what a
+// terminal that cannot draw the picture shows in its place, and a path with a
+// directory missing off the front is a path nobody can open.
+func describeGeneratedImage(path string, data []byte, model string) string {
+	shown := picturePathInResult(path)
 	if config, format, err := stdimage.DecodeConfig(bytes.NewReader(data)); err == nil {
 		return fmt.Sprintf("%s — %d×%d %s, %s, generated on %s",
 			shown, config.Width, config.Height, format, mediaByteSize(len(data)), model)

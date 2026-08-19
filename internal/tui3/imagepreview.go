@@ -90,9 +90,17 @@ const (
 	// pictureCacheMax is how many previews are kept. A preview is a few kilobytes
 	// of painted rows and rebuilding one is a decode, so the cache exists to keep
 	// a frame cheap rather than to save memory; past this many it is dropped
-	// whole, because an eviction order over eight entries is more machinery than
-	// the problem has.
-	pictureCacheMax = 8
+	// whole, because an eviction order is more machinery than the problem has.
+	//
+	// THE NUMBER IS SIZED AGAINST ONE FRAME'S WORKING SET, and that is the only
+	// property it needs. Every visible picture row renders on every paint
+	// ([app.pictureThumb]), so a cache smaller than what one frame asks for would
+	// be wiped mid-frame and re-decoded on the next one, ten times a second,
+	// forever — the one failure mode a cache can have that is worse than no cache
+	// at all. A frame is at most a hundred-odd rows and a thumbnail costs two of
+	// them at the very least, which puts the ceiling on what a single paint can
+	// ask for far under this; the slack above it is what survives a scroll.
+	pictureCacheMax = 64
 )
 
 // imagePreview is one picture as this surface already drew it: the painted
@@ -111,11 +119,7 @@ type imagePreview struct {
 // line naming the file. It answers false when there is nothing to draw, and
 // every caller falls back to the words it would have shown.
 func (a *app) pictureRows(e *entry, width int) ([]string, bool) {
-	path, found := a.picturePath(e)
-	if !found {
-		return nil, false
-	}
-	preview, drawn := a.picture(path, width)
+	path, preview, drawn := a.drawPicture(e, width, pictureRowsMax)
 	if !drawn {
 		return nil, false
 	}
@@ -123,24 +127,80 @@ func (a *app) pictureRows(e *entry, width int) ([]string, bool) {
 		picturePathLine(a.pal, path, preview, width)...), true
 }
 
+// drawPicture is the one route from an entry to a painted picture, and both the
+// expansion and the thumbnail take it: which file the call is about, then that
+// file through the cache and the renderer at the caller's row budget. What the
+// two callers differ on is what they put UNDER the rows, which is the only thing
+// they should ever differ on.
+func (a *app) drawPicture(e *entry, width, maxRows int) (string, imagePreview, bool) {
+	path, found := a.picturePath(e)
+	if !found {
+		return "", imagePreview{}, false
+	}
+	preview, drawn := a.picture(path, width, maxRows)
+	if !drawn {
+		return "", imagePreview{}, false
+	}
+	return path, preview, true
+}
+
+// pictureThumb is THE PICTURE UNDER A ROW NOBODY OPENED — the same renderer, a
+// shorter budget, and not one word of chrome.
+//
+// A picture tool is the one call on this surface whose result a person cannot
+// read. `book/cover.jpg — 768×1376 jpeg, 776.9KB` is a true sentence that
+// answers none of what was actually asked, which is "did it come out right", and
+// a person who has to click a row to find that out has been asked to click a row
+// to find out whether they need to click the row. So the answer is already
+// there when the call finishes.
+//
+// IT HANGS NOTHING ELSE. No header, no path, no border — the preview above it
+// (toolview.go) earns a `pending`/`applying` word because a diff drawn before it
+// lands needs to say which of those it is, and a picture that exists is not
+// about to be anything. The words all live one click away in the expansion,
+// which stays the bigger look: [pictureRowsMax] rows, and the file named whole
+// underneath.
+//
+// budget is the caller's cap — the tier's, since this is the block nobody asked
+// for — and it bounds the RENDER rather than trimming it afterwards, because
+// half a picture with a "… N more lines" foot under it is not half an answer.
+// The whole picture is drawn into however many rows there are.
+func (a *app) pictureThumb(e *entry, width, budget int) ([]string, bool) {
+	// A CALL THAT HAS NOT FINISHED HAS NO PICTURE. `generate_image` writes the
+	// file last and `view_image` is looking at one the row cannot yet name a
+	// result for, so there is nothing on disk to draw and the row keeps the
+	// spinner it already has.
+	if e == nil || e.status.live() || budget < 1 {
+		return nil, false
+	}
+	_, preview, drawn := a.drawPicture(e, width, budget)
+	if !drawn {
+		return nil, false
+	}
+	return preview.rows, true
+}
+
 // picture is one preview, off the cache or freshly decoded.
 //
 // The key carries everything the answer depends on — the file's identity AND
 // the shape of the terminal it was drawn for — so a picture that was overwritten
 // on disk, a window that was dragged wider, and a theme that was switched all
-// produce a new rendering rather than a stale one.
-func (a *app) picture(path string, cols int) (imagePreview, bool) {
+// produce a new rendering rather than a stale one. The row budget is in it for
+// the same reason the column count is: the thumbnail under a row and the bigger
+// look inside it are two renderings of one file, and one must never be served
+// from the other's slot.
+func (a *app) picture(path string, cols, maxRows int) (imagePreview, bool) {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return imagePreview{}, false
 	}
 	key := path + "\x00" + itoa(int(info.ModTime().UnixNano())) +
-		"\x00" + itoa(int(info.Size())) + "\x00" + itoa(cols) +
+		"\x00" + itoa(int(info.Size())) + "\x00" + itoa(cols) + "\x00" + itoa(maxRows) +
 		"\x00" + itoa(int(a.pal.profile)) + "\x00" + itoa(int(a.pal.ramp.ink.r))
 	if hit, known := a.previews[key]; known {
 		return hit, hit.ok
 	}
-	preview := renderPicture(a.pal, path, int(info.Size()), cols)
+	preview := renderPicture(a.pal, path, int(info.Size()), cols, maxRows)
 	if len(a.previews) >= pictureCacheMax {
 		a.previews = nil
 	}
@@ -152,8 +212,9 @@ func (a *app) picture(path string, cols int) (imagePreview, bool) {
 }
 
 // renderPicture reads one file and draws it, or answers that it could not.
-func renderPicture(pal palette, path string, size, cols int) imagePreview {
-	if !pal.paintsPictures() || cols < pictureColsMin || size <= 0 || size > pictureBytesMax {
+func renderPicture(pal palette, path string, size, cols, maxRows int) imagePreview {
+	if !pal.paintsPictures() || cols < pictureColsMin || maxRows < 1 ||
+		size <= 0 || size > pictureBytesMax {
 		return imagePreview{}
 	}
 	file, err := os.Open(path)
@@ -180,7 +241,7 @@ func renderPicture(pal palette, path string, size, cols int) imagePreview {
 		return imagePreview{}
 	}
 
-	gridCols, gridRows := pictureGrid(config.Width, config.Height, cols, pictureRowsMax)
+	gridCols, gridRows := pictureGrid(config.Width, config.Height, cols, maxRows)
 	if gridCols < 1 || gridRows < 1 {
 		return imagePreview{}
 	}
@@ -404,16 +465,36 @@ func (p palette) halfCellSGR(top, bottom cellColour) string {
 // It is wrapped in OSC 8 as well, the way every other location on this surface
 // is (opener.go), so a terminal that understands hyperlinks makes it clickable
 // and one that does not shows exactly the characters that can be selected.
+//
+// A PREVIEW THAT WAS NEVER DRAWN STILL GETS ITS LINE, and then the line is the
+// path alone. This is the fallback [app.pictureWords] hands a terminal that
+// cannot paint — there is no decoded picture behind it, so there is no shape and
+// no size to state, and [design-law §EMPTINESS] says an unknown number renders
+// as nothing rather than as `0×0`. The path is the whole answer in that case,
+// which is exactly why it is the part that never truncates.
 func picturePathLine(pal palette, path string, preview imagePreview, width int) []string {
 	if width < 4 {
 		width = 4
 	}
-	shape := itoa(preview.width) + "×" + itoa(preview.height)
-	if size := byteWord(preview.bytes); size != "" {
-		shape += " · " + size
+	shape := ""
+	if preview.ok {
+		shape = itoa(preview.width) + "×" + itoa(preview.height)
+		if size := byteWord(preview.bytes); size != "" {
+			shape += " · " + size
+		}
 	}
 	uri := "file://" + path
 
+	if shape == "" {
+		if ansi.StringWidth(path) <= width {
+			return []string{pal.dim(linkify(path, uri))}
+		}
+		out := make([]string, 0, 3)
+		for _, segment := range wrap(path, width) {
+			out = append(out, pal.dim(linkify(segment, uri)))
+		}
+		return out
+	}
 	if together := path + " · " + shape; ansi.StringWidth(together) <= width {
 		return []string{pal.dim(linkify(path, uri) + " · " + shape)}
 	}
@@ -430,6 +511,52 @@ func picturePathLine(pal palette, path string, preview imagePreview, width int) 
 	return append(out, pal.dim(fit(shape, width)))
 }
 
+// pictureWords is WHAT A TERMINAL THAT CANNOT DRAW GETS INSTEAD: the file,
+// whole, absolute, clickable and never truncated, and then whatever the call
+// itself said.
+//
+// It answers the expansion of a picture call whose picture could not be
+// painted — sixteen colours, an ascii terminal, the linear tier, or a file this
+// program cannot decode — and it exists because on those terminals this block is
+// the ONLY record of where the picture went, while every other block on this
+// surface truncates to the width it was given. A path with an ellipsis in the
+// middle is a path nobody can open, and "here is the picture" degrading to "here
+// is a path you cannot use" is a worse answer than the one this surface gave
+// before previews existed.
+//
+// The result is kept under it because for `view_image` it is the whole point of
+// the call — what the looking model said — and for `generate_image` it is the
+// shape and the size, which no longer have a line of their own to sit on.
+//
+// THE PATH IS OUTSIDE THE CAP AND THE RESULT IS INSIDE IT, which is the same
+// division [app.detailBody] makes for a bash call's command: the part a person
+// opened the row to get is shown whole, and the part that can run to a megabyte
+// is bounded and lifts on "… N more lines".
+//
+// The file is not opened and not stat'd. A path that is merely NAMED is still
+// the useful answer — a person told where a generation went can go and look
+// whether or not this program could decode it — so nothing here can fail, and
+// the only call it declines is one where no path could be found at all.
+func (a *app) pictureWords(e *entry, width int) (rows []string, more int, ok bool) {
+	path, found := a.picturePath(e)
+	if !found {
+		return nil, 0, false
+	}
+	// The line is [picturePathLine]'s, with no preview behind it — one formatter
+	// for the path wherever it appears, so the wrapping rule, the OSC 8 link and
+	// the dim can never drift between the drawn case and this one.
+	rows = picturePathLine(a.pal, path, imagePreview{}, width)
+	// A result with nothing in it is left off rather than drawn as the dim em
+	// dash [app.cap] would give it: the path above has already answered, and a
+	// shrug under an answer is the surface talking for the sake of it.
+	said := a.plainRows(resultText(e.detail.Output), width)
+	if len(said) == 0 {
+		return rows, 0, true
+	}
+	body, dropped := a.cap(e, said, listWindow)
+	return append(rows, body...), dropped, true
+}
+
 // ── which file a call is about ──────────────────────────────────────────────
 
 // pictureSuffixes are the formats [renderPicture] can decode, checked before a
@@ -440,12 +567,27 @@ var pictureSuffixes = map[string]bool{
 
 // picturePath is the file one picture call is about, absolute, or false.
 //
-// It asks the ARGUMENTS first and the result second, which is the order
-// [toolTarget] already uses and for the same reason: the arguments are what
-// actually arrived. The result is asked at all because `generate_image` chooses
-// the name itself when the caller did not — the path it picked is the first
-// thing its one-line result says, before the em dash — and that is the only
-// record of where the picture went.
+// Two things can name the file — the call's own `path` argument, and the path
+// `generate_image` reports back, which is asked at all because that tool chooses
+// the name itself when the caller did not (the path it picked is the first thing
+// its one-line result says, before the em dash, and is the only record of where
+// the picture went).
+//
+// AN ABSOLUTE CANDIDATE BEATS A RELATIVE ONE, whichever of the two it came from,
+// and this is the rule the whole function turns on. A relative path can only be
+// resolved against [app.workspace], which is THIS CONVERSATION'S directory — and
+// a task room's rows are drawn by this same code from a node that ran in a
+// worktree of its own (room.go), somewhere the surface is never told about. So a
+// room's `generate_image {"path":"book/cover.jpg"}` joined onto the conversation's
+// workspace names a file that is not there, and — far worse — names the WRONG
+// PICTURE on any conversation that happens to have a `book/cover.jpg` of its own.
+// The session tells the truth about where it wrote (tools_image.go's
+// [picturePathInResult] answers whole), so taking the absolute answer first
+// makes a room's picture resolve correctly and makes the wrong-file draw
+// impossible.
+//
+// The relative pass still runs, second, because it is right for every ordinary
+// conversation row and is all a `view_image` call has.
 func (a *app) picturePath(e *entry) (string, bool) {
 	if e == nil || (e.tool != "generate_image" && e.tool != "view_image") {
 		return "", false
@@ -454,20 +596,23 @@ func (a *app) picturePath(e *entry) (string, bool) {
 	if e.tool == "generate_image" {
 		candidates = append(candidates, generatedPicturePath(e.detail.Output))
 	}
+	relative := ""
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)
 		if candidate == "" || !pictureSuffixes[strings.ToLower(filepath.Ext(candidate))] {
 			continue
 		}
-		if !filepath.IsAbs(candidate) {
-			if a.workspace == "" {
-				continue
-			}
-			candidate = filepath.Join(a.workspace, candidate)
+		if filepath.IsAbs(candidate) {
+			return filepath.Clean(candidate), true
 		}
-		return filepath.Clean(candidate), true
+		if relative == "" {
+			relative = candidate
+		}
 	}
-	return "", false
+	if relative == "" || a.workspace == "" {
+		return "", false
+	}
+	return filepath.Clean(filepath.Join(a.workspace, relative)), true
 }
 
 // generatedPicturePath reads the file out of `generate_image`'s result, whose
