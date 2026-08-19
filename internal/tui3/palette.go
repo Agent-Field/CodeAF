@@ -975,13 +975,14 @@ func (a *app) overlayHeight() int {
 	default:
 		return 0
 	}
-	// The approval question and the follow-up count are spoken for before the
-	// list is: both sit between the conversation and the box, and a list that
-	// claimed their rows would push the status line off the frame. The two
-	// reserved rows are the status line and one row of conversation — a list
-	// that left neither would be a list that took the screen.
+	// The approval question, the follow-up count and a waiting message are spoken
+	// for before the list is: all of them sit between the conversation and the
+	// box, and a list that claimed their rows would push the status line off the
+	// frame. The two reserved rows are the status line and one row of
+	// conversation — a list that left neither would be a list that took the
+	// screen.
 	if room := height - 2 - a.inputHeight() - a.consentHeight() - a.connectAskHeight() -
-		a.harnessAskHeight() - a.followHeight(); want > room {
+		a.harnessAskHeight() - a.followHeight() - a.parkedHeight(); want > room {
 		want = room
 	}
 	if want < 0 {

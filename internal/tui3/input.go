@@ -401,6 +401,15 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			return cmd
 		}
 		a.interrupt()
+		// AND ESC WITH A MESSAGE WAITING SENDS IT NOW (park.go). Stopping the
+		// answer is nearly all of it: the interrupt above closes the stream, and
+		// the close is exactly where a parked message goes (app.go's
+		// streamClosedMsg). This is the other case — a message parked against a
+		// turn that has ALREADY ended, which has no close coming for it and would
+		// otherwise sit above the box until the person typed something else.
+		if a.state != stateWorking {
+			return tea.Batch(cmd, a.sendParked())
+		}
 		return cmd
 
 	case "enter":
@@ -483,6 +492,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.input.up()
 			a.touch()
 			return nil
+		}
+		// A MESSAGE WAITING FOR THE ANSWER IS READ BEFORE THE HISTORY, and it has
+		// to be: enter remembers everything it parks, so the newest history line
+		// and the newest parked message are the same words — and a ↑ that walked
+		// the history would put those words in the box while ALSO leaving them
+		// parked, which is one message on screen twice and two turns spent on it.
+		// Read here, the block is taken back and the sentence is yours again
+		// (park.go).
+		if a.input.empty() && !a.recalling() && a.recallParked() {
+			return a.edited()
 		}
 		if a.recallBack() {
 			return nil
@@ -660,6 +679,16 @@ func (a *app) enter() tea.Cmd {
 	// thing — is the sentence with its pointer blocks under it (taskmention.go).
 	// A line with no mentions in it comes back untouched.
 	line = a.expandTaskMentions(line)
+	// AND A MESSAGE TYPED WHILE AN ANSWER IS STILL COMING WAITS FOR IT (park.go).
+	// It is not sent, it is not spliced into the reply that is streaming, and it
+	// is not lost: it is held in its own block above the box until the answer is
+	// finished, where esc can send it early and ↑ or a click can pull it back to
+	// be edited. Everything above this line — a slash command, a picked harness —
+	// still happens at once, because those are things said to THIS SURFACE rather
+	// than to the model.
+	if a.parking() {
+		return a.park(line)
+	}
 	if held {
 		return a.submitImages(line)
 	}

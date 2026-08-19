@@ -232,6 +232,11 @@ func (a *app) resumeSession(chosen Session) tea.Cmd {
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
 	a.asks, a.follows = nil, nil
+	// AND A MESSAGE STILL WAITING FOR AN ANSWER GOES WITH THE CONVERSATION IT
+	// WAS TYPED AT (park.go). It was parked against a reply that no longer
+	// exists, and there is no turn end coming to send it — but the person typed
+	// those words, so this says that it went rather than dropping it in silence.
+	a.dropParked()
 	// Same rule as /new: the conversation being replaced takes its offers and
 	// its open sign-ins with it (connect.go).
 	a.connAsks, a.connPanel = nil, connectPanel{}

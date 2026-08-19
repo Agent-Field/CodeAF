@@ -1353,11 +1353,11 @@ func TestARowsClockIsItsOwnCallsAndNotItsSlowestSiblings(t *testing.T) {
 	}
 }
 
-// STEERING IS NOT A SECOND TURN. A message typed at a turn that is already
-// working is queued into that turn by the session, so the calls on screen are
-// still this turn's calls — and the surface used to age them out with the turn
-// counter, then draw "still working" underneath a call that was visibly working.
-func TestSteeringATurnLeavesItsRunningCallsOnTheSurface(t *testing.T) {
+// A MESSAGE TYPED AT A WORKING TURN IS NOT A SECOND TURN. It waits above the
+// box for the answer (park.go), so the calls on screen are still this turn's
+// calls — and the surface used to age them out with the turn counter, then draw
+// "still working" underneath a call that was visibly working.
+func TestAWaitingMessageLeavesTheTurnsRunningCallsOnTheSurface(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		{Kind: session.EventToolBegin, Tool: "bash", Hint: "bash go build ./…",
 			Args: `{"command":"go build ./..."}`},
@@ -1369,14 +1369,18 @@ func TestSteeringATurnLeavesItsRunningCallsOnTheSurface(t *testing.T) {
 	}
 	typeLine(t, a, "and the tests too")
 	if !a.running() {
-		t.Fatal("a steering message hid a call that is still running")
+		t.Fatal("a waiting message hid a call that is still running")
 	}
 	if _, drawn := a.ellipsis(); drawn {
 		t.Fatal("the surface drew its nothing-is-happening sign over a running call")
 	}
-	// The steered line rode the turn it was steering: one stream, one turn.
-	if len(agent.sent) != 2 {
+	// And the session heard nothing new: the words are held on the surface until
+	// this turn is over, which is what makes them editable until then.
+	if len(agent.sent) != 1 {
 		t.Fatalf("the session was sent %v", agent.sent)
+	}
+	if len(a.parks) != 1 {
+		t.Fatalf("the message typed at the turn was not held: %+v", a.parks)
 	}
 }
 
