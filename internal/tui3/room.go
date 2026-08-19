@@ -218,6 +218,23 @@ const (
 	roomCrumbRoot = "main"
 	// roomCrumbSep separates one step of the trail from the next.
 	roomCrumbSep = " ▸ "
+	// The two sentences the kin block says, in the alphabet the rail already
+	// spells a family relation in — "waits: <title>", so "part of: <title>" and
+	// "spawned: <title>" (task.go's [app.railUnder]). A person who has read the
+	// roster's rows has already learned this punctuation.
+	roomKinUnderWord   = "part of: "
+	roomKinSpawnedWord = "spawned: "
+	// roomKinStateSep joins a child to its state word on the spawned line. It is
+	// the em dash the surface already uses to hang a condition off a name
+	// (task.go's [taskStoppedKept], "stopped — branch kept"), so the two levels
+	// of the list read apart: children are separated by [railSep], and a child
+	// from its own state by this.
+	roomKinStateSep = " — "
+	// roomKinIndent hangs the kin rows under the trail rather than under the
+	// state glyph, which is the whole of their layout: they are about the node
+	// the line above names, and a block flush with the header would read as a
+	// second header.
+	roomKinIndent = "  "
 )
 
 // roomTail is how much of a journal a room opens showing. A node's transcript is
@@ -1785,13 +1802,20 @@ func (a *app) railHoverNode(x, y int) *taskNode {
 // has ever used a terminal, while the button is the only thing anywhere on the
 // surface that ends work with a pointer. So the mark outlives the microcopy —
 // the same ladder [app.legend] walks, spending the recoverable thing first.
+// roomHeadFloor is the narrowest frame that gets a pinned header at all: under
+// it there is not a trail and a way out's worth of room, and the row would be an
+// ellipsis. It is stated once because the kin rows under the header stand on it
+// too — a header region whose two halves disagreed about the floor would be rows
+// the geometry counted and the frame did not draw ([app.roomKinRows]).
+const roomHeadFloor = 12
+
 func (a *app) roomHead(width int) string {
 	// [app.headHeight] is what the geometry budgeted for this row, and it is
 	// asked rather than second-guessed: a header the frame drew on a short
 	// terminal that the scrolling had not subtracted would push the room's last
 	// row under the input box.
 	a.roomStop = hudSpan{}
-	if a.headHeight() == 0 || width < 12 {
+	if a.headHeight() == 0 || width < roomHeadFloor {
 		return ""
 	}
 	left := a.roomHeadWord(width)
@@ -1852,6 +1876,122 @@ func (a *app) roomHeadWord(width int) string {
 		}
 	}
 	return fit(word, width)
+}
+
+// roomKinRowCap is how many rows the kin block may take under the header. Three
+// is the whole of the family a room can have something to say about — who asked
+// for this work, and the five pieces it handed out (session's taskFanLimit) laid
+// along one wrapped sentence — and it is a CAP rather than a budget because
+// these rows are charged to the page under them: a header that grew with the
+// family would take the transcript a person opened the room to read.
+const roomKinRowCap = 3
+
+// roomKinRows is the pinned header's second region: WHERE THIS NODE SITS IN ITS
+// FAMILY, in at most [roomKinRowCap] dim rows under the accent line.
+//
+// THE ENGINE HAS ALWAYS MODELLED THIS AND THE PAGE NEVER SAID IT. A node carries
+// who spawned it and what it spawned (session's TaskNotice.Parent, and the
+// buckets task.go's [app.railKin] pours them into), and the roster draws its
+// whole tree from exactly that — so a person who walked INTO a piece of a
+// recursive task could not see, from inside it, that it was a piece of anything
+// or that anything was running underneath it. These rows are the tree's own
+// data said in words, on the one page where the tree shape is not on screen.
+//
+// NO NEW ENGINE STATE AND NO SECOND SOURCE: it reads [app.railKin], which is the
+// same function the column's forest is grown from, so a family that draws one
+// way on the rail cannot read another way here.
+//
+// WHAT IT WAITS ON IS NOT ON THESE ROWS, AND THAT IS NOT AN OMISSION. The accent
+// line above already spends its state word on "waits: <title>" for a node held
+// behind a prerequisite ([app.roomStateWord]), and the same sentence twice in
+// one header is a header read twice to learn one thing.
+//
+// It is DIM, INDENTED, AND UNLABELLED, which is the whole of its styling: this
+// is telemetry about the page rather than a second header, and v1's column is
+// the reference — restrained, no border, no frame of its own (internal/tui).
+func (a *app) roomKinRows(width int) []string {
+	// A RUN'S PAGE IS ALREADY ITS OWN FAMILY TREE (roomorch.go): the graph is
+	// drawn there, node by node, with every prerequisite an edge — so a sentence
+	// about kin would be the picture read out loud beside the picture.
+	if a.room == nil || a.room.orch != nil || width < roomHeadFloor {
+		return nil
+	}
+	// THE SAME LADDER THE BREATHING ROOM STANDS ON (view.go's
+	// [app.breathingRows]). These rows cost the body its rows, so they are spent
+	// only where there is body to spend them from: the window tall enough to
+	// afford a second blank above the draft is the window tall enough to be told
+	// where this work sits. It is asked as a question of the existing ladder
+	// rather than written as a second height, because a floor stated twice drifts.
+	if a.breathingRows() < 2 {
+		return nil
+	}
+	node := a.roomNode()
+	if node == nil {
+		return nil
+	}
+	kids, byKey := a.railKin()
+	var lines []string
+	// WHO ASKED FOR THE WORK, AND IT IS NOT A DEPENDENCY — session's
+	// task_contract.go states that difference in those words, and this line is
+	// the only place on the surface that says the parent out loud rather than
+	// drawing it as an elbow. A parent this surface has had no update for is left
+	// UNSAID rather than named as an id, which is the rule [app.railWaits]
+	// already applies at the other end of the family: "part of: 7" has told a
+	// person nothing.
+	if up := byKey[node.ParentID()]; up != nil && up != node {
+		lines = append(lines, roomKinUnderWord+up.title)
+	}
+	// AND WHAT THIS WORK HANDED OUT, each piece with the state word it wears
+	// everywhere else on the surface. The order is [app.railKin]'s, which is the
+	// order the session met them — the one order a family is allowed to use,
+	// because any other moves a row a person is watching for a reason they
+	// cannot see.
+	var spawned []string
+	for _, kid := range kids[stripKey(node)] {
+		spawned = append(spawned, kid.title+roomKinStateSep+a.roomKinWord(kid))
+	}
+	if len(spawned) > 0 {
+		lines = append(lines, roomKinSpawnedWord+strings.Join(spawned, railSep))
+	}
+	// NOTHING TO SAY IS NOTHING DRAWN. A task with no parent has no parent line
+	// and a task that spawned nothing has no spawned line — a room on a flat task
+	// is the one pinned row this surface has always drawn, unchanged, and the
+	// header does not grow an empty shelf to hold a fact nobody has (the
+	// emptiness law).
+	if len(lines) == 0 {
+		return nil
+	}
+	inner := width - ansi.StringWidth(roomKinIndent)
+	out := make([]string, 0, roomKinRowCap)
+	for _, line := range lines {
+		// THE SENTENCE WRAPS ON ITS SPACES and is cut at the cap, exactly as the
+		// rail's under-block is (task.go's [railWrap] and railUnderRows): a title
+		// broken mid-word is a title nobody can match against the roster.
+		for _, part := range railWrap(line, inner) {
+			if len(out) == roomKinRowCap {
+				return out
+			}
+			out = append(out, a.pal.dim(roomKinIndent+part))
+		}
+	}
+	return out
+}
+
+// roomKinWord is a CHILD's state on the spawned line: [app.roomStateWord]'s
+// answer about that child, except that one held behind a prerequisite says only
+// "queued".
+//
+// THE DEPENDENCY SENTENCE BELONGS TO THE PAGE YOU WOULD OPEN TO ACT ON IT. A row
+// reading "spawned: draft — waits: fetch the RFCs · review — running" is one
+// line carrying three tasks' business, and the task it is actually about is the
+// one it says least about. What this line owes a person is which pieces exist
+// and which of them are still moving; what a piece is behind is on its own row
+// in the roster and in its own header the moment they walk in.
+func (a *app) roomKinWord(node *taskNode) string {
+	if node.state == session.TaskQueued && !node.stopped && a.railWaits(node) != "" {
+		return roomQueuedWord
+	}
+	return a.roomStateWord(node)
 }
 
 // roomNode is the node the open room is about, or nil when this surface has
