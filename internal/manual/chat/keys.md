@@ -78,7 +78,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+,` | Open the settings panel |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
-| `ctrl+e` | Empty box: open or close the most recent thinking block. Otherwise: go to end of line |
+| `ctrl+e` | Empty box: open or close the latest completed turn's `▸ worked` chip, or the most recent thinking block when there is no chip. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only |
 
@@ -93,7 +93,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+f` | Move the caret right, always. Never navigation |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
-| `ctrl+e` | End of the line — unless the box is empty, where it opens the most recent thinking block |
+| `ctrl+e` | End of the line — unless the box is empty, where it opens the latest completed turn's `▸ worked` chip, falling through to the most recent thinking block when there is no chip |
 | any printing key | Types the character |
 
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
