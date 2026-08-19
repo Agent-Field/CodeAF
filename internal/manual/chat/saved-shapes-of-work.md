@@ -146,12 +146,30 @@ step did.
 **A failed run still reports.** The trail is the one thing worth having when a harness went
 wrong: the card's head reads `name · v1 · failed` and the failing step is marked `✗`.
 
-The tools a harness may reach are a fixed bare set over your workspace, not the belt the
-conversation itself carries. Notes, jobs, connected accounts and image generation are
-things a conversation reaches for, not things a saved procedure should inherit. `bash`,
-`read`, `ls`, `grep` and `find` accept a bare string. `edit` and `write` take JSON and say
-so: `edit takes its arguments as a JSON object, and "..." is not one`. An unknown tool
-gets `there is no tool named "x" on this surface`.
+## Which tools can a harness use? Can a saved harness make an image or audio?
+
+A harness reaches the seven working tools — `bash`, `read`, `write`, `edit`, `grep`,
+`find`, `ls` — **plus the media verbs this machine has models for**: `generate_image`,
+`speak`, `generate_music`, `generate_video` and `view_image`. Making a picture to a fixed
+recipe is exactly what a saved procedure is for, so a design may whitelist those verbs and
+a step may call them.
+
+It is **not** the whole belt the conversation carries. Notes, jobs, connected accounts,
+watches, settings and the task verbs are left out on purpose: those are things a
+conversation reaches for, and a recipe run months later should not be able to rewrite your
+settings or start a task tree.
+
+The media verbs follow the same rule they follow everywhere — **no model for that kind of
+media, no verb** — and the list the designer is shown when it writes a harness is the same
+list the run resolves against, so a design can never whitelist a verb this machine cannot
+run.
+
+`bash`, `read`, `ls`, `grep`, `find`, `generate_image`, `generate_music`, `generate_video`,
+`speak` and `view_image` accept a bare string as their one obvious argument — the command,
+the path, the pattern, the prompt, the words to speak. `edit` and `write` take JSON and say
+so: `edit takes its arguments as a JSON object, and "..." is not one`. Any other argument —
+a size, a voice, a destination — is written as JSON too. An unknown tool gets
+`there is no tool named "x" on this surface`.
 
 Two limits worth knowing:
 

@@ -272,9 +272,21 @@ func (c *MediaClient) downloadVideo(ctx context.Context, job videoJob) (*VideoRe
 	if err != nil {
 		return nil, fmt.Errorf("resolve video download URL: %w", err)
 	}
-	// The URL is explicitly unsigned and may point at provider object storage;
-	// never forward the OpenRouter bearer credential to that host.
-	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, false)
+	// THE CREDENTIAL IS SCOPED TO THE HOST, not withheld from every host.
+	//
+	// The field is called unsigned_urls, and the first reading of that was "this
+	// is object storage, never forward the bearer". It is half right: OpenRouter
+	// answers a completed job with a SAME-ORIGIN content URL —
+	// <base>/videos/<id>/content?index=0 — and that endpoint requires the bearer
+	// like every other endpoint on the host. Withholding it there returned
+	// 401 `No cookie auth credentials found`, which flowed into apiError and
+	// landed a successful, already-paid render on the model's belt as a failure.
+	//
+	// So the rule is the narrow one the original comment was reaching for: send
+	// the key iff the download host is the host we were configured to talk to,
+	// and withhold it anywhere else. Genuinely off-site storage still never sees
+	// it, and the router's own content endpoint works.
+	response, err := c.doEndpoint(ctx, http.MethodGet, endpoint, nil, c.sameHostAsBase(endpoint))
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +374,26 @@ func (c *MediaClient) doEndpoint(ctx context.Context, method, endpoint string, b
 
 func (c *MediaClient) mediaEndpoint(path string) string {
 	return strings.TrimSuffix(strings.TrimSpace(c.config.BaseURL), "/") + path
+}
+
+// sameHostAsBase reports whether an absolute URL points at the very host this
+// client was configured with. It is the whole test behind [downloadVideo]'s
+// credential decision, and it compares HOSTS — scheme and port included via
+// url.Host — rather than prefixes: a prefix check would hand the key to
+// `openrouter.ai.evil.example` for a base of `openrouter.ai`.
+//
+// A URL that will not parse answers false. An unreadable download URL is not a
+// reason to guess in the direction that leaks a credential.
+func (c *MediaClient) sameHostAsBase(endpoint string) bool {
+	target, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return false
+	}
+	base, err := url.Parse(strings.TrimSpace(c.config.BaseURL))
+	if err != nil {
+		return false
+	}
+	return target.Host != "" && strings.EqualFold(target.Host, base.Host)
 }
 
 func (c *MediaClient) resolveEndpoint(raw string) (string, error) {
