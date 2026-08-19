@@ -168,6 +168,16 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 		// the reason nothing else in this constructor takes one — the agent is
 		// not reachable yet.
 		agent.scrubBlindImagePartsLocked(agent.model)
+		// AND IT KEEPS WHAT IT SPENT. The total is the sum of the file's usage
+		// lines (sessionfile.go), so a conversation reopened tomorrow reports the
+		// money it actually cost rather than the money this process has spent so
+		// far — which for a resumed session was always nothing.
+		//
+		// THIS ALSO RESTORES THE SPEND RAIL, and that is the intended change: the
+		// rail is this conversation's own ceiling (rail.go), so a conversation
+		// that reached it yesterday is still over it today. A rail that reset with
+		// the process was a ceiling on a window, not on a conversation.
+		agent.usage = file.RestoredUsage()
 	}
 	// THE THREAD IS THE SESSION'S OWN ID, and it is minted nowhere: the journal
 	// header already carries one that survives every resume, the folder is named

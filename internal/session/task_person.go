@@ -120,7 +120,7 @@ func (a *Agent) judgeDecomposable(ctx context.Context, brief string) (bool, []st
 		if callErr != nil || response == nil {
 			return false, nil, ""
 		}
-		a.addAuxiliaryUsage(response)
+		a.addAuxiliaryUsage(response, call.Model, 1)
 		if verdict, ok := parseTaskJudge(response.Text()); ok {
 			return verdict.Parallel, verdict.Parts, verdict.Why
 		}

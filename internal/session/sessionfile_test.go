@@ -89,8 +89,22 @@ func TestSessionFileRoundTrip(t *testing.T) {
 	if second.Title() == "" {
 		t.Fatal("the resumed session came back without the name in its file")
 	}
+	// And the same for what the conversation cost. The completed turn seals one
+	// usage line and the naming call adds its own auxiliary one beside it
+	// (sessionfile.go's appendUsage), and both are facts about the session
+	// rather than messages in it — counted here for the reason the title is,
+	// and not filtered out in silence.
+	used := 0
+	for _, line := range lines {
+		if strings.Contains(line, `"type":"usage"`) {
+			used++
+		}
+	}
+	if turns := turnUsageLines(t, path); len(turns) != 1 {
+		t.Fatalf("journal holds %d turn usage lines, want exactly 1 for one turn", len(turns))
+	}
 	// system is never journaled: it is rendered fresh on every open.
-	if got, want := len(lines)-titles, 1+len(want)-1; got != want {
+	if got, want := len(lines)-titles-used, 1+len(want)-1; got != want {
 		t.Fatalf("journal has %d message lines, want %d (header + every message but system)", got, want)
 	}
 }

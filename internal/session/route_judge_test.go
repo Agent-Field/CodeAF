@@ -331,12 +331,15 @@ func TestATaskShapedYesAdmitsANode(t *testing.T) {
 	if offer.Text != "task" {
 		t.Fatalf("the card offered %q", offer.Text)
 	}
-	mu.Lock()
-	started := len(ran)
-	mu.Unlock()
-	if started != 1 {
-		t.Fatalf("%d nodes ran, want the one the person said yes to", started)
-	}
+	// The admission STARTS the node on its own goroutine (TaskGraph.runFrontier),
+	// so this is something another goroutine will do shortly — polled to a
+	// deadline rather than read on the beat the stream closed, which is a race
+	// the test loses whenever the machine is busy enough to schedule it late.
+	waitFor(t, "the node the person said yes to to run", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(ran) == 1
+	})
 	// The brief is the judge's goal, whole: whoever runs it cannot see this
 	// conversation.
 	node := agent.graph().node(1)

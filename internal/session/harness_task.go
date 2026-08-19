@@ -51,11 +51,28 @@ package session
 // work for the nightly build?" are questions it can actually answer.
 //
 // AND THE JOURNAL HOLDS MORE THAN THAT TRANSCRIPT DOES, which is the one place
-// the two part company. Everything the designer writes goes into the room as it
-// streams and into the node's journal as each call finishes ([designSeat]), so
-// the room reads back tomorrow as the discussion it was — while none of it is
-// put in front of the thread, because a draft that was replaced is a wrong
-// answer waiting to be given ([Agent.journalOnly]).
+// the two part company. What the designer THINKS goes into the room as it
+// streams, and what each stage REACHED is journaled as it finishes
+// ([designSeat.noted]) — the draft with its card, an attempt the law turned
+// down, what the review made of the page — so the room reads back tomorrow as
+// the story it was, while none of it is put in front of the thread, because a
+// draft that was replaced is a wrong answer waiting to be given
+// ([Agent.journalOnly]).
+//
+// WHAT NEVER CROSSES IS THE REPLY ITSELF. The designer answers with one enormous
+// JSON envelope, and a room that typed that envelope into itself at reading
+// speed buried the very thing somebody walked in to watch. The page being typed
+// is accounted for by the replacing progress row instead (harness_build.go's
+// harnessProgress), which reads the same stream and says "naming it: X", "4
+// steps so far", "receiving · 12.3 KB".
+//
+// AND THE THING THE MODEL NEEDS THAT NOBODY WANTS TO READ GOES IN SYSTEM-ROLE.
+// The thread agent has to reason off the PAGE — the real one, with its node ids
+// and fields — while the person in the same room wants the card and nothing but.
+// Both live in one transcript, so the split is the role: the surfaces skip system
+// messages when they draw a transcript, and the transport takes them anywhere in
+// the array ([harnessThreadBrief] states the whole mechanism, and
+// [harnessPageContext] is what rides on it).
 //
 // WHAT IT CANNOT DO IS SAVE A SECOND VERSION, and the thread says so rather
 // than implying otherwise. Writing a page is the designer's job and the
@@ -108,51 +125,64 @@ type designSeat struct {
 	thread *Agent
 }
 
-// says tees one streamed chunk of the designer's reply into the room, in the two
-// kinds a worker's room is already filled with — task_run.go's runTaskChild
-// publishes exactly these, and this is what makes a design room the same kind of
+// says tees one streamed chunk of the designer's THINKING into the room, in the
+// kind a worker's room is already filled with — task_run.go's runTaskChild
+// publishes exactly this, and it is what makes a design room the same kind of
 // place as a worker's.
 //
-// THE TWO READERS OF THIS STREAM WANT OPPOSITE THINGS AND BOTH ARE RIGHT. The
-// conversation gets one throttled status line and never the page itself, because
-// a chat that typed a page of JSON into itself would bury the conversation it is
-// (harness_build.go's harnessProgress). A person who walked INTO the design's
-// room went there to watch: a room that showed one scrolling line for two
-// minutes and then a finished card is indistinguishable from a program that did
-// nothing, which is the exact complaint this answers.
+// THE REPLY ITSELF IS NOT PROSE AND MUST NOT BE TYPED IN HERE. What the designer
+// streams as content is one JSON envelope — `{"cues": …, "justification": …,
+// "harness": {…}}`, and after it the review pass's `{"findings": …, "ops": …}` —
+// so forwarding those deltas filled the room with a wall of braces scrolling past
+// at reading speed, over the top of the watching it was meant to serve.
+//
+// THE ROOM'S LIVE ACCOUNT OF THE PAGE BEING TYPED IS THE REPLACING PROGRESS ROW.
+// harness_build.go's harnessProgress reads this same stream and publishes
+// EventHarnessProgress — "naming it: X", "4 steps so far", "receiving · 12.3 KB",
+// and the stall clock when nothing has arrived for ten seconds — which the
+// surface draws as one line that stays a line (internal/tui3's
+// progressHarnessRoom). The reasoning is the half of the stream a person can
+// actually read, so it is the half that crosses; what a finished stage reached is
+// said once, in words, by [designSeat.noted].
 func (s designSeat) says(kind provider.StreamEventKind, delta string) {
-	if s.room == nil || delta == "" {
+	if s.room == nil || delta == "" || kind != provider.StreamReasoning {
 		return
 	}
-	switch kind {
-	case provider.StreamDelta:
-		s.room.publish(Event{Kind: EventTextDelta, Text: delta})
-	case provider.StreamReasoning:
-		s.room.publish(Event{Kind: EventReasoning, Text: delta})
-	}
+	s.room.publish(Event{Kind: EventReasoning, Text: delta})
 }
 
-// wrote closes one design call: the whole reply goes into the node's journal,
-// and the room is told that it is on disk.
+// noted closes one design stage: the milestone it reached, in a person's words,
+// into the node's journal — and then the room is told the stage is over.
 //
-// THE JOURNAL IS WHAT THE ROOM IS READ OUT OF AFTERWARDS. The deltas [designSeat.says]
-// published are the live lane only — they exist for whoever was subscribed at
-// that instant — so without this line a design opened tomorrow would show the
-// page and none of the writing of it: the same gap the live stream just closed,
-// one day later.
+// THE JOURNAL IS WHAT THE ROOM IS READ OUT OF AFTERWARDS. The reasoning
+// [designSeat.says] published is the live lane only — it exists for whoever was
+// subscribed at that instant — so without this line a design opened tomorrow
+// would show the finished card and nothing about how it was arrived at.
+//
+// WHAT IS KEPT IS THE ACCOUNT AND NOT THE TRANSPORT. This used to journal the
+// designer's reply verbatim, which meant reopening a design replayed the same
+// wall of JSON the live lane had just stopped showing. Every fact worth keeping
+// out of that envelope is rendered by [harnessDraftNote], [harnessRefusedNote]
+// and [harnessReviewNote] instead — and the raw reply still goes back to the
+// MODEL through the retry history exactly as it always did (harness_build.go's
+// designPage), because that reader is repairing what it wrote and needs the text
+// it wrote.
 //
 // It is JOURNALED and not recorded, and [Agent.journalOnly] states both reasons.
 //
-// THE EVENT BEHIND IT IS WHAT THE ROOM'S CATCH-UP IS WAITING TO BE TOLD
-// (task_room.go's taskCatchup.record): the reply is on disk now, so the next
-// person through the door is handed it once, off the file, rather than a second
-// time off the step in flight. It carries no usage deliberately — a design's
-// calls are billed to the conversation that asked for it and never to this node
+// AN EMPTY MILESTONE IS A STAGE WITH NOTHING TO SAY, AND STILL AN EVENT, which is
+// why the two halves are not separable here. THE EVENT IS WHAT THE ROOM'S
+// CATCH-UP IS WAITING TO BE TOLD (task_room.go's taskCatchup.record): one of
+// these per finished model call, or the reasoning of a stage that said nothing —
+// the JSON repair turn, a review that could not be read — would sit in the
+// catch-up and be handed to the next person through the door as though it were
+// still in flight. It carries no usage deliberately — a design's calls are billed
+// to the conversation that asked for it and never to this node
 // ([Agent.designHarnessNode] says why) — and a turn that priced nothing is one
 // the roster's own fold ignores (internal/tui3's pilotEvent).
-func (s designSeat) wrote(text string) {
-	if s.thread != nil && strings.TrimSpace(text) != "" {
-		s.thread.journalOnly(textMessage("assistant", text))
+func (s designSeat) noted(milestone string) {
+	if s.thread != nil && strings.TrimSpace(milestone) != "" {
+		s.thread.journalOnly(textMessage("assistant", milestone))
 	}
 	s.room.publish(Event{Kind: EventTurnDone})
 }
@@ -172,6 +202,79 @@ func (s designSeat) broke(err error) {
 		return
 	}
 	s.room.publish(Event{Kind: EventError, Err: err})
+}
+
+// ── WHAT A STAGE SAYS WHEN IT FINISHES ──────────────────────────────────────
+//
+// The three renderings a design journals through [designSeat.noted], in the order
+// a person meets them: an attempt the law turned down, the draft that passed it,
+// and what the review pass made of that draft. Between them they hold every fact
+// the designer's envelope carried that a person would want back — and none of the
+// envelope.
+
+// harnessDraftNote is the accepted draft: what it is called, how big it is, why
+// the designer shaped it that way, the sentences it will answer to, and the card.
+//
+// THE CARD IS FENCED, and that is not decoration. The room renders assistant text
+// as markdown (internal/tui3's renderMarkdown), and markdown folds single
+// newlines into running prose — which is all a card is made of. Unfenced, a card
+// whose columns line up at a glance arrived as one run-on paragraph.
+func harnessDraftNote(page subharness.Harness, draft harnessDesign) string {
+	var out strings.Builder
+	fmt.Fprintf(&out, "The draft is written — %s · %d steps.", page.Id.Name, len(page.Program.Nodes))
+	// A designer that justified nothing gets no paragraph rather than an empty
+	// one: unknown renders as nothing, here as everywhere.
+	if why := strings.TrimSpace(draft.Justification); why != "" {
+		out.WriteString("\n\n" + why)
+	}
+	if len(draft.Cues) > 0 {
+		out.WriteString("\n\nIt answers to: " + strings.Join(draft.Cues, " · "))
+	}
+	out.WriteString("\n\n```\n" + subharness.Card(page) + "\n```")
+	return out.String()
+}
+
+// harnessRefusedNote is an attempt the law turned down, as one line in the story
+// of a design that took several.
+//
+// THE VALIDATOR'S OWN SENTENCE IS KEPT because it is the most specific account
+// that exists of what was wrong with the page, and it is FLATTENED onto one line
+// because what is being written here is a note in a story rather than a stack of
+// errors. The raw draft it refused goes to the model and to nobody else
+// (harness_build.go's designPage).
+func harnessRefusedNote(attempt int, err error) string {
+	return fmt.Sprintf("Attempt %d was refused: %s", attempt, strings.Join(strings.Fields(err.Error()), " "))
+}
+
+// harnessReviewNote is what the second pass came back with: whether it changed
+// the draft, and everything it noticed either way.
+//
+// THE PASS LABEL IS DROPPED. Each finding carries the name of the critic's own
+// checklist that raised it, which is a fact about the machinery and never about
+// the harness; what a person reads is the finding.
+func harnessReviewNote(revised harnessRevision) string {
+	var out strings.Builder
+	if changed := len(revised.Ops); changed > 0 {
+		thing := "things"
+		if changed == 1 {
+			thing = "thing"
+		}
+		fmt.Fprintf(&out, "The review read the draft and changed %d %s:", changed, thing)
+	} else {
+		out.WriteString("The review read the draft and left it as written.")
+	}
+	// The findings are bullets under either sentence, because "here is what I
+	// looked at and changed nothing about" is as much of a report as a patch is.
+	bullets := make([]string, 0, len(revised.Findings))
+	for _, finding := range revised.Findings {
+		if text := strings.TrimSpace(finding.Text); text != "" {
+			bullets = append(bullets, "- "+text)
+		}
+	}
+	if len(bullets) > 0 {
+		out.WriteString("\n\n" + strings.Join(bullets, "\n"))
+	}
+	return out.String()
 }
 
 // The three phases a design node publishes on [TaskNotice.Doing], in the words a
@@ -306,10 +409,13 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	room.speaking(child)
 	go pumpHarnessThread(turns, room)
 
-	// The opening of the thread, written into its transcript rather than said to
-	// a model: this is what the room shows somebody who walks in, and it is what
-	// the thread reads back when the person asks it something later.
-	child.record(textMessage("user", harnessThreadOpening(goal, model)))
+	// The opening of the thread, in two halves that go to two readers. The
+	// person's own sentence is what the room shows somebody who walks in; the
+	// standing instructions under it are addressed to the thread agent and are
+	// SYSTEM-ROLE, which is what keeps them out of the room ([harnessThreadBrief]
+	// states the whole mechanism).
+	child.record(textMessage("user", harnessThreadOpening(goal)))
+	child.record(textMessage("system", harnessThreadBrief(model)))
 
 	node.doingNow(harnessPhaseDesigning)
 	// AND THE DESIGNER WRITES INTO THIS ROOM, which is the whole of what the seat
@@ -324,7 +430,12 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 		fmt.Fprintf(log, "design failed: %v\n", err)
 		return a.landHarnessNode(node, child, harnessDesignEnding(writing, node, "the design failed: "+err.Error()), TaskFailed)
 	}
+	// THE CARD IS WHAT A PERSON READS AND THE PAGE IS WHAT THE MODEL READS, and
+	// they are two messages for exactly that reason ([harnessPageContext]).
 	child.record(textMessage("assistant", harnessPageThread(page)))
+	if encoded, err := subharness.Encode(page); err == nil {
+		child.record(textMessage("system", harnessPageContext(encoded)))
+	}
 	fmt.Fprintf(log, "page written: %s\n", page.Id.Name)
 	// THE WRITING IS OVER, SO ITS CLOCK IS OVER. Cutting it here rather than
 	// leaving it to the deferred call is what makes the sentence above true: from
@@ -525,43 +636,84 @@ func pumpHarnessThread(turns <-chan (<-chan Event), room *taskRoom) {
 	}
 }
 
-// harnessThreadOpening is the first message in the design thread: what was
-// asked for, who is writing it, and what this thread is and is not for.
+// harnessThreadOpening is the first message in the design thread, and the first
+// thing a person sees on walking into the room: the sentence that started the
+// design, and nothing else.
 //
-// IT IS WRITTEN AS THE PERSON'S OWN WORDS because that is what it is — the
-// sentence that started the design, forwarded — and because the thread agent
-// has to read it as its brief rather than as something it said itself.
-func harnessThreadOpening(goal, model string) string {
+// IT IS WRITTEN AS THE PERSON'S OWN WORDS because that is what it is — their
+// request, forwarded. Everything the thread agent has to be TOLD about the job
+// used to ride on the end of it, which meant a person opening a design read a
+// paragraph of instructions addressed to a model; that half is
+// [harnessThreadBrief] now.
+func harnessThreadOpening(goal string) string {
+	return "Design a reusable sub-harness for this:\n\n" + goal
+}
+
+// ── WHAT THE THREAD AGENT IS TOLD AND NOBODY READS ──────────────────────────
+//
+// THE SYSTEM ROLE IS THE ROOM'S ONE-WAY GLASS, and both of the functions below
+// depend on it, so it is stated once here. A design thread has two audiences
+// sharing one transcript: the person standing in the room, and the model that
+// answers them. Everything recorded reaches both — [Agent.record] appends to the
+// model's context AND to the journal the room is read out of — except this: the
+// surfaces skip system-role messages when they turn a transcript into a page
+// (internal/tui3's readRoomJournalTail switches on user, assistant and tool;
+// agent.go's shapeEntries drops "system" outright). So a system message is
+// exactly the thing this file needed and did not have — text the model reasons
+// from that a person is never shown — and the transport takes it mid-transcript
+// without complaint, because a request is an ordinary array of roled messages
+// (internal/provider's client.go) and the cache breakpoints only ever count the
+// system messages at the HEAD of one (its caching.go).
+
+// harnessThreadBrief is what the thread agent is for, addressed to it.
+//
+// It is the half of the old opening that was never the person's to read: what
+// this thread answers, what it may not do, and who is writing the page while
+// they wait.
+func harnessThreadBrief(model string) string {
 	var out strings.Builder
-	out.WriteString("Design a reusable sub-harness for this:\n\n")
-	out.WriteString(goal)
-	out.WriteString("\n\nThis is that harness's own thread. The page is being written now")
+	out.WriteString("This is one sub-harness's own thread. The page is being written now")
 	if model = strings.TrimSpace(model); model != "" {
 		out.WriteString(" by " + model)
 	}
-	out.WriteString("; when it is ready it appears here and I am shown a card that saves it or drops it.\n\n")
-	out.WriteString("Your job in this thread is to answer questions about this harness — why it is shaped the way it is, what its steps do, whether it fits some other work — using the page below as your source. ")
+	out.WriteString("; when it is ready it appears here as a card, and the person is asked whether to save it or drop it.\n\n")
+	out.WriteString("Your job in this thread is to answer questions about this harness — why it is shaped the way it is, what its steps do, whether it fits some other work — using the page as your source. ")
 	out.WriteString("You cannot write or save a version of it from here: designing a page is a job of its own, and a revision is a new design, asked for the same way this one was. When somebody wants the harness changed, say that plainly and say what to ask for.")
 	return out.String()
 }
 
-// harnessPageThread is the page as the thread records it: the card a person
-// reads, and the page itself so the thread agent is reasoning about the real
-// thing rather than about a rendering of it.
+// harnessPageContext is the page itself, for the thread agent and for nobody
+// else: the real thing rather than a rendering of it, so that "what does step
+// three actually do?" is answered off the page and not off the card.
 //
-// The two are one message because they are one artifact. A surface renders the
-// card (internal/subharness's card.go is the renderer every surface shares) and
-// the fenced page under it is what the model reads when somebody asks what step
-// three actually does.
+// THE PERSON IS NOT SHOWN THIS AND DOES NOT WANT TO BE. A page of JSON in the
+// middle of a room is the same wall of braces this whole lane exists to have
+// stopped showing — what a person came to read is the card, which says the same
+// things in the shape a person reads them in. So it goes in system-role (see
+// above), where the model has it and the room does not draw it.
+func harnessPageContext(encoded []byte) string {
+	return "The page that was written, as it will be saved:\n\n" + string(encoded) +
+		"\n\nAnswer questions about this harness from this page. Do not quote it back as JSON — say what it does in words."
+}
+
+// harnessPageThread is the page as the room shows it: the card, and what has and
+// has not happened to it. A surface renders the card the same way every other
+// surface does (internal/subharness's card.go is the renderer they share).
+//
+// THE CARD IS FENCED. It is columns of text held together by single newlines,
+// and the room renders this message as markdown (internal/tui3's renderMarkdown)
+// — which folds single newlines into running prose, so an unfenced card arrived
+// as one run-on paragraph with its alignment gone.
+//
+// THE PAGE ITSELF IS NOT IN HERE ANY MORE. It used to be fenced underneath —
+// labelled `yaml`, which was wrong about bytes subharness.Encode writes as JSON —
+// and it was the model's copy sitting in a person's reading. The model still has
+// it, one message along and out of sight ([harnessPageContext]).
 func harnessPageThread(page subharness.Harness) string {
 	var out strings.Builder
-	out.WriteString("The page is written.\n\n")
+	out.WriteString("The page is written.\n\n```\n")
 	out.WriteString(subharness.Card(page))
-	if encoded, err := subharness.Encode(page); err == nil {
-		out.WriteString("\n\nThe page itself:\n\n```yaml\n")
-		out.Write(encoded)
-		out.WriteString("\n```")
-	}
+	out.WriteString("\n```")
 	out.WriteString("\n\nNothing is saved yet — the card is up, and it is saved only if it is approved.")
 	return out.String()
 }

@@ -337,6 +337,13 @@ what, into the conversation. Up to five aligned lines:
 the provider — every step of a turn is its own request — so this figure is normally larger
 than the number of times you have spoken.
 
+It counts **every** request, not only the ones in your turns: naming the session, a judge
+deciding where something should be routed, looking at a picture, every request a task's
+own agent made on its own lane, and every request a harness run made while it walked its
+program. That is deliberate, because the `spend` line above it is the
+sum over exactly those requests — a smaller count beside it would be a bill divided by the
+wrong number.
+
 **Every line is dropped when its figure is absent.** A provider that publishes no cache
 accounting says nothing about caches, rather than teaching you that your cache never hits.
 
@@ -345,6 +352,27 @@ It will not go silent. A session with no figures at all answers exactly:
 ```
 nothing spent yet — this session has not sent a turn.
 ```
+
+## Does /cost remember after I close and resume — is the spend kept across restarts
+
+Yes. The figures are the **whole conversation's**, not this sitting's.
+
+Every turn that spent something, and every call made beside a turn, appends a line to the
+conversation's own transcript recording what it cost. When you resume, those lines are read
+back and added up before anything else happens, and that sum *is* the session's totals. So
+`/cost`, `/status` and the status line the day after show yesterday's money and tokens with
+today's added on top, in one figure.
+
+Two things follow from that:
+
+- A conversation whose transcript has no such lines yet — one written by an older build, or
+  one that has genuinely never spent anything — reports only what has happened **since you
+  reopened it**. There is nothing to rebuild from, and aforge does not invent a figure.
+- `/new` starts a fresh conversation with a fresh file, so it starts at nothing. Resuming an
+  old conversation is the opposite: it picks the old bill back up.
+
+The `model calls` count is rebuilt the same way, so a resumed conversation's call count also
+covers the requests made before the restart.
 
 ## Everything at once — /status
 
@@ -437,8 +465,10 @@ The note the model reads above a summary begins:
 A pass can decline: `session: nothing to compact` (everything already fits in the tail),
 `session: a compaction pass is already running`, or `session: summarizer returned nothing`.
 
-## When compaction happens by itself
+## What happens when the conversation gets too long — when compaction happens by itself
 
+When the conversation gets too long to fit, nothing is lost and nothing stops: the oldest
+part of it is summarized away and the recent tail is kept, which is what compaction is.
 Three ways a pass starts:
 
 - **Automatically**, after any step where the estimate is over the threshold. A failed pass is
@@ -490,6 +520,14 @@ session: the spend rail was reached
 ```
 
 A ceiling of zero means there is none.
+
+**The ceiling counts what this conversation spent before you resumed it.** The usage the
+rail reads is the rebuilt total, which includes every turn from every earlier sitting — so a
+ceiling reached yesterday is still reached when you open the conversation today, and the
+first thing you type is refused before it runs. That is the one place the rebuilt bill
+changes what happens rather than only what is printed. If you want a clean allowance, raise
+the ceiling on the `session ceiling` row, or start a fresh conversation with `/new`; there
+is no way to zero a conversation's recorded spend while keeping the conversation.
 
 The settings panel's **Session** tab carries a row for it, labelled `session ceiling`. The
 panel's search matches a row's registry key as well as its label, so typing either `spendRail`
