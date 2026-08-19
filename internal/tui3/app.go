@@ -3730,7 +3730,9 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "esc":
-		a.closeLists()
+		// It SEALS the word it was pressed over, so the list does not reappear
+		// on the next letter of it ([app.dismissLists]).
+		a.dismissLists()
 		a.touch()
 		return nil, true
 
@@ -3755,11 +3757,16 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 // syncLists is what every edit runs: the overlays follow the draft, and never
-// the other way round. At most one is open — a line that starts with "/" is a
-// command being chosen, and an @ inside it would be an argument to a command
-// this surface does not have.
+// the other way round.
+//
+// AT MOST ONE IS OPEN, and what decides which is now the CARET rather than the
+// first character of the line. Both typed lists answer the same question — the
+// word the caret is standing in, and what it opens with — so a caret in a "/"
+// word is the command list's and a caret in an "@" word is the completion's, and
+// no draft can put the caret in both at once (slashchip.go's [slashToken],
+// files.go's [atToken]).
 func (a *app) syncLists() tea.Cmd {
-	a.menu.sync(a.input.String())
+	a.menu.sync(&a.input)
 	if a.menu.open {
 		a.comp.close()
 		a.harnPick.close()
@@ -3789,6 +3796,20 @@ func (a *app) closeLists() {
 	a.comp.close()
 	a.harnPick.close()
 	a.taskPick.close()
+}
+
+// dismissLists is esc over a typed list, which is [app.closeLists] plus the one
+// thing esc means that a close does not: the person MEANT the word they are
+// typing. Without the seal the list is back on the next keystroke — the overlays
+// are derived from the draft, so closing one over a word that still matches is a
+// dismissal that lasts exactly until the next letter — and a slash word inside a
+// sentence would be uncloseable. See [menu.dismiss].
+func (a *app) dismissLists() {
+	sealed, at := a.menu.open, a.menu.at
+	a.closeLists()
+	if sealed {
+		a.menu.dismiss(at)
+	}
 }
 
 // ── the context meter ───────────────────────────────────────────────────────
