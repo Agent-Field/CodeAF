@@ -2598,12 +2598,37 @@ func (a *app) railRows(height int) []string {
 			lead = a.pal.accent(a.linearMark(railMark, railMarkASCII))
 		}
 		text := line.text
-		// EVERY NODE ROW TAKES THE HOVER STEP, because every node row answers to a
-		// click — the whole row is that node's door (hover.go's own law). It is
-		// applied here rather than inside the row's render for the reason the
+		// THE ROW WHOSE DOOR YOU WALKED THROUGH WEARS THE SELECTION BAND, which is
+		// what makes this column a map of where you are rather than a list of what
+		// exists: a person standing inside a node's page could read the page's own
+		// header for its name, and then had to read it, because nothing in the
+		// roster beside it said which of these rows they were behind.
+		//
+		// It is [palette.band] and not a new mark — the same background the strip
+		// puts on the chip of the room a person is standing in (taskstrip.go's
+		// [app.stripChip]), and the same one every selected row on this surface
+		// wears (palette.go). It covers EVERY line of the entry, not just its head:
+		// a node's row is two lines tall when it has something to say under its
+		// title, and a band on half of it would read as a row cut in two.
+		//
+		// AND EVERY NODE ROW TAKES THE HOVER STEP, because every node row answers
+		// to a click — the whole row is that node's door (hover.go's own law). It
+		// is applied here rather than inside the row's render for the reason the
 		// transcript applies it in its layout pass: one place knows where the
 		// pointer is, and no renderer has to remember it exists.
-		if line.entry >= 0 && line.entry < len(entries) && a.hoveringRail(entries[line.entry].node) {
+		//
+		// SELECTED OUTRANKS HOVERED, which is the law the overlay's rows already
+		// state: the two backgrounds cannot nest — each closes with SGR 49 — and
+		// of the two facts, "you are in here" is the one that is still true when
+		// the pointer moves away.
+		var node *taskNode
+		if line.entry >= 0 && line.entry < len(entries) {
+			node = entries[line.entry].node
+		}
+		switch {
+		case a.roomStandingOn(node):
+			text = a.pal.band(text, room)
+		case node != nil && a.hoveringRail(node):
 			text = a.hoverRow(text, room)
 		}
 		out[i] = lead + text
@@ -3400,8 +3425,19 @@ func railModelWord(node *taskNode) string {
 // railTitle paints an already-fitted title. The cut happens at the call site
 // because that is where the id's cells are measured out of it ([app.railNodeRows]):
 // a title fitted here and trimmed there would be a row measured twice.
+//
+// THE ROOM A PERSON IS STANDING IN LEADS THE COLUMN, in the accent and bold —
+// which is the strip's own law for the same fact said one row up
+// (taskstrip.go's [app.stripTitle]), because the strip and the roster are the
+// two lists of the same work and a person who learned the mark on one has
+// learned it on the other. It is the TEXT half of that mark; the row's band is
+// the other ([app.railRows]), and this half is the one a sixteen-colour
+// terminal still gets.
 func (a *app) railTitle(node *taskNode, title string) string {
-	if node.state == session.TaskRunning {
+	switch {
+	case a.roomStandingOn(node):
+		return a.pal.bold(a.pal.accent(title))
+	case node.state == session.TaskRunning:
 		return a.pal.ink(title)
 	}
 	return a.pal.muted(title)
@@ -3865,7 +3901,17 @@ func (a *app) railWaits(node *taskNode) string {
 // reach here. There, a quiet line IS the success and the row stays on screen; a
 // rail row is a presence that disappears when the work comes home, so the tick
 // is not decoration on a permanent row — it is the last thing the row says.
+// It is the CELL and the HUE asked separately and put back together, because the
+// hue is needed on its own: the composer's room segment says the name of the task
+// you are typing to in the state's own colour (room.go's [app.roomLead]), and a
+// second table of which state is which colour would be a segment that disagreed
+// with the glyph beside the same name in the roster.
 func (a *app) railGlyph(node *taskNode) string {
+	return a.taskStateInk(node)(a.taskStateMark(node))
+}
+
+// taskStateMark is a node's state in one cell, UNPAINTED.
+func (a *app) taskStateMark(node *taskNode) string {
 	// ⊘ IS THE ONE MARK THAT OUTRANKS THE STATE, and it is the only one that
 	// does: a node a person stopped settles as `failed` on the wire, because
 	// nothing merged, and drawing it with the failure's cross would report a
@@ -3880,23 +3926,47 @@ func (a *app) railGlyph(node *taskNode) string {
 	// waiting work wears, in the same warn hue, because it is the same ask: the
 	// machine has done its part and the next move is yours.
 	if taskAwaitsPerson(node) {
-		return a.pal.warn(glyphUnverified)
+		return glyphUnverified
 	}
 	switch node.state {
 	case session.TaskDone:
-		return a.pal.muted(a.linearMark(glyphDone, glyphDoneASCII))
+		return a.linearMark(glyphDone, glyphDoneASCII)
 	case session.TaskFailed:
-		return a.pal.bad(a.linearMark(glyphBad, glyphBadASCII))
+		return a.linearMark(glyphBad, glyphBadASCII)
 	case session.TaskUnverified:
-		return a.pal.warn(glyphUnverified)
+		return glyphUnverified
 	case session.TaskRunning:
 		if a.linear {
-			return a.pal.accent(glyphRunASCII)
+			return glyphRunASCII
 		}
-		return a.pal.accent(tokens.Spinner(a.paints / spinnerStep))
+		return tokens.Spinner(a.paints / spinnerStep)
 	default:
-		return a.pal.dim(a.linearMark(glyphQueued, glyphQueuedASCII))
+		return a.linearMark(glyphQueued, glyphQueuedASCII)
 	}
+}
+
+// taskStateInk is the hue that state is said in — the paint half of
+// [app.railGlyph], in the order the glyph half decides its cell so the two can
+// never fall out of step. Anything that says a node's name in the colour of what
+// it is doing asks this: the roster's glyph, and the composer's room segment.
+func (a *app) taskStateInk(node *taskNode) func(string) string {
+	if _, stopped := a.stoppedGlyph(node); stopped {
+		return a.pal.dim
+	}
+	if taskAwaitsPerson(node) {
+		return a.pal.warn
+	}
+	switch node.state {
+	case session.TaskDone:
+		return a.pal.muted
+	case session.TaskFailed:
+		return a.pal.bad
+	case session.TaskUnverified:
+		return a.pal.warn
+	case session.TaskRunning:
+		return a.pal.accent
+	}
+	return a.pal.dim
 }
 
 // glyphDone marks a node that landed. See [app.railGlyph] for why this surface
@@ -4227,8 +4297,14 @@ func (a *app) redirectLane(rows []string, width int) []string {
 	if !a.awaitingTask() || len(rows) == 0 || !a.input.empty() || a.pick.open {
 		return rows
 	}
-	room := width - ansi.StringWidth(prompt)
+	// THE ROOM SEGMENT SURVIVES THIS ROW, because the row it is replacing was laid
+	// out with the segment in front of it: rebuilding row zero without it would
+	// leave the caret's column counted through a lead the frame had stopped
+	// drawing (room.go's [app.roomLead]). It is "" whenever no room is open, which
+	// is every frame a proposal is normally answered on.
+	lead := a.roomLead(width)
+	room := width - ansi.StringWidth(lead) - ansi.StringWidth(prompt)
 	out := append([]string(nil), rows...)
-	out[0] = a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
+	out[0] = lead + a.pal.dim(prompt) + a.pal.ask(fit(taskRedirectLane, room))
 	return out
 }

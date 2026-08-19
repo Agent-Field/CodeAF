@@ -780,13 +780,21 @@ func (a *app) headHeight() int {
 	if a.room == nil || a.breathingRows() == 0 {
 		return 0
 	}
+	// AND THE SAME FLOOR THE HEADER ITSELF STANDS ON. [app.roomHead] draws
+	// nothing at all under [roomHeadFloor] columns — there is not a trail and a
+	// way out's worth of line down there — so a row charged for here would be a
+	// row the frame never drew, and every hit-test on the page would land one line
+	// from where it was aimed.
+	width, _ := a.size()
+	if width < roomHeadFloor {
+		return 0
+	}
 	// THE KIN ROWS ARE PART OF THE PINNED REGION AND ARE CHARGED FOR HERE, for
 	// exactly the reason the header's own row is: they are drawn above the body
 	// by the frame, and rows the scrolling has not subtracted push the room's
 	// last row under the input box. They are asked at the frame's OWN width,
 	// which is the width [app.view] hands the header, so the count here and the
 	// rows drawn there can never disagree (room.go's [app.roomKinRows]).
-	width, _ := a.size()
 	return 1 + len(a.roomKinRows(width))
 }
 
