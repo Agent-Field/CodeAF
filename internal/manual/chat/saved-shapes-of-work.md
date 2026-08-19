@@ -251,7 +251,7 @@ answer the card on.
 | --- | --- |
 | the row | the activity strip, and the roster on `ctrl+t` |
 | the room | press the row, or open it from the roster; `esc` comes back out |
-| the thread | the room's journal — the brief, every reply the designer wrote, the page, and what became of it — kept on disk with the rest of the session's tasks |
+| the thread | the room's journal — the brief, the milestones in plain words (a draft written, an attempt refused, what the review changed), the card, and what became of it — kept on disk with the rest of the session's tasks |
 | stopping it | `x` on its row, or the `✕` — the same card everything else is stopped by |
 | the number | `task 4`, which is what you and aforge both call it afterwards |
 
@@ -299,9 +299,10 @@ is the brief it was given and the page it wrote, so it can answer questions abou
 with the harness in front of it: why it chose two steps, what a step does, whether it would
 fit some other work.
 
-The drafts it wrote on the way there are in the room's history to read, but they are **not**
-in front of the thread. It answers from the page that was actually written; a draft that was
-thrown away sitting beside it would be a wrong answer waiting to be given.
+What became of the drafts on the way there — a draft written, an attempt refused, what the
+review changed — is in the room's history to read, but none of it is in front of the thread.
+It answers from the page that was actually written; a draft that was thrown away sitting
+beside it would be a wrong answer waiting to be given.
 
 **It cannot save a revision from in there.** Writing a page is the designer's job, and a
 revision is a new design — ask for one the same way you asked for the first, and it gets a
@@ -317,34 +318,89 @@ thread" is a number you can go to.
 **Over `--host` none of this exists**, because building a harness is switched off there
 entirely.
 
-## Watching a harness being designed — what the design room shows while it writes
+## Watching a harness being designed — what the design room shows, and why no JSON streams past
 
-**The room streams the designer's own work.** Walk into a design's room while it is
-`designing` and you see it thinking and you see the page being typed — the same two things a
-worker's room shows, drawn the same way: the reasoning in its own block, the reply growing
-under it. The page arrives as the JSON envelope the designer is asked for, so what scrolls
-past is the harness being written — its cues, its steps, its justification — and not a
-summary of it.
+**The room shows the designer thinking, not the page being typed.** Walk into a design's
+room while it is `designing` and what streams live is the designer's **reasoning**, as
+prose, under the one status row that replaces itself rather than stacking:
 
-**The conversation gets one line instead, and that is deliberate.** In the chat feed the
-same stream is a single live block that replaces itself: `⠿ harness · designing · attempt
-1/3`, then `naming it: research-helper`, `4 steps so far`, `thinking · 52s`. A feed you are
-holding a conversation in cannot have a page of JSON typed into it. A room you walked into
-in order to watch can, and that is the whole difference between the two.
+```
+naming it: research-helper
+4 steps so far
+receiving · 2.3 KB
+```
 
-**The review pass is in there too.** A design is one writing pass and then one review pass,
-and both go through the same room: you see the draft written, then the critique and the
-patch that answers it.
+The row carries the stall clock when nothing has arrived for ten seconds, and reads
+`reviewing` once the review pass has the draft.
 
-**A retry is not announced in the room.** When a draft is refused the room simply shows the
-next attempt being written; the reason — `retrying · malformed draft`, `retrying · truncated
-draft` — and the attempt counter are on the live block in the chat. A call that failed
-outright does say so in the room, as `error: <reason>`.
+**Raw JSON never appears in the room, and that is deliberate.** The page is written as a
+JSON envelope, and an envelope arriving a character at a time is not something a person can
+read or act on. What you get instead is the reasoning while it writes, and then a plain
+account of each thing that happened — see *What a design writes into its thread* below.
 
-**It is kept.** Every reply the designer finishes is written to the node's journal, so
-opening the design tomorrow shows the writing of the page and not only the page. Nothing is
-re-narrated when you walk in: you are handed the reply being typed right now, and the rest
-is read off the file, exactly as it works for a worker.
+**Where is the page source, then — can I see the JSON? You do not, anywhere.** Not while it
+is being written, not at the end, not in the room and not in the thread; not as JSON and not
+as YAML. No person-facing surface prints it. **The card is the page as a person reads it** —
+the name, the purpose, the numbered steps and the bounds, drawn the way every surface draws
+them. The literal text is kept for the two readers that need it: the model answering your
+questions in the design thread, and the registry it is written to if you approve it.
+
+**The conversation gets one line, which is a different question.** In the chat feed the same
+design is a single live block that replaces itself: `⠿ harness · designing · attempt 1/3`,
+then `naming it: research-helper`, `4 steps so far`, `thinking · 52s`. A feed you are
+holding a conversation in wants one line that stays a line; a room you walked into in order
+to watch wants to be told what is happening.
+
+**A call that failed outright does say so in the room**, as `error: <reason>`. A design you
+stopped, or one whose window ran out, says nothing here — the settle card is already the
+account of it.
+
+## What a design writes into its thread — the draft, a refusal in plain words, the review's findings
+
+Each of these lands in the room as it happens **and stays in the thread's journal**, so
+opening the design tomorrow shows how the page came to be and not only the card at the end
+of it. None of it is the page's own text — that is never printed to a person.
+
+**When a draft is accepted**, the thread gets a human account of it. First the line:
+
+```
+The draft is written — <name> · <N> steps.
+```
+
+then the designer's own justification, as plain prose; then the cues that will reach it:
+
+```
+It answers to: <cue> · <cue> · …
+```
+
+then the harness card — the numbered step list every surface draws — in a fenced code
+block, so it reads aligned.
+
+**A refusal is one sentence, and never the reply that was refused:**
+
+```
+Attempt <N> was refused: <reason>
+```
+
+`<reason>` is the validator's own sentence; the ones it can say are under *What a design can
+be refused for* below. The refused page does go back to the model, privately, so it can
+repair exactly what it wrote — a person is shown the news and not the mess.
+
+**The review pass reads as findings.** One of:
+
+```
+The review read the draft and changed <N> things:
+The review read the draft and left it as written.
+```
+
+The first is followed by the findings themselves, as bullets.
+
+**The finished page** lands as `The page is written.`, then the card in its fenced block,
+and last the line saying nothing has been kept yet:
+
+```
+Nothing is saved yet — the card is up, and it is saved only if it is approved.
+```
 
 ## What a design can be refused for
 
