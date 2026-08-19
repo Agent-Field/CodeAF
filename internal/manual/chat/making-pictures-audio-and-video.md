@@ -23,11 +23,15 @@ Yes, with `generate_image`, when a drawing model is available.
 Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`.
 
 The picture is written to a file, and the result aforge reads is one line naming
-it, like:
+it — **the whole path, absolute, from the root** — like:
 
 ```
-.aforge-v3/images/20260817-142201-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
+/home/you/work/.aforge-v3/images/20260817-142201-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
 ```
+
+The path is whole because that line is what you are shown in place of the
+picture on a terminal that cannot draw one, and a path relative to a directory
+you are not standing in is a path you cannot open.
 
 The image itself never enters the conversation, because a picture carried in the
 transcript is re-sent on every step of every turn afterwards. If aforge needs to
@@ -43,20 +47,26 @@ passed to the image model untouched. Leave them out for its own default.
 
 ## Do I only get a file path, or can I see the image you made?
 
-You see it, in colour, without leaving the terminal.
+**You see it, in colour, in the terminal, without doing anything at all.**
 
 The line above is what aforge itself reads — a path is all that goes into the
-conversation — but the screen does more with it. **Open the `generate_image` or
-`view_image` row** (click it, or select it with `↑`/`↓` and press `enter`) and
-the picture is drawn in the expansion, with one dim line under it giving the
-file's whole absolute path, its pixel size and its size on disk.
+conversation — but the screen does more with it. The moment the call finishes,
+the picture is drawn under its row as a thumbnail, at most 12 rows tall (4 at
+phone width). No click, no key. That happens in this conversation and in a
+task's room alike.
+
+**Open the row** — click it, or select it with `↑`/`↓` and press `enter` — for
+the bigger look: the picture again at up to 20 rows, with one dim line under it
+giving the file's whole absolute path, its pixel size and its size on disk. A
+`view_image` row also shows what the looking model said, under the picture.
 
 It is drawn from half-block characters, two stacked pixels to a cell, so it needs
 a terminal with **256 colours or better** and a UTF-8 locale — iTerm2,
 Terminal.app, kitty, Alacritty, WezTerm, Ghostty, GNOME Terminal, and tmux or ssh
 over any of them all qualify. Where those are missing, or the file is gone, the
-row shows its result line exactly as before and never an error. png, jpeg, gif
-and webp are drawn.
+row shows its result line exactly as before and never an error — and that line
+carries the file's whole absolute path, so you can still open it yourself. png,
+jpeg, gif and webp are drawn.
 
 The "what is on the screen" page has the sizes, the wrapping rule for the path,
 and the full list of cases where no picture is drawn.

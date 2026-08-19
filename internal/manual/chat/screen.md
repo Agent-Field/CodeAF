@@ -758,7 +758,7 @@ What you get, per tool, each with its own line cap:
 | `read` | the returned chunk | 30 rows |
 | `bash` | the command whole and highlighted, uncapped, then the output; `exit N` in the bad hue at the foot when it failed | output 30 rows |
 | `grep`, `find`, `ls` | the listing | 30 rows |
-| `generate_image` | the picture itself, in colour, then its file | picture 20 rows |
+| `generate_image` | the picture itself, in colour, then its whole absolute path — or, where no picture can be drawn, that path alone | picture 20 rows |
 | `view_image` | the picture itself, then what the looking model said | answer 30 rows |
 | anything else | the arguments, then the output | 30 rows |
 
@@ -784,10 +784,9 @@ its own line in full) or `read`.
 
 ## Seeing the image itself in the terminal, in colour
 
-Open a `generate_image` or `view_image` call and **the picture is drawn, in colour, in
-the expansion** — not just named. Click the row, or select it with `↑`/`↓` and press
-`enter`. At phone width the same gesture opens the call over the whole frame and the
-picture is drawn there instead.
+**You do not have to do anything.** The moment a `generate_image` or `view_image` call
+finishes, the picture is drawn under its row, in colour — no click, no key, no flag. It
+is there in the conversation as you read it, and it is there in a task's room too.
 
 It is drawn out of **half-block characters**: one cell carries two stacked pixels, its
 top colour and its bottom one, which is how a terminal shows a photograph with nothing
@@ -795,39 +794,57 @@ but colour codes. No image protocol is involved and nothing is written outside t
 frame, so the picture survives every repaint, scrolls with the conversation, and works
 over ssh and inside tmux the same as anywhere else.
 
-The picture keeps its own shape, is **never enlarged** past its real pixel size, and is
-at most **20 rows** tall and as wide as the expansion. At 80 columns a 16:9 picture comes
-out about 71 cells across by 20 down; a 16-pixel icon is drawn 16 cells across, because
-blowing it up would be sixty columns of blur claiming to be detail.
+The picture under a row is a **thumbnail**: at most **12 rows** tall, or **4** at phone
+width — the same ceiling the live preview takes, because a block nobody asked for should
+not take the screen from the conversation it appeared in. It carries no heading, no
+border and no caption. Nothing is held back behind a `… N more lines` foot either: the
+whole picture is drawn into however many rows it has, because half a picture is not half
+an answer.
 
-Under it, dim, is one line: **the file's whole absolute path**, then its size in pixels
-and on disk — `/…/harbour.png · 1024×768 · 1.4 MB`. The path is a hyperlink where your
-terminal makes one, and it is **never truncated**: where it does not fit it wraps onto
-another row rather than losing characters, because a path with an ellipsis in it cannot
-be clicked, copied or pasted. Where the line is too narrow for both, the pixel and file
-sizes step down to a row of their own first.
+**Open the row for the bigger look** — click it, or select it with `↑`/`↓` and press
+`enter`. There the picture is drawn again at up to **20 rows**, and under it, dim, one
+line: **the file's whole absolute path**, then its size in pixels and on disk —
+`/…/harbour.png · 1024×768 · 1.4 MB`. At phone width the same gesture opens the call
+over the whole frame. A `view_image` expansion also keeps what the looking model said,
+under the picture.
+
+The picture keeps its own shape and is **never enlarged** past its real pixel size: a
+16-pixel icon is drawn 16 cells across, because blowing it up would be sixty columns of
+blur claiming to be detail.
 
 **png, jpeg, gif and webp** are drawn — the same four `view_image` will read.
 
-## When the image preview is not drawn
+A picture is **decoded once and kept**, so a row you scroll past, a row you leave open
+and a row that repaints ten times a second all cost the same after the first frame.
+Resize the terminal, switch your theme, or overwrite the file on disk and it is drawn
+again — those are the only three things that make it re-read anything.
 
-The row keeps exactly the words it always had. Nothing here is ever an error.
+## When the image preview is not drawn — why don't I see the image, and where did my generated picture go?
 
-- **A terminal below 256 colours**, or with colour off. The sixteen ANSI colours are your
-  own theme, and a photograph painted out of them would be a lie about both.
-- **A terminal that cannot draw box-drawing characters** — no UTF-8 locale, or no `TERM`
+If a row shows only words — something like
+`/home/you/book/cover.jpg — 768×1376 jpeg, 776.9KB, generated on <model>` — then no
+picture could be drawn, and **that line is the answer instead**: it names the file
+**whole and absolute**, so you can open it yourself from anywhere.
+
+The reasons, in the order they are worth checking:
+
+- **Your terminal is below 256 colours**, or colour is off. The sixteen ANSI colours are
+  your own theme, and a photograph painted out of them would be a lie about both.
+- **Your terminal cannot draw box-drawing characters** — no UTF-8 locale, or no `TERM`
   at all. The half block is the whole technique.
-- **Screen-reader mode**, where twenty rows of block characters read aloud is twenty rows
-  of nothing.
-- **An expansion under 8 columns wide.**
-- **A file that is missing, unreadable, over 24MB, over 64 megapixels, or not one of the
+- **Screen-reader mode**, where rows of block characters read aloud are rows of nothing.
+- **The row is under 8 columns wide.**
+- **The call has not finished.** A picture is drawn when the file exists, and
+  `generate_image` writes the file last.
+- **The file is missing, unreadable, over 24MB, over 64 megapixels, or not one of the
   four types** — a `svg`, a `tiff`, a `pdf`.
 
-In every one of those, `generate_image` shows its result line and `view_image` shows what
-the looking model said, exactly as they did before.
+In every one of those the row is **exactly what it would have been** — its result line,
+or what the looking model said — and never an error. Opening the row in those cases
+gives you the file's whole absolute path on its own rows, wrapped rather than cut,
+because a path with an ellipsis in it cannot be clicked, copied or pasted.
 
-A picture is decoded once and kept, so a call you leave open costs nothing to repaint.
-Resize the terminal and it is drawn again at the new width.
+Where the files themselves land is on the "making pictures, audio and video" page.
 
 ## Opening a tool call on a phone-width screen
 
