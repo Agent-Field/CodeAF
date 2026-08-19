@@ -403,7 +403,7 @@ func (a *Agent) senseOneShot(ctx context.Context, model, prompt string, attachme
 	}}
 	response, err := a.client.CompleteWithMessages(ctx, []ai.Message{message}, ai.WithModel(model))
 	if response != nil {
-		a.addAuxiliaryUsage(response)
+		a.addAuxiliaryUsage(response, model, 1)
 	}
 	if err != nil {
 		return "", err
@@ -524,7 +524,7 @@ func (a *Agent) audioSense(ctx context.Context, memo *senseMemo, shown, absolute
 		// Accounted BEFORE the answer is judged, by tools_doc.go's law: a rung
 		// that billed for an unusable answer still billed.
 		if response != nil {
-			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage})
+			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, scribe, 1)
 		}
 		switch {
 		case err != nil:

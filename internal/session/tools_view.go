@@ -173,7 +173,7 @@ func (a *Agent) viewImage(ctx context.Context, path, question, known string) (st
 	// that model — the same treatment the title, the compaction summary and a
 	// generated picture get.
 	if response != nil {
-		a.addAuxiliaryUsage(response)
+		a.addAuxiliaryUsage(response, seer, 1)
 	}
 	if err != nil {
 		// The window running out is its own answer, and it is told apart from

@@ -272,6 +272,25 @@ func newBashTool(cwd string) Tool {
 			cmd.Dir = cwd
 			cmd.Env = os.Environ()
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			// A COMMAND THAT LEAVES A BACKGROUND CHILD SHARING ITS STDOUT MUST
+			// STILL COST ITS TIMEOUT AND NOTHING MORE. Killing the shell is not
+			// enough on its own: Stdout and Stderr below are an in-process
+			// writer, so Go hands the child a pipe, and Wait blocks until EVERY
+			// holder of the write end is gone — a grandchild that escaped the
+			// process group (its own setsid, a daemon that re-parented) holds it
+			// open forever, and the caller waiting on this call waits with it.
+			// Cancel makes the context's own kill reach the whole group instead
+			// of the shell alone, and WaitDelay force-closes the pipes shortly
+			// after the shell itself is gone for anything that survived. The
+			// defence is internal/exec's, verbatim (tools.go, jobs.go), for a
+			// fault that was observed there first.
+			cmd.Cancel = func() error {
+				if cmd.Process == nil {
+					return os.ErrProcessDone
+				}
+				return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			cmd.WaitDelay = 3 * time.Second
 
 			// Interleave stdout+stderr in arrival order. Setting both
 			// cmd.Stdout and cmd.Stderr to the same writer lets Go's exec

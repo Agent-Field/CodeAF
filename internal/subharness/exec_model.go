@@ -217,6 +217,18 @@ type ModelExecOpts struct {
 	// and says why a node's own `model` still wins.
 	Model string
 
+	// Usage, when set, is the ledger every model call this run makes is folded
+	// into — the run's own bill, which is a thing no caller can reconstruct
+	// afterwards because the calls are this file's and the trace records their
+	// outputs rather than their cost (usage.go).
+	//
+	// It is a pointer the CALLER allocates and reads after the run, rather than
+	// a figure on the trace, because a trace is saved to disk and a saved run's
+	// price is not the same claim as what this process just spent: the trace
+	// outlives the session, and a number in it would be read back tomorrow as
+	// though somebody had paid it again. Nil is a caller that is not counting.
+	Usage *Usage
+
 	// DepthCap bounds subharness.call nesting: how many harnesses deep a call
 	// may go below the one this bridge was built for. Zero takes
 	// [MaxCallDepth]. It is a caller's knob rather than only the constant
@@ -279,6 +291,10 @@ type modelEnv struct {
 	harness Harness
 	// store is where a call resolves a name and where the child's trace lands.
 	store *Store
+	// usage is the run's bill, shared with every bridge below this one so that a
+	// called harness's calls land in the same tally (see [modelEnv.call]). Nil is
+	// a caller that is not counting.
+	usage *Usage
 	// depth is how many calls deep this bridge already is; the top is 0.
 	depth    int
 	depthCap int
@@ -311,6 +327,7 @@ func newModelEnv(c *provider.Client, opts ModelExecOpts) *modelEnv {
 		maxTurns: turns,
 		harness:  h,
 		store:    opts.Store,
+		usage:    opts.Usage,
 		depth:    opts.depth,
 		depthCap: deep,
 		chain:    chain,
@@ -413,7 +430,7 @@ func (m *modelEnv) work(ctx context.Context, node Node, user string, offered []a
 		options = append(options, ai.WithModel(model))
 	}
 	turns := node.Fields.Int("max_turns", m.maxTurns)
-	response, _, err := m.client.ExecuteToolCallLoop(
+	response, calls, err := m.client.ExecuteToolCallLoop(
 		provider.WithoutStream(ctx),
 		[]ai.Message{
 			{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: loopSystem}}},
@@ -428,6 +445,10 @@ func (m *modelEnv) work(ctx context.Context, node Node, user string, offered []a
 		m.dispatch(node, offered),
 		options...,
 	)
+	// BILLED BEFORE IT IS JUDGED. A loop that ran three rounds and died on the
+	// fourth was charged for three, and folding only on the way out of a
+	// successful node would make a failing harness the cheapest one to run.
+	m.usage.addLoop(calls, response)
 	if err != nil {
 		return "", err
 	}
@@ -631,10 +652,15 @@ func (m *modelEnv) call(ctx context.Context, node Node, state *State) (Result, e
 		Ask:             m.ask,
 		MaxTurnsDefault: m.maxTurns,
 		Store:           m.store,
-		DepthCap:        m.depthCap,
-		depth:           m.depth + 1,
-		chain:           append(append([]Id{}, m.chain...), child.Id),
-		input:           state.Last,
+		// THE LEDGER IS THE RUN'S, NOT THE BRIDGE'S. A child harness's calls go
+		// out on this client, on this person's account, inside the node that
+		// called it — so they are the same bill, and handing the child a ledger
+		// of its own would leave the money the parent's own trail cannot see.
+		Usage:    m.usage,
+		DepthCap: m.depthCap,
+		depth:    m.depth + 1,
+		chain:    append(append([]Id{}, m.chain...), child.Id),
+		input:    state.Last,
 	}))
 	// A person who answered the child's gate is not the child failing, and the
 	// history it leaves must not say it was — the same reading [Runner.Run] gives
@@ -994,6 +1020,12 @@ func (m *modelEnv) say(ctx context.Context, model, system, user string) (string,
 		{Role: "system", Content: []ai.ContentPart{{Type: "text", Text: system}}},
 		{Role: "user", Content: []ai.ContentPart{{Type: "text", Text: user}}},
 	}, options...)
+	// Folded on the way past for [modelEnv.work]'s reason: a request that
+	// answered badly, or answered and then failed to be read, was still a
+	// request somebody paid for.
+	if response != nil {
+		m.usage.add(response.Model, response.Usage)
+	}
 	if err != nil {
 		return "", err
 	}

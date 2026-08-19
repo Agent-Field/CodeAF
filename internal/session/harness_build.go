@@ -743,7 +743,7 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 	}
 	// The design is spent on the person's account like every other auxiliary
 	// call (title.go, guardian.go): it is not a turn, and it is not free.
-	a.addAuxiliaryUsage(response)
+	a.addAuxiliaryUsage(response, model, 1)
 	text := response.Text()
 	// THE REPLY IS THE ROOM'S HISTORY, and this is where it becomes one. A cut-off
 	// or unparseable reply is written down exactly like a good one: it is what the

@@ -84,9 +84,12 @@ with the environment aforge itself was started with.
 - Empty output reads `(no output)`.
 
 **Foreground commands time out after 120 seconds by default, and 600 seconds is
-the maximum** you can ask for. A higher `timeout` is quietly clamped to 600. On a
-timeout the whole process group is killed and the result is
-`Command timed out after N seconds`.
+the maximum** you can ask for. A higher `timeout` is quietly clamped to 600. A
+`timeout` that is missing, null, zero or negative is the same as not asking: 120
+seconds is written in for it, so there is no way to spell a foreground command
+that runs unbounded. On a timeout the whole process group is killed and the
+result is `Command timed out after N seconds` — and the call returns there even
+if something it started in the background is still holding the output pipe open.
 
 A command that exits non-zero answers `Command exited with code N`. An
 interrupted one answers `Command aborted`. If the workspace directory is gone:
@@ -96,6 +99,30 @@ Anything that is meant to keep running — a server, a dev watcher, a long build
 should be started in the background instead, where it never times out.
 
 `bash` follows your approval mode, which asks by default.
+
+## Does cd stick between commands — changing directory in bash
+
+No. **Every `bash` call starts again in the workspace root.** Each one is its own
+`/bin/bash -c`, its own process, run with the workspace as its working directory — so a
+`cd` in one call is gone by the next, and nothing else a command changes about its own
+shell (an exported variable, a `source`, a shell function, an activated environment)
+carries either.
+
+So anything that depends on being somewhere else has to be **one command**:
+
+```
+cd services/api && go test ./...
+```
+
+not a `cd` call followed by a `go test` call, which would run the tests at the root and
+either fail or, worse, test the wrong thing quietly. The same goes for a variable a later
+command needs: `export TOKEN=… && ./deploy.sh`, in one call.
+
+Where you cannot chain, use the tool the command has for it — `go test ./services/api/...`,
+`git -C services/api status`, `make -C build` — which is steadier than chaining anyway.
+
+A background job is the same: it is started in the workspace root, and `cd`-ing inside it
+changes nothing for any other call.
 
 ## Can you start a server and leave it running?
 

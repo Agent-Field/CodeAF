@@ -1553,8 +1553,10 @@ func (a *app) contextSegment() (string, bool) {
 // answer, and they lead because money is the part a person recognizes on sight.
 //
 // The cash appears only when it is real (app.go's cacheSaved, which grows only
-// under a published price pair): a session on an unpriced model keeps exactly
-// the segment it had, rather than learning to say "saved $0.00".
+// where a prompt price AND a cache-read price were both published): a session on
+// a model that publishes neither, or publishes only the first, keeps exactly the
+// segment it had, rather than learning to say "saved $0.00" — or, worse, to
+// count the whole prompt price as a saving the cache never made.
 //
 // It is a share rather than a count because a count of cached tokens says
 // nothing on its own: 40k cached is excellent against 50k sent and a rounding

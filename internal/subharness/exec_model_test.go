@@ -26,6 +26,12 @@ type modelServer struct {
 	rules  []modelRule
 	used   []int
 	http   *httptest.Server
+	// bill is the accounting every reply carries when a test sets it, which is
+	// what a provider that reports usage looks like from here. Nil is a provider
+	// that says nothing, which is what the rest of this file's tests want: they
+	// are about what the bridge ASKED, and a run's price is its own subject
+	// (usage.go).
+	bill *ai.Usage
 }
 
 type modelRule struct {
@@ -87,12 +93,19 @@ func newModelServer(t *testing.T, rules ...modelRule) *modelServer {
 				"function": map[string]any{"name": callTool, "arguments": callArgs},
 			}}
 		}
-		reply, _ := json.Marshal(map[string]any{
+		payload := map[string]any{
+			"model": "test/model",
 			"choices": []any{map[string]any{
 				"index":   0,
 				"message": message,
 			}},
-		})
+		}
+		server.mu.Lock()
+		if server.bill != nil {
+			payload["usage"] = server.bill
+		}
+		server.mu.Unlock()
+		reply, _ := json.Marshal(payload)
 		_, _ = w.Write(reply)
 	}))
 	t.Cleanup(server.http.Close)

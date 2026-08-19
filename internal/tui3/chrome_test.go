@@ -911,6 +911,38 @@ func TestTheSavingsNoteDegradesToTheCountWhenNobodyPublishedAPrice(t *testing.T)
 	}
 }
 
+// A PROMPT PRICE ON ITS OWN IS NOT A PRICE PAIR, and this is the half of the
+// guard that was missing. Around two rows in five publish a prompt price and no
+// cache-read price at all (internal/catalog: zero is "the provider did not
+// say", and a cache read is never free) — and reading that absence as a zero
+// books the WHOLE prompt price as a saving, which is this surface claiming the
+// cache made those tokens free. The count is what it actually knows.
+func TestTheSavingsNoteSaysNoMoneyWhenOnlyThePromptPriceIsPublished(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "vendor/half-priced"})
+	a.models = func() []Model {
+		return []Model{{ID: "vendor/half-priced", ContextLength: 128_000, PromptPrice: 0.00001}}
+	}
+	a.model = "vendor/half-priced"
+
+	a.cacheNote(session.Usage{Input: 12_000, CacheRead: 9_800})
+	line := lastNote(t, a)
+	if !strings.Contains(line, "⟲ 9.8k cached") {
+		t.Fatalf("the note is missing the cached tokens: %q", line)
+	}
+	if strings.Contains(line, "saved") {
+		t.Fatalf("the note booked the whole prompt price as a cache saving: %q", line)
+	}
+	// And nothing reached the running total behind the status line either, so
+	// the session's warm share keeps the segment it had: the rate, and no cash.
+	if a.cacheSaved != 0 {
+		t.Fatalf("the session banked %.4f from a model with no cache-read price", a.cacheSaved)
+	}
+	a.inputTokens, a.cacheRead = 12_000, 9_800
+	if got := a.warmSegment(); got != "⟲ 81%" {
+		t.Fatalf("the warm share reads %q, want the rate alone", got)
+	}
+}
+
 // The two formatters the whole meter is written in.
 func TestTokenAndSavedWords(t *testing.T) {
 	for _, test := range []struct {

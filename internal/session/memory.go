@@ -147,7 +147,7 @@ func (a *Agent) reflexClient() reflex.Completer {
 	if err != nil {
 		return nil
 	}
-	return reflex.Bind(billedCompleter{agent: a, inner: a.client}, named)
+	return reflex.Bind(billedCompleter{agent: a, inner: a.client, model: named}, named)
 }
 
 // billedCompleter is what makes a reflex call cost something a person can see.
@@ -165,12 +165,17 @@ func (a *Agent) reflexClient() reflex.Completer {
 type billedCompleter struct {
 	agent *Agent
 	inner Completer
+	// model is the reflex's own model, carried here because the accounting needs
+	// a name and the wrapper is the only thing holding one: [reflex.Bind] takes
+	// the model and stamps it on the request itself, so by the time the response
+	// comes back there is nothing left to read it off.
+	model string
 }
 
 func (b billedCompleter) CompleteWithMessages(ctx context.Context, messages []ai.Message, options ...ai.Option) (*ai.Response, error) {
 	response, err := b.inner.CompleteWithMessages(ctx, messages, options...)
 	if err == nil {
-		b.agent.addAuxiliaryUsage(response)
+		b.agent.addAuxiliaryUsage(response, b.model, 1)
 	}
 	return response, err
 }
