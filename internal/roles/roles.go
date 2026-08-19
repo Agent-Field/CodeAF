@@ -112,6 +112,14 @@ const (
 	// an offer card that was never shown, never money. Registered from
 	// internal/session/route_judge.go, which owns the call.
 	RoleRouter Role = "router"
+	// RoleShaper turns the words somebody typed after /task into the brief the
+	// worker is actually handed: it reads one request and writes the paragraphs
+	// and the done-condition around it. It sits HIGH for the auditor's reason
+	// rather than the title's — the brief is the worker's whole world, and a
+	// vague one is not a glance wasted but a whole task's spend on work nobody
+	// wanted. Registered from internal/session/task_shape.go, which owns the
+	// call.
+	RoleShaper Role = "shaper"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
@@ -245,6 +253,7 @@ var roleDescriptions = map[Role]string{
 	RoleRouter:     "which surface a request belongs to",
 	RoleReflex:     "reads every turn for memory — routing and keeping",
 	RoleVision:     "reads images for a model that cannot see them",
+	RoleShaper:     "the brief a task you started yourself is given",
 }
 
 var (

@@ -31,6 +31,20 @@ var systemPrompt string
 //go:embed prompts/task.md
 var taskPrompt string
 
+// shapePrompt is what the BRIEF-SHAPER is told (task_shape.go): how to reason
+// its way from the words a person typed after /task to the brief a worker with
+// nobody to ask is actually given.
+//
+// It is embedded beside the other two, and for the same reason: a prompt read
+// off disk is a prompt a shipped binary does not have. It is deliberately a
+// META-prompt and names no domain — there is no list of rules for prose, for
+// code, for research — because the requests it will be handed are every kind of
+// work there is, and a list would be a list that is wrong for whatever the next
+// person types.
+//
+//go:embed prompts/shape.md
+var shapePrompt string
+
 // fanLimitToken is the one thing the page above cannot spell for itself. THE
 // NUMBER A MODEL REASONS WITH MUST BE THE NUMBER THE CODE ENFORCES, and a page
 // that typed it would be the second place it lives (task.go's schema states the

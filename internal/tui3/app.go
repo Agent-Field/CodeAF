@@ -1765,23 +1765,27 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case taskSizedMsg:
 		a.settleSizing()
 		door, ok := a.agent.(taskCommandAgent)
-		if !msg.parallel || !ok {
-			if !ok {
-				a.note("could not start the task · this session has no task door")
-				return a, nil
-			}
+		if !ok {
+			a.note("could not start the task · this session has no task door")
+			return a, nil
+		}
+		// NOTHING TO SPLIT IS ONE WORKER, whatever the row says. A planner over
+		// work with no independent parts in it is a second model deciding to do
+		// the one thing there was to do, and the worker can still split its own
+		// brief later if it finds parts the sizing call did not.
+		if !msg.parallel {
 			return a, a.startTaskDoor(door, "single", msg.brief, "")
 		}
-		a.closeLists()
-		hint := strings.Join(msg.parts, " · ")
-		if msg.why != "" {
-			hint += " · " + msg.why
+		if msg.preset == config.TaskStartAdaptive {
+			return a, a.startTaskDoor(door, "adaptive", msg.brief, msg.hint())
 		}
-		a.taskPick = taskChooser{open: true, brief: msg.brief, hint: hint, parts: msg.parts, why: msg.why, planner: door.TaskPlannerModel()}
+		a.closeLists()
+		a.taskPick = taskChooser{open: true, brief: msg.brief, hint: msg.hint(), parts: msg.parts, why: msg.why, planner: door.TaskPlannerModel()}
 		a.touch()
 		return a, nil
 
 	case taskStartedMsg:
+		a.settleShaping()
 		if msg.err != nil {
 			a.note("could not start the task · " + msg.err.Error())
 		} else {

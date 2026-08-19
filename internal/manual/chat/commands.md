@@ -157,7 +157,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/forget` | — | `<query>` | forgets the best matching memory |
 | `/crew` | — | — | opens the three-preset crew chooser |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
-| `/task` | — | `<brief>` | sizes the work, then starts it or offers adaptive versus single |
+| `/task` | — | `<brief>` | sizes the work, then starts it or offers adaptive versus single; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
@@ -651,8 +651,21 @@ pass through the conversation model. aforge briefly shows `sizing it up…`. If 
 meaningfully parallel, a two-choice list opens with adaptive recommended. Otherwise one
 task starts silently. A bare `/task` prints its one-line usage.
 
+Then, whichever shape it takes, `shaping the brief…` appears while a model turns your words
+into the fuller brief the worker is given — your sentence kept word for word, with the
+constraints and the done-condition written around it. Both notes disappear as the task
+starts. The *work that runs on its own* page has this in full, under *Why my task's brief is
+longer than what I typed*.
+
 `/task solo <brief>` starts one worker immediately. `/task adaptive <brief>` starts an
-adaptive run with a planner immediately. Both explicit forms skip sizing altogether.
+adaptive run with a planner immediately. Both explicit forms skip sizing altogether, and
+both still shape the brief.
+
+The `starting a task` row in `/settings` → Session decides what the plain form does:
+`ask` is the default and is the behaviour above, `adaptive` takes the adaptive shape without
+asking whenever there is anything to split, and `single` always starts one worker and does
+not size the work at all. `solo` and `adaptive` typed on the command line override the row
+either way.
 
 ## /crew — the four models aforge works with
 
@@ -815,7 +828,7 @@ The tabs, in order:
 
 **Session** — what this conversation may run and spend. Rows include "ask before running",
 "tool exceptions", "shell command rules", "guardian", "approval countdown",
-"check task work", "memory", "task countdown", "task repair rounds", "tasks at once",
+"starting a task", "check task work", "memory", "task countdown", "task repair rounds", "tasks at once",
 "busy machine", "memory floor", "task model", "fallback models", "session ceiling".
 
 The four models aforge uses on your behalf are **not** here — they are on Providers, with

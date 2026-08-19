@@ -214,6 +214,14 @@ The goal itself carries the rest of the contract, because a run has no separate 
 or acceptance field: what must exist at the end and how it is checked are written into the
 goal, whose first line is also the run's title on the roster and in its room header.
 
+A run you started with `/task adaptive` has its goal **shaped** first: a model turns what you
+typed into a fuller goal — your words, the constraints the work needs, and a `DONE WHEN` line
+under it — and that shaped text is the goal the planner reads. Your own sentence is still
+carried separately and verbatim, as above, so it still wins where the two disagree, and the
+run's title is still made from your words. If shaping cannot run, the goal is your sentence
+exactly. The *work that runs on its own* page has it under *Why my task's brief is longer
+than what I typed*.
+
 ## What a run's workers may touch
 
 Each node is a child agent working in your workspace, and two bounds are put on it.
