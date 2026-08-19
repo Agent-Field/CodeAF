@@ -251,7 +251,7 @@ answer the card on.
 | --- | --- |
 | the row | the activity strip, and the roster on `ctrl+t` |
 | the room | press the row, or open it from the roster; `esc` comes back out |
-| the thread | the room's journal — the brief, the milestones in plain words (a draft written, an attempt refused, what the review changed), the page, and what became of it — kept on disk with the rest of the session's tasks |
+| the thread | the room's journal — the brief, the milestones in plain words (a draft written, an attempt refused, what the review changed), the card, and what became of it — kept on disk with the rest of the session's tasks |
 | stopping it | `x` on its row, or the `✕` — the same card everything else is stopped by |
 | the number | `task 4`, which is what you and aforge both call it afterwards |
 
@@ -338,10 +338,12 @@ JSON envelope, and an envelope arriving a character at a time is not something a
 read or act on. What you get instead is the reasoning while it writes, and then a plain
 account of each thing that happened — see *What a design writes into its thread* below.
 
-**The page itself is not hidden.** When the design is finished the whole of it sits at the
-bottom of the thread, in a fenced code block marked `json`, to scroll and copy. The writing
-of it is shown as the card and the reasoning; the page is shown as the page. It is JSON —
-there is no YAML anywhere in a harness.
+**Where is the page source, then — can I see the JSON? You do not, anywhere.** Not while it
+is being written, not at the end, not in the room and not in the thread; not as JSON and not
+as YAML. No person-facing surface prints it. **The card is the page as a person reads it** —
+the name, the purpose, the numbered steps and the bounds, drawn the way every surface draws
+them. The literal text is kept for the two readers that need it: the model answering your
+questions in the design thread, and the registry it is written to if you approve it.
 
 **The conversation gets one line, which is a different question.** In the chat feed the same
 design is a single live block that replaces itself: `⠿ harness · designing · attempt 1/3`,
@@ -356,7 +358,8 @@ account of it.
 ## What a design writes into its thread — the draft, a refusal in plain words, the review's findings
 
 Each of these lands in the room as it happens **and stays in the thread's journal**, so
-opening the design tomorrow shows how the page came to be and not only the page.
+opening the design tomorrow shows how the page came to be and not only the card at the end
+of it. None of it is the page's own text — that is never printed to a person.
 
 **When a draft is accepted**, the thread gets a human account of it. First the line:
 
@@ -393,8 +396,7 @@ The review read the draft and left it as written.
 The first is followed by the findings themselves, as bullets.
 
 **The finished page** lands as `The page is written.`, then the card in its fenced block,
-then `The page itself:` with the whole page in a fenced code block marked `json`, and last
-the line saying nothing has been kept yet:
+and last the line saying nothing has been kept yet:
 
 ```
 Nothing is saved yet — the card is up, and it is saved only if it is approved.
