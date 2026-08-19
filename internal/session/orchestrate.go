@@ -48,6 +48,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/approval"
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/aforge-v2/internal/orchestrate"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
@@ -1063,21 +1064,21 @@ func orchestrateDigest(child *Agent, changed []string) string {
 // that asked for it: ~/.aforge/v3/runs/<session>/<run>/<node>.jsonl.
 //
 // It is a REAL SESSION FILE for taskJournalPath's reason — the node is an
-// agent, and everything it did should be readable with the same tools — and a
-// machine with no home directory gets an in-memory node rather than a failed
-// one.
+// agent, and everything it did should be readable with the same tools.
+//
+// ONE HOME, ONE SEAM. The state root comes from internal/home, exactly as
+// taskJournalPath's legacy branch does, so AFORGE_HOME moves a run's
+// transcripts with every other v3 file. Reading os.UserHomeDir here instead was
+// the bug that left node journals in the real home while everything else in the
+// process had been pointed somewhere disposable.
 func orchestrateJournalPath(session, run, node string) string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
 	safe := strings.Map(func(r rune) rune {
 		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
 			return r
 		}
 		return '-'
 	}, node)
-	return filepath.Join(home, ".aforge", "v3", "runs", session, run, safe+".jsonl")
+	return filepath.Join(home.Dir(), "v3", "runs", session, run, safe+".jsonl")
 }
 
 // ── the write scope ─────────────────────────────────────────────────────────
