@@ -185,6 +185,17 @@ const (
 	// and it is a CHOICE rather than a bool because "less" and "none" are two
 	// different answers a reader gives for two different reasons.
 	KeyTimestamps = "ui.timestamps"
+
+	// KeyTaskColumn is whether the v3 chat opens with the task roster's column
+	// standing beside the conversation. It is a BOOLEAN where the v2 sidebar
+	// ([KeyRailState]) is a choice, because the v3 column has no middle rung: its
+	// two narrower tiers are decided by the frame's own width, and the one answer
+	// a person gives it by hand is whether the column is there at all.
+	//
+	// It is a separate row from the v2 sidebar and must stay one. They are two
+	// surfaces with two shapes, and a person who put v3's column away has said
+	// nothing whatever about v2's three rungs.
+	KeyTaskColumn = "ui.task_column"
 	// KeyWork controls whether completed turn machinery starts folded or open.
 	KeyWork = "ui.work"
 	// KeyTaskAudit is whether an independent auditor verifies each task node
@@ -757,6 +768,14 @@ const (
 	// open it again on their behalf — the handle's dot is the only attention
 	// ask this surface has left.
 	DefaultRailState = RailOpen
+
+	// DefaultTaskColumn stands the v3 task column up on a session that has never
+	// been told otherwise, for [DefaultRailState]'s reason said about a different
+	// surface: the column is how a person finds out that this chat runs work you
+	// can walk away from. Once they put it away we never stand it up again on
+	// their behalf — the strip is what keeps running work reachable from a frame
+	// with no column on it (internal/tui3's taskstrip.go).
+	DefaultTaskColumn = true
 )
 
 // Setting is one row: what it is called, what it reads now, and what happens
@@ -1535,6 +1554,17 @@ func (s *Settings) build() []Setting {
 			write: func(raw string) error { return writeChoice(dir, KeyRailState, raw, RailStates) },
 		},
 		Setting{
+			Key: KeyTaskColumn, Category: CategoryInterface, Kind: SettingBool,
+			Label: "task column",
+			Hint: "whether the task roster stands in a column on the right of the chat: the " +
+				"work this session has run, newest first, foldable into the shape each run " +
+				"grew. ctrl+g puts it away and brings it back; this is where the answer is " +
+				"remembered. With no column, running work still shows as a row of chips above " +
+				"the conversation. A change here lands the next time aforge starts.",
+			read:  func() string { return formatBool(TaskColumnAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyTaskColumn, raw) },
+		},
+		Setting{
 			Key: KeyHistoryEnabled, Category: CategoryInterface, Kind: SettingBool,
 			Label: "input history", Env: "AFORGE_HISTORY",
 			Hint: "remembers the messages you send, so the up arrow walks them back in a later " +
@@ -2005,6 +2035,28 @@ func RailStateAt(profileDir string) string {
 // does. Two doors, one validation.
 func SaveRailState(profileDir, state string) error {
 	return writeChoice(profileDir, KeyRailState, state, RailStates)
+}
+
+// TaskColumnAt resolves whether the v3 chat stands its task column up, default
+// on. A row that will not parse reads as the default rather than as off, for
+// [TimestampsAt]'s reason: a garbled row must not quietly take the session's
+// record of its own work off the screen.
+func TaskColumnAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyTaskColumn); ok {
+		return value
+	}
+	return DefaultTaskColumn
+}
+
+// SaveTaskColumn records what the person did to the column with their hands.
+//
+// It is EXPORTED for [SaveRailState]'s reason, and it is the v3 half of the same
+// bargain: this is the one interface row whose value is normally chosen by a
+// keystroke rather than by visiting the sheet, so the key needs a door to disk
+// that goes through the same writer the row's own does. Two doors, one
+// validation.
+func SaveTaskColumn(profileDir string, open bool) error {
+	return writeBool(profileDir, KeyTaskColumn, formatBool(open))
 }
 
 func knownRailState(state string) bool {

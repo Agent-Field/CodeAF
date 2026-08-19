@@ -127,7 +127,11 @@ var settingReaders = map[string]string{
 	KeyAttribution:    "Attribution",
 	KeyLinearMode:     "LinearModeAt",
 	KeyRailState:      "RailStateAt",
-	KeyNerdFont:       "NerdFontChosenAt",
+	// The v3 task column names its own accessor, which the surface reads at boot
+	// and writes back through SaveTaskColumn every time ctrl+g moves the column
+	// (internal/tui3's task.go).
+	KeyTaskColumn: "TaskColumnAt",
+	KeyNerdFont:   "NerdFontChosenAt",
 	// The two surface rows name their own KEY, because that is now what the
 	// far side touches: they resolve through the project layer
 	// (ProjectBoolAt), which takes the row by name and calls

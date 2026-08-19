@@ -1790,6 +1790,7 @@ func (a *app) legendRight(width int) string {
 //	a proposal is up      y yes · r redirect · n no    (task.go's own keys)
 //	a question is up      a allow · t always · d deny  (consent.go's own keys)
 //	a turn is running     esc interrupt
+//	the column is away    ctrl+g tasks               (task.go's [railBackHint])
 //	idle                  nothing
 //
 // The keys are quoted from the handlers rather than authored here — a hint that
@@ -1891,6 +1892,19 @@ func (a *app) hintWord() string {
 		return railHoldHint
 	case a.state == stateWorking:
 		return "esc interrupt"
+	case a.railAway && a.railAvail():
+		// THE COLUMN IS AWAY AND THIS SESSION HAS RUN SOMETHING (task.go's
+		// [app.railStow]). It ranks LAST, under every state above it, because it is
+		// the only line here that is not about the next keystroke — it is where the
+		// work went, said in the one slot a person looks at when they cannot see
+		// something they know exists.
+		//
+		// AND IT IS THE HALF THE STRIP CANNOT SAY. The chips above the conversation
+		// draw what is RUNNING and nothing else, so a session whose work has all
+		// landed has a roster full of results and no sign on the frame that it is
+		// there. This is that sign. With nothing run at all it says nothing, which
+		// is the emptiness law: there is no column to miss.
+		return railBackHint
 	}
 	return ""
 }

@@ -404,6 +404,11 @@ var settingUI = map[string]settingMeta{
 		tab: tabDisplay, label: "linear mode", widget: widgetToggle,
 		about: "single column, no motion, no spinners — the accessible rendering.",
 	},
+	config.KeyTaskColumn: {
+		tab: tabDisplay, label: "task column", widget: widgetToggle,
+		about: "stands the task roster beside the chat. ctrl+g closes it and " +
+			"brings it back; this is where the answer is remembered.",
+	},
 	config.KeyRailState: {
 		tab: tabDisplay, label: "sidebar", widget: widgetCycle,
 		about: "how much of the right rail stands beside the chat: the full " +

@@ -794,12 +794,21 @@ type app struct {
 	// cut a title with its own indent, and it is written where that is discovered
 	// ([app.railEntryRows]) and read by the footer, the way [app.railTop] is
 	// written by the window it resolves.
+	//
+	// railAway is the person's own standing answer to whether there is a column at
+	// all (ctrl+g, [app.railStow]). It outranks every width tier and the roster's
+	// own "one node raises it" rule alike — a column somebody put away stays away,
+	// through landings and new work and the next session, until they ask for it
+	// back — and it is the one piece of this block that survives the process,
+	// because it is the only one a person chose deliberately (config's
+	// ui.task_column).
 	railOpen    map[uint64]bool
 	railTop     int
 	railWhere   railSpot
 	railHold    bool
 	railWide    bool
 	railCramped bool
+	railAway    bool
 
 	// pilots are the watchers on the nodes that are running right now, keyed by
 	// id, and pilotGen the counter each one takes its generation from (task.go).
@@ -1098,6 +1107,12 @@ func newApp(ctx context.Context, opts Options) *app {
 	a.mouse = config.MouseEnabledAt(a.profileDir)
 	a.timestamps = config.TimestampsAt(a.profileDir)
 	a.workMode = config.WorkAt(a.profileDir)
+	// AND THE COLUMN'S POSTURE IS READ HERE AND NOWHERE ELSE — at boot, never at
+	// a turn end. The rows above are settings a person changes in the panel, so
+	// re-reading them is how the change arrives; this one is normally changed with
+	// a keystroke ([app.railStow]), and a re-read would be the surface putting the
+	// column back at the end of the turn a person had just closed it in.
+	a.railAway = !config.TaskColumnAt(a.profileDir)
 	// And the approval countdown, on the same terms (consent.go).
 	a.askWait = a.consentWait()
 	if a.linear {
