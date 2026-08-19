@@ -8,6 +8,13 @@ gap, the rule with the legend in it, the approval question, the connect offer, t
 sub-harness offer, the steer guard, the follow-up row, another gap, the draft box where
 you type, any open list (picker, menu, completion), and the status line last.
 
+Beside the conversation, on the right, the task roster's column — the right-hand bar,
+sidebar, task panel, whatever you call it — takes 30 columns (24 on a narrower frame)
+once this session has any tasks. `ctrl+g` closes it and opens it again, remembered
+between sessions, and the column's own last line says so: `ctrl+g — hide`. With it
+closed the conversation is laid out at the full width of the terminal, running work
+still draws the strip along the top, and the legend's hint slot reads `ctrl+g tasks`.
+
 The status line is the last row of the frame, not the first. It sits at the bottom so
 you read it in the same glance as the box above it.
 
@@ -78,6 +85,11 @@ the keys that work right now when a state has keys of its own — for example
 `y allow · n deny · a always` while a question is up, `esc interrupt` while a turn is
 running, or `↑↓ · enter · esc` while a list is open. Idle, it is empty and falls back
 to `/ commands`.
+
+One line in that slot is not about the next keystroke: `ctrl+g tasks`, which appears
+when you have closed the task column and this session has run something. It is the
+whole of what the frame says about a roster that is not on screen, and it says nothing
+at all when nothing has been run.
 
 While a question is waiting, the whole legend goes violet.
 
@@ -289,6 +301,7 @@ Beyond the four tiers, these are the exact points where parts of the screen give
 | full task rail, 30 columns off the conversation | width 120 |
 | slim task rail, 24 columns | width 100 |
 | no rail column at all — `ctrl+t` overlays the roster instead | below width 100 |
+| no rail column at any width — you closed it with `ctrl+g` | your choice, remembered |
 | task strip | width 24 **and** height 6 |
 | a room's pinned header | width 12 and a non-zero breathing gap |
 | welcome box | not drawn below height 12 or width 40 |

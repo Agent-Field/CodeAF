@@ -178,6 +178,13 @@ func newTestApp(agent Agent) *app {
 	// and a suite run at the machine would step one. The cadence has tests of its
 	// own that state both.
 	a.remote = false
+	// AND IT PINS THE TASK COLUMN, for the fourth time for the same reason.
+	// [newApp] reads the profile to decide whether the column stands (task.go's
+	// ui.task_column), so a developer who pressed ctrl+g in their own aforge would
+	// run a suite with no rail in it — and every rail test would fail on their
+	// machine and nowhere else. The posture has tests of its own that set the
+	// profile directory they read from.
+	a.railAway = false
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
