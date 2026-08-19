@@ -476,7 +476,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 
 	response, err := a.client.CompleteWithMessages(ctx, []ai.Message{live}, ai.WithModel(seer))
 	if err == nil && response != nil {
-		a.addAuxiliaryUsage(response)
+		a.addAuxiliaryUsage(response, seer, 1)
 	}
 	answer := ""
 	if response != nil {
@@ -495,13 +495,13 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 			partial.reset()
 		}
 		if ctx.Err() != nil {
-			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started)})
+			hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
 			return false
 		}
 		if err == nil {
 			err = fmt.Errorf("session: %s returned no answer for the image", seer)
 		}
-		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{}, started)})
+		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{}, started, a.Model())})
 		return false
 	}
 
@@ -514,7 +514,7 @@ func (a *Agent) runVision(ctx context.Context, hub *eventHub, live ai.Message, s
 	}
 	partial.reset()
 	a.record(textMessage("assistant", note+answer))
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started)})
+	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
 	// The session may name itself off this exchange like any other: a
 	// conversation that opened with a photograph is still a conversation about
 	// something (title.go).

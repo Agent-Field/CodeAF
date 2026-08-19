@@ -503,7 +503,9 @@ func buildConfig(config *Config, dir string) {
 	config.AskConsent = true
 	config.HarnessStore = subharness.At(dir)
 	config.TaskModels = func() []string { return testModels }
-	config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, error) { return "", nil }
+	config.RunHarness = func(context.Context, string, string, string, func(subharness.Trail)) (string, subharness.Usage, error) {
+		return "", subharness.Usage{}, nil
+	}
 }
 
 func buildAgent(t *testing.T, completer Completer, dir string) (*Agent, string) {

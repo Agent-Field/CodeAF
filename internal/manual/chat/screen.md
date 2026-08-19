@@ -638,13 +638,21 @@ Within **5s** the remainder goes to the bad hue. Only the remainder is tinted; t
 stays dim. It rounds up, and a passed bound says `0s left` rather than a negative
 number.
 
-**Elapsed (finished)** — the call's own duration, begin to end, never the time its
-announcement spent streaming. Nothing under **100ms**, because `0.0s` on every row is a
-column read for nothing. One decimal under 10s, whole seconds under a minute, `2m12s`
-above.
+**Elapsed (finished)** — the call's own duration, measured where the call ran, never the
+time its announcement spent streaming. Nothing under **100ms**, because `0.0s` on every
+row is a column read for nothing. One decimal under 10s, whole seconds under a minute,
+`2m12s` above.
+
+Calls in one batch run together and their results are handed back together, after the
+last of them returns. Each row's clock still stops when **that** call finishes: a `cd`
+that took 5ms says so and stops counting while the `go build` beside it is still going,
+rather than counting the build's minutes onto its own line. The row keeps its spinner
+until its result lands, because until then nothing here knows whether it worked.
 
 A call with no timeout gets no countdown, no bound and no colour — chrome implying a
-deadline would be inventing one. A background `bash` has no bound, because it runs as a
+deadline would be inventing one. A foreground `bash` always has one: a `timeout` that is
+missing, null or zero counts down against the 120-second default the command will really
+die on, never a number nothing is going to enforce. A background `bash` has no bound, because it runs as a
 job. A turn that ended with a call unresolved stops every clock.
 
 ## Seeing more of a tool call

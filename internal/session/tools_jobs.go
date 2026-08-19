@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -43,26 +44,58 @@ const (
 	MaxBashTimeoutSeconds     = 600
 )
 
+// BashTimeoutSeconds is the bound one foreground bash call actually runs
+// under: the model's own figure when it set a usable one, the default when it
+// did not, the cap when it asked for more than the law allows.
+//
+// It is the ONE READ of the timeout argument. The wrapper applies it to the
+// wire args ([withTimeoutLaw]) and the surface counts down against it
+// (internal/tui3's toolLimit), so the number a person watches and the number
+// the command dies on cannot drift apart.
+//
+// AN EXPLICIT NULL IS UNSET, and so is a zero, a negative, a string, a NaN, or
+// anything else that does not read as a positive number of seconds. A weak
+// model that spells every optional argument out — `"timeout": null` — must not
+// be able to disarm the law by saying nothing in more words: that value used to
+// take the "set" branch, decode as 0, pass the cap test untouched, and reach
+// bare as a nil timeout, which arms no timer at all. An unbounded foreground
+// call is a turn that never ends.
+func BashTimeoutSeconds(args json.RawMessage) float64 {
+	var fields struct {
+		Timeout *float64 `json:"timeout"`
+	}
+	if err := json.Unmarshal(args, &fields); err != nil || fields.Timeout == nil {
+		return DefaultBashTimeoutSeconds
+	}
+	seconds := *fields.Timeout
+	switch {
+	case math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds <= 0:
+		return DefaultBashTimeoutSeconds
+	case seconds > MaxBashTimeoutSeconds:
+		return MaxBashTimeoutSeconds
+	}
+	return seconds
+}
+
 // withTimeoutLaw returns args with the v3 timeout law applied: the default
-// injected when the model set none, the cap clamped when it set too much. The
-// bytes are re-marshalled only when something actually changed — a call that
-// already sits inside the law rides through untouched, and args that do not
-// decode belong to bare's own error wording, not this wrapper's.
+// written in when the model set none it can be held to, the cap clamped when it
+// set too much. The bytes are re-marshalled only when something actually
+// changed — a call that already sits inside the law rides through untouched,
+// and args that do not decode belong to bare's own error wording, not this
+// wrapper's.
 func withTimeoutLaw(args json.RawMessage) json.RawMessage {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(args, &fields); err != nil {
 		return args
 	}
-	raw, set := fields["timeout"]
-	if set {
-		var seconds float64
-		if err := json.Unmarshal(raw, &seconds); err != nil || seconds <= MaxBashTimeoutSeconds {
+	seconds := BashTimeoutSeconds(args)
+	if raw, set := fields["timeout"]; set {
+		var asked float64
+		if err := json.Unmarshal(raw, &asked); err == nil && asked == seconds {
 			return args
 		}
-		fields["timeout"] = json.RawMessage(strconv.Itoa(MaxBashTimeoutSeconds))
-	} else {
-		fields["timeout"] = json.RawMessage(strconv.Itoa(DefaultBashTimeoutSeconds))
 	}
+	fields["timeout"] = json.RawMessage(strconv.FormatFloat(seconds, 'f', -1, 64))
 	out, err := json.Marshal(fields)
 	if err != nil {
 		return args

@@ -1275,6 +1275,111 @@ func TestABoundedCallCountsDownAndEscalates(t *testing.T) {
 	}
 }
 
+// THE BOUND ON THE ROW IS THE BOUND THE COMMAND DIES ON. A weak model that
+// spells its optional arguments out — `"timeout": null` — is asking for nothing,
+// and the session writes its 120-second default over it (internal/session's
+// withTimeoutLaw). The row has to count down against that same figure: a bound
+// drawn here that nothing was going to enforce is the one number on this line a
+// person cannot check for themselves.
+func TestTheRowCountsDownAgainstTheBoundTheSessionActuallyArmed(t *testing.T) {
+	a := newTestApp(&fakeAgent{model: "m"})
+	a.state = stateWorking
+	base := time.Now()
+	a.clock = func() time.Time { return base.Add(20 * time.Second) }
+	for _, args := range []string{
+		`{"command":"cd work"}`,
+		`{"command":"cd work","timeout":null}`,
+		`{"command":"cd work","timeout":0}`,
+		`{"command":"cd work","timeout":-5}`,
+	} {
+		row := entry{
+			kind: entryTool, tool: "bash", status: toolRunning, began: base,
+			detail: toolDetail{Args: args},
+		}
+		if got, _ := a.countClock(&row); got != "20s / 2m 0s" {
+			t.Fatalf("%s draws %q, want the default bound stated beside the age", args, got)
+		}
+	}
+	// And a figure the model really did ask for is still its own, clamped at the
+	// session's cap.
+	clamped := entry{
+		kind: entryTool, tool: "bash", status: toolRunning, began: base,
+		detail: toolDetail{Args: `{"command":"go test ./...","timeout":900}`},
+	}
+	if got, _ := a.countClock(&clamped); got != "20s / 10m 0s" {
+		t.Fatalf("a 900-second ask draws %q, want the 600-second cap", got)
+	}
+}
+
+// A ROW MEASURES ITS OWN CALL. The calls of one batch run together and their
+// results are delivered together, after the last of them returns — so a `cd`
+// that took a tenth of a second used to sit under a climbing clock until the
+// build beside it finished, and then wrote the build's minutes onto its own
+// line. The call's own finish is its own event (session.EventToolFinished) and
+// it stops that row's clock where the call stopped.
+func TestARowsClockIsItsOwnCallsAndNotItsSlowestSiblings(t *testing.T) {
+	quick := `{"command":"cd work"}`
+	slow := `{"command":"go build ./..."}`
+	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
+		{Kind: session.EventToolBegin, Tool: "bash", Hint: "bash cd work", Args: quick},
+		{Kind: session.EventToolBegin, Tool: "bash", Hint: "bash go build ./…", Args: slow},
+		{Kind: session.EventToolFinished, Tool: "bash", Args: quick, Took: 120 * time.Millisecond},
+	}}}
+	a := newTestApp(agent)
+	base := time.Now()
+	a.clock = func() time.Time { return base }
+	typeLine(t, a, "build it")
+	a.clock = func() time.Time { return base.Add(51 * time.Second) }
+
+	find := func(args string) *entry {
+		for i := range a.entries {
+			if e := &a.entries[i]; e.kind == entryTool && e.detail.Args == args {
+				return e
+			}
+		}
+		t.Fatalf("no row for %s", args)
+		return nil
+	}
+	done, running := find(quick), find(slow)
+	if got, _ := a.countClock(done); got != "" {
+		t.Fatalf("the finished call is still counting: %q", got)
+	}
+	if got := elapsedWord(done); got != "0.1s" {
+		t.Fatalf("the finished call says %q, want its own tenth of a second", got)
+	}
+	// Its sibling is genuinely still going, and says so.
+	if got, _ := a.countClock(running); got != "51s / 2m 0s" {
+		t.Fatalf("the call still running says %q", got)
+	}
+}
+
+// STEERING IS NOT A SECOND TURN. A message typed at a turn that is already
+// working is queued into that turn by the session, so the calls on screen are
+// still this turn's calls — and the surface used to age them out with the turn
+// counter, then draw "still working" underneath a call that was visibly working.
+func TestSteeringATurnLeavesItsRunningCallsOnTheSurface(t *testing.T) {
+	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
+		{Kind: session.EventToolBegin, Tool: "bash", Hint: "bash go build ./…",
+			Args: `{"command":"go build ./..."}`},
+	}}}
+	a := newTestApp(agent)
+	typeLine(t, a, "build it")
+	if !a.running() {
+		t.Fatal("the call that just began is not running")
+	}
+	typeLine(t, a, "and the tests too")
+	if !a.running() {
+		t.Fatal("a steering message hid a call that is still running")
+	}
+	if _, drawn := a.ellipsis(); drawn {
+		t.Fatal("the surface drew its nothing-is-happening sign over a running call")
+	}
+	// The steered line rode the turn it was steering: one stream, one turn.
+	if len(agent.sent) != 2 {
+		t.Fatalf("the session was sent %v", agent.sent)
+	}
+}
+
 // ── 8. THE COMPACTION ROW, AND THE TWO METERS BESIDE IT ─────────────────────
 
 // A compaction pass is WATCHED, not discovered afterwards. The start event

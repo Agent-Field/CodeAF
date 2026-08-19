@@ -498,6 +498,13 @@ func (a *app) phoneClock(e *entry) (plain, painted string) {
 	if word := elapsedWord(e); word != "" {
 		return word, a.pal.dim(word)
 	}
+	// A call that has reported its own finish stops counting HERE, even when
+	// what it took is under the floor worth printing: the alternative is a five
+	// millisecond call spinning up a climbing clock until its slowest sibling
+	// returns, which is the row reading the batch's clock and calling it its own.
+	if e.ran > 0 {
+		return "", ""
+	}
 	if e.status != toolRunning || e.began.IsZero() || !e.ended.IsZero() ||
 		a.state != stateWorking {
 		return "", ""
@@ -735,6 +742,14 @@ const elapsedFloor = 100 * time.Millisecond
 // says the same kind of thing about a longer span and the two must not be able
 // to disagree about what two minutes looks like.
 func elapsedWord(e *entry) string {
+	// THE CALL'S OWN FIGURE WINS, and it is said as soon as the call itself
+	// reports finishing (session.EventToolFinished) rather than when the row
+	// closes: the result waits for the rest of the batch, the duration does not,
+	// and begin-to-end on a parallel batch is the SLOWEST call's span written on
+	// every row in it.
+	if e.ran > 0 {
+		return tookWord(e.ran)
+	}
 	if e.status.live() || e.began.IsZero() || e.ended.IsZero() {
 		return ""
 	}
@@ -825,6 +840,13 @@ func (a *app) countUp(e *entry) string {
 // second is the first with at most one token tinted, and two functions deriving
 // that split separately is two chances for the width and the paint to disagree.
 func (a *app) countClock(e *entry) (plain, painted string) {
+	// A CALL THAT IS OVER DOES NOT COUNT. Its own finish is reported the instant
+	// it happens (session.EventToolFinished) while its result waits for the rest
+	// of the batch, and a clock still climbing in that gap is timing the batch's
+	// slowest call on this call's row.
+	if e.ran > 0 {
+		return "", ""
+	}
 	// The resolved row is stopped here too, on [app.mark]'s reason and in the
 	// same words: an end stamped on a live row is the lane saying nothing more is
 	// coming, and a number climbing under it would be the row insisting otherwise.
@@ -889,22 +911,23 @@ func toolLimit(e *entry) time.Duration {
 	if e.tool != "bash" {
 		return 0
 	}
+	raw := strings.TrimSpace(e.detail.Args)
+	if raw == "" {
+		return session.DefaultBashTimeoutSeconds * time.Second
+	}
 	var args struct {
-		Timeout    float64 `json:"timeout"`
-		Background bool    `json:"background"`
+		Background bool `json:"background"`
 	}
-	seconds := float64(session.DefaultBashTimeoutSeconds)
-	if raw := strings.TrimSpace(e.detail.Args); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &args); err == nil {
-			if args.Background {
-				return 0
-			}
-			if args.Timeout > 0 {
-				seconds = math.Min(args.Timeout, session.MaxBashTimeoutSeconds)
-			}
-		}
+	if err := json.Unmarshal([]byte(raw), &args); err == nil && args.Background {
+		return 0
 	}
-	return time.Duration(seconds * float64(time.Second))
+	// THE READ IS THE SESSION'S OWN, never a second copy of the same rules. An
+	// explicit null from a weak model — `"timeout": null` — is UNSET on both
+	// sides, and so is a zero or a negative: the wrapper writes the default over
+	// it, and the row must count down against the same figure. A surface that
+	// read the argument for itself drew a bound the engine had not armed, which
+	// is the one number on this row a person cannot check.
+	return time.Duration(session.BashTimeoutSeconds(json.RawMessage(raw)) * float64(time.Second))
 }
 
 // countUpWord spells a duration the way a person says one out loud: seconds

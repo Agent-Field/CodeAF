@@ -161,6 +161,24 @@ Two limits worth knowing:
   conversation can move to another model and the run's client does not. A step that names
   its own model overrides it, and so does a turn that named one.
 
+## What a harness run costs — does running one show up in /cost, spend, and the rail
+
+**It does.** A run makes its own model calls — one for every step, several for a step that
+uses tools, and the calls of any harness it calls in turn — and all of them land on this
+conversation's total. `/cost` and `/status` show the money and the tokens, the status line
+moves, and the requests are counted in `model calls`.
+
+They are counted the way every call aforge makes on your behalf is counted: against the
+session, not against the turn you typed. The turn's own receipt stays empty, because the
+run's work is not the conversation's — it thinks on its own messages, on its own model.
+
+It counts against a spending limit too. A run that takes the session past the ceiling you
+set in `/settings` leaves the next thing you type refused, exactly as any other spend does.
+
+**A provider that publishes no accounting adds nothing.** Zero tokens and no price means
+"nobody said", never "the run was free", so nothing is shown rather than a $0.00 you could
+believe.
+
 ## Asking for a new harness — how do I make one
 
 Ask in your own words. "Build me something that does this every sprint", "we should have a

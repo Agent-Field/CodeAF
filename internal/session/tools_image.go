@@ -154,7 +154,7 @@ func (a *Agent) generateImageTool(client MediaGenerator, model string) bare.Tool
 			// compaction summary do: no turn asked for a picture at this price,
 			// and charging one turn for it would make an ordinary question read
 			// as the cost of a rendering (see [Agent.addAuxiliaryUsage]).
-			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage})
+			a.addAuxiliaryUsage(&ai.Response{Usage: response.Usage}, model, 1)
 
 			path, err := a.mediaDestination(parsed.Path, prompt,
 				imageExtension(response.Data[0].MediaType),

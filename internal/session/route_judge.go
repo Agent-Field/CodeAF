@@ -243,7 +243,7 @@ func (a *Agent) askRouteJudge(ctx context.Context, judge, asked, answered string
 		return routeVerdict{}, false
 	}
 	// The person pays for it, out of the pocket every auxiliary call comes from.
-	a.addAuxiliaryUsage(response)
+	a.addAuxiliaryUsage(response, judge, 1)
 
 	// The salvage ladder is internal/subharness's, shared rather than reimplemented
 	// so that a fenced or smart-quoted reply is read here exactly as it is read

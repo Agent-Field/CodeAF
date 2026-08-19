@@ -141,10 +141,17 @@ func (a *app) costText() string {
 	// "model calls" and not "turns". A turn is what the PERSON took — one message
 	// and everything that answered it — and a conversation of nine messages that
 	// reports "turns 41" is a surface using a person's word for a machine's
-	// count. These are the requests that went to the provider, and the bill above
-	// them is the sum over exactly this many.
-	if u.Turns > 0 {
-		add("model calls", itoa(u.Turns))
+	// count.
+	//
+	// It is EVERY request that went to the provider: the turn's own calls, the
+	// auxiliary ones nobody asked for by name (the session's title, a judge, a
+	// picture being looked at), and every call a task's agents made on their own
+	// lanes. That is what makes it the honest denominator for the bill above it,
+	// which is the sum over exactly this many — Turns counts only the
+	// conversation's own steps by law, and would have named a smaller number
+	// than the money was spent over.
+	if u.Calls > 0 {
+		add("model calls", itoa(u.Calls))
 	}
 	add("time", tookWord(u.Duration))
 
@@ -181,10 +188,11 @@ func tokenHalves(in, out, both int) string {
 // worth.
 //
 // The cash is printed ONLY when it is real, on the terms [app.cacheSaved] is
-// held: it is accumulated per turn at the moment a price pair is published, and
-// a session on an unpriced model cannot have it worked out afterwards. So an
-// unpriced session says how much it read and stops there, rather than learning
-// to say it saved nothing. The count leads and the money follows it, which is
+// held: it is accumulated per turn at the moment BOTH a prompt price and a
+// cache-read price are published, and a session that had neither cannot have it
+// worked out afterwards. So a session on a model that publishes no cache-read
+// price says how much it read and stops there, rather than learning to say it
+// saved the whole prompt price. The count leads and the money follows it, which is
 // the order [app.warmSegment] puts the same pair in on the status line.
 func cacheWords(read int, saved float64) string {
 	if read <= 0 {

@@ -103,7 +103,7 @@ func v3HarnessEntries(store *subharness.Store) []subharness.Entry {
 // the entries are: a settings row that cannot build a client is a reason to run
 // the ordinary turn, not a reason to refuse to open a conversation. The session
 // checks this seam for nil before it matches anything (its harness.go).
-func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string) func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, error) {
+func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string) func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 	if store == nil {
 		return nil
 	}
@@ -120,11 +120,20 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 		return nil
 	}
 	tools := v3HarnessToolBridges(workspace)
-	return func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, error) {
+	return func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 		h, err := store.Load(name, 0)
 		if err != nil {
-			return "", err
+			return "", subharness.Usage{}, err
 		}
+		// THE RUN'S OWN BILL, kept per run and not per client: the client is
+		// built once at launch and outlives every run made through it, so a
+		// ledger beside it would hand the session the whole day's spend on the
+		// second harness somebody ran. The bridge folds each call into this as
+		// it lands (subharness's usage.go), and what comes back is what the
+		// session charges the person for (internal/session's harness.go) — the
+		// half that was missing while designing a harness was billed and
+		// running one was free.
+		spent := &subharness.Usage{}
 		// THE WALK IS WATCHED, so the session can say what the run is doing while
 		// it does it. The step handed on is the trail's own entry — the same one
 		// the card below is rendered from — and the session decides what a surface
@@ -138,14 +147,17 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 			// What the turn asked this run to think with, empty when it asked
 			// for nothing. A node that pinned its own model still wins.
 			Model: runModel,
+			Usage: spent,
 		}), step)
 		if trace.Id.Name == "" {
 			// The run never started — an invalid page. There is no evidence to
-			// keep and nothing to report but why.
-			return "", runErr
+			// keep and nothing to report but why. The ledger comes back anyway:
+			// a page that failed validation made no calls, and saying so with
+			// the zero value is cheaper than a second shape for nothing.
+			return "", *spent, runErr
 		}
 		saved, saveErr := store.SaveRun(trace)
-		return harnessReport(trace, saved, saveErr, runErr), nil
+		return harnessReport(trace, saved, saveErr, runErr), *spent, nil
 	}
 }
 

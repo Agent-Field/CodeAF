@@ -538,7 +538,7 @@ func (a *Agent) routeOrchestrate(ctx context.Context, hub *eventHub, user userMe
 
 	id, err := a.startOrchestrate(ctx, goal, model, cap)
 	if err != nil {
-		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{}, started)})
+		hub.send(Event{Kind: EventError, Err: err, Usage: a.sealTurn(Usage{}, started, a.Model())})
 		return true, false
 	}
 	if id == "" {
@@ -549,7 +549,7 @@ func (a *Agent) routeOrchestrate(ctx context.Context, hub *eventHub, user userMe
 	a.announceOrchestrate(id, goal, model, cap)
 	// The turn ends HERE, with no assistant message: the run is the answer and
 	// it has not happened yet.
-	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started)})
+	hub.send(Event{Kind: EventTurnDone, Usage: a.sealTurn(Usage{}, started, a.Model())})
 	return true, true
 }
 
@@ -662,7 +662,7 @@ func (p *orchestratePlanner) ask(ctx context.Context, messages []ai.Message) (st
 	if response == nil {
 		return "", errors.New("the planner answered with nothing")
 	}
-	p.agent.addAuxiliaryUsage(response)
+	p.agent.addAuxiliaryUsage(response, p.call.model, 1)
 	p.orch.Charge(orchestrateCost(response, p.call.model))
 	return response.Text(), nil
 }
@@ -925,15 +925,24 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 // spend is what one node's agent cost, and it folds that spend into the
 // session's own pocket on the way past — a node's calls are the person's
 // calls, exactly as a task node's are ([Agent.foldTaskUsage]).
+//
+// The fold goes through the auxiliary door rather than reaching into the totals
+// itself, which is the same accounting through ONE seam: the figures land where
+// they always did, and they are written down on the way past, so a resumed run's
+// spend is still in the conversation's books tomorrow.
+//
+// The returned figure is the TANK's and is unchanged: the provider's own cost
+// when there is one, and the price table only when there is not.
 func (e *orchestrateExec) spend(child *Agent) float64 {
 	used := child.Usage()
-	e.agent.mu.Lock()
-	e.agent.usage.Input += used.Input
-	e.agent.usage.Output += used.Output
-	e.agent.usage.CacheRead += used.CacheRead
-	e.agent.usage.CacheWrite += used.CacheWrite
-	e.agent.usage.CostUSD += used.CostUSD
-	e.agent.mu.Unlock()
+	cost := used.CostUSD
+	e.agent.addAuxiliaryUsage(&ai.Response{Usage: &ai.Usage{
+		PromptTokens:             used.Input,
+		CompletionTokens:         used.Output,
+		CacheReadInputTokens:     used.CacheRead,
+		CacheCreationInputTokens: used.CacheWrite,
+		Cost:                     &cost,
+	}}, e.call.model, used.Calls)
 	if used.CostUSD > 0 {
 		return used.CostUSD
 	}
@@ -1127,6 +1136,12 @@ type orchestrateFamily struct {
 	run   string
 	root  uint64
 	title string
+	// goal is the run's ask, uncut — what the launch row was titled and named
+	// from. It is kept because the settle row is a SECOND row for the same id
+	// (see [orchestrateFamily.recordRoot]), and a closing row whose slug and
+	// label were built from the clipped title would resolve as a different piece
+	// of work from the row it closes.
+	goal string
 	// model is the planner's, drawn on the run's own row: it is the judgement the
 	// tank is paying for, and with tiers configured it is not the model the
 	// person is talking to ([Snapshot.Planner] says the same thing to the room).
@@ -1151,6 +1166,7 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		run:   strings.TrimSpace(run),
 		root:  a.graph().reserve(),
 		title: clip(firstLine(goal), hintLimit),
+		goal:  strings.TrimSpace(goal),
 		model: strings.TrimSpace(planner),
 		ids:   make(map[string]uint64, 8),
 		said:  make(map[string]TaskState, 8),
@@ -1161,7 +1177,7 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 	a.mu.Lock()
 	session := a.sessionID()
 	a.mu.Unlock()
-	indexTitle := strings.TrimSpace(goal)
+	indexTitle := family.goal
 	a.recordTaskIndexEntry(TaskIndexEntry{
 		ID:            strconv.FormatUint(family.root, 10),
 		Name:          TaskSlug(indexTitle),
@@ -1320,6 +1336,40 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 		}
 	}
 	f.agent.emitTaskUpdate(notice)
+	f.recordRoot(notice, snap)
+}
+
+// recordRoot writes the run's SECOND index row: what the whole run came to.
+//
+// The launch minted a row saying "running" with no price on it, because at that
+// moment there was neither an ending nor a bill. This is the row that closes it
+// — the ending, the run's answer, the planner's model and the whole tank — and
+// it is APPENDED rather than edited because that is this file's own idiom: a
+// resolution landing after the work did writes a second row, and every reader
+// takes the newest row per (sessionId, id) (task_index.go).
+//
+// THE ROOT'S FIGURE IS THE TANK, NOT THE SUM OF ITS CHILDREN. Every planner
+// call and the closing synthesis bill against the run and belong to no node
+// (internal/orchestrate's fuel.go), so the root's cost minus its children's is
+// exactly what the orchestration itself cost — a share that reached no file at
+// all before this row existed.
+func (f *orchestrateFamily) recordRoot(notice TaskNotice, snap orchestrate.Snapshot) {
+	f.agent.mu.Lock()
+	session := f.agent.sessionID()
+	f.agent.mu.Unlock()
+	f.agent.recordTaskIndexEntry(TaskIndexEntry{
+		ID:            strconv.FormatUint(f.root, 10),
+		Name:          TaskSlug(f.goal),
+		Label:         taskLabel(f.goal),
+		Title:         f.goal,
+		Status:        string(notice.State),
+		Outcome:       taskOutcome(notice.Report),
+		Cost:          snap.Fuel.Spent,
+		Model:         f.model,
+		EndedAt:       time.Now(),
+		SessionID:     session,
+		TranscriptURI: orchestrateFamilyURI(session, f.run),
+	})
 }
 
 // orchestrateTaskState maps one node's state onto the tasker's, and says

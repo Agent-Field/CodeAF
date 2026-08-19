@@ -68,7 +68,8 @@ func TestCostNamesTheFiguresItHasAndNoOthers(t *testing.T) {
 		Input:    48_100,
 		Output:   3_200,
 		CostUSD:  0.42,
-		Turns:    14,
+		Turns:    9,
+		Calls:    14,
 		Duration: 3*time.Minute + 12*time.Second,
 	}}
 	a := newTestApp(agent)
@@ -89,6 +90,38 @@ func TestCostNamesTheFiguresItHasAndNoOthers(t *testing.T) {
 	// requests that went to the provider.
 	if strings.Contains(text, "turns") {
 		t.Fatalf("the answer calls the model's calls turns:\n%s", text)
+	}
+}
+
+// THE DENOMINATOR IS EVERY REQUEST, NOT EVERY TURN. A session's spend includes
+// the calls nobody asked for by name — naming the session, a judge, a picture
+// being looked at, every request a task's own agent made — so the count printed
+// beside the money has to include them too. The session counts the two
+// separately for exactly this reason (session.Usage: Turns keeps its own law,
+// Calls is the honest denominator), and this line reads the second.
+func TestCostCountsEveryModelCallAndNotJustTheTurns(t *testing.T) {
+	agent := &fakeAgent{model: "m", usage: session.Usage{
+		Input: 1_000, Output: 200, CostUSD: 0.05,
+		// Two turns of the conversation's own, and three more requests behind
+		// them that no turn asked for.
+		Turns: 2, Calls: 5,
+	}}
+	a := newTestApp(agent)
+
+	a.slash("/cost")
+	text := lastNote(t, a)
+	line := ""
+	for _, row := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(row), "model calls") {
+			line = strings.TrimSpace(row)
+		}
+	}
+	if line == "" {
+		t.Fatalf("the answer has no model calls line:\n%s", text)
+	}
+	if !strings.HasSuffix(line, " 5") {
+		t.Fatalf("the model calls line reads %q, want the 5 requests that were made "+
+			"and not the 2 turns that asked for some of them", line)
 	}
 }
 
