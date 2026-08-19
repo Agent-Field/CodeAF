@@ -12,8 +12,10 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -190,6 +192,14 @@ func TestALandedNodesIndexRowCarriesItsModelAndItsTokens(t *testing.T) {
 // "running" with no price on it, because there was neither an ending nor a bill
 // yet; this is the row that says how it ended and what the whole tank came to.
 // Nothing is edited — the newest row for an id is the one that counts.
+//
+// The pair is read off the FILE and not out of [ReadTaskIndex], because the
+// reader is where "the newest row counts" is actually enforced: it collapses a
+// node to one row on the way out ([newestPerNode]), so a run that started and
+// ended answers with its ending and never with both. The two halves are tested
+// together here — the file keeps the pair, the reader hands back the closing
+// row — because a reader that collapsed the wrong way would still pass either
+// half on its own.
 func TestTheRunsClosingRowLandsInTheIndexWithTheWholeTank(t *testing.T) {
 	var index string
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
@@ -206,7 +216,7 @@ func TestTheRunsClosingRowLandsInTheIndexWithTheWholeTank(t *testing.T) {
 		Fuel: orchestrate.Fuel{Cap: 5, Spent: 0.31},
 	}, nil)
 
-	rows := ReadTaskIndex(index)
+	rows := readTaskIndexFile(t, index)
 	rootID := taskIndexParent(family.root)
 	var opening, closing *TaskIndexEntry
 	for i, row := range rows {
@@ -243,6 +253,44 @@ func TestTheRunsClosingRowLandsInTheIndexWithTheWholeTank(t *testing.T) {
 		t.Fatalf("the closing row renamed the run: %q/%q against %q/%q",
 			closing.Name, closing.Title, opening.Name, opening.Title)
 	}
+	// And what a reader is handed is the ending, once: the index answers what
+	// the work CAME TO, never a "running" row about a run that has ended.
+	var answered int
+	for _, row := range ReadTaskIndex(index) {
+		if row.ID != rootID || row.Parent != "" {
+			continue
+		}
+		answered++
+		if row.Status != string(TaskDone) || row.Cost != 0.31 {
+			t.Fatalf("the index answered with %+v, want the closing row", row)
+		}
+	}
+	if answered != 1 {
+		t.Fatalf("the index answered with %d rows for the run, want the closing one alone", answered)
+	}
+}
+
+// readTaskIndexFile is every row the index file HOLDS, oldest first, with no
+// collapsing — the raw record behind [ReadTaskIndex], for the tests that are
+// about what was written rather than about what a reader is handed.
+func readTaskIndexFile(t *testing.T, path string) []TaskIndexEntry {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the index was never written: %v", err)
+	}
+	var rows []TaskIndexEntry
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var row TaskIndexEntry
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			t.Fatalf("the index holds a row that does not parse: %v", err)
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // awaitIndexRow polls the project index until a row for one node satisfies a

@@ -322,6 +322,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 		// result or an assistant answer, both legal places for a user message.
 		a.drainSteering()
 
+		// NOTHING TOO BIG TO FIT IS SENT AND HOPED OVER. The last thing before
+		// the wire, after steering has landed, because steering is part of the
+		// request being measured.
+		a.guardOversizeRequest(ctx, hub)
+
 		response, err := a.completeWithRetry(ctx, model, effort, partial, warm, forming)
 		if err != nil {
 			// Interrupt (or the caller's own deadline). Whatever was streamed
@@ -1295,6 +1300,26 @@ const (
 	// ever compared against a threshold with 16k of slack, so being 30% wrong
 	// moves when compaction fires, never whether the request fits.
 	bytesPerToken = 4
+
+	// maxTrustedWindow is the largest window the compaction machinery will
+	// BELIEVE, whatever a catalog row claims, and it is a hard ceiling rather
+	// than a preference.
+	//
+	// The threshold is derived from a number a provider publishes about itself,
+	// and a published number can be enormous. The catalog row for
+	// ~deepseek/deepseek-v4-flash-latest claims 1,310,720 tokens, which put this
+	// session's trigger at 1,114,112 — so a real conversation grew to 386,309
+	// tokens with compaction never once firing, and what came back at that size
+	// was not an answer but the model's own template turned inside out. Nothing
+	// was broken; the law simply believed the row.
+	//
+	// Twice [defaultContextWindow] is the ceiling because that constant is what
+	// this codebase already believes about windows: 128k is the smallest window
+	// this surface routes to, and no model is asked to carry more than double
+	// the smallest into a single request. A model whose real window is 200k or
+	// 400k is untouched — only a claim beyond 256k is clamped, and a claim
+	// beyond 256k is exactly the kind that let 386k out.
+	maxTrustedWindow = 2 * defaultContextWindow
 )
 
 // window is the model's context in tokens, most specific answer first: the one
@@ -1316,6 +1341,24 @@ func (a *Agent) compactThreshold() int {
 	return CompactThreshold(a.window())
 }
 
+// TrustedWindow is a claimed context window with the ceiling applied — the
+// figure the compaction machinery works from, as opposed to [Agent.window],
+// which stays the model's own claim because the status meter is describing the
+// model rather than this law.
+//
+// It is exported for the same reason [CompactThreshold] is: a surface that
+// needs to know how much room the guard leaves must read the guard, not a
+// second copy of it.
+func TrustedWindow(window int) int {
+	if window <= 0 {
+		return 0
+	}
+	if window > maxTrustedWindow {
+		return maxTrustedWindow
+	}
+	return window
+}
+
 // CompactThreshold is the law itself, exported because a surface has to be able
 // to say how close a conversation is to being compacted — and a surface that
 // re-derived the formula from the same two constants would be a second copy of
@@ -1325,7 +1368,13 @@ func (a *Agent) compactThreshold() int {
 // Zero and negative windows answer zero: a threshold against an unknown window
 // is a number that means nothing, and a caller must have an answer for that
 // rather than treat it as a tiny model.
+//
+// A window larger than [maxTrustedWindow] is clamped to it BEFORE the reserve is
+// taken, so an absurd or unpublished claim can never move the trigger past the
+// ceiling. That is the guard, and it lives here rather than at the door because
+// the door is not the only way a window arrives.
 func CompactThreshold(window int) int {
+	window = TrustedWindow(window)
 	if window <= 0 {
 		return 0
 	}
@@ -1356,9 +1405,42 @@ func (a *Agent) keepRecentTokens() int {
 	return keep
 }
 
+// guardOversizeRequest is the check made with the request already assembled and
+// about to go out, and it is the one pass Config's CompactEnabled does not
+// govern.
+//
+// [Agent.maybeCompact] is the ordinary pass and a person may switch it off: it
+// is about headroom, and headroom is a preference. This is not that. A
+// transcript that has already grown past the whole window is a request the
+// endpoint cannot serve, and until this existed the loop found that out by
+// SENDING IT and reading the refusal — the overflow branch in the step loop.
+// A blind send costs the whole prompt in latency, costs money on an endpoint
+// that bills the attempt, and on an endpoint that neither refuses nor serves it
+// costs the turn: 386,309 tokens went out against a row claiming 1.3M and came
+// back as corrupted template text rather than an error anything could catch.
+//
+// The bar is [TrustedWindow], not the model's own claim, for exactly that
+// reason — the claim is what was wrong.
+func (a *Agent) guardOversizeRequest(ctx context.Context, hub *eventHub) {
+	ceiling := TrustedWindow(a.window())
+	if ceiling <= 0 {
+		return
+	}
+	a.mu.Lock()
+	estimate := a.estimateTokensLocked()
+	a.mu.Unlock()
+	if estimate <= ceiling {
+		return
+	}
+	// A pass that finds nothing is not an error here: the transcript is then
+	// the person's own words and the recent tail, and the step goes out because
+	// there is nothing left to take out of it.
+	_, _ = a.compact(ctx, hub)
+}
+
 // maybeCompact is the automatic pass, checked after every step. Config's
-// CompactEnabled gates only this one — Compact and the overflow recovery run
-// regardless.
+// CompactEnabled gates only this one — Compact, the oversize guard and the
+// overflow recovery run regardless.
 func (a *Agent) maybeCompact(ctx context.Context, hub *eventHub) {
 	if !a.config.CompactEnabled {
 		return

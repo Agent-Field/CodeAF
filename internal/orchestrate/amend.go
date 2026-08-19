@@ -26,12 +26,55 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
 
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
+
+// RepeatLimit is how many times one run may send work at the same file before
+// it stops sending it at all.
+//
+// TWO, because the first failure is news and the second is a pattern. A planner
+// that reads a node's digest and cannot see the filesystem has exactly one way
+// to react to work that did not land — send it again — and nothing in the loop
+// ever tires of that: a real run spent eight nodes and twenty-seven minutes
+// re-issuing one brief ("write the final report to research/…md"), every one of
+// which came back saying it was about to do the work, and the file was never
+// there. The third attempt is where a run has to stop guessing and say so.
+const RepeatLimit = 2
+
+// repeatedWork is [Orchestrator.validate]'s refusal of an add aimed at a file
+// this run has already failed to write [RepeatLimit] times.
+//
+// It is a TYPE and not a sentence because it is the one refusal that is not
+// repairable. Every other thing validate rejects is a planner that phrased an
+// amendment wrongly and can be shown the phrasing; this is a planner whose
+// judgement is right and whose work is not landing, and handing it back for a
+// re-word would buy one more identical node.
+type repeatedWork struct {
+	scope string
+	tries int
+}
+
+// Error is what the run says out loud when it stops repeating itself. It names
+// the file, the count and the decision, because "this run stopped" with no
+// figure behind it is a sentence somebody has to go and check.
+func (r *repeatedWork) Error() string {
+	return fmt.Sprintf("%s has been handed out %d times and nothing was written to it; "+
+		"this run stops asking for it and reports what is actually there", r.scope, r.tries)
+}
+
+// brief is what the write-up is asked for instead of the plan the planner never
+// got to write. It exists so that a run which gave up says so IN THE ANSWER,
+// rather than settling quietly and leaving a person to notice the missing file.
+func (r *repeatedWork) brief() string {
+	return fmt.Sprintf("Report what actually happened. %s was handed out %d times and nothing was ever "+
+		"written to it, so that part of the goal is incomplete. Say plainly which parts were answered "+
+		"and which were not, and do not describe the unwritten part as finished.", r.scope, r.tries)
+}
 
 // Repairer is a Planner that can be shown its own refusal. It is optional: a
 // planner that does not implement it simply loses the amendment it got wrong.
@@ -95,6 +138,14 @@ func (o *Orchestrator) absorb(ctx context.Context, landed thought) {
 		return
 	}
 	if err := o.validate(amendment); err != nil {
+		var repeat *repeatedWork
+		if errors.As(err, &repeat) {
+			// THE ONE REFUSAL THAT ENDS THE RUN. The planner is not confused, it is
+			// stuck, and one more turn of the loop is one more child agent spending
+			// money on the same brief (see [repeatedWork]).
+			o.stopRepeating(repeat)
+			return
+		}
 		repaired, ok := o.repair(ctx, err)
 		if !ok {
 			o.note("the planner's amendment was dropped: " + err.Error())
@@ -103,6 +154,30 @@ func (o *Orchestrator) absorb(ctx context.Context, landed thought) {
 		amendment = repaired
 	}
 	o.apply(amendment)
+}
+
+// stopRepeating turns the run towards its write-up instead of towards another
+// identical node.
+//
+// It sets the same two things a DonePlan sets — finishing, and the brief the
+// synthesis is written to — so the run ends down the path it already had rather
+// than through a new kind of ending nothing else knows about: the loop stops
+// launching ([Orchestrator.launch]), stops paying for planner calls
+// ([Orchestrator.worthThinking]), lets what is in flight come home, and writes
+// up what is actually there. It is NOT a stop: a stop is a person's decision and
+// skips the synthesis, and the whole point here is that somebody is owed an
+// honest account.
+func (o *Orchestrator) stopRepeating(repeat *repeatedWork) {
+	o.mu.Lock()
+	if o.finishing || o.stopped {
+		o.mu.Unlock()
+		return
+	}
+	o.finishing = true
+	o.plan = &DonePlan{Brief: repeat.brief()}
+	o.mu.Unlock()
+	o.publish()
+	o.note(repeat.Error())
 }
 
 // repair is the one retry: the planner is shown the frontier and the sentence
@@ -173,6 +248,11 @@ func (o *Orchestrator) validate(amendment Amendment) error {
 		adding[id] = true
 	}
 	for _, node := range amendment.Add {
+		if repeat := o.repeatedLocked(node); repeat != nil {
+			return repeat
+		}
+	}
+	for _, node := range amendment.Add {
 		for _, need := range node.Needs {
 			need = strings.TrimSpace(need)
 			switch {
@@ -189,6 +269,42 @@ func (o *Orchestrator) validate(amendment Amendment) error {
 		}
 	}
 	return o.acyclicLocked(amendment.Add)
+}
+
+// repeatedLocked is the loop guard: how many times this run has already sent
+// work at the file this node wants to write, and come back with nothing.
+//
+// IT COUNTS FAILURES AND NOT ATTEMPTS. A file two nodes wrote successfully is a
+// file the run is making progress on, and a third node touching it is ordinary
+// — the collision edges in [Orchestrator.collisionsLocked] are what handle that.
+// What this counts is the shape that does not converge: node after node aimed at
+// one path, each one ending without the path existing. The session's executor is
+// what turns "wrote nothing it was scoped to write" into a failure rather than a
+// confident digest (session's orchestrate.go), and this is what stops the run
+// once that has happened twice.
+//
+// A node with no write scope is never counted and never refused: it is read-only
+// work, and there is no file for it to fail to produce.
+func (o *Orchestrator) repeatedLocked(node Node) *repeatedWork {
+	for _, want := range node.WriteScope {
+		want = strings.TrimSpace(want)
+		if want == "" {
+			continue
+		}
+		tries := 0
+		for _, other := range o.nodes {
+			if other.State != Failed {
+				continue
+			}
+			if scopesCollide([]string{want}, other.WriteScope) {
+				tries++
+			}
+		}
+		if tries >= RepeatLimit {
+			return &repeatedWork{scope: want, tries: tries}
+		}
+	}
+	return nil
 }
 
 // acyclicLocked refuses a batch of nodes that need each other in a circle.

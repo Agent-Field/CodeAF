@@ -271,9 +271,13 @@ func TestRefutedWorkIsRepairedInPlaceAndLandsWhenItHolds(t *testing.T) {
 	if notice.CostUSD < 0.03 {
 		t.Fatalf("the node cost %.4f, want at least the two workers' 0.03 accrued to one node", notice.CostUSD)
 	}
-	// And the report is the last check's evidence, in plain words.
-	if !strings.HasPrefix(notice.Report, "go test ./... ok") {
-		t.Fatalf("report = %q, want the evidence it landed on", notice.Report)
+	// And the report leads with the repaired work's own account, with the last
+	// check's evidence in plain words under it.
+	if !strings.HasPrefix(notice.Report, "Added greet_test.go") {
+		t.Fatalf("report = %q, want the repair round's own account first", notice.Report)
+	}
+	if !strings.Contains(notice.Report, "go test ./... ok") {
+		t.Fatalf("report = %q, want the evidence it landed on under the account", notice.Report)
 	}
 
 	// ── the surface's one line ──

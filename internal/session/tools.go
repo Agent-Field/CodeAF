@@ -129,12 +129,20 @@ func (a *Agent) belt() []bare.Tool {
 	tools = append(tools, a.settingsTools()...)
 	tools = append(tools, a.connectTools()...)
 	// The media verbs are one family and are appended together: generate_image
-	// paints, speak talks, generate_video films, view_image looks. Each is
-	// absent-not-broken on its own terms — one media client and one resolver
-	// answer for all four, and a machine whose resolver has no model for a
-	// modality simply does not have that verb (media_contract.go).
+	// paints, speak talks, generate_music composes, generate_video films,
+	// view_image looks. Each is absent-not-broken on its own terms — one media
+	// client and one resolver answer for all five, and a machine whose resolver
+	// has no model for a modality simply does not have that verb
+	// (media_contract.go).
+	//
+	// THE WHOLE FAMILY TRAVELS. It is built here and nowhere else, so a task
+	// node, an adaptive run's node and this conversation all reach for the same
+	// five verbs under the same five conditions — the surfaces differ in what
+	// they are handed (task_run.go, orchestrate.go pass Media and MediaModel
+	// through), never in which tools this function decides to build out of it.
 	tools = append(tools, a.imageTools()...)
 	tools = append(tools, a.speakTools()...)
+	tools = append(tools, a.musicTools()...)
 	tools = append(tools, a.videoTools()...)
 	return append(tools, a.viewTools()...)
 }

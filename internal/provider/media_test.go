@@ -114,31 +114,41 @@ func TestImageReferencesRideAsObjectsOnTheWire(t *testing.T) {
 	}
 }
 
-func TestMusicUsesSpeechEndpointWithoutVoice(t *testing.T) {
+// Speech with no voice named, which is what a TTS model that has only one gets.
+//
+// THIS TEST USED TO BE CALLED "music uses the speech endpoint without voice",
+// and it passed for as long as it existed while every real music call failed:
+// it asserted that a Lyria slug sent to /audio/speech produced the request we
+// meant to send, and never that the endpoint had any music behind it. It does
+// not — /music, /audio/music, /audio/generations and /songs are all 404, and
+// composing is streaming chat completions (music.go, music_test.go). What the
+// test actually covers is the voiceless speech request, so that is what it is
+// now named after.
+func TestSpeechOmitsTheVoiceWhenNoneIsNamed(t *testing.T) {
 	client := handlerClient(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/api/v1/audio/speech" {
 			t.Fatalf("path = %q", request.URL.Path)
 		}
 		var body map[string]any
 		_ = json.NewDecoder(request.Body).Decode(&body)
-		if body["model"] != "google/lyria-3-clip-preview" || body["input"] != "glass bells at dawn" || body["response_format"] != "mp3" {
-			t.Fatalf("music body = %+v", body)
+		if body["model"] != "talk/model" || body["input"] != "glass bells at dawn" || body["response_format"] != "mp3" {
+			t.Fatalf("speech body = %+v", body)
 		}
 		if _, present := body["voice"]; present {
-			t.Fatalf("music body included voice: %+v", body)
+			t.Fatalf("speech body included an empty voice: %+v", body)
 		}
 		writer.Header().Set("X-OpenRouter-Cost", "0.04")
-		_, _ = writer.Write([]byte("music bytes"))
+		_, _ = writer.Write([]byte("audio bytes"))
 	}))
 	media, err := NewMediaClient(Config{APIKey: "media-key", BaseURL: "https://openrouter.example/api/v1", HTTPClient: client})
 	if err != nil {
 		t.Fatal(err)
 	}
 	clip, err := media.Speak(context.Background(), SpeechRequest{
-		Model: "google/lyria-3-clip-preview", Input: "glass bells at dawn", ResponseFormat: "mp3",
+		Model: "talk/model", Input: "glass bells at dawn", ResponseFormat: "mp3",
 	})
-	if err != nil || string(clip.Audio) != "music bytes" || clip.Usage == nil || clip.Usage.Cost == nil || *clip.Usage.Cost != 0.04 {
-		t.Fatalf("music = %+v err=%v", clip, err)
+	if err != nil || string(clip.Audio) != "audio bytes" || clip.Usage == nil || clip.Usage.Cost == nil || *clip.Usage.Cost != 0.04 {
+		t.Fatalf("speech = %+v err=%v", clip, err)
 	}
 }
 
@@ -204,6 +214,63 @@ func TestGenerateVideoSubmitsPollsAndDownloadsWithoutSleeping(t *testing.T) {
 	}
 	if polls != 3 || len(delays) != 3 || delays[0] != 5*time.Second || delays[1] != 10*time.Second || delays[2] != 20*time.Second {
 		t.Fatalf("polls = %d delays = %v", polls, delays)
+	}
+}
+
+// THE CREDENTIAL IS HOST-SCOPED, and both directions are pinned — the test
+// above holds the withholding half (an off-site storage host never sees the
+// key), and this one holds the half that was missing.
+//
+// OpenRouter answers a completed job with a SAME-ORIGIN content URL, and that
+// endpoint requires the bearer like every other endpoint on the host. The
+// download went out unauthenticated, came back
+// 401 `No cookie auth credentials found`, and a render that had already
+// succeeded and already been paid for reached the model as a failure. A test
+// that only ever served the artifact from another host could not see it.
+func TestVideoDownloadSendsTheKeyToTheRoutersOwnContentURLAndNowhereElse(t *testing.T) {
+	for _, want := range []struct {
+		name       string
+		unsigned   string
+		authorized bool
+	}{
+		{"the router's own content endpoint", "https://openrouter.example/api/v1/videos/job-1/content?index=0", true},
+		{"a relative content path on the router", "/api/v1/videos/job-1/content?index=0", true},
+		{"genuinely off-site object storage", "https://files.example/video.mp4", false},
+		// A look-alike host must not be read as the router's own: the test is
+		// the whole host and never a prefix of it.
+		{"a host that merely starts with the router's name", "https://openrouter.example.evil.test/video.mp4", false},
+	} {
+		t.Run(want.name, func(t *testing.T) {
+			var sawAuth string
+			var downloaded bool
+			client := handlerClient(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				switch {
+				case request.Method == http.MethodPost && request.URL.Path == "/api/v1/videos":
+					_, _ = io.WriteString(writer, `{"id":"job-1","status":"completed","unsigned_urls":["`+want.unsigned+`"]}`)
+				default:
+					downloaded = true
+					sawAuth = request.Header.Get("Authorization")
+					_, _ = writer.Write([]byte("mp4 bytes"))
+				}
+			}))
+			media, err := NewMediaClient(Config{APIKey: "media-key", BaseURL: "https://openrouter.example/api/v1", HTTPClient: client})
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := media.GenerateVideo(context.Background(), VideoRequest{Model: "motion/model", Prompt: "a quiet harbor"})
+			if err != nil || string(response.Video) != "mp4 bytes" {
+				t.Fatalf("video = %+v err = %v", response, err)
+			}
+			if !downloaded {
+				t.Fatal("the artifact was never downloaded")
+			}
+			switch {
+			case want.authorized && sawAuth != "Bearer media-key":
+				t.Fatalf("the router's own content URL was fetched with auth %q — a 401 lands a paid render as a failure", sawAuth)
+			case !want.authorized && sawAuth != "":
+				t.Fatalf("bearer credential leaked to %s (auth %q)", want.unsigned, sawAuth)
+			}
+		})
 	}
 }
 

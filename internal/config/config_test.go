@@ -138,7 +138,8 @@ func TestImageAndSpeechPreferenceOrders(t *testing.T) {
 		{"id":"krea/krea-2-medium-turbo","architecture":{"output_modalities":["image"]}},
 		{"id":"first/speech","architecture":{"output_modalities":["speech"]}},
 		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["audio"]}},
-		{"id":"hexgrad/kokoro-82m","architecture":{"output_modalities":["speech"]}}`)
+		{"id":"hexgrad/kokoro-82m","architecture":{"output_modalities":["speech"]}},
+		{"id":"fish-audio/s1","architecture":{"output_modalities":["speech"]}}`)
 	configured := Config{}
 	if got := configured.ResolveImageModel(models); got != preferredImageModel {
 		t.Fatalf("image preference = %q", got)
@@ -150,12 +151,22 @@ func TestImageAndSpeechPreferenceOrders(t *testing.T) {
 	withoutPrimary := runtimeCatalog(t, `
 		{"id":"first/image","architecture":{"output_modalities":["image"]}},
 		{"id":"first/speech","architecture":{"output_modalities":["speech"]}},
-		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["audio"]}}`)
+		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["audio"]}},
+		{"id":"hexgrad/kokoro-82m","architecture":{"output_modalities":["speech"]}}`)
 	if got := configured.ResolveImageModel(withoutPrimary); got != "first/image" {
 		t.Fatalf("image catalog fallback = %q", got)
 	}
-	if got := configured.ResolveSpeechModel(withoutPrimary); got != fallbackSpeechModel {
+	if got := configured.ResolveSpeechModel(withoutPrimary); got != kokoroSpeechModel {
 		t.Fatalf("speech secondary preference = %q", got)
+	}
+
+	// The last remembered voice, for a catalog that advertises neither of the
+	// two above it.
+	hostedOnly := runtimeCatalog(t, `
+		{"id":"first/speech","architecture":{"output_modalities":["speech"]}},
+		{"id":"openai/gpt-4o-mini-tts","architecture":{"output_modalities":["audio"]}}`)
+	if got := configured.ResolveSpeechModel(hostedOnly); got != hostedSpeechModel {
+		t.Fatalf("speech third preference = %q", got)
 	}
 
 	firstOnly := runtimeCatalog(t, `{"id":"first/speech","architecture":{"output_modalities":["speech"]}}`)
@@ -169,14 +180,30 @@ func TestMusicAndVideoPreferenceOrders(t *testing.T) {
 		{"id":"voice/tts","name":"Voice TTS","architecture":{"output_modalities":["audio"]}},
 		{"id":"first/music","architecture":{"output_modalities":["music"]}},
 		{"id":"google/lyria-3-clip-preview","architecture":{"output_modalities":["audio"]}},
+		{"id":"google/lyria-3-pro-preview","architecture":{"output_modalities":["audio"]}},
 		{"id":"first/video","architecture":{"output_modalities":["video"]}},
-		{"id":"bytedance/seedance-1-5-pro","architecture":{"output_modalities":["video"]}}`)
+		{"id":"bytedance/seedance-1-5-pro","architecture":{"output_modalities":["video"]}},
+		{"id":"bytedance/seedance-2.0-mini","architecture":{"output_modalities":["video"]}}`)
 	configured := Config{}
 	if got := configured.ResolveMusicModel(models); got != preferredMusicModel {
 		t.Fatalf("music preference = %q", got)
 	}
 	if got := configured.ResolveVideoModel(models); got != preferredVideoModel {
 		t.Fatalf("video preference = %q", got)
+	}
+
+	// The older pair is still reached for when the preferred row is missing,
+	// rather than the catalog's first arbitrary name.
+	olderPair := runtimeCatalog(t, `
+		{"id":"first/music","architecture":{"output_modalities":["music"]}},
+		{"id":"google/lyria-3-clip-preview","architecture":{"output_modalities":["audio"]}},
+		{"id":"first/video","architecture":{"output_modalities":["video"]}},
+		{"id":"bytedance/seedance-1-5-pro","architecture":{"output_modalities":["video"]}}`)
+	if got := configured.ResolveMusicModel(olderPair); got != fallbackMusicModel {
+		t.Fatalf("music secondary preference = %q", got)
+	}
+	if got := configured.ResolveVideoModel(olderPair); got != fallbackVideoModel {
+		t.Fatalf("video secondary preference = %q", got)
 	}
 
 	withoutPreferred := runtimeCatalog(t, `

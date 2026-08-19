@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
@@ -47,8 +50,12 @@ func TestHarnessToolArgs(t *testing.T) {
 
 // TestHarnessToolsBridge runs one real wire tool through the bridge, so the
 // whitelist-to-belt hop is exercised rather than only described.
+//
+// The seams are empty here, which is a machine with no media models: the bridge
+// resolves the seven wire tools and nothing else, exactly as it did before the
+// media family joined the harness belt (internal/session's harness_belt.go).
 func TestHarnessToolsBridge(t *testing.T) {
-	tools := v3HarnessTools(t.TempDir())
+	tools := v3HarnessTools(t.TempDir(), session.HarnessBeltSeams{})
 	out, err := tools(context.Background(), "bash", "echo harnessed")
 	if err != nil {
 		t.Fatalf("bash: %v", err)
@@ -60,6 +67,74 @@ func TestHarnessToolsBridge(t *testing.T) {
 		!strings.Contains(err.Error(), "no tool named") {
 		t.Fatalf("an unknown tool gave %v, want a refusal", err)
 	}
+	// And a media verb is UNKNOWN on a machine with no media models, rather
+	// than present and failing on every call.
+	if _, err := tools(context.Background(), "generate_image", "a harbour"); err == nil ||
+		!strings.Contains(err.Error(), "no tool named") {
+		t.Fatalf("generate_image with no media wiring gave %v, want the unknown-tool refusal", err)
+	}
+}
+
+// AND THE MEDIA VERBS ARE REACHABLE WHEN THE MACHINE HAS THEM. The run door
+// hands its media pair down (v3RunHarness), and this is the hop that says a
+// whitelisted media verb resolves to a real tool through the same bridge `bash`
+// goes through — including the sentence grammar, so a harness page may write
+// `generate_image` with a bare prompt the way it writes `bash` with a bare
+// command.
+func TestHarnessToolsBridgeReachesTheMediaVerbs(t *testing.T) {
+	var asked provider.ImageRequest
+	media := &harnessScriptedMedia{onImage: func(request provider.ImageRequest) { asked = request }}
+	tools := v3HarnessTools(t.TempDir(), session.HarnessBeltSeams{
+		Media: media,
+		MediaModel: func(modality string) string {
+			return map[string]string{"image": "paint/model"}[modality]
+		},
+	})
+	if _, err := tools(context.Background(), "generate_image", "a harbour at dawn"); err != nil {
+		t.Fatalf("generate_image through the harness bridge: %v", err)
+	}
+	if asked.Model != "paint/model" || asked.Prompt != "a harbour at dawn" {
+		t.Fatalf("the harness bridge sent %+v", asked)
+	}
+	// The verbs this machine has no model for are still absent: presence is per
+	// modality here as everywhere else.
+	if _, err := tools(context.Background(), "generate_music", "a piano loop"); err == nil ||
+		!strings.Contains(err.Error(), "no tool named") {
+		t.Fatalf("generate_music with no music model gave %v, want the unknown-tool refusal", err)
+	}
+}
+
+// harnessScriptedMedia is a [session.MediaGenerator] that records the image
+// request and answers with a one-pixel png. Only the drawing half is exercised;
+// the rest satisfies the interface.
+type harnessScriptedMedia struct {
+	onImage func(provider.ImageRequest)
+}
+
+func (m *harnessScriptedMedia) GenerateImage(_ context.Context, request provider.ImageRequest) (*provider.ImageResponse, error) {
+	if m.onImage != nil {
+		m.onImage(request)
+	}
+	return &provider.ImageResponse{Data: []provider.GeneratedImage{{
+		Base64:    base64.StdEncoding.EncodeToString([]byte("not really a png, but bytes")),
+		MediaType: "image/png",
+	}}}, nil
+}
+
+func (m *harnessScriptedMedia) Speak(context.Context, provider.SpeechRequest) (*provider.SpeechResponse, error) {
+	return &provider.SpeechResponse{}, nil
+}
+
+func (m *harnessScriptedMedia) GenerateMusic(context.Context, provider.MusicRequest) (*provider.MusicResponse, error) {
+	return &provider.MusicResponse{}, nil
+}
+
+func (m *harnessScriptedMedia) GenerateVideo(context.Context, provider.VideoRequest) (*provider.VideoResponse, error) {
+	return &provider.VideoResponse{}, nil
+}
+
+func (m *harnessScriptedMedia) Transcribe(context.Context, provider.TranscriptionRequest) (*provider.TranscriptionResponse, error) {
+	return &provider.TranscriptionResponse{}, nil
 }
 
 // TestHarnessReport states what a turn gets back: the trail, the run's own

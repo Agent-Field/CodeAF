@@ -1353,11 +1353,11 @@ func TestARowsClockIsItsOwnCallsAndNotItsSlowestSiblings(t *testing.T) {
 	}
 }
 
-// STEERING IS NOT A SECOND TURN. A message typed at a turn that is already
-// working is queued into that turn by the session, so the calls on screen are
-// still this turn's calls — and the surface used to age them out with the turn
-// counter, then draw "still working" underneath a call that was visibly working.
-func TestSteeringATurnLeavesItsRunningCallsOnTheSurface(t *testing.T) {
+// A MESSAGE TYPED AT A WORKING TURN IS NOT A SECOND TURN. It waits above the
+// box for the answer (park.go), so the calls on screen are still this turn's
+// calls — and the surface used to age them out with the turn counter, then draw
+// "still working" underneath a call that was visibly working.
+func TestAWaitingMessageLeavesTheTurnsRunningCallsOnTheSurface(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		{Kind: session.EventToolBegin, Tool: "bash", Hint: "bash go build ./…",
 			Args: `{"command":"go build ./..."}`},
@@ -1369,14 +1369,18 @@ func TestSteeringATurnLeavesItsRunningCallsOnTheSurface(t *testing.T) {
 	}
 	typeLine(t, a, "and the tests too")
 	if !a.running() {
-		t.Fatal("a steering message hid a call that is still running")
+		t.Fatal("a waiting message hid a call that is still running")
 	}
 	if _, drawn := a.ellipsis(); drawn {
 		t.Fatal("the surface drew its nothing-is-happening sign over a running call")
 	}
-	// The steered line rode the turn it was steering: one stream, one turn.
-	if len(agent.sent) != 2 {
+	// And the session heard nothing new: the words are held on the surface until
+	// this turn is over, which is what makes them editable until then.
+	if len(agent.sent) != 1 {
 		t.Fatalf("the session was sent %v", agent.sent)
+	}
+	if len(a.parks) != 1 {
+		t.Fatalf("the message typed at the turn was not held: %+v", a.parks)
 	}
 }
 
@@ -3631,12 +3635,19 @@ func TestEnterInARoomSteersTheNode(t *testing.T) {
 	a, agent, _ := roomApp(t)
 	clickRail(t, a, 0)
 
-	// The box says who it is talking to.
+	// The box says who it is talking to. The NAME is on the segment in front of
+	// the prompt (room.go's [app.roomLead]) rather than inside the placeholder,
+	// because a placeholder is gone the moment somebody types and the name has to
+	// outlive that — and it is the NAME the rail and the cards name the node by
+	// (taskident.go). The placeholder is left saying what the box does and which
+	// key leaves.
 	block, _, _, _ := a.chrome(a.width)
-	// The lane names the node by the NAME the rail and the cards name it by
-	// (taskident.go), and it names the key back.
-	if !strings.Contains(plain(strings.Join(block, "\n")), roomSteerLane+"Fix the nil-map"+roomSteerBack) {
-		t.Fatalf("the box does not offer the steering lane:\n%s", plain(strings.Join(block, "\n")))
+	lane := plain(strings.Join(block, "\n"))
+	if !strings.Contains(lane, "Fix the nil-map") {
+		t.Fatalf("the box does not name the node it is talking to:\n%s", lane)
+	}
+	if !strings.Contains(lane, roomSteerHere+roomSteerBack) {
+		t.Fatalf("the box does not offer the steering lane:\n%s", lane)
 	}
 
 	a.input.setText("the config lives under etc/")

@@ -319,14 +319,20 @@ func (a *app) submitImages(text string) tea.Cmd {
 	chips := append([]chip(nil), a.chips...)
 	a.chips, a.sent = nil, chips
 
-	a.closeLive()
-	a.turn++
+	if a.stream == nil {
+		a.turn++
+	}
 	a.sel = -1
-	a.entries = append(a.entries, entry{
+	// The person's line goes in WITHOUT cutting a reply that is still streaming
+	// in two — see [app.said], which is the whole of this wave's render-order fix
+	// and belongs to every door onto the transcript, not just the plain one.
+	a.said(entry{
 		kind: entryUser, text: userLine(text, chips, a.pal), turn: a.turn,
 	})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
+	// The turn is open and the first request is out with nothing back from it.
+	a.awaited = time.Now()
 	a.follow()
 	a.touch()
 	return tea.Batch(func() tea.Msg {

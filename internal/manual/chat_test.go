@@ -43,6 +43,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I start a task", "tasks"},
 		{"can aforge parallelize my task", "tasks"},
 		{"do tasks touch my working copy", "how-tasks-run"},
+		// Written from a real run: a task that generated two images was landed
+		// as "6 steps without progress" and the person had to go and find the
+		// files themselves. Both halves are questions they then ask.
+		{"why did my task stop for no progress", "how-tasks-run"},
+		{"does generating an image count as progress", "how-tasks-run"},
+		{"where did the files go when my task was stopped", "how-tasks-run"},
 		{"what does this conversation cost", "models-and-cost"},
 		{"how do I switch model", "models-and-cost"},
 		{"what happens when the conversation gets too long", "models-and-cost"},
@@ -110,6 +116,37 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what does ctrl+g do", "keys"},
 		{"tell me when the build stops changing", "what-i-can-do"},
 		{"how do I know when something has finished", "what-i-can-do"},
+
+		// The sixth wave: work that went wrong quietly. Every one of these is
+		// asked with a screen full of something that looks finished and is not —
+		// a row still saying "running" long after anything was, a worker that
+		// announced a file it never wrote, the same brief sent out again and
+		// again — and the honest answer has to come off a page, because the
+		// model's own account of what happened is exactly what was wrong.
+		{"why does my run still say running", "adaptive-runs"},
+		{"does an adaptive run survive a restart", "adaptive-runs"},
+		{"what happens to a run if aforge restarts", "adaptive-runs"},
+		{"the run said it wrote a file but there is nothing there", "adaptive-runs"},
+		{"why did it keep spawning the same worker over and over", "adaptive-runs"},
+		{"what happens to a harness design if I restart", "saved-shapes-of-work"},
+		{"does a design resume after a restart", "saved-shapes-of-work"},
+
+		// The seventh wave, and it is written from one real report: a person
+		// generated a book cover, got a row of text saying
+		// `book/cover.jpg — 768×1376 jpeg, 776.9KB`, and could neither see the
+		// picture nor find the file — the path was relative to a directory they
+		// were not standing in. Pictures now draw themselves under the row, and
+		// the path is absolute where they cannot. Both halves of what that
+		// person then asked have to land on a page.
+		{"why don't I see the image", "screen"},
+		{"where did my generated image go", "screen"},
+		{"you only gave me text, where is the picture", "screen"},
+		// These two are asked ABOUT THE PICTURE rather than about the screen, so
+		// the making page is the right answer and says the same thing: the image
+		// draws itself under the row, and the path it names is whole.
+		{"can I see the picture you made without opening the row",
+			"making-pictures-audio-and-video"},
+		{"how do I find the file for the image you generated", "making-pictures-audio-and-video"},
 	}
 	for _, ask := range asked {
 		found := Chat().Search(ask.question, DefaultResults)

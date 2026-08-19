@@ -127,7 +127,11 @@ var settingReaders = map[string]string{
 	KeyAttribution:    "Attribution",
 	KeyLinearMode:     "LinearModeAt",
 	KeyRailState:      "RailStateAt",
-	KeyNerdFont:       "NerdFontChosenAt",
+	// The v3 task column names its own accessor, which the surface reads at boot
+	// and writes back through SaveTaskColumn every time ctrl+g moves the column
+	// (internal/tui3's task.go).
+	KeyTaskColumn: "TaskColumnAt",
+	KeyNerdFont:   "NerdFontChosenAt",
 	// The two surface rows name their own KEY, because that is now what the
 	// far side touches: they resolve through the project layer
 	// (ProjectBoolAt), which takes the row by name and calls
@@ -175,6 +179,11 @@ var settingReaders = map[string]string{
 	// the list ever reaches a request.
 	KeyModelFallbacks: "ParseModelFallbacks",
 	KeyTaskAudit:      "TaskAuditEnabledAt",
+	// The starting-a-task row names its own accessor, which the v3 surface calls
+	// at the moment `/task` is typed rather than at boot (internal/tui3's
+	// taskcommand.go): the row decides what one command does, so it is read when
+	// the command is run and never resolved into a session field.
+	KeyTaskStart: "TaskStartAt",
 	KeyMemoryEnabled:  "MemoryEnabledAt",
 	// The task countdown names the field it becomes on the far side —
 	// session.Config's TaskAutoApproveSeconds, which task.go reads when it puts

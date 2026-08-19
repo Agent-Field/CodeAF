@@ -3,8 +3,10 @@
 ## What a task is
 
 A task is one self-contained piece of work handed off to run on its own while the
-conversation carries on. It works from a written brief alone — it never sees the
-conversation — in its own copy of the repository, and it reports back when it lands.
+conversation carries on. It works in its own copy of the repository and reports back when
+it lands. It never sees the conversation: what it reads is one written brief — your own
+message, word for word, then the work, what to produce and what done means. How that is
+assembled is on the *how tasks run* page, under *What the task actually reads*.
 
 You can ask for the work in words, and the model grooms it and calls its `propose_task`
 tool. You then get a card asking whether the work should go. The
@@ -16,11 +18,15 @@ You can also start one directly with `/task <brief>`. That form asks a small siz
 two-row chooser with `adaptive` recommended and `single` below it; the adaptive row shows
 the proposed parts and planner model. Arrow keys move and enter starts the chosen shape.
 Esc means “just do it” and starts single rather than cancelling the work. A no, timeout,
-or unreadable answer starts single in silence after `sizing it up…` disappears.
+or unreadable answer starts single in silence after `sizing it up…` disappears. Whether
+you are asked at all is the `starting a task` setting, below.
 
 `/task solo <brief>` skips the judge and starts single. `/task adaptive <brief>` also skips
-the judge and starts the planner run. These direct forms use the brief exactly as the work
-request, so include the relevant files, constraints, and checks.
+the judge and starts the planner run.
+
+**Every `/task` has its brief shaped before the work starts.** Your words are kept word for
+word and a fuller brief is written around them — the constraints this kind of work needs,
+what was decided on your behalf, and what done means. It is the next section.
 
 Every task carries a title, a short summary, the brief, and a done-condition — the command
 that must pass, the behaviour that must hold, the output that must appear. The brief and
@@ -40,6 +46,73 @@ of work has it in full.
 
 A task can also break its own brief into smaller tasks when it finds independent parts in
 it, and those are drawn as a family under it — see *When a task splits its own work*.
+
+## Why my task's brief is longer than what I typed — the brief is shaped
+
+A task you start with `/task` does not go out as the sentence you typed. Between the
+command and the work, one model call reads your words and writes the brief the worker is
+actually given: your request quoted word for word, then the things a worker alone with the
+job needs settled — what kind of work this is, who the output is for and what makes it good
+to them, the ways this particular kind of work goes wrong and the conditions that forbid
+them, anything ambiguous decided one way with the assumption stated. It also writes a
+separate done-condition that somebody other than the worker could check.
+
+So the brief in the task's room really is longer than what you typed, and **the room is
+showing you the truth** — that is the brief the worker read. Nothing shorter was sent and
+nothing was kept back.
+
+`shaping the brief…` is the note on screen while that call runs. It waits up to 25 seconds.
+
+**If shaping cannot run, your words go as-is.** No model resolved for it, a timeout, an
+answer that was not readable — the task starts with exactly your sentence and the plain
+done-condition `Complete the brief and report the result and checks run.`, which is what
+`/task` did before shaping existed. It is never a reason for your task to be refused, held
+up, or lost.
+
+The call is billed the way aforge's other calls-you-did-not-type are: to the session, not to
+a turn. It runs on the `shaper` role, which follows the careful-work model.
+
+## Does aforge change my task, or rewrite what I asked for?
+
+No. The shaping pass adds around your words; it never replaces them.
+
+Your sentence is carried separately from anything a model wrote, under the heading
+`WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS`, followed by the line *“This is the message
+this work came out of. Where anything below reads differently from it, their words are what
+was asked for.”* That is a rule the worker reads: where the shaped brief and your sentence
+disagree, yours wins. So a shaper that overreached is overruled by the document itself.
+
+Two more things stay yours. **The title on the roster is made from the words you typed**, not
+from the shaped brief — the row reads as the thing you asked for. And the short summary
+beside it is the first line of what you typed.
+
+What shaping is allowed to do is settle what you left open — which file, which format, how
+long, which of two readings — and it must say in the brief that it decided, so you can see
+it in the room. What it is told not to do is invent scope you did not ask for.
+
+The same guidance reaches briefs the conversation model writes with `propose_task`, but as
+part of that tool rather than as a second call: it already has the whole conversation, so
+nothing needs to be re-read for it.
+
+## Stopping the adaptive-or-single question — making adaptive or single the default
+
+The chooser that asks “this parallelizes — how should it run?” can be answered once and for
+all. `/settings` → Session → **starting a task**, or the `task.start` row:
+
+- **ask** — the default, and today's behaviour: the sizing call runs, and the two-row
+  chooser opens only when it finds parts that could run at the same time.
+- **adaptive** — never asks. Parts found, the adaptive run starts straight away; nothing to
+  split, one worker starts, because a planner over work with no independent parts in it is
+  an extra model deciding nothing.
+- **single** — never asks and never goes adaptive. The sizing call is not made at all, since
+  its only purpose was the question you have already answered.
+
+`/task solo <brief>` and `/task adaptive <brief>` always mean what they say, whatever the row
+is set to.
+
+**Choosing `single` closes nothing off.** A single worker can still break its own brief into
+smaller tasks when it finds genuinely independent parts in it — see *When a task splits its
+own work* — so the setting decides who plans, not whether work can ever run in pieces.
 
 ## The card that asks whether to run the work
 
@@ -257,6 +330,8 @@ The strip is one row under the pinned header — a tab bar of doors into live wo
 It appears only while something is running, and goes away the moment nothing is. It needs a
 frame at least 24 columns wide and 6 rows tall. It is the narrow-frame door: wherever the
 roster stands — as the right column or open over the whole frame — the strip stands down.
+A column you closed with `ctrl+g` is a roster standing down, so the strip comes back and
+running work stays reachable.
 
 Order: running first, then work that needs you, then idle. Parked and finished work never
 appear on it — the strip is the live set, the roster is the history.
@@ -280,8 +355,9 @@ On a frame too narrow for one whole chip plus its `+N`, the first chip is drawn 
 ## The roster: the column of all the work
 
 The roster is a column on the right holding every task this session has admitted, not just
-the live ones. It is the session's record of its own work. Nothing puts it away except
-`/new`.
+the live ones. It is the session's record of its own work. Work finishing never puts it
+away. Two things do: `/new`, which takes the tasks with it, and `ctrl+g`, which closes the
+column and leaves the work exactly where it was. The bottom line of the column says so.
 
 It appears as soon as one task exists, at a frame width of 100 columns or more — 30 columns
 wide from 120 up, a slim 24 columns from 100 to 119. Under 100 columns there is no column,
@@ -304,6 +380,15 @@ end — and the id stands down when the name would be left under 12 cells. Under
 most two more: what it is doing, what is holding it, what it waits on, or how its branch
 came home. `conflicted · task/fix-nil` in the bad hue is the one loud row on the column.
 
+**The row of the room you are standing in is picked out.** Walk into a task — from the
+roster, a strip chip, a spawn card or a `task 7` link — and that task's row in the column
+takes a colour band across its whole width, every line of it, with its title in the accent
+and bold. It is the same mark the strip puts on the chip of the room you are in, so the two
+lists of the work never disagree about which door you went through. It follows you: opening
+another task's room moves it, and `esc` back to the conversation clears it. With no room
+open no row is marked at all. On a terminal with no background colours the accent title is
+what is left of it.
+
 There is no subtitle here. The column is a presence list; the proposal card and the landing
 card both carry the sentence.
 
@@ -311,6 +396,37 @@ At the bottom, up to three dim lines: `Σ $1.42 · 312k tok`, `1 need you · 3 r
 `148 parked · 12 done`. The `Σ` is the whole session's spend — it already contains every
 task in the column plus the conversation, so there is deliberately no per-task share. Zero
 figures are left out entirely, because zero means "nobody published a price", never "free".
+
+Under those, always, one more dim line: `ctrl+g — hide`. It is the column's own door, and
+it is a button as well as a key — click that line and the column goes away.
+
+## Hiding the task column: closing the right sidebar, panel or task bar
+
+`ctrl+g` closes the column of tasks on the right and gives its 30 columns back to the
+conversation. Press it again and the column comes back with the current state of the
+work in it, including anything that started or finished while it was gone — nothing here
+is a snapshot; the column is redrawn from the tasks every frame. The `ctrl+g — hide` line
+at the bottom of the column is the same door for the pointer: click it and it closes.
+
+The choice is remembered. It is written to your profile the moment the column moves, as
+the `ui.task_column` setting, which also appears in the settings panel (`ctrl+,`) on the
+Display tab as **task column**. A change made in the panel lands the next time aforge
+starts; `ctrl+g` acts immediately and wins for this session.
+
+With the column closed, work is still visible:
+
+- Anything **running** draws the task strip along the top — `⠙ Fix nil-map · ◆ Auth tests
+  · +2` — because the strip stands up wherever the roster stands down. Click a chip for
+  that task's room, or the `+N` for the whole roster.
+- The legend above the message box carries `ctrl+g tasks` in its hint slot for as long as
+  this session has any tasks at all, running or not. A session that has run nothing says
+  nothing there — there is no column to miss.
+- `ctrl+t` still works: asking for the roster brings the column back and gives it the
+  keyboard in one press.
+
+`ctrl+g` does nothing, and is not swallowed, when there is no roster on the frame to
+close: no tasks at all, or a frame under 100 columns where nothing has raised the
+roster over the body.
 
 ## Using the roster from the keyboard
 
@@ -325,10 +441,12 @@ rest state, so a person who starts typing is typing, not navigating.
 | `enter` | open the task's room |
 | `w` | toggle the wider 46-column tree |
 | `esc` or `ctrl+t` | give the keyboard back |
+| `ctrl+g` | close the column altogether, or bring it back — this one works whether or not the roster holds the keyboard |
 
 The legend hint while it holds the keyboard is `↑↓ move · →← fold · enter open · esc`.
-When depth has forced a title to be cut, the footer adds `w · widen for the tree`; that
-hint is clickable as well as available from the keyboard.
+When depth has forced a title to be cut, the footer adds `w · click seam — widen` (or
+`w · click seam — narrow` once it is wide); that hint is clickable as well as available
+from the keyboard, and so is the `ctrl+g — hide` line under it.
 
 Every other key is given back. The roster cannot take the keyboard while the exit
 confirmation, a permission question, a task proposal, or any overlay is up, and with no
@@ -366,6 +484,10 @@ Pressing the same door again is always the way back out.
 Ways out: `esc` leaves and restores the conversation's scroll exactly. `←` over an empty box
 steps back one level. `←` twice within 600 ms goes home — out of everything, at the live
 edge, nothing selected. `/new` closes any open room, because a task dies with its session.
+With the pointer, the room's own pinned header is the way back: it reads `esc/← main` and
+the whole row answers to a press. **Clicking inside the page does not leave it** — a press
+on a blank row, or on prose with nothing behind it, does nothing at all, the same as it
+does in the conversation.
 
 What refuses to open: a proposal whose task has had no update yet (the id is real, but a
 room on it would be an empty page with nothing coming), and a queued task by way of `→`
@@ -377,8 +499,11 @@ writes one note in the conversation: `room unavailable — this session has no t
 | | the main thread | inside a room |
 | --- | --- | --- |
 | what the body draws | the conversation | that task's transcript |
-| what `enter` does | sends to the model | **steers the task** |
-| box placeholder | the draft prompt | `Steer <title>… (esc: main)` |
+| its row on the roster | nothing is marked | that task's row wears a colour band and an accent title |
+| clicking empty space | nothing | nothing — leaving is `esc`, `←`, or the pinned header |
+| what `enter` does | sends to the model, or holds the message above the box while a turn is running | **steers the task** — never held |
+| the box's own line | the bare `› ` | a tinted segment naming the task, in its state's hue, then `› ` |
+| box placeholder | the draft prompt | `Steer this task… (esc: main)`, or `Steer <title>… (esc: main)` where the frame is too narrow for the segment |
 | pinned top line | none | the focus header, and the family lines under it |
 | legend word | the workspace path and branch | `room · esc/←← main` |
 | the model on the status row | the conversation's model | `task <the task's model>` |
@@ -393,6 +518,14 @@ The focus header is an accent line pinned at the top:
 the state glyph, a trail that always names `main` as the root, then the state word, the
 clock, the spend and the model — each dropped when nobody published it. It is pinned
 because a fact that scrolls away is only true at the top of the page.
+
+**The header is a button as well as a line.** Press it anywhere along its width and you
+are back in the conversation, which is the pointer's version of the `esc/← main` it
+prints. The one exception is the `✕` at its right end, which asks to stop the work
+instead. Every kind of room draws this header — a task's page, a sub-harness design, an
+adaptive run's graph, a run node's transcript — so the way out is always named and always
+pressable. It is dropped only on a terminal too short or narrower than 12 columns to draw
+it, where `esc` still leaves.
 
 Under it, dim and indented, come up to three more pinned lines saying where this task sits
 in its family — see *Who started this task, and what it handed out*.
@@ -413,6 +546,32 @@ the conversation was scrolled up loses that scroll.
 The task's elapsed clock freezes while you stand in its room. That number exists to ask
 whether you should go and look; being there is the answer. Nothing is stopped, only
 unreported, and it thaws at the value it would have had when you leave.
+
+## Seeing the whole conversation inside a task — a room never folds its work away
+
+**A room shows everything the task said and did, and it stays shown.** Out in the main
+thread a finished turn's machinery collapses into one chip —
+`▸ worked 47s · thought 6s · 6 tool calls · ctrl+e` — so the page reads back as the question
+you asked and the answer you got. **That never happens inside a room.** A task's whole life
+is one long stretch of work ending in a report, so a chip there would hide the entire page
+and leave you the report you already had. There is no `▸ worked` line in a room, nothing to
+click open, and the `ui.work` setting does not reach one.
+
+So a room you walk into — a running task, a task that has landed, a piece of a recursive
+task, a harness being designed — reads top to bottom as the discussion it was: the
+instruction it was given, its prose between calls, its thinking blocks, every tool call with
+its arguments and result, anything you steered into it, and the report at the end. A landed
+task's room is the whole transcript, not the summary.
+
+Two bounded things do still hold something back, and both name themselves and open:
+
+- a **thinking block** shows three lines until you press `ctrl+e` or click it —
+  `⠿ thought for 6s · 148 tok · ctrl+e`;
+- a run of **more than three tool calls in a row** shows the last three above a line reading
+  `9 earlier tool calls · ctrl+o`; `ctrl+o`, or a click on that line, unfolds the run.
+
+Inside a room `ctrl+e` over an empty box opens the thinking block and nothing else, because
+there is no work chip for it to mean instead.
 
 ## Who started this task, and what it handed out
 
@@ -675,8 +834,9 @@ turn it was in the middle of ends, and the task settles as `stopped`. A task sti
 is dropped instantly, reads `stopped before it started`, and anything waiting on it is
 told its prerequisite will never finish. Either way:
 
-- **its branch is kept.** Nothing it wrote is thrown away; the landing card names the
-  branch, exactly as it does for every other early ending.
+- **its branch is kept, with its work on it.** Nothing it wrote is thrown away: whatever
+  reached disk is committed onto the branch, and the landing card names the branch and the
+  files, exactly as it does for every other early ending.
 - **what it spent is what it spent.** The figure freezes where it was.
 - **it is not a failure.** The roster draws `⊘` rather than the failure cross, the room's
   header reads `stopped`, and the model is told the task was *stopped* — so nobody goes
@@ -712,7 +872,10 @@ the work again with your instruction; `m` leaves the room and sends your words t
 unwrapped; `esc` cancels and leaves your words exactly where they are in the box.
 
 Whenever a task stops for any reason it wears `stopped — branch kept` and its branch name.
-Nothing is thrown away: on every ending except a clean merge the branch is kept and named.
+Nothing is thrown away: on every ending except a clean merge the branch is kept and named,
+and what the task made is committed onto that branch before it lands — so the files it
+produced are listed under `changed:` and `git merge task/…` brings them over. The merge is
+never done for you, because only work that was checked reaches your branch.
 
 ## Answering a task that needs your look
 

@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/tui2/tokens"
 )
@@ -177,6 +178,13 @@ func newTestApp(agent Agent) *app {
 	// and a suite run at the machine would step one. The cadence has tests of its
 	// own that state both.
 	a.remote = false
+	// AND IT PINS THE TASK COLUMN, for the fourth time for the same reason.
+	// [newApp] reads the profile to decide whether the column stands (task.go's
+	// ui.task_column), so a developer who pressed ctrl+g in their own aforge would
+	// run a suite with no rail in it — and every rail test would fail on their
+	// machine and nowhere else. The posture has tests of its own that set the
+	// profile directory they read from.
+	a.railAway = false
 	a.entries = nil // drop the opening hint so tests read their own entries
 	// The welcome box opens on an empty conversation, which every test here is
 	// (welcome.go). It has its own tests; the ones that predate it read the
@@ -268,6 +276,12 @@ func plainRows(a *app) []string {
 	return out
 }
 
+// unindented drops THE INDENT LAW's two-column gutter (render.go): flush-left
+// is what was said to the person, two columns in is what was done on their
+// behalf. A test about spacing or about the rail's own markers wants the line's
+// shape, not the hierarchy the gutter carries, so it strips it first.
+func unindented(r string) string { return strings.TrimPrefix(r, "  ") }
+
 // clickHit drives a left click on the first VISIBLE row of a kind. Visible is
 // the point: a click carries a screen row, and a transcript taller than the
 // window has a screen row that is not its row-list index.
@@ -318,15 +332,27 @@ func TestATurnStreamsTextToolsAndSettles(t *testing.T) {
 
 	runTurn(t, a, agent, "what does bar.go do?")
 
+	// THE WORKFOLD (workfold.go): a turn that settles on a real answer collapses
+	// the machinery it took to get there into one chip, so the page reads back
+	// as the exchange it was — the question, and the sentence it was answered
+	// with. The read call is not gone, it is behind the key the chip names.
 	got := plain(frame(a))
-	for _, want := range []string{"› what does bar.go do?", "╰─▶ read foo/bar.go", "it parses.", "idle"} {
+	for _, want := range []string{"› what does bar.go do?", "▸ worked", "1 tool call · ctrl+e", "it parses.", "idle"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("frame is missing %q:\n%s", want, got)
 		}
 	}
+	if strings.Contains(got, "read foo/bar.go") {
+		t.Fatalf("a settled turn still shows its machinery:\n%s", got)
+	}
 	// NO SUCCESS GLYPH, EVER (D11). A quiet line is a success.
 	if strings.Contains(got, "✓") {
 		t.Fatalf("a settled call drew a success glyph:\n%s", got)
+	}
+	// And ctrl+e puts it back, drawn on the rail and indented under the chip.
+	drive(t, a, key("ctrl+e"))
+	if opened := plain(frame(a)); !strings.Contains(opened, "  ╰─▶ read foo/bar.go") {
+		t.Fatalf("ctrl+e did not open the turn's work:\n%s", opened)
 	}
 	if agent.sent[0] != "what does bar.go do?" {
 		t.Fatalf("submitted %q", agent.sent[0])
@@ -360,6 +386,14 @@ func TestCompactionDrawsADivider(t *testing.T) {
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "keep going")
 
+	// The compaction mark is machinery, so a turn that settles on an answer
+	// tucks it away with the rest of the work (workfold.go). Nobody wants to be
+	// told the context was squeezed while they are reading the reply; they want
+	// it when they go looking for why, which is what ctrl+e is for.
+	if folded := plain(frame(a)); strings.Contains(folded, "compacted from") {
+		t.Fatalf("a settled turn still shows the compaction mark:\n%s", folded)
+	}
+	drive(t, a, key("ctrl+e"))
 	got := plain(frame(a))
 	if !strings.Contains(got, "⚭ compacted from ~84k tokens") || !strings.Contains(got, "──") {
 		t.Fatalf("the compaction divider is missing:\n%s", got)
@@ -373,6 +407,12 @@ func TestCompactionDrawsADivider(t *testing.T) {
 // The fixture walks every rule in one transcript: user → cluster (no blank, the
 // calls ARE the reply starting) → text (one blank) → cluster (one blank) →
 // text (one blank) → user (one blank).
+//
+// It is read with the work OPEN, because that is the only state in which the
+// law has anything to govern: folded, a settled turn is a chip and an answer
+// (workfold.go), and the rules about what sits either side of a cluster would
+// never be exercised. ui.work=open is a real setting a person can choose, so
+// this is the surface they get, not a test-only rig.
 func TestSpacingLaw(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		toolBegin("read", "foo/bar.go"),
@@ -391,6 +431,11 @@ func TestSpacingLaw(t *testing.T) {
 	a := newTestApp(agent)
 	runTurn(t, a, agent, "what does bar.go do?")
 	runTurn(t, a, agent, "and then?")
+	// The posture is set AFTER the turns because [app.settle] re-reads it from
+	// the profile at every turn end, so a value planted beforehand is gone by
+	// the time there is a transcript to measure.
+	a.workMode = config.WorkOpen
+	a.touch()
 
 	list := plainRows(a)
 	if len(list) == 0 {
@@ -398,23 +443,27 @@ func TestSpacingLaw(t *testing.T) {
 	}
 	shape := make([]string, 0, len(list))
 	for _, r := range list {
+		bare := unindented(r)
 		switch {
 		case strings.TrimSpace(r) == "":
 			shape = append(shape, "_")
-		case strings.HasPrefix(r, "›"):
+		case strings.HasPrefix(bare, "›"):
 			shape = append(shape, "u")
-		case strings.HasPrefix(r, "├─▶") || strings.HasPrefix(r, "╰─▶"):
+		case strings.HasPrefix(bare, "▸ worked"):
+			shape = append(shape, "w")
+		case strings.HasPrefix(bare, "├─▶") || strings.HasPrefix(bare, "╰─▶"):
 			shape = append(shape, "t")
 		default:
 			shape = append(shape, "x")
 		}
 	}
 	got := strings.Join(collapse(shape), "")
-	// u t _ x _ t _ x _ u x — a blank before each user message, one on each side
-	// of a cluster that sits between two blocks of text, and nowhere else. The
-	// reply that FOLLOWS a user message takes none: the person's message already
-	// brought the boundary blank with it.
-	if want := "ut_x_t_x_ux"; got != want {
+	// u w t _ x _ t _ x _ u x — the chip that heads the turn's work, then a blank
+	// before each user message, one on each side of a cluster that sits between
+	// two blocks of text, and nowhere else. The reply that FOLLOWS a user message
+	// takes none: the person's message already brought the boundary blank with
+	// it, and the chip rides at the top of the work rather than apart from it.
+	if want := "uwt_x_t_x_ux"; got != want {
 		t.Fatalf("layout shape is %q, want %q:\n%s", got, want, strings.Join(list, "\n"))
 	}
 	for i, r := range list {
@@ -445,7 +494,8 @@ func collapse(shape []string) []string {
 
 // The one-blank rule holds around a cluster that is the WHOLE turn: a person
 // who asks for a build gets the call and then their own next message, with one
-// blank between them and no gap above.
+// blank between them and no gap above. A turn with no trailing answer never
+// folds (workfold.go), so the call is on the page to be measured.
 func TestAClusterThatIsTheWholeTurnTakesNoBlankAboveIt(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		toolBegin("bash", "go build ./..."),
@@ -457,7 +507,7 @@ func TestAClusterThatIsTheWholeTurnTakesNoBlankAboveIt(t *testing.T) {
 
 	list := plainRows(a)
 	for i, r := range list {
-		if !strings.HasPrefix(r, "╰─▶") {
+		if !strings.HasPrefix(unindented(r), "╰─▶") {
 			continue
 		}
 		if i == 0 || strings.TrimSpace(list[i-1]) == "" {
@@ -482,7 +532,7 @@ func TestToolLinesAreOneUnbrokenCluster(t *testing.T) {
 	list := plainRows(a)
 	first, last := -1, -1
 	for i, r := range list {
-		if strings.HasPrefix(r, "├─▶") || strings.HasPrefix(r, "╰─▶") {
+		if bare := unindented(r); strings.HasPrefix(bare, "├─▶") || strings.HasPrefix(bare, "╰─▶") {
 			if first < 0 {
 				first = i
 			}
@@ -496,9 +546,14 @@ func TestToolLinesAreOneUnbrokenCluster(t *testing.T) {
 		if strings.TrimSpace(list[i]) == "" {
 			t.Fatalf("a blank landed inside the tool cluster:\n%s", strings.Join(list, "\n"))
 		}
+		// THE INDENT LAW: a call is work done on the person's behalf, so it sits
+		// two columns in and never flush with what was said to them.
+		if !strings.HasPrefix(list[i], "  ") {
+			t.Fatalf("a tool line lost its gutter:\n%s", strings.Join(list, "\n"))
+		}
 	}
 	// The rail closes on the last call and tees on every one above it.
-	if !strings.HasPrefix(list[first], "├─▶") || !strings.HasPrefix(list[last], "╰─▶") {
+	if !strings.HasPrefix(unindented(list[first]), "├─▶") || !strings.HasPrefix(unindented(list[last]), "╰─▶") {
 		t.Fatalf("the cluster's markers are not ├─▶ … ╰─▶:\n%s", strings.Join(list, "\n"))
 	}
 }
@@ -911,7 +966,10 @@ func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
 	}
 }
 
-func TestSteeringDoesNotAbandonTheLiveStream(t *testing.T) {
+// A SECOND ENTER NEVER TOUCHES THE STREAM IT WAS TYPED AT. The message waits
+// above the box (park.go) and the answer keeps coming on the same channel, at
+// the same generation, into the same working state.
+func TestASecondEnterDoesNotAbandonTheLiveStream(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "first"),
 	}}}
@@ -921,13 +979,16 @@ func TestSteeringDoesNotAbandonTheLiveStream(t *testing.T) {
 
 	typeLine(t, a, "two")
 	if a.gen != generation || a.stream != stream {
-		t.Fatal("a steering submit replaced the stream it was steering")
+		t.Fatal("a second enter replaced the stream that was still running")
 	}
 	if a.state != stateWorking {
 		t.Fatalf("state is %v", a.state)
 	}
-	if len(agent.sent) != 2 {
-		t.Fatalf("the steering message was not sent: %v", agent.sent)
+	if len(agent.sent) != 1 {
+		t.Fatalf("the second message was sent into the running turn: %v", agent.sent)
+	}
+	if len(a.parks) != 1 || a.parks[0].text != "two" {
+		t.Fatalf("the second message was not held for the answer: %+v", a.parks)
 	}
 }
 

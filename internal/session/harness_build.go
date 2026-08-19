@@ -61,7 +61,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
 	"github.com/Agent-Field/aforge-v2/internal/roles"
 	"github.com/Agent-Field/aforge-v2/internal/store"
@@ -71,13 +70,26 @@ import (
 )
 
 const (
-	// harnessDesignWindow bounds one whole design job: both model calls AND the
-	// wait for an answer to the card. It is long because the second half is a
-	// person — a card raised while somebody is at lunch is still worth answering
-	// when they come back — and it is bounded at all because a goroutine parked
-	// on a question nobody will ever answer is a goroutine parked forever. The
-	// design node takes it off its own deadline (harness_task.go), which is an
-	// hour and is the wrong shape of bound for a question.
+	// harnessDesignWindow bounds THE WRITING OF ONE PAGE — the design turn, the
+	// retries under it, and the review pass — and nothing after that. It is
+	// generous because a long guide read by a reasoning model is slow, and it is
+	// bounded at all because a model call that never answers would otherwise hold
+	// the node open forever.
+	//
+	// IT DOES NOT COVER THE CARD, and it used to, which was a bug with a person on
+	// the other end of it: a design that wrote its page in ten minutes and then
+	// waited for somebody to come back from lunch was collected at thirty minutes
+	// and reported as having run out of time with nothing saved, while the page sat
+	// finished in its own room. A card is a question on somebody's screen, and the
+	// only things that may end one are their answer, their ✕, and the process
+	// closing (harness_task.go's designHarnessNode).
+	//
+	// AND IT IS SPENT ONCE PER PAGE AND NOT ONCE PER JOB. A design is a
+	// conversation — the person says what to change and the page is written again
+	// — so every rewrite gets this window whole (harness_task.go's designRun.round
+	// makes the argument). One clock over the whole job would expire in the middle
+	// of somebody's third round, which is to say it would punish the designs that
+	// were being taken seriously.
 	harnessDesignWindow = 30 * time.Minute
 
 	// harnessDesignRetries is how many times a refused design is handed its own
@@ -239,18 +251,56 @@ func (a *Agent) HarnessDesigns() <-chan Event {
 
 // ── the card ────────────────────────────────────────────────────────────────
 
-// askHarnessDesign raises the preview card and waits for the answer.
+// harnessWord is what ends one wait on a design card, and EXACTLY ONE of its
+// halves is filled.
 //
-// It is [Agent.askHarness] with one difference and it is the whole difference of
-// this file: the wait is on the DESIGN's context rather than a turn's, because
-// there is no turn. The id was minted when the job started, so the question a
-// surface answers is the job a person watched begin.
-func (a *Agent) askHarnessDesign(ctx context.Context, id uint64, page subharness.Harness, model string) (harnessAnswer, error) {
+// A card used to have two answers, which is why the wait used to be a
+// [harnessAnswer] and nothing else. It has three now: save it, drop it, and the
+// one a person reaches for most — say what is wrong with it. The third is not a
+// yes and it is emphatically not a no, and a wait that flattened it into either
+// would either save a page nobody approved or throw away a design somebody was
+// in the middle of working on.
+type harnessWord struct {
+	// answer is the person's, through [Agent.ResolveHarness], and it is the only
+	// half that decides anything: run saves the page, and its absence drops it.
+	answer harnessAnswer
+	// change is the person's own words, verbatim, when this wait ended in a
+	// request for the page to be rewritten instead (harness_task.go's
+	// revise_design). Nothing has landed when this is filled — the registry is
+	// untouched and the page in hand is what the next round rewrites.
+	change string
+}
+
+// askHarnessDesign raises the preview card and waits for whatever answers it.
+//
+// It is [Agent.askHarness] with two differences. The wait is on the DESIGN
+// NODE's own context rather than a turn's, because there is no turn; the id was
+// minted when the job started, so the question a surface answers is the job a
+// person watched begin. And it watches a SECOND lane beside the answers — the
+// one the design's own thread asks for a rewrite on ([TaskNode.openRevisions]) —
+// because the room this card is raised into is a place where a person can also
+// just say what they want different.
+//
+// THE CONTEXT IT IS GIVEN CARRIES NO CLOCK, and the caller is written to keep it
+// that way (harness_task.go's designHarnessNode). A deadline here is a deadline
+// on a person reading a card, and when it fired it took the answer channel with
+// it: the card stayed drawn in the feed, its `enter` did nothing, and the page —
+// written, valid, minutes of model time — was gone. The wait ends when they
+// answer, when they ask for a change, when they stop the node, or when the
+// session closes.
+//
+// WHICHEVER ARRIVES FIRST WINS, AND THE OTHER FINDS NOTHING. Both doors take the
+// question out of [Agent.harnessAsks] before they act on it — ResolveHarness
+// deletes it under the lock, and the revision branch below calls
+// [Agent.forgetHarness] at the instant it takes the words — so a person pressing
+// save while their thread is calling revise_design gets exactly one of the two,
+// and the loser is dropped the way every late answer on this lane is dropped.
+func (a *Agent) askHarnessDesign(ctx context.Context, id uint64, page subharness.Harness, model string, changes <-chan string) (harnessWord, error) {
 	answers := make(chan harnessAnswer, 1)
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
-		return harnessAnswer{}, errAgentClosed
+		return harnessWord{}, errAgentClosed
 	}
 	if a.harnessAsks == nil {
 		a.harnessAsks = make(map[uint64]chan harnessAnswer, 1)
@@ -272,10 +322,21 @@ func (a *Agent) askHarnessDesign(ctx context.Context, id uint64, page subharness
 
 	select {
 	case answer := <-answers:
-		return answer, nil
+		return harnessWord{answer: answer}, nil
+	case change := <-changes:
+		// THE CARD COMES DOWN IN THE SAME BREATH THE CHANGE IS TAKEN. The page it
+		// is about is about to stop existing, so a card left standing would be a
+		// save key over a draft that has been replaced — and the answer it took
+		// would write the wrong page into the registry. The question is forgotten
+		// first and the withdrawal is announced second, in that order, so that a
+		// surface acting on the event can never race an answer back in through a
+		// door that is already shut.
+		a.forgetHarness(id)
+		a.emitHarness(Event{Kind: EventHarnessDesignRevising, ID: id, Text: change, Model: model})
+		return harnessWord{change: change}, nil
 	case <-ctx.Done():
 		a.forgetHarness(id)
-		return harnessAnswer{}, ctx.Err()
+		return harnessWord{}, ctx.Err()
 	}
 }
 
@@ -370,24 +431,135 @@ type harnessRevision struct {
 	Justification string   `json:"justification,omitempty"`
 }
 
-// designPage is the two stages: a design held to the law, then one review pass
-// that may improve it.
+// harnessAccepted is a page that passed the whole law, with the two things a
+// page has nowhere to keep: the cue vocabulary that reaches it, and the
+// designer's own account of why it is shaped this way.
+//
+// IT IS CARRIED RATHER THAN UNPACKED AND DROPPED, and that is what changed when
+// a design stopped being over at the first card. The person may ask for the page
+// to be CHANGED, and a rewrite is handed the envelope the designer last wrote as
+// the thing it is rewriting ([Agent.revisePage]) — so a justification thrown away
+// here would be a designer shown a page it has to reconstruct its own reasoning
+// about before it can change one step of it.
+type harnessAccepted struct {
+	page          subharness.Harness
+	cues          []string
+	justification string
+}
+
+// designPage is the first draft, in the shape this file has always answered
+// with. It is [Agent.draftPage] unpacked, and it exists because the two things a
+// caller wants out of a design are the page and the cues.
+func (a *Agent) designPage(ctx context.Context, goal, model string, seat designSeat) (subharness.Harness, []string, error) {
+	accepted, err := a.draftPage(ctx, goal, model, seat)
+	return accepted.page, accepted.cues, err
+}
+
+// draftPage writes a harness for a goal, from nothing.
+func (a *Agent) draftPage(ctx context.Context, goal, model string, seat designSeat) (harnessAccepted, error) {
+	designer, reviewer, err := a.harnessBriefs()
+	if err != nil {
+		return harnessAccepted{}, err
+	}
+	return a.writeHarness(ctx, harnessOpening(designer, goal), reviewer, goal, model, seat)
+}
+
+// harnessOpening is the two messages every design starts from: the guide, and
+// the goal. It is a function because a REWRITE starts from the same two and then
+// says what happened next ([Agent.revisePage]) — a rewrite whose history began at
+// the change would be a designer asked to alter a page it was never given the
+// brief for.
+func harnessOpening(designer, goal string) []ai.Message {
+	return []ai.Message{
+		textMessage("system", designer),
+		textMessage("user", "THE GOAL:\n\n"+goal+"\n\nDesign the sub-harness for it."),
+	}
+}
+
+// revisePage writes the harness AGAIN, with one change in it, and holds the
+// result to exactly the law the draft passed.
+//
+// THE HISTORY IS THE STORY OF WHAT ACTUALLY HAPPENED, which is why it is built
+// out of the same opening: the guide, the goal, the envelope the designer wrote,
+// and then the person asking for something different. A designer reading that is
+// in the position it is really in — it wrote a page, somebody read it, and they
+// want one thing about it changed — rather than being handed a page out of
+// nowhere and told to edit it.
+//
+// IT IS NOT A PATCH AND THE ASK SAYS SO. The review pass patches, because it is
+// a critic working over a draft nobody has read; a person's change is a change to
+// the harness, and what comes back is the whole envelope again, held to
+// [Agent.acceptHarness] and the retry ladder like any other design. That is the
+// whole reason this and [Agent.draftPage] end in the same function.
+func (a *Agent) revisePage(ctx context.Context, goal, model string, standing harnessAccepted, change string, seat designSeat) (harnessAccepted, error) {
+	designer, reviewer, err := a.harnessBriefs()
+	if err != nil {
+		return harnessAccepted{}, err
+	}
+	written, err := harnessEnvelope(standing)
+	if err != nil {
+		return harnessAccepted{}, err
+	}
+	history := append(harnessOpening(designer, goal),
+		textMessage("assistant", written),
+		textMessage("user", harnessRevisionAsk(change)))
+	return a.writeHarness(ctx, history, reviewer, goal, model, seat)
+}
+
+// harnessEnvelope is a page that already passed, written back out in the shape
+// the designer answers in — so that the assistant turn in a rewrite's history is
+// a reply the designer could have sent, rather than a paraphrase of one.
+func harnessEnvelope(accepted harnessAccepted) (string, error) {
+	page, err := subharness.Encode(accepted.page)
+	if err != nil {
+		return "", err
+	}
+	written, err := json.Marshal(harnessDesign{
+		Cues:          accepted.cues,
+		Justification: accepted.justification,
+		Harness:       json.RawMessage(page),
+	})
+	if err != nil {
+		return "", err
+	}
+	return string(written), nil
+}
+
+// harnessRevisionAsk is the person's change, put to the designer.
+//
+// THEIR WORDS GO ACROSS VERBATIM AND ARE NOT SUMMARISED. What somebody says
+// about a page they have just read is the most specific thing anybody will ever
+// say about this design, and a thread that rewrote it into its own vocabulary
+// first would be handing the designer its own reading in place of the request.
+//
+// AND THE STANDING LAW IS RESTATED, because it is the one thing about this turn
+// that differs from the review pass: what comes back REPLACES the page above it,
+// so it has to be the whole envelope and not a patch.
+func harnessRevisionAsk(change string) string {
+	return "The person read that harness and asked for this change, in their own words:\n\n" + change +
+		"\n\nRewrite the harness so that it does that. Change nothing they did not ask about — the rest of the page is one they have already read and accepted. " +
+		"Reply with the WHOLE ENVELOPE again — one JSON object with the keys cues, justification, derivation, harness — because what you send back REPLACES the page above rather than patching it, and it is held to exactly the same law."
+}
+
+// writeHarness is the two stages every design goes through, whether it is the
+// first draft or the fourth rewrite: a design held to the law, then one review
+// pass that may improve it.
 //
 // THE HISTORY IS KEPT ACROSS ATTEMPTS. A designer shown its own refused page AND
 // the validator's exact sentence is being asked to repair what it wrote; one
 // shown only the error is being asked to guess again.
-func (a *Agent) designPage(ctx context.Context, goal, model string, seat designSeat) (subharness.Harness, []string, error) {
-	designer, reviewer, err := a.harnessBriefs()
-	if err != nil {
-		return subharness.Harness{}, nil, err
-	}
-	history := []ai.Message{
-		textMessage("system", designer),
-		textMessage("user", "THE GOAL:\n\n"+goal+"\n\nDesign the sub-harness for it."),
-	}
+//
+// DRAFT AND REWRITE SHARE THIS FUNCTION AND NOT A COPY OF IT. The gauntlet is
+// the bargain the whole file makes — the strict envelope, the validator, the
+// derivation table, this surface's own lint, three attempts, one review — and a
+// second path for rewrites would be a second answer to "what is a legal page",
+// drifting from this one the first time either was touched. What differs between
+// the two is the history they open with, and that is all that differs.
+func (a *Agent) writeHarness(ctx context.Context, history []ai.Message, reviewer, goal, model string, seat designSeat) (harnessAccepted, error) {
 	var (
 		draft harnessDesign
 		page  subharness.Harness
+		err   error
 	)
 	for tries := 0; ; tries++ {
 		var raw string
@@ -396,7 +568,7 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, seat designS
 			break
 		}
 		if ctx.Err() != nil {
-			return subharness.Harness{}, nil, ctx.Err()
+			return harnessAccepted{}, ctx.Err()
 		}
 		// THE STORY OF A DESIGN THAT TOOK FOUR ATTEMPTS IS THE THREE REFUSALS, and
 		// this is where they are written down — one sentence each, in the words the
@@ -405,7 +577,7 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, seat designS
 		// refusal short would end on a design that simply vanished.
 		seat.noted(harnessRefusedNote(tries+1, err))
 		if tries >= harnessDesignRetries {
-			return subharness.Harness{}, nil, fmt.Errorf("no valid design in %d attempts: %w", tries+1, err)
+			return harnessAccepted{}, fmt.Errorf("no valid design in %d attempts: %w", tries+1, err)
 		}
 		reason := "malformed draft"
 		if strings.Contains(err.Error(), "ran out of completion budget") || strings.Contains(err.Error(), "stopped in the middle") {
@@ -433,10 +605,10 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, seat designS
 	// patch loses its turn and the draft goes forward: the page in hand already
 	// passed the whole law, and refusing it because the improvement failed would
 	// throw away a good design over an optional second opinion.
-	if revised, cues, ok := a.reviewHarnessOnce(ctx, goal, draft, page, reviewer, model, seat); ok {
-		return revised, cues, nil
+	if reviewed, ok := a.reviewHarnessOnce(ctx, goal, draft, page, reviewer, model, seat); ok {
+		return reviewed, nil
 	}
-	return page, draft.Cues, nil
+	return harnessAccepted{page: page, cues: draft.Cues, justification: draft.Justification}, nil
 }
 
 // designHarnessOnce asks for one design and answers with it decoded, the raw
@@ -468,10 +640,10 @@ func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, mod
 //
 // The critic is shown the draft AS JSON rather than as the card, because it is
 // patching a page and the node ids its ops name are on that page.
-func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnessDesign, page subharness.Harness, reviewer, model string, seat designSeat) (subharness.Harness, []string, bool) {
+func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnessDesign, page subharness.Harness, reviewer, model string, seat designSeat) (harnessAccepted, bool) {
 	encoded, err := subharness.Encode(page)
 	if err != nil {
-		return subharness.Harness{}, nil, false
+		return harnessAccepted{}, false
 	}
 	history := []ai.Message{
 		textMessage("system", reviewer),
@@ -495,23 +667,23 @@ func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnes
 	// ([designSeat.noted] says why that matters).
 	data, _, err := a.harnessJSON(ctx, history, model, harnessReviewTokens, harnessProgressCall{seat: seat, goal: goal, phase: "reviewing", attempt: 1, attempts: 1})
 	if err != nil {
-		return subharness.Harness{}, nil, false
+		return harnessAccepted{}, false
 	}
 	var envelope harnessRevision
 	if err := harnessStrict(data, &envelope); err != nil {
 		seat.noted("")
-		return subharness.Harness{}, nil, false
+		return harnessAccepted{}, false
 	}
 	if len(envelope.Ops) == 0 {
 		// "The draft is right" is a real review outcome, and it is cheaper than a
 		// change nobody needed. The cues may still have been rewritten.
 		seat.noted(harnessReviewNote(envelope))
-		return page, harnessCues(draft, envelope), true
+		return harnessAccepted{page: page, cues: harnessCues(draft, envelope), justification: draft.Justification}, true
 	}
 	revised, err := subharness.Apply(page, envelope.Ops)
 	if err != nil {
 		seat.noted("")
-		return subharness.Harness{}, nil, false
+		return harnessAccepted{}, false
 	}
 	// The patched page passes the SAME gauntlet the draft did — a review is not a
 	// way around the law — and the derivation is the draft's, because the critic
@@ -527,12 +699,12 @@ func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnes
 	}
 	if err := a.checkHarness(revised, patched); err != nil {
 		seat.noted("")
-		return subharness.Harness{}, nil, false
+		return harnessAccepted{}, false
 	}
 	// The patch held, so it is what the page IS now, and only now is it worth
 	// telling anybody the review changed something.
 	seat.noted(harnessReviewNote(envelope))
-	return revised, patched.Cues, true
+	return harnessAccepted{page: revised, cues: patched.Cues, justification: patched.Justification}, true
 }
 
 // harnessCues is the cue list after a review: the critic's when it wrote one,
@@ -939,34 +1111,42 @@ character INSIDE a string value: an em-dash in a brief is content and stays.
 // harnessMachinery is every value the guide leaves a hole for: this package's
 // caps, both ladders, and the tool belt a harness may actually reach HERE.
 //
-// The belt is the wire tools (internal/exec/bare) and not the session's own,
-// which is the same set a run resolves its tool.call nodes against
-// (cmd/aforge's chatv3_harness.go). It is the model's belt that is excluded, and
-// deliberately: notes, jobs, connected accounts and image generation are things
-// a conversation reaches for, not things a saved procedure should inherit by
-// accident.
+// The belt is [HarnessBelt] — the wire tools plus whichever media verbs this
+// machine has models for — and it is the SAME CALL the run resolves its nodes
+// against (cmd/aforge's chatv3_harness.go). harness_belt.go states what is
+// excluded and why, and why the three lists that used to answer this
+// independently are now one.
+//
+// The name column is sized from the belt rather than fixed at six, because
+// generate_image is thirteen characters and a fixed width turns the list the
+// designer reads into a ragged one the moment a media verb is present.
 func (a *Agent) harnessMachinery() map[string]string {
-	tools := bare.AllTools(a.config.Workspace)
+	tools := HarnessBelt(a.config.Workspace, a.harnessSeams())
+	width := 0
+	for _, tool := range tools {
+		if len(tool.Name) > width {
+			width = len(tool.Name)
+		}
+	}
 	belt := make([]string, 0, len(tools))
 	for _, tool := range tools {
-		belt = append(belt, fmt.Sprintf("%-6s %s", tool.Name, clip(firstLine(tool.Description), harnessToolAbout)))
+		belt = append(belt, fmt.Sprintf("%-*s %s", width, tool.Name, clip(firstLine(tool.Description), harnessToolAbout)))
 	}
 	return map[string]string{
-		"kinds":          strings.TrimRight(subharness.Catalog(), "\n"),
-		"max_nodes":      strconv.Itoa(subharness.MaxNodes),
-		"max_id_bytes":   strconv.Itoa(subharness.MaxIdBytes),
-		"max_dyn_cap":    strconv.Itoa(subharness.MaxDynCap),
-		"verify_ladder":  strings.Join(subharness.VerifyLadder(), " < "),
-		"dyn_ladder":     strings.Join(subharness.DynLadder(), " < "),
-		"tools":          strings.Join(belt, "\n"),
+		"kinds":         strings.TrimRight(subharness.Catalog(), "\n"),
+		"max_nodes":     strconv.Itoa(subharness.MaxNodes),
+		"max_id_bytes":  strconv.Itoa(subharness.MaxIdBytes),
+		"max_dyn_cap":   strconv.Itoa(subharness.MaxDynCap),
+		"verify_ladder": strings.Join(subharness.VerifyLadder(), " < "),
+		"dyn_ladder":    strings.Join(subharness.DynLadder(), " < "),
+		"tools":         strings.Join(belt, "\n"),
 	}
 }
 
-// harnessToolNames is the belt as a set, for the lint.
+// harnessToolNames is the belt as a set, for the lint. It is the SAME belt the
+// guide above was written from, which is the property that matters: a lint that
+// refused a name the designer had just been offered was the failure mode
+// harness_belt.go exists to close.
 func (a *Agent) harnessToolNames() map[string]bool {
-	names := map[string]bool{}
-	for _, tool := range bare.AllTools(a.config.Workspace) {
-		names[tool.Name] = true
-	}
-	return names
+	return HarnessBeltNames(a.config.Workspace, a.harnessSeams())
 }

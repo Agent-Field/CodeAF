@@ -142,7 +142,21 @@ Two calls per message, both on the cheapest of the four crew classes — the
 different economy from one made once a session. It ships pointed at
 `nex-agi/nex-n2-mini`. Each goes out with a short
 prompt, a 200-token ceiling and temperature 0, and each is asked to answer in a
-few words of JSON. Neither is allowed to think.
+few words of JSON.
+
+**Neither is allowed to think**, and that is a request on the wire and not just
+an instruction in the prompt: the call carries the reasoning knob set to *off*,
+so a reasoning model spends the 200 tokens on the answer instead of deliberating
+first. It matters because the ceiling is otherwise a lie — a model left free to
+think spends the whole 200 doing it and answers nothing, on every call of every
+turn, billed in full for an empty reply. The knob is only sent to a model whose
+catalog row says it accepts one; where the endpoint refuses to have thinking
+turned off, the ceiling is raised to **2,000 tokens** instead so the answer has
+room in front of it.
+
+An unusable answer costs **one** retry and no more, and an *empty* answer costs
+none — there is nothing to ask the model to fix. Either way the turn happens
+exactly as it would have if the pair had never run.
 
 Both are charged to the **session** total rather than to the message that
 happened to trigger them, exactly as the session's own title and a compaction

@@ -518,8 +518,12 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 		// filled together because either one alone is detection off — a
 		// registry nothing can run would raise a card that could only fail, and
 		// a runner nothing is matched against would never be called.
-		Harnesses:  v3HarnessEntries(harnesses),
-		RunHarness: v3RunHarness(harnesses, settings, chosen, workspace),
+		// RunHarness is filled AFTER governance, beside the media pair: a run's
+		// belt now carries the media verbs this machine has models for
+		// (internal/session's harness_belt.go), and the resolver that answers
+		// which model serves which modality reads a role pin that does not exist
+		// until governance has landed.
+		Harnesses: v3HarnessEntries(harnesses),
 		// And the third: where a harness this conversation DESIGNS is written
 		// (internal/session's harness_build.go). It is the same store the two
 		// above were built from, so a page approved on a card is a page the very
@@ -555,6 +559,13 @@ func openV3Launch(opts v3Options) (*v3Launch, error) {
 	// which is the same absence at a finer grain.
 	cfg.Media = v3MediaClient(settings)
 	cfg.MediaModel = v3MediaModel(models, settings.ProfileDir, cfg.RolesSource)
+
+	// AND THE RUN DOOR IS BUILT FROM THE SAME PAIR. A saved harness may name a
+	// media verb on its whitelist, and the node that reaches for it at run time
+	// must resolve against the belt the designer was offered — one list, three
+	// readers (internal/session's harness_belt.go). It is wired here rather than
+	// in the literal above because the resolver it needs is one line up.
+	cfg.RunHarness = v3RunHarness(harnesses, settings, chosen, workspace, cfg.Media, cfg.MediaModel)
 
 	return &v3Launch{
 		Settings:    settings,

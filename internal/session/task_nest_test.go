@@ -76,7 +76,7 @@ func newNest(t *testing.T, child Completer, run func(*TaskNode)) *nest {
 // pieceArgs is one well-formed propose_task call.
 func pieceArgs(title string) json.RawMessage {
 	return json.RawMessage(fmt.Sprintf(
-		`{"title":%q,"summary":"s","brief":"b","acceptance":"a"}`, title))
+		`{"title":%q,"summary":"s","brief":"b","deliverable":"d","acceptance":"a"}`, title))
 }
 
 // handOut makes one proposal from inside the node and returns what the model was
@@ -229,7 +229,7 @@ func TestTheFanCapHoldsAgainstOneBatchOfProposals(t *testing.T) {
 // questions that were asked.
 func TestARefusedProposalDoesNotSpendAFanSlot(t *testing.T) {
 	nest := newNest(t, nil, nil)
-	answer, _, _ := nest.node.proposeTask(context.Background(), json.RawMessage(`{"title":"t","summary":"s","brief":"b"}`))
+	answer, _, _ := nest.node.proposeTask(context.Background(), json.RawMessage(`{"title":"t","summary":"s","brief":"b","deliverable":"d"}`))
 	if !strings.Contains(answer, "acceptance is required") {
 		t.Fatalf("a proposal with no done-condition answered %q", answer)
 	}

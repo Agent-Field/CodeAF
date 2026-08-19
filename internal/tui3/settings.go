@@ -165,6 +165,15 @@ var settingUI = map[string]settingMeta{
 	// work — the task's own claim that it is finished is taken on trust, or it is
 	// not — because that, and not the shape of the apparatus behind it, is the
 	// thing they are being asked to decide.
+	// And above the check, the other end of a task's life: what happens the
+	// moment you type /task. It reads as a preference about YOUR work — in pieces
+	// at once, or one thing at a time — rather than as a switch over machinery,
+	// because that is the question a person is actually answering here.
+	config.KeyTaskStart: {
+		tab: tabSession, label: "starting a task", widget: widgetCycle,
+		about: "what /task does with your brief: ask offers pieces-at-once when it " +
+			"finds any, adaptive takes it, single always runs one worker.",
+	},
 	config.KeyTaskAudit: {
 		tab: tabSession, label: "check task work", widget: widgetCycle,
 		about: "each task's work is checked over before it merges. " +
@@ -403,6 +412,11 @@ var settingUI = map[string]settingMeta{
 	config.KeyLinearMode: {
 		tab: tabDisplay, label: "linear mode", widget: widgetToggle,
 		about: "single column, no motion, no spinners — the accessible rendering.",
+	},
+	config.KeyTaskColumn: {
+		tab: tabDisplay, label: "task column", widget: widgetToggle,
+		about: "stands the task roster beside the chat. ctrl+g closes it and " +
+			"brings it back; this is where the answer is remembered.",
 	},
 	config.KeyRailState: {
 		tab: tabDisplay, label: "sidebar", widget: widgetCycle,

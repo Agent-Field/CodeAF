@@ -11,11 +11,14 @@
 // They share one shape and one law:
 //
 //   - THE MODEL IS A REFLEX, NOT A THINKER. Every call goes out with a small
-//     prompt, a ~200 token ceiling and temperature 0, on [roles.RoleReflex] —
-//     its own tier ([roles.TierReflex]) precisely because a call made twice per
-//     turn is a different economy from one made once a session. Nothing here
-//     asks the model to reason; it sorts, it names, and it answers in a few
-//     words of JSON.
+//     prompt, a ~200 token ceiling, temperature 0 and the thinking pass turned
+//     OFF, on [roles.RoleReflex] — its own tier ([roles.TierReflex]) precisely
+//     because a call made twice per turn is a different economy from one made
+//     once a session. Nothing here asks the model to reason; it sorts, it
+//     names, and it answers in a few words of JSON. The disable is not an
+//     optimisation but the thing that makes the ceiling honest: a reasoning
+//     model left to deliberate spends the whole 200 doing it and answers
+//     nothing at all.
 //
 //   - REFLEX NEVER BREAKS A TURN. A model that answers with prose, with a code
 //     fence, with an enum this package has never heard of, or with nothing at
@@ -69,7 +72,25 @@ const (
 	// answer here is an extraction with a state delta in it — a handful of short
 	// lines — and a model that wants more than this is not answering the
 	// question it was asked.
+	//
+	// It is only honest because the reflex asks for the thinking pass to be
+	// turned OFF (see [call]). A reasoning model handed this ceiling with its
+	// thinking left on spends all two hundred deliberating and returns an empty
+	// answer, every call, every turn — which is what
+	// nex-agi/nex-n2-mini did on the reflex tier: repeated 640-in/200-out calls
+	// billed in full for nothing.
 	answerTokens = 200
+
+	// thinkingAnswerTokens is the ceiling when the disable was refused —
+	// [provider.ReasoningMandatory], a fact this process learned from a 400 and
+	// not from any published field.
+	//
+	// A model that MUST think still has to be asked, so the only remaining move
+	// is to leave room for the thinking pass in front of the answer. Ten times
+	// the answer ceiling is that room: a thinking pass on a question this small
+	// runs to a few hundred tokens, and the multiple still stops a model that
+	// has decided to write an essay well before it costs what a turn costs.
+	thinkingAnswerTokens = answerTokens * 10
 
 	// messageLimit is how much of one side of an exchange the model is shown,
 	// in runes. A router that reads four paragraphs to decide which memory a
@@ -374,6 +395,16 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 	if read(reply) == nil {
 		return nil
 	}
+	if strings.TrimSpace(reply) == "" {
+		// NOTHING CAME BACK, so there is nothing to repair. The repair prompt's
+		// whole trick is putting the model's own bad answer in front of it and
+		// asking again — against an empty answer it is a second full-price call
+		// asking the identical question, and the thing that emptied the first
+		// one (a thinking pass that ate the ceiling, a refusal, a cut stream)
+		// will empty the second. One wasted call per turn is the bill this
+		// package was written to avoid; two is that bill doubled.
+		return fmt.Errorf("%w: the model answered nothing", ErrReflexFailed)
+	}
 	repair := []ai.Message{
 		messages[0], messages[1],
 		message("assistant", reply),
@@ -394,9 +425,20 @@ func ask(ctx context.Context, c Completer, system, user string, read func(reply 
 // WithoutStream for the reason the title and the consolidator use it: nobody
 // asked for this call, and streaming it would type a fragment of JSON into a
 // room where a person is reading an answer.
+//
+// [provider.EffortOff] because THE MODEL IS A REFLEX, NOT A THINKER — the law
+// at the top of this file, finally said to the provider instead of only to the
+// prompt. It sends {"reasoning": {"enabled": false}}, so the model spends its
+// whole ceiling on the answer rather than deliberating first, and the answer is
+// the same size either way. It is a harness default rather than an operator
+// request, which is what makes it safe: the adapter's catalog gate drops it for
+// any model whose row does not say it takes a reasoning knob, and an endpoint
+// that refuses the disable outright is remembered
+// ([provider.ReasoningMandatory]) so the next call asks for room instead.
 func call(ctx context.Context, c Completer, messages []ai.Message) (string, error) {
-	response, err := c.CompleteWithMessages(provider.WithoutStream(ctx), messages,
-		ai.WithMaxTokens(answerTokens), ai.WithTemperature(0))
+	ctx = provider.WithReasoningEffort(provider.WithoutStream(ctx), provider.EffortOff)
+	response, err := c.CompleteWithMessages(ctx, messages,
+		ai.WithMaxTokens(answerBudget(c)), ai.WithTemperature(0))
 	if err != nil {
 		return "", err
 	}
@@ -404,6 +446,22 @@ func call(ctx context.Context, c Completer, messages []ai.Message) (string, erro
 		return "", errors.New("the model answered nothing")
 	}
 	return response.Text(), nil
+}
+
+// answerBudget is the ceiling for one call, and it has two values because one
+// of them is a lie on a model that cannot be told to stop thinking.
+//
+// The model is known only to [Bind] — the three calls take a plain Completer,
+// which is what lets a test satisfy this package with a struct — so the pin is
+// where the question is asked. An unbound completer, and any model whose
+// endpoint has never refused the disable, gets [answerTokens] exactly as
+// before; only a model this process has been told 400s the disable is given
+// [thinkingAnswerTokens], and that fact is learned, never guessed.
+func answerBudget(c Completer) int {
+	if pinned, ok := c.(bound); ok && provider.ReasoningMandatory(pinned.model) {
+		return thinkingAnswerTokens
+	}
+	return answerTokens
 }
 
 // decode reads the model's reply as one JSON object, through the shared

@@ -294,6 +294,26 @@ const (
 	// this kind saves nothing — which is the same posture EventHarnessOffer
 	// keeps, one lane over.
 	EventHarnessDesignDone
+	// EventHarnessDesignRevising WITHDRAWS a design card the person asked to have
+	// changed. ID is the design it is about and Text is the change, in the
+	// person's own words as the design's thread passed them on (harness_task.go's
+	// revise_design).
+	//
+	// IT EXISTS BECAUSE A QUESTION CAN BE OVERTAKEN BY A THIRD ANSWER. A design
+	// card is one decision behind two doors — the card in the conversation and the
+	// approval row in the design's own room — and there is a third thing a person
+	// can do with a page, which is to say what is wrong with it. When they do, the
+	// page that card is about stops existing, so the card has to come down: left
+	// standing it would be a save key over a draft that has been replaced, and the
+	// answer it took would save the wrong page.
+	//
+	// A surface takes the card back to the LIVE form it wore while the page was
+	// first being written, because that is what is happening again — the designer
+	// is at work, EventHarnessProgress starts arriving, and exactly one
+	// EventHarnessDesignDone follows it with the rewritten page. The design's own
+	// ROW needs nothing from this kind: the node moves back to the "designing"
+	// phase on the task lane, and the approval row is drawn off that phase.
+	EventHarnessDesignRevising
 	// EventOrchestrateNote carries one planner note from an adaptive run
 	// (internal/orchestrate): Text is the note, ID the run. A REPORT; the room
 	// draws it as the thin thinking-row between completions.
@@ -740,6 +760,13 @@ type Config struct {
 	// TaskDeadline overrides one checkpoint interval. Zero keeps the one-hour
 	// production interval and lets deadline behavior be tested without an hour.
 	TaskDeadline time.Duration
+	// HarnessDesignWindow overrides how long a sub-harness design is given to
+	// WRITE ITS PAGE (harness_build.go's harnessDesignWindow). Zero keeps the
+	// half-hour production window. It bounds the writing only — the card that
+	// follows waits on the person for as long as they take — and it is settable
+	// for TaskDeadline's reason: what happens at the end of the window is worth a
+	// test, and half an hour is not a thing a test can wait for.
+	HarnessDesignWindow time.Duration
 
 	// ModelFallbacks are the models a turn moves to, in order, when no endpoint
 	// serving this session's model will accept the request's shape at all
@@ -1032,6 +1059,20 @@ type Config struct {
 	//
 	// It is private for InTask's reason: no surface sets it, the executor does.
 	roomThread bool
+
+	// reviseDesign is the one extra hand a design thread has, and the whole of
+	// what puts revise_design on its belt (tools_harness.go). It carries the
+	// change, in the person's own words, to the design loop parked on the
+	// approval card — the only thing in this process that can act on it — and it
+	// answers with the sentence the model is told when the page is not in a
+	// state to be changed (harness_task.go's reviseDoor).
+	//
+	// IT IS NIL EVERYWHERE ELSE, and that nil is the gate rather than a check
+	// inside the tool: this codebase's law is that a capability with nothing
+	// behind it is ABSENT and not broken, so an agent with no design behind it is
+	// never given the verb at all. It is private for roomThread's reason — no
+	// surface sets it, the executor wires it from the node.
+	reviseDesign func(string) error
 	// memoryBrief is the <memory> block a task node OPENS WITH: the parent
 	// routed it against this node's brief at the spawn seam, because a node has
 	// no turn of its own to route against and no store of its own to route into
@@ -1204,6 +1245,17 @@ type Agent struct {
 	// sessions.
 	reasoning map[string]provider.Effort
 	messages  []ai.Message
+	// personAsk is the last thing THE PERSON typed, kept apart from the
+	// transcript because the transcript cannot answer the question. Every user
+	// message in a.messages is user-role, including the ones the session wrote
+	// itself — a task landing, a job exiting — and the bit that says who spoke
+	// (userMessage.wake, .authored) does not survive the append. So the answer is
+	// recorded where the message is recorded, by [Agent.rememberAskLocked].
+	//
+	// It is what work handed out of this conversation carries as the person's own
+	// words (task_brief.go), and it is deliberately the WHOLE message rather than
+	// a summary of it.
+	personAsk string
 	// lastTurnTruncated is the honest handoff from the model loop to headless
 	// node reporters. The finish reason is response metadata and is not part of
 	// the transcript, so without this bit a digest can only repeat the cut-off

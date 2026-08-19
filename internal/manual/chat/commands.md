@@ -2,20 +2,28 @@
 
 ## Typing a slash to see the command list
 
-Type `/` as the first character of the message box and the command list opens under
-it. There is one list of commands in aforge: the pop-up you get by typing `/` and the
-list `/help` prints are drawn from the same table.
+Type `/` and the command list opens under the message box. There is one list of commands
+in aforge: the pop-up you get by typing `/` and the list `/help` prints are drawn from
+the same table.
+
+**It opens at a word boundary, and not only at the start of the line.** A `/` typed as
+the first character of the box opens it, and so does a `/` typed after a space or a
+newline — so you can find a command half a sentence in without throwing the sentence
+away. A `/` with anything other than a space in front of it opens nothing at all, which
+is what keeps `cmd/aforge` and `https://example.com` quiet.
 
 The list is not modal. You keep typing into the same box and the list narrows under it.
 Only ↑ ↓ enter esc are taken from the editor; every other key types into your draft and
-re-filters. A space or a newline anywhere in the line closes the list again, because a
-line with an argument is a line being written rather than a command being chosen.
+re-filters. A space ends the word the list is filtering on and closes it, because a line
+with an argument is a line being written rather than a command being chosen.
 
 Moving in it:
 
 - ↑ / ctrl+p and ↓ / ctrl+n move.
-- enter runs the row under the cursor.
-- esc closes the list. The text you typed stays.
+- enter takes the row under the cursor. Whether that *runs* the command depends on where
+  the word sits — see "What runs, and what is only a mention".
+- esc closes the list and seals that word: it does not come back on the next letter you
+  type. Start another word and it opens again. The text you typed stays.
 
 Eight rows show at once and the list scrolls under the cursor. At phone width fewer rows
 show, each with its description on its own line. Rows highlight under the mouse pointer,
@@ -25,14 +33,80 @@ Filtering is a substring search over the command's name, ranked by where the mat
 found, prefix first. An alias match ranks a whole rung below any name match, so typing
 `res` puts `/resume` above the `/new` that answers to `reset`.
 
-**Rows that take an argument are not run.** Choosing `/model <slug>` or `/export <path>`
-writes `/model ` or `/export ` into the box with the caret after it, and runs nothing.
+**Rows that take an argument are not run.** At the head of an otherwise empty box,
+choosing `/model <slug>` or `/export <path>` writes `/model ` or `/export ` into the box
+with the caret after it, and runs nothing.
 
 Anything you press enter on goes into the ↑-history, commands included. Choosing a row
 from the list records it as `/<name>`, exactly as if you had typed it.
 
 While a panel is up — settings, the model picker, resume, connect, harness, permissions,
 copy mode, rewind — typing `/` does nothing. Those states take the key first.
+
+## Why a file path does not pop up the command list
+
+Typing `/Users/santosh/notes.md` or `/tmp/log` into the message box does not leave the
+command list flickering over your sentence. Three rules keep it away, and they are the
+same three wherever the slash is:
+
+- **A slash needs a space in front of it.** Only the first character of the box, or a
+  slash after a space or a newline, is a candidate. So the second slash of
+  `/Users/santosh` is not one, and neither is the one in `cmd/aforge/main.go` or in
+  `https://`.
+- **A word that matches no command closes the list.** The candidate runs to the next
+  space, so the word being matched is `Users/santosh`, and nothing in the table looks
+  like it. In practice a path drops the list within a couple of keystrokes and it stays
+  gone. Backspace back to a word that does match and it returns.
+- **esc seals the word.** If it did open over something you meant literally, esc puts it
+  away and it stays away for that word.
+
+There is no setting for this and nothing to turn off. The list follows what you type; it
+never holds itself open.
+
+## Slash commands are drawn as chips
+
+A command aforge recognizes is not drawn as ordinary text. `/task`, `/compact`, `/clear`
+and the rest get a **chip**: a tinted background behind exactly the letters of the
+command — the same tint the selected row of a list wears — with the accent ink on top.
+No brackets, no border, and nothing added to the line.
+
+It happens in two places: **live in the message box as you type**, and in your message
+after it is sent, where it stays for as long as the conversation is scrolled back
+through.
+
+Only a command this surface actually runs gets one. The word is resolved through the
+same table the dispatch uses, so every alias is chipped too — `/clear`, `/q`, `/?` — and
+a typo is not: `/tsak` stays plain text, which is how you find out it is not a command
+before you press enter rather than after. A path is never chipped, for the reasons in
+"Why a file path does not pop up the command list".
+
+The chip never changes the text and never adds a cell. What you typed is exactly what
+gets sent.
+
+Below the 256-colour rung there is no background to draw, and the command reads as
+**bold** instead. On a NO_COLOR terminal there is no mark at all.
+
+## What runs, and what is only a mention
+
+A slash command **runs** only when the slash is the first character of your message. That
+is the whole rule, and it has not changed:
+
+- `/compact` on its own line runs the command.
+- `later I will run /compact on this` is an ordinary message. The `/compact` is a
+  **mention**: it wears the chip so you can see aforge knows the word, and it travels to
+  the model as the literal text you typed, exactly the way an `@path` does.
+
+The command list follows that rule when you choose a row from it:
+
+- If the word is at the very start of the box and there is nothing else in it, enter runs
+  the command — or, for a row that takes an argument, writes `/model ` into the box.
+- Anywhere else — inside a sentence, or over a command whose argument you have already
+  typed — enter **replaces just that word** with the command's name, parks the caret
+  after it, and runs nothing. `before you answer, /comp` becomes `before you answer,
+  /compact`, and the rest of your line is untouched.
+
+So the list can never send a message you did not send yourself, and choosing a row mid
+sentence is a way of spelling a word rather than a second way of running a command.
 
 ## Aliases, and what happens to an unknown command
 
@@ -83,7 +157,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/forget` | — | `<query>` | forgets the best matching memory |
 | `/crew` | — | — | opens the three-preset crew chooser |
 | `/crew` | — | `<preset>` | sets the crew to `frugal`, `balanced` or `max` |
-| `/task` | — | `<brief>` | sizes the work, then starts it or offers adaptive versus single |
+| `/task` | — | `<brief>` | sizes the work, then starts it or offers adaptive versus single; shapes the brief |
 | `/task` | — | `solo <brief>` | starts one worker immediately, without sizing |
 | `/task` | — | `adaptive <brief>` | starts a planner immediately, without sizing |
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
@@ -577,8 +651,21 @@ pass through the conversation model. aforge briefly shows `sizing it up…`. If 
 meaningfully parallel, a two-choice list opens with adaptive recommended. Otherwise one
 task starts silently. A bare `/task` prints its one-line usage.
 
+Then, whichever shape it takes, `shaping the brief…` appears while a model turns your words
+into the fuller brief the worker is given — your sentence kept word for word, with the
+constraints and the done-condition written around it. Both notes disappear as the task
+starts. The *work that runs on its own* page has this in full, under *Why my task's brief is
+longer than what I typed*.
+
 `/task solo <brief>` starts one worker immediately. `/task adaptive <brief>` starts an
-adaptive run with a planner immediately. Both explicit forms skip sizing altogether.
+adaptive run with a planner immediately. Both explicit forms skip sizing altogether, and
+both still shape the brief.
+
+The `starting a task` row in `/settings` → Session decides what the plain form does:
+`ask` is the default and is the behaviour above, `adaptive` takes the adaptive shape without
+asking whenever there is anything to split, and `single` always starts one worker and does
+not size the work at all. `solo` and `adaptive` typed on the command line override the row
+either way.
 
 ## /crew — the four models aforge works with
 
@@ -741,7 +828,7 @@ The tabs, in order:
 
 **Session** — what this conversation may run and spend. Rows include "ask before running",
 "tool exceptions", "shell command rules", "guardian", "approval countdown",
-"check task work", "memory", "task countdown", "task repair rounds", "tasks at once",
+"starting a task", "check task work", "memory", "task countdown", "task repair rounds", "tasks at once",
 "busy machine", "memory floor", "task model", "fallback models", "session ceiling".
 
 The four models aforge uses on your behalf are **not** here — they are on Providers, with
@@ -856,6 +943,23 @@ one order:
 2. a role pinned in "pinned roles" — `imagegen`, `speech`, `video`, `vision`;
 3. the best model the catalog advertises that publishes the capability;
 4. a name this build remembers.
+
+Steps 3 and 4 read one preference list per kind of media, strongest first, and these are
+the names at the head of each list — what an `automatic` row actually gets:
+
+| kind | default |
+| --- | --- |
+| draws | `krea/krea-2-medium-turbo` |
+| speaks | `fish-audio/s1` |
+| composes | `google/lyria-3-pro-preview` |
+| films | `bytedance/seedance-2.0-mini` |
+| looks at an image | `qwen/qwen3.5-vl-32b-instruct` |
+
+Each list has older names under its leader — `hexgrad/kokoro-82m` and
+`openai/gpt-4o-mini-tts` under speech, `google/lyria-3-clip-preview` under music,
+`bytedance/seedance-1-5-pro` under video — used when your catalog does not advertise the
+leader. **These are defaults, not choices made for you**: a row you set, or the matching
+environment variable, wins over every one of them and is never overwritten.
 
 **Every step is checked against what the catalog says the model can do.** A row or a pin
 naming a model that cannot do the job is skipped and the next step is used, so a model that

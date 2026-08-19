@@ -19,11 +19,75 @@ What `enter` does depends on what is in the box:
   sent.
 - An empty box with nothing selected: nothing happens.
 
-While a turn is running, plain `enter` steers the running turn — your words land
-inside it at its next step boundary. `ctrl+q` instead queues the message to run
-*after* the current turn; an empty box does nothing. Until its turn starts, a dim
-row above the box reads `  after yield · N`. If the queueing fails, aforge notes
-`follow-up failed: <error>`.
+While a turn is running, plain `enter` **holds** the message instead of sending it —
+see "Typing while an answer is still coming" below. `ctrl+q` instead hands the message
+to the session there and then, to run *after* the current turn; an empty box does
+nothing. Until its turn starts, a dim row above the box reads `  after yield · N`. If
+the queueing fails, aforge notes `follow-up failed: <error>`.
+
+## Typing while an answer is still coming — interrupting and steering
+
+Typing is never blocked. The box works normally while an answer streams.
+
+`enter` while a turn is running does **not** send. The message is held on the surface
+and drawn in its own block directly above the box, in your own hue, with a dim line
+under it:
+
+```
+› do much more of a deep research please
+  waits for this answer · esc stops and sends · ↑ or click to edit
+```
+
+It is not written into the conversation and it is never drawn inside the streaming
+reply. The box is cleared, so you can keep typing.
+
+| What you do | What happens |
+|---|---|
+| the answer finishes | the waiting message sends itself as an ordinary new turn |
+| several are waiting | one per finished turn, oldest first, in the order you typed them |
+| `esc` | stops the answer and sends the waiting message immediately |
+| `↑` over an empty box | takes the newest waiting message back into the box to edit |
+| click the block | takes **that** message back into the box to edit |
+| `enter` again | holds the edited sentence again |
+
+Attachments in the tray go with the held message, and come back on the tray if you take
+it back. `/`-commands are **not** held: a slash command is something you said to this
+surface rather than to the model, and it runs at once.
+
+**Limits.** `esc` with nothing waiting is exactly the plain interrupt it always was.
+The held message is dropped, with a note — `1 waiting message dropped` or `N waiting
+messages dropped` — if the conversation is replaced under it by `/new` or by opening a
+session from the welcome box. Inside a **task room** `enter` steers the node instead
+and nothing is held; that is the room's own key (see the room section below).
+
+**Why it waits rather than going straight in.** The session can take a message into a
+running turn, but only at a *step boundary* — before the next model request. A turn
+whose last request has already gone out has no boundary left, so a message pushed into
+it would land in the transcript with nothing coming to answer it. Waiting for the turn
+to end means the message always gets a reply, and it is what makes the message editable
+until it goes.
+
+## I typed while it was working — did my message get lost?
+
+No. There are two moments, and both end in an answer.
+
+**Early in the turn**, your words land at the turn's next step boundary — between
+one tool batch and the next request — so the model reads them as part of the turn
+it is already in, and answers them there.
+
+**In the last seconds of a turn** — while the final reply is streaming, or while
+aforge is naming the session and doing its tail work — there is no step boundary
+left, because the turn's last request has already gone out. Your message still
+lands in the conversation, in your own words, and aforge then starts one more turn
+by itself to answer it. You see your line, a pause, and then a reply. You do not
+have to type it again.
+
+The same is true of a task or a background job that finishes in that window: its
+note lands and aforge speaks about it rather than leaving it sitting there.
+
+The one thing that is not answered is a message you queued with `ctrl+q` for a
+turn you then **interrupted**. A drain never restarts a turn you stopped, so those
+are dropped — press `enter` again to send it.
 
 ## Interrupting a running turn — how to stop it
 
@@ -37,9 +101,13 @@ What happens:
 2. Any queued follow-ups are dropped, and aforge says so — `1 queued message
    dropped`, or `N queued messages dropped`.
 3. `interrupted` stays as the status word until the next turn starts.
+4. If a message of yours was **waiting** for that answer, it is *not* dropped: it sends
+   immediately as the next turn. That is the whole difference `esc` makes while
+   something is waiting.
 
 **What the screen says.** While a turn runs, the right end of the row under the
-message box reads exactly `esc interrupt`. On the very first frame of a session the
+message box reads exactly `esc interrupt` — or `esc stops and sends` while a message of
+yours is waiting for the answer to finish. On the very first frame of a session the
 conversation carries the note `esc or ctrl+c interrupts`.
 
 **Limits.** Interrupting does nothing at all when no turn is running. `esc` reaches
@@ -61,11 +129,13 @@ These apply with no overlay up, no room open, and no mode on.
 | `enter` | Send the message. Empty box with attachments still sends; empty box with a tool row selected opens that row |
 | `alt+enter` | Open a new line in the message |
 | `ctrl+j` | Same as `alt+enter` |
-| `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn |
+| `esc` | In order: cancel a history recall, then arm rewind, then interrupt the running turn — and send any message that was waiting for it |
 | `esc` `esc` | Two presses inside a short window open rewind mode |
 | `ctrl+c` | Turn running: interrupt. Nothing running: quit aforge |
 | `ctrl+q` | Queue this message to run after the current turn. Empty box does nothing |
 | `ctrl+g` | Send the running command to the background. Nothing running: does nothing |
+| `enter` while a turn runs | Hold the message above the box until the answer finishes |
+| `↑` over an empty box | Take the newest waiting message back into the box to edit; with none waiting, walk your history |
 
 `shift+enter` is not bound. Use `alt+enter` or `ctrl+j` to open a line.
 
@@ -79,7 +149,8 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+,` | Open the settings panel |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `ctrl+t` | Give the keyboard to the task roster. Press again or `esc` to take it back |
-| `ctrl+e` | Empty box: open or close the most recent thinking block. Otherwise: go to end of line |
+| `ctrl+g` | Close the task roster's column, or bring it back. Remembered for the next session. With no roster on the frame it does nothing |
+| `ctrl+e` | Empty box: open or close the latest completed turn's `▸ worked` chip, or the most recent thinking block when there is no chip. Otherwise: go to end of line |
 | `pgup` / `pgdown` | Scroll one page — the height of the view minus one, never less than one row |
 | `tab` | Open or commit path completion, over a command's path argument only |
 
@@ -94,7 +165,7 @@ These apply with no overlay up, no room open, and no mode on.
 | `ctrl+f` | Move the caret right, always. Never navigation |
 | `home` / `ctrl+a` | Start of the current line |
 | `end` | End of the current line, always |
-| `ctrl+e` | End of the line — unless the box is empty, where it opens the most recent thinking block |
+| `ctrl+e` | End of the line — unless the box is empty, where it opens the latest completed turn's `▸ worked` chip, falling through to the most recent thinking block when there is no chip |
 | any printing key | Types the character |
 
 `home`, `end`, `up` and `down` work on the logical line — the run between newlines —
@@ -129,9 +200,25 @@ multi-line editor rather than a single-line field.
 - A longer message scrolls **inside** the box, following the caret. The rows scrolled
   past are marked with an ellipsis in the same two cells the `› ` occupies, so
   nothing shifts under your caret.
-- Continuation rows are indented two cells to sit under the text. Soft wrapping
+- Continuation rows are indented to sit under the text. Soft wrapping
   breaks at the last space before the edge, and mid-word only when the line offers no
   space.
+
+**Inside a task's room the box wears a segment in front of its `› `**, naming the work
+your words are going to: the task's state glyph and its name, on the same tinted
+background a selected row wears, in the hue that task's state is drawn in everywhere
+else — accent while it runs, the warn colour while it needs your look, muted once it is
+done, the bad hue when it failed, dim when it is queued or you stopped it. It is there
+whether the box is empty or full, which is the point: the placeholder that used to say
+this disappeared the moment you started typing. The name is cut to at most 18 cells; on
+a frame too narrow to spend the cells, the segment is dropped and the placeholder goes
+back to naming the task itself. There is no segment at all in the main conversation.
+
+A **slash command you type into the box is highlighted as you type it** — `/task`,
+`/compact`, `/clear` get a tinted background behind the word, so a real command looks
+different from ordinary text and a typo like `/tsak` does not. The highlight is drawn in
+your sent message too. It adds no characters and no cells; see "Slash commands are drawn
+as chips" in the commands page for the whole of it.
 
 **Pasted text lands as one edit** with its newlines intact — it never submits line by
 line. Bracketed paste is on. CRLF and bare CR become LF at the door.
@@ -172,6 +259,9 @@ that has moved on. There is nothing to press; it is automatic.
 prompts you typed before, newest first. `down` walks forward again toward your live
 draft. `esc` cancels the walk and restores your own sentence exactly as you left it.
 
+- **A message waiting for the answer is read first.** With an empty box and something
+  waiting above it, `up` takes that message back into the box to be edited instead of
+  walking your history. Only once nothing is waiting does `up` walk the history again.
 - Your live draft is stashed on the way in, and comes back on `esc` or on walking
   forward past the newest entry.
 - Walking past the oldest entry stays put rather than emptying the box.
@@ -308,8 +398,8 @@ follows what you type. Only these keys are taken from you:
 |---|---|
 | `up` / `ctrl+p` | Move the list cursor up |
 | `down` / `ctrl+n` | Move the list cursor down |
-| `esc` | Close the list. It does **not** interrupt a running turn |
-| `enter` | Command list: run the highlighted command; if nothing matched, the line is sent as typed. `@` list: insert the highlighted task or file; if nothing is picked, the line is sent |
+| `esc` | Close the list. For the command list it also **seals that word** — the list does not reopen on the next letter of it. It does **not** interrupt a running turn |
+| `enter` | Command list: take the highlighted command. At the start of an otherwise empty box that **runs** it; anywhere else it replaces just that word with the command's name and runs nothing. If nothing matched, the line is sent as typed. `@` list: insert the highlighted task or file; if nothing is picked, the line is sent |
 | `tab` | Read **before** the list. It only opens or commits an *argument* completion, over `/image ` or `/export ` |
 | `enter`, with an argument completion open | Closes the list and runs the line **as typed**. Your path is never swapped for the top-ranked row |
 
@@ -393,14 +483,33 @@ All of these are modal: while one is up, every chord except `ctrl+c` belongs to 
 back · `up`/`down` move · `right`/`left` fold and unfold the group · `enter` opens
 that row's room. Its hint reads `↑↓ move · →← fold · enter open · esc`.
 
+**`ctrl+g` closes the roster's column, and opens it again.** It works from the message
+box, from inside a room, and while the roster holds the keyboard — it is the one key
+here you do not have to ask for the roster first to use. Closing it hands the keyboard
+back to the box. The choice is written to your profile as `ui.task_column`, so the next
+session opens the way you left it, and `ctrl+t` counts as asking for the column back.
+The key falls through and does nothing when there is no roster on the frame to close:
+no tasks at all, or a frame under 100 columns where nothing has raised the overlay.
+
 **With a room open:** `esc` leaves the room, though a history recall walk is
 cancelled first · `enter` steers the node · `ctrl+b` freezes the room's own rows for
 copying, not the conversation's · `pgup`/`pgdown` page · `up`/`down` scroll, but only
 over an empty message box. `left` is deliberately **not** taken here — it falls
 through to the message box's back-navigation.
 
-A click on empty space does nothing anywhere else, but inside a room it is the way
-out.
+**A click inside the room's page does not leave it.** A press that lands on nothing —
+a blank row, the gap beside a paragraph, the slack under a short transcript — does
+nothing at all, exactly as it does in the conversation. Leaving is `esc` and `←`, and
+the pinned header at the top of the page names both: `esc/← main`. That header row is
+also a button — press it anywhere along its width and you are back in the conversation
+— except the `✕` at its right end, which asks to stop the work instead.
+
+**Inside a harness design's room, while its card is waiting on you**, two more chords
+appear above the message box: `ctrl+k` saves the design and `ctrl+x` drops it, and both
+are clickable. They are chords rather than letters because `esc` and `enter` are already
+spoken for and a bare letter would stop being a letter you can type — and they are bound
+only while that row is up. Every other key still goes to the message box, which is where
+you say what you want changed instead. The saved-shapes pages describe the row in full.
 
 **`x` asks to stop the work.** It is taken on the roster's focused row and inside a
 room or an adaptive run's page, and only over an empty message box — the moment there
@@ -455,13 +564,22 @@ Only the left button acts. A press is resolved in this order:
 6. A stop target: the confirmation card's two answers while it is up, and the `✕` at
    the right end of a room's pinned header. On a phone-width terminal the `✕`'s hit
    box is three rows tall, because a finger is about that wide.
-7. Task strip chips, then the rail column, then a proposal's choices row. On a wide
+7. A room's **pinned header**, which is the pointer's way back to the conversation.
+   The whole row answers, both ends of it, because the row says `esc/← main` and a
+   row that named the exits and did nothing when pressed would be dead. The dim
+   family lines under it are facts, not doors, and do nothing.
+8. Task strip chips, then the rail column, then a proposal's choices row. On a wide
    terminal the strip chip the roster's cursor is on carries a `✕` of its own, and
    pressing it asks to stop that work instead of opening its room.
-8. The model name in the status row, which opens the model picker. A press elsewhere
+9. The model name in the status row, which opens the model picker. A press elsewhere
    on the status row falls through. On a narrow terminal the whole two-row deck
    answers.
-9. The body: an inline **task link** inside prose, which is the one mouse-only target
+10. A message of yours **waiting** for the answer to finish, in the block above the
+   box — a click anywhere along its line takes that message back into the box to be
+   edited, and the block loses it. The whole line answers, because nothing shares it.
+   A press on the dim line under the block does nothing: that line is a statement,
+   not a message.
+11. The body: an inline **task link** inside prose, which is the one mouse-only target
    on the surface; a cut markdown table's foot; a waiting sign-in, where a click
    copies its link; a thinking block, clickable over its whole height; a tool row,
    which opens its expansion, or the full-frame sheet on a narrow terminal; the
@@ -469,9 +587,11 @@ Only the left button acts. A press is resolved in this order:
    spawn card, which opens the node's room, or its brief if there is no node yet; and
    a landed card, which opens its full context.
 
-**A click on empty space does nothing** — there is no empty-space gesture — except
-inside a room, where it is the way out. **A click in copy mode acts on nothing**,
-because the rows there are a frozen snapshot.
+**A click on empty space does nothing, anywhere** — there is no empty-space gesture on
+this surface, and that includes inside a room: a press on a blank row of a task's page
+is not the way out and never closes it. The way out of a room is `esc`, `←`, or a press
+on the pinned header that names them. **A click in copy mode acts on nothing**, because
+the rows there are a frozen snapshot.
 
 **Hover** raises the row under the pointer one step in background and brightens its
 marker. Rows that answer to nothing do not react. There is no hover in copy mode, on
@@ -573,6 +693,11 @@ selection, not the primary one.
 - The selection highlight is the hover background, so a terminal below ANSI256 gets
   no highlight at all. Read the span off the `COPY · N lines` count instead.
 
+**An image drawn in an expansion copies as what it is on screen** — rows of `▀`, with
+the colour stripped, which is no use to anybody. Take the dim line under it instead:
+it is the picture's whole absolute path, and it is a hyperlink in terminals that make
+one.
+
 ## Chords that mean more than one thing
 
 Two chords carry unrelated meanings. Which one you get depends on where you are.
@@ -612,10 +737,11 @@ answer:
 |---|---|
 | `shift+enter` | Not bound. Use `alt+enter` or `ctrl+j` to open a new line |
 | `ctrl+d` | Not bound |
-| `ctrl+k` | Not bound |
+| `ctrl+k` | Bound in **one** place: it saves a harness design from inside that design's room, while its approval row is up. Not bound anywhere else |
 | `ctrl+r` | Not bound |
 | `ctrl+v` | Not bound. Paste with your terminal's own paste; aforge reads bracketed paste |
-| `ctrl+x`, `ctrl+y`, `ctrl+z` | Not bound |
+| `ctrl+x` | Bound in the same one place: it drops a harness design from inside its room. Not bound anywhere else |
+| `ctrl+y`, `ctrl+z` | Not bound |
 | `ctrl+h` | Deliberately not bound, because some terminals send plain `backspace` as `ctrl+h` |
 
 A key that is not bound falls through to "does this key carry text". If it carries
@@ -703,12 +829,17 @@ one indented chip between your message and the answer, such as
 elapsed time, the thinking block's time when there was one, and the real call count.
 
 Click the chip or press `ctrl+e` over an empty message box to open or close it. There is
-no transcript cursor, so the key chooses the latest completed turn's work in the page
-currently on screen. Opening restores the existing bounded views: thinking remains its
+no transcript cursor, so the key chooses the latest completed turn's work in the
+conversation. Opening restores the existing bounded views: thinking remains its
 own chip and only the latest 3 tool calls show until those are opened separately.
 Questions, approval prompts, failure lines, text-only turns, and work with no trailing
 answer are never hidden. Fold state belongs to this window; resumed sessions derive
 fresh closed chips from their saved entries.
+
+**The chip is the conversation's alone.** A task's room, and a node's transcript inside an
+adaptive run's page, never fold their work: those pages are the machinery, and a chip there
+would hide the only thing on them. So in a room `ctrl+e` over an empty box opens the
+thinking block, and `ui.work` changes nothing.
 
 ## How do I keep everything expanded?
 

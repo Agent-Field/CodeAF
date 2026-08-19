@@ -119,7 +119,8 @@ package session
 // named honestly HERE, in the code, the comments, the job log and the audit's
 // own journal. What lands in front of a person is what HAPPENED:
 //
-//	verified          the evidence sentence, alone — the state already says done
+//	verified          the work's own account, with the evidence sentence under it
+//	                  — the state already says done
 //	refuted out       "incomplete — " and the plain gaps, every round of them
 //	nobody could say  "finished, but needs your look — " and what the checker said
 //
@@ -396,12 +397,17 @@ func plainLines(lines []string) []string {
 	return out
 }
 
-// doneOutcome is what a VERIFIED node says on its card: THE EVIDENCE, ALONE.
+// doneOutcome is what a VERIFIED node adds to its card: THE EVIDENCE, ALONE.
 //
 // No lead word, because there is nothing left for one to say — the state is
 // done, the note says "finished", the merge line says the branch came home, and
 // a fourth sentence announcing the same fact in the harness's own vocabulary
 // would be the machinery taking credit for the work.
+//
+// IT STANDS UNDER THE WORK'S OWN ACCOUNT AND NEVER OVER IT. The first line of a
+// finished report is what the settle card quotes and what the project's index
+// keeps as the row's outcome, and that line belongs to what the work found —
+// not to the command somebody ran to check it (task_run.go's workTaskNode).
 func (v auditVerdict) doneOutcome() string {
 	return strings.Join(plainLines(v.evidence), "\n")
 }
@@ -1195,11 +1201,13 @@ func (a *Agent) landAudit(node *TaskNode, tree taskTree, verdict auditVerdict, c
 		node.graph.resettle(node, TaskFailed)
 	default:
 		merged, detail := tree.comeHome(node.title())
-		// THE CLAIM, NOT THE CARRIED REPORT. The report leads with the line that
-		// said nobody could judge this work, and a card reading "VERIFIED …" over
-		// "finished, but needs your look — …" contradicts itself in two lines. The
-		// verdict answers the non-answer; what it stands over is the work.
-		node.finish(withReport(verdict.doneOutcome(), withReport(claim, detail)), changed, tree.branch, merged)
+		// THE CLAIM, NOT THE CARRIED REPORT — and the claim LEADS, exactly as it
+		// does on the gate's own landing (task_run.go's workTaskNode). The carried
+		// report opens with the line that said nobody could judge this work, and a
+		// card stacking a fresh answer over "finished, but needs your look — …"
+		// contradicts itself in two lines. What the person and the model want first
+		// is what the work found; what it was checked on follows.
+		node.finish(withReport(claim, withReport(verdict.doneOutcome(), detail)), changed, tree.branch, merged)
 		node.graph.resettle(node, TaskDone)
 	}
 }

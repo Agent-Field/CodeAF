@@ -69,7 +69,7 @@ import (
 // INTERPOLATED for taskSchemaJSON's reason: a number a model reasons with must
 // be the number the code enforces, and the two drift the moment they are typed
 // twice.
-var taskDescription = "Hand ONE self-contained piece of work to a task that runs on its own, outside this conversation, in its own copy of the repository. Use it when the work would flood the conversation — a long build-and-fix loop, a mechanical sweep across many files, a rewrite whose only interesting moment is the result — or when it simply wants a clean context of its own. Do NOT use it for a quick read, a question you can answer here, or anything that needs the back-and-forth of this conversation: a task cannot ask you anything once it starts. THE BRIEF IS THE TASK'S WHOLE WORLD. It never sees this conversation, so write it as if for a colleague joining today: the goal, the files and symbols involved, the conventions and constraints you have learned here, what has already been tried, and how to check the work. The person is shown the title and summary with a short countdown to redirect or wave it off; silence starts it. You get the id back immediately and the task's report arrives here when it lands, so keep working — never wait for it. A TASK MAY CALL THIS TOO, for parts of its own work that are genuinely independent of each other: up to " + strconv.Itoa(taskFanLimit) + " of them, one level deep, each registered under the task that asked for it. Split a step only when its parts do not need each other — sequential parts, and parts that share heavy context, are faster done in your own hands."
+var taskDescription = "Hand ONE self-contained piece of work to a task that runs on its own, outside this conversation, in its own copy of the repository. Use it when the work would flood the conversation — a long build-and-fix loop, a mechanical sweep across many files, a rewrite whose only interesting moment is the result — or when it simply wants a clean context of its own. Do NOT use it for a quick read, a question you can answer here, or anything that needs the back-and-forth of this conversation: a task cannot ask you anything once it starts. WHAT YOU WRITE HERE IS THE TASK'S WHOLE WORLD — it never sees this conversation — SO WRITE A CONTRACT, in three parts: brief is the work and everything needed to do it, deliverable is what must exist when it is over and where, acceptance is how anybody checks that. Write each for a colleague joining today: name the files and symbols, the conventions and constraints you have learned here, and what has already been tried. THE PERSON'S OWN MESSAGE IS ATTACHED FOR YOU, verbatim, at the top of what the task reads — do not copy it in or summarise it, and do not contradict it. The person is shown the title and summary with a short countdown to redirect or wave it off; silence starts it. You get the id back immediately and the task's report arrives here when it lands, so keep working — never wait for it. A TASK MAY CALL THIS TOO, for parts of its own work that are genuinely independent of each other: up to " + strconv.Itoa(taskFanLimit) + " of them, one level deep, each registered under the task that asked for it. Split a step only when its parts do not need each other — sequential parts, and parts that share heavy context, are faster done in your own hands."
 
 // taskSchemaJSON is the wire schema. depends_on is on it from the first day
 // even though a one-node graph can never fill it: the field is the edge, the
@@ -86,27 +86,41 @@ var taskDescription = "Hand ONE self-contained piece of work to a task that runs
 // It is a var rather than a const for exactly this reason; the cost is one
 // package-level string built at init, and what it buys is a default that
 // cannot be wrong.
+//
+// THE BRIEF AND ACCEPTANCE DESCRIPTIONS CARRY THE SHAPING GUIDE IN MINIATURE.
+// prompts/shape.md is the canonical statement of what a worker-ready brief must
+// contain, and a person's own /task gets a model call that applies it
+// (task_shape.go). A brief the CHAT model writes gets no second call, because
+// the chat model has the whole conversation in front of it and a shaper would
+// see one sentence — so the guide reaches it here instead, distilled to the
+// three moves that survive compression: decide what a worker with nobody to ask
+// would have to ask, constrain against the failure THIS kind of work has rather
+// than work in general, and make done checkable by somebody else. Anything
+// longer belongs in shape.md, and this stays short so the two cannot drift into
+// two different accounts of one idea.
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work, as a person would say it: \"Fix the nil-map crash in the reconciler\""},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it: what will be done, and to what"},` +
-	`"brief":{"type":"string","description":"The task's WHOLE context, self-contained: the goal, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation"},` +
-	`"acceptance":{"type":"string","description":"The observable done-condition: the command that must pass, the behaviour that must hold, the output that must appear"},` +
+	`"brief":{"type":"string","description":"THE WORK, self-contained: what is to be done, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation and cannot ask you anything, so decide here everything it would otherwise stop and ask about — which file, which format, how long, which of two readings, what to do when the obvious route is blocked. Constrain THIS kind of work rather than work in general: ask what a lazy but plausible-looking answer to this particular job would look like and write the condition that forbids it. For output a person will read, say what would make it read as machine-written and what to do instead; for code, what \"working\" means here and that saying so requires having run it; for research, what counts as a source. \"Be accurate\" and \"follow best practice\" constrain nothing — every line must be one the worker could disobey. Do not paste the person's message in here — it is attached verbatim above what you write"},` +
+	`"deliverable":{"type":"string","description":"WHAT MUST EXIST when this is over, and where: the file and its path, the branch, the answer and the shape it takes. Name the thing, not the activity — \"docs/pricing.md, one page, table of the four tiers\" rather than \"look into pricing\""},` +
+	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking the task's word for it: the command that must pass, the behaviour that must hold, the output that must appear. \"It is finished\" and \"it is good\" are not checkable and are not this"},` +
 	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts. Its brief is given their reports when it begins"},` +
 	`"model":{"type":"string","description":"Optional. The model this work runs on, as a catalog id (\"anthropic/claude-opus-5\") or the part of one that names it (\"opus-5\"). Set it ONLY when the person asked for a particular model or class of model for this work; leave it out and the task runs on the configured one. A name that fits more than one model is shown to the person to settle"},` +
 	`"max_steps":{"type":"number","description":"Optional. How many finished tool calls make one progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `). Work that is still advancing may receive four more equal allowances; circling work gets one landing turn and stops. Raise it for a sweep across many files; lower it for something small that should be checked sooner"},` +
-	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may change no file before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Raise it when the work genuinely needs a lot of reading before its first edit"}` +
-	`},"required":["title","summary","brief","acceptance"],"additionalProperties":false}`
+	`"no_progress":{"type":"number","description":"Optional. How many tool calls in a row may teach the work nothing new AND leave no new file before it is stopped as stuck (default ` + strconv.Itoa(taskNoProgress) + `). Reading, looking at a picture, searching and generating all count as progress the first time they aim somewhere new, so this only fires on the same call repeated. Raise it when the work genuinely needs a lot of reading before its first edit"}` +
+	`},"required":["title","summary","brief","deliverable","acceptance"],"additionalProperties":false}`
 
 // taskArguments is the wire form.
 type taskArguments struct {
-	Title      string   `json:"title"`
-	Summary    string   `json:"summary"`
-	Brief      string   `json:"brief"`
-	Acceptance string   `json:"acceptance"`
-	DependsOn  []uint64 `json:"depends_on"`
-	Model      string   `json:"model"`
-	MaxSteps   int      `json:"max_steps"`
-	NoProgress int      `json:"no_progress"`
+	Title       string   `json:"title"`
+	Summary     string   `json:"summary"`
+	Brief       string   `json:"brief"`
+	Deliverable string   `json:"deliverable"`
+	Acceptance  string   `json:"acceptance"`
+	DependsOn   []uint64 `json:"depends_on"`
+	Model       string   `json:"model"`
+	MaxSteps    int      `json:"max_steps"`
+	NoProgress  int      `json:"no_progress"`
 }
 
 // taskSpec is one node's settled instruction: what the person was shown, and
@@ -117,11 +131,19 @@ type taskArguments struct {
 // acceptance are frozen for the node's whole life: that is the goal contract,
 // and the law and the reason for it are written out on [TaskNode].
 type taskSpec struct {
-	title      string
-	summary    string
-	brief      string
-	acceptance string
-	dependsOn  []uint64
+	title   string
+	summary string
+	// request is THE PERSON'S OWN MESSAGE, captured by the code that admits this
+	// proposal rather than asked of the model (task_brief.go). It is the first
+	// thing the node reads, and it is the only part of the spec no model wrote.
+	request string
+	// brief, deliverable and acceptance are the contract the conversation
+	// groomed: the work, what must exist at the end, and how anybody checks it.
+	// [composeBrief] lays all four out as the node's opening message.
+	brief       string
+	deliverable string
+	acceptance  string
+	dependsOn   []uint64
 	// modelWord is the `model` argument as the model wrote it — a word, not an
 	// id — and it lives only until [Agent.resolveTaskModel] has answered for it
 	// (taskmodel.go). model is that answer: the id this node will actually run
@@ -144,12 +166,14 @@ type taskSpec struct {
 	// [Agent.runTaskNode] hands the node to the designer's body instead of the
 	// worker's — same graph, same room, same stop, a different middle.
 	//
-	// IT IS NOT IN THE CHECKPOINT, deliberately. A design node restored from
-	// disk was RUNNING when the session ended, and a resume turns a running node
-	// into a failed one before the graph ever holds it (task_store.go's
-	// interrupt) — so there is nothing to re-enter, and a spec that claimed
-	// otherwise would be a node the frontier tried to design again with the
-	// registry already untouched.
+	// IT IS NOT IN THE CHECKPOINT, deliberately, and task_store.go's [interrupt]
+	// is what makes that safe rather than a hole: a design node restored from
+	// disk was RUNNING when the session ended, and a resume settles it FAILED
+	// before the graph ever holds it, so there is nothing to re-enter. That line
+	// and this one are one decision. If a design were ever put back on the
+	// frontier instead, the next session would hand it to an ordinary worker in a
+	// worktree with the designer's brief as its task — real money spent on work
+	// nobody asked for — because this is the only field that says otherwise.
 	design *harnessDesignSpec
 	// parent, depth and owner are THE FAMILY this proposal was made in, and they
 	// are the whole of what nesting adds to the spec: 0, 0 and nil for the work
@@ -233,6 +257,13 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 	// are what make the proposal a sub-task rather than a second root
 	// (task_run.go's [TaskNode]).
 	spec.parent, spec.depth, spec.owner = a.config.taskID, a.config.taskDepth+1, a
+	// AND WHAT THE PERSON ACTUALLY ASKED FOR, taken here rather than asked of the
+	// model. The message that caused this call is known at this moment — it is the
+	// one the turn opened on, or the newest thing typed into it — so the node
+	// opens on their sentence, unedited, above the contract the model groomed out
+	// of it (task_brief.go). A node proposing a sub-task inherits the same
+	// sentence; there is nobody in a worktree to type a new one.
+	spec.request = a.taskRequest()
 	graph := a.graph()
 	// THE SLOT IS TAKEN BEFORE THE QUESTION and handed back by everything that
 	// is not an admission, so a batch of proposals cannot walk through the fan
@@ -308,23 +339,31 @@ func (a *Agent) proposeTask(ctx context.Context, args json.RawMessage) (string, 
 // parseTaskArguments reads one call and says, in plain words, what is missing.
 //
 // Every field is required because every field is load-bearing: the title and
-// summary are what the person decides on, the brief is the node's whole world,
-// and the acceptance is what the node is finished against. A task groomed
-// without one of them is not a task that was groomed.
+// summary are what the person decides on, the brief is the work, the
+// deliverable is what must exist at the end, and the acceptance is what the
+// node is finished against. A task groomed without one of them is not a task
+// that was groomed — and a deliverable nobody named is how work comes back
+// having thought about something rather than having produced it.
+//
+// THE PERSON'S REQUEST IS NOT ON THIS LIST because it is not asked for: the
+// message that triggered the proposal is already in hand, and [Agent.proposeTask]
+// puts it on the spec itself (task_brief.go). A field the model must remember to
+// fill is a field the model will one day fill with its own words.
 func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 	var parsed taskArguments
 	if err := json.Unmarshal(args, &parsed); err != nil {
 		return taskSpec{}, "Invalid arguments: " + err.Error()
 	}
 	spec := taskSpec{
-		title:      strings.TrimSpace(parsed.Title),
-		summary:    strings.TrimSpace(parsed.Summary),
-		brief:      strings.TrimSpace(parsed.Brief),
-		acceptance: strings.TrimSpace(parsed.Acceptance),
-		dependsOn:  parsed.DependsOn,
-		modelWord:  strings.TrimSpace(parsed.Model),
-		maxSteps:   parsed.MaxSteps,
-		noProgress: parsed.NoProgress,
+		title:       strings.TrimSpace(parsed.Title),
+		summary:     strings.TrimSpace(parsed.Summary),
+		brief:       strings.TrimSpace(parsed.Brief),
+		deliverable: strings.TrimSpace(parsed.Deliverable),
+		acceptance:  strings.TrimSpace(parsed.Acceptance),
+		dependsOn:   parsed.DependsOn,
+		modelWord:   strings.TrimSpace(parsed.Model),
+		maxSteps:    parsed.MaxSteps,
+		noProgress:  parsed.NoProgress,
 	}
 	// A NEGATIVE THRESHOLD IS A MISTAKE WORTH SAYING OUT LOUD, where an absent
 	// one is not: omitting the field means "use the default" and is the ordinary
@@ -349,6 +388,7 @@ func parseTaskArguments(args json.RawMessage) (taskSpec, string) {
 		{spec.title, "title"},
 		{spec.summary, "summary"},
 		{spec.brief, "brief"},
+		{spec.deliverable, "deliverable"},
 		{spec.acceptance, "acceptance"},
 	} {
 		if missing.value == "" {

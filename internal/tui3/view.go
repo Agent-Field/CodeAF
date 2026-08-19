@@ -103,6 +103,10 @@ const (
 	// arrangement one rung further down: one pressable row, answered by keyboard
 	// or by pointer (harness.go).
 	chromeHarnessAsk
+	// chromeRoomApproval is the answers row of the design approval block pinned
+	// inside a design's own room (roomapproval.go). Only the second row of that
+	// block carries this kind, because it is the only one that answers.
+	chromeRoomApproval
 	// chromeOverlay is one row of whichever list is open; index is its position
 	// in that list's own rows.
 	chromeOverlay
@@ -119,6 +123,11 @@ const (
 	// own slot, so the two share a kind's worth of the frame and never a moment
 	// of it.
 	chromeStop
+	// chromeParked is one row of a message waiting for the answer to finish
+	// (park.go); index is which parked message that row belongs to, so a press
+	// pulls that one back into the box to be edited. The dim line under the block
+	// belongs to no message and is marked with nothing.
+	chromeParked
 	// chromeJump is the gap row the jump-to-latest chip is floating on. The row
 	// is EMPTY apart from the chip, and the chip is right-aligned, so a press on
 	// it is a question about the column as well as the row (jumpchip.go).
@@ -411,6 +420,15 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	for i, line := range a.harnessAskRows(width) {
 		add(line, a.harnessMark(i))
 	}
+	// AND A DESIGN ROOM'S APPROVAL ROW UNDER THAT (roomapproval.go). It is the
+	// same shape of thing one rung quieter still, and it STACKS rather than
+	// sharing: the three blocks above are questions the SESSION is blocked on,
+	// which own the keyboard while they are up, and this one is a standing
+	// question in a room the person is also talking in — so it can be on screen
+	// under any of them, and it takes only its own two chords.
+	for i, line := range a.roomApprovalRows(width) {
+		add(line, a.roomApprovalMark(i))
+	}
 	// THE STEER GUARD SITS WHERE THE APPROVAL QUESTION SITS, because it is the
 	// same kind of thing: the surface holding words back until it is told where
 	// to send them (room.go). The two can never be up together — a question the
@@ -421,6 +439,15 @@ func (a *app) chrome(width int) ([]string, []chromeRow, int, int) {
 	}
 	if line := a.followRow(width); line != "" {
 		add(line, chromeRow{})
+	}
+	// AND WHAT YOU TYPED WHILE THE ANSWER WAS STILL COMING SITS DIRECTLY ABOVE
+	// THE BOX (park.go). It is the LAST block of the chrome for a reason that is
+	// the whole point of it: pinned here, between everything that has happened
+	// and the box it was typed into, a waiting message cannot be spliced into the
+	// middle of the reply that is still streaming above it. Each of its rows is
+	// pressable — a click pulls that message back in to be edited.
+	for i, line := range a.parkedRows(width) {
+		add(line, a.parkedMark(i, width))
 	}
 	if roomy {
 		addGap()
@@ -559,8 +586,8 @@ func (a *app) chromeHeight() int {
 	// whatever the two optional blocks, the open list and the welcome box are
 	// holding.
 	n := a.statusHeight(width) + a.inputHeight() + a.overlayHeight() + a.consentHeight() +
-		a.connectAskHeight() + a.harnessAskHeight() + a.guardHeight() + a.followHeight() +
-		a.welcomeHeight()
+		a.connectAskHeight() + a.harnessAskHeight() + a.roomApprovalHeight() + a.guardHeight() +
+		a.followHeight() + a.parkedHeight() + a.welcomeHeight()
 	if gap := a.breathingRows(); gap > 0 {
 		n += gap + 1 // the breathing room, and the rule standing in it
 	}
@@ -753,13 +780,21 @@ func (a *app) headHeight() int {
 	if a.room == nil || a.breathingRows() == 0 {
 		return 0
 	}
+	// AND THE SAME FLOOR THE HEADER ITSELF STANDS ON. [app.roomHead] draws
+	// nothing at all under [roomHeadFloor] columns — there is not a trail and a
+	// way out's worth of line down there — so a row charged for here would be a
+	// row the frame never drew, and every hit-test on the page would land one line
+	// from where it was aimed.
+	width, _ := a.size()
+	if width < roomHeadFloor {
+		return 0
+	}
 	// THE KIN ROWS ARE PART OF THE PINNED REGION AND ARE CHARGED FOR HERE, for
 	// exactly the reason the header's own row is: they are drawn above the body
 	// by the frame, and rows the scrolling has not subtracted push the room's
 	// last row under the input box. They are asked at the frame's OWN width,
 	// which is the width [app.view] hands the header, so the count here and the
 	// rows drawn there can never disagree (room.go's [app.roomKinRows]).
-	width, _ := a.size()
 	return 1 + len(a.roomKinRows(width))
 }
 

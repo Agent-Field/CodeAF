@@ -15,6 +15,34 @@ type workfold struct {
 	took                time.Duration
 }
 
+// deckFolds is the chips ONE PAGE draws, and it is where the room's exemption
+// lives: A ROOM FOLDS NOTHING.
+//
+// The chip is an affordance of the conversation and it earns its place there. A
+// turn out in the thread is a question somebody asked and the answer they were
+// given, and the machinery between the two is work they delegated precisely so
+// they would not have to watch it — so it collapses, and the page reads back as
+// the exchange it was.
+//
+// A room is the opposite errand. It is the page somebody opened BECAUSE they
+// want to read the machinery, and a node's whole life is one long turn with a
+// report at the end of it — so the same rule swallowed the entire page the
+// instant the node stopped running, leaving `▸ worked · 10 tool calls · ctrl+e`
+// and the report under it. That is the complaint this answers: a person who
+// walked into a task to watch it work was shown its result and nothing else.
+//
+// It is stated as an absence of folds rather than as a fold that opens itself,
+// because [deck.workOpen] is the READER'S own answer and a default that had to
+// be inverted for one kind of page would give that map two meanings. With no
+// chip there is nothing to open, and `ctrl+e` falls through to the thinking
+// block, which is the key's other meaning and the one a room advertises.
+func (a *app) deckFolds(d deck) map[int]workfold {
+	if d.showsWork {
+		return nil
+	}
+	return deriveWorkfolds(d.entries, d.runningTurn)
+}
+
 // deriveWorkfolds finds completed turns with machinery followed by a real
 // trailing answer. A question, failure, cancellation, or tools-only tail has
 // no eligible trailing answer and therefore cannot disappear into a chip.
@@ -136,7 +164,7 @@ func rowIsWork(r row, es []entry, folds map[int]workfold) bool {
 
 func (a *app) toggleLatestWorkfold() bool {
 	d := a.bodyDeck()
-	folds := deriveWorkfolds(d.entries, d.runningTurn)
+	folds := a.deckFolds(d)
 	latest := -1
 	for _, f := range folds {
 		if f.turn > latest {

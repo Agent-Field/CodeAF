@@ -146,12 +146,30 @@ step did.
 **A failed run still reports.** The trail is the one thing worth having when a harness went
 wrong: the card's head reads `name · v1 · failed` and the failing step is marked `✗`.
 
-The tools a harness may reach are a fixed bare set over your workspace, not the belt the
-conversation itself carries. Notes, jobs, connected accounts and image generation are
-things a conversation reaches for, not things a saved procedure should inherit. `bash`,
-`read`, `ls`, `grep` and `find` accept a bare string. `edit` and `write` take JSON and say
-so: `edit takes its arguments as a JSON object, and "..." is not one`. An unknown tool
-gets `there is no tool named "x" on this surface`.
+## Which tools can a harness use? Can a saved harness make an image or audio?
+
+A harness reaches the seven working tools — `bash`, `read`, `write`, `edit`, `grep`,
+`find`, `ls` — **plus the media verbs this machine has models for**: `generate_image`,
+`speak`, `generate_music`, `generate_video` and `view_image`. Making a picture to a fixed
+recipe is exactly what a saved procedure is for, so a design may whitelist those verbs and
+a step may call them.
+
+It is **not** the whole belt the conversation carries. Notes, jobs, connected accounts,
+watches, settings and the task verbs are left out on purpose: those are things a
+conversation reaches for, and a recipe run months later should not be able to rewrite your
+settings or start a task tree.
+
+The media verbs follow the same rule they follow everywhere — **no model for that kind of
+media, no verb** — and the list the designer is shown when it writes a harness is the same
+list the run resolves against, so a design can never whitelist a verb this machine cannot
+run.
+
+`bash`, `read`, `ls`, `grep`, `find`, `generate_image`, `generate_music`, `generate_video`,
+`speak` and `view_image` accept a bare string as their one obvious argument — the command,
+the path, the pattern, the prompt, the words to speak. `edit` and `write` take JSON and say
+so: `edit takes its arguments as a JSON object, and "..." is not one`. Any other argument —
+a size, a voice, a destination — is written as JSON too. An unknown tool gets
+`there is no tool named "x" on this surface`.
 
 Two limits worth knowing:
 
@@ -215,8 +233,9 @@ are named there too.
 
 That number is the whole of what a design gained: it is a real task, with a row on the
 roster, a room you can walk into, a journal, and a stop. See *The design's own task and
-room* below. The design runs inside a **30-minute** window that covers both the model work
-**and** the wait for your answer to the card.
+room* below. **Writing** the page runs inside a **30-minute** window — the design turn, its
+retries, and the review pass. The card that follows has **no clock at all**: it waits on you
+for as long as you take.
 
 When the page lands, that same live block collapses in place into a fully visible
 architecture card in the feed. It shows the name and purpose, a deterministic ASCII
@@ -225,9 +244,18 @@ verification law, and allowed tools. Wide layouts draw a linear chain horizontal
 phone layouts stack it vertically. The card scrolls with the conversation and is never a
 popup or sheet.
 
-The focused card takes `enter` to save, `e` to put an improvement request in the message
-box, and `esc` to drop it. The same three actions are clickable. The card remains in the
-feed after the choice as `saved as <name> v1`, `improvement requested`, or `dropped`.
+The focused card takes `enter` to save, `e` to open the design's own room so you can say
+what to change, and `esc` to drop it — drawn as `[enter] save   [e] change it   [esc] drop`.
+The same three actions are clickable. The card remains in the feed after an answer as
+`saved as <name> v1` or `dropped`.
+
+**`e` no longer throws the design away.** It used to be labelled "improve", and what it
+actually did was discard the page and put `Improve harness <name>: ` in your message box —
+so asking for a change destroyed the thing you were asking about and started a second
+design from scratch. Nothing said so. It is a door now: the design stays exactly where it
+is, still waiting, and `e` walks you into its room, which is where a change is actually
+made. A design with no room to open says `this design has no room to open — answer the card
+here` and leaves the card alone.
 
 Under the hood: one design pass, then up to **2 retries** in which a refused design is
 shown the exact sentence it failed on and asked to fix it, then **one** review pass that
@@ -270,9 +298,15 @@ The row's state word is replaced by what the design is actually doing, and it mo
 
 | Phase | What is happening |
 | --- | --- |
-| `designing` | the page is being written — two model calls against a long guide |
-| `awaiting your look` | the page is written and the save-or-discard card is up |
+| `designing` | the page is being written — two model calls against a long guide, inside a 30-minute window |
+| `awaiting your look` | the page is written and the save-or-discard card is up — no clock runs here, and the row counts as `needs you` rather than `running` |
 | — | it lands, and the settle card says what became of it |
+
+It moves twice for a design you approve on the first card, and **twice more each time you
+ask for the page to be changed**: `awaiting your look` goes back to `designing` while the
+rewrite is written, then back again when the new card goes up. The 30-minute window is on
+the writing, and each rewrite gets it whole — a design you spend an afternoon getting right
+is never cut off for taking it seriously.
 
 **There is no progress bar and no percentage.** The live block reports only observed
 reasoning, received bytes, recovered names and step counts, elapsed stall time, and the
@@ -283,16 +317,23 @@ The settle card is the ordinary one a task lands with, and its outcome line is o
 ```
 harness "triage-flake" v1 saved
 harness "triage-flake" was designed and not saved
+harness "triage-flake" was designed; the card went unanswered, so nothing was saved
 harness "triage-flake" could not be saved: <err>
 the design failed: <err>
+the design ran out of time before it finished; nothing was saved
 harness design stopped; nothing was saved
 ```
 
 A saved design's card reads `v1` even for a first version, because "v1" is the news that it
 is the first of them. A design that failed settles as a failed task; one you declined settles
-as **done**, because you were asked and you answered — nothing went wrong.
+as **done**, because you were asked and you answered — nothing went wrong. So does one whose
+card you never got to: the page was written, and not keeping it is not a fault.
 
-### Talking to a design — improving a harness later
+**"Ran out of time" is only ever about the writing.** It is the 30-minute window on the two
+model calls, and a design that reached a page can never land on that line — see *Why a design
+timed out even though the page was there* below.
+
+### Talking to a design — asking it about the page it wrote
 
 The room's message box talks to the design, not to the conversation. What is in that thread
 is the brief it was given and the page it wrote, so it can answer questions about the harness
@@ -304,16 +345,101 @@ review changed — is in the room's history to read, but none of it is in front 
 It answers from the page that was actually written; a draft that was thrown away sitting
 beside it would be a wrong answer waiting to be given.
 
-**It cannot save a revision from in there.** Writing a page is the designer's job, and a
-revision is a new design — ask for one the same way you asked for the first, and it gets a
-task and a thread of its own, landing as the next version of the same name. The thread says
-so rather than implying otherwise.
+**It cannot save.** Nothing in that thread reaches the registry: the card is yours to
+answer, and only your approval saves a page. What it *can* do is change the page — see
+*How do I change a harness design* below.
 
 Steering only reaches a design **while it is running** — which is both phases above,
 including the long one where the card is waiting on you. After it lands, the room is the
 history: the whole design thread, readable, with the outcome at the bottom of it. `list_harnesses`
 names the task each harness this session designed was designed in, so "the flake-triage
 thread" is a number you can go to.
+
+## How do I change a harness design — can I iterate on a design before it is saved
+
+**Say what you want different, in the design's room, in your own words.** The page is
+rewritten with your change in it and put back in front of you as a new card. You can do
+that as many times as it takes.
+
+```
+that's close, but it should run the linter before it reports
+```
+
+That is the whole gesture. There is no command and no flag: the design's thread reads what
+you said, decides it is a change rather than a question, and calls `revise_design` with it.
+Then, in order:
+
+1. **The card comes down**, out in the conversation and in the room, because the page it
+   was about is about to stop existing. A save key over a replaced draft would save the
+   wrong page.
+2. **The block in the feed goes back to being live**, with what you asked for on it, and the
+   design's row goes back to `designing`.
+3. **The designer writes the whole page again** — your change in it, the rest left as you
+   already accepted it. It is held to exactly the same law as the first draft: the same
+   validator, the same **2 retries**, the same one review pass, and its own fresh window.
+4. **A new card goes up**, on the same task number. One design is one number however many
+   times it is rewritten.
+
+**Nothing is saved along the way.** The registry is untouched until you approve a card, and
+a rewrite you do not like can simply be rewritten again.
+
+**Asking a question does not rewrite anything.** "Why two steps?" and "would this fit the
+nightly build?" are answered from the page; only a request for something *different* becomes
+a rewrite.
+
+**It works only while a card is up.** Ask for a change while the page is still being written
+and the thread is told `this design is not waiting on an answer right now, so there is no
+page in front of them to change`; ask for a second change while the first is being made and
+it is told `a change to this page is already being made`.
+
+**A rewrite that cannot be written lands the task honestly**, saying `the rewrite failed and
+nothing was saved: …` rather than pretending the first design failed. The registry is
+untouched either way.
+
+## How do I approve a design from inside its room
+
+**Two chords, pinned above the message box** whenever the design you are standing in is
+waiting on you:
+
+```
+waiting on your approval — this design saves only if you say so
+[ctrl+k] save it · [ctrl+x] drop it · or say below what to change
+```
+
+`ctrl+k` saves the page. `ctrl+x` drops it. Both are clickable. Both do exactly what the
+card in the conversation does — it is one question with one id, so answering in the room
+turns the card out there into `saved as <name> v1` or `dropped`, and answering the card
+takes this row down. Whichever you answer first wins; the other finds the question gone.
+
+**They are chords and not letters on purpose.** `esc` leaves the room and `enter` sends your
+message, so neither can be taken, and a bare letter would stop being a letter you can type.
+`ctrl+k` and `ctrl+x` carry no text and are bound **only** while this row is up.
+
+**The row never swallows your typing.** Every other key falls through to the message box,
+because the third answer to the question is a sentence you type there.
+
+Once you answer, the row reads `saved as <name> v1` or `dropped` for the moment before the
+task's settle card arrives. While a rewrite is being written there is nothing to approve, so
+the row is gone.
+
+## Why does a harness design say "needs you" instead of "running"
+
+Because it is not running. A design at `awaiting your look` has finished everything a
+machine can do for it: the page is written, and the only remaining step is you saying
+whether to keep it. So:
+
+- the roster's footer counts it under **`needs you`**, not `running`
+- the status row's `⏺ N running` does not count it
+- its row wears the waiting mark **`?`**, not a spinner — nothing is turning, because
+  nothing is happening
+
+Underneath, the task is still `running` on the wire, and that is deliberate and not a bug:
+the node stays open so its room stays open, `x` still stops it, and the message box still
+reaches its thread. What changed is only what the surface *says* about it, which used to
+report a card that had been sitting unanswered since before lunch as work in progress.
+
+The moment you ask for a change, the phase goes back to `designing` and all of it goes back
+to running — because at that moment something is.
 
 **Over `--host` none of this exists**, because building a harness is switched off there
 entirely.
@@ -338,22 +464,38 @@ JSON envelope, and an envelope arriving a character at a time is not something a
 read or act on. What you get instead is the reasoning while it writes, and then a plain
 account of each thing that happened — see *What a design writes into its thread* below.
 
-**Where is the page source, then — can I see the JSON? You do not, anywhere.** Not while it
-is being written, not at the end, not in the room and not in the thread; not as JSON and not
-as YAML. No person-facing surface prints it. **The card is the page as a person reads it** —
-the name, the purpose, the numbered steps and the bounds, drawn the way every surface draws
-them. The literal text is kept for the two readers that need it: the model answering your
-questions in the design thread, and the registry it is written to if you approve it.
+**It is kept, and it stays visible.** Every reply the designer finishes is written to the
+node's journal, so opening the design tomorrow shows the writing of the page and not only
+the page. Nothing is re-narrated when you walk in: you are handed the reply being typed
+right now, and the rest is read off the file, exactly as it works for a worker. A room
+never folds its work into a `▸ worked` chip the way the main thread does, so a design that
+has already landed still reads as the whole discussion with the outcome at the bottom —
+see *Seeing the whole conversation inside a task* on the tasks page.
+
+**While a reasoning model thinks, there may genuinely be nothing to show.** Some models
+answer in one burst at the end rather than streaming, and until that burst arrives the room
+has the brief at the top and one dim line at the bottom saying what is happening —
+`harness · designing · attempt 1/3 · thinking · 52s`. That line replaces itself in place
+and is never written to the journal. When the burst lands, the whole reply appears at once.
+
+**A call that failed outright does say so in the room**, as `error: <reason>`. A design you
+stopped, or one whose window ran out, says nothing here — the settle card is already the
+account of it.
+
+## Can I see the harness page's JSON or YAML — where is the page source
+
+**You do not, anywhere.** Not while it is being written, not at the end, not in the room and
+not in the thread; not as JSON and not as YAML. No person-facing surface prints it. **The
+card is the page as a person reads it** — the name, the purpose, the numbered steps and the
+bounds, drawn the way every surface draws them. The literal text is kept for the two readers
+that need it: the model answering your questions in the design thread, and the registry it is
+written to if you approve it. Both are handed it out of sight, as a message no surface draws.
 
 **The conversation gets one line, which is a different question.** In the chat feed the same
 design is a single live block that replaces itself: `⠿ harness · designing · attempt 1/3`,
 then `naming it: research-helper`, `4 steps so far`, `thinking · 52s`. A feed you are
 holding a conversation in wants one line that stays a line; a room you walked into in order
 to watch wants to be told what is happening.
-
-**A call that failed outright does say so in the room**, as `error: <reason>`. A design you
-stopped, or one whose window ran out, says nothing here — the settle card is already the
-account of it.
 
 ## What a design writes into its thread — the draft, a refusal in plain words, the review's findings
 
@@ -403,6 +545,36 @@ and last the line saying nothing has been kept yet:
 Nothing is saved yet — the card is up, and it is saved only if it is approved.
 ```
 
+That line is the truth about the clock as well: the 30-minute window was on the *writing*,
+and it stopped when the page landed. The card below it waits with no clock at all — see
+*Why a design timed out even though the page was there* below.
+
+## What happens to a design being written when aforge closes or restarts
+
+**A design does not resume.** Every other kind of task that was running when a session
+ended comes back queued and is picked up once; a design is the one exception, and it comes
+back **failed**, saying:
+
+```
+the design did not finish before aforge closed; nothing was saved
+```
+
+That is the literal truth rather than a soft ending. Nothing reaches the harness registry
+until you approve the save-or-discard card, so a design cut off while it was still writing
+left nothing behind to continue from — no page, no half-saved entry, no worktree, no
+branch. The design room and its thread stay on disk and are still readable; there is just
+nothing in the registry.
+
+The recovered-graph line counts it apart from resumable work, because it is not resumable:
+
+```
+recovered task graph: 2 done · 1 design did not finish (nothing saved) · 1 waiting
+```
+
+**Ask for the same harness again and it is designed from the start.** That is one more
+design's worth of model calls; there is no partial page to pick up. If designs keep running
+out before they finish, ask for a smaller harness — fewer steps, shorter briefs.
+
 ## What a design can be refused for
 
 A design must pass validation and a lint before it can be offered to you. The lint refuses:
@@ -439,6 +611,29 @@ you can read on the failure note:
 Both are recoverable: the second attempt is usually the one that lands. A design that fails
 all three attempts says so — `harness design failed: no valid design in 3 attempts` — and
 the goal is worth trying again, or worth saying in fewer parts.
+
+## Why a design timed out even though the page was there — how long a design card waits
+
+**A design card waits as long as you do.** There is no timeout on it, no expiry, and nothing
+sweeps it. Go to lunch, come back an hour later, press `enter`: the harness is saved as `v1`
+and the design's task settles `harness "triage-flake" v1 saved`, exactly as it would have a
+second after the page landed. The only clock in a design is the 30-minute one on **writing**
+the page, and it stops the moment the page exists.
+
+It did not always. A design used to be given one 30-minute window for the whole job — the
+writing *and* your answer — so a design that wrote its page in ten minutes and then waited
+for you was killed at thirty and reported as `the design ran out of time before it finished;
+nothing was saved`. Both halves of that sentence were false: it had finished, and the page
+was sitting in its room. Worse, the card stayed drawn in the feed with nothing behind it —
+pressing `enter` on it did nothing at all, and the page was gone. If you have an old session
+whose harness task says it ran out of time, that is what you are looking at; the page is not
+recoverable from it, and asking for the harness again is the way back.
+
+**What can end a waiting card**, then, is only: your answer; `x` on its row or the `✕`,
+which settles it `harness design stopped; nothing was saved`; or aforge closing, which
+settles it `harness "triage-flake" was designed; the card went unanswered, so nothing was
+saved`. That last one is a **done** task, not a failed one — the design did its work, and
+you simply never got to it. Nothing reaches the registry in either case.
 
 ## The save-or-discard card
 

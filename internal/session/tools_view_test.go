@@ -209,8 +209,12 @@ func TestViewImageSaysWhenTheSeerAnsweredNothing(t *testing.T) {
 	if !isError {
 		t.Fatalf("an empty answer was accepted: %s", text)
 	}
-	if !strings.Contains(text, "vendor/slot-eyes returned no answer for shot.png") {
-		t.Fatalf("refusal = %q", text)
+	// The refusal names the file WHOLE. A person whose terminal cannot draw the
+	// picture has this sentence and nothing else, and "shot.png" alone does not
+	// say which shot.png.
+	want := "vendor/slot-eyes returned no answer for " + filepath.ToSlash(filepath.Join(workspace, "shot.png"))
+	if !strings.Contains(text, want) {
+		t.Fatalf("refusal = %q, want %q in it", text, want)
 	}
 }
 
@@ -252,8 +256,10 @@ func TestViewImageAnswersWhenTheSeerNeverDoes(t *testing.T) {
 	if !isError {
 		t.Fatalf("a look that never answered was reported as an answer: %s", text)
 	}
-	if !strings.Contains(text, "vendor/slot-eyes did not answer about render.png within ") {
-		t.Fatalf("refusal = %q", text)
+	want := "vendor/slot-eyes did not answer about " +
+		filepath.ToSlash(filepath.Join(workspace, "render.png")) + " within "
+	if !strings.Contains(text, want) {
+		t.Fatalf("refusal = %q, want %q in it", text, want)
 	}
 }
 
@@ -274,18 +280,23 @@ func TestViewImageEndsItsRowOnBothEndings(t *testing.T) {
 	t.Cleanup(func() { viewLookWindow = restore })
 
 	for _, testCase := range []struct {
-		name  string
-		look  step
-		kind  EventKind
-		wants string
+		name string
+		look step
+		kind EventKind
+		// wants is built from the workspace, because a refusal names the picture
+		// by its WHOLE path and the workspace is a temporary directory this test
+		// only learns the name of at run time.
+		wants func(workspace string) string
 	}{
 		{
 			name: "the seer answers",
 			look: func(context.Context, []ai.Message) (*ai.Response, error) {
 				return textResponse("a bar chart with the legend cut off"), nil
 			},
-			kind:  EventToolEnd,
-			wants: "seen by vendor/slot-eyes: a bar chart with the legend cut off",
+			kind: EventToolEnd,
+			wants: func(string) string {
+				return "seen by vendor/slot-eyes: a bar chart with the legend cut off"
+			},
 		},
 		{
 			// The stalled provider: it holds the call until the window above it
@@ -295,8 +306,11 @@ func TestViewImageEndsItsRowOnBothEndings(t *testing.T) {
 				<-ctx.Done()
 				return nil, ctx.Err()
 			},
-			kind:  EventToolFailed,
-			wants: "vendor/slot-eyes did not answer about chart.png within ",
+			kind: EventToolFailed,
+			wants: func(workspace string) string {
+				return "vendor/slot-eyes did not answer about " +
+					filepath.ToSlash(filepath.Join(workspace, "chart.png")) + " within "
+			},
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -325,8 +339,9 @@ func TestViewImageEndsItsRowOnBothEndings(t *testing.T) {
 			if ended.Tool != "view_image" {
 				t.Fatalf("the closing event is for %q", ended.Tool)
 			}
-			if !strings.Contains(ended.Output, testCase.wants) {
-				t.Fatalf("closing output = %q, want %q in it", ended.Output, testCase.wants)
+			wants := testCase.wants(workspace)
+			if !strings.Contains(ended.Output, wants) {
+				t.Fatalf("closing output = %q, want %q in it", ended.Output, wants)
 			}
 			// And the model was told the same thing on the record, so the row and
 			// the transcript cannot disagree about whether the look happened.
@@ -336,7 +351,7 @@ func TestViewImageEndsItsRowOnBothEndings(t *testing.T) {
 			answered := false
 			for _, message := range transcript {
 				if message.Role == "tool" && message.ToolCallID == "call-look" &&
-					strings.Contains(messageText(message), testCase.wants) {
+					strings.Contains(messageText(message), wants) {
 					answered = true
 				}
 			}

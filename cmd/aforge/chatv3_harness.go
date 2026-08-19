@@ -11,6 +11,7 @@ import (
 	"github.com/Agent-Field/aforge-v2/internal/config"
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/aforge-v2/internal/provider"
+	"github.com/Agent-Field/aforge-v2/internal/session"
 	"github.com/Agent-Field/aforge-v2/internal/subharness"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
@@ -103,7 +104,13 @@ func v3HarnessEntries(store *subharness.Store) []subharness.Entry {
 // the entries are: a settings row that cannot build a client is a reason to run
 // the ordinary turn, not a reason to refuse to open a conversation. The session
 // checks this seam for nil before it matches anything (its harness.go).
-func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string) func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
+// The media pair is [session.Config]'s own, handed down so a run's belt carries
+// the same generation verbs the conversation's does — and the same absences.
+// Both may be nil, which is a machine with no media models and a harness belt of
+// seven wire tools, exactly as before.
+func v3RunHarness(store *subharness.Store, settings config.Config, model, workspace string,
+	media session.MediaGenerator, mediaModel func(string) string,
+) func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 	if store == nil {
 		return nil
 	}
@@ -119,7 +126,12 @@ func v3RunHarness(store *subharness.Store, settings config.Config, model, worksp
 	if err != nil {
 		return nil
 	}
-	tools := v3HarnessToolBridges(workspace)
+	// The run's own client is what view_image looks with: a harness that can
+	// check the picture it just made needs somewhere to send it, and this is the
+	// completer the run already holds.
+	tools := v3HarnessToolBridges(workspace, session.HarnessBeltSeams{
+		Media: media, MediaModel: mediaModel, Seer: client,
+	})
 	return func(ctx context.Context, name, text, runModel string, step func(subharness.Trail)) (string, subharness.Usage, error) {
 		h, err := store.Load(name, 0)
 		if err != nil {
@@ -206,15 +218,15 @@ func harnessFinalOut(trace subharness.Trace) string {
 	return ""
 }
 
-// v3HarnessTools is the tool.call bridge: the four wire tools plus the three
-// read-only ones, over this session's workspace.
+// v3HarnessTools is the tool.call bridge: the wire tools plus whichever media
+// verbs this machine has models for, over this session's workspace.
 //
-// It is [bare.AllTools] rather than the session's own belt because the belt is
-// assembled inside an agent this wiring does not hold, and because the belt is
-// the MODEL's — it carries notes, jobs, connected accounts and image
-// generation, which are things a conversation reaches for and not things a
-// saved procedure should inherit by accident. A harness names the tools it
-// wants on its whitelist, and this is the set those names can resolve to.
+// It is [session.HarnessBelt] and no longer a bare.AllTools of its own. That
+// call used to be made independently here, in harnessMachinery and in
+// harnessToolNames — three lists nothing held together, so a verb the designer
+// was offered was not necessarily a verb the lint would accept or this bridge
+// could resolve. harness_belt.go is the one answer all three now read, and it
+// states what a harness gets and what it deliberately does not.
 type v3HarnessToolBridge struct {
 	Run  func(ctx context.Context, tool, args string) (string, error)
 	Belt subharness.Toolbelt
@@ -225,10 +237,10 @@ type v3HarnessToolBridge struct {
 // already writes the schema's structured object. Both become the same raw JSON
 // payload before [bare.Tool.Execute], so there is one execution path and one
 // meaning for failure.
-func v3HarnessToolBridges(workspace string) v3HarnessToolBridge {
+func v3HarnessToolBridges(workspace string, seams session.HarnessBeltSeams) v3HarnessToolBridge {
 	belt := map[string]bare.Tool{}
 	var defs []ai.ToolDefinition
-	for _, tool := range bare.AllTools(workspace) {
+	for _, tool := range session.HarnessBelt(workspace, seams) {
 		belt[tool.Name] = tool
 		var parameters map[string]any
 		// These are the package's pinned schema literals. If one ever stops being
@@ -281,8 +293,8 @@ func v3HarnessToolBridges(workspace string) v3HarnessToolBridge {
 }
 
 // v3HarnessTools keeps the fixed-argument bridge as a small, testable surface.
-func v3HarnessTools(workspace string) func(ctx context.Context, tool, args string) (string, error) {
-	return v3HarnessToolBridges(workspace).Run
+func v3HarnessTools(workspace string, seams session.HarnessBeltSeams) func(ctx context.Context, tool, args string) (string, error) {
+	return v3HarnessToolBridges(workspace, seams).Run
 }
 
 // harnessToolPrimary is the one field a tool's arguments collapse to when a
@@ -290,14 +302,26 @@ func v3HarnessTools(workspace string) func(ctx context.Context, tool, args strin
 // `go test ./...` is what a person writes on a card, and holding them to
 // `{"command":"go test ./..."}` would make the page unreadable to buy nothing.
 //
+// The media verbs are here for exactly the same reason: `generate_image` with
+// `a wide banner of a harbour at dawn` is what a person writes on a card, and
+// every one of them has ONE argument that is obviously the subject — the prompt,
+// the words to speak, the picture to look at. Their other arguments (a size, a
+// voice, a destination) are optional and are written as JSON when a page wants
+// them, which is the same bargain bash makes.
+//
 // The tools NOT in this table — edit and write — take two fields that cannot be
 // guessed apart, so they take JSON and say so.
 var harnessToolPrimary = map[string]string{
-	"bash": "command",
-	"read": "path",
-	"ls":   "path",
-	"grep": "pattern",
-	"find": "pattern",
+	"bash":           "command",
+	"read":           "path",
+	"ls":             "path",
+	"grep":           "pattern",
+	"find":           "pattern",
+	"generate_image": "prompt",
+	"generate_music": "prompt",
+	"generate_video": "prompt",
+	"speak":          "text",
+	"view_image":     "path",
 }
 
 func harnessToolArgs(tool, args string) (json.RawMessage, error) {

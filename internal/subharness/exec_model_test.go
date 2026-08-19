@@ -225,6 +225,50 @@ func TestModelExecAgentLoopToolOffer(t *testing.T) {
 	}
 }
 
+// THE EXECUTOR HAS NO VOCABULARY OF ITS OWN, and that is worth pinning rather
+// than merely being true.
+//
+// A whitelist entry is an opaque string here: [Harness.Allows] is a string
+// compare and validateWhitelist checks shape and nothing else. Which names MEAN
+// something is decided entirely outside this package, by the belt the door
+// assembles (internal/session's harness_belt.go) — so when the media verbs
+// joined that belt, nothing in this package had to learn them, and nothing here
+// may start refusing them.
+//
+// A test that only ever exercised "bash" could not tell a vocabulary-agnostic
+// executor from one with a hard-coded list of seven, which is exactly the shape
+// of mistake a later change would make.
+func TestModelExecCarriesWhateverTheBeltNamesIncludingTheMediaVerbs(t *testing.T) {
+	for _, verb := range []string{"generate_image", "generate_music", "generate_video", "speak", "view_image"} {
+		t.Run(verb, func(t *testing.T) {
+			server := newModelServer(t, modelRule{
+				when: "make it", say: "done", tool: verb,
+				args: `{"prompt":"a harbour at dawn"}`, toolCalls: 1,
+			})
+			h := Harness{Id: Id{Name: "maker", Version: 1}, Whitelist: []string{verb}, Verify: Verify{Ladder: VerifyAccept}}
+			called := ""
+			exec := ModelExec(server.client(t), ModelExecOpts{Harness: h, Toolbelt: Toolbelt{
+				Defs: []ai.ToolDefinition{testTool(verb)},
+				Call: func(_ context.Context, name string, _ map[string]any) (string, error) {
+					called = name
+					return "ok", nil
+				},
+			}})
+			if _, err := exec(context.Background(), Node{Id: "work", Kind: KindAgentLoop, Fields: Fields{
+				"brief": "make it", "tools": verb,
+			}}); err != nil {
+				t.Fatalf("%s loop: %v", verb, err)
+			}
+			if got := server.offered(0); len(got) != 1 || got[0] != verb {
+				t.Fatalf("offered %v, want only %s", got, verb)
+			}
+			if called != verb {
+				t.Fatalf("dispatched %q, want %s", called, verb)
+			}
+		})
+	}
+}
+
 func TestModelExecAgentLoopWithoutToolsIsOneCompletion(t *testing.T) {
 	server := newModelServer(t, modelRule{when: "just think", say: "thought"})
 	h := Harness{Id: Id{Name: "thinker", Version: 1}, Verify: Verify{Ladder: VerifyAccept}}

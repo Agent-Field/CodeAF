@@ -184,6 +184,44 @@ messages, on turns that called tools, and in any session with no screen to answe
 (`--once`, a task node). If the judge cannot be reached, or answers with anything that is
 not the small JSON object it was asked for, nothing is said at all.
 
+## What a run's planner and its nodes are told — does the run see what I said?
+
+Yes, and every node of it does too.
+
+**The planner** is asked once at the start and once per landing. What it reads, in order:
+your own message under the heading `WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS` and the
+line saying their words win where anything disagrees; then `THE GOAL:` — the goal the run
+was started with; then anything you have steered it with since (which outranks its plan);
+then what is done, the frontier, and the fuel gauge. The verbatim part is taken by aforge
+from the conversation, not written by any model, so a planner cannot paraphrase away a
+requirement it never had to copy.
+
+**Every node** opens on one message, and it begins with the same two things — your words,
+then the run's goal under `THE WORK` — followed by
+`YOUR PART OF IT, and the whole of what you are answerable for:` and the node's own goal
+from the planner. Then its prerequisites' digests, its write scope or the read-only line,
+and the ask for a short report.
+
+That is deliberate: the planner cuts each node's goal out of its own reading of the run, and
+a node that could see only that reading has no way to notice a requirement the reading
+dropped. Both copies are bounded so a run does not pay for them once per node — your message
+at 6000 bytes, the run's goal at 2000, each cut marked with `…`.
+
+A run started with no person behind it — one resumed, one a test scripted — simply has no
+verbatim part, and no heading over nothing.
+
+The goal itself carries the rest of the contract, because a run has no separate deliverable
+or acceptance field: what must exist at the end and how it is checked are written into the
+goal, whose first line is also the run's title on the roster and in its room header.
+
+A run you started with `/task adaptive` has its goal **shaped** first: a model turns what you
+typed into a fuller goal — your words, the constraints the work needs, and a `DONE WHEN` line
+under it — and that shaped text is the goal the planner reads. Your own sentence is still
+carried separately and verbatim, as above, so it still wins where the two disagree, and the
+run's title is still made from your words. If shaping cannot run, the goal is your sentence
+exactly. The *work that runs on its own* page has it under *Why my task's brief is longer
+than what I typed*.
+
 ## What a run's workers may touch
 
 Each node is a child agent working in your workspace, and two bounds are put on it.
@@ -218,6 +256,74 @@ replies end at the output limit, the node stops instead of spending forever. Its
 begins `INCOMPLETE: the node's final reply was cut off at the output limit after two
 continuation attempts.` The planner reads that warning with the fragment, so it can treat
 the node as unfinished rather than mistaking the prose for a completed deliverable.
+
+## When a run's worker says it wrote a file and did not
+
+A node that was given a write scope and **changed no file** does not land as done, however
+its last sentence reads. Models end turns on lines like "Now I have both files. Let me
+write the synthesized report." — which reads exactly like success and is not — so the last
+word is never what decides it. What decides it is whether anything was written.
+
+Such a node comes back **failed**, and its digest begins:
+
+```
+INCOMPLETE: nothing was written — this was scoped to write research/report.md and it ended without writing anything.
+```
+
+Its own last words are kept underneath, so nothing is thrown away. The planner reads that
+as unfinished work and can send something different; it can no longer mistake the
+narration for a deliverable.
+
+A node with **no** write scope is read-only work — its brief says `THIS IS READ-ONLY WORK:
+find out, do not change anything` — and writing nothing is the whole of what it was asked
+for. It is never held to this.
+
+## Why it kept spawning the same worker over and over — the repeat guard
+
+If a run seemed to run the same brief again and again — worker after worker sent at one
+file, each one coming back looking fine, the file never appearing — that is the shape this
+guard exists to end.
+
+A run will not hand the same file to worker after worker forever. Once **two** nodes aimed
+at one path have come back without writing it, the run refuses to take a third node for
+that path, stops asking the planner for more, lets whatever is in flight finish, and goes
+straight to its write-up. You see one line saying so:
+
+```
+research/report.md has been handed out 2 times and nothing was written to it; this run stops asking for it and reports what is actually there
+```
+
+The write-up is then asked to be honest rather than tidy: it must say which parts of the
+goal were answered, say that this part is **incomplete**, and not describe the unwritten
+file as finished. This is not a stop — a stop is your decision and skips the write-up
+entirely. The run ends **done**, with an answer that admits what is missing.
+
+A file two nodes wrote *successfully* is not this case: the guard counts nodes that failed
+at a path, never nodes that touched it, so ordinary multi-step work on one file is
+unaffected.
+
+## What happens to a run when aforge closes or restarts
+
+**A run does not survive the process.** It has no checkpoint and nothing resumes it: its
+planner, its nodes and its fuel tank all live in memory, and closing aforge ends them.
+
+What survives is the **record** of it. Every run takes a row in the project's task list
+(the `@` list and the `tasks` tool) the moment it starts, saying **running** — that is how
+you can see a run that is still going. When the run ends, a second row closes it with its
+final state, its answer and what it spent.
+
+If the process went away before the run could close its own row — a crash, a kill, a
+laptop that slept — the row is closed the next time you open that session, and it reads:
+
+```
+incomplete — aforge closed while this was still running
+```
+
+So a run can never sit in the list saying "running" hours after anything was running it.
+Only *this* session's rows are closed that way; a run in another window you still have open
+is left alone. Each node's transcript stays on disk at
+`~/.aforge/v3/runs/<session>/<run>/<node>.jsonl` whatever happened, so whatever the workers
+did get done is still readable.
 
 ## When a run is the wrong tool
 

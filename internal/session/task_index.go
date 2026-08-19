@@ -312,10 +312,46 @@ func ReadTaskIndex(path string) []TaskIndexEntry {
 	// scanner.Err() is deliberately unread: a truncated tail is the same
 	// tolerated case as an unparseable line, and the rows before it are good.
 	sortTaskIndex(rows)
+	rows = newestPerNode(rows)
 	if len(rows) > taskIndexRows {
 		rows = rows[:taskIndexRows]
 	}
 	return rows
+}
+
+// newestPerNode keeps ONE row per node: the last thing the file says about it.
+//
+// The file is append-only and a node can be written more than once — a run's
+// root takes a row when it starts and another when it settles, a node that
+// needed somebody's look takes a second row when they give it — and this is the
+// half of that arrangement that makes the later row MEAN anything. Without it
+// both rows are in every answer, and a reader that takes the first one it sees
+// gets whichever the sort happened to put there: the drop-up drew "running"
+// beside a run that had ended, because the row saying so was still in the list.
+//
+// IT IS AN INDEX, NOT AN ARCHIVE (see this file's header). The transitions a
+// node went through are in its transcript; what the index is asked is what the
+// work CAME TO, and that is one answer per node.
+func newestPerNode(rows []TaskIndexEntry) []TaskIndexEntry {
+	seen := make(map[string]bool, len(rows))
+	kept := rows[:0]
+	for _, row := range rows {
+		id := strings.TrimSpace(row.ID)
+		if id == "" {
+			// A row with no id names no node, so nothing can replace it and it can
+			// replace nothing. It is kept as it is rather than folded into a bucket
+			// with every other id-less row.
+			kept = append(kept, row)
+			continue
+		}
+		key := row.SessionID + "\x00" + id
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		kept = append(kept, row)
+	}
+	return kept
 }
 
 // sortTaskIndex puts the rows in the order every reader wants them: newest
@@ -431,6 +467,82 @@ func (a *Agent) recordTaskIndexEntry(entry TaskIndexEntry) {
 		return
 	}
 	appendTaskIndex(path, entry)
+}
+
+// ── rows a process left in flight ───────────────────────────────────────────
+
+// taskInterruptedOutcome is what a row says about work this session was doing
+// when its process went away. It is not a finding about the work — nobody was
+// there to make one — it is the plain fact that nothing finished it.
+const taskInterruptedOutcome = "incomplete — aforge closed while this was still running"
+
+// closeInflightTaskIndexRows settles the rows THIS session left saying
+// "running" when its last process ended.
+//
+// A ROW THAT SAYS RUNNING IS A CLAIM ABOUT A PROCESS, and the only process that
+// could still be making it is the one that wrote it. So opening the session
+// again is the moment the claim becomes false, exactly as reopening the journal
+// is the moment a checkpoint's running node becomes an interrupt
+// (task_store.go's [interrupt], whose reasoning this is a second application
+// of). The two are not the same file and neither can close the other's rows: a
+// checkpoint holds the graph of one conversation, and this holds the project's
+// record of everything every window ever ran.
+//
+// IT CLOSES OUR OWN ROWS AND NOBODY ELSE'S. The index is shared by every window
+// open on the project, and another session's running row is another process's
+// live work — one flock, one session folder, so a row carrying THIS session's id
+// was written by a process that is gone. Rows the live graph still holds are
+// left alone: a resumed node is described by the graph, and [Agent.TaskIndex]
+// already draws the graph over the file for exactly that reason.
+//
+// The close is an APPEND, like every other write to this file, so nothing is
+// rewritten and a crash during it costs at most one row.
+func (a *Agent) closeInflightTaskIndexRows() {
+	// A node's own agent shares its parent's project directory and has no
+	// business closing the conversation's rows (the argument [Agent.recoverTasks]
+	// makes about the checkpoint).
+	if a.config.InTask {
+		return
+	}
+	path := a.config.taskIndexFile()
+	if path == "" {
+		return
+	}
+	a.mu.Lock()
+	session := strings.TrimSpace(a.sessionID())
+	a.mu.Unlock()
+	if session == "" {
+		return
+	}
+	held := a.heldTaskIDs()
+	now := time.Now()
+	for _, row := range ReadTaskIndex(path) {
+		if row.SessionID != session || !row.Live() || held[strings.TrimSpace(row.ID)] {
+			continue
+		}
+		closed := row
+		closed.Status = string(TaskFailed)
+		closed.Outcome = taskInterruptedOutcome
+		closed.EndedAt = now
+		appendTaskIndex(path, closed)
+	}
+}
+
+// heldTaskIDs is the set of node ids this session's graph is holding, or nil for
+// a session that never built one. It reads the graph WITHOUT constructing one,
+// on [Agent.liveTaskRows]'s own terms.
+func (a *Agent) heldTaskIDs() map[string]bool {
+	graph := a.tasker()
+	if graph == nil {
+		return nil
+	}
+	graph.mu.Lock()
+	defer graph.mu.Unlock()
+	held := make(map[string]bool, len(graph.order))
+	for _, id := range graph.order {
+		held[strconv.FormatUint(id, 10)] = true
+	}
+	return held
 }
 
 // indexEntryLocked is one node as a row, with the graph held.
