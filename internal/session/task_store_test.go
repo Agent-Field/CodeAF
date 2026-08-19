@@ -533,3 +533,65 @@ func TestCheckpointPathIsPerJournal(t *testing.T) {
 		t.Fatalf("path = %q", got)
 	}
 }
+
+// A DESIGN INTERRUPTED MID-WRITING COMES BACK AS HISTORY, NEVER AS A WORKER.
+//
+// What tells [Agent.runTaskNode] a node is a design is taskSpec.design, and that
+// field is not in the checkpoint. So a design put back on the frontier would be
+// handed to an ordinary worker, in a worktree, with the designer's brief as its
+// task — real money spent on work nobody asked for. It settles instead, and it
+// says plainly that nothing was saved.
+func TestAnInterruptedDesignSettlesAndIsNeverRunAsAnOrdinaryTask(t *testing.T) {
+	repo := newTestRepo(t)
+	journal := filepath.Join(t.TempDir(), "session.jsonl")
+	checkpoint := taskCheckpointPath(journal)
+
+	writeCheckpoint(t, checkpoint, taskDocument{
+		Type: taskDocumentType, Version: taskFileVersion, Seq: 1,
+		Nodes: []taskRecord{{
+			ID: 1, Kind: TaskKindHarness,
+			Title:      "harness · Design a reusable sub-harness for making marketing images",
+			Brief:      "Design a reusable sub-harness for making marketing images.",
+			Acceptance: "a page the person approves, saved into this machine's harness registry",
+			State:      TaskRunning,
+		}},
+	})
+
+	ran := make(chan uint64, 4)
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Workspace = repo
+		config.SessionFile = journal
+		config.InTask = true // recover explicitly below so the runner can be observed.
+	})
+	graph := agent.graph()
+	graph.mu.Lock()
+	graph.run = func(node *TaskNode) { ran <- node.id }
+	graph.mu.Unlock()
+	document, found := loadTaskCheckpoint(checkpoint)
+	if !found {
+		t.Fatal("checkpoint was not found")
+	}
+	recovery := graph.rehydrate(document, repo)
+
+	notice := graph.node(1).notice()
+	if notice.State != TaskFailed {
+		t.Fatalf("an interrupted design is %q, want a settled one — queued would re-run it as a worker", notice.State)
+	}
+	if notice.Report != harnessInterruptedReport {
+		t.Fatalf("report = %q, want %q", notice.Report, harnessInterruptedReport)
+	}
+	if recovery.designs != 1 || recovery.interrupted != 0 {
+		t.Fatalf("a design was counted as resumable work: %d designs, %d interrupted",
+			recovery.designs, recovery.interrupted)
+	}
+	if note := recovery.note(); !strings.Contains(note, "1 design did not finish (nothing saved)") {
+		t.Fatalf("the recovery note promises the wrong thing: %q", note)
+	}
+
+	graph.runFrontier()
+	select {
+	case id := <-ran:
+		t.Fatalf("the frontier started node %d: an interrupted design was handed to a worker", id)
+	case <-time.After(200 * time.Millisecond):
+	}
+}

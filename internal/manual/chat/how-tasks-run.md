@@ -394,13 +394,20 @@ When a session comes back:
 
 - tasks that were **done**, **failed**, **needing your look** or **queued** come back
   exactly as they were, with their leavings intact;
-- a task that was **running** comes back **failed** and marked interrupted, with a report
-  saying where its work is:
-  - `session ended mid-run; branch task/… kept` — plus `, its worktree is at <dir>` when the
+- a task that was **running** comes back **queued** and marked interrupted, and it is
+  resumed once — a process exit pauses work, it does not make a finding about it. Its
+  report says where its work is:
+  - `paused — it resumes; branch task/… kept` — plus `, its worktree is at <dir>` when the
     directory is still there. The branch is checked in the repository first;
-  - `session ended mid-run; its branch task/… is no longer in the repository`;
-  - `session ended mid-run; it had not got as far as a working copy`;
-  - `session ended mid-run; it worked directly in the workspace, so whatever it wrote is in your tree`;
+  - `paused — its previous branch task/… is gone, so it resumes in a fresh working copy`;
+  - `paused — it resumes`, when it had not got as far as a working copy;
+  - `paused — it resumes; whatever it wrote is in your tree`, when it worked directly in
+    the workspace;
+- **a sub-harness design that was still being written is the exception: it does not
+  resume.** It comes back **failed**, saying `the design did not finish before aforge
+  closed; nothing was saved`, and it is never handed to an ordinary worker. Nothing reaches
+  the harness registry until you approve the card, so an unfinished design left nothing
+  behind to pick up — ask for it again and it is designed from the start;
 - then the queue is turned again: a queued task whose prerequisites are still done starts
   now.
 
@@ -411,9 +418,14 @@ one:
 recovered task graph: 2 done · 1 interrupted (branch task/fix-it-9c1a2f kept) · 1 waiting
 ```
 
-The counts are done, failed, needing a look, interrupted and waiting. The branch clause
-reads `no branch kept`, `branch X kept` or `branches X, Y kept`. Any completion notes that
-were never delivered appear underneath.
+The counts are done, failed, needing a look, interrupted, designs that did not finish, and
+waiting. A design's own clause is `1 design did not finish (nothing saved)`. The branch
+clause reads `no branch kept`, `branch X kept` or `branches X, Y kept`. Any completion notes
+that were never delivered appear underneath.
+
+**An adaptive run is not a task and does not come back at all** — it has no checkpoint.
+What comes back is its row in the project's list, closed with `incomplete — aforge closed
+while this was still running`. See *Adaptive runs*.
 
 A completion is announced **exactly once across lives** — a resumed session does not
 re-tell the model about work it already read about.
@@ -474,7 +486,7 @@ Endings are checked in a fixed order, and the first match wins:
 | 3 | A step limit fired | `stopped: 200 steps and no finish` or `stopped: 6 steps without progress` |
 | 4 | The checkpoints ran out | `ran out of time` |
 | 5 | You stopped it (`jobs kill`) | `stopped before it finished` |
-| 5b | The session closed or detached | paused — it resumes, it is not failed |
+| 5b | The session closed or detached | paused — it resumes, it is not failed. A sub-harness **design** is the exception: `the design did not finish before aforge closed; nothing was saved` |
 | 6 | The run errored | `it ended with an error: <err>` |
 | 7 | Stopped while its work was being looked at | `stopped while its work was being checked` |
 | 8 | Nobody could say | `finished, but needs your look — …` |

@@ -756,7 +756,13 @@ func orchestrateNeedsWord(needs []string) string {
 // the size of a node — and every clause of it is a rule this package enforces
 // in code a few hundred lines up. A guide that drifted from those checks would
 // be a planner refused by its own instructions.
-const orchestratePlannerBrief = `You plan an adaptive run. You never do the work.
+//
+// The last two rules carry [orchestrate.RepeatLimit] rather than a number typed
+// twice, because a planner told it may retry three times by a guide that
+// refuses the third is a planner reasoning from the wrong figure.
+var orchestratePlannerBrief = fmt.Sprintf(orchestratePlannerLaw, orchestrate.RepeatLimit)
+
+const orchestratePlannerLaw = `You plan an adaptive run. You never do the work.
 
 You are called once at the start and once every time a node finishes. Each
 time you see the goal, what has finished (as short digests), the frontier, the
@@ -794,7 +800,18 @@ THE RULES:
   that has what it needs should stop, and the brief you write is what the
   write-up is asked for.
 - THE FUEL IS ONE TANK for the whole run, your own calls included. When it is
-  low, add only what the goal cannot be answered without.`
+  low, add only what the goal cannot be answered without.
+- A NODE THAT WROTE NOTHING FAILED, whatever its digest reads like. A node given
+  a write_scope that ends without writing anything comes back failed, and its
+  digest begins "INCOMPLETE: nothing was written". A worker announcing what it is
+  about to do is not a worker that did it — read those digests as unfinished
+  work, never as a deliverable.
+- THE SAME FILE IS NOT SENT OUT FOREVER. Once %d nodes aimed at one path have
+  come back without writing it, the run stops taking new nodes for that path and
+  goes straight to the write-up. Sending the identical brief a third time is not
+  a plan. Change what is being asked for — a smaller piece, a different worker,
+  or a different path — or say done and let the write-up say honestly which part
+  of the goal is incomplete.`
 
 // ── the executor ────────────────────────────────────────────────────────────
 
@@ -842,7 +859,46 @@ func (e *orchestrateExec) Exec(ctx context.Context, node orchestrate.Node, deps 
 	case ctx.Err() != nil:
 		return digest, cost, ctx.Err()
 	}
+	// AND THE LAST QUESTION IS WHETHER THE WORK ACTUALLY HAPPENED. A node that
+	// was given somewhere to write and wrote nothing did not do its job, however
+	// confidently its last sentence reads — see [orchestrateUnwritten].
+	if unwritten := orchestrateUnwritten(node, changed); unwritten != "" {
+		return orchestrateLead(unwritten, digest), cost, errors.New(unwritten)
+	}
 	return digest, cost, nil
+}
+
+// orchestrateUnwritten is the run's refusal to call a node done on its own last
+// words, and it is the empty string for every node that is not that case.
+//
+// A NODE'S FINAL REPLY IS NARRATION UNTIL SOMETHING IS ON DISK. The digest is
+// the last thing the node said ([orchestrateDigest]), and a model that ends its
+// turn on "Now I have both files. Let me write the synthesized report." has said
+// something that reads exactly like success and is not: no write happened, the
+// file the planner asked for is not there, and the planner — which sees digests
+// and never a filesystem — has no way to tell the two apart. So the one fact
+// this side does have, whether the node changed anything, is what decides the
+// state: a node whose brief carried a WRITE SCOPE and whose run changed no file
+// lands FAILED with this sentence as its error, and the planner reads it as the
+// unfinished work it is.
+//
+// A read-only node — no write scope, which the brief spells out as "THIS IS
+// READ-ONLY WORK" — is untouched: writing nothing is the whole of what it was
+// asked for.
+func orchestrateUnwritten(node orchestrate.Node, changed []string) string {
+	if len(node.WriteScope) == 0 || len(changed) > 0 {
+		return ""
+	}
+	return "INCOMPLETE: nothing was written — this was scoped to write " +
+		strings.Join(node.WriteScope, ", ") + " and it ended without writing anything."
+}
+
+// orchestrateLead puts a warning in front of a digest without losing the digest.
+func orchestrateLead(warning, digest string) string {
+	if digest == "" {
+		return warning
+	}
+	return warning + "\n" + digest
 }
 
 // workspace is the hybrid collision policy in one function: the shared tree by
@@ -1127,6 +1183,13 @@ type orchestrateFamily struct {
 	run   string
 	root  uint64
 	title string
+	// goal is the run's whole sentence, kept because the project index wants the
+	// uncut title and [orchestrateFamily.title] is the clipped one a chip draws.
+	goal string
+	// started is when the root's row was minted, and it is here so that the
+	// closing row can carry how long the run took — the one figure a row about
+	// finished work cannot be given after the fact.
+	started time.Time
 	// model is the planner's, drawn on the run's own row: it is the judgement the
 	// tank is paying for, and with tiers configured it is not the model the
 	// person is talking to ([Snapshot.Planner] says the same thing to the room).
@@ -1147,13 +1210,15 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 		run = runID[0]
 	}
 	family := &orchestrateFamily{
-		agent: a,
-		run:   strings.TrimSpace(run),
-		root:  a.graph().reserve(),
-		title: clip(firstLine(goal), hintLimit),
-		model: strings.TrimSpace(planner),
-		ids:   make(map[string]uint64, 8),
-		said:  make(map[string]TaskState, 8),
+		agent:   a,
+		run:     strings.TrimSpace(run),
+		root:    a.graph().reserve(),
+		title:   clip(firstLine(goal), hintLimit),
+		goal:    strings.TrimSpace(goal),
+		started: time.Now(),
+		model:   strings.TrimSpace(planner),
+		ids:     make(map[string]uint64, 8),
+		said:    make(map[string]TaskState, 8),
 	}
 	a.emitTaskUpdate(TaskNotice{
 		ID: family.root, Run: family.run, Title: family.title, State: TaskRunning, Model: family.model,
@@ -1161,14 +1226,21 @@ func (a *Agent) newOrchestrateFamily(goal, planner string, runID ...string) *orc
 	a.mu.Lock()
 	session := a.sessionID()
 	a.mu.Unlock()
-	indexTitle := strings.TrimSpace(goal)
+	// THE ROW IS WRITTEN LIVE, AND IT IS THE ONE ROW IN THIS FILE THAT IS. Every
+	// other row the project index holds is written when work LANDED; this one
+	// says "running" so the "@" list and the `tasks` tool can see a run that is
+	// still going, and it is a promise that a second row will close it —
+	// [orchestrateFamily.settle] keeps that promise when the run ends inside this
+	// process, and [Agent.closeInflightTaskIndexRows] keeps it when the process
+	// went away instead. A row left saying "running" is a project's record of a
+	// present that ended hours ago.
 	a.recordTaskIndexEntry(TaskIndexEntry{
 		ID:            strconv.FormatUint(family.root, 10),
-		Name:          TaskSlug(indexTitle),
-		Label:         taskLabel(indexTitle),
-		Title:         indexTitle,
+		Name:          TaskSlug(family.goal),
+		Label:         taskLabel(family.goal),
+		Title:         family.goal,
 		Status:        string(TaskRunning),
-		EndedAt:       time.Now(),
+		EndedAt:       family.started,
 		SessionID:     session,
 		TranscriptURI: orchestrateFamilyURI(session, family.run),
 	})
@@ -1320,6 +1392,27 @@ func (f *orchestrateFamily) settle(snap orchestrate.Snapshot, err error) {
 		}
 	}
 	f.agent.emitTaskUpdate(notice)
+
+	// AND THE PROJECT'S RECORD IS CLOSED IN THE SAME BREATH. The roster reads the
+	// notice above and the roster dies with the window; the index outlives it, and
+	// until this row is appended the file still says this run is running — which
+	// is what a person saw for hours after the work had actually finished.
+	f.agent.mu.Lock()
+	session := f.agent.sessionID()
+	f.agent.mu.Unlock()
+	f.agent.recordTaskIndexEntry(TaskIndexEntry{
+		ID:            strconv.FormatUint(f.root, 10),
+		Name:          TaskSlug(f.goal),
+		Label:         taskLabel(f.goal),
+		Title:         f.goal,
+		Status:        string(notice.State),
+		Outcome:       taskOutcome(notice.Report),
+		Cost:          snap.Fuel.Spent,
+		DurationMS:    time.Since(f.started).Milliseconds(),
+		EndedAt:       time.Now(),
+		SessionID:     session,
+		TranscriptURI: orchestrateFamilyURI(session, f.run),
+	})
 }
 
 // orchestrateTaskState maps one node's state onto the tasker's, and says

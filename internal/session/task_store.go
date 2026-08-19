@@ -477,6 +477,11 @@ type taskRecovery struct {
 	unverified  int
 	interrupted int
 	waiting     int
+	// designs is counted apart from interrupted, and has to be: an interrupted
+	// task RESUMES and often has a branch to go and look at, and a design does
+	// neither — it is over, and nothing was saved ([interrupt]). Filing it under
+	// "interrupted" would promise a person the next session will pick it up.
+	designs int
 	// branches are the interrupted nodes' branches that are still on disk. They
 	// are the whole reason the summary is worth reading: a kept branch is work
 	// the person still has.
@@ -489,7 +494,7 @@ type taskRecovery struct {
 // any reports whether the recovery restored anything at all. A checkpoint that
 // held an empty graph — a session that proposed nothing — is not news.
 func (r taskRecovery) any() bool {
-	return r.done+r.failed+r.unverified+r.interrupted+r.waiting > 0
+	return r.done+r.failed+r.unverified+r.interrupted+r.designs+r.waiting > 0
 }
 
 // note is the ONE line the person and the model read about a resumed graph,
@@ -497,9 +502,13 @@ func (r taskRecovery) any() bool {
 //
 //	recovered task graph: 2 done · 1 interrupted (branch task/fix-it-9c1a2f kept) · 1 waiting
 //
-//	task 3 failed: Fix the reconciler
-//	session ended mid-run; branch task/fix-it-9c1a2f kept
-//	it was stopped; its branch task/fix-it-9c1a2f was kept
+//	task 3 queued: Fix the reconciler
+//	paused — it resumes; branch task/fix-it-9c1a2f kept
+//
+// A design that was still being written gets a clause of its own, because it is
+// the one interrupted node that does NOT resume ([interrupt]):
+//
+//	recovered task graph: 2 done · 1 design did not finish (nothing saved) · 1 waiting
 func (r taskRecovery) note() string {
 	if !r.any() {
 		return ""
@@ -516,6 +525,13 @@ func (r taskRecovery) note() string {
 	}
 	if r.interrupted > 0 {
 		parts = append(parts, strconv.Itoa(r.interrupted)+" interrupted ("+keptBranches(r.branches)+")")
+	}
+	if r.designs > 0 {
+		word := " design did not finish (nothing saved)"
+		if r.designs > 1 {
+			word = " designs did not finish (nothing saved)"
+		}
+		parts = append(parts, strconv.Itoa(r.designs)+word)
 	}
 	if r.waiting > 0 {
 		parts = append(parts, strconv.Itoa(r.waiting)+" waiting")
@@ -593,8 +609,16 @@ func (g *TaskGraph) rehydrate(document taskDocument, workspace string) taskRecov
 	for _, record := range document.Nodes {
 		if record.State == TaskRunning {
 			var kept string
+			harness := record.Kind == TaskKindHarness
 			record, kept = interrupt(record, workspace)
-			recovery.interrupted++
+			// A DESIGN IS COUNTED APART. It comes back over rather than resumable,
+			// so counting it beside work the frontier will pick up again would be
+			// the summary promising something that is not going to happen.
+			if harness {
+				recovery.designs++
+			} else {
+				recovery.interrupted++
+			}
 			if kept != "" {
 				recovery.branches = append(recovery.branches, kept)
 			}
@@ -688,6 +712,12 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 	return node
 }
 
+// harnessInterruptedReport is what a design that was still being written when
+// the process ended says for itself. It is the wording a design that ran out of
+// its own clock already uses, because from the person's side the two are one
+// fact: the page was not finished and nothing was kept.
+const harnessInterruptedReport = "the design did not finish before aforge closed; nothing was saved"
+
 // interrupt turns a node that was running into the failed node it became when
 // the process died, and reports which branch — if any — is still on disk for the
 // person to go and look at.
@@ -697,23 +727,35 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 // work on a branch that is gone is worse than no report: it is the harness
 // telling somebody their work is safe when it is not.
 func interrupt(record taskRecord, workspace string) (taskRecord, string) {
-	// A process exit pauses work; it does not make a finding about it. Put the
-	// node back on the ordinary frontier so the next session resumes it once.
-	record.State = TaskQueued
 	record.Interrupted = true
 	// The completion note is owed: nobody ever announced this node, because
 	// nothing was alive to announce it.
 	record.Noted = false
 
 	if record.Kind == TaskKindHarness {
-		// A DESIGN HAS NOTHING ON DISK TO POINT AT, ever: no worktree, no branch,
+		// A DESIGN IS NEVER RE-RUN, AND THIS IS THE LINE THAT MAKES IT TRUE.
+		//
+		// A design has nothing on disk to point at, ever: no worktree, no branch,
 		// no files, and nothing reaches the registry until somebody approves the
-		// card (harness_task.go). Everything below is about work that was left
-		// somewhere, so all of it would be a sentence about machinery this node
-		// was never going to have.
-		record.Report = "paused — it resumes"
+		// card (harness_task.go). It also has nothing to re-enter — what tells
+		// [Agent.runTaskNode] to hand a node to the designer instead of a worker
+		// is [taskSpec.design], which is deliberately not in the checkpoint
+		// (task.go says why). So a design put back on the frontier is a node the
+		// next session would run as an ORDINARY WORKER, in a worktree, against the
+		// designer's brief — which is not the work anybody asked for, and it would
+		// spend real money doing it.
+		//
+		// It settles instead, with the same sentence a design that ran out of time
+		// says, because the two are the same fact from the person's side: the page
+		// was still being written and nothing was kept.
+		record.State = TaskFailed
+		record.Report = harnessInterruptedReport
 		return record, ""
 	}
+
+	// A process exit pauses ordinary work; it does not make a finding about it.
+	// Put the node back on the frontier so the next session resumes it once.
+	record.State = TaskQueued
 
 	if record.Merge == mergeInPlace {
 		// There was no repository to branch from, so its edits are already in the

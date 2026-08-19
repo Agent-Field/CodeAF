@@ -373,8 +373,18 @@ func (a *Agent) designHarnessNode(ctx context.Context, node *TaskNode, listed *j
 	return a.landHarnessNode(node, child, harnessSavedWord(saved), TaskDone)
 }
 
+// pauseHarnessNode is what a design says when the PROCESS ended under it — the
+// session closed while the page was still being written, or while the card was
+// still up.
+//
+// IT DOES NOT PROMISE A RESUME, because a design does not get one. The node is
+// deliberately left running so the checkpoint carries it, and the next session
+// settles it with this same sentence (task_store.go's [interrupt], which also
+// says why it must not go back on the frontier). A room that said "paused — it
+// resumes" tonight and a recovery note that said nothing was saved tomorrow
+// would be the harness telling somebody two different things about one page.
 func (a *Agent) pauseHarnessNode(node *TaskNode, child *Agent) TaskState {
-	const report = "paused — it resumes"
+	const report = harnessInterruptedReport
 	child.record(textMessage("assistant", report))
 	node.doingNow("")
 	node.finish(report, nil, "", "")
