@@ -1078,6 +1078,7 @@ func (a *Agent) journalOnly(message ai.Message) {
 		a.file.appendMessage(message)
 	}
 }
+
 // snapshot copies the messages slice for one provider request. The copy is
 // shallow and the elements are immutable once recorded, so this costs one
 // slice header per step and buys a request that cannot be mutated underneath
