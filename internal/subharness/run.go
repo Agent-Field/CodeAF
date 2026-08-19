@@ -94,6 +94,23 @@ type Trace struct {
 // trace, and returned. The trace comes back either way, because a run that
 // died halfway is exactly the run worth reading.
 func Run(ctx context.Context, h Harness, exec Exec) (Trace, error) {
+	return RunWatched(ctx, h, exec, nil)
+}
+
+// RunWatched is [Run] with somebody looking over its shoulder: watch is handed
+// each step the instant it lands in the trail, including the one a failure ends
+// the run on.
+//
+// IT IS THE SAME TRAIL ENTRY THE TRACE KEEPS, and that is the whole point. A run
+// takes minutes and a person watching one has, until now, seen the announcement
+// and then nothing until the report — so a surface needs the steps as they
+// happen. Handing it anything but the trail's own entry would be a second
+// account of the same step, free to disagree with the card read back afterwards.
+//
+// The walk does not care whether anybody is watching: a nil watch is the
+// ordinary run, and a watch that blocks blocks the run, which is the caller's
+// business to avoid.
+func RunWatched(ctx context.Context, h Harness, exec Exec, watch func(Trail)) (Trace, error) {
 	h = h.Normalize()
 	if err := Validate(h); err != nil {
 		return Trace{}, err
@@ -111,8 +128,18 @@ func Run(ctx context.Context, h Harness, exec Exec) (Trace, error) {
 	live := map[Edge]bool{}
 	budget := h.Dyn.Cap
 
+	// step appends one entry to the trail and shows it to whoever is watching. It
+	// is one function so that the trail and the watcher cannot come to hold
+	// different things: every entry in the trace went through here.
+	step := func(entry Trail) {
+		trace.Trail = append(trace.Trail, entry)
+		if watch != nil {
+			watch(entry)
+		}
+	}
+
 	fail := func(node Node, elapsed time.Duration, err error) (Trace, error) {
-		trace.Trail = append(trace.Trail, Trail{
+		step(Trail{
 			Step: len(trace.Trail) + 1, Id: node.Id, Kind: node.Kind,
 			Err: err.Error(), Elapsed: elapsed,
 		})
@@ -149,7 +176,7 @@ func Run(ctx context.Context, h Harness, exec Exec) (Trace, error) {
 			if err != nil {
 				return fail(node, elapsed, fmt.Errorf("subharness: %s: node %q: %w", h.Id.Name, node.Id, err))
 			}
-			trace.Trail = append(trace.Trail, Trail{
+			step(Trail{
 				Step: len(trace.Trail) + 1, Id: node.Id, Kind: node.Kind,
 				Out: result.Out, Elapsed: elapsed,
 			})

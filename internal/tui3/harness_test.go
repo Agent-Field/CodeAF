@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // THE HARNESS OFFER, from the sides a person meets it: the row, its two keys,
@@ -262,4 +263,94 @@ func harnessRowY(t *testing.T, a *app) int {
 	}
 	t.Fatalf("no row is marked as the harness offer")
 	return -1
+}
+
+// ── the steps of a run, while it runs ───────────────────────────────────────
+
+func harnessStepEvent(step int, id, kind, out, err string) session.Event {
+	trail := subharness.Trail{Step: step, Id: id, Kind: kind, Out: out, Err: err}
+	return session.Event{Kind: session.EventHarnessStep, ID: 9, Text: "research", Step: &trail}
+}
+
+// A RUN IS SOMETHING YOU CAN WATCH. Between the announcement and the report was
+// nothing at all, on a run that takes minutes; each step now shows itself as it
+// lands, on the row the ellipsis would otherwise be pulsing on.
+func TestAHarnessRunShowsEachStepAsItLands(t *testing.T) {
+	agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m", turns: [][]session.Event{{
+		{Kind: session.EventHarnessRun, ID: 9, Text: "research"},
+		harnessStepEvent(1, "gather", "agent.loop", "read the changelog", ""),
+	}}}}
+	a := newTestApp(agent)
+	typeLine(t, a, "research the pricing tiers")
+
+	got := plain(frame(a))
+	if !strings.Contains(got, "harness · research") {
+		t.Fatalf("the run was never announced:\n%s", got)
+	}
+	if !strings.Contains(got, "gather") || !strings.Contains(got, "read the changelog") {
+		t.Fatalf("the step never showed itself:\n%s", got)
+	}
+}
+
+// THE ROW IS REPLACED, NEVER STACKED. The report that follows carries the whole
+// trail, so a run that left every step in the feed would write that trail twice.
+func TestAHarnessRunsStepRowReplacesItself(t *testing.T) {
+	agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m", turns: [][]session.Event{{
+		{Kind: session.EventHarnessRun, ID: 9, Text: "research"},
+		harnessStepEvent(1, "gather", "agent.loop", "read the changelog", ""),
+		harnessStepEvent(2, "check", "verify", "the numbers agree", ""),
+	}}}}
+	a := newTestApp(agent)
+	typeLine(t, a, "research the pricing tiers")
+
+	got := plain(frame(a))
+	if strings.Contains(got, "gather") {
+		t.Fatalf("the first step is still on screen beside the second:\n%s", got)
+	}
+	if !strings.Contains(got, "check") || !strings.Contains(got, "the numbers agree") {
+		t.Fatalf("the second step is not the row:\n%s", got)
+	}
+	// It is display-only: nothing about a step reaches the conversation, which is
+	// what keeps it out of the journal and out of every later request.
+	for _, e := range a.entries {
+		if strings.Contains(e.text, "the numbers agree") {
+			t.Fatalf("a step became an entry: %+v", e)
+		}
+	}
+}
+
+// A FAILING STEP IS THE ONE MOST WORTH SEEING, so its error is what the row
+// says — the run is about to end on it.
+func TestAHarnessRunsStepRowSaysWhatWentWrong(t *testing.T) {
+	agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m", turns: [][]session.Event{{
+		{Kind: session.EventHarnessRun, ID: 9, Text: "research"},
+		harnessStepEvent(2, "check", "verify", "", "the diff did not apply"),
+	}}}}
+	a := newTestApp(agent)
+	typeLine(t, a, "research the pricing tiers")
+
+	if got := plain(frame(a)); !strings.Contains(got, "the diff did not apply") {
+		t.Fatalf("the failing step said nothing:\n%s", got)
+	}
+}
+
+// AND THE ROW GOES WHEN THE TURN DOES. The report is on screen by then with
+// every step on it, and a live row about finished work is a row that lies.
+func TestAHarnessRunsStepRowLeavesWithTheTurn(t *testing.T) {
+	agent := &harnessAgent{fakeAgent: &fakeAgent{model: "m", turns: [][]session.Event{{
+		{Kind: session.EventHarnessRun, ID: 9, Text: "research"},
+		harnessStepEvent(1, "gather", "agent.loop", "read the changelog", ""),
+		{Kind: session.EventTextDelta, Text: "the report"},
+		{Kind: session.EventTurnDone},
+	}}}}
+	a := newTestApp(agent)
+	typeLine(t, a, "research the pricing tiers")
+
+	got := plain(frame(a))
+	if strings.Contains(got, "read the changelog") {
+		t.Fatalf("the live step outlived its turn:\n%s", got)
+	}
+	if !strings.Contains(got, "the report") {
+		t.Fatalf("the report did not land:\n%s", got)
+	}
 }

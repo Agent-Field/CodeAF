@@ -1547,11 +1547,13 @@ const navDoubleTap = 600 * time.Millisecond
 // note in the transcript every time somebody taps an arrow key, which is a
 // permanent line in the record about a keystroke that meant nothing.
 func (a *app) navForward() tea.Cmd {
-	// AN ADAPTIVE RUN IS THE FIRST STOP, and it is the only keyboard door onto
-	// one (roomorch.go): a run is not on the roster — it is not a node, it has no
-	// row — so → from the conversation opens the run this session has heard from,
-	// when there is one and nothing else is open. From inside any room the key
-	// goes back to walking the roster, which is what it has always done.
+	// AN ADAPTIVE RUN IS THE FIRST STOP (roomorch.go): → from the conversation
+	// opens the run this session has heard from, when there is one and nothing
+	// else is open. It is no longer the ONLY door — a run's root and node rows on
+	// the roster resolve to the same page (task.go) — but it is the one that
+	// needs no aim, which is what makes it the first thing the key does. From
+	// inside any room the key goes back to walking the roster, which is what it
+	// has always done.
 	if a.room == nil && a.orchLive != "" {
 		a.openOrchRoom(a.orchLive, "")
 		return a.takeRoomPump()

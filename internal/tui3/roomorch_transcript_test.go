@@ -153,3 +153,71 @@ func TestRunNodeWithoutJournalSaysSo(t *testing.T) {
 		t.Fatalf("missing journal was not an honest empty page:\n%s", got)
 	}
 }
+
+// A PLANNER'S NOTE IS A SENTENCE, AND A SENTENCE IS NOT CUT AT THE FRAME. The
+// note used to be one clipped line ending in the more-glyph, which on a narrow
+// frame meant a run whose whole reasoning was off screen.
+func TestPlannerNotesWrapInsteadOfClipping(t *testing.T) {
+	note := "the retry section is the only one that matters, so the client node is " +
+		"narrowed to it and the write-up will cite the two RFCs that disagree"
+	snap := orchRun4()
+	snap.Notes = []string{note}
+	a, _ := orchApp(t, snap)
+	a.width, a.height = 60, 40
+	a.touch()
+
+	page := strings.Join(orchLines(a), "\n")
+	if strings.Contains(page, glyphMore) {
+		t.Fatalf("the note was clipped:\n%s", page)
+	}
+	// Every word of it is on the page, in order, across however many rows the
+	// width took.
+	joined := strings.Join(strings.Fields(strings.ReplaceAll(page, "· ", " ")), " ")
+	if !strings.Contains(joined, note) {
+		t.Fatalf("the note is not on the page whole:\n%s", page)
+	}
+	// The hang: the rows after the first carry no bullet of their own.
+	rows := 0
+	for _, line := range orchLines(a) {
+		if strings.HasPrefix(line, "· ") {
+			rows++
+		}
+	}
+	if rows != 1 {
+		t.Fatalf("the note wears %d bullets, want exactly one:\n%s", rows, page)
+	}
+}
+
+// A NODE THAT FINISHES UNDER AN OPEN TRANSCRIPT STILL LANDS ITS LAST LINES. The
+// worker writes the journal and the scheduler publishes the state, and the two
+// race — so the page reads once more after the shape says the node stopped.
+func TestFinishedRunNodeTranscriptStillLandsItsLastLines(t *testing.T) {
+	a, agent := orchApp(t, orchRun4())
+	path := filepath.Join(t.TempDir(), "rfcs.jsonl")
+	if err := os.WriteFile(path, []byte("{\"type\":\"message\",\"role\":\"user\",\"content\":\"start here\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent.journals = map[string]string{"r1:rfcs": path}
+	a.orchCardOpen("rfcs")
+	a.orchOf().link = len(a.orchCardLinks()) - 1
+	drive(t, a, key("enter"))
+	orchPollNow(t, a)
+
+	// The node lands, and its closing line is written after the shape says so.
+	done := orchRun4()
+	done.Nodes[1].State = orchestrate.Done
+	agent.snaps["r1"] = done
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.WriteString("{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"the last word\"}\n")
+	_ = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orchPollNow(t, a)
+	if got := roomText(a); !strings.Contains(got, "the last word") {
+		t.Fatalf("the node's closing line never landed:\n%s", got)
+	}
+}

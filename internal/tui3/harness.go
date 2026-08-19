@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/aforge-v2/internal/session"
+	"github.com/Agent-Field/aforge-v2/internal/subharness"
 )
 
 // THE HARNESS OFFER.
@@ -152,7 +153,43 @@ func (a *app) noteHarness(name string) {
 	if name == "" {
 		return
 	}
+	a.harnessStep = ""
 	a.note("harness · " + name)
+}
+
+// stepHarness draws one session.EventHarnessStep: the step the run just
+// finished, on the one row under the announcement.
+//
+// THE ROW IS REPLACED AND NEVER APPENDED. A harness run takes minutes and its
+// report carries the whole trail (subharness.RunCard), so every step kept in the
+// feed would be the trail written down twice — the rule the design lane's own
+// live row is written to, one lane over ([app.progressHarnessRoom]). What this
+// row answers is "which part of it is happening", and only the current answer to
+// that is worth a line.
+//
+// It is drawn by [subharness.StepLine], which is the same renderer the report's
+// card uses, so the step a person watched and the step they read back afterwards
+// cannot say two different things.
+func (a *app) stepHarness(ev session.Event) {
+	if ev.Step == nil {
+		return
+	}
+	line := strings.TrimSpace(subharness.StepLine(*ev.Step))
+	if line == "" {
+		return
+	}
+	a.harnessStep = line
+	a.touch()
+}
+
+// dropHarnessStep clears that row. A run that is over is a run with no step in
+// flight, and the report is on screen by then saying what every step did.
+func (a *app) dropHarnessStep() {
+	if a.harnessStep == "" {
+		return
+	}
+	a.harnessStep = ""
+	a.touch()
 }
 
 // ── the design lane ─────────────────────────────────────────────────────────

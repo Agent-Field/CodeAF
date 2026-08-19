@@ -686,6 +686,11 @@ type app struct {
 	// answers were last drawn, which is the bargain the two blocks above it make.
 	harnessAsks []harnessAsk
 	harnessTaps []harnessTap
+	// harnessStep is the step a running sub-harness last finished, as one line
+	// (harness.go's [app.stepHarness]). It is a FIELD and not an entry because it
+	// is replaced in place: the run's report carries the whole trail, and a step
+	// left in the transcript would be that trail written twice.
+	harnessStep string
 	// designLane is the standing subscription to what the harness DESIGNER is
 	// doing (harness.go's design lane) and designGen the generation it belongs
 	// to. It is a lane of its own rather than the turn's stream because a design
@@ -1917,6 +1922,13 @@ func (a *app) event(ev session.Event) tea.Cmd {
 		// (harness.go).
 		a.noteHarness(ev.Text)
 
+	case session.EventHarnessStep:
+		// One step of that run, as it lands. It is the only thing on screen
+		// between the announcement above and the report below, and it replaces
+		// itself rather than piling up: the report carries the whole trail
+		// (harness.go).
+		a.stepHarness(ev)
+
 	case session.EventConnectAuth:
 		// The sign-in has started somewhere else. This opens the browser and puts
 		// the waiting block on screen — the one event on this surface that
@@ -2091,6 +2103,9 @@ func (a *app) settle() tea.Cmd {
 	// A call the model was still spelling out when the turn ended never became
 	// one: the row says so and stops pulsing (toolview.go).
 	a.dropForming()
+	// And a harness run's live step goes with the turn that was running it: the
+	// report is in the transcript by now with every step on it (harness.go).
+	a.dropHarnessStep()
 	// A proposal the engine is no longer holding stops asking, for the reason
 	// the questions above are dropped — except that this one is CHECKED rather
 	// than assumed, because the clock may have answered it (task.go).
@@ -3299,6 +3314,7 @@ func (a *app) renew() tea.Cmd {
 	// coming back to (connect.go).
 	a.connAsks, a.connPanel = nil, connectPanel{}
 	a.harnessAsks, a.harnPanel = nil, harnessPanel{}
+	a.harnessStep = ""
 	// And the picked harness goes with them: a chip is a choice made about the
 	// next message of THIS conversation, and a fresh session has no next message
 	// of that one (harnesspick.go).

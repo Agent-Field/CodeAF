@@ -180,7 +180,11 @@ func (a *app) visible(width int) []row {
 // transcript.
 func (a *app) layout(width int) []row {
 	out, closed := a.deckRows(a.conversation(), width)
-	if line, ok := a.ellipsis(); ok {
+	line, ok := a.harnessStepRow(width)
+	if !ok {
+		line, ok = a.ellipsis()
+	}
+	if ok {
 		if closed && len(out) > 0 {
 			out = append(out, row{entry: -1})
 		}
@@ -596,6 +600,24 @@ func (a *app) ellipsis() (string, bool) {
 		line += a.pal.dim(stillWorkingWord)
 	}
 	return line, true
+}
+
+// harnessStepRow is the live row under a running sub-harness's announcement:
+// the step it just finished (harness.go's [app.stepHarness]).
+//
+// IT TAKES THE ELLIPSIS'S PLACE RATHER THAN SITTING BESIDE IT. The pulse means
+// "this is alive" and so does a step landing every few seconds — and two answers
+// to one question is one too many, which is the rule [app.ellipsis] is already
+// written to about streaming text and spinning calls.
+//
+// It is drawn only while the turn is working. A step that arrived on a run whose
+// turn has since ended is a row about work that is over, and the report is on
+// screen by then saying what all of it did.
+func (a *app) harnessStepRow(width int) (string, bool) {
+	if a.state != stateWorking || a.harnessStep == "" {
+		return "", false
+	}
+	return a.pal.dim(fit("  "+a.harnessStep, width)), true
 }
 
 // silentFor is how long the stream has said nothing. Zero when nothing has ever

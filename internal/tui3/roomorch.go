@@ -133,6 +133,11 @@ type orchRun struct {
 	journal    []entry
 	journalSet bool
 
+	// following says the last poll found the open transcript's node still
+	// running, which is what buys it ONE more read after the node stops — see
+	// [app.orchRead], where the reason is stated.
+	following bool
+
 	// crumbs are the runs walked OUT of on the way in here, outermost first: a
 	// node that is itself a nested run expands into its own snapshot, and esc
 	// comes back out one level at a time.
@@ -416,9 +421,18 @@ func (a *app) orchRead() {
 	if !ok {
 		return
 	}
+	// THE TRANSCRIPT FOLLOWS A LIVE NODE, AND ONE READ PAST ITS LAST. The journal
+	// is written by the worker and the state is published by the scheduler, so the
+	// two land in either order — a page that stopped re-reading the instant the
+	// shape said done would keep whichever lines lost that race off the screen
+	// until somebody walked out of the transcript and back into it.
 	if run.transcript != "" {
-		if node, found := orchNodeOf(snap, run.transcript); found && node.State == orchestrate.Running {
-			a.orchReadTranscript()
+		if node, found := orchNodeOf(snap, run.transcript); found {
+			live := node.State == orchestrate.Running
+			if live || run.following {
+				a.orchReadTranscript()
+			}
+			run.following = live
 		}
 	}
 	// THE FIRST READ MARKS NOTHING. "New" means "this arrived while you were
@@ -761,7 +775,7 @@ func (a *app) orchKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// own esc get the key and close the page.
 		switch {
 		case run.transcript != "":
-			run.transcript, run.journal, run.journalSet = "", nil, false
+			run.transcript, run.journal, run.journalSet, run.following = "", nil, false, false
 			a.room.offset = 0
 			a.roomTouched()
 			return nil, true
@@ -923,7 +937,7 @@ func (a *app) orchOpenTranscript(node string) {
 	if run == nil || node == "" {
 		return
 	}
-	run.transcript, run.journalSet = node, false
+	run.transcript, run.journalSet, run.following = node, false, true
 	a.orchReadTranscript()
 	a.room.stick, a.room.offset = true, 0
 	a.roomTouched()
@@ -999,7 +1013,7 @@ func (a *app) orchDescend(id string) {
 	run.snap, run.known = orchestrate.Snapshot{}, false
 	run.seen, run.fresh = map[string]bool{}, map[string]bool{}
 	run.pick, run.card, run.link = orchTarget{}, "", 0
-	run.transcript, run.journal, run.journalSet = "", nil, false
+	run.transcript, run.journal, run.journalSet, run.following = "", nil, false, false
 	run.notes, run.fuel, run.steered, run.acts, run.gate = nil, "", nil, nil, nil
 	a.room.stick, a.room.offset = true, 0
 	a.orchRead()
@@ -1025,7 +1039,7 @@ func (a *app) orchAscend() {
 	// The card comes back too. A person who walked into a nested run from a chip's
 	// card came from a place, and esc is "back", not "back to the top".
 	run.card, run.pick, run.link = back.card, back.pick, 0
-	run.transcript, run.journal, run.journalSet = "", nil, false
+	run.transcript, run.journal, run.journalSet, run.following = "", nil, false, false
 	run.notes, run.fuel, run.steered, run.acts, run.gate = nil, "", nil, nil, nil
 	a.room.stick, a.room.offset = true, 0
 	a.orchRead()
@@ -1149,7 +1163,7 @@ func (a *app) orchGraphRows(page *orchPage, width int) {
 		}
 		page.put(a.pal.dim(fit(word, width)))
 		for _, note := range notes {
-			page.put(a.pal.dim(fit("· "+note, width)))
+			a.orchNoteRows(page, note, width)
 		}
 		return
 	}
@@ -1163,7 +1177,7 @@ func (a *app) orchGraphRows(page *orchPage, width int) {
 			// boundary are the same moment seen twice. A boundary with no note left
 			// to put on it is a blank row, which is the spacing the layers want
 			// anyway.
-			page.put(a.orchNoteRow(notes, i-1, width))
+			a.orchNoteBoundary(page, notes, i-1, width)
 		}
 		var next []orchestrate.NodeStatus
 		if i+1 < len(layers) {
@@ -1181,7 +1195,7 @@ func (a *app) orchGraphRows(page *orchPage, width int) {
 		if i < 0 {
 			continue
 		}
-		page.put(a.pal.dim(fit("· "+notes[i], width)))
+		a.orchNoteRows(page, notes[i], width)
 	}
 	// A CURSOR ON A CANCELLED NODE IS A CURSOR ON NOTHING. The planner cancels
 	// pending nodes (the amendment's own vocabulary), and a chip that went away
@@ -1191,13 +1205,47 @@ func (a *app) orchGraphRows(page *orchPage, width int) {
 	}
 }
 
-// orchNoteRow is one boundary: the planner's line, or a blank.
-func (a *app) orchNoteRow(notes []string, at, width int) string {
-	if at < 0 || at >= len(notes) {
-		return ""
+// orchNoteBoundary is one boundary between two layers: the planner's line, or
+// the blank row a boundary with no note left is worth anyway.
+func (a *app) orchNoteBoundary(page *orchPage, notes []string, at, width int) {
+	note := ""
+	if at >= 0 && at < len(notes) {
+		note = strings.TrimSpace(notes[at])
 	}
-	return a.pal.dim(fit("· "+notes[at], width))
+	if note == "" {
+		page.put("")
+		return
+	}
+	a.orchNoteRows(page, note, width)
 }
+
+// orchNoteRows puts one planner note on the page as however many rows it takes.
+//
+// A NOTE IS WRAPPED AND NEVER CLIPPED. Everything else on this page is a PICTURE
+// of the run — a chip, a glyph, a gauge — and those are cut at the frame's edge
+// without losing anything, because the shape is the information and the shape is
+// still there. A note is the one thing here that is the planner's own SENTENCE
+// about what it just decided, and half a sentence is the half that says least:
+// "the retry section is the only one that matters — narrowing" clipped after
+// eight words is a person watching a run and being told nothing.
+//
+// The lead is on the first row only and the rest hang under it, so a long note
+// reads as one paragraph off one bullet rather than as a list of fragments.
+func (a *app) orchNoteRows(page *orchPage, note string, width int) {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return
+	}
+	lead := orchNoteLead
+	for _, line := range wrap(note, width-ansi.StringWidth(orchNoteLead)) {
+		page.put(a.pal.dim(fit(lead+line, width)))
+		lead = strings.Repeat(" ", ansi.StringWidth(orchNoteLead))
+	}
+}
+
+// orchNoteLead opens a planner's note, and the continuation rows are indented to
+// exactly its width — one constant, so the hang cannot drift from the bullet.
+const orchNoteLead = "· "
 
 // orchLayerFlow draws one layer as chips across the line, wrapping when the
 // width runs out, with the connector row under it at the wide tier.
