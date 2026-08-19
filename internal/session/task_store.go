@@ -129,19 +129,32 @@ func (c Config) checkpointFile() string {
 // taskRecord is one node as it survives the process.
 //
 // It carries the node's whole life in three parts: the FROZEN SPEC it was
-// admitted with (title, summary, brief, acceptance, depends_on, thresholds),
+// admitted with (title, summary, request, brief, deliverable, acceptance,
+// depends_on, thresholds),
 // where it had got to (state, elapsed), and its LEAVINGS (report, changed,
 // branch, worktree, merge). The assembled brief is deliberately absent: it is
 // JIT by contract (task_run.go), so a queued node that resumes assembles it from
 // the reports its prerequisites left, which is the same thing it would have done
 // had nothing died.
 type taskRecord struct {
-	ID         uint64   `json:"id"`
-	Title      string   `json:"title"`
-	Summary    string   `json:"summary,omitempty"`
-	Brief      string   `json:"brief"`
-	Acceptance string   `json:"acceptance"`
-	DependsOn  []uint64 `json:"depends_on,omitempty"`
+	ID      uint64 `json:"id"`
+	Title   string `json:"title"`
+	Summary string `json:"summary,omitempty"`
+	// Request is the person's own message, kept because a node that resumes
+	// without it would be re-opened on the model's paraphrase alone — the one
+	// part of what it was told that nothing downstream could reconstruct
+	// (task_brief.go). Absent in every checkpoint written before requests were
+	// carried, which resumes exactly as it always did: fewer sections, nothing
+	// invented.
+	Request string `json:"request,omitempty"`
+	Brief   string `json:"brief"`
+	// Deliverable is what must exist when the node is over. It is omitempty for
+	// Request's reason and for one more: a task the PERSON wrote themselves names
+	// no deliverable separately, and a heading over nothing is not written
+	// (task_person.go).
+	Deliverable string   `json:"deliverable,omitempty"`
+	Acceptance  string   `json:"acceptance"`
+	DependsOn   []uint64 `json:"depends_on,omitempty"`
 
 	// Parent and Depth are the node's FAMILY: which node handed this work out
 	// (0 at a root) and how many tasks deep it sits (1 for a conversation's own
@@ -337,7 +350,9 @@ func (n *TaskNode) recordLocked() taskRecord {
 		ID:          n.id,
 		Title:       n.spec.title,
 		Summary:     n.spec.summary,
+		Request:     n.spec.request,
 		Brief:       n.spec.brief,
+		Deliverable: n.spec.deliverable,
 		Acceptance:  n.spec.acceptance,
 		DependsOn:   dependsOn,
 		Parent:      n.parent,
@@ -683,16 +698,18 @@ func restoreNode(graph *TaskGraph, record taskRecord) *TaskNode {
 		depth:     record.Depth,
 		done:      make(chan struct{}),
 		spec: taskSpec{
-			parent:     record.Parent,
-			depth:      record.Depth,
-			title:      record.Title,
-			summary:    record.Summary,
-			brief:      record.Brief,
-			acceptance: record.Acceptance,
-			dependsOn:  record.DependsOn,
-			model:      record.Model,
-			maxSteps:   record.MaxSteps,
-			noProgress: record.NoProgress,
+			parent:      record.Parent,
+			depth:       record.Depth,
+			title:       record.Title,
+			summary:     record.Summary,
+			request:     record.Request,
+			brief:       record.Brief,
+			deliverable: record.Deliverable,
+			acceptance:  record.Acceptance,
+			dependsOn:   record.DependsOn,
+			model:       record.Model,
+			maxSteps:    record.MaxSteps,
+			noProgress:  record.NoProgress,
 		},
 		state:       record.State,
 		report:      record.Report,

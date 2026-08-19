@@ -180,10 +180,11 @@ func verdictFromEvidence(marker, verified, refuted string) step {
 // proposeCall is the model asking for one task, with the mark in the brief.
 func proposeCall(title, brief string) step {
 	arguments, _ := json.Marshal(taskArguments{
-		Title:      title,
-		Summary:    "two lines the person reads",
-		Brief:      brief + "\n" + taskBriefMark,
-		Acceptance: "the file is there",
+		Title:       title,
+		Summary:     "two lines the person reads",
+		Brief:       brief + "\n" + taskBriefMark,
+		Deliverable: "the file, at the path named in the brief",
+		Acceptance:  "the file is there",
 	})
 	return func(context.Context, []ai.Message) (*ai.Response, error) {
 		return toolResponse("call-task", "propose_task", string(arguments)), nil
@@ -731,19 +732,27 @@ func TestTaskNodeWorkMergesIntoThePersonsBranch(t *testing.T) {
 		t.Fatalf("report = %q, want the node's own last words", notice.Report)
 	}
 
-	// The node was asked with the brief and the acceptance, and never with the
-	// conversation: the brief is its whole world.
+	// The node was asked with the opening message and nothing else: the person's
+	// own words, the work, what to produce and what done means (task_brief.go).
+	// THE CONVERSATION ITSELF STILL DOES NOT TRAVEL — the summary the person was
+	// shown on the card stays in the conversation, and so does everything else
+	// said in the turn.
 	asked := completer.childAsked()
 	if len(asked) == 0 {
 		t.Fatal("the node never reached the provider")
 	}
 	instruction := messageText(asked[len(asked)-1])
-	if !strings.Contains(instruction, "write hello.txt containing hi") ||
-		!strings.Contains(instruction, "Acceptance: the file is there") {
-		t.Fatalf("the node was asked %q", instruction)
+	for _, want := range []string{
+		briefAskHeading, "add a greeting",
+		"write hello.txt containing hi",
+		briefDoneHeading, "the file is there",
+	} {
+		if !strings.Contains(instruction, want) {
+			t.Fatalf("the node was asked %q, missing %q", instruction, want)
+		}
 	}
 	for _, message := range asked {
-		if strings.Contains(messageText(message), "add a greeting") {
+		if strings.Contains(messageText(message), "two lines the person reads") {
 			t.Fatal("the conversation leaked into the node's context")
 		}
 	}
@@ -1612,7 +1621,7 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 				func(context.Context, []ai.Message) (*ai.Response, error) {
 					arguments, _ := json.Marshal(taskArguments{
 						Title: "Research", Summary: "s", Brief: "research\n" + taskBriefMark,
-						Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+						Deliverable: "d", Acceptance: "a", NoProgress: 3, MaxSteps: 30,
 					})
 					return toolResponse("call-task", "propose_task", string(arguments)), nil
 				},
@@ -1659,7 +1668,7 @@ func TestNewInformationResetsTheNoProgressClock(t *testing.T) {
 				func(context.Context, []ai.Message) (*ai.Response, error) {
 					arguments, _ := json.Marshal(taskArguments{
 						Title: "Read", Summary: "s", Brief: "read\n" + taskBriefMark,
-						Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+						Deliverable: "d", Acceptance: "a", NoProgress: 3, MaxSteps: 30,
 					})
 					return toolResponse("call-task", "propose_task", string(arguments)), nil
 				},
@@ -1864,7 +1873,7 @@ func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
 			name: "no progress",
 			arguments: taskArguments{
 				Title: "Grind", Summary: "s", Brief: "spin\n" + taskBriefMark,
-				Acceptance: "a", NoProgress: 3, MaxSteps: 30,
+				Deliverable: "d", Acceptance: "a", NoProgress: 3, MaxSteps: 30,
 			},
 			want: "stopped: 3 steps without progress",
 		},
@@ -1872,7 +1881,7 @@ func TestThresholdsStopANodeThatIsNotGettingAnywhere(t *testing.T) {
 			name: "the step budget",
 			arguments: taskArguments{
 				Title: "Grind", Summary: "s", Brief: "spin\n" + taskBriefMark,
-				Acceptance: "a", NoProgress: 50, MaxSteps: 2,
+				Deliverable: "d", Acceptance: "a", NoProgress: 50, MaxSteps: 2,
 			},
 			want: "stopped at 2-step checkpoint: still circling",
 		},
@@ -1951,7 +1960,7 @@ func TestTaskThresholdsDefaultAndOverride(t *testing.T) {
 	// And a negative one is a mistake said out loud rather than a default
 	// quietly substituted.
 	arguments, _ := json.Marshal(taskArguments{
-		Title: "t", Summary: "s", Brief: "b", Acceptance: "a", MaxSteps: -1,
+		Title: "t", Summary: "s", Brief: "b", Deliverable: "d", Acceptance: "a", MaxSteps: -1,
 	})
 	if _, problem := parseTaskArguments(arguments); !strings.Contains(problem, "max_steps cannot be negative") {
 		t.Fatalf("a negative max_steps was accepted: %q", problem)
@@ -1989,7 +1998,7 @@ func TestTaskSpawnSwapsANoToolsModelBeforeItsFirstCall(t *testing.T) {
 
 func TestStepCheckpointExtendsFourTimesThenLands(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
-	arguments, _ := json.Marshal(taskArguments{Title: "Long", Summary: "s", Brief: "keep going\n" + taskBriefMark, Acceptance: "a", MaxSteps: 1, NoProgress: 20})
+	arguments, _ := json.Marshal(taskArguments{Title: "Long", Summary: "s", Brief: "keep going\n" + taskBriefMark, Deliverable: "d", Acceptance: "a", MaxSteps: 1, NoProgress: 20})
 	spin := []step{
 		lsCall("one"), lsCall("two"), lsCall("three"), lsCall("four"), lsCall("five"),
 		finalText("the active turn drained"),
