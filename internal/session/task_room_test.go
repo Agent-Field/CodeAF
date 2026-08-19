@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/aforge-v2/internal/home"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
@@ -106,10 +107,15 @@ func TestTaskRoomWatchesAndSteersARunningNode(t *testing.T) {
 		t.Fatalf("SteerTask: %v", err)
 	}
 	// The journal is the OTHER lane, and it is answerable while the work runs.
+	// The claim is that it lands in the STATE ROOT's task tree, and the state
+	// root is asked for rather than spelled: a literal "/.aforge/v3/tasks/" here
+	// passed only because the journal really was being written into the
+	// developer's own home, which is the thing this suite may not do.
 	journal := agent.TaskJournal(1)
-	if !strings.Contains(filepath.ToSlash(journal), "/.aforge/v3/tasks/") ||
+	tasks := filepath.ToSlash(filepath.Join(home.Dir(), "v3", "tasks")) + "/"
+	if !strings.Contains(filepath.ToSlash(journal), tasks) ||
 		!strings.HasSuffix(journal, "_1.jsonl") {
-		t.Fatalf("TaskJournal = %q, want this node's own session file", journal)
+		t.Fatalf("TaskJournal = %q, want this node's own session file under %s", journal, tasks)
 	}
 	close(release)
 
