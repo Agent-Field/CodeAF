@@ -1987,6 +1987,14 @@ func (a *app) hintWord() string {
 		// [app.railKey]'s guard stands down; and above the running turn, because
 		// while it is held esc gives the keyboard back rather than interrupting.
 		return railHoldHint
+	case len(a.parks) > 0:
+		// A MESSAGE IS WAITING FOR THIS ANSWER, and while it is, esc does one
+		// more thing than it did: it stops the turn AND sends what is parked
+		// (park.go). It outranks the plain interrupt below for the reason the
+		// armed rewind outranks it — the slot promises what the NEXT esc does,
+		// and that is no longer only a stop. It is spelled exactly as the block's
+		// own dim line spells it, so the two lines on one screen agree.
+		return parkedHint[1]
 	case a.state == stateWorking:
 		return "esc interrupt"
 	case a.railAway && a.railAvail():

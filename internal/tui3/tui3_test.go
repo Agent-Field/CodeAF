@@ -966,7 +966,10 @@ func TestEscInterruptsAndCtrlCCloses(t *testing.T) {
 	}
 }
 
-func TestSteeringDoesNotAbandonTheLiveStream(t *testing.T) {
+// A SECOND ENTER NEVER TOUCHES THE STREAM IT WAS TYPED AT. The message waits
+// above the box (park.go) and the answer keeps coming on the same channel, at
+// the same generation, into the same working state.
+func TestASecondEnterDoesNotAbandonTheLiveStream(t *testing.T) {
 	agent := &fakeAgent{model: "m", turns: [][]session.Event{{
 		text(session.EventTextDelta, "first"),
 	}}}
@@ -976,13 +979,16 @@ func TestSteeringDoesNotAbandonTheLiveStream(t *testing.T) {
 
 	typeLine(t, a, "two")
 	if a.gen != generation || a.stream != stream {
-		t.Fatal("a steering submit replaced the stream it was steering")
+		t.Fatal("a second enter replaced the stream that was still running")
 	}
 	if a.state != stateWorking {
 		t.Fatalf("state is %v", a.state)
 	}
-	if len(agent.sent) != 2 {
-		t.Fatalf("the steering message was not sent: %v", agent.sent)
+	if len(agent.sent) != 1 {
+		t.Fatalf("the second message was sent into the running turn: %v", agent.sent)
+	}
+	if len(a.parks) != 1 || a.parks[0].text != "two" {
+		t.Fatalf("the second message was not held for the answer: %+v", a.parks)
 	}
 }
 

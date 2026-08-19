@@ -790,6 +790,11 @@ type app struct {
 	// the stream the turn it starts will speak on — and the woken turns waiting
 	// on the same door, which are streams with no message at all (followup.go).
 	follows []queued
+	// parks are the messages typed with plain enter while an answer was still
+	// coming: held HERE rather than handed to the session, so they can still be
+	// edited, taken back, or sent early with esc (park.go). Each one goes as an
+	// ordinary turn of its own, oldest first, one per finished turn.
+	parks []parked
 	// wakeLane is the standing subscription to turns the session started ON ITS
 	// OWN, and wakeGen the generation it belongs to. It is a lane of STREAMS
 	// rather than of events (followup.go's wake lane), and its generation is the
@@ -1557,6 +1562,15 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.statusPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, nil
 			}
+			// AND A MESSAGE WAITING FOR THE ANSWER IS PRESSABLE, which is the
+			// whole of its edit gesture: the block says "click to edit" and a
+			// block that printed a gesture it did not answer to would be the one
+			// dead cell on the screen (park.go). It is read here, with the rest of
+			// the chrome, and above the body's own hit-testing for the reason
+			// every chrome target is.
+			if cmd, took := a.parkPress(msg.Mouse().Y); took {
+				return a, cmd
+			}
 			opened := a.press(msg.Mouse().X, msg.Mouse().Y)
 			// A press can open a room — a spawn card is a door now (room.go's
 			// [app.openRoomAt]) — and a room that opened without its lane being
@@ -1612,7 +1626,14 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.stream = nil
 		// The turn is over, so a message that was waiting for it starts now
 		// (followup.go). Nil when nothing is queued.
-		return a, tea.Batch(a.settle(), a.startFollow())
+		//
+		// AND A PARKED MESSAGE GOES HERE TOO, one per finished turn and after the
+		// follow-up queue is offered the same moment (park.go): a ctrl+q message
+		// was handed to the session before this one was parked, and a surface that
+		// let the newer sentence jump the older one would be reordering what the
+		// person said. [app.sendParked] stands down when the follow-up above it
+		// has already taken the turn.
+		return a, tea.Batch(a.settle(), a.startFollow(), a.sendParked())
 
 	case taskEventMsg:
 		if msg.gen != a.taskGen {
@@ -2335,6 +2356,35 @@ func (a *app) closeLive() {
 	a.live = -1
 }
 
+// said puts one of the PERSON'S OWN lines into the transcript without cutting
+// the answer that is still streaming in two.
+//
+// THE DEFECT IT FIXES. A message sent while a reply was streaming went in the
+// obvious way — close the live block, append the line — and the very next delta
+// found no live block and opened a second one under it. What the reader saw was
+// one flowing answer with somebody else's sentence wedged between two of its
+// paragraphs, as though the model had quoted them mid-thought. The words were in
+// the right place in TIME and in the wrong place on the PAGE, and the page is
+// the only record anybody reads back.
+//
+// SO THE STREAMED BLOCK STAYS WHOLE. The line is appended after it and the live
+// index is left where it was, which is still valid — appending never moves an
+// earlier entry — so the next delta grows the block it was already growing and
+// the person's line stays below it. A tool row is deliberately NOT treated this
+// way: a call lands in place, between two paragraphs, because that is where it
+// happened and the reply is written around it.
+//
+// The room's own transcript takes the same rule from [app.roomSaid] (room.go).
+func (a *app) said(e entry) {
+	live := a.live
+	a.entries = append(a.entries, e)
+	if live < 0 || live >= len(a.entries)-1 || a.entries[live].kind != entryAssistant {
+		a.live = -1
+		return
+	}
+	a.live = live
+}
+
 func (a *app) refreshUsage() {
 	if a.agent == nil {
 		return
@@ -2753,7 +2803,6 @@ func (a *app) submit(text string) tea.Cmd {
 // The second door is a picked harness, which is a turn in every respect except
 // which function starts it (harnesspick.go's [app.runPickedHarness]).
 func (a *app) submitting(text string, start func() (<-chan session.Event, error)) tea.Cmd {
-	a.closeLive()
 	// STEERING IS NOT A SECOND TURN, and this is [app.startClock]'s law said
 	// about the transcript rather than about the burn window: a plain enter with
 	// a turn already streaming is a message spliced into THAT turn, queued by the
@@ -2774,7 +2823,7 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 	// WALL-CLOCK moment rather than a duration: it is where a sitting starts,
 	// and it is what the gap and day marks above it are measured from
 	// (timestamps.go).
-	a.entries = append(a.entries, entry{kind: entryUser, text: text, turn: a.turn, began: a.now()})
+	a.said(entry{kind: entryUser, text: text, turn: a.turn, began: a.now()})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
 	// The turn is open and the first request is out with nothing back from it.
@@ -3490,6 +3539,11 @@ func (a *app) renew() tea.Cmd {
 	a.entries = nil
 	a.live, a.sel, a.think = -1, -1, -1
 	a.asks, a.follows = nil, nil
+	// AND A MESSAGE STILL WAITING FOR AN ANSWER GOES WITH THE CONVERSATION IT
+	// WAS TYPED AT (park.go). It was parked against a reply that no longer
+	// exists, and there is no turn end coming to send it — but the person typed
+	// those words, so this says that it went rather than dropping it in silence.
+	a.dropParked()
 	// The offers and the sign-ins belong to the conversation that raised them,
 	// and a browser still standing open on one of them is a browser nobody is
 	// coming back to (connect.go).

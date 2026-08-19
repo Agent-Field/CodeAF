@@ -1112,6 +1112,25 @@ func (a *app) roomAppend(e entry) {
 	a.roomTouched()
 }
 
+// roomSaid is [app.said] over the room's own transcript: the person's line goes
+// in below the answer that is still streaming rather than cutting it in two.
+// The rule is the deck's, not the conversation's, which is why the room gets it
+// for free — see [app.said] for the defect and the reasoning.
+func (a *app) roomSaid(e entry) {
+	room := a.room
+	if room == nil {
+		return
+	}
+	live := room.live
+	room.entries = append(room.entries, e)
+	if live < 0 || live >= len(room.entries)-1 || room.entries[live].kind != entryAssistant {
+		room.live = -1
+	} else {
+		room.live = live
+	}
+	a.roomTouched()
+}
+
 // roomTouched drops the room's cached rows and keeps a reader at the live edge
 // where they were already at it. It is [app.follow]'s law, applied to the room's
 // own offset.
@@ -1187,9 +1206,8 @@ func (a *app) steer() tea.Cmd {
 	// folds. The chips are not spent here — a room's box sends words, and the tray
 	// belongs to the conversation.
 	a.roomCollapseThought()
-	a.roomCloseLive()
 	room.turn++
-	a.roomAppend(entry{kind: entryUser, text: line, turn: room.turn})
+	a.roomSaid(entry{kind: entryUser, text: line, turn: room.turn})
 	return a.edited()
 }
 
