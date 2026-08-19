@@ -427,6 +427,11 @@ type app struct {
 	place     string
 	file      string
 	resumed   bool
+	// previews holds the pictures this surface has already drawn as half blocks
+	// (imagepreview.go), keyed by the file, its mtime and the shape it was drawn
+	// for. An open picture call is re-rendered on every frame, and decoding a
+	// megapixel png ten times a second is the one thing this surface must not do.
+	previews map[string]imagePreview
 
 	entries []entry
 	// live is the assistant entry currently being streamed into, or -1.

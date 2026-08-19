@@ -329,9 +329,12 @@ kind is a separate answer, so drawing may be there while filming is not.
   note naming it, and `jobs kill` stops it.
 
 Each saves a file and answers with its path — never the media itself — and each
-costs real money, a video most of all. The page "making pictures, audio and
-video" has the arguments, the exact wording of the results, where the files land,
-and what happens when one fails.
+costs real money, a video most of all. A path is all that goes into the
+conversation, but **you can see a picture without leaving the terminal**: open
+the `generate_image` row and the image is drawn in the expansion, in colour, with
+its path and size beneath. The page "making pictures, audio and video" has the
+arguments, the exact wording of the results, where the files land, and what
+happens when one fails.
 **One model does all the looking.** The looking slot in the settings sheet is
 the single answer to "what can see here": the fallback above, `read_document`'s
 image rung, and the `view_image` tool below all use that one model. Change it
@@ -352,7 +355,8 @@ composition, any text verbatim, and anything malformed.
 It reads **png, jpeg, webp and gif**, up to **10MB**. The answer names who
 looked: `seen by <model>: <what it saw>`. The picture itself is **not** added to
 the conversation, so everything you need about one image is worth asking in a
-single call.
+single call. **You can see it too**: open the `view_image` row and the picture is
+drawn in the expansion, in colour, above what the looking model said.
 
 Refusals, in its own words:
 
