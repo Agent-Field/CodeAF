@@ -967,7 +967,13 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 		// found, because the name is what got us here.
 		args := json.RawMessage(running.Function.Arguments)
 		started := time.Now()
-		text, isError, err := tool.Execute(ctx, args)
+		// THE CALL'S OWN ID TRAVELS WITH IT. It is what lets a tool still
+		// running be addressed from outside the turn — the surface's key that
+		// sends a foreground bash call to the background has to find the process
+		// somehow, and the id on the row is the only handle it has (promote.go).
+		// It is set at this chokepoint rather than per tool, so the early warm
+		// start carries it exactly as the batch does.
+		text, isError, err := tool.Execute(withCallID(ctx, call.ID), args)
 		// THE ROW'S CLOCK IS THIS CALL'S OWN CLOCK. The result cannot be sent
 		// yet — it goes out with the batch, in call order, because that is the
 		// order the transcript is written in — but the fact that this call is

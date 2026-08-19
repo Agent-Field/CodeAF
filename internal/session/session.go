@@ -1131,6 +1131,13 @@ type Agent struct {
 	// contend for the lock Interrupt has to be able to take at any moment.
 	jobs *jobRegistry
 
+	// inFlightBash is every foreground bash call that could be sent to the
+	// background right now, keyed by the provider's id for the call
+	// (promote.go). It sits outside mu and holds its own lock for the reason
+	// jobs does, and for one more: the surface reaches into it from the input
+	// goroutine at the exact moment a turn is holding mu.
+	inFlightBash promotableCalls
+
 	// memory is the brain (memory.go), nil when Config.Memory is. Like jobs it
 	// sits outside mu and holds its own lock: its writer is a post-turn goroutine
 	// that outlives the turn that started it, and its reader is the pre-turn

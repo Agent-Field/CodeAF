@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -268,7 +269,14 @@ func newBashTool(cwd string) Tool {
 
 			shell, shellArgs := getShellConfig()
 
-			cmd := exec.CommandContext(ctx, shell, append(shellArgs, p.Command)...)
+			// THE COMMAND IS NOT BOUND TO THE CONTEXT, and the watcher below
+			// does the binding by hand. exec.CommandContext's own watcher kills
+			// the group on cancel and then force-closes the output pipes after
+			// WaitDelay — which is exactly right for a call that ends with its
+			// turn, and fatal for one that has been PROMOTED into a job that is
+			// supposed to outlive it (promote.go). The cancel semantics are
+			// unchanged: SIGKILL to the whole group, the moment ctx is done.
+			cmd := exec.Command(shell, append(shellArgs, p.Command)...)
 			cmd.Dir = cwd
 			cmd.Env = os.Environ()
 			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -279,17 +287,11 @@ func newBashTool(cwd string) Tool {
 			// holder of the write end is gone — a grandchild that escaped the
 			// process group (its own setsid, a daemon that re-parented) holds it
 			// open forever, and the caller waiting on this call waits with it.
-			// Cancel makes the context's own kill reach the whole group instead
-			// of the shell alone, and WaitDelay force-closes the pipes shortly
-			// after the shell itself is gone for anything that survived. The
-			// defence is internal/exec's, verbatim (tools.go, jobs.go), for a
-			// fault that was observed there first.
-			cmd.Cancel = func() error {
-				if cmd.Process == nil {
-					return os.ErrProcessDone
-				}
-				return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			}
+			// The kill reaches the whole group rather than the shell alone, and
+			// WaitDelay force-closes the pipes shortly after the shell itself is
+			// gone for anything that survived. The defence is internal/exec's,
+			// verbatim (tools.go, jobs.go), for a fault that was observed there
+			// first.
 			cmd.WaitDelay = 3 * time.Second
 
 			// Interleave stdout+stderr in arrival order. Setting both
@@ -307,17 +309,67 @@ func newBashTool(cwd string) Tool {
 				return "Failed to start command: " + err.Error(), true, nil
 			}
 
-			// Kill the process group on timeout.
+			// The call is now a thing somebody else could take (promote.go).
+			// Everything that can end it goes through this handle from here on,
+			// so exactly one of the four racers wins.
+			call := newBashCall(p.Command, cmd, acc, ctx)
+			over := make(chan struct{})
+			defer close(over)
+			watchCancel(ctx, call, over)
+
+			promoter := bashPromoterFrom(ctx)
+			if promoter != nil {
+				if finished := promoter.Started(call); finished != nil {
+					defer finished()
+				}
+			}
+
+			// ONE Wait, IN A GOROUTINE, because the call may be handed over
+			// while the process is still running and Go permits exactly one
+			// wait per command. The exit code goes to whoever adopts the call;
+			// the error comes back here for the ordinary ending.
+			waitCh := make(chan error, 1)
+			go func() {
+				err := cmd.Wait()
+				call.exit <- exitCodeFromWait(err)
+				waitCh <- err
+			}()
+
+			// THE TIMEOUT IS A HANDOFF WHERE SOMEBODY IS THERE TO TAKE IT.
+			// With no promoter it is what it always was — the process group is
+			// killed and the call says so.
 			var timer *time.Timer
-			timedOut := false
 			if timeoutSet {
 				timer = time.AfterFunc(time.Duration(timeoutMs)*time.Millisecond, func() {
-					timedOut = true
+					if promoter != nil && promoter.TimedOut(call) {
+						return
+					}
+					if !call.closeTimedOut() {
+						return
+					}
 					killProcessGroup(cmd)
 				})
 			}
 
-			waitErr := cmd.Wait()
+			var waitErr error
+			select {
+			case waitErr = <-waitCh:
+				// A call adopted in the same breath as its own exit keeps the
+				// adoption: the process is the adopter's now, and the exit code
+				// is already on its way to it.
+				if answer, isError, adopted := call.close(); adopted {
+					if timer != nil {
+						timer.Stop()
+					}
+					return answer, isError, nil
+				}
+			case <-call.promoted:
+				if timer != nil {
+					timer.Stop()
+				}
+				answer, isError, _ := call.close()
+				return answer, isError, nil
+			}
 			if timer != nil {
 				timer.Stop()
 			}
@@ -332,7 +384,7 @@ func newBashTool(cwd string) Tool {
 				text += formatBashTruncationFooter(snapshot)
 			}
 
-			if timedOut {
+			if call.wasTimedOut() {
 				timeoutSecs := int(*p.Timeout)
 				return appendStatus(text, fmt.Sprintf("Command timed out after %d seconds", timeoutSecs)), true, nil
 			}
@@ -688,7 +740,13 @@ type outputAccumulator struct {
 	finished         bool
 	tempFilePath     string
 	tempFile         *os.File
-	mu               sync.Mutex
+	// mirror is where a PROMOTED call's output goes (promote.go). Once it is
+	// set, this accumulator stops accumulating altogether: the tool result has
+	// already been answered, nobody will ask for another snapshot, and the one
+	// place the rest of the output belongs is the adopter's own log. Two files
+	// for one command would be two answers to "where is the rest of it".
+	mirror io.Writer
+	mu     sync.Mutex
 }
 
 // Write implements io.Writer so both cmd.Stdout and cmd.Stderr can be set
@@ -709,7 +767,33 @@ func newOutputAccumulator() *outputAccumulator {
 	}
 }
 
+// mirrorTo redirects everything from here on into w, after replaying what has
+// already arrived so the adopter's log opens with the output the person was
+// already watching. See [BashCall.Attach] for what the replay can and cannot
+// promise.
+func (a *outputAccumulator) mirrorTo(w io.Writer) {
+	if w == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.tailText) > 0 {
+		_, _ = w.Write(a.tailText)
+	}
+	a.mirror = w
+	// The temp spill ends here for the same reason the accumulation does: the
+	// full log is the adopter's file now.
+	if a.tempFile != nil {
+		a.tempFile.Close()
+		a.tempFile = nil
+	}
+}
+
 func (a *outputAccumulator) append(data []byte) {
+	if a.mirror != nil {
+		_, _ = a.mirror.Write(data)
+		return
+	}
 	if a.finished {
 		return
 	}

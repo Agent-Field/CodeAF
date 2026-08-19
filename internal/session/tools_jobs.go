@@ -30,7 +30,12 @@ const backgroundSentence = " Run long-lived commands (servers, watchers) with ba
 // timeoutSentence states the v3 foreground law pi leaves unstated: a call the
 // model did not bound is bounded by the harness, because one hung command
 // otherwise wedges the whole turn until the person interrupts.
-const timeoutSentence = " Foreground calls time out after 120s unless you set timeout (max 600s); background calls never time out."
+//
+// AND WHAT REACHING THE BOUND ACTUALLY DOES, because that changed and a model
+// reasoning from "it will be killed" reasons wrongly: it hedges, splits the
+// command, or starts again from nothing when the answer was already running
+// (promote.go).
+const timeoutSentence = " Foreground calls are bounded at 120s unless you set timeout (max 600s); a foreground command that reaches its bound is NOT killed — it becomes a background job and the call answers 'still running as job N; log at <path>', so the work continues and its exit reaches you like any other job's. Background calls never time out."
 
 // The v3 foreground timeout law. bare carries a model-settable timeout with no
 // default and no sane cap (its maximum is int32 milliseconds — 24 days), which
@@ -127,7 +132,12 @@ func (a *Agent) backgroundBash(inner bare.Tool) bare.Tool {
 			// wording of every other bash error, and a second parser reporting
 			// the same fault in different words helps nobody.
 			if err := json.Unmarshal(args, &parsed); err != nil || !parsed.Background {
-				return inner.Execute(ctx, withTimeoutLaw(args))
+				// THE PROMOTION DOOR IS FITTED HERE AND ONLY HERE (promote.go).
+				// This is the foreground branch, so a call that asked for
+				// background:true can never carry it — it left this function on
+				// the other side of the branch and was a job from the first
+				// instant, with nothing to promote and no timeout to promote at.
+				return inner.Execute(a.promotable(ctx), withTimeoutLaw(args))
 			}
 			if strings.TrimSpace(parsed.Command) == "" {
 				return "Invalid arguments: command is required", true, nil

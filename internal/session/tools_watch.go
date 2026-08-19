@@ -102,6 +102,18 @@ const (
 
 	// watchLabelLimit keeps a derived name short enough to read inside a note.
 	watchLabelLimit = 32
+
+	// watchDefaultQuietTicks, watchMinQuietTicks and watchMaxQuietTicks bound
+	// on=quiet's patience. Six ticks is a minute on the default interval, which
+	// is the honest smallest span in which "it has stopped printing" means
+	// anything: a build between two noisy phases goes quiet for seconds at a
+	// time, and a watch that called that finished would be wrong more often
+	// than right. The floor is two because one unchanged tick is not a run of
+	// them, and the ceiling is the same "past this, ask rather than watch"
+	// judgement watchMaxEvery makes.
+	watchDefaultQuietTicks = 6
+	watchMinQuietTicks     = 2
+	watchMaxQuietTicks     = 100
 )
 
 // watchMode is what counts as news.
@@ -111,6 +123,17 @@ const (
 	watchOnChange watchMode = "change"
 	watchOnMatch  watchMode = "match"
 	watchOnAlways watchMode = "always"
+	// watchOnQuiet is on=change's inverse, and it is the shape the other three
+	// modes cannot make: news is the output NOT moving. It is how a watch
+	// answers "tell me when this has finished" for the very large class of
+	// commands that finish without saying so — a build whose log stops growing,
+	// a download whose byte count stops climbing, a server that has stopped
+	// logging its startup.
+	//
+	// It ENDS the watch, the way `until` does, because a run of unchanged ticks
+	// is an answer and not a symptom: a watch that reported it and kept going
+	// would report it again every tick from then on.
+	watchOnQuiet watchMode = "quiet"
 )
 
 // watchSpec is one watch's settled terms: what to run, how often, and what to
@@ -123,6 +146,18 @@ type watchSpec struct {
 	on      watchMode
 	pattern *regexp.Regexp
 	until   *regexp.Regexp
+	// quietTicks is how many consecutive unchanged ticks end an on=quiet watch.
+	// It is meaningless in every other mode and is refused there rather than
+	// ignored (see [parseWatchArguments]).
+	quietTicks int
+}
+
+// quietSpan is how long the quiet run this watch is waiting for actually lasts,
+// which is the figure its final note names. It is derived from the interval and
+// the tick count rather than measured, because those two are what the person
+// asked for and the answer must be the terms they set.
+func (s watchSpec) quietSpan() string {
+	return fmt.Sprintf("%d ticks (%ds)", s.quietTicks, s.quietTicks*int(s.every/time.Second))
 }
 
 // detail is the terms in the words the list row and the start line both use.
@@ -130,6 +165,9 @@ func (s watchSpec) detail() string {
 	detail := fmt.Sprintf("every %ds · on %s", int(s.every/time.Second), s.on)
 	if s.on == watchOnMatch {
 		detail += fmt.Sprintf(" /%s/", s.pattern)
+	}
+	if s.on == watchOnQuiet {
+		detail += fmt.Sprintf(" · %s", s.quietSpan())
 	}
 	if s.until != nil {
 		detail += fmt.Sprintf(" · until /%s/", s.until)
@@ -151,16 +189,23 @@ type watchState struct {
 	// producing news, however unhappily, and is not the stuck case.
 	failText  string
 	failCount int
+	// quietCount is how many ticks in a row have produced exactly the previous
+	// tick's text, for on=quiet. Identity is the whole tick text, which is the
+	// same identity the delta logic and the failure streak already use: a
+	// command whose output differs by one byte has produced news, and news is
+	// not quiet.
+	quietCount int
 }
 
 // ── the tool ────────────────────────────────────────────────────────────────
 
-const watchDescription = "Run a command on a timer and be told ONLY when there is news, instead of re-running it yourself every turn. Use this for anything you would otherwise poll: a log that should stay quiet, a build whose output you want when it moves, a counter you want to see climb, a file that should eventually contain a line. The watch runs in the background as a job (kind watch: it shows in the jobs tool's list, and jobs kill stops it) and delivers a short note into the conversation at the next step boundary whenever its rule fires — the new lines only, capped, never the whole output. The first run establishes the baseline and says nothing (except with on=always). Modes: 'change' — the output differs from last time, and you get the new lines; 'match' — new lines matching your pattern, and nothing else; 'always' — the last 10 lines every tick, for watching a number move. Give 'until' a pattern to end the watch the moment it appears. At most 3 watches run at once."
+const watchDescription = "Run a command on a timer and be told ONLY when there is news, instead of re-running it yourself every turn. Use this for anything you would otherwise poll: a log that should stay quiet, a build whose output you want when it moves, a counter you want to see climb, a file that should eventually contain a line. The watch runs in the background as a job (kind watch: it shows in the jobs tool's list, and jobs kill stops it) and delivers a short note into the conversation at the next step boundary whenever its rule fires — the new lines only, capped, never the whole output. The first run establishes the baseline and says nothing (except with on=always). Modes: 'change' — the output differs from last time, and you get the new lines; 'match' — new lines matching your pattern, and nothing else; 'always' — the last 10 lines every tick, for watching a number move; 'quiet' — the output has NOT changed for quiet_ticks ticks in a row, which is how you learn that something finished without saying so, and which ends the watch with one final note. on is a single mode: quiet cannot be combined with change, match or always, and quiet_ticks is refused unless on is quiet. Give 'until' a pattern to end the watch the moment it appears. At most 3 watches run at once."
 
 const watchSchemaJSON = `{"type":"object","properties":{` +
 	`"command":{"type":"string","description":"The shell command to run on each tick, in the workspace"},` +
 	`"every_seconds":{"type":"number","description":"Seconds between runs (default: 10, minimum: 2, maximum: 3600)"},` +
-	`"on":{"type":"string","description":"What counts as news: change (output differs from the previous tick), match (new lines matching pattern), always (the last 10 lines every tick)","enum":["change","match","always"]},` +
+	`"on":{"type":"string","description":"What counts as news: change (output differs from the previous tick), match (new lines matching pattern), always (the last 10 lines every tick), quiet (the output has NOT changed for quiet_ticks ticks in a row, delivered as one final note that ends the watch). Exactly one mode: quiet is incompatible with change, match and always","enum":["change","match","always","quiet"]},` +
+	`"quiet_ticks":{"type":"number","description":"How many consecutive unchanged ticks end an on=quiet watch (default: 6, minimum: 2, maximum: 100). Only valid when on is quiet"},` +
 	`"pattern":{"type":"string","description":"Regular expression selecting the lines worth reporting (required when on is match)"},` +
 	`"until":{"type":"string","description":"Regular expression that ends the watch: the first output line matching it is delivered as a final note and the watch stops"},` +
 	`"name":{"type":"string","description":"Short label for this watch, used in its notes and in the jobs list (default: derived from the command)"}` +
@@ -173,9 +218,13 @@ type watchArguments struct {
 	Command      string `json:"command"`
 	EverySeconds *int   `json:"every_seconds"`
 	On           string `json:"on"`
-	Pattern      string `json:"pattern"`
-	Until        string `json:"until"`
-	Name         string `json:"name"`
+	// QuietTicks is a pointer for EverySeconds' reason and one more: an absent
+	// figure takes the default, while a figure the model spelled out in a mode
+	// that has no use for it is a misunderstanding worth saying out loud.
+	QuietTicks *int   `json:"quiet_ticks"`
+	Pattern    string `json:"pattern"`
+	Until      string `json:"until"`
+	Name       string `json:"name"`
 }
 
 // watchTool is the belt entry. It validates, starts, and returns ONE LINE — the
@@ -232,9 +281,35 @@ func parseWatchArguments(args json.RawMessage) (watchSpec, string) {
 		spec.on = watchOnChange
 	}
 	switch spec.on {
-	case watchOnChange, watchOnMatch, watchOnAlways:
+	case watchOnChange, watchOnMatch, watchOnAlways, watchOnQuiet:
 	default:
-		return spec, fmt.Sprintf("Invalid arguments: on must be change, match, or always (got %q)", parsed.On)
+		return spec, fmt.Sprintf("Invalid arguments: on must be change, match, always, or quiet (got %q)", parsed.On)
+	}
+
+	// quiet_ticks belongs to one mode, and a call that sets it in another is
+	// REFUSED rather than quietly ignored: a model that wrote it meant something
+	// by it, and the something it meant — "tell me when this goes quiet" — is
+	// not what on=change is about to do. The refusal is the shape every other
+	// bad argument here gets, because a wrong-combination error the model has
+	// never seen is a wrong-combination error it cannot learn from.
+	if parsed.QuietTicks != nil && spec.on != watchOnQuiet {
+		return spec, fmt.Sprintf("Invalid arguments: quiet_ticks only applies when on is quiet (got on=%s)", spec.on)
+	}
+	if spec.on == watchOnQuiet {
+		ticks := watchDefaultQuietTicks
+		if parsed.QuietTicks != nil {
+			ticks = *parsed.QuietTicks
+		}
+		// Clamped rather than refused, exactly as the interval is, and for the
+		// same reason: an out-of-range count is a model reaching for "as soon as
+		// possible" or "only when it is really over".
+		if ticks < watchMinQuietTicks {
+			ticks = watchMinQuietTicks
+		}
+		if ticks > watchMaxQuietTicks {
+			ticks = watchMaxQuietTicks
+		}
+		spec.quietTicks = ticks
 	}
 
 	if pattern := strings.TrimSpace(parsed.Pattern); pattern != "" {
@@ -466,6 +541,25 @@ func (r *jobRegistry) watchTick(ctx context.Context, watched *job, spec watchSpe
 	state.hash = hash
 
 	switch spec.on {
+	case watchOnQuiet:
+		// The baseline is a tick with nothing before it, so it cannot be part of
+		// a run of unchanged ticks: the count starts at the FIRST tick that
+		// matched its predecessor.
+		if baseline || hash != previousHash {
+			state.quietCount = 0
+			return "", false
+		}
+		state.quietCount++
+		if state.quietCount < spec.quietTicks {
+			return "", false
+		}
+		// `until`'s shape, for `until`'s reason: this is the answer to a
+		// question the caller asked, so it is one sentence naming the terms that
+		// were met, then the single line of evidence — what the command was
+		// still saying when it stopped saying anything new.
+		return fmt.Sprintf("watch %s: quiet for %s\n%s",
+			spec.name, spec.quietSpan(), clip(lastNonEmpty(lines), watchNoteLineLimit)), true
+
 	case watchOnAlways:
 		// The one mode with no baseline: "show me the number climbing" wants the
 		// first number too.
@@ -631,6 +725,20 @@ func firstMatching(lines []string, pattern *regexp.Regexp) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// lastNonEmpty is the one line an on=quiet note quotes: what the command was
+// still saying when it stopped saying anything new. Blank lines are skipped for
+// [jobSink.lastNonEmptyLine]'s reason — a command whose last write was a newline
+// still has something to say about where it got to — and a command that printed
+// nothing at all answers with the emptiness law's own answer, which is nothing.
+func lastNonEmpty(lines []string) string {
+	for index := len(lines) - 1; index >= 0; index-- {
+		if trimmed := strings.TrimSpace(lines[index]); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func tailOf(lines []string, n int) []string {

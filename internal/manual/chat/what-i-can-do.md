@@ -87,18 +87,67 @@ with the environment aforge itself was started with.
 the maximum** you can ask for. A higher `timeout` is quietly clamped to 600. A
 `timeout` that is missing, null, zero or negative is the same as not asking: 120
 seconds is written in for it, so there is no way to spell a foreground command
-that runs unbounded. On a timeout the whole process group is killed and the
-result is `Command timed out after N seconds` — and the call returns there even
-if something it started in the background is still holding the output pipe open.
+that runs unbounded.
+
+**Reaching that bound does not kill the command.** It is handed to the job
+registry and keeps running — see the next section.
 
 A command that exits non-zero answers `Command exited with code N`. An
 interrupted one answers `Command aborted`. If the workspace directory is gone:
 `Working directory does not exist: <cwd>\nCannot execute bash commands.`
 
-Anything that is meant to keep running — a server, a dev watcher, a long build —
-should be started in the background instead, where it never times out.
+Anything you already know is meant to keep running — a server, a dev watcher —
+is better started in the background from the start, where no clock runs at all.
 
 `bash` follows your approval mode, which asks by default.
+
+## The command took too long — is the work lost, or does it keep running?
+
+It keeps running. A foreground command that reaches its timeout is **adopted as
+a background job**, not killed, and the call answers with one line:
+
+```
+still running as job 3; log at /path/to/workspace/.aforge-v3/jobs/3.log
+```
+
+That is the same sentence a command started with `background: true` answers with,
+and from that moment it *is* an ordinary job: a row in `jobs list`, a tail in
+`jobs output`, `jobs kill` reaches its whole process group, and when it finally
+exits aforge is told at the next step — `job 3 exited 0: BUILD OK`. The turn
+carries on straight away rather than waiting.
+
+So a nine-minute `make` behind a two-minute bound costs nothing. Nothing is
+thrown away and nothing is run twice. The old behaviour — the process group
+killed and `Command timed out after N seconds` — is what a bare subharness leaf
+still does; the chat does not.
+
+Two things it does **not** do:
+
+- **A command you interrupted is interrupted.** Pressing `esc` cancels the turn,
+  and a cancelled command is never adopted: it dies, no job appears, and the
+  answer is `Command aborted`. Stop means stop.
+- **It does not outlive the conversation.** A promoted job is a job, so it is
+  killed when the session closes, like every other one.
+
+The log opens with the output you had already watched scroll past, and continues
+with everything the command printed afterwards. For a command that had printed
+truly enormous amounts before it was promoted, the log begins where aforge's own
+rolling tail begins — the last few hundred kilobytes — rather than at the very
+first line.
+
+## Can I send a running command to the background myself?
+
+Yes — press **`ctrl+g`** while a foreground command is running. It is the same
+adoption the timeout does: the command is not killed and not started again, it
+simply becomes a job, the row says which one (`job 3`), and the turn carries on.
+
+The key does nothing when there is nothing to send away — no command running, a
+command that is already a background job, a call that is not `bash`. See the
+keys page.
+
+aforge can also reach for this itself, in effect, by starting a long command
+with `background: true` in the first place; `ctrl+g` is the answer when neither
+of you knew in advance that the command would be a long one.
 
 ## Does cd stick between commands — changing directory in bash
 
@@ -143,7 +192,9 @@ The `jobs` tool looks at all of this. Its `action` is `list`, `output` or `kill`
 
 - `list` — one row per job: `job 1 · exited(0) · 12.4s · go build ./...`.
   Status is `running`, `exited(N)` or `killed`. Nothing running reads
-  `No background jobs.`
+  `No background jobs.` A job that started life as a foreground command and was
+  promoted — by its timeout, or by `ctrl+g` — has exactly this row, with no mark
+  saying where it came from: it is a job like any other.
 - `output` — the last lines from the in-memory tail, **50 by default and 200 at
   most**, with a footer naming the full log:
   `[job 1 · running · showing last 50 lines · full log: <path>]`.
@@ -163,15 +214,17 @@ news**, which is the difference between it and re-running a command every turn:
 re-running costs a turn and shows you the same output again, while a watch stays
 quiet until something is different.
 
-Arguments: `command` (required), `every_seconds`, `on` (`change`, `match` or
-`always`), `pattern`, `until`, `name`.
+Arguments: `command` (required), `every_seconds`, `on` (`change`, `match`,
+`always` or `quiet`), `pattern`, `until`, `quiet_ticks`, `name`.
 
 - `on=change` (the default) reports the lines that are new since the previous
   tick, so a scrolling `tail -50` reports the two new lines rather than fifty.
 - `on=match` reports only new lines matching `pattern`, which is required in
   this mode.
 - `on=always` reports the last 10 lines every tick.
-- The first tick of `change` and `match` is silent — it is the baseline.
+- `on=quiet` is the opposite of `change`: it fires when the output has **not**
+  moved — see the next section.
+- The first tick of `change`, `match` and `quiet` is silent — it is the baseline.
 - `until` is checked on every tick including the first, and the first matching
   line ends the watch.
 
@@ -189,6 +242,48 @@ with `jobs kill`. Starting one answers
 
 Three identical failures in a row end a watch. A watch note wakes an idle
 session, and watches die with the session like any other job.
+
+## Can you tell me when something has finished — when it goes quiet or stops changing?
+
+Yes: `watch` with `on=quiet`. It is the inverse of every other mode — the news is
+the output **not** moving. Use it for the very large class of things that finish
+without announcing it: a build log that stops growing, a download whose byte
+count stops climbing, a directory that stops filling up.
+
+`quiet_ticks` is how many consecutive unchanged ticks count as finished —
+**6 by default, minimum 2, maximum 100**, clamped rather than refused. On the
+default 10-second interval, six ticks is a minute of silence. Two ticks that are
+the same are a run of one, so a `quiet_ticks` of 6 means six ticks in a row that
+each matched the one before.
+
+Any change at all resets the count. Sameness is the **whole** of a tick's output,
+which is the same identity `on=change` uses — a log that differs by one byte has
+moved.
+
+When it fires it **ends the watch** with one final note, the way `until` does:
+
+```
+watch build: quiet for 6 ticks (60s)
+Linking target/release/app
+```
+
+— the terms that were met, then the last non-empty line the command was still
+printing. Nothing more comes from that watch afterwards.
+
+**`on` is one mode, not a set of them.** `quiet` cannot be combined with
+`change`, `match` or `always`, and asking for `quiet_ticks` in any other mode is
+refused rather than ignored:
+
+```
+Invalid arguments: quiet_ticks only applies when on is quiet (got on=change)
+```
+
+An unknown mode answers
+`Invalid arguments: on must be change, match, always, or quiet (got "sometimes")`.
+
+`until` still works alongside `quiet` and is still checked first, so a watch can
+end either because the line it was waiting for appeared or because everything
+went quiet.
 
 ## Can you read a scanned PDF, a Word file or a photo of a receipt?
 
@@ -574,15 +669,17 @@ Plainly, so you do not have to find out the hard way.
   showing you the bytes.
 - **`grep` needs ripgrep and `find` needs fd** on the machine. Neither is
   downloaded on demand; without them those tools say so and stop.
-- **`bash` in the foreground cannot run longer than 600 seconds.** Anything
-  longer belongs in the background.
+- **`bash` in the foreground cannot run longer than 600 seconds** — but reaching
+  that bound does not throw the work away: the command becomes a background job
+  and keeps going.
 - **A scanned PDF is not readable by `read`**, only by `read_document`.
 - **More than 3 watches at once is refused.**
 
 ## What does not survive the conversation ending
 
-- **Background jobs and watches.** Every running job is killed when the session
-  closes. Their log files stay under `<workspace>/.aforge-v3/jobs/`.
+- **Background jobs and watches**, including a foreground command that was
+  promoted into one. Every running job is killed when the session closes. Their
+  log files stay under `<workspace>/.aforge-v3/jobs/`.
 - **A "don't ask again" answer to a permission question.** It is held in memory
   for this session only and is never written down, so the next session asks
   again.

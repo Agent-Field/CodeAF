@@ -116,7 +116,12 @@ func TestWatchRejectsBadArguments(t *testing.T) {
 		wanted    string
 	}{
 		{"no command", map[string]any{"every_seconds": 5}, "command is required"},
-		{"unknown mode", map[string]any{"command": "date", "on": "sometimes"}, "on must be change, match, or always"},
+		{"unknown mode", map[string]any{"command": "date", "on": "sometimes"}, "on must be change, match, always, or quiet"},
+		// quiet is a MODE, not a modifier: asking for its tick count while
+		// asking for another mode is a misunderstanding, and it is said out
+		// loud rather than ignored.
+		{"quiet_ticks in another mode", map[string]any{"command": "date", "quiet_ticks": 4}, "quiet_ticks only applies when on is quiet (got on=change)"},
+		{"quiet_ticks with always", map[string]any{"command": "date", "on": "always", "quiet_ticks": 4}, "quiet_ticks only applies when on is quiet (got on=always)"},
 		{"match without a pattern", map[string]any{"command": "date", "on": "match"}, "pattern is required"},
 		{"broken pattern", map[string]any{"command": "date", "on": "match", "pattern": "("}, "not a valid regular expression"},
 		{"broken until", map[string]any{"command": "date", "until": "["}, "not a valid regular expression"},
@@ -485,5 +490,104 @@ func TestCloseStopsWatches(t *testing.T) {
 	}
 	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("Close's stop self-reported: %v", queued)
+	}
+}
+
+// ── quiet ───────────────────────────────────────────────────────────────────
+
+// on=quiet FIRES ON THE ABSENCE OF NEWS, which is the shape none of the other
+// three modes can make: a run of unchanged ticks ends the watch with one final
+// note naming the span and the last thing the command said.
+//
+// The whole story is one test because the three facts are one behaviour: it
+// stays silent while the output moves, it counts only consecutive unchanged
+// ticks, and the note that ends it carries the evidence.
+func TestWatchQuietFiresWhenTheOutputStopsMoving(t *testing.T) {
+	t.Parallel()
+	agent, workspace := jobsAgent(t)
+	feed(t, workspace, "build.log", "compiling one")
+
+	text, isError := startWatchTool(t, agent, map[string]any{
+		"command": "cat build.log", "every_seconds": watchMinEvery,
+		"on": "quiet", "quiet_ticks": watchMinQuietTicks, "name": "build",
+	})
+	if isError {
+		t.Fatalf("watch failed to start: %s", text)
+	}
+	// The terms name the span, because the answer it will give is in them.
+	if !strings.Contains(text, "on quiet") || !strings.Contains(text, "2 ticks") {
+		t.Fatalf("the start line does not state the quiet terms: %q", text)
+	}
+	id := watchID(t, agent)
+
+	// WHILE THE OUTPUT MOVES, NOTHING IS SAID. Two changes across three ticks
+	// keep resetting the run, and a quiet watch that spoke here would be
+	// announcing the opposite of what it was asked to watch for.
+	waitTicks(t, agent, id, 1)
+	feed(t, workspace, "build.log", "compiling one", "compiling two")
+	waitTicks(t, agent, id, 2)
+	feed(t, workspace, "build.log", "compiling one", "compiling two", "linking")
+	waitTicks(t, agent, id, 3)
+	if queued := sessionNotes(agent); len(queued) != 0 {
+		t.Fatalf("a quiet watch spoke while the output was moving: %v", queued)
+	}
+
+	// Now leave it alone. Two unchanged ticks in a row are the terms, and the
+	// note that follows is the last one this watch ever sends.
+	waitFor(t, "the quiet note", func() bool { return len(sessionNotes(agent)) > 0 })
+	queued := sessionNotes(agent)
+	if len(queued) != 1 {
+		t.Fatalf("want exactly one note, got %v", queued)
+	}
+	if !strings.HasPrefix(queued[0], "watch build: quiet for 2 ticks (4s)") {
+		t.Fatalf("the final note is wrong: %q", queued[0])
+	}
+	if !strings.Contains(queued[0], "linking") {
+		t.Fatalf("the final note does not carry the last output line: %q", queued[0])
+	}
+
+	waitFor(t, "the watch to stop", func() bool { return !agent.jobs.find(id).running() })
+	// It ends the way `until` ends: no more ticks, and no more notes.
+	before := agent.jobs.find(id).tickCount()
+	time.Sleep(time.Duration(watchMinEvery)*time.Second + 500*time.Millisecond)
+	if after := agent.jobs.find(id).tickCount(); after != before {
+		t.Fatalf("a quiet watch ticked on after it fired: %d → %d", before, after)
+	}
+	if queued := sessionNotes(agent); len(queued) != 1 {
+		t.Fatalf("a quiet watch kept talking: %v", queued)
+	}
+}
+
+// The tick count is CLAMPED and never refused, exactly as the interval is: an
+// out-of-range figure is a model reaching for "as soon as possible" or "only
+// when it is really over", and both have a nearest legal answer.
+func TestWatchQuietTicksAreClamped(t *testing.T) {
+	cases := []struct {
+		asked  int
+		wanted int
+	}{
+		{0, watchMinQuietTicks},
+		{-4, watchMinQuietTicks},
+		{watchMaxQuietTicks + 500, watchMaxQuietTicks},
+	}
+	for _, testCase := range cases {
+		arguments, err := json.Marshal(map[string]any{
+			"command": "date", "on": "quiet", "quiet_ticks": testCase.asked,
+		})
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		spec, problem := parseWatchArguments(arguments)
+		if problem != "" {
+			t.Fatalf("quiet_ticks %d was refused: %s", testCase.asked, problem)
+		}
+		if spec.quietTicks != testCase.wanted {
+			t.Fatalf("quiet_ticks %d became %d, want %d", testCase.asked, spec.quietTicks, testCase.wanted)
+		}
+	}
+	// And an absent figure is the default, not a zero.
+	spec, problem := parseWatchArguments(json.RawMessage(`{"command":"date","on":"quiet"}`))
+	if problem != "" || spec.quietTicks != watchDefaultQuietTicks {
+		t.Fatalf("the default quiet run is %d (%s), want %d", spec.quietTicks, problem, watchDefaultQuietTicks)
 	}
 }

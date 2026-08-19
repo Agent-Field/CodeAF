@@ -613,7 +613,9 @@ arguments and output:
 A `+` is appended to a count whose output was cut by the display cap, meaning "at least
 this many". If you answered a consent question for the call, the word `allowed` or
 `denied` rides the same slot, after a ` · ` on a wide row, and replaces the stat
-entirely at phone width.
+entirely at phone width. **A command you sent to the background with `ctrl+g` rides
+it too**, as `job 3`, and it is drawn last because it is the most recent thing to
+have happened to the row.
 
 A stat is only ever drawn for a finished call. An edit's `+N −M` is knowable early and
 is deliberately withheld — it is the shape the preview collapses into when the change
@@ -654,6 +656,20 @@ deadline would be inventing one. A foreground `bash` always has one: a `timeout`
 missing, null or zero counts down against the 120-second default the command will really
 die on, never a number nothing is going to enforce. A background `bash` has no bound, because it runs as a
 job. A turn that ended with a call unresolved stops every clock.
+
+## What happens when the countdown runs out
+
+Not a kill. A foreground `bash` command that reaches its bound is handed to the
+background and **keeps running**: the row finishes normally, its result is the one
+line `still running as job 3; log at …`, and the turn carries straight on.
+
+So the coloured last seconds are a warning that the command is about to leave the
+turn, not that it is about to be destroyed. Nothing is thrown away and nothing is
+run twice.
+
+`ctrl+g` does the same thing early, on purpose — see the keys page. A row you sent
+away that way keeps its spinner until its result lands, and gains a dim `job 3`
+beside its other trailing marks. The full account of both is on what-i-can-do.
 
 ## Seeing more of a tool call
 

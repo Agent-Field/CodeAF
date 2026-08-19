@@ -431,6 +431,16 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		a.unfold(a.bodyTurn())
 		return nil
 
+	case "ctrl+g":
+		// SEND THE RUNNING COMMAND TO THE BACKGROUND (background.go). It is
+		// bound here, in the plain switch, and it takes the key ONLY while there
+		// is a foreground bash call to promote — with nothing running it falls
+		// through to the bottom of this router, where a key that carries no text
+		// does nothing, which is what ctrl+g has always done.
+		if a.backgroundRunning() {
+			return nil
+		}
+
 	case "ctrl+b":
 		// FREEZE AND READ (copymode.go). ctrl+b used to be the emacs `left` here,
 		// alongside the arrow key that everybody actually presses, and it is spent

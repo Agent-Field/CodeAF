@@ -203,6 +203,11 @@ type entry struct {
 	// "allowed" or "denied", dim, beside the row's stat (consent.go). It is
 	// empty for every call the policy did not stop.
 	decision string
+	// bg is set when the person sent this running call to the background with
+	// ctrl+g (background.go): `job 3`, dim, beside the row's stat, in the slot
+	// [entry.decision] already uses because it is the same kind of fact. It is
+	// empty for every call nobody promoted.
+	bg string
 
 	// callID is the PROVIDER's id for this call (session.Event.CallID), taken
 	// off the forming events and kept so the announcement lands on the row that
