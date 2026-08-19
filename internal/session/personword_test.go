@@ -180,7 +180,7 @@ func TestAResumedJournalWithUsageLinesKeepsThePersonsWords(t *testing.T) {
 	// lands after it.
 	lines := []string{
 		`{"type":"session","version":1,"id":"abc123","cwd":"/tmp","model":"test/model","timestamp":"2026-08-19T16:47:50Z"}`,
-		`{"type":"message","role":"user","content":` + mustJSON(t, personWords) + `,"timestamp":"2026-08-19T16:47:53Z"}`,
+		`{"type":"message","role":"user","content":` + mustJSONText(t, personWords) + `,"timestamp":"2026-08-19T16:47:53Z"}`,
 		`{"type":"usage","usage":{"model":"aux/one","input":636,"output":115,"costUsd":0.00003,"calls":1,"aux":true},"timestamp":"2026-08-19T16:47:55Z"}`,
 		`{"type":"usage","usage":{"model":"aux/two","input":534,"output":6,"costUsd":0.00005,"calls":1,"aux":true},"timestamp":"2026-08-19T16:48:31Z"}`,
 		`{"type":"message","role":"assistant","content":"here is what i found","timestamp":"2026-08-19T16:48:20Z"}`,
@@ -282,7 +282,7 @@ func TestThePersonsWordsSurviveOntoTheWire(t *testing.T) {
 	}
 }
 
-func mustJSON(t *testing.T, text string) string {
+func mustJSONText(t *testing.T, text string) string {
 	t.Helper()
 	encoded, err := json.Marshal(text)
 	if err != nil {
