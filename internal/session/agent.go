@@ -204,6 +204,14 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// recovery is load, reconcile with the disk, continue the frontier
 	// (task_store.go). A fresh session has no checkpoint and this is a stat.
 	agent.recoverTasks()
+	// AND THE PROJECT'S RECORD IS RECONCILED BESIDE IT. The checkpoint above is
+	// one conversation's graph; the project index is every window's record of
+	// what this directory ever ran, and it holds rows that say "running" — a run
+	// takes one the moment it starts (orchestrate.go). A process that died owes
+	// those rows a closing one, and this is the moment anybody can know it is
+	// owed. It runs AFTER recovery so that a node the graph took back is not
+	// closed out from under it.
+	agent.closeInflightTaskIndexRows()
 	// AND ONLY NOW MAY IT SPEAK UNPROMPTED. Recovery turns the frontier, and a
 	// cascade over the dependents of an interrupted node settles them right here,
 	// inside New — before the caller holds the agent, before any surface has
