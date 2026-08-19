@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/aforge-v2/internal/exec/bare"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -210,5 +211,56 @@ func TestViewImageSaysWhenTheSeerAnsweredNothing(t *testing.T) {
 	}
 	if !strings.Contains(text, "vendor/slot-eyes returned no answer for shot.png") {
 		t.Fatalf("refusal = %q", text)
+	}
+}
+
+// A LOOK THAT NEVER COMES BACK STILL ENDS. This is the bug the window exists
+// for: the seer took the picture and went quiet, and because the turn's context
+// carries no deadline the tool used to sit there for the life of the session —
+// a journaled call with no result, which the room draws as a row still running.
+// The window runs out, the tool answers, and the answer names who did not
+// answer.
+func TestViewImageAnswersWhenTheSeerNeverDoes(t *testing.T) {
+	completer := &scriptedCompleter{steps: []step{
+		func(ctx context.Context, _ []ai.Message) (*ai.Response, error) {
+			// The stalled provider, exactly: it holds the call until something
+			// above it gives up, and returns whatever that was.
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}}
+	restore := viewLookWindow
+	viewLookWindow = 20 * time.Millisecond
+	t.Cleanup(func() { viewLookWindow = restore })
+
+	agent, workspace := newTestAgent(t, completer, withSlot(map[string]string{"vision": "vendor/slot-eyes"}))
+	writeImage(t, workspace, "render.png", "BYTES")
+
+	done := make(chan struct{})
+	var text string
+	var isError bool
+	go func() {
+		defer close(done)
+		text, isError = runViewImage(t, agent, map[string]any{"path": "render.png"})
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("view_image never returned: the look is unbounded again")
+	}
+
+	if !isError {
+		t.Fatalf("a look that never answered was reported as an answer: %s", text)
+	}
+	if !strings.Contains(text, "vendor/slot-eyes did not answer about render.png within ") {
+		t.Fatalf("refusal = %q", text)
+	}
+}
+
+// And the window is the one already written down. A second number here would be
+// a second answer to "how long may one completion take" (agent.go).
+func TestViewLookWindowIsTheProviderTimeout(t *testing.T) {
+	if viewLookWindow != providerTimeout {
+		t.Fatalf("the look window is %s, want providerTimeout (%s)", viewLookWindow, providerTimeout)
 	}
 }

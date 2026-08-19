@@ -382,7 +382,18 @@ func (t *Toolbox) viewImage(ctx context.Context, args map[string]any) Result {
 			return errorf("image inspection paused at the daily budget — approve it in chat to continue")
 		}
 	}
-	response, err := t.media.VisionClient.CompleteWithMessages(ctx, []ai.Message{{
+	// WithoutStream, the way every other one-shot call in this lane is made
+	// (internal/subharness's exec_model.go): what comes back is a TOOL RESULT
+	// and not the leaf's answer, so it must not be typed into whatever stream
+	// the context above happens to be pointed at — and it is also what puts the
+	// call on the client bounded in total rather than on the stream client,
+	// which carries no total deadline by design (internal/provider's
+	// transport.go). Unlike the chat's own view_image (internal/session's
+	// tools_view.go) this needs no window of its own: Linear.Run puts a deadline
+	// on every leaf context before a tool can be reached (linear.go), so the
+	// look always ends — the cost of the unbounded call here was that a quiet
+	// provider could spend the leaf's whole remaining budget on one picture.
+	response, err := t.media.VisionClient.CompleteWithMessages(provider.WithoutStream(ctx), []ai.Message{{
 		Role: "user",
 		Content: []ai.ContentPart{
 			{Type: "text", Text: question},
