@@ -86,12 +86,24 @@ var taskDescription = "Hand ONE self-contained piece of work to a task that runs
 // It is a var rather than a const for exactly this reason; the cost is one
 // package-level string built at init, and what it buys is a default that
 // cannot be wrong.
+//
+// THE BRIEF AND ACCEPTANCE DESCRIPTIONS CARRY THE SHAPING GUIDE IN MINIATURE.
+// prompts/shape.md is the canonical statement of what a worker-ready brief must
+// contain, and a person's own /task gets a model call that applies it
+// (task_shape.go). A brief the CHAT model writes gets no second call, because
+// the chat model has the whole conversation in front of it and a shaper would
+// see one sentence — so the guide reaches it here instead, distilled to the
+// three moves that survive compression: decide what a worker with nobody to ask
+// would have to ask, constrain against the failure THIS kind of work has rather
+// than work in general, and make done checkable by somebody else. Anything
+// longer belongs in shape.md, and this stays short so the two cannot drift into
+// two different accounts of one idea.
 var taskSchemaJSON = `{"type":"object","properties":{` +
 	`"title":{"type":"string","description":"One line naming the work, as a person would say it: \"Fix the nil-map crash in the reconciler\""},` +
 	`"summary":{"type":"string","description":"Two or three lines the person reads to decide whether to redirect it: what will be done, and to what"},` +
-	`"brief":{"type":"string","description":"THE WORK, self-contained: what is to be done, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation. Do not paste the person's message in here — it is attached verbatim above what you write"},` +
+	`"brief":{"type":"string","description":"THE WORK, self-contained: what is to be done, the files and symbols, the conventions and constraints, what has been tried, and anything from this conversation the work needs. The task never sees this conversation and cannot ask you anything, so decide here everything it would otherwise stop and ask about — which file, which format, how long, which of two readings, what to do when the obvious route is blocked. Constrain THIS kind of work rather than work in general: ask what a lazy but plausible-looking answer to this particular job would look like and write the condition that forbids it. For output a person will read, say what would make it read as machine-written and what to do instead; for code, what \"working\" means here and that saying so requires having run it; for research, what counts as a source. \"Be accurate\" and \"follow best practice\" constrain nothing — every line must be one the worker could disobey. Do not paste the person's message in here — it is attached verbatim above what you write"},` +
 	`"deliverable":{"type":"string","description":"WHAT MUST EXIST when this is over, and where: the file and its path, the branch, the answer and the shape it takes. Name the thing, not the activity — \"docs/pricing.md, one page, table of the four tiers\" rather than \"look into pricing\""},` +
-	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check: the command that must pass, the behaviour that must hold, the output that must appear"},` +
+	`"acceptance":{"type":"string","description":"DONE WHEN — the observable done-condition somebody else could check without taking the task's word for it: the command that must pass, the behaviour that must hold, the output that must appear. \"It is finished\" and \"it is good\" are not checkable and are not this"},` +
 	`"depends_on":{"type":"array","items":{"type":"number"},"description":"Ids of tasks that must finish before this one starts. Its brief is given their reports when it begins"},` +
 	`"model":{"type":"string","description":"Optional. The model this work runs on, as a catalog id (\"anthropic/claude-opus-5\") or the part of one that names it (\"opus-5\"). Set it ONLY when the person asked for a particular model or class of model for this work; leave it out and the task runs on the configured one. A name that fits more than one model is shown to the person to settle"},` +
 	`"max_steps":{"type":"number","description":"Optional. How many finished tool calls make one progress checkpoint (default ` + strconv.Itoa(taskMaxSteps) + `). Work that is still advancing may receive four more equal allowances; circling work gets one landing turn and stops. Raise it for a sweep across many files; lower it for something small that should be checked sooner"},` +

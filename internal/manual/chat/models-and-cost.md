@@ -197,6 +197,7 @@ under the class answering it, saying which model comes out. As shipped:
 | `compaction` | careful work | the summary that survives a compaction |
 | `auditor` | careful work | whether finished-looking work is actually finished |
 | `vision` | careful work | reads images for a model that cannot see them |
+| `shaper` | careful work | the brief a task you started yourself is given |
 | `planner` | mastermind | the plan that steers an adaptive run |
 | `designer` | mastermind | writes and reviews a harness page |
 
