@@ -27,11 +27,16 @@ package main
 // available model instead of arriving at a provider as a 404. This is the
 // promise Decision 3 made and the first wiring never kept.
 //
-// THE SEVEN WORDS the resolver answers to, and what each one asks the catalog:
+// THE EIGHT WORDS the resolver answers to, and what each one asks the catalog:
 //
 //	image       output image     — the model that draws
 //	speech      output speech    — the model that speaks (the catalog aliases
-//	                               audio and music onto this)
+//	                               the provider's broad "audio" onto this)
+//	music       output music     — the model that composes. It is its own word
+//	                               and not a reading of speech: the two ride one
+//	                               endpoint and are two different models, and a
+//	                               TTS row that publishes only "speech" is
+//	                               correctly refused here
 //	video       output video     — the model that films
 //	vision      input image      — the model that looks at a picture and
 //	                               answers in words
@@ -41,7 +46,7 @@ package main
 //	                               talk about it
 //	watch       input video      — a CHAT model that can be handed a film
 //
-// The first four are session.Config.MediaModel's own contract; the last three
+// The first five are session.Config.MediaModel's own contract; the last three
 // are the perception belt's (the media/hear lane). The four INPUT words all
 // demand text back as well, because a model that takes sound and answers in
 // sound is a speaker rather than a listener.
@@ -65,13 +70,15 @@ import (
 var v3MediaSlot = map[string]string{
 	"image":      "image",
 	"speech":     "speech",
+	"music":      "music",
 	"video":      "video",
 	"transcribe": "voice",
 }
 
-// v3MediaPin is the role whose pin is the second rung. Three of the seven have
-// one; the perception words have none yet, and a pin nobody can write is a rung
-// that would only ever be skipped.
+// v3MediaPin is the role whose pin is the second rung. Four of the eight have
+// one; the perception words and MUSIC have none, and a pin nobody can write is a
+// rung that would only ever be skipped — internal/roles has no music role, so
+// composing resolves on its slot, the catalog and the curated name alone.
 var v3MediaPin = map[string]roles.Role{
 	"image":  roles.RoleImageGen,
 	"speech": roles.RoleSpeech,
@@ -85,6 +92,7 @@ var v3MediaPin = map[string]roles.Role{
 var v3MediaVerb = map[string]string{
 	"image":      "draw",
 	"speech":     "speak",
+	"music":      "compose",
 	"video":      "film",
 	"vision":     "see",
 	"transcribe": "transcribe",
@@ -192,6 +200,12 @@ func v3MediaCapable(models *catalog.Catalog, modality, id string) bool {
 		return models.Supports(id, "output", "image")
 	case "speech":
 		return models.Supports(id, "output", "speech")
+	case "music":
+		// A SEPARATE QUESTION FROM SPEECH, and the catalog keeps them separate:
+		// internal/catalog's hasModality aliases the provider's broad "audio"
+		// onto both words, but a row that publishes only "speech" answers no
+		// here — which is the honest reading of a TTS model asked to compose.
+		return models.Supports(id, "output", "music")
 	case "video":
 		return models.Supports(id, "output", "video")
 	case "vision":

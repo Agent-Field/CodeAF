@@ -86,9 +86,15 @@ there your reply must say something about it.
   "verbatim", "in full", or "reproduce the input" is a worse bug than the one it
   fixes: that node will spend its whole completion budget transcribing and hand a
   truncated stub to everything downstream. If a draft says verbatim, change it.
-- **A promise the tools cannot keep.** Nothing here reaches the web, a filesystem,
-  or a shell. A brief that says "look up" or "fetch" is describing work that will
-  not happen, and its output will be invented.
+- **A promise the tools cannot keep.** A node can reach only what the whitelist
+  names, and the whitelist can name only the tools the design guide listed. Check
+  every brief against it: a node told to "look it up" or "fetch the page" with no
+  tool on its list that reaches the web is describing work that will not happen,
+  and its output will be invented — the model will write a confident answer out of
+  nothing. The same goes for a brief that says "save the file", "run the tests" or
+  "make the image" when the matching verb is not whitelisted. The fix is either to
+  whitelist the tool the work needs or to rewrite the brief as reasoning over what
+  the step was actually handed.
 - **Cues and desc.** A cue counts only when the person's sentence contains it
   WHOLE, as consecutive words. Read each cue against the goal sentence itself: any
   cue that does not appear inside it verbatim is scoring nothing, and a draft whose

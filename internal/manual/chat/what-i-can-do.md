@@ -315,7 +315,7 @@ Attaching is not the only way in. A picture already on disk is opened by `read`
 disk?"), which describes the whole thing, and by `read_document`, which is the
 door for a photograph of a page you want extracted as a document.
 
-## Can you make a picture, a voiceover or a video?
+## Can you make a picture, a voiceover, music or a video?
 
 Yes, when a model for that kind of media is available on this machine — and each
 kind is a separate answer, so drawing may be there while filming is not.
@@ -324,6 +324,10 @@ kind is a separate answer, so drawing may be there while filming is not.
   you already have when you give it `reference_paths`.
 - `speak` turns text into an mp3, in the speech model's default voice unless you
   name one.
+- `generate_music` composes a piece from a description of the music — genre,
+  instruments, tempo, mood. It is a different model from `speak` and has no
+  length argument: you get a piece of the model's own choosing, around a minute,
+  for a flat price per call.
 - `generate_video` renders a short video. It **returns straight away with a
   background job** because a render takes minutes; the finished file arrives as a
   note naming it, and `jobs kill` stops it.
@@ -332,9 +336,12 @@ Each saves a file and answers with its path — never the media itself — and e
 costs real money, a video most of all. A path is all that goes into the
 conversation, but **you can see a picture without leaving the terminal**: open
 the `generate_image` row and the image is drawn in the expansion, in colour, with
-its path and size beneath. The page "making pictures, audio and video" has the
-arguments, the exact wording of the results, where the files land, and what
-happens when one fails.
+its path and size beneath.
+
+**All four work in tasks, in adaptive runs and inside saved harnesses too**, not
+only here. The page "making pictures, audio and video" has the arguments, the
+exact wording of the results, where the files land, and what happens when one
+fails.
 **One model does all the looking.** The looking slot in the settings sheet is
 the single answer to "what can see here": the fallback above, `read_document`'s
 image rung, and the `view_image` tool below all use that one model. Change it
@@ -541,10 +548,14 @@ Plainly, so you do not have to find out the hard way.
   and only those; see the what-i-remember page for what is kept and how to read
   it. Working state recorded with `track` survives a resume of *this*
   conversation and nothing further.
-- **It cannot make media without a model for it.** `generate_image`, `speak` and
-  `generate_video` are each on the list only when this machine has a model for
-  that kind of media; when there is none, the tool is absent rather than present
-  and refusing, and aforge simply does not have that verb.
+- **It cannot make media without a model for it.** `generate_image`, `speak`,
+  `generate_music` and `generate_video` are each on the list only when this
+  machine has a model for that kind of media; when there is none, the tool is
+  absent rather than present and refusing, and aforge simply does not have that
+  verb. The same rule applies inside a task, an adaptive run and a saved harness.
+- **`generate_music` cannot be asked for a length.** The endpoint takes no
+  duration, so the model writes a piece of its own choosing and the call costs
+  the same however long it turns out.
 - **`read` cannot list a directory.** It errors. `ls` lists directories.
 - **`read` cannot look at an image, listen to audio or watch a video when no
   model is set for that sense.** It says which one is missing rather than

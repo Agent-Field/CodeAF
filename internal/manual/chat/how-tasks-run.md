@@ -107,6 +107,13 @@ happens next. Working toward the brief: the task gets another hour, up to five i
 land now — one final turn to write the deliverable from what it already has — and only
 then is it stopped, with the threshold and the evidence in the report.
 
+**What the landing turn may still do.** It keeps only the tools that SAVE something:
+`write`, `edit`, and whichever media verbs the task had — `generate_image`, `speak`,
+`generate_music`, `generate_video`. Everything else comes off, and the instruction names
+exactly the hands it kept, so a task whose deliverable is a picture or a piece of audio can
+still produce it. Reading, searching and running commands are gone for that turn: it is a
+turn for finishing, not for one more look.
+
 **Five minutes for a check.** Each second look at finished work is bounded at 5 minutes.
 It hangs off the task's own clock, so `jobs kill` ends it too. A check that burned its
 whole five minutes is not retried.
