@@ -2103,6 +2103,9 @@ func (a *app) settle() tea.Cmd {
 	// A call the model was still spelling out when the turn ended never became
 	// one: the row says so and stops pulsing (toolview.go).
 	a.dropForming()
+	// And a call that STARTED and never came back stops here too, or it starts
+	// spinning again the moment the next turn does ([app.resolveUnfinished]).
+	a.resolveUnfinished()
 	// And a harness run's live step goes with the turn that was running it: the
 	// report is in the transcript by now with every step on it (harness.go).
 	a.dropHarnessStep()
@@ -2168,6 +2171,42 @@ func (a *app) dropForming() {
 	// The spawn card is the same event's other half and dies the same death
 	// (task.go).
 	a.dropFormingCard()
+}
+
+// resolveUnfinished stops the clock on every call that was still in the air when
+// the turn ended. It is [app.dropForming] widened by two states, and it is the
+// conversation's copy of the law room.go already keeps at a node's lane close
+// ([app.roomResolveUnfinished]).
+//
+// THE DEFECT IT CLOSES IS A ROW THAT COMES BACK TO LIFE. A row that never got
+// its end — an interrupt between the begin and the result, a retry that threw
+// away the attempt those announcements belonged to, a stream that died — kept
+// `toolRunning` with no end stamped on it. That looked settled for as long as
+// the surface was idle, because both the spinner and the age are drawn only
+// while the session is working (toolview.go's [app.mark] and [app.countClock]).
+// Then the NEXT turn started, the session was working again, and the abandoned
+// row began spinning a second time — with an age measured from a beginning
+// minutes or hours earlier. "view_image always seems to be running" is that row.
+//
+// The end stamp is what makes it permanent: both of those renderers stop at a
+// row that has an end on it, whatever the session is doing afterwards.
+//
+// Every row is RESOLVED, never removed, and the STATUS IS LEFT ALONE, for
+// [app.roomResolveUnfinished]'s reasons exactly: the call was asked for, which
+// is a fact about what happened, and "failed" would be a claim about something
+// nobody watched.
+func (a *app) resolveUnfinished() {
+	now := a.now()
+	for i := range a.entries {
+		e := &a.entries[i]
+		if e.kind != entryTool || !e.ended.IsZero() {
+			continue
+		}
+		if e.forming() || e.status.live() {
+			e.ended = now
+			e.stale = true
+		}
+	}
 }
 
 // fadeTicks are the two catch-up wakeups a settled turn schedules: one where

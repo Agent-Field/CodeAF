@@ -972,7 +972,13 @@ func (a *app) orchTranscriptRows(page *orchPage, width int) {
 		page.put(a.pal.dim(fit("no transcript yet", width)))
 		return
 	}
-	rows, _ := a.deckRows(deck{entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}}, width)
+	// showsWork for the reason a room sets it (workfold.go's [app.deckFolds]):
+	// somebody descended from a chip into a node's transcript to read what that
+	// node did, and a page that collapsed it into "▸ worked · 6 tool calls"
+	// would answer that gesture with the one line they already had.
+	rows, _ := a.deckRows(deck{
+		entries: run.journal, unfolded: map[int]bool{}, workOpen: map[int]bool{}, showsWork: true,
+	}, width)
 	if omitted := len(rows) - orchTranscriptTail; omitted > 0 {
 		page.put(a.pal.dim(fit("… "+itoa(omitted)+" earlier lines", width)))
 		rows = rows[omitted:]

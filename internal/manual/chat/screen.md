@@ -645,7 +645,32 @@ above.
 
 A call with no timeout gets no countdown, no bound and no colour — chrome implying a
 deadline would be inventing one. A background `bash` has no bound, because it runs as a
-job. A turn that ended with a call unresolved stops every clock.
+job. A turn that ended with a call unresolved stops every clock, and it stays stopped:
+the row takes the dim `·` mark at the moment the turn ends and keeps it through every
+turn after, so an abandoned call can never start spinning again.
+
+## Why does a tool row still say running, or seem stuck
+
+Three different things look the same and only one of them is a problem.
+
+**It is genuinely still running.** A call's row spins until its result arrives, and some
+calls take minutes: `view_image` asks another model about the picture and is bounded at
+**10 minutes**; `generate_image`, `generate_video` and `speak` are whole renders. The
+count-up beside the spinner is the honest answer to "how long have I been waiting".
+
+**Its batch has not finished.** When the model asks for several calls at once they all
+start together and they all report back together — the results arrive after the **last**
+one of them returns. So a fast call sitting beside a slow sibling spins for as long as
+the slow one takes. Two `view_image` calls in one message settle as a pair, and both
+settle: neither is waiting on the other's row.
+
+**The turn ended around it.** An interrupt, a lost connection, or an attempt the session
+retried can leave a call with no result coming. That row stops where it is, keeps a dim
+`·`, and shows no duration — nobody measured one. It is not marked failed, because
+nobody watched what became of it.
+
+If a row is spinning and the state word at the bottom says `idle`, that is a bug worth
+reporting: nothing spins on an idle session.
 
 ## Seeing more of a tool call
 

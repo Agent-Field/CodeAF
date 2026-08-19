@@ -113,11 +113,16 @@ const toolWindow = 3
 // turns are its own numbering, and [app.stamps] is keyed by the session's, so a
 // page that ran the clock would draw the conversation's receipts against a
 // node's turns and report figures nobody measured.
+//
+// showsWork says this page IS the work rather than a conversation about it, so
+// nothing on it collapses into a "worked" chip (workfold.go's [app.deckFolds]).
+// Only a room sets it.
 type deck struct {
 	entries     []entry
 	unfolded    map[int]bool
 	workOpen    map[int]bool
 	clock       bool
+	showsWork   bool
 	runningTurn int
 }
 
@@ -210,7 +215,7 @@ func (a *app) layout(width int) []row {
 // four rules exist to prevent.
 func (a *app) deckRows(d deck, width int) ([]row, bool) {
 	es := d.entries
-	folds := deriveWorkfolds(es, d.runningTurn)
+	folds := a.deckFolds(d)
 	out := make([]row, 0, len(es)+8)
 	// wasCluster says the block that just drew was a tool cluster, and wasBlock
 	// that it was a CLOSED block — a proposal, or the note a node writes when it

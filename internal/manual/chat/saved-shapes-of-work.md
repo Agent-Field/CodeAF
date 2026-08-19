@@ -323,10 +323,19 @@ next attempt being written; the reason — `retrying · malformed draft`, `retry
 draft` — and the attempt counter are on the live block in the chat. A call that failed
 outright does say so in the room, as `error: <reason>`.
 
-**It is kept.** Every reply the designer finishes is written to the node's journal, so
-opening the design tomorrow shows the writing of the page and not only the page. Nothing is
-re-narrated when you walk in: you are handed the reply being typed right now, and the rest
-is read off the file, exactly as it works for a worker.
+**It is kept, and it stays visible.** Every reply the designer finishes is written to the
+node's journal, so opening the design tomorrow shows the writing of the page and not only
+the page. Nothing is re-narrated when you walk in: you are handed the reply being typed
+right now, and the rest is read off the file, exactly as it works for a worker. A room
+never folds its work into a `▸ worked` chip the way the main thread does, so a design that
+has already landed still reads as the whole discussion with the outcome at the bottom —
+see *Seeing the whole conversation inside a task* on the tasks page.
+
+**While a reasoning model thinks, there may genuinely be nothing to show.** Some models
+answer in one burst at the end rather than streaming, and until that burst arrives the room
+has the brief at the top and one dim line at the bottom saying what is happening —
+`harness · designing · attempt 1/2 · thinking · 52s`. That line replaces itself in place
+and is never written to the journal. When the burst lands, the whole reply appears at once.
 
 ## What a design can be refused for
 
