@@ -398,6 +398,12 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, seat designS
 		if ctx.Err() != nil {
 			return subharness.Harness{}, nil, ctx.Err()
 		}
+		// THE STORY OF A DESIGN THAT TOOK FOUR ATTEMPTS IS THE THREE REFUSALS, and
+		// this is where they are written down — one sentence each, in the words the
+		// law refused it with ([harnessRefusedNote]). It is said for the LAST attempt
+		// too, before this function gives up: a journal that stopped narrating one
+		// refusal short would end on a design that simply vanished.
+		seat.noted(harnessRefusedNote(tries+1, err))
 		if tries >= harnessDesignRetries {
 			return subharness.Harness{}, nil, fmt.Errorf("no valid design in %d attempts: %w", tries+1, err)
 		}
@@ -417,6 +423,11 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, seat designS
 			textMessage("user", "That harness was REFUSED:\n\n"+err.Error()+
 				"\n\nFix exactly that and reply with the whole envelope again — one JSON object, no prose."))
 	}
+	// THE DRAFT IS NEWS THE MOMENT IT PASSES, and before the review rather than
+	// after it, because those are two things that happened and a person watching
+	// went there to watch them happen. What the review does to it is its own
+	// milestone one stage later ([harnessReviewNote]).
+	seat.noted(harnessDraftNote(page, draft))
 
 	// ONE REVIEW PASS, AND IT IS NOT A GATE. A critic that cannot produce a legal
 	// patch loses its turn and the draft goes forward: the page in hand already
@@ -434,8 +445,8 @@ func (a *Agent) designPage(ctx context.Context, goal, model string, seat designS
 //
 // The goal, the attempt and the seat are carried for the WATCHERS and for
 // nothing else: the goal and the attempt name this call on the live design block
-// in the chat, and the seat is the room and journal the reply itself goes to
-// ([designSeat]).
+// in the chat, and the seat is the room the designer thinks into and the journal
+// its caller writes this attempt's outcome to ([designSeat]).
 func (a *Agent) designHarnessOnce(ctx context.Context, history []ai.Message, model, goal string, attempt int, seat designSeat) (harnessDesign, subharness.Harness, string, error) {
 	data, raw, err := a.harnessJSON(ctx, history, model, harnessDesignTokens, harnessProgressCall{seat: seat, goal: goal, phase: "designing", attempt: attempt, attempts: harnessDesignRetries + 1})
 	if err != nil {
@@ -473,23 +484,33 @@ func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnes
 		}, "\n\n")),
 	}
 	// THE REVIEW IS WATCHED EXACTLY AS THE DESIGN IS. It is the same seat, so the
-	// critique streams into the same room and lands in the same journal, and a
-	// person who saw the draft written sees what the second pass made of it.
+	// critic thinks into the same room and what it made of the draft lands in the
+	// same journal, so a person who saw the draft written sees the second pass too.
+	//
+	// A REVIEW THAT CANNOT BE READ IS NOT NEWS, and every early return below says
+	// so with an empty milestone: the draft goes forward unchanged, which is what
+	// the draft's own milestone already told the person, and a note explaining
+	// that a critic's JSON did not parse would be the machinery talking about
+	// itself. The event still goes, because the model call finished
+	// ([designSeat.noted] says why that matters).
 	data, _, err := a.harnessJSON(ctx, history, model, harnessReviewTokens, harnessProgressCall{seat: seat, goal: goal, phase: "reviewing", attempt: 1, attempts: 1})
 	if err != nil {
 		return subharness.Harness{}, nil, false
 	}
 	var envelope harnessRevision
 	if err := harnessStrict(data, &envelope); err != nil {
+		seat.noted("")
 		return subharness.Harness{}, nil, false
 	}
 	if len(envelope.Ops) == 0 {
 		// "The draft is right" is a real review outcome, and it is cheaper than a
 		// change nobody needed. The cues may still have been rewritten.
+		seat.noted(harnessReviewNote(envelope))
 		return page, harnessCues(draft, envelope), true
 	}
 	revised, err := subharness.Apply(page, envelope.Ops)
 	if err != nil {
+		seat.noted("")
 		return subharness.Harness{}, nil, false
 	}
 	// The patched page passes the SAME gauntlet the draft did — a review is not a
@@ -505,8 +526,12 @@ func (a *Agent) reviewHarnessOnce(ctx context.Context, goal string, draft harnes
 		patched.Justification = envelope.Justification
 	}
 	if err := a.checkHarness(revised, patched); err != nil {
+		seat.noted("")
 		return subharness.Harness{}, nil, false
 	}
+	// The patch held, so it is what the page IS now, and only now is it worth
+	// telling anybody the review changed something.
+	seat.noted(harnessReviewNote(envelope))
 	return revised, patched.Cues, true
 }
 
@@ -571,6 +596,12 @@ func (a *Agent) harnessJSON(ctx context.Context, history []ai.Message, model str
 	if err != nil {
 		return nil, raw, err
 	}
+	// A REPAIR TURN HAS NOTHING TO SAY TO A PERSON. It is transport plumbing —
+	// it changed no content, and what it was fixing was a delimiter — so the
+	// milestone is empty and only the event goes: the call finished, and the room's
+	// catch-up has to be told that ([designSeat.noted]). What it could not fix
+	// surfaces one level up as the refused attempt it becomes.
+	progress.seat.noted("")
 	if cut {
 		return nil, second, errors.New(harnessRanOut(second))
 	}
@@ -615,10 +646,12 @@ func harnessRanOut(raw string) string {
 // — reasoning lines, step counts, and the stall clock — so the wait is never a
 // blank spinner. No tools either: the designer's only job is to answer.
 //
-// THE DESIGN'S OWN ROOM IS THE OTHER READER, and it gets the whole stream
-// unthrottled ([designSeat.says]). The two are not in tension: a feed somebody
-// is holding a conversation in wants one line that stays a line, and a room
-// somebody walked into to WATCH wants the writing itself.
+// THE DESIGN'S OWN ROOM IS THE OTHER READER, AND IT WANTS THE SAME THING for the
+// same reason. The content deltas are the page's JSON and they go nowhere but the
+// progress card; what crosses into the room is the REASONING, unthrottled, which
+// is the half of the stream a person can read ([designSeat.says]). Both readers
+// therefore get one live row that stays a row over prose that is worth following,
+// and the page arrives as the card it is meant to be read as.
 //
 // The truncation is read through internal/store's own classifier rather than by
 // comparing finish_reason strings here: the vocabulary an endpoint uses for
@@ -701,9 +734,11 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 	streamCtx := provider.WithStreamObserver(ctx, func(event provider.StreamEvent) {
 		if event.Kind == provider.StreamDelta || event.Kind == provider.StreamReasoning {
 			progress.add(event.Kind, event.Delta)
-			// AND THE SAME CHUNK GOES STRAIGHT INTO THE DESIGN'S ROOM, whole and
-			// unthrottled, which is the one thing the throttled card above cannot
-			// be: a room is where somebody went to watch this happen.
+			// AND THE SAME CHUNK IS OFFERED TO THE DESIGN'S ROOM, which takes the
+			// thinking and leaves the JSON: unthrottled prose is the one thing the
+			// throttled card above cannot be, and a page of braces is the one thing
+			// a room somebody walked into to watch must not become
+			// ([designSeat.says]).
 			call.seat.says(event.Kind, event.Delta)
 		}
 	})
@@ -744,14 +779,14 @@ func (a *Agent) harnessComplete(ctx context.Context, messages []ai.Message, mode
 	// The design is spent on the person's account like every other auxiliary
 	// call (title.go, guardian.go): it is not a turn, and it is not free.
 	a.addAuxiliaryUsage(response, model, 1)
-	text := response.Text()
-	// THE REPLY IS THE ROOM'S HISTORY, and this is where it becomes one. A cut-off
-	// or unparseable reply is written down exactly like a good one: it is what the
-	// designer actually said, it is what the retry loop is about to answer, and a
-	// journal that kept only the attempts that worked would explain nothing about
-	// the design that took four of them.
-	call.seat.wrote(text)
-	return text, harnessCutOff(response), nil
+	// THE REPLY IS NOT THE ROOM'S HISTORY, and this is where it stopped being one.
+	// It used to be journaled here verbatim, which meant a design reopened tomorrow
+	// replayed the JSON envelope the designer had written — the same wall of braces
+	// the live lane no longer shows ([designSeat.says]). A design that took four
+	// attempts is still explained, and better: the STAGES say what they reached
+	// (designPage and reviewHarnessOnce, through [designSeat.noted]), and each of
+	// those milestones carries the event this call's end owes the room.
+	return response.Text(), harnessCutOff(response), nil
 }
 
 // harnessCutOff reports whether a completion ended because it ran out of room.
