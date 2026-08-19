@@ -327,6 +327,8 @@ func (a *app) submitImages(text string) tea.Cmd {
 	})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
+	// The turn is open and the first request is out with nothing back from it.
+	a.awaited = time.Now()
 	a.follow()
 	a.touch()
 	return tea.Batch(func() tea.Msg {

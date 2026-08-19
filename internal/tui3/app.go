@@ -618,6 +618,18 @@ type app struct {
 	lastDelta time.Time
 	mdAt      time.Time
 
+	// awaited is when a model request was last believed to go out with NOTHING
+	// back from it yet, or the zero time when the stream has spoken since.
+	//
+	// THE SESSION EMITS NO "REQUEST SENT" EVENT, so this is inferred rather than
+	// reported, and the inference is stated here so that nothing downstream has
+	// to guess at it: a turn opening and a tool batch closing are the two moments
+	// after which the loop's very next act is a request, and the first thing the
+	// stream says afterwards is the request being answered. The surface times
+	// from the former and stops at the latter. It cannot see the wire, so it
+	// never claims to — see [app.waitingWords] for what it is allowed to say.
+	awaited time.Time
+
 	// The paint clock. dirty says the row list no longer matches the entries;
 	// painting says a frameMsg is already on its way, so a burst of deltas
 	// schedules one tick and not one each. paints counts frame SLOTS of
@@ -1870,6 +1882,8 @@ func (a *app) adopt(msg submittedMsg) tea.Cmd {
 	a.stream = msg.ch
 	a.state = stateWorking
 	a.lastDelta = time.Now()
+	// The turn is open and the first request is out with nothing back from it.
+	a.awaited = time.Now()
 	a.startClock()
 	return tea.Batch(waitEvent(msg.ch, a.gen), a.wake())
 }
@@ -1901,6 +1915,28 @@ func (a *app) event(ev session.Event) tea.Cmd {
 	// before its first word arrived.
 	if ev.Kind != session.EventReasoning && ev.Kind != session.EventThinking {
 		a.collapseThought()
+	}
+	// THE WAIT CLOCK IS ANCHORED HERE, on both edges, before anything else reads
+	// it. The two lists below are the whole of what the surface knows about a
+	// model request's life, and they are kept together so the pair cannot drift.
+	switch ev.Kind {
+	case session.EventTextDelta, session.EventReasoning, session.EventThinking,
+		session.EventToolForming, session.EventToolAnnounced, session.EventToolBegin:
+		// The stream has spoken. Whatever it says next it is no longer a request
+		// with nothing back from it, which is the only thing the clock is about.
+		a.awaited = time.Time{}
+	case session.EventCompacting:
+		// A pass that is running has a row of its own saying so, and two answers
+		// to one question is one too many — the rule [app.ellipsis] is written
+		// to. The clock stands down for it and picks up again when it ends.
+		a.awaited = time.Time{}
+	case session.EventToolEnd, session.EventToolFailed, session.EventCompacted:
+		// The batch has closed, or the pass has, and in both cases the loop's
+		// very next act is another request. Timing from HERE and not from the
+		// turn's start is the difference between a wait and a three-minute
+		// `go test` the person watched run: [app.lastDelta] would carry the
+		// call's whole runtime into the figure and open with "180s".
+		a.awaited = time.Now()
 	}
 
 	switch ev.Kind {
@@ -2151,6 +2187,10 @@ func (a *app) settle() tea.Cmd {
 	if a.state == stateWorking {
 		a.state = stateIdle
 	}
+	// A turn that is over is a turn nothing is outstanding on: the clock stops
+	// here rather than at the next turn's start, so a session left idle for an
+	// hour cannot open its next turn holding an hour-old anchor.
+	a.awaited = time.Time{}
 	a.refreshUsage()
 	a.measureContext()
 	// THE RING IS SAMPLED HERE AND NOWHERE ELSE: one reading per turn, taken at
@@ -2725,6 +2765,8 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 	a.entries = append(a.entries, entry{kind: entryUser, text: text, turn: a.turn, began: a.now()})
 	a.state = stateWorking
 	a.lastDelta = time.Now()
+	// The turn is open and the first request is out with nothing back from it.
+	a.awaited = time.Now()
 	a.startClock()
 	a.follow()
 	a.touch()
