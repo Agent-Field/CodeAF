@@ -614,10 +614,15 @@ steered it. The model never writes that part and cannot edit it. Nothing else fr
 conversation travels: the task does not see the discussion around your message, and it
 cannot ask you anything once it starts.
 
-**A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has
-no separate deliverable and no model paraphrase, so it reads as your words and a
-done-condition. A task restored from a checkpoint written before this existed has no
-verbatim part at all.
+**A part with nothing in it gets no heading.** A task you wrote yourself with `/task` has no
+separate deliverable, so it reads as your words, the work and a done-condition. A task
+restored from a checkpoint written before this existed has no verbatim part at all.
+
+**For a `/task` the THE WORK part is your brief after shaping**, not a model's paraphrase of
+a conversation: your sentence with the constraints and decisions written around it, from the
+pass described on the *work that runs on its own* page under *Why my task's brief is longer
+than what I typed*. Where shaping could not run, the two parts are the same sentence and it
+is printed once — under your own heading, with no THE WORK at all.
 
 Long messages are cut at 6000 bytes and the cut is marked with `…`, so a task that was
 handed a shortened version of what you said can see that it was.

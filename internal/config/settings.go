@@ -203,6 +203,21 @@ const (
 	// beside the guardian because both spend a model on the person's behalf:
 	// the guardian to answer, the auditor to check.
 	KeyTaskAudit = "task.audit"
+	// KeyTaskStart is what a bare `/task <brief>` does about SHAPE: one worker,
+	// or a planner cutting the work into pieces that run at once (internal/tui3's
+	// taskcommand.go). Shipped, it asks — a small sizing call reads the brief and,
+	// where it finds independent parts, a two-row chooser opens.
+	//
+	// It is a row because the question is not really about one task. Somebody who
+	// works in pieces wants the pieces every time and is answering the same
+	// chooser every time; somebody who does not want a planner at all is
+	// dismissing it every time. Both are a preference stated once, and the row is
+	// where you state it.
+	//
+	// The two silent answers also decide what is SPENT: `single` skips the sizing
+	// call outright, because that call exists only to raise the chooser and
+	// running it to ignore the answer is a model paid to be overruled.
+	KeyTaskStart = "task.start"
 	// KeyMemoryEnabled is whether this build remembers anything across
 	// conversations at all (internal/session's memory.go): the pre-turn router
 	// that decides which remembered lines a turn needs, the post-turn pass that
@@ -409,6 +424,31 @@ var TaskAuditModes = []string{TaskAuditOn, TaskAuditOff}
 
 // DefaultTaskAudit is on.
 const DefaultTaskAudit = TaskAuditOn
+
+// The three answers to [KeyTaskStart], and they are not three settings but one
+// question asked once instead of on every `/task`: who decides the shape.
+//
+//	ask        you do, when there is something to decide. The sizing call runs,
+//	           and only a brief with independent parts in it raises the chooser.
+//	adaptive   aforge does, toward the planner: parts found, it runs adaptive
+//	           without asking; none found, it starts one worker, because a planner
+//	           over work that cannot be split is a whole extra model deciding
+//	           nothing. A single worker can still split its own brief when it
+//	           finds independent parts in it, so nothing is closed off.
+//	single     aforge does, toward one worker, and the sizing call is not made
+//	           at all.
+const (
+	TaskStartAsk      = "ask"
+	TaskStartAdaptive = "adaptive"
+	TaskStartSingle   = "single"
+)
+
+// TaskStartModes lists them, the default first.
+var TaskStartModes = []string{TaskStartAsk, TaskStartAdaptive, TaskStartSingle}
+
+// DefaultTaskStart is ask: the shipped behaviour, and the only one of the three
+// that never decides something the person might have wanted the other way.
+const DefaultTaskStart = TaskStartAsk
 
 // The timestamps row's three answers, and they are a LADDER rather than three
 // unrelated pictures: each rung draws strictly less of the clock than the one
@@ -1247,6 +1287,22 @@ func (s *Settings) build() []Setting {
 			Hint:  "fold rolls completed reasoning, calls, results, and intermediate text into one worked chip. open keeps that work visible. The change applies immediately.",
 			read:  func() string { return WorkAt(dir) },
 			write: func(raw string) error { return writeChoice(dir, KeyWork, raw, WorkModes) },
+		},
+		// Before the audit row, because it comes first in the life of a task: this
+		// says what STARTS when you type /task, the audit row says what has to be
+		// true before what started is allowed to land.
+		Setting{
+			Key: KeyTaskStart, Category: CategorySpending, Kind: SettingChoice,
+			Label: "starting a task", Choices: TaskStartModes,
+			Hint: "what /task <brief> does before it starts. ask reads the brief first and " +
+				"offers you adaptive or single whenever it finds parts that could run at the " +
+				"same time; that offer is the default. adaptive takes it without asking and " +
+				"starts one worker when there is nothing to split. single always starts one " +
+				"worker and skips the reading altogether. /task solo and /task adaptive still " +
+				"say so outright whatever this is set to, and a single worker can still split " +
+				"its own brief when it finds independent parts in it.",
+			read:  func() string { return TaskStartAt(dir) },
+			write: func(raw string) error { return writeChoice(dir, KeyTaskStart, raw, TaskStartModes) },
 		},
 		Setting{
 			Key: KeyTaskAudit, Category: CategorySpending, Kind: SettingChoice,
@@ -2427,6 +2483,22 @@ func TaskAuditAt(profileDir string) string {
 // TaskAuditEnabledAt is [TaskAuditAt] as the bool the session's Config takes.
 func TaskAuditEnabledAt(profileDir string) bool {
 	return TaskAuditAt(profileDir) == TaskAuditOn
+}
+
+// TaskStartAt resolves [KeyTaskStart]: the persisted row, else the default. A
+// value this build does not recognise reads as the default rather than as an
+// error, because the row decides what a command does and a typo in a config file
+// must not be a command that refuses.
+func TaskStartAt(profileDir string) string {
+	if value, ok := persistedString(profileDir, KeyTaskStart); ok {
+		value = strings.ToLower(strings.TrimSpace(value))
+		for _, mode := range TaskStartModes {
+			if mode == value {
+				return value
+			}
+		}
+	}
+	return DefaultTaskStart
 }
 
 // MemoryAt resolves the memory row to its word, default on.
