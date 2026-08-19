@@ -18,8 +18,8 @@ Yes, with `generate_image`, when a drawing model is available.
 
 Arguments: `prompt` (required), `reference_paths`, `aspect_ratio`, `size`, `path`.
 
-The picture is written to a file and **the file is what you get** — the result
-is one line naming it, like:
+The picture is written to a file, and the result aforge reads is one line naming
+it, like:
 
 ```
 .aforge-v3/images/20260817-142201-sunset-over-the-harbour.png — 1024×1024 png, 1.4MB, generated on <model>
@@ -27,7 +27,8 @@ is one line naming it, like:
 
 The image itself never enters the conversation, because a picture carried in the
 transcript is re-sent on every step of every turn afterwards. If aforge needs to
-look at what it made, it opens the file like any other picture.
+look at what it made, it opens the file like any other picture. **You do not
+have to open the file yourself** — see the next section.
 
 Leave `path` out and the name is a timestamp plus a few words of your prompt,
 saved where this session keeps its pictures. Give `path` and you choose the name
@@ -35,6 +36,26 @@ and folder; an existing file there is overwritten, exactly as `write` would.
 
 `aspect_ratio` (for example `16:9`) and `size` (for example `1024x1024`) are
 passed to the image model untouched. Leave them out for its own default.
+
+## Do I only get a file path, or can I see the image you made?
+
+You see it, in colour, without leaving the terminal.
+
+The line above is what aforge itself reads — a path is all that goes into the
+conversation — but the screen does more with it. **Open the `generate_image` or
+`view_image` row** (click it, or select it with `↑`/`↓` and press `enter`) and
+the picture is drawn in the expansion, with one dim line under it giving the
+file's whole absolute path, its pixel size and its size on disk.
+
+It is drawn from half-block characters, two stacked pixels to a cell, so it needs
+a terminal with **256 colours or better** and a UTF-8 locale — iTerm2,
+Terminal.app, kitty, Alacritty, WezTerm, Ghostty, GNOME Terminal, and tmux or ssh
+over any of them all qualify. Where those are missing, or the file is gone, the
+row shows its result line exactly as before and never an error. png, jpeg, gif
+and webp are drawn.
+
+The "what is on the screen" page has the sizes, the wrapping rule for the path,
+and the full list of cases where no picture is drawn.
 
 ## Can you edit, restyle or combine images I already have?
 

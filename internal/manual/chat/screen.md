@@ -661,6 +661,8 @@ What you get, per tool, each with its own line cap:
 | `read` | the returned chunk | 30 rows |
 | `bash` | the command whole and highlighted, uncapped, then the output; `exit N` in the bad hue at the foot when it failed | output 30 rows |
 | `grep`, `find`, `ls` | the listing | 30 rows |
+| `generate_image` | the picture itself, in colour, then its file | picture 20 rows |
+| `view_image` | the picture itself, then what the looking model said | answer 30 rows |
 | anything else | the arguments, then the output | 30 rows |
 
 Rows truncate rather than wrap — "first 30 lines" has to mean thirty rows on screen or
@@ -682,6 +684,53 @@ once execution begins. The header changes, the rows do not, so nobody reads the 
 diff twice. It is capped at **12** rows, or **4** at phone width, with the remainder
 offered as `… N more lines`. There is no preview for `bash` (the command is already on
 its own line in full) or `read`.
+
+## Seeing the image itself in the terminal, in colour
+
+Open a `generate_image` or `view_image` call and **the picture is drawn, in colour, in
+the expansion** — not just named. Click the row, or select it with `↑`/`↓` and press
+`enter`. At phone width the same gesture opens the call over the whole frame and the
+picture is drawn there instead.
+
+It is drawn out of **half-block characters**: one cell carries two stacked pixels, its
+top colour and its bottom one, which is how a terminal shows a photograph with nothing
+but colour codes. No image protocol is involved and nothing is written outside the
+frame, so the picture survives every repaint, scrolls with the conversation, and works
+over ssh and inside tmux the same as anywhere else.
+
+The picture keeps its own shape, is **never enlarged** past its real pixel size, and is
+at most **20 rows** tall and as wide as the expansion. At 80 columns a 16:9 picture comes
+out about 71 cells across by 20 down; a 16-pixel icon is drawn 16 cells across, because
+blowing it up would be sixty columns of blur claiming to be detail.
+
+Under it, dim, is one line: **the file's whole absolute path**, then its size in pixels
+and on disk — `/…/harbour.png · 1024×768 · 1.4 MB`. The path is a hyperlink where your
+terminal makes one, and it is **never truncated**: where it does not fit it wraps onto
+another row rather than losing characters, because a path with an ellipsis in it cannot
+be clicked, copied or pasted. Where the line is too narrow for both, the pixel and file
+sizes step down to a row of their own first.
+
+**png, jpeg, gif and webp** are drawn — the same four `view_image` will read.
+
+## When the image preview is not drawn
+
+The row keeps exactly the words it always had. Nothing here is ever an error.
+
+- **A terminal below 256 colours**, or with colour off. The sixteen ANSI colours are your
+  own theme, and a photograph painted out of them would be a lie about both.
+- **A terminal that cannot draw box-drawing characters** — no UTF-8 locale, or no `TERM`
+  at all. The half block is the whole technique.
+- **Screen-reader mode**, where twenty rows of block characters read aloud is twenty rows
+  of nothing.
+- **An expansion under 8 columns wide.**
+- **A file that is missing, unreadable, over 24MB, over 64 megapixels, or not one of the
+  four types** — a `svg`, a `tiff`, a `pdf`.
+
+In every one of those, `generate_image` shows its result line and `view_image` shows what
+the looking model said, exactly as they did before.
+
+A picture is decoded once and kept, so a call you leave open costs nothing to repaint.
+Resize the terminal and it is drawn again at the new width.
 
 ## Opening a tool call on a phone-width screen
 

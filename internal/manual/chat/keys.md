@@ -572,6 +572,11 @@ selection, not the primary one.
 - The selection highlight is the hover background, so a terminal below ANSI256 gets
   no highlight at all. Read the span off the `COPY · N lines` count instead.
 
+**An image drawn in an expansion copies as what it is on screen** — rows of `▀`, with
+the colour stripped, which is no use to anybody. Take the dim line under it instead:
+it is the picture's whole absolute path, and it is a hyperlink in terminals that make
+one.
+
 ## Chords that mean more than one thing
 
 Two chords carry unrelated meanings. Which one you get depends on where you are.
