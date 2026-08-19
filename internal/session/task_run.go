@@ -1872,11 +1872,19 @@ func (a *Agent) workTaskNode(ctx context.Context, node *TaskNode, listed *job) T
 
 	merge, detail := tree.comeHome(node.title())
 	fmt.Fprintf(log, "merge: %s %s\n", merge, detail)
-	// The evidence leads the report: the first thing a person reads off a
-	// finished card is what was checked and what was seen, and the node's own
-	// words follow as the account they now are. The state says "done" — nothing
-	// here says it a second time in the harness's own vocabulary.
-	node.finish(withReport(verdict.doneOutcome(), withReport(report, detail)), changed, tree.branch, merge)
+	// THE WORK'S OWN ACCOUNT LEADS, AND WHAT IT WAS CHECKED ON STANDS UNDER IT.
+	// Everything downstream reads this report from the top: the settle card quotes
+	// its first sentence as what came of the work, the project's index keeps that
+	// same line as the row's outcome (task_index.go's taskOutcome), and the chat
+	// model reads it before writing the paragraph the person actually asked for.
+	// With the check's evidence in front, all three carried a verification command
+	// — "`git diff --cached --stat` shows staged new file …" — where what the work
+	// FOUND belonged, and a model handed proof-of-check as the headline grades the
+	// deliverable instead of delivering it (prompts/system.md's rule for the moment
+	// work lands). The evidence is still here, because a finished card is owed what
+	// was checked; it is simply not the news. The state says "done" — nothing here
+	// says it a second time in the harness's own vocabulary.
+	node.finish(withReport(report, withReport(verdict.doneOutcome(), detail)), changed, tree.branch, merge)
 	return TaskDone
 }
 
